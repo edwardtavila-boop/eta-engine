@@ -13,10 +13,13 @@ import json
 import os
 import socket
 import time
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterator
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 _DEFAULT_ROOT = Path("C:/EvolutionaryTradingAlgo/var/eta_engine/state/execution_leases")
 _DEFAULT_TTL_S = 300.0
@@ -125,7 +128,7 @@ def _file_lock(path: Path, *, ttl_s: float) -> Iterator[None]:
     while True:
         try:
             fd = os.open(str(lock_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-            os.write(fd, f"{socket.gethostname()}:{os.getpid()}:{time.time()}\n".encode("utf-8"))
+            os.write(fd, f"{socket.gethostname()}:{os.getpid()}:{time.time()}\n".encode())
             break
         except FileExistsError:
             try:
@@ -139,7 +142,7 @@ def _file_lock(path: Path, *, ttl_s: float) -> Iterator[None]:
                 except OSError:
                     pass
             if time.monotonic() >= deadline:
-                raise ExecutionLeaseError(f"execution lease lock is busy: {lock_path}")
+                raise ExecutionLeaseError(f"execution lease lock is busy: {lock_path}") from None
             time.sleep(0.05)
     try:
         yield
@@ -147,10 +150,8 @@ def _file_lock(path: Path, *, ttl_s: float) -> Iterator[None]:
         if fd is not None:
             with os.fdopen(fd, "w"):
                 pass
-        try:
+        with suppress(OSError):
             lock_path.unlink()
-        except OSError:
-            pass
 
 
 def _lease_from_payload(path: Path, payload: dict[str, Any]) -> ExecutionLease:
@@ -225,10 +226,7 @@ def acquire_execution_lease(
             existing_owner = str(existing.get("owner") or "")
             existing_client_id = existing.get("client_id")
             existing_expires_at = float(existing.get("expires_at") or 0.0)
-            is_same_owner = (
-                existing_owner == owner
-                and (client_id is None or existing_client_id == client_id)
-            )
+            is_same_owner = existing_owner == owner and (client_id is None or existing_client_id == client_id)
             if existing_expires_at > current_time and not is_same_owner:
                 raise ExecutionLeaseHeld(
                     f"execution lease for {venue}/{account} is held by {existing_owner}",
@@ -272,10 +270,7 @@ def release_execution_lease(lease: ExecutionLease) -> bool:
         existing = _read_json(lease.path)
         if not existing:
             return False
-        if (
-            str(existing.get("owner") or "") != lease.owner
-            or existing.get("client_id") != lease.client_id
-        ):
+        if str(existing.get("owner") or "") != lease.owner or existing.get("client_id") != lease.client_id:
             return False
         try:
             lease.path.unlink()

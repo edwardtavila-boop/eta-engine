@@ -8,6 +8,7 @@ Usage::
     python eta_engine/scripts/env_sync.py          # dry-run
     python eta_engine/scripts/env_sync.py --apply  # apply changes
 """
+
 from __future__ import annotations
 
 import os
@@ -53,10 +54,14 @@ def get_windows_env(key: str) -> str | None:
     try:
         result = subprocess.run(  # noqa: S603,S607 — fixed argv, key from SYNC_KEYS
             [
-                "powershell", "-Command",
+                "powershell",
+                "-Command",
                 f"[Environment]::GetEnvironmentVariable('{key}', 'User')",
             ],
-            capture_output=True, text=True, timeout=10, check=False,
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
         )
         val = result.stdout.strip()
         return val if val else None
@@ -69,10 +74,13 @@ def set_windows_env(key: str, value: str) -> None:
     safe_value = value.replace("'", "''")
     subprocess.run(  # noqa: S603,S607 — fixed argv, key from SYNC_KEYS
         [
-            "powershell", "-Command",
+            "powershell",
+            "-Command",
             f"[Environment]::SetEnvironmentVariable('{key}', '{safe_value}', 'User')",
         ],
-        capture_output=True, timeout=10, check=False,
+        capture_output=True,
+        timeout=10,
+        check=False,
     )
     os.environ[key] = value
 

@@ -19,6 +19,7 @@ Operator pattern:
     cron 21:00 UTC -> generate_daily_brief() -> email/Slack via
     alert_dispatcher.
 """
+
 from __future__ import annotations
 
 import json
@@ -123,8 +124,7 @@ class DailyBrief:
             lines.append("## Memory Top Regimes")
             for r in self.top_regimes[:5]:
                 lines.append(
-                    f"- {r['regime']}: {r['n_episodes']} episodes, "
-                    f"{r['win_rate']:.0%} wr, {r['avg_r']:+.2f}R avg",
+                    f"- {r['regime']}: {r['n_episodes']} episodes, {r['win_rate']:.0%} wr, {r['avg_r']:+.2f}R avg",
                 )
             lines.append("")
 
@@ -206,15 +206,9 @@ def generate_daily_brief(
 
     # --- Verdicts ---
     verdict_log = state_root / "verdicts.jsonl"
-    verdicts = [
-        v for v in _read_jsonl(verdict_log)
-        if _within_window(v.get("ts"), cutoff)
-    ]
+    verdicts = [v for v in _read_jsonl(verdict_log) if _within_window(v.get("ts"), cutoff)]
     n_verdicts = len(verdicts)
-    avg_confidence = (
-        sum(float(v.get("confidence", 0.0)) for v in verdicts) / n_verdicts
-        if n_verdicts > 0 else 0.0
-    )
+    avg_confidence = sum(float(v.get("confidence", 0.0)) for v in verdicts) / n_verdicts if n_verdicts > 0 else 0.0
     breakdown: dict[str, int] = {}
     for v in verdicts:
         k = str(v.get("final_verdict", "UNKNOWN"))
@@ -222,10 +216,7 @@ def generate_daily_brief(
 
     # --- Trades ---
     trade_log = state_root / "trade_closes.jsonl"
-    trades = [
-        t for t in _read_jsonl(trade_log)
-        if _within_window(t.get("ts"), cutoff)
-    ]
+    trades = [t for t in _read_jsonl(trade_log) if _within_window(t.get("ts"), cutoff)]
     n_trades = len(trades)
     if n_trades > 0:
         rs = [float(t.get("realized_r", 0.0)) for t in trades]
@@ -237,14 +228,8 @@ def generate_daily_brief(
 
     # --- Thesis breaches ---
     breach_log = state_root / "thesis_breaches.jsonl"
-    breaches = [
-        b for b in _read_jsonl(breach_log)
-        if _within_window(b.get("ts"), cutoff)
-    ]
-    breach_summary = [
-        f"{b.get('signal_id', '')}: {b.get('rule_description', '')}"
-        for b in breaches[:10]
-    ]
+    breaches = [b for b in _read_jsonl(breach_log) if _within_window(b.get("ts"), cutoff)]
+    breach_summary = [f"{b.get('signal_id', '')}: {b.get('rule_description', '')}" for b in breaches[:10]]
 
     # --- Postmortems ---
     pm_dir = state_root / "postmortems"
@@ -252,9 +237,7 @@ def generate_daily_brief(
     if pm_dir.exists():
         for f in pm_dir.glob("*.json"):
             try:
-                age_hours = (
-                    datetime.now(UTC).timestamp() - f.stat().st_mtime
-                ) / 3600.0
+                age_hours = (datetime.now(UTC).timestamp() - f.stat().st_mtime) / 3600.0
                 if age_hours <= n_hours_back:
                     new_pms.append(f.stem)
             except OSError:
@@ -267,6 +250,7 @@ def generate_daily_brief(
         from eta_engine.brain.jarvis_v3.self_drift_monitor import (
             detect_self_drift,
         )
+
         drift = detect_self_drift(recent_window_hours=n_hours_back)
         drift_status = drift.overall_status
         drift_signals = [s.note for s in drift.signals[:5]]
@@ -279,11 +263,11 @@ def generate_daily_brief(
         from eta_engine.brain.jarvis_v3.skill_health_registry import (
             SkillRegistry,
         )
+
         reg = SkillRegistry.default()
         for h in reg.degraded_or_unavailable():
             degraded.append(
-                f"{h.name} ({h.kind}): {h.status.value}, "
-                f"err={h.error_rate:.0%}, p95={h.p95_latency_ms:.0f}ms",
+                f"{h.name} ({h.kind}): {h.status.value}, err={h.error_rate:.0%}, p95={h.p95_latency_ms:.0f}ms",
             )
     except Exception as exc:  # noqa: BLE001
         logger.debug("daily_brief: skill health failed (%s)", exc)
@@ -294,6 +278,7 @@ def generate_daily_brief(
         from eta_engine.brain.jarvis_v3.admin_query import (
             memory_regime_stats,
         )
+
         stats = memory_regime_stats()
         top_regimes = [
             {
@@ -313,17 +298,18 @@ def generate_daily_brief(
     sage_disagree = ""
     try:
         from eta_engine.brain.jarvis_v3.sage.edge_tracker import default_tracker
+
         tracker = default_tracker()
         edges = tracker.snapshot()
         if edges:
             by_expectancy = sorted(
-                edges.items(), key=lambda x: x[1].get("expectancy", 0), reverse=True,
+                edges.items(),
+                key=lambda x: x[1].get("expectancy", 0),
+                reverse=True,
             )
-            sage_top = [
-                f"{name} ({snap['expectancy']:+.2f}R)"
-                for name, snap in by_expectancy[:5]
-            ]
+            sage_top = [f"{name} ({snap['expectancy']:+.2f}R)" for name, snap in by_expectancy[:5]]
         from eta_engine.brain.jarvis_v3.sage.health import default_monitor
+
         monitor = default_monitor()
         issues = monitor.check_health()
         sage_healthy = len(edges) - len(issues)
@@ -332,6 +318,7 @@ def generate_daily_brief(
         pass
     try:
         from eta_engine.brain.jarvis_v3.sage.last_report_cache import cache_size as sage_cache_sz
+
         if sage_cache_sz() > 0:
             # Best-effort: if a report is cached, read its summary
             pass  # pop_last_any would destroy the cache; just note it's alive
@@ -342,6 +329,7 @@ def generate_daily_brief(
     health_summary = "OK"
     try:
         from eta_engine.brain.jarvis_v3.health_check import jarvis_health
+
         h = jarvis_health()
         health_summary = h.overall_status
     except Exception as exc:  # noqa: BLE001
@@ -352,15 +340,9 @@ def generate_daily_brief(
     if drift_status == "CRITICAL" or health_summary == "CRITICAL":
         headline = "CRITICAL: operator action required"
     elif drift_status == "WARNING" or degraded:
-        headline = (
-            f"DEGRADED: {n_trades} trades, "
-            f"{avg_r:+.2f}R avg, drift={drift_status}"
-        )
+        headline = f"DEGRADED: {n_trades} trades, {avg_r:+.2f}R avg, drift={drift_status}"
     else:
-        headline = (
-            f"OK: {n_trades} trades, {avg_r:+.2f}R avg, "
-            f"win-rate {win_rate:.0%}"
-        )
+        headline = f"OK: {n_trades} trades, {avg_r:+.2f}R avg, win-rate {win_rate:.0%}"
 
     # --- Shadow pipeline ---
     shadow_fills = 0
@@ -370,6 +352,7 @@ def generate_daily_brief(
     shadow_promotions: list[dict] = []
     try:
         from eta_engine.brain.jarvis_v3.shadow_pipeline import ShadowPipeline
+
         pipe = ShadowPipeline.default()
         pipe.load_fills()
         shadow_fills = pipe.total_fills
@@ -388,10 +371,7 @@ def generate_daily_brief(
     if n_new_postmortems := len(new_pms):
         notes.append(f"{n_new_postmortems} new postmortem(s) generated today")
     if shadow_fills > 0:
-        notes.append(
-            f"Shadow pipeline: {shadow_fills} fills, "
-            f"wr={shadow_win_rate:.0%}, sharpe={shadow_sharpe:.2f}"
-        )
+        notes.append(f"Shadow pipeline: {shadow_fills} fills, wr={shadow_win_rate:.0%}, sharpe={shadow_sharpe:.2f}")
 
     brief = DailyBrief(
         date_iso=today,
@@ -429,10 +409,12 @@ def generate_daily_brief(
         try:
             output_dir.mkdir(parents=True, exist_ok=True)
             (output_dir / f"{today}.md").write_text(
-                brief.to_markdown(), encoding="utf-8",
+                brief.to_markdown(),
+                encoding="utf-8",
             )
             (output_dir / f"{today}.json").write_text(
-                json.dumps(brief.to_dict(), indent=2), encoding="utf-8",
+                json.dumps(brief.to_dict(), indent=2),
+                encoding="utf-8",
             )
         except OSError as exc:
             logger.warning("daily_brief: persist failed (%s)", exc)

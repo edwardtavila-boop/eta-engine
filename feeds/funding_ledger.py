@@ -71,16 +71,20 @@ The provider may be:
   — the ledger wraps it via a tiny shim that builds a synthetic ``bar``
   with the right ``timestamp``.
 """
+
 from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
-from typing import Any, Callable, Iterable, Protocol, runtime_checkable
+from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from eta_engine.feeds.instrument_specs import get_spec
 
-UTC = timezone.utc
+if TYPE_CHECKING:
+    from collections.abc import Callable, Iterable
+
+UTC = UTC
 
 # Binance/Bybit/OKX schedule: settlements at 00:00, 08:00, 16:00 UTC.
 # Expressed as the hour-of-day; minutes/seconds always zero.
@@ -90,16 +94,18 @@ _FUNDING_SETTLEMENT_HOURS_UTC: tuple[int, ...] = (0, 8, 16)
 @runtime_checkable
 class _RateAtProvider(Protocol):
     """Provider exposing ``rate_at(datetime) -> float``."""
+
     def rate_at(self, ts: datetime) -> float: ...
 
 
 @dataclass(frozen=True)
 class FundingSettlement:
     """One booked funding settlement during a position's lifetime."""
+
     settlement_ts: datetime
-    funding_rate: float          # raw published rate (e.g. 0.0001 = 0.01%)
-    notional_usd: float          # qty * entry_price
-    payment_usd: float           # signed: positive = cost to trader, negative = credit
+    funding_rate: float  # raw published rate (e.g. 0.0001 = 0.01%)
+    notional_usd: float  # qty * entry_price
+    payment_usd: float  # signed: positive = cost to trader, negative = credit
 
 
 class FundingLedger:
@@ -158,8 +164,12 @@ class FundingLedger:
             ``.timestamp``. NaN responses are treated as missing data.
         """
         settlements = self._book_settlements(
-            symbol=symbol, side=side, qty=qty, entry_price=entry_price,
-            entry_ts=entry_ts, exit_ts=exit_ts,
+            symbol=symbol,
+            side=side,
+            qty=qty,
+            entry_price=entry_price,
+            entry_ts=entry_ts,
+            exit_ts=exit_ts,
             funding_provider=funding_provider,
         )
         return sum(s.payment_usd for s in settlements)
@@ -178,8 +188,12 @@ class FundingLedger:
         per-settlement breakdown for audit / per-trade printout.
         """
         return self._book_settlements(
-            symbol=symbol, side=side, qty=qty, entry_price=entry_price,
-            entry_ts=entry_ts, exit_ts=exit_ts,
+            symbol=symbol,
+            side=side,
+            qty=qty,
+            entry_price=entry_price,
+            entry_ts=entry_ts,
+            exit_ts=exit_ts,
             funding_provider=funding_provider,
         )
 
@@ -223,12 +237,14 @@ class FundingLedger:
             # sign:  LONG  -> -1 (longs pay positive funding)  =>  cost = +notional*rate
             #        SHORT -> +1 (shorts receive positive funding) => cost = -notional*rate
             payment_usd = -sign * notional_usd * rate
-            out.append(FundingSettlement(
-                settlement_ts=s_ts,
-                funding_rate=rate,
-                notional_usd=notional_usd,
-                payment_usd=payment_usd,
-            ))
+            out.append(
+                FundingSettlement(
+                    settlement_ts=s_ts,
+                    funding_rate=rate,
+                    notional_usd=notional_usd,
+                    payment_usd=payment_usd,
+                )
+            )
         return out
 
     @staticmethod
@@ -278,8 +294,13 @@ class FundingLedger:
         for _ in range(max_days):
             for h in self._settlement_hours:
                 s_ts = datetime(
-                    cursor_date.year, cursor_date.month, cursor_date.day,
-                    h, 0, 0, tzinfo=UTC,
+                    cursor_date.year,
+                    cursor_date.month,
+                    cursor_date.day,
+                    h,
+                    0,
+                    0,
+                    tzinfo=UTC,
                 )
                 if s_ts <= entry_ts:
                     continue
@@ -304,8 +325,7 @@ class FundingLedger:
 
         if not callable(provider):
             raise TypeError(
-                "funding_provider must expose rate_at(ts) or be callable; "
-                f"got {type(provider).__name__}",
+                f"funding_provider must expose rate_at(ts) or be callable; got {type(provider).__name__}",
             )
 
         def _lookup(ts: datetime) -> float:
@@ -328,4 +348,5 @@ class _BarShim:
     to consume strategy bars, not raw datetimes. Keeps this module
     free of an import on ``core.data_pipeline.BarData``.
     """
+
     timestamp: datetime

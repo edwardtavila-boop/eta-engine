@@ -45,9 +45,9 @@ from eta_engine.funnel.equity_monitor import BotEquity, PortfolioState  # noqa: 
 # implementation of the missing modules.
 collect_ignore = [
     "test_basis_stress_breaker.py",  # eta_engine.core.basis_stress_breaker
-    "test_crowd_pain_index.py",      # eta_engine.features.crowd_pain_index
-    "test_sample_size_calc.py",      # eta_engine.scripts.sample_size_calc
-    "test_obs_probes_registry.py",   # eta_engine.obs.probes (package empty)
+    "test_crowd_pain_index.py",  # eta_engine.features.crowd_pain_index
+    "test_sample_size_calc.py",  # eta_engine.scripts.sample_size_calc
+    "test_obs_probes_registry.py",  # eta_engine.obs.probes (package empty)
 ]
 
 
@@ -61,6 +61,7 @@ def _ensure_policies_registry_populated() -> None:
     no-op unless we manually evict. This helper does the eviction.
     """
     import sys
+
     try:
         from eta_engine.brain.jarvis_v3.candidate_policy import list_candidates
     except ImportError:
@@ -145,13 +146,12 @@ def pytest_collection_modifyitems(config, items):  # noqa: ARG001, ANN001
     skip_classes: set[str] = set()
     import pytest as _pytest  # local import to avoid unused-import lint
 
-    skip_marker = _pytest.mark.skip(
-        reason="orphan: target module/helper not yet implemented"
-    )
+    skip_marker = _pytest.mark.skip(reason="orphan: target module/helper not yet implemented")
     for item in items:
         cls = getattr(item, "cls", None)
         if cls is not None and cls.__name__ in skip_classes:
             item.add_marker(skip_marker)
+
 
 # ---------------------------------------------------------------------------
 # Bot position-persistence side-effect guard
@@ -168,6 +168,7 @@ def pytest_collection_modifyitems(config, items):  # noqa: ARG001, ANN001
 def _disable_bot_position_persistence() -> None:
     """Silence ``BaseBot.persist_positions`` for the whole test session."""
     import os
+
     os.environ["ETA_BOT_PERSIST_DISABLED"] = "1"
 
 
@@ -252,6 +253,7 @@ def pytest_sessionfinish(session: pytest.Session) -> None:
     """Retry cleanup of locked temp files on Windows."""
     import os
     import sys
+
     if sys.platform != "win32":
         return
 

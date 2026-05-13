@@ -10,6 +10,7 @@ Usage:
     python -m eta_engine.scripts.three_ai_orchestrator --task "Implement caching layer"
     python -m eta_engine.scripts.three_ai_orchestrator --mode daemon --interval 300
 """
+
 from __future__ import annotations
 
 import logging
@@ -81,7 +82,10 @@ def dispatch_parallel(*, goal: str, categories: list[str] | None = None) -> list
         tasks.append(task)
         logger.info(
             "3AI [%s] %s → %s (%.0fms) %s",
-            task.task_id, cat_name, provider.value, task.elapsed_ms,
+            task.task_id,
+            cat_name,
+            provider.value,
+            task.elapsed_ms,
             "✓" if task.success else "✗",
         )
 
@@ -110,13 +114,13 @@ def _system_prompt_for(cat: TaskCategory, provider: ForceProvider) -> str:
 
 
 def print_parallel_report(tasks: list[ParallelTask]) -> None:
-    print(f"\n{'='*70}")
+    print(f"\n{'=' * 70}")
     print("  THREE-AI PARALLEL ORCHESTRATION REPORT")
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     for t in tasks:
         status = "✓" if t.success else "✗"
         print(f"  [{status}] {t.provider:10s} | {t.category:25s} | {t.elapsed_ms:6.0f}ms")
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print(f"  Total tasks: {len(tasks)} | Success: {sum(1 for t in tasks if t.success)}")
     print()
 
@@ -127,10 +131,7 @@ def daemon_mode(interval_sec: int = 300) -> None:
 
     while True:
         status = force_multiplier_status()
-        all_healthy = all(
-            status["providers"][p]["available"]
-            for p in ["claude", "codex", "deepseek"]
-        )
+        all_healthy = all(status["providers"][p]["available"] for p in ["claude", "codex", "deepseek"])
 
         logger.info(
             "3AI Health: claude=%s codex=%s deepseek=%s all=%s",
@@ -153,8 +154,7 @@ if __name__ == "__main__":
     parser.add_argument("--task", type=str, help="Goal to dispatch across all three AIs")
     parser.add_argument("--mode", choices=["once", "daemon"], default="once")
     parser.add_argument("--interval", type=int, default=300, help="Daemon interval in seconds")
-    parser.add_argument("--categories", nargs="*", default=None,
-                        help="Specific categories (default: one per provider)")
+    parser.add_argument("--categories", nargs="*", default=None, help="Specific categories (default: one per provider)")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")

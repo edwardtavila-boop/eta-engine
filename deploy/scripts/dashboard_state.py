@@ -5,6 +5,7 @@ files. The dashboard must NEVER 500 / 404 on cold-start -- every endpoint
 returns a recoverable JSON shape so the UI can render an empty-state
 panel instead of a broken one.
 """
+
 from __future__ import annotations
 
 import json

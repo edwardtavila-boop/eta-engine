@@ -70,56 +70,67 @@ VARIANT_BOT_IDS: set[str] = {
     "eth_compression",  # compression-breakout variant; bot dir = bots/eth_perp/
     "btc_compression",  # compression-breakout variant; bot dir = bots/btc_hybrid/
     # Wave-18 new strategy variants (confluence scorecard, no per-bot dir)
-    "rsi_mr_mnq", "rsi_mr_btc",
-    "vwap_mr_mnq", "vwap_mr_btc", "vwap_mr_nq", "vwap_mr_eth",
-    "volume_profile_mnq", "volume_profile_btc",
+    "rsi_mr_mnq",
+    "rsi_mr_btc",
+    "vwap_mr_mnq",
+    "vwap_mr_btc",
+    "vwap_mr_nq",
+    "vwap_mr_eth",
+    "volume_profile_mnq",
+    "volume_profile_btc",
     "volume_profile_nq",  # added 2026-05-07: clone of volume_profile_mnq for
-                          # NQ 5m. Audit pending; runs through bots/nq/.
+    # NQ 5m. Audit pending; runs through bots/nq/.
     "mym_sweep_reclaim",  # added 2026-05-08: MYM rehab path for ym_sweep_reclaim.
     "mgc_sweep_reclaim",  # added 2026-05-08: MGC rehab path for gc_sweep_reclaim.
     "mcl_sweep_reclaim",  # added 2026-05-08: MCL rehab path for cl_sweep_reclaim.
     "mes_sweep_reclaim_v2",  # added 2026-05-08: MES tier-1 rehab w/ tuned preset.
     "rsi_mr_mnq_v2",  # added 2026-05-08: RSI/MR rehab w/ relaxed thresholds.
     "mgc_sweep_reclaim_v2",  # added 2026-05-08: MGC tier-1 rehab w/ relaxed wick.
-    "gap_fill_mnq", "gap_fill_btc",
-    "cross_asset_mnq", "cross_asset_btc",
+    "gap_fill_mnq",
+    "gap_fill_btc",
+    "cross_asset_mnq",
+    "cross_asset_btc",
     "funding_rate_btc",
-    "mnq_sweep_reclaim", "eth_sweep_reclaim", "sol_sweep_scalp",
-    "mnq_futures_optimized", "btc_optimized", "btc_crypto_scalp",
+    "mnq_sweep_reclaim",
+    "eth_sweep_reclaim",
+    "sol_sweep_scalp",
+    "mnq_futures_optimized",
+    "btc_optimized",
+    "btc_crypto_scalp",
     "sol_optimized",  # SOL paper-soak variant; bot dir = bots/sol_perp/
     # MBT/MET — CME micro crypto futures, variants of BTC/ETH bots
-    "mbt_sweep_reclaim",    # uses bots/btc_hybrid/ (MBT tracks BTCUSDT)
-    "met_sweep_reclaim",    # uses bots/eth_perp/ (MET tracks ETHUSDT)
-    "mbt_funding_basis",    # uses bots/btc_hybrid/ via MBT strategy bridge
-    "mbt_zfade",            # uses bots/btc_hybrid/ via MBT strategy bridge
-    "mbt_overnight_gap",    # uses bots/btc_hybrid/ via MBT strategy bridge
-    "mbt_rth_orb",          # uses bots/btc_hybrid/ via MBT strategy bridge
-    "met_rth_orb",          # uses bots/eth_perp/ via MET strategy bridge
+    "mbt_sweep_reclaim",  # uses bots/btc_hybrid/ (MBT tracks BTCUSDT)
+    "met_sweep_reclaim",  # uses bots/eth_perp/ (MET tracks ETHUSDT)
+    "mbt_funding_basis",  # uses bots/btc_hybrid/ via MBT strategy bridge
+    "mbt_zfade",  # uses bots/btc_hybrid/ via MBT strategy bridge
+    "mbt_overnight_gap",  # uses bots/btc_hybrid/ via MBT strategy bridge
+    "mbt_rth_orb",  # uses bots/btc_hybrid/ via MBT strategy bridge
+    "met_rth_orb",  # uses bots/eth_perp/ via MET strategy bridge
     # Anchor-sweep — named-anchor variant of sweep_reclaim for index futures.
     # No own bot.py dir; runs through the existing MNQ/NQ bot dirs via
     # the strategy_kind="anchor_sweep" dispatch.
     "mnq_anchor_sweep",  # uses bots/mnq/
-    "nq_anchor_sweep",   # uses bots/nq/
+    "nq_anchor_sweep",  # uses bots/nq/
     # Commodity + FX tier (2026-05-04). All use sweep_reclaim+scorecard
     # — the same template that produced btc_optimized as a top earner.
     # No per-bot dir; runs through the strategy dispatcher with composite
     # feed providing real yfinance bars (GC=F, CL=F, NG=F, ZN=F, 6E=F).
-    "gc_sweep_reclaim",   # Gold (GC=F via yfinance)
-    "cl_sweep_reclaim",   # WTI Crude (CL=F)
-    "ng_sweep_reclaim",   # Natural Gas (NG=F)
-    "zn_sweep_reclaim",   # 10Y Note (ZN=F)
+    "gc_sweep_reclaim",  # Gold (GC=F via yfinance)
+    "cl_sweep_reclaim",  # WTI Crude (CL=F)
+    "ng_sweep_reclaim",  # Natural Gas (NG=F)
+    "zn_sweep_reclaim",  # 10Y Note (ZN=F)
     "eur_sweep_reclaim",  # EUR/USD futures (6E=F)
     # Asset-class specialist variants. These share the registry dispatcher
     # instead of owning bot.py directories.
-    "gc_momentum",   # Gold momentum specialist.
-    "cl_momentum",   # Crude momentum specialist.
-    "cl_macro",      # Crude oil macro-fade specialist.
-    "zn_range",      # 10Y Note range specialist.
-    "eur_range",     # EUR/USD futures range specialist.
+    "gc_momentum",  # Gold momentum specialist.
+    "cl_momentum",  # Crude momentum specialist.
+    "cl_macro",  # Crude oil macro-fade specialist.
+    "zn_range",  # 10Y Note range specialist.
+    "eur_range",  # EUR/USD futures range specialist.
     # Equity-index micros tier — same template, smaller notional per contract
     "mes_sweep_reclaim",  # S&P 500 micro (MES=F) — 10x less notional than ES
     "m2k_sweep_reclaim",  # Russell 2000 micro (M2K=F)
-    "ym_sweep_reclaim",   # Dow Jones (YM=F)
+    "ym_sweep_reclaim",  # Dow Jones (YM=F)
 }
 
 
@@ -160,15 +171,14 @@ def test_dir_to_bot_id_only_references_real_dirs() -> None:
 
 def test_every_dir_bot_id_is_in_per_bot_registry() -> None:
     import pytest
+
     pytest.skip("mnq_futures/nq_futures dirs exist but not in registry — infra gap")
     from eta_engine.strategies.per_bot_registry import bots
 
     registered = set(bots())
     expected = set(DIR_TO_BOT_ID.values())
     missing = expected - registered
-    assert not missing, (
-        f"bots present on disk but missing from per_bot_registry: {sorted(missing)}"
-    )
+    assert not missing, f"bots present on disk but missing from per_bot_registry: {sorted(missing)}"
 
 
 def test_every_dir_bot_id_is_in_requirements_registry() -> None:
@@ -177,9 +187,7 @@ def test_every_dir_bot_id_is_in_requirements_registry() -> None:
     declared = {r.bot_id for r in REQUIREMENTS}
     expected = set(DIR_TO_BOT_ID.values())
     missing = expected - declared
-    assert not missing, (
-        f"bots present on disk but missing from data.requirements: {sorted(missing)}"
-    )
+    assert not missing, f"bots present on disk but missing from data.requirements: {sorted(missing)}"
 
 
 def test_no_orphan_registry_rows() -> None:
@@ -197,18 +205,9 @@ def test_no_orphan_registry_rows() -> None:
 
     real = set(DIR_TO_BOT_ID.values()) | VARIANT_BOT_IDS
     strat_extra = set(bots()) - real
-    req_extra = {
-        r.bot_id for r in REQUIREMENTS
-        if not r.pending_assignment
-    } - real
-    assert not strat_extra, (
-        f"per_bot_registry rows without a matching bot dir or VARIANT: "
-        f"{sorted(strat_extra)}"
-    )
-    assert not req_extra, (
-        f"requirements rows without a matching bot dir or VARIANT: "
-        f"{sorted(req_extra)}"
-    )
+    req_extra = {r.bot_id for r in REQUIREMENTS if not r.pending_assignment} - real
+    assert not strat_extra, f"per_bot_registry rows without a matching bot dir or VARIANT: {sorted(strat_extra)}"
+    assert not req_extra, f"requirements rows without a matching bot dir or VARIANT: {sorted(req_extra)}"
 
 
 def test_registry_sweep_presets_are_supported() -> None:
@@ -231,10 +230,7 @@ def test_registry_sweep_presets_are_supported() -> None:
             used.add(preset.lower())
 
     missing = used - set(SWEEP_PRESET_FACTORIES)
-    assert not missing, (
-        "registry sweep_preset values without explicit factories: "
-        f"{sorted(missing)}"
-    )
+    assert not missing, f"registry sweep_preset values without explicit factories: {sorted(missing)}"
 
 
 def test_known_bots_have_bot_py_files() -> None:
@@ -259,6 +255,7 @@ def test_xrp_marked_deactivated_in_extras() -> None:
 
 def test_is_active_chokepoint_returns_false_for_deactivated_bots() -> None:
     import pytest
+
     pytest.skip("Registry bots renamed — test needs update")
     """Risk-sage 2026-04-27: extras['deactivated']=True must be the
     canonical kill-switch, queried by engine_adapter/live_adapter.
@@ -280,6 +277,4 @@ def test_is_active_chokepoint_returns_false_for_deactivated_bots() -> None:
     assert is_active(mnq) is True, "unmuted bot must return True"
     assert is_bot_active("mnq_futures") is True
 
-    assert is_bot_active("does_not_exist") is False, (
-        "unknown bot_id must default to inactive — never silently active"
-    )
+    assert is_bot_active("does_not_exist") is False, "unknown bot_id must default to inactive — never silently active"

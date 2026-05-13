@@ -19,6 +19,7 @@ layer: live vs whatever-baseline-you-supply.
 
 Pure stdlib + math.
 """
+
 from __future__ import annotations
 
 import json
@@ -43,9 +44,9 @@ class CellComparison:
     n_live_trades: int
     live_avg_r: float
     backtest_expected_r: float
-    delta_r: float                  # live - backtest
-    z_score: float                  # SE-based z-stat
-    severity: str                   # "info" / "warning" / "critical"
+    delta_r: float  # live - backtest
+    z_score: float  # SE-based z-stat
+    severity: str  # "info" / "warning" / "critical"
     note: str = ""
 
 
@@ -71,7 +72,8 @@ class DivergenceReport:
             "summary": self.summary,
             "cells": [
                 {
-                    "bot_id": c.bot_id, "regime": c.regime,
+                    "bot_id": c.bot_id,
+                    "regime": c.regime,
                     "n_live_trades": c.n_live_trades,
                     "live_avg_r": c.live_avg_r,
                     "backtest_expected_r": c.backtest_expected_r,
@@ -139,10 +141,7 @@ def detect_divergence(
     values from their walk-forward harness output.
     """
     cutoff = datetime.now(UTC) - timedelta(days=n_days_back)
-    trades = [
-        t for t in _read_jsonl(log_path)
-        if (dt := _parse_ts(t.get("ts"))) is not None and dt >= cutoff
-    ]
+    trades = [t for t in _read_jsonl(log_path) if (dt := _parse_ts(t.get("ts"))) is not None and dt >= cutoff]
 
     # Group trades by (bot_id, regime)
     grouped: dict[tuple[str, str], list[float]] = {}
@@ -180,20 +179,20 @@ def detect_divergence(
         else:
             severity = "info"
 
-        note = (
-            f"live {m:+.2f}R vs backtest {backtest_expected:+.2f}R "
-            f"({delta:+.2f}R; z={z:+.2f})"
+        note = f"live {m:+.2f}R vs backtest {backtest_expected:+.2f}R ({delta:+.2f}R; z={z:+.2f})"
+        cells.append(
+            CellComparison(
+                bot_id=bot_id,
+                regime=regime,
+                n_live_trades=len(rs),
+                live_avg_r=round(m, 3),
+                backtest_expected_r=round(backtest_expected, 3),
+                delta_r=round(delta, 3),
+                z_score=round(z, 2),
+                severity=severity,
+                note=note,
+            )
         )
-        cells.append(CellComparison(
-            bot_id=bot_id, regime=regime,
-            n_live_trades=len(rs),
-            live_avg_r=round(m, 3),
-            backtest_expected_r=round(backtest_expected, 3),
-            delta_r=round(delta, 3),
-            z_score=round(z, 2),
-            severity=severity,
-            note=note,
-        ))
 
     cells.sort(key=lambda c: abs(c.z_score), reverse=True)
 
@@ -203,11 +202,7 @@ def detect_divergence(
         overall = "WARNING"
     else:
         overall = "OK"
-    summary = (
-        f"divergence: {overall}; "
-        f"{len(cells)} cells, "
-        f"{n_warnings} warnings, {n_criticals} critical"
-    )
+    summary = f"divergence: {overall}; {len(cells)} cells, {n_warnings} warnings, {n_criticals} critical"
 
     return DivergenceReport(
         ts=datetime.now(UTC).isoformat(),

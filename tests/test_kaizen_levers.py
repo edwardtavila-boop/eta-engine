@@ -4,6 +4,7 @@ Lever 2: policy_version on JournalEvent + JarvisAdmin
 Lever 1: run_kaizen_close_cycle.synthesize_inputs / close_cycle integration
 Lever 7: jarvis_denial_rate_alerter.compute_denial_stats / cooldown
 """
+
 from __future__ import annotations
 
 import json
@@ -44,11 +45,13 @@ def test_journal_event_rejects_negative_policy_version() -> None:
 
 def test_legacy_journal_rows_default_to_version_zero() -> None:
     """JSONL rows from before policy_version was added must still parse."""
-    legacy_json = json.dumps({
-        "ts": datetime.now(UTC).isoformat(),
-        "actor": Actor.TRADE_ENGINE.value,
-        "intent": "legacy_event",
-    })
+    legacy_json = json.dumps(
+        {
+            "ts": datetime.now(UTC).isoformat(),
+            "actor": Actor.TRADE_ENGINE.value,
+            "intent": "legacy_event",
+        }
+    )
     ev = JournalEvent.model_validate(json.loads(legacy_json))
     assert ev.policy_version == 0
 
@@ -88,20 +91,13 @@ def test_synthesize_inputs_buckets_outcomes_correctly() -> None:
     from eta_engine.scripts.run_kaizen_close_cycle import synthesize_inputs
 
     events = [
-        JournalEvent(actor=Actor.TRADE_ENGINE, intent="open_mnq_long",
-                     outcome=Outcome.NOTED),
-        JournalEvent(actor=Actor.TRADE_ENGINE, intent="open_mnq_long",
-                     outcome=Outcome.NOTED),
-        JournalEvent(actor=Actor.RISK_GATE, intent="veto_high_vol",
-                     outcome=Outcome.BLOCKED),
-        JournalEvent(actor=Actor.RISK_GATE, intent="veto_high_vol",
-                     outcome=Outcome.BLOCKED),
-        JournalEvent(actor=Actor.RISK_GATE, intent="veto_high_vol",
-                     outcome=Outcome.BLOCKED),
-        JournalEvent(actor=Actor.KILL_SWITCH, intent="manual_override",
-                     outcome=Outcome.OVERRIDDEN),
-        JournalEvent(actor=Actor.TRADE_ENGINE, intent="rare_event",
-                     outcome=Outcome.FAILED),
+        JournalEvent(actor=Actor.TRADE_ENGINE, intent="open_mnq_long", outcome=Outcome.NOTED),
+        JournalEvent(actor=Actor.TRADE_ENGINE, intent="open_mnq_long", outcome=Outcome.NOTED),
+        JournalEvent(actor=Actor.RISK_GATE, intent="veto_high_vol", outcome=Outcome.BLOCKED),
+        JournalEvent(actor=Actor.RISK_GATE, intent="veto_high_vol", outcome=Outcome.BLOCKED),
+        JournalEvent(actor=Actor.RISK_GATE, intent="veto_high_vol", outcome=Outcome.BLOCKED),
+        JournalEvent(actor=Actor.KILL_SWITCH, intent="manual_override", outcome=Outcome.OVERRIDDEN),
+        JournalEvent(actor=Actor.TRADE_ENGINE, intent="rare_event", outcome=Outcome.FAILED),
     ]
     out = synthesize_inputs(events)
     # went_well = NOTED outcomes
@@ -119,8 +115,7 @@ def test_close_cycle_with_synthesized_inputs_produces_ticket(tmp_path: Path) -> 
     from eta_engine.scripts.run_kaizen_close_cycle import synthesize_inputs
 
     events = [
-        JournalEvent(actor=Actor.RISK_GATE, intent="veto_low_confluence",
-                     outcome=Outcome.BLOCKED),
+        JournalEvent(actor=Actor.RISK_GATE, intent="veto_low_confluence", outcome=Outcome.BLOCKED),
     ]
     inputs = synthesize_inputs(events)
     now = datetime.now(UTC)
@@ -171,6 +166,7 @@ def test_close_cycle_emits_ticket_even_with_no_events() -> None:
 
 def test_compute_denial_stats_empty() -> None:
     from eta_engine.obs.jarvis_denial_rate_alerter import compute_denial_stats
+
     stats = compute_denial_stats([])
     assert stats["total"] == 0
     assert stats["denial_rate"] == 0.0
@@ -178,6 +174,7 @@ def test_compute_denial_stats_empty() -> None:
 
 def test_compute_denial_stats_mixed_verdicts() -> None:
     from eta_engine.obs.jarvis_denial_rate_alerter import compute_denial_stats
+
     records = [
         {"response": {"verdict": "APPROVED"}},
         {"response": {"verdict": "APPROVED"}},
@@ -190,17 +187,22 @@ def test_compute_denial_stats_mixed_verdicts() -> None:
     assert stats["rejections"] == 2  # DENIED + DEFERRED
     assert stats["denial_rate"] == 0.4
     assert stats["verdict_counts"] == {
-        "APPROVED": 2, "DENIED": 1, "DEFERRED": 1, "CONDITIONAL": 1,
+        "APPROVED": 2,
+        "DENIED": 1,
+        "DEFERRED": 1,
+        "CONDITIONAL": 1,
     }
 
 
 def test_in_cooldown_returns_false_when_no_state(tmp_path: Path) -> None:
     from eta_engine.obs.jarvis_denial_rate_alerter import in_cooldown
+
     assert in_cooldown(tmp_path / "missing.json", cooldown_min=30) is False
 
 
 def test_in_cooldown_returns_true_for_recent_state(tmp_path: Path) -> None:
     from eta_engine.obs.jarvis_denial_rate_alerter import in_cooldown, update_cooldown_state
+
     state_file = tmp_path / "state.json"
     update_cooldown_state(state_file, {"denial_rate": 0.7, "rejections": 7, "total": 10})
     # Just-fired state with 30 min cooldown => still cold
@@ -211,13 +213,16 @@ def test_in_cooldown_returns_true_for_recent_state(tmp_path: Path) -> None:
 
 def test_parse_audit_lines_filters_by_window(tmp_path: Path) -> None:
     from eta_engine.obs.jarvis_denial_rate_alerter import parse_audit_lines
+
     audit_file = tmp_path / "audit.jsonl"
     now = datetime.now(UTC)
     old_ts = (now - timedelta(minutes=20)).isoformat()
     new_ts = (now - timedelta(minutes=2)).isoformat()
     audit_file.write_text(
-        json.dumps({"ts": old_ts, "response": {"verdict": "APPROVED"}}) + "\n" +
-        json.dumps({"ts": new_ts, "response": {"verdict": "DENIED"}}) + "\n",
+        json.dumps({"ts": old_ts, "response": {"verdict": "APPROVED"}})
+        + "\n"
+        + json.dumps({"ts": new_ts, "response": {"verdict": "DENIED"}})
+        + "\n",
         encoding="utf-8",
     )
     # 5-min window catches only the new record

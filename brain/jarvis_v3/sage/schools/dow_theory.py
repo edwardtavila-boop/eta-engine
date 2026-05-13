@@ -5,6 +5,7 @@ neutral by looking at the sequence of major highs + lows over the last
 50 bars. A primary uptrend = higher highs AND higher lows; downtrend =
 lower highs AND lower lows; neutral otherwise.
 """
+
 from __future__ import annotations
 
 from eta_engine.brain.jarvis_v3.sage.base import (
@@ -32,7 +33,9 @@ class DowTheorySchool(SchoolBase):
         n = ctx.n_bars
         if n < 20:
             return SchoolVerdict(
-                school=self.NAME, bias=Bias.NEUTRAL, conviction=0.0,
+                school=self.NAME,
+                bias=Bias.NEUTRAL,
+                conviction=0.0,
                 aligned_with_entry=False,
                 rationale=f"insufficient bars ({n} < 20) for trend assessment",
                 signals={"n_bars": n},
@@ -43,12 +46,12 @@ class DowTheorySchool(SchoolBase):
         # Use first half vs second half of window to detect higher/lower
         half = n // 2
         h1_high, h2_high = max(highs[:half]), max(highs[half:])
-        h1_low,  h2_low  = min(lows[:half]),  min(lows[half:])
+        h1_low, h2_low = min(lows[:half]), min(lows[half:])
 
         higher_high = h2_high > h1_high
-        higher_low  = h2_low  > h1_low
-        lower_high  = h2_high < h1_high
-        lower_low   = h2_low  < h1_low
+        higher_low = h2_low > h1_low
+        lower_high = h2_high < h1_high
+        lower_low = h2_low < h1_low
 
         if higher_high and higher_low:
             bias = Bias.LONG
@@ -79,9 +82,13 @@ class DowTheorySchool(SchoolBase):
             aligned_with_entry=(bias == entry_bias),
             rationale=rationale,
             signals={
-                "h1_high": h1_high, "h2_high": h2_high,
-                "h1_low":  h1_low,  "h2_low":  h2_low,
-                "higher_high": higher_high, "higher_low": higher_low,
-                "lower_high":  lower_high,  "lower_low":  lower_low,
+                "h1_high": h1_high,
+                "h2_high": h2_high,
+                "h1_low": h1_low,
+                "h2_low": h2_low,
+                "higher_high": higher_high,
+                "higher_low": higher_low,
+                "lower_high": lower_high,
+                "lower_low": lower_low,
             },
         )

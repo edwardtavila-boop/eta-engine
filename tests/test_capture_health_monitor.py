@@ -6,6 +6,7 @@ Covers:
 - _emit_alert: writes JSONL line (best-effort, no exception on read-only fs)
 - main(): exit-code mapping (GREEN→0, YELLOW→1, RED→2)
 """
+
 from __future__ import annotations
 
 import json
@@ -41,6 +42,7 @@ def _write_capture(path: Path, size: int, mtime_offset_seconds: int = 0) -> None
     if mtime_offset_seconds:
         new_time = time.time() + mtime_offset_seconds
         import os
+
         os.utime(path, (new_time, new_time))
 
 
@@ -49,8 +51,7 @@ def _write_capture(path: Path, size: int, mtime_offset_seconds: int = 0) -> None
 
 def test_check_capture_file_missing(isolated_dirs: dict) -> None:
     today = date.today()
-    out = chm._check_capture_file(
-        isolated_dirs["ticks"], "MNQ", today, 1800, 10_000)
+    out = chm._check_capture_file(isolated_dirs["ticks"], "MNQ", today, 1800, 10_000)
     assert out["today_status"] == "MISSING"
     assert out["yesterday_status"] == "MISSING"
 
@@ -59,8 +60,7 @@ def test_check_capture_file_fresh(isolated_dirs: dict) -> None:
     today = date.today()
     p = isolated_dirs["ticks"] / f"MNQ_{today.strftime('%Y%m%d')}.jsonl"
     _write_capture(p, 50_000)
-    out = chm._check_capture_file(
-        isolated_dirs["ticks"], "MNQ", today, 1800, 10_000)
+    out = chm._check_capture_file(isolated_dirs["ticks"], "MNQ", today, 1800, 10_000)
     assert out["today_status"] == "FRESH"
     assert out["today_size_bytes"] == 50_000
 
@@ -69,8 +69,7 @@ def test_check_capture_file_stale(isolated_dirs: dict) -> None:
     today = date.today()
     p = isolated_dirs["ticks"] / f"MNQ_{today.strftime('%Y%m%d')}.jsonl"
     _write_capture(p, 50_000, mtime_offset_seconds=-3600)  # 1h old
-    out = chm._check_capture_file(
-        isolated_dirs["ticks"], "MNQ", today, 1800, 10_000)  # 30min stale threshold
+    out = chm._check_capture_file(isolated_dirs["ticks"], "MNQ", today, 1800, 10_000)  # 30min stale threshold
     assert out["today_status"] == "STALE"
     assert out["today_mtime_age_seconds"] >= 3000
 
@@ -80,8 +79,7 @@ def test_check_capture_file_yesterday_too_small(isolated_dirs: dict) -> None:
     yest = today - timedelta(days=1)
     p = isolated_dirs["ticks"] / f"MNQ_{yest.strftime('%Y%m%d')}.jsonl"
     _write_capture(p, 500)  # under 10k threshold
-    out = chm._check_capture_file(
-        isolated_dirs["ticks"], "MNQ", today, 1800, 10_000)
+    out = chm._check_capture_file(isolated_dirs["ticks"], "MNQ", today, 1800, 10_000)
     assert out["yesterday_status"] == "TOO_SMALL"
 
 
@@ -90,8 +88,7 @@ def test_check_capture_file_yesterday_ok(isolated_dirs: dict) -> None:
     yest = today - timedelta(days=1)
     p = isolated_dirs["ticks"] / f"MNQ_{yest.strftime('%Y%m%d')}.jsonl"
     _write_capture(p, 50_000)
-    out = chm._check_capture_file(
-        isolated_dirs["ticks"], "MNQ", today, 1800, 10_000)
+    out = chm._check_capture_file(isolated_dirs["ticks"], "MNQ", today, 1800, 10_000)
     assert out["yesterday_status"] == "OK"
 
 

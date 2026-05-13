@@ -140,11 +140,7 @@ def test_launch_50k_phase1_blocks_near_consistency_profit_cap() -> None:
 
 
 def test_launch_50k_phase1_routing_profile_matches_portal_rules() -> None:
-    routing = (
-        Path(__file__).resolve().parents[1]
-        / "configs"
-        / "bot_broker_routing.yaml"
-    )
+    routing = Path(__file__).resolve().parents[1] / "configs" / "bot_broker_routing.yaml"
     data = yaml.safe_load(routing.read_text(encoding="utf-8"))
     account = data["prop_accounts"]["blusky_launch_50k_phase1"]
 

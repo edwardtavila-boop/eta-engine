@@ -124,6 +124,9 @@ $every15MinTasks = @(
     @{ Name = "ETA-Diamond-PropDrawdownGuardEvery15Min"
         Args = "-m eta_engine.scripts.diamond_prop_drawdown_guard"
         Desc = "Diamond: prop-fund 50K account daily/static DD + consistency rule guard (HALT/WATCH/OK signal for the supervisor)" }
+    @{ Name = "ETA-Diamond-LaunchReadinessEvery15Min"
+        Args = "-m eta_engine.scripts.diamond_prop_launch_readiness"
+        Desc = "Diamond: pre-launch GO/HOLD/NO_GO gate for 2026-05-18 prop-fund cutover (aggregates 7 readiness checks)" }
 )
 
 foreach ($t in $every15MinTasks) {

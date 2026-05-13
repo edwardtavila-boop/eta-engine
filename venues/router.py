@@ -51,6 +51,7 @@ from eta_engine.venues.tradovate import TradovateVenue
 # Live IBKR venue via TWS API — falls back to mock if ib_insync unavailable
 try:
     from eta_engine.venues.ibkr_live import LiveIbkrVenue as IbkrClientPortalVenue
+
     IBKR_LIVE = True
 except ImportError:
     IbkrClientPortalVenue = MockIbkrVenue
@@ -64,6 +65,7 @@ Urgency = Literal["low", "normal", "high"]
 def _env_flag(name: str) -> bool:
     """Return True for explicit operator enablement env flags."""
     return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on", "y"}
+
 
 _CRYPTO_NATIVES = {"ETHUSDT", "BTCUSDT", "SOLUSDT", "XRPUSDT"}
 _FUTURES_ROOTS = ("MNQ", "NQ", "ES", "MES", "RTY")
@@ -81,7 +83,10 @@ _CME_CRYPTO_FUTURES = ("MBT", "MET", "BTC", "ETH", "SOL", "XRP")
 #: must be refused. Default True. Override only via env var with documented
 #: compliance approval. NOT a developer-convenience flag.
 IS_US_PERSON: bool = os.environ.get("ETA_IS_US_PERSON", "true").lower() in (
-    "1", "true", "yes", "y",
+    "1",
+    "true",
+    "yes",
+    "y",
 )
 
 #: Venues that are NOT registered as FCMs / are not available to US persons
@@ -90,9 +95,16 @@ IS_US_PERSON: bool = os.environ.get("ETA_IS_US_PERSON", "true").lower() in (
 #: stay importable for unit tests + offline backtests. To trade these from
 #: the USA, the operator must produce documented compliance-counsel guidance
 #: AND set ``ETA_IS_US_PERSON=false`` explicitly in the live process env.
-NON_FCM_VENUES: frozenset[str] = frozenset({
-    "bybit", "okx", "deribit", "hyperliquid", "bitget", "binance",
-})
+NON_FCM_VENUES: frozenset[str] = frozenset(
+    {
+        "bybit",
+        "okx",
+        "deribit",
+        "hyperliquid",
+        "bitget",
+        "binance",
+    }
+)
 
 # ---------------------------------------------------------------------------
 # Broker dormancy policy (operator mandate 2026-04-24)
@@ -154,11 +166,12 @@ def _is_futures(symbol: str) -> bool:
     # CME month-coded form: <root><month-letter><yy> like MBTH26 (March
     # 2026 micro Bitcoin). Month letters: F G H J K M N Q U V X Z.
     import re as _re
+
     for code in _CME_CRYPTO_FUTURES:
         if up == code:
             return True
         if up.startswith(code):
-            suffix = up[len(code):]
+            suffix = up[len(code) :]
             if not suffix or suffix[0] == " ":
                 return True
             if _re.fullmatch(r"[FGHJKMNQUVXZ]\d{1,2}", suffix):
@@ -255,11 +268,11 @@ class SmartRouter:
         }
         # Operator-friendly aliases used in bot_broker_routing.yaml:
         aliases = {
-            "tasty":     self.tastytrade,
-            "tt":        self.tastytrade,
-            "ib":        self.ibkr,
+            "tasty": self.tastytrade,
+            "tt": self.tastytrade,
+            "ib": self.ibkr,
             "interactivebrokers": self.ibkr,
-            "alp":       self.alpaca,
+            "alp": self.alpaca,
         }
         if name in lookup:
             return lookup[name]
@@ -336,7 +349,8 @@ class SmartRouter:
             return req
         logger.info(
             "M2 translate: symbol=%s -> %s (US-person CME-routing via IBKR)",
-            req.symbol, cme_symbol,
+            req.symbol,
+            cme_symbol,
         )
         new_raw = dict(req.raw) if hasattr(req, "raw") and req.raw else {}
         new_raw["original_symbol"] = req.symbol
@@ -377,12 +391,14 @@ class SmartRouter:
                 f"process env with documented compliance approval."
             )
             logger.error("M2_BLOCK %s", msg)
-            self._failover_log.append({
-                "venue": primary.name,
-                "reason": "us_person_non_fcm_block",
-                "symbol": req.symbol,
-                "ts": time.time(),
-            })
+            self._failover_log.append(
+                {
+                    "venue": primary.name,
+                    "reason": "us_person_non_fcm_block",
+                    "symbol": req.symbol,
+                    "ts": time.time(),
+                }
+            )
             raise RuntimeError(msg)
 
         attempted: list[VenueBase] = []
@@ -397,14 +413,17 @@ class SmartRouter:
             if IS_US_PERSON and venue.name in NON_FCM_VENUES:
                 logger.error(
                     "M2_BLOCK failover skipped non-FCM venue=%s symbol=%s",
-                    venue.name, req.symbol,
+                    venue.name,
+                    req.symbol,
                 )
-                self._failover_log.append({
-                    "venue": venue.name,
-                    "reason": "us_person_non_fcm_block_in_failover",
-                    "symbol": req.symbol,
-                    "ts": time.time(),
-                })
+                self._failover_log.append(
+                    {
+                        "venue": venue.name,
+                        "reason": "us_person_non_fcm_block_in_failover",
+                        "symbol": req.symbol,
+                        "ts": time.time(),
+                    }
+                )
                 attempted.append(venue)
                 venue = self._fallback_for(venue)
                 continue

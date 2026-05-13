@@ -44,6 +44,7 @@ Run
     python -m eta_engine.scripts.diamond_authenticity_audit
     python -m eta_engine.scripts.diamond_authenticity_audit --json
 """
+
 from __future__ import annotations
 
 # ruff: noqa: PLR2004
@@ -80,6 +81,7 @@ RANDOM_SEED = 42
 @dataclass
 class SourceMetrics:
     """One source's view of a bot."""
+
     source: str
     n_trades: int | None = None
     total_pnl_usd: float | None = None
@@ -184,8 +186,9 @@ def _read_kaizen_latest(bot_id: str) -> SourceMetrics:
 # ────────────────────────────────────────────────────────────────────
 
 
-def _bootstrap_ci(samples: list[float], n_resamples: int = BOOTSTRAP_N,
-                    confidence: float = 0.95) -> tuple[float, float]:
+def _bootstrap_ci(
+    samples: list[float], n_resamples: int = BOOTSTRAP_N, confidence: float = 0.95
+) -> tuple[float, float]:
     """Percentile bootstrap CI on the mean.  Returns (lower, upper)."""
     rng = random.Random(RANDOM_SEED)
     means: list[float] = []
@@ -200,8 +203,7 @@ def _bootstrap_ci(samples: list[float], n_resamples: int = BOOTSTRAP_N,
     return means[lo_idx], means[hi_idx]
 
 
-def _mc_shuffle_p_value(samples: list[float],
-                          n_shuffles: int = MC_SHUFFLE_N) -> float:
+def _mc_shuffle_p_value(samples: list[float], n_shuffles: int = MC_SHUFFLE_N) -> float:
     """How often does a random sign-flip produce a mean >= observed?
     Tests the null "the directional bias is luck"."""
     rng = random.Random(RANDOM_SEED + 1)
@@ -213,10 +215,7 @@ def _mc_shuffle_p_value(samples: list[float],
     abs_samples = [abs(s) for s in samples]
     ge_count = 0
     for _ in range(n_shuffles):
-        shuffled_sum = sum(
-            abs_samples[i] if rng.random() < 0.5 else -abs_samples[i]
-            for i in range(n)
-        )
+        shuffled_sum = sum(abs_samples[i] if rng.random() < 0.5 else -abs_samples[i] for i in range(n))
         if abs(shuffled_sum / n) >= abs(observed):
             ge_count += 1
     return ge_count / n_shuffles
@@ -238,9 +237,9 @@ def _assess(bot_id: str) -> BotAuthenticityReport:
 
     # Cross-source agreement check.
     pnls_with_source = [
-        (s.source, s.total_pnl_usd) for s in sources
-        if s.total_pnl_usd is not None and not any(
-            "SCALE_BUG" in n for n in s.notes)
+        (s.source, s.total_pnl_usd)
+        for s in sources
+        if s.total_pnl_usd is not None and not any("SCALE_BUG" in n for n in s.notes)
     ]
     if len(pnls_with_source) >= 2:
         max_pnl = max(p for _, p in pnls_with_source)
@@ -251,8 +250,7 @@ def _assess(bot_id: str) -> BotAuthenticityReport:
         if spread > 500 and (avg_mag == 0 or spread / max(avg_mag, 1.0) > 0.50):
             rep.sources_disagree = True
             rep.disagreement_detail.append(
-                f"P&L spread ${spread:.0f} across "
-                f"{', '.join(f'{s}=${p:.0f}' for s, p in pnls_with_source)}",
+                f"P&L spread ${spread:.0f} across {', '.join(f'{s}=${p:.0f}' for s, p in pnls_with_source)}",
             )
 
     # Scale-bug detection
@@ -283,13 +281,9 @@ def _assess(bot_id: str) -> BotAuthenticityReport:
     # many trades = paper-sim) OR scale-buggy.
     usd_is_broken = any("SCALE_BUG" in n for n in consensus_source.notes)
     usd_is_missing = (
-        rep.consensus_n >= MIN_N_FOR_STATS
-        and (rep.consensus_pnl or 0) == 0
-        and (rep.consensus_r or 0) != 0
+        rep.consensus_n >= MIN_N_FOR_STATS and (rep.consensus_pnl or 0) == 0 and (rep.consensus_r or 0) != 0
     )
-    use_r_basis = usd_is_broken or usd_is_missing or (
-        (rep.consensus_pnl or 0) == 0 and (rep.consensus_r or 0) != 0
-    )
+    use_r_basis = usd_is_broken or usd_is_missing or ((rep.consensus_pnl or 0) == 0 and (rep.consensus_r or 0) != 0)
     rep.metric_basis = "R" if use_r_basis else "USD"
 
     # Sample size gate.
@@ -302,15 +296,12 @@ def _assess(bot_id: str) -> BotAuthenticityReport:
         )
         if rep.sources_disagree and not use_r_basis:
             rep.verdict = "CUBIC_ZIRCONIA"
-            rep.justification = (
-                f"sources disagree AND n={rep.consensus_n} too small to arbitrate"
-            )
+            rep.justification = f"sources disagree AND n={rep.consensus_n} too small to arbitrate"
         return rep
 
     # Build per-trade sample.  R-basis uses cumulative_r/n; USD-basis
     # uses total_pnl/n.  Synth wins/losses around the mean using WR.
-    metric_total = (rep.consensus_r if use_r_basis
-                     else rep.consensus_pnl) or 0
+    metric_total = (rep.consensus_r if use_r_basis else rep.consensus_pnl) or 0
     avg_per_trade = metric_total / max(rep.consensus_n or 1, 1)
     wr = (consensus_source.win_rate_pct or 0) / 100.0
     n_wins = int(round(wr * rep.consensus_n))
@@ -343,14 +334,10 @@ def _assess(bot_id: str) -> BotAuthenticityReport:
     elif lo > 0:
         rep.verdict = "LAB_GROWN"
         rep.justification = (
-            f"basis={rep.metric_basis}; CI lower > 0 ({lo:+.4f}{unit}) "
-            f"but MC p={p:.3f} weak; n={rep.consensus_n}"
+            f"basis={rep.metric_basis}; CI lower > 0 ({lo:+.4f}{unit}) but MC p={p:.3f} weak; n={rep.consensus_n}"
         )
     else:
-        positive_total = (
-            (rep.consensus_r or 0) >= 0 if use_r_basis
-            else (rep.consensus_pnl or 0) >= 0
-        )
+        positive_total = (rep.consensus_r or 0) >= 0 if use_r_basis else (rep.consensus_pnl or 0) >= 0
         rep.verdict = "LAB_GROWN" if positive_total else "CUBIC_ZIRCONIA"
         rep.justification = (
             f"basis={rep.metric_basis}; CI lower {lo:+.4f}{unit} <= 0 — "
@@ -380,17 +367,22 @@ def run_audit() -> dict:
     # Persist
     try:
         OUT_LATEST.parent.mkdir(parents=True, exist_ok=True)
-        OUT_LATEST.write_text(
-            json.dumps(summary, indent=2, default=str), encoding="utf-8")
+        OUT_LATEST.write_text(json.dumps(summary, indent=2, default=str), encoding="utf-8")
     except OSError as exc:
         print(f"WARN: latest write failed: {exc}", file=sys.stderr)
     try:
         with OUT_LOG.open("a", encoding="utf-8") as f:
-            f.write(json.dumps({
-                "ts": summary["ts"],
-                "verdict_counts": counts,
-                "n": len(reports),
-            }, separators=(",", ":")) + "\n")
+            f.write(
+                json.dumps(
+                    {
+                        "ts": summary["ts"],
+                        "verdict_counts": counts,
+                        "n": len(reports),
+                    },
+                    separators=(",", ":"),
+                )
+                + "\n"
+            )
     except OSError as exc:
         print(f"WARN: log append failed: {exc}", file=sys.stderr)
     return summary
@@ -402,8 +394,7 @@ def _print(summary: dict) -> None:
     print("=" * 100)
     counts = summary["verdict_counts"]
     order = ["GENUINE", "LAB_GROWN", "CUBIC_ZIRCONIA", "INCONCLUSIVE"]
-    print(" Verdict roll-up: " + ", ".join(
-        f"{v}={counts.get(v, 0)}" for v in order))
+    print(" Verdict roll-up: " + ", ".join(f"{v}={counts.get(v, 0)}" for v in order))
     print()
     print(f" {'bot':28s} {'verdict':18s} {'n':>5s} {'PnL':>10s} {'CI_lo':>8s} {'p':>6s}  justification")
     print("-" * 130)

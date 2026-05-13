@@ -50,6 +50,7 @@ Run
     # < 30 trades AND want diagnostic output before tuning.
     python -m eta_engine.scripts.l2_backtest_harness --no-walk-forward
 """
+
 # ruff: noqa: ANN001, ANN202
 # Internal helpers are deliberately untyped on the entry-signal arg
 # (different strategies emit different signal classes) and the
@@ -89,43 +90,43 @@ CONFIG_SEARCH_LOG = LOG_DIR / "l2_harness_config_search.jsonl"
 # Verified vs CME / NYMEX / COMEX product specs as of 2026-05.
 SYMBOL_SPECS: dict[str, dict[str, float]] = {
     # CME equity-index futures
-    "MNQ":  {"point_value": 2.0,    "tick_size": 0.25,    "default_atr": 2.0},   # CME Micro Nasdaq
-    "NQ":   {"point_value": 20.0,   "tick_size": 0.25,    "default_atr": 2.0},   # CME E-mini Nasdaq
-    "MES":  {"point_value": 5.0,    "tick_size": 0.25,    "default_atr": 1.5},   # CME Micro S&P
-    "ES":   {"point_value": 50.0,   "tick_size": 0.25,    "default_atr": 1.5},   # CME E-mini S&P
-    "M2K":  {"point_value": 5.0,    "tick_size": 0.10,    "default_atr": 1.0},   # CME Micro Russell 2000
-    "RTY":  {"point_value": 50.0,   "tick_size": 0.10,    "default_atr": 1.0},   # CME E-mini Russell 2000
-    "MYM":  {"point_value": 0.50,   "tick_size": 1.0,     "default_atr": 25.0},  # CBOT Micro Dow
-    "YM":   {"point_value": 5.0,    "tick_size": 1.0,     "default_atr": 25.0},  # CBOT E-mini Dow
+    "MNQ": {"point_value": 2.0, "tick_size": 0.25, "default_atr": 2.0},  # CME Micro Nasdaq
+    "NQ": {"point_value": 20.0, "tick_size": 0.25, "default_atr": 2.0},  # CME E-mini Nasdaq
+    "MES": {"point_value": 5.0, "tick_size": 0.25, "default_atr": 1.5},  # CME Micro S&P
+    "ES": {"point_value": 50.0, "tick_size": 0.25, "default_atr": 1.5},  # CME E-mini S&P
+    "M2K": {"point_value": 5.0, "tick_size": 0.10, "default_atr": 1.0},  # CME Micro Russell 2000
+    "RTY": {"point_value": 50.0, "tick_size": 0.10, "default_atr": 1.0},  # CME E-mini Russell 2000
+    "MYM": {"point_value": 0.50, "tick_size": 1.0, "default_atr": 25.0},  # CBOT Micro Dow
+    "YM": {"point_value": 5.0, "tick_size": 1.0, "default_atr": 25.0},  # CBOT E-mini Dow
     # COMEX metals
-    "MGC":  {"point_value": 10.0,   "tick_size": 0.10,    "default_atr": 0.8},   # COMEX Micro Gold
-    "GC":   {"point_value": 100.0,  "tick_size": 0.10,    "default_atr": 0.8},   # COMEX Gold
-    "SIL":  {"point_value": 5000.0, "tick_size": 0.005,   "default_atr": 0.10},  # COMEX Micro Silver
-    "SI":   {"point_value": 5000.0, "tick_size": 0.005,   "default_atr": 0.10},  # COMEX Silver
-    "HG":   {"point_value": 25000.0, "tick_size": 0.0005, "default_atr": 0.010}, # COMEX Copper
+    "MGC": {"point_value": 10.0, "tick_size": 0.10, "default_atr": 0.8},  # COMEX Micro Gold
+    "GC": {"point_value": 100.0, "tick_size": 0.10, "default_atr": 0.8},  # COMEX Gold
+    "SIL": {"point_value": 5000.0, "tick_size": 0.005, "default_atr": 0.10},  # COMEX Micro Silver
+    "SI": {"point_value": 5000.0, "tick_size": 0.005, "default_atr": 0.10},  # COMEX Silver
+    "HG": {"point_value": 25000.0, "tick_size": 0.0005, "default_atr": 0.010},  # COMEX Copper
     # NYMEX energy
-    "MCL":  {"point_value": 100.0,  "tick_size": 0.01,    "default_atr": 0.15},  # NYMEX Micro Crude
-    "CL":   {"point_value": 1000.0, "tick_size": 0.01,    "default_atr": 0.15},  # NYMEX Crude
-    "QM":   {"point_value": 500.0,  "tick_size": 0.025,   "default_atr": 0.15},  # NYMEX E-mini Crude
-    "NG":   {"point_value": 10000.0, "tick_size": 0.001,  "default_atr": 0.020}, # NYMEX Natural Gas
-    "RB":   {"point_value": 42000.0, "tick_size": 0.0001, "default_atr": 0.005}, # NYMEX RBOB Gasoline
-    "HO":   {"point_value": 42000.0, "tick_size": 0.0001, "default_atr": 0.005}, # NYMEX Heating Oil
+    "MCL": {"point_value": 100.0, "tick_size": 0.01, "default_atr": 0.15},  # NYMEX Micro Crude
+    "CL": {"point_value": 1000.0, "tick_size": 0.01, "default_atr": 0.15},  # NYMEX Crude
+    "QM": {"point_value": 500.0, "tick_size": 0.025, "default_atr": 0.15},  # NYMEX E-mini Crude
+    "NG": {"point_value": 10000.0, "tick_size": 0.001, "default_atr": 0.020},  # NYMEX Natural Gas
+    "RB": {"point_value": 42000.0, "tick_size": 0.0001, "default_atr": 0.005},  # NYMEX RBOB Gasoline
+    "HO": {"point_value": 42000.0, "tick_size": 0.0001, "default_atr": 0.005},  # NYMEX Heating Oil
     # CME FX
-    "M6E":  {"point_value": 12.50,  "tick_size": 0.0001,  "default_atr": 0.0010},
-    "6E":   {"point_value": 125000.0, "tick_size": 0.00005, "default_atr": 0.0010},
-    "M6B":  {"point_value": 6.25,   "tick_size": 0.0001,  "default_atr": 0.0015},  # CME Micro GBP/USD
-    "6B":   {"point_value": 62500.0, "tick_size": 0.0001, "default_atr": 0.0015},
-    "M6J":  {"point_value": 1.25,   "tick_size": 0.0000005, "default_atr": 0.0000050},
-    "6J":   {"point_value": 12500.0, "tick_size": 0.0000005, "default_atr": 0.0000050},
-    "6A":   {"point_value": 100000.0, "tick_size": 0.0001, "default_atr": 0.0015},
-    "6C":   {"point_value": 100000.0, "tick_size": 0.0001, "default_atr": 0.0015},
+    "M6E": {"point_value": 12.50, "tick_size": 0.0001, "default_atr": 0.0010},
+    "6E": {"point_value": 125000.0, "tick_size": 0.00005, "default_atr": 0.0010},
+    "M6B": {"point_value": 6.25, "tick_size": 0.0001, "default_atr": 0.0015},  # CME Micro GBP/USD
+    "6B": {"point_value": 62500.0, "tick_size": 0.0001, "default_atr": 0.0015},
+    "M6J": {"point_value": 1.25, "tick_size": 0.0000005, "default_atr": 0.0000050},
+    "6J": {"point_value": 12500.0, "tick_size": 0.0000005, "default_atr": 0.0000050},
+    "6A": {"point_value": 100000.0, "tick_size": 0.0001, "default_atr": 0.0015},
+    "6C": {"point_value": 100000.0, "tick_size": 0.0001, "default_atr": 0.0015},
     # CME interest-rate
-    "ZN":   {"point_value": 1000.0, "tick_size": 0.015625, "default_atr": 0.10},  # CBOT 10-yr T-Note
-    "ZB":   {"point_value": 1000.0, "tick_size": 0.03125, "default_atr": 0.25},   # CBOT 30-yr T-Bond
+    "ZN": {"point_value": 1000.0, "tick_size": 0.015625, "default_atr": 0.10},  # CBOT 10-yr T-Note
+    "ZB": {"point_value": 1000.0, "tick_size": 0.03125, "default_atr": 0.25},  # CBOT 30-yr T-Bond
     # CME crypto
-    "MBT":  {"point_value": 0.10,   "tick_size": 5.0,     "default_atr": 200.0},  # CME Micro Bitcoin
-    "BTC":  {"point_value": 5.0,    "tick_size": 5.0,     "default_atr": 200.0},  # CME Bitcoin
-    "MET":  {"point_value": 0.10,   "tick_size": 0.50,    "default_atr": 15.0},   # CME Micro Ether
+    "MBT": {"point_value": 0.10, "tick_size": 5.0, "default_atr": 200.0},  # CME Micro Bitcoin
+    "BTC": {"point_value": 5.0, "tick_size": 5.0, "default_atr": 200.0},  # CME Bitcoin
+    "MET": {"point_value": 0.10, "tick_size": 0.50, "default_atr": 15.0},  # CME Micro Ether
 }
 # Round-trip commission per contract in USD.  Approximate IBKR Pro
 # rates incl exchange/clearing/regulatory fees.  Conservative.
@@ -138,27 +139,25 @@ def get_spec(symbol: str) -> dict[str, float]:
     suffix used by some capture scripts: MNQ1 → MNQ)."""
     base = symbol.rstrip("1") if symbol.endswith("1") and len(symbol) > 1 else symbol
     if base not in SYMBOL_SPECS:
-        raise ValueError(
-            f"Unknown SYMBOL_SPECS for {symbol!r}. "
-            f"Add it to SYMBOL_SPECS in l2_backtest_harness.py."
-        )
+        raise ValueError(f"Unknown SYMBOL_SPECS for {symbol!r}. Add it to SYMBOL_SPECS in l2_backtest_harness.py.")
     return SYMBOL_SPECS[base]
 
 
 @dataclass
 class L2Trade:
     """One round-trip — entry + exit + PnL."""
-    side: str             # "LONG" | "SHORT"
+
+    side: str  # "LONG" | "SHORT"
     entry_ts: str
     entry_price: float
     stop: float
     target: float
     exit_ts: str
     exit_price: float
-    exit_reason: str      # "TARGET" | "STOP" | "EOD" | "TIMEOUT"
+    exit_reason: str  # "TARGET" | "STOP" | "EOD" | "TIMEOUT"
     pnl_points: float
-    pnl_dollars: float          # gross (before commission)
-    pnl_dollars_net: float      # after round-trip commission
+    pnl_dollars: float  # gross (before commission)
+    pnl_dollars_net: float  # after round-trip commission
     confidence: float
     signal_id: str = ""
 
@@ -166,6 +165,7 @@ class L2Trade:
 @dataclass
 class L2BacktestResult:
     """Per-symbol per-strategy backtest summary."""
+
     strategy: str
     symbol: str
     days: int
@@ -175,11 +175,11 @@ class L2BacktestResult:
     n_wins: int
     win_rate: float
     total_pnl_points: float
-    total_pnl_dollars: float        # gross
-    total_pnl_dollars_net: float    # after commission
+    total_pnl_dollars: float  # gross
+    total_pnl_dollars_net: float  # after commission
     avg_pnl_per_trade: float
-    sharpe_proxy: float    # mean / std of per-trade R, NOT annualized
-    sharpe_proxy_valid: bool       # False when n_trades < min_n_for_sharpe
+    sharpe_proxy: float  # mean / std of per-trade R, NOT annualized
+    sharpe_proxy_valid: bool  # False when n_trades < min_n_for_sharpe
     min_n_for_sharpe: int = 30
     point_value_usd: float = 2.0
     commission_per_rt_usd: float = COMMISSION_PER_RT_USD
@@ -198,9 +198,9 @@ class L2BacktestResult:
     trades: list[L2Trade] = field(default_factory=list)
 
 
-def bootstrap_ci(values: list[float], *, n_resamples: int = 1000,
-                 confidence: float = 0.95,
-                 seed: int | None = None) -> tuple[float, float] | None:
+def bootstrap_ci(
+    values: list[float], *, n_resamples: int = 1000, confidence: float = 0.95, seed: int | None = None
+) -> tuple[float, float] | None:
     """Bootstrap confidence interval on the mean of ``values``.
 
     Returns (lower, upper) bounds at the given confidence level, or
@@ -226,10 +226,9 @@ def bootstrap_ci(values: list[float], *, n_resamples: int = 1000,
     return (round(means[lo_idx], 4), round(means[hi_idx], 4))
 
 
-def bootstrap_sharpe_ci(per_trade_returns: list[float],
-                        *, n_resamples: int = 1000,
-                        confidence: float = 0.95,
-                        seed: int | None = None) -> tuple[float, float] | None:
+def bootstrap_sharpe_ci(
+    per_trade_returns: list[float], *, n_resamples: int = 1000, confidence: float = 0.95, seed: int | None = None
+) -> tuple[float, float] | None:
     """Bootstrap CI on the sharpe_proxy (m/std) of the per-trade R
     series.  Same resampling scheme as bootstrap_ci but computes
     sharpe per resample, not just mean."""
@@ -242,7 +241,7 @@ def bootstrap_sharpe_ci(per_trade_returns: list[float],
         sample = [per_trade_returns[rng.randrange(n)] for _ in range(n)]
         m = sum(sample) / n
         var = sum((x - m) ** 2 for x in sample) / max(n - 1, 1)
-        std = var ** 0.5
+        std = var**0.5
         sharpes.append(m / std if std > 0 else 0.0)
     sharpes.sort()
     alpha = (1.0 - confidence) / 2.0
@@ -253,8 +252,7 @@ def bootstrap_sharpe_ci(per_trade_returns: list[float],
     return (round(sharpes[lo_idx], 4), round(sharpes[hi_idx], 4))
 
 
-def deflated_sharpe_ratio(observed_sharpe: float, n_trials: int,
-                          n_trades: int) -> float:
+def deflated_sharpe_ratio(observed_sharpe: float, n_trials: int, n_trades: int) -> float:
     """Bailey/Lopez de Prado deflated Sharpe correction.
 
     When the operator selects the BEST sharpe across N tried
@@ -281,7 +279,7 @@ def deflated_sharpe_ratio(observed_sharpe: float, n_trials: int,
     z = _norm_ppf(p)
     # Variance of the sharpe estimator under the null (zero edge):
     # sigma_SR^2 ≈ (1 + 0.5 * SR^2) / (T - 1) for T trades
-    sigma_sr_sq = (1.0 + 0.5 * observed_sharpe ** 2) / max(n_trades - 1, 1)
+    sigma_sr_sq = (1.0 + 0.5 * observed_sharpe**2) / max(n_trades - 1, 1)
     # Conservative deflation: subtract z * sigma_sr from observed
     deflation = z * math.sqrt(sigma_sr_sq)
     return round(observed_sharpe - deflation, 4)
@@ -291,35 +289,57 @@ def _norm_ppf(p: float) -> float:
     """Beasley-Springer-Moro inverse normal CDF.  Returns z such that
     P(Z <= z) = p for standard normal Z.  No scipy dependency."""
     # Coefficients for Beasley-Springer-Moro algorithm
-    a = [-39.69683028665376, 220.9460984245205, -275.9285104469687,
-         138.3577518672690, -30.66479806614716, 2.506628277459239]
-    b = [-54.47609879822406, 161.5858368580409, -155.6989798598866,
-         66.80131188771972, -13.28068155288572]
-    c = [-0.007784894002430293, -0.3223964580411365, -2.400758277161838,
-         -2.549732539343734, 4.374664141464968, 2.938163982698783]
-    d = [0.007784695709041462, 0.3224671290700398, 2.445134137142996,
-         3.754408661907416]
+    a = [
+        -39.69683028665376,
+        220.9460984245205,
+        -275.9285104469687,
+        138.3577518672690,
+        -30.66479806614716,
+        2.506628277459239,
+    ]
+    b = [-54.47609879822406, 161.5858368580409, -155.6989798598866, 66.80131188771972, -13.28068155288572]
+    c = [
+        -0.007784894002430293,
+        -0.3223964580411365,
+        -2.400758277161838,
+        -2.549732539343734,
+        4.374664141464968,
+        2.938163982698783,
+    ]
+    d = [0.007784695709041462, 0.3224671290700398, 2.445134137142996, 3.754408661907416]
     p_low = 0.02425
     p_high = 1 - p_low
     if p < p_low:
         q = math.sqrt(-2 * math.log(p))
-        return (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / \
-               ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1)
+        return (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / (
+            (((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1
+        )
     if p <= p_high:
         q = p - 0.5
         r = q * q
-        return (((((a[0] * r + a[1]) * r + a[2]) * r + a[3]) * r + a[4]) * r + a[5]) * q / \
-               (((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1)
+        return (
+            (((((a[0] * r + a[1]) * r + a[2]) * r + a[3]) * r + a[4]) * r + a[5])
+            * q
+            / (((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1)
+        )
     q = math.sqrt(-2 * math.log(1 - p))
-    return -(((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / \
-            ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1)
+    return -(((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / (
+        (((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1
+    )
 
 
-def log_config_search(*, strategy: str, symbol: str, days: int,
-                       config: dict, n_trades: int, sharpe_proxy: float,
-                       sharpe_proxy_valid: bool,
-                       win_rate: float,
-                       total_pnl_dollars_net: float) -> None:
+def log_config_search(
+    *,
+    strategy: str,
+    symbol: str,
+    days: int,
+    config: dict,
+    n_trades: int,
+    sharpe_proxy: float,
+    sharpe_proxy_valid: bool,
+    win_rate: float,
+    total_pnl_dollars_net: float,
+) -> None:
     """Append a one-line record to CONFIG_SEARCH_LOG.  Called once per
     harness invocation.  Retrospective analysis (e.g. deflated sharpe
     across N configs tried) reads this log.
@@ -340,12 +360,10 @@ def log_config_search(*, strategy: str, symbol: str, days: int,
         with CONFIG_SEARCH_LOG.open("a", encoding="utf-8") as f:
             f.write(json.dumps(record, separators=(",", ":")) + "\n")
     except OSError as e:
-        print(f"WARN: could not append config_search to {CONFIG_SEARCH_LOG}: {e}",
-              file=sys.stderr)
+        print(f"WARN: could not append config_search to {CONFIG_SEARCH_LOG}: {e}", file=sys.stderr)
 
 
-def count_prior_configs_searched(strategy: str, symbol: str,
-                                   *, since_days: int = 30) -> int:
+def count_prior_configs_searched(strategy: str, symbol: str, *, since_days: int = 30) -> int:
     """Count how many DISTINCT (config, days) tuples have been tried
     against this strategy/symbol in the last ``since_days`` days.
     Returns 1 when log is empty (no prior search).  Used by deflated
@@ -400,8 +418,7 @@ def _open_jsonl_maybe_gz(path: Path):
     raise FileNotFoundError(f"neither {path} nor {gz} exists")
 
 
-def _iter_depth_snapshots(symbol: str, start_date: datetime,
-                          days: int) -> list[dict]:
+def _iter_depth_snapshots(symbol: str, start_date: datetime, days: int) -> list[dict]:
     """Concatenate depth files for symbol over the date range, in
     chronological order."""
     snaps: list[dict] = []
@@ -427,8 +444,7 @@ def _iter_depth_snapshots(symbol: str, start_date: datetime,
     return snaps
 
 
-def _realized_atr_points(snapshots: list[dict], lookback: int = 20,
-                          default: float = 1.0) -> float:
+def _realized_atr_points(snapshots: list[dict], lookback: int = 20, default: float = 1.0) -> float:
     """Compute realized 'ATR' (mean range) over the trailing N snaps
     using mid as the price reference (MNQ depth has no high/low fields).
     Returns ``default`` when not enough snaps to compute.
@@ -450,10 +466,9 @@ def _realized_atr_points(snapshots: list[dict], lookback: int = 20,
     return max(rng, default * 0.25)  # floor at 0.25 of default to avoid div-by-zero stops
 
 
-def _simulate_exit_pessimistic(entry_signal, future_snaps: list[dict],
-                                point_value: float = 2.0,
-                                tick_size: float = 0.25,
-                                max_bars: int = 60) -> L2Trade:
+def _simulate_exit_pessimistic(
+    entry_signal, future_snaps: list[dict], point_value: float = 2.0, tick_size: float = 0.25, max_bars: int = 60
+) -> L2Trade:
     """I1: Walk forward up to max_bars snapshots, exiting at target/stop/EOD
     using a PESSIMISTIC fill model:
 
@@ -523,8 +538,7 @@ def _simulate_exit_pessimistic(entry_signal, future_snaps: list[dict],
         exit_price = mid
         exit_ts = snap_ts
 
-    pnl_points = (exit_price - entry_signal.entry_price) if is_long \
-                 else (entry_signal.entry_price - exit_price)
+    pnl_points = (exit_price - entry_signal.entry_price) if is_long else (entry_signal.entry_price - exit_price)
     pnl_dollars = pnl_points * point_value
     pnl_dollars_net = pnl_dollars - COMMISSION_PER_RT_USD
     return L2Trade(
@@ -533,7 +547,9 @@ def _simulate_exit_pessimistic(entry_signal, future_snaps: list[dict],
         entry_price=entry_signal.entry_price,
         stop=entry_signal.stop,
         target=entry_signal.target,
-        exit_ts=exit_ts, exit_price=exit_price, exit_reason=exit_reason,
+        exit_ts=exit_ts,
+        exit_price=exit_price,
+        exit_reason=exit_reason,
         pnl_points=round(pnl_points, 4),
         pnl_dollars=round(pnl_dollars, 2),
         pnl_dollars_net=round(pnl_dollars_net, 2),
@@ -542,14 +558,20 @@ def _simulate_exit_pessimistic(entry_signal, future_snaps: list[dict],
     )
 
 
-def _summarize(strategy: str, symbol: str, days: int,
-                n_snapshots: int, trades: list[L2Trade],
-                n_signals: int, n_skipped_regime: int,
-                point_value: float,
-                walk_forward: dict | None,
-                min_n_for_sharpe: int = 30,
-                n_configs_searched: int = 1,
-                bootstrap_seed: int | None = 42) -> L2BacktestResult:
+def _summarize(
+    strategy: str,
+    symbol: str,
+    days: int,
+    n_snapshots: int,
+    trades: list[L2Trade],
+    n_signals: int,
+    n_skipped_regime: int,
+    point_value: float,
+    walk_forward: dict | None,
+    min_n_for_sharpe: int = 30,
+    n_configs_searched: int = 1,
+    bootstrap_seed: int | None = 42,
+) -> L2BacktestResult:
     n_trades = len(trades)
     n_wins = sum(1 for t in trades if t.pnl_points > 0)
     win_rate = n_wins / n_trades if n_trades else 0.0
@@ -562,7 +584,7 @@ def _summarize(strategy: str, symbol: str, days: int,
         # Sharpe-proxy on per-trade R returns (not annualized)
         m = avg
         var = sum((t.pnl_points - m) ** 2 for t in trades) / max(n_trades - 1, 1)
-        std = var ** 0.5
+        std = var**0.5
         sharpe = m / std if std > 0 else 0.0
     else:
         sharpe = 0.0
@@ -572,12 +594,20 @@ def _summarize(strategy: str, symbol: str, days: int,
     win_rate_ci = bootstrap_ci(win_indicators, seed=bootstrap_seed) if n_trades >= 5 else None
     sharpe_ci = bootstrap_sharpe_ci(per_trade_returns, seed=bootstrap_seed) if n_trades >= 5 else None
     # D-fix: deflated sharpe correction when multiple configs have been tried
-    dsr = deflated_sharpe_ratio(sharpe, n_configs_searched, n_trades) \
-            if n_trades >= 5 and n_configs_searched > 1 else None
+    dsr = (
+        deflated_sharpe_ratio(sharpe, n_configs_searched, n_trades)
+        if n_trades >= 5 and n_configs_searched > 1
+        else None
+    )
     return L2BacktestResult(
-        strategy=strategy, symbol=symbol, days=days,
-        n_snapshots=n_snapshots, n_signals=n_signals,
-        n_trades=n_trades, n_wins=n_wins, win_rate=round(win_rate, 3),
+        strategy=strategy,
+        symbol=symbol,
+        days=days,
+        n_snapshots=n_snapshots,
+        n_signals=n_signals,
+        n_trades=n_trades,
+        n_wins=n_wins,
+        win_rate=round(win_rate, 3),
         total_pnl_points=round(total_pts, 4),
         total_pnl_dollars=round(total_dollars, 2),
         total_pnl_dollars_net=round(total_net, 2),
@@ -596,9 +626,9 @@ def _summarize(strategy: str, symbol: str, days: int,
     )
 
 
-def _replay_book_imbalance(snaps: list[dict], cfg, symbol: str,
-                            *, apply_regime_filter: bool = True,
-                            atr_lookback: int = 20) -> tuple[list, list[L2Trade], int]:
+def _replay_book_imbalance(
+    snaps: list[dict], cfg, symbol: str, *, apply_regime_filter: bool = True, atr_lookback: int = 20
+) -> tuple[list, list[L2Trade], int]:
     """Inner replay loop, factored out so walk-forward can reuse."""
     from eta_engine.strategies.book_imbalance_strategy import (
         BookImbalanceState,
@@ -609,6 +639,7 @@ def _replay_book_imbalance(snaps: list[dict], cfg, symbol: str,
         SpreadRegimeState,
         update_spread_regime,
     )
+
     spec = get_spec(symbol)
     state = BookImbalanceState()
     regime_cfg = SpreadRegimeConfig()
@@ -626,28 +657,36 @@ def _replay_book_imbalance(snaps: list[dict], cfg, symbol: str,
             n_skipped_regime += 1
             continue
         # I10: realized ATR replaces hardcoded 1.0
-        atr = _realized_atr_points(list(rolling), lookback=atr_lookback,
-                                    default=spec["default_atr"])
+        atr = _realized_atr_points(list(rolling), lookback=atr_lookback, default=spec["default_atr"])
         sig = evaluate_snapshot(snap, cfg, state, atr=atr, symbol=symbol)
         if sig is not None:
             signals.append(sig)
-            future = snaps[i + 1:]
-            trades.append(_simulate_exit_pessimistic(
-                sig, future,
-                point_value=spec["point_value"],
-                tick_size=spec["tick_size"],
-            ))
+            future = snaps[i + 1 :]
+            trades.append(
+                _simulate_exit_pessimistic(
+                    sig,
+                    future,
+                    point_value=spec["point_value"],
+                    tick_size=spec["tick_size"],
+                )
+            )
     return signals, trades, n_skipped_regime
 
 
-def run_book_imbalance(symbol: str, days: int, *,
-                       entry_threshold: float, consecutive_snaps: int,
-                       n_levels: int, atr_stop_mult: float,
-                       rr_target: float,
-                       walk_forward: bool = True,
-                       min_n_for_sharpe: int = 30,
-                       apply_regime_filter: bool = True,
-                       log_config_search_flag: bool = True) -> L2BacktestResult:
+def run_book_imbalance(
+    symbol: str,
+    days: int,
+    *,
+    entry_threshold: float,
+    consecutive_snaps: int,
+    n_levels: int,
+    atr_stop_mult: float,
+    rr_target: float,
+    walk_forward: bool = True,
+    min_n_for_sharpe: int = 30,
+    apply_regime_filter: bool = True,
+    log_config_search_flag: bool = True,
+) -> L2BacktestResult:
     """Replay depth history through book_imbalance_strategy.
 
     I9: walk_forward=True splits snapshots 70/30 (chronological);
@@ -659,6 +698,7 @@ def run_book_imbalance(symbol: str, days: int, *,
     sharpe can be computed retrospectively across many invocations.
     """
     from eta_engine.strategies.book_imbalance_strategy import BookImbalanceConfig
+
     cfg = BookImbalanceConfig(
         n_levels=n_levels,
         entry_threshold=entry_threshold,
@@ -667,8 +707,7 @@ def run_book_imbalance(symbol: str, days: int, *,
         rr_target=rr_target,
     )
     # D-fix: count prior config invocations against same strategy/symbol
-    n_configs_searched = count_prior_configs_searched(
-        "book_imbalance", symbol) if log_config_search_flag else 1
+    n_configs_searched = count_prior_configs_searched("book_imbalance", symbol) if log_config_search_flag else 1
     spec = get_spec(symbol)
     # Scan dates [now - (days-1), ..., now] inclusive of today.
     # Bug fix 2026-05-11: prior version started at `now - days` and
@@ -684,15 +723,18 @@ def run_book_imbalance(symbol: str, days: int, *,
         train_snaps = snaps[:split_idx]
         test_snaps = snaps[split_idx:]
         train_sig, train_trades, train_skipped = _replay_book_imbalance(
-            train_snaps, cfg, symbol,
-            apply_regime_filter=apply_regime_filter)
+            train_snaps, cfg, symbol, apply_regime_filter=apply_regime_filter
+        )
         test_sig, test_trades, test_skipped = _replay_book_imbalance(
-            test_snaps, cfg, symbol,
-            apply_regime_filter=apply_regime_filter)
+            test_snaps, cfg, symbol, apply_regime_filter=apply_regime_filter
+        )
         # Build sub-summaries for the walk_summary dict
         train_res = _summarize(
-            "book_imbalance", symbol, days,
-            n_snapshots=len(train_snaps), trades=train_trades,
+            "book_imbalance",
+            symbol,
+            days,
+            n_snapshots=len(train_snaps),
+            trades=train_trades,
             n_signals=len(train_sig),
             n_skipped_regime=train_skipped,
             point_value=spec["point_value"],
@@ -700,8 +742,11 @@ def run_book_imbalance(symbol: str, days: int, *,
             min_n_for_sharpe=min_n_for_sharpe,
         )
         test_res = _summarize(
-            "book_imbalance", symbol, days,
-            n_snapshots=len(test_snaps), trades=test_trades,
+            "book_imbalance",
+            symbol,
+            days,
+            n_snapshots=len(test_snaps),
+            trades=test_trades,
             n_signals=len(test_sig),
             n_skipped_regime=test_skipped,
             point_value=spec["point_value"],
@@ -710,50 +755,65 @@ def run_book_imbalance(symbol: str, days: int, *,
         )
         walk_summary = {
             "split": "70/30 chronological",
-            "train": {"n_snaps": train_res.n_snapshots,
-                       "n_trades": train_res.n_trades,
-                       "win_rate": train_res.win_rate,
-                       "sharpe_proxy": train_res.sharpe_proxy,
-                       "sharpe_proxy_valid": train_res.sharpe_proxy_valid,
-                       "total_pnl_dollars_net": train_res.total_pnl_dollars_net},
-            "test": {"n_snaps": test_res.n_snapshots,
-                      "n_trades": test_res.n_trades,
-                      "win_rate": test_res.win_rate,
-                      "sharpe_proxy": test_res.sharpe_proxy,
-                      "sharpe_proxy_valid": test_res.sharpe_proxy_valid,
-                      "total_pnl_dollars_net": test_res.total_pnl_dollars_net},
+            "train": {
+                "n_snaps": train_res.n_snapshots,
+                "n_trades": train_res.n_trades,
+                "win_rate": train_res.win_rate,
+                "sharpe_proxy": train_res.sharpe_proxy,
+                "sharpe_proxy_valid": train_res.sharpe_proxy_valid,
+                "total_pnl_dollars_net": train_res.total_pnl_dollars_net,
+            },
+            "test": {
+                "n_snaps": test_res.n_snapshots,
+                "n_trades": test_res.n_trades,
+                "win_rate": test_res.win_rate,
+                "sharpe_proxy": test_res.sharpe_proxy,
+                "sharpe_proxy_valid": test_res.sharpe_proxy_valid,
+                "total_pnl_dollars_net": test_res.total_pnl_dollars_net,
+            },
             "promotion_gate": {
                 "rule": "OOS sharpe_proxy_valid AND OOS sharpe >= 0.5 AND OOS n_trades >= min_n",
-                "passes": (test_res.sharpe_proxy_valid
-                            and test_res.sharpe_proxy >= 0.5
-                            and test_res.n_trades >= min_n_for_sharpe),
+                "passes": (
+                    test_res.sharpe_proxy_valid
+                    and test_res.sharpe_proxy >= 0.5
+                    and test_res.n_trades >= min_n_for_sharpe
+                ),
             },
         }
 
     # Always also run the full-window replay for the headline numbers
     signals, trades, n_skipped_regime = _replay_book_imbalance(
-        snaps, cfg, symbol,
-        apply_regime_filter=apply_regime_filter)
+        snaps, cfg, symbol, apply_regime_filter=apply_regime_filter
+    )
 
-    result = _summarize("book_imbalance", symbol, days,
-                         n_snapshots=len(snaps), trades=trades,
-                         n_signals=len(signals),
-                         n_skipped_regime=n_skipped_regime,
-                         point_value=spec["point_value"],
-                         walk_forward=walk_summary,
-                         min_n_for_sharpe=min_n_for_sharpe,
-                         n_configs_searched=n_configs_searched)
+    result = _summarize(
+        "book_imbalance",
+        symbol,
+        days,
+        n_snapshots=len(snaps),
+        trades=trades,
+        n_signals=len(signals),
+        n_skipped_regime=n_skipped_regime,
+        point_value=spec["point_value"],
+        walk_forward=walk_summary,
+        min_n_for_sharpe=min_n_for_sharpe,
+        n_configs_searched=n_configs_searched,
+    )
     # D-fix: append this config to the audit log so the NEXT invocation
     # against the same strategy+symbol counts it for deflation
     if log_config_search_flag:
         log_config_search(
-            strategy="book_imbalance", symbol=symbol, days=days,
-            config={"entry_threshold": entry_threshold,
-                     "consecutive_snaps": consecutive_snaps,
-                     "n_levels": n_levels,
-                     "atr_stop_mult": atr_stop_mult,
-                     "rr_target": rr_target,
-                     "apply_regime_filter": apply_regime_filter},
+            strategy="book_imbalance",
+            symbol=symbol,
+            days=days,
+            config={
+                "entry_threshold": entry_threshold,
+                "consecutive_snaps": consecutive_snaps,
+                "n_levels": n_levels,
+                "atr_stop_mult": atr_stop_mult,
+                "rr_target": rr_target,
+                "apply_regime_filter": apply_regime_filter,
+            },
             n_trades=result.n_trades,
             sharpe_proxy=result.sharpe_proxy,
             sharpe_proxy_valid=result.sharpe_proxy_valid,
@@ -763,9 +823,9 @@ def run_book_imbalance(symbol: str, days: int, *,
     return result
 
 
-def _replay_microprice(snaps: list[dict], cfg, symbol: str,
-                        *, apply_regime_filter: bool = True,
-                        atr_lookback: int = 20) -> tuple[list, list[L2Trade], int]:
+def _replay_microprice(
+    snaps: list[dict], cfg, symbol: str, *, apply_regime_filter: bool = True, atr_lookback: int = 20
+) -> tuple[list, list[L2Trade], int]:
     """Replay microprice_drift through the depth stream.  Uses the
     last snap's mid as the trade_price proxy (until real tick stream
     is wired alongside)."""
@@ -779,6 +839,7 @@ def _replay_microprice(snaps: list[dict], cfg, symbol: str,
         SpreadRegimeState,
         update_spread_regime,
     )
+
     spec = get_spec(symbol)
     state = MicropriceState()
     regime_cfg = SpreadRegimeConfig()
@@ -796,22 +857,23 @@ def _replay_microprice(snaps: list[dict], cfg, symbol: str,
         if regime is not None and regime["verdict"] in {"PAUSE", "STALE"}:
             n_skipped_regime += 1
             continue
-        atr = _realized_atr_points(list(rolling), lookback=atr_lookback,
-                                    default=spec["default_atr"])
+        atr = _realized_atr_points(list(rolling), lookback=atr_lookback, default=spec["default_atr"])
         sig = evaluate_snapshot(snap, cfg, state, atr=atr, symbol=symbol)
         if sig is not None:
             signals.append(sig)
-            future = snaps[i + 1:]
-            trades.append(_simulate_exit_pessimistic(
-                sig, future,
-                point_value=spec["point_value"],
-                tick_size=spec["tick_size"],
-            ))
+            future = snaps[i + 1 :]
+            trades.append(
+                _simulate_exit_pessimistic(
+                    sig,
+                    future,
+                    point_value=spec["point_value"],
+                    tick_size=spec["tick_size"],
+                )
+            )
     return signals, trades, n_skipped_regime
 
 
-def _replay_aggressor_flow_from_l1_bars(bars: list[dict], cfg,
-                                          symbol: str) -> tuple[list, list[L2Trade], int]:
+def _replay_aggressor_flow_from_l1_bars(bars: list[dict], cfg, symbol: str) -> tuple[list, list[L2Trade], int]:
     """Replay aggressor_flow over L1 bars produced by bar_builder_l1.
 
     Uses point_value/tick_size from SYMBOL_SPECS.  Note: aggressor flow
@@ -823,47 +885,57 @@ def _replay_aggressor_flow_from_l1_bars(bars: list[dict], cfg,
         AggressorFlowState,
         evaluate_bar,
     )
+
     spec = get_spec(symbol)
     state = AggressorFlowState()
     signals: list = []
     trades: list[L2Trade] = []
     # ATR from bars (high-low range over a 20-bar lookback)
     for i, bar in enumerate(bars):
-        recent = bars[max(0, i - 20):i + 1]
+        recent = bars[max(0, i - 20) : i + 1]
         if len(recent) >= 2:
-            atr = sum(float(b.get("high", 0)) - float(b.get("low", 0))
-                       for b in recent) / len(recent)
+            atr = sum(float(b.get("high", 0)) - float(b.get("low", 0)) for b in recent) / len(recent)
         else:
             atr = spec["default_atr"]
-        sig = evaluate_bar(bar, cfg, state, atr=max(atr, spec["default_atr"] * 0.25),
-                            symbol=symbol)
+        sig = evaluate_bar(bar, cfg, state, atr=max(atr, spec["default_atr"] * 0.25), symbol=symbol)
         if sig is not None:
             signals.append(sig)
             # Build a snap-shaped exit-window from subsequent bars
-            future_snaps = [{
-                "mid": float(b.get("close", 0)),
-                "spread": (float(b.get("high", 0)) - float(b.get("low", 0))) / 4,
-                "ts": b.get("timestamp_utc", ""),
-            } for b in bars[i + 1:]]
-            trades.append(_simulate_exit_pessimistic(
-                sig, future_snaps,
-                point_value=spec["point_value"],
-                tick_size=spec["tick_size"],
-            ))
+            future_snaps = [
+                {
+                    "mid": float(b.get("close", 0)),
+                    "spread": (float(b.get("high", 0)) - float(b.get("low", 0))) / 4,
+                    "ts": b.get("timestamp_utc", ""),
+                }
+                for b in bars[i + 1 :]
+            ]
+            trades.append(
+                _simulate_exit_pessimistic(
+                    sig,
+                    future_snaps,
+                    point_value=spec["point_value"],
+                    tick_size=spec["tick_size"],
+                )
+            )
     return signals, trades, 0  # no regime filter applied
 
 
-def run_microprice_drift(symbol: str, days: int, *,
-                          drift_threshold_ticks: float = 2.0,
-                          consecutive_snaps: int = 3,
-                          atr_stop_mult: float = 1.5,
-                          rr_target: float = 2.0,
-                          walk_forward: bool = True,
-                          min_n_for_sharpe: int = 30,
-                          apply_regime_filter: bool = True,
-                          log_config_search_flag: bool = True) -> L2BacktestResult:
+def run_microprice_drift(
+    symbol: str,
+    days: int,
+    *,
+    drift_threshold_ticks: float = 2.0,
+    consecutive_snaps: int = 3,
+    atr_stop_mult: float = 1.5,
+    rr_target: float = 2.0,
+    walk_forward: bool = True,
+    min_n_for_sharpe: int = 30,
+    apply_regime_filter: bool = True,
+    log_config_search_flag: bool = True,
+) -> L2BacktestResult:
     """Replay depth history through microprice_drift_strategy."""
     from eta_engine.strategies.microprice_drift_strategy import MicropriceConfig
+
     cfg = MicropriceConfig(
         drift_threshold_ticks=drift_threshold_ticks,
         consecutive_snaps=consecutive_snaps,
@@ -871,8 +943,7 @@ def run_microprice_drift(symbol: str, days: int, *,
         rr_target=rr_target,
     )
     spec = get_spec(symbol)
-    n_configs_searched = count_prior_configs_searched(
-        "microprice_drift", symbol) if log_config_search_flag else 1
+    n_configs_searched = count_prior_configs_searched("microprice_drift", symbol) if log_config_search_flag else 1
     start = datetime.now(UTC) - timedelta(days=max(days - 1, 0))
     snaps = _iter_depth_snapshots(symbol, start, days)
 
@@ -882,62 +953,88 @@ def run_microprice_drift(symbol: str, days: int, *,
         train_snaps = snaps[:split_idx]
         test_snaps = snaps[split_idx:]
         _, train_trades, train_skipped = _replay_microprice(
-            train_snaps, cfg, symbol,
-            apply_regime_filter=apply_regime_filter)
+            train_snaps, cfg, symbol, apply_regime_filter=apply_regime_filter
+        )
         _, test_trades, test_skipped = _replay_microprice(
-            test_snaps, cfg, symbol,
-            apply_regime_filter=apply_regime_filter)
+            test_snaps, cfg, symbol, apply_regime_filter=apply_regime_filter
+        )
         train_res = _summarize(
-            "microprice_drift", symbol, days,
-            n_snapshots=len(train_snaps), trades=train_trades,
-            n_signals=len(train_trades), n_skipped_regime=train_skipped,
-            point_value=spec["point_value"], walk_forward=None,
-            min_n_for_sharpe=min_n_for_sharpe)
+            "microprice_drift",
+            symbol,
+            days,
+            n_snapshots=len(train_snaps),
+            trades=train_trades,
+            n_signals=len(train_trades),
+            n_skipped_regime=train_skipped,
+            point_value=spec["point_value"],
+            walk_forward=None,
+            min_n_for_sharpe=min_n_for_sharpe,
+        )
         test_res = _summarize(
-            "microprice_drift", symbol, days,
-            n_snapshots=len(test_snaps), trades=test_trades,
-            n_signals=len(test_trades), n_skipped_regime=test_skipped,
-            point_value=spec["point_value"], walk_forward=None,
-            min_n_for_sharpe=min_n_for_sharpe)
+            "microprice_drift",
+            symbol,
+            days,
+            n_snapshots=len(test_snaps),
+            trades=test_trades,
+            n_signals=len(test_trades),
+            n_skipped_regime=test_skipped,
+            point_value=spec["point_value"],
+            walk_forward=None,
+            min_n_for_sharpe=min_n_for_sharpe,
+        )
         walk_summary = {
             "split": "70/30 chronological",
-            "train": {"n_snaps": train_res.n_snapshots,
-                       "n_trades": train_res.n_trades,
-                       "win_rate": train_res.win_rate,
-                       "sharpe_proxy": train_res.sharpe_proxy,
-                       "sharpe_proxy_valid": train_res.sharpe_proxy_valid,
-                       "total_pnl_dollars_net": train_res.total_pnl_dollars_net},
-            "test": {"n_snaps": test_res.n_snapshots,
-                      "n_trades": test_res.n_trades,
-                      "win_rate": test_res.win_rate,
-                      "sharpe_proxy": test_res.sharpe_proxy,
-                      "sharpe_proxy_valid": test_res.sharpe_proxy_valid,
-                      "total_pnl_dollars_net": test_res.total_pnl_dollars_net},
+            "train": {
+                "n_snaps": train_res.n_snapshots,
+                "n_trades": train_res.n_trades,
+                "win_rate": train_res.win_rate,
+                "sharpe_proxy": train_res.sharpe_proxy,
+                "sharpe_proxy_valid": train_res.sharpe_proxy_valid,
+                "total_pnl_dollars_net": train_res.total_pnl_dollars_net,
+            },
+            "test": {
+                "n_snaps": test_res.n_snapshots,
+                "n_trades": test_res.n_trades,
+                "win_rate": test_res.win_rate,
+                "sharpe_proxy": test_res.sharpe_proxy,
+                "sharpe_proxy_valid": test_res.sharpe_proxy_valid,
+                "total_pnl_dollars_net": test_res.total_pnl_dollars_net,
+            },
             "promotion_gate": {
                 "rule": "OOS sharpe_proxy_valid AND OOS sharpe >= 0.5 AND OOS n_trades >= min_n",
-                "passes": (test_res.sharpe_proxy_valid
-                            and test_res.sharpe_proxy >= 0.5
-                            and test_res.n_trades >= min_n_for_sharpe),
+                "passes": (
+                    test_res.sharpe_proxy_valid
+                    and test_res.sharpe_proxy >= 0.5
+                    and test_res.n_trades >= min_n_for_sharpe
+                ),
             },
         }
 
-    signals, trades, n_skipped = _replay_microprice(
-        snaps, cfg, symbol, apply_regime_filter=apply_regime_filter)
-    result = _summarize("microprice_drift", symbol, days,
-                         n_snapshots=len(snaps), trades=trades,
-                         n_signals=len(signals),
-                         n_skipped_regime=n_skipped,
-                         point_value=spec["point_value"],
-                         walk_forward=walk_summary,
-                         min_n_for_sharpe=min_n_for_sharpe,
-                         n_configs_searched=n_configs_searched)
+    signals, trades, n_skipped = _replay_microprice(snaps, cfg, symbol, apply_regime_filter=apply_regime_filter)
+    result = _summarize(
+        "microprice_drift",
+        symbol,
+        days,
+        n_snapshots=len(snaps),
+        trades=trades,
+        n_signals=len(signals),
+        n_skipped_regime=n_skipped,
+        point_value=spec["point_value"],
+        walk_forward=walk_summary,
+        min_n_for_sharpe=min_n_for_sharpe,
+        n_configs_searched=n_configs_searched,
+    )
     if log_config_search_flag:
         log_config_search(
-            strategy="microprice_drift", symbol=symbol, days=days,
-            config={"drift_threshold_ticks": drift_threshold_ticks,
-                     "consecutive_snaps": consecutive_snaps,
-                     "atr_stop_mult": atr_stop_mult,
-                     "rr_target": rr_target},
+            strategy="microprice_drift",
+            symbol=symbol,
+            days=days,
+            config={
+                "drift_threshold_ticks": drift_threshold_ticks,
+                "consecutive_snaps": consecutive_snaps,
+                "atr_stop_mult": atr_stop_mult,
+                "rr_target": rr_target,
+            },
             n_trades=result.n_trades,
             sharpe_proxy=result.sharpe_proxy,
             sharpe_proxy_valid=result.sharpe_proxy_valid,
@@ -951,6 +1048,7 @@ def _load_l1_bars(symbol: str, timeframe: str = "5m") -> list[dict]:
     """Load L1 bars produced by bar_builder_l1.  Returns empty list
     when the file doesn't exist (graceful pre-data behavior)."""
     import csv
+
     bars_path = ROOT.parent / "mnq_data" / "history_l1" / f"{symbol}_{timeframe}_l1.csv"
     if not bars_path.exists():
         return []
@@ -960,35 +1058,42 @@ def _load_l1_bars(symbol: str, timeframe: str = "5m") -> list[dict]:
             reader = csv.DictReader(f)
             for row in reader:
                 # Cast numeric fields
-                bars.append({
-                    "timestamp_utc": row.get("timestamp_utc", ""),
-                    "epoch_s": float(row.get("epoch_s", 0)),
-                    "open": float(row.get("open", 0)),
-                    "high": float(row.get("high", 0)),
-                    "low": float(row.get("low", 0)),
-                    "close": float(row.get("close", 0)),
-                    "volume_total": float(row.get("volume_total", 0)),
-                    "volume_buy": float(row.get("volume_buy", 0)),
-                    "volume_sell": float(row.get("volume_sell", 0)),
-                    "n_trades": int(row.get("n_trades", 0)),
-                })
+                bars.append(
+                    {
+                        "timestamp_utc": row.get("timestamp_utc", ""),
+                        "epoch_s": float(row.get("epoch_s", 0)),
+                        "open": float(row.get("open", 0)),
+                        "high": float(row.get("high", 0)),
+                        "low": float(row.get("low", 0)),
+                        "close": float(row.get("close", 0)),
+                        "volume_total": float(row.get("volume_total", 0)),
+                        "volume_buy": float(row.get("volume_buy", 0)),
+                        "volume_sell": float(row.get("volume_sell", 0)),
+                        "n_trades": int(row.get("n_trades", 0)),
+                    }
+                )
     except OSError:
         return []
     return bars
 
 
-def run_aggressor_flow(symbol: str, days: int, *,
-                        window_bars: int = 10,
-                        entry_threshold: float = 0.35,
-                        consecutive_bars: int = 2,
-                        atr_stop_mult: float = 1.0,
-                        rr_target: float = 2.0,
-                        timeframe: str = "5m",
-                        log_config_search_flag: bool = True) -> L2BacktestResult:
+def run_aggressor_flow(
+    symbol: str,
+    days: int,
+    *,
+    window_bars: int = 10,
+    entry_threshold: float = 0.35,
+    consecutive_bars: int = 2,
+    atr_stop_mult: float = 1.0,
+    rr_target: float = 2.0,
+    timeframe: str = "5m",
+    log_config_search_flag: bool = True,
+) -> L2BacktestResult:
     """Replay aggressor_flow over L1 bars.  Walk-forward is not
     applicable here because bar data comes pre-segmented; the harness
     just runs full-window."""
     from eta_engine.strategies.aggressor_flow_strategy import AggressorFlowConfig
+
     cfg = AggressorFlowConfig(
         window_bars=window_bars,
         entry_threshold=entry_threshold,
@@ -1001,27 +1106,33 @@ def run_aggressor_flow(symbol: str, days: int, *,
     # Filter to last `days` worth of bars by timestamp
     cutoff = (datetime.now(UTC) - timedelta(days=days)).timestamp()
     bars = [b for b in bars if b.get("epoch_s", 0) >= cutoff]
-    n_configs_searched = count_prior_configs_searched(
-        "aggressor_flow", symbol) if log_config_search_flag else 1
-    signals, trades, n_skipped = _replay_aggressor_flow_from_l1_bars(
-        bars, cfg, symbol)
-    result = _summarize("aggressor_flow", symbol, days,
-                         n_snapshots=len(bars),  # bars in this case
-                         trades=trades,
-                         n_signals=len(signals),
-                         n_skipped_regime=n_skipped,
-                         point_value=spec["point_value"],
-                         walk_forward=None,
-                         n_configs_searched=n_configs_searched)
+    n_configs_searched = count_prior_configs_searched("aggressor_flow", symbol) if log_config_search_flag else 1
+    signals, trades, n_skipped = _replay_aggressor_flow_from_l1_bars(bars, cfg, symbol)
+    result = _summarize(
+        "aggressor_flow",
+        symbol,
+        days,
+        n_snapshots=len(bars),  # bars in this case
+        trades=trades,
+        n_signals=len(signals),
+        n_skipped_regime=n_skipped,
+        point_value=spec["point_value"],
+        walk_forward=None,
+        n_configs_searched=n_configs_searched,
+    )
     if log_config_search_flag:
         log_config_search(
-            strategy="aggressor_flow", symbol=symbol, days=days,
-            config={"window_bars": window_bars,
-                     "entry_threshold": entry_threshold,
-                     "consecutive_bars": consecutive_bars,
-                     "atr_stop_mult": atr_stop_mult,
-                     "rr_target": rr_target,
-                     "timeframe": timeframe},
+            strategy="aggressor_flow",
+            symbol=symbol,
+            days=days,
+            config={
+                "window_bars": window_bars,
+                "entry_threshold": entry_threshold,
+                "consecutive_bars": consecutive_bars,
+                "atr_stop_mult": atr_stop_mult,
+                "rr_target": rr_target,
+                "timeframe": timeframe,
+            },
             n_trades=result.n_trades,
             sharpe_proxy=result.sharpe_proxy,
             sharpe_proxy_valid=result.sharpe_proxy_valid,
@@ -1033,9 +1144,9 @@ def run_aggressor_flow(symbol: str, days: int, *,
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--strategy",
-                    choices=["book_imbalance", "microprice_drift", "aggressor_flow"],
-                    default="book_imbalance")
+    ap.add_argument(
+        "--strategy", choices=["book_imbalance", "microprice_drift", "aggressor_flow"], default="book_imbalance"
+    )
     ap.add_argument("--symbol", default="MNQ")
     ap.add_argument("--days", type=int, default=7)
     ap.add_argument("--entry-threshold", type=float, default=1.75)
@@ -1043,18 +1154,16 @@ def main() -> int:
     ap.add_argument("--n-levels", type=int, default=3)
     ap.add_argument("--atr-stop-mult", type=float, default=1.0)
     ap.add_argument("--rr-target", type=float, default=2.0)
-    ap.add_argument("--no-walk-forward", action="store_true",
-                    help="Disable train/test split (single-pass mode)")
-    ap.add_argument("--no-regime-filter", action="store_true",
-                    help="Disable spread_regime_filter (NOT recommended)")
-    ap.add_argument("--min-n", type=int, default=30,
-                    help="Minimum n_trades for sharpe_proxy_valid (default 30)")
+    ap.add_argument("--no-walk-forward", action="store_true", help="Disable train/test split (single-pass mode)")
+    ap.add_argument("--no-regime-filter", action="store_true", help="Disable spread_regime_filter (NOT recommended)")
+    ap.add_argument("--min-n", type=int, default=30, help="Minimum n_trades for sharpe_proxy_valid (default 30)")
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
 
     if args.strategy == "microprice_drift":
         result = run_microprice_drift(
-            args.symbol, args.days,
+            args.symbol,
+            args.days,
             drift_threshold_ticks=args.entry_threshold * 2,  # different scale
             consecutive_snaps=args.consecutive_snaps,
             atr_stop_mult=args.atr_stop_mult,
@@ -1065,7 +1174,8 @@ def main() -> int:
         )
     elif args.strategy == "aggressor_flow":
         result = run_aggressor_flow(
-            args.symbol, args.days,
+            args.symbol,
+            args.days,
             window_bars=10,
             entry_threshold=args.entry_threshold * 0.2,  # ratio scale
             consecutive_bars=args.consecutive_snaps,
@@ -1074,7 +1184,8 @@ def main() -> int:
         )
     else:  # book_imbalance (default)
         result = run_book_imbalance(
-            args.symbol, args.days,
+            args.symbol,
+            args.days,
             entry_threshold=args.entry_threshold,
             consecutive_snaps=args.consecutive_snaps,
             n_levels=args.n_levels,
@@ -1118,25 +1229,27 @@ def main() -> int:
         with L2_BACKTEST_LOG.open("a", encoding="utf-8") as f:
             f.write(json.dumps(digest, separators=(",", ":")) + "\n")
     except OSError as e:
-        print(f"WARN: could not write digest to {L2_BACKTEST_LOG}: {e}",
-              file=sys.stderr)
+        print(f"WARN: could not write digest to {L2_BACKTEST_LOG}: {e}", file=sys.stderr)
 
     if args.json:
         out = asdict(result)
         out["trades"] = [asdict(t) for t in result.trades]
         print(json.dumps(out, indent=2))
     else:
-        print(f"\nL2 backtest: {result.strategy} on {result.symbol} "
-              f"over {result.days}d  (point_value=${result.point_value_usd}/pt)")
+        print(
+            f"\nL2 backtest: {result.strategy} on {result.symbol} "
+            f"over {result.days}d  (point_value=${result.point_value_usd}/pt)"
+        )
         print(f"  snapshots scanned : {result.n_snapshots:,}")
         print(f"  signals emitted   : {result.n_signals}")
         print(f"  skipped (regime)  : {result.n_skipped_regime_pause}")
         print(f"  trades simulated  : {result.n_trades}")
-        print(f"  wins              : {result.n_wins}  ({result.win_rate*100:.1f}%)")
-        print(f"  total P&L gross   : {result.total_pnl_points:+.2f} pts  "
-              f"(${result.total_pnl_dollars:+.2f})")
-        print(f"  total P&L net     : ${result.total_pnl_dollars_net:+.2f}  "
-              f"(after ${COMMISSION_PER_RT_USD:.2f}/RT commission)")
+        print(f"  wins              : {result.n_wins}  ({result.win_rate * 100:.1f}%)")
+        print(f"  total P&L gross   : {result.total_pnl_points:+.2f} pts  (${result.total_pnl_dollars:+.2f})")
+        print(
+            f"  total P&L net     : ${result.total_pnl_dollars_net:+.2f}  "
+            f"(after ${COMMISSION_PER_RT_USD:.2f}/RT commission)"
+        )
         print(f"  avg / trade       : {result.avg_pnl_per_trade:+.4f} pts")
         sharpe_label = f"{result.sharpe_proxy:+.3f}"
         if not result.sharpe_proxy_valid:
@@ -1147,25 +1260,29 @@ def main() -> int:
         if result.win_rate_ci_95:
             print(f"  win_rate 95% CI   : [{result.win_rate_ci_95[0]:.3f}, {result.win_rate_ci_95[1]:.3f}]")
         if result.deflated_sharpe is not None:
-            print(f"  deflated sharpe   : {result.deflated_sharpe:+.3f}  "
-                  f"(after correcting for n_configs_searched={result.n_configs_searched})")
+            print(
+                f"  deflated sharpe   : {result.deflated_sharpe:+.3f}  "
+                f"(after correcting for n_configs_searched={result.n_configs_searched})"
+            )
         elif result.n_configs_searched > 1:
-            print(f"  configs searched  : {result.n_configs_searched}  "
-                  f"(deflation skipped: insufficient sample)")
+            print(f"  configs searched  : {result.n_configs_searched}  (deflation skipped: insufficient sample)")
         if result.walk_forward:
             wf = result.walk_forward
             print(f"  walk-forward      : {wf['split']}")
-            print(f"    train  n_trades={wf['train']['n_trades']}  "
-                  f"win={wf['train']['win_rate']*100:.1f}%  "
-                  f"sharpe={wf['train']['sharpe_proxy']:+.3f}  "
-                  f"net=${wf['train']['total_pnl_dollars_net']:+.2f}")
-            print(f"    test   n_trades={wf['test']['n_trades']}  "
-                  f"win={wf['test']['win_rate']*100:.1f}%  "
-                  f"sharpe={wf['test']['sharpe_proxy']:+.3f}  "
-                  f"net=${wf['test']['total_pnl_dollars_net']:+.2f}")
-            gate = wf['promotion_gate']
-            print(f"  promotion gate    : {'PASS' if gate['passes'] else 'FAIL'}  "
-                  f"({gate['rule']})")
+            print(
+                f"    train  n_trades={wf['train']['n_trades']}  "
+                f"win={wf['train']['win_rate'] * 100:.1f}%  "
+                f"sharpe={wf['train']['sharpe_proxy']:+.3f}  "
+                f"net=${wf['train']['total_pnl_dollars_net']:+.2f}"
+            )
+            print(
+                f"    test   n_trades={wf['test']['n_trades']}  "
+                f"win={wf['test']['win_rate'] * 100:.1f}%  "
+                f"sharpe={wf['test']['sharpe_proxy']:+.3f}  "
+                f"net=${wf['test']['total_pnl_dollars_net']:+.2f}"
+            )
+            gate = wf["promotion_gate"]
+            print(f"  promotion gate    : {'PASS' if gate['passes'] else 'FAIL'}  ({gate['rule']})")
         if result.n_snapshots == 0:
             print()
             print("  NOTE: no depth snapshots found — start Phase-1 capture")

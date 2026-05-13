@@ -67,14 +67,16 @@ def main() -> int:
             h_col = next(c for c, v in col_map.items() if v == "high")
             l_col = next(c for c, v in col_map.items() if v == "low")
             c_col = next(c for c, v in col_map.items() if v == "close")
-            rows.append({
-                "time": int(float(row[ts_col]) / 1e9),
-                "open": float(row[o_col]),
-                "high": float(row[h_col]),
-                "low": float(row[l_col]),
-                "close": float(row[c_col]),
-                "volume": float(row.get("volume", 0)) if "volume" in df.columns else 0.0,
-            })
+            rows.append(
+                {
+                    "time": int(float(row[ts_col]) / 1e9),
+                    "open": float(row[o_col]),
+                    "high": float(row[h_col]),
+                    "low": float(row[l_col]),
+                    "close": float(row[c_col]),
+                    "volume": float(row.get("volume", 0)) if "volume" in df.columns else 0.0,
+                }
+            )
 
         with dst.open("w", encoding="utf-8", newline="") as fh:
             w = csv.writer(fh)

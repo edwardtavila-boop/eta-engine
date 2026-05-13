@@ -45,6 +45,7 @@ Once registered, ``scripts/score_policy_candidate.py --candidate v18``
 loads the callable, replays the last N days of audit records through
 it, and prints a side-by-side comparison vs the champion.
 """
+
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -111,9 +112,7 @@ def register_candidate(
     and someone asks "what changed in v23?".
     """
     if name in _REGISTRY and not overwrite:
-        raise ValueError(
-            f"candidate '{name}' already registered (use overwrite=True to replace)"
-        )
+        raise ValueError(f"candidate '{name}' already registered (use overwrite=True to replace)")
     if not callable(policy):
         raise TypeError(f"policy for '{name}' must be callable, got {type(policy)}")
     _REGISTRY[name] = _CandidateRegistration(

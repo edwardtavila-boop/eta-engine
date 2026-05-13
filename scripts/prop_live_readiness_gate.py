@@ -31,10 +31,7 @@ DEFAULT_LEDGER_PATH = workspace_roots.ETA_CLOSED_TRADE_LEDGER_PATH
 DEFAULT_BRACKET_AUDIT_PATH = workspace_roots.ETA_BROKER_BRACKET_AUDIT_PATH
 DEFAULT_MASTER_URL = "https://ops.evolutionarytradingalgo.com/api/master/status"
 DEFAULT_FLEET_URL = "https://ops.evolutionarytradingalgo.com/api/bot-fleet"
-DEFAULT_LIVE_READINESS_URL = (
-    "https://ops.evolutionarytradingalgo.com/api/jarvis/"
-    f"bot_strategy_readiness/{PRIMARY_BOT}"
-)
+DEFAULT_LIVE_READINESS_URL = f"https://ops.evolutionarytradingalgo.com/api/jarvis/bot_strategy_readiness/{PRIMARY_BOT}"
 ACTIVE_FUTURES_BROKERS = ("ibkr", "tastytrade")
 DORMANT_PROP_VENUE_POLICY = "tradovate_dormant"
 
@@ -392,9 +389,7 @@ def _live_bot_gate_check(
                 live_readiness_deactivation_source=deactivation_source,
                 live_readiness_deactivation_reason=deactivation_reason,
                 live_readiness_next_action=(
-                    live_readiness.get("readiness_next_action")
-                    or readiness.get("next_action")
-                    or ""
+                    live_readiness.get("readiness_next_action") or readiness.get("next_action") or ""
                 ),
                 visible_related_bots=_visible_related_bot_ids(bots),
             )
@@ -411,9 +406,7 @@ def _live_bot_gate_check(
             live_readiness_deactivation_source=deactivation_source,
             live_readiness_deactivation_reason=deactivation_reason,
             live_readiness_next_action=(
-                live_readiness.get("readiness_next_action")
-                or readiness.get("next_action")
-                or ""
+                live_readiness.get("readiness_next_action") or readiness.get("next_action") or ""
             ),
             visible_related_bots=_visible_related_bot_ids(bots),
         )
@@ -428,11 +421,7 @@ def _live_bot_gate_check(
 
 
 def _next_actions(checks: list[dict[str, Any]]) -> list[str]:
-    blocked_checks = {
-        str(check["name"]): check
-        for check in checks
-        if check.get("status") == "BLOCKED"
-    }
+    blocked_checks = {str(check["name"]): check for check in checks if check.get("status") == "BLOCKED"}
     blocked = set(blocked_checks)
     actions: list[str] = []
     prop_actions: list[str] = []
@@ -449,8 +438,7 @@ def _next_actions(checks: list[dict[str, Any]]) -> list[str]:
             )
         elif missing:
             prop_actions.append(
-                "Seed the active broker/prop API secrets after funding/API unlock; "
-                f"missing: {', '.join(missing)}.",
+                f"Seed the active broker/prop API secrets after funding/API unlock; missing: {', '.join(missing)}.",
             )
         else:
             prop_actions.append(
@@ -485,10 +473,7 @@ def _next_actions(checks: list[dict[str, Any]]) -> list[str]:
         else:
             launch_lane = str(live_evidence.get("launch_lane") or primary_candidate.get("launch_lane") or "paper")
             blockers = [str(item) for item in _as_list(primary_candidate.get("blockers")) if item]
-            detail = (
-                f"Keep {PRIMARY_BOT} in {launch_lane} until can_live_trade=true "
-                "and the futures prop ladder clears"
-            )
+            detail = f"Keep {PRIMARY_BOT} in {launch_lane} until can_live_trade=true and the futures prop ladder clears"
             if blockers:
                 detail = f"{detail}; current blocker(s): {'; '.join(blockers)}"
             actions.append(f"{detail}.")
@@ -564,9 +549,7 @@ def build_gate_report(
         _live_bot_gate_check(fleet, live_readiness),
     ]
     summary = (
-        "BLOCKED"
-        if any(check["status"] == "BLOCKED" for check in checks)
-        else "READY_FOR_CONTROLLED_PROP_DRY_RUN"
+        "BLOCKED" if any(check["status"] == "BLOCKED" for check in checks) else "READY_FOR_CONTROLLED_PROP_DRY_RUN"
     )
     return {
         "kind": "eta_prop_live_readiness_gate",

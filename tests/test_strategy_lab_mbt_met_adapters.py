@@ -37,11 +37,11 @@ def _make_bars(rows: list[tuple[float, float, float, float, float, float]]) -> d
     """rows: list of (epoch_seconds, open, high, low, close, volume)."""
     arr = np.array(rows, dtype=float)
     return {
-        "time":   arr[:, 0],
-        "open":   arr[:, 1],
-        "high":   arr[:, 2],
-        "low":    arr[:, 3],
-        "close":  arr[:, 4],
+        "time": arr[:, 0],
+        "open": arr[:, 1],
+        "high": arr[:, 2],
+        "low": arr[:, 3],
+        "close": arr[:, 4],
         "volume": arr[:, 5],
     }
 
@@ -66,11 +66,11 @@ def test_registry_lookup_met_rth_orb() -> None:
 
 def test_empty_bars_yield_no_signals() -> None:
     empty: dict[str, np.ndarray] = {
-        "time":   np.array([], dtype=float),
-        "open":   np.array([], dtype=float),
-        "high":   np.array([], dtype=float),
-        "low":    np.array([], dtype=float),
-        "close":  np.array([], dtype=float),
+        "time": np.array([], dtype=float),
+        "open": np.array([], dtype=float),
+        "high": np.array([], dtype=float),
+        "low": np.array([], dtype=float),
+        "close": np.array([], dtype=float),
         "volume": np.array([], dtype=float),
     }
     spec: dict[str, object] = {"symbol": "MBT"}
@@ -94,11 +94,9 @@ def test_met_rth_orb_long_breakout_triggers_adapter() -> None:
         ts = _local_ct_epoch(2026, 6, 15, h, m)
         rows.append((ts, 2_490.0, 2_500.0, 2_480.0, 2_490.0, 1000.0))
     # Range bar 08:30-08:35 — defines range_high=2500, range_low=2480.
-    rows.append((_local_ct_epoch(2026, 6, 15, 8, 30),
-                 2_485.0, 2_500.0, 2_480.0, 2_490.0, 1000.0))
+    rows.append((_local_ct_epoch(2026, 6, 15, 8, 30), 2_485.0, 2_500.0, 2_480.0, 2_490.0, 1000.0))
     # Breakout bar at 08:35 — high=2510 > range_high.
-    rows.append((_local_ct_epoch(2026, 6, 15, 8, 35),
-                 2_500.0, 2_510.0, 2_500.0, 2_508.0, 1500.0))
+    rows.append((_local_ct_epoch(2026, 6, 15, 8, 35), 2_500.0, 2_510.0, 2_500.0, 2_508.0, 1500.0))
     bars = _make_bars(rows)
 
     spec: dict[str, object] = {
@@ -146,9 +144,18 @@ def test_mbt_funding_basis_fade_triggers_adapter() -> None:
     # log-return oscillation seeds the rolling basis window with non-zero
     # stdev. Bar high/low set ~50pt spread so ATR > 0 too.
     closes = [
-        base, base + 25.0, base, base - 25.0,
-        base, base + 30.0, base, base - 30.0,
-        base, base + 20.0, base, base - 20.0,
+        base,
+        base + 25.0,
+        base,
+        base - 25.0,
+        base,
+        base + 30.0,
+        base,
+        base - 30.0,
+        base,
+        base + 20.0,
+        base,
+        base - 20.0,
     ]
     # Place bars at 07:30, 07:35, ... so the final ones land inside RTH.
     for k, c in enumerate(closes):
@@ -176,8 +183,7 @@ def test_mbt_funding_basis_fade_triggers_adapter() -> None:
     # bar.high MUST NOT exceed the prior bar's high, or _momentum_fading()
     # returns False. Cap high at calm_high - 2 (still > close).
     spike_close = base + 2_000.0
-    rows.append((_local_ct_epoch(2026, 6, 15, 9, 45),
-                 base, calm_high - 2.0, base - 5.0, spike_close, 5000.0))
+    rows.append((_local_ct_epoch(2026, 6, 15, 9, 45), base, calm_high - 2.0, base - 5.0, spike_close, 5000.0))
 
     bars = _make_bars(rows)
 
@@ -233,16 +239,22 @@ def test_mbt_overnight_gap_continuation_triggers_adapter() -> None:
         ts = _local_ct_epoch(2026, 6, 14, h, 30 if h == 8 else 0)
         rows.append((ts, base, base + 50.0, base - 50.0, base, 1000.0))
     # Anchor: close at 14:00 CT == base
-    rows.append((_local_ct_epoch(2026, 6, 14, 14, 0),
-                 base, base + 50.0, base - 50.0, base, 1000.0))
+    rows.append((_local_ct_epoch(2026, 6, 14, 14, 0), base, base + 50.0, base - 50.0, base, 1000.0))
 
     # Day 15 RTH OPEN at 08:30 CT — gap-up of 150 (≥1.0 ATR for a
     # 100-pt ATR sample). Bar opens at base+150 and closes HIGHER
     # (continuation): close=base+200, so close>open.
     gap = 150.0
-    rows.append((_local_ct_epoch(2026, 6, 15, 8, 30),
-                 base + gap, base + gap + 80.0, base + gap - 20.0,
-                 base + gap + 50.0, 5000.0))
+    rows.append(
+        (
+            _local_ct_epoch(2026, 6, 15, 8, 30),
+            base + gap,
+            base + gap + 80.0,
+            base + gap - 20.0,
+            base + gap + 50.0,
+            5000.0,
+        )
+    )
     bars = _make_bars(rows)
 
     spec: dict[str, object] = {

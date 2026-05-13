@@ -14,6 +14,7 @@ shipped:
 - non-perp symbols (MNQ, NQ) early-return $0 so callers can blanket-
   invoke the ledger without per-symbol branching
 """
+
 from __future__ import annotations
 
 import math
@@ -31,6 +32,7 @@ UTC = UTC
 
 class _StaticRateProvider:
     """Fixed funding rate at every settlement timestamp."""
+
     def __init__(self, rate: float) -> None:
         self._rate = rate
         self.calls: list[datetime] = []
@@ -42,6 +44,7 @@ class _StaticRateProvider:
 
 class _MapRateProvider:
     """Returns rate from a {datetime -> float} map; missing keys -> NaN."""
+
     def __init__(self, rates: dict[datetime, float]) -> None:
         self._rates = rates
 
@@ -73,8 +76,13 @@ def test_one_day_btc_long_across_three_settlements_pays_full_funding():
     exit_ts = datetime(2026, 5, 2, 16, 1, 0, tzinfo=UTC)
 
     cost = ledger.compute_funding_cost(
-        symbol="BTC-PERP", side="LONG", qty=qty, entry_price=entry_price,
-        entry_ts=entry_ts, exit_ts=exit_ts, funding_provider=provider,
+        symbol="BTC-PERP",
+        side="LONG",
+        qty=qty,
+        entry_price=entry_price,
+        entry_ts=entry_ts,
+        exit_ts=exit_ts,
+        funding_provider=provider,
     )
 
     expected = notional * rate * 3  # $60,000 * 0.0001 * 3 = $18.00
@@ -104,8 +112,13 @@ def test_short_receives_funding_when_rate_positive():
     exit_ts = datetime(2026, 5, 2, 16, 1, 0, tzinfo=UTC)
 
     cost = ledger.compute_funding_cost(
-        symbol="BTC-PERP", side="SHORT", qty=qty, entry_price=entry_price,
-        entry_ts=entry_ts, exit_ts=exit_ts, funding_provider=provider,
+        symbol="BTC-PERP",
+        side="SHORT",
+        qty=qty,
+        entry_price=entry_price,
+        entry_ts=entry_ts,
+        exit_ts=exit_ts,
+        funding_provider=provider,
     )
 
     expected = -notional * rate * 3  # SHORT with positive funding receives
@@ -126,8 +139,13 @@ def test_position_closed_before_any_settlement_pays_zero():
     exit_ts = datetime(2026, 5, 1, 7, 59, 0, tzinfo=UTC)
 
     cost = ledger.compute_funding_cost(
-        symbol="BTC-PERP", side="LONG", qty=1.0, entry_price=60_000.0,
-        entry_ts=entry_ts, exit_ts=exit_ts, funding_provider=provider,
+        symbol="BTC-PERP",
+        side="LONG",
+        qty=1.0,
+        entry_price=60_000.0,
+        entry_ts=entry_ts,
+        exit_ts=exit_ts,
+        funding_provider=provider,
     )
 
     assert cost == 0.0
@@ -162,8 +180,13 @@ def test_nan_funding_rates_are_skipped_without_breaking():
     provider = _MapRateProvider({s0: rate, s1: math.nan, s2: rate})
 
     cost = ledger.compute_funding_cost(
-        symbol="BTC-PERP", side="LONG", qty=qty, entry_price=entry_price,
-        entry_ts=entry_ts, exit_ts=exit_ts, funding_provider=provider,
+        symbol="BTC-PERP",
+        side="LONG",
+        qty=qty,
+        entry_price=entry_price,
+        entry_ts=entry_ts,
+        exit_ts=exit_ts,
+        funding_provider=provider,
     )
 
     # Only 2 settlements should book; the NaN one is skipped silently.
@@ -185,8 +208,13 @@ def test_non_crypto_symbols_get_zero_funding_cost(symbol: str):
     exit_ts = entry_ts + timedelta(days=7)  # full week — many settlements
 
     cost = ledger.compute_funding_cost(
-        symbol=symbol, side="LONG", qty=10.0, entry_price=22000.0,
-        entry_ts=entry_ts, exit_ts=exit_ts, funding_provider=provider,
+        symbol=symbol,
+        side="LONG",
+        qty=10.0,
+        entry_price=22000.0,
+        entry_ts=entry_ts,
+        exit_ts=exit_ts,
+        funding_provider=provider,
     )
 
     assert cost == 0.0
@@ -215,8 +243,13 @@ def test_book_settlements_returns_per_settlement_breakdown():
     exit_ts = datetime(2026, 5, 2, 16, 1, 0, tzinfo=UTC)
 
     rows = ledger.book_settlements(
-        symbol="ETH-PERP", side="LONG", qty=qty, entry_price=entry_price,
-        entry_ts=entry_ts, exit_ts=exit_ts, funding_provider=provider,
+        symbol="ETH-PERP",
+        side="LONG",
+        qty=qty,
+        entry_price=entry_price,
+        entry_ts=entry_ts,
+        exit_ts=exit_ts,
+        funding_provider=provider,
     )
 
     assert len(rows) == 3
@@ -236,8 +269,13 @@ def test_eth_perp_charges_funding_via_is_perpetual_flag():
     entry_ts = datetime(2026, 5, 1, 23, 59, 0, tzinfo=UTC)
     exit_ts = entry_ts + timedelta(hours=8, minutes=2)
     cost_eth = ledger.compute_funding_cost(
-        symbol="ETH-PERP", side="LONG", qty=1.0, entry_price=4000.0,
-        entry_ts=entry_ts, exit_ts=exit_ts, funding_provider=provider,
+        symbol="ETH-PERP",
+        side="LONG",
+        qty=1.0,
+        entry_price=4000.0,
+        entry_ts=entry_ts,
+        exit_ts=exit_ts,
+        funding_provider=provider,
     )
     assert cost_eth > 0  # exactly one 00:00 UTC settlement crossed
 
@@ -255,8 +293,13 @@ def test_callable_provider_signature_works():
     entry_ts = datetime(2026, 5, 1, 16, 1, 0, tzinfo=UTC)
     exit_ts = datetime(2026, 5, 2, 16, 1, 0, tzinfo=UTC)
     cost = ledger.compute_funding_cost(
-        symbol="BTC-PERP", side="LONG", qty=1.0, entry_price=60_000.0,
-        entry_ts=entry_ts, exit_ts=exit_ts, funding_provider=provider,
+        symbol="BTC-PERP",
+        side="LONG",
+        qty=1.0,
+        entry_price=60_000.0,
+        entry_ts=entry_ts,
+        exit_ts=exit_ts,
+        funding_provider=provider,
     )
     assert cost == pytest.approx(60_000.0 * 0.0001 * 3, abs=1e-6)
 
@@ -268,8 +311,13 @@ def test_zero_qty_returns_zero_cost():
     entry_ts = datetime(2026, 5, 1, 0, 0, 0, tzinfo=UTC)
     exit_ts = entry_ts + timedelta(days=2)
     cost = ledger.compute_funding_cost(
-        symbol="BTC-PERP", side="LONG", qty=0.0, entry_price=60_000.0,
-        entry_ts=entry_ts, exit_ts=exit_ts, funding_provider=provider,
+        symbol="BTC-PERP",
+        side="LONG",
+        qty=0.0,
+        entry_price=60_000.0,
+        entry_ts=entry_ts,
+        exit_ts=exit_ts,
+        funding_provider=provider,
     )
     assert cost == 0.0
     assert provider.calls == []
@@ -282,8 +330,13 @@ def test_exit_before_entry_returns_zero():
     entry_ts = datetime(2026, 5, 2, 0, 0, 0, tzinfo=UTC)
     exit_ts = datetime(2026, 5, 1, 0, 0, 0, tzinfo=UTC)  # before entry
     cost = ledger.compute_funding_cost(
-        symbol="BTC-PERP", side="LONG", qty=1.0, entry_price=60_000.0,
-        entry_ts=entry_ts, exit_ts=exit_ts, funding_provider=provider,
+        symbol="BTC-PERP",
+        side="LONG",
+        qty=1.0,
+        entry_price=60_000.0,
+        entry_ts=entry_ts,
+        exit_ts=exit_ts,
+        funding_provider=provider,
     )
     assert cost == 0.0
 
@@ -300,7 +353,12 @@ def test_settlement_at_exit_ts_is_included():
     # Exit exactly at 08:00 -> include 00:00 and 08:00, that's 2 settlements
     exit_ts = datetime(2026, 5, 2, 8, 0, 0, tzinfo=UTC)
     cost = ledger.compute_funding_cost(
-        symbol="BTC-PERP", side="LONG", qty=1.0, entry_price=60_000.0,
-        entry_ts=entry_ts, exit_ts=exit_ts, funding_provider=provider,
+        symbol="BTC-PERP",
+        side="LONG",
+        qty=1.0,
+        entry_price=60_000.0,
+        entry_ts=entry_ts,
+        exit_ts=exit_ts,
+        funding_provider=provider,
     )
     assert cost == pytest.approx(60_000.0 * rate * 2, abs=1e-6)

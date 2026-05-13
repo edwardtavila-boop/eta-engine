@@ -44,6 +44,7 @@ Run
     python -m eta_engine.scripts.l2_drift_monitor --strategy book_imbalance
     python -m eta_engine.scripts.l2_drift_monitor --json
 """
+
 from __future__ import annotations
 
 # ruff: noqa: PLR2004
@@ -70,20 +71,19 @@ class DriftReport:
     symbol: str
     initial_sharpe: float | None
     current_rolling_sharpe: float | None
-    sharpe_ratio: float | None         # current / initial
-    sharpe_stddev: float | None        # across rolling windows
+    sharpe_ratio: float | None  # current / initial
+    sharpe_stddev: float | None  # across rolling windows
     win_rate_stddev: float | None
     trade_rate_per_day_recent: float | None
     trade_rate_per_day_baseline: float | None
     trade_rate_ratio: float | None
-    drift_verdict: str                 # OK | DEGRADING | DRIFTING | CRITICAL | INSUFFICIENT
+    drift_verdict: str  # OK | DEGRADING | DRIFTING | CRITICAL | INSUFFICIENT
     notes: list[str] = field(default_factory=list)
 
 
-def _read_backtest_records(path: Path, *,
-                              strategy: str | None = None,
-                              symbol: str | None = None,
-                              since_days: int = 90) -> list[dict]:
+def _read_backtest_records(
+    path: Path, *, strategy: str | None = None, symbol: str | None = None, since_days: int = 90
+) -> list[dict]:
     if not path.exists():
         return []
     cutoff = datetime.now(UTC) - timedelta(days=since_days)
@@ -131,21 +131,29 @@ def _drift_verdict(ratio: float | None) -> str:
     return "CRITICAL"
 
 
-def compute_drift(strategy: str, symbol: str,
-                   *, _path: Path | None = None,
-                   recent_window_days: int = 14,
-                   baseline_window_days: int = 14) -> DriftReport:
+def compute_drift(
+    strategy: str,
+    symbol: str,
+    *,
+    _path: Path | None = None,
+    recent_window_days: int = 14,
+    baseline_window_days: int = 14,
+) -> DriftReport:
     """Compute drift between current rolling window and the strategy's
     earliest valid (n_trades >= min) window."""
     records = _read_backtest_records(
-        _path if _path is not None else L2_BACKTEST_LOG,
-        strategy=strategy, symbol=symbol, since_days=180)
+        _path if _path is not None else L2_BACKTEST_LOG, strategy=strategy, symbol=symbol, since_days=180
+    )
     notes: list[str] = []
     if not records:
         return DriftReport(
-            strategy=strategy, symbol=symbol,
-            initial_sharpe=None, current_rolling_sharpe=None,
-            sharpe_ratio=None, sharpe_stddev=None, win_rate_stddev=None,
+            strategy=strategy,
+            symbol=symbol,
+            initial_sharpe=None,
+            current_rolling_sharpe=None,
+            sharpe_ratio=None,
+            sharpe_stddev=None,
+            win_rate_stddev=None,
             trade_rate_per_day_recent=None,
             trade_rate_per_day_baseline=None,
             trade_rate_ratio=None,
@@ -159,23 +167,18 @@ def compute_drift(strategy: str, symbol: str,
         None,
     )
     if initial_record is None:
-        notes.append(
-            "no record yet has sharpe_proxy_valid=True (need n_trades >= "
-            "min_n_for_sharpe)")
+        notes.append("no record yet has sharpe_proxy_valid=True (need n_trades >= min_n_for_sharpe)")
     initial_sharpe = initial_record.get("sharpe_proxy") if initial_record else None
 
     # Current: latest record OR average of recent N
     now = datetime.now(UTC)
     recent_cutoff = now - timedelta(days=recent_window_days)
-    recent = [r for r in records if r["_parsed_ts"] >= recent_cutoff
-              and r.get("sharpe_proxy_valid", False)]
+    recent = [r for r in records if r["_parsed_ts"] >= recent_cutoff and r.get("sharpe_proxy_valid", False)]
     if not recent:
-        notes.append(
-            f"no valid sharpe records in last {recent_window_days}d")
+        notes.append(f"no valid sharpe records in last {recent_window_days}d")
         current_sharpe = None
     else:
-        current_sharpe = statistics.mean(
-            r.get("sharpe_proxy", 0.0) for r in recent)
+        current_sharpe = statistics.mean(r.get("sharpe_proxy", 0.0) for r in recent)
 
     # Ratio
     if initial_sharpe is not None and current_sharpe is not None and initial_sharpe != 0:
@@ -189,43 +192,39 @@ def compute_drift(strategy: str, symbol: str,
         ratio = None
 
     # Stability: stddev of all valid sharpes over the lookback
-    valid_sharpes = [r.get("sharpe_proxy") for r in records
-                      if r.get("sharpe_proxy_valid", False)
-                      and r.get("sharpe_proxy") is not None]
-    sharpe_stddev = statistics.stdev(valid_sharpes) \
-                       if len(valid_sharpes) >= 2 else None
-    valid_wr = [r.get("win_rate") for r in records
-                 if r.get("win_rate") is not None]
-    win_rate_stddev = statistics.stdev(valid_wr) \
-                         if len(valid_wr) >= 2 else None
+    valid_sharpes = [
+        r.get("sharpe_proxy")
+        for r in records
+        if r.get("sharpe_proxy_valid", False) and r.get("sharpe_proxy") is not None
+    ]
+    sharpe_stddev = statistics.stdev(valid_sharpes) if len(valid_sharpes) >= 2 else None
+    valid_wr = [r.get("win_rate") for r in records if r.get("win_rate") is not None]
+    win_rate_stddev = statistics.stdev(valid_wr) if len(valid_wr) >= 2 else None
 
     # Trade rate
     baseline_cutoff_start = now - timedelta(days=baseline_window_days * 2)
     baseline_cutoff_end = now - timedelta(days=baseline_window_days)
-    baseline = [r for r in records
-                 if baseline_cutoff_start <= r["_parsed_ts"] < baseline_cutoff_end]
+    baseline = [r for r in records if baseline_cutoff_start <= r["_parsed_ts"] < baseline_cutoff_end]
     baseline_trades = sum(r.get("n_trades", 0) for r in baseline)
     recent_trades = sum(r.get("n_trades", 0) for r in recent)
     baseline_rate = baseline_trades / baseline_window_days if baseline else None
     recent_rate = recent_trades / recent_window_days if recent else None
-    trade_rate_ratio = (recent_rate / baseline_rate
-                          if baseline_rate and baseline_rate > 0 else None)
+    trade_rate_ratio = recent_rate / baseline_rate if baseline_rate and baseline_rate > 0 else None
     if trade_rate_ratio is not None and trade_rate_ratio < 0.3:
         notes.append(
-            f"trade_rate dropped {(1 - trade_rate_ratio) * 100:.0f}% "
-            f"vs baseline — strategy may have lost signal source")
+            f"trade_rate dropped {(1 - trade_rate_ratio) * 100:.0f}% vs baseline — strategy may have lost signal source"
+        )
 
     verdict = _drift_verdict(ratio)
     if verdict == "DEGRADING":
         notes.append(
-            f"Edge degraded {(1 - (ratio or 0)) * 100:.0f}% vs initial; "
-            "investigate before retirement triggers fire.")
+            f"Edge degraded {(1 - (ratio or 0)) * 100:.0f}% vs initial; investigate before retirement triggers fire."
+        )
     elif verdict in ("DRIFTING", "CRITICAL"):
-        notes.append(
-            f"Edge fell {(1 - (ratio or 0)) * 100:.0f}%; consider "
-            "manual retirement before falsification.")
+        notes.append(f"Edge fell {(1 - (ratio or 0)) * 100:.0f}%; consider manual retirement before falsification.")
     return DriftReport(
-        strategy=strategy, symbol=symbol,
+        strategy=strategy,
+        symbol=symbol,
         initial_sharpe=round(initial_sharpe, 3) if initial_sharpe else None,
         current_rolling_sharpe=round(current_sharpe, 3) if current_sharpe else None,
         sharpe_ratio=round(ratio, 3) if ratio else None,
@@ -234,7 +233,8 @@ def compute_drift(strategy: str, symbol: str,
         trade_rate_per_day_recent=round(recent_rate, 2) if recent_rate else None,
         trade_rate_per_day_baseline=round(baseline_rate, 2) if baseline_rate else None,
         trade_rate_ratio=round(trade_rate_ratio, 2) if trade_rate_ratio else None,
-        drift_verdict=verdict, notes=notes,
+        drift_verdict=verdict,
+        notes=notes,
     )
 
 
@@ -248,16 +248,15 @@ def main() -> int:
     args = ap.parse_args()
 
     report = compute_drift(
-        args.strategy, args.symbol,
+        args.strategy,
+        args.symbol,
         recent_window_days=args.recent_days,
         baseline_window_days=args.baseline_days,
     )
 
     try:
         with DRIFT_LOG.open("a", encoding="utf-8") as f:
-            f.write(json.dumps({"ts": datetime.now(UTC).isoformat(),
-                                 **asdict(report)},
-                                separators=(",", ":")) + "\n")
+            f.write(json.dumps({"ts": datetime.now(UTC).isoformat(), **asdict(report)}, separators=(",", ":")) + "\n")
     except OSError as e:
         print(f"WARN: drift log write failed: {e}", file=sys.stderr)
 

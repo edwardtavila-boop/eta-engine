@@ -78,16 +78,19 @@ def test_rank_demotes_runaway_oos_when_is_is_negative() -> None:
 
 def test_optimizer_includes_registered_mnq_orb_anchor() -> None:
     import pytest
+
     pytest.skip("fleet optimizer plans need registry refresh — mnq_futures entry changed")
 
 
 def test_optimizer_includes_registered_eth_crypto_orb_anchor() -> None:
     import pytest
+
     pytest.skip("fleet optimizer plans need registry refresh — eth_perp entry changed")
 
 
 def test_optimizer_includes_registered_sol_crypto_orb_anchor_with_trade_cap() -> None:
     import pytest
+
     pytest.skip("sol_perp deactivated in lab_sweep_2026_05_04")
 
 

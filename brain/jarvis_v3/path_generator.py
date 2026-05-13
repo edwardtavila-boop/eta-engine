@@ -42,6 +42,7 @@ risk numbers. THIS module is for forward-looking what-ifs (e.g.
 "what does CPI day look like in this regime?") where you don't have
 journaled fills.
 """
+
 from __future__ import annotations
 
 import math
@@ -60,29 +61,27 @@ class RegimeParams:
     """
 
     name: str
-    mu: float                       # per-step drift (log)
-    sigma: float                    # per-step vol (log)
-    lam: float                      # jump intensity (Poisson per step)
-    jump_mu: float                  # log jump size mean
-    jump_sigma: float               # log jump size std
+    mu: float  # per-step drift (log)
+    sigma: float  # per-step vol (log)
+    lam: float  # jump intensity (Poisson per step)
+    jump_mu: float  # log jump size mean
+    jump_sigma: float  # log jump size std
 
 
 REGIMES: dict[str, RegimeParams] = {
-    "bearish_high_vol": RegimeParams("bearish_high_vol",
-                                      mu=-0.0008, sigma=0.0040,
-                                      lam=0.020, jump_mu=-0.005, jump_sigma=0.012),
-    "bearish_low_vol":  RegimeParams("bearish_low_vol",
-                                      mu=-0.0003, sigma=0.0020,
-                                      lam=0.010, jump_mu=-0.003, jump_sigma=0.008),
-    "neutral":          RegimeParams("neutral",
-                                      mu=+0.0000, sigma=0.0022,
-                                      lam=0.008, jump_mu=+0.000, jump_sigma=0.008),
-    "bullish_low_vol":  RegimeParams("bullish_low_vol",
-                                      mu=+0.0004, sigma=0.0019,
-                                      lam=0.006, jump_mu=+0.002, jump_sigma=0.007),
-    "bullish_high_vol": RegimeParams("bullish_high_vol",
-                                      mu=+0.0006, sigma=0.0035,
-                                      lam=0.018, jump_mu=+0.004, jump_sigma=0.011),
+    "bearish_high_vol": RegimeParams(
+        "bearish_high_vol", mu=-0.0008, sigma=0.0040, lam=0.020, jump_mu=-0.005, jump_sigma=0.012
+    ),
+    "bearish_low_vol": RegimeParams(
+        "bearish_low_vol", mu=-0.0003, sigma=0.0020, lam=0.010, jump_mu=-0.003, jump_sigma=0.008
+    ),
+    "neutral": RegimeParams("neutral", mu=+0.0000, sigma=0.0022, lam=0.008, jump_mu=+0.000, jump_sigma=0.008),
+    "bullish_low_vol": RegimeParams(
+        "bullish_low_vol", mu=+0.0004, sigma=0.0019, lam=0.006, jump_mu=+0.002, jump_sigma=0.007
+    ),
+    "bullish_high_vol": RegimeParams(
+        "bullish_high_vol", mu=+0.0006, sigma=0.0035, lam=0.018, jump_mu=+0.004, jump_sigma=0.011
+    ),
 }
 
 
@@ -96,11 +95,11 @@ class PathStats:
     n_paths: int
     horizon_steps: int
     s0: float
-    median_terminal_pct: float        # median terminal log-return as %
-    p05_terminal_pct: float           # 5th percentile (downside tail)
-    p95_terminal_pct: float           # 95th percentile (upside tail)
-    avg_max_drawdown_pct: float       # avg of per-path max drawdowns
-    p95_max_drawdown_pct: float       # 95th-percentile worst path
+    median_terminal_pct: float  # median terminal log-return as %
+    p05_terminal_pct: float  # 5th percentile (downside tail)
+    p95_terminal_pct: float  # 95th percentile (upside tail)
+    avg_max_drawdown_pct: float  # avg of per-path max drawdowns
+    p95_max_drawdown_pct: float  # 95th-percentile worst path
     sample_paths: list[list[float]] = field(default_factory=list)
 
 
@@ -162,7 +161,8 @@ def generate_paths(
         p05_terminal_pct=round(_percentile(terminal_returns_pct, 0.05), 3),
         p95_terminal_pct=round(_percentile(terminal_returns_pct, 0.95), 3),
         avg_max_drawdown_pct=round(
-            sum(max_drawdowns_pct) / max(len(max_drawdowns_pct), 1), 3,
+            sum(max_drawdowns_pct) / max(len(max_drawdowns_pct), 1),
+            3,
         ),
         p95_max_drawdown_pct=round(_percentile(max_drawdowns_pct, 0.95), 3),
         sample_paths=samples,

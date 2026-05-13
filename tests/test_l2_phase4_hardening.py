@@ -19,6 +19,7 @@ book_imbalance, and l2_backtest_harness.  Same root cause as those
 fixes — ``dict.get(key, default)`` returns the default ONLY when the
 key is absent, not when the value is None.
 """
+
 # ruff: noqa: N802, PLR2004
 from __future__ import annotations
 
@@ -39,10 +40,16 @@ from eta_engine.strategies import (
 # ────────────────────────────────────────────────────────────────────
 
 
-def _print_record(*, size: float, side: str = "BUY",
-                   mid_before: float = 100.0, mid_after: float = 100.0,
-                   opp_qty_before: int = 10, opp_qty_after: int = 8,
-                   ts: datetime | None = None) -> dict:
+def _print_record(
+    *,
+    size: float,
+    side: str = "BUY",
+    mid_before: float = 100.0,
+    mid_after: float = 100.0,
+    opp_qty_before: int = 10,
+    opp_qty_after: int = 8,
+    ts: datetime | None = None,
+) -> dict:
     return {
         "ts": ts or datetime(2026, 5, 12, 14, 30, 0, tzinfo=UTC),
         "price": mid_after,
@@ -55,8 +62,7 @@ def _print_record(*, size: float, side: str = "BUY",
     }
 
 
-def _bar(*, ts: datetime, buy: float = 50, sell: float = 50,
-          close: float = 100.0, open_: float = 99.5) -> dict:
+def _bar(*, ts: datetime, buy: float = 50, sell: float = 50, close: float = 100.0, open_: float = 99.5) -> dict:
     return {
         "timestamp_utc": ts.isoformat(),
         "epoch_s": ts.timestamp(),
@@ -71,10 +77,16 @@ def _bar(*, ts: datetime, buy: float = 50, sell: float = 50,
     }
 
 
-def _depth_snap(*, bid_price: float = 99.75, ask_price: float = 100.25,
-                  bid_qty: int = 10, ask_qty: int = 10,
-                  spread: float = 0.5, mid: float = 100.0,
-                  ts: datetime | None = None) -> dict:
+def _depth_snap(
+    *,
+    bid_price: float = 99.75,
+    ask_price: float = 100.25,
+    bid_qty: int = 10,
+    ask_qty: int = 10,
+    spread: float = 0.5,
+    mid: float = 100.0,
+    ts: datetime | None = None,
+) -> dict:
     ts = ts or datetime(2026, 5, 12, 14, 30, 0, tzinfo=UTC)
     return {
         "ts": ts.isoformat(),
@@ -150,26 +162,22 @@ def test_footprint_zero_size_print_skipped() -> None:
 
 def test_footprint_B3_cooldown_seconds_blocks_reentry() -> None:
     """Two prints within cooldown_seconds: only the first fires."""
-    cfg = fp.FootprintAbsorptionConfig(prints_size_z_min=0.5,
-                                          cooldown_seconds=120.0,
-                                          absorption_ratio=1.0,
-                                          absorb_price_band_ticks=10.0)
+    cfg = fp.FootprintAbsorptionConfig(
+        prints_size_z_min=0.5, cooldown_seconds=120.0, absorption_ratio=1.0, absorb_price_band_ticks=10.0
+    )
     state = fp.FootprintAbsorptionState()
     base = datetime(2026, 5, 12, 14, 0, 0, tzinfo=UTC)
     # Build size history with variance so z-score is well-defined.
     # _z_score returns 0 when std==0 (defensive); without variance,
     # no big print can ever clear prints_size_z_min.
     for i, size in enumerate([3, 4, 5, 6, 4, 5, 7, 3, 5, 6, 4, 5, 6, 5, 4]):
-        state.recent_prints.append(_print_record(
-            size=size, ts=base + timedelta(seconds=i)))
+        state.recent_prints.append(_print_record(size=size, ts=base + timedelta(seconds=i)))
     # Big print 1 — should fire (size 50 vs mean ~5, std ~1 → z>>0.5)
-    state.recent_prints.append(_print_record(
-        size=50, ts=base + timedelta(seconds=20)))
+    state.recent_prints.append(_print_record(size=50, ts=base + timedelta(seconds=20)))
     sig1 = fp.evaluate_footprint(state, cfg, atr=2.0)
     assert sig1 is not None
     # Big print 2 inside cooldown — must NOT fire
-    state.recent_prints.append(_print_record(
-        size=60, ts=base + timedelta(seconds=80)))  # only 60s later
+    state.recent_prints.append(_print_record(size=60, ts=base + timedelta(seconds=80)))  # only 60s later
     sig2 = fp.evaluate_footprint(state, cfg, atr=2.0)
     assert sig2 is None
 
@@ -177,11 +185,9 @@ def test_footprint_B3_cooldown_seconds_blocks_reentry() -> None:
 def test_footprint_B6_min_stop_ticks_floor_rejects_tiny_atr() -> None:
     """ATR so small the stop collapses below min_stop_ticks * tick →
     refuse to emit (B6 alignment with book_imbalance)."""
-    cfg = fp.FootprintAbsorptionConfig(prints_size_z_min=0.0,
-                                          absorption_ratio=1.0,
-                                          absorb_price_band_ticks=10.0,
-                                          min_stop_ticks=4,
-                                          tick_size=0.25)
+    cfg = fp.FootprintAbsorptionConfig(
+        prints_size_z_min=0.0, absorption_ratio=1.0, absorb_price_band_ticks=10.0, min_stop_ticks=4, tick_size=0.25
+    )
     state = fp.FootprintAbsorptionState()
     # Vary size so std > 0 (z-score is undefined when std=0)
     for s in [3, 4, 5, 6, 4, 5, 7, 3, 5, 6, 4, 5, 6, 5, 4]:
@@ -194,9 +200,7 @@ def test_footprint_B6_min_stop_ticks_floor_rejects_tiny_atr() -> None:
 
 def test_footprint_B6_signal_id_includes_symbol_side_ts() -> None:
     """signal_id must be deterministic + identifiable."""
-    cfg = fp.FootprintAbsorptionConfig(prints_size_z_min=0.0,
-                                          absorption_ratio=1.0,
-                                          absorb_price_band_ticks=10.0)
+    cfg = fp.FootprintAbsorptionConfig(prints_size_z_min=0.0, absorption_ratio=1.0, absorb_price_band_ticks=10.0)
     state = fp.FootprintAbsorptionState()
     # Vary size so std > 0 (z-score is undefined when std=0)
     for s in [3, 4, 5, 6, 4, 5, 7, 3, 5, 6, 4, 5, 6, 5, 4]:
@@ -211,9 +215,7 @@ def test_footprint_B6_signal_id_includes_symbol_side_ts() -> None:
 
 def test_footprint_B6_qty_hard_capped_to_one() -> None:
     """Signal must NEVER claim more than 1 contract in shadow mode."""
-    cfg = fp.FootprintAbsorptionConfig(prints_size_z_min=0.0,
-                                          absorption_ratio=1.0,
-                                          absorb_price_band_ticks=10.0)
+    cfg = fp.FootprintAbsorptionConfig(prints_size_z_min=0.0, absorption_ratio=1.0, absorb_price_band_ticks=10.0)
     state = fp.FootprintAbsorptionState()
     # Vary size so std > 0 (z-score is undefined when std=0)
     for s in [3, 4, 5, 6, 4, 5, 7, 3, 5, 6, 4, 5, 6, 5, 4]:
@@ -226,22 +228,22 @@ def test_footprint_B6_qty_hard_capped_to_one() -> None:
 
 def test_footprint_I9_max_trades_per_day_caps_emits() -> None:
     """After max_trades_per_day fires, no more signals that day."""
-    cfg = fp.FootprintAbsorptionConfig(prints_size_z_min=0.0,
-                                          absorption_ratio=1.0,
-                                          absorb_price_band_ticks=10.0,
-                                          cooldown_seconds=0.0,
-                                          max_trades_per_day=2)
+    cfg = fp.FootprintAbsorptionConfig(
+        prints_size_z_min=0.0,
+        absorption_ratio=1.0,
+        absorb_price_band_ticks=10.0,
+        cooldown_seconds=0.0,
+        max_trades_per_day=2,
+    )
     state = fp.FootprintAbsorptionState()
     base = datetime.now(UTC).replace(hour=14, minute=0, second=0, microsecond=0)
     # Build small-print history
     for i, s in enumerate([3, 4, 5, 6, 4, 5, 7, 3, 5, 6, 4, 5, 6, 5, 4]):
-        state.recent_prints.append(_print_record(
-            size=s, ts=base + timedelta(seconds=i)))
+        state.recent_prints.append(_print_record(size=s, ts=base + timedelta(seconds=i)))
 
     fires = 0
     for j in range(5):
-        state.recent_prints.append(_print_record(
-            size=50, ts=base + timedelta(seconds=20 + j * 5)))
+        state.recent_prints.append(_print_record(size=50, ts=base + timedelta(seconds=20 + j * 5)))
         sig = fp.evaluate_footprint(state, cfg, atr=2.0)
         if sig is not None:
             fires += 1
@@ -255,8 +257,7 @@ def test_footprint_I9_max_trades_per_day_caps_emits() -> None:
 
 def test_aggressor_none_safety_volume_fields() -> None:
     """volume_buy / volume_sell = None must not crash."""
-    bars = [_bar(ts=datetime(2026, 5, 12, 14, 0, 0, tzinfo=UTC)
-                  + timedelta(minutes=i)) for i in range(5)]
+    bars = [_bar(ts=datetime(2026, 5, 12, 14, 0, 0, tzinfo=UTC) + timedelta(minutes=i)) for i in range(5)]
     # Inject None into one bar
     bars[2]["volume_buy"] = None
     bars[3]["volume_sell"] = None
@@ -268,15 +269,14 @@ def test_aggressor_none_safety_volume_fields() -> None:
 
 def test_aggressor_none_safety_close_open() -> None:
     """close / open = None must not crash."""
-    cfg = ag.AggressorFlowConfig(window_bars=2, consecutive_bars=1,
-                                   entry_threshold=0.0)
+    cfg = ag.AggressorFlowConfig(window_bars=2, consecutive_bars=1, entry_threshold=0.0)
     state = ag.AggressorFlowState()
     base = datetime(2026, 5, 12, 14, 0, 0, tzinfo=UTC)
     # Build 2 bars with strong buy imbalance
     for i in range(2):
-        ag.evaluate_bar(_bar(ts=base + timedelta(minutes=i),
-                              buy=100, sell=10, close=100.5, open_=100.0),
-                         cfg, state, atr=2.0)
+        ag.evaluate_bar(
+            _bar(ts=base + timedelta(minutes=i), buy=100, sell=10, close=100.5, open_=100.0), cfg, state, atr=2.0
+        )
     # Third bar with close=None — must not crash
     bar_none = _bar(ts=base + timedelta(minutes=2), buy=100, sell=10)
     bar_none["close"] = None
@@ -292,34 +292,39 @@ def test_aggressor_none_safety_close_open() -> None:
 
 
 def test_aggressor_B6_min_stop_ticks_floor_rejects_tiny_atr() -> None:
-    cfg = ag.AggressorFlowConfig(window_bars=2, consecutive_bars=1,
-                                   entry_threshold=0.0,
-                                   require_close_confirm=False,
-                                   min_stop_ticks=4, tick_size=0.25)
+    cfg = ag.AggressorFlowConfig(
+        window_bars=2,
+        consecutive_bars=1,
+        entry_threshold=0.0,
+        require_close_confirm=False,
+        min_stop_ticks=4,
+        tick_size=0.25,
+    )
     state = ag.AggressorFlowState()
     base = datetime(2026, 5, 12, 14, 0, 0, tzinfo=UTC)
     sig = None
     for i in range(3):
         sig = ag.evaluate_bar(
-            _bar(ts=base + timedelta(minutes=i),
-                 buy=100, sell=10, close=100.5, open_=100.0),
-            cfg, state, atr=0.5,  # too small (0.5 < 4*0.25=1.0)
+            _bar(ts=base + timedelta(minutes=i), buy=100, sell=10, close=100.5, open_=100.0),
+            cfg,
+            state,
+            atr=0.5,  # too small (0.5 < 4*0.25=1.0)
         )
     assert sig is None
 
 
 def test_aggressor_B6_signal_id_pattern() -> None:
-    cfg = ag.AggressorFlowConfig(window_bars=2, consecutive_bars=1,
-                                   entry_threshold=0.0,
-                                   require_close_confirm=False)
+    cfg = ag.AggressorFlowConfig(window_bars=2, consecutive_bars=1, entry_threshold=0.0, require_close_confirm=False)
     state = ag.AggressorFlowState()
     base = datetime(2026, 5, 12, 14, 0, 0, tzinfo=UTC)
     signals = []
     for i in range(3):
         s = ag.evaluate_bar(
-            _bar(ts=base + timedelta(minutes=i),
-                 buy=100, sell=10, close=100.5, open_=100.0),
-            cfg, state, atr=2.0, symbol="ES",
+            _bar(ts=base + timedelta(minutes=i), buy=100, sell=10, close=100.5, open_=100.0),
+            cfg,
+            state,
+            atr=2.0,
+            symbol="ES",
         )
         if s is not None:
             signals.append(s)
@@ -331,17 +336,16 @@ def test_aggressor_B6_signal_id_pattern() -> None:
 
 
 def test_aggressor_B6_qty_hard_capped() -> None:
-    cfg = ag.AggressorFlowConfig(window_bars=2, consecutive_bars=1,
-                                   entry_threshold=0.0,
-                                   require_close_confirm=False)
+    cfg = ag.AggressorFlowConfig(window_bars=2, consecutive_bars=1, entry_threshold=0.0, require_close_confirm=False)
     state = ag.AggressorFlowState()
     base = datetime(2026, 5, 12, 14, 0, 0, tzinfo=UTC)
     signals = []
     for i in range(3):
         s = ag.evaluate_bar(
-            _bar(ts=base + timedelta(minutes=i),
-                 buy=100, sell=10, close=100.5, open_=100.0),
-            cfg, state, atr=2.0,
+            _bar(ts=base + timedelta(minutes=i), buy=100, sell=10, close=100.5, open_=100.0),
+            cfg,
+            state,
+            atr=2.0,
         )
         if s is not None:
             signals.append(s)
@@ -350,33 +354,35 @@ def test_aggressor_B6_qty_hard_capped() -> None:
 
 
 def test_aggressor_zero_volume_returns_neutral() -> None:
-    bars = [_bar(ts=datetime(2026, 5, 12, 14, 0, 0, tzinfo=UTC)
-                  + timedelta(minutes=i), buy=0, sell=0) for i in range(5)]
+    bars = [
+        _bar(ts=datetime(2026, 5, 12, 14, 0, 0, tzinfo=UTC) + timedelta(minutes=i), buy=0, sell=0) for i in range(5)
+    ]
     ratio, _, _ = ag.compute_imbalance_ratio(bars)
     assert ratio == 0.0
 
 
 def test_aggressor_cooldown_blocks_immediate_reentry() -> None:
-    cfg = ag.AggressorFlowConfig(window_bars=2, consecutive_bars=1,
-                                   entry_threshold=0.0,
-                                   require_close_confirm=False,
-                                   cooldown_seconds=300.0)
+    cfg = ag.AggressorFlowConfig(
+        window_bars=2, consecutive_bars=1, entry_threshold=0.0, require_close_confirm=False, cooldown_seconds=300.0
+    )
     state = ag.AggressorFlowState()
     base = datetime(2026, 5, 12, 14, 0, 0, tzinfo=UTC)
     # Bar 0 fills window; bar 1 fires the signal.
     for i in range(2):
         ag.evaluate_bar(
-            _bar(ts=base + timedelta(minutes=i),
-                 buy=100, sell=10, close=100.5, open_=100.0),
-            cfg, state, atr=2.0,
+            _bar(ts=base + timedelta(minutes=i), buy=100, sell=10, close=100.5, open_=100.0),
+            cfg,
+            state,
+            atr=2.0,
         )
     assert state.last_signal_dt is not None
     first_sig_dt = state.last_signal_dt
     # Try again 60s later (inside 300s cooldown)
     sig2 = ag.evaluate_bar(
-        _bar(ts=base + timedelta(minutes=3), buy=100, sell=10,
-             close=100.5, open_=100.0),
-        cfg, state, atr=2.0,
+        _bar(ts=base + timedelta(minutes=3), buy=100, sell=10, close=100.5, open_=100.0),
+        cfg,
+        state,
+        atr=2.0,
     )
     assert sig2 is None
     assert state.last_signal_dt == first_sig_dt  # unchanged
@@ -424,8 +430,7 @@ def test_microprice_empty_asks_returns_classification() -> None:
 def test_microprice_I8_zero_qty_fail_closed() -> None:
     """Both sides have qty=0 → BOTH_EMPTY → consecutive counters
     must NOT advance (fail-CLOSED on anomalous book)."""
-    cfg = mp.MicropriceConfig(drift_threshold_ticks=0.5,
-                                consecutive_snaps=2)
+    cfg = mp.MicropriceConfig(drift_threshold_ticks=0.5, consecutive_snaps=2)
     state = mp.MicropriceState(last_trade_price=99.0)
     state.consecutive_long_count = 1  # primed
     base = datetime(2026, 5, 12, 14, 0, 0, tzinfo=UTC)
@@ -436,25 +441,20 @@ def test_microprice_I8_zero_qty_fail_closed() -> None:
 
 
 def test_microprice_B6_min_stop_ticks_floor_rejects_tiny_atr() -> None:
-    cfg = mp.MicropriceConfig(drift_threshold_ticks=0.5,
-                                consecutive_snaps=1,
-                                min_stop_ticks=4, tick_size=0.25)
+    cfg = mp.MicropriceConfig(drift_threshold_ticks=0.5, consecutive_snaps=1, min_stop_ticks=4, tick_size=0.25)
     state = mp.MicropriceState(last_trade_price=99.0)
     base = datetime(2026, 5, 12, 14, 0, 0, tzinfo=UTC)
     # Big positive drift but atr=0.5 → stop_distance=0.75 < 1.0 floor
-    snap = _depth_snap(bid_qty=1, ask_qty=100, ts=base,
-                        bid_price=99.75, ask_price=100.25, mid=100.0)
+    snap = _depth_snap(bid_qty=1, ask_qty=100, ts=base, bid_price=99.75, ask_price=100.25, mid=100.0)
     sig = mp.evaluate_snapshot(snap, cfg, state, atr=0.5)
     assert sig is None
 
 
 def test_microprice_B6_signal_id_includes_symbol_and_micro() -> None:
-    cfg = mp.MicropriceConfig(drift_threshold_ticks=0.5,
-                                consecutive_snaps=1)
+    cfg = mp.MicropriceConfig(drift_threshold_ticks=0.5, consecutive_snaps=1)
     state = mp.MicropriceState(last_trade_price=99.0)
     base = datetime(2026, 5, 12, 14, 0, 0, tzinfo=UTC)
-    snap = _depth_snap(bid_qty=1, ask_qty=100, ts=base,
-                        bid_price=99.75, ask_price=100.25, mid=100.0)
+    snap = _depth_snap(bid_qty=1, ask_qty=100, ts=base, bid_price=99.75, ask_price=100.25, mid=100.0)
     sig = mp.evaluate_snapshot(snap, cfg, state, atr=2.0, symbol="GC")
     assert sig is not None
     assert "GC" in sig.signal_id
@@ -466,10 +466,9 @@ def test_microprice_I7_gap_aware_reset() -> None:
     resets consecutive counters (the increment after reset is the
     new fresh count for this snap, not a continuation of the prior
     run)."""
-    cfg = mp.MicropriceConfig(drift_threshold_ticks=0.5,
-                                consecutive_snaps=3,
-                                snapshot_interval_seconds=5.0,
-                                gap_reset_multiple=2.0)
+    cfg = mp.MicropriceConfig(
+        drift_threshold_ticks=0.5, consecutive_snaps=3, snapshot_interval_seconds=5.0, gap_reset_multiple=2.0
+    )
     state = mp.MicropriceState(last_trade_price=99.0)
     state.consecutive_long_count = 2  # primed to almost-fire
     base = datetime(2026, 5, 12, 14, 0, 0, tzinfo=UTC)
@@ -487,8 +486,7 @@ def test_microprice_I7_gap_aware_reset() -> None:
 
 def test_microprice_consecutive_resets_in_neutral_zone() -> None:
     """Drift within ±threshold neutralizes — counters reset."""
-    cfg = mp.MicropriceConfig(drift_threshold_ticks=5.0,
-                                consecutive_snaps=3)
+    cfg = mp.MicropriceConfig(drift_threshold_ticks=5.0, consecutive_snaps=3)
     state = mp.MicropriceState(last_trade_price=100.0)
     state.consecutive_long_count = 2
     snap = _depth_snap()  # micro should be very close to 100
@@ -522,9 +520,7 @@ def test_all_three_strategies_emit_qty_contracts_one_in_shadow() -> None:
     by exercising each strategy and inspecting the signal."""
     # Footprint
     state_fp = fp.FootprintAbsorptionState()
-    cfg_fp = fp.FootprintAbsorptionConfig(prints_size_z_min=0.0,
-                                             absorption_ratio=1.0,
-                                             absorb_price_band_ticks=10.0)
+    cfg_fp = fp.FootprintAbsorptionConfig(prints_size_z_min=0.0, absorption_ratio=1.0, absorb_price_band_ticks=10.0)
     for _ in range(15):
         state_fp.recent_prints.append(_print_record(size=5))
     state_fp.recent_prints.append(_print_record(size=50))
@@ -533,16 +529,15 @@ def test_all_three_strategies_emit_qty_contracts_one_in_shadow() -> None:
 
     # Aggressor
     state_ag = ag.AggressorFlowState()
-    cfg_ag = ag.AggressorFlowConfig(window_bars=2, consecutive_bars=1,
-                                       entry_threshold=0.0,
-                                       require_close_confirm=False)
+    cfg_ag = ag.AggressorFlowConfig(window_bars=2, consecutive_bars=1, entry_threshold=0.0, require_close_confirm=False)
     base = datetime(2026, 5, 12, 14, 0, 0, tzinfo=UTC)
     ag_signals = []
     for i in range(3):
         s = ag.evaluate_bar(
-            _bar(ts=base + timedelta(minutes=i),
-                 buy=100, sell=10, close=100.5, open_=100.0),
-            cfg_ag, state_ag, atr=2.0,
+            _bar(ts=base + timedelta(minutes=i), buy=100, sell=10, close=100.5, open_=100.0),
+            cfg_ag,
+            state_ag,
+            atr=2.0,
         )
         if s is not None:
             ag_signals.append(s)
@@ -550,10 +545,8 @@ def test_all_three_strategies_emit_qty_contracts_one_in_shadow() -> None:
 
     # Microprice
     state_mp = mp.MicropriceState(last_trade_price=99.0)
-    cfg_mp = mp.MicropriceConfig(drift_threshold_ticks=0.5,
-                                    consecutive_snaps=1)
-    snap = _depth_snap(bid_qty=1, ask_qty=100,
-                        bid_price=99.75, ask_price=100.25, mid=100.0)
+    cfg_mp = mp.MicropriceConfig(drift_threshold_ticks=0.5, consecutive_snaps=1)
+    snap = _depth_snap(bid_qty=1, ask_qty=100, bid_price=99.75, ask_price=100.25, mid=100.0)
     sig_mp = mp.evaluate_snapshot(snap, cfg_mp, state_mp, atr=2.0)
     assert sig_mp is not None and sig_mp.qty_contracts == 1
 
@@ -581,6 +574,7 @@ def test_book_imbalance_level_size_none_safe() -> None:
     """A bid or ask level with size=None must classify as EMPTY_<side>
     not crash int()."""
     from eta_engine.strategies import book_imbalance_strategy as bis
+
     snap = {
         "bids": [{"price": 99.75, "size": None}],
         "asks": [{"price": 100.25, "size": 10}],
@@ -588,7 +582,6 @@ def test_book_imbalance_level_size_none_safe() -> None:
         "mid": 100.0,
         "ts": datetime(2026, 5, 12, 14, 0, 0, tzinfo=UTC).isoformat(),
     }
-    ratio, bid_qty, ask_qty, cls = bis._compute_imbalance_with_classification(
-        snap, n_levels=1)
+    ratio, bid_qty, ask_qty, cls = bis._compute_imbalance_with_classification(snap, n_levels=1)
     assert cls == "EMPTY_BIDS"
     assert bid_qty == 0

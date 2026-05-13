@@ -19,6 +19,7 @@ Use cases:
 Read-only by default -- doesn't change live JARVIS behavior unless
 the operator explicitly chooses a non-champion verdict.
 """
+
 from __future__ import annotations
 
 import logging
@@ -51,10 +52,10 @@ class DispatchResult:
     request_id: str
     champion_arm: str
     verdicts: list[PolicyVerdict]
-    consensus_verdict: str            # most pessimistic across arms
-    consensus_size_cap_mult: float    # min cap across arms
-    disagreement_count: int           # non-champion arms whose verdict != champion's
-    sage_disagreement: bool = False   # True when v22 sage disagrees with champion
+    consensus_verdict: str  # most pessimistic across arms
+    consensus_size_cap_mult: float  # min cap across arms
+    disagreement_count: int  # non-champion arms whose verdict != champion's
+    sage_disagreement: bool = False  # True when v22 sage disagrees with champion
 
 
 def _verdict_pessimism_rank(verdict: str) -> int:
@@ -108,15 +109,17 @@ def dispatch_all(req: object, ctx: object, *, champion_arm: str = "v17") -> Disp
                     sage_mod = "tightened"
                 elif "v22_sage_disagree_defer" in cond:
                     sage_mod = "deferred"
-            verdicts.append(PolicyVerdict(
-                arm_id=arm_id,
-                parent_version=int(c.get("parent_version", 0)),
-                verdict=v_str,
-                reason_code=resp.reason_code,
-                reason=resp.reason[:200],
-                size_cap_mult=cap,
-                sage_modulation=sage_mod,
-            ))
+            verdicts.append(
+                PolicyVerdict(
+                    arm_id=arm_id,
+                    parent_version=int(c.get("parent_version", 0)),
+                    verdict=v_str,
+                    reason_code=resp.reason_code,
+                    reason=resp.reason[:200],
+                    size_cap_mult=cap,
+                    sage_modulation=sage_mod,
+                )
+            )
             rank = _verdict_pessimism_rank(v_str)
             if rank < most_pessimistic_rank:
                 most_pessimistic_rank = rank
@@ -127,15 +130,17 @@ def dispatch_all(req: object, ctx: object, *, champion_arm: str = "v17") -> Disp
                 champion_verdict_str = v_str
         except Exception as exc:  # noqa: BLE001
             logger.warning("candidate %s raised: %s", arm_id, exc)
-            verdicts.append(PolicyVerdict(
-                arm_id=arm_id,
-                parent_version=int(c.get("parent_version", 0)),
-                verdict="ERROR",
-                reason_code="exception",
-                reason=str(exc)[:200],
-                size_cap_mult=None,
-                error=str(exc),
-            ))
+            verdicts.append(
+                PolicyVerdict(
+                    arm_id=arm_id,
+                    parent_version=int(c.get("parent_version", 0)),
+                    verdict="ERROR",
+                    reason_code="exception",
+                    reason=str(exc)[:200],
+                    size_cap_mult=None,
+                    error=str(exc),
+                )
+            )
 
     # Disagreement count: non-champion arms whose verdict differs
     if champion_verdict_str:
@@ -146,9 +151,7 @@ def dispatch_all(req: object, ctx: object, *, champion_arm: str = "v17") -> Disp
                 disagreement += 1
 
     # Detect v22 sage disagreement
-    sage_disagree = any(
-        v.sage_modulation in ("tightened", "deferred") for v in verdicts
-    )
+    sage_disagree = any(v.sage_modulation in ("tightened", "deferred") for v in verdicts)
 
     return DispatchResult(
         request_id=getattr(req, "request_id", ""),

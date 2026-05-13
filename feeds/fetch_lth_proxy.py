@@ -66,8 +66,8 @@ from eta_engine.scripts.workspace_roots import CRYPTO_HISTORY_ROOT  # noqa: E402
 
 _DEFAULT_INPUT = CRYPTO_HISTORY_ROOT / "BTC_D.csv"
 _DEFAULT_OUTPUT = CRYPTO_HISTORY_ROOT / "BTC_LTH_PROXY.csv"
-_SMA_PERIOD = 200          # Mayer Multiple denominator
-_PCT_LOOKBACK_DAYS = 365   # rolling-percentile window
+_SMA_PERIOD = 200  # Mayer Multiple denominator
+_PCT_LOOKBACK_DAYS = 365  # rolling-percentile window
 
 
 def _read_btc_daily(path: Path) -> list[tuple[datetime, float]]:
@@ -115,10 +115,7 @@ def _compute_proxy(
             mayer[i] = closes[i] / sma
     out: list[tuple[datetime, float]] = []
     for i in range(sma_period - 1 + pct_lookback, len(series)):
-        window = [
-            mayer[j] for j in range(i - pct_lookback + 1, i + 1)
-            if mayer[j] is not None
-        ]
+        window = [mayer[j] for j in range(i - pct_lookback + 1, i + 1) if mayer[j] is not None]
         cur = mayer[i]
         if not window or cur is None:
             continue
@@ -148,7 +145,10 @@ def _write_csv(out: Path, rows: list[tuple[datetime, float]]) -> int:
 
 
 def compute_and_write(
-    btc_daily_csv: Path, out_path: Path, *, dry_run: bool = False,
+    btc_daily_csv: Path,
+    out_path: Path,
+    *,
+    dry_run: bool = False,
 ) -> int:
     print(f"[lth-proxy] reading {btc_daily_csv}")
     series = _read_btc_daily(btc_daily_csv)
@@ -166,10 +166,7 @@ def compute_and_write(
         return len(rows)
     n = _write_csv(out_path, rows)
     last_ts, last_v = rows[-1]
-    print(
-        f"[lth-proxy] wrote {n} rows to {out_path}; "
-        f"last={last_ts.date()} (proxy={last_v:+.3f})"
-    )
+    print(f"[lth-proxy] wrote {n} rows to {out_path}; last={last_ts.date()} (proxy={last_v:+.3f})")
     return n
 
 

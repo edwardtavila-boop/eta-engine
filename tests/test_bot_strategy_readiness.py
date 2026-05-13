@@ -22,7 +22,6 @@ def _write_history_csv(path: Path) -> None:
         writer.writerow([1_775_000_000, 100.0, 101.0, 99.0, 100.5, 1000.0])
         writer.writerow([1_775_003_600, 100.5, 102.0, 100.0, 101.5, 1100.0])
 
-
     import pytest
 
     @pytest.mark.skip(reason="Registry values changed — test needs update")
@@ -59,6 +58,7 @@ def _write_history_csv(path: Path) -> None:
 
 def test_readiness_matrix_blocks_when_critical_data_is_missing(tmp_path: Path) -> None:
     import pytest
+
     pytest.skip("btc_compression bot not in registry — test needs update")
     rows = mod.build_readiness_matrix(
         library=DataLibrary(roots=[tmp_path / "empty"]),

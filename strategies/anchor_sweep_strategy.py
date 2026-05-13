@@ -376,10 +376,10 @@ class AnchorSweepStrategy:
     def _volume_z_score(self, bar: BarData) -> float:
         if len(self._volume_window) < self.cfg.volume_z_lookback:
             return 0.0
-        vols = self._volume_window[-self.cfg.volume_z_lookback:]
+        vols = self._volume_window[-self.cfg.volume_z_lookback :]
         mean = sum(vols) / len(vols)
         var = sum((v - mean) ** 2 for v in vols) / len(vols)
-        std = var ** 0.5
+        std = var**0.5
         if std <= 0.0:
             return 0.0
         return (bar.volume - mean) / std
@@ -397,7 +397,7 @@ class AnchorSweepStrategy:
         self._volume_window.append(bar.volume)
         if len(self._volume_window) > self.cfg.volume_z_lookback * 4:
             # Cap memory growth — we only need a rolling window
-            self._volume_window = self._volume_window[-self.cfg.volume_z_lookback * 2:]
+            self._volume_window = self._volume_window[-self.cfg.volume_z_lookback * 2 :]
 
         # Update anchor state machine BEFORE detection (so today's
         # in-progress RTH high doesn't get treated as PDH)
@@ -424,8 +424,7 @@ class AnchorSweepStrategy:
 
         if (
             self._last_entry_idx is not None
-            and (self._bars_seen - self._last_entry_idx)
-            < self.cfg.min_bars_between_trades
+            and (self._bars_seen - self._last_entry_idx) < self.cfg.min_bars_between_trades
         ):
             return None
 
@@ -439,7 +438,7 @@ class AnchorSweepStrategy:
                 return None
 
         # ATR for stop sizing
-        atr_window = hist[-self.cfg.atr_period:] if hist else []
+        atr_window = hist[-self.cfg.atr_period :] if hist else []
         if len(atr_window) < 2:
             return None
         atr = sum(b.high - b.low for b in atr_window) / len(atr_window)
@@ -506,6 +505,7 @@ class AnchorSweepStrategy:
         if self.cfg.enable_l2_overlay:
             try:
                 from eta_engine.strategies.l2_overlay import confirm_anchor_touch_with_l2
+
                 gate = confirm_anchor_touch_with_l2(
                     symbol=self.cfg.l2_symbol,
                     anchor_price=swept_level,

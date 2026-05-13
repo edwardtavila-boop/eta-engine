@@ -75,10 +75,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.json:
         print(json.dumps(evidence, indent=2, sort_keys=True))
     else:
-        print(
-            "[drift_watchdog_smoke] appended drift_watchdog_smoke to "
-            f"{evidence['path']} ({evidence['bytes']} bytes)"
-        )
+        print(f"[drift_watchdog_smoke] appended drift_watchdog_smoke to {evidence['path']} ({evidence['bytes']} bytes)")
     return 0
 
 

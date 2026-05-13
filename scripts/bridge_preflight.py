@@ -39,6 +39,7 @@ Usage
 
 Designed to run from the operator's desktop with the SSH tunnel up.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -76,8 +77,8 @@ SCHEDULED_TASKS_EXPECTED = ("ETA-Hermes-Agent",)
 @dataclass
 class CheckResult:
     name: str
-    severity: str       # "critical" | "warning" | "info"
-    status: str         # "PASS" | "FAIL" | "WARN" | "SKIP"
+    severity: str  # "critical" | "warning" | "info"
+    status: str  # "PASS" | "FAIL" | "WARN" | "SKIP"
     detail: str
     elapsed_ms: float = 0.0
     extras: dict[str, Any] = field(default_factory=dict)
@@ -151,10 +152,16 @@ def check_tunnel_uptime() -> tuple[str, str, dict]:
         return "SKIP", "non-Windows host", {}
     try:
         out = subprocess.run(
-            ["powershell", "-NoProfile", "-Command",
-             "Get-Process ssh -EA SilentlyContinue | Where-Object { $_.Path -like '*OpenSSH*' } | "
-             "Select-Object -First 1 -ExpandProperty StartTime"],
-            capture_output=True, text=True, timeout=10,
+            [
+                "powershell",
+                "-NoProfile",
+                "-Command",
+                "Get-Process ssh -EA SilentlyContinue | Where-Object { $_.Path -like '*OpenSSH*' } | "
+                "Select-Object -First 1 -ExpandProperty StartTime",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         start_str = out.stdout.strip()
         if not start_str:
@@ -162,11 +169,11 @@ def check_tunnel_uptime() -> tuple[str, str, dict]:
         # Try several formats — Windows PowerShell renders StartTime in
         # the user's locale, which varies (en-US short, en-US long, ISO).
         candidate_formats = [
-            "%m/%d/%Y %I:%M:%S %p",                # 5/12/2026 8:23:23 AM
-            "%A, %B %d, %Y %I:%M:%S %p",           # Tuesday, May 12, 2026 8:23:23 AM
-            "%a, %b %d, %Y %I:%M:%S %p",           # Tue, May 12, 2026 8:23:23 AM
-            "%Y-%m-%d %H:%M:%S",                   # 2026-05-12 08:23:23
-            "%m/%d/%Y %H:%M:%S",                   # 5/12/2026 20:23:23
+            "%m/%d/%Y %I:%M:%S %p",  # 5/12/2026 8:23:23 AM
+            "%A, %B %d, %Y %I:%M:%S %p",  # Tuesday, May 12, 2026 8:23:23 AM
+            "%a, %b %d, %Y %I:%M:%S %p",  # Tue, May 12, 2026 8:23:23 AM
+            "%Y-%m-%d %H:%M:%S",  # 2026-05-12 08:23:23
+            "%m/%d/%Y %H:%M:%S",  # 5/12/2026 20:23:23
         ]
         started_at: datetime | None = None
         cleaned = start_str.split(".")[0]
@@ -183,10 +190,12 @@ def check_tunnel_uptime() -> tuple[str, str, dict]:
                 return "WARN", f"could not parse ssh StartTime: {start_str!r}", {}
         uptime_s = (datetime.now() - started_at).total_seconds()
         if uptime_s < TUNNEL_UPTIME_MIN_SECONDS:
-            return ("WARN",
-                    f"tunnel uptime only {uptime_s:.0f}s (< {TUNNEL_UPTIME_MIN_SECONDS}s threshold)",
-                    {"uptime_s": uptime_s})
-        return "PASS", f"tunnel uptime {uptime_s/60:.0f}min", {"uptime_s": uptime_s}
+            return (
+                "WARN",
+                f"tunnel uptime only {uptime_s:.0f}s (< {TUNNEL_UPTIME_MIN_SECONDS}s threshold)",
+                {"uptime_s": uptime_s},
+            )
+        return "PASS", f"tunnel uptime {uptime_s / 60:.0f}min", {"uptime_s": uptime_s}
     except (subprocess.SubprocessError, OSError) as exc:
         return "WARN", f"could not query ssh uptime: {exc}", {}
 
@@ -225,9 +234,11 @@ def check_llm_latency(host: str, port: int, api_key: str | None) -> tuple[str, s
     if r["status"] != 200:
         return "FAIL", f"chat returned {r['status']}", {"latency_ms": latency_ms}
     if latency_ms > LATENCY_CRITICAL_MS:
-        return ("WARN",
-                f"chat latency {latency_ms:.0f}ms exceeds {LATENCY_CRITICAL_MS}ms threshold",
-                {"latency_ms": latency_ms})
+        return (
+            "WARN",
+            f"chat latency {latency_ms:.0f}ms exceeds {LATENCY_CRITICAL_MS}ms threshold",
+            {"latency_ms": latency_ms},
+        )
     return "PASS", f"chat latency {latency_ms:.0f}ms", {"latency_ms": latency_ms}
 
 
@@ -281,19 +292,19 @@ def check_credential_pool_is_literal(host: str, port: int, api_key: str | None) 
             "-c \\\"import os; os.chdir(r'C:\\Users\\Administrator\\.hermes\\hermes-agent')\\\" 2>&1; "
             "Set-Location 'C:\\Users\\Administrator\\.hermes\\hermes-agent'; "
             "& 'C:\\Users\\Administrator\\.hermes\\hermes-agent\\.venv\\Scripts\\python.exe' "
-            "hermes auth list 2>&1\""
+            'hermes auth list 2>&1"'
         )
         result = subprocess.run(
             ["ssh", "forex-vps", remote_cmd],
-            capture_output=True, text=True, timeout=20,
+            capture_output=True,
+            text=True,
+            timeout=20,
         )
         out = result.stdout + result.stderr
         if "deepseek" not in out.lower():
             return "FAIL", "no deepseek credential found in pool", {}
         if "env:DEEPSEEK_API_KEY" in out and "manual" not in out:
-            return ("FAIL",
-                    "deepseek credential is env-source only — the 401 crash-loop bug",
-                    {})
+            return ("FAIL", "deepseek credential is env-source only — the 401 crash-loop bug", {})
         if "manual" in out:
             return "PASS", "deepseek credential is literal (manual source)", {}
         return "WARN", "deepseek credential present but source unclear", {"output": out[:300]}
@@ -307,10 +318,15 @@ def check_scheduled_tasks_alive(host: str, port: int, api_key: str | None) -> tu
         return "SKIP", "Windows-only check", {}
     try:
         result = subprocess.run(
-            ["ssh", "forex-vps",
-             "powershell -NoProfile -Command \"Get-ScheduledTask -TaskName 'ETA-Hermes-Agent' | "
-             "Get-ScheduledTaskInfo | Select-Object -ExpandProperty LastTaskResult\""],
-            capture_output=True, text=True, timeout=15,
+            [
+                "ssh",
+                "forex-vps",
+                "powershell -NoProfile -Command \"Get-ScheduledTask -TaskName 'ETA-Hermes-Agent' | "
+                'Get-ScheduledTaskInfo | Select-Object -ExpandProperty LastTaskResult"',
+            ],
+            capture_output=True,
+            text=True,
+            timeout=15,
         )
         rc = result.stdout.strip()
         # 267009 = "task is currently running" (good); 0 = "succeeded"; other = stale
@@ -328,10 +344,12 @@ def check_audit_log_sane() -> tuple[str, str, dict]:
         return "WARN", f"no audit log yet at {p}", {}
     size = p.stat().st_size
     if size > AUDIT_LOG_MAX_OK_BYTES:
-        return ("FAIL",
-                f"audit log {size/1024/1024:.1f}MB > {AUDIT_LOG_MAX_OK_BYTES/1024/1024}MB — rotation broken",
-                {"size": size})
-    return "PASS", f"audit log {size/1024:.1f}KB (under rotation threshold)", {"size": size}
+        return (
+            "FAIL",
+            f"audit log {size / 1024 / 1024:.1f}MB > {AUDIT_LOG_MAX_OK_BYTES / 1024 / 1024}MB — rotation broken",
+            {"size": size},
+        )
+    return "PASS", f"audit log {size / 1024:.1f}KB (under rotation threshold)", {"size": size}
 
 
 def check_memory_backup_recent() -> tuple[str, str, dict]:
@@ -343,8 +361,7 @@ def check_memory_backup_recent() -> tuple[str, str, dict]:
     """
     local_dir = STATE_ROOT / "backups" / "hermes_memory"
     if local_dir.exists():
-        backups = sorted(local_dir.glob("hermes_memory_*.db"),
-                         key=lambda p: p.stat().st_mtime, reverse=True)
+        backups = sorted(local_dir.glob("hermes_memory_*.db"), key=lambda p: p.stat().st_mtime, reverse=True)
         if backups:
             age_h = (time.time() - backups[0].stat().st_mtime) / 3600
             if age_h > 48:
@@ -355,17 +372,22 @@ def check_memory_backup_recent() -> tuple[str, str, dict]:
         return "WARN", "no local backup dir and SSH-VPS check skipped on non-Windows", {}
     try:
         result = subprocess.run(
-            ["ssh", "forex-vps",
-             "powershell -NoProfile -Command \""
-             "$d = 'C:\\EvolutionaryTradingAlgo\\var\\eta_engine\\state\\backups\\hermes_memory'; "
-             "if (Test-Path $d) { "
-             "  $b = Get-ChildItem $d -Filter 'hermes_memory_*.db' | Sort-Object LastWriteTime -Descending; "
-             "  if ($b) { "
-             "    $age_h = ([DateTime]::Now - $b[0].LastWriteTime).TotalHours; "
-             "    \\\"count=$($b.Count) newest_age_h=$age_h\\\" "
-             "  } else { 'no_backups' } "
-             "} else { 'no_dir' }\""],
-            capture_output=True, text=True, timeout=15,
+            [
+                "ssh",
+                "forex-vps",
+                'powershell -NoProfile -Command "'
+                "$d = 'C:\\EvolutionaryTradingAlgo\\var\\eta_engine\\state\\backups\\hermes_memory'; "
+                "if (Test-Path $d) { "
+                "  $b = Get-ChildItem $d -Filter 'hermes_memory_*.db' | Sort-Object LastWriteTime -Descending; "
+                "  if ($b) { "
+                "    $age_h = ([DateTime]::Now - $b[0].LastWriteTime).TotalHours; "
+                '    \\"count=$($b.Count) newest_age_h=$age_h\\" '
+                "  } else { 'no_backups' } "
+                "} else { 'no_dir' }\"",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=15,
         )
         out = result.stdout.strip()
         if "no_dir" in out or "no_backups" in out:
@@ -392,17 +414,16 @@ def check_disk_headroom() -> tuple[str, str, dict]:
         return "SKIP", "disk check is platform-specific", {}
     try:
         result = subprocess.run(
-            ["ssh", "forex-vps",
-             "powershell -NoProfile -Command \"(Get-PSDrive C).Free / 1GB\""],
-            capture_output=True, text=True, timeout=10,
+            ["ssh", "forex-vps", 'powershell -NoProfile -Command "(Get-PSDrive C).Free / 1GB"'],
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         free_gb = float(result.stdout.strip())
     except (subprocess.SubprocessError, OSError, ValueError) as exc:
         return "WARN", f"could not query VPS disk: {exc}", {}
     if free_gb < DISK_HEADROOM_MIN_GB:
-        return ("FAIL",
-                f"VPS C: free {free_gb:.1f}GB < {DISK_HEADROOM_MIN_GB}GB threshold",
-                {"free_gb": free_gb})
+        return ("FAIL", f"VPS C: free {free_gb:.1f}GB < {DISK_HEADROOM_MIN_GB}GB threshold", {"free_gb": free_gb})
     return "PASS", f"VPS C: free {free_gb:.1f}GB", {"free_gb": free_gb}
 
 
@@ -438,9 +459,7 @@ def check_kelly_recommendations_present(host: str, port: int, api_key: str | Non
     except (json.JSONDecodeError, KeyError, IndexError, ValueError):
         return "WARN", "kelly reply not parseable as int", {}
     if n_rich < 5:
-        return ("WARN",
-                f"only {n_rich} bots have enough trade history for Kelly (need ≥5)",
-                {"n_rich": n_rich})
+        return ("WARN", f"only {n_rich} bots have enough trade history for Kelly (need ≥5)", {"n_rich": n_rich})
     return "PASS", f"{n_rich} bots with sufficient Kelly data", {"n_rich": n_rich}
 
 
@@ -474,6 +493,7 @@ def check_health_check_passes(host: str, port: int) -> tuple[str, str, dict]:
     """Run the existing 9-layer health check and confirm all PASS."""
     try:
         from eta_engine.scripts import hermes_bridge_health
+
         results = hermes_bridge_health.run_all(host=host, port=port)
     except Exception as exc:  # noqa: BLE001
         return "FAIL", f"health-check script error: {exc}", {}
@@ -498,19 +518,19 @@ def run_all(
     results: list[CheckResult] = []
 
     spec: list[tuple[str, str, Callable]] = [
-        ("tunnel",              "critical", lambda: check_tunnel(host, port)),
-        ("tunnel_uptime",       "warning",  check_tunnel_uptime),
-        ("gateway",             "critical", lambda: check_gateway(host, port)),
-        ("llm_latency",         "critical", lambda: check_llm_latency(host, port, api_key)),
-        ("credential_literal",  "critical", lambda: check_credential_pool_is_literal(host, port, api_key)),
-        ("write_back",          "critical", lambda: check_write_back_round_trip(host, port, api_key)),
-        ("scheduled_tasks",     "warning",  lambda: check_scheduled_tasks_alive(host, port, api_key)),
-        ("audit_log",           "warning",  check_audit_log_sane),
-        ("memory_backup",       "warning",  check_memory_backup_recent),
-        ("disk_headroom",       "warning",  check_disk_headroom),
-        ("kelly_ready",         "warning",  lambda: check_kelly_recommendations_present(host, port, api_key)),
-        ("status_server",       "warning",  check_status_server),
-        ("health_9_layers",     "critical", lambda: check_health_check_passes(host, port)),
+        ("tunnel", "critical", lambda: check_tunnel(host, port)),
+        ("tunnel_uptime", "warning", check_tunnel_uptime),
+        ("gateway", "critical", lambda: check_gateway(host, port)),
+        ("llm_latency", "critical", lambda: check_llm_latency(host, port, api_key)),
+        ("credential_literal", "critical", lambda: check_credential_pool_is_literal(host, port, api_key)),
+        ("write_back", "critical", lambda: check_write_back_round_trip(host, port, api_key)),
+        ("scheduled_tasks", "warning", lambda: check_scheduled_tasks_alive(host, port, api_key)),
+        ("audit_log", "warning", check_audit_log_sane),
+        ("memory_backup", "warning", check_memory_backup_recent),
+        ("disk_headroom", "warning", check_disk_headroom),
+        ("kelly_ready", "warning", lambda: check_kelly_recommendations_present(host, port, api_key)),
+        ("status_server", "warning", check_status_server),
+        ("health_9_layers", "critical", lambda: check_health_check_passes(host, port)),
     ]
     for name, sev, fn in spec:
         if name in skip:
@@ -555,10 +575,8 @@ def _build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     p.add_argument("--host", default=DEFAULT_HOST)
     p.add_argument("--port", type=int, default=DEFAULT_PORT)
-    p.add_argument("--skip", type=str, default="",
-                   help="Comma-separated check names to skip")
-    p.add_argument("--json", action="store_true",
-                   help="JSON output instead of human table")
+    p.add_argument("--skip", type=str, default="", help="Comma-separated check names to skip")
+    p.add_argument("--json", action="store_true", help="JSON output instead of human table")
     return p
 
 

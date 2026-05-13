@@ -91,10 +91,10 @@ def init_tracing(
         from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
         res_attrs = {
-            "service.name":     service_name,
-            "host.name":        socket.gethostname(),
-            "deployment.env":   os.environ.get("ETA_ENV", "vps-prod"),
-            "service.version":  os.environ.get("ETA_GIT_REV", "unknown"),
+            "service.name": service_name,
+            "host.name": socket.gethostname(),
+            "deployment.env": os.environ.get("ETA_ENV", "vps-prod"),
+            "service.version": os.environ.get("ETA_GIT_REV", "unknown"),
         }
         if resource_attrs:
             res_attrs.update(resource_attrs)
@@ -110,7 +110,8 @@ def init_tracing(
         log.info("obs.tracing: OTel initialized -> %s", url)
     except Exception as e:  # noqa: BLE001 -- otel raises a wide set
         log.warning(
-            "obs.tracing: OTel init failed (%s); falling back to no-op", e,
+            "obs.tracing: OTel init failed (%s); falling back to no-op",
+            e,
         )
         _TRACER = _NoOpTracer()
     return _TRACER

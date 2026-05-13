@@ -13,6 +13,7 @@ are mathematically known. We do NOT validate against scipy because it is
 not in the dep tree - the pure-numpy approximations are checked against
 hand-computed expectations and against each other.
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -95,12 +96,12 @@ def test_block_bootstrap_autocorrelated_wider_than_iid() -> None:
     ar[0] = eps[0]
     phi = 0.7
     for i in range(1, n):
-        ar[i] = phi * ar[i-1] + eps[i]
+        ar[i] = phi * ar[i - 1] + eps[i]
     ar = (ar - ar.mean()) / ar.std() * iid.std() + iid.mean()
     boot_iid = block_bootstrap_expR(iid, block_size=5, n_resamples=5000, seed=1)
-    boot_ar  = block_bootstrap_expR(ar,  block_size=5, n_resamples=5000, seed=1)
+    boot_ar = block_bootstrap_expR(ar, block_size=5, n_resamples=5000, seed=1)
     width_iid = boot_iid.p95 - boot_iid.p5
-    width_ar  = boot_ar.p95  - boot_ar.p5
+    width_ar = boot_ar.p95 - boot_ar.p5
     assert width_ar >= width_iid * 0.95
 
 
@@ -260,10 +261,7 @@ def test_compute_rigor_bonferroni_division_n20() -> None:
     r20 = compute_rigor(arr, symbol="MNQ", multi_test_count=20, typical_atr_pts=30.0)
     assert r20.p_value_bonferroni > r1.p_value_bonferroni
     if r1.p_value_raw < 0.05 and r20.p_value_bonferroni >= 0.05:
-        assert any(
-            "p_value_bonferroni" in reason
-            for reason in r20.strict_fail_reasons
-        )
+        assert any("p_value_bonferroni" in reason for reason in r20.strict_fail_reasons)
 
 
 def test_compute_rigor_friction_kills_marginal_edge() -> None:
@@ -272,8 +270,7 @@ def test_compute_rigor_friction_kills_marginal_edge() -> None:
     arr = np.array([0.005] * 200)  # exact mean = 0.005
     r = compute_rigor(arr, symbol="MNQ", multi_test_count=10, typical_atr_pts=30.0)
     assert r.expR_net < 0.0, (
-        f"net should be negative (mean=0.005 - friction); got "
-        f"net={r.expR_net} fric={r.friction_R_per_trade}"
+        f"net should be negative (mean=0.005 - friction); got net={r.expR_net} fric={r.friction_R_per_trade}"
     )
     assert r.passed_strict is False
     assert any("expR_net" in reason for reason in r.strict_fail_reasons)
@@ -282,6 +279,7 @@ def test_compute_rigor_friction_kills_marginal_edge() -> None:
 def test_lab_result_back_compat_legacy_fields_preserved() -> None:
     """Old-style construction still works; new fields default safely."""
     from eta_engine.feeds.strategy_lab.engine import LabResult
+
     r = LabResult(strategy_id="legacy", bot_id="bot_x")
     assert r.total_trades == 0
     assert r.passed is False

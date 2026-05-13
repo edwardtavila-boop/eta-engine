@@ -74,8 +74,7 @@ if TYPE_CHECKING:
             hist: list[BarData],
             equity: float,
             config: BacktestConfig,
-        ) -> _Open | None:
-            ...
+        ) -> _Open | None: ...
 
 
 @dataclass(frozen=True)
@@ -96,7 +95,7 @@ class _SubFireRecord:
     """Audit row for a single sub-strategy's per-bar fire stats."""
 
     fired: int = 0
-    selected: int = 0      # times this sub's proposal won the conflict
+    selected: int = 0  # times this sub's proposal won the conflict
     callbacks_received: int = 0
 
 
@@ -118,9 +117,7 @@ class MultiStrategyComposite:
         self._subs: list[tuple[str, object]] = list(sub_strategies)
         self.cfg = config or MultiStrategyConfig()
         # Audit: per-sub fire records
-        self._records: dict[str, _SubFireRecord] = {
-            name: _SubFireRecord() for name, _ in self._subs
-        }
+        self._records: dict[str, _SubFireRecord] = {name: _SubFireRecord() for name, _ in self._subs}
         # Track which sub originated the currently-open trade so we
         # can route on_trade_close to the right listener.
         self._current_originator: str | None = None
@@ -154,6 +151,7 @@ class MultiStrategyComposite:
             cb = getattr(sub, "on_trade_close", None) if sub else None
             if cb is not None:
                 import contextlib
+
                 with contextlib.suppress(Exception):
                     cb(trade)
         # The composite doesn't track open positions itself; the
@@ -165,7 +163,8 @@ class MultiStrategyComposite:
     # -- conflict resolution -----------------------------------------------
 
     def _select_winner(
-        self, proposals: list[tuple[str, object, _Open]],
+        self,
+        proposals: list[tuple[str, object, _Open]],
     ) -> tuple[str, _Open]:
         """Pick the winning proposal based on configured policy.
 
@@ -190,6 +189,7 @@ class MultiStrategyComposite:
                 stop_dist = abs(o.entry_price - o.stop) or 1e-9
                 tgt_dist = abs(o.target - o.entry_price)
                 return tgt_dist / stop_dist
+
             best = max(proposals, key=lambda p: _rr(p[2]))
             return best[0], best[2]
         # Unknown policy → fall back to priority

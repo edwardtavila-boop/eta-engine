@@ -16,6 +16,7 @@ trade would have been a loser.
 
 Designed to coexist: bots that don't opt in see no behavior change.
 """
+
 from __future__ import annotations
 
 import json
@@ -39,7 +40,7 @@ DEFAULT_STATE = ROOT / "state" / "filter_bandit" / "posterior.json"
 @dataclass
 class _FilterArm:
     name: str
-    callable_fn: Callable[..., bool]   # returns True = pass; False = block
+    callable_fn: Callable[..., bool]  # returns True = pass; False = block
     pulls: int = 0
     rewards: list[float] = field(default_factory=list)
 
@@ -96,11 +97,7 @@ class FilterBandit:
             if not arms:
                 return True, "__null__"
             # epsilon-greedy
-            arm = (
-                random.choice(arms)
-                if random.random() < self.epsilon
-                else max(arms, key=lambda a: a.mean_reward)
-            )
+            arm = random.choice(arms) if random.random() < self.epsilon else max(arms, key=lambda a: a.mean_reward)
         try:
             passes = bool(arm.callable_fn(**signal_kwargs))
         except Exception as exc:  # noqa: BLE001
@@ -151,13 +148,16 @@ class FilterBandit:
     def _save(self) -> None:
         try:
             self.state_path.parent.mkdir(parents=True, exist_ok=True)
-            self.state_path.write_text(json.dumps({
-                "ts": datetime.now(UTC).isoformat(),
-                "arms": {
-                    a.name: {"pulls": a.pulls, "rewards": a.rewards}
-                    for a in self._arms.values()
-                },
-            }, indent=2), encoding="utf-8")
+            self.state_path.write_text(
+                json.dumps(
+                    {
+                        "ts": datetime.now(UTC).isoformat(),
+                        "arms": {a.name: {"pulls": a.pulls, "rewards": a.rewards} for a in self._arms.values()},
+                    },
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
         except OSError:
             pass
 

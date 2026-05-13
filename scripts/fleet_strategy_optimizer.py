@@ -370,7 +370,8 @@ class CellRunResult:
 
 
 def _run_one(  # type: ignore[no-untyped-def]  # noqa: ANN202
-    plan: BotPlan, cand: Candidate,
+    plan: BotPlan,
+    cand: Candidate,
 ):
     from eta_engine.backtest import (
         BacktestConfig,
@@ -384,17 +385,31 @@ def _run_one(  # type: ignore[no-untyped-def]  # noqa: ANN202
     ds = default_library().get(symbol=plan.symbol, timeframe=plan.timeframe)
     if ds is None:
         return CellRunResult(
-            bot_id=plan.bot_id, candidate=cand, n_windows=0, n_positive_oos=0,
-            agg_is_sharpe=0.0, agg_oos_sharpe=0.0, avg_oos_degradation=0.0,
-            fold_dsr_median=0.0, fold_dsr_pass_fraction=0.0, pass_gate=False,
+            bot_id=plan.bot_id,
+            candidate=cand,
+            n_windows=0,
+            n_positive_oos=0,
+            agg_is_sharpe=0.0,
+            agg_oos_sharpe=0.0,
+            avg_oos_degradation=0.0,
+            fold_dsr_median=0.0,
+            fold_dsr_pass_fraction=0.0,
+            pass_gate=False,
             error=f"no data for {plan.symbol}/{plan.timeframe}",
         )
     bars = default_library().load_bars(ds, require_positive_prices=True)
     if not bars:
         return CellRunResult(
-            bot_id=plan.bot_id, candidate=cand, n_windows=0, n_positive_oos=0,
-            agg_is_sharpe=0.0, agg_oos_sharpe=0.0, avg_oos_degradation=0.0,
-            fold_dsr_median=0.0, fold_dsr_pass_fraction=0.0, pass_gate=False,
+            bot_id=plan.bot_id,
+            candidate=cand,
+            n_windows=0,
+            n_positive_oos=0,
+            agg_is_sharpe=0.0,
+            agg_oos_sharpe=0.0,
+            avg_oos_degradation=0.0,
+            fold_dsr_median=0.0,
+            fold_dsr_pass_fraction=0.0,
+            pass_gate=False,
             error="empty tradable bar list",
         )
 
@@ -421,37 +436,57 @@ def _run_one(  # type: ignore[no-untyped-def]  # noqa: ANN202
     try:
         if cand.kind == "orb":
             from eta_engine.strategies.orb_strategy import ORBConfig, ORBStrategy
+
             orb_cfg = ORBConfig(**cand.cfg)
             res = WalkForwardEngine().run(
-                bars=bars, pipeline=FeaturePipeline.default(), config=wf,
-                base_backtest_config=base_cfg, ctx_builder=lambda b, h: {},
+                bars=bars,
+                pipeline=FeaturePipeline.default(),
+                config=wf,
+                base_backtest_config=base_cfg,
+                ctx_builder=lambda b, h: {},
                 strategy_factory=lambda: ORBStrategy(orb_cfg),
             )
         elif cand.kind == "drb":
             from eta_engine.strategies.drb_strategy import DRBConfig, DRBStrategy
+
             drb_cfg = DRBConfig(**cand.cfg)
             res = WalkForwardEngine().run(
-                bars=bars, pipeline=FeaturePipeline.default(), config=wf,
-                base_backtest_config=base_cfg, ctx_builder=lambda b, h: {},
+                bars=bars,
+                pipeline=FeaturePipeline.default(),
+                config=wf,
+                base_backtest_config=base_cfg,
+                ctx_builder=lambda b, h: {},
                 strategy_factory=lambda: DRBStrategy(drb_cfg),
             )
         else:
             factory = _build_crypto_strategy_factory(cand.kind, extras)
             res = WalkForwardEngine().run(
-                bars=bars, pipeline=FeaturePipeline.default(), config=wf,
-                base_backtest_config=base_cfg, ctx_builder=lambda b, h: {},
+                bars=bars,
+                pipeline=FeaturePipeline.default(),
+                config=wf,
+                base_backtest_config=base_cfg,
+                ctx_builder=lambda b, h: {},
                 strategy_factory=factory,
             )
     except (ValueError, TypeError, KeyError) as exc:
         return CellRunResult(
-            bot_id=plan.bot_id, candidate=cand, n_windows=0, n_positive_oos=0,
-            agg_is_sharpe=0.0, agg_oos_sharpe=0.0, avg_oos_degradation=0.0,
-            fold_dsr_median=0.0, fold_dsr_pass_fraction=0.0, pass_gate=False,
+            bot_id=plan.bot_id,
+            candidate=cand,
+            n_windows=0,
+            n_positive_oos=0,
+            agg_is_sharpe=0.0,
+            agg_oos_sharpe=0.0,
+            avg_oos_degradation=0.0,
+            fold_dsr_median=0.0,
+            fold_dsr_pass_fraction=0.0,
+            pass_gate=False,
             error=f"{type(exc).__name__}: {exc}",
         )
     n_pos = sum(1 for w in res.windows if w.get("oos_sharpe", 0.0) > 0)
     return CellRunResult(
-        bot_id=plan.bot_id, candidate=cand, n_windows=len(res.windows),
+        bot_id=plan.bot_id,
+        candidate=cand,
+        n_windows=len(res.windows),
         n_positive_oos=n_pos,
         agg_is_sharpe=res.aggregate_is_sharpe,
         agg_oos_sharpe=res.aggregate_oos_sharpe,
@@ -473,10 +508,7 @@ def _rank(results: list[CellRunResult]) -> list[CellRunResult]:
 
     def _key(r: CellRunResult) -> tuple:
         viable_fail = r.agg_is_sharpe > 0.0 and r.agg_oos_sharpe > 0.0
-        pos_oos_fraction = (
-            r.n_positive_oos / r.n_windows
-            if r.n_windows > 0 else 0.0
-        )
+        pos_oos_fraction = r.n_positive_oos / r.n_windows if r.n_windows > 0 else 0.0
         capped_oos = min(r.agg_oos_sharpe, 10.0)
         return (
             not r.pass_gate,
@@ -513,8 +545,7 @@ def _bot_table(bot_id: str, ranked: list[CellRunResult], top_n: int = 6) -> list
     for r in ranked[:top_n]:
         if r.error:
             lines.append(
-                f"| ERR | {r.candidate.kind}: {r.candidate.label} | | | | | | | |  "
-                f"_(error: {r.error})_",
+                f"| ERR | {r.candidate.kind}: {r.candidate.label} | | | | | | | |  _(error: {r.error})_",
             )
             continue
         verdict = "**PASS**" if r.pass_gate else "FAIL"
@@ -562,11 +593,14 @@ def _summary_section(per_bot: dict[str, list[CellRunResult]]) -> list[str]:
 def main() -> int:
     p = argparse.ArgumentParser(prog="fleet_strategy_optimizer")
     p.add_argument(
-        "--only-bot", default=None,
+        "--only-bot",
+        default=None,
         help="restrict to one bot_id (e.g. eth_perp); default: all",
     )
     p.add_argument(
-        "--out-dir", type=Path, default=ROOT / "docs" / "research_log",
+        "--out-dir",
+        type=Path,
+        default=ROOT / "docs" / "research_log",
     )
     args = p.parse_args()
 
@@ -585,8 +619,7 @@ def main() -> int:
     per_bot: dict[str, list[CellRunResult]] = {}
     for plan in plans:
         print(
-            f"== {plan.bot_id} ({plan.symbol}/{plan.timeframe}) — "
-            f"{len(plan.candidates)} candidates ==",
+            f"== {plan.bot_id} ({plan.symbol}/{plan.timeframe}) — {len(plan.candidates)} candidates ==",
         )
         results: list[CellRunResult] = []
         for i, cand in enumerate(plan.candidates):
@@ -604,8 +637,7 @@ def main() -> int:
                     f"dsr_pass={r.fold_dsr_pass_fraction * 100:4.1f}%"
                 )
             print(
-                f"  [{i + 1:2d}/{len(plan.candidates)}] "
-                f"{cand.kind}:{cand.label:30}  {tag}",
+                f"  [{i + 1:2d}/{len(plan.candidates)}] {cand.kind}:{cand.label:30}  {tag}",
             )
         per_bot[plan.bot_id] = results
         ranked = _rank(results)

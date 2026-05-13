@@ -88,10 +88,7 @@ class SubmoduleWiringReport:
             "root": str(self.root),
             "ready": self.ready,
             "action": self.action,
-            "modules": {
-                path: module.as_payload()
-                for path, module in self.modules.items()
-            },
+            "modules": {path: module.as_payload() for path, module in self.modules.items()},
         }
 
 

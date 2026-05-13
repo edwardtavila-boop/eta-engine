@@ -568,8 +568,12 @@ def run_controller(
     if action == "start_gateway":
         run_now_exists = _scheduled_task_exists(run_now_task)
         run_now_runnable = run_now_exists and _scheduled_task_is_runnable(run_now_task)
-        gateway_runnable = bool(gateway_task) and _scheduled_task_exists(gateway_task) and _scheduled_task_is_runnable(
-            gateway_task,
+        gateway_runnable = (
+            bool(gateway_task)
+            and _scheduled_task_exists(gateway_task)
+            and _scheduled_task_is_runnable(
+                gateway_task,
+            )
         )
         if run_now_runnable:
             task_name = run_now_task
@@ -602,8 +606,7 @@ def run_controller(
                     ),
                     "operator_action_required": True,
                     "operator_action": (
-                        "Install/configure canonical IB Gateway 10.46, then run "
-                        f"{lane['repair_command']}."
+                        f"Install/configure canonical IB Gateway 10.46, then run {lane['repair_command']}."
                     ),
                 },
             )

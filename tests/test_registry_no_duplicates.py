@@ -9,6 +9,7 @@ identical; this test catches that bug class going forward.
 The CURRENT registry should be clean (the 2 duplicate BTC bots were
 deactivated); a deliberate-duplicate construct should be flagged.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -19,11 +20,9 @@ def test_current_registry_has_no_duplicate_active_bots():
     from eta_engine.strategies.per_bot_registry import (
         validate_registry_no_duplicates,
     )
+
     warnings = validate_registry_no_duplicates()
-    assert warnings == [], (
-        "Active registry has duplicate-config bots:\n  - "
-        + "\n  - ".join(warnings)
-    )
+    assert warnings == [], "Active registry has duplicate-config bots:\n  - " + "\n  - ".join(warnings)
 
 
 def test_validator_detects_synthetic_duplicate():
@@ -38,16 +37,27 @@ def test_validator_detects_synthetic_duplicate():
     common_config = {
         "strategy_kind": "confluence_scorecard",
         "sub_strategy_extras": {
-            "level_lookback": 48, "rr_target": 3.0, "atr_stop_mult": 2.0,
+            "level_lookback": 48,
+            "rr_target": 3.0,
+            "atr_stop_mult": 2.0,
         },
         "scorecard_config": {
-            "min_score": 2, "fast_ema": 21, "mid_ema": 50, "slow_ema": 100,
+            "min_score": 2,
+            "fast_ema": 21,
+            "mid_ema": 50,
+            "slow_ema": 100,
         },
     }
     bot_a = StrategyAssignment(
-        bot_id="dup_a", strategy_id="dup_a_v1", symbol="BTC", timeframe="1h",
-        scorer_name="btc", confluence_threshold=0.0,
-        block_regimes=frozenset(), window_days=90, step_days=30,
+        bot_id="dup_a",
+        strategy_id="dup_a_v1",
+        symbol="BTC",
+        timeframe="1h",
+        scorer_name="btc",
+        confluence_threshold=0.0,
+        block_regimes=frozenset(),
+        window_days=90,
+        step_days=30,
         min_trades_per_window=3,
         strategy_kind=common_config["strategy_kind"],
         rationale="test",
@@ -58,9 +68,15 @@ def test_validator_detects_synthetic_duplicate():
         },
     )
     bot_b = StrategyAssignment(
-        bot_id="dup_b", strategy_id="dup_b_v1", symbol="BTC", timeframe="1h",
-        scorer_name="btc", confluence_threshold=0.0,
-        block_regimes=frozenset(), window_days=90, step_days=30,
+        bot_id="dup_b",
+        strategy_id="dup_b_v1",
+        symbol="BTC",
+        timeframe="1h",
+        scorer_name="btc",
+        confluence_threshold=0.0,
+        block_regimes=frozenset(),
+        window_days=90,
+        step_days=30,
         min_trades_per_window=3,
         strategy_kind=common_config["strategy_kind"],
         rationale="test",
@@ -90,23 +106,39 @@ def test_validator_skips_deactivated_bots():
         StrategyAssignment,
         find_duplicate_active_bots,
     )
+
     common_extras = {
         "sub_strategy_kind": "sweep_reclaim",
         "sub_strategy_extras": {"rr_target": 3.0},
         "scorecard_config": {"min_score": 2},
     }
     active = StrategyAssignment(
-        bot_id="active_dup", strategy_id="x", symbol="BTC", timeframe="1h",
-        scorer_name="btc", confluence_threshold=0.0,
-        block_regimes=frozenset(), window_days=90, step_days=30,
-        min_trades_per_window=3, strategy_kind="confluence_scorecard",
-        rationale="test", extras={"promotion_status": "production", **common_extras},
+        bot_id="active_dup",
+        strategy_id="x",
+        symbol="BTC",
+        timeframe="1h",
+        scorer_name="btc",
+        confluence_threshold=0.0,
+        block_regimes=frozenset(),
+        window_days=90,
+        step_days=30,
+        min_trades_per_window=3,
+        strategy_kind="confluence_scorecard",
+        rationale="test",
+        extras={"promotion_status": "production", **common_extras},
     )
     deactivated = StrategyAssignment(
-        bot_id="deact_dup", strategy_id="x", symbol="BTC", timeframe="1h",
-        scorer_name="btc", confluence_threshold=0.0,
-        block_regimes=frozenset(), window_days=90, step_days=30,
-        min_trades_per_window=3, strategy_kind="confluence_scorecard",
+        bot_id="deact_dup",
+        strategy_id="x",
+        symbol="BTC",
+        timeframe="1h",
+        scorer_name="btc",
+        confluence_threshold=0.0,
+        block_regimes=frozenset(),
+        window_days=90,
+        step_days=30,
+        min_trades_per_window=3,
+        strategy_kind="confluence_scorecard",
         rationale="test",
         extras={"promotion_status": "deactivated", "deactivated": True, **common_extras},
     )
@@ -120,11 +152,19 @@ def test_validator_distinguishes_different_params():
         StrategyAssignment,
         find_duplicate_active_bots,
     )
+
     bot_a = StrategyAssignment(
-        bot_id="diff_a", strategy_id="x", symbol="BTC", timeframe="1h",
-        scorer_name="btc", confluence_threshold=0.0,
-        block_regimes=frozenset(), window_days=90, step_days=30,
-        min_trades_per_window=3, strategy_kind="confluence_scorecard",
+        bot_id="diff_a",
+        strategy_id="x",
+        symbol="BTC",
+        timeframe="1h",
+        scorer_name="btc",
+        confluence_threshold=0.0,
+        block_regimes=frozenset(),
+        window_days=90,
+        step_days=30,
+        min_trades_per_window=3,
+        strategy_kind="confluence_scorecard",
         rationale="test",
         extras={
             "promotion_status": "production",
@@ -133,10 +173,17 @@ def test_validator_distinguishes_different_params():
         },
     )
     bot_b = StrategyAssignment(
-        bot_id="diff_b", strategy_id="x", symbol="BTC", timeframe="1h",
-        scorer_name="btc", confluence_threshold=0.0,
-        block_regimes=frozenset(), window_days=90, step_days=30,
-        min_trades_per_window=3, strategy_kind="confluence_scorecard",
+        bot_id="diff_b",
+        strategy_id="x",
+        symbol="BTC",
+        timeframe="1h",
+        scorer_name="btc",
+        confluence_threshold=0.0,
+        block_regimes=frozenset(),
+        window_days=90,
+        step_days=30,
+        min_trades_per_window=3,
+        strategy_kind="confluence_scorecard",
         rationale="test",
         extras={
             "promotion_status": "production",
@@ -154,6 +201,7 @@ def test_validator_distinguishes_different_symbols():
         StrategyAssignment,
         find_duplicate_active_bots,
     )
+
     common_extras = {
         "promotion_status": "production",
         "sub_strategy_kind": "sweep_reclaim",
@@ -161,18 +209,34 @@ def test_validator_distinguishes_different_symbols():
         "scorecard_config": {"min_score": 2},
     }
     btc_bot = StrategyAssignment(
-        bot_id="btc_x", strategy_id="x", symbol="BTC", timeframe="1h",
-        scorer_name="btc", confluence_threshold=0.0,
-        block_regimes=frozenset(), window_days=90, step_days=30,
-        min_trades_per_window=3, strategy_kind="confluence_scorecard",
-        rationale="test", extras=common_extras,
+        bot_id="btc_x",
+        strategy_id="x",
+        symbol="BTC",
+        timeframe="1h",
+        scorer_name="btc",
+        confluence_threshold=0.0,
+        block_regimes=frozenset(),
+        window_days=90,
+        step_days=30,
+        min_trades_per_window=3,
+        strategy_kind="confluence_scorecard",
+        rationale="test",
+        extras=common_extras,
     )
     eth_bot = StrategyAssignment(
-        bot_id="eth_x", strategy_id="x", symbol="ETH", timeframe="1h",
-        scorer_name="btc", confluence_threshold=0.0,
-        block_regimes=frozenset(), window_days=90, step_days=30,
-        min_trades_per_window=3, strategy_kind="confluence_scorecard",
-        rationale="test", extras=common_extras,
+        bot_id="eth_x",
+        strategy_id="x",
+        symbol="ETH",
+        timeframe="1h",
+        scorer_name="btc",
+        confluence_threshold=0.0,
+        block_regimes=frozenset(),
+        window_days=90,
+        step_days=30,
+        min_trades_per_window=3,
+        strategy_kind="confluence_scorecard",
+        rationale="test",
+        extras=common_extras,
     )
     duplicates = find_duplicate_active_bots([btc_bot, eth_bot])
     assert duplicates == []
@@ -184,24 +248,41 @@ def test_raise_on_duplicate_mode():
         StrategyAssignment,
         validate_registry_no_duplicates,
     )
+
     common_extras = {
         "promotion_status": "production",
         "sub_strategy_extras": {"rr_target": 3.0},
         "scorecard_config": {"min_score": 2},
     }
     bot_a = StrategyAssignment(
-        bot_id="raise_a", strategy_id="x", symbol="BTC", timeframe="1h",
-        scorer_name="btc", confluence_threshold=0.0,
-        block_regimes=frozenset(), window_days=90, step_days=30,
-        min_trades_per_window=3, strategy_kind="confluence_scorecard",
-        rationale="test", extras=common_extras,
+        bot_id="raise_a",
+        strategy_id="x",
+        symbol="BTC",
+        timeframe="1h",
+        scorer_name="btc",
+        confluence_threshold=0.0,
+        block_regimes=frozenset(),
+        window_days=90,
+        step_days=30,
+        min_trades_per_window=3,
+        strategy_kind="confluence_scorecard",
+        rationale="test",
+        extras=common_extras,
     )
     bot_b = StrategyAssignment(
-        bot_id="raise_b", strategy_id="x", symbol="BTC", timeframe="1h",
-        scorer_name="btc", confluence_threshold=0.0,
-        block_regimes=frozenset(), window_days=90, step_days=30,
-        min_trades_per_window=3, strategy_kind="confluence_scorecard",
-        rationale="test", extras=common_extras,
+        bot_id="raise_b",
+        strategy_id="x",
+        symbol="BTC",
+        timeframe="1h",
+        scorer_name="btc",
+        confluence_threshold=0.0,
+        block_regimes=frozenset(),
+        window_days=90,
+        step_days=30,
+        min_trades_per_window=3,
+        strategy_kind="confluence_scorecard",
+        rationale="test",
+        extras=common_extras,
     )
     with pytest.raises(RuntimeError, match="duplicate"):
         validate_registry_no_duplicates([bot_a, bot_b], raise_on_duplicate=True)

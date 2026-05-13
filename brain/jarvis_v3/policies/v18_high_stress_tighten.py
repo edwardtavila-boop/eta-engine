@@ -27,6 +27,7 @@ The single ``HIGH_STRESS_CAP`` constant is the entire surface area of
 this candidate. Sweeping it (0.30, 0.35, 0.40) by registering siblings
 v18a/v18b/v18c gives the bandit a multi-arm comparison.
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -54,9 +55,7 @@ def evaluate_v18(req: ActionRequest, ctx: JarvisContext) -> ActionResponse:
     resp = evaluate_request(req, ctx)
     if resp.verdict != Verdict.CONDITIONAL:
         return resp
-    composite = resp.stress_composite or (
-        ctx.stress_score.composite if ctx.stress_score else 0.0
-    )
+    composite = resp.stress_composite or (ctx.stress_score.composite if ctx.stress_score else 0.0)
     if composite <= HIGH_STRESS_THRESHOLD:
         return resp
     # Tighten the cap. ``min`` with current cap so we never RELAX an
@@ -65,11 +64,13 @@ def evaluate_v18(req: ActionRequest, ctx: JarvisContext) -> ActionResponse:
     new_cap = min(current_cap, HIGH_STRESS_CAP)
     if new_cap >= current_cap:
         return resp
-    return resp.model_copy(update={
-        "size_cap_mult": new_cap,
-        "reason": f"{resp.reason} [v18 high-stress tighten {current_cap:.2f}->{new_cap:.2f}]",
-        "conditions": [*resp.conditions, f"v18_cap_tightened_to_{new_cap:.2f}"],
-    })
+    return resp.model_copy(
+        update={
+            "size_cap_mult": new_cap,
+            "reason": f"{resp.reason} [v18 high-stress tighten {current_cap:.2f}->{new_cap:.2f}]",
+            "conditions": [*resp.conditions, f"v18_cap_tightened_to_{new_cap:.2f}"],
+        }
+    )
 
 
 register_candidate(

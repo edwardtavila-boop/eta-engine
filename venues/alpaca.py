@@ -41,6 +41,8 @@ from eta_engine.venues.base import (
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
+    from eta_engine.venues.base import ExecutionCapabilities
+
 
 logger = logging.getLogger(__name__)
 
@@ -57,11 +59,33 @@ ALPACA_CRYPTO_MIN_COST_BASIS_USD = 10.0
 # Canonical crypto bases tradeable on Alpaca paper as of 2026-05.
 # Used by _alpaca_crypto_base for early "instrument-not-supported"
 # detection so an unsupported symbol fails fast with a clear reason.
-_ALPACA_CRYPTO_BASES: frozenset[str] = frozenset({
-    "AAVE", "AVAX", "BAT", "BCH", "BTC", "CRV", "DOGE", "DOT", "ETH",
-    "GRT", "LINK", "LTC", "MKR", "PEPE", "SHIB", "SOL", "SUSHI", "UNI",
-    "USDC", "USDT", "XRP", "XTZ", "YFI",
-})
+_ALPACA_CRYPTO_BASES: frozenset[str] = frozenset(
+    {
+        "AAVE",
+        "AVAX",
+        "BAT",
+        "BCH",
+        "BTC",
+        "CRV",
+        "DOGE",
+        "DOT",
+        "ETH",
+        "GRT",
+        "LINK",
+        "LTC",
+        "MKR",
+        "PEPE",
+        "SHIB",
+        "SOL",
+        "SUSHI",
+        "UNI",
+        "USDC",
+        "USDT",
+        "XRP",
+        "XTZ",
+        "YFI",
+    }
+)
 
 # Alpaca order-status string -> our canonical OrderStatus enum.
 _ALPACA_STATUS_MAP: dict[str, OrderStatus] = {
@@ -150,7 +174,7 @@ class AlpacaVenue(VenueBase):
     def connection_endpoint(self) -> str:
         return self.config.base_url
 
-    def execution_capabilities_for(self, symbol: str) -> "ExecutionCapabilities":
+    def execution_capabilities_for(self, symbol: str) -> ExecutionCapabilities:
         """Per-symbol execution capabilities for Alpaca.
 
         Crypto vs equity differ on Alpaca in TWO meaningful ways:
@@ -213,9 +237,7 @@ class AlpacaVenue(VenueBase):
             "missing": missing,
         }
         if missing:
-            details["operator_action"] = (
-                "Set ALPACA_API_KEY_ID and ALPACA_API_SECRET_KEY (or *_FILE variants)."
-            )
+            details["operator_action"] = "Set ALPACA_API_KEY_ID and ALPACA_API_SECRET_KEY (or *_FILE variants)."
             return VenueConnectionReport(
                 venue=self.name,
                 status=ConnectionStatus.STUBBED,
@@ -254,7 +276,8 @@ class AlpacaVenue(VenueBase):
         # the supervisor / dashboard can fail-soft instead of pretending
         # the venue is healthy.
         broker_blocked = (
-            probe.get("trading_blocked") or probe.get("account_blocked")
+            probe.get("trading_blocked")
+            or probe.get("account_blocked")
             or str(probe.get("status", "")).upper() not in {"ACTIVE", ""}
         )
         if broker_blocked:
@@ -382,10 +405,7 @@ class AlpacaVenue(VenueBase):
                     "venue": self.name,
                     "payload": payload,
                     "mode": "paper",
-                    "note": (
-                        "alpaca_rejected" if error_body
-                        else "mock_fallback_no_transport_or_network_error"
-                    ),
+                    "note": ("alpaca_rejected" if error_body else "mock_fallback_no_transport_or_network_error"),
                     "alpaca_error": error_body,
                 },
             )
@@ -568,7 +588,8 @@ class AlpacaVenue(VenueBase):
         }
 
     async def _post_order_with_error(
-        self, payload: dict[str, Any],
+        self,
+        payload: dict[str, Any],
     ) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
         """POST an order and return (parsed_body, error_dict).
 
@@ -678,7 +699,9 @@ class AlpacaVenue(VenueBase):
         if resp.status_code >= 400:
             logger.info(
                 "alpaca: GET %s returned %d body=%s",
-                path, resp.status_code, resp.text[:200],
+                path,
+                resp.status_code,
+                resp.text[:200],
             )
             raise DeterministicBrokerReject(
                 f"alpaca GET {path} status={resp.status_code} body={resp.text[:200]}",
@@ -777,6 +800,7 @@ def _alpaca_quantity(qty: float, *, is_crypto: bool) -> str:
     """
     if is_crypto:
         from decimal import Decimal
+
         # str(float) returns the shortest decimal that round-trips to the
         # same float — preserves exact qty for any reasonable input
         # (including position sizes pulled back from Alpaca's API).
@@ -843,8 +867,7 @@ def _validate_bracket_geometry(
     if side is Side.BUY:
         if not (stop_price < ref < target_price):
             return (
-                f"BUY bracket requires stop < entry < target; got "
-                f"stop={stop_price}, entry={ref}, target={target_price}"
+                f"BUY bracket requires stop < entry < target; got stop={stop_price}, entry={ref}, target={target_price}"
             )
     else:  # Side.SELL
         if not (target_price < ref < stop_price):

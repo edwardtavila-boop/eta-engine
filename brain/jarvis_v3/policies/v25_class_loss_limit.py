@@ -19,6 +19,7 @@ sum `realized_pnl` over bots whose `instrument_class` falls in the
 target class. If that class total < -loss_limit, return DEFERRED for
 risk-adding actions in that class.
 """
+
 from __future__ import annotations
 
 import json
@@ -43,9 +44,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-HEARTBEAT_PATH = Path(
-    r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\jarvis_intel\supervisor\heartbeat.json"
-)
+HEARTBEAT_PATH = Path(r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\jarvis_intel\supervisor\heartbeat.json")
 _CACHE_TTL_SECONDS = 30.0
 _HEARTBEAT_CACHE: dict[str, float | dict] = {"loaded_at": 0.0, "data": {}}
 
@@ -138,6 +137,7 @@ def _resolve_class(req: ActionRequest) -> str:
             _INSTRUMENT_CLASS_TO_BROAD,
         )
         from eta_engine.strategies.per_bot_registry import get_for_bot
+
         a = get_for_bot(bot_id)
     except Exception:  # noqa: BLE001
         return ""
@@ -161,6 +161,7 @@ def evaluate_v25(
     if base_resp is None:
         if wrapped_evaluator is None:
             from eta_engine.brain.jarvis_v3.policies.v24_correlation_throttle import evaluate_v24
+
             base_resp = evaluate_v24(req, ctx)
         else:
             base_resp = wrapped_evaluator(req, ctx)
@@ -189,6 +190,7 @@ def evaluate_v25(
         bot_id = str(req.payload.get("bot_id") or "") if isinstance(req.payload, dict) else ""
         try:
             from eta_engine.brain.jarvis_v3.policies._v3_events import emit_event
+
             emit_event(
                 layer="v25",
                 event="class_loss_freeze",
@@ -199,16 +201,19 @@ def evaluate_v25(
             )
         except Exception:  # noqa: BLE001
             pass
-        return base_resp.model_copy(update={
-            "verdict": Verdict.DEFERRED,
-            "reason": f"v25 class loss limit: {cls} realized PnL ${pnl:.2f} <= ${limit:.2f}",
-            "reason_code": "v25_class_loss_freeze",
-            "conditions": (base_resp.conditions or []) + [
-                f"frozen_class={cls}",
-                f"class_realized_pnl={pnl:.2f}",
-                f"loss_limit={limit:.2f}",
-            ],
-        })
+        return base_resp.model_copy(
+            update={
+                "verdict": Verdict.DEFERRED,
+                "reason": f"v25 class loss limit: {cls} realized PnL ${pnl:.2f} <= ${limit:.2f}",
+                "reason_code": "v25_class_loss_freeze",
+                "conditions": (base_resp.conditions or [])
+                + [
+                    f"frozen_class={cls}",
+                    f"class_realized_pnl={pnl:.2f}",
+                    f"loss_limit={limit:.2f}",
+                ],
+            }
+        )
     return base_resp
 
 

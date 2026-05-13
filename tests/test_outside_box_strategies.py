@@ -29,13 +29,17 @@ from eta_engine.strategies.sage_daily_gated_strategy import (
 )
 
 
-def _bar(idx: int, *, h: float, low: float, c: float | None = None,
-         v: float = 1000.0) -> BarData:
+def _bar(idx: int, *, h: float, low: float, c: float | None = None, v: float = 1000.0) -> BarData:
     ts = datetime(2026, 1, 1, tzinfo=UTC) + timedelta(hours=idx)
     c = c if c is not None else (h + low) / 2
     return BarData(
-        timestamp=ts, symbol="BTC", open=(h + low) / 2,
-        high=h, low=low, close=c, volume=v,
+        timestamp=ts,
+        symbol="BTC",
+        open=(h + low) / 2,
+        high=h,
+        low=low,
+        close=c,
+        volume=v,
     )
 
 
@@ -43,8 +47,10 @@ def _config() -> BacktestConfig:
     return BacktestConfig(
         start_date=datetime(2026, 1, 1, tzinfo=UTC),
         end_date=datetime(2026, 12, 31, tzinfo=UTC),
-        symbol="BTC", initial_equity=10_000.0,
-        risk_per_trade_pct=0.01, confluence_threshold=0.0,
+        symbol="BTC",
+        initial_equity=10_000.0,
+        risk_per_trade_pct=0.01,
+        confluence_threshold=0.0,
         max_trades_per_day=10,
     )
 
@@ -53,10 +59,14 @@ def _open(side: str, entry: float, qty: float, risk: float) -> _Open:
     """Factory for _Open instances in voting tests."""
     return _Open(
         entry_bar=_bar(0, h=entry + 1, low=entry - 1, c=entry),
-        side=side, qty=qty, entry_price=entry,
+        side=side,
+        qty=qty,
+        entry_price=entry,
         stop=entry - 1.0 if side == "BUY" else entry + 1.0,
         target=entry + 3.0 if side == "BUY" else entry - 3.0,
-        risk_usd=risk, confluence=10.0, leverage=1.0,
+        risk_usd=risk,
+        confluence=10.0,
+        leverage=1.0,
         regime="test",
     )
 
@@ -69,15 +79,23 @@ def _open(side: str, entry: float, qty: float, risk: float) -> _Open:
 def _make_sage_strat() -> SageDailyGatedStrategy:
     base_cfg = CryptoMacroConfluenceConfig(
         base=CryptoRegimeTrendConfig(
-            regime_ema=20, pullback_ema=5, warmup_bars=25,
-            atr_period=5, min_bars_between_trades=0,
-            pullback_tolerance_pct=2.0, max_trades_per_day=100,
+            regime_ema=20,
+            pullback_ema=5,
+            warmup_bars=25,
+            atr_period=5,
+            min_bars_between_trades=0,
+            pullback_tolerance_pct=2.0,
+            max_trades_per_day=100,
         ),
         filters=MacroConfluenceConfig(),  # no underlying filters
     )
-    return SageDailyGatedStrategy(SageDailyGatedConfig(
-        base=base_cfg, min_daily_conviction=0.30, strict_mode=False,
-    ))
+    return SageDailyGatedStrategy(
+        SageDailyGatedConfig(
+            base=base_cfg,
+            min_daily_conviction=0.30,
+            strict_mode=False,
+        )
+    )
 
 
 def _setup_uptrend(s: SageDailyGatedStrategy, n: int = 35) -> list[BarData]:
@@ -155,13 +173,18 @@ def test_sage_daily_strict_mode_blocks_neutral() -> None:
     cfg_obj = SageDailyGatedConfig(
         base=CryptoMacroConfluenceConfig(
             base=CryptoRegimeTrendConfig(
-                regime_ema=20, pullback_ema=5, warmup_bars=25,
-                atr_period=5, min_bars_between_trades=0,
-                pullback_tolerance_pct=2.0, max_trades_per_day=100,
+                regime_ema=20,
+                pullback_ema=5,
+                warmup_bars=25,
+                atr_period=5,
+                min_bars_between_trades=0,
+                pullback_tolerance_pct=2.0,
+                max_trades_per_day=100,
             ),
             filters=MacroConfluenceConfig(),
         ),
-        min_daily_conviction=0.30, strict_mode=True,
+        min_daily_conviction=0.30,
+        strict_mode=True,
     )
     s = SageDailyGatedStrategy(cfg_obj)
     s.attach_daily_verdict_provider(
@@ -250,7 +273,8 @@ def test_ensemble_size_by_agreement_scales_qty() -> None:
             ("c", _StubStrategy(_open("BUY", 100.0, 2.0, 100.0))),
         ],
         config=EnsembleVotingConfig(
-            min_agreement_count=2, size_by_agreement=True,
+            min_agreement_count=2,
+            size_by_agreement=True,
             max_size_multiplier=2.0,
         ),
     )
@@ -288,10 +312,7 @@ def test_ensemble_fail_safe_abstains_on_toxic_wick_bar() -> None:
         ],
         config=EnsembleVotingConfig(min_agreement_count=2, enable_fail_safe=True),
     )
-    hist = [
-        _bar(i, h=101.0 + i * 0.1, low=99.0 + i * 0.1, c=100.0 + i * 0.1)
-        for i in range(8)
-    ]
+    hist = [_bar(i, h=101.0 + i * 0.1, low=99.0 + i * 0.1, c=100.0 + i * 0.1) for i in range(8)]
     # Tiny body, huge wicks -> should trigger abstain.
     toxic = _bar(99, h=112.0, low=88.0, c=100.01)
     out = s.maybe_enter(toxic, hist, 10_000.0, _config())
@@ -330,7 +351,8 @@ def test_dd_sizing_reduces_size_on_drawdown() -> None:
     """Equity drops 20% from HWM → multiplier ≈ 1 - 0.5*0.2 = 0.9."""
     sub = _StubStrategy(_open("BUY", 100.0, 10.0, 100.0))
     s = DrawdownAwareSizingStrategy(
-        sub, DrawdownAwareSizingConfig(drawdown_penalty=0.5),
+        sub,
+        DrawdownAwareSizingConfig(drawdown_penalty=0.5),
     )
     # Bar 1: at HWM
     s.maybe_enter(_bar(0, h=100, low=99, c=99.5), [], 10_000.0, _config())

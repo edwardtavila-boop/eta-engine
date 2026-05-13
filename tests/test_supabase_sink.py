@@ -124,6 +124,7 @@ def test_post_event_swallows_http_error(
     sample_event: JournalEvent,
 ) -> None:
     import urllib.error
+
     err = urllib.error.HTTPError(
         url="https://test.supabase.co/rest/v1/decision_journal",
         code=500,
@@ -141,6 +142,7 @@ def test_post_event_swallows_url_error(
     sample_event: JournalEvent,
 ) -> None:
     import urllib.error
+
     with mock.patch(
         "urllib.request.urlopen",
         side_effect=urllib.error.URLError("Network unreachable"),

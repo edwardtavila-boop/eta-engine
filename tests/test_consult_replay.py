@@ -1,4 +1,5 @@
 """Tests for consult_replay — T7 single-consult counterfactual replay."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -14,14 +15,14 @@ def _v2_record(
         "consult_id": consult_id,
         "bot_id": "test_bot",
         "schema_version": 2,
-        "school_inputs": school_inputs if school_inputs is not None else {
+        "school_inputs": school_inputs
+        if school_inputs is not None
+        else {
             "momentum": {"score": 0.8},
             "mean_revert": {"score": -0.2},
         },
         "portfolio_inputs": {},
-        "hot_weights_snapshot": (
-            hot_weights if hot_weights is not None else {"momentum": 1.0, "mean_revert": 1.0}
-        ),
+        "hot_weights_snapshot": (hot_weights if hot_weights is not None else {"momentum": 1.0, "mean_revert": 1.0}),
         "overrides_snapshot": overrides if overrides is not None else {},
         "rng_master_seed": None,
         "verdict": {"final_verdict": "PROCEED"},
@@ -46,7 +47,8 @@ def test_replay_with_size_modifier_pin_blocks_verdict() -> None:
 
     rec = _v2_record()
     result = consult_replay.replay(
-        "rep001", record=rec,
+        "rep001",
+        record=rec,
         override_overrides={"size_modifier": 0.0},
     )
     assert result.replay_verdict == "BLOCKED"
@@ -66,7 +68,8 @@ def test_replay_with_hot_weights_override_flips_verdict() -> None:
     )
     # Now boost mean_revert to 5.0 → should flip to AVOID
     result = consult_replay.replay(
-        "rep001", record=rec,
+        "rep001",
+        record=rec,
         override_hot_weights={"momentum": 1.0, "mean_revert": 5.0},
     )
     assert result.base_verdict == "PROCEED"
@@ -80,7 +83,8 @@ def test_replay_with_school_inputs_override() -> None:
 
     rec = _v2_record()
     result = consult_replay.replay(
-        "rep001", record=rec,
+        "rep001",
+        record=rec,
         override_school_inputs={
             "momentum": {"score": -1.0},
             "mean_revert": {"score": -1.0},
@@ -122,7 +126,9 @@ def test_counterfactual_size_modifier_pin() -> None:
 
     rec = _v2_record()
     result = consult_replay.counterfactual(
-        "rep001", pin_size_modifier=0.5, record=rec,
+        "rep001",
+        pin_size_modifier=0.5,
+        record=rec,
     )
     # Non-zero modifier doesn't BLOCK; it just records the override
     assert result.error is None
@@ -156,7 +162,9 @@ def test_counterfactual_pin_zero_blocks() -> None:
 
     rec = _v2_record()
     result = consult_replay.counterfactual(
-        "rep001", pin_size_modifier=0.0, record=rec,
+        "rep001",
+        pin_size_modifier=0.0,
+        record=rec,
     )
     assert result.replay_verdict == "BLOCKED"
 

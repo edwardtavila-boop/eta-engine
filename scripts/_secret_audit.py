@@ -119,11 +119,7 @@ def _scan_file(path: Path) -> list[tuple[int, str, str]]:
 
 def _should_skip_file(path: Path) -> bool:
     """True when a file should not be scanned for text secrets."""
-    return (
-        any(p in SKIP_DIRS for p in path.parts)
-        or path.suffix.lower() in SKIP_EXTS
-        or _is_binary(path)
-    )
+    return any(p in SKIP_DIRS for p in path.parts) or path.suffix.lower() in SKIP_EXTS or _is_binary(path)
 
 
 def _walk(root: Path) -> Iterator[Path]:

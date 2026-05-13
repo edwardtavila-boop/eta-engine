@@ -43,6 +43,7 @@ Ladder of safety (recommended order to flip on)
 Each flag is independent. Earlier ones provide signal for whether to
 flip later ones.
 """
+
 from __future__ import annotations
 
 import os
@@ -58,54 +59,73 @@ class _FlagDef:
 
 # Single source of truth for what's flippable + what each flag does.
 _FLAGS: list[_FlagDef] = [
-    _FlagDef("PRE_FLIGHT_CORRELATION",
-             default=True,
-             description="Correlation throttle in bot_pre_flight. Default ON: cheap dict lookup."),
-    _FlagDef("KAIZEN_DAILY_CLOSE",
-             default=True,
-             description="Nightly run of run_kaizen_close_cycle.py. Default ON: doctrine-mandated."),
-    _FlagDef("CRITIQUE_NIGHTLY",
-             default=True,
-             description="2nd reviewer over the day's audit. Default ON: pure-read."),
-    _FlagDef("CALIBRATION_DAILY",
-             default=True,
-             description="Daily Platt sigmoid fit. Default ON: pure-read + write to state/."),
-    _FlagDef("ANOMALY_SCAN_15M",
-             default=True,
-             description="Every-15min KS-stat regime alerter. Default ON: read-only with cooldown."),
-    _FlagDef("BANDIT_LIVE_ROUTING",
-             default=False,
-             description="Bandit splits LIVE traffic across registered candidates. Default OFF: wait for confidence."),
-    _FlagDef("CONTEXTUAL_BANDIT",
-             default=False,
-             description="Use Thompson-sampling per-context bandit instead of global epsilon-greedy. Default OFF."),
-    _FlagDef("AUTO_PROMOTE",
-             default=False,
-             description=(
-                 "When promotion-check finds a winner, auto-flip the champion "
-                 "(skip operator approval). Default OFF: HUMAN IN THE LOOP."
-             )),
-    _FlagDef("PER_BOT_PRE_FLIGHT",
-             default=False,
-             description=(
-                 "Bots route through bot_pre_flight() instead of legacy "
-                 "_ask_jarvis() direct. Default OFF: opt-in."
-             )),
-    _FlagDef("ONLINE_LEARNING",
-             default=False,
-             description="Per-bot OnlineUpdater observes fills and can safely shrink cold setup buckets. Default OFF."),
-    _FlagDef("PORTFOLIO_REBALANCER",
-             default=False,
-             description="Weekly Sharpe-rank reallocation across bots via set_equity_ceiling. Default OFF."),
-    _FlagDef("VERDICT_WEBHOOK",
-             default=False,
-             description="Forward verdict stream to Slack/Discord. Default OFF: requires ETA_VERDICT_WEBHOOK_URL."),
-    _FlagDef("NOTION_EXPORT",
-             default=False,
-             description="Daily digest -> Notion/Airtable. Default OFF: requires creds."),
-    _FlagDef("V22_SAGE_MODULATION",
-             default=False,
-             description="v22 candidate uses sage confluence. Default OFF: in dev."),
+    _FlagDef(
+        "PRE_FLIGHT_CORRELATION",
+        default=True,
+        description="Correlation throttle in bot_pre_flight. Default ON: cheap dict lookup.",
+    ),
+    _FlagDef(
+        "KAIZEN_DAILY_CLOSE",
+        default=True,
+        description="Nightly run of run_kaizen_close_cycle.py. Default ON: doctrine-mandated.",
+    ),
+    _FlagDef("CRITIQUE_NIGHTLY", default=True, description="2nd reviewer over the day's audit. Default ON: pure-read."),
+    _FlagDef(
+        "CALIBRATION_DAILY",
+        default=True,
+        description="Daily Platt sigmoid fit. Default ON: pure-read + write to state/.",
+    ),
+    _FlagDef(
+        "ANOMALY_SCAN_15M",
+        default=True,
+        description="Every-15min KS-stat regime alerter. Default ON: read-only with cooldown.",
+    ),
+    _FlagDef(
+        "BANDIT_LIVE_ROUTING",
+        default=False,
+        description="Bandit splits LIVE traffic across registered candidates. Default OFF: wait for confidence.",
+    ),
+    _FlagDef(
+        "CONTEXTUAL_BANDIT",
+        default=False,
+        description="Use Thompson-sampling per-context bandit instead of global epsilon-greedy. Default OFF.",
+    ),
+    _FlagDef(
+        "AUTO_PROMOTE",
+        default=False,
+        description=(
+            "When promotion-check finds a winner, auto-flip the champion "
+            "(skip operator approval). Default OFF: HUMAN IN THE LOOP."
+        ),
+    ),
+    _FlagDef(
+        "PER_BOT_PRE_FLIGHT",
+        default=False,
+        description=(
+            "Bots route through bot_pre_flight() instead of legacy _ask_jarvis() direct. Default OFF: opt-in."
+        ),
+    ),
+    _FlagDef(
+        "ONLINE_LEARNING",
+        default=False,
+        description="Per-bot OnlineUpdater observes fills and can safely shrink cold setup buckets. Default OFF.",
+    ),
+    _FlagDef(
+        "PORTFOLIO_REBALANCER",
+        default=False,
+        description="Weekly Sharpe-rank reallocation across bots via set_equity_ceiling. Default OFF.",
+    ),
+    _FlagDef(
+        "VERDICT_WEBHOOK",
+        default=False,
+        description="Forward verdict stream to Slack/Discord. Default OFF: requires ETA_VERDICT_WEBHOOK_URL.",
+    ),
+    _FlagDef(
+        "NOTION_EXPORT", default=False, description="Daily digest -> Notion/Airtable. Default OFF: requires creds."
+    ),
+    _FlagDef(
+        "V22_SAGE_MODULATION", default=False, description="v22 candidate uses sage confluence. Default OFF: in dev."
+    ),
 ]
 
 
@@ -140,11 +160,7 @@ class _Flags:
 
     def diff_from_default(self) -> dict[str, bool]:
         """Flags whose effective state differs from their default."""
-        return {
-            f.name: is_enabled(f.name)
-            for f in _FLAGS
-            if is_enabled(f.name) != f.default
-        }
+        return {f.name: is_enabled(f.name) for f in _FLAGS if is_enabled(f.name) != f.default}
 
 
 ETA_FLAGS = _Flags()

@@ -45,6 +45,7 @@ under uncertain regime"):
     )
     print(stats.quantile_at_step(8))  # what does +8 bars look like?
 """
+
 from __future__ import annotations
 
 import math
@@ -189,9 +190,7 @@ def generate_paths_full(
     samples: list[list[float]] = []
     regime_visits: dict[str, int] = {}
     # For per-step quantile tracking we collect price arrays per step
-    per_step_prices: list[list[float]] = (
-        [[] for _ in range(horizon_steps)] if keep_quantile_steps else []
-    )
+    per_step_prices: list[list[float]] = [[] for _ in range(horizon_steps)] if keep_quantile_steps else []
 
     for path_idx in range(n_paths):
         s = s0
@@ -212,7 +211,10 @@ def generate_paths_full(
 
             # Mean-revert sigma toward the current regime's target
             cur_sigma = _next_sigma(
-                cur_sigma, current_params.sigma, sigma_persistence, rng,
+                cur_sigma,
+                current_params.sigma,
+                sigma_persistence,
+                rng,
             )
 
             # Heavy-tail innovation
@@ -243,19 +245,18 @@ def generate_paths_full(
             if not step_prices:
                 quantiles_per_step.append({})
                 continue
-            quantiles_per_step.append({
-                "p05": round(_percentile(step_prices, 0.05), 4),
-                "p25": round(_percentile(step_prices, 0.25), 4),
-                "p50": round(_percentile(step_prices, 0.50), 4),
-                "p75": round(_percentile(step_prices, 0.75), 4),
-                "p95": round(_percentile(step_prices, 0.95), 4),
-            })
+            quantiles_per_step.append(
+                {
+                    "p05": round(_percentile(step_prices, 0.05), 4),
+                    "p25": round(_percentile(step_prices, 0.25), 4),
+                    "p50": round(_percentile(step_prices, 0.50), 4),
+                    "p75": round(_percentile(step_prices, 0.75), 4),
+                    "p95": round(_percentile(step_prices, 0.95), 4),
+                }
+            )
 
     total_visits = sum(regime_visits.values())
-    regime_pct = {
-        k: round(v / total_visits, 3)
-        for k, v in regime_visits.items()
-    } if total_visits > 0 else {}
+    regime_pct = {k: round(v / total_visits, 3) for k, v in regime_visits.items()} if total_visits > 0 else {}
 
     return FullPathStats(
         n_paths=n_paths,
@@ -267,7 +268,8 @@ def generate_paths_full(
         p75_terminal_pct=round(_percentile(terminal_returns_pct, 0.75), 3),
         p95_terminal_pct=round(_percentile(terminal_returns_pct, 0.95), 3),
         avg_max_drawdown_pct=round(
-            sum(max_drawdowns_pct) / max(len(max_drawdowns_pct), 1), 3,
+            sum(max_drawdowns_pct) / max(len(max_drawdowns_pct), 1),
+            3,
         ),
         p95_max_drawdown_pct=round(_percentile(max_drawdowns_pct, 0.95), 3),
         quantiles_per_step=quantiles_per_step,
@@ -278,10 +280,7 @@ def generate_paths_full(
 
 def regime_aware_summary(stats: FullPathStats) -> str:
     """Human-readable summary that highlights regime drift."""
-    most_visited = (
-        max(stats.regime_visit_pct.items(), key=lambda t: t[1])
-        if stats.regime_visit_pct else (None, 0.0)
-    )
+    most_visited = max(stats.regime_visit_pct.items(), key=lambda t: t[1]) if stats.regime_visit_pct else (None, 0.0)
     return (
         f"{stats.horizon_steps}-step regime-mixture rollouts: "
         f"median terminal {stats.median_terminal_pct:+.2f}%, "

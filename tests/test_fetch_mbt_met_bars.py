@@ -5,6 +5,7 @@ Verifies CLI parsing, conid resolution, chunk planning, CSV format
 compatibility with ``feeds.strategy_lab.engine._load_ohlcv``, and the
 end-to-end ``run()`` path on a synthetic gateway response.
 """
+
 from __future__ import annotations
 
 import csv
@@ -122,8 +123,7 @@ def test_resolve_front_month_conid_handles_empty_payload(
 
 def test_normalize_rows_converts_ms_to_seconds() -> None:
     raw = [
-        {"t": 1_700_000_000_000, "o": 1.0, "h": 2.0, "l": 0.5,
-         "c": 1.5, "v": 100.0},
+        {"t": 1_700_000_000_000, "o": 1.0, "h": 2.0, "l": 0.5, "c": 1.5, "v": 100.0},
         # Junk row dropped
         {"t": 0, "o": 0, "h": 0, "l": 0, "c": 0, "v": 0},
     ]
@@ -137,20 +137,16 @@ def test_merge_with_existing_dedupes_by_time(tmp_path: Path) -> None:
     out_path = tmp_path / "MBT1_5m.csv"
     # Seed existing file
     existing = [
-        {"time": 1000, "open": 1.0, "high": 1.1, "low": 0.9,
-         "close": 1.05, "volume": 10.0},
-        {"time": 1300, "open": 1.05, "high": 1.2, "low": 1.0,
-         "close": 1.15, "volume": 12.0},
+        {"time": 1000, "open": 1.0, "high": 1.1, "low": 0.9, "close": 1.05, "volume": 10.0},
+        {"time": 1300, "open": 1.05, "high": 1.2, "low": 1.0, "close": 1.15, "volume": 12.0},
     ]
     mod.write_csv(out_path, existing)
 
     new = [
         # Duplicate timestamp — should be skipped
-        {"time": 1000, "open": 9.0, "high": 9.0, "low": 9.0,
-         "close": 9.0, "volume": 0.0},
+        {"time": 1000, "open": 9.0, "high": 9.0, "low": 9.0, "close": 9.0, "volume": 0.0},
         # New
-        {"time": 1600, "open": 1.15, "high": 1.3, "low": 1.1,
-         "close": 1.25, "volume": 14.0},
+        {"time": 1600, "open": 1.15, "high": 1.3, "low": 1.1, "close": 1.25, "volume": 14.0},
     ]
     merged, n_existing, n_new = mod.merge_with_existing(out_path, new)
     assert n_existing == 2
@@ -164,10 +160,8 @@ def test_csv_format_matches_load_ohlcv_expectations(tmp_path: Path) -> None:
     """Output CSV must be loadable by feeds.strategy_lab.engine._load_ohlcv."""
     out_path = tmp_path / "MBT1_5m.csv"
     rows = [
-        {"time": 1_700_000_000, "open": 50000.0, "high": 50100.0,
-         "low": 49900.0, "close": 50050.0, "volume": 12.5},
-        {"time": 1_700_000_300, "open": 50050.0, "high": 50200.0,
-         "low": 50000.0, "close": 50150.0, "volume": 10.0},
+        {"time": 1_700_000_000, "open": 50000.0, "high": 50100.0, "low": 49900.0, "close": 50050.0, "volume": 12.5},
+        {"time": 1_700_000_300, "open": 50050.0, "high": 50200.0, "low": 50000.0, "close": 50150.0, "volume": 10.0},
     ]
     mod.write_csv(out_path, rows)
 
@@ -186,21 +180,29 @@ def test_csv_format_matches_load_ohlcv_expectations(tmp_path: Path) -> None:
 
 
 def test_run_dry_run_does_not_hit_network(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
     tmp_path: Path,
 ) -> None:
     """--dry-run prints planned requests and writes no files."""
+
     # Spy: _http_get_json must NEVER be called in dry-run
     def boom(*_a: Any, **_kw: Any) -> Any:
         raise AssertionError("network must not be hit in --dry-run")
 
     monkeypatch.setattr(mod, "_http_get_json", boom)
-    rc = mod.run([
-        "--symbols", "MBT", "MET",
-        "--days", "30",
-        "--root", str(tmp_path),
-        "--dry-run",
-    ])
+    rc = mod.run(
+        [
+            "--symbols",
+            "MBT",
+            "MET",
+            "--days",
+            "30",
+            "--root",
+            str(tmp_path),
+            "--dry-run",
+        ]
+    )
     assert rc == 0
     out = capsys.readouterr().out
     assert "dry-run" in out
@@ -211,7 +213,8 @@ def test_run_dry_run_does_not_hit_network(
 
 
 def test_run_writes_canonical_csv_with_mocked_gateway(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     """End-to-end run with a mocked Client Portal Gateway response."""
     # Plan: resolve conid (1 call) + history fetch (≥1 call). We feed one
@@ -220,9 +223,14 @@ def test_run_writes_canonical_csv_with_mocked_gateway(
     base_ms = int(datetime(2026, 4, 1, tzinfo=UTC).timestamp() * 1000)
     history_payload = {
         "data": [
-            {"t": base_ms + i * 300_000, "o": 50000.0 + i,
-             "h": 50100.0 + i, "l": 49900.0 + i,
-             "c": 50050.0 + i, "v": 1.0}
+            {
+                "t": base_ms + i * 300_000,
+                "o": 50000.0 + i,
+                "h": 50100.0 + i,
+                "l": 49900.0 + i,
+                "c": 50050.0 + i,
+                "v": 1.0,
+            }
             for i in range(5)
         ],
     }
@@ -246,12 +254,18 @@ def test_run_writes_canonical_csv_with_mocked_gateway(
     monkeypatch.setattr(mod, "_http_get_json", fake_get)
     monkeypatch.setattr(mod.time, "sleep", lambda *_a, **_kw: None)
 
-    rc = mod.run([
-        "--symbols", "MBT",
-        "--days", "30",
-        "--end", "2026-04-02",
-        "--root", str(tmp_path),
-    ])
+    rc = mod.run(
+        [
+            "--symbols",
+            "MBT",
+            "--days",
+            "30",
+            "--end",
+            "2026-04-02",
+            "--root",
+            str(tmp_path),
+        ]
+    )
     assert rc == 0
 
     # CSV at canonical filename pattern
@@ -270,22 +284,28 @@ def test_run_writes_canonical_csv_with_mocked_gateway(
 
 
 def test_run_returns_nonzero_when_gateway_returns_no_data(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     """If the gateway returns empty rows, run() exits 1 — the harness
     should fail loudly so the operator notices."""
     monkeypatch.setattr(
-        mod, "_http_get_json",
+        mod,
+        "_http_get_json",
         lambda url, **_kw: (
-            {"MBT": [{"conid": 111, "expirationDate": "20260626"}]}
-            if "/trsrv/futures" in url else {"data": []}
+            {"MBT": [{"conid": 111, "expirationDate": "20260626"}]} if "/trsrv/futures" in url else {"data": []}
         ),
     )
     monkeypatch.setattr(mod.time, "sleep", lambda *_a, **_kw: None)
 
-    rc = mod.run([
-        "--symbols", "MBT",
-        "--days", "10",
-        "--root", str(tmp_path),
-    ])
+    rc = mod.run(
+        [
+            "--symbols",
+            "MBT",
+            "--days",
+            "10",
+            "--root",
+            str(tmp_path),
+        ]
+    )
     assert rc == 1

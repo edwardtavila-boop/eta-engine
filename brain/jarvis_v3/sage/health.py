@@ -11,6 +11,7 @@ exception caught by consult_sage's safety net, etc.). This module:
 Run via ``Eta-Sage-Health-Daily`` scheduled task; alerts via Resend
 when any school's neutral_rate exceeds the threshold.
 """
+
 from __future__ import annotations
 
 import json
@@ -23,9 +24,7 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_STATE_PATH = (
-    Path(__file__).resolve().parents[3] / "state" / "sage" / "health.json"
-)
+DEFAULT_STATE_PATH = Path(__file__).resolve().parents[3] / "state" / "sage" / "health.json"
 
 
 @dataclass
@@ -78,18 +77,24 @@ class SageHealthMonitor:
     def _save(self) -> None:
         self.state_path.parent.mkdir(parents=True, exist_ok=True)
         try:
-            self.state_path.write_text(json.dumps({
-                "saved_at": datetime.now(UTC).isoformat(),
-                "schools": {
-                    name: {
-                        "n_consultations": h.n_consultations,
-                        "n_neutral": h.n_neutral,
-                        "neutral_rate": round(h.neutral_rate, 4),
-                        "last_observed": h.last_observed,
-                    }
-                    for name, h in self._health.items()
-                },
-            }, indent=2), encoding="utf-8")
+            self.state_path.write_text(
+                json.dumps(
+                    {
+                        "saved_at": datetime.now(UTC).isoformat(),
+                        "schools": {
+                            name: {
+                                "n_consultations": h.n_consultations,
+                                "n_neutral": h.n_neutral,
+                                "neutral_rate": round(h.neutral_rate, 4),
+                                "last_observed": h.last_observed,
+                            }
+                            for name, h in self._health.items()
+                        },
+                    },
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
         except OSError as exc:
             logger.warning("sage health save failed: %s", exc)
 
@@ -137,18 +142,20 @@ class SageHealthMonitor:
                     severity = "warn"
                 else:
                     continue
-                issues.append(HealthIssue(
-                    school=name,
-                    neutral_rate=h.neutral_rate,
-                    n_consultations=h.n_consultations,
-                    severity=severity,
-                    detail=(
-                        f"school '{name}' returned NEUTRAL on "
-                        f"{h.n_neutral}/{h.n_consultations} consults "
-                        f"({h.neutral_rate*100:.1f}%); likely broken "
-                        f"(missing dep, exception, stale data)."
-                    ),
-                ))
+                issues.append(
+                    HealthIssue(
+                        school=name,
+                        neutral_rate=h.neutral_rate,
+                        n_consultations=h.n_consultations,
+                        severity=severity,
+                        detail=(
+                            f"school '{name}' returned NEUTRAL on "
+                            f"{h.n_neutral}/{h.n_consultations} consults "
+                            f"({h.neutral_rate * 100:.1f}%); likely broken "
+                            f"(missing dep, exception, stale data)."
+                        ),
+                    )
+                )
         return issues
 
     def snapshot(self) -> dict[str, dict]:

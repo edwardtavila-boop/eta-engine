@@ -23,6 +23,7 @@ Usage::
     if rl.try_consume(event_class="jarvis", level="warn"):
         dispatcher.send(event, payload)
 """
+
 from __future__ import annotations
 
 import json
@@ -50,8 +51,8 @@ class _Bucket:
 # to prevent nominal-day pager fatigue.
 DEFAULT_BUCKETS: dict[str, dict[str, float]] = {
     "critical": {"capacity": 999, "refill_per_min": 999.0},
-    "warn":     {"capacity": 5,   "refill_per_min": 1.0},
-    "info":     {"capacity": 10,  "refill_per_min": 0.5},
+    "warn": {"capacity": 5, "refill_per_min": 1.0},
+    "info": {"capacity": 10, "refill_per_min": 0.5},
 }
 
 
@@ -96,13 +97,15 @@ class GlobalRateLimiter:
         self.state_path.parent.mkdir(parents=True, exist_ok=True)
         try:
             self.state_path.write_text(
-                json.dumps({
-                    "buckets": {
-                        level: {"tokens": b.tokens, "last_refill_ts": b.last_refill_ts}
-                        for level, b in self._buckets.items()
-                    },
-                    "saved_at": time.time(),
-                }),
+                json.dumps(
+                    {
+                        "buckets": {
+                            level: {"tokens": b.tokens, "last_refill_ts": b.last_refill_ts}
+                            for level, b in self._buckets.items()
+                        },
+                        "saved_at": time.time(),
+                    }
+                ),
                 encoding="utf-8",
             )
         except OSError as exc:

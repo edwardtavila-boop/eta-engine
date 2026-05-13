@@ -167,9 +167,7 @@ def main() -> None:
         ),
         "operator_directive_quote": ("continue all."),
         "modules_modified": [
-            "eta_engine/core/consistency_guard.py "
-            "(new eta_trading_day_iso helper + deprecation "
-            "note on utc_today_iso)",
+            "eta_engine/core/consistency_guard.py (new eta_trading_day_iso helper + deprecation note on utc_today_iso)",
             "eta_engine/scripts/run_eta_live.py "
             "(B1 switch to session-day key; B2 live-mode tracker "
             "gate in ApexRuntime.__init__; B3 VIOLATION -> "

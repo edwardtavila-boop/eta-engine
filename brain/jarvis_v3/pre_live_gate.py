@@ -25,6 +25,7 @@ The operator runs:
 
 Pure stdlib.
 """
+
 from __future__ import annotations
 
 import json
@@ -50,13 +51,13 @@ class PreLiveGateConfig:
     min_trades: int = 100
 
     # Replay
-    min_replay_lift: float = 0.0          # 0.0 = at least no regression
+    min_replay_lift: float = 0.0  # 0.0 = at least no regression
 
     # Regression
     min_regression_pass_rate: float = 1.0  # default: no broken cases
 
     # Other
-    min_is_oos_ratio: float = 0.6          # OOS sharpe / IS sharpe
+    min_is_oos_ratio: float = 0.6  # OOS sharpe / IS sharpe
 
 
 @dataclass
@@ -79,6 +80,7 @@ class PromotionDecision:
 
     def to_dict(self) -> dict:
         from dataclasses import asdict
+
         return asdict(self)
 
 
@@ -116,25 +118,16 @@ def evaluate_for_live(
     is_oos_ratio = 0.0
     if wf.aggregate_sharpe > 0:
         train_sharpe = wf.aggregate_sharpe + wf.is_oos_gap
-        is_oos_ratio = (
-            wf.aggregate_sharpe / train_sharpe if train_sharpe > 0 else 0.0
-        )
+        is_oos_ratio = wf.aggregate_sharpe / train_sharpe if train_sharpe > 0 else 0.0
 
     gates: dict[str, bool] = {
-        "walk_forward_sharpe":
-            wf.aggregate_sharpe >= cfg.min_sharpe,
-        "walk_forward_psr":
-            wf.aggregate_psr >= cfg.min_psr,
-        "walk_forward_max_dd":
-            wf.aggregate_max_dd_r <= cfg.max_drawdown_r,
-        "walk_forward_n_trades":
-            wf.n_total_trades >= cfg.min_trades,
-        "is_oos_ratio":
-            is_oos_ratio >= cfg.min_is_oos_ratio,
-        "replay_lift":
-            replay_lift >= cfg.min_replay_lift,
-        "regression_pass_rate":
-            regression_pass_rate >= cfg.min_regression_pass_rate,
+        "walk_forward_sharpe": wf.aggregate_sharpe >= cfg.min_sharpe,
+        "walk_forward_psr": wf.aggregate_psr >= cfg.min_psr,
+        "walk_forward_max_dd": wf.aggregate_max_dd_r <= cfg.max_drawdown_r,
+        "walk_forward_n_trades": wf.n_total_trades >= cfg.min_trades,
+        "is_oos_ratio": is_oos_ratio >= cfg.min_is_oos_ratio,
+        "replay_lift": replay_lift >= cfg.min_replay_lift,
+        "regression_pass_rate": regression_pass_rate >= cfg.min_regression_pass_rate,
     }
     failed = [name for name, ok in gates.items() if not ok]
     passed = not failed

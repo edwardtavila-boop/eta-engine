@@ -16,6 +16,7 @@ approves promotion via Resend ``model_retrain_complete`` alert.
 
 Idempotent: re-running on the same day no-ops.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -33,8 +34,7 @@ logger = logging.getLogger("retrain_models")
 
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(description=__doc__,
-                                formatter_class=argparse.RawDescriptionHelpFormatter)
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--lookback-days", type=int, default=90)
     p.add_argument("--out-dir", type=Path, default=ROOT / "state" / "models")
     p.add_argument("--dry-run", action="store_true")
@@ -57,6 +57,7 @@ def main(argv: list[str] | None = None) -> int:
     # --- 1. Calibrator (full retrain over wider window) ---
     try:
         from eta_engine.brain.jarvis_v3.calibration import fit_from_audit
+
         cutoff = datetime.now(UTC) - timedelta(days=args.lookback_days)
         audit_dir = ROOT / "state" / "jarvis_audit"
         audit_files = list(audit_dir.glob("*.jsonl")) if audit_dir.exists() else []
@@ -80,13 +81,17 @@ def main(argv: list[str] | None = None) -> int:
     # --- 2. Correlation matrix refresh ---
     try:
         import subprocess
+
         if not args.dry_run:
             subprocess.run(
                 [sys.executable, "-m", "eta_engine.scripts.refresh_correlation_matrix"],
-                check=False, timeout=120, cwd=str(ROOT),
+                check=False,
+                timeout=120,
+                cwd=str(ROOT),
             )
-            summary["artifacts"].append({"name": "correlation_matrix",
-                                          "path": str(ROOT / "state" / "correlation" / "learned.json")})
+            summary["artifacts"].append(
+                {"name": "correlation_matrix", "path": str(ROOT / "state" / "correlation" / "learned.json")}
+            )
             logger.info("correlation_matrix refreshed")
     except Exception as exc:  # noqa: BLE001
         logger.warning("correlation refresh failed: %s", exc)
@@ -94,11 +99,13 @@ def main(argv: list[str] | None = None) -> int:
     # --- 3. Stress weights (placeholder) ---
     # Stress weights live in jarvis_context; refitting requires labeled
     # outcomes which we'll add when the realized_r feedback has 90+ days.
-    summary["artifacts"].append({
-        "name": "stress_weights",
-        "status": "deferred",
-        "reason": "needs 90+ days of realized_r feedback in journal",
-    })
+    summary["artifacts"].append(
+        {
+            "name": "stress_weights",
+            "status": "deferred",
+            "reason": "needs 90+ days of realized_r feedback in journal",
+        }
+    )
 
     # --- Final report ---
     if not args.dry_run:
@@ -111,12 +118,16 @@ def main(argv: list[str] | None = None) -> int:
     try:
         import yaml
         from eta_engine.obs.alert_dispatcher import AlertDispatcher
+
         cfg = yaml.safe_load((ROOT / "configs" / "alerts.yaml").read_text(encoding="utf-8"))
-        AlertDispatcher(cfg).send("model_retrain_complete", {
-            "date": today,
-            "n_artifacts": len([a for a in summary["artifacts"] if "path" in a]),
-            "summary": str(summary["artifacts"]),
-        })
+        AlertDispatcher(cfg).send(
+            "model_retrain_complete",
+            {
+                "date": today,
+                "n_artifacts": len([a for a in summary["artifacts"] if "path" in a]),
+                "summary": str(summary["artifacts"]),
+            },
+        )
     except Exception as exc:  # noqa: BLE001
         logger.debug("model_retrain_complete alert (non-fatal): %s", exc)
 

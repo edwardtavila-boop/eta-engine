@@ -43,28 +43,26 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
-DEFAULT_STATE_PATH = (
-    Path("~/.local/state/eta_engine/chaos_state.json").expanduser()
-)
+DEFAULT_STATE_PATH = Path("~/.local/state/eta_engine/chaos_state.json").expanduser()
 
 # US trading session in UTC (NYSE: 13:30 - 20:00 UTC, plus 1h overlap
 # for European close + GLOBEX close-out volatility).
 SESSION_BLACKOUT_START = dtime(13, 0)
-SESSION_BLACKOUT_END   = dtime(21, 0)
+SESSION_BLACKOUT_END = dtime(21, 0)
 
 
 @dataclass(frozen=True)
 class ChaosScheduleEntry:
     drill_name: str
     every_days: float
-    severity_max: str = "medium"   # don't auto-run "high" drills
+    severity_max: str = "medium"  # don't auto-run "high" drills
 
 
 @dataclass
 class ChaosScheduler:
-    schedule:    list[ChaosScheduleEntry] = field(default_factory=list)
-    state_path:  Path = DEFAULT_STATE_PATH
-    last_run:    dict[str, str] = field(default_factory=dict)  # name -> ISO ts
+    schedule: list[ChaosScheduleEntry] = field(default_factory=list)
+    state_path: Path = DEFAULT_STATE_PATH
+    last_run: dict[str, str] = field(default_factory=dict)  # name -> ISO ts
 
     def __post_init__(self) -> None:
         self._load()
@@ -87,8 +85,7 @@ class ChaosScheduler:
 
     def _save(self) -> None:
         self.state_path.parent.mkdir(parents=True, exist_ok=True)
-        fd, tmp = tempfile.mkstemp(prefix=self.state_path.name + ".",
-                                   dir=str(self.state_path.parent))
+        fd, tmp = tempfile.mkstemp(prefix=self.state_path.name + ".", dir=str(self.state_path.parent))
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as fh:
                 json.dump(self.last_run, fh, indent=2, sort_keys=True)
@@ -148,10 +145,10 @@ def make_default_schedule() -> list[ChaosScheduleEntry]:
     operator opts them in explicitly.
     """
     return [
-        ChaosScheduleEntry("chrony_kill",           every_days=30, severity_max="low"),
-        ChaosScheduleEntry("redis_stall",           every_days=30, severity_max="low"),
-        ChaosScheduleEntry("ws_disconnect_bybit",   every_days=45, severity_max="medium"),
-        ChaosScheduleEntry("dns_jam",               every_days=45, severity_max="medium"),
+        ChaosScheduleEntry("chrony_kill", every_days=30, severity_max="low"),
+        ChaosScheduleEntry("redis_stall", every_days=30, severity_max="low"),
+        ChaosScheduleEntry("ws_disconnect_bybit", every_days=45, severity_max="medium"),
+        ChaosScheduleEntry("dns_jam", every_days=45, severity_max="medium"),
     ]
 
 

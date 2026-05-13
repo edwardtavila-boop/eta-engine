@@ -11,15 +11,21 @@ from eta_engine.core.data_pipeline import BarData
 from eta_engine.strategies.drb_strategy import DRBConfig, DRBStrategy
 
 
-def _bar(day: int, *, h: float, low: float, c: float | None = None,
-         o: float | None = None, v: float = 1000.0) -> BarData:
+def _bar(
+    day: int, *, h: float, low: float, c: float | None = None, o: float | None = None, v: float = 1000.0
+) -> BarData:
     """One daily bar on 2026-01-DD."""
     ts = datetime(2026, 1, day, 16, 0, tzinfo=UTC)
     o = o if o is not None else (h + low) / 2
     c = c if c is not None else (h + low) / 2
     return BarData(
-        timestamp=ts, symbol="NQ1", open=o, high=h, low=low,
-        close=c, volume=v,
+        timestamp=ts,
+        symbol="NQ1",
+        open=o,
+        high=h,
+        low=low,
+        close=c,
+        volume=v,
     )
 
 
@@ -27,8 +33,10 @@ def _config() -> BacktestConfig:
     return BacktestConfig(
         start_date=datetime(2026, 1, 1, tzinfo=UTC),
         end_date=datetime(2026, 1, 31, tzinfo=UTC),
-        symbol="NQ1", initial_equity=10_000.0,
-        risk_per_trade_pct=0.01, confluence_threshold=0.0,
+        symbol="NQ1",
+        initial_equity=10_000.0,
+        risk_per_trade_pct=0.01,
+        confluence_threshold=0.0,
         max_trades_per_day=10,
     )
 
@@ -125,7 +133,7 @@ def test_lookback_2_uses_max_high_min_low() -> None:
     cfg = _config()
     hist = [
         _bar(1, h=130, low=100),  # high contributes
-        _bar(2, h=120, low=90),   # low contributes
+        _bar(2, h=120, low=90),  # low contributes
     ]
     # Bar at 131 > 130 → breakout
     bar = _bar(3, h=131, low=125, c=130)

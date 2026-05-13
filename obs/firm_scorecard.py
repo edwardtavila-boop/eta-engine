@@ -88,7 +88,7 @@ def _compute_sharpe_calmar(state_dir: Path, runtime_state_dir: Path) -> dict:
         if returns:
             avg_r = sum(returns) / len(returns)
             std_r = (sum((r - avg_r) ** 2 for r in returns) / len(returns)) ** 0.5
-            sharpe = (avg_r / std_r) * (252 ** 0.5) if std_r > 0 else 0.0
+            sharpe = (avg_r / std_r) * (252**0.5) if std_r > 0 else 0.0
             peak = max(pnl_values)
             trough = min(pnl_values)
             drawdown = (peak - trough) / peak if peak > 0 else 0.0
@@ -290,9 +290,7 @@ def _compute_regime_adaptation(state_dir: Path, runtime_state_dir: Path) -> dict
 def _compute_fault_tolerance(state_dir: Path, runtime_state_dir: Path) -> dict:
     details: dict[str, Any] = {}
     engine = workspace_roots.ETA_ENGINE_ROOT
-    kill_switch_code = (
-        len(list(engine.rglob("*kill*switch*"))) + len(list(engine.rglob("*circuit*breaker*"))) > 0
-    )
+    kill_switch_code = len(list(engine.rglob("*kill*switch*"))) + len(list(engine.rglob("*circuit*breaker*"))) > 0
     failover_code = len(list(engine.rglob("*failover*"))) > 0
     breaker_path = state_dir / "breaker.json"
     sentinel_path = state_dir / "operator.sentinel"
@@ -302,9 +300,9 @@ def _compute_fault_tolerance(state_dir: Path, runtime_state_dir: Path) -> dict:
     decisions = _read_jsonl_tail(state_dir / "jarvis_audit.jsonl", 300)
     kill_switches = sum(1 for d in decisions if "kill" in str(d.get("action", "")).lower())
     venue_failovers = sum(
-        1 for d in decisions
-        if "failover" in str(d.get("action", "")).lower()
-        or "venue" in str(d.get("subsystem", "")).lower()
+        1
+        for d in decisions
+        if "failover" in str(d.get("action", "")).lower() or "venue" in str(d.get("subsystem", "")).lower()
     )
 
     details["kill_switch_code"] = kill_switch_code
@@ -460,11 +458,7 @@ def _compute_regulatory_posture(state_dir: Path, runtime_state_dir: Path) -> dic
     journal = _read_jsonl_tail(state_dir / "decision_journal.jsonl", 50)
     has_journal = bool(journal) or (state_dir / "decision_journal.jsonl").exists()
 
-    compliance_docs = (
-        list(root.rglob("COMPLIANCE*"))
-        + list(root.rglob("compliance*"))
-        + list(root.rglob("*audit*"))
-    )
+    compliance_docs = list(root.rglob("COMPLIANCE*")) + list(root.rglob("compliance*")) + list(root.rglob("*audit*"))
     llc_docs = list(root.rglob("*LLC*")) + list(root.rglob("*llc*"))
     details["nightly_audit_exists"] = has_audit
     details["audit_log_entries"] = decisions_count

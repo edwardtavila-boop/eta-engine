@@ -15,8 +15,13 @@ from eta_engine.strategies.mnq_optimizations import (
 
 def _bar(ts: datetime, *, c: float = 100.0, w: float = 1.0) -> BarData:
     return BarData(
-        timestamp=ts, symbol="MNQ", open=c - w / 2, high=c + w / 2,
-        low=c - w / 2, close=c, volume=1000.0,
+        timestamp=ts,
+        symbol="MNQ",
+        open=c - w / 2,
+        high=c + w / 2,
+        low=c - w / 2,
+        close=c,
+        volume=1000.0,
     )
 
 
@@ -30,8 +35,12 @@ def _series(prices: list[float], *, atr_width: float = 1.0):
     return [
         BarData(
             timestamp=base.replace(minute=i % 60, hour=i // 60),
-            symbol="MNQ", open=p, high=p + atr_width / 2,
-            low=p - atr_width / 2, close=p, volume=1000.0,
+            symbol="MNQ",
+            open=p,
+            high=p + atr_width / 2,
+            low=p - atr_width / 2,
+            close=p,
+            volume=1000.0,
         )
         for i, p in enumerate(prices)
     ]
@@ -65,15 +74,29 @@ def test_panic_regime_when_atr_explodes() -> None:
     base = datetime(2026, 1, 1, tzinfo=UTC)
     bars: list[BarData] = []
     for i in range(40):
-        bars.append(BarData(
-            timestamp=base.replace(minute=i % 60, hour=i // 60),
-            symbol="MNQ", open=100.0, high=100.5, low=99.5, close=100.0, volume=1.0,
-        ))
+        bars.append(
+            BarData(
+                timestamp=base.replace(minute=i % 60, hour=i // 60),
+                symbol="MNQ",
+                open=100.0,
+                high=100.5,
+                low=99.5,
+                close=100.0,
+                volume=1.0,
+            )
+        )
     for i in range(40, 60):
-        bars.append(BarData(
-            timestamp=base.replace(minute=i % 60, hour=i // 60),
-            symbol="MNQ", open=100.0, high=110.0, low=90.0, close=100.0, volume=1.0,
-        ))
+        bars.append(
+            BarData(
+                timestamp=base.replace(minute=i % 60, hour=i // 60),
+                symbol="MNQ",
+                open=100.0,
+                high=110.0,
+                low=90.0,
+                close=100.0,
+                volume=1.0,
+            )
+        )
     assert classify_regime_v2(bars) == "panic"
 
 
@@ -81,15 +104,29 @@ def test_high_vol_choppy_when_atr_doubles_no_drift() -> None:
     base = datetime(2026, 1, 1, tzinfo=UTC)
     bars = []
     for i in range(40):
-        bars.append(BarData(
-            timestamp=base.replace(minute=i % 60, hour=i // 60),
-            symbol="MNQ", open=100.0, high=100.5, low=99.5, close=100.0, volume=1.0,
-        ))
+        bars.append(
+            BarData(
+                timestamp=base.replace(minute=i % 60, hour=i // 60),
+                symbol="MNQ",
+                open=100.0,
+                high=100.5,
+                low=99.5,
+                close=100.0,
+                volume=1.0,
+            )
+        )
     for i in range(40, 60):
-        bars.append(BarData(
-            timestamp=base.replace(minute=i % 60, hour=i // 60),
-            symbol="MNQ", open=100.0, high=101.0, low=99.0, close=100.0, volume=1.0,
-        ))
+        bars.append(
+            BarData(
+                timestamp=base.replace(minute=i % 60, hour=i // 60),
+                symbol="MNQ",
+                open=100.0,
+                high=101.0,
+                low=99.0,
+                close=100.0,
+                volume=1.0,
+            )
+        )
     assert classify_regime_v2(bars) == "high_vol_choppy"
 
 

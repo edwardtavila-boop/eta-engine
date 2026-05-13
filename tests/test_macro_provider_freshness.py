@@ -24,8 +24,13 @@ from eta_engine.strategies.macro_confluence_providers import (
 
 def _bar(ts: datetime) -> BarData:
     return BarData(
-        timestamp=ts, symbol="BTC", open=100, high=100, low=100,
-        close=100, volume=1000,
+        timestamp=ts,
+        symbol="BTC",
+        open=100,
+        high=100,
+        low=100,
+        close=100,
+        volume=1000,
     )
 
 
@@ -38,8 +43,7 @@ def test_funding_provider_returns_value_when_fresh(tmp_path: Path) -> None:
     csv_p = tmp_path / "fund.csv"
     last = datetime(2026, 5, 1, tzinfo=UTC)
     csv_p.write_text(
-        "time,funding_rate\n"
-        f"{int(last.timestamp())},0.0005\n",
+        f"time,funding_rate\n{int(last.timestamp())},0.0005\n",
         encoding="utf-8",
     )
     p = FundingRateProvider(csv_path=csv_p)
@@ -51,8 +55,7 @@ def test_funding_provider_returns_nan_when_stale(tmp_path: Path) -> None:
     csv_p = tmp_path / "fund.csv"
     last = datetime(2026, 5, 1, tzinfo=UTC)
     csv_p.write_text(
-        "time,funding_rate\n"
-        f"{int(last.timestamp())},0.0005\n",
+        f"time,funding_rate\n{int(last.timestamp())},0.0005\n",
         encoding="utf-8",
     )
     p = FundingRateProvider(csv_path=csv_p)
@@ -65,8 +68,7 @@ def test_funding_provider_custom_max_age(tmp_path: Path) -> None:
     csv_p = tmp_path / "fund.csv"
     last = datetime(2026, 5, 1, tzinfo=UTC)
     csv_p.write_text(
-        "time,funding_rate\n"
-        f"{int(last.timestamp())},0.0005\n",
+        f"time,funding_rate\n{int(last.timestamp())},0.0005\n",
         encoding="utf-8",
     )
     p = FundingRateProvider(csv_path=csv_p, max_age_hours=72.0)
@@ -110,8 +112,7 @@ def test_etf_flow_returns_value_when_fresh(tmp_path: Path) -> None:
     csv_p = tmp_path / "etf.csv"
     last = datetime(2026, 5, 1, tzinfo=UTC)
     csv_p.write_text(
-        "time,net_flow_usd_m\n"
-        f"{int(last.timestamp())},250.0\n",
+        f"time,net_flow_usd_m\n{int(last.timestamp())},250.0\n",
         encoding="utf-8",
     )
     p = EtfFlowProvider(csv_path=csv_p)
@@ -123,8 +124,7 @@ def test_etf_flow_returns_nan_when_stale(tmp_path: Path) -> None:
     csv_p = tmp_path / "etf.csv"
     last = datetime(2026, 5, 1, tzinfo=UTC)
     csv_p.write_text(
-        "time,net_flow_usd_m\n"
-        f"{int(last.timestamp())},250.0\n",
+        f"time,net_flow_usd_m\n{int(last.timestamp())},250.0\n",
         encoding="utf-8",
     )
     p = EtfFlowProvider(csv_path=csv_p)
@@ -142,8 +142,7 @@ def test_lth_proxy_returns_value_when_fresh(tmp_path: Path) -> None:
     csv_p = tmp_path / "lth.csv"
     last = datetime(2026, 5, 1, tzinfo=UTC)
     csv_p.write_text(
-        "time,lth_proxy\n"
-        f"{int(last.timestamp())},0.5\n",
+        f"time,lth_proxy\n{int(last.timestamp())},0.5\n",
         encoding="utf-8",
     )
     p = LthProxyProvider(csv_path=csv_p)
@@ -155,8 +154,7 @@ def test_lth_proxy_returns_nan_when_stale(tmp_path: Path) -> None:
     csv_p = tmp_path / "lth.csv"
     last = datetime(2026, 5, 1, tzinfo=UTC)
     csv_p.write_text(
-        "time,lth_proxy\n"
-        f"{int(last.timestamp())},0.5\n",
+        f"time,lth_proxy\n{int(last.timestamp())},0.5\n",
         encoding="utf-8",
     )
     p = LthProxyProvider(csv_path=csv_p)

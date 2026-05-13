@@ -29,9 +29,16 @@ from eta_engine.strategies.macro_confluence_providers import (
 # ---------------------------------------------------------------------------
 
 
-def _bar(idx: int, *, h: float, low: float, c: float | None = None,
-         v: float = 1000.0, tf_minutes: int = 60,
-         hour_override: int | None = None) -> BarData:
+def _bar(
+    idx: int,
+    *,
+    h: float,
+    low: float,
+    c: float | None = None,
+    v: float = 1000.0,
+    tf_minutes: int = 60,
+    hour_override: int | None = None,
+) -> BarData:
     """Synthetic bar at 2026-01-01 + idx*tf_minutes UTC."""
     if hour_override is not None:
         ts = datetime(2026, 1, 1, hour_override, 0, tzinfo=UTC) + timedelta(days=idx)
@@ -39,8 +46,13 @@ def _bar(idx: int, *, h: float, low: float, c: float | None = None,
         ts = datetime(2026, 1, 1, tzinfo=UTC) + timedelta(minutes=idx * tf_minutes)
     c = c if c is not None else (h + low) / 2
     return BarData(
-        timestamp=ts, symbol="BTC", open=(h + low) / 2,
-        high=h, low=low, close=c, volume=v,
+        timestamp=ts,
+        symbol="BTC",
+        open=(h + low) / 2,
+        high=h,
+        low=low,
+        close=c,
+        volume=v,
     )
 
 
@@ -48,8 +60,10 @@ def _config() -> BacktestConfig:
     return BacktestConfig(
         start_date=datetime(2026, 1, 1, tzinfo=UTC),
         end_date=datetime(2026, 12, 31, tzinfo=UTC),
-        symbol="BTC", initial_equity=10_000.0,
-        risk_per_trade_pct=0.01, confluence_threshold=0.0,
+        symbol="BTC",
+        initial_equity=10_000.0,
+        risk_per_trade_pct=0.01,
+        confluence_threshold=0.0,
         max_trades_per_day=10,
     )
 
@@ -57,9 +71,13 @@ def _config() -> BacktestConfig:
 def _strat(**filter_overrides) -> CryptoMacroConfluenceStrategy:  # type: ignore[no-untyped-def]
     """Small base + opt-in filter overrides; tests stay fast."""
     base = CryptoRegimeTrendConfig(
-        regime_ema=20, pullback_ema=5, warmup_bars=25,
-        atr_period=5, min_bars_between_trades=0,
-        pullback_tolerance_pct=2.0, max_trades_per_day=100,
+        regime_ema=20,
+        pullback_ema=5,
+        warmup_bars=25,
+        atr_period=5,
+        min_bars_between_trades=0,
+        pullback_tolerance_pct=2.0,
+        max_trades_per_day=100,
     )
     filters = MacroConfluenceConfig(**filter_overrides)
     return CryptoMacroConfluenceStrategy(
@@ -146,8 +164,7 @@ def test_time_of_day_blocks_outside_window() -> None:
     pull_ema = s._base._pullback_ema
     assert pull_ema is not None
     # Bar at hour 5 (Asian session) — outside the allow set
-    asian_bar = _bar(35, h=pull_ema + 0.5, low=pull_ema - 0.05,
-                     c=pull_ema + 0.4, hour_override=5)
+    asian_bar = _bar(35, h=pull_ema + 0.5, low=pull_ema - 0.05, c=pull_ema + 0.4, hour_override=5)
     hist.append(asian_bar)
     out = s.maybe_enter(asian_bar, hist, 10_000.0, cfg)
     assert out is None
@@ -162,8 +179,7 @@ def test_time_of_day_passes_inside_window() -> None:
     for i in range(35):
         c = 100 + i * 0.5
         ts = base_dt + timedelta(days=i)
-        b = BarData(timestamp=ts, symbol="BTC", open=c, high=c + 0.3,
-                    low=c - 0.3, close=c, volume=1000.0)
+        b = BarData(timestamp=ts, symbol="BTC", open=c, high=c + 0.3, low=c - 0.3, close=c, volume=1000.0)
         hist.append(b)
         s.maybe_enter(b, hist, 10_000.0, cfg)
     pull_ema = s._base._pullback_ema
@@ -171,9 +187,13 @@ def test_time_of_day_passes_inside_window() -> None:
     # Pull bar at hour 14
     ts = base_dt + timedelta(days=35)
     pull_bar = BarData(
-        timestamp=ts, symbol="BTC",
-        open=pull_ema, high=pull_ema + 0.5,
-        low=pull_ema - 0.05, close=pull_ema + 0.4, volume=1000.0,
+        timestamp=ts,
+        symbol="BTC",
+        open=pull_ema,
+        high=pull_ema + 0.5,
+        low=pull_ema - 0.05,
+        close=pull_ema + 0.4,
+        volume=1000.0,
     )
     hist.append(pull_bar)
     out = s.maybe_enter(pull_bar, hist, 10_000.0, cfg)
@@ -322,7 +342,12 @@ def test_funding_provider_round_trip(tmp_path: Path) -> None:
     # Bar after both — returns the latest
     bar2 = BarData(
         timestamp=datetime(2026, 1, 3, tzinfo=UTC),
-        symbol="BTC", open=100, high=100, low=100, close=100, volume=1000,
+        symbol="BTC",
+        open=100,
+        high=100,
+        low=100,
+        close=100,
+        volume=1000,
     )
     assert p(bar2) == pytest.approx(0.0005)
 
@@ -350,13 +375,23 @@ def test_etf_flow_provider_returns_latest_at_or_before_bar(tmp_path: Path) -> No
     # Bar on Jan 1 → first day's flow
     bar = BarData(
         timestamp=datetime(2026, 1, 1, 12, tzinfo=UTC),
-        symbol="BTC", open=100, high=100, low=100, close=100, volume=1000,
+        symbol="BTC",
+        open=100,
+        high=100,
+        low=100,
+        close=100,
+        volume=1000,
     )
     assert p(bar) == pytest.approx(250.5)
     # Bar on Jan 2 → second day's flow (outflow)
     bar2 = BarData(
         timestamp=datetime(2026, 1, 2, 12, tzinfo=UTC),
-        symbol="BTC", open=100, high=100, low=100, close=100, volume=1000,
+        symbol="BTC",
+        open=100,
+        high=100,
+        low=100,
+        close=100,
+        volume=1000,
     )
     assert p(bar2) == pytest.approx(-180.0)
 
@@ -374,15 +409,30 @@ def test_fear_greed_provider_normalizes_to_signed_range(tmp_path: Path) -> None:
     p = FearGreedProvider(csv_path=csv_p)
     fear_bar = BarData(
         timestamp=datetime(2026, 1, 1, 12, tzinfo=UTC),
-        symbol="BTC", open=100, high=100, low=100, close=100, volume=1000,
+        symbol="BTC",
+        open=100,
+        high=100,
+        low=100,
+        close=100,
+        volume=1000,
     )
     neutral_bar = BarData(
         timestamp=datetime(2026, 1, 2, 12, tzinfo=UTC),
-        symbol="BTC", open=100, high=100, low=100, close=100, volume=1000,
+        symbol="BTC",
+        open=100,
+        high=100,
+        low=100,
+        close=100,
+        volume=1000,
     )
     greed_bar = BarData(
         timestamp=datetime(2026, 1, 3, 12, tzinfo=UTC),
-        symbol="BTC", open=100, high=100, low=100, close=100, volume=1000,
+        symbol="BTC",
+        open=100,
+        high=100,
+        low=100,
+        close=100,
+        volume=1000,
     )
     # Contrarian: fear maps to +0.8, neutral to 0, greed to -0.8
     assert p(fear_bar) == pytest.approx(0.8, abs=1e-3)
@@ -401,7 +451,12 @@ def test_lth_proxy_provider_round_trip(tmp_path: Path) -> None:
     p = LthProxyProvider(csv_path=csv_p)
     bar = BarData(
         timestamp=datetime(2026, 1, 1, 12, tzinfo=UTC),
-        symbol="BTC", open=100, high=100, low=100, close=100, volume=1000,
+        symbol="BTC",
+        open=100,
+        high=100,
+        low=100,
+        close=100,
+        volume=1000,
     )
     assert p(bar) == pytest.approx(0.75)
 

@@ -31,22 +31,26 @@ def test_from_extras_returns_defaults_when_missing() -> None:
 
 
 def test_from_extras_parses_full_shape() -> None:
-    cfg = RegimeGateConfig.from_extras({
-        "regime_gate_config": {
-            "adx_max": 30.0,
-            "vol_z_max": 3.0,
-            "fail_shut_on_missing_adx": False,
-        },
-    })
+    cfg = RegimeGateConfig.from_extras(
+        {
+            "regime_gate_config": {
+                "adx_max": 30.0,
+                "vol_z_max": 3.0,
+                "fail_shut_on_missing_adx": False,
+            },
+        }
+    )
     assert cfg.adx_max == pytest.approx(30.0)
     assert cfg.vol_z_max == pytest.approx(3.0)
     assert cfg.fail_shut_on_missing_adx is False
 
 
 def test_from_extras_returns_defaults_on_garbage() -> None:
-    cfg = RegimeGateConfig.from_extras({
-        "regime_gate_config": {"adx_max": "not_a_number"},
-    })
+    cfg = RegimeGateConfig.from_extras(
+        {
+            "regime_gate_config": {"adx_max": "not_a_number"},
+        }
+    )
     assert cfg == RegimeGateConfig()
 
 

@@ -156,12 +156,10 @@ def _secret(key: str) -> str:
         live_mode = _truthy(os.environ.get("ETA_LIVE_MODE"))
         if live_mode:
             raise RuntimeError(
-                f"ETA_LIVE_MODE=1 but broker secret missing for {key}; "
-                "refusing to silently fall through to mock"
+                f"ETA_LIVE_MODE=1 but broker secret missing for {key}; refusing to silently fall through to mock"
             )
         _LOG.warning(
-            "broker secret missing for %s; falling through to mock adapter "
-            "(set ETA_LIVE_MODE=1 to fail closed)",
+            "broker secret missing for %s; falling through to mock adapter (set ETA_LIVE_MODE=1 to fail closed)",
             key,
         )
     return value
@@ -481,26 +479,50 @@ def _is_transient_error(exc: BaseException) -> bool:
         return False
     name = type(exc).__name__
     transient_class_names = {
-        "ConnectError", "ConnectTimeout", "ReadTimeout", "WriteTimeout",
-        "PoolTimeout", "ReadError", "WriteError", "ProtocolError",
-        "RemoteProtocolError", "NetworkError", "TransportError",
+        "ConnectError",
+        "ConnectTimeout",
+        "ReadTimeout",
+        "WriteTimeout",
+        "PoolTimeout",
+        "ReadError",
+        "WriteError",
+        "ProtocolError",
+        "RemoteProtocolError",
+        "NetworkError",
+        "TransportError",
         "TimeoutError",
     }
     if name in transient_class_names:
         return True
-    if isinstance(exc, (
-        ConnectionError, ConnectionRefusedError, ConnectionResetError,
-        ConnectionAbortedError, BrokenPipeError, asyncio.TimeoutError,
-        TimeoutError, socket.timeout, OSError,
-    )):
+    if isinstance(
+        exc,
+        (
+            ConnectionError,
+            ConnectionRefusedError,
+            ConnectionResetError,
+            ConnectionAbortedError,
+            BrokenPipeError,
+            asyncio.TimeoutError,
+            TimeoutError,
+            socket.timeout,
+            OSError,
+        ),
+    ):
         # OSError is broad — narrow it via errno where we can. The common
         # "broker is fine, network is busy" errnos are ECONNREFUSED (111),
         # ECONNRESET (104), ETIMEDOUT (110), EPIPE (32), EHOSTUNREACH (113),
         # ENETUNREACH (101). Treat everything else as deterministic so a
         # truly weird OSError doesn't get spuriously retried.
         if isinstance(exc, OSError) and not isinstance(
-            exc, (ConnectionError, ConnectionRefusedError, ConnectionResetError,
-                  ConnectionAbortedError, BrokenPipeError, socket.timeout),
+            exc,
+            (
+                ConnectionError,
+                ConnectionRefusedError,
+                ConnectionResetError,
+                ConnectionAbortedError,
+                BrokenPipeError,
+                socket.timeout,
+            ),
         ):
             transient_errnos = {32, 101, 104, 110, 111, 113, 10053, 10054, 10060, 10061}
             return getattr(exc, "errno", None) in transient_errnos
@@ -552,14 +574,19 @@ def with_transient_retry(
                     if attempt >= attempts:
                         log.warning(
                             "transient retry exhausted for %s after %d attempts: %s",
-                            getattr(fn, "__qualname__", fn.__name__), attempt, exc,
+                            getattr(fn, "__qualname__", fn.__name__),
+                            attempt,
+                            exc,
                         )
                         raise
                     delay = base_delay_s * (backoff_factor ** (attempt - 1))
                     log.info(
                         "transient error on %s attempt %d/%d (%s); retrying in %.2fs",
                         getattr(fn, "__qualname__", fn.__name__),
-                        attempt, attempts, exc, delay,
+                        attempt,
+                        attempts,
+                        exc,
+                        delay,
                     )
                     await asyncio.sleep(delay)
             # Unreachable: either we returned, raised, or the loop exhausted.
@@ -653,6 +680,7 @@ class IbgConnectionMonitor:
                 load_order_entry_hold,
                 write_order_entry_hold,
             )
+
             self._write_hold = write_hold_fn or write_order_entry_hold
             self._load_hold = load_hold_fn or load_order_entry_hold
         else:
@@ -672,7 +700,9 @@ class IbgConnectionMonitor:
             reason = f"ibgateway_unreachable_port_{self._port}"
             try:
                 self._write_hold(
-                    active=True, reason=reason, scope="ibkr",
+                    active=True,
+                    reason=reason,
+                    scope="ibkr",
                 )
                 self.state.last_action = "set_hold"
                 self.state.last_reason = reason
@@ -697,7 +727,9 @@ class IbgConnectionMonitor:
         if connect_ok:
             try:
                 self._write_hold(
-                    active=False, reason="ibgateway_recovered", scope="all",
+                    active=False,
+                    reason="ibgateway_recovered",
+                    scope="all",
                 )
                 self.state.last_action = "cleared_hold"
                 self.state.last_reason = "ibgateway_recovered"

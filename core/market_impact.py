@@ -25,6 +25,7 @@ penalty:
         # Consider TWAP'ing the order rather than market-ing it
         ...
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -35,8 +36,8 @@ class ImpactProfile:
     """Per-symbol calibrated impact parameters."""
 
     symbol: str
-    k_bps: float                  # impact coefficient
-    alpha: float                  # power-law exponent (typical 0.5)
+    k_bps: float  # impact coefficient
+    alpha: float  # power-law exponent (typical 0.5)
     avg_daily_volume: float
     notes: str = ""
 
@@ -44,16 +45,23 @@ class ImpactProfile:
 # Operator-tuned defaults. Refresh quarterly from realized fills.
 DEFAULT_PROFILES: dict[str, ImpactProfile] = {
     "MNQ": ImpactProfile("MNQ", k_bps=8.0, alpha=0.5, avg_daily_volume=1_500_000),
-    "NQ":  ImpactProfile("NQ",  k_bps=12.0, alpha=0.5, avg_daily_volume=350_000),
-    "MBT": ImpactProfile("MBT", k_bps=20.0, alpha=0.55, avg_daily_volume=15_000,
-                         notes="thin compared to BTC futures; impact more visible"),
+    "NQ": ImpactProfile("NQ", k_bps=12.0, alpha=0.5, avg_daily_volume=350_000),
+    "MBT": ImpactProfile(
+        "MBT",
+        k_bps=20.0,
+        alpha=0.55,
+        avg_daily_volume=15_000,
+        notes="thin compared to BTC futures; impact more visible",
+    ),
     "MET": ImpactProfile("MET", k_bps=18.0, alpha=0.55, avg_daily_volume=20_000),
     "BTC": ImpactProfile("BTC", k_bps=10.0, alpha=0.5, avg_daily_volume=11_000),
     "ETH": ImpactProfile("ETH", k_bps=14.0, alpha=0.5, avg_daily_volume=80_000),
-    "SOL": ImpactProfile("SOL", k_bps=25.0, alpha=0.55, avg_daily_volume=5_000,
-                         notes="newer CME contract; thin book at fringes"),
-    "XRP": ImpactProfile("XRP", k_bps=30.0, alpha=0.6, avg_daily_volume=3_000,
-                         notes="newest CME contract; widest spreads"),
+    "SOL": ImpactProfile(
+        "SOL", k_bps=25.0, alpha=0.55, avg_daily_volume=5_000, notes="newer CME contract; thin book at fringes"
+    ),
+    "XRP": ImpactProfile(
+        "XRP", k_bps=30.0, alpha=0.6, avg_daily_volume=3_000, notes="newest CME contract; widest spreads"
+    ),
 }
 
 
@@ -78,7 +86,7 @@ def estimate_impact_bps(
     if adv <= 0 or qty <= 0:
         return 0.0
     fraction = qty / adv
-    impact = profile.k_bps * (fraction ** profile.alpha)
+    impact = profile.k_bps * (fraction**profile.alpha)
     return round(impact, 3)
 
 

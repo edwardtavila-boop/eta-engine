@@ -297,9 +297,9 @@ class TestStatusPage:
         assert "rootPayload?.close_history" in html
         assert "closeHistoryWindowPayload(liveBroker, selectedCloseHistoryWindow, d)" in html
         assert "function renderPnlWindowControls" in html
-        assert "data-close-window=\"today\"" in html
-        assert "data-close-window=\"mtd\"" in html
-        assert "data-close-window=\"all\"" in html
+        assert 'data-close-window="today"' in html
+        assert 'data-close-window="mtd"' in html
+        assert 'data-close-window="all"' in html
         assert "MTD closed outcomes" in html
         assert "selected-window Close History" in html
         assert "const historyTitle = `${scope} Close History`" in html
@@ -427,16 +427,16 @@ class TestStatusPage:
         assert ".mobile-card-table" in css
         assert "content: attr(data-label)" in css
         assert ".mobile-chart-shell" in css
-        assert "data-label=\"Bot\"" in bot_fleet
-        assert "data-label=\"Day PnL\"" in bot_fleet
-        assert "data-label=\"Last Trade\"" in bot_fleet
-        assert "data-label=\"Readiness\"" in bot_fleet
+        assert 'data-label="Bot"' in bot_fleet
+        assert 'data-label="Day PnL"' in bot_fleet
+        assert 'data-label="Last Trade"' in bot_fleet
+        assert 'data-label="Readiness"' in bot_fleet
         assert "formatBotStrategyReadiness" in bot_fleet
         assert "formatBotStrategyReadiness(status)" in bot_fleet
         assert "strategy-readiness-chip" in bot_fleet
         assert "strategy-readiness-detail" in bot_fleet
         assert "Strategy Readiness" in bot_fleet
-        assert ".strategy-readiness-chip[data-readiness-state=\"blocked\"]" in css
+        assert '.strategy-readiness-chip[data-readiness-state="blocked"]' in css
         assert ".strategy-readiness-action" in css
         assert "readiness_next_action" in bot_fleet
         assert "can_paper_trade" in bot_fleet

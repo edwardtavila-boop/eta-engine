@@ -34,6 +34,7 @@ correlation shortcut; a richer research lane can graduate to full VAR /
 regression-residual tests. The intervention lookup is non-parametric
 and assumes the journal is large enough for stable estimates.
 """
+
 from __future__ import annotations
 
 import logging
@@ -53,9 +54,9 @@ logger = logging.getLogger(__name__)
 class CausalEvidence:
     """Output of the causal layer for one (signal, action) pair."""
 
-    score: float                      # in [-1, +1]
-    granger_score: float              # in [-1, +1]
-    intervention_score: float         # in [-1, +1]
+    score: float  # in [-1, +1]
+    granger_score: float  # in [-1, +1]
+    intervention_score: float  # in [-1, +1]
     n_supporting_episodes: int
     reason: str
     detail: dict = field(default_factory=dict)
@@ -99,7 +100,8 @@ def granger_score(
     aligned_outcome = list(outcome_series[lag:])
     lagged_corr = _pearson(aligned_cause, aligned_outcome)
     contemporaneous_corr = _pearson(
-        cause_series[lag:], outcome_series[lag:],
+        cause_series[lag:],
+        outcome_series[lag:],
     )
     # Difference: how much does adding the lagged term matter?
     raw = lagged_corr - 0.5 * contemporaneous_corr
@@ -129,14 +131,13 @@ def intervention_score(
         * -1.0 corresponds to -2R average (catastrophic)
     """
     similar = memory.recall_similar(
-        regime=regime, session=session, stress=0.5,
-        direction=direction, k=200,
+        regime=regime,
+        session=session,
+        stress=0.5,
+        direction=direction,
+        k=200,
     )
-    matched = [
-        e for e in similar
-        if e.extra.get("action") == proposed_action
-        or proposed_action == "any"
-    ]
+    matched = [e for e in similar if e.extra.get("action") == proposed_action or proposed_action == "any"]
     if len(matched) < min_episodes:
         return 0.0, len(matched)
     avg_r = sum(e.realized_r for e in matched) / len(matched)
@@ -177,13 +178,17 @@ def score_causal_support(
         if feature_corrs:
             top_feature, _ = max(feature_corrs, key=lambda t: t[1])
             granger = granger_score(
-                feature_history[top_feature], outcomes, lag=1,
+                feature_history[top_feature],
+                outcomes,
+                lag=1,
             )
 
     # Intervention leg
     interv, n_ep = intervention_score(
         proposed_action=proposed_action,
-        regime=regime, session=session, direction=direction,
+        regime=regime,
+        session=session,
+        direction=direction,
         memory=memory,
     )
 
@@ -192,25 +197,13 @@ def score_causal_support(
     combined = 0.4 * granger + 0.6 * interv
 
     if n_ep < 5:
-        reason = (
-            f"insufficient episodes (n={n_ep}); falling back on "
-            f"granger={granger:+.2f}"
-        )
+        reason = f"insufficient episodes (n={n_ep}); falling back on granger={granger:+.2f}"
     elif combined > 0.3:
-        reason = (
-            f"strong causal support ({n_ep} episodes); "
-            f"granger={granger:+.2f}, intervention={interv:+.2f}"
-        )
+        reason = f"strong causal support ({n_ep} episodes); granger={granger:+.2f}, intervention={interv:+.2f}"
     elif combined < -0.3:
-        reason = (
-            f"causal evidence AGAINST ({n_ep} episodes); "
-            f"granger={granger:+.2f}, intervention={interv:+.2f}"
-        )
+        reason = f"causal evidence AGAINST ({n_ep} episodes); granger={granger:+.2f}, intervention={interv:+.2f}"
     else:
-        reason = (
-            f"ambiguous causal evidence ({n_ep} episodes); "
-            f"combined={combined:+.2f}"
-        )
+        reason = f"ambiguous causal evidence ({n_ep} episodes); combined={combined:+.2f}"
 
     return CausalEvidence(
         score=round(combined, 3),

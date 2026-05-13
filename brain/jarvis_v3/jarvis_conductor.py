@@ -20,6 +20,7 @@ update hot_learner's weights for the next consult.
 Every stream call is best-effort. If any one fails, the conductor
 logs a warning and continues with the legacy fallback (base_size).
 """
+
 from __future__ import annotations
 
 import logging
@@ -147,6 +148,7 @@ def orchestrate(
     # Stream 2: identifier (cheap, never raises)
     try:
         from eta_engine.brain.jarvis_v3 import trace_emitter
+
         consult_id = trace_emitter.new_consult_id()
     except Exception as exc:  # noqa: BLE001
         logger.warning("trace_emitter.new_consult_id failed: %s", exc)
@@ -159,6 +161,7 @@ def orchestrate(
     enriched = None
     try:
         from eta_engine.brain.jarvis_v3 import context_enricher
+
         enriched = context_enricher.enrich(symbol=symbol, asset_class=asset_class)
     except Exception as exc:  # noqa: BLE001
         logger.warning("context_enricher.enrich failed: %s", exc)
@@ -170,6 +173,7 @@ def orchestrate(
     portfolio_ctx_for_trace: Any = None  # captured for v2 schema emit below
     try:
         from eta_engine.brain.jarvis_v3 import portfolio_brain
+
         ctx = portfolio_brain.snapshot()
         portfolio_ctx_for_trace = ctx
         verdict = portfolio_brain.assess(req, ctx)
@@ -183,15 +187,13 @@ def orchestrate(
     school_weights: dict[str, float] = {}
     try:
         from eta_engine.brain.jarvis_v3 import hot_learner
+
         school_weights = dict(hot_learner.current_weights(asset_class))
     except Exception as exc:  # noqa: BLE001
         logger.warning("hot_learner.current_weights failed: %s", exc)
 
     # Compose final size
-    final_size = (
-        0.0 if block_reason
-        else max(0.0, min(1.5, float(base_size) * portfolio_modifier))
-    )
+    final_size = 0.0 if block_reason else max(0.0, min(1.5, float(base_size) * portfolio_modifier))
 
     elapsed_ms = (time.perf_counter() - t0) * 1000.0
 
@@ -212,6 +214,7 @@ def orchestrate(
     # capture_v2_extras() helper handles every never-raise concern.
     try:
         from eta_engine.brain.jarvis_v3 import trace_emitter
+
         bot_id_str = str(getattr(req, "bot_id", ""))
         v2_extras = trace_emitter.capture_v2_extras(
             bot_id=bot_id_str,
@@ -263,6 +266,7 @@ def observe_close(
     """Forward a closed trade to hot_learner; never raise."""
     try:
         from eta_engine.brain.jarvis_v3 import hot_learner
+
         hot_learner.observe_close(
             asset=asset_class or "default",
             school_attribution=school_attribution,
@@ -281,9 +285,7 @@ def _summarize_enriched(ec: Any) -> dict:  # noqa: ANN401 — ec is a duck-typed
             "session": getattr(ec, "session", ""),
             "time_of_day_risk": float(getattr(ec, "time_of_day_risk", 0.0)),
             "multi_tf_agreement": float(getattr(ec, "multi_tf_agreement", 0.0)),
-            "nearby_event_kinds": [
-                getattr(e, "kind", "") for e in getattr(ec, "nearby_events", ()) or ()
-            ],
+            "nearby_event_kinds": [getattr(e, "kind", "") for e in getattr(ec, "nearby_events", ()) or ()],
         }
     except Exception:  # noqa: BLE001
         return {}

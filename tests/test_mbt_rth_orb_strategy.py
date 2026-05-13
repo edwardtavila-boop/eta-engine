@@ -1,4 +1,5 @@
 """Unit tests for MBT 5m RTH ORB strategy."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -32,8 +33,9 @@ class _Cfg:
     pass
 
 
-def _bar(hour_ct: int, minute_ct: int, *, high: float, low: float, close: float | None = None,
-         volume: float = 100.0) -> _Bar:
+def _bar(
+    hour_ct: int, minute_ct: int, *, high: float, low: float, close: float | None = None, volume: float = 100.0
+) -> _Bar:
     """Build a 5m bar at the given CT hour/minute."""
     base = datetime(2026, 5, 1, tzinfo=_CT).astimezone(UTC).date()
     ct_dt = datetime.combine(base, time(hour_ct, minute_ct), tzinfo=_CT)
@@ -47,8 +49,9 @@ def _bar(hour_ct: int, minute_ct: int, *, high: float, low: float, close: float 
     )
 
 
-def _bar_at(date_ct, hour_ct: int, minute_ct: int, *, high: float, low: float,
-            close: float | None = None, volume: float = 100.0) -> _Bar:
+def _bar_at(
+    date_ct, hour_ct: int, minute_ct: int, *, high: float, low: float, close: float | None = None, volume: float = 100.0
+) -> _Bar:
     ct_dt = datetime.combine(date_ct, time(hour_ct, minute_ct), tzinfo=_CT)
     return _Bar(
         timestamp=ct_dt.astimezone(UTC),
@@ -61,6 +64,7 @@ def _bar_at(date_ct, hour_ct: int, minute_ct: int, *, high: float, low: float,
 
 
 # --- import + init ---------------------------------------------------------
+
 
 def test_import_and_init() -> None:
     s = MBTRTHORBStrategy()
@@ -112,10 +116,7 @@ def test_post_range_no_breakout_returns_none() -> None:
     s.maybe_enter(_bar(8, 30, high=80_500, low=80_000, close=80_200), [], 50_000.0, cfg)
     # 08:35 CT: range complete; bar inside the range → no entry
     # 14-bar ATR window of synthetic 5m bars
-    hist = [
-        _bar(7 + (25 + 5 * i) // 60, (25 + 5 * i) % 60, high=80_300, low=80_100)
-        for i in range(15)
-    ]
+    hist = [_bar(7 + (25 + 5 * i) // 60, (25 + 5 * i) % 60, high=80_300, low=80_100) for i in range(15)]
     in_range = _bar(8, 35, high=80_400, low=80_100, close=80_200)
     out = s.maybe_enter(in_range, hist, 50_000.0, cfg)
     assert out is None

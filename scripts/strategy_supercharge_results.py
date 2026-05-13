@@ -497,15 +497,9 @@ def _retune_queue(rows: list[dict[str, object]]) -> list[dict[str, object]]:
                 "primary_focus": str(plan.get("primary_focus") or ""),
                 "next_step": str(plan.get("next_step") or ""),
                 "optimizer_command": (
-                    plan.get("optimizer_command")
-                    if isinstance(plan.get("optimizer_command"), list)
-                    else []
+                    plan.get("optimizer_command") if isinstance(plan.get("optimizer_command"), list) else []
                 ),
-                "primary_knobs": (
-                    plan.get("primary_knobs")
-                    if isinstance(plan.get("primary_knobs"), list)
-                    else []
-                ),
+                "primary_knobs": (plan.get("primary_knobs") if isinstance(plan.get("primary_knobs"), list) else []),
                 "safe_to_mutate_live": False,
                 "writes_live_routing": False,
             },
@@ -545,9 +539,7 @@ def build_results(
             continue
         evidence = report_rows.get(bot_id)
         stale_evidence = (
-            evidence
-            if evidence is not None and float(evidence.get("report_mtime") or 0.0) < min_report_mtime
-            else None
+            evidence if evidence is not None and float(evidence.get("report_mtime") or 0.0) < min_report_mtime else None
         )
         if evidence is None or stale_evidence is not None:
             row = {
@@ -574,11 +566,7 @@ def build_results(
     failed = [row for row in rows if row.get("result_status") == "fail"]
     pending = [row for row in rows if row.get("result_status") == "pending"]
     near_misses = _near_miss_rows(rows)
-    rows_by_bot = {
-        str(row["bot_id"]): row
-        for row in rows
-        if row.get("bot_id")
-    }
+    rows_by_bot = {str(row["bot_id"]): row for row in rows if row.get("bot_id")}
     return {
         "schema_version": 1,
         "generated_at": generated_at or datetime.now(UTC).isoformat(),

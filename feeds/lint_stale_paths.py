@@ -56,6 +56,7 @@ already runs ``python scripts/lint_stale_paths.py`` against staged files
 matching the suffix glob above. New ``STALE_PATTERNS`` entries take effect
 on the next commit with no hook config changes required.
 """
+
 from __future__ import annotations
 
 import re
@@ -248,10 +249,7 @@ def is_exempt(path: Path) -> bool:
     name_lower = path.name.lower()
     if name_lower in EXEMPT_PATH_FRAGMENTS:
         return True
-    if any(
-        any(frag in p for frag in EXEMPT_PATH_FRAGMENTS)
-        for p in parts_lower
-    ):
+    if any(any(frag in p for frag in EXEMPT_PATH_FRAGMENTS) for p in parts_lower):
         return True
 
     # Explicit allow-list match (suffix-based on the POSIX-normalised
@@ -286,9 +284,22 @@ def scan_file(path: Path) -> list[tuple[int, str, str]]:
 
 _SCANNABLE_SUFFIXES = frozenset(
     {
-        ".py", ".ps1", ".bat", ".cmd", ".sh", ".md",
-        ".yaml", ".yml", ".toml", ".json", ".js", ".ts", ".tsx",
-        ".env", ".cfg", ".ini",
+        ".py",
+        ".ps1",
+        ".bat",
+        ".cmd",
+        ".sh",
+        ".md",
+        ".yaml",
+        ".yml",
+        ".toml",
+        ".json",
+        ".js",
+        ".ts",
+        ".tsx",
+        ".env",
+        ".cfg",
+        ".ini",
     }
 )
 # Directory names to prune during the workspace walk. Pruning at the
@@ -298,11 +309,24 @@ _SCANNABLE_SUFFIXES = frozenset(
 # would multiply violation counts by N.
 _PRUNE_DIRS = frozenset(
     {
-        ".git", ".hg", ".svn",
-        "__pycache__", ".venv", "venv", ".tox",
-        "node_modules", ".cache", ".pytest_cache",
-        ".ruff_cache", ".mypy_cache", ".next", ".astro",
-        "dist", "build", "_archive", "_legacy",
+        ".git",
+        ".hg",
+        ".svn",
+        "__pycache__",
+        ".venv",
+        "venv",
+        ".tox",
+        "node_modules",
+        ".cache",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".mypy_cache",
+        ".next",
+        ".astro",
+        "dist",
+        "build",
+        "_archive",
+        "_legacy",
         ".claude",
     }
 )
@@ -370,6 +394,7 @@ def main(argv: list[str]) -> int:
 
     total_violations = 0
     files_with_violations = 0
+
     # Use a writer that gracefully handles Unicode > stdout encoding (the
     # default Windows cp1252 codec barfs on emoji or non-Latin chars in
     # doc lines being reported).
@@ -377,7 +402,7 @@ def main(argv: list[str]) -> int:
         try:
             print(message)
         except UnicodeEncodeError:
-            enc = (sys.stdout.encoding or "utf-8")
+            enc = sys.stdout.encoding or "utf-8"
             print(message.encode(enc, errors="replace").decode(enc, errors="replace"))
 
     for path in candidate_paths:

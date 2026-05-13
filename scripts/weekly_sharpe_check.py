@@ -41,19 +41,27 @@ def main() -> int:
     p = argparse.ArgumentParser(prog="weekly_sharpe_check")
     p.add_argument("--journal", type=Path, default=_DEFAULT_JOURNAL)
     p.add_argument(
-        "--last-n", type=int, default=30,
+        "--last-n",
+        type=int,
+        default=30,
         help="recent trades per bot (default 30 ~= ~2-4 weeks of fills)",
     )
     p.add_argument(
-        "--min-trades", type=int, default=10,
+        "--min-trades",
+        type=int,
+        default=10,
         help="minimum sample before any non-green verdict (default 10)",
     )
     p.add_argument(
-        "--threshold", type=float, default=0.0,
+        "--threshold",
+        type=float,
+        default=0.0,
         help="kill threshold; anything below counts as RED (default 0.0)",
     )
     p.add_argument(
-        "--review-band", type=float, default=0.5,
+        "--review-band",
+        type=float,
+        default=0.5,
         help="amber band above the kill threshold (default 0.5)",
     )
     p.add_argument("--include-deactivated", action="store_true")
@@ -80,10 +88,7 @@ def main() -> int:
 
     rank = {"green": 0, "amber": 1, "red": 2}
     worst = 0
-    print(
-        f"{'bot_id':<22} {'severity':<8} {'n':>4} {'sharpe':>8} "
-        f"{'action':<10} {'reason':<40}"
-    )
+    print(f"{'bot_id':<22} {'severity':<8} {'n':>4} {'sharpe':>8} {'action':<10} {'reason':<40}")
     print("-" * 100)
     for a in out:
         worst = max(worst, rank[a.severity])

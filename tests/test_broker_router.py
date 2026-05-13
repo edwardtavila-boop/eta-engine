@@ -45,21 +45,10 @@ from eta_engine.venues.base import (  # noqa: E402  (after importorskip)
 
 def test_register_task_uses_eta_engine_pending_inbox() -> None:
     """The scheduled task must poll the same inbox the supervisor writes."""
-    script = (
-        Path(__file__).resolve().parents[1]
-        / "deploy"
-        / "scripts"
-        / "register_broker_router_task.ps1"
-    )
+    script = Path(__file__).resolve().parents[1] / "deploy" / "scripts" / "register_broker_router_task.ps1"
     text = script.read_text(encoding="utf-8")
-    assert (
-        r'"ETA_BROKER_ROUTER_PENDING_DIR" = "C:\EvolutionaryTradingAlgo\var\eta_engine\state\router\pending"'
-        in text
-    )
-    assert (
-        r'"ETA_BROKER_ROUTER_PENDING_DIR" = "C:\EvolutionaryTradingAlgo\docs\btc_live\broker_fleet"'
-        not in text
-    )
+    assert r'"ETA_BROKER_ROUTER_PENDING_DIR" = "C:\EvolutionaryTradingAlgo\var\eta_engine\state\router\pending"' in text
+    assert r'"ETA_BROKER_ROUTER_PENDING_DIR" = "C:\EvolutionaryTradingAlgo\docs\btc_live\broker_fleet"' not in text
     assert r"docs\btc_live\broker_fleet" not in text
 
 
@@ -314,23 +303,17 @@ class TestParsePendingFile:
         assert order.symbol == "MNQ"
         assert order.limit_price == 25_000.0
 
-    def test_parse_pending_file_extracts_bot_id_from_filename(
-        self, tmp_path: Path
-    ) -> None:
+    def test_parse_pending_file_extracts_bot_id_from_filename(self, tmp_path: Path) -> None:
         path = _write_pending(tmp_path, bot_id="btc_optimized")
         order = broker_router.parse_pending_file(path)
         assert order.bot_id == "btc_optimized"
 
-    def test_parse_pending_file_malformed_json_raises_value_error(
-        self, tmp_path: Path
-    ) -> None:
+    def test_parse_pending_file_malformed_json_raises_value_error(self, tmp_path: Path) -> None:
         path = _write_pending(tmp_path, raw_text="{not json")
         with pytest.raises((ValueError, json.JSONDecodeError)):
             broker_router.parse_pending_file(path)
 
-    def test_parse_pending_file_missing_required_field_raises(
-        self, tmp_path: Path
-    ) -> None:
+    def test_parse_pending_file_missing_required_field_raises(self, tmp_path: Path) -> None:
         # Drop signal_id -> implementation should refuse the row
         bad = {
             "ts": datetime.now(UTC).isoformat(),
@@ -370,9 +353,7 @@ class TestParsePendingFile:
         assert order.signal_id == "sig-bracket-001"
         assert order.limit_price == 18_000.0
 
-    def test_parse_pending_file_without_brackets_returns_none(
-        self, tmp_path: Path
-    ) -> None:
+    def test_parse_pending_file_without_brackets_returns_none(self, tmp_path: Path) -> None:
         """Back-compat: older files without brackets parse with None brackets.
 
         The venue's bracket-required check (downstream of parse) is what
@@ -384,9 +365,7 @@ class TestParsePendingFile:
         assert order.stop_price is None
         assert order.target_price is None
 
-    def test_parse_pending_file_non_numeric_bracket_raises(
-        self, tmp_path: Path
-    ) -> None:
+    def test_parse_pending_file_non_numeric_bracket_raises(self, tmp_path: Path) -> None:
         """Garbage bracket values fail parse rather than silently None-coercing."""
         payload = {
             "ts": datetime.now(UTC).isoformat(),
@@ -466,12 +445,8 @@ def _allow_gate_chain() -> _FakeGateChain:
     return _FakeGateChain(result=(True, []))
 
 
-def _block_gate_chain(
-    *, gate: str = "heartbeat", reason: str = "heartbeat_stale"
-) -> _FakeGateChain:
-    return _FakeGateChain(
-        result=(False, [_FakeGateResult(allow=False, gate=gate, reason=reason)])
-    )
+def _block_gate_chain(*, gate: str = "heartbeat", reason: str = "heartbeat_stale") -> _FakeGateChain:
+    return _FakeGateChain(result=(False, [_FakeGateResult(allow=False, gate=gate, reason=reason)]))
 
 
 class TestLifecycle:
@@ -565,11 +540,13 @@ class TestLifecycle:
         )
         hold_path = tmp_path / "order_entry_hold.json"
         hold_path.write_text(
-            json.dumps({
-                "active": True,
-                "reason": "ibkr_handshake_incident",
-                "scope": "futures",
-            }),
+            json.dumps(
+                {
+                    "active": True,
+                    "reason": "ibkr_handshake_incident",
+                    "scope": "futures",
+                }
+            ),
             encoding="utf-8",
         )
 
@@ -595,9 +572,7 @@ class TestLifecycle:
         assert _find_under(state_root / "archive", crypto_path.name) is not None
         assert router._counts["held"] == 1
 
-    def test_happy_path_filled_archives_file(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_happy_path_filled_archives_file(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         pending_dir = tmp_path / "pending"
         state_root = tmp_path / "state"
         path = _write_pending(pending_dir, signal_id="sig-001", bot_id="alpha")
@@ -631,9 +606,7 @@ class TestLifecycle:
         assert not path.exists()
         # File ended up in today's archive
         archived = _find_under(state_root / "archive", path.name)
-        assert archived is not None, (
-            f"expected archived file under {state_root / 'archive'!s}"
-        )
+        assert archived is not None, f"expected archived file under {state_root / 'archive'!s}"
         # Sidecar fill_result exists
         sidecar = _find_under(state_root, "sig-001_result.json")
         assert sidecar is not None
@@ -709,9 +682,7 @@ class TestLifecycle:
         assert req.price == 18_000.0
         assert req.client_order_id == "sig-bracket-passthrough"
 
-    def test_gate_blocked_moves_to_blocked_dir(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_gate_blocked_moves_to_blocked_dir(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         pending_dir = tmp_path / "pending"
         state_root = tmp_path / "state"
         path = _write_pending(pending_dir)
@@ -738,9 +709,7 @@ class TestLifecycle:
         # Block-meta sidecar exists with gate + reason
         sidecar_files = list(blocked_dir.rglob("*"))
         meta_text = "\n".join(
-            p.read_text(encoding="utf-8")
-            for p in sidecar_files
-            if p.is_file() and p.suffix == ".json"
+            p.read_text(encoding="utf-8") for p in sidecar_files if p.is_file() and p.suffix == ".json"
         )
         assert "heartbeat" in meta_text
         assert "heartbeat_stale" in meta_text
@@ -784,16 +753,11 @@ class TestLifecycle:
         blocked_file = _find_under(state_root / "blocked", path.name)
         assert blocked_file is not None
         assert venue.calls == []
-        meta_text = "\n".join(
-            p.read_text(encoding="utf-8")
-            for p in (state_root / "blocked").rglob("*_block.json")
-        )
+        meta_text = "\n".join(p.read_text(encoding="utf-8") for p in (state_root / "blocked").rglob("*_block.json"))
         assert "pending_order_sanity" in meta_text
         assert "smoke" in meta_text
 
-    def test_malformed_json_quarantined(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_malformed_json_quarantined(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         pending_dir = tmp_path / "pending"
         state_root = tmp_path / "state"
         path = _write_pending(pending_dir, raw_text="{not json}")
@@ -818,19 +782,13 @@ class TestLifecycle:
         assert quarantined is not None
         # Journal got a NOTED event whose intent flags quarantine
         intents = journal.intents()
-        assert any("quarantine" in i.lower() for i in intents), (
-            f"expected quarantine-flagged intent, got {intents!r}"
-        )
+        assert any("quarantine" in i.lower() for i in intents), f"expected quarantine-flagged intent, got {intents!r}"
         outcomes = journal.outcomes()
-        assert any(str(o).upper() == "NOTED" for o in outcomes), (
-            f"expected NOTED in journal outcomes, got {outcomes!r}"
-        )
+        assert any(str(o).upper() == "NOTED" for o in outcomes), f"expected NOTED in journal outcomes, got {outcomes!r}"
         # Venue NEVER called
         assert venue.calls == []
 
-    def test_venue_rejected_retries_then_fails(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_venue_rejected_retries_then_fails(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Three REJECTs across three ticks -> file ends in failed/.
 
         Pinned to the new retry behavior: each REJECT writes a sidecar
@@ -866,7 +824,9 @@ class TestLifecycle:
         )
         # Suppress exponential backoff so the test runs in milliseconds.
         monkeypatch.setattr(
-            type(router), "_should_backoff", lambda *_a, **_k: False,
+            type(router),
+            "_should_backoff",
+            lambda *_a, **_k: False,
         )
 
         async def _drive() -> None:
@@ -886,13 +846,9 @@ class TestLifecycle:
         assert leftover is None, "file lingered in processing/ after max_retries"
         # Three rejections -> 2 NOTED retry events + 1 FAILED terminal.
         failed_count = sum(1 for o in journal.outcomes() if str(o).upper() == "FAILED")
-        assert failed_count >= 1, (
-            f"expected at least 1 FAILED event, got outcomes={journal.outcomes()!r}"
-        )
+        assert failed_count >= 1, f"expected at least 1 FAILED event, got outcomes={journal.outcomes()!r}"
 
-    def test_dry_run_does_not_move_or_submit(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_dry_run_does_not_move_or_submit(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         pending_dir = tmp_path / "pending"
         state_root = tmp_path / "state"
         path = _write_pending(pending_dir)
@@ -921,15 +877,11 @@ class TestLifecycle:
             if sub.exists():
                 contents = list(sub.rglob("*"))
                 files = [p for p in contents if p.is_file()]
-                assert files == [], (
-                    f"dry_run should not produce files under {sub!s}; found {files!r}"
-                )
+                assert files == [], f"dry_run should not produce files under {sub!s}; found {files!r}"
         # Venue NEVER called
         assert venue.calls == []
 
-    def test_partial_fill_archives_with_status_partial(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_partial_fill_archives_with_status_partial(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         pending_dir = tmp_path / "pending"
         state_root = tmp_path / "state"
         path = _write_pending(pending_dir, signal_id="sig-partial")
@@ -965,9 +917,7 @@ class TestLifecycle:
         body = sidecar.read_text(encoding="utf-8")
         assert "PARTIAL" in body
 
-    def test_open_status_archives_with_status_open(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_open_status_archives_with_status_open(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         pending_dir = tmp_path / "pending"
         state_root = tmp_path / "state"
         path = _write_pending(pending_dir, signal_id="sig-open")
@@ -1002,9 +952,7 @@ class TestLifecycle:
         body = sidecar.read_text(encoding="utf-8")
         assert "OPEN" in body
 
-    def test_atomic_move_collision_skips_silently(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_atomic_move_collision_skips_silently(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         pending_dir = tmp_path / "pending"
         state_root = tmp_path / "state"
         path = _write_pending(pending_dir, bot_id="alpha")
@@ -1012,9 +960,7 @@ class TestLifecycle:
         # Pre-create the destination in processing/
         processing_dir = state_root / "processing"
         processing_dir.mkdir(parents=True, exist_ok=True)
-        (processing_dir / path.name).write_text(
-            "{}", encoding="utf-8"
-        )
+        (processing_dir / path.name).write_text("{}", encoding="utf-8")
 
         venue = _FakeVenue()
         smart_router = _FakeSmartRouter(venue)
@@ -1033,13 +979,9 @@ class TestLifecycle:
         try:
             asyncio.run(router._process_pending_file(path))
         except Exception as exc:  # pragma: no cover — explicit-fail msg
-            pytest.fail(
-                f"router crashed on processing/ filename collision: {exc!r}"
-            )
+            pytest.fail(f"router crashed on processing/ filename collision: {exc!r}")
 
-    def test_heartbeat_emitted_each_loop(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_heartbeat_emitted_each_loop(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Two ticks both refresh ``state_root/broker_router_heartbeat.json``.
 
         Pinned to the actual API: the router exposes both ``_tick``
@@ -1075,13 +1017,9 @@ class TestLifecycle:
         # And the router exposes the property too.
         assert router.heartbeat_path == hb_path
         body = json.loads(hb_path.read_text(encoding="utf-8"))
-        assert "last_poll_ts" in body, (
-            f"heartbeat payload missing last_poll_ts; got keys={list(body)!r}"
-        )
+        assert "last_poll_ts" in body, f"heartbeat payload missing last_poll_ts; got keys={list(body)!r}"
 
-    def test_emit_heartbeat_writes_directly(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_emit_heartbeat_writes_directly(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Direct ``_emit_heartbeat()`` call writes the snapshot."""
         pending_dir = tmp_path / "pending"
         state_root = tmp_path / "state"
@@ -1136,9 +1074,7 @@ class TestLifecycle:
         try:
             asyncio.run(router._process_pending_file(path))
         except Exception as exc:  # pragma: no cover
-            pytest.fail(
-                f"_process_pending_file leaked unexpected RuntimeError: {exc!r}"
-            )
+            pytest.fail(f"_process_pending_file leaked unexpected RuntimeError: {exc!r}")
 
 
 # ---------------------------------------------------------------------------
@@ -1175,9 +1111,7 @@ class TestPositionReconciliation:
         first = gates.calls[0]
         # Production gate-chain contract is {symbol: net_qty}.
         seen = first.get("open_positions") or first.get("positions")
-        assert seen == {"MNQ": 2}, (
-            f"gate chain received {seen!r}, expected collapsed net positions"
-        )
+        assert seen == {"MNQ": 2}, f"gate chain received {seen!r}, expected collapsed net positions"
 
     def test_reconcile_disabled_falls_through_to_empty_dict(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -1205,18 +1139,10 @@ class TestPositionReconciliation:
         asyncio.run(router._process_pending_file(path))
 
         assert gates.calls, "gate chain not called"
-        seen = (
-            gates.calls[0].get("open_positions")
-            or gates.calls[0].get("positions")
-            or {}
-        )
-        assert seen == {}, (
-            f"with ETA_RECONCILE_DISABLED=1 expected empty positions; got {seen!r}"
-        )
+        seen = gates.calls[0].get("open_positions") or gates.calls[0].get("positions") or {}
+        assert seen == {}, f"with ETA_RECONCILE_DISABLED=1 expected empty positions; got {seen!r}"
 
-    def test_not_implemented_with_allow_empty_state(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_not_implemented_with_allow_empty_state(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         pending_dir = tmp_path / "pending"
         state_root = tmp_path / "state"
         path = _write_pending(pending_dir)
@@ -1249,11 +1175,7 @@ class TestPositionReconciliation:
 
         # Should have proceeded, gate received {}
         assert gates.calls, "gate chain not called"
-        seen = (
-            gates.calls[0].get("open_positions")
-            or gates.calls[0].get("positions")
-            or {}
-        )
+        seen = gates.calls[0].get("open_positions") or gates.calls[0].get("positions") or {}
         assert seen == {}
         # Venue did get called (no abort)
         assert len(venue.calls) == 1
@@ -1298,9 +1220,7 @@ class TestPositionReconciliation:
 
 
 class TestIdempotency:
-    def test_signal_id_passed_as_client_order_id(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_signal_id_passed_as_client_order_id(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         pending_dir = tmp_path / "pending"
         state_root = tmp_path / "state"
         path = _write_pending(pending_dir, signal_id="sig-CLIENT-001")
@@ -1334,9 +1254,7 @@ class TestIdempotency:
             f"expected client_order_id == signal_id; got {req.client_order_id!r}"
         )
 
-    def test_already_archived_file_skipped(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_already_archived_file_skipped(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         pending_dir = tmp_path / "pending"
         state_root = tmp_path / "state"
         path = _write_pending(pending_dir, bot_id="alpha", signal_id="sig-arch")
@@ -1379,9 +1297,7 @@ class TestIdempotency:
         # The prior stub was ``{}``; after replace it should hold the
         # supervisor JSON we wrote (signal_id is preserved).
         body = archived.read_text(encoding="utf-8")
-        assert "sig-arch" in body, (
-            f"expected archive entry to be the new pending payload, got {body[:80]!r}"
-        )
+        assert "sig-arch" in body, f"expected archive entry to be the new pending payload, got {body[:80]!r}"
         # Venue was called; FILLED journaled.
         assert len(venue.calls) == 1
         outcomes = journal.outcomes()
@@ -1394,26 +1310,29 @@ class TestIdempotency:
 
 
 class TestRetryMetaSidecar:
-    def test_rejected_writes_retry_meta_in_processing(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_rejected_writes_retry_meta_in_processing(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """One REJECT writes ``<file>.retry_meta.json`` in processing/."""
         pending_dir = tmp_path / "pending"
         state_root = tmp_path / "state"
         path = _write_pending(pending_dir, signal_id="sig-meta-1")
 
-        venue = _FakeVenue(results=[
-            OrderResult(order_id="OID", status=OrderStatus.REJECTED, filled_qty=0.0),
-        ])
+        venue = _FakeVenue(
+            results=[
+                OrderResult(order_id="OID", status=OrderStatus.REJECTED, filled_qty=0.0),
+            ]
+        )
         smart_router = _FakeSmartRouter(venue)
         journal = _FakeJournal()
         gates = _allow_gate_chain()
         _stub_fetch_positions(monkeypatch, {})
 
         router = _make_router(
-            pending_dir=pending_dir, state_root=state_root,
-            smart_router=smart_router, journal=journal,
-            gate_chain=gates, max_retries=5,
+            pending_dir=pending_dir,
+            state_root=state_root,
+            smart_router=smart_router,
+            journal=journal,
+            gate_chain=gates,
+            max_retries=5,
         )
         asyncio.run(router._tick())
 
@@ -1427,30 +1346,35 @@ class TestRetryMetaSidecar:
         assert meta["last_attempt_ts"]
         assert "last_reject_reason" in meta
 
-    def test_retry_path_picked_up_on_next_tick(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_retry_path_picked_up_on_next_tick(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Tick 2 re-runs the lifecycle for a file already in processing/."""
         pending_dir = tmp_path / "pending"
         state_root = tmp_path / "state"
         path = _write_pending(pending_dir, signal_id="sig-meta-2")
 
-        venue = _FakeVenue(results=[
-            OrderResult(order_id="OID", status=OrderStatus.REJECTED, filled_qty=0.0),
-            OrderResult(order_id="OID", status=OrderStatus.FILLED, filled_qty=1.0),
-        ])
+        venue = _FakeVenue(
+            results=[
+                OrderResult(order_id="OID", status=OrderStatus.REJECTED, filled_qty=0.0),
+                OrderResult(order_id="OID", status=OrderStatus.FILLED, filled_qty=1.0),
+            ]
+        )
         smart_router = _FakeSmartRouter(venue)
         journal = _FakeJournal()
         gates = _allow_gate_chain()
         _stub_fetch_positions(monkeypatch, {})
 
         router = _make_router(
-            pending_dir=pending_dir, state_root=state_root,
-            smart_router=smart_router, journal=journal,
-            gate_chain=gates, max_retries=3,
+            pending_dir=pending_dir,
+            state_root=state_root,
+            smart_router=smart_router,
+            journal=journal,
+            gate_chain=gates,
+            max_retries=3,
         )
         monkeypatch.setattr(
-            type(router), "_should_backoff", lambda *_a, **_k: False,
+            type(router),
+            "_should_backoff",
+            lambda *_a, **_k: False,
         )
 
         async def _drive() -> None:
@@ -1469,9 +1393,7 @@ class TestRetryMetaSidecar:
 
 
 class TestGateChainImportFailure:
-    def test_import_failure_blocks_order(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_import_failure_blocks_order(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """ImportError of gate_chain -> file lands in blocked/, NOT archive."""
         pending_dir = tmp_path / "pending"
         state_root = tmp_path / "state"
@@ -1481,7 +1403,9 @@ class TestGateChainImportFailure:
             raise ImportError("simulated firm submodule missing")
 
         monkeypatch.setattr(
-            broker_router, "_load_build_default_chain", _raise_import_error,
+            broker_router,
+            "_load_build_default_chain",
+            _raise_import_error,
         )
         monkeypatch.delenv("ETA_GATE_BOOTSTRAP", raising=False)
 
@@ -1491,8 +1415,10 @@ class TestGateChainImportFailure:
         _stub_fetch_positions(monkeypatch, {})
 
         router = _make_router(
-            pending_dir=pending_dir, state_root=state_root,
-            smart_router=smart_router, journal=journal,
+            pending_dir=pending_dir,
+            state_root=state_root,
+            smart_router=smart_router,
+            journal=journal,
             gate_chain=None,  # production path
         )
         asyncio.run(router._process_pending_file(path))
@@ -1504,9 +1430,7 @@ class TestGateChainImportFailure:
         assert meta_files, "expected a *_block.json sidecar"
         meta_text = meta_files[0].read_text(encoding="utf-8")
         assert "gate_chain_import_failed" in meta_text
-        assert any(
-            "gate_chain_import_failed" in i for i in journal.intents()
-        ), f"intents={journal.intents()!r}"
+        assert any("gate_chain_import_failed" in i for i in journal.intents()), f"intents={journal.intents()!r}"
         assert venue.calls == []
 
     def test_import_failure_with_bootstrap_allows_through(
@@ -1521,20 +1445,26 @@ class TestGateChainImportFailure:
             raise ImportError("simulated firm submodule missing")
 
         monkeypatch.setattr(
-            broker_router, "_load_build_default_chain", _raise_import_error,
+            broker_router,
+            "_load_build_default_chain",
+            _raise_import_error,
         )
         monkeypatch.setenv("ETA_GATE_BOOTSTRAP", "1")
 
-        venue = _FakeVenue(results=[
-            OrderResult(order_id="OID", status=OrderStatus.FILLED, filled_qty=1.0),
-        ])
+        venue = _FakeVenue(
+            results=[
+                OrderResult(order_id="OID", status=OrderStatus.FILLED, filled_qty=1.0),
+            ]
+        )
         smart_router = _FakeSmartRouter(venue)
         journal = _FakeJournal()
         _stub_fetch_positions(monkeypatch, {})
 
         router = _make_router(
-            pending_dir=pending_dir, state_root=state_root,
-            smart_router=smart_router, journal=journal,
+            pending_dir=pending_dir,
+            state_root=state_root,
+            smart_router=smart_router,
+            journal=journal,
             gate_chain=None,
         )
         asyncio.run(router._process_pending_file(path))
@@ -1599,23 +1529,25 @@ class TestGateChainImportFailure:
         assert (state_root / "gate_journal.sqlite").exists()
         assert _find_under(state_root / "archive", path.name) is not None
 
-    def test_readiness_gate_blocks_unapproved_bot(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_readiness_gate_blocks_unapproved_bot(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         pending_dir = tmp_path / "pending"
         state_root = tmp_path / "state"
         path = _write_pending(pending_dir, bot_id="alpha", signal_id="sig-readiness")
         readiness_path = tmp_path / "bot_strategy_readiness_latest.json"
         readiness_path.write_text(
-            json.dumps({
-                "rows": [{
-                    "bot_id": "alpha",
-                    "can_paper_trade": False,
-                    "can_live_trade": False,
-                    "launch_lane": "research",
-                    "data_status": "ready",
-                }],
-            }),
+            json.dumps(
+                {
+                    "rows": [
+                        {
+                            "bot_id": "alpha",
+                            "can_paper_trade": False,
+                            "can_live_trade": False,
+                            "launch_lane": "research",
+                            "data_status": "ready",
+                        }
+                    ],
+                }
+            ),
             encoding="utf-8",
         )
         monkeypatch.setenv("ETA_BROKER_ROUTER_ENFORCE_READINESS", "1")
@@ -1639,29 +1571,29 @@ class TestGateChainImportFailure:
         assert venue.calls == []
         blocked = _find_under(state_root / "blocked", path.name)
         assert blocked is not None
-        meta_text = (state_root / "blocked" / "sig-readiness_block.json").read_text(
-            encoding="utf-8"
-        )
+        meta_text = (state_root / "blocked" / "sig-readiness_block.json").read_text(encoding="utf-8")
         assert "strategy_readiness" in meta_text
         assert "not paper-approved" in meta_text
 
-    def test_readiness_gate_allows_paper_approved_bot(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_readiness_gate_allows_paper_approved_bot(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         pending_dir = tmp_path / "pending"
         state_root = tmp_path / "state"
         path = _write_pending(pending_dir, bot_id="alpha", signal_id="sig-ready")
         readiness_path = tmp_path / "bot_strategy_readiness_latest.json"
         readiness_path.write_text(
-            json.dumps({
-                "rows": [{
-                    "bot_id": "alpha",
-                    "can_paper_trade": True,
-                    "can_live_trade": False,
-                    "launch_lane": "paper_soak",
-                    "data_status": "ready",
-                }],
-            }),
+            json.dumps(
+                {
+                    "rows": [
+                        {
+                            "bot_id": "alpha",
+                            "can_paper_trade": True,
+                            "can_live_trade": False,
+                            "launch_lane": "paper_soak",
+                            "data_status": "ready",
+                        }
+                    ],
+                }
+            ),
             encoding="utf-8",
         )
         monkeypatch.setenv("ETA_BROKER_ROUTER_ENFORCE_READINESS", "1")
@@ -1736,7 +1668,9 @@ class TestRoutingConfig:
         assert cfg.symbol_overrides["BTC"]["tasty"] == "BTCUSDT"
 
     def test_missing_file_returns_default(
-        self, tmp_path: Path, caplog: pytest.LogCaptureFixture,
+        self,
+        tmp_path: Path,
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
         missing = tmp_path / "does_not_exist.yaml"
         with caplog.at_level("WARNING", logger="eta_engine.broker_router"):
@@ -1746,10 +1680,9 @@ class TestRoutingConfig:
         assert cfg.per_bot == {}
         assert cfg.symbol_overrides == {}
         # WARNING was emitted.
-        assert any(
-            "routing config not found" in rec.getMessage().lower()
-            for rec in caplog.records
-        ), f"expected WARNING about missing file, got {caplog.records!r}"
+        assert any("routing config not found" in rec.getMessage().lower() for rec in caplog.records), (
+            f"expected WARNING about missing file, got {caplog.records!r}"
+        )
 
     def test_malformed_yaml_raises(self, tmp_path: Path) -> None:
         bad = tmp_path / "bad.yaml"
@@ -1814,7 +1747,9 @@ class TestRoutingConfig:
         assert cfg.map_symbol("M6E", "ibkr") == "M6E"
 
     def test_env_var_override_picks_up_alternate_path(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         body = _VALID_ROUTING_YAML.replace("venue: ibkr", "venue: tasty", 1)
         path = tmp_path / "alt.yaml"
@@ -1838,7 +1773,10 @@ class _FakeMultiVenueRouter:
         self.lookups: list[str] = []
 
     def choose_venue(
-        self, symbol: str, qty: float, urgency: str = "normal",
+        self,
+        symbol: str,
+        qty: float,
+        urgency: str = "normal",
     ) -> _FakeVenue:
         # The routing-config path should bypass this; the test asserts it.
         self.choose_venue_calls.append((symbol, qty, urgency))
@@ -1852,7 +1790,9 @@ class _FakeMultiVenueRouter:
 
 class TestLifecycleRoutingConfig:
     def test_unsupported_routing_pair_quarantined(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Pending file with unmapped symbol -> quarantine + venue NEVER called."""
         pending_dir = tmp_path / "pending"
@@ -1872,24 +1812,23 @@ class TestLifecycleRoutingConfig:
             per_bot={},
         )
         router = broker_router.BrokerRouter(
-            pending_dir=pending_dir, state_root=state_root,
-            smart_router=smart_router, journal=journal,
-            gate_chain=gates, routing_config=cfg,
+            pending_dir=pending_dir,
+            state_root=state_root,
+            smart_router=smart_router,
+            journal=journal,
+            gate_chain=gates,
+            routing_config=cfg,
         )
         asyncio.run(router._process_pending_file(path))
 
         # File ended up in quarantine/.
         quarantined = _find_under(state_root / "quarantine", path.name)
-        assert quarantined is not None, (
-            f"expected file quarantined under {state_root / 'quarantine'!s}"
-        )
+        assert quarantined is not None, f"expected file quarantined under {state_root / 'quarantine'!s}"
         # Venue was NEVER called.
         assert venue.calls == [], "venue must not be called for an unmapped pair"
         # Journal recorded a NOTED quarantine event with the right reason.
         outcomes = journal.outcomes()
-        assert any(str(o).upper() == "NOTED" for o in outcomes), (
-            f"expected NOTED outcome, got {outcomes!r}"
-        )
+        assert any(str(o).upper() == "NOTED" for o in outcomes), f"expected NOTED outcome, got {outcomes!r}"
         intents = journal.intents()
         assert any("quarantine" in i.lower() for i in intents)
         # Reason field flagged as routing_config_unsupported_pair.
@@ -1903,31 +1842,46 @@ class TestLifecycleRoutingConfig:
         )
 
     def test_per_bot_routing_picks_correct_venue(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Per-bot venue=tasty causes the tasty adapter to receive place_order."""
         pending_dir = tmp_path / "pending"
         state_root = tmp_path / "state"
         path = _write_pending(
-            pending_dir, bot_id="btc_to_tasty", signal_id="sig-tasty",
+            pending_dir,
+            bot_id="btc_to_tasty",
+            signal_id="sig-tasty",
             symbol="BTC",
         )
 
         ibkr_venue = _FakeVenue(
-            results=[OrderResult(
-                order_id="OID-IBKR", status=OrderStatus.FILLED, filled_qty=1.0,
-            )],
+            results=[
+                OrderResult(
+                    order_id="OID-IBKR",
+                    status=OrderStatus.FILLED,
+                    filled_qty=1.0,
+                )
+            ],
         )
         ibkr_venue.name = "ibkr"
         tasty_venue = _FakeVenue(
-            results=[OrderResult(
-                order_id="OID-TASTY", status=OrderStatus.FILLED, filled_qty=1.0,
-            )],
+            results=[
+                OrderResult(
+                    order_id="OID-TASTY",
+                    status=OrderStatus.FILLED,
+                    filled_qty=1.0,
+                )
+            ],
         )
         tasty_venue.name = "tasty"
-        smart_router = _FakeMultiVenueRouter({
-            "ibkr": ibkr_venue, "tasty": tasty_venue,
-        })
+        smart_router = _FakeMultiVenueRouter(
+            {
+                "ibkr": ibkr_venue,
+                "tasty": tasty_venue,
+            }
+        )
         journal = _FakeJournal()
         gates = _allow_gate_chain()
         _stub_fetch_positions(monkeypatch, {})
@@ -1938,23 +1892,20 @@ class TestLifecycleRoutingConfig:
             per_bot={"btc_to_tasty": {"venue": "tasty"}},
         )
         router = broker_router.BrokerRouter(
-            pending_dir=pending_dir, state_root=state_root,
-            smart_router=smart_router, journal=journal,
-            gate_chain=gates, routing_config=cfg,
+            pending_dir=pending_dir,
+            state_root=state_root,
+            smart_router=smart_router,
+            journal=journal,
+            gate_chain=gates,
+            routing_config=cfg,
         )
         asyncio.run(router._process_pending_file(path))
 
         # The tasty adapter -- and ONLY the tasty adapter -- got the order.
-        assert len(tasty_venue.calls) == 1, (
-            f"expected the tasty venue to receive 1 order; got {len(tasty_venue.calls)}"
-        )
-        assert ibkr_venue.calls == [], (
-            "ibkr venue should not have been called for btc_to_tasty"
-        )
+        assert len(tasty_venue.calls) == 1, f"expected the tasty venue to receive 1 order; got {len(tasty_venue.calls)}"
+        assert ibkr_venue.calls == [], "ibkr venue should not have been called for btc_to_tasty"
         # Symbol was mapped to BTCUSDT for the tasty adapter.
-        assert tasty_venue.calls[0].symbol == "BTCUSDT", (
-            f"expected BTCUSDT; got {tasty_venue.calls[0].symbol!r}"
-        )
+        assert tasty_venue.calls[0].symbol == "BTCUSDT", f"expected BTCUSDT; got {tasty_venue.calls[0].symbol!r}"
         # The router used the venue-by-name lookup, not choose_venue.
         assert "tasty" in smart_router.lookups, (
             f"expected venue-by-name lookup for 'tasty'; got {smart_router.lookups!r}"
@@ -1964,14 +1915,18 @@ class TestLifecycleRoutingConfig:
         )
 
     def test_dormant_tradovate_pin_fails_before_venue_call(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """A config pin must not bypass the global Tradovate dormancy gate."""
         pending_dir = tmp_path / "pending"
         state_root = tmp_path / "state"
         path = _write_pending(
-            pending_dir, bot_id="volume_profile_mnq",
-            signal_id="sig-dormant-tradovate", symbol="MNQ",
+            pending_dir,
+            bot_id="volume_profile_mnq",
+            signal_id="sig-dormant-tradovate",
+            symbol="MNQ",
         )
 
         tradovate_venue = _FakeVenue()
@@ -1987,9 +1942,12 @@ class TestLifecycleRoutingConfig:
             per_bot={"volume_profile_mnq": {"venue": "tradovate"}},
         )
         router = broker_router.BrokerRouter(
-            pending_dir=pending_dir, state_root=state_root,
-            smart_router=smart_router, journal=journal,
-            gate_chain=gates, routing_config=cfg,
+            pending_dir=pending_dir,
+            state_root=state_root,
+            smart_router=smart_router,
+            journal=journal,
+            gate_chain=gates,
+            routing_config=cfg,
         )
         asyncio.run(router._process_pending_file(path))
 
@@ -1999,7 +1957,9 @@ class TestLifecycleRoutingConfig:
         assert any("dormant" in str(i).lower() for i in journal.intents())
 
     def test_prop_account_risk_blocks_before_venue_resolution(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Prop accounts must prove DD headroom before any venue path."""
         pending_dir = tmp_path / "pending"
@@ -2071,7 +2031,9 @@ class TestLifecycleRoutingConfig:
         assert block_meta["reason"] == "prop_risk_exceeds_headroom"
 
     def test_prop_account_alias_builds_prefixed_tradovate_venue(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         pending_dir = tmp_path / "pending"
         state_root = tmp_path / "state"
@@ -2118,7 +2080,9 @@ class TestLifecycleRoutingConfig:
         assert venue.cid == "999"
 
     def test_prop_account_alias_reads_prefixed_keyring_credentials(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         pending_dir = tmp_path / "pending"
         state_root = tmp_path / "state"

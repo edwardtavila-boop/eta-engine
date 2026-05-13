@@ -29,6 +29,7 @@ Use case (called by pre_live_gate, ab_framework, regression_test_set):
     if result.passed_gates:
         promote()
 """
+
 from __future__ import annotations
 
 import logging
@@ -56,8 +57,8 @@ class WalkForwardConfig:
     max_dd_r: float = 6.0
     min_trades_per_fold: int = 10
     min_aggregate_trades: int = 100
-    psr_threshold: float = 0.95         # 95% prob the true Sharpe > target
-    bonferroni_alpha: float = 0.05      # family-wise error rate
+    psr_threshold: float = 0.95  # 95% prob the true Sharpe > target
+    bonferroni_alpha: float = 0.05  # family-wise error rate
 
 
 @dataclass
@@ -96,6 +97,7 @@ class WalkForwardResult:
 
     def to_dict(self) -> dict:
         from dataclasses import asdict
+
         return asdict(self)
 
 
@@ -186,19 +188,16 @@ def run_walk_forward(
 
     if n < cfg.train_size + cfg.test_size:
         return WalkForwardResult(
-            n_folds=0, n_total_trades=n,
-            summary=(
-                f"insufficient data: have {n}, need at least "
-                f"{cfg.train_size + cfg.test_size}"
-            ),
+            n_folds=0,
+            n_total_trades=n,
+            summary=(f"insufficient data: have {n}, need at least {cfg.train_size + cfg.test_size}"),
         )
 
     fold_idx = 0
     start = 0
     while start + cfg.train_size + cfg.test_size <= n:
-        train = sample_r[start: start + cfg.train_size]
-        test_raw = sample_r[start + cfg.train_size:
-                            start + cfg.train_size + cfg.test_size]
+        train = sample_r[start : start + cfg.train_size]
+        test_raw = sample_r[start + cfg.train_size : start + cfg.train_size + cfg.test_size]
         if policy_fn is not None:
             try:
                 test = list(policy_fn(train))
@@ -207,7 +206,8 @@ def run_walk_forward(
             except Exception as exc:  # noqa: BLE001
                 logger.warning(
                     "walk_forward: policy_fn raised on fold %d (%s)",
-                    fold_idx, exc,
+                    fold_idx,
+                    exc,
                 )
                 test = test_raw
         else:
@@ -218,18 +218,21 @@ def run_walk_forward(
             fold_idx += 1
             continue
 
-        folds.append(FoldResult(
-            fold_idx=fold_idx,
-            train_start=start, train_end=start + cfg.train_size,
-            test_start=start + cfg.train_size,
-            test_end=start + cfg.train_size + cfg.test_size,
-            n_trades=len(test),
-            avg_r=round(sum(test) / len(test), 4),
-            sharpe=round(_sharpe(test), 4),
-            sortino=round(_sortino(test), 4),
-            max_dd_r=round(_max_drawdown(test), 4),
-            win_rate=round(sum(1 for r in test if r > 0) / len(test), 3),
-        ))
+        folds.append(
+            FoldResult(
+                fold_idx=fold_idx,
+                train_start=start,
+                train_end=start + cfg.train_size,
+                test_start=start + cfg.train_size,
+                test_end=start + cfg.train_size + cfg.test_size,
+                n_trades=len(test),
+                avg_r=round(sum(test) / len(test), 4),
+                sharpe=round(_sharpe(test), 4),
+                sortino=round(_sortino(test), 4),
+                max_dd_r=round(_max_drawdown(test), 4),
+                win_rate=round(sum(1 for r in test if r > 0) / len(test), 3),
+            )
+        )
         all_test_r.extend(test)
         all_train_r.extend(train)
         start += cfg.step
@@ -237,7 +240,8 @@ def run_walk_forward(
 
     if not folds:
         return WalkForwardResult(
-            n_folds=0, n_total_trades=n,
+            n_folds=0,
+            n_total_trades=n,
             summary="no folds met min_trades_per_fold threshold",
         )
 

@@ -1,4 +1,5 @@
 """Shared services for ETA dashboard API routes."""
+
 from __future__ import annotations
 
 import subprocess

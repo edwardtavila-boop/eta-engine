@@ -68,10 +68,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.json:
         print(json.dumps(evidence, indent=2, sort_keys=True))
     else:
-        print(
-            "[runtime_log_smoke] appended runtime_smoke to "
-            f"{evidence['path']} ({evidence['bytes']} bytes)"
-        )
+        print(f"[runtime_log_smoke] appended runtime_smoke to {evidence['path']} ({evidence['bytes']} bytes)")
     return 0
 
 

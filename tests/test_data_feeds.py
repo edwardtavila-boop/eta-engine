@@ -4,6 +4,7 @@ Each feed must satisfy the bar-shape contract that the supervisor relies on
 (open/high/low/close/volume/ts/symbol) and degrade safely on transient
 errors so the supervisor's tick loop never crashes mid-fleet.
 """
+
 from __future__ import annotations
 
 import builtins
@@ -25,6 +26,7 @@ def _assert_bar_shape(bar: dict, symbol: str) -> None:
 
 def test_root_strips_contract_month_and_currency_suffix() -> None:
     from eta_engine.scripts.data_feeds import _root
+
     assert _root("MNQ1") == "MNQ"
     assert _root("NQ1") == "NQ"
     assert _root("BTC") == "BTC"
@@ -35,6 +37,7 @@ def test_root_strips_contract_month_and_currency_suffix() -> None:
 
 def test_is_crypto_and_futures_classification() -> None:
     from eta_engine.scripts.data_feeds import _is_crypto, _is_futures
+
     assert _is_crypto("BTC")
     assert _is_crypto("BTCUSD")
     assert _is_crypto("ETH")
@@ -54,6 +57,7 @@ def test_is_crypto_and_futures_classification() -> None:
 
 def test_empty_bar_has_full_shape() -> None:
     from eta_engine.scripts.data_feeds import _empty_bar
+
     bar = _empty_bar("BTC", last_close=95000.0)
     _assert_bar_shape(bar, "BTC")
     assert bar["close"] == 95000.0
@@ -67,6 +71,7 @@ def test_yfinance_feed_caches_within_ttl() -> None:
     """Two get_bar calls within the TTL window MUST hit the cache,
     not the network."""
     from eta_engine.scripts.data_feeds import YFinanceDataFeed
+
     feed = YFinanceDataFeed(ttl_seconds=30.0)
 
     with patch("yfinance.Ticker") as mock_ticker:
@@ -86,6 +91,7 @@ def test_yfinance_feed_caches_within_ttl() -> None:
 
 def test_yfinance_feed_returns_empty_bar_on_unknown_symbol() -> None:
     from eta_engine.scripts.data_feeds import YFinanceDataFeed
+
     feed = YFinanceDataFeed()
     bar = feed.get_bar("FAKECOIN")
     _assert_bar_shape(bar, "FAKECOIN")
@@ -95,6 +101,7 @@ def test_yfinance_feed_returns_empty_bar_on_unknown_symbol() -> None:
 
 def test_yfinance_feed_survives_network_failure() -> None:
     from eta_engine.scripts.data_feeds import YFinanceDataFeed
+
     feed = YFinanceDataFeed()
     with patch("yfinance.Ticker", side_effect=RuntimeError("net down")):
         bar = feed.get_bar("BTC")
@@ -104,10 +111,14 @@ def test_yfinance_feed_survives_network_failure() -> None:
 
 class _FakeRow:
     """Stand-in for a yfinance DataFrame row."""
+
     def __getitem__(self, key: str) -> float:
         return {
-            "Open": 95000.0, "High": 95100.0, "Low": 94900.0,
-            "Close": 95050.0, "Volume": 1234.0,
+            "Open": 95000.0,
+            "High": 95100.0,
+            "Low": 94900.0,
+            "Close": 95050.0,
+            "Volume": 1234.0,
         }[key]
 
     def get(self, key: str, default: float = 0.0) -> float:
@@ -119,6 +130,7 @@ class _FakeRow:
 
 def test_coinbase_feed_pulls_latest_candle() -> None:
     from eta_engine.scripts.data_feeds import CoinbaseDataFeed
+
     feed = CoinbaseDataFeed(ttl_seconds=30.0)
 
     fake_resp = MagicMock()
@@ -142,6 +154,7 @@ def test_coinbase_feed_pulls_latest_candle() -> None:
 
 def test_coinbase_feed_unknown_symbol_returns_empty_bar() -> None:
     from eta_engine.scripts.data_feeds import CoinbaseDataFeed
+
     feed = CoinbaseDataFeed()
     bar = feed.get_bar("MNQ1")  # not crypto
     _assert_bar_shape(bar, "MNQ1")
@@ -150,6 +163,7 @@ def test_coinbase_feed_unknown_symbol_returns_empty_bar() -> None:
 
 def test_coinbase_feed_survives_http_failure() -> None:
     from eta_engine.scripts.data_feeds import CoinbaseDataFeed
+
     feed = CoinbaseDataFeed()
     with patch("requests.get", side_effect=RuntimeError("502")):
         bar = feed.get_bar("BTC")
@@ -162,6 +176,7 @@ def test_coinbase_feed_survives_http_failure() -> None:
 
 def test_ibkr_feed_uses_historical_data_for_futures() -> None:
     from eta_engine.scripts.data_feeds import IbkrDataFeed
+
     feed = IbkrDataFeed()
     # Mock the underlying IB and the connection. _make_contract calls
     # _resolve_front_month_mnq which itself calls qualifyContractsAsync
@@ -169,7 +184,6 @@ def test_ibkr_feed_uses_historical_data_for_futures() -> None:
     # crash in supervisor's main thread). The async mock returns the
     # qualified ContFuture; lastTradeDateOrContractMonth must be a
     # real YYYYMMDD string for the front-month resolver's len-check.
-    import asyncio as _asyncio
 
     fake_ib = MagicMock()
     fake_ib.isConnected.return_value = True
@@ -201,6 +215,7 @@ def test_ibkr_feed_uses_historical_data_for_futures() -> None:
 
 def test_ibkr_feed_returns_empty_when_disconnected() -> None:
     from eta_engine.scripts.data_feeds import IbkrDataFeed
+
     feed = IbkrDataFeed()
     feed._ib = MagicMock()
     feed._ib.isConnected.return_value = False
@@ -261,7 +276,12 @@ def test_ibkr_feed_lazy_connect_is_mid_session_thread_safe(monkeypatch) -> None:
             self.connected = True
 
         async def connectAsync(  # noqa: N802 - mirrors ib_insync.IB
-            self, host: str, port: int, *, clientId: int, timeout: int,  # noqa: N803
+            self,
+            host: str,
+            port: int,
+            *,
+            clientId: int,
+            timeout: int,  # noqa: N803
         ) -> None:
             with lock:
                 connects.append((host, port, clientId, timeout))
@@ -302,6 +322,7 @@ def test_ibkr_feed_lazy_connect_is_mid_session_thread_safe(monkeypatch) -> None:
 
 def test_ibkr_feed_unknown_symbol_returns_empty_bar() -> None:
     from eta_engine.scripts.data_feeds import IbkrDataFeed
+
     feed = IbkrDataFeed()
     feed._ib = MagicMock()
     feed._ib.isConnected.return_value = True
@@ -317,8 +338,12 @@ def test_ibkr_feed_unknown_symbol_returns_empty_bar() -> None:
 def _real_bar(symbol: str, close: float = 100.0) -> dict:
     """Helper — emit a bar that passes _is_real_bar (non-flat OHLC + volume)."""
     return {
-        "open": close - 0.1, "high": close + 0.5, "low": close - 0.5,
-        "close": close, "volume": 10.0, "ts": "2026-05-04T19:30:00Z",
+        "open": close - 0.1,
+        "high": close + 0.5,
+        "low": close - 0.5,
+        "close": close,
+        "volume": 10.0,
+        "ts": "2026-05-04T19:30:00Z",
         "symbol": symbol,
     }
 
@@ -327,6 +352,7 @@ def test_composite_routes_crypto_to_coinbase_and_futures_to_yfinance() -> None:
     """Default routing: crypto → coinbase, futures → yfinance (paper-
     friendly real-time-ish), other → yfinance fallback."""
     from eta_engine.scripts.data_feeds import CompositeDataFeed
+
     feed = CompositeDataFeed()
 
     fake_coinbase = MagicMock()
@@ -349,6 +375,7 @@ def test_composite_falls_back_when_primary_returns_empty() -> None:
     """If the primary feed returns _empty_bar, the composite must try
     the fallback chain instead of letting the supervisor see noise."""
     from eta_engine.scripts.data_feeds import CompositeDataFeed, _empty_bar
+
     feed = CompositeDataFeed()
 
     fake_coinbase = MagicMock()
@@ -369,6 +396,7 @@ def test_composite_health_snapshot_tracks_per_feed_outcomes() -> None:
     """The composite records ok/empty counts per (feed, symbol-root) so
     the operator can see which feeds are actually serving data."""
     from eta_engine.scripts.data_feeds import CompositeDataFeed, _empty_bar
+
     feed = CompositeDataFeed()
 
     fake_coinbase = MagicMock()
@@ -393,9 +421,11 @@ def test_composite_health_snapshot_tracks_per_feed_outcomes() -> None:
 def test_composite_respects_env_overrides() -> None:
     """ETA_FUTURES_FEED=ibkr forces TWS even though the new default is yfinance."""
     import os
+
     os.environ["ETA_FUTURES_FEED"] = "ibkr"
     try:
         from eta_engine.scripts.data_feeds import CompositeDataFeed
+
         feed = CompositeDataFeed()
         assert feed._futures_feed == "ibkr"
     finally:
@@ -406,6 +436,7 @@ def test_composite_propagates_feed_exceptions_to_fallback() -> None:
     """A feed raising mid-call must not break the composite's tick;
     fallback should still serve."""
     from eta_engine.scripts.data_feeds import CompositeDataFeed
+
     feed = CompositeDataFeed()
 
     fake_coinbase = MagicMock()
@@ -424,6 +455,7 @@ def test_composite_propagates_feed_exceptions_to_fallback() -> None:
 
 def test_is_real_bar_distinguishes_data_from_fallback() -> None:
     from eta_engine.scripts.data_feeds import _empty_bar, _is_real_bar
+
     assert not _is_real_bar(_empty_bar("BTC"))
     assert _is_real_bar({"open": 1.0, "high": 1.5, "low": 0.9, "close": 1.2, "volume": 10})
     assert _is_real_bar({"open": 1, "high": 1, "low": 1, "close": 1, "volume": 10})  # vol > 0
@@ -442,6 +474,7 @@ def test_factory_returns_correct_class_per_name() -> None:
         YFinanceDataFeed,
         make_data_feed,
     )
+
     assert isinstance(make_data_feed("yfinance"), YFinanceDataFeed)
     assert isinstance(make_data_feed("coinbase"), CoinbaseDataFeed)
     assert isinstance(make_data_feed("ibkr"), IbkrDataFeed)
@@ -451,5 +484,6 @@ def test_factory_returns_correct_class_per_name() -> None:
 def test_factory_falls_back_to_mock_for_unknown_name() -> None:
     from eta_engine.scripts.data_feeds import make_data_feed
     from eta_engine.scripts.jarvis_strategy_supervisor import MockDataFeed
+
     assert isinstance(make_data_feed("typo-name"), MockDataFeed)
     assert isinstance(make_data_feed(""), MockDataFeed)

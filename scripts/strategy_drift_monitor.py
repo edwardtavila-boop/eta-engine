@@ -16,6 +16,7 @@ Usage
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import sys
 from dataclasses import dataclass
@@ -25,10 +26,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT.parent))
 
 if hasattr(sys.stdout, "reconfigure"):
-    try:
+    with contextlib.suppress(AttributeError, OSError):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    except (AttributeError, OSError):
-        pass
 
 
 @dataclass
@@ -100,22 +99,36 @@ def main(argv: list[str] | None = None) -> int:
 
     rows = run_drift_check(max_degradation=args.max_deg)
     if args.json:
-        print(json.dumps([{
-            "bot_id": r.bot_id, "strategy_id": r.strategy_id,
-            "baseline_oos": r.baseline_oos, "current_oos": r.current_oos,
-            "drift_pct": r.drift_pct, "status": r.status,
-        } for r in rows], indent=2, default=str))
+        print(
+            json.dumps(
+                [
+                    {
+                        "bot_id": r.bot_id,
+                        "strategy_id": r.strategy_id,
+                        "baseline_oos": r.baseline_oos,
+                        "current_oos": r.current_oos,
+                        "drift_pct": r.drift_pct,
+                        "status": r.status,
+                    }
+                    for r in rows
+                ],
+                indent=2,
+                default=str,
+            )
+        )
     else:
         print(f"{'Bot':<24} {'Strategy':<28} {'Baseline':>10} {'Current':>10} {'Drift%':>8} {'Status'}")
         print("-" * 90)
         for r in rows:
             bstr = f"{r.baseline_oos:+.3f}" if r.baseline_oos is not None else "-"
             cstr = f"{r.current_oos:+.3f}" if r.current_oos is not None else "-"
-            dstr = f"{r.drift_pct*100:+.1f}%" if r.drift_pct is not None else "-"
+            dstr = f"{r.drift_pct * 100:+.1f}%" if r.drift_pct is not None else "-"
             print(f"{r.bot_id:<24} {r.strategy_id:<28} {bstr:>10} {cstr:>10} {dstr:>8} {r.status}")
         drift_count = sum(1 for r in rows if r.status == "DRIFT")
         warn_count = sum(1 for r in rows if r.status == "WARN")
-        print(f"\nDRIFT={drift_count} WARN={warn_count} STEADY={len(rows)-drift_count-warn_count} / {len(rows)} total")
+        print(
+            f"\nDRIFT={drift_count} WARN={warn_count} STEADY={len(rows) - drift_count - warn_count} / {len(rows)} total"
+        )
     return 0
 
 

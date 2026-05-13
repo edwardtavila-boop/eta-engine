@@ -1,10 +1,11 @@
 """Smoke test: place a test order through LiveIbkrVenue."""
+
 import asyncio
 
 from eta_engine.venues.base import OrderRequest, OrderType, Side
 
 
-async def main():
+async def main() -> None:
     from eta_engine.venues.ibkr_live import LiveIbkrVenue
 
     venue = LiveIbkrVenue()
@@ -29,6 +30,7 @@ async def main():
     )
     result = await venue.place_order(req)
     print(f"   OrderId: {result.order_id}, Status: {result.status}, Raw: {result.raw}")
+
 
 if __name__ == "__main__":
     asyncio.run(main())

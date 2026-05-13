@@ -1,4 +1,5 @@
 """Tests for bridge_preflight — the live-cutover gate check."""
+
 from __future__ import annotations
 
 import json
@@ -58,7 +59,7 @@ def test_verdict_ready_when_all_pass() -> None:
 
     results = [
         bridge_preflight.CheckResult(name="a", severity="critical", status="PASS", detail=""),
-        bridge_preflight.CheckResult(name="b", severity="warning",  status="PASS", detail=""),
+        bridge_preflight.CheckResult(name="b", severity="warning", status="PASS", detail=""),
     ]
     assert bridge_preflight.verdict(results) == "READY"
 
@@ -69,7 +70,7 @@ def test_verdict_not_ready_when_critical_fails() -> None:
 
     results = [
         bridge_preflight.CheckResult(name="a", severity="critical", status="FAIL", detail=""),
-        bridge_preflight.CheckResult(name="b", severity="warning",  status="PASS", detail=""),
+        bridge_preflight.CheckResult(name="b", severity="warning", status="PASS", detail=""),
     ]
     assert bridge_preflight.verdict(results) == "NOT_READY"
 
@@ -80,7 +81,7 @@ def test_verdict_concerns_when_only_warnings_fail() -> None:
 
     results = [
         bridge_preflight.CheckResult(name="a", severity="critical", status="PASS", detail=""),
-        bridge_preflight.CheckResult(name="b", severity="warning",  status="WARN", detail=""),
+        bridge_preflight.CheckResult(name="b", severity="warning", status="WARN", detail=""),
     ]
     assert bridge_preflight.verdict(results) == "READY_WITH_CONCERNS"
 
@@ -91,7 +92,7 @@ def test_check_result_is_blocker_only_for_critical_failures() -> None:
 
     crit_fail = bridge_preflight.CheckResult(name="x", severity="critical", status="FAIL", detail="")
     crit_pass = bridge_preflight.CheckResult(name="x", severity="critical", status="PASS", detail="")
-    warn_fail = bridge_preflight.CheckResult(name="x", severity="warning",  status="FAIL", detail="")
+    warn_fail = bridge_preflight.CheckResult(name="x", severity="warning", status="FAIL", detail="")
     assert crit_fail.is_blocker()
     assert not crit_pass.is_blocker()
     assert not warn_fail.is_blocker()
@@ -154,19 +155,25 @@ def test_main_exits_nonzero_when_not_ready(tmp_path: Path, monkeypatch, capsys) 
         return "FAIL", "simulated", {}
 
     for attr in (
-        "check_tunnel", "check_gateway", "check_llm_latency",
-        "check_credential_pool_is_literal", "check_write_back_round_trip",
+        "check_tunnel",
+        "check_gateway",
+        "check_llm_latency",
+        "check_credential_pool_is_literal",
+        "check_write_back_round_trip",
         "check_health_check_passes",
     ):
         monkeypatch.setattr(bridge_preflight, attr, force_fail)
 
-    rc = bridge_preflight.main([
-        "--host", "127.0.0.1", "--port", "1",
-        "--skip", (
-            "tunnel_uptime,scheduled_tasks,audit_log,memory_backup,"
-            "disk_headroom,kelly_ready,status_server"
-        ),
-    ])
+    rc = bridge_preflight.main(
+        [
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "1",
+            "--skip",
+            ("tunnel_uptime,scheduled_tasks,audit_log,memory_backup,disk_headroom,kelly_ready,status_server"),
+        ]
+    )
     captured = capsys.readouterr()
     assert "NOT_READY" in captured.out
     assert rc == 1
@@ -183,11 +190,17 @@ def test_main_json_mode_emits_parseable_payload(monkeypatch, capsys) -> None:
         "tunnel_uptime,audit_log,memory_backup,disk_headroom,kelly_ready,"
         "status_server,health_9_layers"
     )
-    rc = bridge_preflight.main([
-        "--host", "127.0.0.1", "--port", "1",
-        "--skip", skip_checks,
-        "--json",
-    ])
+    rc = bridge_preflight.main(
+        [
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "1",
+            "--skip",
+            skip_checks,
+            "--json",
+        ]
+    )
     captured = capsys.readouterr()
     payload = json.loads(captured.out)
     assert "verdict" in payload

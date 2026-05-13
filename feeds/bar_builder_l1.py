@@ -51,6 +51,7 @@ Run
     # Rebuild for the entire active fleet, all timeframes (5m + 1h)
     python -m eta_engine.feeds.bar_builder_l1 --all
 """
+
 from __future__ import annotations
 
 import argparse
@@ -74,11 +75,11 @@ OUT_DIR.mkdir(parents=True, exist_ok=True)
 # Timeframe → bar-bucket-seconds.  Keep aligned with the rest of
 # the engine's timeframe vocabulary.
 TF_SECONDS = {
-    "1m":  60,
-    "5m":  300,
+    "1m": 60,
+    "5m": 300,
     "15m": 900,
-    "1h":  3600,
-    "4h":  14400,
+    "1h": 3600,
+    "4h": 14400,
 }
 
 
@@ -93,6 +94,7 @@ class TickRecord:
 @dataclass
 class BarAccum:
     """Mutable bar-in-progress."""
+
     open: float
     high: float
     low: float
@@ -137,8 +139,7 @@ def _bucket_start(epoch_s: float, tf_seconds: int) -> int:
     return int(epoch_s // tf_seconds) * tf_seconds
 
 
-def _classify_tick(curr_price: float, prev_price: float | None,
-                   prev_side: str = "UNKNOWN") -> str:
+def _classify_tick(curr_price: float, prev_price: float | None, prev_side: str = "UNKNOWN") -> str:
     """Tick-rule classifier (used when we don't have explicit bid/ask
     context in the tick stream): uptick → BUY, downtick → SELL,
     zero-tick inherits the prior classification."""
@@ -171,8 +172,7 @@ def _read_ticks(path: Path) -> list[TickRecord]:
                 d = json.loads(line)
                 price = float(d["price"])
                 size = float(d.get("size", 0.0))
-                epoch = float(d.get("epoch_s") or
-                              datetime.fromisoformat(d["ts"].replace("Z", "+00:00")).timestamp())
+                epoch = float(d.get("epoch_s") or datetime.fromisoformat(d["ts"].replace("Z", "+00:00")).timestamp())
             except (json.JSONDecodeError, KeyError, ValueError, TypeError):
                 continue
             side = _classify_tick(price, prev_price, prev_side)
@@ -199,18 +199,20 @@ def build_bars(ticks: list[TickRecord], tf: str) -> list[dict]:
     out: list[dict] = []
     for bs in sorted(buckets.keys()):
         b = buckets[bs]
-        out.append({
-            "timestamp_utc": datetime.fromtimestamp(bs, UTC).isoformat(),
-            "epoch_s": bs,
-            "open": round(b.open, 6),
-            "high": round(b.high, 6),
-            "low": round(b.low, 6),
-            "close": round(b.close, 6),
-            "volume_total": round(b.volume_total, 6),
-            "volume_buy": round(b.volume_buy, 6),
-            "volume_sell": round(b.volume_sell, 6),
-            "n_trades": b.n_trades,
-        })
+        out.append(
+            {
+                "timestamp_utc": datetime.fromtimestamp(bs, UTC).isoformat(),
+                "epoch_s": bs,
+                "open": round(b.open, 6),
+                "high": round(b.high, 6),
+                "low": round(b.low, 6),
+                "close": round(b.close, 6),
+                "volume_total": round(b.volume_total, 6),
+                "volume_buy": round(b.volume_buy, 6),
+                "volume_sell": round(b.volume_sell, 6),
+                "n_trades": b.n_trades,
+            }
+        )
     return out
 
 
@@ -241,8 +243,7 @@ def rebuild_one_symbol(symbol: str, tf: str, *, log: logging.Logger | None = Non
     log = log or logging.getLogger(__name__)
     files = _list_tick_files_for_symbol(symbol)
     if not files:
-        return {"symbol": symbol, "tf": tf, "n_ticks": 0, "n_bars": 0,
-                "note": "no tick files"}
+        return {"symbol": symbol, "tf": tf, "n_ticks": 0, "n_bars": 0, "note": "no tick files"}
     all_ticks: list[TickRecord] = []
     for fp in files:
         if fp.suffix == ".gz":
@@ -264,8 +265,7 @@ def rebuild_one_symbol(symbol: str, tf: str, *, log: logging.Logger | None = Non
     out_path = OUT_DIR / f"{symbol}_{tf}_l1.csv"
     write_bars_csv(out_path, bars)
     log.info(f"[bar_builder_l1] {symbol}/{tf}: {len(all_ticks)} ticks → {len(bars)} bars → {out_path}")
-    return {"symbol": symbol, "tf": tf, "n_ticks": len(all_ticks),
-            "n_bars": len(bars), "out_path": str(out_path)}
+    return {"symbol": symbol, "tf": tf, "n_ticks": len(all_ticks), "n_bars": len(bars), "out_path": str(out_path)}
 
 
 def _active_symbols() -> list[str]:
@@ -286,15 +286,11 @@ def _active_symbols() -> list[str]:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--symbol", help="Single symbol (e.g. MNQ)")
-    ap.add_argument("--timeframe", default="5m",
-                    choices=list(TF_SECONDS.keys()),
-                    help="Bar timeframe (default 5m)")
-    ap.add_argument("--all", action="store_true",
-                    help="Rebuild for every active-fleet symbol at 5m + 1h")
+    ap.add_argument("--timeframe", default="5m", choices=list(TF_SECONDS.keys()), help="Bar timeframe (default 5m)")
+    ap.add_argument("--all", action="store_true", help="Rebuild for every active-fleet symbol at 5m + 1h")
     args = ap.parse_args()
 
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s",
-                        datefmt="%H:%M:%S")
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S")
     log = logging.getLogger("bar_builder_l1")
 
     if args.all:

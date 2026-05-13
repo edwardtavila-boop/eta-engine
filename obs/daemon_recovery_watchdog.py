@@ -22,6 +22,7 @@ Usage (typically via scheduled task running every 60s)::
     python -m eta_engine.obs.daemon_recovery_watchdog
     python -m eta_engine.obs.daemon_recovery_watchdog --dry-run
 """
+
 from __future__ import annotations
 
 import argparse
@@ -54,7 +55,7 @@ WATCHED_DAEMONS = [
     DaemonSpec(
         name="avengers_fleet",
         heartbeat_filename="avengers_heartbeat.json",
-        stale_threshold_s=180.0,        # heartbeat every 60s; 3x = 180s
+        stale_threshold_s=180.0,  # heartbeat every 60s; 3x = 180s
         process_match="avengers_daemon.py",
     ),
     DaemonSpec(
@@ -120,6 +121,7 @@ def heartbeat_age_seconds(spec: DaemonSpec) -> float | None:
 def find_processes_matching(pattern: str) -> list[int]:
     """Return PIDs of running python processes whose cmdline matches pattern."""
     import subprocess
+
     try:
         # Use PowerShell to enumerate -- Win32_Process has CommandLine.
         ps_cmd = (
@@ -129,7 +131,10 @@ def find_processes_matching(pattern: str) -> list[int]:
         )
         result = subprocess.run(
             ["powershell.exe", "-NoProfile", "-Command", ps_cmd],
-            capture_output=True, text=True, timeout=15, check=False,
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=False,
         )
         pids = [int(x) for x in result.stdout.strip().splitlines() if x.strip().isdigit()]
         return pids
@@ -142,10 +147,14 @@ def kill_pid(pid: int, *, dry_run: bool) -> bool:
         logger.info("DRY-RUN would kill PID %d", pid)
         return True
     import subprocess
+
     try:
         subprocess.run(
             ["taskkill.exe", "/PID", str(pid), "/F"],
-            capture_output=True, text=True, timeout=10, check=False,
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
         )
         return True
     except (subprocess.SubprocessError, OSError):
@@ -153,8 +162,7 @@ def kill_pid(pid: int, *, dry_run: bool) -> bool:
 
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(description=__doc__,
-                                formatter_class=argparse.RawDescriptionHelpFormatter)
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("-v", "--verbose", action="store_true")
     args = p.parse_args(argv)
@@ -171,14 +179,17 @@ def main(argv: list[str] | None = None) -> int:
             logger.debug("%s: no heartbeat file -- daemon may not be running yet", spec.name)
             continue
         if age <= spec.stale_threshold_s:
-            logger.debug("%s: heartbeat %.1fs old (<= %.1fs threshold) -- healthy",
-                         spec.name, age, spec.stale_threshold_s)
+            logger.debug(
+                "%s: heartbeat %.1fs old (<= %.1fs threshold) -- healthy", spec.name, age, spec.stale_threshold_s
+            )
             continue
         # Stale heartbeat -- find + kill the process; Task Scheduler will
         # restart it on its own restart-count policy.
         logger.warning(
             "%s: heartbeat %.1fs old (> %.1fs threshold) -- STALE; killing process(es)",
-            spec.name, age, spec.stale_threshold_s,
+            spec.name,
+            age,
+            spec.stale_threshold_s,
         )
         pids = find_processes_matching(spec.process_match)
         if not pids:

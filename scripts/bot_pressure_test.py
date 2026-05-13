@@ -20,6 +20,7 @@ Usage:
     python -m eta_engine.scripts.bot_pressure_test --bot btc_hybrid --json
     python -m eta_engine.scripts.bot_pressure_test --diamonds  # run on all 6 diamond bots
 """
+
 from __future__ import annotations
 
 import argparse
@@ -37,9 +38,7 @@ logger = logging.getLogger(__name__)
 
 
 _LAB_REPORTS_DIR = Path(r"C:\EvolutionaryTradingAlgo\reports\lab_reports")
-_TRADE_CLOSES = Path(
-    r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\jarvis_intel\trade_closes.jsonl"
-)
+_TRADE_CLOSES = Path(r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\jarvis_intel\trade_closes.jsonl")
 
 
 _DIAMOND_BOT_IDS = (
@@ -54,12 +53,12 @@ _DIAMOND_BOT_IDS = (
     # 2026-05-04T23:31:00). These were classified outside the diamond
     # tier historically but emerged as the strongest dollar producers
     # once R-magnitudes started matching planned bracket distances.
-    "btc_hybrid_sage",      # +$18.10 / 3 trades / 100% WR
-    "funding_rate_btc",     # +$14.86 / 3 trades / 100% WR
-    "btc_optimized",        # +$14.04 / 3 trades / 100% WR
-    "btc_crypto_scalp",     # +$7.67  / 4 trades / 75%  WR
-    "vwap_mr_btc",          # +$7.14  / 3 trades / 67%  WR
-    "eth_sage_daily",       # +$6.28  / 2 trades / 100% WR
+    "btc_hybrid_sage",  # +$18.10 / 3 trades / 100% WR
+    "funding_rate_btc",  # +$14.86 / 3 trades / 100% WR
+    "btc_optimized",  # +$14.04 / 3 trades / 100% WR
+    "btc_crypto_scalp",  # +$7.67  / 4 trades / 75%  WR
+    "vwap_mr_btc",  # +$7.14  / 3 trades / 67%  WR
+    "eth_sage_daily",  # +$6.28  / 2 trades / 100% WR
 )
 
 
@@ -155,10 +154,7 @@ def _live_metrics(closes: list[dict[str, Any]]) -> dict[str, Any]:
     wins = [r for r in rs if r > 0]
     losses = [r for r in rs if r < 0]
     sharpe = (mean_r / std_r) * math.sqrt(252) if std_r > 0 else 0.0
-    skew = (
-        statistics.mean([(r - mean_r) ** 3 for r in rs]) / (std_r ** 3)
-        if std_r > 0 else 0.0
-    )
+    skew = statistics.mean([(r - mean_r) ** 3 for r in rs]) / (std_r**3) if std_r > 0 else 0.0
 
     def _cell(group: dict, label: str) -> dict:
         return {
@@ -223,69 +219,77 @@ def _detect_upgrades(lab: dict[str, Any], live: dict[str, Any], extras: dict) ->
                 if abs(float(k.replace("stop_atr_", "").rstrip("x")) - current_atr) < 0.05:
                     cur_sharpe = float(v.get("sharpe", 0))
                     break
-            out.append({
-                "param": "atr_stop_mult",
-                "current": current_atr,
-                "suggested": best_atr,
-                "expected_sharpe_delta": round(best_sharpe - cur_sharpe, 4),
-                "rationale": (
-                    f"heatmap shows sharpe={best_sharpe:.2f} at {best_atr}x "
-                    f"vs {cur_sharpe:.2f} at current {current_atr}x"
-                ),
-            })
+            out.append(
+                {
+                    "param": "atr_stop_mult",
+                    "current": current_atr,
+                    "suggested": best_atr,
+                    "expected_sharpe_delta": round(best_sharpe - cur_sharpe, 4),
+                    "rationale": (
+                        f"heatmap shows sharpe={best_sharpe:.2f} at {best_atr}x "
+                        f"vs {cur_sharpe:.2f} at current {current_atr}x"
+                    ),
+                }
+            )
 
     # 2. Win rate uplift via min_wick_pct or min_volume_z if WR < 45%
     lab_wr = float(lab.get("win_rate", 0))
     if lab_wr < 0.45:
         cur_wick = (extras.get("sub_strategy_extras") or {}).get("min_wick_pct")
         if cur_wick is not None and float(cur_wick) < 0.40:
-            out.append({
-                "param": "min_wick_pct",
-                "current": float(cur_wick),
-                "suggested": round(float(cur_wick) + 0.10, 2),
-                "expected_sharpe_delta": "untested — try +0.10 to filter weaker setups",
-                "rationale": (
-                    f"lab WR {lab_wr:.1%} < 45% — tighter wick threshold should "
-                    f"reject low-conviction sweeps and lift WR"
-                ),
-            })
+            out.append(
+                {
+                    "param": "min_wick_pct",
+                    "current": float(cur_wick),
+                    "suggested": round(float(cur_wick) + 0.10, 2),
+                    "expected_sharpe_delta": "untested — try +0.10 to filter weaker setups",
+                    "rationale": (
+                        f"lab WR {lab_wr:.1%} < 45% — tighter wick threshold should "
+                        f"reject low-conviction sweeps and lift WR"
+                    ),
+                }
+            )
 
     # 3. Confluence threshold uplift if min_score is low
     sc = extras.get("scorecard_config") or {}
     cur_min_score = sc.get("min_score")
     if cur_min_score is not None and int(cur_min_score) < 3:
-        out.append({
-            "param": "scorecard_config.min_score",
-            "current": int(cur_min_score),
-            "suggested": int(cur_min_score) + 1,
-            "expected_sharpe_delta": "untested — pressurize for fewer / higher-conviction trades",
-            "rationale": (
-                "raising the confluence min_score reduces trade count but "
-                "should raise per-trade expectancy if signal quality is the limiter"
-            ),
-        })
+        out.append(
+            {
+                "param": "scorecard_config.min_score",
+                "current": int(cur_min_score),
+                "suggested": int(cur_min_score) + 1,
+                "expected_sharpe_delta": "untested — pressurize for fewer / higher-conviction trades",
+                "rationale": (
+                    "raising the confluence min_score reduces trade count but "
+                    "should raise per-trade expectancy if signal quality is the limiter"
+                ),
+            }
+        )
 
     # 4. Live skew check — fat left tail = stop is too wide
     if live.get("n", 0) >= 30:
         skew = float(live.get("skew", 0))
         max_loss = float(live.get("max_loss_r", 0))
         if skew < -0.5 and max_loss < -3.0:
-            out.append({
-                "param": "atr_stop_mult",
-                "current": "current",
-                "suggested": "tighten by 0.25x",
-                "expected_sharpe_delta": (
-                    f"untested — live max_loss={max_loss:.1f}R, "
-                    f"skew={skew:.2f} suggests fat left tail; tighter stop caps it"
-                ),
-                "rationale": (
-                    "live distribution has worse-than-normal left tail — tightening "
-                    "the stop trades some WR for cap on catastrophic losses"
-                ),
-            })
+            out.append(
+                {
+                    "param": "atr_stop_mult",
+                    "current": "current",
+                    "suggested": "tighten by 0.25x",
+                    "expected_sharpe_delta": (
+                        f"untested — live max_loss={max_loss:.1f}R, "
+                        f"skew={skew:.2f} suggests fat left tail; tighter stop caps it"
+                    ),
+                    "rationale": (
+                        "live distribution has worse-than-normal left tail — tightening "
+                        "the stop trades some WR for cap on catastrophic losses"
+                    ),
+                }
+            )
 
     # 5. Regime concentration — if any regime is significant fraction of losses
-    by_regime = (live.get("by_regime") or {})
+    by_regime = live.get("by_regime") or {}
     if isinstance(by_regime, dict):
         for regime, stats in by_regime.items():
             if not isinstance(stats, dict):
@@ -295,19 +299,20 @@ def _detect_upgrades(lab: dict[str, Any], live: dict[str, Any], extras: dict) ->
             mean_r = float(stats.get("mean_r", 0))
             # If a regime has 20+ trades and is losing, suggest a block
             if n >= 20 and (wr < 0.35 or mean_r < -0.10):
-                out.append({
-                    "param": "block_regimes",
-                    "current": list(extras.get("block_regimes") or ()),
-                    "suggested": f"add '{regime}' to block_regimes",
-                    "expected_sharpe_delta": (
-                        f"removes {n} losing trades (WR={wr:.1%}, "
-                        f"mean_r={mean_r:.3f}) from sample"
-                    ),
-                    "rationale": (
-                        f"live: regime '{regime}' has WR {wr:.1%} over {n} trades "
-                        f"and mean_r {mean_r:+.3f} — block this regime"
-                    ),
-                })
+                out.append(
+                    {
+                        "param": "block_regimes",
+                        "current": list(extras.get("block_regimes") or ()),
+                        "suggested": f"add '{regime}' to block_regimes",
+                        "expected_sharpe_delta": (
+                            f"removes {n} losing trades (WR={wr:.1%}, mean_r={mean_r:.3f}) from sample"
+                        ),
+                        "rationale": (
+                            f"live: regime '{regime}' has WR {wr:.1%} over {n} trades "
+                            f"and mean_r {mean_r:+.3f} — block this regime"
+                        ),
+                    }
+                )
 
     return out
 
@@ -354,8 +359,7 @@ def _print_text(snap: dict) -> None:
 
     extras = reg.get("extras") or {}
     print("\n* CONFIG (key params)")
-    for cfg_name in ("sub_strategy_extras", "crypto_orb_config",
-                     "scorecard_config", "confluence_config"):
+    for cfg_name in ("sub_strategy_extras", "crypto_orb_config", "scorecard_config", "confluence_config"):
         cfg = extras.get(cfg_name)
         if isinstance(cfg, dict):
             print(f"  {cfg_name}:")
@@ -365,40 +369,37 @@ def _print_text(snap: dict) -> None:
     if lab.get("error"):
         print(f"\n* LAB: {lab['error']}")
     else:
-        print(f"\n* LAB ({lab.get('total_trades', 0)} trades over "
-              f"{lab.get('coverage_days', 0):.0f} days)")
+        print(f"\n* LAB ({lab.get('total_trades', 0)} trades over {lab.get('coverage_days', 0):.0f} days)")
         print(f"  sharpe:        {float(lab.get('sharpe', 0)):.3f}")
         print(f"  win_rate:      {float(lab.get('win_rate', 0)):.1%}")
         print(f"  expectancy_r:  {float(lab.get('expectancy', 0)):+.4f}")
         print(f"  profit_factor: {float(lab.get('profit_factor', 0)):.2f}")
         print(f"  max_drawdown:  {float(lab.get('max_drawdown', 0)):.1f}R")
-        print(f"  avg_win/loss:  {float(lab.get('avg_win', 0)):+.2f}R / "
-              f"{float(lab.get('avg_loss', 0)):.2f}R")
+        print(f"  avg_win/loss:  {float(lab.get('avg_win', 0)):+.2f}R / {float(lab.get('avg_loss', 0)):.2f}R")
 
         heatmap = lab.get("parameter_heatmap") or {}
         if heatmap:
             print("  parameter heatmap:")
             for k, v in heatmap.items():
-                print(f"    {k:<20} sharpe={float(v.get('sharpe', 0)):>5.2f} "
-                      f"wr={float(v.get('win_rate', 0)):>5.1%} "
-                      f"n={int(v.get('trades', 0)):>5}")
+                print(
+                    f"    {k:<20} sharpe={float(v.get('sharpe', 0)):>5.2f} "
+                    f"wr={float(v.get('win_rate', 0)):>5.1%} "
+                    f"n={int(v.get('trades', 0)):>5}"
+                )
 
     print(f"\n* LIVE ({live.get('n', 0)} closes)")
     if live.get("n", 0) > 0:
         print(f"  sharpe:        {float(live.get('sharpe', 0)):.3f}")
         print(f"  win_rate:      {float(live.get('win_rate', 0)):.1%}")
         print(f"  expectancy_r:  {float(live.get('expectancy_r', 0)):+.4f}")
-        print(f"  avg_win/loss:  {float(live.get('avg_win', 0)):+.3f}R / "
-              f"{float(live.get('avg_loss', 0)):.3f}R")
+        print(f"  avg_win/loss:  {float(live.get('avg_win', 0)):+.3f}R / {float(live.get('avg_loss', 0)):.3f}R")
         print(f"  std_r:         {float(live.get('std_r', 0)):.4f}")
         print(f"  skew:          {float(live.get('skew', 0)):+.3f}")
-        print(f"  max_win/loss:  {float(live.get('max_win_r', 0)):+.2f}R / "
-              f"{float(live.get('max_loss_r', 0)):+.2f}R")
+        print(f"  max_win/loss:  {float(live.get('max_win_r', 0)):+.2f}R / {float(live.get('max_loss_r', 0)):+.2f}R")
         if live.get("by_regime"):
             print("  by_regime:")
             for k, v in live["by_regime"].items():
-                print(f"    {k:<12} n={int(v['n']):>4} wr={float(v['wr']):.1%} "
-                      f"mean_r={float(v['mean_r']):+.4f}")
+                print(f"    {k:<12} n={int(v['n']):>4} wr={float(v['wr']):.1%} mean_r={float(v['mean_r']):+.4f}")
         actions = live.get("actions_taken") or {}
         if actions:
             print(f"  actions:       {dict(actions)}")
@@ -479,20 +480,19 @@ def main(argv: list[str] | None = None) -> int:
     # than crash the whole --diamonds sweep on the first bot that has one.
     with contextlib.suppress(AttributeError, ValueError):
         import sys as _sys
+
         _sys.stdout.reconfigure(errors="replace")  # type: ignore[union-attr]
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--bot", default=None, help="Single bot_id")
-    p.add_argument("--diamonds", action="store_true",
-                   help="Run on the 12 DIAMOND tier + post-fix top earners")
-    p.add_argument("--all", action="store_true",
-                   help="Run on every bot in per_bot_registry.ASSIGNMENTS")
+    p.add_argument("--diamonds", action="store_true", help="Run on the 12 DIAMOND tier + post-fix top earners")
+    p.add_argument("--all", action="store_true", help="Run on every bot in per_bot_registry.ASSIGNMENTS")
     p.add_argument("--json", action="store_true")
-    p.add_argument("--summary", action="store_true",
-                   help="Print fleet-ranked summary instead of per-bot pages")
+    p.add_argument("--summary", action="store_true", help="Print fleet-ranked summary instead of per-bot pages")
     args = p.parse_args(argv)
 
     if args.all:
         from eta_engine.strategies.per_bot_registry import ASSIGNMENTS
+
         targets = tuple(a.bot_id for a in ASSIGNMENTS)
     elif args.diamonds:
         targets = _DIAMOND_BOT_IDS

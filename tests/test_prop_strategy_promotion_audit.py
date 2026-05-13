@@ -75,9 +75,10 @@ def test_promotion_audit_explains_paper_soak_hold_with_required_evidence() -> No
     assert report["readiness"]["broker_native_brackets"] == "BLOCKED"
     assert report["readiness"]["closed_trade_ledger"] == "PASS"
     assert report["ready_for_prop_dry_run_review"] is False
-    assert "set volume_profile_mnq can_live_trade=true only after paper-soak promotion approval" in report[
-        "required_evidence"
-    ]
+    assert (
+        "set volume_profile_mnq can_live_trade=true only after paper-soak promotion approval"
+        in report["required_evidence"]
+    )
     assert "clear prop_readiness to PASS / READY_FOR_DRY_RUN" in report["required_evidence"]
     assert "clear broker_native_brackets to PASS" in report["required_evidence"]
 

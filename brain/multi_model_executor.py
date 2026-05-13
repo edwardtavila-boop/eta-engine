@@ -8,9 +8,11 @@ Usage:
     from eta_engine.brain.multi_model_executor import MultiModelExecutor
     fleet = Fleet(executor=MultiModelExecutor(), deepseek_personas=True)
 """
+
 from __future__ import annotations
 
 import logging
+import os
 from typing import TYPE_CHECKING, Any
 
 from eta_engine.brain.llm_provider import ModelTier
@@ -23,6 +25,13 @@ if TYPE_CHECKING:
     from eta_engine.brain.avengers.base import TaskEnvelope
 
 logger = logging.getLogger(__name__)
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
 class MultiModelExecutor:
@@ -49,7 +58,9 @@ class MultiModelExecutor:
 
         logger.info(
             "MultiModelExecutor: category=%s tier=%s provider=%s",
-            category.value, tier.value, preferred.value,
+            category.value,
+            tier.value,
+            preferred.value,
         )
 
         resp = route_and_execute(
@@ -63,7 +74,10 @@ class MultiModelExecutor:
         if resp.fallback_used:
             logger.warning(
                 "MultiModelExecutor: %s task fell back from %s to %s: %s",
-                category.value, preferred.value, resp.provider.value, resp.fallback_reason,
+                category.value,
+                preferred.value,
+                resp.provider.value,
+                resp.fallback_reason,
             )
 
         return resp.text

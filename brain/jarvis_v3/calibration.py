@@ -225,9 +225,7 @@ def predict_batch(
 # fit re-reads this JSONL to refresh the Platt sigmoid parameters.
 
 
-_DEFAULT_LABEL_LOG = (
-    Path(r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\calibrator_labels.jsonl")
-)
+_DEFAULT_LABEL_LOG = Path(r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\calibrator_labels.jsonl")
 
 
 class CalibratorRecorder:

@@ -112,10 +112,10 @@ class TradingViewJournal:
         self.data_root = Path(data_root).expanduser() if data_root else DEFAULT_DATA_ROOT
         self.data_root.mkdir(parents=True, exist_ok=True)
         # Sub-paths
-        self.bars_root        = self.data_root / "bars"
-        self.indicator_path   = self.data_root / "indicators.jsonl"
-        self.watchlist_path   = self.data_root / "watchlist.json"
-        self.alerts_path      = self.data_root / "alerts.jsonl"
+        self.bars_root = self.data_root / "bars"
+        self.indicator_path = self.data_root / "indicators.jsonl"
+        self.watchlist_path = self.data_root / "watchlist.json"
+        self.alerts_path = self.data_root / "alerts.jsonl"
         self.bars_root.mkdir(parents=True, exist_ok=True)
 
     # ------------------------------------------------------------------
@@ -123,8 +123,11 @@ class TradingViewJournal:
     # ------------------------------------------------------------------
     def record_bar(self, entry: BarEntry) -> None:
         try:
-            day = datetime.fromtimestamp(entry.ts, tz=UTC).strftime("%Y-%m-%d") \
-                if entry.ts else datetime.now(UTC).strftime("%Y-%m-%d")
+            day = (
+                datetime.fromtimestamp(entry.ts, tz=UTC).strftime("%Y-%m-%d")
+                if entry.ts
+                else datetime.now(UTC).strftime("%Y-%m-%d")
+            )
             sym_safe = _sanitize(entry.symbol)
             sym_dir = self.bars_root / sym_safe
             sym_dir.mkdir(parents=True, exist_ok=True)
@@ -170,7 +173,8 @@ class TradingViewJournal:
         except OSError as e:
             log.warning(
                 "tradingview journal: watchlist write failed (%s): %s",
-                self.watchlist_path, e,
+                self.watchlist_path,
+                e,
             )
 
     # ------------------------------------------------------------------

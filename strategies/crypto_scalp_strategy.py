@@ -155,8 +155,7 @@ class CryptoScalpStrategy:
             return None
         if (
             self._last_entry_idx is not None
-            and (self._bars_seen - self._last_entry_idx)
-            < self.cfg.min_bars_between_trades
+            and (self._bars_seen - self._last_entry_idx) < self.cfg.min_bars_between_trades
         ):
             return None
 
@@ -193,7 +192,7 @@ class CryptoScalpStrategy:
             return None
 
         # ── ATR sizing ──
-        atr_window = hist[-self.cfg.atr_period:] if hist else []
+        atr_window = hist[-self.cfg.atr_period :] if hist else []
         if len(atr_window) < 2:
             return None
         atr = sum(b.high - b.low for b in atr_window) / len(atr_window)
@@ -218,9 +217,15 @@ class CryptoScalpStrategy:
         from eta_engine.backtest.engine import _Open
 
         opened = _Open(
-            entry_bar=bar, side=side, qty=qty, entry_price=entry_price,
-            stop=stop, target=target, risk_usd=risk_usd,
-            confluence=10.0, leverage=1.0,
+            entry_bar=bar,
+            side=side,
+            qty=qty,
+            entry_price=entry_price,
+            stop=stop,
+            target=target,
+            risk_usd=risk_usd,
+            confluence=10.0,
+            leverage=1.0,
             regime="crypto_scalp",
         )
         self._last_entry_idx = self._bars_seen

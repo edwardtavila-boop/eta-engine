@@ -82,14 +82,14 @@ CONTEXT_DIM = 8
 
 @dataclass(frozen=True)
 class BanditTrial:
-    ts:           datetime
-    strategy:     str
-    bot:          str
-    action:       str
-    reward:       float | None
-    regime:       str | None
-    context_vec:  tuple[float, ...]   # length CONTEXT_DIM
-    meta:         dict[str, Any] = field(default_factory=dict)
+    ts: datetime
+    strategy: str
+    bot: str
+    action: str
+    reward: float | None
+    regime: str | None
+    context_vec: tuple[float, ...]  # length CONTEXT_DIM
+    meta: dict[str, Any] = field(default_factory=dict)
 
 
 def _default_dsn() -> str:
@@ -190,7 +190,10 @@ class BanditStorePostgres:
         if self._pool is None:
             try:
                 self._pool = await asyncpg.create_pool(
-                    self._dsn, min_size=1, max_size=5, timeout=2.0,
+                    self._dsn,
+                    min_size=1,
+                    max_size=5,
+                    timeout=2.0,
                 )
             except Exception as e:  # noqa: BLE001
                 raise BanditStorePgUnavailable(f"postgres connect failed: {e}") from e
@@ -244,7 +247,8 @@ class BanditStorePostgres:
                 ORDER BY ts DESC
                 LIMIT $2
                 """,
-                strategy, limit,
+                strategy,
+                limit,
             )
             return [_row_to_trial(r) for r in rows]
 
@@ -270,7 +274,9 @@ class BanditStorePostgres:
                     ORDER BY context_vec <=> $1::vector
                     LIMIT $3
                     """,
-                    vec_lit, strategy, limit,
+                    vec_lit,
+                    strategy,
+                    limit,
                 )
             else:
                 rows = await conn.fetch(
@@ -280,7 +286,8 @@ class BanditStorePostgres:
                     ORDER BY context_vec <=> $1::vector
                     LIMIT $2
                     """,
-                    vec_lit, limit,
+                    vec_lit,
+                    limit,
                 )
             return [_row_to_trial(r) for r in rows]
 

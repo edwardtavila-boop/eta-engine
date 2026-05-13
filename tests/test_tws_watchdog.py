@@ -84,7 +84,7 @@ def test_gateway_process_snapshot_reports_not_running_when_tasklist_is_empty(
         "run",
         lambda *_args, **_kwargs: SimpleNamespace(
             returncode=0,
-            stdout='INFO: No tasks are running which match the specified criteria.\n',
+            stdout="INFO: No tasks are running which match the specified criteria.\n",
         ),
     )
 
@@ -112,7 +112,7 @@ def test_gateway_process_snapshot_detects_ibc_renamed_gateway_runtime(
         if image_name.endswith("ibgateway.exe"):
             return SimpleNamespace(
                 returncode=0,
-                stdout='INFO: No tasks are running which match the specified criteria.\n',
+                stdout="INFO: No tasks are running which match the specified criteria.\n",
             )
         return SimpleNamespace(
             returncode=0,
@@ -146,14 +146,11 @@ def test_gateway_process_snapshot_detects_ibc_managed_java_runtime(
         if args[0] == "tasklist":
             return SimpleNamespace(
                 returncode=0,
-                stdout='INFO: No tasks are running which match the specified criteria.\n',
+                stdout="INFO: No tasks are running which match the specified criteria.\n",
             )
         return SimpleNamespace(
             returncode=0,
-            stdout=(
-                '{"ProcessId":6912,"Name":"java.exe",'
-                '"WorkingSetSize":242688000}'
-            ),
+            stdout=('{"ProcessId":6912,"Name":"java.exe","WorkingSetSize":242688000}'),
         )
 
     monkeypatch.setattr(tws_watchdog.os, "name", "nt")

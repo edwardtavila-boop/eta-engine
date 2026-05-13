@@ -20,7 +20,6 @@ from eta_engine.venues import (
 )
 from eta_engine.venues.base import BracketStyle, ExecutionCapabilities
 
-
 # ---------------------------------------------------------------------------
 # Default behavior on VenueBase + venues without an override
 # ---------------------------------------------------------------------------
@@ -70,12 +69,8 @@ def test_alpaca_crypto_capabilities_use_supervisor_local_bracket() -> None:
     venue = AlpacaVenue(AlpacaConfig(api_key_id="PK1", api_secret_key="SECRET1"))
     for sym in ("BTC", "BTCUSDT", "BTC/USD", "ETH", "SOL", "AVAX", "LINK", "DOGE", "XRP"):
         caps = venue.execution_capabilities_for(sym)
-        assert caps.bracket_style == BracketStyle.SUPERVISOR_LOCAL, (
-            f"{sym} should be SUPERVISOR_LOCAL on Alpaca crypto"
-        )
-        assert caps.min_cost_basis_usd == 10.0, (
-            f"{sym} crypto should enforce $10 min cost basis"
-        )
+        assert caps.bracket_style == BracketStyle.SUPERVISOR_LOCAL, f"{sym} should be SUPERVISOR_LOCAL on Alpaca crypto"
+        assert caps.min_cost_basis_usd == 10.0, f"{sym} crypto should enforce $10 min cost basis"
 
 
 def test_alpaca_equity_capabilities_use_server_oco_bracket() -> None:
@@ -83,12 +78,8 @@ def test_alpaca_equity_capabilities_use_server_oco_bracket() -> None:
     venue = AlpacaVenue(AlpacaConfig(api_key_id="PK1", api_secret_key="SECRET1"))
     for sym in ("SPY", "AAPL", "TSLA", "QQQ", "NVDA"):
         caps = venue.execution_capabilities_for(sym)
-        assert caps.bracket_style == BracketStyle.SERVER_OCO, (
-            f"{sym} should be SERVER_OCO on Alpaca equity"
-        )
-        assert caps.min_cost_basis_usd == 0.0, (
-            f"{sym} equity has no $10 minimum (crypto-only constraint)"
-        )
+        assert caps.bracket_style == BracketStyle.SERVER_OCO, f"{sym} should be SERVER_OCO on Alpaca equity"
+        assert caps.min_cost_basis_usd == 0.0, f"{sym} equity has no $10 minimum (crypto-only constraint)"
 
 
 def test_alpaca_session_aware_routing_disabled() -> None:
@@ -109,12 +100,11 @@ def test_alpaca_session_aware_routing_disabled() -> None:
 def test_ibkr_futures_capabilities_are_server_oco_session_aware() -> None:
     """IBKR futures: server-side OCO bracket + session-aware order conversion."""
     from eta_engine.venues.ibkr_live import LiveIbkrVenue
+
     venue = LiveIbkrVenue()
     for sym in ("MNQ", "ES", "NQ", "CL", "GC", "M6E", "RTY"):
         caps = venue.execution_capabilities_for(sym)
-        assert caps.bracket_style == BracketStyle.SERVER_OCO, (
-            f"{sym} futures should be SERVER_OCO on IBKR"
-        )
+        assert caps.bracket_style == BracketStyle.SERVER_OCO, f"{sym} futures should be SERVER_OCO on IBKR"
         assert caps.supports_session_aware_routing is True, (
             f"{sym} futures should support session-aware routing on IBKR"
         )
@@ -123,15 +113,12 @@ def test_ibkr_futures_capabilities_are_server_oco_session_aware() -> None:
 def test_ibkr_crypto_capabilities_use_supervisor_local() -> None:
     """IBKR PAXOS crypto rejects bracket attach -> SUPERVISOR_LOCAL."""
     from eta_engine.venues.ibkr_live import LiveIbkrVenue
+
     venue = LiveIbkrVenue()
     for sym in ("BTC", "BTCUSD", "ETH", "ETHUSD", "SOL", "SOLUSD"):
         caps = venue.execution_capabilities_for(sym)
-        assert caps.bracket_style == BracketStyle.SUPERVISOR_LOCAL, (
-            f"{sym} should be SUPERVISOR_LOCAL on IBKR crypto"
-        )
-        assert caps.supports_session_aware_routing is False, (
-            f"{sym} crypto: 24/7, no session-aware routing"
-        )
+        assert caps.bracket_style == BracketStyle.SUPERVISOR_LOCAL, f"{sym} should be SUPERVISOR_LOCAL on IBKR crypto"
+        assert caps.supports_session_aware_routing is False, f"{sym} crypto: 24/7, no session-aware routing"
 
 
 # ---------------------------------------------------------------------------
@@ -159,5 +146,6 @@ def test_supervisor_local_bracket_implies_tick_watch_required() -> None:
 def test_server_oco_bracket_does_not_require_tick_watch() -> None:
     """SERVER_OCO means broker holds the bracket; supervisor needn't watch."""
     from eta_engine.venues.ibkr_live import LiveIbkrVenue
+
     futures_caps = LiveIbkrVenue().execution_capabilities_for("MNQ")
     assert futures_caps.bracket_style == BracketStyle.SERVER_OCO

@@ -10,6 +10,7 @@ Confirms:
   * v23 falls back to v17 when bot_id is missing from payload
   * v23 falls back to v17 when registry lookup raises
 """
+
 from __future__ import annotations
 
 import os
@@ -45,26 +46,35 @@ from eta_engine.brain.jarvis_v3.policies.v23_fleet_aware import (
 )
 
 
-def _make_ctx(action: ActionSuggestion = ActionSuggestion.TRADE,
-              session: SessionPhase = SessionPhase.MORNING,
-              size_mult: float = 1.0) -> JarvisContext:
+def _make_ctx(
+    action: ActionSuggestion = ActionSuggestion.TRADE,
+    session: SessionPhase = SessionPhase.MORNING,
+    size_mult: float = 1.0,
+) -> JarvisContext:
     """Build a minimal JarvisContext for tests."""
     return JarvisContext(
         ts=datetime.now(UTC),
         macro=MacroSnapshot(vix_level=16.0, macro_bias="neutral"),
         equity=EquitySnapshot(
-            account_equity=50_000.0, daily_pnl=0.0,
-            daily_drawdown_pct=0.0, open_positions=1, open_risk_r=0.5,
+            account_equity=50_000.0,
+            daily_pnl=0.0,
+            daily_drawdown_pct=0.0,
+            open_positions=1,
+            open_risk_r=0.5,
         ),
         regime=RegimeSnapshot(regime="TRENDING_UP", confidence=0.8, flipped_recently=False),
         journal=JournalSnapshot(
-            kill_switch_active=False, autopilot_mode="ACTIVE",
-            overrides_last_24h=0, recent_correlated_loss=False,
+            kill_switch_active=False,
+            autopilot_mode="ACTIVE",
+            overrides_last_24h=0,
+            recent_correlated_loss=False,
         ),
         suggestion=JarvisSuggestion(action=action, reason="test", confidence=0.7),
         session_phase=session,
         sizing_hint=SizingHint(
-            size_mult=size_mult, reason="test", session_phase=session,
+            size_mult=size_mult,
+            reason="test",
+            session_phase=session,
         ),
     )
 
@@ -124,16 +134,20 @@ class TestOvernightEligibility:
 
 class TestLabSharpe:
     def test_round11_stamp(self) -> None:
-        assignment = {"extras": {
-            "lab_audit_2026_05_04_round11": {"sharpe": 1.42, "n": 146},
-        }}
+        assignment = {
+            "extras": {
+                "lab_audit_2026_05_04_round11": {"sharpe": 1.42, "n": 146},
+            }
+        }
         assert _lab_sharpe(assignment) == 1.42
 
     def test_prefers_highest_round(self) -> None:
-        assignment = {"extras": {
-            "lab_audit_2026_05_04_round07": {"sharpe": 0.85},
-            "lab_audit_2026_05_04_round11": {"sharpe": 1.42},
-        }}
+        assignment = {
+            "extras": {
+                "lab_audit_2026_05_04_round07": {"sharpe": 0.85},
+                "lab_audit_2026_05_04_round11": {"sharpe": 1.42},
+            }
+        }
         # round11 sorts after round07 lexicographically when zero-padded
         assert _lab_sharpe(assignment) == 1.42
 
@@ -194,6 +208,7 @@ class TestEvaluateV23:
         )
         try:
             from eta_engine.strategies.per_bot_registry import get_for_bot
+
             assignment = get_for_bot("gold_dxy_inverse")
         except Exception:
             pytest.skip("registry not importable in this test env")
@@ -232,5 +247,4 @@ def test_v23_flag_env_pathway() -> None:
     # want to confirm the flag-on path doesn't crash.
     with mock.patch.dict(os.environ, {"JARVIS_V3_FLEET_AWARE": "1"}):
         resp = admin.request_approval(req, ctx=ctx)
-    assert resp.verdict in {Verdict.APPROVED, Verdict.CONDITIONAL,
-                            Verdict.DENIED, Verdict.DEFERRED}
+    assert resp.verdict in {Verdict.APPROVED, Verdict.CONDITIONAL, Verdict.DENIED, Verdict.DEFERRED}

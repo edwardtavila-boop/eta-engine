@@ -32,15 +32,17 @@ def _onedrive_root(sep: str) -> str:
 def test_scan_file_blocks_current_forbidden_runtime_roots(tmp_path: Path) -> None:
     forbidden_roots = []
     for sep in ("\\", "/"):
-        forbidden_roots.extend((
-            _local_runtime_root(sep, env_style="percent"),
-            _local_runtime_root(sep, env_style="powershell"),
-            _c_runtime_root("mnq_" + "data", sep),
-            _c_runtime_root("crypto_" + "data", sep),
-            _c_runtime_root("The" + "Firm", sep),
-            _c_runtime_root("The_" + "Firm", sep),
-            _onedrive_root(sep),
-        ))
+        forbidden_roots.extend(
+            (
+                _local_runtime_root(sep, env_style="percent"),
+                _local_runtime_root(sep, env_style="powershell"),
+                _c_runtime_root("mnq_" + "data", sep),
+                _c_runtime_root("crypto_" + "data", sep),
+                _c_runtime_root("The" + "Firm", sep),
+                _c_runtime_root("The_" + "Firm", sep),
+                _onedrive_root(sep),
+            )
+        )
 
     for root in forbidden_roots:
         path = _write_sample(tmp_path, root)
@@ -99,9 +101,7 @@ def test_canonical_var_eta_engine_state_is_allowed(tmp_path: Path) -> None:
         path = tmp_path / "sample.py"
         path.write_text(line + "\n", encoding="utf-8")
         violations = lint_stale_paths.scan_file(path)
-        assert not violations, (
-            f"canonical path was flagged (false positive): {line!r} -> {violations}"
-        )
+        assert not violations, f"canonical path was flagged (false positive): {line!r} -> {violations}"
 
 
 def test_repo_root_state_idiom_is_blocked(tmp_path: Path) -> None:
@@ -155,10 +155,7 @@ def test_firm_eta_engine_data_is_separate_concern(tmp_path: Path) -> None:
         path = tmp_path / "sample.py"
         path.write_text(line + "\n", encoding="utf-8")
         violations = lint_stale_paths.scan_file(path)
-        assert not violations, (
-            f"firm/eta_engine/data should be allowed (separate concern): "
-            f"{line!r} -> {violations}"
-        )
+        assert not violations, f"firm/eta_engine/data should be allowed (separate concern): {line!r} -> {violations}"
 
 
 def test_firm_command_center_eta_engine_is_blocked(tmp_path: Path) -> None:
@@ -203,9 +200,9 @@ def test_eta_engine_attribute_access_is_not_flagged(tmp_path: Path) -> None:
         violations = lint_stale_paths.scan_file(path)
         # eta_engine.state should not be matched as a path
         labels = [v[1] for v in violations]
-        assert (
-            "in-repo eta_engine/state/ (use var/eta_engine/state/)" not in labels
-        ), f"false positive on attribute access: {line!r} -> {violations}"
+        assert "in-repo eta_engine/state/ (use var/eta_engine/state/)" not in labels, (
+            f"false positive on attribute access: {line!r} -> {violations}"
+        )
 
 
 def test_synthetic_dual_path_file_only_flags_legacy_line(tmp_path: Path) -> None:
@@ -214,14 +211,11 @@ def test_synthetic_dual_path_file_only_flags_legacy_line(tmp_path: Path) -> None
     """
     path = tmp_path / "dual_paths.py"
     path.write_text(
-        "BAD  = 'eta_engine/state/foo.json'\n"
-        "GOOD = 'var/eta_engine/state/foo.json'\n",
+        "BAD  = 'eta_engine/state/foo.json'\nGOOD = 'var/eta_engine/state/foo.json'\n",
         encoding="utf-8",
     )
     violations = lint_stale_paths.scan_file(path)
-    assert len(violations) == 1, (
-        f"expected exactly one violation (the legacy line) -- got {violations}"
-    )
+    assert len(violations) == 1, f"expected exactly one violation (the legacy line) -- got {violations}"
     assert violations[0][0] == 1  # line 1 is the legacy line
 
 
@@ -229,13 +223,11 @@ def test_allowlisted_dual_path_files_are_exempt() -> None:
     """Files in the explicit dual-path allow-list must be is_exempt()=True."""
     for entry in lint_stale_paths.ALLOWLISTED_DUAL_PATH_FILES:
         # Forward-slash variant
-        assert lint_stale_paths.is_exempt(Path(entry)), (
-            f"allow-list entry not exempt: {entry!r}"
-        )
+        assert lint_stale_paths.is_exempt(Path(entry)), f"allow-list entry not exempt: {entry!r}"
         # Workspace-rooted variant (suffix match)
-        assert lint_stale_paths.is_exempt(
-            Path("/some/workspace/root") / entry
-        ), f"allow-list entry not exempt at workspace root: {entry!r}"
+        assert lint_stale_paths.is_exempt(Path("/some/workspace/root") / entry), (
+            f"allow-list entry not exempt at workspace root: {entry!r}"
+        )
 
 
 def test_audit_doc_is_exempt() -> None:
@@ -247,9 +239,7 @@ def test_list_violations_mode_returns_zero_when_clean(tmp_path: Path, capsys) ->
     """``--list-violations`` against a clean dir exits 0 with a friendly note."""
     clean = tmp_path / "clean.py"
     clean.write_text('p = "var/eta_engine/state/foo.json"\n', encoding="utf-8")
-    rc = lint_stale_paths.main(
-        ["lint_stale_paths.py", "--list-violations", str(clean)]
-    )
+    rc = lint_stale_paths.main(["lint_stale_paths.py", "--list-violations", str(clean)])
     assert rc == 0
     captured = capsys.readouterr()
     assert "no violations found" in captured.out
@@ -259,9 +249,7 @@ def test_list_violations_mode_returns_one_when_dirty(tmp_path: Path, capsys) -> 
     """``--list-violations`` against a dirty file exits 1 (preserves semantic)."""
     dirty = tmp_path / "dirty.py"
     dirty.write_text('p = "eta_engine/state/foo.json"\n', encoding="utf-8")
-    rc = lint_stale_paths.main(
-        ["lint_stale_paths.py", "--list-violations", str(dirty)]
-    )
+    rc = lint_stale_paths.main(["lint_stale_paths.py", "--list-violations", str(dirty)])
     assert rc == 1
 
 
@@ -275,9 +263,7 @@ def test_fix_mode_is_noop_for_path_patterns(tmp_path: Path, capsys) -> None:
     dirty.write_text(original, encoding="utf-8")
     rc = lint_stale_paths.main(["lint_stale_paths.py", "--fix", str(dirty)])
     assert rc == 1, "--fix must still report the violation, just not auto-rewrite"
-    assert dirty.read_text(encoding="utf-8") == original, (
-        "--fix must NOT modify the file"
-    )
+    assert dirty.read_text(encoding="utf-8") == original, "--fix must NOT modify the file"
     captured = capsys.readouterr()
     assert "NO-OP" in captured.err
 
@@ -297,9 +283,7 @@ def test_existing_legacy_patterns_still_blocked(tmp_path: Path) -> None:
         path = tmp_path / "sample.py"
         path.write_text(line + "\n", encoding="utf-8")
         violations = lint_stale_paths.scan_file(path)
-        assert violations, (
-            f"regression: existing legacy pattern no longer blocked: {line!r}"
-        )
+        assert violations, f"regression: existing legacy pattern no longer blocked: {line!r}"
 
 
 def test_active_data_operator_docs_do_not_advertise_forbidden_runtime_roots() -> None:

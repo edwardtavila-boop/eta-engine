@@ -131,29 +131,59 @@ if TYPE_CHECKING:
     from eta_engine.backtest.models import Trade
 
 # Section 1256 contract universe — regulated futures.
-_SECTION_1256_SYMBOLS: frozenset[str] = frozenset({
-    # Index futures (CME E-mini / Micro)
-    "MNQ", "MNQ1", "/MNQ",
-    "NQ", "NQ1", "/NQ",
-    "ES", "ES1", "/ES",
-    "MES", "/MES",
-    "RTY", "RTY1", "/RTY",
-    "M2K", "/M2K",
-    "YM", "YM1", "/YM",
-    "MYM", "/MYM",
-    # CME crypto futures (cash-settled, 1256-eligible)
-    "MBT", "/MBT", "BTC1",
-    "MET", "/MET", "ETH1",
-    "/BTC", "/ETH",
-})
+_SECTION_1256_SYMBOLS: frozenset[str] = frozenset(
+    {
+        # Index futures (CME E-mini / Micro)
+        "MNQ",
+        "MNQ1",
+        "/MNQ",
+        "NQ",
+        "NQ1",
+        "/NQ",
+        "ES",
+        "ES1",
+        "/ES",
+        "MES",
+        "/MES",
+        "RTY",
+        "RTY1",
+        "/RTY",
+        "M2K",
+        "/M2K",
+        "YM",
+        "YM1",
+        "/YM",
+        "MYM",
+        "/MYM",
+        # CME crypto futures (cash-settled, 1256-eligible)
+        "MBT",
+        "/MBT",
+        "BTC1",
+        "MET",
+        "/MET",
+        "ETH1",
+        "/BTC",
+        "/ETH",
+    }
+)
 
 # Spot-crypto symbols — Form 8949, not Section 1256.
-_SPOT_CRYPTO_SYMBOLS: frozenset[str] = frozenset({
-    "BTC", "BTC-USD", "BTC/USD",
-    "ETH", "ETH-USD", "ETH/USD",
-    "SOL", "SOL-USD", "SOL/USD",
-    "XRP", "XRP-USD", "XRP/USD",
-})
+_SPOT_CRYPTO_SYMBOLS: frozenset[str] = frozenset(
+    {
+        "BTC",
+        "BTC-USD",
+        "BTC/USD",
+        "ETH",
+        "ETH-USD",
+        "ETH/USD",
+        "SOL",
+        "SOL-USD",
+        "SOL/USD",
+        "XRP",
+        "XRP-USD",
+        "XRP/USD",
+    }
+)
 
 # Wash-sale window per IRS §1091. Calendar days, both sides.
 _WASH_SALE_WINDOW_DAYS = 30
@@ -310,7 +340,10 @@ def _row_for_trade(  # noqa: PLR0913
 
 
 def _trades_from_backtest(  # type: ignore[no-untyped-def]  # noqa: ANN202
-    *, bot_id: str, start: datetime | None, end: datetime | None,
+    *,
+    bot_id: str,
+    start: datetime | None,
+    end: datetime | None,
 ):
     """Run the bot's registered strategy over its data + return Trade list."""
     from eta_engine.backtest import BacktestConfig, BacktestEngine
@@ -343,7 +376,9 @@ def _trades_from_backtest(  # type: ignore[no-untyped-def]  # noqa: ANN202
     )
     strat = _build_strategy(a)
     res = BacktestEngine(
-        pipeline=FeaturePipeline.default(), config=cfg, strategy=strat,
+        pipeline=FeaturePipeline.default(),
+        config=cfg,
+        strategy=strat,
     ).run(bars)
     return res.trades, a
 
@@ -356,12 +391,28 @@ def _trades_from_backtest(  # type: ignore[no-untyped-def]  # noqa: ANN202
 def _write_csv(out_path: Path, rows: list[_TaxRow]) -> None:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     fieldnames = [
-        "trade_id", "bot_id", "strategy_id", "symbol", "asset_class",
-        "section", "side", "qty",
-        "acquired_date", "acquired_time", "disposed_date", "disposed_time",
-        "cost_basis_usd", "proceeds_usd", "gross_pnl_usd",
-        "holding_period_days", "is_long_term", "is_section_1256",
-        "wash_sale_flag", "exit_reason", "regime", "confluence_score",
+        "trade_id",
+        "bot_id",
+        "strategy_id",
+        "symbol",
+        "asset_class",
+        "section",
+        "side",
+        "qty",
+        "acquired_date",
+        "acquired_time",
+        "disposed_date",
+        "disposed_time",
+        "cost_basis_usd",
+        "proceeds_usd",
+        "gross_pnl_usd",
+        "holding_period_days",
+        "is_long_term",
+        "is_section_1256",
+        "wash_sale_flag",
+        "exit_reason",
+        "regime",
+        "confluence_score",
         "notes",
     ]
     with out_path.open("w", encoding="utf-8", newline="") as fh:
@@ -443,26 +494,34 @@ def _write_summary(out_path: Path, rows: list[_TaxRow], year: int) -> None:
 def main() -> int:
     p = argparse.ArgumentParser(prog="export_tax_ledger")
     p.add_argument(
-        "--source", default="backtest",
+        "--source",
+        default="backtest",
         choices=["backtest", "paper-journal"],
         help="trade-source mode (paper-journal not yet wired)",
     )
     p.add_argument(
-        "--bot-id", default=None,
+        "--bot-id",
+        default=None,
         help="single bot; default = all production bots",
     )
     p.add_argument(
-        "--year", type=int, default=datetime.now(UTC).year - 1,
+        "--year",
+        type=int,
+        default=datetime.now(UTC).year - 1,
         help="tax year (default: previous calendar year)",
     )
     p.add_argument(
-        "--start", help="ISO date YYYY-MM-DD (overrides --year)",
+        "--start",
+        help="ISO date YYYY-MM-DD (overrides --year)",
     )
     p.add_argument(
-        "--end", help="ISO date YYYY-MM-DD (overrides --year)",
+        "--end",
+        help="ISO date YYYY-MM-DD (overrides --year)",
     )
     p.add_argument(
-        "--out-dir", type=Path, default=ROOT / "docs" / "tax_ledger",
+        "--out-dir",
+        type=Path,
+        default=ROOT / "docs" / "tax_ledger",
     )
     args = p.parse_args()
 
@@ -487,6 +546,7 @@ def main() -> int:
     else:
         # Pull production-promoted bots from the registry.
         from eta_engine.strategies.per_bot_registry import all_assignments
+
         bot_ids = []
         for a in all_assignments():
             # Skip explicitly deactivated bots.
@@ -504,17 +564,16 @@ def main() -> int:
     grand_rows: list[_TaxRow] = []
     for bot_id in bot_ids:
         trades, a = _trades_from_backtest(
-            bot_id=bot_id, start=start, end=end,
+            bot_id=bot_id,
+            start=start,
+            end=end,
         )
         if trades is None or a is None or not trades:
             print(f"  - {bot_id}: SKIP (no data / no trades)")
             continue
 
         # Filter to in-window (entry inside the year)
-        in_year = [
-            t for t in trades
-            if start <= t.entry_time < end
-        ]
+        in_year = [t for t in trades if start <= t.entry_time < end]
         if not in_year:
             print(f"  - {bot_id}: SKIP (no trades in year)")
             continue
@@ -522,32 +581,27 @@ def main() -> int:
         notes = ""
         warmup = a.extras.get("warmup_policy") or {}
         if isinstance(warmup, dict) and warmup.get("warmup_days"):
-            notes = (
-                f"warmup-policy: half-size first "
-                f"{warmup['warmup_days']}d post-promotion"
-            )
+            notes = f"warmup-policy: half-size first {warmup['warmup_days']}d post-promotion"
 
         rows: list[_TaxRow] = [
             _row_for_trade(
-                t=t, bot_id=bot_id, strategy_id=a.strategy_id, notes=notes,
+                t=t,
+                bot_id=bot_id,
+                strategy_id=a.strategy_id,
+                notes=notes,
             )
             for t in in_year
         ]
         # Wash-sale pass
         flags = _wash_sale_flags(rows)
-        rows = [
-            _TaxRow(**{**vars(r), "wash_sale_flag": f})
-            for r, f in zip(rows, flags, strict=False)
-        ]
+        rows = [_TaxRow(**{**vars(r), "wash_sale_flag": f}) for r, f in zip(rows, flags, strict=False)]
         out_csv = args.out_dir / f"{bot_id}_tax_ledger_{args.year}.csv"
         out_json = args.out_dir / f"{bot_id}_tax_summary_{args.year}.json"
         _write_csv(out_csv, rows)
         _write_summary(out_json, rows, year=args.year)
         net = sum(r.gross_pnl_usd for r in rows)
         print(
-            f"  - {bot_id}: {len(rows)} trades  "
-            f"net=${net:+,.2f}  "
-            f"-> {out_csv.name}",
+            f"  - {bot_id}: {len(rows)} trades  net=${net:+,.2f}  -> {out_csv.name}",
         )
         grand_rows.extend(rows)
 
@@ -558,8 +612,7 @@ def main() -> int:
         _write_summary(out_json, grand_rows, year=args.year)
         net = sum(r.gross_pnl_usd for r in grand_rows)
         print(
-            f"\n[export_tax_ledger] fleet total: {len(grand_rows)} trades, "
-            f"net ${net:+,.2f}",
+            f"\n[export_tax_ledger] fleet total: {len(grand_rows)} trades, net ${net:+,.2f}",
         )
         print(f"  fleet csv:     {out_csv}")
         print(f"  fleet summary: {out_json}")

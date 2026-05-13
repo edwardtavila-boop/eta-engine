@@ -102,11 +102,15 @@ def _filter_by_window(
 
 def _bucketize(records: list[dict]) -> dict:
     """Roll up records by date / provider / category. Returns a nested dict."""
-    by_date: dict[str, dict] = defaultdict(lambda: {
-        "calls": 0, "cost_usd": 0.0, "fallbacks": 0,
-        "by_provider": defaultdict(lambda: {"calls": 0, "cost_usd": 0.0}),
-        "by_category": defaultdict(lambda: {"calls": 0, "cost_usd": 0.0}),
-    })
+    by_date: dict[str, dict] = defaultdict(
+        lambda: {
+            "calls": 0,
+            "cost_usd": 0.0,
+            "fallbacks": 0,
+            "by_provider": defaultdict(lambda: {"calls": 0, "cost_usd": 0.0}),
+            "by_category": defaultdict(lambda: {"calls": 0, "cost_usd": 0.0}),
+        }
+    )
 
     for r in records:
         ts = _parse_iso(r.get("ts", ""))
@@ -133,12 +137,10 @@ def _bucketize(records: list[dict]) -> dict:
             "cost_usd": round(slot["cost_usd"], 6),
             "fallbacks": slot["fallbacks"],
             "by_provider": {
-                p: {"calls": v["calls"], "cost_usd": round(v["cost_usd"], 6)}
-                for p, v in slot["by_provider"].items()
+                p: {"calls": v["calls"], "cost_usd": round(v["cost_usd"], 6)} for p, v in slot["by_provider"].items()
             },
             "by_category": {
-                c: {"calls": v["calls"], "cost_usd": round(v["cost_usd"], 6)}
-                for c, v in slot["by_category"].items()
+                c: {"calls": v["calls"], "cost_usd": round(v["cost_usd"], 6)} for c, v in slot["by_category"].items()
             },
         }
     return out
@@ -164,8 +166,7 @@ def _print_human(rollup: dict, *, total_cost: float, total_calls: int) -> None:
         else:
             top_str = ""
         fb = slot["fallbacks"]
-        print(f"  {date:12s}  {slot['calls']:>6d}  ${slot['cost_usd']:>10.6f}  "
-              f"{fb:>3d}  {top_str}")
+        print(f"  {date:12s}  {slot['calls']:>6d}  ${slot['cost_usd']:>10.6f}  {fb:>3d}  {top_str}")
 
     # Aggregate per-provider across the whole window.
     agg_prov: dict[str, dict] = defaultdict(lambda: {"calls": 0, "cost_usd": 0.0})
@@ -181,27 +182,22 @@ def _print_human(rollup: dict, *, total_cost: float, total_calls: int) -> None:
     print(f"\n{'-' * 70}\nBy provider (window total)\n{'-' * 70}")
     for prov, v in sorted(agg_prov.items(), key=lambda kv: -kv[1]["cost_usd"]):
         share = (v["cost_usd"] / total_cost * 100) if total_cost else 0
-        print(f"  {prov:9s}  calls={v['calls']:>5d}  "
-              f"cost=${v['cost_usd']:>10.6f}  ({share:>5.1f}%)")
+        print(f"  {prov:9s}  calls={v['calls']:>5d}  cost=${v['cost_usd']:>10.6f}  ({share:>5.1f}%)")
 
     print(f"\n{'-' * 70}\nTop 10 categories by spend\n{'-' * 70}")
     sorted_cats = sorted(agg_cat.items(), key=lambda kv: -kv[1]["cost_usd"])[:10]
     for cat, v in sorted_cats:
         share = (v["cost_usd"] / total_cost * 100) if total_cost else 0
-        print(f"  {cat:25s}  calls={v['calls']:>5d}  "
-              f"cost=${v['cost_usd']:>10.6f}  ({share:>5.1f}%)")
+        print(f"  {cat:25s}  calls={v['calls']:>5d}  cost=${v['cost_usd']:>10.6f}  ({share:>5.1f}%)")
     print()
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Force-Multiplier daily cost report")
     group = parser.add_mutually_exclusive_group()
-    group.add_argument("--days", type=int, default=None,
-                       help="Limit to the last N days (default: all records)")
-    group.add_argument("--since", type=str, default=None,
-                       help="ISO date / datetime cutoff (e.g. 2026-05-01)")
-    parser.add_argument("--json", action="store_true",
-                        help="Emit machine-readable JSON instead of a table")
+    group.add_argument("--days", type=int, default=None, help="Limit to the last N days (default: all records)")
+    group.add_argument("--since", type=str, default=None, help="ISO date / datetime cutoff (e.g. 2026-05-01)")
+    parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON instead of a table")
     args = parser.parse_args(argv)
 
     log_path = _resolve_log_path()
@@ -227,12 +223,18 @@ def main(argv: list[str] | None = None) -> int:
     total_calls = sum(slot["calls"] for slot in rollup.values())
 
     if args.json:
-        print(json.dumps({
-            "log_path": str(log_path),
-            "total_calls": total_calls,
-            "total_cost_usd": total_cost,
-            "days": rollup,
-        }, indent=2, default=str))
+        print(
+            json.dumps(
+                {
+                    "log_path": str(log_path),
+                    "total_calls": total_calls,
+                    "total_cost_usd": total_cost,
+                    "days": rollup,
+                },
+                indent=2,
+                default=str,
+            )
+        )
         return 0
 
     _print_human(rollup, total_cost=total_cost, total_calls=total_calls)

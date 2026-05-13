@@ -1,4 +1,5 @@
 """Iteratively scroll TradingView chart back in time to force lazy-load more bars."""
+
 from __future__ import annotations
 
 import asyncio
@@ -32,11 +33,15 @@ def get_chart_target_ws() -> str:
 
 
 async def cdp_eval(ws: _CdpSocket, expr: str, req_id: int) -> dict[str, object]:
-    await ws.send(json.dumps({
-        "id": req_id,
-        "method": "Runtime.evaluate",
-        "params": {"expression": expr, "returnByValue": True, "awaitPromise": True},
-    }))
+    await ws.send(
+        json.dumps(
+            {
+                "id": req_id,
+                "method": "Runtime.evaluate",
+                "params": {"expression": expr, "returnByValue": True, "awaitPromise": True},
+            }
+        )
+    )
     while True:
         msg = json.loads(await ws.recv())
         if msg.get("id") == req_id:
@@ -82,7 +87,7 @@ async def main() -> None:
             state = await cdp_eval(ws, STATE_JS, req_id)
             req_id += 1
             size = state["size"]
-            print(f"iter {i+1}: offset={bar_offset} size={size} first_epoch={state['first']} (+{size - prev_size})")
+            print(f"iter {i + 1}: offset={bar_offset} size={size} first_epoch={state['first']} (+{size - prev_size})")
             if size == prev_size:
                 stuck += 1
                 if stuck >= 3:

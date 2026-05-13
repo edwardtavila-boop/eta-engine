@@ -1,4 +1,5 @@
 """Tests for causal_attribution — T6 marginal-effect attribution."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -14,14 +15,14 @@ def _v2_record(
         "consult_id": consult_id,
         "bot_id": "test_bot",
         "schema_version": 2,
-        "school_inputs": school_inputs if school_inputs is not None else {
+        "school_inputs": school_inputs
+        if school_inputs is not None
+        else {
             "momentum": {"score": 0.8, "size_modifier": 0.7},
             "mean_revert": {"score": -0.3, "size_modifier": 0.0},
         },
         "portfolio_inputs": {},
-        "hot_weights_snapshot": (
-            hot_weights if hot_weights is not None else {"momentum": 1.0, "mean_revert": 1.0}
-        ),
+        "hot_weights_snapshot": (hot_weights if hot_weights is not None else {"momentum": 1.0, "mean_revert": 1.0}),
         "overrides_snapshot": {},
         "rng_master_seed": None,
         "verdict": {"final_verdict": "PROCEED"},
@@ -32,10 +33,12 @@ def test_analyze_detects_decisive_school_for_close_call() -> None:
     """Two schools split 0.56/0.44 → flipping the 0.56 school changes verdict."""
     from eta_engine.brain.jarvis_v3 import causal_attribution
 
-    rec = _v2_record(school_inputs={
-        "school_a": {"score": 0.56},
-        "school_b": {"score": -0.44},  # close to neutral; flip of A flips final
-    })
+    rec = _v2_record(
+        school_inputs={
+            "school_a": {"score": 0.56},
+            "school_b": {"score": -0.44},  # close to neutral; flip of A flips final
+        }
+    )
     report = causal_attribution.analyze("abc12345", record=rec)
     assert report.error is None
     assert report.base_verdict == "PROCEED"
@@ -50,9 +53,7 @@ def test_analyze_robust_consensus_no_decisive() -> None:
     """5 strongly-agreeing schools → no single flip changes the verdict."""
     from eta_engine.brain.jarvis_v3 import causal_attribution
 
-    rec = _v2_record(school_inputs={
-        f"s{i}": {"score": 0.9} for i in range(5)
-    })
+    rec = _v2_record(school_inputs={f"s{i}": {"score": 0.9} for i in range(5)})
     report = causal_attribution.analyze("abc12345", record=rec)
     assert report.base_verdict == "PROCEED"
     # Flipping one school -1.0 still leaves 4 at +0.9 → final ≈ +0.62 → PROCEED
@@ -126,11 +127,13 @@ def test_analyze_handles_malformed_school_payload() -> None:
     """Schools with non-numeric scores are skipped, not crashing the report."""
     from eta_engine.brain.jarvis_v3 import causal_attribution
 
-    rec = _v2_record(school_inputs={
-        "good": {"score": 0.7},
-        "garbage": {"score": "not_a_number"},
-        "no_score_field": {"size_modifier": 1.0},
-    })
+    rec = _v2_record(
+        school_inputs={
+            "good": {"score": 0.7},
+            "garbage": {"score": "not_a_number"},
+            "no_score_field": {"size_modifier": 1.0},
+        }
+    )
     report = causal_attribution.analyze("abc12345", record=rec)
     # Only the 'good' school produces an attribution row
     schools = {s.school for s in report.per_school}

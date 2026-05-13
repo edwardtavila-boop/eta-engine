@@ -23,6 +23,7 @@ What "full pipeline" means here:
 THIS MODULE DOES NOT OVERRULE JARVIS_ADMIN. It only annotates,
 narrates, and modulates size within the rules JarvisAdmin allows.
 """
+
 from __future__ import annotations
 
 import logging
@@ -80,6 +81,7 @@ class FullJarvisVerdict:
 
     def to_dict(self) -> dict:
         from dataclasses import asdict
+
         return {
             "consolidated": asdict(self.consolidated),
             "narrative_terse": self.narrative_terse,
@@ -155,7 +157,8 @@ class JarvisFull:
 
         mem = memory or HierarchicalMemory.default()
         intel = JarvisIntelligence(
-            admin=admin, memory=mem,
+            admin=admin,
+            memory=mem,
             cfg=IntelligenceConfig(enable_intelligence=enable_intelligence),
         )
         inst = cls(
@@ -171,6 +174,7 @@ class JarvisFull:
             from eta_engine.brain.jarvis_v3.override_retrospective import (
                 OverrideRetroLogger,
             )
+
             inst._override_retro = OverrideRetroLogger.default()
         except Exception:
             pass
@@ -226,8 +230,7 @@ class JarvisFull:
                 _opp = "short" if _proposed_long else ("long" if _proposed_short else "")
                 if _opp:
                     _strong_dissenters = [
-                        v for v in sage_report.per_school.values()
-                        if v.bias.value == _opp and v.conviction >= 0.70
+                        v for v in sage_report.per_school.values() if v.bias.value == _opp and v.conviction >= 0.70
                     ]
                     if _strong_dissenters and sage_modulation != "tightened":
                         sage_modulation = "tightened_by_dissent"
@@ -238,10 +241,13 @@ class JarvisFull:
         payload = getattr(req, "payload", None) or {}
         if isinstance(payload, dict) and "sage_score" not in payload and sage_conviction > 0:
             import contextlib as _cl
+
             with _cl.suppress(Exception):  # frozen or immutable request
                 object.__setattr__(req, "payload", {**payload, "sage_score": sage_conviction})
         consolidated = self.intelligence.consult(
-            req, ctx=ctx, current_narrative=current_narrative,
+            req,
+            ctx=ctx,
+            current_narrative=current_narrative,
         )
 
         # 2. Pre-mortem (best-effort)
@@ -253,14 +259,16 @@ class JarvisFull:
                     JarvisIntelligence,
                 )
                 from eta_engine.brain.jarvis_v3.premortem import run_premortem
+
                 proposal = JarvisIntelligence._req_to_proposal(
-                    self.intelligence, req, ctx,
+                    self.intelligence,
+                    req,
+                    ctx,
                 )
                 pm = run_premortem(proposal=proposal, memory=self.memory)
                 kill_prob = pm.kill_prob
                 top_failures = [
-                    f"{m.label} (p={m.probability:.2f}, "
-                    f"E[loss]={m.expected_loss_r:+.2f}R)"
+                    f"{m.label} (p={m.probability:.2f}, E[loss]={m.expected_loss_r:+.2f}R)"
                     for m in pm.top_failure_modes(k=3)
                 ]
             except Exception as exc:  # noqa: BLE001
@@ -275,8 +283,11 @@ class JarvisFull:
                     JarvisIntelligence,
                 )
                 from eta_engine.brain.jarvis_v3.ood_detector import score_ood
+
                 proposal = JarvisIntelligence._req_to_proposal(
-                    self.intelligence, req, ctx,
+                    self.intelligence,
+                    req,
+                    ctx,
                 )
                 rep = score_ood(proposal=proposal, memory=self.memory)
                 ood_score = rep.score
@@ -294,7 +305,9 @@ class JarvisFull:
                 session = str(payload.get("session", "rth"))
                 action = str(getattr(req, "action_type", "ORDER"))
                 advice = self.operator_coach.should_defer_to_operator(
-                    regime=regime, session=session, action=action,
+                    regime=regime,
+                    session=session,
+                    action=action,
                 )
                 coach_rec = advice.recommendation
                 coach_shrink = advice.suggested_size_shrink
@@ -316,7 +329,8 @@ class JarvisFull:
                                 override_reason=str(consolidated.base_reason),
                             )
                             retro.generate_retrospective(
-                                event, coach=self.operator_coach,
+                                event,
+                                coach=self.operator_coach,
                             )
                         except Exception as exc2:
                             layer_errors.append(f"override_retro: {exc2}")
@@ -330,6 +344,7 @@ class JarvisFull:
             from eta_engine.brain.jarvis_v3.risk_budget_allocator import (
                 current_envelope,
             )
+
             env = current_envelope(bot_id=bot_id)
             budget_mult = env.multiplier
             budget_reason = env.reason
@@ -346,6 +361,7 @@ class JarvisFull:
                 from eta_engine.brain.jarvis_v3.quantum.quantum_agent import (
                     ProblemKind,
                 )
+
                 payload = getattr(req, "payload", {}) or {}
                 portfolio = payload.get("portfolio", {}) if isinstance(payload, dict) else {}
                 symbols = portfolio.get("symbols", [])
@@ -409,6 +425,7 @@ class JarvisFull:
                     detect_clashes,
                     strongest_clash_modifier,
                 )
+
                 _matches = detect_clashes(sage_report)
                 if _matches:
                     clash_modifier, clash_cap_mult = strongest_clash_modifier(_matches)
@@ -437,6 +454,7 @@ class JarvisFull:
         conductor_block_reason: str | None = None
         try:
             from eta_engine.brain.jarvis_v3 import jarvis_conductor as _jc
+
             # Schema v2 enrichment: translate sage_report.per_school into
             # the conductor's school_inputs param so the emitted trace
             # record carries per-school RAW votes (signed by alignment).
@@ -461,12 +479,15 @@ class JarvisFull:
         narrative_standard = ""
         try:
             from eta_engine.brain.jarvis_v3.llm_narrative import llm_narrative
+
             narrative_terse = llm_narrative(
-                consolidated, verbosity="terse",
+                consolidated,
+                verbosity="terse",
                 force_template=getattr(self, "_override_retro", None) is None,
             )
             narrative_standard = llm_narrative(
-                consolidated, verbosity="standard",
+                consolidated,
+                verbosity="standard",
             )
         except Exception as exc:  # noqa: BLE001
             layer_errors.append(f"narrative: {exc}")
@@ -474,6 +495,7 @@ class JarvisFull:
                 from eta_engine.brain.jarvis_v3.narrative_generator import (
                     verdict_to_narrative,
                 )
+
                 if not narrative_terse:
                     narrative_terse = verdict_to_narrative(consolidated, verbosity="terse")
                 if not narrative_standard:
@@ -492,11 +514,10 @@ class JarvisFull:
         hermes_calls: dict[str, dict] = {}
         try:
             confidence = float(getattr(consolidated, "confidence", 0.0) or 0.0)
-            should_consult_hermes = (
-                confidence > 0.75 or conductor_block_reason is not None
-            )
+            should_consult_hermes = confidence > 0.75 or conductor_block_reason is not None
             if should_consult_hermes:
                 from eta_engine.brain.jarvis_v3 import hermes_client
+
                 hres = hermes_client.narrative(
                     verdict={
                         "confidence": confidence,
@@ -549,6 +570,7 @@ class JarvisFull:
                 from eta_engine.brain.jarvis_v3.verdict_dispatcher import (
                     dispatch_verdict,
                 )
+
                 dispatch_verdict(verdict)
             except Exception as exc:
                 logger.debug("verdict dispatch failed (non-fatal): %s", exc)
@@ -570,6 +592,7 @@ class JarvisFull:
             return None
         try:
             from eta_engine.brain.jarvis_v3.sage import MarketContext, consult_sage
+
             side = payload.get("side", "long")
             entry_price = float(payload.get("entry_price", 0))
             symbol = payload.get("symbol", "")
@@ -614,16 +637,19 @@ class JarvisFull:
 
     def health(self) -> dict:
         from eta_engine.brain.jarvis_v3.health_check import jarvis_health
+
         return jarvis_health().to_dict()
 
     def daily_brief(self) -> dict:
         from eta_engine.brain.jarvis_v3.daily_brief import generate_daily_brief
+
         return generate_daily_brief(auto_persist=True).to_dict()
 
     def self_drift(self) -> dict:
         from eta_engine.brain.jarvis_v3.self_drift_monitor import (
             detect_self_drift,
         )
+
         return detect_self_drift().to_dict()
 
     def kaizen_cycle(

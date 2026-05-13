@@ -4,6 +4,7 @@ Aggregates per-school verdicts into a single SageReport with composite
 bias + conviction + per-school breakdown. Weight per school is taken
 from the school's WEIGHT class attribute.
 """
+
 from __future__ import annotations
 
 from eta_engine.brain.jarvis_v3.sage.base import (
@@ -13,26 +14,28 @@ from eta_engine.brain.jarvis_v3.sage.base import (
     SchoolVerdict,
 )
 
-_EDGE_TRACKER = None
-_REGIME_MOD_FN = None
+_EDGE_TRACKER: object | bool | None = None
+_REGIME_MOD_FN: object | bool | None = None
 
 
-def _get_edge_tracker():
+def _get_edge_tracker() -> object | None:
     global _EDGE_TRACKER
     if _EDGE_TRACKER is None:
         try:
             from eta_engine.brain.jarvis_v3.sage.edge_tracker import default_tracker
+
             _EDGE_TRACKER = default_tracker()  # call to get the singleton instance
         except Exception:  # noqa: BLE001
             _EDGE_TRACKER = False
     return _EDGE_TRACKER if _EDGE_TRACKER is not False else None
 
 
-def _get_regime_mod_fn():
+def _get_regime_mod_fn() -> object | None:
     global _REGIME_MOD_FN
     if _REGIME_MOD_FN is None:
         try:
             from eta_engine.brain.jarvis_v3.sage.regime import regime_weight_modulator
+
             _REGIME_MOD_FN = regime_weight_modulator
         except Exception:  # noqa: BLE001
             _REGIME_MOD_FN = False
@@ -93,6 +96,7 @@ def aggregate(
     # get a small bump (e.g. wyckoff spring + dow_theory uptrend = stronger together).
     try:
         from eta_engine.brain.jarvis_v3.sage.dependency_graph import apply_dependency_boosts
+
         dependency_boosts = apply_dependency_boosts(verdicts)
     except Exception:  # noqa: BLE001
         dependency_boosts = {}

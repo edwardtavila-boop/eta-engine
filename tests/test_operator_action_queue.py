@@ -265,9 +265,7 @@ class TestActiveBrokerCredentialProbes:
         assert item.verdict == VERDICT_DONE
         assert item.evidence["ibkr_cp_base_url"] is True
 
-    def test_ibkr_probe_reads_canonical_eta_engine_env_file(
-        self, monkeypatch, tmp_path
-    ) -> None:
+    def test_ibkr_probe_reads_canonical_eta_engine_env_file(self, monkeypatch, tmp_path) -> None:
         from eta_engine.core.secrets import SecretsManager
         from eta_engine.scripts import operator_action_queue
 
@@ -559,9 +557,7 @@ class TestTradovateDormancyPolicy:
         assert item.evidence["policy"]["active_primary"] == "IBKR"
         assert item.evidence["policy"]["tradovate"] == "dormant"
 
-    def test_tradovate_un_dormant_is_blocked_without_explicit_reactivation(
-        self, monkeypatch
-    ) -> None:
+    def test_tradovate_un_dormant_is_blocked_without_explicit_reactivation(self, monkeypatch) -> None:
         from eta_engine.scripts import operator_action_queue
 
         monkeypatch.setattr(operator_action_queue, "_read_dormant_brokers", lambda: set())
@@ -751,10 +747,7 @@ class TestIbGateway1046RuntimeProbe:
         assert "-Install -RepairAfterInstall" in next_commands[0]
         assert "-AllowUnsignedInstaller" not in next_commands[0]
         assert item.evidence["allow_unsigned_requires_source_confirmation"] is True
-        assert (
-            item.evidence["blockers"][0]["evidence"]["allow_unsigned_requires_source_confirmation"]
-            is True
-        )
+        assert item.evidence["blockers"][0]["evidence"]["allow_unsigned_requires_source_confirmation"] is True
 
     def test_gateway_runtime_marks_done_when_api_handshake_is_healthy(self, monkeypatch) -> None:
         from eta_engine.scripts import operator_action_queue

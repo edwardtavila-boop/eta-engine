@@ -27,7 +27,7 @@ def _ok_state() -> dict[str, object]:
     return {
         "cookies": [
             {"name": "sessionid", "value": "x", "domain": ".tradingview.com"},
-            {"name": "device_t",  "value": "y", "domain": ".tradingview.com"},
+            {"name": "device_t", "value": "y", "domain": ".tradingview.com"},
         ],
         "origins": [],
     }

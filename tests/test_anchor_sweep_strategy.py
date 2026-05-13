@@ -45,8 +45,13 @@ def _bar(
     o = open_ if open_ is not None else (high + low) / 2
     c = close if close is not None else (high + low) / 2
     return BarData(
-        timestamp=utc_dt, symbol="MNQ", open=o, high=high, low=low,
-        close=c, volume=volume,
+        timestamp=utc_dt,
+        symbol="MNQ",
+        open=o,
+        high=high,
+        low=low,
+        close=c,
+        volume=volume,
     )
 
 
@@ -54,8 +59,10 @@ def _config() -> BacktestConfig:
     return BacktestConfig(
         start_date=datetime(2026, 1, 1, tzinfo=UTC),
         end_date=datetime(2026, 12, 31, tzinfo=UTC),
-        symbol="MNQ", initial_equity=10_000.0,
-        risk_per_trade_pct=0.005, confluence_threshold=0.0,
+        symbol="MNQ",
+        initial_equity=10_000.0,
+        risk_per_trade_pct=0.005,
+        confluence_threshold=0.0,
         max_trades_per_day=10,
     )
 
@@ -81,6 +88,7 @@ def _permissive_cfg(**overrides) -> AnchorSweepConfig:
 def test_session_bucket_classification() -> None:
     s = AnchorSweepStrategy(_permissive_cfg())
     from datetime import time as dtime
+
     # 02:00 ET -> overnight
     assert s._bucket_for(dtime(2, 0)) == "ON"
     # 04:00 ET -> premarket
@@ -117,7 +125,9 @@ def test_premarket_freeze_at_rth_open() -> None:
     # Cross into RTH at 09:30 — boundary triggers freeze
     s.maybe_enter(
         _bar(datetime(2026, 1, 15, 9, 30), high=109.0, low=103.0),
-        pm_bars, 10_000.0, cfg,
+        pm_bars,
+        10_000.0,
+        cfg,
     )
     assert s._state.pmh == 110.0
     assert s._state.pml == 95.0
@@ -130,7 +140,9 @@ def test_overnight_freeze_at_premarket_open() -> None:
     # Build a fake "yesterday RTH" so the day rollover doesn't
     # interfere — kick state.current_et_date by feeding bars
     yesterday_evening = _bar(
-        datetime(2026, 1, 14, 19, 0), high=120.0, low=115.0,
+        datetime(2026, 1, 14, 19, 0),
+        high=120.0,
+        low=115.0,
     )
     s.maybe_enter(yesterday_evening, [yesterday_evening], 10_000.0, cfg)
     # Overnight bars 18:00 (prev) - 04:00 today
@@ -175,7 +187,9 @@ def test_pdh_pdl_carry_forward_on_new_day() -> None:
     assert s._state.rth_low_today == 190.0
     # Roll to next day — feed an overnight bar in the new ET date
     next_day_overnight = _bar(
-        datetime(2026, 1, 16, 1, 0), high=199.0, low=193.0,
+        datetime(2026, 1, 16, 1, 0),
+        high=199.0,
+        low=193.0,
     )
     hist.append(next_day_overnight)
     s.maybe_enter(next_day_overnight, hist, 10_000.0, cfg)
@@ -207,14 +221,16 @@ def _seed_pdh_pdl(s: AnchorSweepStrategy, cfg, *, pdh: float, pdl: float) -> lis
 
     day1_high_bar = _bar(
         datetime(2026, 1, 15, 10, 0),
-        high=pdh, low=pdh - 5.0,
+        high=pdh,
+        low=pdh - 5.0,
     )
     hist.append(day1_high_bar)
     s.maybe_enter(day1_high_bar, hist, 10_000.0, cfg)
 
     day1_low_bar = _bar(
         datetime(2026, 1, 15, 12, 0),
-        high=pdl + 5.0, low=pdl,
+        high=pdl + 5.0,
+        low=pdl,
     )
     hist.append(day1_low_bar)
     s.maybe_enter(day1_low_bar, hist, 10_000.0, cfg)
@@ -251,8 +267,10 @@ def test_sweep_pdh_produces_short_signal() -> None:
     # wick above level = 1.0, total range = 3.0 → wick_pct ≈ 0.33 OK.
     sweep_bar = _bar(
         datetime(2026, 1, 16, 10, 0),
-        high=201.0, low=198.0,
-        open_=199.0, close=199.5,
+        high=201.0,
+        low=198.0,
+        open_=199.0,
+        close=199.5,
         volume=2000.0,
     )
     hist.append(sweep_bar)
@@ -275,8 +293,10 @@ def test_sweep_pdl_produces_long_signal() -> None:
     # Sweep bar: low=189 (below pdl=190), close=190.5 (back above).
     sweep_bar = _bar(
         datetime(2026, 1, 16, 10, 0),
-        high=192.0, low=189.0,
-        open_=191.0, close=190.5,
+        high=192.0,
+        low=189.0,
+        open_=191.0,
+        close=190.5,
         volume=2000.0,
     )
     hist.append(sweep_bar)
@@ -304,8 +324,10 @@ def test_max_trades_per_day_cap_is_enforced() -> None:
     # Fire-able sweep #1 — PDH sweep
     sweep1 = _bar(
         datetime(2026, 1, 16, 10, 0),
-        high=201.0, low=198.0,
-        open_=199.0, close=199.5,
+        high=201.0,
+        low=198.0,
+        open_=199.0,
+        close=199.5,
         volume=2000.0,
     )
     hist.append(sweep1)
@@ -315,8 +337,10 @@ def test_max_trades_per_day_cap_is_enforced() -> None:
     # Fire-able sweep #2 — also PDL same day. Cap=1 should block it.
     sweep2 = _bar(
         datetime(2026, 1, 16, 14, 0),
-        high=192.0, low=189.0,
-        open_=191.0, close=190.5,
+        high=192.0,
+        low=189.0,
+        open_=191.0,
+        close=190.5,
         volume=2000.0,
     )
     hist.append(sweep2)
@@ -335,16 +359,22 @@ def test_pdh_short_signal_passes_validator() -> None:
     hist = _seed_pdh_pdl(s, cfg, pdh=200.0, pdl=190.0)
     sweep_bar = _bar(
         datetime(2026, 1, 16, 10, 0),
-        high=201.0, low=198.0,
-        open_=199.0, close=199.5,
+        high=201.0,
+        low=198.0,
+        open_=199.0,
+        close=199.5,
         volume=2000.0,
     )
     hist.append(sweep_bar)
     out = s.maybe_enter(sweep_bar, hist, 10_000.0, cfg)
     assert out is not None
     res = validate_signal(
-        side=out.side, entry=out.entry_price, stop=out.stop,
-        target=out.target, qty=out.qty, equity=10_000.0,
+        side=out.side,
+        entry=out.entry_price,
+        stop=out.stop,
+        target=out.target,
+        qty=out.qty,
+        equity=10_000.0,
         point_value=2.0,  # MNQ
     )
     assert res.ok, res.failures
@@ -356,16 +386,22 @@ def test_pdl_long_signal_passes_validator() -> None:
     hist = _seed_pdh_pdl(s, cfg, pdh=200.0, pdl=190.0)
     sweep_bar = _bar(
         datetime(2026, 1, 16, 10, 0),
-        high=192.0, low=189.0,
-        open_=191.0, close=190.5,
+        high=192.0,
+        low=189.0,
+        open_=191.0,
+        close=190.5,
         volume=2000.0,
     )
     hist.append(sweep_bar)
     out = s.maybe_enter(sweep_bar, hist, 10_000.0, cfg)
     assert out is not None
     res = validate_signal(
-        side=out.side, entry=out.entry_price, stop=out.stop,
-        target=out.target, qty=out.qty, equity=10_000.0,
+        side=out.side,
+        entry=out.entry_price,
+        stop=out.stop,
+        target=out.target,
+        qty=out.qty,
+        equity=10_000.0,
         point_value=2.0,
     )
     assert res.ok, res.failures

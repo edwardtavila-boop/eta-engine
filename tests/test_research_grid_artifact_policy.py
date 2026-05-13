@@ -63,9 +63,7 @@ def test_research_grid_routes_no_data_runs_to_runtime_state() -> None:
 
 
 def test_research_grid_routes_low_signal_runs_to_runtime_state() -> None:
-    artifact_class = run_research_grid.classify_research_results(
-        [_result(n_windows=0, note="1864 bars / 9d")]
-    )
+    artifact_class = run_research_grid.classify_research_results([_result(n_windows=0, note="1864 bars / 9d")])
 
     assert artifact_class == "low_signal"
     assert run_research_grid.resolve_report_dir(artifact_class=artifact_class) == (
@@ -88,9 +86,11 @@ def test_research_grid_report_records_artifact_class() -> None:
 
 
 def test_research_grid_table_surfaces_wf_mode_and_dsr_trials() -> None:
-    table = run_research_grid.render_table([
-        _result(wf_mode="anchored", dsr_n_trials=24),
-    ])
+    table = run_research_grid.render_table(
+        [
+            _result(wf_mode="anchored", dsr_n_trials=24),
+        ]
+    )
 
     assert "| WF | DSR N |" in table
     assert "| anchored | 24 |" in table
@@ -223,10 +223,7 @@ def test_limit_matrix_filters_and_caps_cells() -> None:
 
 def test_registry_matrix_skips_deactivated_by_default() -> None:
     labels = {cell.label for cell in run_research_grid._matrix_from_registry()}
-    labels_with_muted = {
-        cell.label
-        for cell in run_research_grid._matrix_from_registry(include_deactivated=True)
-    }
+    labels_with_muted = {cell.label for cell in run_research_grid._matrix_from_registry(include_deactivated=True)}
 
     assert "xrp_perp" not in labels
     assert "xrp_perp" in labels_with_muted

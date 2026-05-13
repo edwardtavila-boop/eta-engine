@@ -5,6 +5,7 @@ strong move = effort matches result (continuation favored). High volume
 + weak move = effort without result (reversal favored). Low volume on a
 move = lack of conviction.
 """
+
 from __future__ import annotations
 
 from eta_engine.brain.jarvis_v3.sage.base import (
@@ -30,7 +31,9 @@ class VPASchool(SchoolBase):
         n = ctx.n_bars
         if n < 20:
             return SchoolVerdict(
-                school=self.NAME, bias=Bias.NEUTRAL, conviction=0.0,
+                school=self.NAME,
+                bias=Bias.NEUTRAL,
+                conviction=0.0,
                 aligned_with_entry=False,
                 rationale=f"insufficient bars ({n} < 20)",
             )
@@ -41,17 +44,20 @@ class VPASchool(SchoolBase):
         last_vol = float(last.get("volume", 0))
 
         # Baseline volume + range from prior 20 bars (cached)
-        def _baselines():
+        def _baselines() -> tuple[float, float]:
             avg_vol = sum(float(b.get("volume", 0)) for b in bars[-21:-1]) / 20
             avg_range = sum(float(b["high"]) - float(b["low"]) for b in bars[-21:-1]) / 20
             return (avg_vol, avg_range)
+
         avg_vol, avg_range = get_or_compute(ctx, "vpa_baselines", _baselines)
         last_range = float(last["high"]) - float(last["low"])
         last_body = abs(last_close - last_open)
 
         if avg_vol <= 0 or avg_range <= 0:
             return SchoolVerdict(
-                school=self.NAME, bias=Bias.NEUTRAL, conviction=0.0,
+                school=self.NAME,
+                bias=Bias.NEUTRAL,
+                conviction=0.0,
                 aligned_with_entry=False,
                 rationale="zero baseline volume/range",
             )

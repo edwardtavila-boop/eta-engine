@@ -25,6 +25,7 @@ Inspect with::
     Get-Content state\\logs\\eta.jsonl -Tail 50 -Wait    # PowerShell
     tail -f state/logs/eta.jsonl                          # bash
 """
+
 from __future__ import annotations
 
 import json
@@ -57,10 +58,27 @@ class _JsonAggregateHandler(logging.Handler):
             }
             # Pydantic-style: pull non-standard keys from extra.
             standard = {
-                "name", "msg", "args", "levelname", "levelno", "pathname",
-                "filename", "module", "exc_info", "exc_text", "stack_info",
-                "lineno", "funcName", "created", "msecs", "relativeCreated",
-                "thread", "threadName", "processName", "process", "message",
+                "name",
+                "msg",
+                "args",
+                "levelname",
+                "levelno",
+                "pathname",
+                "filename",
+                "module",
+                "exc_info",
+                "exc_text",
+                "stack_info",
+                "lineno",
+                "funcName",
+                "created",
+                "msecs",
+                "relativeCreated",
+                "thread",
+                "threadName",
+                "processName",
+                "process",
+                "message",
                 "taskName",
             }
             extra = {k: v for k, v in record.__dict__.items() if k not in standard}
@@ -98,9 +116,7 @@ def get_eta_logger(
         local_log_path.parent.mkdir(parents=True, exist_ok=True)
         fh = logging.FileHandler(local_log_path, encoding="utf-8")
         fh.setLevel(level)
-        fh.setFormatter(logging.Formatter(
-            "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
-        ))
+        fh.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
         logger.addHandler(fh)
 
     # Aggregate handler -- always

@@ -1,4 +1,5 @@
 """Tests for the Zeus unified-brain snapshot."""
+
 from __future__ import annotations
 
 import json
@@ -9,6 +10,7 @@ import pytest
 @pytest.fixture(autouse=True)
 def _clear_zeus_cache():
     from eta_engine.brain.jarvis_v3 import zeus
+
     zeus.clear_cache()
     yield
     zeus.clear_cache()
@@ -22,9 +24,19 @@ def test_snapshot_returns_zeus_snapshot_dataclass() -> None:
     # All slots are present even when individual sub-fetches fail
     d = snap.to_dict()
     expected_keys = {
-        "asof", "fleet_status", "topology", "overrides", "regime",
-        "recent_consults", "kelly_recs", "attribution_top", "sentiment",
-        "wiring_audit", "upcoming_events", "bots_online", "memory_top",
+        "asof",
+        "fleet_status",
+        "topology",
+        "overrides",
+        "regime",
+        "recent_consults",
+        "kelly_recs",
+        "attribution_top",
+        "sentiment",
+        "wiring_audit",
+        "upcoming_events",
+        "bots_online",
+        "memory_top",
         "cache_age_s",
     }
     assert expected_keys.issubset(d.keys())
@@ -138,11 +150,15 @@ def test_snapshot_attribution_top_structure(monkeypatch) -> None:
     """attribution_top has top_winners + top_losers keys."""
     from eta_engine.brain.jarvis_v3 import zeus
 
-    monkeypatch.setattr(zeus, "_fetch_attribution_top", lambda: {
-        "top_winners": [{"bot_id": "w1", "total_r": 5.0, "n_trades": 10, "win_rate": 0.8}],
-        "top_losers": [{"bot_id": "l1", "total_r": -3.0, "n_trades": 8, "win_rate": 0.2}],
-        "n_total_bots_with_trades": 2,
-    })
+    monkeypatch.setattr(
+        zeus,
+        "_fetch_attribution_top",
+        lambda: {
+            "top_winners": [{"bot_id": "w1", "total_r": 5.0, "n_trades": 10, "win_rate": 0.8}],
+            "top_losers": [{"bot_id": "l1", "total_r": -3.0, "n_trades": 8, "win_rate": 0.2}],
+            "n_total_bots_with_trades": 2,
+        },
+    )
     snap = zeus.snapshot(force_refresh=True)
     assert "top_winners" in snap.attribution_top
     assert "top_losers" in snap.attribution_top

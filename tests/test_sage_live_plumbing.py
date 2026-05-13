@@ -13,6 +13,7 @@ Covers:
   * consult_sage feeds the health monitor
   * Sage upkeep scripts smoke (--help)
 """
+
 from __future__ import annotations
 
 import os
@@ -33,8 +34,11 @@ def _make_dummy_bot():
         async def stop(self) -> None: ...
         async def on_bar(self, bar) -> None: ...
         async def on_signal(self, signal) -> None: ...
-        def evaluate_entry(self, bar, confluence_score) -> bool: return False
-        def evaluate_exit(self, position) -> bool: return False
+        def evaluate_entry(self, bar, confluence_score) -> bool:
+            return False
+
+        def evaluate_exit(self, position) -> bool:
+            return False
 
     cfg = BotConfig(
         name="dummy",
@@ -108,6 +112,7 @@ def test_v22_sage_modulation_flag_true_routes_to_v22(monkeypatch) -> None:
     """When V22_SAGE_MODULATION=true, request_approval calls evaluate_v22."""
     monkeypatch.setenv("ETA_FF_V22_SAGE_MODULATION", "true")
     from eta_engine.brain.feature_flags import is_enabled
+
     assert is_enabled("V22_SAGE_MODULATION") is True
 
 
@@ -282,6 +287,7 @@ def test_health_monitor_observe_report() -> None:
 
 def test_sage_onchain_warm_help_runs() -> None:
     from eta_engine.scripts import sage_onchain_warm
+
     with pytest.raises(SystemExit) as ei:
         sage_onchain_warm.main(["--help"])
     assert ei.value.code == 0
@@ -289,6 +295,7 @@ def test_sage_onchain_warm_help_runs() -> None:
 
 def test_sage_health_check_help_runs() -> None:
     from eta_engine.scripts import sage_health_check
+
     with pytest.raises(SystemExit) as ei:
         sage_health_check.main(["--help"])
     assert ei.value.code == 0
@@ -303,6 +310,7 @@ def test_sage_health_check_runs_without_state(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(health_mod, "DEFAULT_STATE_PATH", tmp_path / "health.json")
 
     from eta_engine.scripts import sage_health_check
+
     rc = sage_health_check.main([])
     assert rc == 0
 
@@ -314,6 +322,7 @@ def test_v22_infer_instrument_class_crypto() -> None:
     from eta_engine.brain.jarvis_v3.policies.v22_sage_confluence import (
         _infer_instrument_class,
     )
+
     assert _infer_instrument_class("BTCUSDT") == "crypto"
     assert _infer_instrument_class("ETHUSDT") == "crypto"
     assert _infer_instrument_class("SOLUSDT") == "crypto"
@@ -325,6 +334,7 @@ def test_v22_infer_instrument_class_futures() -> None:
     from eta_engine.brain.jarvis_v3.policies.v22_sage_confluence import (
         _infer_instrument_class,
     )
+
     assert _infer_instrument_class("MNQ") == "futures"
     assert _infer_instrument_class("NQ") == "futures"
     assert _infer_instrument_class("ES") == "futures"
@@ -336,6 +346,7 @@ def test_v22_infer_instrument_class_unknown() -> None:
     from eta_engine.brain.jarvis_v3.policies.v22_sage_confluence import (
         _infer_instrument_class,
     )
+
     assert _infer_instrument_class("AAPL") is None
     assert _infer_instrument_class("") is None
 
@@ -368,10 +379,13 @@ def test_onchain_school_reads_ctx_onchain() -> None:
     assert no_data.bias.value == "neutral"
     assert no_data.conviction == 0.0
 
-    with_data = school.analyze(MarketContext(
-        bars=bars, side="long",
-        onchain={"sopr": 1.05, "mvrv": 2.8, "nupl": 0.7},
-    ))
+    with_data = school.analyze(
+        MarketContext(
+            bars=bars,
+            side="long",
+            onchain={"sopr": 1.05, "mvrv": 2.8, "nupl": 0.7},
+        )
+    )
     # Hot market metrics -> short bias
     assert with_data.bias.value == "short"
     assert with_data.conviction > 0.0
@@ -389,6 +403,7 @@ def test_v22_auto_fetches_onchain_for_crypto(monkeypatch) -> None:
 
     # Monkeypatch the fetcher inside v22's scope
     import eta_engine.brain.jarvis_v3.sage.onchain_fetcher as ofm
+
     monkeypatch.setattr(ofm, "fetch_onchain", fake_fetch)
 
     # Helper imports the function lazily, so we also need to patch the
@@ -454,14 +469,17 @@ def test_v22_market_context_uses_scaffold_payloads_and_modulates(monkeypatch) ->
     monkeypatch.setattr(v22_mod, "evaluate_request", lambda req, ctx: base)
     monkeypatch.setattr(sage_pkg, "consult_sage", fake_consult)
 
-    bars = [{
-        "open": 1.0,
-        "high": 2.0,
-        "low": 0.5,
-        "close": 1.5,
-        "volume": 100.0,
-        "ts": f"2026-04-27T{i:02d}:00:00Z",
-    } for i in range(40)]
+    bars = [
+        {
+            "open": 1.0,
+            "high": 2.0,
+            "low": 0.5,
+            "close": 1.5,
+            "volume": 100.0,
+            "ts": f"2026-04-27T{i:02d}:00:00Z",
+        }
+        for i in range(40)
+    ]
     req = ActionRequest(
         subsystem=SubsystemId.BOT_MNQ,
         action=ActionType.ORDER_PLACE,

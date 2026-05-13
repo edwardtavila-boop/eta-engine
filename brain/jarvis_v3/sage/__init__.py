@@ -53,6 +53,7 @@ Usage::
     print(report.conviction)             # 0.0-1.0
     print(report.per_school)             # {"dow": SchoolVerdict, ...}
 """
+
 from __future__ import annotations
 
 from eta_engine.brain.jarvis_v3.sage.base import (

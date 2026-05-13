@@ -36,7 +36,7 @@ def test_due_outside_blackout_returns_first_drill(tmp_path: Path) -> None:
     # 03:00 UTC -- well outside blackout.
     now = datetime(2026, 4, 27, 3, 0, tzinfo=UTC)
     due = s.due_drills(now)
-    assert len(due) == 1     # capped to one per tick
+    assert len(due) == 1  # capped to one per tick
     assert due[0].drill_name == "a"
 
 

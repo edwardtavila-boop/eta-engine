@@ -4,6 +4,7 @@ The in-memory _STORE survives only as long as the process. With
 ETA_IDEMPOTENCY_STORE set, every check_or_register / record_result
 appends a JSONL line so the store reloads on restart and a bounced
 supervisor can't double-submit the same client_order_id."""
+
 from __future__ import annotations
 
 import json
@@ -21,6 +22,7 @@ def tmp_store(tmp_path: Path) -> Path:
     store_path = tmp_path / "idem.jsonl"
     os.environ["ETA_IDEMPOTENCY_STORE"] = str(store_path)
     from eta_engine.safety import idempotency
+
     idempotency.reset_store_for_test()
     reload(idempotency)
     yield store_path
@@ -31,6 +33,7 @@ def tmp_store(tmp_path: Path) -> Path:
 
 def test_check_or_register_writes_jsonl(tmp_store: Path) -> None:
     from eta_engine.safety import idempotency
+
     rec = idempotency.check_or_register(
         client_order_id="abc-123",
         venue="ibkr",
@@ -48,6 +51,7 @@ def test_check_or_register_writes_jsonl(tmp_store: Path) -> None:
 
 def test_record_result_appends_status_update(tmp_store: Path) -> None:
     from eta_engine.safety import idempotency
+
     idempotency.check_or_register(
         client_order_id="abc-456",
         venue="ibkr",
@@ -68,6 +72,7 @@ def test_record_result_appends_status_update(tmp_store: Path) -> None:
 
 def test_retryable_failed_reopens_order_intent(tmp_store: Path) -> None:
     from eta_engine.safety import idempotency
+
     first = idempotency.check_or_register(
         client_order_id="retry-1",
         venue="ibkr",
@@ -132,6 +137,7 @@ def test_store_reloads_on_module_import(tmp_store: Path) -> None:
     """Simulate process restart: write JSONL, clear in-memory store,
     re-import → records reappear."""
     from eta_engine.safety import idempotency
+
     idempotency.check_or_register(
         client_order_id="restart-1",
         venue="ibkr",
@@ -168,6 +174,7 @@ def test_disabled_via_env_returns_none() -> None:
     os.environ["ETA_IDEMPOTENCY_STORE"] = "disabled"
     try:
         from eta_engine.safety import idempotency
+
         reload(idempotency)
         idempotency.reset_store_for_test()
         rec = idempotency.check_or_register(
@@ -191,15 +198,14 @@ def test_default_path_when_env_unset() -> None:
     os.environ.pop("ETA_IDEMPOTENCY_STORE", None)
     try:
         from eta_engine.safety import idempotency
+
         reload(idempotency)
         path = idempotency._persist_path()
         # Default falls back to None on systems where the workspace
         # state dir isn't writable (CI sandbox, etc.); on a real
         # workspace we expect the canonical path.
         if path is not None:
-            assert path == Path(
-                "C:/EvolutionaryTradingAlgo/var/eta_engine/state/idempotency.jsonl"
-            )
+            assert path == Path("C:/EvolutionaryTradingAlgo/var/eta_engine/state/idempotency.jsonl")
     finally:
         # leave the env in the unset state we want for hermetic isolation
         os.environ.pop("ETA_IDEMPOTENCY_STORE", None)

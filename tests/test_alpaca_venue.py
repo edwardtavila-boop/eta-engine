@@ -45,11 +45,13 @@ def test_alpaca_config_reads_secret_files(tmp_path: Path) -> None:
 
     # Override ETA_RUNTIME_ROOT so the default broker_paper.env auto-load
     # in the real workspace doesn't shadow the test env.
-    config = AlpacaConfig.from_env({
-        "ETA_RUNTIME_ROOT": str(tmp_path),
-        "ALPACA_API_KEY_ID_FILE": str(key_file),
-        "ALPACA_API_SECRET_KEY_FILE": str(secret_file),
-    })
+    config = AlpacaConfig.from_env(
+        {
+            "ETA_RUNTIME_ROOT": str(tmp_path),
+            "ALPACA_API_KEY_ID_FILE": str(key_file),
+            "ALPACA_API_SECRET_KEY_FILE": str(secret_file),
+        }
+    )
 
     assert config.api_key_id == "PKAAAAAAAAAAAAAAAAAA"
     assert config.api_secret_key.startswith("SECRET")
@@ -65,12 +67,14 @@ def test_alpaca_config_missing_keys_marked_unready(tmp_path: Path) -> None:
 
 
 def test_alpaca_config_rejects_live_host_when_paper_required(tmp_path: Path) -> None:
-    config = AlpacaConfig.from_env({
-        "ETA_RUNTIME_ROOT": str(tmp_path),
-        "ALPACA_API_KEY_ID": "PK1",
-        "ALPACA_API_SECRET_KEY": "SECRET1",
-        "ALPACA_BASE_URL": "https://api.alpaca.markets",
-    })
+    config = AlpacaConfig.from_env(
+        {
+            "ETA_RUNTIME_ROOT": str(tmp_path),
+            "ALPACA_API_KEY_ID": "PK1",
+            "ALPACA_API_SECRET_KEY": "SECRET1",
+            "ALPACA_BASE_URL": "https://api.alpaca.markets",
+        }
+    )
 
     missing = config.missing_requirements()
 
@@ -78,13 +82,15 @@ def test_alpaca_config_rejects_live_host_when_paper_required(tmp_path: Path) -> 
 
 
 def test_alpaca_config_paper_host_check_can_be_disabled(tmp_path: Path) -> None:
-    config = AlpacaConfig.from_env({
-        "ETA_RUNTIME_ROOT": str(tmp_path),
-        "ALPACA_API_KEY_ID": "PK1",
-        "ALPACA_API_SECRET_KEY": "SECRET1",
-        "ALPACA_BASE_URL": "https://api.alpaca.markets",
-        "ALPACA_REQUIRE_PAPER_HOST": "false",
-    })
+    config = AlpacaConfig.from_env(
+        {
+            "ETA_RUNTIME_ROOT": str(tmp_path),
+            "ALPACA_API_KEY_ID": "PK1",
+            "ALPACA_API_SECRET_KEY": "SECRET1",
+            "ALPACA_BASE_URL": "https://api.alpaca.markets",
+            "ALPACA_REQUIRE_PAPER_HOST": "false",
+        }
+    )
 
     assert config.missing_requirements() == []
 
@@ -156,9 +162,9 @@ def test_alpaca_quantity_preserves_exit_precision_no_round_up() -> None:
     qty_str = _alpaca_quantity(qty_in, is_crypto=True)
 
     from decimal import Decimal
+
     assert Decimal(qty_str) <= Decimal(str(qty_in)), (
-        f"qty serialization rounded UP: {qty_in} -> {qty_str} "
-        f"(would request more than position holds)"
+        f"qty serialization rounded UP: {qty_in} -> {qty_str} (would request more than position holds)"
     )
     # And the shortest-decimal round-trip should match exactly for inputs
     # whose float repr is well-defined (most position sizes).
@@ -216,7 +222,10 @@ def test_build_order_payload_truncates_long_client_order_id() -> None:
     venue = AlpacaVenue(AlpacaConfig(api_key_id="PK1", api_secret_key="SECRET1"))
     long_cid = "x" * 80
     req = OrderRequest(
-        symbol="BTC", side=Side.BUY, qty=0.001, order_type=OrderType.MARKET,
+        symbol="BTC",
+        side=Side.BUY,
+        qty=0.001,
+        order_type=OrderType.MARKET,
         client_order_id=long_cid,
     )
 
@@ -274,7 +283,10 @@ def test_place_order_skips_cost_basis_check_for_market_orders() -> None:
     """Market orders have no limit_price so pre-check can't run; let server enforce."""
     venue = AlpacaVenue(AlpacaConfig(api_key_id="PK1", api_secret_key="SECRET1"))
     req = OrderRequest(
-        symbol="BTC", side=Side.BUY, qty=0.0001, order_type=OrderType.MARKET,
+        symbol="BTC",
+        side=Side.BUY,
+        qty=0.0001,
+        order_type=OrderType.MARKET,
         client_order_id="market-test",
     )
 
@@ -317,11 +329,13 @@ def test_readiness_summary_unready_without_keys(tmp_path: Path) -> None:
 
 
 def test_readiness_summary_includes_min_cost_basis_and_supported_bases(tmp_path: Path) -> None:
-    summary = alpaca_paper_readiness({
-        "ETA_RUNTIME_ROOT": str(tmp_path),
-        "ALPACA_API_KEY_ID": "PK1",
-        "ALPACA_API_SECRET_KEY": "SECRET1",
-    })
+    summary = alpaca_paper_readiness(
+        {
+            "ETA_RUNTIME_ROOT": str(tmp_path),
+            "ALPACA_API_KEY_ID": "PK1",
+            "ALPACA_API_SECRET_KEY": "SECRET1",
+        }
+    )
 
     assert summary["ready"] is True
     assert summary["min_cost_basis_usd"] == ALPACA_CRYPTO_MIN_COST_BASIS_USD
@@ -477,7 +491,7 @@ def test_bracket_geometry_buy_validates_stop_below_entry_target_above() -> None:
         qty=0.001,
         order_type=OrderType.LIMIT,
         price=80_500.0,
-        stop_price=82_000.0,   # WRONG: should be below entry
+        stop_price=82_000.0,  # WRONG: should be below entry
         target_price=79_000.0,  # WRONG: should be above entry
         client_order_id="bad-buy-bracket",
     )

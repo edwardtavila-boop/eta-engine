@@ -17,6 +17,7 @@ multiplier (1.0 = no throttle, 0.0 = full block) plus a reason code.
 Correlation matrix is hardcoded for the 7 fleet symbols; revisit
 quarterly with realized correlations from the burn-in journal.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -29,7 +30,7 @@ if TYPE_CHECKING:
 # stored. Values are 90-day rolling abs-correlation of daily returns,
 # rounded for clarity. Update from realized data quarterly.
 _CORRELATIONS: dict[tuple[str, str], float] = {
-    ("MNQ", "NQ"):       0.99,   # same instrument, different sizes
+    ("MNQ", "NQ"): 0.99,  # same instrument, different sizes
     ("BTCUSDT", "ETHUSDT"): 0.85,
     ("BTCUSDT", "SOLUSDT"): 0.78,
     ("BTCUSDT", "XRPUSDT"): 0.55,
@@ -37,14 +38,14 @@ _CORRELATIONS: dict[tuple[str, str], float] = {
     ("ETHUSDT", "XRPUSDT"): 0.55,
     ("SOLUSDT", "XRPUSDT"): 0.50,
     # Crypto vs equity index -- low (regime-dependent, this is the long-run average)
-    ("MNQ", "BTCUSDT"):  0.30,
-    ("MNQ", "ETHUSDT"):  0.30,
-    ("MNQ", "SOLUSDT"):  0.25,
-    ("MNQ", "XRPUSDT"):  0.15,
-    ("NQ", "BTCUSDT"):   0.30,
-    ("NQ", "ETHUSDT"):   0.30,
-    ("NQ", "SOLUSDT"):   0.25,
-    ("NQ", "XRPUSDT"):   0.15,
+    ("MNQ", "BTCUSDT"): 0.30,
+    ("MNQ", "ETHUSDT"): 0.30,
+    ("MNQ", "SOLUSDT"): 0.25,
+    ("MNQ", "XRPUSDT"): 0.15,
+    ("NQ", "BTCUSDT"): 0.30,
+    ("NQ", "ETHUSDT"): 0.30,
+    ("NQ", "SOLUSDT"): 0.25,
+    ("NQ", "XRPUSDT"): 0.15,
 }
 
 # CME-translated equivalents -- treat MBT identically to BTCUSDT, etc.
@@ -80,14 +81,14 @@ def correlation(a: str, b: str) -> float:
 
 @dataclass
 class CapDecision:
-    cap_mult: float          # multiplier to apply to the order qty (1.0 = full)
+    cap_mult: float  # multiplier to apply to the order qty (1.0 = full)
     reason_code: str
     detail: str
 
 
 # How aggressively to throttle when correlation is high. Tuneable.
-_HIGH_CORR_THRESHOLD = 0.80   # >= this -> treat as "same trade"
-_MED_CORR_THRESHOLD  = 0.50   # >= this -> moderate throttle
+_HIGH_CORR_THRESHOLD = 0.80  # >= this -> treat as "same trade"
+_MED_CORR_THRESHOLD = 0.50  # >= this -> moderate throttle
 
 
 def should_throttle_for_correlation(
@@ -146,14 +147,13 @@ def should_throttle_for_correlation(
             cap_mult=0.0,
             reason_code="high_corr_block",
             detail=f"already in {binding_other} (corr {max_corr:.2f}) -- entering "
-                   f"{incoming_symbol} would double the same trade",
+            f"{incoming_symbol} would double the same trade",
         )
     if max_corr >= _MED_CORR_THRESHOLD:
         return CapDecision(
             cap_mult=0.5,
             reason_code="med_corr_throttle",
-            detail=f"correlated exposure in {binding_other} (corr {max_corr:.2f}); "
-                   f"sizing {incoming_symbol} at 0.5x",
+            detail=f"correlated exposure in {binding_other} (corr {max_corr:.2f}); sizing {incoming_symbol} at 0.5x",
         )
     return CapDecision(
         cap_mult=1.0,

@@ -20,9 +20,7 @@ from typing import Any
 from eta_engine.scripts import workspace_roots
 
 ETA_UPTIME_EVENTS_PATH_ENV = "ETA_UPTIME_EVENTS_PATH"
-DEFAULT_UPTIME_EVENTS_PATH: Path = (
-    workspace_roots.ETA_RUNTIME_STATE_DIR / "uptime_events.jsonl"
-)
+DEFAULT_UPTIME_EVENTS_PATH: Path = workspace_roots.ETA_RUNTIME_STATE_DIR / "uptime_events.jsonl"
 
 
 def default_uptime_events_path() -> Path:

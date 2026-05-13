@@ -4,6 +4,7 @@
 - l2_promotion_evaluator: per-strategy promotion verdict
 - l2_fill_audit: realized vs predicted slippage
 """
+
 # ruff: noqa: N802, PLR2004
 from __future__ import annotations
 
@@ -30,14 +31,12 @@ from eta_engine.scripts import (
 # ────────────────────────────────────────────────────────────────────
 
 
-def test_sweep_runs_default_grid_size(tmp_path: Path,
-                                         monkeypatch: pytest.MonkeyPatch) -> None:
+def test_sweep_runs_default_grid_size(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Default grid is 3 × 3 × 2 × 2 = 36 configs.  Each run should
     populate the results list.  Empty depth dir → 0 trades each."""
     monkeypatch.setattr(l2_backtest_harness, "DEPTH_DIR", tmp_path)
     # Suppress config-search log to keep tests isolated
-    monkeypatch.setattr(l2_backtest_harness, "CONFIG_SEARCH_LOG",
-                          tmp_path / "config_search.jsonl")
+    monkeypatch.setattr(l2_backtest_harness, "CONFIG_SEARCH_LOG", tmp_path / "config_search.jsonl")
     monkeypatch.setattr(sweep, "SWEEP_LOG", tmp_path / "sweep.jsonl")
     summary = sweep.run_sweep("MNQ", days=1)
     assert summary.n_configs_tried == 36
@@ -48,14 +47,13 @@ def test_sweep_runs_default_grid_size(tmp_path: Path,
     assert any("NO CONFIG" in w for w in summary.warnings)
 
 
-def test_sweep_custom_grid_size(tmp_path: Path,
-                                  monkeypatch: pytest.MonkeyPatch) -> None:
+def test_sweep_custom_grid_size(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(l2_backtest_harness, "DEPTH_DIR", tmp_path)
-    monkeypatch.setattr(l2_backtest_harness, "CONFIG_SEARCH_LOG",
-                          tmp_path / "config_search.jsonl")
+    monkeypatch.setattr(l2_backtest_harness, "CONFIG_SEARCH_LOG", tmp_path / "config_search.jsonl")
     monkeypatch.setattr(sweep, "SWEEP_LOG", tmp_path / "sweep.jsonl")
     summary = sweep.run_sweep(
-        "MNQ", days=1,
+        "MNQ",
+        days=1,
         entry_thresholds=[1.5, 2.0],
         consecutive_snaps=[3],
         atr_stop_mults=[1.0],
@@ -64,22 +62,20 @@ def test_sweep_custom_grid_size(tmp_path: Path,
     assert summary.n_configs_tried == 2
 
 
-def test_sweep_with_real_synthetic_data_ranks_configs(tmp_path: Path,
-                                                          monkeypatch: pytest.MonkeyPatch) -> None:
+def test_sweep_with_real_synthetic_data_ranks_configs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Generate enough synthetic depth that some configs fire, then
     verify the sweep ranks them (best first)."""
     monkeypatch.setattr(l2_backtest_harness, "DEPTH_DIR", tmp_path)
-    monkeypatch.setattr(l2_backtest_harness, "CONFIG_SEARCH_LOG",
-                          tmp_path / "config_search.jsonl")
+    monkeypatch.setattr(l2_backtest_harness, "CONFIG_SEARCH_LOG", tmp_path / "config_search.jsonl")
     monkeypatch.setattr(sweep, "SWEEP_LOG", tmp_path / "sweep.jsonl")
     today = datetime.now(UTC).replace(microsecond=0, second=0)
     snaps, _ = depth_simulator.simulate(
-        symbol="MNQ", duration_minutes=60,
-        regime_mix="imbalanced_long", seed=42, start_dt=today)
-    depth_simulator.write_snapshots(snaps, "MNQ", output_dir=tmp_path,
-                                       date_str=today.strftime("%Y%m%d"))
+        symbol="MNQ", duration_minutes=60, regime_mix="imbalanced_long", seed=42, start_dt=today
+    )
+    depth_simulator.write_snapshots(snaps, "MNQ", output_dir=tmp_path, date_str=today.strftime("%Y%m%d"))
     summary = sweep.run_sweep(
-        "MNQ", days=1,
+        "MNQ",
+        days=1,
         entry_thresholds=[1.5, 2.0],
         consecutive_snaps=[2, 3],
         atr_stop_mults=[1.0],
@@ -95,8 +91,7 @@ def test_sweep_with_real_synthetic_data_ranks_configs(tmp_path: Path,
 # ────────────────────────────────────────────────────────────────────
 
 
-def test_promotion_evaluator_with_no_data_returns_no_promotion(
-        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_promotion_evaluator_with_no_data_returns_no_promotion(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """With empty logs, no strategy should be recommended for promotion."""
     monkeypatch.setattr(prom, "L2_BACKTEST_LOG", tmp_path / "bt.jsonl")
     monkeypatch.setattr(prom, "L2_SWEEP_LOG", tmp_path / "sw.jsonl")
@@ -110,8 +105,7 @@ def test_promotion_evaluator_with_no_data_returns_no_promotion(
         assert e.recommended_status == e.current_status
 
 
-def test_promotion_evaluator_evaluates_specific_strategy(
-        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_promotion_evaluator_evaluates_specific_strategy(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(prom, "L2_BACKTEST_LOG", tmp_path / "bt.jsonl")
     monkeypatch.setattr(prom, "L2_SWEEP_LOG", tmp_path / "sw.jsonl")
     monkeypatch.setattr(prom, "CAPTURE_HEALTH_LOG", tmp_path / "ch.jsonl")
@@ -127,7 +121,8 @@ def test_promotion_evaluator_unknown_strategy_raises() -> None:
 
 
 def test_promotion_evaluator_retirement_triggers_on_negative_sharpe(
-        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """When a strategy's recent backtest shows OOS sharpe < 0 + sharpe
     CI entirely negative, evaluator recommends retirement."""
     monkeypatch.setattr(prom, "L2_BACKTEST_LOG", tmp_path / "bt.jsonl")
@@ -143,8 +138,13 @@ def test_promotion_evaluator_retirement_triggers_on_negative_sharpe(
         "sharpe_proxy": -0.8,
         "sharpe_ci_95": [-2.0, -0.3],
         "walk_forward": {
-            "test": {"sharpe_proxy": -0.6, "n_trades": 15, "win_rate": 0.30,
-                      "total_pnl_dollars_net": -200.0, "sharpe_proxy_valid": False},
+            "test": {
+                "sharpe_proxy": -0.6,
+                "n_trades": 15,
+                "win_rate": 0.30,
+                "total_pnl_dollars_net": -200.0,
+                "sharpe_proxy_valid": False,
+            },
             "promotion_gate": {"passes": False},
         },
     }
@@ -160,8 +160,7 @@ def test_promotion_evaluator_retirement_triggers_on_negative_sharpe(
 # ────────────────────────────────────────────────────────────────────
 
 
-def test_fill_audit_no_data_returns_no_fills_yet(
-        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_fill_audit_no_data_returns_no_fills_yet(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(l2_fill_audit, "SIGNAL_LOG", tmp_path / "sig.jsonl")
     monkeypatch.setattr(l2_fill_audit, "BROKER_FILL_LOG", tmp_path / "fill.jsonl")
     monkeypatch.setattr(l2_fill_audit, "FILL_AUDIT_LOG", tmp_path / "audit.jsonl")
@@ -187,28 +186,27 @@ def test_fill_audit_session_bucket_classifies_rth_correctly() -> None:
 def test_fill_audit_signed_slip_long_stop_adverse() -> None:
     """LONG stop at 100.0, actual fill 99.50 → 2 ticks of adverse slip."""
     slip = l2_fill_audit._signed_slip_ticks(
-        intended=100.0, actual=99.50, side="LONG",
-        exit_reason="STOP", tick_size=0.25)
+        intended=100.0, actual=99.50, side="LONG", exit_reason="STOP", tick_size=0.25
+    )
     assert slip == 2.0  # (100.0 - 99.50) / 0.25 = 2 ticks worse
 
 
 def test_fill_audit_signed_slip_short_stop_adverse() -> None:
     """SHORT stop at 100.0, actual fill 100.50 → 2 ticks adverse."""
     slip = l2_fill_audit._signed_slip_ticks(
-        intended=100.0, actual=100.50, side="SHORT",
-        exit_reason="STOP", tick_size=0.25)
+        intended=100.0, actual=100.50, side="SHORT", exit_reason="STOP", tick_size=0.25
+    )
     assert slip == 2.0
 
 
 def test_fill_audit_signed_slip_zero_when_perfect_fill() -> None:
     slip = l2_fill_audit._signed_slip_ticks(
-        intended=100.0, actual=100.0, side="LONG",
-        exit_reason="TARGET", tick_size=0.25)
+        intended=100.0, actual=100.0, side="LONG", exit_reason="TARGET", tick_size=0.25
+    )
     assert slip == 0.0
 
 
-def test_fill_audit_matches_signals_and_fills(
-        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_fill_audit_matches_signals_and_fills(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(l2_fill_audit, "SIGNAL_LOG", tmp_path / "sig.jsonl")
     monkeypatch.setattr(l2_fill_audit, "BROKER_FILL_LOG", tmp_path / "fill.jsonl")
     monkeypatch.setattr(l2_fill_audit, "FILL_AUDIT_LOG", tmp_path / "audit.jsonl")
@@ -237,8 +235,7 @@ def test_fill_audit_matches_signals_and_fills(
     assert report.n_observations == 1
 
 
-def test_fill_audit_realism_verdict_fail_on_high_slip(
-        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_fill_audit_realism_verdict_fail_on_high_slip(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(l2_fill_audit, "SIGNAL_LOG", tmp_path / "sig.jsonl")
     monkeypatch.setattr(l2_fill_audit, "BROKER_FILL_LOG", tmp_path / "fill.jsonl")
     monkeypatch.setattr(l2_fill_audit, "FILL_AUDIT_LOG", tmp_path / "audit.jsonl")
@@ -249,18 +246,31 @@ def test_fill_audit_realism_verdict_fail_on_high_slip(
     for i in range(10):
         sid = f"MNQ-LONG-test{i}"
         ts = (now + timedelta(seconds=i * 5)).isoformat()
-        sig_lines.append(json.dumps({
-            "ts": ts, "signal_id": sid, "symbol": "MNQ", "side": "LONG",
-            "intended_stop_price": 100.0, "intended_target_price": 102.0,
-        }))
-        fill_lines.append(json.dumps({
-            "ts": ts, "signal_id": sid, "exit_reason": "STOP",
-            "side": "LONG", "actual_fill_price": 98.75,  # 5 ticks adverse
-        }))
-    (tmp_path / "sig.jsonl").write_text("\n".join(sig_lines) + "\n",
-                                          encoding="utf-8")
-    (tmp_path / "fill.jsonl").write_text("\n".join(fill_lines) + "\n",
-                                           encoding="utf-8")
+        sig_lines.append(
+            json.dumps(
+                {
+                    "ts": ts,
+                    "signal_id": sid,
+                    "symbol": "MNQ",
+                    "side": "LONG",
+                    "intended_stop_price": 100.0,
+                    "intended_target_price": 102.0,
+                }
+            )
+        )
+        fill_lines.append(
+            json.dumps(
+                {
+                    "ts": ts,
+                    "signal_id": sid,
+                    "exit_reason": "STOP",
+                    "side": "LONG",
+                    "actual_fill_price": 98.75,  # 5 ticks adverse
+                }
+            )
+        )
+    (tmp_path / "sig.jsonl").write_text("\n".join(sig_lines) + "\n", encoding="utf-8")
+    (tmp_path / "fill.jsonl").write_text("\n".join(fill_lines) + "\n", encoding="utf-8")
     report = l2_fill_audit.run_audit(predicted_slip_ticks=1.0)
     # RTH_MID bucket should FAIL (5 ticks > 2× 1 tick = 2 ticks)
     rth_mid = next((b for b in report.buckets if b.session == "RTH_MID"), None)

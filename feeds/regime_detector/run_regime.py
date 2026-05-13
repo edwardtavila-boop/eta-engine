@@ -1,6 +1,7 @@
 """Regime Detector — scheduled task runner.
 Called by ETA-RegimeDetector scheduled task every 10 minutes.
 """
+
 import sys
 from pathlib import Path
 

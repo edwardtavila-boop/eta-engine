@@ -34,10 +34,7 @@ from eta_engine.scripts import (  # noqa: E402
 )
 
 _DEFAULT_OUT = workspace_roots.ETA_RUNTIME_STATE_DIR / "paper_live_transition_check.json"
-_LAUNCH_COMMAND = (
-    "$env:ETA_SUPERVISOR_MODE='paper_live'; "
-    "python eta_engine/scripts/jarvis_strategy_supervisor.py"
-)
+_LAUNCH_COMMAND = "$env:ETA_SUPERVISOR_MODE='paper_live'; python eta_engine/scripts/jarvis_strategy_supervisor.py"
 
 
 def _utc_now_iso() -> str:
@@ -162,7 +159,8 @@ def build_transition_check(
 
     paper_live_ready = bool(ibkr_status.get("summary", {}).get("paper_live_ready"))
     release_ready = (
-        str(release_guard.get("status") or "") in {
+        str(release_guard.get("status") or "")
+        in {
             "ready_to_release",
             "released",
             "already_released",
@@ -224,9 +222,7 @@ def build_transition_check(
         "operator_queue_warning_blocked_count": max(blockers - launch_blockers, 0),
         "operator_queue_first_launch_blocker_op_id": first_launch_op or None,
         "operator_queue_first_launch_next_action": (
-            op19_next_action or queue.get("first_launch_next_action")
-            if launch_blockers > 0
-            else None
+            op19_next_action or queue.get("first_launch_next_action") if launch_blockers > 0 else None
         ),
         "paper_ready_bots": paper_ready,
         "gates": gates,

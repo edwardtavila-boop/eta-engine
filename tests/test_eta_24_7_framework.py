@@ -10,6 +10,7 @@ Covers:
 * Alpaca retry decorator skipping deterministic broker rejects.
 * Uptime telemetry start event.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -26,7 +27,8 @@ import pytest
 # 1. Scope-aware order-entry hold
 # --------------------------------------------------------------------------- #
 def test_order_entry_hold_scope_ibkr_allows_alpaca_bots(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A scope=ibkr hold must NOT block a bot resolved to Alpaca."""
     from eta_engine.scripts.runtime_order_hold import (
@@ -58,7 +60,8 @@ def test_order_entry_hold_scope_ibkr_allows_alpaca_bots(
 
 
 def test_order_entry_hold_scope_all_blocks_everything(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Back-compat: scope='all' (or missing) blocks every venue."""
     from eta_engine.scripts.runtime_order_hold import load_order_entry_hold
@@ -69,11 +72,13 @@ def test_order_entry_hold_scope_all_blocks_everything(
 
     # Write a hold without a scope field (legacy contract).
     hold_path.write_text(
-        json.dumps({
-            "active": True,
-            "reason": "operator_hold_legacy",
-            "ts": "2026-05-06T00:00:00+00:00",
-        }),
+        json.dumps(
+            {
+                "active": True,
+                "reason": "operator_hold_legacy",
+                "ts": "2026-05-06T00:00:00+00:00",
+            }
+        ),
         encoding="utf-8",
     )
 
@@ -90,7 +95,8 @@ def test_order_entry_hold_scope_all_blocks_everything(
 # 2. Watchdog relaunch + opt-out
 # --------------------------------------------------------------------------- #
 def test_watchdog_relaunches_when_heartbeat_stale(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A stale heartbeat triggers relaunch_fn."""
     from eta_engine.scripts import eta_watchdog
@@ -130,7 +136,8 @@ def test_watchdog_relaunches_when_heartbeat_stale(
 
 
 def test_watchdog_trusts_fresh_heartbeat_when_pid_scan_is_empty(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A fresh heartbeat is stronger evidence than a flaky Windows PID scan."""
     from eta_engine.scripts import eta_watchdog
@@ -150,7 +157,7 @@ def test_watchdog_trusts_fresh_heartbeat_when_pid_scan_is_empty(
         stale_s=60.0,
         disabled_flag_path=tmp_path / "supervisor_disabled.txt",
         watchdog_heartbeat_path=tmp_path / "watchdog_heartbeat.json",
-        relaunch_fn=lambda **_kw: (relaunch_calls.append(_kw) or (True, "bad")),
+        relaunch_fn=lambda **_kw: relaunch_calls.append(_kw) or (True, "bad"),
         pid_fn=lambda _sub: [],
         kill_fn=lambda _pids: [],
     )
@@ -163,7 +170,8 @@ def test_watchdog_trusts_fresh_heartbeat_when_pid_scan_is_empty(
 
 
 def test_watchdog_noop_when_supervisor_disabled_file_present(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Operator opt-out via supervisor_disabled.txt blocks every relaunch."""
     from eta_engine.scripts import eta_watchdog
@@ -187,7 +195,7 @@ def test_watchdog_noop_when_supervisor_disabled_file_present(
         stale_s=60.0,
         disabled_flag_path=disabled,
         watchdog_heartbeat_path=tmp_path / "watchdog_heartbeat.json",
-        relaunch_fn=lambda **_kw: (relaunch_calls.append(_kw) or (True, "should_not_be_called")),
+        relaunch_fn=lambda **_kw: relaunch_calls.append(_kw) or (True, "should_not_be_called"),
         pid_fn=lambda _sub: [],
         kill_fn=lambda _pids: [],
     )
@@ -227,7 +235,8 @@ def test_watchdog_powershell_pid_fallback_uses_env_needle(
 # 3. IbgConnectionMonitor — sets hold on port refused / clears on recovery
 # --------------------------------------------------------------------------- #
 def test_ibg_connection_monitor_sets_hold_on_port_refused(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """When the IB Gateway port is unreachable, the monitor must set
     ``order_entry_hold.json`` with scope=ibkr."""
@@ -259,7 +268,8 @@ def test_ibg_connection_monitor_sets_hold_on_port_refused(
 
 
 def test_ibg_connection_monitor_clears_hold_on_recovery(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """When the port comes back AND venue.connect() succeeds, the
     scope=ibkr hold must be cleared."""
@@ -353,7 +363,8 @@ def test_alpaca_retry_does_not_retry_on_deterministic_reject() -> None:
 # 5. Uptime telemetry
 # --------------------------------------------------------------------------- #
 def test_uptime_events_jsonl_writes_start_event(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """record_uptime_event must append a JSON line we can read back."""
     from eta_engine.scripts.uptime_events import (

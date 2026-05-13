@@ -25,6 +25,7 @@ This wave shipped concrete improvements (not curve fits):
    — excluded_hours_utc=(20,21,22,23) for mgc drops the close
    session where stratification found CI lower -0.169 (NULL edge).
 """
+
 # ruff: noqa: N802, PLR2004
 from __future__ import annotations
 
@@ -59,13 +60,19 @@ def test_trailing_stop_returns_none_below_trigger() -> None:
         MomentumStrategy,
     )
 
-    strat = MomentumStrategy(MomentumConfig(
-        trailing_stop_atr_mult=1.0, rr_trail_trigger=1.0,
-    ))
+    strat = MomentumStrategy(
+        MomentumConfig(
+            trailing_stop_atr_mult=1.0,
+            rr_trail_trigger=1.0,
+        )
+    )
     # Entry 100, stop 95 → R=5.  Price at 102 = +0.4R → no trail yet.
     result = strat.compute_trailing_stop(
-        side="BUY", entry_price=100.0, initial_stop=95.0,
-        current_price=102.0, atr=2.0,
+        side="BUY",
+        entry_price=100.0,
+        initial_stop=95.0,
+        current_price=102.0,
+        atr=2.0,
     )
     assert result is None
 
@@ -78,14 +85,20 @@ def test_trailing_stop_activates_after_trigger_long() -> None:
         MomentumStrategy,
     )
 
-    strat = MomentumStrategy(MomentumConfig(
-        trailing_stop_atr_mult=1.0, rr_trail_trigger=1.0,
-    ))
+    strat = MomentumStrategy(
+        MomentumConfig(
+            trailing_stop_atr_mult=1.0,
+            rr_trail_trigger=1.0,
+        )
+    )
     # Entry 100, stop 95 → R=5.  Price at 106 = +1.2R → trail active.
     # Trail = 106 - 1.0 * 2 = 104
     result = strat.compute_trailing_stop(
-        side="BUY", entry_price=100.0, initial_stop=95.0,
-        current_price=106.0, atr=2.0,
+        side="BUY",
+        entry_price=100.0,
+        initial_stop=95.0,
+        current_price=106.0,
+        atr=2.0,
     )
     assert result is not None
     assert result == 104.0
@@ -100,15 +113,21 @@ def test_trailing_stop_never_widens_long() -> None:
         MomentumStrategy,
     )
 
-    strat = MomentumStrategy(MomentumConfig(
-        trailing_stop_atr_mult=10.0, rr_trail_trigger=1.0,
-    ))
+    strat = MomentumStrategy(
+        MomentumConfig(
+            trailing_stop_atr_mult=10.0,
+            rr_trail_trigger=1.0,
+        )
+    )
     # Entry 100, stop 95.  Price barely above trigger at 105, but
     # huge trail_mult=10 * ATR=2 = 20 → 105-20=85 which is BELOW 95.
     # Must clamp to 95.
     result = strat.compute_trailing_stop(
-        side="BUY", entry_price=100.0, initial_stop=95.0,
-        current_price=105.0, atr=2.0,
+        side="BUY",
+        entry_price=100.0,
+        initial_stop=95.0,
+        current_price=105.0,
+        atr=2.0,
     )
     assert result == 95.0  # clamped — never widened
 
@@ -120,14 +139,20 @@ def test_trailing_stop_short_side() -> None:
         MomentumStrategy,
     )
 
-    strat = MomentumStrategy(MomentumConfig(
-        trailing_stop_atr_mult=1.0, rr_trail_trigger=1.0,
-    ))
+    strat = MomentumStrategy(
+        MomentumConfig(
+            trailing_stop_atr_mult=1.0,
+            rr_trail_trigger=1.0,
+        )
+    )
     # SHORT entry 100, stop 105 → R=5.  Price drops to 94 = +1.2R fav.
     # Trail = 94 + 1.0 * 2 = 96
     result = strat.compute_trailing_stop(
-        side="SHORT", entry_price=100.0, initial_stop=105.0,
-        current_price=94.0, atr=2.0,
+        side="SHORT",
+        entry_price=100.0,
+        initial_stop=105.0,
+        current_price=94.0,
+        atr=2.0,
     )
     assert result is not None
     assert result == 96.0
@@ -142,8 +167,11 @@ def test_trailing_stop_disabled_when_mult_zero() -> None:
 
     strat = MomentumStrategy(MomentumConfig(trailing_stop_atr_mult=0.0))
     result = strat.compute_trailing_stop(
-        side="BUY", entry_price=100.0, initial_stop=95.0,
-        current_price=110.0, atr=2.0,
+        side="BUY",
+        entry_price=100.0,
+        initial_stop=95.0,
+        current_price=110.0,
+        atr=2.0,
     )
     assert result is None
 
@@ -162,9 +190,12 @@ def test_sweep_reclaim_vol_adjusted_sizes_down_in_high_vol() -> None:
     )
 
     cfg = SweepReclaimConfig(
-        vol_adjusted_sizing=True, vol_baseline_window=20,
-        vol_high_threshold=1.5, vol_high_size_mult=0.5,
-        vol_low_threshold=0.7, vol_low_size_mult=1.0,
+        vol_adjusted_sizing=True,
+        vol_baseline_window=20,
+        vol_high_threshold=1.5,
+        vol_high_size_mult=0.5,
+        vol_low_threshold=0.7,
+        vol_low_size_mult=1.0,
     )
     strat = SweepReclaimStrategy(cfg)
     # Seed normal-vol baseline (ATR=2.0 across 20 bars)
@@ -237,7 +268,11 @@ def test_session_filter_rejects_excluded_hour() -> None:
     )
     strat = SweepReclaimStrategy(cfg)
     bar = _MockBar(
-        open=100.0, high=100.5, low=99.5, close=100.2, volume=1000.0,
+        open=100.0,
+        high=100.5,
+        low=99.5,
+        close=100.2,
+        volume=1000.0,
         ts="2026-05-12T22:00:00+00:00",  # UTC 22 = excluded
     )
     result = strat.maybe_enter(bar, [], 100_000.0, None)
@@ -258,7 +293,11 @@ def test_session_filter_allows_included_hour() -> None:
     )
     strat = SweepReclaimStrategy(cfg)
     bar = _MockBar(
-        open=100.0, high=100.5, low=99.5, close=100.2, volume=1000.0,
+        open=100.0,
+        high=100.5,
+        low=99.5,
+        close=100.2,
+        volume=1000.0,
         ts="2026-05-12T14:00:00+00:00",  # UTC 14 = included
     )
     # Just verify it doesn't trip the session-filter counter

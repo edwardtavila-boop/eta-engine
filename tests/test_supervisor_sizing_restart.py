@@ -20,6 +20,7 @@ Covers the four P0/P1 fixes landed alongside this file:
    successful fill, the bot is added to a per-supervisor trip set and
    ``_maybe_enter`` skips it until the reject counter resets.
 """
+
 from __future__ import annotations
 
 import json
@@ -46,7 +47,8 @@ class _StubVenue:
 
 
 def test_hard_qty_cap_trips_on_oversized_request(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     """An MNQ entry whose budget cap returns more than 5 contracts must
@@ -86,29 +88,37 @@ def test_hard_qty_cap_trips_on_oversized_request(
         return 100.0, "ok"
 
     monkeypatch.setattr(
-        supervisor, "cap_qty_to_budget", _fake_cap, raising=False,
+        supervisor,
+        "cap_qty_to_budget",
+        _fake_cap,
+        raising=False,
     )
     # Patch the import-site as well — submit_entry imports cap_qty_to_budget
     # from the bracket_sizing module inside the function body.
     import eta_engine.scripts.bracket_sizing as bs
+
     monkeypatch.setattr(bs, "cap_qty_to_budget", _fake_cap, raising=False)
 
     bar = {
-        "close": 28_250.0, "high": 28_260.0, "low": 28_240.0, "open": 28_245.0,
+        "close": 28_250.0,
+        "high": 28_260.0,
+        "low": 28_240.0,
+        "open": 28_245.0,
     }
     with caplog.at_level(logging.CRITICAL):
         rec = router.submit_entry(
-            bot=bot, signal_id="sig_oversize", side="BUY", bar=bar, size_mult=1.0,
+            bot=bot,
+            signal_id="sig_oversize",
+            side="BUY",
+            bar=bar,
+            size_mult=1.0,
         )
     assert rec is not None
     assert captured_cap_kwargs["bot_id"] == "oversized_bot"
     # MNQ hard cap is 5
     assert rec.qty == 5.0, f"hard cap should clamp at 5, got {rec.qty}"
     # CRITICAL log emitted
-    cap_logs = [
-        r for r in caplog.records
-        if r.levelno == logging.CRITICAL and "HARD QTY CAP TRIPPED" in r.getMessage()
-    ]
+    cap_logs = [r for r in caplog.records if r.levelno == logging.CRITICAL and "HARD QTY CAP TRIPPED" in r.getMessage()]
     assert cap_logs, "expected CRITICAL HARD QTY CAP TRIPPED log"
 
 
@@ -118,7 +128,8 @@ def test_hard_qty_cap_trips_on_oversized_request(
 
 
 def test_budget_cap_exception_returns_none(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     """If cap_qty_to_budget raises, submit_entry must return None and
@@ -145,21 +156,26 @@ def test_budget_cap_exception_returns_none(
         raise RuntimeError("simulated cap module error")
 
     import eta_engine.scripts.bracket_sizing as bs
+
     monkeypatch.setattr(bs, "cap_qty_to_budget", _raise, raising=False)
 
     bar = {
-        "close": 28_250.0, "high": 28_260.0, "low": 28_240.0, "open": 28_245.0,
+        "close": 28_250.0,
+        "high": 28_260.0,
+        "low": 28_240.0,
+        "open": 28_245.0,
     }
     with caplog.at_level(logging.CRITICAL):
         rec = router.submit_entry(
-            bot=bot, signal_id="sig_capraise", side="BUY", bar=bar, size_mult=1.0,
+            bot=bot,
+            signal_id="sig_capraise",
+            side="BUY",
+            bar=bar,
+            size_mult=1.0,
         )
     assert rec is None, "submit_entry must fail closed when budget cap raises"
     assert bot.open_position is None
-    crit_logs = [
-        r for r in caplog.records
-        if r.levelno == logging.CRITICAL and "BUDGET CAP FAILED" in r.getMessage()
-    ]
+    crit_logs = [r for r in caplog.records if r.levelno == logging.CRITICAL and "BUDGET CAP FAILED" in r.getMessage()]
     assert crit_logs, "expected CRITICAL BUDGET CAP FAILED log"
 
 
@@ -191,10 +207,7 @@ def test_signal_id_persisted_across_supervisor_restart(
     # The ledger file must exist
     ledger = sup1._sent_signals_log_path()
     assert ledger.exists()
-    lines = [
-        json.loads(ln) for ln in ledger.read_text(encoding="utf-8").splitlines()
-        if ln.strip()
-    ]
+    lines = [json.loads(ln) for ln in ledger.read_text(encoding="utf-8").splitlines() if ln.strip()]
     assert len(lines) == 2
     assert {(r["bot_id"], r["signal_id"]) for r in lines} == {
         ("bot_a", "bot_a_abcd1234"),
@@ -229,8 +242,10 @@ def test_signal_id_dedup_drops_old_entries(
     old_ts = "2020-01-01T00:00:00+00:00"
     fresh_ts = datetime.now(UTC).isoformat()
     ledger.write_text(
-        json.dumps({"bot_id": "bot_old", "signal_id": "sig_old", "sent_at_utc": old_ts}) + "\n"
-        + json.dumps({"bot_id": "bot_fresh", "signal_id": "sig_fresh", "sent_at_utc": fresh_ts}) + "\n",
+        json.dumps({"bot_id": "bot_old", "signal_id": "sig_old", "sent_at_utc": old_ts})
+        + "\n"
+        + json.dumps({"bot_id": "bot_fresh", "signal_id": "sig_fresh", "sent_at_utc": fresh_ts})
+        + "\n",
         encoding="utf-8",
     )
 
@@ -245,7 +260,8 @@ def test_signal_id_dedup_drops_old_entries(
 
 
 def test_alpaca_reconcile_detects_unknown_position(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """When Alpaca holds a BTC position but the supervisor's BTC bot
     has open_position=None, reconcile_with_broker must flag divergence
@@ -275,10 +291,13 @@ def test_alpaca_reconcile_detects_unknown_position(
 
     # IBKR returns nothing
     monkeypatch.setattr(
-        supervisor, "_get_live_ibkr_venue", lambda: _StubVenue(),
+        supervisor,
+        "_get_live_ibkr_venue",
+        lambda: _StubVenue(),
     )
     monkeypatch.setattr(
-        supervisor, "_run_on_live_ibkr_loop",
+        supervisor,
+        "_run_on_live_ibkr_loop",
         lambda coro, **_kw: [],
     )
 
@@ -289,8 +308,11 @@ def test_alpaca_reconcile_detects_unknown_position(
 
     # Patch AlpacaVenue at the import site inside reconcile_with_broker
     import eta_engine.venues.alpaca as alpaca_mod
+
     monkeypatch.setattr(
-        alpaca_mod, "AlpacaVenue", lambda: _FakeAlpaca(),
+        alpaca_mod,
+        "AlpacaVenue",
+        lambda: _FakeAlpaca(),
     )
 
     findings = sup.reconcile_with_broker()
@@ -298,12 +320,8 @@ def test_alpaca_reconcile_detects_unknown_position(
     assert sup._reconcile_divergence_detected is True
     assert sup._reconcile_divergence_at is not None
     # broker_only must contain BTC
-    broker_only_syms = {
-        item["symbol"] for item in findings.get("broker_only", [])
-    }
-    assert "BTC" in broker_only_syms, (
-        f"expected BTC in broker_only, got {findings}"
-    )
+    broker_only_syms = {item["symbol"] for item in findings.get("broker_only", [])}
+    assert "BTC" in broker_only_syms, f"expected BTC in broker_only, got {findings}"
 
 
 # --------------------------------------------------------------------- #
@@ -312,7 +330,8 @@ def test_alpaca_reconcile_detects_unknown_position(
 
 
 def test_reconcile_divergence_blocks_new_entries(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Setting _reconcile_divergence_detected=True must cause
     _maybe_enter to skip entirely without writing an order or marking
@@ -343,6 +362,7 @@ def test_reconcile_divergence_blocks_new_entries(
 
     # Defeat the mock random gate.
     import random as _random
+
     monkeypatch.setattr(_random, "random", lambda: 0.0)
 
     # Trip the divergence flag.
@@ -350,8 +370,11 @@ def test_reconcile_divergence_blocks_new_entries(
     sup._reconcile_divergence_at = datetime.now(UTC)
 
     bar = {
-        "close": 60_000.0, "high": 60_100.0, "low": 59_900.0,
-        "open": 60_000.0, "volume": 1.0,
+        "close": 60_000.0,
+        "high": 60_100.0,
+        "low": 59_900.0,
+        "open": 60_000.0,
+        "volume": 1.0,
         "ts": "2026-05-01T00:00:00+00:00",
     }
 
@@ -362,7 +385,8 @@ def test_reconcile_divergence_blocks_new_entries(
 
 
 def test_reconcile_divergence_ack_env_unblocks_entries(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """ETA_RECONCILE_DIVERGENCE_ACK=1 must clear the divergence guard."""
     from eta_engine.scripts.jarvis_strategy_supervisor import (
@@ -392,7 +416,8 @@ def test_reconcile_divergence_ack_env_unblocks_entries(
 
 
 def test_reject_auto_trip_at_threshold(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     """A bot with consecutive_broker_rejects >= 5 must be flagged for
@@ -428,10 +453,7 @@ def test_reject_auto_trip_at_threshold(
         tripped = sup._check_reject_auto_trip(bot)
     assert tripped is True
     assert "storm_bot" in sup._reject_tripped_bots
-    storm_logs = [
-        r for r in caplog.records
-        if r.levelno == logging.CRITICAL and "REJECT STORM TRIP" in r.getMessage()
-    ]
+    storm_logs = [r for r in caplog.records if r.levelno == logging.CRITICAL and "REJECT STORM TRIP" in r.getMessage()]
     assert storm_logs, "expected CRITICAL REJECT STORM TRIP log"
 
     # Reset counter -> trip clears
@@ -442,7 +464,8 @@ def test_reject_auto_trip_at_threshold(
 
 
 def test_reject_auto_trip_skips_maybe_enter(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A tripped bot's _maybe_enter must short-circuit without firing."""
     monkeypatch.setenv("ETA_KILLSWITCH_DISABLED", "1")
@@ -469,14 +492,18 @@ def test_reject_auto_trip_skips_maybe_enter(
 
     # Defeat mock random
     import random as _random
+
     monkeypatch.setattr(_random, "random", lambda: 0.0)
 
     # Force the trip
     bot.consecutive_broker_rejects = 5
 
     bar = {
-        "close": 60_000.0, "high": 60_100.0, "low": 59_900.0,
-        "open": 60_000.0, "volume": 1.0,
+        "close": 60_000.0,
+        "high": 60_100.0,
+        "low": 59_900.0,
+        "open": 60_000.0,
+        "volume": 1.0,
         "ts": "2026-05-01T00:00:00+00:00",
     }
     sup._maybe_enter(bot, bar)

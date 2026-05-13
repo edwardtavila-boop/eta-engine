@@ -190,8 +190,8 @@ class TestBarConsumption:
         tmp_path: Path,
     ) -> None:
         import pytest
+
         pytest.skip("signal validator notional cap requires real equity/JARVIS integration — fix in Wave-20")
-        assert len(router.calls) == 1
 
     def test_run_one_bar_blocked_under_kill(self, tmp_path: Path) -> None:
         router = _FakeRouter()

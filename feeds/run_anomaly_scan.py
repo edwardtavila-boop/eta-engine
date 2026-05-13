@@ -9,6 +9,7 @@ Run every 15 minutes via ``Eta-Anomaly-Scan-15m``. State persists to
 ``state/anomaly/last_alert.json`` to enforce a cooldown so a sustained
 regime shift doesn't spam.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -74,19 +75,13 @@ def _in_cooldown(state_path: Path, cooldown_min: float) -> bool:
 
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(description=__doc__,
-                                formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--audit-dir", type=Path,
-                   default=ROOT / "state" / "jarvis_audit")
-    p.add_argument("--recent-hours", type=float, default=2.0,
-                   help="Compare LAST N hours against the baseline window")
-    p.add_argument("--baseline-hours", type=float, default=24.0,
-                   help="Baseline window for comparison")
-    p.add_argument("--threshold", type=float, default=0.20,
-                   help="Anomaly score threshold (KS statistic) to fire alert")
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--audit-dir", type=Path, default=ROOT / "state" / "jarvis_audit")
+    p.add_argument("--recent-hours", type=float, default=2.0, help="Compare LAST N hours against the baseline window")
+    p.add_argument("--baseline-hours", type=float, default=24.0, help="Baseline window for comparison")
+    p.add_argument("--threshold", type=float, default=0.20, help="Anomaly score threshold (KS statistic) to fire alert")
     p.add_argument("--cooldown-min", type=float, default=60.0)
-    p.add_argument("--state-file", type=Path,
-                   default=ROOT / "state" / "anomaly" / "last_alert.json")
+    p.add_argument("--state-file", type=Path, default=ROOT / "state" / "anomaly" / "last_alert.json")
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("-v", "--verbose", action="store_true")
     args = p.parse_args(argv)
@@ -103,17 +98,17 @@ def main(argv: list[str] | None = None) -> int:
     baseline = _load_recent_verdict_stress(args.audit_dir, since=now - timedelta(hours=args.baseline_hours))
     # Baseline is the wider window (includes recent); strip recent to compare clean
     # We can't easily de-dupe by value; use the longer window minus the count of recent for proxy
-    baseline = baseline[:-len(recent)] if len(baseline) > len(recent) else baseline
+    baseline = baseline[: -len(recent)] if len(baseline) > len(recent) else baseline
 
     if len(recent) < 5 or len(baseline) < 20:
-        logger.info("not enough data: recent=%d baseline=%d -- skipping",
-                    len(recent), len(baseline))
+        logger.info("not enough data: recent=%d baseline=%d -- skipping", len(recent), len(baseline))
         return 0
 
     # 2-sample KS via the existing helper
     ks_stat = _two_sample_ks(recent + baseline)
-    logger.info("KS stat = %.4f (recent=%d baseline=%d, threshold=%.2f)",
-                ks_stat, len(recent), len(baseline), args.threshold)
+    logger.info(
+        "KS stat = %.4f (recent=%d baseline=%d, threshold=%.2f)", ks_stat, len(recent), len(baseline), args.threshold
+    )
 
     if ks_stat < args.threshold:
         return 0
@@ -129,24 +124,30 @@ def main(argv: list[str] | None = None) -> int:
     try:
         import yaml
         from eta_engine.obs.alert_dispatcher import AlertDispatcher
+
         cfg = yaml.safe_load((ROOT / "configs" / "alerts.yaml").read_text(encoding="utf-8"))
         dispatcher = AlertDispatcher(cfg)
-        result = dispatcher.send("jarvis_anomaly_detected", {
-            "ks_stat": ks_stat,
-            "threshold": args.threshold,
-            "recent_n": len(recent),
-            "baseline_n": len(baseline),
-            "summary": (
-                f"JARVIS verdict-stress distribution shifted (KS={ks_stat:.3f}). "
-                f"Possible regime change."
-            ),
-        })
+        result = dispatcher.send(
+            "jarvis_anomaly_detected",
+            {
+                "ks_stat": ks_stat,
+                "threshold": args.threshold,
+                "recent_n": len(recent),
+                "baseline_n": len(baseline),
+                "summary": (f"JARVIS verdict-stress distribution shifted (KS={ks_stat:.3f}). Possible regime change."),
+            },
+        )
         logger.info("alert dispatched: delivered=%s", result.delivered)
         args.state_file.parent.mkdir(parents=True, exist_ok=True)
-        args.state_file.write_text(json.dumps({
-            "last_fired_at": datetime.now(UTC).isoformat(),
-            "ks_stat": ks_stat,
-        }), encoding="utf-8")
+        args.state_file.write_text(
+            json.dumps(
+                {
+                    "last_fired_at": datetime.now(UTC).isoformat(),
+                    "ks_stat": ks_stat,
+                }
+            ),
+            encoding="utf-8",
+        )
     except Exception as exc:  # noqa: BLE001
         logger.warning("alert dispatch failed (non-fatal): %s", exc)
 

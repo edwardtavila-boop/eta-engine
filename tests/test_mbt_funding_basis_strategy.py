@@ -39,8 +39,13 @@ def _bar(
     o = open_ if open_ is not None else (high + low) / 2
     c = close if close is not None else (high + low) / 2
     return BarData(
-        timestamp=utc_dt, symbol="MBT", open=o, high=high, low=low,
-        close=c, volume=volume,
+        timestamp=utc_dt,
+        symbol="MBT",
+        open=o,
+        high=high,
+        low=low,
+        close=c,
+        volume=volume,
     )
 
 
@@ -48,8 +53,10 @@ def _config() -> BacktestConfig:
     return BacktestConfig(
         start_date=datetime(2026, 1, 1, tzinfo=UTC),
         end_date=datetime(2026, 12, 31, tzinfo=UTC),
-        symbol="MBT", initial_equity=10_000.0,
-        risk_per_trade_pct=0.005, confluence_threshold=0.0,
+        symbol="MBT",
+        initial_equity=10_000.0,
+        risk_per_trade_pct=0.005,
+        confluence_threshold=0.0,
         max_trades_per_day=10,
     )
 
@@ -97,8 +104,7 @@ def test_empty_bars_produce_no_signal() -> None:
     """First bar with no history shouldn't fire (warmup gate)."""
     s = MBTFundingBasisStrategy(_permissive_cfg())
     cfg = _config()
-    bar = _bar(datetime(2026, 6, 15, 10, 0), high=60_000.0, low=59_900.0,
-               close=59_950.0)
+    bar = _bar(datetime(2026, 6, 15, 10, 0), high=60_000.0, low=59_900.0, close=59_950.0)
     assert s.maybe_enter(bar, [], 10_000.0, cfg) is None
 
 
@@ -145,8 +151,11 @@ def test_rich_premium_with_fading_momentum_fires_short() -> None:
     """Build a basis-proxy spike with declining-highs momentum and verify
     a SHORT signal fires."""
     cfg = _permissive_cfg(
-        basis_lookback=6, entry_z=0.5, momentum_lookback=2,
-        warmup_bars=8, atr_period=5,
+        basis_lookback=6,
+        entry_z=0.5,
+        momentum_lookback=2,
+        warmup_bars=8,
+        atr_period=5,
     )
     bcfg = _config()
 
@@ -163,25 +172,20 @@ def test_rich_premium_with_fading_momentum_fires_short() -> None:
     hist2: list[BarData] = []
     for i in range(7):
         ts = base + timedelta(minutes=i * 5)
-        bar = _bar(ts, high=60_000.0, low=59_900.0, close=59_950.0,
-                   volume=1000.0)
+        bar = _bar(ts, high=60_000.0, low=59_900.0, close=59_950.0, volume=1000.0)
         s2.maybe_enter(bar, hist2, 10_000.0, bcfg)
         hist2.append(bar)
     # Bar 8: lower high
     bar8_ts = base + timedelta(minutes=7 * 5)
-    bar8 = _bar(bar8_ts, high=59_980.0, low=59_880.0, close=59_920.0,
-                volume=1000.0)
+    bar8 = _bar(bar8_ts, high=59_980.0, low=59_880.0, close=59_920.0, volume=1000.0)
     s2.maybe_enter(bar8, hist2, 10_000.0, bcfg)
     hist2.append(bar8)
 
     # Bar 9: spike basis + lower high again — should fire SHORT
     bar9_ts = base + timedelta(minutes=8 * 5)
-    bar9 = _bar(bar9_ts, high=59_960.0, low=59_870.0, close=59_900.0,
-                volume=1000.0)
+    bar9 = _bar(bar9_ts, high=59_960.0, low=59_870.0, close=59_900.0, volume=1000.0)
     out = s2.maybe_enter(bar9, hist2, 10_000.0, bcfg)
-    assert out is not None, (
-        f"expected SHORT fire on rich-basis bar; stats={s2.stats}"
-    )
+    assert out is not None, f"expected SHORT fire on rich-basis bar; stats={s2.stats}"
     assert out.side == "SELL"
     assert out.entry_price == 59_900.0
     # Stop above entry, target below entry
@@ -200,8 +204,7 @@ def test_no_signal_when_no_z_score_breach() -> None:
     for i in range(20):
         ts = base + timedelta(minutes=i * 5)
         # Bars are flat, no basis spike
-        bar = _bar(ts, high=60_000.0, low=59_950.0, close=59_975.0,
-                   volume=1000.0)
+        bar = _bar(ts, high=60_000.0, low=59_950.0, close=59_975.0, volume=1000.0)
         out = s.maybe_enter(bar, hist, 10_000.0, bcfg)
         assert out is None
         hist.append(bar)

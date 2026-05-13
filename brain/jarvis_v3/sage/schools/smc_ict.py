@@ -4,6 +4,7 @@ Heuristic: detect Break of Structure (BOS) and Change of Character
 (ChoCH) from recent pivot sequence; flag Fair Value Gaps (FVGs) where
 candle bodies skip a price range; identify last clear order block.
 """
+
 from __future__ import annotations
 
 from eta_engine.brain.jarvis_v3.sage.base import (
@@ -36,7 +37,9 @@ class SmcIctSchool(SchoolBase):
         n = ctx.n_bars
         if n < 30:
             return SchoolVerdict(
-                school=self.NAME, bias=Bias.NEUTRAL, conviction=0.0,
+                school=self.NAME,
+                bias=Bias.NEUTRAL,
+                conviction=0.0,
                 aligned_with_entry=False,
                 rationale=f"insufficient bars ({n} < 30)",
             )
@@ -47,7 +50,9 @@ class SmcIctSchool(SchoolBase):
         pivot_lows = _cached_pivots_low(ctx)
         if len(pivot_highs) < 2 or len(pivot_lows) < 2:
             return SchoolVerdict(
-                school=self.NAME, bias=Bias.NEUTRAL, conviction=0.10,
+                school=self.NAME,
+                bias=Bias.NEUTRAL,
+                conviction=0.10,
                 aligned_with_entry=False,
                 rationale="insufficient pivot structure for BOS/ChoCH",
             )

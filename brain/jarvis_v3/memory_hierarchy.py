@@ -43,6 +43,7 @@ The key shift this enables: JARVIS no longer reasons only from the
 current snapshot. It explicitly retrieves analogous historical
 situations and conditions on what HAPPENED in those situations.
 """
+
 from __future__ import annotations
 
 import json
@@ -115,7 +116,7 @@ class Episode:
 class SemanticFact:
     """Aggregated pattern across many episodes."""
 
-    pattern: str           # e.g. "bullish_low_vol+rth+long"
+    pattern: str  # e.g. "bullish_low_vol+rth+long"
     n_episodes: int
     win_rate: float
     avg_r: float
@@ -215,15 +216,17 @@ class HierarchicalMemory:
         """Return the k most similar episodes by cosine similarity on
         the feature vector. Empty list if no episodes yet."""
         probe = Episode(
-            ts="", signal_id="probe", regime=regime, session=session,
-            stress=stress, direction=direction, realized_r=0.0,
+            ts="",
+            signal_id="probe",
+            regime=regime,
+            session=session,
+            stress=stress,
+            direction=direction,
+            realized_r=0.0,
         )
         probe_vec = probe.feature_vector()
         with self._lock:
-            scored = [
-                (_cosine(probe_vec, e.feature_vector()), e)
-                for e in self._episodes
-            ]
+            scored = [(_cosine(probe_vec, e.feature_vector()), e) for e in self._episodes]
         scored.sort(key=lambda t: t[0], reverse=True)
         return [e for _, e in scored[:k]]
 
@@ -342,7 +345,8 @@ class HierarchicalMemory:
             self.semantic_path.parent.mkdir(parents=True, exist_ok=True)
             self.semantic_path.write_text(
                 json.dumps(
-                    {k: asdict(v) for k, v in self._semantic.items()}, indent=2,
+                    {k: asdict(v) for k, v in self._semantic.items()},
+                    indent=2,
                 ),
                 encoding="utf-8",
             )

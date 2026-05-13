@@ -73,14 +73,16 @@ def test_cli_reports_blocked_json_without_writing_state(
 ) -> None:
     _write_registry(tmp_path)
 
-    exit_code = disabled_worker_soak_guard.main([
-        "--root",
-        str(tmp_path),
-        "--created-at",
-        "2026-05-05T00:00:00Z",
-        "--now",
-        "2026-05-10T12:00:00Z",
-    ])
+    exit_code = disabled_worker_soak_guard.main(
+        [
+            "--root",
+            str(tmp_path),
+            "--created-at",
+            "2026-05-05T00:00:00Z",
+            "--now",
+            "2026-05-10T12:00:00Z",
+        ]
+    )
 
     payload = json.loads(capsys.readouterr().out)
     assert exit_code == 1

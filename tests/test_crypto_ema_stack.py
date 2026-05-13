@@ -14,13 +14,17 @@ from eta_engine.strategies.crypto_ema_stack_strategy import (
 )
 
 
-def _bar(idx: int, *, h: float, low: float, c: float | None = None,
-         v: float = 1000.0, tf_minutes: int = 60) -> BarData:
+def _bar(idx: int, *, h: float, low: float, c: float | None = None, v: float = 1000.0, tf_minutes: int = 60) -> BarData:
     ts = datetime(2026, 1, 1, tzinfo=UTC) + timedelta(minutes=idx * tf_minutes)
     c = c if c is not None else (h + low) / 2
     return BarData(
-        timestamp=ts, symbol="BTC", open=(h + low) / 2,
-        high=h, low=low, close=c, volume=v,
+        timestamp=ts,
+        symbol="BTC",
+        open=(h + low) / 2,
+        high=h,
+        low=low,
+        close=c,
+        volume=v,
     )
 
 
@@ -28,8 +32,10 @@ def _config() -> BacktestConfig:
     return BacktestConfig(
         start_date=datetime(2026, 1, 1, tzinfo=UTC),
         end_date=datetime(2026, 12, 31, tzinfo=UTC),
-        symbol="BTC", initial_equity=10_000.0,
-        risk_per_trade_pct=0.01, confluence_threshold=0.0,
+        symbol="BTC",
+        initial_equity=10_000.0,
+        risk_per_trade_pct=0.01,
+        confluence_threshold=0.0,
         max_trades_per_day=10,
     )
 
@@ -39,7 +45,8 @@ def _strat(**overrides) -> CryptoEmaStackStrategy:  # type: ignore[no-untyped-de
     base = {
         "stack_periods": (5, 10, 20),
         "entry_ema_idx": 1,  # entry on the 10 EMA
-        "warmup_bars": 25, "atr_period": 5,
+        "warmup_bars": 25,
+        "atr_period": 5,
         "min_bars_between_trades": 0,
         "entry_tolerance_pct": 2.0,
         "max_trades_per_day": 100,
@@ -65,9 +72,12 @@ def test_unsorted_stack_rejected() -> None:
 
 def test_entry_idx_out_of_range_rejected() -> None:
     with pytest.raises(ValueError, match="entry_ema_idx"):
-        CryptoEmaStackStrategy(CryptoEmaStackConfig(
-            stack_periods=(9, 21), entry_ema_idx=5,
-        ))
+        CryptoEmaStackStrategy(
+            CryptoEmaStackConfig(
+                stack_periods=(9, 21),
+                entry_ema_idx=5,
+            )
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -116,12 +126,9 @@ def test_stack_separation_filter_cuts_chop_fires() -> None:
     fires_with_filter = _count_fires(s_with_filter)
 
     # The filter must reduce chop fires materially
-    assert fires_with_filter <= fires_no_filter, (
-        "filter should not increase fires"
-    )
+    assert fires_with_filter <= fires_no_filter, "filter should not increase fires"
     assert fires_with_filter < fires_no_filter or fires_no_filter <= 2, (
-        f"stack-separation filter must cut chop fires "
-        f"(no_filter={fires_no_filter}, with_filter={fires_with_filter})"
+        f"stack-separation filter must cut chop fires (no_filter={fires_no_filter}, with_filter={fires_with_filter})"
     )
 
 
@@ -138,9 +145,7 @@ def test_long_fires_with_full_bull_stack_and_pullback() -> None:
     # Confirm the stack is bullishly aligned
     emas = s._emas
     assert all(e is not None for e in emas)
-    assert emas[0] > emas[1] > emas[2], (
-        f"expected fast > slow stack; got {emas}"
-    )
+    assert emas[0] > emas[1] > emas[2], f"expected fast > slow stack; got {emas}"
     # Build pullback bar that taps entry EMA
     entry_ema = emas[1]
     pull_bar = _bar(35, h=entry_ema + 0.5, low=entry_ema - 0.05, c=entry_ema + 0.4)
@@ -212,8 +217,7 @@ def test_volume_confirmation_blocks_low_volume_pullback() -> None:
     emas = s._emas
     entry_ema = emas[1]
     # Pullback bar at LOW volume → should be blocked
-    pull_bar = _bar(35, h=entry_ema + 0.5, low=entry_ema - 0.05,
-                    c=entry_ema + 0.4, v=500.0)
+    pull_bar = _bar(35, h=entry_ema + 0.5, low=entry_ema - 0.05, c=entry_ema + 0.4, v=500.0)
     hist.append(pull_bar)
     out = s.maybe_enter(pull_bar, hist, 10_000.0, cfg)
     assert out is None
@@ -230,8 +234,7 @@ def test_volume_confirmation_passes_high_volume_pullback() -> None:
         s.maybe_enter(b, hist, 10_000.0, cfg)
     emas = s._emas
     entry_ema = emas[1]
-    pull_bar = _bar(35, h=entry_ema + 0.5, low=entry_ema - 0.05,
-                    c=entry_ema + 0.4, v=3000.0)
+    pull_bar = _bar(35, h=entry_ema + 0.5, low=entry_ema - 0.05, c=entry_ema + 0.4, v=3000.0)
     hist.append(pull_bar)
     out = s.maybe_enter(pull_bar, hist, 10_000.0, cfg)
     assert out is not None
@@ -298,9 +301,7 @@ def test_soft_stop_uses_entry_ema_distance() -> None:
     stop_dist = abs(out.entry_price - out.stop)
     # Stop distance should be near the soft distance (allowing the
     # 0.5×ATR floor in the strategy code).
-    assert stop_dist < 5.0, (
-        f"soft stop should override ATR; got stop_dist={stop_dist}"
-    )
+    assert stop_dist < 5.0, f"soft stop should override ATR; got stop_dist={stop_dist}"
     assert stop_dist == pytest.approx(soft_dist, abs=1.0)
 
 

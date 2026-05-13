@@ -24,7 +24,7 @@ def test_dashboard_proxy_watchdog_noops_when_proxy_is_healthy(tmp_path: Path) ->
         heartbeat_path=tmp_path / "heartbeat.json",
         restart_delay_s=0,
         probe_fn=healthy_probe,
-        restart_fn=lambda task_name: (restarts.append(task_name) or (True, "bad")),
+        restart_fn=lambda task_name: restarts.append(task_name) or (True, "bad"),
     )
 
     assert decision.action == "noop"
@@ -65,7 +65,7 @@ def test_dashboard_proxy_watchdog_restarts_when_proxy_probe_fails(tmp_path: Path
         heartbeat_path=tmp_path / "heartbeat.json",
         restart_delay_s=0.01,
         probe_fn=probe,
-        restart_fn=lambda task_name: (restart_calls.append(task_name) or (True, "schtasks_run_ok")),
+        restart_fn=lambda task_name: restart_calls.append(task_name) or (True, "schtasks_run_ok"),
     )
 
     assert decision.action == "restarted"

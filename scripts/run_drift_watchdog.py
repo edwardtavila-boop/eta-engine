@@ -136,8 +136,10 @@ def _build_strategy(assignment):  # type: ignore[no-untyped-def]  # noqa: ANN001
     return factory()
 
 
-def _run_recent(  # type: ignore[no-untyped-def]  # noqa: ANN202, ANN001
-    *, assignment, lookback_days: int,  # noqa: ANN001
+def _run_recent(  # type: ignore[no-untyped-def]  # noqa: ANN202
+    *,
+    assignment: object,
+    lookback_days: int,  # noqa: ANN001
 ):
     """Backtest the strategy over the most-recent ``lookback_days``.
 
@@ -168,7 +170,9 @@ def _run_recent(  # type: ignore[no-untyped-def]  # noqa: ANN202, ANN001
     )
     strat = _build_strategy(assignment)
     return BacktestEngine(
-        pipeline=FeaturePipeline.default(), config=cfg, strategy=strat,
+        pipeline=FeaturePipeline.default(),
+        config=cfg,
+        strategy=strat,
     ).run(recent_bars)
 
 
@@ -200,29 +204,39 @@ def _emit_alert(severity: str, strategy_id: str, summary: str) -> None:
 def main() -> int:
     p = argparse.ArgumentParser(prog="run_drift_watchdog")
     p.add_argument(
-        "--baselines", type=Path, default=DEFAULT_BASELINES,
+        "--baselines",
+        type=Path,
+        default=DEFAULT_BASELINES,
         help="path to strategy_baselines.json",
     )
     p.add_argument(
-        "--bot-id", default=None,
+        "--bot-id",
+        default=None,
         help="restrict to one bot (default: all production strategies)",
     )
     p.add_argument(
-        "--lookback-days", type=int, default=30,
+        "--lookback-days",
+        type=int,
+        default=30,
         help="how many trailing bar-days count as 'recent'",
     )
     p.add_argument(
-        "--min-trades", type=int, default=5,
+        "--min-trades",
+        type=int,
+        default=5,
         help="below this many recent trades, severity is 'green' (insufficient sample)",
     )
     p.add_argument("--amber-z", type=float, default=2.0)
     p.add_argument("--red-z", type=float, default=3.0)
     p.add_argument(
-        "--log-path", type=Path, default=DEFAULT_LOG,
+        "--log-path",
+        type=Path,
+        default=DEFAULT_LOG,
         help=f"JSONL append target (default: {DEFAULT_LOG})",
     )
     p.add_argument(
-        "--no-alerts", action="store_true",
+        "--no-alerts",
+        action="store_true",
         help="skip alert_dispatcher; just write the JSONL log",
     )
     args = p.parse_args()
@@ -235,8 +249,7 @@ def main() -> int:
         return 0
 
     print(
-        f"[drift_watchdog] {len(rows)} production strategies, "
-        f"lookback {args.lookback_days}d",
+        f"[drift_watchdog] {len(rows)} production strategies, lookback {args.lookback_days}d",
     )
     args.log_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -248,6 +261,7 @@ def main() -> int:
             continue
         if args.bot_id is not None:
             from eta_engine.strategies.per_bot_registry import get_for_bot
+
             target = get_for_bot(args.bot_id)
             if target is None or target.strategy_id != strategy_id:
                 continue
@@ -308,11 +322,7 @@ def main() -> int:
         for r in assessment.reasons:
             print(f"      - {r}")
         if sev in ("amber", "red") and not args.no_alerts:
-            summary = (
-                f"WR z={assessment.win_rate_z:+.2f} "
-                f"R z={assessment.avg_r_z:+.2f} "
-                f"(n={assessment.n_recent})"
-            )
+            summary = f"WR z={assessment.win_rate_z:+.2f} R z={assessment.avg_r_z:+.2f} (n={assessment.n_recent})"
             _emit_alert(sev, strategy_id, summary)
 
     with args.log_path.open("a", encoding="utf-8") as fh:

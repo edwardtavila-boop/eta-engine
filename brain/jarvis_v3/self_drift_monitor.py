@@ -29,6 +29,7 @@ P&L damage compounds.
 
 Pure stdlib + math.
 """
+
 from __future__ import annotations
 
 import json
@@ -51,12 +52,12 @@ DEFAULT_VERDICT_LOG = ROOT / "state" / "jarvis_intel" / "verdicts.jsonl"
 class DriftSignal:
     """One detected drift event."""
 
-    metric: str                       # e.g. "approved_rate"
-    subsystem: str | None             # None = fleet-wide
+    metric: str  # e.g. "approved_rate"
+    subsystem: str | None  # None = fleet-wide
     recent_value: float
     baseline_value: float
     z_score: float
-    severity: str                     # "info" / "warning" / "critical"
+    severity: str  # "info" / "warning" / "critical"
     note: str = ""
 
 
@@ -182,70 +183,52 @@ def detect_self_drift(
             n_recent_consultations=n_recent,
             n_baseline_consultations=n_baseline,
             overall_status="OK",
-            summary=(
-                f"insufficient data for drift detection "
-                f"(recent={n_recent}, baseline={n_baseline})"
-            ),
+            summary=(f"insufficient data for drift detection (recent={n_recent}, baseline={n_baseline})"),
         )
 
     signals: list[DriftSignal] = []
 
     # 1. APPROVED-rate
-    recent_approved = sum(
-        1 for r in recent
-        if str(r.get("final_verdict", "")).upper() == "APPROVED"
-    ) / n_recent
-    baseline_approved = sum(
-        1 for r in baseline
-        if str(r.get("final_verdict", "")).upper() == "APPROVED"
-    ) / n_baseline
+    recent_approved = sum(1 for r in recent if str(r.get("final_verdict", "")).upper() == "APPROVED") / n_recent
+    baseline_approved = sum(1 for r in baseline if str(r.get("final_verdict", "")).upper() == "APPROVED") / n_baseline
     z_app = _proportion_z(recent_approved, baseline_approved, n_recent)
     if abs(z_app) >= z_threshold:
-        signals.append(DriftSignal(
-            metric="approved_rate",
-            subsystem=None,
-            recent_value=round(recent_approved, 3),
-            baseline_value=round(baseline_approved, 3),
-            z_score=round(z_app, 2),
-            severity=_severity_from_z(z_app),
-            note=(
-                f"approved-rate shifted {recent_approved:.0%} -> "
-                f"{baseline_approved:.0%}"
-            ),
-        ))
+        signals.append(
+            DriftSignal(
+                metric="approved_rate",
+                subsystem=None,
+                recent_value=round(recent_approved, 3),
+                baseline_value=round(baseline_approved, 3),
+                z_score=round(z_app, 2),
+                severity=_severity_from_z(z_app),
+                note=(f"approved-rate shifted {recent_approved:.0%} -> {baseline_approved:.0%}"),
+            )
+        )
 
     # 2. Mean confidence
-    confs_recent = [
-        float(r.get("confidence", 0.0)) for r in recent
-        if r.get("confidence") is not None
-    ]
-    confs_baseline = [
-        float(r.get("confidence", 0.0)) for r in baseline
-        if r.get("confidence") is not None
-    ]
+    confs_recent = [float(r.get("confidence", 0.0)) for r in recent if r.get("confidence") is not None]
+    confs_baseline = [float(r.get("confidence", 0.0)) for r in baseline if r.get("confidence") is not None]
     if confs_recent and confs_baseline:
         m_r = sum(confs_recent) / len(confs_recent)
         m_b = sum(confs_baseline) / len(confs_baseline)
         # Approximate z via baseline std
         if len(confs_baseline) > 1:
-            var_b = sum(
-                (c - m_b) ** 2 for c in confs_baseline
-            ) / (len(confs_baseline) - 1)
+            var_b = sum((c - m_b) ** 2 for c in confs_baseline) / (len(confs_baseline) - 1)
             sd_b = math.sqrt(var_b)
             se = sd_b / math.sqrt(len(confs_recent))
             z_conf = (m_r - m_b) / se if se > 0 else 0.0
             if abs(z_conf) >= z_threshold:
-                signals.append(DriftSignal(
-                    metric="mean_confidence",
-                    subsystem=None,
-                    recent_value=round(m_r, 3),
-                    baseline_value=round(m_b, 3),
-                    z_score=round(z_conf, 2),
-                    severity=_severity_from_z(z_conf),
-                    note=(
-                        f"avg confidence shifted {m_r:.2f} <- {m_b:.2f}"
-                    ),
-                ))
+                signals.append(
+                    DriftSignal(
+                        metric="mean_confidence",
+                        subsystem=None,
+                        recent_value=round(m_r, 3),
+                        baseline_value=round(m_b, 3),
+                        z_score=round(z_conf, 2),
+                        severity=_severity_from_z(z_conf),
+                        note=(f"avg confidence shifted {m_r:.2f} <- {m_b:.2f}"),
+                    )
+                )
 
     # 3. Per-subsystem APPROVED-rate
     subsystems: set[str] = set()
@@ -254,36 +237,29 @@ def detect_self_drift(
         if sub:
             subsystems.add(sub)
     for sub in subsystems:
-        rec_for_sub = [
-            r for r in recent if str(r.get("subsystem", "")) == sub
-        ]
-        base_for_sub = [
-            r for r in baseline if str(r.get("subsystem", "")) == sub
-        ]
+        rec_for_sub = [r for r in recent if str(r.get("subsystem", "")) == sub]
+        base_for_sub = [r for r in baseline if str(r.get("subsystem", "")) == sub]
         if len(rec_for_sub) < 3 or len(base_for_sub) < 10:
             continue
-        rec_approved = sum(
-            1 for r in rec_for_sub
-            if str(r.get("final_verdict", "")).upper() == "APPROVED"
-        ) / len(rec_for_sub)
-        base_approved = sum(
-            1 for r in base_for_sub
-            if str(r.get("final_verdict", "")).upper() == "APPROVED"
-        ) / len(base_for_sub)
+        rec_approved = sum(1 for r in rec_for_sub if str(r.get("final_verdict", "")).upper() == "APPROVED") / len(
+            rec_for_sub
+        )
+        base_approved = sum(1 for r in base_for_sub if str(r.get("final_verdict", "")).upper() == "APPROVED") / len(
+            base_for_sub
+        )
         z = _proportion_z(rec_approved, base_approved, len(rec_for_sub))
         if abs(z) >= z_threshold:
-            signals.append(DriftSignal(
-                metric="approved_rate_per_subsystem",
-                subsystem=sub,
-                recent_value=round(rec_approved, 3),
-                baseline_value=round(base_approved, 3),
-                z_score=round(z, 2),
-                severity=_severity_from_z(z),
-                note=(
-                    f"{sub} approved-rate shifted "
-                    f"{base_approved:.0%} -> {rec_approved:.0%}"
-                ),
-            ))
+            signals.append(
+                DriftSignal(
+                    metric="approved_rate_per_subsystem",
+                    subsystem=sub,
+                    recent_value=round(rec_approved, 3),
+                    baseline_value=round(base_approved, 3),
+                    z_score=round(z, 2),
+                    severity=_severity_from_z(z),
+                    note=(f"{sub} approved-rate shifted {base_approved:.0%} -> {rec_approved:.0%}"),
+                )
+            )
 
     # Overall status = worst severity in signals
     if any(s.severity == "critical" for s in signals):
@@ -294,9 +270,7 @@ def detect_self_drift(
         overall = "OK"
 
     summary = (
-        f"self-drift: {overall} "
-        f"({len(signals)} signals over {n_recent} recent / "
-        f"{n_baseline} baseline consultations)"
+        f"self-drift: {overall} ({len(signals)} signals over {n_recent} recent / {n_baseline} baseline consultations)"
     )
 
     return SelfDriftReport(

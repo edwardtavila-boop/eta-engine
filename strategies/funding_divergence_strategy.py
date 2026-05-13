@@ -98,7 +98,8 @@ class FundingDivergenceStrategy:
     """Mean-reversion on BTC funding-rate extremes."""
 
     def __init__(
-        self, config: FundingDivergenceConfig | None = None,
+        self,
+        config: FundingDivergenceConfig | None = None,
     ) -> None:
         self.cfg = config or FundingDivergenceConfig()
         self._funding_provider: Callable[[BarData], float] | None = None
@@ -116,13 +117,15 @@ class FundingDivergenceStrategy:
     # -- provider plumbing --------------------------------------------------
 
     def attach_funding_provider(
-        self, p: Callable[[BarData], float] | None,
+        self,
+        p: Callable[[BarData], float] | None,
     ) -> None:
         """Attach a funding-rate provider (e.g. FundingRateProvider)."""
         self._funding_provider = p
 
     def attach_daily_verdict_provider(
-        self, p: Callable[..., object] | None,
+        self,
+        p: Callable[..., object] | None,
     ) -> None:
         """Optional sage daily verdict provider for directional confirmation."""
         self._daily_verdict_provider = p
@@ -163,8 +166,7 @@ class FundingDivergenceStrategy:
             return None
         if (
             self._last_entry_idx is not None
-            and (self._bars_seen - self._last_entry_idx)
-            < self.cfg.min_bars_between_trades
+            and (self._bars_seen - self._last_entry_idx) < self.cfg.min_bars_between_trades
         ):
             return None
 
@@ -190,10 +192,7 @@ class FundingDivergenceStrategy:
             return None
 
         # Optional directional confirmation via sage daily
-        if (
-            self.cfg.require_directional_confirmation
-            and self._daily_verdict_provider is not None
-        ):
+        if self.cfg.require_directional_confirmation and self._daily_verdict_provider is not None:
             try:
                 verdict = self._daily_verdict_provider(bar.timestamp.date())
                 # Verdict has a `direction` attr ('long'/'short'/'neutral')
@@ -208,7 +207,7 @@ class FundingDivergenceStrategy:
                 pass
 
         # Risk sizing
-        atr_window = hist[-self.cfg.atr_period:] if hist else []
+        atr_window = hist[-self.cfg.atr_period :] if hist else []
         if len(atr_window) < 2:
             return None
         atr = sum(b.high - b.low for b in atr_window) / len(atr_window)
@@ -236,8 +235,13 @@ class FundingDivergenceStrategy:
         self._trades_today += 1
         self._n_entries_fired += 1
         return _Open(
-            entry_bar=bar, side=side, qty=qty, entry_price=entry_price,
-            stop=stop, target=target, risk_usd=risk_usd,
+            entry_bar=bar,
+            side=side,
+            qty=qty,
+            entry_price=entry_price,
+            stop=stop,
+            target=target,
+            risk_usd=risk_usd,
             confluence=10.0,  # synthetic; not used by this strategy
             leverage=1.0,
             regime=f"funding_div_{funding * 1e4:+.1f}bps",

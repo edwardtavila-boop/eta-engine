@@ -8,6 +8,7 @@
 - l2_strategy_versioning (config version registry)
 - l2_ensemble_validator (does ensemble beat best individual?)
 """
+
 # ruff: noqa: N802, PLR2004
 from __future__ import annotations
 
@@ -97,13 +98,22 @@ def test_per_symbol_weights_split_by_pair(tmp_path: Path) -> None:
     path = tmp_path / "bt.jsonl"
     now = datetime.now(UTC)
     records = [
-        {"ts": now.isoformat(), "strategy": "book_imbalance", "symbol": "MNQ",
-          "sharpe_proxy": 0.8, "sharpe_proxy_valid": True},
-        {"ts": now.isoformat(), "strategy": "book_imbalance", "symbol": "GC",
-          "sharpe_proxy": -0.3, "sharpe_proxy_valid": True},
+        {
+            "ts": now.isoformat(),
+            "strategy": "book_imbalance",
+            "symbol": "MNQ",
+            "sharpe_proxy": 0.8,
+            "sharpe_proxy_valid": True,
+        },
+        {
+            "ts": now.isoformat(),
+            "strategy": "book_imbalance",
+            "symbol": "GC",
+            "sharpe_proxy": -0.3,
+            "sharpe_proxy_valid": True,
+        },
     ]
-    path.write_text("\n".join(json.dumps(r) for r in records) + "\n",
-                     encoding="utf-8")
+    path.write_text("\n".join(json.dumps(r) for r in records) + "\n", encoding="utf-8")
     weights = pse.compute_per_symbol_weights(_path=path)
     assert ("book_imbalance", "MNQ") in weights.weights
     assert weights.weights[("book_imbalance", "MNQ")] == 0.8
@@ -124,8 +134,7 @@ def test_per_symbol_vote_uses_pair_weight(tmp_path: Path) -> None:
         _StubSig(strategy_id="book_imbalance", side="LONG", confidence=0.8),
         _StubSig(strategy_id="microprice_drift", side="LONG", confidence=0.7),
     ]
-    out = pse.vote_per_symbol(signals, weights, symbol="MNQ",
-                                ensemble_threshold=0.5)
+    out = pse.vote_per_symbol(signals, weights, symbol="MNQ", ensemble_threshold=0.5)
     assert out is not None
     assert out.side == "LONG"
 
@@ -140,8 +149,7 @@ def test_per_symbol_vote_falls_back_to_global(tmp_path: Path) -> None:
     signals = [
         _StubSig(strategy_id="book_imbalance", side="LONG", confidence=0.8),
     ]
-    out = pse.vote_per_symbol(signals, weights, symbol="ES",
-                                ensemble_threshold=0.5)
+    out = pse.vote_per_symbol(signals, weights, symbol="ES", ensemble_threshold=0.5)
     assert out is not None
     # Constituent should be tagged as global_fallback
     assert out.constituent_signals[0]["weight_source"] == "global_fallback"
@@ -154,6 +162,7 @@ def test_per_symbol_vote_falls_back_to_global(tmp_path: Path) -> None:
 
 def test_pearson_perfect_correlation() -> None:
     import pytest
+
     xs = [1.0, 2.0, 3.0, 4.0, 5.0]
     ys = [2.0, 4.0, 6.0, 8.0, 10.0]
     p = corr._pearson(xs, ys)
@@ -162,6 +171,7 @@ def test_pearson_perfect_correlation() -> None:
 
 def test_pearson_negative_correlation() -> None:
     import pytest
+
     xs = [1.0, 2.0, 3.0, 4.0, 5.0]
     ys = [5.0, 4.0, 3.0, 2.0, 1.0]
     p = corr._pearson(xs, ys)
@@ -193,11 +203,17 @@ def test_universe_audit_no_data(tmp_path: Path) -> None:
 def test_universe_audit_flags_unsupported_symbol(tmp_path: Path) -> None:
     path = tmp_path / "bt.jsonl"
     now = datetime.now(UTC)
-    path.write_text(json.dumps({
-        "ts": now.isoformat(),
-        "strategy": "book_imbalance",
-        "symbol": "FAKE_SYMBOL_NOT_IN_SPECS",
-    }) + "\n", encoding="utf-8")
+    path.write_text(
+        json.dumps(
+            {
+                "ts": now.isoformat(),
+                "strategy": "book_imbalance",
+                "symbol": "FAKE_SYMBOL_NOT_IN_SPECS",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     report = ua.run_audit(_backtest_path=path)
     assert report.n_unsupported >= 1
     assert any(f.finding == "UNSUPPORTED_SYMBOL" for f in report.findings)
@@ -206,11 +222,17 @@ def test_universe_audit_flags_unsupported_symbol(tmp_path: Path) -> None:
 def test_universe_audit_passes_for_known_symbol(tmp_path: Path) -> None:
     path = tmp_path / "bt.jsonl"
     now = datetime.now(UTC)
-    path.write_text(json.dumps({
-        "ts": now.isoformat(),
-        "strategy": "book_imbalance",
-        "symbol": "MNQ",  # in SYMBOL_SPECS + capture + registry
-    }) + "\n", encoding="utf-8")
+    path.write_text(
+        json.dumps(
+            {
+                "ts": now.isoformat(),
+                "strategy": "book_imbalance",
+                "symbol": "MNQ",  # in SYMBOL_SPECS + capture + registry
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     report = ua.run_audit(_backtest_path=path)
     assert any(f.finding == "OK" for f in report.findings)
 
@@ -221,15 +243,14 @@ def test_universe_audit_passes_for_known_symbol(tmp_path: Path) -> None:
 
 
 def test_tier_classifier_buckets_correctly() -> None:
-    assert tier._tier_for_monthly(500)[0] == 0      # tier 1
-    assert tier._tier_for_monthly(5_000)[0] == 1    # tier 2
-    assert tier._tier_for_monthly(15_000)[0] == 2   # tier 3
-    assert tier._tier_for_monthly(50_000)[0] == 3   # tier 4
+    assert tier._tier_for_monthly(500)[0] == 0  # tier 1
+    assert tier._tier_for_monthly(5_000)[0] == 1  # tier 2
+    assert tier._tier_for_monthly(15_000)[0] == 2  # tier 3
+    assert tier._tier_for_monthly(50_000)[0] == 3  # tier 4
 
 
 def test_tier_no_fills_returns_zero(tmp_path: Path) -> None:
-    proj = tier.compute_tier_projection(
-        _fill_path=tmp_path / "fill.jsonl")
+    proj = tier.compute_tier_projection(_fill_path=tmp_path / "fill.jsonl")
     assert proj.n_fills_recent_days == 0
     assert proj.monthly_projected_fills == 0.0
 
@@ -240,11 +261,15 @@ def test_tier_projects_monthly_from_recent(tmp_path: Path) -> None:
     # 10 fills in last 5 days → projected 60/month
     lines = []
     for i in range(10):
-        lines.append(json.dumps({
-            "ts": (now - timedelta(days=i // 2)).isoformat(),
-            "qty_filled": 1,
-            "signal_id": f"s{i}",
-        }))
+        lines.append(
+            json.dumps(
+                {
+                    "ts": (now - timedelta(days=i // 2)).isoformat(),
+                    "qty_filled": 1,
+                    "signal_id": f"s{i}",
+                }
+            )
+        )
     fill_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     proj = tier.compute_tier_projection(since_days=5, _fill_path=fill_path)
     assert proj.n_fills_recent_days == 10
@@ -260,7 +285,8 @@ def test_tier_projects_monthly_from_recent(tmp_path: Path) -> None:
 def test_versioning_register_new_version(tmp_path: Path) -> None:
     path = tmp_path / "versions.json"
     v = ver.register_version(
-        "book_imbalance", "v1",
+        "book_imbalance",
+        "v1",
         {"entry_threshold": 1.75, "consecutive_snaps": 3},
         rationale="initial",
         _path=path,
@@ -276,13 +302,15 @@ def test_versioning_register_new_version(tmp_path: Path) -> None:
 def test_versioning_new_version_closes_prior(tmp_path: Path) -> None:
     path = tmp_path / "versions.json"
     ver.register_version(
-        "book_imbalance", "v1",
+        "book_imbalance",
+        "v1",
         {"entry_threshold": 1.75},
         _path=path,
     )
     # v2 should close v1's effective_to
     ver.register_version(
-        "book_imbalance", "v2",
+        "book_imbalance",
+        "v2",
         {"entry_threshold": 2.0},
         _path=path,
     )
@@ -290,13 +318,14 @@ def test_versioning_new_version_closes_prior(tmp_path: Path) -> None:
     v1 = next(v for v in reg.versions["book_imbalance"] if v.version == "v1")
     v2 = next(v for v in reg.versions["book_imbalance"] if v.version == "v2")
     assert v1.effective_to is not None  # closed
-    assert v2.effective_to is None       # active
+    assert v2.effective_to is None  # active
 
 
 def test_versioning_active_version(tmp_path: Path) -> None:
     path = tmp_path / "versions.json"
     ver.register_version(
-        "book_imbalance", "v1",
+        "book_imbalance",
+        "v1",
         {"entry_threshold": 1.75},
         _path=path,
     )
@@ -315,25 +344,25 @@ def test_versioning_filter_records_to_version(tmp_path: Path) -> None:
     path = tmp_path / "versions.json"
     now = datetime.now(UTC)
     ver.register_version(
-        "book_imbalance", "v1",
+        "book_imbalance",
+        "v1",
         {"x": 1},
         effective_from=now - timedelta(days=30),
         _path=path,
     )
     ver.register_version(
-        "book_imbalance", "v2",
+        "book_imbalance",
+        "v2",
         {"x": 2},
         effective_from=now - timedelta(days=10),
         _path=path,
     )
     records = [
         {"ts": (now - timedelta(days=20)).isoformat()},  # under v1
-        {"ts": (now - timedelta(days=5)).isoformat()},   # under v2
+        {"ts": (now - timedelta(days=5)).isoformat()},  # under v2
     ]
-    v1_recs = ver.filter_records_to_version(records, "book_imbalance", "v1",
-                                                 _path=path)
-    v2_recs = ver.filter_records_to_version(records, "book_imbalance", "v2",
-                                                 _path=path)
+    v1_recs = ver.filter_records_to_version(records, "book_imbalance", "v1", _path=path)
+    v2_recs = ver.filter_records_to_version(records, "book_imbalance", "v2", _path=path)
     assert len(v1_recs) == 1
     assert len(v2_recs) == 1
 
@@ -351,12 +380,18 @@ def test_ensemble_validator_no_data_inconclusive(tmp_path: Path) -> None:
 def test_ensemble_validator_single_constituent_inconclusive(tmp_path: Path) -> None:
     path = tmp_path / "bt.jsonl"
     now = datetime.now(UTC)
-    path.write_text(json.dumps({
-        "ts": now.isoformat(),
-        "strategy": "book_imbalance",
-        "sharpe_proxy": 0.5,
-        "sharpe_proxy_valid": True,
-    }) + "\n", encoding="utf-8")
+    path.write_text(
+        json.dumps(
+            {
+                "ts": now.isoformat(),
+                "strategy": "book_imbalance",
+                "sharpe_proxy": 0.5,
+                "sharpe_proxy_valid": True,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     report = ev.validate_ensemble(_backtest_path=path)
     assert report.n_constituents == 1
     assert report.verdict == "INCONCLUSIVE"
@@ -366,15 +401,11 @@ def test_ensemble_validator_finds_best_constituent(tmp_path: Path) -> None:
     path = tmp_path / "bt.jsonl"
     now = datetime.now(UTC)
     records = [
-        {"ts": now.isoformat(), "strategy": "book_imbalance",
-          "sharpe_proxy": 1.5, "sharpe_proxy_valid": True},
-        {"ts": now.isoformat(), "strategy": "microprice_drift",
-          "sharpe_proxy": 0.3, "sharpe_proxy_valid": True},
-        {"ts": now.isoformat(), "strategy": "footprint_absorption",
-          "sharpe_proxy": 0.1, "sharpe_proxy_valid": True},
+        {"ts": now.isoformat(), "strategy": "book_imbalance", "sharpe_proxy": 1.5, "sharpe_proxy_valid": True},
+        {"ts": now.isoformat(), "strategy": "microprice_drift", "sharpe_proxy": 0.3, "sharpe_proxy_valid": True},
+        {"ts": now.isoformat(), "strategy": "footprint_absorption", "sharpe_proxy": 0.1, "sharpe_proxy_valid": True},
     ]
-    path.write_text("\n".join(json.dumps(r) for r in records) + "\n",
-                     encoding="utf-8")
+    path.write_text("\n".join(json.dumps(r) for r in records) + "\n", encoding="utf-8")
     report = ev.validate_ensemble(_backtest_path=path)
     assert report.best_constituent == "book_imbalance"
     assert report.best_constituent_sharpe == 1.5
@@ -386,15 +417,11 @@ def test_ensemble_validator_underperform_when_one_dominates(tmp_path: Path) -> N
     path = tmp_path / "bt.jsonl"
     now = datetime.now(UTC)
     records = [
-        {"ts": now.isoformat(), "strategy": "book_imbalance",
-          "sharpe_proxy": 1.5, "sharpe_proxy_valid": True},
-        {"ts": now.isoformat(), "strategy": "microprice_drift",
-          "sharpe_proxy": 0.1, "sharpe_proxy_valid": True},
-        {"ts": now.isoformat(), "strategy": "footprint_absorption",
-          "sharpe_proxy": 0.05, "sharpe_proxy_valid": True},
+        {"ts": now.isoformat(), "strategy": "book_imbalance", "sharpe_proxy": 1.5, "sharpe_proxy_valid": True},
+        {"ts": now.isoformat(), "strategy": "microprice_drift", "sharpe_proxy": 0.1, "sharpe_proxy_valid": True},
+        {"ts": now.isoformat(), "strategy": "footprint_absorption", "sharpe_proxy": 0.05, "sharpe_proxy_valid": True},
     ]
-    path.write_text("\n".join(json.dumps(r) for r in records) + "\n",
-                     encoding="utf-8")
+    path.write_text("\n".join(json.dumps(r) for r in records) + "\n", encoding="utf-8")
     report = ev.validate_ensemble(_backtest_path=path)
     assert report.verdict == "UNDERPERFORM"
     assert report.margin is not None

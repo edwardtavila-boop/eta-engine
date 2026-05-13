@@ -13,6 +13,7 @@ hardcoded defaults from jarvis_correlation otherwise).
 Fires a ``correlation_regime_shift`` Resend alert when |delta| > 0.15
 on any pair. ALFRED can use this as an extra stress component.
 """
+
 from __future__ import annotations
 
 import json
@@ -32,7 +33,7 @@ class CorrRegimeShift:
     baseline: float
     rolling: float
     delta: float
-    severity: str   # "minor" | "material" | "extreme"
+    severity: str  # "minor" | "material" | "extreme"
 
 
 def detect_shifts(
@@ -63,13 +64,15 @@ def detect_shifts(
             severity = "material"
         else:
             severity = "minor"
-        shifts.append(CorrRegimeShift(
-            pair=pair,
-            baseline=round(base, 4),
-            rolling=round(roll, 4),
-            delta=round(delta, 4),
-            severity=severity,
-        ))
+        shifts.append(
+            CorrRegimeShift(
+                pair=pair,
+                baseline=round(base, 4),
+                rolling=round(roll, 4),
+                delta=round(delta, 4),
+                severity=severity,
+            )
+        )
     return sorted(shifts, key=lambda s: -abs(s.delta))
 
 
@@ -85,6 +88,7 @@ def load_baseline() -> dict[str, float]:
             pass
     # Fallback: hardcoded defaults from jarvis_correlation
     from eta_engine.brain.jarvis_correlation import _CORRELATIONS
+
     return {f"{a}|{b}": v for (a, b), v in _CORRELATIONS.items()}
 
 
@@ -93,9 +97,14 @@ def write_shift_report(shifts: list[CorrRegimeShift]) -> Path:
     out = ROOT / "state" / "correlation_regime"
     out.mkdir(parents=True, exist_ok=True)
     path = out / f"shifts_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}.json"
-    path.write_text(json.dumps([
-        {"pair": s.pair, "baseline": s.baseline, "rolling": s.rolling,
-         "delta": s.delta, "severity": s.severity}
-        for s in shifts
-    ], indent=2), encoding="utf-8")
+    path.write_text(
+        json.dumps(
+            [
+                {"pair": s.pair, "baseline": s.baseline, "rolling": s.rolling, "delta": s.delta, "severity": s.severity}
+                for s in shifts
+            ],
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
     return path

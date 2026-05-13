@@ -63,7 +63,9 @@ def _is_paper_url(base_url: str) -> bool:
 
 
 async def _list_recent_orders(
-    venue: AlpacaVenue, *, limit: int = DEFAULT_ORDER_LIMIT,
+    venue: AlpacaVenue,
+    *,
+    limit: int = DEFAULT_ORDER_LIMIT,
 ) -> list[dict[str, Any]]:
     """Pull the last ``limit`` orders regardless of status.
 
@@ -89,10 +91,7 @@ def _format_order_row(order: dict[str, Any]) -> str:
     status = order.get("status", "?")
     avg_price = order.get("filled_avg_price") or "—"
     order_id = order.get("id", "?")
-    return (
-        f"  ts={ts} sym={sym} side={side} qty={qty} status={status} "
-        f"filled_avg_price={avg_price} id={order_id}"
-    )
+    return f"  ts={ts} sym={sym} side={side} qty={qty} status={status} filled_avg_price={avg_price} id={order_id}"
 
 
 async def watch(
@@ -105,8 +104,7 @@ async def watch(
     config = AlpacaConfig.from_env()
     if require_paper and not _is_paper_url(config.base_url):
         logger.error(
-            "verify_live_crypto_flow: --alpaca-paper required but base_url=%s "
-            "is not a paper host. Refusing to run.",
+            "verify_live_crypto_flow: --alpaca-paper required but base_url=%s is not a paper host. Refusing to run.",
             config.base_url,
         )
         return 4
@@ -120,15 +118,17 @@ async def watch(
     report = await venue.connect()
     logger.info(
         "alpaca connect(): status=%s creds_present=%s endpoint=%s probe=%s",
-        report.status.value, report.creds_present,
+        report.status.value,
+        report.creds_present,
         report.details.get("endpoint"),
         report.details.get("probe"),
     )
     if report.status not in {ConnectionStatus.READY, ConnectionStatus.DEGRADED}:
         logger.error(
-            "verify_live_crypto_flow: alpaca venue is %s — cannot proceed. "
-            "details=%s error=%s",
-            report.status.value, report.details, report.error,
+            "verify_live_crypto_flow: alpaca venue is %s — cannot proceed. details=%s error=%s",
+            report.status.value,
+            report.details,
+            report.error,
         )
         return 2
 
@@ -138,9 +138,10 @@ async def watch(
     baseline_orders = await _list_recent_orders(venue)
     baseline_ids = {str(o.get("id")) for o in baseline_orders if o.get("id")}
     logger.info(
-        "baseline: %d existing orders (will not count); watch_seconds=%d "
-        "poll_interval_s=%.1f",
-        len(baseline_orders), watch_seconds, poll_interval_s,
+        "baseline: %d existing orders (will not count); watch_seconds=%d poll_interval_s=%.1f",
+        len(baseline_orders),
+        watch_seconds,
+        poll_interval_s,
     )
     if baseline_orders:
         # Show the most recent order so the operator sees we're live on
@@ -174,8 +175,7 @@ async def watch(
                 if first_fill_ts is None and order.get("filled_avg_price"):
                     first_fill_ts = order.get("filled_at") or now_iso
                     print(  # noqa: T201
-                        f"[{now_iso}] FIRST CRYPTO FILL OBSERVED at "
-                        f"filled_avg_price={order.get('filled_avg_price')}",
+                        f"[{now_iso}] FIRST CRYPTO FILL OBSERVED at filled_avg_price={order.get('filled_avg_price')}",
                         flush=True,
                     )
         # Lightweight progress heartbeat every ~30s so the operator can
@@ -235,11 +235,13 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     try:
-        return asyncio.run(watch(
-            watch_seconds=args.watch_seconds,
-            poll_interval_s=args.poll_interval_s,
-            require_paper=args.alpaca_paper,
-        ))
+        return asyncio.run(
+            watch(
+                watch_seconds=args.watch_seconds,
+                poll_interval_s=args.poll_interval_s,
+                require_paper=args.alpaca_paper,
+            )
+        )
     except KeyboardInterrupt:
         logger.warning("interrupted; exiting non-zero")
         return 130

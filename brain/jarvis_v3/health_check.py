@@ -34,6 +34,7 @@ Components checked:
 
 Pure stdlib + filesystem reads. No network, no async.
 """
+
 from __future__ import annotations
 
 import json
@@ -89,6 +90,7 @@ class HealthReport:
 def _check_override() -> ComponentHealth:
     try:
         from eta_engine.obs.operator_override import get_state
+
         s = get_state()
         level = s.level.value
     except Exception as exc:  # noqa: BLE001
@@ -160,6 +162,7 @@ def _check_memory() -> ComponentHealth:
         from eta_engine.brain.jarvis_v3.memory_hierarchy import (
             HierarchicalMemory,
         )
+
         mem = HierarchicalMemory()
         n = len(mem._episodes)
     except Exception as exc:  # noqa: BLE001
@@ -195,6 +198,7 @@ def _check_filter_bandit() -> ComponentHealth:
         from eta_engine.brain.jarvis_v3.filter_bandit import (
             default_filter_bandit,
         )
+
         fb = default_filter_bandit()
         report = fb.report()
     except Exception as exc:  # noqa: BLE001
@@ -286,7 +290,7 @@ def _check_intel_verdict_log() -> ComponentHealth:
         return ComponentHealth(
             name="intel_verdict_log",
             status=HealthStatus.DEGRADED,
-            detail=f"no writes in {age_min/60:.1f} hours",
+            detail=f"no writes in {age_min / 60:.1f} hours",
             metrics={"size_kb": round(size_kb, 1), "age_min": round(age_min, 1)},
         )
     return ComponentHealth(
@@ -303,6 +307,7 @@ def _check_macro_calendar() -> ComponentHealth:
             is_within_event_window,
             upcoming_events,
         )
+
         now = datetime.now(UTC)
         upcoming = upcoming_events(hours_ahead=24)
         within = is_within_event_window(now)
@@ -351,15 +356,8 @@ def jarvis_health() -> HealthReport:
     else:
         overall = HealthStatus.OK.value
 
-    issues = [
-        f"{c.name}: {c.detail}"
-        for c in components
-        if c.status != HealthStatus.OK
-    ]
-    summary = (
-        f"JARVIS health: {overall} "
-        f"({len(components)} components, {len(issues)} non-OK)"
-    )
+    issues = [f"{c.name}: {c.detail}" for c in components if c.status != HealthStatus.OK]
+    summary = f"JARVIS health: {overall} ({len(components)} components, {len(issues)} non-OK)"
     return HealthReport(
         ts=datetime.now(UTC).isoformat(),
         overall_status=overall,

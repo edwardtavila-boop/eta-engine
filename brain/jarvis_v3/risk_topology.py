@@ -27,6 +27,7 @@ The OUTPUT is JSON, designed to be either:
   (b) Pushed via webhook from a scheduled task — the operator picks
       polling vs pushing based on latency tolerance.
 """
+
 from __future__ import annotations
 
 import contextlib
@@ -46,10 +47,10 @@ EXPECTED_HOOKS = ("build_topology",)
 # Color palette for node states. Hex strings keep this portable to any
 # renderer (D3, Three.js, Cytoscape). Operator can override per skill.
 _TIER_COLOR = {
-    "ELITE": "#22c55e",      # green
-    "PRODUCER": "#06b6d4",   # cyan
-    "MARGINAL": "#eab308",   # yellow
-    "DECAY": "#f97316",      # orange
+    "ELITE": "#22c55e",  # green
+    "PRODUCER": "#06b6d4",  # cyan
+    "MARGINAL": "#eab308",  # yellow
+    "DECAY": "#f97316",  # orange
     "INSUFFICIENT": "#94a3b8",  # slate
 }
 
@@ -120,25 +121,27 @@ def _correlation_edges(nodes: list[dict[str, Any]]) -> list[dict[str, Any]]:
             a, b = nodes[i], nodes[j]
             ga = _group_of(str(a.get("asset_class", "")))
             gb = _group_of(str(b.get("asset_class", "")))
-            same_asset = (
-                str(a.get("asset_class", "")).upper()
-                == str(b.get("asset_class", "")).upper()
-                and a.get("asset_class")
+            same_asset = str(a.get("asset_class", "")).upper() == str(b.get("asset_class", "")).upper() and a.get(
+                "asset_class"
             )
             if same_asset:
-                edges.append({
-                    "source": a["id"],
-                    "target": b["id"],
-                    "weight": 0.5,
-                    "kind": "same_asset",
-                })
+                edges.append(
+                    {
+                        "source": a["id"],
+                        "target": b["id"],
+                        "weight": 0.5,
+                        "kind": "same_asset",
+                    }
+                )
             elif ga and gb and ga == gb:
-                edges.append({
-                    "source": a["id"],
-                    "target": b["id"],
-                    "weight": 0.3,
-                    "kind": "same_group",
-                })
+                edges.append(
+                    {
+                        "source": a["id"],
+                        "target": b["id"],
+                        "weight": 0.3,
+                        "kind": "same_group",
+                    }
+                )
     return edges
 
 
@@ -186,7 +189,7 @@ def build_topology(kaizen_path: Path | None = None) -> dict[str, Any]:
     # Also pull from elite_summary if available
     summary = rep.get("elite_summary") or {}
     for key in ("top5_elite", "top5_dark"):
-        for r in (summary.get(key) or []):
+        for r in summary.get(key) or []:
             if isinstance(r, dict):
                 bot_records.append(r)
 
@@ -198,18 +201,18 @@ def build_topology(kaizen_path: Path | None = None) -> dict[str, Any]:
         if not bot_id or bot_id in seen_ids:
             continue
         seen_ids.add(bot_id)
-        nodes.append({
-            "id": bot_id,
-            "label": bot_id,
-            "tier": str(rec.get("tier", "INSUFFICIENT")).upper(),
-            "color": _node_color(rec),
-            "size": _node_size(rec),
-            "asset_class": rec.get("asset_class") or rec.get("asset") or "",
-            "score": float(rec.get("score", 0.0))
-                if _is_number(rec.get("score")) else 0.0,
-            "r_today": float(rec.get("r_today", 0.0))
-                if _is_number(rec.get("r_today")) else 0.0,
-        })
+        nodes.append(
+            {
+                "id": bot_id,
+                "label": bot_id,
+                "tier": str(rec.get("tier", "INSUFFICIENT")).upper(),
+                "color": _node_color(rec),
+                "size": _node_size(rec),
+                "asset_class": rec.get("asset_class") or rec.get("asset") or "",
+                "score": float(rec.get("score", 0.0)) if _is_number(rec.get("score")) else 0.0,
+                "r_today": float(rec.get("r_today", 0.0)) if _is_number(rec.get("r_today")) else 0.0,
+            }
+        )
 
     edges = _correlation_edges(nodes)
 

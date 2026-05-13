@@ -115,11 +115,13 @@ def test_priority_model_promotes_strict_gate_mnq_leader_within_index_futures() -
 
 
 def test_priority_model_classifies_dated_futures_contract_symbols() -> None:
-    prioritized = mod.prioritize_readiness_rows([
-        _row("mnq_contract", "MNQM6"),
-        _row("met_contract", "METK6"),
-        _row("mcl_contract", "MCLM6"),
-    ])
+    prioritized = mod.prioritize_readiness_rows(
+        [
+            _row("mnq_contract", "MNQM6"),
+            _row("met_contract", "METK6"),
+            _row("mcl_contract", "MCLM6"),
+        ]
+    )
 
     by_bot = {row.bot_id: row for row in prioritized}
     assert by_bot["mnq_contract"].priority_bucket == "equity_index_futures"

@@ -24,8 +24,13 @@ from eta_engine.strategies.feature_regime_classifier import (
 def _bar(idx: int, close: float = 100.0) -> BarData:
     ts = datetime(2026, 1, 1, tzinfo=UTC) + timedelta(hours=idx)
     return BarData(
-        timestamp=ts, symbol="BTC", open=close,
-        high=close + 1.0, low=close - 1.0, close=close, volume=1000.0,
+        timestamp=ts,
+        symbol="BTC",
+        open=close,
+        high=close + 1.0,
+        low=close - 1.0,
+        close=close,
+        volume=1000.0,
     )
 
 
@@ -46,11 +51,17 @@ def test_neutral_when_no_providers_attached() -> None:
 
 def test_funding_positive_extreme_bearish_score() -> None:
     """Funding > +threshold → bearish state (-1) for that feature."""
-    c = FeatureRegimeClassifier(FeatureRegimeConfig(
-        use_funding=True, use_etf_flow=False,
-        use_fear_greed=False, use_sage_daily=False,
-        funding_extreme=0.0005, bull_threshold=0.5, bear_threshold=0.5,
-    ))
+    c = FeatureRegimeClassifier(
+        FeatureRegimeConfig(
+            use_funding=True,
+            use_etf_flow=False,
+            use_fear_greed=False,
+            use_sage_daily=False,
+            funding_extreme=0.0005,
+            bull_threshold=0.5,
+            bear_threshold=0.5,
+        )
+    )
     c.attach_funding_provider(lambda b: 0.001)  # extreme positive
     out = c.classify(_bar(0))
     assert out.components["funding_state"] == -1.0
@@ -60,11 +71,17 @@ def test_funding_positive_extreme_bearish_score() -> None:
 
 def test_funding_negative_extreme_bullish_score() -> None:
     """Funding < -threshold → bullish state (+1)."""
-    c = FeatureRegimeClassifier(FeatureRegimeConfig(
-        use_funding=True, use_etf_flow=False,
-        use_fear_greed=False, use_sage_daily=False,
-        funding_extreme=0.0005, bull_threshold=0.5, bear_threshold=0.5,
-    ))
+    c = FeatureRegimeClassifier(
+        FeatureRegimeConfig(
+            use_funding=True,
+            use_etf_flow=False,
+            use_fear_greed=False,
+            use_sage_daily=False,
+            funding_extreme=0.0005,
+            bull_threshold=0.5,
+            bear_threshold=0.5,
+        )
+    )
     c.attach_funding_provider(lambda b: -0.001)
     out = c.classify(_bar(0))
     assert out.components["funding_state"] == +1.0
@@ -74,12 +91,18 @@ def test_funding_negative_extreme_bullish_score() -> None:
 
 def test_etf_flow_rolling_sum_threshold() -> None:
     """ETF flow rolling-window sum drives the state."""
-    c = FeatureRegimeClassifier(FeatureRegimeConfig(
-        use_funding=False, use_etf_flow=True,
-        use_fear_greed=False, use_sage_daily=False,
-        etf_flow_window_days=3, etf_flow_threshold=300.0,
-        bull_threshold=0.5, bear_threshold=0.5,
-    ))
+    c = FeatureRegimeClassifier(
+        FeatureRegimeConfig(
+            use_funding=False,
+            use_etf_flow=True,
+            use_fear_greed=False,
+            use_sage_daily=False,
+            etf_flow_window_days=3,
+            etf_flow_threshold=300.0,
+            bull_threshold=0.5,
+            bear_threshold=0.5,
+        )
+    )
     # Simulate 200M USD/day inflow for 3 days = 600M total > 300M
     flows = [200.0, 200.0, 200.0, 200.0, 200.0]
     iter_state = iter(flows)
@@ -92,8 +115,12 @@ def test_etf_flow_rolling_sum_threshold() -> None:
     for i in range(5):
         b = BarData(
             timestamp=datetime(2026, 1, 1 + i, tzinfo=UTC),
-            symbol="BTC", open=100.0, high=101.0, low=99.0,
-            close=100.0, volume=1000.0,
+            symbol="BTC",
+            open=100.0,
+            high=101.0,
+            low=99.0,
+            close=100.0,
+            volume=1000.0,
         )
         last_out = c.classify(b)
     assert last_out is not None
@@ -103,12 +130,17 @@ def test_etf_flow_rolling_sum_threshold() -> None:
 
 def test_fear_greed_extreme_fear_is_bullish() -> None:
     """Contrarian-flipped F&G: extreme fear (+0.6+) is bullish."""
-    c = FeatureRegimeClassifier(FeatureRegimeConfig(
-        use_funding=False, use_etf_flow=False,
-        use_fear_greed=True, use_sage_daily=False,
-        fear_greed_extreme=0.6,
-        bull_threshold=0.5, bear_threshold=0.5,
-    ))
+    c = FeatureRegimeClassifier(
+        FeatureRegimeConfig(
+            use_funding=False,
+            use_etf_flow=False,
+            use_fear_greed=True,
+            use_sage_daily=False,
+            fear_greed_extreme=0.6,
+            bull_threshold=0.5,
+            bear_threshold=0.5,
+        )
+    )
     c.attach_fear_greed_provider(lambda b: 0.8)  # extreme fear
     out = c.classify(_bar(0))
     assert out.components["fear_greed_state"] == +1.0
@@ -121,12 +153,17 @@ def test_sage_long_with_high_conviction_bullish() -> None:
         direction: str
         conviction: float
 
-    c = FeatureRegimeClassifier(FeatureRegimeConfig(
-        use_funding=False, use_etf_flow=False,
-        use_fear_greed=False, use_sage_daily=True,
-        sage_conviction_floor=0.30,
-        bull_threshold=0.5, bear_threshold=0.5,
-    ))
+    c = FeatureRegimeClassifier(
+        FeatureRegimeConfig(
+            use_funding=False,
+            use_etf_flow=False,
+            use_fear_greed=False,
+            use_sage_daily=True,
+            sage_conviction_floor=0.30,
+            bull_threshold=0.5,
+            bear_threshold=0.5,
+        )
+    )
     c.attach_sage_daily_provider(lambda d: V(direction="long", conviction=0.5))
     out = c.classify(_bar(0))
     assert out.components["sage_state"] == +1.0
@@ -135,17 +172,23 @@ def test_sage_long_with_high_conviction_bullish() -> None:
 
 def test_sage_low_conviction_neutral() -> None:
     """Sage's direction is ignored if conviction below floor."""
+
     @dataclass
     class V:
         direction: str
         conviction: float
 
-    c = FeatureRegimeClassifier(FeatureRegimeConfig(
-        use_funding=False, use_etf_flow=False,
-        use_fear_greed=False, use_sage_daily=True,
-        sage_conviction_floor=0.30,
-        bull_threshold=0.5, bear_threshold=0.5,
-    ))
+    c = FeatureRegimeClassifier(
+        FeatureRegimeConfig(
+            use_funding=False,
+            use_etf_flow=False,
+            use_fear_greed=False,
+            use_sage_daily=True,
+            sage_conviction_floor=0.30,
+            bull_threshold=0.5,
+            bear_threshold=0.5,
+        )
+    )
     c.attach_sage_daily_provider(lambda d: V(direction="long", conviction=0.1))
     out = c.classify(_bar(0))
     assert out.components["sage_state"] == 0.0
@@ -159,17 +202,24 @@ def test_sage_low_conviction_neutral() -> None:
 
 def test_score_normalized_by_enabled_feature_count() -> None:
     """Score is sum / n_enabled, bounded to [-1, +1]."""
+
     @dataclass
     class V:
         direction: str
         conviction: float
 
-    c = FeatureRegimeClassifier(FeatureRegimeConfig(
-        use_funding=True, use_etf_flow=False,
-        use_fear_greed=False, use_sage_daily=True,
-        funding_extreme=0.0005, sage_conviction_floor=0.3,
-        bull_threshold=0.30, bear_threshold=0.30,
-    ))
+    c = FeatureRegimeClassifier(
+        FeatureRegimeConfig(
+            use_funding=True,
+            use_etf_flow=False,
+            use_fear_greed=False,
+            use_sage_daily=True,
+            funding_extreme=0.0005,
+            sage_conviction_floor=0.3,
+            bull_threshold=0.30,
+            bear_threshold=0.30,
+        )
+    )
     c.attach_funding_provider(lambda b: -0.001)  # +1
     c.attach_sage_daily_provider(lambda d: V("long", 0.5))  # +1
     out = c.classify(_bar(0))
@@ -180,17 +230,24 @@ def test_score_normalized_by_enabled_feature_count() -> None:
 
 def test_disagreement_yields_neutral() -> None:
     """Two features disagreeing should produce a near-zero score."""
+
     @dataclass
     class V:
         direction: str
         conviction: float
 
-    c = FeatureRegimeClassifier(FeatureRegimeConfig(
-        use_funding=True, use_etf_flow=False,
-        use_fear_greed=False, use_sage_daily=True,
-        funding_extreme=0.0005, sage_conviction_floor=0.3,
-        bull_threshold=0.5, bear_threshold=0.5,
-    ))
+    c = FeatureRegimeClassifier(
+        FeatureRegimeConfig(
+            use_funding=True,
+            use_etf_flow=False,
+            use_fear_greed=False,
+            use_sage_daily=True,
+            funding_extreme=0.0005,
+            sage_conviction_floor=0.3,
+            bull_threshold=0.5,
+            bear_threshold=0.5,
+        )
+    )
     c.attach_funding_provider(lambda b: -0.001)  # +1 (capitulated shorts)
     c.attach_sage_daily_provider(lambda d: V("short", 0.5))  # -1
     out = c.classify(_bar(0))
@@ -216,10 +273,14 @@ def test_regime_distribution_audit() -> None:
 def test_provider_adapter_returns_classification_objects() -> None:
     """``make_feature_regime_provider`` should produce a callable
     that takes a date and returns an HtfRegimeClassification."""
-    c = FeatureRegimeClassifier(FeatureRegimeConfig(
-        use_funding=False, use_etf_flow=False,
-        use_fear_greed=False, use_sage_daily=False,
-    ))
+    c = FeatureRegimeClassifier(
+        FeatureRegimeConfig(
+            use_funding=False,
+            use_etf_flow=False,
+            use_fear_greed=False,
+            use_sage_daily=False,
+        )
+    )
     daily_bars = [_bar(i * 24, close=100.0 + i) for i in range(5)]
     provider = make_feature_regime_provider(c, daily_bars)
     out = provider(daily_bars[2].timestamp.date())

@@ -59,9 +59,7 @@ ETA_CLOSED_TRADE_LEDGER_PATH = ETA_RUNTIME_STATE_DIR / "closed_trade_ledger_late
 ETA_BROKER_BRACKET_AUDIT_PATH = ETA_RUNTIME_STATE_DIR / "broker_bracket_audit_latest.json"
 ETA_BROKER_BRACKET_MANUAL_ACK_PATH = ETA_RUNTIME_STATE_DIR / "broker_bracket_manual_oco_ack.json"
 ETA_PROP_OPERATOR_CHECKLIST_PATH = ETA_RUNTIME_STATE_DIR / "prop_operator_checklist_latest.json"
-ETA_PROP_STRATEGY_PROMOTION_AUDIT_PATH = (
-    ETA_RUNTIME_STATE_DIR / "prop_strategy_promotion_audit_latest.json"
-)
+ETA_PROP_STRATEGY_PROMOTION_AUDIT_PATH = ETA_RUNTIME_STATE_DIR / "prop_strategy_promotion_audit_latest.json"
 ETA_VPS_OPS_HARDENING_AUDIT_PATH = ETA_RUNTIME_STATE_DIR / "vps_ops_hardening_latest.json"
 ETA_DRIFT_WATCHDOG_LOG_PATH = ETA_RUNTIME_STATE_DIR / "drift_watchdog.jsonl"
 ETA_JARVIS_DRIFT_JOURNAL_PATH = ETA_RUNTIME_STATE_DIR / "jarvis_drift.jsonl"
@@ -93,19 +91,11 @@ ETA_LEGACY_FM_HEALTH_SNAPSHOT_PATH = ETA_ENGINE_ROOT / "state" / "fm_health.json
 # in-repo path is kept as a read fallback so existing logs remain
 # inspectable until the next session rolls a fresh log.
 ETA_JARVIS_VERDICTS_PATH = ETA_RUNTIME_STATE_DIR / "jarvis_intel" / "verdicts.jsonl"
-ETA_LEGACY_JARVIS_VERDICTS_PATH = (
-    ETA_ENGINE_ROOT / "state" / "jarvis_intel" / "verdicts.jsonl"
-)
-ETA_LEGACY_JARVIS_TRADE_CLOSES_PATH = (
-    ETA_ENGINE_ROOT / "state" / "jarvis_intel" / "trade_closes.jsonl"
-)
+ETA_LEGACY_JARVIS_VERDICTS_PATH = ETA_ENGINE_ROOT / "state" / "jarvis_intel" / "verdicts.jsonl"
+ETA_LEGACY_JARVIS_TRADE_CLOSES_PATH = ETA_ENGINE_ROOT / "state" / "jarvis_intel" / "trade_closes.jsonl"
 # Eval results: promptfoo writes a single JSON aggregate per run.
-ETA_EVAL_PROMPTFOO_RESULTS_PATH = (
-    ETA_RUNTIME_STATE_DIR / "eval" / "promptfoo_results.json"
-)
-ETA_LEGACY_EVAL_PROMPTFOO_RESULTS_PATH = (
-    ETA_ENGINE_ROOT / "state" / "eval" / "promptfoo_results.json"
-)
+ETA_EVAL_PROMPTFOO_RESULTS_PATH = ETA_RUNTIME_STATE_DIR / "eval" / "promptfoo_results.json"
+ETA_LEGACY_EVAL_PROMPTFOO_RESULTS_PATH = ETA_ENGINE_ROOT / "state" / "eval" / "promptfoo_results.json"
 # Hermes-bridge `/kill confirm` latch: the consolidated single canonical
 # write target. The bridge previously fanned out to three paths; the
 # canonical/legacy split below replaces the multi-target latch.

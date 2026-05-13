@@ -51,6 +51,7 @@ When there's no real fill data yet, the script reports
 ``NO_FILLS_YET`` and exits 0 — same no-op pattern as the other L2
 tools pre-data.
 """
+
 from __future__ import annotations
 
 # ruff: noqa: PLR2004
@@ -75,16 +76,17 @@ FILL_AUDIT_LOG = LOG_DIR / "l2_fill_audit.jsonl"
 @dataclass
 class FillSlipObservation:
     """One matched fill — what we predicted vs what we got."""
+
     signal_id: str
     symbol: str
-    exit_reason: str           # "STOP" | "TARGET" | "TIMEOUT"
-    side: str                  # "LONG" | "SHORT"
-    intended_price: float      # what the harness predicted
-    actual_fill_price: float   # what the broker reported
-    slip_price: float          # signed: positive = adverse for this trade
-    slip_ticks: float          # slip / tick_size
-    session_bucket: str        # "RTH_OPEN" | "RTH_MID" | "RTH_CLOSE" | "ETH"
-    ts: str                    # iso8601 of fill
+    exit_reason: str  # "STOP" | "TARGET" | "TIMEOUT"
+    side: str  # "LONG" | "SHORT"
+    intended_price: float  # what the harness predicted
+    actual_fill_price: float  # what the broker reported
+    slip_price: float  # signed: positive = adverse for this trade
+    slip_ticks: float  # slip / tick_size
+    session_bucket: str  # "RTH_OPEN" | "RTH_MID" | "RTH_CLOSE" | "ETH"
+    ts: str  # iso8601 of fill
 
 
 @dataclass
@@ -145,10 +147,10 @@ def _session_bucket(dt: datetime) -> str:
     h = dt.hour
     m = dt.minute
     minutes_utc = h * 60 + m
-    rth_open = 13 * 60 + 30   # 13:30 UTC
-    rth_close = 20 * 60        # 20:00 UTC
-    open_buffer = 30           # first 30 min = OPEN
-    close_buffer = 30          # last 30 min = CLOSE
+    rth_open = 13 * 60 + 30  # 13:30 UTC
+    rth_close = 20 * 60  # 20:00 UTC
+    open_buffer = 30  # first 30 min = OPEN
+    close_buffer = 30  # last 30 min = CLOSE
     if rth_open <= minutes_utc < rth_open + open_buffer:
         return "RTH_OPEN"
     if rth_close - close_buffer <= minutes_utc < rth_close:
@@ -158,8 +160,7 @@ def _session_bucket(dt: datetime) -> str:
     return "ETH"
 
 
-def _signed_slip_ticks(intended: float, actual: float, side: str,
-                       exit_reason: str, tick_size: float) -> float:
+def _signed_slip_ticks(intended: float, actual: float, side: str, exit_reason: str, tick_size: float) -> float:
     """Compute adverse-direction slip in ticks.
 
     Positive = WORSE than expected.
@@ -174,8 +175,9 @@ def _signed_slip_ticks(intended: float, actual: float, side: str,
     return slip_price / max(tick_size, 1e-9)
 
 
-def _match_signals_to_fills(signals: list[dict], fills: list[dict],
-                             *, tick_size: float = 0.25) -> list[FillSlipObservation]:
+def _match_signals_to_fills(
+    signals: list[dict], fills: list[dict], *, tick_size: float = 0.25
+) -> list[FillSlipObservation]:
     """Pair signals with fills by signal_id.  Return list of slip obs.
 
     Fill record schema (expected):
@@ -204,38 +206,39 @@ def _match_signals_to_fills(signals: list[dict], fills: list[dict],
         actual = fill.get("actual_fill_price")
         if intended is None or actual is None:
             continue
-        slip_ticks = _signed_slip_ticks(float(intended), float(actual),
-                                          side, exit_reason, tick_size)
+        slip_ticks = _signed_slip_ticks(float(intended), float(actual), side, exit_reason, tick_size)
         ts_iso = fill.get("ts") or fill.get("timestamp_utc")
         try:
             dt = datetime.fromisoformat(str(ts_iso).replace("Z", "+00:00"))
         except ValueError:
             continue
         bucket = _session_bucket(dt)
-        obs.append(FillSlipObservation(
-            signal_id=sid,
-            symbol=sig.get("symbol", "?"),
-            exit_reason=exit_reason,
-            side=side,
-            intended_price=float(intended),
-            actual_fill_price=float(actual),
-            slip_price=float(actual) - float(intended),
-            slip_ticks=round(slip_ticks, 2),
-            session_bucket=bucket,
-            ts=str(ts_iso),
-        ))
+        obs.append(
+            FillSlipObservation(
+                signal_id=sid,
+                symbol=sig.get("symbol", "?"),
+                exit_reason=exit_reason,
+                side=side,
+                intended_price=float(intended),
+                actual_fill_price=float(actual),
+                slip_price=float(actual) - float(intended),
+                slip_ticks=round(slip_ticks, 2),
+                session_bucket=bucket,
+                ts=str(ts_iso),
+            )
+        )
     return obs
 
 
-def _bucket_report(observations: list[FillSlipObservation],
-                     session: str,
-                     *, predicted_slip_ticks: float = 1.0) -> BucketReport:
+def _bucket_report(
+    observations: list[FillSlipObservation], session: str, *, predicted_slip_ticks: float = 1.0
+) -> BucketReport:
     bucket_obs = [o for o in observations if o.session_bucket == session]
     n = len(bucket_obs)
     if n < 5:
-        return BucketReport(session=session, n_fills=n,
-                             predicted_slip_ticks=predicted_slip_ticks,
-                             realism_verdict="INSUFFICIENT")
+        return BucketReport(
+            session=session, n_fills=n, predicted_slip_ticks=predicted_slip_ticks, realism_verdict="INSUFFICIENT"
+        )
     slips = [o.slip_ticks for o in bucket_obs]
     slips_sorted = sorted(slips)
     p50 = slips_sorted[len(slips) // 2]
@@ -251,7 +254,8 @@ def _bucket_report(observations: list[FillSlipObservation],
     else:
         verdict = "MARGINAL"
     return BucketReport(
-        session=session, n_fills=n,
+        session=session,
+        n_fills=n,
         p50_slip_ticks=round(p50, 2),
         p90_slip_ticks=round(p90, 2),
         p99_slip_ticks=round(p99, 2),
@@ -261,9 +265,7 @@ def _bucket_report(observations: list[FillSlipObservation],
     )
 
 
-def run_audit(*, since_days: int = 30,
-               tick_size: float = 0.25,
-               predicted_slip_ticks: float = 1.0) -> FillAuditReport:
+def run_audit(*, since_days: int = 30, tick_size: float = 0.25, predicted_slip_ticks: float = 1.0) -> FillAuditReport:
     signals = _read_jsonl(SIGNAL_LOG, since_days=since_days)
     fills = _read_jsonl(BROKER_FILL_LOG, since_days=since_days)
     observations = _match_signals_to_fills(signals, fills, tick_size=tick_size)
@@ -272,16 +274,16 @@ def run_audit(*, since_days: int = 30,
         return FillAuditReport(
             n_observations=0,
             overall_verdict="NO_FILLS_YET",
-            warnings=["No matched signal/fill pairs.  Start paper-soak; "
-                       "ensure broker_fills.jsonl and l2_signal_log.jsonl "
-                       "are being written."],
+            warnings=[
+                "No matched signal/fill pairs.  Start paper-soak; "
+                "ensure broker_fills.jsonl and l2_signal_log.jsonl "
+                "are being written."
+            ],
         )
 
     bucket_reports = []
     for session in ("RTH_OPEN", "RTH_MID", "RTH_CLOSE", "ETH"):
-        bucket_reports.append(_bucket_report(
-            observations, session,
-            predicted_slip_ticks=predicted_slip_ticks))
+        bucket_reports.append(_bucket_report(observations, session, predicted_slip_ticks=predicted_slip_ticks))
 
     # Overall: PASS only if no bucket FAILS and at least one bucket has
     # an honest PASS (not just INSUFFICIENT across the board)
@@ -296,9 +298,7 @@ def run_audit(*, since_days: int = 30,
 
     warnings: list[str] = []
     if len(observations) < 30:
-        warnings.append(
-            f"Only {len(observations)} matched fills — "
-            "audit verdict is statistically weak below n=30.")
+        warnings.append(f"Only {len(observations)} matched fills — audit verdict is statistically weak below n=30.")
 
     return FillAuditReport(
         n_observations=len(observations),
@@ -312,8 +312,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--days", type=int, default=30)
     ap.add_argument("--tick-size", type=float, default=0.25)
-    ap.add_argument("--predicted-slip-ticks", type=float, default=1.0,
-                    help="Harness predicted slip (default 1.0 tick)")
+    ap.add_argument("--predicted-slip-ticks", type=float, default=1.0, help="Harness predicted slip (default 1.0 tick)")
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
 
@@ -330,10 +329,15 @@ def main() -> int:
                 "ts": datetime.now(UTC).isoformat(),
                 "n_observations": report.n_observations,
                 "overall_verdict": report.overall_verdict,
-                "buckets": [{"session": b.session, "n_fills": b.n_fills,
-                              "p90_slip_ticks": b.p90_slip_ticks,
-                              "realism_verdict": b.realism_verdict}
-                             for b in report.buckets],
+                "buckets": [
+                    {
+                        "session": b.session,
+                        "n_fills": b.n_fills,
+                        "p90_slip_ticks": b.p90_slip_ticks,
+                        "realism_verdict": b.realism_verdict,
+                    }
+                    for b in report.buckets
+                ],
             }
             f.write(json.dumps(digest, separators=(",", ":")) + "\n")
     except OSError as e:
@@ -343,14 +347,19 @@ def main() -> int:
         out = {
             "n_observations": report.n_observations,
             "overall_verdict": report.overall_verdict,
-            "buckets": [{"session": b.session, "n_fills": b.n_fills,
-                         "p50_slip_ticks": b.p50_slip_ticks,
-                         "p90_slip_ticks": b.p90_slip_ticks,
-                         "p99_slip_ticks": b.p99_slip_ticks,
-                         "max_slip_ticks": b.max_slip_ticks,
-                         "predicted_slip_ticks": b.predicted_slip_ticks,
-                         "realism_verdict": b.realism_verdict}
-                        for b in report.buckets],
+            "buckets": [
+                {
+                    "session": b.session,
+                    "n_fills": b.n_fills,
+                    "p50_slip_ticks": b.p50_slip_ticks,
+                    "p90_slip_ticks": b.p90_slip_ticks,
+                    "p99_slip_ticks": b.p99_slip_ticks,
+                    "max_slip_ticks": b.max_slip_ticks,
+                    "predicted_slip_ticks": b.predicted_slip_ticks,
+                    "realism_verdict": b.realism_verdict,
+                }
+                for b in report.buckets
+            ],
             "warnings": report.warnings,
         }
         print(json.dumps(out, indent=2))
@@ -365,17 +374,20 @@ def main() -> int:
     print(f"  n_observations  : {report.n_observations}")
     print(f"  overall verdict : {report.overall_verdict}")
     print()
-    print(f"  {'Session':<12s} {'n':<6s} {'p50':<8s} {'p90':<8s} {'p99':<8s} "
-          f"{'max':<8s} {'predicted':<10s} verdict")
-    print(f"  {'-'*12:<12s} {'-'*6:<6s} {'-'*8:<8s} {'-'*8:<8s} {'-'*8:<8s} "
-          f"{'-'*8:<8s} {'-'*10:<10s} {'-'*8}")
+    print(f"  {'Session':<12s} {'n':<6s} {'p50':<8s} {'p90':<8s} {'p99':<8s} {'max':<8s} {'predicted':<10s} verdict")
+    print(
+        f"  {'-' * 12:<12s} {'-' * 6:<6s} {'-' * 8:<8s} {'-' * 8:<8s} {'-' * 8:<8s} "
+        f"{'-' * 8:<8s} {'-' * 10:<10s} {'-' * 8}"
+    )
     for b in report.buckets:
         p50 = f"{b.p50_slip_ticks}" if b.p50_slip_ticks is not None else "n/a"
         p90 = f"{b.p90_slip_ticks}" if b.p90_slip_ticks is not None else "n/a"
         p99 = f"{b.p99_slip_ticks}" if b.p99_slip_ticks is not None else "n/a"
         mx = f"{b.max_slip_ticks}" if b.max_slip_ticks is not None else "n/a"
-        print(f"  {b.session:<12s} {b.n_fills:<6d} {p50:<8s} {p90:<8s} {p99:<8s} "
-              f"{mx:<8s} {b.predicted_slip_ticks:<10.1f} {b.realism_verdict}")
+        print(
+            f"  {b.session:<12s} {b.n_fills:<6d} {p50:<8s} {p90:<8s} {p99:<8s} "
+            f"{mx:<8s} {b.predicted_slip_ticks:<10.1f} {b.realism_verdict}"
+        )
     print()
     if report.warnings:
         print("  WARNINGS:")

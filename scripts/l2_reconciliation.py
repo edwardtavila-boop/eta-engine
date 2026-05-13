@@ -51,6 +51,7 @@ Run
 
     python -m eta_engine.scripts.l2_reconciliation
 """
+
 from __future__ import annotations
 
 # ruff: noqa: PLR2004
@@ -74,7 +75,7 @@ RECONCILIATION_LOG = LOG_DIR / "l2_reconciliation.jsonl"
 class PositionRecord:
     bot_id: str
     symbol: str
-    side: str          # "LONG" | "SHORT"
+    side: str  # "LONG" | "SHORT"
     qty: int
 
 
@@ -85,7 +86,7 @@ class Discrepancy:
     side: str
     supervisor_qty: int
     broker_qty: int
-    verdict: str       # IN_SYNC | GHOST_POSITION | PHANTOM_BELIEF | QTY_MISMATCH
+    verdict: str  # IN_SYNC | GHOST_POSITION | PHANTOM_BELIEF | QTY_MISMATCH
     notes: list[str] = field(default_factory=list)
 
 
@@ -116,12 +117,14 @@ def load_supervisor_positions(*, _path: Path | None = None) -> list[PositionReco
         out: list[PositionRecord] = []
         for rec in data:
             try:
-                out.append(PositionRecord(
-                    bot_id=str(rec.get("bot_id", "?")),
-                    symbol=str(rec.get("symbol", "?")),
-                    side=str(rec.get("side", "?")).upper(),
-                    qty=int(rec.get("qty", 0)),
-                ))
+                out.append(
+                    PositionRecord(
+                        bot_id=str(rec.get("bot_id", "?")),
+                        symbol=str(rec.get("symbol", "?")),
+                        side=str(rec.get("side", "?")).upper(),
+                        qty=int(rec.get("qty", 0)),
+                    )
+                )
             except (TypeError, ValueError):
                 continue
         return out
@@ -129,8 +132,7 @@ def load_supervisor_positions(*, _path: Path | None = None) -> list[PositionReco
         return []
 
 
-def reconstruct_broker_positions(*, _path: Path | None = None,
-                                    since_days: int = 14) -> list[PositionRecord]:
+def reconstruct_broker_positions(*, _path: Path | None = None, since_days: int = 14) -> list[PositionRecord]:
     """Walk broker_fills.jsonl and reconstruct net positions per
     (signal_id, symbol).  Entry fills add; exit fills subtract.
     Returns the list of open positions (net qty > 0)."""
@@ -164,10 +166,16 @@ def reconstruct_broker_positions(*, _path: Path | None = None,
                 exit_reason = str(rec.get("exit_reason", "")).upper()
                 qty = int(rec.get("qty_filled", 0))
                 side = str(rec.get("side", "?")).upper()
-                entry = by_sig.setdefault(sid, {
-                    "side": side, "entered": 0, "exited": 0,
-                    "symbol": None, "bot_id": None,
-                })
+                entry = by_sig.setdefault(
+                    sid,
+                    {
+                        "side": side,
+                        "entered": 0,
+                        "exited": 0,
+                        "symbol": None,
+                        "bot_id": None,
+                    },
+                )
                 if exit_reason == "ENTRY":
                     entry["entered"] += qty
                     entry["symbol"] = rec.get("symbol") or entry["symbol"]
@@ -187,15 +195,18 @@ def reconstruct_broker_positions(*, _path: Path | None = None,
                 parts = sid.split("-")
                 symbol = parts[0] if parts else "?"
             bot_id = entry["bot_id"] or "?"
-            open_positions.append(PositionRecord(
-                bot_id=bot_id, symbol=symbol,
-                side=entry["side"], qty=net,
-            ))
+            open_positions.append(
+                PositionRecord(
+                    bot_id=bot_id,
+                    symbol=symbol,
+                    side=entry["side"],
+                    qty=net,
+                )
+            )
     return open_positions
 
 
-def reconcile(*, _supervisor_path: Path | None = None,
-                _broker_path: Path | None = None) -> ReconciliationReport:
+def reconcile(*, _supervisor_path: Path | None = None, _broker_path: Path | None = None) -> ReconciliationReport:
     """Compare supervisor belief vs broker truth.  Returns discrepancies."""
     supervisor_pos = load_supervisor_positions(_path=_supervisor_path)
     broker_pos = reconstruct_broker_positions(_path=_broker_path)
@@ -226,11 +237,16 @@ def reconcile(*, _supervisor_path: Path | None = None,
             verdict = "PHANTOM_BELIEF"
         else:
             verdict = "QTY_MISMATCH"
-        discrepancies.append(Discrepancy(
-            bot_id=bot_id, symbol=symbol, side=side,
-            supervisor_qty=sup_q, broker_qty=brk_q,
-            verdict=verdict,
-        ))
+        discrepancies.append(
+            Discrepancy(
+                bot_id=bot_id,
+                symbol=symbol,
+                side=side,
+                supervisor_qty=sup_q,
+                broker_qty=brk_q,
+                verdict=verdict,
+            )
+        )
 
     return ReconciliationReport(
         n_supervisor_positions=sum(sup_idx.values()),
@@ -249,9 +265,7 @@ def main() -> int:
     report = reconcile()
     try:
         with RECONCILIATION_LOG.open("a", encoding="utf-8") as f:
-            f.write(json.dumps({"ts": datetime.now(UTC).isoformat(),
-                                 **asdict(report)},
-                                separators=(",", ":")) + "\n")
+            f.write(json.dumps({"ts": datetime.now(UTC).isoformat(), **asdict(report)}, separators=(",", ":")) + "\n")
     except OSError as e:
         print(f"WARN: reconciliation log write failed: {e}", file=sys.stderr)
 
@@ -270,10 +284,11 @@ def main() -> int:
     if report.discrepancies:
         print()
         print(f"  {'Bot':<25s} {'Symbol':<8s} {'Side':<6s} {'Sup':<5s} {'Brk':<5s} Verdict")
-        print(f"  {'-'*25:<25s} {'-'*8:<8s} {'-'*6:<6s} {'-'*5:<5s} {'-'*5:<5s} {'-'*20}")
+        print(f"  {'-' * 25:<25s} {'-' * 8:<8s} {'-' * 6:<6s} {'-' * 5:<5s} {'-' * 5:<5s} {'-' * 20}")
         for d in report.discrepancies:
-            print(f"  {d.bot_id:<25s} {d.symbol:<8s} {d.side:<6s} "
-                  f"{d.supervisor_qty:<5d} {d.broker_qty:<5d} {d.verdict}")
+            print(
+                f"  {d.bot_id:<25s} {d.symbol:<8s} {d.side:<6s} {d.supervisor_qty:<5d} {d.broker_qty:<5d} {d.verdict}"
+            )
     print()
     return 1 if report.n_discrepancies > 0 else 0
 

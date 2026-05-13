@@ -101,9 +101,12 @@ def assess_bot_sharpe(
     n = len(trades)
     if n < min_trades:
         return SharpeGateAssessment(
-            bot_id=bot_id, strategy_id=strategy_id,
-            severity="green", n_trades=n,
-            sharpe=0.0, threshold=threshold,
+            bot_id=bot_id,
+            strategy_id=strategy_id,
+            severity="green",
+            n_trades=n,
+            sharpe=0.0,
+            threshold=threshold,
             recommended_action="continue",
             reasons=[f"insufficient sample: {n} < {min_trades} trades"],
         )
@@ -113,9 +116,12 @@ def assess_bot_sharpe(
 
     if sharpe < threshold:
         return SharpeGateAssessment(
-            bot_id=bot_id, strategy_id=strategy_id,
-            severity="red", n_trades=n,
-            sharpe=sharpe, threshold=threshold,
+            bot_id=bot_id,
+            strategy_id=strategy_id,
+            severity="red",
+            n_trades=n,
+            sharpe=sharpe,
+            threshold=threshold,
             recommended_action="demote",
             reasons=[
                 f"realized Sharpe {sharpe:+.2f} below kill threshold "
@@ -125,9 +131,12 @@ def assess_bot_sharpe(
         )
     if sharpe < threshold + review_band:
         return SharpeGateAssessment(
-            bot_id=bot_id, strategy_id=strategy_id,
-            severity="amber", n_trades=n,
-            sharpe=sharpe, threshold=threshold,
+            bot_id=bot_id,
+            strategy_id=strategy_id,
+            severity="amber",
+            n_trades=n,
+            sharpe=sharpe,
+            threshold=threshold,
             recommended_action="review",
             reasons=[
                 f"realized Sharpe {sharpe:+.2f} in review band "
@@ -136,14 +145,14 @@ def assess_bot_sharpe(
             ],
         )
     return SharpeGateAssessment(
-        bot_id=bot_id, strategy_id=strategy_id,
-        severity="green", n_trades=n,
-        sharpe=sharpe, threshold=threshold,
+        bot_id=bot_id,
+        strategy_id=strategy_id,
+        severity="green",
+        n_trades=n,
+        sharpe=sharpe,
+        threshold=threshold,
         recommended_action="continue",
-        reasons=[
-            f"realized Sharpe {sharpe:+.2f} >= "
-            f"{threshold + review_band:+.2f} over {n} trades"
-        ],
+        reasons=[f"realized Sharpe {sharpe:+.2f} >= {threshold + review_band:+.2f} over {n} trades"],
     )
 
 
@@ -182,10 +191,7 @@ def run_once(
         )
         out.append(assessment)
         if write_event:
-            outcome = (
-                Outcome.NOTED if assessment.severity == "green"
-                else Outcome.BLOCKED
-            )
+            outcome = Outcome.NOTED if assessment.severity == "green" else Outcome.BLOCKED
             rationale = "; ".join(assessment.reasons) or "no flag"
             journal.append(
                 JournalEvent(

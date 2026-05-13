@@ -20,6 +20,7 @@ auto-activate ONLY when qiskit / pennylane / dwave-ocean-sdk are
 importable; otherwise the adapter falls back transparently to the
 classical QUBO solver.
 """
+
 from eta_engine.brain.jarvis_v3.quantum.cloud_adapter import (
     QuantumBackend,
     QuantumCloudAdapter,

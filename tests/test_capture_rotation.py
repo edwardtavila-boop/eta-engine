@@ -1,4 +1,5 @@
 """Tests for capture_rotation — verify hot/cold lifecycle + apply gate."""
+
 from __future__ import annotations
 
 import gzip
@@ -67,8 +68,7 @@ def test_process_kind_dryrun_does_not_mutate(isolated_dirs: dict) -> None:
     today = date(2026, 5, 11)
     old = today - timedelta(days=20)
     p = _make_capture(isolated_dirs["ticks"], "MNQ", old)
-    out = cr._process_kind(isolated_dirs["ticks"], "ticks", today,
-                            keep_days=14, cold_days=90, apply=False)
+    out = cr._process_kind(isolated_dirs["ticks"], "ticks", today, keep_days=14, cold_days=90, apply=False)
     assert p.exists()  # untouched
     assert out["n_compressed"] == 0
     assert out["actions"][0]["outcome"] == "would-compress"
@@ -81,8 +81,7 @@ def test_process_kind_apply_compresses_old(isolated_dirs: dict) -> None:
     today = date(2026, 5, 11)
     old = today - timedelta(days=20)
     p = _make_capture(isolated_dirs["ticks"], "MNQ", old, content=b"y" * 100_000)
-    out = cr._process_kind(isolated_dirs["ticks"], "ticks", today,
-                            keep_days=14, cold_days=90, apply=True)
+    out = cr._process_kind(isolated_dirs["ticks"], "ticks", today, keep_days=14, cold_days=90, apply=True)
     assert not p.exists()  # source deleted
     gz = p.with_suffix(p.suffix + ".gz")
     assert gz.exists()  # compressed sibling
@@ -96,8 +95,7 @@ def test_process_kind_apply_keeps_recent(isolated_dirs: dict) -> None:
     today = date(2026, 5, 11)
     recent = today - timedelta(days=5)
     p = _make_capture(isolated_dirs["ticks"], "MNQ", recent)
-    out = cr._process_kind(isolated_dirs["ticks"], "ticks", today,
-                            keep_days=14, cold_days=90, apply=True)
+    out = cr._process_kind(isolated_dirs["ticks"], "ticks", today, keep_days=14, cold_days=90, apply=True)
     assert p.exists()  # within hot window
     assert out["n_compressed"] == 0
     assert out["actions"][0]["outcome"] == "kept-hot"
@@ -109,8 +107,7 @@ def test_process_kind_apply_cold_archives_old_gz(isolated_dirs: dict) -> None:
     raw = _make_capture(isolated_dirs["depth"], "MNQ", very_old)
     gz = cr._gzip_in_place(raw)
     raw.unlink()
-    out = cr._process_kind(isolated_dirs["depth"], "depth", today,
-                            keep_days=14, cold_days=90, apply=True)
+    out = cr._process_kind(isolated_dirs["depth"], "depth", today, keep_days=14, cold_days=90, apply=True)
     assert not gz.exists()
     assert (isolated_dirs["depth"] / "cold" / "2026" / "01" / gz.name).exists()
     assert out["n_cold_archived"] == 1
@@ -120,8 +117,7 @@ def test_process_kind_apply_cold_archives_old_gz(isolated_dirs: dict) -> None:
 
 
 def test_process_kind_missing_dir(tmp_path: Path) -> None:
-    out = cr._process_kind(tmp_path / "nope", "ticks", date(2026, 5, 11),
-                            keep_days=14, cold_days=90, apply=True)
+    out = cr._process_kind(tmp_path / "nope", "ticks", date(2026, 5, 11), keep_days=14, cold_days=90, apply=True)
     assert out["n_compressed"] == 0
     assert out["note"] == "dir missing"
 

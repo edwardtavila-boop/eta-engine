@@ -22,6 +22,7 @@ single object to log into the journal.
 This is the user-visible "supercharged JARVIS" entry point.
 Everything before this was building blocks; this is the assembly.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -78,8 +79,8 @@ class DecisionPacket:
     proposal_id: str
     direction: str
     final_action: str
-    final_size_multiplier: float                # e.g. 1.0, 0.5, 0.25, 0.0
-    confidence: float                           # in [0, 1]
+    final_size_multiplier: float  # e.g. 1.0, 0.5, 0.25, 0.0
+    confidence: float  # in [0, 1]
     policy_authority: str = POLICY_AUTHORITY
     decision_seed: int | None = None
 
@@ -127,8 +128,7 @@ class DecisionPacket:
                 "world_model": {
                     "best_action": self.world_model_best_action,
                     "expected_r": self.world_model_expected_r,
-                    "pct_paths_profitable":
-                        self.world_model_pct_paths_profitable,
+                    "pct_paths_profitable": self.world_model_pct_paths_profitable,
                 },
                 "firm_board": {
                     "consensus": self.firm_board_consensus,
@@ -209,17 +209,22 @@ class JarvisOrchestrator:
 
         # 2. Causal evidence
         causal_score, causal_reason = self._consult_causal(
-            proposal, causal_feature_history, layer_errors,
+            proposal,
+            causal_feature_history,
+            layer_errors,
         )
 
         # 3. World-model action ranking
         wm_best_action, wm_expected_r, wm_pct_profit = self._consult_world_model(
-            proposal, layer_errors,
+            proposal,
+            layer_errors,
         )
 
         # 4. Firm-board debate
         verdict = self._consult_firm_board(
-            proposal, layer_errors, decision_seed=decision_seed,
+            proposal,
+            layer_errors,
+            decision_seed=decision_seed,
         )
 
         # 5. Quantum (optional, daily-rebalance only)
@@ -247,17 +252,13 @@ class JarvisOrchestrator:
                 rag_boosts=list(rag_ctx.boosts) if rag_ctx else [],
                 causal_score=causal_score,
                 causal_reason=causal_reason
-                or f"causal score {causal_score:+.2f} < veto threshold "
-                   f"{self.causal_threshold:+.2f}",
+                or f"causal score {causal_score:+.2f} < veto threshold {self.causal_threshold:+.2f}",
                 world_model_best_action=wm_best_action,
                 world_model_expected_r=wm_expected_r,
                 world_model_pct_paths_profitable=wm_pct_profit,
-                firm_board_consensus=(
-                    verdict.round_3_consensus if verdict else 0.0
-                ),
+                firm_board_consensus=(verdict.round_3_consensus if verdict else 0.0),
                 firm_board_devils_advocate=(
-                    verdict.devils_advocate_role.value
-                    if verdict and verdict.devils_advocate_role else None
+                    verdict.devils_advocate_role.value if verdict and verdict.devils_advocate_role else None
                 ),
                 quantum_used=bool(quantum_summary),
                 quantum_contribution_summary=quantum_summary,
@@ -295,12 +296,9 @@ class JarvisOrchestrator:
             world_model_best_action=wm_best_action,
             world_model_expected_r=wm_expected_r,
             world_model_pct_paths_profitable=wm_pct_profit,
-            firm_board_consensus=(
-                verdict.round_3_consensus if verdict else 0.0
-            ),
+            firm_board_consensus=(verdict.round_3_consensus if verdict else 0.0),
             firm_board_devils_advocate=(
-                verdict.devils_advocate_role.value
-                if verdict and verdict.devils_advocate_role else None
+                verdict.devils_advocate_role.value if verdict and verdict.devils_advocate_role else None
             ),
             quantum_used=bool(quantum_summary),
             quantum_contribution_summary=quantum_summary,
@@ -320,6 +318,7 @@ class JarvisOrchestrator:
             from eta_engine.brain.jarvis_v3.memory_rag import (
                 rag_enrich_decision_context,
             )
+
             return rag_enrich_decision_context(
                 current_narrative=current_narrative,
                 regime=proposal.regime,
@@ -343,6 +342,7 @@ class JarvisOrchestrator:
             from eta_engine.brain.jarvis_v3.causal_layer import (
                 score_causal_support,
             )
+
             ev = score_causal_support(
                 signal_features={
                     "sentiment": proposal.sentiment,
@@ -374,6 +374,7 @@ class JarvisOrchestrator:
                 ActionConditionedTable,
                 rank_actions,
             )
+
             s = encode_state(
                 regime=proposal.regime,
                 session=proposal.session,
@@ -383,16 +384,18 @@ class JarvisOrchestrator:
             table = ActionConditionedTable()
             table.fit_from_episodes(self.memory._episodes)
             ranking: ActionRanking | None = rank_actions(
-                state=s, table=table, n_rollouts=10, horizon=4,
+                state=s,
+                table=table,
+                n_rollouts=10,
+                horizon=4,
             )
             best_action = ranking.best_action() or "approve_full"
-            best_value = (
-                ranking.ranked[0][1].expected_return
-                if ranking.ranked else 0.0
-            )
+            best_value = ranking.ranked[0][1].expected_return if ranking.ranked else 0.0
             # Lean dream rollouts for pct_paths_profitable
             dream_report = dream(
-                current_state=s, n_paths=20, horizon=4,
+                current_state=s,
+                n_paths=20,
+                horizon=4,
                 memory=self.memory,
             )
             return best_action, best_value, dream_report.pct_paths_profitable
@@ -412,17 +415,20 @@ class JarvisOrchestrator:
                 from eta_engine.brain.jarvis_v3.firm_board_debate import (
                     deliberate_iterative,
                 )
+
                 return deliberate_iterative(
                     proposal=proposal,
                     memory=self.memory,
                     seed=decision_seed,
                 )
             from eta_engine.brain.jarvis_v3.firm_board import deliberate
+
             single_pass = deliberate(proposal=proposal, memory=self.memory)
             # Wrap in iterative-shape adapter
             from eta_engine.brain.jarvis_v3.firm_board_debate import (
                 IterativeVerdict,
             )
+
             return IterativeVerdict(
                 ts=single_pass.ts,
                 proposal_id=single_pass.proposal_id,
@@ -449,6 +455,7 @@ class JarvisOrchestrator:
                 QuantumOptimizerAgent,
                 SignalScore,
             )
+
             agent = QuantumOptimizerAgent()
             # Toy basket: just demonstrates the call. Real usage feeds
             # from candidate-signal pool.
@@ -465,7 +472,9 @@ class JarvisOrchestrator:
                 ),
             ]
             rec = agent.select_signal_basket(
-                candidates=cands, max_picks=1, use_qubo=False,
+                candidates=cands,
+                max_picks=1,
+                use_qubo=False,
             )
             return rec.contribution_summary
         except Exception as exc:  # noqa: BLE001

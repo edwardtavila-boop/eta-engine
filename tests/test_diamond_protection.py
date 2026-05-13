@@ -60,11 +60,11 @@ EXPECTED_DIAMONDS = frozenset(
         "m2k_sweep_reclaim",
         # 10th-14th (wave-14 fleet expansion, IBKR futures only —
         # wave-16 demoted volume_profile_btc as Alpaca spot is cellared)
-        "met_sweep_reclaim",       # CME micro ether futures
-        "mes_sweep_reclaim_v2",    # CME micro S&P futures
-        "eur_range",               # CME 6E EUROFX futures
-        "ng_sweep_reclaim",        # CME NG nat gas futures
-        "mes_sweep_reclaim",       # CME micro S&P futures (paired with v2)
+        "met_sweep_reclaim",  # CME micro ether futures
+        "mes_sweep_reclaim_v2",  # CME micro S&P futures
+        "eur_range",  # CME 6E EUROFX futures
+        "ng_sweep_reclaim",  # CME NG nat gas futures
+        "mes_sweep_reclaim",  # CME micro S&P futures (paired with v2)
     }
 )
 

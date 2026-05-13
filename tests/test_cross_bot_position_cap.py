@@ -138,7 +138,10 @@ def test_two_bots_short_mbt_second_is_blocked_at_fleet_cap_3() -> None:
     assert tracker.net_position("MBT") == -3.0
     with pytest.raises(FleetPositionCapExceeded) as excinfo:
         tracker.assert_fleet_position_cap(
-            symbol_root="MBT1", side="SELL", requested_delta=3, fleet_cap=3,
+            symbol_root="MBT1",
+            side="SELL",
+            requested_delta=3,
+            fleet_cap=3,
         )
     err = excinfo.value
     assert err.root == "MBT"
@@ -154,7 +157,10 @@ def test_long_plus_short_nets_out_to_zero_allowed() -> None:
     tracker.record_entry(symbol_root="MBT", side="BUY", qty=1)
     assert tracker.net_position("MBT") == 1.0
     tracker.assert_fleet_position_cap(
-        symbol_root="MBT", side="SELL", requested_delta=1, fleet_cap=3,
+        symbol_root="MBT",
+        side="SELL",
+        requested_delta=1,
+        fleet_cap=3,
     )
     tracker.record_entry(symbol_root="MBT", side="SELL", qty=1)
     assert tracker.net_position("MBT") == 0.0
@@ -181,7 +187,10 @@ def test_per_root_isolation() -> None:
     tracker = CrossBotPositionTracker()
     tracker.record_entry(symbol_root="MBT", side="SELL", qty=3)
     tracker.assert_fleet_position_cap(
-        symbol_root="MET", side="SELL", requested_delta=3, fleet_cap=3,
+        symbol_root="MET",
+        side="SELL",
+        requested_delta=3,
+        fleet_cap=3,
     )
 
 
@@ -190,7 +199,10 @@ def test_disabled_gate_is_noop(monkeypatch) -> None:
     tracker = CrossBotPositionTracker()
     tracker.record_entry(symbol_root="MBT", side="SELL", qty=10)
     tracker.assert_fleet_position_cap(
-        symbol_root="MBT", side="SELL", requested_delta=10, fleet_cap=3,
+        symbol_root="MBT",
+        side="SELL",
+        requested_delta=10,
+        fleet_cap=3,
     )
 
 
@@ -200,12 +212,16 @@ def test_env_caps_resolved_per_call(monkeypatch) -> None:
     monkeypatch.setenv("ETA_FLEET_POSITION_CAP_MBT", "5")
     tracker.record_entry(symbol_root="MBT", side="SELL", qty=3)
     tracker.assert_fleet_position_cap(
-        symbol_root="MBT", side="SELL", requested_delta=1,
+        symbol_root="MBT",
+        side="SELL",
+        requested_delta=1,
     )
     monkeypatch.setenv("ETA_FLEET_POSITION_CAP_MBT", "3")
     with pytest.raises(FleetPositionCapExceeded):
         tracker.assert_fleet_position_cap(
-            symbol_root="MBT", side="SELL", requested_delta=1,
+            symbol_root="MBT",
+            side="SELL",
+            requested_delta=1,
         )
 
 
@@ -219,7 +235,10 @@ def test_restart_loads_from_disk(tmp_path: Path) -> None:
     assert tracker.net_position("MET") == 1.0
     with pytest.raises(FleetPositionCapExceeded):
         tracker.assert_fleet_position_cap(
-            symbol_root="MBT", side="SELL", requested_delta=3, fleet_cap=3,
+            symbol_root="MBT",
+            side="SELL",
+            requested_delta=3,
+            fleet_cap=3,
         )
 
 
@@ -272,10 +291,16 @@ def test_reconcile_fixes_drift_broker_truth_wins() -> None:
     assert tracker.net_position("MBT") == -2.0
     with pytest.raises(FleetPositionCapExceeded):
         tracker.assert_fleet_position_cap(
-            symbol_root="MBT", side="SELL", requested_delta=3, fleet_cap=3,
+            symbol_root="MBT",
+            side="SELL",
+            requested_delta=3,
+            fleet_cap=3,
         )
     tracker.assert_fleet_position_cap(
-        symbol_root="MBT", side="SELL", requested_delta=1, fleet_cap=3,
+        symbol_root="MBT",
+        side="SELL",
+        requested_delta=1,
+        fleet_cap=3,
     )
 
 
@@ -285,7 +310,10 @@ def test_reconcile_to_zero_clears_drift() -> None:
     tracker.resync_from_broker(by_root={"MBT": 0.0})
     assert tracker.net_position("MBT") == 0.0
     tracker.assert_fleet_position_cap(
-        symbol_root="MBT", side="SELL", requested_delta=3, fleet_cap=3,
+        symbol_root="MBT",
+        side="SELL",
+        requested_delta=3,
+        fleet_cap=3,
     )
 
 
@@ -302,7 +330,10 @@ def test_reconcile_leaves_unrelated_roots_alone() -> None:
 def test_module_assert_noop_when_unregistered() -> None:
     register_cross_bot_position_tracker(None)
     assert_fleet_position_cap(
-        symbol_root="MBT", side="SELL", requested_delta=1000, fleet_cap=1,
+        symbol_root="MBT",
+        side="SELL",
+        requested_delta=1000,
+        fleet_cap=1,
     )
 
 
@@ -312,7 +343,10 @@ def test_module_assert_dispatches_to_singleton() -> None:
     tracker.record_entry(symbol_root="MBT", side="SELL", qty=3)
     with pytest.raises(FleetPositionCapExceeded):
         assert_fleet_position_cap(
-            symbol_root="MBT", side="SELL", requested_delta=3, fleet_cap=3,
+            symbol_root="MBT",
+            side="SELL",
+            requested_delta=3,
+            fleet_cap=3,
         )
     assert get_cross_bot_position_tracker() is tracker
 
@@ -327,6 +361,7 @@ def test_supervisor_init_registers_tracker(tmp_path: Path, monkeypatch) -> None:
         JarvisStrategySupervisor,
         SupervisorConfig,
     )
+
     cfg = SupervisorConfig()
     cfg.state_dir = tmp_path
     sup = JarvisStrategySupervisor(cfg=cfg)
@@ -337,7 +372,8 @@ def test_supervisor_init_registers_tracker(tmp_path: Path, monkeypatch) -> None:
 
 
 def test_supervisor_blocks_when_fleet_cap_breached(
-    tmp_path: Path, monkeypatch,
+    tmp_path: Path,
+    monkeypatch,
 ) -> None:
     """Pre-populate a -3 MBT short on the supervisor's tracker; confirm
     the gate raises FleetPositionCapExceeded for any further -3 SHORT
@@ -349,11 +385,14 @@ def test_supervisor_blocks_when_fleet_cap_breached(
         JarvisStrategySupervisor,
         SupervisorConfig,
     )
+
     cfg = SupervisorConfig()
     cfg.state_dir = tmp_path
     sup = JarvisStrategySupervisor(cfg=cfg)
     sup._cross_bot_tracker.record_entry(  # noqa: SLF001
-        symbol_root="MBT", side="SELL", qty=3,
+        symbol_root="MBT",
+        side="SELL",
+        qty=3,
     )
     with pytest.raises(FleetPositionCapExceeded):
         sup._cross_bot_tracker.assert_fleet_position_cap(  # noqa: SLF001

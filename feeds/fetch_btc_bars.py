@@ -83,13 +83,13 @@ from eta_engine.scripts.workspace_roots import CRYPTO_HISTORY_ROOT as HISTORY_RO
 _BASE = "https://api.exchange.coinbase.com"
 
 _TF_TO_SECONDS = {
-    "1m":   60,
-    "5m":  300,
+    "1m": 60,
+    "5m": 300,
     "15m": 900,
-    "1h":  3600,
-    "6h":  21600,
-    "1d":  86400,
-    "D":   86400,
+    "1h": 3600,
+    "6h": 21600,
+    "1d": 86400,
+    "D": 86400,
 }
 
 _SYMBOL_TO_PRODUCT = {
@@ -103,10 +103,7 @@ _SYMBOL_TO_PRODUCT = {
 def _fetch_chunk(product: str, granularity: int, start: datetime, end: datetime) -> list[list[float]]:
     """Coinbase candles endpoint. Returns list of [time, low, high, open, close, volume]."""
     url = (
-        f"{_BASE}/products/{product}/candles"
-        f"?granularity={granularity}"
-        f"&start={start.isoformat()}"
-        f"&end={end.isoformat()}"
+        f"{_BASE}/products/{product}/candles?granularity={granularity}&start={start.isoformat()}&end={end.isoformat()}"
     )
     req = urllib.request.Request(url, headers={"User-Agent": "eta-engine/fetch_btc_bars"})
     try:
@@ -122,19 +119,19 @@ def _fetch_chunk(product: str, granularity: int, start: datetime, end: datetime)
 
 
 def fetch_bars(
-    *, symbol: str, timeframe: str, start: datetime, end: datetime,
+    *,
+    symbol: str,
+    timeframe: str,
+    start: datetime,
+    end: datetime,
 ) -> list[list[float]]:
     """Pull all candles in [start, end). Stitches Coinbase's 300-candle chunks."""
     product = _SYMBOL_TO_PRODUCT.get(symbol.upper())
     if product is None:
-        raise ValueError(
-            f"unknown symbol {symbol!r}; supported: {sorted(_SYMBOL_TO_PRODUCT)}"
-        )
+        raise ValueError(f"unknown symbol {symbol!r}; supported: {sorted(_SYMBOL_TO_PRODUCT)}")
     granularity = _TF_TO_SECONDS.get(timeframe)
     if granularity is None:
-        raise ValueError(
-            f"unknown timeframe {timeframe!r}; supported: {sorted(_TF_TO_SECONDS)}"
-        )
+        raise ValueError(f"unknown timeframe {timeframe!r}; supported: {sorted(_TF_TO_SECONDS)}")
 
     if start.tzinfo is None:
         start = start.replace(tzinfo=UTC)
@@ -146,10 +143,7 @@ def fetch_bars(
     cursor = start
     while cursor < end:
         chunk_end = min(cursor + timedelta(seconds=chunk_seconds), end)
-        print(
-            f"  fetching {product}/{timeframe} "
-            f"{cursor.date()} -> {chunk_end.date()}..."
-        )
+        print(f"  fetching {product}/{timeframe} {cursor.date()} -> {chunk_end.date()}...")
         rows = _fetch_chunk(product, granularity, cursor, chunk_end)
         if rows:
             out.extend(rows)
@@ -196,27 +190,21 @@ def main() -> int:
     p = argparse.ArgumentParser(prog="fetch_btc_bars")
     p.add_argument("--symbol", default="BTC", choices=sorted(_SYMBOL_TO_PRODUCT))
     p.add_argument("--timeframe", default="1h", choices=sorted(_TF_TO_SECONDS))
-    p.add_argument("--months", type=int, default=12,
-                   help="lookback in months (mutually exclusive with --start/--end)")
+    p.add_argument("--months", type=int, default=12, help="lookback in months (mutually exclusive with --start/--end)")
     p.add_argument("--start", help="ISO date YYYY-MM-DD")
     p.add_argument("--end", help="ISO date YYYY-MM-DD; default = today")
-    p.add_argument("--root", type=Path, default=HISTORY_ROOT,
-                   help="output directory (default: canonical ETA crypto history root)")
+    p.add_argument(
+        "--root", type=Path, default=HISTORY_ROOT, help="output directory (default: canonical ETA crypto history root)"
+    )
     args = p.parse_args()
 
     if args.start:
         start = datetime.fromisoformat(args.start).replace(tzinfo=UTC)
     else:
         start = datetime.now(UTC) - timedelta(days=30 * args.months)
-    end = (
-        datetime.fromisoformat(args.end).replace(tzinfo=UTC)
-        if args.end else datetime.now(UTC)
-    )
+    end = datetime.fromisoformat(args.end).replace(tzinfo=UTC) if args.end else datetime.now(UTC)
 
-    print(
-        f"[fetch_btc_bars] {args.symbol}/{args.timeframe} "
-        f"{start.date()} -> {end.date()} -> {args.root}"
-    )
+    print(f"[fetch_btc_bars] {args.symbol}/{args.timeframe} {start.date()} -> {end.date()} -> {args.root}")
     rows = fetch_bars(symbol=args.symbol, timeframe=args.timeframe, start=start, end=end)
     if not rows:
         print("[fetch_btc_bars] zero rows fetched — check timeframe / Coinbase status")

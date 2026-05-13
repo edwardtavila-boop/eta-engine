@@ -7,6 +7,7 @@ catches the cases where a diamond ISN'T actually a diamond (cubic
 zirconia) or is approaching its falsification threshold (watchdog) or
 would breach correlated-underlying sizing limits (portfolio limits).
 """
+
 # ruff: noqa: N802, PLR2004
 from __future__ import annotations
 
@@ -86,22 +87,30 @@ def test_group_existing_units_sums_correctly() -> None:
     assert _group_existing_units(positions, "CRUDE", side="LONG") == 1.0
 
 
-def test_combined_notional_blocks_third_nq_when_mnq_open(
-        tmp_path: Path) -> None:
+def test_combined_notional_blocks_third_nq_when_mnq_open(tmp_path: Path) -> None:
     """MNQ + NQ should count as ONE NASDAQ bet (cap=1 unit by default).
     With 1 MNQ open already, a new 1-NQ entry (10 units) must block."""
     fills = tmp_path / "fills.jsonl"
-    fills.write_text(json.dumps({
-        "ts": datetime.now(UTC).isoformat(),
-        "signal_id": "MNQ-LONG-1",
-        "symbol": "MNQ",
-        "side": "LONG",
-        "qty_filled": 1,
-        "exit_reason": "ENTRY",
-    }) + "\n", encoding="utf-8")
+    fills.write_text(
+        json.dumps(
+            {
+                "ts": datetime.now(UTC).isoformat(),
+                "signal_id": "MNQ-LONG-1",
+                "symbol": "MNQ",
+                "side": "LONG",
+                "qty_filled": 1,
+                "exit_reason": "ENTRY",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     decision = check_portfolio_limits(
-        symbol="NQ", side="LONG", qty=1,
-        _fill_path=fills, _log_path=tmp_path / "plim.jsonl",
+        symbol="NQ",
+        side="LONG",
+        qty=1,
+        _fill_path=fills,
+        _log_path=tmp_path / "plim.jsonl",
     )
     assert decision.blocked is True
     assert "combined_underlying_exceeded" in decision.reason
@@ -114,39 +123,56 @@ def test_combined_notional_allows_offsetting_short(tmp_path: Path) -> None:
     Note: hedging via a FULL NQ would still be blocked because 1 NQ =
     10 NASDAQ-equivalents, busting the SHORT-side cap of 1 unit."""
     fills = tmp_path / "fills.jsonl"
-    fills.write_text(json.dumps({
-        "ts": datetime.now(UTC).isoformat(),
-        "signal_id": "MNQ-LONG-1",
-        "symbol": "MNQ",
-        "side": "LONG",
-        "qty_filled": 1,
-        "exit_reason": "ENTRY",
-    }) + "\n", encoding="utf-8")
+    fills.write_text(
+        json.dumps(
+            {
+                "ts": datetime.now(UTC).isoformat(),
+                "signal_id": "MNQ-LONG-1",
+                "symbol": "MNQ",
+                "side": "LONG",
+                "qty_filled": 1,
+                "exit_reason": "ENTRY",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     decision = check_portfolio_limits(
-        symbol="MNQ", side="SHORT", qty=1,
-        _fill_path=fills, _log_path=tmp_path / "plim.jsonl",
+        symbol="MNQ",
+        side="SHORT",
+        qty=1,
+        _fill_path=fills,
+        _log_path=tmp_path / "plim.jsonl",
     )
     assert decision.blocked is False
 
 
-def test_combined_notional_crude_blocks_mcl_when_cl_open(
-        tmp_path: Path) -> None:
+def test_combined_notional_crude_blocks_mcl_when_cl_open(tmp_path: Path) -> None:
     """Crude cap is 2 MCL-equivalents.  1 full CL = 10 units, already
     over cap → any new MCL LONG must be blocked by the combined-units
     rule (NOT by same-side stacking since the symbol is different)."""
     fills = tmp_path / "fills.jsonl"
     # 1 full CL LONG (10 NASDAQ-equiv units)
-    fills.write_text(json.dumps({
-        "ts": datetime.now(UTC).isoformat(),
-        "signal_id": "CL-LONG-1",
-        "symbol": "CL",
-        "side": "LONG",
-        "qty_filled": 1,
-        "exit_reason": "ENTRY",
-    }) + "\n", encoding="utf-8")
+    fills.write_text(
+        json.dumps(
+            {
+                "ts": datetime.now(UTC).isoformat(),
+                "signal_id": "CL-LONG-1",
+                "symbol": "CL",
+                "side": "LONG",
+                "qty_filled": 1,
+                "exit_reason": "ENTRY",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     decision = check_portfolio_limits(
-        symbol="MCL", side="LONG", qty=1,
-        _fill_path=fills, _log_path=tmp_path / "plim.jsonl",
+        symbol="MCL",
+        side="LONG",
+        qty=1,
+        _fill_path=fills,
+        _log_path=tmp_path / "plim.jsonl",
     )
     # CL alone is already 10 units > 2 cap; MCL adds 1 more → still blocked
     assert decision.blocked is True
@@ -159,8 +185,11 @@ def test_combined_notional_eur_has_no_group(tmp_path: Path) -> None:
     fills = tmp_path / "fills.jsonl"
     fills.write_text("", encoding="utf-8")
     decision = check_portfolio_limits(
-        symbol="6E", side="LONG", qty=1,
-        _fill_path=fills, _log_path=tmp_path / "plim.jsonl",
+        symbol="6E",
+        side="LONG",
+        qty=1,
+        _fill_path=fills,
+        _log_path=tmp_path / "plim.jsonl",
     )
     assert decision.blocked is False
 
@@ -181,8 +210,7 @@ def test_default_caps_match_diamond_memo() -> None:
 
 def test_bootstrap_ci_positive_distribution() -> None:
     """A clearly-positive sample should produce a CI well above zero."""
-    samples = [10.0, 15.0, 20.0, 12.0, 8.0, 18.0, 22.0, 14.0, 11.0,
-                17.0, 9.0, 16.0, 13.0, 19.0, 21.0]
+    samples = [10.0, 15.0, 20.0, 12.0, 8.0, 18.0, 22.0, 14.0, 11.0, 17.0, 9.0, 16.0, 13.0, 19.0, 21.0]
     lo, hi = _bootstrap_ci(samples, n_resamples=500)
     assert lo > 0
     assert hi > lo
@@ -222,6 +250,7 @@ def test_audit_returns_one_report_per_diamond() -> None:
     """The audit must produce exactly one verdict per diamond, even
     when source ledgers are missing/empty."""
     from eta_engine.scripts.diamond_authenticity_audit import run_audit
+
     summary = run_audit()
     assert summary["n_diamonds"] == len(DIAMOND_BOTS)
     assert len(summary["reports"]) == len(DIAMOND_BOTS)
@@ -247,15 +276,16 @@ def test_audit_handles_eur_sweep_scale_bug_via_r_basis() -> None:
         # Bootstrap CI should be a small R magnitude, not a USD one
         assert rep.bootstrap_ci_lower is not None
         assert abs(rep.bootstrap_ci_lower) < 100, (
-            f"R-basis CI lower {rep.bootstrap_ci_lower:+.4f} suspicious "
-            "(R-multiples should be small magnitude)"
+            f"R-basis CI lower {rep.bootstrap_ci_lower:+.4f} suspicious (R-multiples should be small magnitude)"
         )
     else:
         # CUBIC_ZIRCONIA or INCONCLUSIVE is also acceptable — what we
         # care about is that the USD scale bug doesn't produce a
         # confident positive verdict.
         assert rep.verdict in (
-            "CUBIC_ZIRCONIA", "INCONCLUSIVE", "LAB_GROWN",
+            "CUBIC_ZIRCONIA",
+            "INCONCLUSIVE",
+            "LAB_GROWN",
         ), f"unexpected verdict for known-scale-buggy bot: {rep.verdict}"
 
 
@@ -295,23 +325,19 @@ def test_watchdog_has_threshold_for_every_diamond() -> None:
 def test_watchdog_classification_buckets() -> None:
     """Classification logic: HEALTHY > 50%, WATCH 20-50%, WARN <20%,
     CRITICAL <= 0."""
-    s = DiamondStatus(bot_id="test", retirement_threshold=-1000.0,
-                       buffer_usd=600.0)  # 60% of |threshold|
+    s = DiamondStatus(bot_id="test", retirement_threshold=-1000.0, buffer_usd=600.0)  # 60% of |threshold|
     _classify(s)
     assert s.classification == "HEALTHY"
 
-    s = DiamondStatus(bot_id="test", retirement_threshold=-1000.0,
-                       buffer_usd=300.0)  # 30%
+    s = DiamondStatus(bot_id="test", retirement_threshold=-1000.0, buffer_usd=300.0)  # 30%
     _classify(s)
     assert s.classification == "WATCH"
 
-    s = DiamondStatus(bot_id="test", retirement_threshold=-1000.0,
-                       buffer_usd=150.0)  # 15%
+    s = DiamondStatus(bot_id="test", retirement_threshold=-1000.0, buffer_usd=150.0)  # 15%
     _classify(s)
     assert s.classification == "WARN"
 
-    s = DiamondStatus(bot_id="test", retirement_threshold=-1000.0,
-                       buffer_usd=-50.0)  # breached
+    s = DiamondStatus(bot_id="test", retirement_threshold=-1000.0, buffer_usd=-50.0)  # breached
     _classify(s)
     assert s.classification == "CRITICAL"
 
@@ -348,7 +374,7 @@ def test_watchdog_classification_with_synthetic_healthy_bot() -> None:
         "per_bot": {
             "mnq_futures_sage": {
                 "closed_trade_count": 1000,
-                "total_realized_pnl": 8000.0,   # well above -$5,000
+                "total_realized_pnl": 8000.0,  # well above -$5,000
                 "win_rate_pct": 55.0,
             },
         },
@@ -384,6 +410,7 @@ def test_watchdog_run_produces_full_report() -> None:
     from eta_engine.scripts.diamond_falsification_watchdog import (
         run_watchdog,
     )
+
     report = run_watchdog()
     assert report["n_diamonds"] == len(DIAMOND_BOTS)
     assert len(report["statuses"]) == len(DIAMOND_BOTS)
@@ -410,8 +437,7 @@ def test_diamond_set_is_consistent_across_modules() -> None:
 # ────────────────────────────────────────────────────────────────────
 
 
-def test_alerts_pipeline_fires_one_alert_per_critical(
-        monkeypatch, tmp_path: Path) -> None:
+def test_alerts_pipeline_fires_one_alert_per_critical(monkeypatch, tmp_path: Path) -> None:
     """When the watchdog classifies a diamond as CRITICAL, it must
     append a row to alerts_log.jsonl with severity=RED + a headline
     referencing the bot.  Non-CRITICAL classifications must NOT
@@ -444,8 +470,7 @@ def test_alerts_pipeline_fires_one_alert_per_critical(
     dfw._fire_alerts_for_critical(statuses)
 
     assert alerts_log.exists()
-    lines = [line for line in alerts_log.read_text(encoding="utf-8").splitlines()
-                if line.strip()]
+    lines = [line for line in alerts_log.read_text(encoding="utf-8").splitlines() if line.strip()]
     assert len(lines) == 1  # only CRITICAL fires
     alert = json.loads(lines[0])
     assert alert["severity"] == "RED"
@@ -455,8 +480,7 @@ def test_alerts_pipeline_fires_one_alert_per_critical(
     assert "next_action" in alert
 
 
-def test_alerts_pipeline_silent_when_no_critical(
-        monkeypatch, tmp_path: Path) -> None:
+def test_alerts_pipeline_silent_when_no_critical(monkeypatch, tmp_path: Path) -> None:
     """No CRITICAL → no alerts.  Watchdog should not pollute the log
     with HEALTHY-state entries."""
     from eta_engine.scripts import diamond_falsification_watchdog as dfw
@@ -488,8 +512,7 @@ def test_alerts_pipeline_silent_when_no_critical(
 # ────────────────────────────────────────────────────────────────────
 
 
-def test_daily_summary_escalates_red_on_critical_diamond(
-        monkeypatch, tmp_path: Path) -> None:
+def test_daily_summary_escalates_red_on_critical_diamond(monkeypatch, tmp_path: Path) -> None:
     """When the watchdog snapshot shows CRITICAL diamonds, the daily
     summary must escalate overall_verdict to RED and inject a headline.
     """
@@ -499,20 +522,32 @@ def test_daily_summary_escalates_red_on_critical_diamond(
     state_dir = tmp_path / "state"
     state_dir.mkdir(parents=True, exist_ok=True)
     wd_path = state_dir / "diamond_watchdog_latest.json"
-    wd_path.write_text(json.dumps({
-        "ts": datetime.now(UTC).isoformat(),
-        "n_diamonds": 8,
-        "classification_counts": {
-            "HEALTHY": 5, "WATCH": 1, "WARN": 0, "CRITICAL": 2,
-        },
-    }), encoding="utf-8")
+    wd_path.write_text(
+        json.dumps(
+            {
+                "ts": datetime.now(UTC).isoformat(),
+                "n_diamonds": 8,
+                "classification_counts": {
+                    "HEALTHY": 5,
+                    "WATCH": 1,
+                    "WARN": 0,
+                    "CRITICAL": 2,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
     # Authenticity snapshot
     au_path = state_dir / "diamond_authenticity_latest.json"
-    au_path.write_text(json.dumps({
-        "ts": datetime.now(UTC).isoformat(),
-        "verdict_counts": {"GENUINE": 3, "LAB_GROWN": 2,
-                            "CUBIC_ZIRCONIA": 1, "INCONCLUSIVE": 2},
-    }), encoding="utf-8")
+    au_path.write_text(
+        json.dumps(
+            {
+                "ts": datetime.now(UTC).isoformat(),
+                "verdict_counts": {"GENUINE": 3, "LAB_GROWN": 2, "CUBIC_ZIRCONIA": 1, "INCONCLUSIVE": 2},
+            }
+        ),
+        encoding="utf-8",
+    )
 
     # Redirect lds.ROOT.parent / "var" / ... to tmp_path
     monkeypatch.setattr(lds, "ROOT", Path(str(state_dir.parent)) / "eta_engine")
@@ -521,7 +556,8 @@ def test_daily_summary_escalates_red_on_critical_diamond(
     (tmp_path / "logs").mkdir(parents=True, exist_ok=True)
     # Skip strategy registry side trip
     monkeypatch.setattr(
-        "eta_engine.strategies.l2_strategy_registry.L2_STRATEGIES", (),
+        "eta_engine.strategies.l2_strategy_registry.L2_STRATEGIES",
+        (),
     )
     # Build summary
     summary = lds.build_summary()
@@ -696,33 +732,54 @@ def test_regime_stratify_classifies_buckets() -> None:
     )
 
     # n<10 → SPARSE regardless
-    b = BucketStats(bucket_key="x", regime="r", session="s",
-                     n_trades=5, cumulative_r=2.0, mean_r=0.4,
-                     win_rate_pct=80.0)
+    b = BucketStats(
+        bucket_key="x", regime="r", session="s", n_trades=5, cumulative_r=2.0, mean_r=0.4, win_rate_pct=80.0
+    )
     _classify(b)
     assert b.verdict == "SPARSE"
 
     # n>=20 + CI lower > 0.10 → STRONG
-    b = BucketStats(bucket_key="x", regime="r", session="s",
-                     n_trades=30, cumulative_r=10.0, mean_r=0.33,
-                     win_rate_pct=70.0,
-                     bootstrap_ci_lower=0.20, bootstrap_ci_upper=0.50)
+    b = BucketStats(
+        bucket_key="x",
+        regime="r",
+        session="s",
+        n_trades=30,
+        cumulative_r=10.0,
+        mean_r=0.33,
+        win_rate_pct=70.0,
+        bootstrap_ci_lower=0.20,
+        bootstrap_ci_upper=0.50,
+    )
     _classify(b)
     assert b.verdict == "STRONG"
 
     # n>=10 + CI lower > 0 but < 0.10 → WEAK
-    b = BucketStats(bucket_key="x", regime="r", session="s",
-                     n_trades=15, cumulative_r=3.0, mean_r=0.20,
-                     win_rate_pct=60.0,
-                     bootstrap_ci_lower=0.05, bootstrap_ci_upper=0.40)
+    b = BucketStats(
+        bucket_key="x",
+        regime="r",
+        session="s",
+        n_trades=15,
+        cumulative_r=3.0,
+        mean_r=0.20,
+        win_rate_pct=60.0,
+        bootstrap_ci_lower=0.05,
+        bootstrap_ci_upper=0.40,
+    )
     _classify(b)
     assert b.verdict == "WEAK"
 
     # n>=10 + CI lower <= 0 → NULL
-    b = BucketStats(bucket_key="x", regime="r", session="s",
-                     n_trades=15, cumulative_r=0.5, mean_r=0.03,
-                     win_rate_pct=50.0,
-                     bootstrap_ci_lower=-0.10, bootstrap_ci_upper=0.20)
+    b = BucketStats(
+        bucket_key="x",
+        regime="r",
+        session="s",
+        n_trades=15,
+        cumulative_r=0.5,
+        mean_r=0.03,
+        win_rate_pct=50.0,
+        bootstrap_ci_lower=-0.10,
+        bootstrap_ci_upper=0.20,
+    )
     _classify(b)
     assert b.verdict == "NULL"
 
@@ -751,18 +808,23 @@ def test_dedup_blocks_nq_when_mnq_fired_today(tmp_path: Path) -> None:
     from eta_engine.strategies.l2_portfolio_limits import check_cross_bot_dedup
 
     fills = tmp_path / "fills.jsonl"
-    fills.write_text(json.dumps({
-        "ts": datetime.now(UTC).isoformat(),
-        "signal_id": "mnq-001",
-        "bot_id": "mnq_futures_sage",
-        "symbol": "MNQ",
-        "side": "LONG",
-        "qty_filled": 1,
-        "exit_reason": "ENTRY",
-    }) + "\n", encoding="utf-8")
+    fills.write_text(
+        json.dumps(
+            {
+                "ts": datetime.now(UTC).isoformat(),
+                "signal_id": "mnq-001",
+                "bot_id": "mnq_futures_sage",
+                "symbol": "MNQ",
+                "side": "LONG",
+                "qty_filled": 1,
+                "exit_reason": "ENTRY",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
 
-    decision = check_cross_bot_dedup(
-        "nq_futures_sage", _fill_path=fills)
+    decision = check_cross_bot_dedup("nq_futures_sage", _fill_path=fills)
     assert decision.suppressed is True
     assert decision.suppressor_bot_id == "mnq_futures_sage"
     assert "same_day_dedup" in decision.reason
@@ -774,8 +836,7 @@ def test_dedup_allows_nq_on_clean_day(tmp_path: Path) -> None:
 
     fills = tmp_path / "fills.jsonl"
     fills.write_text("", encoding="utf-8")
-    decision = check_cross_bot_dedup(
-        "nq_futures_sage", _fill_path=fills)
+    decision = check_cross_bot_dedup("nq_futures_sage", _fill_path=fills)
     assert decision.suppressed is False
 
 
@@ -785,17 +846,22 @@ def test_dedup_allows_unrelated_bot(tmp_path: Path) -> None:
     from eta_engine.strategies.l2_portfolio_limits import check_cross_bot_dedup
 
     fills = tmp_path / "fills.jsonl"
-    fills.write_text(json.dumps({
-        "ts": datetime.now(UTC).isoformat(),
-        "signal_id": "mnq-001",
-        "bot_id": "mnq_futures_sage",
-        "symbol": "MNQ",
-        "exit_reason": "ENTRY",
-        "qty_filled": 1,
-    }) + "\n", encoding="utf-8")
+    fills.write_text(
+        json.dumps(
+            {
+                "ts": datetime.now(UTC).isoformat(),
+                "signal_id": "mnq-001",
+                "bot_id": "mnq_futures_sage",
+                "symbol": "MNQ",
+                "exit_reason": "ENTRY",
+                "qty_filled": 1,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
 
-    decision = check_cross_bot_dedup(
-        "eur_sweep_reclaim", _fill_path=fills)
+    decision = check_cross_bot_dedup("eur_sweep_reclaim", _fill_path=fills)
     assert decision.suppressed is False
     assert decision.reason == "no_dedup_pair"
 
@@ -807,17 +873,22 @@ def test_dedup_yesterday_entry_does_not_suppress_today(tmp_path: Path) -> None:
 
     fills = tmp_path / "fills.jsonl"
     yesterday = datetime.now(UTC).replace(year=2025, month=1, day=1)
-    fills.write_text(json.dumps({
-        "ts": yesterday.isoformat(),
-        "signal_id": "mnq-old",
-        "bot_id": "mnq_futures_sage",
-        "symbol": "MNQ",
-        "exit_reason": "ENTRY",
-        "qty_filled": 1,
-    }) + "\n", encoding="utf-8")
+    fills.write_text(
+        json.dumps(
+            {
+                "ts": yesterday.isoformat(),
+                "signal_id": "mnq-old",
+                "bot_id": "mnq_futures_sage",
+                "symbol": "MNQ",
+                "exit_reason": "ENTRY",
+                "qty_filled": 1,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
 
-    decision = check_cross_bot_dedup(
-        "nq_futures_sage", _fill_path=fills)
+    decision = check_cross_bot_dedup("nq_futures_sage", _fill_path=fills)
     assert decision.suppressed is False
 
 
@@ -827,15 +898,20 @@ def test_dedup_only_counts_entries_not_exits(tmp_path: Path) -> None:
     from eta_engine.strategies.l2_portfolio_limits import check_cross_bot_dedup
 
     fills = tmp_path / "fills.jsonl"
-    fills.write_text(json.dumps({
-        "ts": datetime.now(UTC).isoformat(),
-        "signal_id": "mnq-old",
-        "bot_id": "mnq_futures_sage",
-        "symbol": "MNQ",
-        "exit_reason": "TARGET",  # exit, not entry
-        "qty_filled": 1,
-    }) + "\n", encoding="utf-8")
+    fills.write_text(
+        json.dumps(
+            {
+                "ts": datetime.now(UTC).isoformat(),
+                "signal_id": "mnq-old",
+                "bot_id": "mnq_futures_sage",
+                "symbol": "MNQ",
+                "exit_reason": "TARGET",  # exit, not entry
+                "qty_filled": 1,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
 
-    decision = check_cross_bot_dedup(
-        "nq_futures_sage", _fill_path=fills)
+    decision = check_cross_bot_dedup("nq_futures_sage", _fill_path=fills)
     assert decision.suppressed is False

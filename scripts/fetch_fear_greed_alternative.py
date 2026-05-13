@@ -49,8 +49,7 @@ from eta_engine.scripts.workspace_roots import MNQ_HISTORY_ROOT  # noqa: E402
 
 _API_URL = "https://api.alternative.me/fng/?limit=0&format=json"
 _USER_AGENT = (
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/120 Safari/537.36"
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36"
 )
 
 
@@ -108,7 +107,7 @@ def fetch(out_path: Path, *, dry_run: bool = False) -> int:
     if dry_run:
         for ts, val in rows[:5]:
             print(f"  {ts.date()}  {val}")
-        print(f"  ... and {len(rows)-5} more")
+        print(f"  ... and {len(rows) - 5} more")
         return len(rows)
     n = _write_csv(out_path, rows)
     last_ts, last_val = max(rows, key=lambda r: r[0])
@@ -119,7 +118,8 @@ def fetch(out_path: Path, *, dry_run: bool = False) -> int:
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument(
-        "--out", type=Path,
+        "--out",
+        type=Path,
         default=MNQ_HISTORY_ROOT / "BTC_FEAR_GREED.csv",
     )
     p.add_argument("--dry-run", action="store_true")

@@ -103,8 +103,7 @@ def main(argv: list[str] | None = None) -> int:
         type=Path,
         default=None,
         help=(
-            f"path to alerts log (default: {ETA_RUNTIME_ALERTS_LOG_PATH}; "
-            f"fallback: {ETA_LEGACY_DOCS_ALERTS_LOG_PATH})"
+            f"path to alerts log (default: {ETA_RUNTIME_ALERTS_LOG_PATH}; fallback: {ETA_LEGACY_DOCS_ALERTS_LOG_PATH})"
         ),
     )
     p.add_argument(

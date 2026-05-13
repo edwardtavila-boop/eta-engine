@@ -161,19 +161,10 @@ def summary_markdown(audits: list[BotAudit]) -> str:
             miss_crit = "-"
             miss_opt = "-"
         else:
-            avail_str = ", ".join(
-                f"{r.kind}:{r.symbol}/{r.timeframe or '-'}" for r, _ in a.available
-            ) or "-"
-            miss_crit = ", ".join(
-                f"{r.kind}:{r.symbol}/{r.timeframe or '-'}" for r in a.missing_critical
-            ) or "-"
-            miss_opt = ", ".join(
-                f"{r.kind}:{r.symbol}/{r.timeframe or '-'}" for r in a.missing_optional
-            ) or "-"
-        lines.append(
-            f"| {a.bot_id} | {a.critical_coverage_pct:.0f}% | {avail_str} | "
-            f"{miss_crit} | {miss_opt} |"
-        )
+            avail_str = ", ".join(f"{r.kind}:{r.symbol}/{r.timeframe or '-'}" for r, _ in a.available) or "-"
+            miss_crit = ", ".join(f"{r.kind}:{r.symbol}/{r.timeframe or '-'}" for r in a.missing_critical) or "-"
+            miss_opt = ", ".join(f"{r.kind}:{r.symbol}/{r.timeframe or '-'}" for r in a.missing_optional) or "-"
+        lines.append(f"| {a.bot_id} | {a.critical_coverage_pct:.0f}% | {avail_str} | {miss_crit} | {miss_opt} |")
 
     if blocked:
         lines.append("")

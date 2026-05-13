@@ -55,8 +55,10 @@ def _bar_to_sage_dict(b: Any) -> dict[str, Any]:  # noqa: ANN401
     return {
         "ts": b.timestamp.isoformat(),
         "timestamp": b.timestamp,
-        "open": float(b.open), "high": float(b.high),
-        "low": float(b.low), "close": float(b.close),
+        "open": float(b.open),
+        "high": float(b.high),
+        "low": float(b.low),
+        "close": float(b.close),
         "volume": float(b.volume),
     }
 
@@ -78,19 +80,25 @@ def _build_sage_provider(symbol: str) -> Any:  # noqa: ANN401
     sd = [_bar_to_sage_dict(b) for b in daily_bars]
     for i in range(25, len(sd) + 1):
         ctx = MarketContext(
-            bars=sd[:i][-200:], side="long",
+            bars=sd[:i][-200:],
+            side="long",
             entry_price=float(sd[i - 1]["close"]),
-            symbol=symbol, instrument_class="crypto",
+            symbol=symbol,
+            instrument_class="crypto",
         )
         try:
             r = consult_sage(
-                ctx, parallel=False, use_cache=True, apply_edge_weights=False,
+                ctx,
+                parallel=False,
+                use_cache=True,
+                apply_edge_weights=False,
             )
         except Exception:  # noqa: BLE001
             continue
         bias = r.composite_bias.value
         verdicts[daily_bars[i - 1].timestamp.date()] = SageDailyVerdict(
-            direction=bias, conviction=r.conviction,
+            direction=bias,
+            conviction=r.conviction,
             composite=(1.0 if bias == "long" else (-1.0 if bias == "short" else 0.0)),
         )
     print(f"[sage] computed {len(verdicts)} verdicts")
@@ -111,9 +119,14 @@ def _build_sage_provider(symbol: str) -> Any:  # noqa: ANN401
 
 
 def _build_feature_regime_provider(  # noqa: PLR0913
-    *, symbol: str, etf_path: Path, funding_path: Path,
-    use_funding: bool, use_etf_flow: bool,
-    use_fear_greed: bool, use_sage_daily: bool,
+    *,
+    symbol: str,
+    etf_path: Path,
+    funding_path: Path,
+    use_funding: bool,
+    use_etf_flow: bool,
+    use_fear_greed: bool,
+    use_sage_daily: bool,
     sage_provider: Any | None,  # noqa: ANN401
     bull_threshold: float = 0.30,
     bear_threshold: float = 0.30,
@@ -166,8 +179,7 @@ def _build_feature_regime_provider(  # noqa: PLR0913
         classifier.attach_sage_daily_provider(sage_provider)
 
     provider = make_feature_regime_provider(classifier, daily_bars)
-    print(f"[feature-regime] regime distribution: "
-          f"{classifier.regime_distribution}")
+    print(f"[feature-regime] regime distribution: {classifier.regime_distribution}")
     return provider
 
 
@@ -177,7 +189,8 @@ def _build_feature_regime_provider(  # noqa: PLR0913
 
 
 def _build_factory(
-    *, sage_provider: Any,  # noqa: ANN401
+    *,
+    sage_provider: Any,  # noqa: ANN401
     regime_provider: Any | None,  # noqa: ANN401
     etf_path: Path,
     strict_long_only: bool = False,
@@ -203,16 +216,20 @@ def _build_factory(
 
     base_cfg = CryptoMacroConfluenceConfig(
         base=CryptoRegimeTrendConfig(
-            regime_ema=100, pullback_ema=21,
+            regime_ema=100,
+            pullback_ema=21,
             pullback_tolerance_pct=3.0,
-            atr_stop_mult=2.0, rr_target=3.0,
+            atr_stop_mult=2.0,
+            rr_target=3.0,
         ),
         filters=MacroConfluenceConfig(require_etf_flow_alignment=True),
     )
 
     def _factory():  # noqa: ANN202
         sage_cfg = SageDailyGatedConfig(
-            base=base_cfg, min_daily_conviction=0.50, strict_mode=False,
+            base=base_cfg,
+            min_daily_conviction=0.50,
+            strict_mode=False,
         )
         sage = SageDailyGatedStrategy(sage_cfg)
         sage.attach_etf_flow_provider(EtfFlowProvider(etf_path))
@@ -233,16 +250,23 @@ def _build_factory(
 
 
 def _run_one(
-    label: str, factory: Any, bars: list, backtest_cfg: Any, wf: Any,  # noqa: ANN401
+    label: str,
+    factory: Any,
+    bars: list,
+    backtest_cfg: Any,
+    wf: Any,  # noqa: ANN401
 ) -> Any:  # noqa: ANN401
     from eta_engine.backtest import WalkForwardEngine
     from eta_engine.features.pipeline import FeaturePipeline
 
     print(f"\n[wf] running: {label}")
     return WalkForwardEngine().run(
-        bars=bars, pipeline=FeaturePipeline.default(),
-        config=wf, base_backtest_config=backtest_cfg,
-        ctx_builder=lambda b, h: {}, strategy_factory=factory,
+        bars=bars,
+        pipeline=FeaturePipeline.default(),
+        config=wf,
+        base_backtest_config=backtest_cfg,
+        ctx_builder=lambda b, h: {},
+        strategy_factory=factory,
     )
 
 
@@ -252,11 +276,9 @@ def _print_summary(label: str, res: Any) -> None:  # noqa: ANN401
     print("=" * 82)
     print(f"Windows:                     {len(res.windows)}")
     print(f"Aggregate OOS Sharpe:        {res.aggregate_oos_sharpe:>8.4f}")
-    print(f"Positive OOS windows:        {n_pos}/{len(res.windows)}"
-          f" ({n_pos / max(len(res.windows), 1) * 100:.1f}%)")
+    print(f"Positive OOS windows:        {n_pos}/{len(res.windows)} ({n_pos / max(len(res.windows), 1) * 100:.1f}%)")
     print(f"OOS degradation avg:         {res.oos_degradation_avg:>8.4f}")
-    print(f"Per-fold DSR pass fraction:  "
-          f"{res.fold_dsr_pass_fraction * 100:>7.2f}%")
+    print(f"Per-fold DSR pass fraction:  {res.fold_dsr_pass_fraction * 100:>7.2f}%")
     print(f"Gate: {'PASS' if res.pass_gate else 'FAIL'}")
     print("=" * 82)
 
@@ -268,30 +290,40 @@ def main() -> int:
     p.add_argument("--window-days", type=int, default=90)
     p.add_argument("--step-days", type=int, default=30)
     p.add_argument(
-        "--etf-path", type=Path,
+        "--etf-path",
+        type=Path,
         default=MNQ_HISTORY_ROOT / "BTC_ETF_FLOWS.csv",
     )
     p.add_argument(
-        "--funding-path", type=Path,
+        "--funding-path",
+        type=Path,
         default=CRYPTO_HISTORY_ROOT / "BTCFUND_8h.csv",
     )
     p.add_argument(
-        "--variants", default="baseline,full,sage_only,no_funding",
+        "--variants",
+        default="baseline,full,sage_only,no_funding",
     )
     p.add_argument(
-        "--strict-long-only", action="store_true",
+        "--strict-long-only",
+        action="store_true",
         help="Force BUY only under LONG bias (most selective)",
     )
     p.add_argument(
-        "--bull-threshold", type=float, default=0.30,
+        "--bull-threshold",
+        type=float,
+        default=0.30,
         help="FeatureRegimeConfig.bull_threshold sweep value",
     )
     p.add_argument(
-        "--bear-threshold", type=float, default=0.30,
+        "--bear-threshold",
+        type=float,
+        default=0.30,
         help="FeatureRegimeConfig.bear_threshold sweep value",
     )
     p.add_argument(
-        "--sage-conviction-floor", type=float, default=0.30,
+        "--sage-conviction-floor",
+        type=float,
+        default=0.30,
         help="FeatureRegimeConfig.sage_conviction_floor sweep value",
     )
     args = p.parse_args()
@@ -307,22 +339,27 @@ def main() -> int:
     if not bars:
         print(f"ABORT: no tradable positive-price bars for {args.symbol}/{args.timeframe}")
         return 1
-    print(f"[wf] {ds.symbol}/{ds.timeframe}: {ds.row_count} bars over "
-          f"{ds.days_span():.1f} days")
+    print(f"[wf] {ds.symbol}/{ds.timeframe}: {ds.row_count} bars over {ds.days_span():.1f} days")
 
     sage_provider = _build_sage_provider(args.symbol)
 
     backtest_cfg = BacktestConfig(
-        start_date=bars[0].timestamp, end_date=bars[-1].timestamp,
-        symbol=ds.symbol, initial_equity=10_000.0,
-        risk_per_trade_pct=0.01, confluence_threshold=0.0,
+        start_date=bars[0].timestamp,
+        end_date=bars[-1].timestamp,
+        symbol=ds.symbol,
+        initial_equity=10_000.0,
+        risk_per_trade_pct=0.01,
+        confluence_threshold=0.0,
         max_trades_per_day=10,
     )
     wf = WalkForwardConfig(
-        window_days=args.window_days, step_days=args.step_days,
-        anchored=True, oos_fraction=0.3,
+        window_days=args.window_days,
+        step_days=args.step_days,
+        anchored=True,
+        oos_fraction=0.3,
         min_trades_per_window=3,
-        strict_fold_dsr_gate=True, fold_dsr_min_pass_fraction=0.5,
+        strict_fold_dsr_gate=True,
+        fold_dsr_min_pass_fraction=0.5,
     )
 
     print(f"\n[wf] window={args.window_days}d step={args.step_days}d")
@@ -330,12 +367,9 @@ def main() -> int:
 
     variant_specs = {
         "baseline": None,
-        "full": {"use_funding": True, "use_etf_flow": True,
-                 "use_fear_greed": True, "use_sage_daily": True},
-        "sage_only": {"use_funding": False, "use_etf_flow": False,
-                      "use_fear_greed": False, "use_sage_daily": True},
-        "no_funding": {"use_funding": False, "use_etf_flow": True,
-                       "use_fear_greed": True, "use_sage_daily": True},
+        "full": {"use_funding": True, "use_etf_flow": True, "use_fear_greed": True, "use_sage_daily": True},
+        "sage_only": {"use_funding": False, "use_etf_flow": False, "use_fear_greed": False, "use_sage_daily": True},
+        "no_funding": {"use_funding": False, "use_etf_flow": True, "use_fear_greed": True, "use_sage_daily": True},
     }
     requested = [v.strip() for v in args.variants.split(",") if v.strip()]
     results: dict[str, Any] = {}
@@ -348,7 +382,8 @@ def main() -> int:
             regime_provider = None
         else:
             regime_provider = _build_feature_regime_provider(
-                symbol=args.symbol, etf_path=args.etf_path,
+                symbol=args.symbol,
+                etf_path=args.etf_path,
                 funding_path=args.funding_path,
                 use_funding=spec["use_funding"],
                 use_etf_flow=spec["use_etf_flow"],
@@ -373,8 +408,7 @@ def main() -> int:
         print("\n\nFEATURE-REGIME VARIANT SUMMARY")
         print("=" * 82)
         cols = ["variant", "OOS Sharpe", "+OOS folds", "deg_avg", "DSR%", "gate"]
-        print(f"{cols[0]:<14}{cols[1]:>13}{cols[2]:>14}{cols[3]:>10}"
-              f"{cols[4]:>10}{cols[5]:>10}")
+        print(f"{cols[0]:<14}{cols[1]:>13}{cols[2]:>14}{cols[3]:>10}{cols[4]:>10}{cols[5]:>10}")
         print("-" * 82)
         for variant, res in results.items():
             n_pos = sum(1 for w in res.windows if w.get("oos_sharpe", 0) > 0)

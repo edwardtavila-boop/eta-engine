@@ -51,6 +51,7 @@ process memory.  Operators flip it on at trading-session start
 via ``mark_captures_expected`` (called from the bot startup hook
 or per-symbol initialization).
 """
+
 # ruff: noqa: SIM115, SIM108
 # SIM115: opener captured into a variable so the same with-block
 # handles either path.open() OR gzip.open() — context-manager wrap
@@ -89,6 +90,7 @@ STALENESS_FACTOR = 2.0
 @dataclass
 class GateResult:
     """Pass/fail result with a reason for logging."""
+
     passed: bool
     reason: str
     detail: dict | None = None
@@ -118,10 +120,14 @@ def _captures_expected_today(symbol: str, when: datetime | None = None) -> bool:
     return (symbol, when.strftime("%Y%m%d")) in _CAPTURES_EXPECTED
 
 
-def _no_data_result(symbol: str, target_dt: datetime, *,
-                     pass_reason: str = "no_l2_yet",
-                     fail_reason: str = "captures_stale_fail_closed",
-                     detail: dict | None = None) -> GateResult:
+def _no_data_result(
+    symbol: str,
+    target_dt: datetime,
+    *,
+    pass_reason: str = "no_l2_yet",
+    fail_reason: str = "captures_stale_fail_closed",
+    detail: dict | None = None,
+) -> GateResult:
     """Decide whether a no-data condition fails OPEN (pre-data) or
     CLOSED (captures expected).  Centralized so every gate uses the
     same logic."""
@@ -165,8 +171,7 @@ def _open_depth_file(path: Path) -> Iterator[TextIO]:
     raise FileNotFoundError(f"neither {path} nor {gz} exists")
 
 
-def _load_snapshots_around(symbol: str, target_dt: datetime,
-                            window_seconds: int = 30) -> list[dict]:
+def _load_snapshots_around(symbol: str, target_dt: datetime, window_seconds: int = 30) -> list[dict]:
     """Return depth snapshots within ±window_seconds of target_dt.
 
     Tolerates .jsonl.gz files (post-rotation) AND missing files.
@@ -209,8 +214,7 @@ def _file_freshness(symbol: str, target_dt: datetime) -> dict:
     of whether any snapshot fell into the requested window.
     """
     path = _depth_path(symbol, target_dt)
-    out: dict = {"file_exists": False, "max_epoch": None,
-                  "age_seconds": None, "n_lines": 0}
+    out: dict = {"file_exists": False, "max_epoch": None, "age_seconds": None, "n_lines": 0}
     max_epoch = 0.0
     n_lines = 0
     try:
@@ -242,11 +246,16 @@ def _file_freshness(symbol: str, target_dt: datetime) -> dict:
 # ── Phase 3: sweep_reclaim_v2 confirmation ────────────────────────
 
 
-def confirm_sweep_with_l2(*, symbol: str, swept_level: float,
-                          touch_dt: datetime, side: str,
-                          min_stop_qty: int = 50,
-                          window_seconds: int = 60,
-                          hidden_qty_floor: int | None = None) -> GateResult:
+def confirm_sweep_with_l2(
+    *,
+    symbol: str,
+    swept_level: float,
+    touch_dt: datetime,
+    side: str,
+    min_stop_qty: int = 50,
+    window_seconds: int = 60,
+    hidden_qty_floor: int | None = None,
+) -> GateResult:
     """For a wick that pierced ``swept_level`` at ``touch_dt`` on
     ``side`` (LONG = swept low, SHORT = swept high), verify that
     BEFORE the touch there was at least ``min_stop_qty`` of
@@ -272,8 +281,7 @@ def confirm_sweep_with_l2(*, symbol: str, swept_level: float,
       - Post-data: passed=False / captures_stale_fail_closed
     """
     pre_touch = touch_dt - timedelta(seconds=10)
-    snapshots = _load_snapshots_around(symbol, pre_touch,
-                                        window_seconds=window_seconds)
+    snapshots = _load_snapshots_around(symbol, pre_touch, window_seconds=window_seconds)
     if not snapshots:
         freshness = _file_freshness(symbol, touch_dt)
         return _no_data_result(symbol, touch_dt, detail={"freshness": freshness})
@@ -309,28 +317,34 @@ def confirm_sweep_with_l2(*, symbol: str, swept_level: float,
     # behind visible at this level on this venue)
     effective_qty = max_qty + (hidden_qty_floor or 0)
 
-    detail = {"max_visible_qty": max_qty,
-              "qty_at_level": max_qty,
-              "hidden_qty_floor": hidden_qty_floor or 0,
-              "effective_qty": effective_qty,
-              "min_required": min_stop_qty,
-              "swept_level": swept_level, "side": side,
-              "n_snaps_considered": len(pre_snaps),
-              "chosen_snap_epoch": chosen_snap_epoch,
-              "window_seconds": window_seconds}
+    detail = {
+        "max_visible_qty": max_qty,
+        "qty_at_level": max_qty,
+        "hidden_qty_floor": hidden_qty_floor or 0,
+        "effective_qty": effective_qty,
+        "min_required": min_stop_qty,
+        "swept_level": swept_level,
+        "side": side,
+        "n_snaps_considered": len(pre_snaps),
+        "chosen_snap_epoch": chosen_snap_epoch,
+        "window_seconds": window_seconds,
+    }
     if effective_qty >= min_stop_qty:
         return GateResult(passed=True, reason="real_sweep_confirmed", detail=detail)
-    return GateResult(passed=False, reason="thin_book_at_swept_level",
-                      detail=detail)
+    return GateResult(passed=False, reason="thin_book_at_swept_level", detail=detail)
 
 
 # ── Phase 3: volume_profile_v2 confirmation ───────────────────────
 
 
-def confirm_poc_pull_with_l2(*, symbol: str, entry_dt: datetime,
-                              entry_side: str,
-                              min_imbalance_ratio: float = 1.5,
-                              max_snapshot_staleness_seconds: float = 30.0) -> GateResult:
+def confirm_poc_pull_with_l2(
+    *,
+    symbol: str,
+    entry_dt: datetime,
+    entry_side: str,
+    min_imbalance_ratio: float = 1.5,
+    max_snapshot_staleness_seconds: float = 30.0,
+) -> GateResult:
     """When entering toward POC, the entry-side of the book should
     show heavier queue weight than the opposite side at the entry
     moment — confirms the order flow is actually pulling toward POC.
@@ -357,28 +371,36 @@ def confirm_poc_pull_with_l2(*, symbol: str, entry_dt: datetime,
     snap_epoch = float(snap.get("epoch_s", 0))
     snap_age = entry_dt.timestamp() - snap_epoch
     if snap_age > max_snapshot_staleness_seconds:
-        return _no_data_result(symbol, entry_dt,
-                                pass_reason="snapshot_too_stale",
-                                fail_reason="snapshot_too_stale_fail_closed",
-                                detail={"snap_age_seconds": round(snap_age, 2),
-                                         "max_allowed": max_snapshot_staleness_seconds})
+        return _no_data_result(
+            symbol,
+            entry_dt,
+            pass_reason="snapshot_too_stale",
+            fail_reason="snapshot_too_stale_fail_closed",
+            detail={"snap_age_seconds": round(snap_age, 2), "max_allowed": max_snapshot_staleness_seconds},
+        )
 
     bid_qty = sum(lv.get("size", 0) for lv in snap.get("bids", []))
     ask_qty = sum(lv.get("size", 0) for lv in snap.get("asks", []))
     if bid_qty == 0 or ask_qty == 0:
         # Anomalous book — treat consistently with the strategy-level
         # zero-side fail-closed rule (book_imbalance I8).
-        return GateResult(passed=False, reason="empty_book_side",
-                           detail={"bid_qty": bid_qty, "ask_qty": ask_qty,
-                                   "snap_age_seconds": round(snap_age, 2)})
+        return GateResult(
+            passed=False,
+            reason="empty_book_side",
+            detail={"bid_qty": bid_qty, "ask_qty": ask_qty, "snap_age_seconds": round(snap_age, 2)},
+        )
 
     if entry_side.upper() in {"LONG", "BUY"}:
         ratio = bid_qty / ask_qty
     else:
         ratio = ask_qty / bid_qty
-    detail = {"bid_qty": bid_qty, "ask_qty": ask_qty, "ratio": round(ratio, 2),
-              "min_required": min_imbalance_ratio,
-              "snap_age_seconds": round(snap_age, 2)}
+    detail = {
+        "bid_qty": bid_qty,
+        "ask_qty": ask_qty,
+        "ratio": round(ratio, 2),
+        "min_required": min_imbalance_ratio,
+        "snap_age_seconds": round(snap_age, 2),
+    }
     if ratio >= min_imbalance_ratio:
         return GateResult(passed=True, reason="poc_pull_confirmed", detail=detail)
     return GateResult(passed=False, reason="weak_imbalance", detail=detail)
@@ -387,11 +409,15 @@ def confirm_poc_pull_with_l2(*, symbol: str, entry_dt: datetime,
 # ── Phase 3: anchor_sweep_v2 confirmation ─────────────────────────
 
 
-def confirm_anchor_touch_with_l2(*, symbol: str, anchor_price: float,
-                                  touch_dt: datetime,
-                                  min_qty_within_pts: float = 5.0,
-                                  min_qty: int = 30,
-                                  max_snapshot_staleness_seconds: float = 60.0) -> GateResult:
+def confirm_anchor_touch_with_l2(
+    *,
+    symbol: str,
+    anchor_price: float,
+    touch_dt: datetime,
+    min_qty_within_pts: float = 5.0,
+    min_qty: int = 30,
+    max_snapshot_staleness_seconds: float = 60.0,
+) -> GateResult:
     """Before the bar that touched the named anchor (PDH/PDL/etc),
     verify there was real liquidity sitting WITHIN ``min_qty_within_pts``
     of the anchor.  If the anchor had no real qty around it, the
@@ -411,11 +437,13 @@ def confirm_anchor_touch_with_l2(*, symbol: str, anchor_price: float,
     snap = min(snapshots, key=lambda s: abs(s.get("epoch_s", 0) - pre.timestamp()))
     snap_age = abs(pre.timestamp() - float(snap.get("epoch_s", 0)))
     if snap_age > max_snapshot_staleness_seconds:
-        return _no_data_result(symbol, touch_dt,
-                                pass_reason="snapshot_too_stale",
-                                fail_reason="snapshot_too_stale_fail_closed",
-                                detail={"snap_age_seconds": round(snap_age, 2),
-                                         "max_allowed": max_snapshot_staleness_seconds})
+        return _no_data_result(
+            symbol,
+            touch_dt,
+            pass_reason="snapshot_too_stale",
+            fail_reason="snapshot_too_stale_fail_closed",
+            detail={"snap_age_seconds": round(snap_age, 2), "max_allowed": max_snapshot_staleness_seconds},
+        )
 
     near = []
     for side_key in ("bids", "asks"):
@@ -424,9 +452,13 @@ def confirm_anchor_touch_with_l2(*, symbol: str, anchor_price: float,
                 near.append(lv)
 
     qty_near = sum(lv.get("size", 0) for lv in near)
-    detail = {"qty_near": qty_near, "min_required": min_qty,
-              "anchor_price": anchor_price, "n_levels_near": len(near),
-              "snap_age_seconds": round(snap_age, 2)}
+    detail = {
+        "qty_near": qty_near,
+        "min_required": min_qty,
+        "anchor_price": anchor_price,
+        "n_levels_near": len(near),
+        "snap_age_seconds": round(snap_age, 2),
+    }
     if qty_near >= min_qty:
         return GateResult(passed=True, reason="anchor_had_liquidity", detail=detail)
     return GateResult(passed=False, reason="anchor_was_air", detail=detail)

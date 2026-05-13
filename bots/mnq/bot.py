@@ -651,9 +651,13 @@ class MnqBot(BaseBot):
             if not vr.ok:
                 codes = [f.code for f in vr.failures]
                 logger.warning(
-                    "MNQ signal rejected by validator: codes=%s signal=%s qty=%.4f "
-                    "entry=%.4f stop=%.4f target=%.4f",
-                    codes, signal.type.value, qty, entry_px, stop_px, target_px,
+                    "MNQ signal rejected by validator: codes=%s signal=%s qty=%.4f entry=%.4f stop=%.4f target=%.4f",
+                    codes,
+                    signal.type.value,
+                    qty,
+                    entry_px,
+                    stop_px,
+                    target_px,
                 )
                 self._record_event(
                     intent="mnq_order_validator_blocked",

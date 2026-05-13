@@ -17,6 +17,7 @@ Event shape::
       "severity": "WARN"  # one of INFO/WARN/CRIT
     }
 """
+
 from __future__ import annotations
 
 import json
@@ -28,9 +29,7 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
-EVENT_LOG_PATH = Path(
-    r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\jarvis_v3_events.jsonl"
-)
+EVENT_LOG_PATH = Path(r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\jarvis_v3_events.jsonl")
 
 
 def emit_event(
@@ -60,6 +59,7 @@ def emit_event(
         # emit_event — the dispatcher launches a background thread.
         try:
             from eta_engine.scripts.hermes_dispatcher import dispatch as _hermes_dispatch
+
             _hermes_dispatch(rec)
         except Exception as _hermes_exc:  # noqa: BLE001
             logger.debug("hermes dispatch failed (non-fatal): %s", _hermes_exc)

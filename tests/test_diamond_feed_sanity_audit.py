@@ -1,4 +1,5 @@
 """Tests for diamond_feed_sanity_audit (wave-17)."""
+
 # ruff: noqa: N802, PLR2004, SLF001
 from __future__ import annotations
 
@@ -6,8 +7,7 @@ import json
 from pathlib import Path
 
 
-def _trade(bot_id: str, fill_price: float | None, pnl: float | None,
-           side: str | None = "BUY", idx: int = 0) -> dict:
+def _trade(bot_id: str, fill_price: float | None, pnl: float | None, side: str | None = "BUY", idx: int = 0) -> dict:
     """Build a synthetic trade-close record with optional fields."""
     extra: dict = {}
     if fill_price is not None:
@@ -41,10 +41,7 @@ def test_stuck_price_flagged_when_zero_variance() -> None:
     """All trades same fill_price -> STUCK_PRICE flag (placeholder feed)."""
     from eta_engine.scripts import diamond_feed_sanity_audit as fs
 
-    trades = [
-        _trade("test_bot", fill_price=5.0, pnl=1.0, idx=i)
-        for i in range(20)
-    ]
+    trades = [_trade("test_bot", fill_price=5.0, pnl=1.0, idx=i) for i in range(20)]
     sc = fs._score_bot("test_bot", trades)
     assert sc.verdict == "FLAGGED"
     assert any("STUCK_PRICE" in f for f in sc.flags)
@@ -55,10 +52,7 @@ def test_stuck_price_NOT_flagged_when_real_variation() -> None:
     from eta_engine.scripts import diamond_feed_sanity_audit as fs
 
     # 10% variation across 20 trades (e.g., $100 -> $110)
-    trades = [
-        _trade("test_bot", fill_price=100.0 + i, pnl=1.0, idx=i)
-        for i in range(20)
-    ]
+    trades = [_trade("test_bot", fill_price=100.0 + i, pnl=1.0, idx=i) for i in range(20)]
     sc = fs._score_bot("test_bot", trades)
     assert not any("STUCK_PRICE" in f for f in sc.flags)
 
@@ -72,10 +66,7 @@ def test_zero_pnl_activity_flagged_when_all_pnl_zero() -> None:
     """All N trades with realized_pnl=0 -> ZERO_PNL_ACTIVITY flag."""
     from eta_engine.scripts import diamond_feed_sanity_audit as fs
 
-    trades = [
-        _trade("test_bot", fill_price=100.0 + i, pnl=0.0, idx=i)
-        for i in range(20)
-    ]
+    trades = [_trade("test_bot", fill_price=100.0 + i, pnl=0.0, idx=i) for i in range(20)]
     sc = fs._score_bot("test_bot", trades)
     assert sc.verdict == "FLAGGED"
     assert any("ZERO_PNL_ACTIVITY" in f for f in sc.flags)
@@ -117,11 +108,9 @@ def test_missing_side_field_flagged_when_majority_absent() -> None:
 
     trades = []
     for i in range(5):
-        trades.append(_trade("test_bot", fill_price=100.0 + i, pnl=1.0,
-                              side="BUY", idx=i))
+        trades.append(_trade("test_bot", fill_price=100.0 + i, pnl=1.0, side="BUY", idx=i))
     for i in range(5, 20):
-        trades.append(_trade("test_bot", fill_price=100.0 + i, pnl=1.0,
-                              side=None, idx=i))
+        trades.append(_trade("test_bot", fill_price=100.0 + i, pnl=1.0, side=None, idx=i))
     sc = fs._score_bot("test_bot", trades)
     assert any("MISSING_SIDE_FIELD" in f for f in sc.flags)
 
@@ -136,9 +125,15 @@ def test_clean_when_all_signals_healthy() -> None:
 
     trades = []
     for i in range(20):
-        trades.append(_trade("test_bot", fill_price=100.0 + i,
-                              pnl=1.0 if i % 2 == 0 else -0.5,
-                              side="BUY" if i % 2 == 0 else "SELL", idx=i))
+        trades.append(
+            _trade(
+                "test_bot",
+                fill_price=100.0 + i,
+                pnl=1.0 if i % 2 == 0 else -0.5,
+                side="BUY" if i % 2 == 0 else "SELL",
+                idx=i,
+            )
+        )
     sc = fs._score_bot("test_bot", trades)
     assert sc.verdict == "CLEAN"
     assert sc.flags == []
@@ -148,10 +143,7 @@ def test_insufficient_data_below_sample_threshold() -> None:
     """Fewer than SAMPLE_THRESHOLD records -> verdict INSUFFICIENT_DATA."""
     from eta_engine.scripts import diamond_feed_sanity_audit as fs
 
-    trades = [
-        _trade("test_bot", fill_price=100.0, pnl=1.0, idx=i)
-        for i in range(5)
-    ]
+    trades = [_trade("test_bot", fill_price=100.0, pnl=1.0, idx=i) for i in range(5)]
     sc = fs._score_bot("test_bot", trades)
     assert sc.verdict == "INSUFFICIENT_DATA"
 
@@ -167,11 +159,7 @@ def test_mbt_funding_basis_regression() -> None:
     FLAGGED with both STUCK_PRICE and ZERO_PNL_ACTIVITY."""
     from eta_engine.scripts import diamond_feed_sanity_audit as fs
 
-    trades = [
-        _trade("mbt_funding_basis", fill_price=5.0, pnl=0.0,
-                side="SELL", idx=i)
-        for i in range(58)
-    ]
+    trades = [_trade("mbt_funding_basis", fill_price=5.0, pnl=0.0, side="SELL", idx=i) for i in range(58)]
     sc = fs._score_bot("mbt_funding_basis", trades)
     assert sc.verdict == "FLAGGED"
     assert any("STUCK_PRICE" in f for f in sc.flags)
@@ -189,12 +177,13 @@ def test_run_writes_json_receipt(tmp_path: Path, monkeypatch: object) -> None:
 
     can_path = tmp_path / "canonical.jsonl"
     leg_path = tmp_path / "legacy.jsonl"
-    _write_jsonl(can_path, [
-        _trade("met_sweep_reclaim", fill_price=40.0 + i,
-                pnl=1.0 if i % 2 == 0 else -0.5,
-                side="BUY", idx=i)
-        for i in range(20)
-    ])
+    _write_jsonl(
+        can_path,
+        [
+            _trade("met_sweep_reclaim", fill_price=40.0 + i, pnl=1.0 if i % 2 == 0 else -0.5, side="BUY", idx=i)
+            for i in range(20)
+        ],
+    )
     _write_jsonl(leg_path, [])
     monkeypatch.setattr(fs, "TRADE_CLOSES_CANONICAL", can_path)  # type: ignore[attr-defined]
     monkeypatch.setattr(fs, "TRADE_CLOSES_LEGACY", leg_path)  # type: ignore[attr-defined]

@@ -257,6 +257,7 @@ class IbkrClientPortalVenue(VenueBase):
         # Bookkeeping only; the order is already submitted, so any
         # failure here must NOT propagate.
         import contextlib
+
         with contextlib.suppress(Exception):
             record_result(
                 client_order_id=order_id,
@@ -353,6 +354,7 @@ class IbkrClientPortalVenue(VenueBase):
         import httpx  # noqa: PLC0415
 
         from eta_engine.venues.connection import DeterministicBrokerReject  # noqa: PLC0415
+
         url = f"{self.config.base_url}{path}"
         async with httpx.AsyncClient(
             timeout=8.0,

@@ -17,6 +17,7 @@ Usage at each pipeline stage::
     timer.mark("venue_ack")
     timer.finalize()    # writes one row to state/latency/events.jsonl
 """
+
 from __future__ import annotations
 
 import json
@@ -35,7 +36,7 @@ EVENTS_PATH = ROOT / "state" / "latency" / "events.jsonl"
 @dataclass
 class LatencyEvent:
     signal_id: str
-    stages: dict[str, float] = field(default_factory=dict)   # stage -> epoch
+    stages: dict[str, float] = field(default_factory=dict)  # stage -> epoch
     deltas_ms: dict[str, float] = field(default_factory=dict)
     total_ms: float = 0.0
     finalized_at: float = 0.0

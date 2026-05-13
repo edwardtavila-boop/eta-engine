@@ -25,6 +25,7 @@ Usage::
     python scripts/eta_live_preflight.py --verbose   # full per-check log
     python scripts/eta_live_preflight.py --json      # machine-readable
 """
+
 from __future__ import annotations
 
 import argparse
@@ -63,11 +64,7 @@ def check_env_files() -> CheckResult:
     """Verify active broker credentials via env vars or canonical secret files."""
 
     missing_by_broker = _active_broker_missing_requirements()
-    missing = [
-        f"{broker}: {item}"
-        for broker, items in missing_by_broker.items()
-        for item in items
-    ]
+    missing = [f"{broker}: {item}" for broker, items in missing_by_broker.items() for item in items]
     return CheckResult(
         name="env_files",
         ok=not missing,
@@ -112,6 +109,7 @@ def check_venue_handshakes() -> CheckResult:
     try:
         from eta_engine.venues.ibkr import IbkrClientPortalVenue  # noqa: F401
         from eta_engine.venues.tastytrade import TastytradeVenue  # noqa: F401
+
         return CheckResult(
             name="venue_handshakes",
             ok=True,
@@ -177,8 +175,9 @@ def check_kill_switch() -> CheckResult:
         name="kill_switch_disarmed",
         ok=not armed_paths,
         severity="critical",
-        detail=("kill switch armed at: " + "; ".join(armed_paths)) if armed_paths
-                else "kill switch not pre-armed at canonical workspace paths",
+        detail=("kill switch armed at: " + "; ".join(armed_paths))
+        if armed_paths
+        else "kill switch not pre-armed at canonical workspace paths",
         metadata={"paths_checked": [str(p) for p in _kill_switch_paths()]},
     )
 
@@ -197,6 +196,7 @@ def check_resend_path() -> CheckResult:
     """Verify the local Resend alert path delivers."""
     try:
         import urllib.request
+
         # Hit the VPS test endpoint as a proxy — same dispatcher code path.
         with urllib.request.urlopen(
             "https://jarvis.evolutionarytradingalgo.com/api/alert/test",
@@ -229,6 +229,7 @@ def check_decision_journal() -> CheckResult:
     """The decision journal must have recent activity (proves bots tick)."""
     try:
         from eta_engine.obs.decision_journal import default_journal
+
         j = default_journal()
         cutoff = datetime.now(UTC) - timedelta(hours=24)
         events = j.read_since(cutoff)
@@ -263,6 +264,7 @@ def check_kaizen_recent() -> CheckResult:
         if p.exists():
             try:
                 from eta_engine.brain.jarvis_v3.kaizen import KaizenLedger
+
                 if p.suffix == ".json":
                     ledger = KaizenLedger.load(p)
                     retros = ledger.retrospectives()
@@ -314,8 +316,7 @@ def run_all_checks(skip: set[str] | None = None) -> tuple[bool, list[CheckResult
         try:
             r = c()
         except Exception as exc:  # noqa: BLE001
-            r = CheckResult(name=c.__name__, ok=False, severity="critical",
-                            detail=f"check raised: {exc}")
+            r = CheckResult(name=c.__name__, ok=False, severity="critical", detail=f"check raised: {exc}")
         if r.name in skip:
             continue
         results.append(r)
@@ -326,12 +327,9 @@ def run_all_checks(skip: set[str] | None = None) -> tuple[bool, list[CheckResult
 
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(description=__doc__,
-                                formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--json", action="store_true",
-                   help="Machine-readable JSON output (suppresses human print)")
-    p.add_argument("--skip", action="append", default=None,
-                   help="Skip a named check (repeatable)")
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--json", action="store_true", help="Machine-readable JSON output (suppresses human print)")
+    p.add_argument("--skip", action="append", default=None, help="Skip a named check (repeatable)")
     p.add_argument("-v", "--verbose", action="store_true")
     args = p.parse_args(argv)
 
@@ -343,11 +341,16 @@ def main(argv: list[str] | None = None) -> int:
     ok, results = run_all_checks(skip=set(args.skip or []))
 
     if args.json:
-        print(json.dumps({
-            "ts": datetime.now(UTC).isoformat(),
-            "gate_ok": ok,
-            "checks": [asdict(r) for r in results],
-        }, indent=2))
+        print(
+            json.dumps(
+                {
+                    "ts": datetime.now(UTC).isoformat(),
+                    "gate_ok": ok,
+                    "checks": [asdict(r) for r in results],
+                },
+                indent=2,
+            )
+        )
     else:
         print()
         print("=" * 60)

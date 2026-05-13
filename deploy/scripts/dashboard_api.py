@@ -28,6 +28,7 @@ import json
 import os
 import re
 import secrets
+import ssl
 import subprocess
 import sys
 import tempfile
@@ -37,6 +38,8 @@ from collections import defaultdict, deque
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+from urllib import error as urllib_error
+from urllib import request as urllib_request
 
 import portalocker
 from fastapi import Cookie, Depends, FastAPI, HTTPException, Request, Response
@@ -307,15 +310,15 @@ DASHBOARD_CARD_REGISTRY = (
 # locations remain as read fallbacks (handled in ``_state_dir`` /
 # ``_log_dir``) so the API can still surface state files persisted
 # before the migration; new writes always land at the canonical paths.  # HISTORICAL-PATH-OK
-_REPO_ROOT     = Path(__file__).resolve().parents[2]   # .../eta_engine/
-_WORKSPACE_ROOT = _REPO_ROOT.parent                     # .../EvolutionaryTradingAlgo/
+_REPO_ROOT = Path(__file__).resolve().parents[2]  # .../eta_engine/
+_WORKSPACE_ROOT = _REPO_ROOT.parent  # .../EvolutionaryTradingAlgo/
 _DEFAULT_STATE = _WORKSPACE_ROOT / "var" / "eta_engine" / "state"
-_DEFAULT_LOG   = _WORKSPACE_ROOT / "logs" / "eta_engine"
+_DEFAULT_LOG = _WORKSPACE_ROOT / "logs" / "eta_engine"
 # Legacy in-repo locations kept ONLY for read fallback during the
 # migration window. Never used as a write target. Once a fresh canonical
 # session has rolled over, a follow-up PR can delete the fallbacks.
-_LEGACY_STATE  = _REPO_ROOT / "state"  # HISTORICAL-PATH-OK
-_LEGACY_LOG    = _REPO_ROOT / "logs"
+_LEGACY_STATE = _REPO_ROOT / "state"  # HISTORICAL-PATH-OK
+_LEGACY_LOG = _REPO_ROOT / "logs"
 _DEFAULT_RUNTIME_STATE = _DEFAULT_STATE / "runtime_state.json"
 _LEGACY_RUNTIME_STATE = (
     _WORKSPACE_ROOT / "firm_command_center" / "var" / "data" / "runtime_state.json"
@@ -333,7 +336,7 @@ _DEFAULT_CORS_ORIGINS = (
     "http://localhost:5173",
 )
 STATE_DIR = Path(os.environ.get("ETA_STATE_DIR", os.environ.get("ETA_STATE_DIR", str(_DEFAULT_STATE))))
-LOG_DIR   = Path(os.environ.get("ETA_LOG_DIR", os.environ.get("ETA_LOG_DIR", str(_DEFAULT_LOG))))
+LOG_DIR = Path(os.environ.get("ETA_LOG_DIR", os.environ.get("ETA_LOG_DIR", str(_DEFAULT_LOG))))
 _START_TS = time.time()
 API_BUILD_CAPABILITIES = (
     "command_center_watchdog",
@@ -580,11 +583,7 @@ def _eta_readiness_snapshot_payload(*, server_ts: float) -> dict:
     ]
     ok_count = len(checks) - len(blocked_checks)
 
-    by_name = {
-        str(check.get("name") or ""): check
-        for check in checks
-        if isinstance(check, dict) and check.get("name")
-    }
+    by_name = {str(check.get("name") or ""): check for check in checks if isinstance(check, dict) and check.get("name")}
     closed_payload = (
         by_name.get("closed_trade_ledger", {}).get("payload")
         if isinstance(by_name.get("closed_trade_ledger", {}).get("payload"), dict)
@@ -606,19 +605,11 @@ def _eta_readiness_snapshot_payload(*, server_ts: float) -> dict:
         else {}
     )
     position_summary = (
-        bracket_payload.get("position_summary")
-        if isinstance(bracket_payload.get("position_summary"), dict)
-        else {}
+        bracket_payload.get("position_summary") if isinstance(bracket_payload.get("position_summary"), dict) else {}
     )
-    promotion_primary = (
-        promotion_payload.get("primary")
-        if isinstance(promotion_payload.get("primary"), dict)
-        else {}
-    )
+    promotion_primary = promotion_payload.get("primary") if isinstance(promotion_payload.get("primary"), dict) else {}
     public_fallback_checks = (
-        receipt.get("public_fallback_checks")
-        if isinstance(receipt.get("public_fallback_checks"), list)
-        else []
+        receipt.get("public_fallback_checks") if isinstance(receipt.get("public_fallback_checks"), list) else []
     )
     public_fallback_by_name = {
         str(check.get("name") or ""): check
@@ -655,17 +646,13 @@ def _eta_readiness_snapshot_payload(*, server_ts: float) -> dict:
         str(bracket_payload.get("summary") or "").upper() == "BLOCKED_FLEET_TRUTH_UNAVAILABLE"
     )
     public_fallback_active = bool(
-        receipt.get("public_fallback_reason")
-        and public_fallback_checks
-        and local_fleet_truth_unavailable
+        receipt.get("public_fallback_reason") and public_fallback_checks and local_fleet_truth_unavailable
     )
 
     next_actions: list[str] = []
     public_fallback_next_actions: list[str] = []
     fallback_bracket_action = str(
-        fallback_bracket_payload.get("next_action")
-        or fallback_bracket_payload.get("operator_action")
-        or ""
+        fallback_bracket_payload.get("next_action") or fallback_bracket_payload.get("operator_action") or ""
     ).strip()
     if fallback_bracket_action:
         public_fallback_next_actions.append(fallback_bracket_action)
@@ -675,17 +662,13 @@ def _eta_readiness_snapshot_payload(*, server_ts: float) -> dict:
     raw_next_actions = prop_payload.get("next_actions")
     if isinstance(raw_next_actions, list):
         next_actions.extend(str(action) for action in raw_next_actions if action)
-    bracket_action = str(
-        bracket_payload.get("next_action")
-        or bracket_payload.get("operator_action")
-        or ""
-    ).strip()
+    bracket_action = str(bracket_payload.get("next_action") or bracket_payload.get("operator_action") or "").strip()
     if bracket_action and bracket_action not in next_actions:
         next_actions.append(bracket_action)
     raw_required_evidence = promotion_payload.get("required_evidence")
-    required_evidence = [
-        str(item) for item in raw_required_evidence if item
-    ] if isinstance(raw_required_evidence, list) else []
+    required_evidence = (
+        [str(item) for item in raw_required_evidence if item] if isinstance(raw_required_evidence, list) else []
+    )
     for item in required_evidence:
         if item not in next_actions:
             next_actions.append(item)
@@ -699,13 +682,13 @@ def _eta_readiness_snapshot_payload(*, server_ts: float) -> dict:
         primary_blocker = str(public_fallback_blocked_checks[0].get("name") or "")
     elif blocked_checks:
         primary_blocker = str(blocked_checks[0].get("name") or "")
-    primary_action = next_actions[0] if next_actions else (
-        "Clear blocked readiness checks." if blocked_checks else "No action required."
+    primary_action = (
+        next_actions[0]
+        if next_actions
+        else ("Clear blocked readiness checks." if blocked_checks else "No action required.")
     )
     effective_position_summary = (
-        fallback_position_summary
-        if public_fallback_active and fallback_position_summary
-        else position_summary
+        fallback_position_summary if public_fallback_active and fallback_position_summary else position_summary
     )
     if not fresh:
         status = "stale_receipt"
@@ -734,17 +717,11 @@ def _eta_readiness_snapshot_payload(*, server_ts: float) -> dict:
         "total_realized_pnl": closed_payload.get("total_realized_pnl"),
         "win_rate_pct": closed_payload.get("win_rate_pct"),
         "cumulative_r": closed_payload.get("cumulative_r"),
-        "broker_missing_bracket_count": int(
-            effective_position_summary.get("missing_bracket_count") or 0
-        ),
-        "broker_open_position_count": int(
-            effective_position_summary.get("broker_open_position_count") or 0
-        ),
+        "broker_missing_bracket_count": int(effective_position_summary.get("missing_bracket_count") or 0),
+        "broker_open_position_count": int(effective_position_summary.get("broker_open_position_count") or 0),
         "public_fallback_reason": str(receipt.get("public_fallback_reason") or ""),
         "public_fallback_active": public_fallback_active,
-        "public_fallback_primary_action": public_fallback_next_actions[0]
-        if public_fallback_next_actions
-        else "",
+        "public_fallback_primary_action": public_fallback_next_actions[0] if public_fallback_next_actions else "",
         "public_fallback_blocked_count": len(public_fallback_blocked_checks),
         "prop_primary_bot": str(
             prop_payload.get("primary_bot")
@@ -753,9 +730,7 @@ def _eta_readiness_snapshot_payload(*, server_ts: float) -> dict:
             or ""
         ),
         "promotion_summary": str(promotion_payload.get("summary") or ""),
-        "ready_for_prop_dry_run_review": bool(
-            promotion_payload.get("ready_for_prop_dry_run_review")
-        ),
+        "ready_for_prop_dry_run_review": bool(promotion_payload.get("ready_for_prop_dry_run_review")),
         "required_evidence": required_evidence[:5],
     }
 
@@ -809,8 +784,10 @@ def _command_center_watchdog_payload(*, server_ts: float) -> dict:
     if status == "unknown" and failure_class != "unknown":
         status = failure_class
 
-    summary = "Command Center watchdog is healthy." if healthy else (
-        f"Command Center watchdog needs {recommended_action}: {reason}."
+    summary = (
+        "Command Center watchdog is healthy."
+        if healthy
+        else (f"Command Center watchdog needs {recommended_action}: {reason}.")
     )
     action_plan = (
         status_receipt.get("operator_action_plan")
@@ -880,16 +857,12 @@ def _dashboard_diagnostics_payload() -> dict:
     equity_series = equity.get("series") if isinstance(equity.get("series"), list) else []
     equity_summary = equity.get("summary") if isinstance(equity.get("summary"), dict) else {}
     card_summary = cards.get("summary") if isinstance(cards.get("summary"), dict) else {}
-    operator_summary = (
-        operator_queue.get("summary") if isinstance(operator_queue.get("summary"), dict) else {}
-    )
+    operator_summary = operator_queue.get("summary") if isinstance(operator_queue.get("summary"), dict) else {}
     top_operator_blockers = (
         operator_queue.get("top_blockers") if isinstance(operator_queue.get("top_blockers"), list) else []
     )
     top_launch_blockers = (
-        operator_queue.get("top_launch_blockers")
-        if isinstance(operator_queue.get("top_launch_blockers"), list)
-        else []
+        operator_queue.get("top_launch_blockers") if isinstance(operator_queue.get("top_launch_blockers"), list) else []
     )
     first_operator_blocker = (
         top_operator_blockers[0] if top_operator_blockers and isinstance(top_operator_blockers[0], dict) else {}
@@ -897,16 +870,12 @@ def _dashboard_diagnostics_payload() -> dict:
     first_launch_blocker = (
         top_launch_blockers[0] if top_launch_blockers and isinstance(top_launch_blockers[0], dict) else {}
     )
-    first_failed_gate = _first_failed_gate(
-        paper_live_transition if isinstance(paper_live_transition, dict) else {}
-    )
+    first_failed_gate = _first_failed_gate(paper_live_transition if isinstance(paper_live_transition, dict) else {})
     readiness_summary = readiness.get("summary") if isinstance(readiness.get("summary"), dict) else {}
     readiness_lanes = readiness_summary.get("launch_lanes") if isinstance(readiness_summary, dict) else {}
     readiness_lane_counts = readiness_lanes if isinstance(readiness_lanes, dict) else {}
     readiness_blocked_data = int(
-        readiness_summary.get("blocked_data")
-        or readiness_lane_counts.get("blocked_data")
-        or 0
+        readiness_summary.get("blocked_data") or readiness_lane_counts.get("blocked_data") or 0
     )
     transition_launch_blocked_raw = paper_live_transition.get("operator_queue_launch_blocked_count")
     if transition_launch_blocked_raw is None:
@@ -943,13 +912,10 @@ def _dashboard_diagnostics_payload() -> dict:
         or paper_live_status
     )
     paper_live_effective_detail = str(
-        roster_summary.get("paper_live_effective_detail")
-        or paper_live_transition.get("effective_detail")
-        or ""
+        roster_summary.get("paper_live_effective_detail") or paper_live_transition.get("effective_detail") or ""
     )
     paper_live_held_by_bracket_audit = bool(
-        roster_summary.get("paper_live_held_by_bracket_audit")
-        or paper_live_transition.get("held_by_bracket_audit")
+        roster_summary.get("paper_live_held_by_bracket_audit") or paper_live_transition.get("held_by_bracket_audit")
     )
 
     return {
@@ -997,9 +963,7 @@ def _dashboard_diagnostics_payload() -> dict:
             "staged_bots": int(roster_summary.get("staged_bots") or roster.get("staged_bots") or 0),
             "truth_status": str(roster.get("truth_status") or roster_summary.get("truth_status") or "unknown"),
             "truth_summary_line": str(
-                roster.get("truth_summary_line")
-                or roster_summary.get("truth_summary_line")
-                or "",
+                roster.get("truth_summary_line") or roster_summary.get("truth_summary_line") or "",
             ),
             "live_broker_probe_mode": str(roster_summary.get("live_broker_probe_mode") or "unknown"),
             "source_of_truth": str(roster.get("source_of_truth") or _state_dir()),
@@ -1031,9 +995,7 @@ def _dashboard_diagnostics_payload() -> dict:
             "top_blocker_title": str(first_operator_blocker.get("title") or ""),
             "top_launch_blocker_op_id": str(first_launch_blocker.get("op_id") or ""),
             "top_launch_blocker_detail": str(
-                first_launch_blocker.get("detail")
-                or first_launch_blocker.get("title")
-                or ""
+                first_launch_blocker.get("detail") or first_launch_blocker.get("title") or ""
             ),
             "source": str(operator_queue.get("source") or "unknown"),
             "cache_status": str(operator_queue.get("cache_status") or ""),
@@ -1109,10 +1071,8 @@ def _dashboard_diagnostics_payload() -> dict:
                 "stale_receipt",
                 "unknown",
             },
-            "vps_ops_hardening_contract": vps_ops_hardening.get("status")
-            in _VPS_OPS_HARDENING_STATUSES,
-            "hardening_contract": vps_ops_hardening.get("status")
-            in _VPS_OPS_HARDENING_STATUSES,
+            "vps_ops_hardening_contract": vps_ops_hardening.get("status") in _VPS_OPS_HARDENING_STATUSES,
+            "hardening_contract": vps_ops_hardening.get("status") in _VPS_OPS_HARDENING_STATUSES,
             "auth_contract": "auth_session" in DASHBOARD_REQUIRED_DATA,
         },
     }
@@ -1125,9 +1085,7 @@ def _dashboard_cross_check_payload() -> dict:
     diagnostics = _dashboard_diagnostics_payload()
     card_summary = card_health.get("summary") if isinstance(card_health.get("summary"), dict) else {}
     diagnostics_cards = diagnostics.get("cards") if isinstance(diagnostics.get("cards"), dict) else {}
-    diagnostics_summary = (
-        diagnostics_cards.get("summary") if isinstance(diagnostics_cards.get("summary"), dict) else {}
-    )
+    diagnostics_summary = diagnostics_cards.get("summary") if isinstance(diagnostics_cards.get("summary"), dict) else {}
     findings: list[str] = []
     for key in ("total", "dead", "stale"):
         left = int(card_summary.get(key) or 0)
@@ -1139,9 +1097,7 @@ def _dashboard_cross_check_payload() -> dict:
         diagnostics_cards.get("dead_cards") if isinstance(diagnostics_cards.get("dead_cards"), list) else []
     )
     if len(card_dead) != len(diagnostics_dead):
-        findings.append(
-            f"dead_cards length mismatch: card-health={len(card_dead)} diagnostics={len(diagnostics_dead)}"
-        )
+        findings.append(f"dead_cards length mismatch: card-health={len(card_dead)} diagnostics={len(diagnostics_dead)}")
     return {
         **_dashboard_contract(),
         "source_of_truth": "dashboard_cross_check",
@@ -1204,9 +1160,7 @@ def _dashboard_data_cross_check_payload() -> dict:
     if direct_total != diag_total:
         findings.append(f"bot_fleet total mismatch: endpoint={direct_total} diagnostics={diag_total}")
     if direct_confirmed != diag_confirmed:
-        findings.append(
-            f"bot_fleet confirmed mismatch: endpoint={direct_confirmed} diagnostics={diag_confirmed}"
-        )
+        findings.append(f"bot_fleet confirmed mismatch: endpoint={direct_confirmed} diagnostics={diag_confirmed}")
     if direct_active != diag_active:
         findings.append(f"bot_fleet active mismatch: endpoint={direct_active} diagnostics={diag_active}")
     if direct_truth and diag_truth and direct_truth != diag_truth:
@@ -1215,13 +1169,10 @@ def _dashboard_data_cross_check_payload() -> dict:
         findings.append(f"equity point_count mismatch: endpoint={direct_points} diagnostics={diag_points}")
     if direct_equity_truth and diag_equity_truth and direct_equity_truth != diag_equity_truth:
         findings.append(
-            "equity session_truth_status mismatch: "
-            f"endpoint={direct_equity_truth!r} diagnostics={diag_equity_truth!r}"
+            f"equity session_truth_status mismatch: endpoint={direct_equity_truth!r} diagnostics={diag_equity_truth!r}"
         )
     if direct_equity_source and diag_equity_source and direct_equity_source != diag_equity_source:
-        findings.append(
-            f"equity source mismatch: endpoint={direct_equity_source!r} diagnostics={diag_equity_source!r}"
-        )
+        findings.append(f"equity source mismatch: endpoint={direct_equity_source!r} diagnostics={diag_equity_source!r}")
 
     return {
         **_dashboard_contract(),
@@ -1408,9 +1359,7 @@ def _vps_ops_hardening_payload(*, server_ts: float) -> dict:
             "ready": bool(admin_gate.get("ready")),
             "blocked": int(admin_gate.get("blocked") or 0),
             "warned": int(admin_gate.get("warned") or 0),
-            "next_actions": admin_gate.get("next_actions")
-            if isinstance(admin_gate.get("next_actions"), list)
-            else [],
+            "next_actions": admin_gate.get("next_actions") if isinstance(admin_gate.get("next_actions"), list) else [],
         },
         "next_actions": payload.get("next_actions") if isinstance(payload.get("next_actions"), list) else [],
     }
@@ -1471,9 +1420,7 @@ def _apply_bot_strategy_readiness(status: dict, readiness: dict) -> dict:
         status["can_live_trade"] = bool(strategy_readiness.get("can_live_trade"))
     if not status.get("readiness_next_action"):
         status["readiness_next_action"] = str(
-            strategy_readiness.get("next_action")
-            or strategy_readiness.get("next_promotion_step")
-            or "",
+            strategy_readiness.get("next_action") or strategy_readiness.get("next_promotion_step") or "",
         )
     return status
 
@@ -1699,18 +1646,10 @@ def _ibgateway_repair_snapshot() -> dict | None:
             continue
         seen.add(key)
         data = _read_json_file(candidate)
-        gateway_config = (
-            data.get("gateway_config")
-            if isinstance(data.get("gateway_config"), dict)
-            else {}
-        )
+        gateway_config = data.get("gateway_config") if isinstance(data.get("gateway_config"), dict) else {}
         if not gateway_config:
             continue
-        single_source = (
-            data.get("single_source")
-            if isinstance(data.get("single_source"), dict)
-            else {}
-        )
+        single_source = data.get("single_source") if isinstance(data.get("single_source"), dict) else {}
         return {
             "generated_at_utc": data.get("generated_at_utc") or "",
             "jts_ini": gateway_config.get("jts_ini") or {},
@@ -1761,16 +1700,8 @@ def _broker_gateway_snapshot() -> dict:
         details = data.get("details") if isinstance(data.get("details"), dict) else {}
         crash = details.get("gateway_crash") if isinstance(details.get("gateway_crash"), dict) else None
         process = details.get("gateway_process") if isinstance(details.get("gateway_process"), dict) else None
-        account_snapshot = (
-            details.get("account_snapshot")
-            if isinstance(details.get("account_snapshot"), dict)
-            else {}
-        )
-        account_summary = (
-            account_snapshot.get("summary")
-            if isinstance(account_snapshot.get("summary"), dict)
-            else None
-        )
+        account_snapshot = details.get("account_snapshot") if isinstance(details.get("account_snapshot"), dict) else {}
+        account_summary = account_snapshot.get("summary") if isinstance(account_snapshot.get("summary"), dict) else None
         healthy = data.get("healthy") is True
         detail = str(details.get("handshake_detail") or "")
         if process and process.get("running") and not healthy:
@@ -1936,6 +1867,7 @@ def _vps_root_dirty_inventory_path() -> Path:
 
 def _vps_root_reconciliation_payload() -> dict[str, object]:
     """Expose the VPS root reconciliation artifacts without taking action."""
+
     def _as_int(value: object) -> int:
         try:
             return int(value or 0)
@@ -1994,12 +1926,8 @@ def _vps_root_reconciliation_payload() -> dict[str, object]:
     source_untracked = _as_int(summary.get("source_or_governance_untracked"))
     submodule_drift = _as_int(summary.get("submodule_drift") or counts.get("submodule_drift"))
     status_rows = _as_int(counts.get("status"))
-    generated_untracked = _as_int(
-        summary.get("generated_untracked") or counts.get("generated_untracked")
-    )
-    dirty_companion_repos = _as_int(
-        summary.get("dirty_companion_repos") or counts.get("dirty_companion_repos")
-    )
+    generated_untracked = _as_int(summary.get("generated_untracked") or counts.get("generated_untracked"))
+    dirty_companion_repos = _as_int(summary.get("dirty_companion_repos") or counts.get("dirty_companion_repos"))
     manual_review_required = (
         risk_level in {"high", "medium"}
         or source_deleted > 0
@@ -2137,12 +2065,7 @@ def _router_active_order_summary(path: Path, *, lane: str) -> dict:
     payload = _read_json_file(path)
     bot_id = path.name[: -len(".pending_order.json")] if path.name.endswith(".pending_order.json") else path.stem
     symbol = str(payload.get("symbol") or "")
-    venue = str(
-        payload.get("venue")
-        or payload.get("target_venue")
-        or payload.get("broker")
-        or ""
-    ).strip().lower()
+    venue = str(payload.get("venue") or payload.get("target_venue") or payload.get("broker") or "").strip().lower()
     symbol_root = _portfolio_symbol_root(symbol)
     sleeve = _portfolio_sleeve_for_symbol(symbol)
     requires_ibkr = venue == "ibkr" or (not venue and sleeve in _IBKR_ROUTER_SLEEVES)
@@ -2235,11 +2158,7 @@ def _normalize_router_result(path: Path, payload: dict) -> dict:
     status = result.get("status") or payload.get("status")
     raw = result.get("raw") if isinstance(result.get("raw"), dict) else {}
     reason = (
-        result.get("error_message")
-        or result.get("reason")
-        or raw.get("error")
-        or raw.get("note")
-        or raw.get("detail")
+        result.get("error_message") or result.get("reason") or raw.get("error") or raw.get("note") or raw.get("detail")
     )
     filled_qty, avg_price = _truthful_router_fill_fields(result, raw)
     return {
@@ -2275,9 +2194,7 @@ def _broker_router_snapshot() -> dict:
     state_root = _broker_router_state_root()
     heartbeat = _read_json_file(state_root / "broker_router_heartbeat.json")
     pending_dir_raw = (
-        heartbeat.get("pending_dir")
-        or os.environ.get("ETA_BROKER_ROUTER_PENDING_DIR")
-        or str(state_root / "pending")
+        heartbeat.get("pending_dir") or os.environ.get("ETA_BROKER_ROUTER_PENDING_DIR") or str(state_root / "pending")
     )
     pending_dir = Path(str(pending_dir_raw))
     processing_dir = state_root / "processing"
@@ -2341,9 +2258,7 @@ def _broker_router_snapshot() -> dict:
     heartbeat_ts = heartbeat.get("last_poll_ts") or heartbeat.get("ts")
     heartbeat_dt = _parse_fill_dt(heartbeat_ts)
     heartbeat_age_s = (
-        max(0, int((datetime.now(UTC) - heartbeat_dt).total_seconds()))
-        if heartbeat_dt is not None
-        else None
+        max(0, int((datetime.now(UTC) - heartbeat_dt).total_seconds())) if heartbeat_dt is not None else None
     )
     counts = heartbeat.get("counts") if isinstance(heartbeat.get("counts"), dict) else {}
     events = heartbeat.get("recent_events") if isinstance(heartbeat.get("recent_events"), list) else []
@@ -2404,12 +2319,7 @@ def _watchdog_policy_thresholds() -> dict[str, float]:
 def _position_opened_age_s(row: dict, *, server_ts: float) -> int | None:
     state = row.get("position_state") if isinstance(row.get("position_state"), dict) else {}
     open_pos = row.get("open_position") if isinstance(row.get("open_position"), dict) else {}
-    opened_at = (
-        state.get("opened_at")
-        or open_pos.get("entry_ts")
-        or open_pos.get("opened_at")
-        or open_pos.get("ts")
-    )
+    opened_at = state.get("opened_at") or open_pos.get("entry_ts") or open_pos.get("opened_at") or open_pos.get("ts")
     return _iso_age_s(opened_at, server_ts=server_ts)
 
 
@@ -2419,10 +2329,7 @@ def _position_watchdog_snapshot(row: dict, *, server_ts: float) -> dict:
     age_s = _position_opened_age_s(row, server_ts=server_ts)
     state = row.get("position_state") if isinstance(row.get("position_state"), dict) else {}
     open_pos = row.get("open_position") if isinstance(row.get("open_position"), dict) else {}
-    stale_tightened_at = (
-        open_pos.get("stale_tighten_applied_at")
-        or state.get("stale_tighten_applied_at")
-    )
+    stale_tightened_at = open_pos.get("stale_tighten_applied_at") or state.get("stale_tighten_applied_at")
     stale_tightened = _parse_fill_dt(stale_tightened_at) is not None
     if age_s is None:
         return {
@@ -2486,11 +2393,13 @@ def _position_staleness_summary(rows: list[dict], *, server_ts: float) -> dict:
         watchdog = _position_watchdog_snapshot(row, server_ts=server_ts)
         if watchdog["age_s"] is None:
             unknown_age_count += 1
-        open_items.append({
-            "bot": str(row.get("name") or row.get("id") or row.get("bot_id") or ""),
-            "symbol": str(row.get("symbol") or ""),
-            **watchdog,
-        })
+        open_items.append(
+            {
+                "bot": str(row.get("name") or row.get("id") or row.get("bot_id") or ""),
+                "symbol": str(row.get("symbol") or ""),
+                **watchdog,
+            }
+        )
 
     force_flatten = [item for item in open_items if item.get("status") == "force_flatten_due"]
     tighten = [item for item in open_items if item.get("status") == "tighten_stop_due"]
@@ -2567,9 +2476,7 @@ def _signal_cadence_summary(rows: list[dict], *, server_ts: float) -> dict:
     top_bots: list[str] = []
     if signal_buckets:
         top_second, top_bots = max(signal_buckets.items(), key=lambda item: (len(item[1]), item[0]))
-    synchronized_seconds = {
-        second: names for second, names in signal_buckets.items() if len(names) > 1
-    }
+    synchronized_seconds = {second: names for second, names in signal_buckets.items() if len(names) > 1}
     max_same_second = len(top_bots)
     same_second_ratio = round(max_same_second / signal_count, 3) if signal_count else 0.0
     latest_signal_age_s = _iso_age_s(latest_ts, server_ts=server_ts) if latest_ts else None
@@ -2672,17 +2579,14 @@ def _truth_snapshot(rows: list[dict], *, server_ts: float) -> dict:
         warnings.append(f"order_entry_hold: {order_entry_hold_reason}")
 
     fresh_rows = [
-        row for row in rows
-        if row.get("heartbeat_age_s") is not None and float(row.get("heartbeat_age_s") or 0) <= 300
+        row for row in rows if row.get("heartbeat_age_s") is not None and float(row.get("heartbeat_age_s") or 0) <= 300
     ]
     if runtime.get("_warning") and fresh_rows:
         runtime = {
             "mode": "running",
             "detail": "fresh_supervisor_heartbeats",
             "updated_at": str(
-                supervisor_liveness.get("main_heartbeat_ts")
-                or supervisor_liveness.get("keepalive_ts")
-                or ""
+                supervisor_liveness.get("main_heartbeat_ts") or supervisor_liveness.get("keepalive_ts") or ""
             ),
             "source": "derived_from_supervisor_heartbeats",
             "bot_count": len(fresh_rows),
@@ -2761,18 +2665,21 @@ _REQ_COUNTS: defaultdict[str, int] = defaultdict(int)
 _REQ_ERRORS: defaultdict[str, int] = defaultdict(int)
 _REQ_LAT_MS: defaultdict[str, deque[float]] = defaultdict(lambda: deque(maxlen=100))
 
-_API_PUBLIC_PATHS = frozenset({
-    "/api/auth/session",
-    "/api/auth/login",
-    "/api/auth/logout",
-    "/api/auth/step-up",
-})
+_API_PUBLIC_PATHS = frozenset(
+    {
+        "/api/auth/session",
+        "/api/auth/login",
+        "/api/auth/logout",
+        "/api/auth/step-up",
+    }
+)
 
 
 def _check_session_token(session_token: str | None) -> dict | None:
     if not session_token:
         return None
     from eta_engine.deploy.scripts.dashboard_auth import get_session
+
     return get_session(_sessions_path(), session_token)
 
 
@@ -3029,16 +2936,20 @@ def _bot_strategy_readiness_payload() -> dict:
             "rows_by_bot": {},
             "top_actions": [],
         }
-    return payload if isinstance(payload, dict) else {
-        "source": "jarvis_status",
-        "error": "bot strategy readiness summary returned a non-object payload",
-        "status": "unreadable",
-        "summary": {},
-        "row_count": 0,
-        "rows": [],
-        "rows_by_bot": {},
-        "top_actions": [],
-    }
+    return (
+        payload
+        if isinstance(payload, dict)
+        else {
+            "source": "jarvis_status",
+            "error": "bot strategy readiness summary returned a non-object payload",
+            "status": "unreadable",
+            "summary": {},
+            "row_count": 0,
+            "rows": [],
+            "rows_by_bot": {},
+            "top_actions": [],
+        }
+    )
 
 
 def _bot_strategy_readiness_bot_payload(bot_id: str) -> dict:
@@ -3093,17 +3004,21 @@ def _strategy_supercharge_scorecard_payload() -> dict:
             "b_later": [],
             "hold": [],
         }
-    return payload if isinstance(payload, dict) else {
-        "source": "strategy_supercharge_scorecard",
-        "status": "unreadable",
-        "error": "strategy supercharge scorecard returned a non-object payload",
-        "summary": {},
-        "rows": [],
-        "rows_by_bot": {},
-        "next_targets": [],
-        "b_later": [],
-        "hold": [],
-    }
+    return (
+        payload
+        if isinstance(payload, dict)
+        else {
+            "source": "strategy_supercharge_scorecard",
+            "status": "unreadable",
+            "error": "strategy supercharge scorecard returned a non-object payload",
+            "summary": {},
+            "rows": [],
+            "rows_by_bot": {},
+            "next_targets": [],
+            "b_later": [],
+            "hold": [],
+        }
+    )
 
 
 def _strategy_supercharge_manifest_payload() -> dict:
@@ -3125,18 +3040,22 @@ def _strategy_supercharge_manifest_payload() -> dict:
             "hold": [],
             "commands": [],
         }
-    return payload if isinstance(payload, dict) else {
-        "source": "strategy_supercharge_manifest",
-        "status": "unreadable",
-        "error": "strategy supercharge manifest returned a non-object payload",
-        "summary": {},
-        "rows": [],
-        "rows_by_bot": {},
-        "next_batch": [],
-        "b_later": [],
-        "hold": [],
-        "commands": [],
-    }
+    return (
+        payload
+        if isinstance(payload, dict)
+        else {
+            "source": "strategy_supercharge_manifest",
+            "status": "unreadable",
+            "error": "strategy supercharge manifest returned a non-object payload",
+            "summary": {},
+            "rows": [],
+            "rows_by_bot": {},
+            "next_batch": [],
+            "b_later": [],
+            "hold": [],
+            "commands": [],
+        }
+    )
 
 
 def _strategy_supercharge_results_payload() -> dict:
@@ -3160,20 +3079,24 @@ def _strategy_supercharge_results_payload() -> dict:
             "retune_queue": [],
             "pending": [],
         }
-    return payload if isinstance(payload, dict) else {
-        "source": "strategy_supercharge_results",
-        "status": "unreadable",
-        "error": "strategy supercharge results returned a non-object payload",
-        "summary": {},
-        "rows": [],
-        "rows_by_bot": {},
-        "tested": [],
-        "passed": [],
-        "failed": [],
-        "near_misses": [],
-        "retune_queue": [],
-        "pending": [],
-    }
+    return (
+        payload
+        if isinstance(payload, dict)
+        else {
+            "source": "strategy_supercharge_results",
+            "status": "unreadable",
+            "error": "strategy supercharge results returned a non-object payload",
+            "summary": {},
+            "rows": [],
+            "rows_by_bot": {},
+            "tested": [],
+            "passed": [],
+            "failed": [],
+            "near_misses": [],
+            "retune_queue": [],
+            "pending": [],
+        }
+    )
 
 
 def _append_dashboard_event(event: str, payload: dict) -> None:
@@ -3195,18 +3118,22 @@ def _append_dashboard_event(event: str, payload: dict) -> None:
 
 def _users_path() -> Path:
     """Resolve users.json path at call time so env-var monkeypatching works."""
-    return Path(os.environ.get(
-        "ETA_DASHBOARD_USERS_PATH",
-        str(STATE_DIR / "auth" / "users.json"),
-    ))
+    return Path(
+        os.environ.get(
+            "ETA_DASHBOARD_USERS_PATH",
+            str(STATE_DIR / "auth" / "users.json"),
+        )
+    )
 
 
 def _sessions_path() -> Path:
     """Resolve sessions.json path at call time so env-var monkeypatching works."""
-    return Path(os.environ.get(
-        "ETA_DASHBOARD_SESSIONS_PATH",
-        str(STATE_DIR / "auth" / "sessions.json"),
-    ))
+    return Path(
+        os.environ.get(
+            "ETA_DASHBOARD_SESSIONS_PATH",
+            str(STATE_DIR / "auth" / "sessions.json"),
+        )
+    )
 
 
 class LoginRequest(BaseModel):
@@ -3262,15 +3189,17 @@ def _record_login_failure(username: str, client_ip: str) -> None:
     fails = _LOGIN_FAILURES[(username, client_ip)]
     if len(fails) >= _LOGIN_MAX_ATTEMPTS:
         try:
-            log_line = json.dumps({
-                "ts": time.time(),
-                "level": "WARNING",
-                "event": "login_rate_limit_tripped",
-                "username": username,
-                "client_ip": client_ip,
-                "failures_in_window": len(fails),
-                "window_seconds": _LOGIN_WINDOW_SECONDS,
-            })
+            log_line = json.dumps(
+                {
+                    "ts": time.time(),
+                    "level": "WARNING",
+                    "event": "login_rate_limit_tripped",
+                    "username": username,
+                    "client_ip": client_ip,
+                    "failures_in_window": len(fails),
+                    "window_seconds": _LOGIN_WINDOW_SECONDS,
+                }
+            )
             log_path = LOG_DIR / "dashboard.jsonl"
             try:
                 log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -3290,6 +3219,7 @@ def _reset_login_failures(username: str, client_ip: str) -> None:
 def require_session(session: str | None = Cookie(default=None)) -> dict:
     """FastAPI dependency: returns session row or raises 401."""
     from eta_engine.deploy.scripts.dashboard_auth import get_session
+
     if session is None:
         raise HTTPException(status_code=401, detail={"error_code": "no_session"})
     s = get_session(_sessions_path(), session)
@@ -3301,6 +3231,7 @@ def require_session(session: str | None = Cookie(default=None)) -> dict:
 def require_step_up(session: str | None = Cookie(default=None)) -> dict:
     """FastAPI dependency: requires fresh step-up auth."""
     from eta_engine.deploy.scripts.dashboard_auth import is_stepped_up
+
     s = require_session(session)
     if not is_stepped_up(_sessions_path(), session):
         raise HTTPException(status_code=403, detail={"error_code": "step_up_required"})
@@ -3310,6 +3241,7 @@ def require_step_up(session: str | None = Cookie(default=None)) -> dict:
 @app.get("/api/auth/session")
 def auth_session(session: str | None = Cookie(default=None)) -> dict:
     from eta_engine.deploy.scripts.dashboard_auth import get_session, is_stepped_up
+
     if session is None:
         return {"authenticated": False}
     s = get_session(_sessions_path(), session)
@@ -3328,6 +3260,7 @@ def auth_login(req: LoginRequest, request: Request, response: Response) -> dict:
         create_session,
         verify_password,
     )
+
     client_ip = request.client.host if request.client else "unknown"
 
     # Rate-limit check (per (username, IP))
@@ -3368,6 +3301,7 @@ def auth_logout(
     session: str | None = Cookie(default=None),
 ) -> dict:
     from eta_engine.deploy.scripts.dashboard_auth import revoke_session
+
     if session is not None:
         revoke_session(_sessions_path(), session)
     secure = os.environ.get("ETA_DASHBOARD_COOKIE_SECURE", "false").strip().lower() in ("1", "true", "yes", "on", "y")
@@ -3388,6 +3322,7 @@ def auth_step_up(
     session: str | None = Cookie(default=None),
 ) -> dict:
     from eta_engine.deploy.scripts.dashboard_auth import mark_step_up
+
     if session is None:
         raise HTTPException(status_code=401, detail={"error_code": "no_session"})
     pin = os.environ.get("ETA_DASHBOARD_STEP_UP_PIN", "")
@@ -3421,7 +3356,7 @@ def root() -> HTMLResponse:
     if _STATUS_PAGE.exists():
         return HTMLResponse(
             _STATUS_PAGE.read_text(encoding="utf-8"),
-            headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"}
+            headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"},
         )
     return HTMLResponse(
         "<h1>Evolutionary Trading Algo</h1><p>Status page not bundled. See /health or /api/dashboard.</p>",
@@ -3671,6 +3606,7 @@ def jarvis_today_verdicts() -> dict:
     """
     try:
         from eta_engine.obs.jarvis_today_verdicts import aggregate_today
+
         return aggregate_today()
     except ImportError as exc:
         return {
@@ -3695,17 +3631,20 @@ def jarvis_router_health() -> dict:
     sage_snapshot = {}
     try:
         from eta_engine.brain.jarvis_v3.sage.health import default_monitor
+
         monitor = default_monitor()
         issues = [issue.__dict__ for issue in monitor.check_health()]
         sage_snapshot = monitor.snapshot()
     except Exception as exc:  # noqa: BLE001
-        issues.append({
-            "school": "sage_health",
-            "neutral_rate": 0.0,
-            "n_consultations": 0,
-            "severity": "warn",
-            "detail": f"sage health monitor unavailable: {exc}",
-        })
+        issues.append(
+            {
+                "school": "sage_health",
+                "neutral_rate": 0.0,
+                "n_consultations": 0,
+                "severity": "warn",
+                "detail": f"sage health monitor unavailable: {exc}",
+            }
+        )
 
     quantum_jobs = []
     for raw in read_jsonl_tail(_state_dir() / "quantum" / "jobs.jsonl", limit=25):
@@ -3720,6 +3659,7 @@ def jarvis_router_health() -> dict:
     quantum_cost = sum(float(row.get("cost_estimate_usd") or 0.0) for row in quantum_jobs)
     try:
         from eta_engine.brain.feature_flags import ETA_FLAGS
+
         flags = ETA_FLAGS.snapshot()
     except Exception:  # noqa: BLE001
         flags = {}
@@ -3792,8 +3732,7 @@ def jarvis_sharpe_drift() -> dict:
         )
         from eta_engine.strategies.per_bot_registry import ASSIGNMENTS, is_active
     except Exception:  # noqa: BLE001
-        return {"rows": [], "drifted_count": 0, "ts": datetime.now(UTC).isoformat(),
-                "error": "registry import failed"}
+        return {"rows": [], "drifted_count": 0, "ts": datetime.now(UTC).isoformat(), "error": "registry import failed"}
 
     for a in ASSIGNMENTS:
         if not is_active(a):
@@ -3840,22 +3779,22 @@ def jarvis_sharpe_drift() -> dict:
                 state = "healthy"
                 healthy += 1
 
-        cls = _INSTRUMENT_CLASS_TO_BROAD.get(
-            str((a.extras or {}).get("instrument_class", "")).strip().lower(), ""
+        cls = _INSTRUMENT_CLASS_TO_BROAD.get(str((a.extras or {}).get("instrument_class", "")).strip().lower(), "")
+        rows.append(
+            {
+                "bot_id": a.bot_id,
+                "symbol": a.symbol,
+                "instrument_class": cls,
+                "promotion_status": (a.extras or {}).get("promotion_status", ""),
+                "lab_exp_r": lab_exp,
+                "lab_sharpe": lab_sharpe,
+                "live_per_exit": round(live_per_exit, 4),
+                "n_exits": n_exits,
+                "realized_pnl": round(realized_pnl, 2),
+                "ratio": round(ratio, 3) if ratio is not None else None,
+                "drift_state": state,
+            }
         )
-        rows.append({
-            "bot_id": a.bot_id,
-            "symbol": a.symbol,
-            "instrument_class": cls,
-            "promotion_status": (a.extras or {}).get("promotion_status", ""),
-            "lab_exp_r": lab_exp,
-            "lab_sharpe": lab_sharpe,
-            "live_per_exit": round(live_per_exit, 4),
-            "n_exits": n_exits,
-            "realized_pnl": round(realized_pnl, 2),
-            "ratio": round(ratio, 3) if ratio is not None else None,
-            "drift_state": state,
-        })
 
     rows.sort(key=lambda r: (r["drift_state"] != "drifted", -(r.get("n_exits") or 0)))
     return {
@@ -3881,16 +3820,19 @@ def sage_explain_endpoint(symbol: str = "MNQ", side: str = "long") -> dict:
         bars: list = []
         if bars_file and bars_file.exists():
             import json as _json
+
             bars = _json.loads(bars_file.read_text(encoding="utf-8"))
         if not bars or len(bars) < 30:
             return {
-                "symbol": symbol, "side": side,
+                "symbol": symbol,
+                "side": side,
                 "narrative": f"No recent bars for {symbol} (need >= 30). "
-                             f"Drop bars at state/raw_state/{symbol}_bars.json.",
+                f"Drop bars at state/raw_state/{symbol}_bars.json.",
                 "status": "no_bars",
             }
         from eta_engine.brain.jarvis_v3.sage import MarketContext, consult_sage
         from eta_engine.brain.jarvis_v3.sage.narrative import explain_sage
+
         ctx = MarketContext(bars=bars[-200:], side=side, symbol=symbol)
         report = consult_sage(ctx, parallel=True, use_cache=True)
         last_ts = bars[-1].get("ts") or bars[-1].get("timestamp") or ""
@@ -3919,41 +3861,49 @@ def sage_timeline_endpoint(symbol: str = "MNQ", hours: int = 24, side: str = "lo
     """
     try:
         from pathlib import Path
+
         bars_file = Path(STATE_DIR) / "raw_state" / f"{symbol}_bars.json" if "STATE_DIR" in globals() else None
         bars: list = []
         if bars_file and bars_file.exists():
             import json as _json
+
             bars = _json.loads(bars_file.read_text(encoding="utf-8"))
         if not bars or len(bars) < 60:
             return {"symbol": symbol, "timeline": [], "status": "no_bars"}
 
         from eta_engine.brain.jarvis_v3.sage import MarketContext, consult_sage
         from eta_engine.brain.jarvis_v3.sage.consultation import clear_sage_cache
+
         clear_sage_cache()  # don't get same-key collisions across bars
 
         # Sample every Nth bar to keep response under a reasonable size
         approx_bars_per_hour = 12  # ~5min bars
         target_pts = min(60, hours)
-        all_window = bars[-(hours * approx_bars_per_hour):]
+        all_window = bars[-(hours * approx_bars_per_hour) :]
         step = max(1, len(all_window) // target_pts)
 
         timeline = []
         for end_idx in range(50, len(all_window), step):
-            window = all_window[max(0, end_idx - 50): end_idx]
+            window = all_window[max(0, end_idx - 50) : end_idx]
             if len(window) < 30:
                 continue
             ctx = MarketContext(bars=window, side=side, symbol=symbol)
             r = consult_sage(ctx, parallel=False, use_cache=False, apply_edge_weights=False)
             ts = window[-1].get("ts") or window[-1].get("timestamp") or ""
-            timeline.append({
-                "ts": str(ts),
-                "composite_bias": r.composite_bias.value,
-                "conviction": round(r.conviction, 4),
-                "alignment_score": round(r.alignment_score, 4),
-            })
+            timeline.append(
+                {
+                    "ts": str(ts),
+                    "composite_bias": r.composite_bias.value,
+                    "conviction": round(r.conviction, 4),
+                    "alignment_score": round(r.alignment_score, 4),
+                }
+            )
         return {
-            "symbol": symbol, "side": side, "hours": hours,
-            "n_points": len(timeline), "timeline": timeline,
+            "symbol": symbol,
+            "side": side,
+            "hours": hours,
+            "n_points": len(timeline),
+            "timeline": timeline,
         }
     except Exception as exc:  # noqa: BLE001
         return {"error_code": "sage_timeline_failed", "error_detail": str(exc)}
@@ -3966,6 +3916,7 @@ def sage_school_registry_endpoint() -> dict:
     from eta_engine.brain.jarvis_v3.sage import SCHOOLS
     from eta_engine.brain.jarvis_v3.sage.edge_tracker import default_tracker
     from eta_engine.brain.jarvis_v3.sage.health import default_monitor
+
     tracker = default_tracker()
     edges = tracker.snapshot()
     monitor = default_monitor()
@@ -3974,19 +3925,21 @@ def sage_school_registry_endpoint() -> dict:
     for name, s in SCHOOLS.items():
         edge = edges.get(name, {})
         issue = issues.get(name)
-        schools.append({
-            "name": name,
-            "weight": s.WEIGHT,
-            "knowledge": s.KNOWLEDGE[:120] + "..." if len(s.KNOWLEDGE) > 120 else s.KNOWLEDGE,
-            "instruments": list(s.INSTRUMENTS) if s.INSTRUMENTS else ["all"],
-            "regimes": list(s.REGIMES) if s.REGIMES else ["all"],
-            "multi_timeframe": s.MULTI_TIMEFRAME,
-            "edge_hit_rate": edge.get("hit_rate", 0.0),
-            "edge_expectancy": edge.get("expectancy", 0.0),
-            "edge_weight_modifier": edge.get("weight_modifier", 1.0),
-            "edge_n_obs": edge.get("n_obs", 0),
-            "health_issue": {"severity": issue.severity, "detail": issue.detail} if issue else None,
-        })
+        schools.append(
+            {
+                "name": name,
+                "weight": s.WEIGHT,
+                "knowledge": s.KNOWLEDGE[:120] + "..." if len(s.KNOWLEDGE) > 120 else s.KNOWLEDGE,
+                "instruments": list(s.INSTRUMENTS) if s.INSTRUMENTS else ["all"],
+                "regimes": list(s.REGIMES) if s.REGIMES else ["all"],
+                "multi_timeframe": s.MULTI_TIMEFRAME,
+                "edge_hit_rate": edge.get("hit_rate", 0.0),
+                "edge_expectancy": edge.get("expectancy", 0.0),
+                "edge_weight_modifier": edge.get("weight_modifier", 1.0),
+                "edge_n_obs": edge.get("n_obs", 0),
+                "health_issue": {"severity": issue.severity, "detail": issue.detail} if issue else None,
+            }
+        )
     return {
         "n_schools": len(schools),
         "schools": sorted(schools, key=lambda s: s["edge_expectancy"], reverse=True),
@@ -4001,17 +3954,20 @@ def sage_disagreement_heatmap_endpoint(symbol: str = "MNQ") -> dict:
         if not bars_file or not bars_file.exists():
             return {"symbol": symbol, "status": "no_bars", "heatmap": {}}
         import json as _json
+
         bars = _json.loads(bars_file.read_text(encoding="utf-8"))
         if not bars or len(bars) < 30:
             return {"symbol": symbol, "status": "no_bars", "heatmap": {}}
         from eta_engine.brain.jarvis_v3.sage import MarketContext, consult_sage
         from eta_engine.brain.jarvis_v3.sage.disagreement import detect_clashes
+
         ctx = MarketContext(bars=bars[-200:], side="long", symbol=symbol)
         report = consult_sage(ctx)
         clashes = detect_clashes(report)
         # Per-school: bias vs composite, enriched with edge tracker data
         from eta_engine.brain.jarvis_v3.sage import SCHOOLS
         from eta_engine.brain.jarvis_v3.sage.edge_tracker import default_tracker
+
         tracker = default_tracker()
         edges = tracker.snapshot()
         per_school_disagree = {
@@ -4032,8 +3988,12 @@ def sage_disagreement_heatmap_endpoint(symbol: str = "MNQ") -> dict:
             "conviction": report.conviction,
             "per_school": per_school_disagree,
             "named_clashes": [
-                {"name": c.name, "interpretation": c.interpretation,
-                 "modifier": c.verdict_modifier, "cap_mult": c.cap_mult}
+                {
+                    "name": c.name,
+                    "interpretation": c.interpretation,
+                    "modifier": c.verdict_modifier,
+                    "cap_mult": c.cap_mult,
+                }
                 for c in clashes
             ],
         }
@@ -4045,6 +4005,7 @@ def sage_disagreement_heatmap_endpoint(symbol: str = "MNQ") -> dict:
 def jarvis_governor() -> dict:
     """Governor snapshot from state/jarvis_governor.json."""
     from eta_engine.deploy.scripts.dashboard_state import read_json_safe
+
     return read_json_safe(_state_dir() / "jarvis_governor.json")
 
 
@@ -4052,6 +4013,7 @@ def jarvis_governor() -> dict:
 def jarvis_edge_leaderboard(bot: str | None = None, limit: int = 5) -> dict:
     """Top + bottom schools by expectancy. Optional ?bot=<id> for per-bot."""
     from eta_engine.deploy.scripts.dashboard_state import read_json_safe
+
     if bot is not None and not _BOT_ID_RE.match(bot):
         raise HTTPException(status_code=400, detail={"error_code": "invalid_bot_id"})
     edge_path = _state_dir() / "sage" / "edge_tracker.json"
@@ -4061,15 +4023,17 @@ def jarvis_edge_leaderboard(bot: str | None = None, limit: int = 5) -> dict:
     schools = data.get("schools") or {}
     rows = []
     for name, e in schools.items():
-        n = (e.get("n_aligned_wins", 0) + e.get("n_aligned_losses", 0))
+        n = e.get("n_aligned_wins", 0) + e.get("n_aligned_losses", 0)
         avg_r = (e.get("sum_r", 0.0) / n) if n > 0 else 0.0
-        rows.append({
-            "school": name,
-            "n_obs": e.get("n_obs", 0),
-            "n_aligned": n,
-            "avg_r": round(avg_r, 4),
-            "sum_r": e.get("sum_r", 0.0),
-        })
+        rows.append(
+            {
+                "school": name,
+                "n_obs": e.get("n_obs", 0),
+                "n_aligned": n,
+                "avg_r": round(avg_r, 4),
+                "sum_r": e.get("sum_r", 0.0),
+            }
+        )
     rows.sort(key=lambda r: r["avg_r"], reverse=True)
     return {
         "top": rows[:limit],
@@ -4081,6 +4045,7 @@ def jarvis_edge_leaderboard(bot: str | None = None, limit: int = 5) -> dict:
 def jarvis_model_tier() -> dict:
     """Most recent LLM tier routing decision from today's audit log."""
     from datetime import UTC, datetime
+
     today = datetime.now(UTC).strftime("%Y-%m-%d")
     audit = _state_dir() / "jarvis_audit" / f"{today}.jsonl"
     if not audit.exists():
@@ -4121,11 +4086,7 @@ def jarvis_kaizen_latest() -> dict:
         if isinstance(payload, dict):
             started_at = str(payload.get("started_at") or "")
             action_counts = payload.get("action_counts") if isinstance(payload.get("action_counts"), dict) else {}
-            title = (
-                f"Kaizen loop {started_at}".strip()
-                if started_at
-                else "Kaizen loop latest"
-            )
+            title = f"Kaizen loop {started_at}".strip() if started_at else "Kaizen loop latest"
             return {
                 **payload,
                 "title": title,
@@ -4284,9 +4245,7 @@ def _target_exit_summary(
         open_count += 1
         state = row.get("position_state") if isinstance(row.get("position_state"), dict) else {}
         visibility = (
-            state.get("target_exit_visibility")
-            if isinstance(state.get("target_exit_visibility"), dict)
-            else {}
+            state.get("target_exit_visibility") if isinstance(state.get("target_exit_visibility"), dict) else {}
         )
         status = str(visibility.get("status") or "").strip().lower()
         owner = str(visibility.get("owner") or "").strip().lower()
@@ -4328,9 +4287,7 @@ def _target_exit_summary(
             else state.get("stop_distance_points")
         )
         stop_distance_pct = _float_value(
-            visibility.get("stop_distance_pct")
-            if "stop_distance_pct" in visibility
-            else state.get("stop_distance_pct")
+            visibility.get("stop_distance_pct") if "stop_distance_pct" in visibility else state.get("stop_distance_pct")
         )
         if stop_distance is not None:
             candidate = _candidate(row, stop_distance, stop_distance_pct)
@@ -4340,11 +4297,7 @@ def _target_exit_summary(
     touched_count = target_touched_count + stop_touched_count
     position_staleness = _position_staleness_summary(rows, server_ts=server_ts)
     supervisor_local_count = max(0, open_count - broker_bracket_count)
-    effective_broker_open_count = (
-        int(broker_open_position_count)
-        if broker_open_position_count is not None
-        else 0
-    )
+    effective_broker_open_count = int(broker_open_position_count) if broker_open_position_count is not None else 0
     if broker_bracket_required_position_count is None:
         broker_bracket_required_count = effective_broker_open_count
     else:
@@ -4383,10 +4336,7 @@ def _target_exit_summary(
     elif effective_broker_open_count == 0 and supervisor_local_count > 0:
         status = "paper_watching"
     elif (
-        watching_count > 0
-        or supervisor_watch_count > 0
-        or broker_bracket_count > 0
-        or effective_broker_open_count > 0
+        watching_count > 0 or supervisor_watch_count > 0 or broker_bracket_count > 0 or effective_broker_open_count > 0
     ):
         status = "watching"
     else:
@@ -4396,8 +4346,7 @@ def _target_exit_summary(
         summary_line = "flat; no open positions need target/stop supervision"
     else:
         nearest_text = (
-            f"; nearest target {nearest_target['bot']} "
-            f"{float(nearest_target['distance_points']):.2f} pts"
+            f"; nearest target {nearest_target['bot']} {float(nearest_target['distance_points']):.2f} pts"
             if nearest_target
             else "; nearest target n/a"
         )
@@ -4453,19 +4402,11 @@ def _target_exit_summary(
         "nearest_target": nearest_target,
         "nearest_stop": nearest_stop,
         "nearest_target_bot": nearest_target.get("bot") if nearest_target else None,
-        "nearest_target_distance_points": (
-            nearest_target.get("distance_points") if nearest_target else None
-        ),
-        "nearest_target_distance_pct": (
-            nearest_target.get("distance_pct") if nearest_target else None
-        ),
+        "nearest_target_distance_points": (nearest_target.get("distance_points") if nearest_target else None),
+        "nearest_target_distance_pct": (nearest_target.get("distance_pct") if nearest_target else None),
         "nearest_stop_bot": nearest_stop.get("bot") if nearest_stop else None,
-        "nearest_stop_distance_points": (
-            nearest_stop.get("distance_points") if nearest_stop else None
-        ),
-        "nearest_stop_distance_pct": (
-            nearest_stop.get("distance_pct") if nearest_stop else None
-        ),
+        "nearest_stop_distance_points": (nearest_stop.get("distance_points") if nearest_stop else None),
+        "nearest_stop_distance_pct": (nearest_stop.get("distance_pct") if nearest_stop else None),
     }
 
 
@@ -4491,10 +4432,7 @@ def _sup_bot_to_roster_row(sup: dict, now_ts: float) -> dict:
     open_pos_raw = sup.get("open_position") or {}
     open_pos = open_pos_raw if isinstance(open_pos_raw, dict) else {}
     position_opened_at = str(
-        open_pos.get("entry_ts")
-        or open_pos.get("opened_at")
-        or open_pos.get("ts")
-        or "",
+        open_pos.get("entry_ts") or open_pos.get("opened_at") or open_pos.get("ts") or "",
     )
     if not signal_at and position_opened_at:
         signal_at = position_opened_at
@@ -4519,21 +4457,21 @@ def _sup_bot_to_roster_row(sup: dict, now_ts: float) -> dict:
     last_bar_low = _float_value(_first_present(open_pos, ("last_bar_low", "bar_low", "low")))
     if last_bar_low is None:
         last_bar_low = _float_value(sup.get("last_bar_low"))
-    last_bar_ts = (
-        open_pos.get("last_bar_ts")
-        or open_pos.get("mark_ts")
-        or sup.get("last_bar_ts")
+    last_bar_ts = open_pos.get("last_bar_ts") or open_pos.get("mark_ts") or sup.get("last_bar_ts")
+    target_exit_visibility = (
+        _supervisor_exit_visibility(
+            side=side,
+            entry_price=entry_price,
+            mark_price=mark_price,
+            bracket_stop=bracket_stop,
+            bracket_target=bracket_target,
+            last_bar_high=last_bar_high,
+            last_bar_low=last_bar_low,
+            broker_bracket=broker_bracket,
+        )
+        if open_pos
+        else {"status": "flat", "owner": "none"}
     )
-    target_exit_visibility = _supervisor_exit_visibility(
-        side=side,
-        entry_price=entry_price,
-        mark_price=mark_price,
-        bracket_stop=bracket_stop,
-        bracket_target=bracket_target,
-        last_bar_high=last_bar_high,
-        last_bar_low=last_bar_low,
-        broker_bracket=broker_bracket,
-    ) if open_pos else {"status": "flat", "owner": "none"}
     position_state = {"state": "flat", "open": False}
     if open_pos:
         position_state = {
@@ -4598,47 +4536,47 @@ def _sup_bot_to_roster_row(sup: dict, now_ts: float) -> dict:
         activity_type = None
         activity_side = None
     return {
-        "id":                  str(sup.get("id") or ""),
-        "name":                str(sup.get("name") or ""),
-        "symbol":              str(sup.get("symbol") or ""),
-        "tier":                str(sup.get("strategy") or ""),
-        "venue":               str(sup.get("broker") or "paper-sim"),
-        "status":              str(sup.get("status") or "unknown"),
-        "todays_pnl":          float(today.get("pnl") or 0.0),
-        "todays_pnl_source":   "supervisor_heartbeat",
-        "last_trade_ts":       None,
-        "last_trade_age_s":    None,
-        "last_trade_side":     None,
-        "last_trade_r":        None,
-        "last_trade_qty":      None,
-        "last_signal_ts":      signal_at or None,
-        "last_signal_age_s":   last_signal_age_s,
-        "last_signal_side":    last_side if signal_at else None,
-        "last_activity_ts":    activity_ts or None,
+        "id": str(sup.get("id") or ""),
+        "name": str(sup.get("name") or ""),
+        "symbol": str(sup.get("symbol") or ""),
+        "tier": str(sup.get("strategy") or ""),
+        "venue": str(sup.get("broker") or "paper-sim"),
+        "status": str(sup.get("status") or "unknown"),
+        "todays_pnl": float(today.get("pnl") or 0.0),
+        "todays_pnl_source": "supervisor_heartbeat",
+        "last_trade_ts": None,
+        "last_trade_age_s": None,
+        "last_trade_side": None,
+        "last_trade_r": None,
+        "last_trade_qty": None,
+        "last_signal_ts": signal_at or None,
+        "last_signal_age_s": last_signal_age_s,
+        "last_signal_side": last_side if signal_at else None,
+        "last_activity_ts": activity_ts or None,
         "last_activity_age_s": activity_age_s,
-        "last_activity_side":  activity_side,
-        "last_activity_type":  activity_type,
-        "last_bar_ts":         bar_at or None,
-        "data_ts":             now_ts,
-        "data_age_s":          0.0,
-        "heartbeat_ts":        heartbeat_at or None,
-        "heartbeat_age_s":     heartbeat_age_s,
-        "source":              "jarvis_strategy_supervisor",
-        "confirmed":           True,
-        "mode":                str(sup.get("mode") or ""),
+        "last_activity_side": activity_side,
+        "last_activity_type": activity_type,
+        "last_bar_ts": bar_at or None,
+        "data_ts": now_ts,
+        "data_age_s": 0.0,
+        "heartbeat_ts": heartbeat_at or None,
+        "heartbeat_age_s": heartbeat_age_s,
+        "source": "jarvis_strategy_supervisor",
+        "confirmed": True,
+        "mode": str(sup.get("mode") or ""),
         "last_jarvis_verdict": str(sup.get("last_jarvis_verdict") or ""),
-        "strategy_readiness":  strategy_readiness,
-        "open_position":       open_pos,
-        "open_positions":      open_positions,
-        "position_state":      position_state,
-        "position_age_s":      position_age_s,
-        "bracket_stop":        bracket_stop,
-        "bracket_target":      bracket_target,
-        "broker_bracket":      broker_bracket,
-        "bracket_src":         bracket_src,
-        "launch_lane":         str(sup.get("launch_lane") or strategy_readiness.get("launch_lane") or ""),
-        "can_paper_trade":     bool(sup.get("can_paper_trade") or strategy_readiness.get("can_paper_trade")),
-        "can_live_trade":      bool(sup.get("can_live_trade") or strategy_readiness.get("can_live_trade")),
+        "strategy_readiness": strategy_readiness,
+        "open_position": open_pos,
+        "open_positions": open_positions,
+        "position_state": position_state,
+        "position_age_s": position_age_s,
+        "bracket_stop": bracket_stop,
+        "bracket_target": bracket_target,
+        "broker_bracket": broker_bracket,
+        "bracket_src": bracket_src,
+        "launch_lane": str(sup.get("launch_lane") or strategy_readiness.get("launch_lane") or ""),
+        "can_paper_trade": bool(sup.get("can_paper_trade") or strategy_readiness.get("can_paper_trade")),
+        "can_live_trade": bool(sup.get("can_live_trade") or strategy_readiness.get("can_live_trade")),
         "readiness_next_action": str(
             sup.get("readiness_next_action") or strategy_readiness.get("next_action") or "",
         ),
@@ -4659,10 +4597,7 @@ def _supervisor_roster_rows(now_ts: float, bot: str | None = None) -> list[dict]
 
     rows = [_sup_bot_to_roster_row(s, now_ts) for s in sup_accounts]
     if bot is not None:
-        rows = [
-            row for row in rows
-            if str(row.get("name") or row.get("id") or "") == bot
-        ]
+        rows = [row for row in rows if str(row.get("name") or row.get("id") or "") == bot]
     return rows
 
 
@@ -4678,7 +4613,9 @@ def bot_fleet_roster(
     from datetime import UTC, datetime
 
     from eta_engine.deploy.scripts.dashboard_state import read_json_safe
+
     bots_dir = _state_dir() / "bots"
+
     def _parse_ts(value: object) -> datetime | None:
         if not isinstance(value, str) or not value.strip():
             return None
@@ -4702,7 +4639,7 @@ def bot_fleet_roster(
     fills_stats = _fills_activity_snapshot()
     now_ts = time.time()
     readiness_rows = _bot_strategy_readiness_rows_by_bot()
-    for bot_dir in (sorted(bots_dir.iterdir()) if bots_dir.exists() else []):
+    for bot_dir in sorted(bots_dir.iterdir()) if bots_dir.exists() else []:
         if not bot_dir.is_dir():
             continue
         if bot and bot_dir.name != bot:
@@ -4717,9 +4654,7 @@ def bot_fleet_roster(
         local_ts = _parse_ts(local_last_fill.get("ts")) if isinstance(local_last_fill, dict) else None
         live_ts = _parse_ts(live_last_fill.get("ts")) if isinstance(live_last_fill, dict) else None
         last_fill = local_last_fill
-        if isinstance(live_last_fill, dict) and (
-            local_ts is None or (live_ts is not None and live_ts >= local_ts)
-        ):
+        if isinstance(live_last_fill, dict) and (local_ts is None or (live_ts is not None and live_ts >= local_ts)):
             last_fill = live_last_fill
         if last_fill:
             status["last_trade_ts"] = last_fill.get("ts")
@@ -4730,9 +4665,7 @@ def bot_fleet_roster(
             status["last_activity_side"] = status["last_trade_side"]
             status["last_activity_type"] = "trade"
             duration_s = (
-                last_fill.get("hold_seconds")
-                or last_fill.get("duration_s")
-                or last_fill.get("time_in_trade_s")
+                last_fill.get("hold_seconds") or last_fill.get("duration_s") or last_fill.get("time_in_trade_s")
             )
             if duration_s in (None, "", 0, 0.0):
                 open_positions = float(status.get("open_positions") or 0)
@@ -4751,14 +4684,10 @@ def bot_fleet_roster(
             status["last_activity_type"] = "signal" if status.get("last_signal_ts") else None
         last_trade_dt = _parse_fill_dt(status.get("last_trade_ts"))
         status["last_trade_age_s"] = (
-            max(0, int((datetime.now(UTC) - last_trade_dt).total_seconds()))
-            if last_trade_dt is not None
-            else None
+            max(0, int((datetime.now(UTC) - last_trade_dt).total_seconds())) if last_trade_dt is not None else None
         )
         status["last_activity_age_s"] = (
-            status["last_trade_age_s"]
-            if status.get("last_activity_type") == "trade"
-            else None
+            status["last_trade_age_s"] if status.get("last_activity_type") == "trade" else None
         )
         # Keep roster PnL live by deriving today's delta from the bot curve when available.
         eq_curve = read_json_safe(bot_dir / "equity_curve.json")
@@ -4784,11 +4713,7 @@ def bot_fleet_roster(
         status["data_ts"] = max(status_mtime, curve_mtime)
         status["data_age_s"] = round(max(0.0, now_ts - float(status["data_ts"])), 1)
         hb_dt = _parse_fill_dt(status.get("heartbeat_ts"))
-        hb_age = (
-            max(0, int((datetime.now(UTC) - hb_dt).total_seconds()))
-            if hb_dt is not None
-            else None
-        )
+        hb_age = max(0, int((datetime.now(UTC) - hb_dt).total_seconds())) if hb_dt is not None else None
         status["heartbeat_age_s"] = hb_age
         if not status.get("status"):
             if hb_age is None:
@@ -4820,16 +4745,10 @@ def bot_fleet_roster(
                 ),
             )
         sup_ids = {str(s.get("id") or "") for s in sup_rows}
-        rows = [
-            r for r in rows
-            if str(r.get("name") or r.get("id") or "") not in sup_ids
-        ]
+        rows = [r for r in rows if str(r.get("name") or r.get("id") or "") not in sup_ids]
         rows.extend(sup_rows)
     existing_ids = {
-        str(value)
-        for row in rows
-        for value in (row.get("bot_id"), row.get("id"), row.get("name"))
-        if value
+        str(value) for row in rows for value in (row.get("bot_id"), row.get("id"), row.get("name")) if value
     }
     readiness_seen: set[str] = set()
     for readiness in readiness_rows.values():
@@ -4853,22 +4772,20 @@ def bot_fleet_roster(
         rows = [row for row in rows if not _is_hidden_bot_row(row)]
 
     confirmed_bots = sum(
-        1 for r in rows
-        if r.get("source") == "jarvis_strategy_supervisor" or r.get("confirmed") is True
+        1 for r in rows if r.get("source") == "jarvis_strategy_supervisor" or r.get("confirmed") is True
     )
     active_bots = sum(1 for r in rows if _is_runtime_active_bot_row(r))
     staged_bots = max(0, len(rows) - active_bots)
     running_bots = sum(1 for r in rows if str(r.get("status") or "").lower() == "running")
     mnq_rows = [r for r in rows if str(r.get("symbol") or "").upper().startswith("MNQ")]
+
     def _is_readiness_only_runtime_inventory(row: dict) -> bool:
         return (
             str(row.get("status") or "").lower() == "readiness_only"
             or str(row.get("mode") or "").lower() == "readiness_snapshot"
         )
-    mnq_readiness_only = [
-        r for r in mnq_rows
-        if _is_readiness_only_runtime_inventory(r)
-    ]
+
+    mnq_readiness_only = [r for r in mnq_rows if _is_readiness_only_runtime_inventory(r)]
     mnq_runtime_rows = [r for r in mnq_rows if not _is_readiness_only_runtime_inventory(r)]
     truth = _truth_snapshot(rows, server_ts=now_ts)
     signal_cadence = _signal_cadence_summary(rows, server_ts=now_ts)
@@ -4896,14 +4813,10 @@ def bot_fleet_roster(
     target_exit_summary = _target_exit_summary(
         rows,
         broker_open_position_count=(
-            int(broker_open_position_count)
-            if broker_open_position_count is not None
-            else None
+            int(broker_open_position_count) if broker_open_position_count is not None else None
         ),
         broker_bracket_required_position_count=broker_bracket_required_position_count,
-        broker_open_order_verified_bracket_count=int(
-            broker_oco_evidence.get("verified_count") or 0
-        ),
+        broker_open_order_verified_bracket_count=int(broker_oco_evidence.get("verified_count") or 0),
         server_ts=now_ts,
     )
     target_exit_summary["broker_position_scope"] = "futures_focus"
@@ -4916,9 +4829,7 @@ def bot_fleet_roster(
         else {}
     )
     oldest_stale_position = (
-        position_staleness.get("oldest_position")
-        if isinstance(position_staleness.get("oldest_position"), dict)
-        else {}
+        position_staleness.get("oldest_position") if isinstance(position_staleness.get("oldest_position"), dict) else {}
     )
     if isinstance(live_broker_state, dict):
         live_broker_state["position_exposure"] = _position_exposure_payload(
@@ -4926,17 +4837,11 @@ def bot_fleet_roster(
             target_exit_summary=target_exit_summary,
         )
     close_history = (
-        live_broker_state.get("close_history")
-        if isinstance(live_broker_state.get("close_history"), dict)
-        else {}
+        live_broker_state.get("close_history") if isinstance(live_broker_state.get("close_history"), dict) else {}
     )
     close_history = _normalize_close_history_count_alias(close_history)
     live_broker_state["close_history"] = close_history
-    close_windows = (
-        close_history.get("windows")
-        if isinstance(close_history.get("windows"), dict)
-        else {}
-    )
+    close_windows = close_history.get("windows") if isinstance(close_history.get("windows"), dict) else {}
     default_close_history_window = str(close_history.get("default_window") or "mtd")
     history_window_pnl = {}
     for window_key in ("today", "wtd", "mtd", "ytd", "all"):
@@ -5027,32 +4932,23 @@ def bot_fleet_roster(
         if isinstance(action, dict) and action.get("label")
     ]
     broker_bracket_manual_action_count = sum(
-        1
-        for action in broker_bracket_actions
-        if isinstance(action, dict) and action.get("manual") is True
+        1 for action in broker_bracket_actions if isinstance(action, dict) and action.get("manual") is True
     )
     broker_bracket_order_actions = [
-        action
-        for action in broker_bracket_actions
-        if isinstance(action, dict) and action.get("order_action") is True
+        action for action in broker_bracket_actions if isinstance(action, dict) and action.get("order_action") is True
     ]
     broker_bracket_primary_action = (
-        broker_bracket_actions[0]
-        if broker_bracket_actions and isinstance(broker_bracket_actions[0], dict)
-        else {}
+        broker_bracket_actions[0] if broker_bracket_actions and isinstance(broker_bracket_actions[0], dict) else {}
     )
     broker_bracket_order_action = broker_bracket_order_actions[0] if broker_bracket_order_actions else {}
-    broker_bracket_prop_dry_run_blocked = (
-        bool(broker_bracket_audit.get("operator_action_required"))
-        and not bool(broker_bracket_audit.get("ready_for_prop_dry_run"))
+    broker_bracket_prop_dry_run_blocked = bool(broker_bracket_audit.get("operator_action_required")) and not bool(
+        broker_bracket_audit.get("ready_for_prop_dry_run")
     )
     paper_live_transition = _paper_live_transition_payload(refresh=False)
     paper_live_status = str(paper_live_transition.get("status") or "unknown")
     paper_live_critical_ready = bool(paper_live_transition.get("critical_ready"))
     paper_live_held_by_bracket_audit = broker_bracket_prop_dry_run_blocked and paper_live_critical_ready
-    paper_live_effective_status = (
-        "held_by_bracket_audit" if paper_live_held_by_bracket_audit else paper_live_status
-    )
+    paper_live_effective_status = "held_by_bracket_audit" if paper_live_held_by_bracket_audit else paper_live_status
     paper_live_effective_detail = ""
     if paper_live_held_by_bracket_audit:
         paper_live_effective_detail = (
@@ -5062,51 +4958,29 @@ def bot_fleet_roster(
         )
     vps_root_reconciliation = _vps_root_reconciliation_payload()
     vps_root_summary = (
-        vps_root_reconciliation.get("summary")
-        if isinstance(vps_root_reconciliation.get("summary"), dict)
-        else {}
+        vps_root_reconciliation.get("summary") if isinstance(vps_root_reconciliation.get("summary"), dict) else {}
     )
     vps_root_counts = (
-        vps_root_reconciliation.get("counts")
-        if isinstance(vps_root_reconciliation.get("counts"), dict)
-        else {}
+        vps_root_reconciliation.get("counts") if isinstance(vps_root_reconciliation.get("counts"), dict) else {}
     )
     vps_root_steps = (
-        vps_root_reconciliation.get("steps")
-        if isinstance(vps_root_reconciliation.get("steps"), list)
-        else []
+        vps_root_reconciliation.get("steps") if isinstance(vps_root_reconciliation.get("steps"), list) else []
     )
-    vps_root_top_step = (
-        vps_root_steps[0]
-        if vps_root_steps and isinstance(vps_root_steps[0], dict)
-        else {}
-    )
+    vps_root_top_step = vps_root_steps[0] if vps_root_steps and isinstance(vps_root_steps[0], dict) else {}
     vps_root_companion_step = next(
-        (
-            step
-            for step in vps_root_steps
-            if isinstance(step, dict) and step.get("id") == "align-submodules"
-        ),
+        (step for step in vps_root_steps if isinstance(step, dict) and step.get("id") == "align-submodules"),
         {},
     )
     vps_root_top_step_evidence = (
-        vps_root_top_step.get("evidence")
-        if isinstance(vps_root_top_step.get("evidence"), list)
-        else []
+        vps_root_top_step.get("evidence") if isinstance(vps_root_top_step.get("evidence"), list) else []
     )
     vps_root_companion_step_evidence = (
-        vps_root_companion_step.get("evidence")
-        if isinstance(vps_root_companion_step.get("evidence"), list)
-        else []
+        vps_root_companion_step.get("evidence") if isinstance(vps_root_companion_step.get("evidence"), list) else []
     )
-    ibkr_gateway = (
-        broker_gateway.get("ibkr")
-        if isinstance(broker_gateway.get("ibkr"), dict)
-        else {}
-    )
+    ibkr_gateway = broker_gateway.get("ibkr") if isinstance(broker_gateway.get("ibkr"), dict) else {}
     return {
-        "bots":              rows,
-        "confirmed_bots":    confirmed_bots,
+        "bots": rows,
+        "confirmed_bots": confirmed_bots,
         "summary": {
             "bot_total": len(rows),
             "confirmed_bots": confirmed_bots,
@@ -5121,10 +4995,7 @@ def bot_fleet_roster(
             "mnq_runtime_total": len(mnq_runtime_rows),
             "mnq_inventory_total": len(mnq_rows),
             "mnq_readiness_only": len(mnq_readiness_only),
-            "mnq_running": sum(
-                1 for r in mnq_runtime_rows
-                if str(r.get("status") or "").lower() == "running"
-            ),
+            "mnq_running": sum(1 for r in mnq_runtime_rows if str(r.get("status") or "").lower() == "running"),
             "truth_status": truth["truth_status"],
             "truth_summary_line": truth["truth_summary_line"],
             "latest_signal_ts": signal_cadence["latest_signal_ts"],
@@ -5145,9 +5016,7 @@ def bot_fleet_roster(
             "stale_position_oldest_next_action": str(oldest_stale_position.get("next_action") or ""),
             "stale_position_seconds_to_next_action": oldest_stale_position.get("seconds_to_next_action"),
             "open_position_count_visible": target_exit_summary["open_position_count"],
-            "target_exit_broker_position_scope": str(
-                target_exit_summary.get("broker_position_scope") or ""
-            ),
+            "target_exit_broker_position_scope": str(target_exit_summary.get("broker_position_scope") or ""),
             "target_exit_broker_position_scope_detail": str(
                 target_exit_summary.get("broker_position_scope_detail") or ""
             ),
@@ -5164,9 +5033,7 @@ def bot_fleet_roster(
                 broker_bracket_audit.get("operator_action_required"),
             ),
             "broker_bracket_prop_dry_run_blocked": broker_bracket_prop_dry_run_blocked,
-            "broker_bracket_missing_count": int(
-                broker_bracket_position_summary.get("missing_bracket_count") or 0
-            ),
+            "broker_bracket_missing_count": int(broker_bracket_position_summary.get("missing_bracket_count") or 0),
             "broker_bracket_unprotected_symbols": broker_bracket_unprotected_symbols,
             "broker_bracket_operator_action_count": len(broker_bracket_action_ids),
             "broker_bracket_operator_action_ids": broker_bracket_action_ids,
@@ -5185,9 +5052,7 @@ def bot_fleet_roster(
             "broker_bracket_primary_qty": broker_bracket_primary.get("qty"),
             "broker_bracket_primary_market_value": broker_bracket_primary.get("market_value"),
             "broker_bracket_primary_unrealized_pnl": broker_bracket_primary.get("unrealized_pnl"),
-            "broker_bracket_primary_coverage_status": str(
-                broker_bracket_primary.get("coverage_status") or ""
-            ),
+            "broker_bracket_primary_coverage_status": str(broker_bracket_primary.get("coverage_status") or ""),
             "paper_live_status": paper_live_status,
             "paper_live_effective_status": paper_live_effective_status,
             "paper_live_effective_detail": paper_live_effective_detail,
@@ -5198,39 +5063,25 @@ def bot_fleet_roster(
                 paper_live_transition.get("operator_queue_launch_blocked_count") or 0
             ),
             "paper_live_source_age_s": paper_live_transition.get("source_age_s"),
-            "vps_root_reconciliation_status": str(
-                vps_root_reconciliation.get("status") or "unknown"
-            ),
+            "vps_root_reconciliation_status": str(vps_root_reconciliation.get("status") or "unknown"),
             "vps_root_risk_level": str(vps_root_reconciliation.get("risk_level") or "unknown"),
             "vps_root_cleanup_allowed": bool(vps_root_reconciliation.get("cleanup_allowed")),
             "vps_root_artifact_stale": bool(vps_root_reconciliation.get("artifact_stale")),
-            "vps_root_source_deleted_count": int(
-                vps_root_summary.get("source_or_governance_deleted") or 0
-            ),
+            "vps_root_source_deleted_count": int(vps_root_summary.get("source_or_governance_deleted") or 0),
             "vps_root_submodule_drift": int(
-                vps_root_summary.get("submodule_drift")
-                or vps_root_counts.get("submodule_drift")
-                or 0
+                vps_root_summary.get("submodule_drift") or vps_root_counts.get("submodule_drift") or 0
             ),
             "vps_root_submodule_uninitialized": int(
-                vps_root_summary.get("submodule_uninitialized")
-                or vps_root_counts.get("submodule_uninitialized")
-                or 0
+                vps_root_summary.get("submodule_uninitialized") or vps_root_counts.get("submodule_uninitialized") or 0
             ),
             "vps_root_generated_untracked": int(
-                vps_root_summary.get("generated_untracked")
-                or vps_root_counts.get("generated_untracked")
-                or 0
+                vps_root_summary.get("generated_untracked") or vps_root_counts.get("generated_untracked") or 0
             ),
             "vps_root_status_rows": int(vps_root_counts.get("status") or 0),
             "vps_root_dirty_companion_repos": int(
-                vps_root_summary.get("dirty_companion_repos")
-                or vps_root_counts.get("dirty_companion_repos")
-                or 0
+                vps_root_summary.get("dirty_companion_repos") or vps_root_counts.get("dirty_companion_repos") or 0
             ),
-            "vps_root_recommended_action": str(
-                vps_root_reconciliation.get("recommended_action") or ""
-            ),
+            "vps_root_recommended_action": str(vps_root_reconciliation.get("recommended_action") or ""),
             "vps_root_review_step_count": len(vps_root_steps),
             "vps_root_top_step_id": str(vps_root_top_step.get("id") or ""),
             "vps_root_top_step_title": str(vps_root_top_step.get("title") or ""),
@@ -5253,9 +5104,9 @@ def bot_fleet_roster(
             "ibkr_gateway_detail": ibkr_gateway.get("detail") or broker_gateway.get("detail"),
             **broker_summary,
         },
-        "active_bots":       active_bots,
+        "active_bots": active_bots,
         "runtime_active_bots": active_bots,
-        "staged_bots":       staged_bots,
+        "staged_bots": staged_bots,
         "portfolio_summary": portfolio_summary,
         "close_history": close_history,
         "close_history_window": close_history_window,
@@ -5263,14 +5114,14 @@ def bot_fleet_roster(
         "close_history_row_count": len(default_close_rows),
         "default_close_history_window": default_close_history_window,
         "history_window_pnl": history_window_pnl,
-        "latest_signal_ts":  signal_cadence["latest_signal_ts"],
-        "signal_cadence":    signal_cadence,
+        "latest_signal_ts": signal_cadence["latest_signal_ts"],
+        "signal_cadence": signal_cadence,
         "target_exit_summary": target_exit_summary,
-        "server_ts":         now_ts,
-        "live":              fills_stats,
+        "server_ts": now_ts,
+        "live": fills_stats,
         "live_broker_state": live_broker_state,
-        "broker_gateway":    broker_gateway,
-        "broker_router":     _broker_router_snapshot(),
+        "broker_gateway": broker_gateway,
+        "broker_router": _broker_router_snapshot(),
         "broker_bracket_audit": broker_bracket_audit,
         "paper_live_transition": paper_live_transition,
         "vps_root_reconciliation": vps_root_reconciliation,
@@ -5285,6 +5136,7 @@ def bot_fleet_drilldown(bot_id: str) -> dict:
     if not _BOT_ID_RE.match(bot_id):
         raise HTTPException(status_code=400, detail={"error_code": "invalid_bot_id"})
     from eta_engine.deploy.scripts.dashboard_state import read_json_safe
+
     bot_dir = _state_dir() / "bots" / bot_id
     readiness_rows = _bot_strategy_readiness_rows_by_bot()
     supervisor_statuses = _supervisor_roster_rows(time.time(), bot=bot_id)
@@ -5337,17 +5189,13 @@ def bot_fleet_drilldown(bot_id: str) -> dict:
                 "strategy_readiness": strategy_readiness,
                 "launch_lane": supervisor_status.get("launch_lane") or strategy_readiness.get("launch_lane") or "",
                 "can_paper_trade": bool(
-                    supervisor_status.get("can_paper_trade")
-                    or strategy_readiness.get("can_paper_trade")
+                    supervisor_status.get("can_paper_trade") or strategy_readiness.get("can_paper_trade")
                 ),
                 "can_live_trade": bool(
-                    supervisor_status.get("can_live_trade")
-                    or strategy_readiness.get("can_live_trade")
+                    supervisor_status.get("can_live_trade") or strategy_readiness.get("can_live_trade")
                 ),
                 "readiness_next_action": str(
-                    supervisor_status.get("readiness_next_action")
-                    or strategy_readiness.get("next_action")
-                    or "",
+                    supervisor_status.get("readiness_next_action") or strategy_readiness.get("next_action") or "",
                 ),
             }
         readiness = _lookup_bot_strategy_readiness(readiness_rows, {}, bot_id)
@@ -5444,6 +5292,7 @@ def live_fills(limit: int = 30, response: Response = None) -> dict:
 def risk_gates() -> dict:
     """Per-bot kill latch + DD + cap state + fleet aggregate."""
     from eta_engine.deploy.scripts.dashboard_state import read_json_safe
+
     latches = read_json_safe(_state_dir() / "safety" / "kill_switch_latch.json")
     fleet_agg = read_json_safe(_state_dir() / "safety" / "fleet_risk_gate_state.json")
     bots = []
@@ -5460,6 +5309,7 @@ def risk_gates() -> dict:
 def positions_reconciler() -> dict:
     """Latest position reconciler snapshot."""
     from eta_engine.deploy.scripts.dashboard_state import read_json_safe
+
     return read_json_safe(_state_dir() / "safety" / "position_reconciler_latest.json")
 
 
@@ -5489,10 +5339,7 @@ def _supervisor_equity_payload(
         with contextlib.suppress(TypeError, ValueError):
             total_pnl += float(row.get("todays_pnl") or 0.0)
         row_ts = str(
-            row.get("last_trade_ts")
-            or row.get("last_activity_ts")
-            or row.get("last_signal_ts")
-            or "",
+            row.get("last_trade_ts") or row.get("last_activity_ts") or row.get("last_signal_ts") or "",
         )
         if row_ts > latest_ts:
             latest_ts = row_ts
@@ -5633,9 +5480,7 @@ def equity_curve(
         # If fleet blotter curve is stale/missing, aggregate from per-bot curves.
         agg_series, agg_mtime = _aggregate_fleet_curve_from_bots(series_key)
         prefer_agg = bool(agg_series) and (
-            not series
-            or source_mtime is None
-            or (agg_mtime is not None and agg_mtime > source_mtime)
+            not series or source_mtime is None or (agg_mtime is not None and agg_mtime > source_mtime)
         )
         if prefer_agg:
             series = agg_series
@@ -5658,11 +5503,7 @@ def equity_curve(
         live_baseline = 5000.0
         if bot is None:
             bots_dir = _state_dir() / "bots"
-            bot_count = (
-                sum(1 for p in bots_dir.iterdir() if p.is_dir())
-                if bots_dir.exists()
-                else 7
-            )
+            bot_count = sum(1 for p in bots_dir.iterdir() if p.is_dir()) if bots_dir.exists() else 7
             live_baseline = float(max(1, bot_count) * 5000)
         series_live = _intraday_equity_from_fills(bot, live_baseline, since_days)
         if series_live:
@@ -5680,11 +5521,7 @@ def equity_curve(
         baseline = 5000.0
         if bot is None:
             bots_dir = _state_dir() / "bots"
-            bot_count = (
-                sum(1 for p in bots_dir.iterdir() if p.is_dir())
-                if bots_dir.exists()
-                else 7
-            )
+            bot_count = sum(1 for p in bots_dir.iterdir() if p.is_dir()) if bots_dir.exists() else 7
             baseline = float(max(1, bot_count) * 5000)
         rebased_data = dict(data)
         for k in ("today", "week", "month", "all_time", "thirty_day"):
@@ -5696,16 +5533,8 @@ def equity_curve(
         summary = data.get("summary") or _compute_pnl_summary(data)
 
     server_ts = time.time()
-    source_age_s = (
-        max(0, int(server_ts - source_mtime))
-        if source_mtime is not None
-        else None
-    )
-    source_updated_at = (
-        datetime.fromtimestamp(source_mtime, UTC).isoformat()
-        if source_mtime is not None
-        else None
-    )
+    source_age_s = max(0, int(server_ts - source_mtime)) if source_mtime is not None else None
+    source_updated_at = datetime.fromtimestamp(source_mtime, UTC).isoformat() if source_mtime is not None else None
     # Preserve legacy keys (today/thirty_day) for backwards-compat with old test
     out = {
         "bot_id": bot,
@@ -5995,6 +5824,372 @@ def _derive_ibkr_today_realized_pnl(snapshot: dict) -> float:
     return 0.0
 
 
+def _ibkr_client_portal_base_url() -> str:
+    raw = str(
+        os.environ.get("ETA_IBKR_CLIENT_PORTAL_BASE_URL")
+        or os.environ.get("ETA_IBKR_CP_BASE_URL")
+        or "https://127.0.0.1:5000/v1/api"
+    ).strip()
+    return (raw or "https://127.0.0.1:5000/v1/api").rstrip("/")
+
+
+def _ibkr_client_portal_request(
+    path: str,
+    *,
+    method: str = "GET",
+    payload: dict | None = None,
+    timeout_s: float | None = None,
+) -> dict | list:
+    """Best-effort JSON request helper for the local IBKR Client Portal gateway."""
+
+    url = f"{_ibkr_client_portal_base_url()}/{path.lstrip('/')}"
+    body = None if payload is None else json.dumps(payload).encode("utf-8")
+    request = urllib_request.Request(
+        url,
+        data=body,
+        method=method.upper(),
+        headers={
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+        },
+    )
+    try:
+        resolved_timeout = float(timeout_s or os.environ.get("ETA_IBKR_CP_TIMEOUT_S", "8"))
+    except ValueError:
+        resolved_timeout = 8.0
+    kwargs: dict[str, Any] = {"timeout": max(1.0, resolved_timeout)}
+    if url.lower().startswith(("https://127.0.0.1", "https://localhost")):
+        kwargs["context"] = ssl._create_unverified_context()
+    try:
+        with urllib_request.urlopen(request, **kwargs) as response:
+            raw = response.read().decode("utf-8", errors="replace")
+    except urllib_error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace").strip()
+        detail = detail[:240] if detail else ""
+        msg = f"http_{exc.code}"
+        if detail:
+            msg = f"{msg}: {detail}"
+        raise RuntimeError(msg) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise RuntimeError(f"request_failed:{type(exc).__name__}: {exc}") from exc
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError as exc:
+        preview = raw[:160].replace("\n", " ").strip()
+        raise RuntimeError(f"invalid_json: {preview}") from exc
+
+
+def _series_last_numeric(values: Any) -> float | None:
+    if not isinstance(values, list):
+        return None
+    for item in reversed(values):
+        value = _float_value(item)
+        if value is not None:
+            return value
+    return None
+
+
+def _ibkr_extract_mtd_performance(payload: dict, *, account_id: str | None = None) -> dict:
+    """Normalize IBKR Client Portal MTD performance payloads into one shape."""
+
+    out = {
+        "ready": False,
+        "period": "MTD",
+        "account_id": account_id,
+        "source": "ibkr_client_portal_pa_performance_mtd",
+        "mtd_pnl": None,
+        "mtd_return_pct": None,
+        "start_nav": None,
+        "end_nav": None,
+        "dates": [],
+    }
+    if not isinstance(payload, dict):
+        out["error"] = "invalid_payload"
+        return out
+
+    period_payload: dict[str, Any] | None = None
+    matched_account = account_id
+    candidate_accounts: list[str] = []
+    if account_id:
+        candidate_accounts.append(account_id)
+    candidate_accounts.extend(
+        key
+        for key, value in payload.items()
+        if isinstance(key, str) and key not in candidate_accounts and isinstance(value, dict)
+    )
+    for candidate in candidate_accounts:
+        account_payload = payload.get(candidate)
+        if isinstance(account_payload, dict) and isinstance(account_payload.get("MTD"), dict):
+            period_payload = dict(account_payload["MTD"])
+            matched_account = candidate
+            break
+
+    if period_payload is None:
+        nav_section = payload.get("nav") if isinstance(payload.get("nav"), dict) else {}
+        cps_section = payload.get("cps") if isinstance(payload.get("cps"), dict) else {}
+        nav_rows = nav_section.get("data") if isinstance(nav_section.get("data"), list) else []
+        cps_rows = cps_section.get("data") if isinstance(cps_section.get("data"), list) else []
+        nav_row = next(
+            (
+                row
+                for row in nav_rows
+                if isinstance(row, dict) and (not account_id or str(row.get("id") or "") == account_id)
+            ),
+            None,
+        )
+        if nav_row is None and len(nav_rows) == 1 and isinstance(nav_rows[0], dict):
+            nav_row = nav_rows[0]
+        cps_row = next(
+            (
+                row
+                for row in cps_rows
+                if isinstance(row, dict) and (not account_id or str(row.get("id") or "") == account_id)
+            ),
+            None,
+        )
+        if cps_row is None and len(cps_rows) == 1 and isinstance(cps_rows[0], dict):
+            cps_row = cps_rows[0]
+        if nav_row or cps_row:
+            period_payload = {}
+            if isinstance(nav_row, dict):
+                period_payload["nav"] = (
+                    nav_row.get("navs") if isinstance(nav_row.get("navs"), list) else nav_row.get("nav")
+                )
+                if isinstance(nav_row.get("dates"), list):
+                    period_payload["dates"] = nav_row.get("dates")
+                matched_account = str(nav_row.get("id") or matched_account or "")
+            if isinstance(cps_row, dict):
+                period_payload["cps"] = (
+                    cps_row.get("returns") if isinstance(cps_row.get("returns"), list) else cps_row.get("cps")
+                )
+                if not period_payload.get("dates") and isinstance(cps_row.get("dates"), list):
+                    period_payload["dates"] = cps_row.get("dates")
+                matched_account = str(cps_row.get("id") or matched_account or "")
+            if isinstance(payload.get("startNAV"), dict):
+                period_payload["startNAV"] = payload.get("startNAV")
+            elif isinstance(nav_section.get("startNAV"), dict):
+                period_payload["startNAV"] = nav_section.get("startNAV")
+
+    if not isinstance(period_payload, dict):
+        out["error"] = "mtd_payload_missing"
+        return out
+
+    start_nav = None
+    if isinstance(period_payload.get("startNAV"), dict):
+        start_nav = _float_value(
+            period_payload["startNAV"].get("val")
+            or period_payload["startNAV"].get("value")
+            or period_payload["startNAV"].get("nav")
+        )
+    if start_nav is None:
+        start_nav = _float_value(period_payload.get("start_nav") or period_payload.get("startNAV"))
+    nav_series = period_payload.get("nav") if isinstance(period_payload.get("nav"), list) else []
+    end_nav = _series_last_numeric(nav_series)
+    cps_series = period_payload.get("cps") if isinstance(period_payload.get("cps"), list) else []
+    return_value = _series_last_numeric(cps_series)
+    out.update(
+        {
+            "account_id": matched_account or account_id,
+            "start_nav": start_nav,
+            "end_nav": end_nav,
+            "dates": period_payload.get("dates") if isinstance(period_payload.get("dates"), list) else [],
+            "mtd_return_pct": round(return_value * 100, 2) if return_value is not None else None,
+        }
+    )
+    if start_nav is not None and end_nav is not None:
+        out["mtd_pnl"] = round(end_nav - start_nav, 2)
+        out["ready"] = True
+    else:
+        out["error"] = "mtd_nav_missing"
+    return out
+
+
+def _ibkr_client_portal_mtd_snapshot(
+    *,
+    managed_accounts: list[str] | None = None,
+    preferred_account: str | None = None,
+) -> dict:
+    """Fetch month-to-date account performance from the local IBKR Client Portal."""
+
+    enabled = str(os.environ.get("ETA_IBKR_CP_MTD_ENABLED", "1")).strip().lower()
+    if enabled in {"0", "false", "no", "off"}:
+        return {
+            "ready": False,
+            "period": "MTD",
+            "account_id": preferred_account,
+            "source": "ibkr_client_portal_pa_performance_mtd",
+            "error": "disabled",
+        }
+
+    requested_accounts: list[str] = []
+    for account in [preferred_account, *(managed_accounts or [])]:
+        text = str(account or "").strip()
+        if text and text != "All" and text not in requested_accounts:
+            requested_accounts.append(text)
+    if not requested_accounts:
+        return {
+            "ready": False,
+            "period": "MTD",
+            "account_id": preferred_account,
+            "source": "ibkr_client_portal_pa_performance_mtd",
+            "error": "account_missing",
+        }
+
+    try:
+        payload = _ibkr_client_portal_request(
+            "/pa/performance",
+            method="POST",
+            payload={"acctIds": requested_accounts, "period": "MTD"},
+        )
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "ready": False,
+            "period": "MTD",
+            "account_id": requested_accounts[0],
+            "source": "ibkr_client_portal_pa_performance_mtd",
+            "requested_accounts": requested_accounts,
+            "error": str(exc),
+        }
+    extracted = _ibkr_extract_mtd_performance(payload, account_id=requested_accounts[0])
+    extracted["requested_accounts"] = requested_accounts
+    return extracted
+
+
+def _ibkr_mtd_tracker_state_path() -> Path:
+    """Canonical state file for IBKR month-baseline net-liq tracking."""
+    return _state_dir() / "broker_mtd" / "ibkr_net_liq_month_tracker.json"
+
+
+def _write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
+    """Atomically write ``payload`` to ``path`` using a temp file + replace."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_fd, tmp_name = tempfile.mkstemp(
+        dir=str(path.parent),
+        prefix=f".{path.stem}_",
+        suffix=".tmp",
+    )
+    try:
+        with os.fdopen(tmp_fd, "w", encoding="utf-8") as fh:
+            fh.write(json.dumps(payload, indent=2, sort_keys=True))
+        os.replace(tmp_name, str(path))
+    except Exception:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp_name)
+        raise
+
+
+def _utc_month_key(now_utc: datetime | None = None) -> str:
+    """Return the current UTC month key as ``YYYY-MM``."""
+    ts = now_utc.astimezone(UTC) if now_utc is not None else datetime.now(UTC)
+    return ts.strftime("%Y-%m")
+
+
+def _ibkr_net_liquidation_mtd_snapshot(
+    *,
+    account_id: str | None,
+    net_liquidation: float | None,
+    checked_at: str | None = None,
+    now_utc: datetime | None = None,
+) -> dict:
+    """Track IBKR paper-account MTD from net liquidation when CP is unavailable.
+
+    The dashboard prefers Client Portal ``/pa/performance`` because it exposes
+    true portfolio MTD. When that sidecar is down, we fall back to a canonical
+    month baseline persisted under ``var/eta_engine/state`` and compute:
+
+      current_net_liq - first_seen_net_liq_for_this_utc_month
+
+    This makes Broker MTD durable and self-healing across dashboard restarts
+    without writing outside the canonical ETA workspace.
+    """
+    out = {
+        "ready": False,
+        "period": "MTD",
+        "account_id": str(account_id or "").strip() or None,
+        "source": "ibkr_net_liquidation_month_tracker",
+        "error": "",
+    }
+    account_text = str(account_id or "").strip()
+    current_net_liq = _float_value(net_liquidation)
+    if not account_text:
+        out["error"] = "account_missing"
+        return out
+    if current_net_liq is None:
+        out["error"] = "net_liquidation_missing"
+        return out
+
+    current_net_liq = round(float(current_net_liq), 2)
+    ts_utc = now_utc.astimezone(UTC) if now_utc is not None else datetime.now(UTC)
+    checked_iso = str(checked_at or ts_utc.isoformat())
+    month_key = _utc_month_key(ts_utc)
+    tracker_path = _ibkr_mtd_tracker_state_path()
+    tracker_path.parent.mkdir(parents=True, exist_ok=True)
+    lock_path = tracker_path.with_suffix(".lock")
+
+    with portalocker.Lock(str(lock_path), mode="a", timeout=5, flags=portalocker.LOCK_EX):
+        tracker_state: dict[str, Any] = {}
+        if tracker_path.exists():
+            with contextlib.suppress(OSError, json.JSONDecodeError):
+                loaded = json.loads(tracker_path.read_text(encoding="utf-8"))
+                if isinstance(loaded, dict):
+                    tracker_state = loaded
+        accounts = tracker_state.setdefault("accounts", {})
+        if not isinstance(accounts, dict):
+            accounts = {}
+            tracker_state["accounts"] = accounts
+        account_state = accounts.setdefault(account_text, {})
+        if not isinstance(account_state, dict):
+            account_state = {}
+            accounts[account_text] = account_state
+        month_state = account_state.get(month_key)
+        if not isinstance(month_state, dict):
+            month_state = {}
+            account_state[month_key] = month_state
+
+        baseline_net_liq = _float_value(month_state.get("baseline_net_liquidation"))
+        baseline_set_at = str(month_state.get("baseline_set_at") or "").strip()
+        baseline_initialized = baseline_net_liq is None
+        if baseline_net_liq is None:
+            baseline_net_liq = current_net_liq
+        if not baseline_set_at:
+            baseline_set_at = checked_iso
+
+        month_state.update(
+            {
+                "month": month_key,
+                "baseline_net_liquidation": round(float(baseline_net_liq), 2),
+                "baseline_set_at": baseline_set_at,
+                "last_net_liquidation": current_net_liq,
+                "last_seen_at": checked_iso,
+            }
+        )
+        tracker_state["schema_version"] = 1
+        tracker_state["updated_at"] = checked_iso
+        _write_json_atomic(tracker_path, tracker_state)
+
+    baseline_net_liq = round(float(baseline_net_liq), 2)
+    mtd_pnl = round(current_net_liq - baseline_net_liq, 2)
+    out.update(
+        {
+            "ready": True,
+            "month": month_key,
+            "source": (
+                "ibkr_net_liquidation_month_tracker_bootstrap"
+                if baseline_initialized
+                else "ibkr_net_liquidation_month_tracker"
+            ),
+            "mtd_pnl": mtd_pnl,
+            "start_nav": baseline_net_liq,
+            "end_nav": current_net_liq,
+            "baseline_set_at": baseline_set_at,
+            "baseline_initialized": baseline_initialized,
+        }
+    )
+    if baseline_net_liq not in {0.0, -0.0}:
+        out["mtd_return_pct"] = round(((current_net_liq / baseline_net_liq) - 1.0) * 100.0, 2)
+    return out
+
+
 def _recent_trade_closes(limit: int = 25) -> list[dict]:
     """Return the newest Jarvis trade-close ledger rows without heavy reads."""
     path = _state_dir() / "jarvis_intel" / "trade_closes.jsonl"
@@ -6047,17 +6242,13 @@ def _normalize_live_position(row: dict, *, venue: str) -> dict | None:
         else:
             raw_side = "unknown"
     sec_type = row.get("secType") or row.get("sec_type")
-    current_price = _float_value(
-        row.get("current_price") if venue == "alpaca" else row.get("market_price")
-    )
+    current_price = _float_value(row.get("current_price") if venue == "alpaca" else row.get("market_price"))
     avg_entry_price = _normalize_live_avg_entry_price(
         row,
         venue=venue,
         symbol=str(symbol),
         sec_type=sec_type,
-        raw_avg_entry_price=_float_value(
-            row.get("avg_entry_price") if venue == "alpaca" else row.get("avg_cost")
-        ),
+        raw_avg_entry_price=_float_value(row.get("avg_entry_price") if venue == "alpaca" else row.get("avg_cost")),
         current_price=current_price,
     )
     normalized = {
@@ -6068,9 +6259,7 @@ def _normalize_live_position(row: dict, *, venue: str) -> dict | None:
         "avg_entry_price": avg_entry_price,
         "current_price": current_price,
         "market_value": _float_value(row.get("market_value")),
-        "unrealized_pnl": _float_value(
-            row.get("unrealized_pl") if venue == "alpaca" else row.get("unrealized_pnl")
-        ),
+        "unrealized_pnl": _float_value(row.get("unrealized_pl") if venue == "alpaca" else row.get("unrealized_pnl")),
         "unrealized_pct": _float_value(row.get("unrealized_plpc")),
         "sec_type": sec_type,
         "exchange": row.get("exchange"),
@@ -6080,11 +6269,7 @@ def _normalize_live_position(row: dict, *, venue: str) -> dict | None:
 
 
 def _live_position_contract_multiplier(row: dict, symbol: str) -> float | None:
-    multiplier = _float_value(
-        row.get("multiplier")
-        or row.get("contract_multiplier")
-        or row.get("contractMultiplier")
-    )
+    multiplier = _float_value(row.get("multiplier") or row.get("contract_multiplier") or row.get("contractMultiplier"))
     if multiplier is not None and multiplier > 0:
         return multiplier
     symbol_key = symbol.strip().upper()
@@ -6196,11 +6381,7 @@ def _closed_outcomes_from_filled_orders(orders: list[dict]) -> dict:
             lot_qty = float(lot["qty"])
             close_qty = min(remaining, lot_qty)
             entry_price = float(lot["price"])
-            pnl = (
-                (price - entry_price) * close_qty
-                if lot["side"] == "buy"
-                else (entry_price - price) * close_qty
-            )
+            pnl = (price - entry_price) * close_qty if lot["side"] == "buy" else (entry_price - price) * close_qty
             outcomes.append(
                 {
                     "symbol": symbol,
@@ -6351,13 +6532,13 @@ def _close_history_windows(
             row_limit=row_limit,
         )
         summary.update(
-                {
-                    "window": key,
-                    "label": label,
-                    "since": since.isoformat() if since is not None else None,
-                    "until": now.isoformat(),
-                    "source": "trade_close_ledger",
-                },
+            {
+                "window": key,
+                "label": label,
+                "since": since.isoformat() if since is not None else None,
+                "until": now.isoformat(),
+                "source": "trade_close_ledger",
+            },
         )
         out["windows"][key] = summary
     return out
@@ -6380,9 +6561,7 @@ def _broker_summary_fields(live_broker_state: dict) -> dict:
     win_rate_today = _float_value(live_broker_state.get("win_rate_today"))
     closed_outcomes_today = _float_value(live_broker_state.get("closed_outcome_count_today"))
     recent_close_count_30d = _float_value(live_broker_state.get("recent_close_count_30d"))
-    recent_close_realized_pnl_30d = _float_value(
-        live_broker_state.get("recent_close_realized_pnl_30d")
-    )
+    recent_close_realized_pnl_30d = _float_value(live_broker_state.get("recent_close_realized_pnl_30d"))
     out: dict[str, object] = {
         "pnl_summary_source": "live_broker_state",
     }
@@ -6474,30 +6653,97 @@ def _portfolio_sleeve_for_symbol(symbol: object) -> str:
     return _PORTFOLIO_SLEEVE_ROOTS.get(_portfolio_symbol_root(symbol), "other")
 
 
-_FOCUS_PORTFOLIO_SLEEVES = frozenset({
-    "equity_index_futures",
-    "commodities",
-    "rates_fx",
-    "crypto_futures",
-})
+_FOCUS_PORTFOLIO_SLEEVES = frozenset(
+    {
+        "equity_index_futures",
+        "commodities",
+        "rates_fx",
+        "crypto_futures",
+    }
+)
 _CELLAR_PORTFOLIO_SLEEVES = frozenset({"crypto"})
-_ACTIVE_FOCUS_BROKERS = ("ibkr", "tastytrade")
-_PENDING_FOCUS_BROKERS = ("tradovate",)
+_PRIMARY_FOCUS_BROKERS = ("ibkr",)
+_STANDBY_FOCUS_BROKERS = ("tastytrade",)
+_ACTIVE_FOCUS_BROKERS = _PRIMARY_FOCUS_BROKERS + _STANDBY_FOCUS_BROKERS
+_PENDING_FOCUS_BROKERS: tuple[str, ...] = ()
+_DORMANT_FOCUS_BROKERS = ("tradovate",)
 _PAUSED_CELLAR_BROKERS = ("alpaca",)
+
+
+def _tradovate_auth_status_path() -> Path:
+    """Canonical Tradovate auth-status receipt used for read-only dashboard truth."""
+    return _state_dir() / "tradovate_auth_status.json"
+
+
+def _tradovate_dashboard_status_payload() -> dict[str, object]:
+    """Return the current Tradovate paper-portfolio posture for dashboard wording.
+
+    The operator policy keeps Tradovate dormant unless explicitly reactivated.
+    This helper does not claim live PnL or route status; it only surfaces the
+    current read-only posture and the latest auth receipt when present.
+    """
+    enabled = str(os.environ.get("ETA_TRADOVATE_ENABLED") or "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+        "y",
+    }
+    auth_path = _tradovate_auth_status_path()
+    auth = _read_json_file(auth_path)
+    result = str(auth.get("result") or "missing").strip().lower() if auth else "missing"
+    raw_reason = str(auth.get("reason") or "").strip() if auth else ""
+    reason = raw_reason if len(raw_reason) <= 180 else raw_reason[:177].rstrip() + "..."
+
+    if enabled and result == "success":
+        status = "paper_enabled"
+        detail = "Tradovate paper auth is live; direct portfolio rollup is not attached yet."
+    elif enabled and result == "failed":
+        status = "auth_failed"
+        detail = reason or "Tradovate paper auth failed."
+    elif enabled:
+        status = "awaiting_auth"
+        detail = "Tradovate is enabled, but no auth receipt is available yet."
+    elif result == "failed":
+        status = "dormant_auth_failed"
+        detail = "Tradovate is dormant; latest auth receipt failed."
+    else:
+        status = "dormant"
+        detail = "Tradovate paper portfolios are dormant until explicitly reactivated."
+
+    return {
+        "enabled": enabled,
+        "ready": status == "paper_enabled",
+        "status": status,
+        "detail": detail,
+        "auth_path": str(auth_path),
+        "has_auth_receipt": bool(auth),
+        "auth_result": result,
+        "demo": bool(auth.get("demo")) if auth else None,
+        "endpoint": auth.get("endpoint") if auth else None,
+        "has_all_creds": bool(auth.get("has_all_creds")) if auth else False,
+    }
 
 
 def _dashboard_focus_policy_payload() -> dict[str, object]:
     """Current operator focus policy for dashboard/API consumers."""
     return {
         "mode": "futures_focus",
-        "active_venues": list(_ACTIVE_FOCUS_BROKERS),
+        "active_venues": list(_PRIMARY_FOCUS_BROKERS),
+        "standby_venues": list(_STANDBY_FOCUS_BROKERS),
         "pending_venues": list(_PENDING_FOCUS_BROKERS),
+        "dormant_venues": list(_DORMANT_FOCUS_BROKERS),
         "paused_venues": list(_PAUSED_CELLAR_BROKERS),
         "focus_sleeves": sorted(_FOCUS_PORTFOLIO_SLEEVES),
         "cellar_sleeves": sorted(_CELLAR_PORTFOLIO_SLEEVES),
+        "pnl_sources": {
+            "session": "ibkr_live_broker_state",
+            "mtd_closed": "trade_close_ledger",
+            "tradovate_portfolio": "dormant_until_enabled",
+        },
         "note": (
-            "Alpaca and spot strategies are on the backburner; main dashboard "
-            "cards focus on regulated futures, CME crypto futures, and commodities."
+            "IBKR is the live futures truth path, Tastytrade is the standby lane, "
+            "Tradovate stays dormant, and Alpaca/spot stay on the backburner."
         ),
     }
 
@@ -6554,11 +6800,7 @@ def _portfolio_summary_payload(
     )
     focus_rows = [row for row in rows if not _portfolio_symbol_is_cellar(row.get("symbol"))]
     cellar_rows = [row for row in rows if _portfolio_symbol_is_cellar(row.get("symbol"))]
-    cellar_symbols: set[str] = {
-        str(row.get("symbol"))
-        for row in cellar_rows
-        if row.get("symbol")
-    }
+    cellar_symbols: set[str] = {str(row.get("symbol")) for row in cellar_rows if row.get("symbol")}
 
     sleeve_map: dict[str, dict[str, Any]] = {}
     for row in focus_rows:
@@ -6587,20 +6829,18 @@ def _portfolio_summary_payload(
 
     allocation_sleeves = []
     for bucket in sleeve_map.values():
-        allocation_sleeves.append({
-            **bucket,
-            "symbols": sorted(bucket["symbols"]),
-            "today_bot_pnl": round(float(bucket["today_bot_pnl"]), 2),
-        })
+        allocation_sleeves.append(
+            {
+                **bucket,
+                "symbols": sorted(bucket["symbols"]),
+                "today_bot_pnl": round(float(bucket["today_bot_pnl"]), 2),
+            }
+        )
     allocation_sleeves.sort(
         key=lambda row: (-int(row["open_position_count"]), -int(row["bot_count"]), row["sleeve"]),
     )
 
-    active_symbol_roots = {
-        _portfolio_symbol_root(row.get("symbol"))
-        for row in focus_rows
-        if row.get("symbol")
-    }
+    active_symbol_roots = {_portfolio_symbol_root(row.get("symbol")) for row in focus_rows if row.get("symbol")}
     contributors: list[dict[str, Any]] = []
     unassigned_broker_symbols: set[str] = set()
     for pos in exposure.get("open_positions") or []:
@@ -6610,29 +6850,26 @@ def _portfolio_summary_payload(
         symbol = str(pos.get("symbol") or "")
         symbol_root = _portfolio_symbol_root(symbol)
         ownership_status = (
-            "managed_symbol"
-            if symbol_root and symbol_root in active_symbol_roots
-            else "unassigned_broker_position"
+            "managed_symbol" if symbol_root and symbol_root in active_symbol_roots else "unassigned_broker_position"
         )
         if ownership_status == "unassigned_broker_position" and symbol:
             unassigned_broker_symbols.add(symbol)
-        contributors.append({
-            "type": "open_position_unrealized",
-            "venue": str(pos.get("venue") or ""),
-            "symbol": symbol,
-            "symbol_root": symbol_root,
-            "sleeve": _portfolio_sleeve_for_symbol(symbol),
-            "ownership_status": ownership_status,
-            "side": pos.get("side"),
-            "qty": _float_value(pos.get("qty")),
-            "market_value": _float_value(pos.get("market_value")),
-            "unrealized_pnl": round(unrealized, 2) if unrealized is not None else None,
-            "source": "live_broker_state.position_exposure",
-        })
-    cellar_positions = [
-        pos for pos in (exposure.get("cellar_open_positions") or [])
-        if isinstance(pos, dict)
-    ]
+        contributors.append(
+            {
+                "type": "open_position_unrealized",
+                "venue": str(pos.get("venue") or ""),
+                "symbol": symbol,
+                "symbol_root": symbol_root,
+                "sleeve": _portfolio_sleeve_for_symbol(symbol),
+                "ownership_status": ownership_status,
+                "side": pos.get("side"),
+                "qty": _float_value(pos.get("qty")),
+                "market_value": _float_value(pos.get("market_value")),
+                "unrealized_pnl": round(unrealized, 2) if unrealized is not None else None,
+                "source": "live_broker_state.position_exposure",
+            }
+        )
+    cellar_positions = [pos for pos in (exposure.get("cellar_open_positions") or []) if isinstance(pos, dict)]
     for pos in cellar_positions:
         symbol = str(pos.get("symbol") or "")
         if symbol:
@@ -6643,15 +6880,17 @@ def _portfolio_summary_payload(
         realized = _float_value(close.get("realized_pnl"))
         if realized in (None, 0.0):
             continue
-        contributors.append({
-            "type": "recent_close_realized",
-            "venue": "",
-            "bot_id": close.get("bot_id"),
-            "symbol": str(close.get("symbol") or ""),
-            "sleeve": _portfolio_sleeve_for_symbol(close.get("symbol")),
-            "realized_pnl": round(realized, 2),
-            "source": "live_broker_state.position_exposure",
-        })
+        contributors.append(
+            {
+                "type": "recent_close_realized",
+                "venue": "",
+                "bot_id": close.get("bot_id"),
+                "symbol": str(close.get("symbol") or ""),
+                "sleeve": _portfolio_sleeve_for_symbol(close.get("symbol")),
+                "realized_pnl": round(realized, 2),
+                "source": "live_broker_state.position_exposure",
+            }
+        )
     contributors.sort(
         key=lambda row: abs(
             float(row.get("unrealized_pnl") or row.get("realized_pnl") or 0.0),
@@ -6711,11 +6950,7 @@ def _all_normalized_live_open_positions(live_broker_state: dict) -> list[dict]:
     live_broker_state = live_broker_state if isinstance(live_broker_state, dict) else {}
     open_positions: list[dict] = []
     for venue in ("alpaca", "ibkr"):
-        venue_state = (
-            live_broker_state.get(venue)
-            if isinstance(live_broker_state.get(venue), dict)
-            else {}
-        )
+        venue_state = live_broker_state.get(venue) if isinstance(live_broker_state.get(venue), dict) else {}
         for row in venue_state.get("open_positions") or []:
             normalized = _normalize_live_position(row, venue=venue)
             if normalized:
@@ -6762,11 +6997,7 @@ def _broker_oco_evidence_payload(live_broker_state: dict) -> dict:
         for position in _normalized_live_open_positions(live_broker_state)
         if position.get("broker_bracket_required") is True
     ]
-    ibkr_state = (
-        live_broker_state.get("ibkr")
-        if isinstance(live_broker_state.get("ibkr"), dict)
-        else {}
-    )
+    ibkr_state = live_broker_state.get("ibkr") if isinstance(live_broker_state.get("ibkr"), dict) else {}
     open_orders = ibkr_state.get("open_orders") if isinstance(ibkr_state, dict) else []
     try:
         from eta_engine.scripts import broker_bracket_audit  # noqa: PLC0415
@@ -6792,10 +7023,7 @@ def _cached_live_broker_state_for_gateway_reconcile() -> dict:
     with _IBKR_PROBE_LOCK:
         cached = _IBKR_PROBE_CACHE.get("snapshot")
         cached_ts = float(_IBKR_PROBE_CACHE.get("ts") or 0.0)
-        if (
-            isinstance(cached, dict)
-            and (time.time() - cached_ts) < (_IBKR_PROBE_CACHE_TTL_S * 2)
-        ):
+        if isinstance(cached, dict) and (time.time() - cached_ts) < (_IBKR_PROBE_CACHE_TTL_S * 2):
             return {"ibkr": dict(cached)}
     return {}
 
@@ -6880,15 +7108,11 @@ def _target_exit_summary_for_master_status() -> dict:
         rows,
         broker_open_position_count=broker_open_count,
         broker_bracket_required_position_count=broker_bracket_required_count,
-        broker_open_order_verified_bracket_count=int(
-            broker_oco_evidence.get("verified_count") or 0
-        ),
+        broker_open_order_verified_bracket_count=int(broker_oco_evidence.get("verified_count") or 0),
         server_ts=now_ts,
     )
     summary["source"] = "supervisor_roster_cached_live_broker_state"
-    summary["broker_position_source"] = (
-        exposure.get("source") if exposure.get("observed") else "not_observed"
-    )
+    summary["broker_position_source"] = exposure.get("source") if exposure.get("observed") else "not_observed"
     if exposure.get("observed"):
         summary["broker_position_scope"] = "ibkr_cached"
         summary["broker_position_scope_detail"] = (
@@ -6908,9 +7132,7 @@ def _target_exit_card_status(summary: dict) -> str:
     status = str(summary.get("status") or "unknown").lower()
     staleness = str(summary.get("stale_position_status") or "").lower()
     position_staleness = (
-        summary.get("position_staleness")
-        if isinstance(summary.get("position_staleness"), dict)
-        else {}
+        summary.get("position_staleness") if isinstance(summary.get("position_staleness"), dict) else {}
     )
     force_flatten_due = int(position_staleness.get("force_flatten_due_count") or 0)
     missing_brackets = int(summary.get("missing_bracket_count") or 0)
@@ -6937,9 +7159,7 @@ def _audit_open_position_payload(position: dict) -> dict:
         "sec_type": position.get("sec_type") or position.get("secType"),
         "exchange": position.get("exchange"),
         "avg_entry_price": _float_value(position.get("avg_entry_price")),
-        "current_price": _float_value(
-            position.get("current_price") or position.get("market_price")
-        ),
+        "current_price": _float_value(position.get("current_price") or position.get("market_price")),
         "market_value": _float_value(position.get("market_value")),
         "unrealized_pnl": _float_value(position.get("unrealized_pnl")),
         "unrealized_pct": _float_value(position.get("unrealized_pct")),
@@ -7020,11 +7240,7 @@ def _enrich_broker_bracket_audit_with_positions(
         out["operator_action"] = str(out.get("next_action") or "")
         out.setdefault("operator_actions", _broker_bracket_operator_actions(out, []))
         return out
-    position_summary = (
-        dict(out.get("position_summary"))
-        if isinstance(out.get("position_summary"), dict)
-        else {}
-    )
+    position_summary = dict(out.get("position_summary")) if isinstance(out.get("position_summary"), dict) else {}
     symbols = sorted({str(position.get("symbol") or "") for position in positions if position.get("symbol")})
     position_summary["unprotected_symbols"] = symbols
     out["position_summary"] = position_summary
@@ -7068,9 +7284,7 @@ def _broker_bracket_audit_payload(
             "summary": "AUDIT_UNAVAILABLE",
             "ready_for_prop_dry_run": False,
             "target_exit_status": (
-                target_exit_summary.get("status")
-                if isinstance(target_exit_summary, dict)
-                else None
+                target_exit_summary.get("status") if isinstance(target_exit_summary, dict) else None
             ),
             "position_summary": {
                 "broker_open_position_count": 0,
@@ -7162,9 +7376,7 @@ def _position_exposure_payload(
     default_close_window = str(close_history.get("default_window") or "mtd")
     close_windows = close_history.get("windows") if isinstance(close_history.get("windows"), dict) else {}
     default_window_payload = (
-        close_windows.get(default_close_window)
-        if isinstance(close_windows.get(default_close_window), dict)
-        else {}
+        close_windows.get(default_close_window) if isinstance(close_windows.get(default_close_window), dict) else {}
     )
     if recent_closes is None:
         default_window_rows = default_window_payload.get("recent_outcomes")
@@ -7182,9 +7394,7 @@ def _position_exposure_payload(
                 normalized_closes.append(normalized)
 
     open_position_count = len(open_positions)
-    bracket_required_count = sum(
-        1 for position in open_positions if position.get("broker_bracket_required") is True
-    )
+    bracket_required_count = sum(1 for position in open_positions if position.get("broker_bracket_required") is True)
     supervisor_local_count = int(target_exit_summary.get("supervisor_local_position_count") or 0)
     supervisor_watch_count = int(target_exit_summary.get("supervisor_watch_count") or 0)
     if open_position_count:
@@ -7260,10 +7470,12 @@ def _live_fill_paths() -> list[tuple[Path, str]]:
 def _normalize_live_fill_row(row: dict, *, source: str, source_path: str | None = None) -> dict | None:
     if not isinstance(row, dict):
         return None
-    status = str(
-        _first_present(row, ("status", "order_status", "orderStatus", "event", "result_status"))
-        or ""
-    ).replace("_", "").replace(" ", "").upper()
+    status = (
+        str(_first_present(row, ("status", "order_status", "orderStatus", "event", "result_status")) or "")
+        .replace("_", "")
+        .replace(" ", "")
+        .upper()
+    )
     qty = _float_value(_first_present(row, ("qty", "quantity", "shares", "filled_qty", "filledQty")))
     is_positive_fill = qty is not None and abs(qty) > 0
     is_fill_status = status in _LIVE_FILL_STATUSES
@@ -7487,16 +7699,18 @@ def _alpaca_live_state_snapshot(*, today_start_iso: str) -> dict:
                         continue
                     upl = _float_value(p.get("unrealized_pl")) or 0.0
                     unreal += upl
-                    slim_positions.append({
-                        "symbol": p.get("symbol"),
-                        "qty": _float_value(p.get("qty")),
-                        "avg_entry_price": _float_value(p.get("avg_entry_price")),
-                        "current_price": _float_value(p.get("current_price")),
-                        "market_value": _float_value(p.get("market_value")),
-                        "unrealized_pl": upl,
-                        "unrealized_plpc": _float_value(p.get("unrealized_plpc")),
-                        "side": p.get("side"),
-                    })
+                    slim_positions.append(
+                        {
+                            "symbol": p.get("symbol"),
+                            "qty": _float_value(p.get("qty")),
+                            "avg_entry_price": _float_value(p.get("avg_entry_price")),
+                            "current_price": _float_value(p.get("current_price")),
+                            "market_value": _float_value(p.get("market_value")),
+                            "unrealized_pl": upl,
+                            "unrealized_plpc": _float_value(p.get("unrealized_plpc")),
+                            "side": p.get("side"),
+                        }
+                    )
                 snapshot["open_positions"] = slim_positions
                 snapshot["open_position_count"] = len(slim_positions)
                 snapshot["unrealized_pnl"] = round(unreal, 2)
@@ -7518,14 +7732,16 @@ def _alpaca_live_state_snapshot(*, today_start_iso: str) -> dict:
                 # Surface the most recent N for the panel tape.
                 trimmed: list[dict] = []
                 for o in filled[:30]:
-                    trimmed.append({
-                        "symbol": o.get("symbol"),
-                        "side": o.get("side"),
-                        "filled_qty": _float_value(o.get("filled_qty")),
-                        "filled_avg_price": _float_value(o.get("filled_avg_price")),
-                        "filled_at": o.get("filled_at"),
-                        "client_order_id": o.get("client_order_id"),
-                    })
+                    trimmed.append(
+                        {
+                            "symbol": o.get("symbol"),
+                            "side": o.get("side"),
+                            "filled_qty": _float_value(o.get("filled_qty")),
+                            "filled_avg_price": _float_value(o.get("filled_avg_price")),
+                            "filled_at": o.get("filled_at"),
+                            "client_order_id": o.get("client_order_id"),
+                        }
+                    )
                 snapshot["recent_filled_orders"] = trimmed
         snapshot["ready"] = True
     except Exception as exc:  # noqa: BLE001 — broker degrade must not crash dashboard
@@ -7714,16 +7930,19 @@ def _alpaca_per_bot_pnl_snapshot(*, today_start_iso: str) -> dict:
         qty = _float_value(o.get("filled_qty")) or 0.0
         price = _float_value(o.get("filled_avg_price")) or 0.0
         notional = qty * price
-        bucket = by_bot.setdefault(bot_id, {
-            "fills_today": 0,
-            "buy_qty": 0.0,
-            "sell_qty": 0.0,
-            "buy_notional": 0.0,
-            "sell_notional": 0.0,
-            "symbols": set(),
-            "_realized_per_pair": [],
-            "_buy_stack": [],  # list of (qty, price) for FIFO matching
-        })
+        bucket = by_bot.setdefault(
+            bot_id,
+            {
+                "fills_today": 0,
+                "buy_qty": 0.0,
+                "sell_qty": 0.0,
+                "buy_notional": 0.0,
+                "sell_notional": 0.0,
+                "symbols": set(),
+                "_realized_per_pair": [],
+                "_buy_stack": [],  # list of (qty, price) for FIFO matching
+            },
+        )
         bucket["fills_today"] += 1
         sym = o.get("symbol")
         if sym:
@@ -7759,11 +7978,7 @@ def _alpaca_per_bot_pnl_snapshot(*, today_start_iso: str) -> dict:
         bt_wr = targets.get(bot_id)
         drift_alarm = False
         drift_gap_pp: float | None = None
-        if (
-            bt_wr is not None
-            and live_wr is not None
-            and bucket["fills_today"] >= _DRIFT_ALARM_MIN_FILLS
-        ):
+        if bt_wr is not None and live_wr is not None and bucket["fills_today"] >= _DRIFT_ALARM_MIN_FILLS:
             drift_gap_pp = round((bt_wr - live_wr) * 100.0, 2)
             if drift_gap_pp > _DRIFT_ALARM_PP_THRESHOLD:
                 drift_alarm = True
@@ -7786,9 +8001,7 @@ def _alpaca_per_bot_pnl_snapshot(*, today_start_iso: str) -> dict:
 
     snapshot["per_bot"] = per_bot_out
     snapshot["bot_count"] = len(per_bot_out)
-    snapshot["drift_alarm_count"] = sum(
-        1 for v in per_bot_out.values() if v.get("drift_alarm")
-    )
+    snapshot["drift_alarm_count"] = sum(1 for v in per_bot_out.values() if v.get("drift_alarm"))
     snapshot["ready"] = True
     return snapshot
 
@@ -7805,11 +8018,7 @@ def _alpaca_per_bot_pnl_cached(*, today_start_iso: str) -> dict:
         cached = _ALPACA_PER_BOT_CACHE.get("snapshot")
         cached_ts = float(_ALPACA_PER_BOT_CACHE.get("ts") or 0.0)
         cached_day = _ALPACA_PER_BOT_CACHE.get("today_start_iso")
-        if (
-            cached is not None
-            and cached_day == today_start_iso
-            and (now_ts - cached_ts) < _ALPACA_PER_BOT_CACHE_TTL_S
-        ):
+        if cached is not None and cached_day == today_start_iso and (now_ts - cached_ts) < _ALPACA_PER_BOT_CACHE_TTL_S:
             cached_copy = dict(cached)
             cached_copy["served_from_cache"] = True
             cached_copy["cache_age_s"] = round(now_ts - cached_ts, 2)
@@ -7899,8 +8108,16 @@ def _ibkr_live_state_snapshot(*, today_start_utc: datetime) -> dict:
         "open_position_count": 0,
         "unrealized_pnl": 0.0,
         "futures_pnl": None,
+        "account_net_liquidation": None,
         "account_summary_realized_pnl": None,
         "account_summary_unrealized_pnl": None,
+        "account_mtd_pnl": None,
+        "account_mtd_return_pct": None,
+        "account_mtd_source": "",
+        "account_mtd_error": "",
+        "account_mtd_baseline_net_liquidation": None,
+        "account_mtd_baseline_set_at": "",
+        "account_mtd_baseline_initialized": False,
         "account_summary_tags": {},
         "checked_utc": datetime.now(UTC).isoformat(),
     }
@@ -7909,6 +8126,7 @@ def _ibkr_live_state_snapshot(*, today_start_utc: datetime) -> dict:
     # itself raises. Install a fresh loop in this thread BEFORE the
     # import so the probe works inside sync handlers under uvicorn.
     import asyncio  # noqa: PLC0415
+
     try:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
@@ -7936,9 +8154,7 @@ def _ibkr_live_state_snapshot(*, today_start_utc: datetime) -> dict:
     ib = IB()
     try:
         try:
-            loop.run_until_complete(
-                ib.connectAsync(host, port, clientId=client_id, timeout=connect_timeout)
-            )
+            loop.run_until_complete(ib.connectAsync(host, port, clientId=client_id, timeout=connect_timeout))
             try:
                 portfolio = list(ib.portfolio()) if ib.isConnected() else []
             except Exception:  # noqa: BLE001
@@ -7953,10 +8169,11 @@ def _ibkr_live_state_snapshot(*, today_start_utc: datetime) -> dict:
                 (acct for acct in managed_accounts if acct not in (None, "", "All")),
                 None,
             )
+            snapshot["preferred_account"] = preferred_account
             summary_tags: dict[str, float] = {}
             for row in account_summary:
                 tag = getattr(row, "tag", None)
-                if tag not in {"FuturesPNL", "RealizedPnL", "UnrealizedPnL"}:
+                if tag not in {"FuturesPNL", "RealizedPnL", "UnrealizedPnL", "NetLiquidation"}:
                     continue
                 value = _float_value(getattr(row, "value", None))
                 if value is None:
@@ -7964,15 +8181,43 @@ def _ibkr_live_state_snapshot(*, today_start_utc: datetime) -> dict:
                 account = getattr(row, "account", None)
                 if tag not in summary_tags or account == preferred_account:
                     summary_tags[tag] = value
-            snapshot["account_summary_tags"] = {
-                tag: round(value, 2) for tag, value in summary_tags.items()
-            }
+            snapshot["account_summary_tags"] = {tag: round(value, 2) for tag, value in summary_tags.items()}
             if "FuturesPNL" in summary_tags:
                 snapshot["futures_pnl"] = round(summary_tags["FuturesPNL"], 2)
+            if "NetLiquidation" in summary_tags:
+                snapshot["account_net_liquidation"] = round(summary_tags["NetLiquidation"], 2)
             if "RealizedPnL" in summary_tags:
                 snapshot["account_summary_realized_pnl"] = round(summary_tags["RealizedPnL"], 2)
             if "UnrealizedPnL" in summary_tags:
                 snapshot["account_summary_unrealized_pnl"] = round(summary_tags["UnrealizedPnL"], 2)
+            mtd_snapshot = _ibkr_client_portal_mtd_snapshot(
+                managed_accounts=managed_accounts,
+                preferred_account=preferred_account,
+            )
+            if _float_value(mtd_snapshot.get("mtd_pnl")) is None:
+                tracked_mtd = _ibkr_net_liquidation_mtd_snapshot(
+                    account_id=preferred_account or next(iter(managed_accounts), None),
+                    net_liquidation=snapshot.get("account_net_liquidation"),
+                    checked_at=snapshot["checked_utc"],
+                )
+                if tracked_mtd.get("ready"):
+                    client_portal_error = str(mtd_snapshot.get("error") or "").strip()
+                    if client_portal_error:
+                        tracked_mtd["client_portal_error"] = client_portal_error
+                    mtd_snapshot = tracked_mtd
+            snapshot["account_mtd_source"] = str(mtd_snapshot.get("source") or "")
+            snapshot["account_mtd_error"] = str(mtd_snapshot.get("error") or "")
+            account_mtd_pnl = _float_value(mtd_snapshot.get("mtd_pnl"))
+            if account_mtd_pnl is not None:
+                snapshot["account_mtd_pnl"] = round(account_mtd_pnl, 2)
+            account_mtd_return_pct = _float_value(mtd_snapshot.get("mtd_return_pct"))
+            if account_mtd_return_pct is not None:
+                snapshot["account_mtd_return_pct"] = round(account_mtd_return_pct, 2)
+            baseline_net_liq = _float_value(mtd_snapshot.get("start_nav"))
+            if baseline_net_liq is not None:
+                snapshot["account_mtd_baseline_net_liquidation"] = round(baseline_net_liq, 2)
+            snapshot["account_mtd_baseline_set_at"] = str(mtd_snapshot.get("baseline_set_at") or "")
+            snapshot["account_mtd_baseline_initialized"] = bool(mtd_snapshot.get("baseline_initialized"))
             try:
                 open_trades = list(ib.reqAllOpenOrders() or []) if ib.isConnected() else []
             except Exception:  # noqa: BLE001
@@ -7980,10 +8225,7 @@ def _ibkr_live_state_snapshot(*, today_start_utc: datetime) -> dict:
                     open_trades = list(ib.openTrades() or []) if ib.isConnected() else []
                 except Exception:  # noqa: BLE001
                     open_trades = []
-            snapshot["open_orders"] = [
-                _ibkr_open_order_snapshot(trade)
-                for trade in open_trades
-            ]
+            snapshot["open_orders"] = [_ibkr_open_order_snapshot(trade) for trade in open_trades]
             snapshot["open_order_count"] = len(snapshot["open_orders"])
             unreal = 0.0
             slim_positions: list[dict] = []
@@ -7994,16 +8236,18 @@ def _ibkr_live_state_snapshot(*, today_start_utc: datetime) -> dict:
                     upl = 0.0
                 unreal += upl
                 contract = getattr(item, "contract", None)
-                slim_positions.append({
-                    "symbol": getattr(contract, "localSymbol", None) or getattr(contract, "symbol", None),
-                    "secType": getattr(contract, "secType", None),
-                    "exchange": getattr(contract, "exchange", None),
-                    "position": float(getattr(item, "position", 0.0) or 0.0),
-                    "avg_cost": float(getattr(item, "averageCost", 0.0) or 0.0),
-                    "market_price": float(getattr(item, "marketPrice", 0.0) or 0.0),
-                    "market_value": float(getattr(item, "marketValue", 0.0) or 0.0),
-                    "unrealized_pnl": upl,
-                })
+                slim_positions.append(
+                    {
+                        "symbol": getattr(contract, "localSymbol", None) or getattr(contract, "symbol", None),
+                        "secType": getattr(contract, "secType", None),
+                        "exchange": getattr(contract, "exchange", None),
+                        "position": float(getattr(item, "position", 0.0) or 0.0),
+                        "avg_cost": float(getattr(item, "averageCost", 0.0) or 0.0),
+                        "market_price": float(getattr(item, "marketPrice", 0.0) or 0.0),
+                        "market_value": float(getattr(item, "marketValue", 0.0) or 0.0),
+                        "unrealized_pnl": upl,
+                    }
+                )
             snapshot["open_positions"] = slim_positions
             snapshot["open_position_count"] = len(slim_positions)
             snapshot["unrealized_pnl"] = round(unreal, 2)
@@ -8058,6 +8302,7 @@ def _live_broker_state_payload() -> dict:
     """
     today_start_utc = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
     today_start_iso = today_start_utc.isoformat().replace("+00:00", "Z")
+    tradovate = _tradovate_dashboard_status_payload()
     alpaca = _alpaca_live_state_snapshot(today_start_iso=today_start_iso)
     alpaca["policy_status"] = "paused_backburner"
     alpaca["policy_reason"] = "Alpaca and spot are parked on the backburner by operator focus policy."
@@ -8077,6 +8322,8 @@ def _live_broker_state_payload() -> dict:
     cellar_open_position_count = int(alpaca.get("open_position_count") or 0)
     today_actual_fills = int(ibkr.get("today_executions") or 0)
     today_realized_pnl = round(float(ibkr.get("today_realized_pnl") or 0.0), 2)
+    broker_mtd_pnl = _float_value(ibkr.get("account_mtd_pnl"))
+    broker_mtd_return_pct = _float_value(ibkr.get("account_mtd_return_pct"))
     total_unrealized_pnl = round(float(ibkr.get("unrealized_pnl") or 0.0), 2)
     open_position_count = int(ibkr.get("open_position_count") or 0)
     all_venue_today_actual_fills = today_actual_fills + cellar_today_actual_fills
@@ -8087,14 +8334,8 @@ def _live_broker_state_payload() -> dict:
     closed_outcome_count_today = 0
     evaluated_outcome_count_today = 0
     all_trade_closes = _recent_trade_closes(limit=5000)
-    recent_trade_closes = [
-        row for row in all_trade_closes
-        if not _trade_close_is_cellar(row)
-    ]
-    cellar_trade_closes = [
-        row for row in all_trade_closes
-        if _trade_close_is_cellar(row)
-    ]
+    recent_trade_closes = [row for row in all_trade_closes if not _trade_close_is_cellar(row)]
+    cellar_trade_closes = [row for row in all_trade_closes if _trade_close_is_cellar(row)]
     close_history = _close_history_windows(recent_trade_closes, now=datetime.now(UTC))
     all_venue_close_history = _close_history_windows(all_trade_closes, now=datetime.now(UTC))
     close_outcomes_today = _closed_outcomes_from_trade_closes(
@@ -8146,6 +8387,8 @@ def _live_broker_state_payload() -> dict:
         "focus_policy": _dashboard_focus_policy_payload(),
         "today_actual_fills": today_actual_fills,
         "today_realized_pnl": today_realized_pnl,
+        "broker_mtd_pnl": broker_mtd_pnl,
+        "broker_mtd_return_pct": broker_mtd_return_pct,
         "total_unrealized_pnl": total_unrealized_pnl,
         "open_position_count": open_position_count,
         "all_venue_today_actual_fills": all_venue_today_actual_fills,
@@ -8168,9 +8411,16 @@ def _live_broker_state_payload() -> dict:
         "cellar_recent_close_count": len(cellar_trade_closes),
         "close_history": close_history,
         "all_venue_close_history": all_venue_close_history,
+        "tradovate": tradovate,
         "alpaca": alpaca,
         "ibkr": ibkr,
         "per_bot_alpaca": per_bot_alpaca,
+        "sources": {
+            "session_pnl": "ibkr_live_broker_state",
+            "broker_mtd_pnl": str(ibkr.get("account_mtd_source") or "unavailable"),
+            "focus_mtd_closed_pnl": "trade_close_ledger",
+            "tradovate_paper_portfolio": str(tradovate.get("status") or "dormant"),
+        },
         "source": "live_broker_rest",
     }
     payload["position_exposure"] = _position_exposure_payload(payload, close_history=close_history)
@@ -8257,6 +8507,7 @@ def live_per_bot_alpaca(response: Response) -> dict:
 def preflight_throttle_map() -> dict:
     """Live correlation throttle map (which symbol pairs are throttled)."""
     from eta_engine.deploy.scripts.dashboard_state import read_json_safe
+
     data = read_json_safe(_state_dir() / "safety" / "preflight_correlation_latest.json")
     if "_warning" in data:
         return {"throttles": []}
@@ -8267,6 +8518,7 @@ def preflight_throttle_map() -> dict:
 def sage_modulation_stats() -> dict:
     """Per-bot count of v22 agree-loosen / disagree-tighten / defer in last 24h."""
     from eta_engine.deploy.scripts.dashboard_state import read_json_safe
+
     data = read_json_safe(_state_dir() / "sage" / "modulation_stats_24h.json")
     if "_warning" in data:
         return {"per_bot": {}, "_warning": "no_data"}
@@ -8277,7 +8529,11 @@ def sage_modulation_stats() -> dict:
 def get_sage_modulation_toggle() -> dict:
     """Current state of the V22_SAGE_MODULATION feature flag."""
     enabled = os.environ.get("ETA_FF_V22_SAGE_MODULATION", "false").strip().lower() in (
-        "1", "true", "yes", "on", "y",
+        "1",
+        "true",
+        "yes",
+        "on",
+        "y",
     )
     return {"enabled": enabled, "flag_name": "ETA_FF_V22_SAGE_MODULATION"}
 
@@ -8295,8 +8551,7 @@ def post_sage_modulation_toggle(
 
     # Lock + read + modify + atomic-write
     lock_path = flag_path.with_suffix(".lock")
-    with portalocker.Lock(str(lock_path), mode="a", timeout=5,
-                          flags=portalocker.LOCK_EX):
+    with portalocker.Lock(str(lock_path), mode="a", timeout=5, flags=portalocker.LOCK_EX):
         existing: dict = {}
         if flag_path.exists():
             try:
@@ -8306,7 +8561,9 @@ def post_sage_modulation_toggle(
         existing["ETA_FF_V22_SAGE_MODULATION"] = val
         # Atomic write: write to temp file, then rename
         tmp_fd, tmp_name = tempfile.mkstemp(
-            dir=str(flag_path.parent), prefix=".feature_flags_", suffix=".tmp",
+            dir=str(flag_path.parent),
+            prefix=".feature_flags_",
+            suffix=".tmp",
         )
         try:
             with os.fdopen(tmp_fd, "w", encoding="utf-8") as fh:
@@ -8327,14 +8584,21 @@ def post_sage_modulation_toggle(
 def _write_control_signal(bot_id: str, action: str, by_user: str) -> Path:
     """Write a control signal file the bot daemon polls."""
     from datetime import UTC, datetime
+
     sig_dir = _state_dir() / "bots" / bot_id / "control_signals"
     sig_dir.mkdir(parents=True, exist_ok=True)
     sig_path = sig_dir / f"{action}.json"
-    sig_path.write_text(json.dumps({
-        "ts": datetime.now(UTC).isoformat(),
-        "action": action,
-        "by": by_user,
-    }, indent=2), encoding="utf-8")
+    sig_path.write_text(
+        json.dumps(
+            {
+                "ts": datetime.now(UTC).isoformat(),
+                "action": action,
+                "by": by_user,
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
     return sig_path
 
 
@@ -8375,14 +8639,14 @@ def bot_flatten(bot_id: str, session: dict = Depends(require_step_up)) -> dict: 
 def bot_kill(bot_id: str, session: dict = Depends(require_step_up)) -> dict:  # noqa: B008
     """Step-up gated: trip the kill-switch latch for this bot."""
     from datetime import UTC, datetime
+
     _validate_bot_id(bot_id)
     latch_path = _state_dir() / "safety" / "kill_switch_latch.json"
     latch_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Lock + read + modify + atomic-write
     lock_path = latch_path.with_suffix(".lock")
-    with portalocker.Lock(str(lock_path), mode="a", timeout=5,
-                          flags=portalocker.LOCK_EX):
+    with portalocker.Lock(str(lock_path), mode="a", timeout=5, flags=portalocker.LOCK_EX):
         latches: dict = {}
         if latch_path.exists():
             try:
@@ -8397,7 +8661,9 @@ def bot_kill(bot_id: str, session: dict = Depends(require_step_up)) -> dict:  # 
         }
         # Atomic write: write to temp file, then rename
         tmp_fd, tmp_name = tempfile.mkstemp(
-            dir=str(latch_path.parent), prefix=".kill_switch_latch_", suffix=".tmp",
+            dir=str(latch_path.parent),
+            prefix=".kill_switch_latch_",
+            suffix=".tmp",
         )
         try:
             with os.fdopen(tmp_fd, "w", encoding="utf-8") as fh:
@@ -8760,10 +9026,9 @@ def broker_readiness() -> dict:
         "focus_policy": _dashboard_focus_policy_payload(),
         "paused_brokers": list(_PAUSED_CELLAR_BROKERS),
         "pending_brokers": list(_PENDING_FOCUS_BROKERS),
+        "dormant_brokers": list(_DORMANT_FOCUS_BROKERS),
         "active_brokers": sorted(
-            name
-            for name, report in brokers.items()
-            if name in _ACTIVE_FOCUS_BROKERS and report.get("ready")
+            name for name, report in brokers.items() if name in _ACTIVE_FOCUS_BROKERS and report.get("ready")
         ),
     }
 
@@ -9267,6 +9532,7 @@ def dashboard_telemetry() -> dict:
 async def public_dashboard() -> JSONResponse:
     """Bridge for old Command Center React app."""
     from fastapi.responses import JSONResponse
+
     try:
         response = Response()
         payload = bot_fleet_roster(response=response)
@@ -9331,19 +9597,14 @@ def _local_master_status_payload() -> dict[str, object]:
         if isinstance(action, dict) and action.get("label")
     ]
     broker_bracket_order_actions = [
-        action
-        for action in broker_bracket_actions
-        if isinstance(action, dict) and action.get("order_action") is True
+        action for action in broker_bracket_actions if isinstance(action, dict) and action.get("order_action") is True
     ]
     broker_bracket_primary_action = (
-        broker_bracket_actions[0]
-        if broker_bracket_actions and isinstance(broker_bracket_actions[0], dict)
-        else {}
+        broker_bracket_actions[0] if broker_bracket_actions and isinstance(broker_bracket_actions[0], dict) else {}
     )
     broker_bracket_order_action = broker_bracket_order_actions[0] if broker_bracket_order_actions else {}
-    broker_bracket_prop_dry_run_blocked = (
-        bool(broker_bracket_audit.get("operator_action_required"))
-        and not bool(broker_bracket_audit.get("ready_for_prop_dry_run"))
+    broker_bracket_prop_dry_run_blocked = bool(broker_bracket_audit.get("operator_action_required")) and not bool(
+        broker_bracket_audit.get("ready_for_prop_dry_run")
     )
     vps_root_reconciliation = _vps_root_reconciliation_payload()
 
@@ -9406,9 +9667,7 @@ def _local_master_status_payload() -> dict[str, object]:
     )
     paper_held_by_bracket_audit = broker_bracket_prop_dry_run_blocked and paper_ready and launch_blocked == 0
     paper_live_effective_status = (
-        "held_by_bracket_audit"
-        if paper_held_by_bracket_audit
-        else str(paper.get("status") or "unknown")
+        "held_by_bracket_audit" if paper_held_by_bracket_audit else str(paper.get("status") or "unknown")
     )
     paper_live_effective_detail = ""
     if paper_held_by_bracket_audit:
@@ -9426,13 +9685,7 @@ def _local_master_status_payload() -> dict[str, object]:
         }
     )
     paper_card_status = (
-        "RED"
-        if launch_blocked
-        else "YELLOW"
-        if paper_held_by_bracket_audit
-        else "GREEN"
-        if paper_ready
-        else "YELLOW"
+        "RED" if launch_blocked else "YELLOW" if paper_held_by_bracket_audit else "GREEN" if paper_ready else "YELLOW"
     )
     router_card_status = _router_card_status(router_status)
     broker_card_status = _worst_card_status(router_card_status, target_exit_card_status)
@@ -9520,9 +9773,7 @@ def _local_master_status_payload() -> dict[str, object]:
                 "ready_for_prop_dry_run": bool(
                     broker_bracket_audit.get("ready_for_prop_dry_run"),
                 ),
-                "missing_bracket_count": int(
-                    broker_bracket_position_summary.get("missing_bracket_count") or 0
-                ),
+                "missing_bracket_count": int(broker_bracket_position_summary.get("missing_bracket_count") or 0),
                 "unprotected_symbols": broker_bracket_unprotected_symbols,
                 "broker_bracket_required_position_count": int(
                     broker_bracket_position_summary.get("broker_bracket_required_position_count") or 0
@@ -9580,6 +9831,7 @@ def master_status() -> dict[str, object]:
     """Compatibility status endpoint for public ops and beta-app launch tabs."""
     return _local_master_status_payload()
 
+
 @app.get("/api/runtime-status", response_model=None)
 def runtime_status() -> dict[str, object]:
     """Compatibility runtime detail bridge (paper_live/paper_sim)."""
@@ -9590,25 +9842,18 @@ def runtime_status() -> dict[str, object]:
     runtime_payload = dict(runtime) if isinstance(runtime, dict) else {}
     if isinstance(paper_live, dict):
         runtime_payload["paper_live_effective_status"] = paper_live.get("effective_status")
-        runtime_payload["paper_live_held_by_bracket_audit"] = bool(
-            paper_live.get("held_by_bracket_audit")
-        )
+        runtime_payload["paper_live_held_by_bracket_audit"] = bool(paper_live.get("held_by_bracket_audit"))
     return {
         "paper": paper,
         "paper_live": paper_live,
         "runtime": runtime_payload,
         "mode": paper.get("mode", "unknown") if isinstance(paper, dict) else "unknown",
-        "effective_status": (
-            paper_live.get("effective_status")
-            if isinstance(paper_live, dict)
-            else None
-        ),
+        "effective_status": (paper_live.get("effective_status") if isinstance(paper_live, dict) else None),
         "held_by_bracket_audit": bool(
-            paper_live.get("held_by_bracket_audit")
-            if isinstance(paper_live, dict)
-            else False
+            paper_live.get("held_by_bracket_audit") if isinstance(paper_live, dict) else False
         ),
     }
+
 
 @app.get("/api/bridge-status", response_model=None)
 def bridge_status() -> dict[str, object]:

@@ -39,6 +39,7 @@ def _clear_strategy_cache() -> None:
     _STRATEGY_CACHE.clear()
     try:
         from eta_engine.scripts.run_research_grid import _CROSS_ASSET_REF_CACHE, _FUNDING_RATE_PROVIDER_CACHE
+
         _CROSS_ASSET_REF_CACHE.clear()
         _FUNDING_RATE_PROVIDER_CACHE.clear()
     except ImportError:
@@ -111,6 +112,7 @@ def _build_callable_for_assignment(
                 ConfluenceScorecardConfig,
                 ConfluenceScorecardStrategy,
             )
+
             sc_cfg = ConfluenceScorecardConfig(
                 min_score=int(sc_raw.get("min_score", 2)),
                 a_plus_score=int(sc_raw.get("a_plus_score", 3)),
@@ -201,15 +203,19 @@ def _build_callable_for_assignment(
                 )
             elif isinstance(edge_raw, str) and edge_raw == "mnq_futures":
                 from eta_engine.strategies.edge_layers import mnq_futures_preset
+
                 ec = mnq_futures_preset()
             elif isinstance(edge_raw, str) and edge_raw == "btc_crypto":
                 from eta_engine.strategies.edge_layers import btc_crypto_preset
+
                 ec = btc_crypto_preset()
             elif isinstance(edge_raw, str) and edge_raw == "eth_crypto":
                 from eta_engine.strategies.edge_layers import eth_crypto_preset
+
                 ec = eth_crypto_preset()
             elif isinstance(edge_raw, str) and edge_raw == "sol_crypto":
                 from eta_engine.strategies.edge_layers import sol_crypto_preset
+
                 ec = sol_crypto_preset()
             else:
                 ec = EdgeAmplifierConfig()
@@ -258,19 +264,21 @@ def _build_callable_for_assignment(
                 get_intermarket_for_symbol,
                 get_schools_for_symbol,
             )
+
             # Enrich alpha_sniper with ticker-relevant intermarket pairs
-            if hasattr(strategy, '_sub') and hasattr(strategy, 'cfg'):
+            if hasattr(strategy, "_sub") and hasattr(strategy, "cfg"):
                 # Check if this is an AlphaSniper wrapper
                 from eta_engine.strategies.alpha_sniper import AlphaSniper, AlphaSniperConfig
+
                 if isinstance(strategy, AlphaSniper):
                     # Replace intermarket pairs with asset-specific ones
                     pairs = get_intermarket_for_symbol(symbol)
                     if pairs:
                         strategy.cfg._intermarket_symbols = pairs[:3]
                 # Update Sage config if present
-                if hasattr(strategy, '_sub') and hasattr(strategy._sub, 'cfg'):
+                if hasattr(strategy, "_sub") and hasattr(strategy._sub, "cfg"):
                     inner = strategy._sub
-                    if hasattr(inner.cfg, 'enabled_schools'):
+                    if hasattr(inner.cfg, "enabled_schools"):
                         schools = get_schools_for_symbol(symbol)
                         if schools:
                             inner.cfg.enabled_schools = schools
@@ -363,17 +371,25 @@ def _build_strategy_fallback(kind: str, extras: dict) -> object | None:
         preset_name = extras.get("compression_preset", "default")
         if preset_name == "eth":
             cfg = CompressionBreakoutConfig(
-                bb_period=30, bb_width_max_percentile=0.60,
-                min_close_location=0.40, min_volume_z=0.2,
-                breakout_lookback=12, min_bars_between_trades=12,
-                rr_target=2.0, atr_stop_mult=1.5,
+                bb_period=30,
+                bb_width_max_percentile=0.60,
+                min_close_location=0.40,
+                min_volume_z=0.2,
+                breakout_lookback=12,
+                min_bars_between_trades=12,
+                rr_target=2.0,
+                atr_stop_mult=1.5,
             )
         elif preset_name == "btc":
             cfg = CompressionBreakoutConfig(
-                bb_period=20, bb_width_max_percentile=0.50,
-                min_close_location=0.50, min_volume_z=0.3,
-                breakout_lookback=24, min_bars_between_trades=24,
-                rr_target=2.5, atr_stop_mult=2.0,
+                bb_period=20,
+                bb_width_max_percentile=0.50,
+                min_close_location=0.50,
+                min_volume_z=0.3,
+                breakout_lookback=24,
+                min_bars_between_trades=24,
+                rr_target=2.5,
+                atr_stop_mult=2.0,
             )
         else:
             cfg = CompressionBreakoutConfig()
@@ -384,6 +400,7 @@ def _build_strategy_fallback(kind: str, extras: dict) -> object | None:
             CryptoTrendConfig,
             CryptoTrendStrategy,
         )
+
         return CryptoTrendStrategy(CryptoTrendConfig())
 
     if kind == "crypto_meanrev":
@@ -391,6 +408,7 @@ def _build_strategy_fallback(kind: str, extras: dict) -> object | None:
             CryptoMeanRevConfig,
             CryptoMeanRevStrategy,
         )
+
         return CryptoMeanRevStrategy(CryptoMeanRevConfig())
 
     if kind == "ensemble_voting":
@@ -410,6 +428,7 @@ def _build_strategy_fallback(kind: str, extras: dict) -> object | None:
             v_kind = voter_kind_map.get(name, name)
             try:
                 from eta_engine.scripts.run_research_grid import _build_strategy_factory
+
                 factory = _build_strategy_factory(v_kind, extras)
                 sub_strategies.append((name, factory()))
             except (ValueError, ImportError):
@@ -472,6 +491,7 @@ def _build_strategy_fallback(kind: str, extras: dict) -> object | None:
             RegimeGatedConfig,
             RegimeGatedStrategy,
         )
+
         return RegimeGatedStrategy(RegimeGatedConfig())
 
     if kind == "mtf_scalp":
@@ -528,6 +548,7 @@ def _build_strategy_fallback(kind: str, extras: dict) -> object | None:
                     _with_cross_asset_ref_provider,
                     _with_funding_rate_provider,
                 )
+
                 sub_extras = dict(extras.get("sub_strategy_extras", {}))
                 if "per_ticker_optimal" in extras and "per_ticker_optimal" not in sub_extras:
                     sub_extras["per_ticker_optimal"] = extras["per_ticker_optimal"]
@@ -538,13 +559,17 @@ def _build_strategy_fallback(kind: str, extras: dict) -> object | None:
                     bot_symbol = str(extras.get("per_ticker_optimal", "MNQ")).upper()
                     if ref_asset == "ES1" or "MNQ" in bot_symbol or "NQ" in bot_symbol:
                         sub_factory = _with_cross_asset_ref_provider(
-                            sub_factory, bot_symbol=bot_symbol,
-                            ref_symbol="ES1", ref_timeframe="5m",
+                            sub_factory,
+                            bot_symbol=bot_symbol,
+                            ref_symbol="ES1",
+                            ref_timeframe="5m",
                         )
                     elif ref_asset == "ETH" or "BTC" in bot_symbol:
                         sub_factory = _with_cross_asset_ref_provider(
-                            sub_factory, bot_symbol=bot_symbol,
-                            ref_symbol="ETH", ref_timeframe="1h",
+                            sub_factory,
+                            bot_symbol=bot_symbol,
+                            ref_symbol="ETH",
+                            ref_timeframe="1h",
                         )
                 elif sub_kind == "funding_rate":
                     sub_factory = _with_funding_rate_provider(sub_factory)
@@ -565,11 +590,7 @@ def _build_strategy_fallback(kind: str, extras: dict) -> object | None:
         )
 
         cfg_raw = extras.get("mbt_funding_basis_config", {})
-        cfg = (
-            MBTFundingBasisConfig(**cfg_raw)
-            if isinstance(cfg_raw, dict) and cfg_raw
-            else MBTFundingBasisConfig()
-        )
+        cfg = MBTFundingBasisConfig(**cfg_raw) if isinstance(cfg_raw, dict) and cfg_raw else MBTFundingBasisConfig()
         # Basis-provider dispatch. ``internal_log_return`` (the legacy
         # default) returns None and the strategy keeps its silent built-in
         # fallback. ``log_return_fallback`` wires an explicitly-named
@@ -594,11 +615,7 @@ def _build_strategy_fallback(kind: str, extras: dict) -> object | None:
         )
 
         cfg_raw = extras.get("mbt_overnight_gap_config", {})
-        cfg = (
-            MBTOvernightGapConfig(**cfg_raw)
-            if isinstance(cfg_raw, dict) and cfg_raw
-            else MBTOvernightGapConfig()
-        )
+        cfg = MBTOvernightGapConfig(**cfg_raw) if isinstance(cfg_raw, dict) and cfg_raw else MBTOvernightGapConfig()
         return MBTOvernightGapStrategy(cfg)
 
     if kind == "met_rth_orb":
@@ -608,11 +625,7 @@ def _build_strategy_fallback(kind: str, extras: dict) -> object | None:
         )
 
         cfg_raw = extras.get("met_rth_orb_config", {})
-        cfg = (
-            METRTHORBConfig(**cfg_raw)
-            if isinstance(cfg_raw, dict) and cfg_raw
-            else METRTHORBConfig()
-        )
+        cfg = METRTHORBConfig(**cfg_raw) if isinstance(cfg_raw, dict) and cfg_raw else METRTHORBConfig()
         return METRTHORBStrategy(cfg)
 
     if kind == "mbt_rth_orb":
@@ -623,11 +636,7 @@ def _build_strategy_fallback(kind: str, extras: dict) -> object | None:
         )
 
         cfg_raw = extras.get("mbt_rth_orb_config", {})
-        cfg = (
-            MBTRTHORBConfig(**cfg_raw)
-            if isinstance(cfg_raw, dict) and cfg_raw
-            else mbt_rth_orb_preset()
-        )
+        cfg = MBTRTHORBConfig(**cfg_raw) if isinstance(cfg_raw, dict) and cfg_raw else mbt_rth_orb_preset()
         return MBTRTHORBStrategy(cfg)
 
     if kind == "mbt_zfade":
@@ -638,11 +647,7 @@ def _build_strategy_fallback(kind: str, extras: dict) -> object | None:
         )
 
         cfg_raw = extras.get("mbt_zfade_config", {})
-        cfg = (
-            MBTZFadeConfig(**cfg_raw)
-            if isinstance(cfg_raw, dict) and cfg_raw
-            else mbt_zfade_preset()
-        )
+        cfg = MBTZFadeConfig(**cfg_raw) if isinstance(cfg_raw, dict) and cfg_raw else mbt_zfade_preset()
         return MBTZFadeStrategy(cfg)
 
     if kind == "commodity_momentum":
@@ -731,6 +736,7 @@ def _wrap_strategy(
                 side=Side.FLAT,
                 rationale_tags=("bridge_error",),
             )
+
     return _evaluate
 
 

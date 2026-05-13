@@ -148,6 +148,7 @@ class TastytradeVenue(VenueBase):
             logger.warning("tastytrade: cannot refresh token — TASTY_LOGIN and TASTY_PASSWORD not configured")
             return False
         import httpx
+
         try:
             async with httpx.AsyncClient(timeout=TASTY_HTTP_TIMEOUT_S) as client:
                 resp = await client.post(
@@ -165,6 +166,7 @@ class TastytradeVenue(VenueBase):
                 return False
             # Update in-memory config
             import dataclasses
+
             self.config = dataclasses.replace(self.config, session_token=new_token)
             # Persist to disk if token_file is known
             token_path = self.config.token_file or self._default_token_path()
@@ -183,6 +185,7 @@ class TastytradeVenue(VenueBase):
     def _default_token_path(self) -> str:
         """Resolve the default token file path from env conventions."""
         import os
+
         roots = [
             os.environ.get("FIRM_RUNTIME_ROOT", ""),
             os.environ.get("ETA_RUNTIME_ROOT", ""),
@@ -393,9 +396,7 @@ class TastytradeVenue(VenueBase):
     ) -> dict[str, Any]:
         # Detect crypto from the symbol — overrides config.default_instrument_type
         # so a single venue instance can route Future + Cryptocurrency legs.
-        instrument_type = (
-            "Cryptocurrency" if _crypto_base(request.symbol) else self.config.default_instrument_type
-        )
+        instrument_type = "Cryptocurrency" if _crypto_base(request.symbol) else self.config.default_instrument_type
         order_type = _tasty_order_type(request.order_type)
         payload: dict[str, Any] = {
             "time-in-force": "Day",

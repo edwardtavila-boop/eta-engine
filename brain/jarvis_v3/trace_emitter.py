@@ -26,6 +26,7 @@ Public interface:
 
 Pure stdlib (no pydantic — this path is hot and must not import heavy deps).
 """
+
 from __future__ import annotations
 
 import contextlib
@@ -329,11 +330,9 @@ def capture_v2_extras(
     # ── overrides_snapshot (bot-specific + asset-specific slice) ──
     try:
         from eta_engine.brain.jarvis_v3 import hermes_overrides
+
         size_mod = hermes_overrides.get_size_modifier(bot_id) if bot_id else None
-        school_overlay = (
-            hermes_overrides.get_school_weights(asset_class)
-            if asset_class else {}
-        )
+        school_overlay = hermes_overrides.get_school_weights(asset_class) if asset_class else {}
         out["overrides_snapshot"] = {
             "size_modifier": size_mod,
             "school_weights": school_overlay,

@@ -5,6 +5,7 @@ BTC integration 2026-05-01:
   * cascade proximity score — how close current price is to liquidation clusters
   * cascade danger level — GREEN/YELLOW/RED for fleet risk gate integration
 """
+
 from __future__ import annotations
 
 from eta_engine.brain.jarvis_v3.sage.base import (
@@ -33,7 +34,7 @@ class RiskManagementSchool(SchoolBase):
     MIN_RR_RATIO = 1.5
 
     # Liquidation cascade thresholds
-    CASCADE_ZONE_PCT = 0.05       # 5% from current price = danger zone
+    CASCADE_ZONE_PCT = 0.05  # 5% from current price = danger zone
     HIGH_CASCADE_DENSITY_USD = 50_000_000  # $50M liquidatable within zone
     MODERATE_CASCADE_DENSITY_USD = 10_000_000
 
@@ -62,13 +63,17 @@ class RiskManagementSchool(SchoolBase):
             if cascade_risk.get("block"):
                 rationale += f" | CASCADE RISK: {cascade_risk['level']}"
                 return SchoolVerdict(
-                    school=self.NAME, bias=Bias.NEUTRAL, conviction=0.0,
+                    school=self.NAME,
+                    bias=Bias.NEUTRAL,
+                    conviction=0.0,
                     aligned_with_entry=False,
                     rationale=rationale,
                     signals=signals,
                 )
             return SchoolVerdict(
-                school=self.NAME, bias=Bias.NEUTRAL, conviction=0.5,
+                school=self.NAME,
+                bias=Bias.NEUTRAL,
+                conviction=0.5,
                 aligned_with_entry=True,
                 rationale=rationale,
                 signals=signals,
@@ -76,54 +81,62 @@ class RiskManagementSchool(SchoolBase):
 
         if risk_pct > self.MAX_RISK_PCT:
             return SchoolVerdict(
-                school=self.NAME, bias=Bias.NEUTRAL, conviction=0.0,
+                school=self.NAME,
+                bias=Bias.NEUTRAL,
+                conviction=0.0,
                 aligned_with_entry=False,
-                rationale=f"risk={risk_pct*100:.2f}% exceeds {self.MAX_RISK_PCT*100:.0f}% cap",
+                rationale=f"risk={risk_pct * 100:.2f}% exceeds {self.MAX_RISK_PCT * 100:.0f}% cap",
                 signals={**signals, "risk_pct": risk_pct, "violation": True},
             )
 
         if cascade_risk.get("block"):
             signals["cascade_block"] = True
             return SchoolVerdict(
-                school=self.NAME, bias=Bias.NEUTRAL, conviction=0.1,
+                school=self.NAME,
+                bias=Bias.NEUTRAL,
+                conviction=0.1,
                 aligned_with_entry=False,
                 rationale=f"LIQUIDATION CASCADE RISK [{cascade_risk['level']}]: "
-                          f"${cascade_risk['density_usd']:,.0f} within "
-                          f"{cascade_risk['nearest_pct']*100:.1f}% of price — DO NOT TRADE",
+                f"${cascade_risk['density_usd']:,.0f} within "
+                f"{cascade_risk['nearest_pct'] * 100:.1f}% of price — DO NOT TRADE",
                 signals=signals,
             )
 
         if stop_dist is None or stop_dist <= 0:
             return SchoolVerdict(
-                school=self.NAME, bias=Bias.NEUTRAL, conviction=0.4,
+                school=self.NAME,
+                bias=Bias.NEUTRAL,
+                conviction=0.4,
                 aligned_with_entry=True,
-                rationale=f"risk={risk_pct*100:.2f}% within cap but no stop",
+                rationale=f"risk={risk_pct * 100:.2f}% within cap but no stop",
                 signals=signals,
             )
 
         if risk_pct <= self.PREFERRED_RISK_PCT:
             conv = 0.95
-            r = f"risk={risk_pct*100:.2f}% compliant"
+            r = f"risk={risk_pct * 100:.2f}% compliant"
         else:
             slack = (self.MAX_RISK_PCT - risk_pct) / max(self.MAX_RISK_PCT - self.PREFERRED_RISK_PCT, 1e-9)
             conv = 0.5 + 0.4 * max(0.0, min(1.0, slack))
-            r = f"risk={risk_pct*100:.2f}% partial compliance"
+            r = f"risk={risk_pct * 100:.2f}% partial compliance"
 
         if cascade_risk["level"] == "YELLOW":
             conv *= 0.7
             r += f" | cascade YELLOW (${cascade_risk['density_usd']:,.0f} within zone)"
 
         return SchoolVerdict(
-            school=self.NAME, bias=Bias.NEUTRAL, conviction=conv,
-            aligned_with_entry=True, rationale=r,
+            school=self.NAME,
+            bias=Bias.NEUTRAL,
+            conviction=conv,
+            aligned_with_entry=True,
+            rationale=r,
             signals={**signals, "risk_pct": risk_pct, "stop_distance_pct": stop_dist},
         )
 
     def _assess_cascade_risk(self, current_price: float | None, levels: list) -> dict:
         """Assess liquidation cascade risk from heatmap level data."""
         if not current_price or not levels:
-            return {"level": "UNKNOWN", "density_usd": 0.0, "n_levels": 0,
-                    "nearest_pct": 0.0, "block": False}
+            return {"level": "UNKNOWN", "density_usd": 0.0, "n_levels": 0, "nearest_pct": 0.0, "block": False}
 
         zone_total = 0.0
         nearest_pct = 1.0
@@ -134,14 +147,35 @@ class RiskManagementSchool(SchoolBase):
                 zone_total += level.get("total_size_usd", 0)
                 nearest_pct = min(nearest_pct, dist_pct)
 
-        n_levels = len([l for l in levels if abs(l.get("price", 0) - current_price) / max(current_price, 1) <= self.CASCADE_ZONE_PCT])
+        n_levels = len(
+            [
+                level
+                for level in levels
+                if abs(level.get("price", 0) - current_price) / max(current_price, 1) <= self.CASCADE_ZONE_PCT
+            ]
+        )
 
         if zone_total > self.HIGH_CASCADE_DENSITY_USD:
-            return {"level": "RED", "density_usd": zone_total, "n_levels": n_levels,
-                    "nearest_pct": nearest_pct, "block": True}
+            return {
+                "level": "RED",
+                "density_usd": zone_total,
+                "n_levels": n_levels,
+                "nearest_pct": nearest_pct,
+                "block": True,
+            }
         if zone_total > self.MODERATE_CASCADE_DENSITY_USD:
-            return {"level": "YELLOW", "density_usd": zone_total, "n_levels": n_levels,
-                    "nearest_pct": nearest_pct, "block": False}
+            return {
+                "level": "YELLOW",
+                "density_usd": zone_total,
+                "n_levels": n_levels,
+                "nearest_pct": nearest_pct,
+                "block": False,
+            }
 
-        return {"level": "GREEN", "density_usd": zone_total, "n_levels": n_levels,
-                "nearest_pct": nearest_pct, "block": False}
+        return {
+            "level": "GREEN",
+            "density_usd": zone_total,
+            "n_levels": n_levels,
+            "nearest_pct": nearest_pct,
+            "block": False,
+        }

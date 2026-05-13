@@ -28,9 +28,9 @@ from eta_engine.brain.model_policy import ModelTier
 
 # Model pricing per 1M tokens (input, output) — DEEPSEEK V4 NATIVE.
 MODEL_PRICES: dict[ModelTier, tuple[float, float]] = {
-    ModelTier.HAIKU: (0.14, 0.28),    # DeepSeek V4 Flash (non-thinking)
-    ModelTier.SONNET: (0.14, 0.28),   # DeepSeek V4 Flash (thinking)
-    ModelTier.OPUS: (0.435, 0.87),    # DeepSeek V4 Pro
+    ModelTier.HAIKU: (0.14, 0.28),  # DeepSeek V4 Flash (non-thinking)
+    ModelTier.SONNET: (0.14, 0.28),  # DeepSeek V4 Flash (thinking)
+    ModelTier.OPUS: (0.435, 0.87),  # DeepSeek V4 Pro
 }
 
 # Legacy Claude pricing — kept for cost comparison and Anthropic fallback.
@@ -297,9 +297,7 @@ class AnthropicClaudeClient:
         except Exception:
             raise
 
-        text = "".join(
-            b.text for b in resp.content if getattr(b, "type", None) == "text"
-        ).strip()
+        text = "".join(b.text for b in resp.content if getattr(b, "type", None) == "text").strip()
 
         in_tok = resp.usage.input_tokens if resp.usage else 0
         out_tok = resp.usage.output_tokens if resp.usage else 0

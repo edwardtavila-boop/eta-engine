@@ -38,6 +38,7 @@ and inevitably miss one. This module is the SINGLE method:
 Per-subsystem failures are caught individually so a calibrator
 write error never blocks a memory write.
 """
+
 from __future__ import annotations
 
 import json
@@ -109,8 +110,11 @@ def close_trade(
         try:
             memory.record_episode(
                 signal_id=signal_id,
-                regime=regime, session=session, stress=stress,
-                direction=direction, realized_r=realized_r,
+                regime=regime,
+                session=session,
+                stress=stress,
+                direction=direction,
+                realized_r=realized_r,
                 narrative=narrative,
                 extra={"action": action_taken, "bot_id": bot_id, **(extra or {})},
             )
@@ -137,12 +141,16 @@ def close_trade(
     # 4. Decision journal -- best-effort append
     try:
         from eta_engine.obs.decision_journal import DecisionJournal
+
         journal = DecisionJournal.default()
         journal.append_post_trade(
-            signal_id=signal_id, realized_r=realized_r,
+            signal_id=signal_id,
+            realized_r=realized_r,
             metadata={
-                "bot_id": bot_id, "action_taken": action_taken,
-                "regime": regime, "session": session,
+                "bot_id": bot_id,
+                "action_taken": action_taken,
+                "regime": regime,
+                "session": session,
             },
         )
         layers_updated.append("decision_journal")
@@ -156,10 +164,13 @@ def close_trade(
         from eta_engine.brain.jarvis_v3.calibration import (
             CalibratorRecorder,
         )
+
         rec = CalibratorRecorder.default()
         rec.record_label(
-            signal_id=signal_id, realized_r=realized_r,
-            regime=regime, action=action_taken,
+            signal_id=signal_id,
+            realized_r=realized_r,
+            regime=regime,
+            action=action_taken,
         )
         layers_updated.append("calibrator")
     except Exception as exc:  # noqa: BLE001
@@ -170,6 +181,7 @@ def close_trade(
     try:
         from eta_engine.brain.jarvis_v3.sage.edge_tracker import default_tracker
         from eta_engine.brain.jarvis_v3.sage.last_report_cache import pop_last_any
+
         tracker = default_tracker()
         report = pop_last_any()
         if report is not None:
@@ -187,6 +199,7 @@ def close_trade(
     # 7. Mem0 semantic memory — store episode for embedding-based retrieval
     try:
         from eta_engine.brain.jarvis_v3.mem0_memory import Mem0Memory
+
         mem0 = Mem0Memory()
         mem0.store(
             category="trade_close",
@@ -239,9 +252,7 @@ def replay_trade_closes(
     n_loaded = 0
     seen_signal_ids: set[str] = set()
     if skip_existing:
-        seen_signal_ids = {
-            ep.signal_id for ep in memory._episodes
-        }
+        seen_signal_ids = {ep.signal_id for ep in memory._episodes}
     try:
         for line in trade_log_path.read_text(encoding="utf-8").splitlines():
             if not line.strip():

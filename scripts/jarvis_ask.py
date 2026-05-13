@@ -13,6 +13,7 @@ about the audit log from the command line:
 Each subcommand calls the corresponding ``nl_query.*`` function. Output
 is JSON (default) or human-readable text (--text).
 """
+
 from __future__ import annotations
 
 import argparse
@@ -47,8 +48,7 @@ def _print_result(result: object, *, text: bool) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(description=__doc__,
-                                formatter_class=argparse.RawDescriptionHelpFormatter)
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--audit-glob", default=str(ROOT / "state" / "jarvis_audit" / "*.jsonl"))
     p.add_argument("--text", action="store_true", help="Human-readable output (default: JSON)")
     p.add_argument("-v", "--verbose", action="store_true")
@@ -97,12 +97,11 @@ def main(argv: list[str] | None = None) -> int:
     from eta_engine.brain.jarvis_v3 import nl_query
 
     cmd_to_fn = {
-        "why":          lambda: nl_query.why_verdict(audit_path, args.request_id),
-        "count":        lambda: nl_query.count_verdict(audit_path, args.verdict, hours=args.hours),
-        "list":         lambda: nl_query.list_verdict(audit_path, args.verdict,
-                                                      hours=args.hours, limit=args.limit),
-        "reasons":      lambda: nl_query.reason_freq(audit_path, hours=args.hours),
-        "subsystem":    lambda: nl_query.subsystem_stats(audit_path, args.subsystem, hours=args.hours),
+        "why": lambda: nl_query.why_verdict(audit_path, args.request_id),
+        "count": lambda: nl_query.count_verdict(audit_path, args.verdict, hours=args.hours),
+        "list": lambda: nl_query.list_verdict(audit_path, args.verdict, hours=args.hours, limit=args.limit),
+        "reasons": lambda: nl_query.reason_freq(audit_path, hours=args.hours),
+        "subsystem": lambda: nl_query.subsystem_stats(audit_path, args.subsystem, hours=args.hours),
         "last-binding": lambda: nl_query.last_binding(audit_path, hours=args.hours),
     }
     fn = cmd_to_fn.get(args.cmd)

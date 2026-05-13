@@ -21,13 +21,17 @@ from eta_engine.strategies.htf_regime_oracle import (
 )
 
 
-def _bar(idx: int, *, h: float, low: float, c: float | None = None,
-         v: float = 1000.0, tf_minutes: int = 60) -> BarData:
+def _bar(idx: int, *, h: float, low: float, c: float | None = None, v: float = 1000.0, tf_minutes: int = 60) -> BarData:
     ts = datetime(2026, 1, 1, tzinfo=UTC) + timedelta(minutes=idx * tf_minutes)
     c = c if c is not None else (h + low) / 2
     return BarData(
-        timestamp=ts, symbol="BTC", open=(h + low) / 2,
-        high=h, low=low, close=c, volume=v,
+        timestamp=ts,
+        symbol="BTC",
+        open=(h + low) / 2,
+        high=h,
+        low=low,
+        close=c,
+        volume=v,
     )
 
 
@@ -35,8 +39,10 @@ def _config() -> BacktestConfig:
     return BacktestConfig(
         start_date=datetime(2026, 1, 1, tzinfo=UTC),
         end_date=datetime(2026, 12, 31, tzinfo=UTC),
-        symbol="BTC", initial_equity=10_000.0,
-        risk_per_trade_pct=0.01, confluence_threshold=0.0,
+        symbol="BTC",
+        initial_equity=10_000.0,
+        risk_per_trade_pct=0.01,
+        confluence_threshold=0.0,
         max_trades_per_day=10,
     )
 
@@ -48,8 +54,10 @@ def _config() -> BacktestConfig:
 
 def test_conviction_multiplier_linear_ramp() -> None:
     cfg = HtfConvictionSizingConfig(
-        base_multiplier=1.0, conviction_gain=1.0,
-        min_size_multiplier=0.5, max_size_multiplier=2.0,
+        base_multiplier=1.0,
+        conviction_gain=1.0,
+        min_size_multiplier=0.5,
+        max_size_multiplier=2.0,
     )
     # Conv=0.5 → multiplier = 1.0 + 0 = 1.0
     assert _conviction_multiplier(cfg, 0.5) == pytest.approx(1.0)
@@ -61,8 +69,10 @@ def test_conviction_multiplier_linear_ramp() -> None:
 
 def test_conviction_multiplier_caps_at_max() -> None:
     cfg = HtfConvictionSizingConfig(
-        base_multiplier=1.0, conviction_gain=4.0,  # aggressive ramp
-        min_size_multiplier=0.5, max_size_multiplier=2.0,
+        base_multiplier=1.0,
+        conviction_gain=4.0,  # aggressive ramp
+        min_size_multiplier=0.5,
+        max_size_multiplier=2.0,
     )
     # Conv=1.0 with gain=4 → raw = 1.0 + 0.5*4 = 3.0; capped at 2.0
     assert _conviction_multiplier(cfg, 1.0) == pytest.approx(2.0)
@@ -70,8 +80,10 @@ def test_conviction_multiplier_caps_at_max() -> None:
 
 def test_conviction_multiplier_floors_at_min() -> None:
     cfg = HtfConvictionSizingConfig(
-        base_multiplier=1.0, conviction_gain=4.0,
-        min_size_multiplier=0.5, max_size_multiplier=2.0,
+        base_multiplier=1.0,
+        conviction_gain=4.0,
+        min_size_multiplier=0.5,
+        max_size_multiplier=2.0,
     )
     # Conv=0.0 with gain=4 → raw = 1.0 - 0.5*4 = -1.0; floored at 0.5
     assert _conviction_multiplier(cfg, 0.0) == pytest.approx(0.5)
@@ -83,11 +95,16 @@ def test_conviction_multiplier_floors_at_min() -> None:
 
 
 def test_oracle_neutral_when_no_providers_and_no_htf_ema() -> None:
-    o = HtfRegimeOracle(HtfRegimeOracleConfig(
-        weight_etf_flow=0.30, weight_htf_ema=0.25,
-        weight_lth_proxy=0.15, weight_macro=0.15, weight_fear_greed=0.15,
-        smoothing_period_days=0,
-    ))
+    o = HtfRegimeOracle(
+        HtfRegimeOracleConfig(
+            weight_etf_flow=0.30,
+            weight_htf_ema=0.25,
+            weight_lth_proxy=0.15,
+            weight_macro=0.15,
+            weight_fear_greed=0.15,
+            smoothing_period_days=0,
+        )
+    )
     bar = _bar(0, h=100, low=99, c=99.5)
     r = o.regime_for(bar)
     assert r.direction == "neutral"
@@ -132,8 +149,8 @@ def test_oracle_neutral_when_signals_cancel() -> None:
     """ETF positive, LTH negative, others zero → composite small."""
     o = HtfRegimeOracle(
         HtfRegimeOracleConfig(direction_threshold=0.20, smoothing_period_days=0),
-        etf_flow_provider=lambda b: 500.0,    # +1
-        lth_provider=lambda b: -1.0,           # -1
+        etf_flow_provider=lambda b: 500.0,  # +1
+        lth_provider=lambda b: -1.0,  # -1
     )
     bar = _bar(0, h=100, low=99, c=99.5)
     r = o.regime_for(bar)
@@ -182,9 +199,13 @@ def test_oracle_smoothing_dampens_single_day_spike() -> None:
 
 def _strat(**oracle_overrides) -> CryptoHtfConvictionStrategy:  # type: ignore[no-untyped-def]
     base = CryptoRegimeTrendConfig(
-        regime_ema=20, pullback_ema=5, warmup_bars=25,
-        atr_period=5, min_bars_between_trades=0,
-        pullback_tolerance_pct=2.0, max_trades_per_day=100,
+        regime_ema=20,
+        pullback_ema=5,
+        warmup_bars=25,
+        atr_period=5,
+        min_bars_between_trades=0,
+        pullback_tolerance_pct=2.0,
+        max_trades_per_day=100,
     )
     oracle_kwargs = {
         "smoothing_period_days": 0,
@@ -194,8 +215,10 @@ def _strat(**oracle_overrides) -> CryptoHtfConvictionStrategy:  # type: ignore[n
     oracle_kwargs.update(oracle_overrides)
     sizing = HtfConvictionSizingConfig(
         min_conviction_to_trade=0.10,
-        base_multiplier=1.0, conviction_gain=1.0,
-        min_size_multiplier=0.5, max_size_multiplier=2.0,
+        base_multiplier=1.0,
+        conviction_gain=1.0,
+        min_size_multiplier=0.5,
+        max_size_multiplier=2.0,
     )
     cfg = CryptoHtfConvictionConfig(
         base=base,
@@ -296,7 +319,9 @@ def test_low_conviction_blocks_entry() -> None:
     # Override the strategy's sizing config to require high conviction
     new_sizing = HtfConvictionSizingConfig(min_conviction_to_trade=0.95)
     new_cfg = CryptoHtfConvictionConfig(
-        base=s.cfg.base, oracle=s.cfg.oracle, sizing=new_sizing,
+        base=s.cfg.base,
+        oracle=s.cfg.oracle,
+        sizing=new_sizing,
     )
     s.cfg = new_cfg
     cfg = _config()

@@ -65,10 +65,7 @@ def test_paper_live_transition_task_is_wired_into_bootstrap_and_runbook() -> Non
 
 
 def test_paper_live_transition_task_scripts_do_not_use_legacy_write_paths() -> None:
-    combined = "\n".join(
-        path.read_text(encoding="utf-8")
-        for path in (RUNNER, REGISTRAR)
-    )
+    combined = "\n".join(path.read_text(encoding="utf-8") for path in (RUNNER, REGISTRAR))
 
     assert "OneDrive" not in combined
     assert "LOCALAPPDATA" not in combined

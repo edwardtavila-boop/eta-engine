@@ -84,9 +84,8 @@ def _is_secret_sentinel(value: object) -> bool:
     if not token:
         return True
     upper = token.upper()
-    return (
-        any(marker.upper() in upper for marker in _PLACEHOLDER_MARKERS)
-        or (token.startswith("<") and token.endswith(">") and "PASSWORD" in upper)
+    return any(marker.upper() in upper for marker in _PLACEHOLDER_MARKERS) or (
+        token.startswith("<") and token.endswith(">") and "PASSWORD" in upper
     )
 
 

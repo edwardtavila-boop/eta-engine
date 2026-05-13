@@ -42,6 +42,7 @@ Backwards compatibility
 SpreadRegimeState, update_spread_regime, make_spread_regime_filter
 from this module so existing tests + imports keep working.
 """
+
 from __future__ import annotations
 
 # ruff: noqa: ANN401
@@ -56,9 +57,10 @@ from typing import Any
 @dataclass
 class SpreadRegimeConfig:
     """Tuning surface for the global spread-regime filter."""
-    lookback_minutes: int = 20         # rolling window for median spread
-    pause_at_multiple: float = 4.0     # pause all entries when spread > median * this
-    resume_at_multiple: float = 2.0    # only resume once spread drops below median * this
+
+    lookback_minutes: int = 20  # rolling window for median spread
+    pause_at_multiple: float = 4.0  # pause all entries when spread > median * this
+    resume_at_multiple: float = 2.0  # only resume once spread drops below median * this
     snapshot_interval_seconds: float = 5.0  # depth capture cadence (was 1Hz comment, reality is 5s)
     stale_after_seconds: float = 60.0  # if no snap in this long, return STALE
     max_pause_seconds: float = 1800.0  # alert hook fires after PAUSE held this long (30min)
@@ -67,6 +69,7 @@ class SpreadRegimeConfig:
 @dataclass
 class SpreadRegimeState:
     """Carried across snapshots."""
+
     recent_spreads: list[float] = field(default_factory=list)
     sorted_spreads: list[float] = field(default_factory=list)
     paused: bool = False
@@ -75,9 +78,9 @@ class SpreadRegimeState:
     long_pause_alerted: bool = False  # prevents duplicate alerts
 
 
-def update_spread_regime(snapshot: dict, config: SpreadRegimeConfig,
-                          state: SpreadRegimeState,
-                          *, now: datetime | None = None) -> dict:
+def update_spread_regime(
+    snapshot: dict, config: SpreadRegimeConfig, state: SpreadRegimeState, *, now: datetime | None = None
+) -> dict:
     """Track rolling median spread; return regime status.
 
     Uses bisect.insort to maintain sorted_spreads incrementally
@@ -152,12 +155,10 @@ def update_spread_regime(snapshot: dict, config: SpreadRegimeConfig,
         else:
             verdict = "NORMAL"
 
-    return _build_result(state, spread, median, ratio, verdict, now,
-                          config=config)
+    return _build_result(state, spread, median, ratio, verdict, now, config=config)
 
 
-def check_staleness(state: SpreadRegimeState, config: SpreadRegimeConfig,
-                     *, now: datetime | None = None) -> dict:
+def check_staleness(state: SpreadRegimeState, config: SpreadRegimeConfig, *, now: datetime | None = None) -> dict:
     """Standalone staleness check for callers that need to ask
     'is the regime data stale?' WITHOUT submitting a new snapshot.
 
@@ -172,29 +173,44 @@ def check_staleness(state: SpreadRegimeState, config: SpreadRegimeConfig,
     """
     now = now or datetime.now(UTC)
     if state.last_update_ts is None:
-        return {"paused": True, "current_spread": 0.0, "median": 0.0,
-                "ratio": 0.0, "verdict": "STALE",
-                "last_update_age_seconds": None,
-                "pause_held_seconds": None,
-                "long_pause_warning": False,
-                "reason": "no_snapshot_yet"}
+        return {
+            "paused": True,
+            "current_spread": 0.0,
+            "median": 0.0,
+            "ratio": 0.0,
+            "verdict": "STALE",
+            "last_update_age_seconds": None,
+            "pause_held_seconds": None,
+            "long_pause_warning": False,
+            "reason": "no_snapshot_yet",
+        }
     age = (now - state.last_update_ts).total_seconds()
     if age > config.stale_after_seconds:
-        return {"paused": True, "current_spread": 0.0, "median": 0.0,
-                "ratio": 0.0, "verdict": "STALE",
-                "last_update_age_seconds": round(age, 2),
-                "pause_held_seconds": None,
-                "long_pause_warning": False,
-                "reason": "stale_no_recent_snapshot"}
+        return {
+            "paused": True,
+            "current_spread": 0.0,
+            "median": 0.0,
+            "ratio": 0.0,
+            "verdict": "STALE",
+            "last_update_age_seconds": round(age, 2),
+            "pause_held_seconds": None,
+            "long_pause_warning": False,
+            "reason": "stale_no_recent_snapshot",
+        }
     # Still fresh — return last-known regime
-    return _build_result(state, 0.0, 0.0, 0.0,
-                          "PAUSE" if state.paused else "NORMAL", now,
-                          config=config)
+    return _build_result(state, 0.0, 0.0, 0.0, "PAUSE" if state.paused else "NORMAL", now, config=config)
 
 
-def _build_result(state: SpreadRegimeState, spread: float, median: float,
-                   ratio: float, verdict: str, now: datetime,
-                   *, config: SpreadRegimeConfig | None = None) -> dict:
+def _build_result(
+    state: SpreadRegimeState,
+    spread: float,
+    median: float,
+    ratio: float,
+    verdict: str,
+    now: datetime,
+    *,
+    config: SpreadRegimeConfig | None = None,
+) -> dict:
     last_update_age = None
     if state.last_update_ts is not None:
         last_update_age = round((now - state.last_update_ts).total_seconds(), 2)
@@ -210,14 +226,16 @@ def _build_result(state: SpreadRegimeState, spread: float, median: float,
             if not state.long_pause_alerted:
                 state.long_pause_alerted = True
 
-    return {"paused": state.paused,
-            "current_spread": round(spread, 4),
-            "median": round(median, 4),
-            "ratio": round(ratio, 2),
-            "verdict": verdict,
-            "last_update_age_seconds": last_update_age,
-            "pause_held_seconds": pause_held,
-            "long_pause_warning": long_pause_warning}
+    return {
+        "paused": state.paused,
+        "current_spread": round(spread, 4),
+        "median": round(median, 4),
+        "ratio": round(ratio, 2),
+        "verdict": verdict,
+        "last_update_age_seconds": last_update_age,
+        "pause_held_seconds": pause_held,
+        "long_pause_warning": long_pause_warning,
+    }
 
 
 def make_spread_regime_filter(config: SpreadRegimeConfig | None = None) -> Any:

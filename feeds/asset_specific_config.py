@@ -24,41 +24,70 @@ Crypto (BTC/ETH/SOL):
 """
 
 # Sage schools available (the 22) — we assign subsets per asset
-_EQUITY_SCHOOLS = frozenset({
-    "dow_theory", "wyckoff", "trend_following", "vpa",
-    "market_profile", "smc_ict", "order_flow", "support_resistance",
-    "volatility_regime", "risk_management",
-})
+_EQUITY_SCHOOLS = frozenset(
+    {
+        "dow_theory",
+        "wyckoff",
+        "trend_following",
+        "vpa",
+        "market_profile",
+        "smc_ict",
+        "order_flow",
+        "support_resistance",
+        "volatility_regime",
+        "risk_management",
+    }
+)
 
-_COMMODITY_SCHOOLS = frozenset({
-    "trend_following", "volatility_regime", "risk_management",
-    "support_resistance", "dow_theory", "wyckoff",
-    "vpa", "market_profile",
-})
+_COMMODITY_SCHOOLS = frozenset(
+    {
+        "trend_following",
+        "volatility_regime",
+        "risk_management",
+        "support_resistance",
+        "dow_theory",
+        "wyckoff",
+        "vpa",
+        "market_profile",
+    }
+)
 
-_FX_SCHOOLS = frozenset({
-    "support_resistance", "trend_following", "risk_management",
-    "dow_theory", "volatility_regime", "order_flow",
-})
+_FX_SCHOOLS = frozenset(
+    {
+        "support_resistance",
+        "trend_following",
+        "risk_management",
+        "dow_theory",
+        "volatility_regime",
+        "order_flow",
+    }
+)
 
-_CRYPTO_SCHOOLS = frozenset({
-    "wyckoff", "smc_ict", "trend_following", "vpa",
-    "order_flow", "support_resistance", "volatility_regime",
-    "risk_management",
-})
+_CRYPTO_SCHOOLS = frozenset(
+    {
+        "wyckoff",
+        "smc_ict",
+        "trend_following",
+        "vpa",
+        "order_flow",
+        "support_resistance",
+        "volatility_regime",
+        "risk_management",
+    }
+)
 
 # Alpha sniper intermarket pairs per asset
 _INTERMARKET_PAIRS = {
     "MNQ": ["ES", "NQ", "VIX"],
-    "NQ":  ["ES", "MNQ", "VIX"],
+    "NQ": ["ES", "MNQ", "VIX"],
     "MES": ["ES", "MNQ", "VIX"],
     "M2K": ["ES", "YM", "VIX"],
     "MYM": ["ES", "M2K", "VIX"],
-    "GC":  ["SI", "DXY", "TNX"],
-    "CL":  ["DXY", "RB", "NG"],
-    "NG":  ["CL", "DXY"],
-    "6E":  ["DXY", "ZN", "GBP"],
-    "ZN":  ["6E", "DXY", "ZB"],
+    "GC": ["SI", "DXY", "TNX"],
+    "CL": ["DXY", "RB", "NG"],
+    "NG": ["CL", "DXY"],
+    "6E": ["DXY", "ZN", "GBP"],
+    "ZN": ["6E", "DXY", "ZB"],
     "BTC": ["DXY", "SPX", "ETH"],
     "ETH": ["BTC", "DXY", "SPX"],
     "SOL": ["BTC", "ETH", "SPX"],
@@ -126,13 +155,26 @@ _EDGE_PRESETS = {
 
 # Asset class mapping (ticker root → class)
 _ASSET_CLASS = {
-    "MNQ": "equity", "NQ": "equity", "MES": "equity",
-    "M2K": "equity", "MYM": "equity", "YM": "equity",
-    "GC": "commodity", "MGC": "commodity", "CL": "commodity",
-    "MCL": "commodity", "NG": "commodity",
-    "6E": "fx", "EUR": "fx", "ZN": "fx",
-    "BTC": "crypto", "ETH": "crypto", "SOL": "crypto",
-    "XRP": "crypto", "MBT": "crypto", "MET": "crypto",
+    "MNQ": "equity",
+    "NQ": "equity",
+    "MES": "equity",
+    "M2K": "equity",
+    "MYM": "equity",
+    "YM": "equity",
+    "GC": "commodity",
+    "MGC": "commodity",
+    "CL": "commodity",
+    "MCL": "commodity",
+    "NG": "commodity",
+    "6E": "fx",
+    "EUR": "fx",
+    "ZN": "fx",
+    "BTC": "crypto",
+    "ETH": "crypto",
+    "SOL": "crypto",
+    "XRP": "crypto",
+    "MBT": "crypto",
+    "MET": "crypto",
 }
 
 
@@ -167,14 +209,10 @@ def normalize_symbol(symbol: str) -> str:
     for root in _KNOWN_ROOTS:
         if not sym.startswith(root):
             continue
-        tail = sym[len(root):]
+        tail = sym[len(root) :]
         if tail == "1":
             return root
-        if (
-            len(tail) in (2, 3)
-            and tail[0] in _FUTURES_MONTH_CODES
-            and tail[1:].isdigit()
-        ):
+        if len(tail) in (2, 3) and tail[0] in _FUTURES_MONTH_CODES and tail[1:].isdigit():
             return root
 
     return sym

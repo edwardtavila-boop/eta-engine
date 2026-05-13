@@ -69,13 +69,15 @@ def test_apply_rebalance_plan_is_dry_run_by_default() -> None:
         def set_equity_ceiling(self, usd: float) -> None:
             self.ceiling = usd
 
-    plan = build_rebalance_plan([
-        BotPerformance(
-            bot_name="MnqBot",
-            rolling_returns=[0.012, 0.011, 0.013, 0.012, 0.014],
-            baseline_usd=5500.0,
-        )
-    ])
+    plan = build_rebalance_plan(
+        [
+            BotPerformance(
+                bot_name="MnqBot",
+                rolling_returns=[0.012, 0.011, 0.013, 0.012, 0.014],
+                baseline_usd=5500.0,
+            )
+        ]
+    )
     bot = Bot()
 
     dry_run = apply_rebalance_plan({"MnqBot": bot}, plan)

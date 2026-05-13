@@ -69,6 +69,7 @@ Usage:
     python -m eta_engine.scripts.supercharge_orchestrator --tier sweep \
         --with-sweeps --with-cross-symbol
 """
+
 from __future__ import annotations
 
 import argparse
@@ -92,6 +93,7 @@ HIST_ROOT = ROOT.parent / "mnq_data" / "history"
 # ── Active fleet symbols ───────────────────────────────────────────
 def _active_fleet_symbols() -> set[tuple[str, str]]:
     from eta_engine.strategies.per_bot_registry import ASSIGNMENTS, is_active
+
     out: set[tuple[str, str]] = set()
     for a in ASSIGNMENTS:
         if not is_active(a):
@@ -136,43 +138,86 @@ def _fetch_one(args: tuple[str, str, bool, int | None]) -> dict:
     sym, tf, tws_up, tws_port = args
     if tws_up and tf in {"1m", "5m", "15m", "1h"}:
         cmd = [
-            sys.executable, "-m", "eta_engine.scripts.fetch_tws_historical_bars",
-            "--symbol", sym, "--timeframe", tf,
-            "--days", "540", "--port", str(tws_port),
-            "--back-fetch", "--adjust",
+            sys.executable,
+            "-m",
+            "eta_engine.scripts.fetch_tws_historical_bars",
+            "--symbol",
+            sym,
+            "--timeframe",
+            tf,
+            "--days",
+            "540",
+            "--port",
+            str(tws_port),
+            "--back-fetch",
+            "--adjust",
         ]
     else:
         cmd = [
-            sys.executable, "-m", "eta_engine.scripts.fetch_index_futures_bars",
-            "--symbol", sym, "--timeframe", tf,
+            sys.executable,
+            "-m",
+            "eta_engine.scripts.fetch_index_futures_bars",
+            "--symbol",
+            sym,
+            "--timeframe",
+            tf,
         ]
     try:
         res = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=180,
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=180,
             cwd=str(ROOT.parent),
         )
-        return {"symbol": sym, "timeframe": tf, "rc": res.returncode,
-                "stdout_tail": (res.stdout or "").strip().splitlines()[-1:][:1]}
+        return {
+            "symbol": sym,
+            "timeframe": tf,
+            "rc": res.returncode,
+            "stdout_tail": (res.stdout or "").strip().splitlines()[-1:][:1],
+        }
     except (subprocess.TimeoutExpired, OSError) as e:
         return {"symbol": sym, "timeframe": tf, "rc": -1, "error": str(e)[:80]}
 
 
-def phase1_data_refresh(*, dry_run: bool = False, tier: str = "sweep",
-                        max_workers: int = 6) -> dict:
+def phase1_data_refresh(*, dry_run: bool = False, tier: str = "sweep", max_workers: int = 6) -> dict:
     tws_up, tws_port = _tws_available()
     source = "ibkr" if tws_up else "yfinance"
     print(f"[phase1] data source: {source} (TWS port {tws_port if tws_up else '-'})  tier={tier}")
 
-    yf_supported = {"6E", "CL", "ES", "GC", "M2K", "M6E", "MBT", "MCL",
-                    "MES", "MET", "MGC", "MNQ", "NG", "NQ", "YM", "ZB", "ZN"}
+    yf_supported = {
+        "6E",
+        "CL",
+        "ES",
+        "GC",
+        "M2K",
+        "M6E",
+        "MBT",
+        "MCL",
+        "MES",
+        "MET",
+        "MGC",
+        "MNQ",
+        "NG",
+        "NQ",
+        "YM",
+        "ZB",
+        "ZN",
+    }
     symbols = _tier_filter_symbols(_active_fleet_symbols(), tier)
     work = [(s, t, tws_up, tws_port) for s, t in sorted(symbols) if s in yf_supported]
     skipped = [(s, t) for s, t in symbols if s not in yf_supported]
 
     if dry_run:
         print(f"[phase1][dry] {len(work)} fetches × {max_workers} parallel workers")
-        return {"source": source, "n_attempted": len(work), "n_fetched": 0,
-                "fetched": [], "failed": [], "skipped": skipped}
+        return {
+            "source": source,
+            "n_attempted": len(work),
+            "n_fetched": 0,
+            "fetched": [],
+            "failed": [],
+            "skipped": skipped,
+        }
 
     fetched: list[dict] = []
     failed: list[dict] = []
@@ -183,9 +228,14 @@ def phase1_data_refresh(*, dry_run: bool = False, tier: str = "sweep",
             (fetched if r["rc"] == 0 else failed).append(r)
             print(f"[phase1] {r['symbol']}/{r['timeframe']}: rc={r['rc']}")
 
-    return {"source": source, "fetched": fetched, "failed": failed,
-            "n_attempted": len(work), "n_fetched": len(fetched),
-            "skipped": skipped}
+    return {
+        "source": source,
+        "fetched": fetched,
+        "failed": failed,
+        "n_attempted": len(work),
+        "n_fetched": len(fetched),
+        "skipped": skipped,
+    }
 
 
 # ── Verdict cache for incremental harness ──────────────────────────
@@ -206,6 +256,7 @@ def _save_verdict_cache(cache: dict) -> None:
 
 def _data_mtime_for_bot(bot_id: str) -> float | None:
     from eta_engine.strategies.per_bot_registry import get_for_bot
+
     a = get_for_bot(bot_id)
     if a is None:
         return None
@@ -218,26 +269,40 @@ def _data_mtime_for_bot(bot_id: str) -> float | None:
 
 
 # ── Phase 2: incremental elite-gate sweep ──────────────────────────
-def phase2_elite_gate(*, days_window: int = 365, dry_run: bool = False,
-                      force_full: bool = False, tier: str = "sweep") -> dict:
+def phase2_elite_gate(
+    *, days_window: int = 365, dry_run: bool = False, force_full: bool = False, tier: str = "sweep"
+) -> dict:
     from eta_engine.strategies.per_bot_registry import ASSIGNMENTS, is_active
+
     all_active = [a.bot_id for a in ASSIGNMENTS if is_active(a)]
 
     # Tier-restrict the bot list
     if tier == "rth-mnq":
         from eta_engine.strategies.per_bot_registry import get_for_bot
-        all_active = [b for b in all_active
-                      if (get_for_bot(b) or type("X", (), {"symbol": ""})).symbol
-                      in {"MNQ1", "NQ1", "MES1", "ES1", "M2K1", "YM1"}]
+
+        all_active = [
+            b
+            for b in all_active
+            if (get_for_bot(b) or type("X", (), {"symbol": ""})).symbol in {"MNQ1", "NQ1", "MES1", "ES1", "M2K1", "YM1"}
+        ]
     elif tier == "globex":
         from eta_engine.strategies.per_bot_registry import get_for_bot
-        all_active = [b for b in all_active
-                      if (get_for_bot(b) or type("X", (), {"symbol": ""})).symbol
-                      in {"CL1", "GC1", "NG1", "6E1", "ZN1", "MCL1", "MGC1"}]
+
+        all_active = [
+            b
+            for b in all_active
+            if (get_for_bot(b) or type("X", (), {"symbol": ""})).symbol
+            in {"CL1", "GC1", "NG1", "6E1", "ZN1", "MCL1", "MGC1"}
+        ]
     elif tier == "hourly":
         # Hourly tier skips harness — data refresh only
-        return {"days_window": days_window, "verdicts": [], "n_bots": 0,
-                "n_skipped_cached": 0, "tier": "hourly-skip-harness"}
+        return {
+            "days_window": days_window,
+            "verdicts": [],
+            "n_bots": 0,
+            "n_skipped_cached": 0,
+            "tier": "hourly-skip-harness",
+        }
 
     cache = _load_verdict_cache()
     to_run: list[str] = []
@@ -259,36 +324,51 @@ def phase2_elite_gate(*, days_window: int = 365, dry_run: bool = False,
 
     print(f"[phase2] elite-gate: {len(to_run)} bots fresh, {len(skipped_cached)} cached  ({tier} tier)")
     if dry_run:
-        return {"days_window": days_window, "verdicts": [], "n_bots": len(to_run),
-                "n_skipped_cached": len(skipped_cached)}
+        return {
+            "days_window": days_window,
+            "verdicts": [],
+            "n_bots": len(to_run),
+            "n_skipped_cached": len(skipped_cached),
+        }
 
     verdicts: list[dict] = []
     batch_size = 4
     for i in range(0, len(to_run), batch_size):
-        chunk = to_run[i:i + batch_size]
+        chunk = to_run[i : i + batch_size]
         batch_num = i // batch_size + 1
         cmd = [
-            sys.executable, "-m", "eta_engine.scripts.strategy_creation_harness",
-            "--bot", *chunk,
-            "--days", str(days_window),
+            sys.executable,
+            "-m",
+            "eta_engine.scripts.strategy_creation_harness",
+            "--bot",
+            *chunk,
+            "--days",
+            str(days_window),
             "--random-baseline",
         ]
         try:
             res = subprocess.run(
-                cmd, capture_output=True, text=True, timeout=600,
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=600,
                 cwd=str(ROOT.parent),
             )
             for line in res.stdout.splitlines():
                 stripped = line.strip()
                 if stripped.startswith("[") and "OOS=" in stripped:
                     bot_id = stripped.split("[", 1)[1].split("]", 1)[0]
-                    verdict_kind = "GREEN" if "ALL GREEN" in res.stdout else (
-                        "YELLOW" if "YELLOW" in res.stdout else "RED")
-                    verdicts.append({
-                        "bot_id": bot_id, "raw": stripped,
-                        "verdict": verdict_kind,
-                        "scored_at": datetime.now(UTC).isoformat(),
-                    })
+                    verdict_kind = (
+                        "GREEN" if "ALL GREEN" in res.stdout else ("YELLOW" if "YELLOW" in res.stdout else "RED")
+                    )
+                    verdicts.append(
+                        {
+                            "bot_id": bot_id,
+                            "raw": stripped,
+                            "verdict": verdict_kind,
+                            "scored_at": datetime.now(UTC).isoformat(),
+                        }
+                    )
                     cache[bot_id] = {
                         "verdict": verdict_kind,
                         "scored_at": datetime.now(UTC).isoformat(),
@@ -300,9 +380,13 @@ def phase2_elite_gate(*, days_window: int = 365, dry_run: bool = False,
             print(f"[phase2] batch {batch_num} ERROR: {e}")
 
     _save_verdict_cache(cache)
-    return {"days_window": days_window, "verdicts": verdicts,
-            "n_bots": len(to_run), "n_skipped_cached": len(skipped_cached),
-            "tier": tier}
+    return {
+        "days_window": days_window,
+        "verdicts": verdicts,
+        "n_bots": len(to_run),
+        "n_skipped_cached": len(skipped_cached),
+        "tier": tier,
+    }
 
 
 # ── Phase 3: sage consult on GREEN bots ────────────────────────────
@@ -320,11 +404,9 @@ def phase3_sage_consult(verdicts: list[dict], *, dry_run: bool = False) -> dict:
 
     for v in green:
         bot_id = v["bot_id"]
-        cmd = [sys.executable, "-m", "eta_engine.scripts.sage_oracle",
-               "--bot", bot_id, "--json"]
+        cmd = [sys.executable, "-m", "eta_engine.scripts.sage_oracle", "--bot", bot_id, "--json"]
         try:
-            res = subprocess.run(cmd, capture_output=True, text=True,
-                                 timeout=60, cwd=str(ROOT.parent))
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=60, cwd=str(ROOT.parent))
             if res.returncode != 0:
                 continue
             try:
@@ -336,19 +418,18 @@ def phase3_sage_consult(verdicts: list[dict], *, dry_run: bool = False) -> dict:
                 # mark as dissent.  We don't know bot direction here without
                 # registry lookup, so log the raw + flag low-conviction.
                 if conviction < 0.30:
-                    dissents.append({"bot_id": bot_id, "conviction": conviction,
-                                     "bias": bias, "reason": "sage low conviction"})
+                    dissents.append(
+                        {"bot_id": bot_id, "conviction": conviction, "bias": bias, "reason": "sage low conviction"}
+                    )
                 else:
-                    agreements.append({"bot_id": bot_id, "conviction": conviction,
-                                       "bias": bias})
+                    agreements.append({"bot_id": bot_id, "conviction": conviction, "bias": bias})
                 print(f"[phase3] {bot_id}: sage conv={conviction:.2f} bias={bias}")
             except (json.JSONDecodeError, ValueError, KeyError):
                 continue
         except (subprocess.TimeoutExpired, OSError):
             continue
 
-    return {"n_consulted": len(green),
-            "agreements": agreements, "dissents": dissents}
+    return {"n_consulted": len(green), "agreements": agreements, "dissents": dissents}
 
 
 # ── Phase 4: jarvis arbitration ────────────────────────────────────
@@ -376,7 +457,8 @@ def phase4_jarvis_arbitration(sage_result: dict, *, dry_run: bool = False) -> di
         try:
             # Best-effort consult; signature may differ across versions.
             verdict = getattr(jf, "consult", lambda **_: None)(
-                bot_id=bot_id, sage_conviction=ag["conviction"],
+                bot_id=bot_id,
+                sage_conviction=ag["conviction"],
                 sage_bias=ag["bias"],
             )
             rec = {
@@ -400,8 +482,7 @@ def phase4_jarvis_arbitration(sage_result: dict, *, dry_run: bool = False) -> di
 
 
 # ── Phase 5: auto-promote/demote (proposal-only) ───────────────────
-def phase5_auto_promote_demote(verdicts: list[dict], sage: dict, jarvis: dict,
-                                *, dry_run: bool = False) -> dict:
+def phase5_auto_promote_demote(verdicts: list[dict], sage: dict, jarvis: dict, *, dry_run: bool = False) -> dict:
     actions_path = LOG_DIR / "supercharge_actions.jsonl"
     proposed_promote: list[dict] = []
     proposed_demote: list[dict] = []
@@ -409,92 +490,98 @@ def phase5_auto_promote_demote(verdicts: list[dict], sage: dict, jarvis: dict,
     # cross-reference sage + jarvis approvals, propose flips.
     if not dry_run:
         with actions_path.open("a", encoding="utf-8") as f:
-            f.write(json.dumps({
-                "ts": datetime.now(UTC).isoformat(),
-                "phase": "phase5",
-                "n_verdicts": len(verdicts),
-                "n_sage_agree": len(sage.get("agreements", [])),
-                "n_sage_dissent": len(sage.get("dissents", [])),
-                "n_jarvis_recs": len(jarvis.get("recommendations", [])),
-                "proposed_promote": proposed_promote,
-                "proposed_demote": proposed_demote,
-                "note": "phase5 proposals require 3+ consecutive runs of history",
-            }, separators=(",", ":")) + "\n")
+            f.write(
+                json.dumps(
+                    {
+                        "ts": datetime.now(UTC).isoformat(),
+                        "phase": "phase5",
+                        "n_verdicts": len(verdicts),
+                        "n_sage_agree": len(sage.get("agreements", [])),
+                        "n_sage_dissent": len(sage.get("dissents", [])),
+                        "n_jarvis_recs": len(jarvis.get("recommendations", [])),
+                        "proposed_promote": proposed_promote,
+                        "proposed_demote": proposed_demote,
+                        "note": "phase5 proposals require 3+ consecutive runs of history",
+                    },
+                    separators=(",", ":"),
+                )
+                + "\n"
+            )
     return {"proposed_promote": proposed_promote, "proposed_demote": proposed_demote}
 
 
 # ── Phase 8: summary digest ────────────────────────────────────────
-def phase8_summary(p1: dict, p2: dict, p3: dict, p4: dict, p5: dict,
-                   *, run_id: str, tier: str, dry_run: bool = False) -> dict:
+def phase8_summary(
+    p1: dict, p2: dict, p3: dict, p4: dict, p5: dict, *, run_id: str, tier: str, dry_run: bool = False
+) -> dict:
     digest = {
         "ts": datetime.now(UTC).isoformat(),
         "run_id": run_id,
         "tier": tier,
-        "phase1": {"source": p1["source"], "n_fetched": p1["n_fetched"],
-                   "n_failed": len(p1.get("failed", []))},
-        "phase2": {"days_window": p2.get("days_window"),
-                   "n_bots": p2.get("n_bots", 0),
-                   "n_skipped_cached": p2.get("n_skipped_cached", 0),
-                   "n_verdicts": len(p2.get("verdicts", []))},
-        "phase3": {"n_consulted": p3.get("n_consulted", 0),
-                   "n_agreements": len(p3.get("agreements", [])),
-                   "n_dissents": len(p3.get("dissents", []))},
+        "phase1": {"source": p1["source"], "n_fetched": p1["n_fetched"], "n_failed": len(p1.get("failed", []))},
+        "phase2": {
+            "days_window": p2.get("days_window"),
+            "n_bots": p2.get("n_bots", 0),
+            "n_skipped_cached": p2.get("n_skipped_cached", 0),
+            "n_verdicts": len(p2.get("verdicts", [])),
+        },
+        "phase3": {
+            "n_consulted": p3.get("n_consulted", 0),
+            "n_agreements": len(p3.get("agreements", [])),
+            "n_dissents": len(p3.get("dissents", [])),
+        },
         "phase4": {"n_arbitrated": p4.get("n_arbitrated", 0)},
-        "phase5": {"n_promote": len(p5.get("proposed_promote", [])),
-                   "n_demote": len(p5.get("proposed_demote", []))},
+        "phase5": {"n_promote": len(p5.get("proposed_promote", [])), "n_demote": len(p5.get("proposed_demote", []))},
     }
     if not dry_run:
         with (LOG_DIR / "supercharge_runs.jsonl").open("a", encoding="utf-8") as f:
             f.write(json.dumps(digest, separators=(",", ":")) + "\n")
     print(f"\n[summary] run_id={run_id} tier={tier}")
     print(f"  data:    {p1['source']} — {p1['n_fetched']}/{p1['n_attempted']} symbols")
-    print(f"  gate:    {p2.get('days_window', '?')}d on {p2.get('n_bots', 0)} bots "
-          f"({p2.get('n_skipped_cached', 0)} cached) -> {len(p2.get('verdicts', []))} verdicts")
-    print(f"  sage:    {p3.get('n_consulted', 0)} consulted, "
-          f"{len(p3.get('agreements', []))} agree, {len(p3.get('dissents', []))} dissent")
+    print(
+        f"  gate:    {p2.get('days_window', '?')}d on {p2.get('n_bots', 0)} bots "
+        f"({p2.get('n_skipped_cached', 0)} cached) -> {len(p2.get('verdicts', []))} verdicts"
+    )
+    print(
+        f"  sage:    {p3.get('n_consulted', 0)} consulted, "
+        f"{len(p3.get('agreements', []))} agree, {len(p3.get('dissents', []))} dissent"
+    )
     print(f"  jarvis:  {p4.get('n_arbitrated', 0)} arbitrated")
-    print(f"  promo:   {len(p5.get('proposed_promote', []))} promote, "
-          f"{len(p5.get('proposed_demote', []))} demote (proposals)")
+    print(
+        f"  promo:   {len(p5.get('proposed_promote', []))} promote, "
+        f"{len(p5.get('proposed_demote', []))} demote (proposals)"
+    )
     return digest
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--days", type=int, default=365,
-                    help="Elite-gate window (default 365)")
-    ap.add_argument("--tier", choices=["sweep", "hourly", "rth-mnq", "globex"],
-                    default="sweep",
-                    help="Cadence tier (controls symbol + bot scope)")
-    ap.add_argument("--force-full", action="store_true",
-                    help="Bypass incremental cache; re-test every bot")
-    ap.add_argument("--dry-run", action="store_true",
-                    help="Skip all mutations (data fetch + harness + sage + jarvis)")
-    ap.add_argument("--with-sweeps", action="store_true",
-                    help="Phase 6: parameter sweeps (slow)")
-    ap.add_argument("--with-cross-symbol", action="store_true",
-                    help="Phase 7: cross-instrument variant probe")
-    ap.add_argument("--skip-data-refresh", action="store_true",
-                    help="Skip phase 1 (use existing data)")
-    ap.add_argument("--skip-sage", action="store_true",
-                    help="Skip phase 3 (sage consult)")
-    ap.add_argument("--skip-jarvis", action="store_true",
-                    help="Skip phase 4 (jarvis arbitration)")
-    ap.add_argument("--max-fetch-workers", type=int, default=6,
-                    help="Concurrent data fetches (TWS pacing: 60/10min)")
+    ap.add_argument("--days", type=int, default=365, help="Elite-gate window (default 365)")
+    ap.add_argument(
+        "--tier",
+        choices=["sweep", "hourly", "rth-mnq", "globex"],
+        default="sweep",
+        help="Cadence tier (controls symbol + bot scope)",
+    )
+    ap.add_argument("--force-full", action="store_true", help="Bypass incremental cache; re-test every bot")
+    ap.add_argument("--dry-run", action="store_true", help="Skip all mutations (data fetch + harness + sage + jarvis)")
+    ap.add_argument("--with-sweeps", action="store_true", help="Phase 6: parameter sweeps (slow)")
+    ap.add_argument("--with-cross-symbol", action="store_true", help="Phase 7: cross-instrument variant probe")
+    ap.add_argument("--skip-data-refresh", action="store_true", help="Skip phase 1 (use existing data)")
+    ap.add_argument("--skip-sage", action="store_true", help="Skip phase 3 (sage consult)")
+    ap.add_argument("--skip-jarvis", action="store_true", help="Skip phase 4 (jarvis arbitration)")
+    ap.add_argument("--max-fetch-workers", type=int, default=6, help="Concurrent data fetches (TWS pacing: 60/10min)")
     args = ap.parse_args()
 
     run_id = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     print(f"=== supercharge run {run_id}  tier={args.tier} ===")
 
     if args.skip_data_refresh:
-        p1 = {"source": "skipped", "n_attempted": 0, "n_fetched": 0,
-              "fetched": [], "failed": []}
+        p1 = {"source": "skipped", "n_attempted": 0, "n_fetched": 0, "fetched": [], "failed": []}
     else:
-        p1 = phase1_data_refresh(dry_run=args.dry_run, tier=args.tier,
-                                  max_workers=args.max_fetch_workers)
+        p1 = phase1_data_refresh(dry_run=args.dry_run, tier=args.tier, max_workers=args.max_fetch_workers)
 
-    p2 = phase2_elite_gate(days_window=args.days, dry_run=args.dry_run,
-                           force_full=args.force_full, tier=args.tier)
+    p2 = phase2_elite_gate(days_window=args.days, dry_run=args.dry_run, force_full=args.force_full, tier=args.tier)
 
     if args.skip_sage:
         p3 = {"n_consulted": 0, "agreements": [], "dissents": []}
@@ -506,8 +593,7 @@ def main() -> int:
     else:
         p4 = phase4_jarvis_arbitration(p3, dry_run=args.dry_run)
 
-    p5 = phase5_auto_promote_demote(p2.get("verdicts", []), p3, p4,
-                                     dry_run=args.dry_run)
+    p5 = phase5_auto_promote_demote(p2.get("verdicts", []), p3, p4, dry_run=args.dry_run)
     phase8_summary(p1, p2, p3, p4, p5, run_id=run_id, tier=args.tier, dry_run=args.dry_run)
     return 0
 

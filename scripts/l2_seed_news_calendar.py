@@ -52,6 +52,7 @@ Run
     # Just add 2026 seed (skip if duplicates)
     python -m eta_engine.scripts.l2_seed_news_calendar --seed
 """
+
 from __future__ import annotations
 
 # ruff: noqa: PLR2004
@@ -67,24 +68,21 @@ from eta_engine.scripts.l2_news_blackout import (
 )
 
 # Futures symbols affected by US macro events.  Add/remove as needed.
-US_MACRO_SYMBOLS = ["MNQ", "NQ", "MES", "ES", "MGC", "GC",
-                     "MCL", "CL", "M2K", "RTY", "YM", "ZN", "ZB"]
+US_MACRO_SYMBOLS = ["MNQ", "NQ", "MES", "ES", "MGC", "GC", "MCL", "CL", "M2K", "RTY", "YM", "ZN", "ZB"]
 # Symbols affected by ECB events.
 ECB_SYMBOLS = ["MNQ", "NQ", "MES", "ES", "6E", "M6E"]
 # Symbols affected by quarterly index witching.
 WITCHING_SYMBOLS = ["MNQ", "NQ", "MES", "ES", "M2K", "RTY", "YM"]
 
 
-def _utc_window(local_dt: datetime, *, before_min: int,
-                 after_min: int) -> tuple[str, str]:
+def _utc_window(local_dt: datetime, *, before_min: int, after_min: int) -> tuple[str, str]:
     """Convert a tz-aware datetime to an ISO-UTC window (before, after)."""
     start = (local_dt - timedelta(minutes=before_min)).astimezone(UTC)
     end = (local_dt + timedelta(minutes=after_min)).astimezone(UTC)
     return start.isoformat(), end.isoformat()
 
 
-def _et_to_utc(year: int, month: int, day: int,
-                hour: int, minute: int) -> datetime:
+def _et_to_utc(year: int, month: int, day: int, hour: int, minute: int) -> datetime:
     """Convert ET wall-clock to UTC datetime.  Heuristic DST handling:
     EDT (UTC-4) from 2nd Sun of March through 1st Sun of November,
     else EST (UTC-5).  Sufficient for blackout-window precision."""
@@ -94,16 +92,14 @@ def _et_to_utc(year: int, month: int, day: int,
     # 1st Sunday of November
     dst_end = _nth_weekday(year, 11, 6, 1)
     offset_hours = 4 if dst_start <= d < dst_end else 5
-    return datetime(year, month, day, hour + offset_hours, minute,
-                     tzinfo=UTC)
+    return datetime(year, month, day, hour + offset_hours, minute, tzinfo=UTC)
 
 
 def _nth_weekday(year: int, month: int, weekday: int, n: int) -> date:
     """Return the date of the n-th occurrence of weekday (0=Mon..6=Sun)
     in the given month.  E.g. n=3, weekday=4 (Friday) → 3rd Friday."""
     c = calendar.Calendar()
-    matches = [d for d in c.itermonthdates(year, month)
-                if d.month == month and d.weekday() == weekday]
+    matches = [d for d in c.itermonthdates(year, month) if d.month == month and d.weekday() == weekday]
     return matches[n - 1]
 
 
@@ -134,14 +130,16 @@ def fomc_windows_2026() -> list[BlackoutWindow]:
     out: list[BlackoutWindow] = []
     for y, m, d in fomc_decision_days_2026:
         decision = _et_to_utc(y, m, d, 14, 0)
-        start_iso, end_iso = _utc_window(
-            decision, before_min=15, after_min=90)
-        out.append(BlackoutWindow(
-            start=start_iso, end=end_iso,
-            reason="FOMC", symbols=US_MACRO_SYMBOLS,
-            note=f"Fed rate decision {y}-{m:02d}-{d:02d} 14:00 ET; "
-                 "press conf 14:30 ET",
-        ))
+        start_iso, end_iso = _utc_window(decision, before_min=15, after_min=90)
+        out.append(
+            BlackoutWindow(
+                start=start_iso,
+                end=end_iso,
+                reason="FOMC",
+                symbols=US_MACRO_SYMBOLS,
+                note=f"Fed rate decision {y}-{m:02d}-{d:02d} 14:00 ET; press conf 14:30 ET",
+            )
+        )
     return out
 
 
@@ -153,13 +151,16 @@ def nfp_windows_2026() -> list[BlackoutWindow]:
     for month in range(1, 13):
         d = _first_weekday(2026, month, 4)  # Friday
         release = _et_to_utc(2026, d.month, d.day, 8, 30)
-        start_iso, end_iso = _utc_window(
-            release, before_min=15, after_min=30)
-        out.append(BlackoutWindow(
-            start=start_iso, end=end_iso,
-            reason="NFP", symbols=US_MACRO_SYMBOLS,
-            note=f"Non-farm payrolls {d.isoformat()} 08:30 ET",
-        ))
+        start_iso, end_iso = _utc_window(release, before_min=15, after_min=30)
+        out.append(
+            BlackoutWindow(
+                start=start_iso,
+                end=end_iso,
+                reason="NFP",
+                symbols=US_MACRO_SYMBOLS,
+                note=f"Non-farm payrolls {d.isoformat()} 08:30 ET",
+            )
+        )
     return out
 
 
@@ -172,15 +173,15 @@ def cpi_windows_2026() -> list[BlackoutWindow]:
     knowledge of typical Tue/Wed/Thu mid-month slot).
     """
     cpi_dates_2026 = [
-        (2026, 1, 14),   # Jan 14
-        (2026, 2, 11),   # Feb 11
-        (2026, 3, 12),   # Mar 12
-        (2026, 4, 14),   # Apr 14
-        (2026, 5, 13),   # May 13
-        (2026, 6, 11),   # Jun 11
-        (2026, 7, 15),   # Jul 15
-        (2026, 8, 12),   # Aug 12
-        (2026, 9, 11),   # Sep 11
+        (2026, 1, 14),  # Jan 14
+        (2026, 2, 11),  # Feb 11
+        (2026, 3, 12),  # Mar 12
+        (2026, 4, 14),  # Apr 14
+        (2026, 5, 13),  # May 13
+        (2026, 6, 11),  # Jun 11
+        (2026, 7, 15),  # Jul 15
+        (2026, 8, 12),  # Aug 12
+        (2026, 9, 11),  # Sep 11
         (2026, 10, 14),  # Oct 14
         (2026, 11, 13),  # Nov 13
         (2026, 12, 10),  # Dec 10
@@ -188,14 +189,16 @@ def cpi_windows_2026() -> list[BlackoutWindow]:
     out: list[BlackoutWindow] = []
     for y, m, d in cpi_dates_2026:
         release = _et_to_utc(y, m, d, 8, 30)
-        start_iso, end_iso = _utc_window(
-            release, before_min=15, after_min=30)
-        out.append(BlackoutWindow(
-            start=start_iso, end=end_iso,
-            reason="CPI", symbols=US_MACRO_SYMBOLS,
-            note=f"BLS CPI release {y}-{m:02d}-{d:02d} 08:30 ET "
-                 "(operator: confirm against bls.gov schedule)",
-        ))
+        start_iso, end_iso = _utc_window(release, before_min=15, after_min=30)
+        out.append(
+            BlackoutWindow(
+                start=start_iso,
+                end=end_iso,
+                reason="CPI",
+                symbols=US_MACRO_SYMBOLS,
+                note=f"BLS CPI release {y}-{m:02d}-{d:02d} 08:30 ET (operator: confirm against bls.gov schedule)",
+            )
+        )
     return out
 
 
@@ -223,13 +226,16 @@ def ecb_windows_2026() -> list[BlackoutWindow]:
         # For blackout windows ±15min/±45min the small DST drift
         # doesn't matter operationally.
         decision = datetime(y, m, d, 12, 15, tzinfo=UTC)
-        start_iso, end_iso = _utc_window(
-            decision, before_min=15, after_min=45)
-        out.append(BlackoutWindow(
-            start=start_iso, end=end_iso,
-            reason="ECB", symbols=ECB_SYMBOLS,
-            note=f"ECB Governing Council {y}-{m:02d}-{d:02d} 13:15 CET",
-        ))
+        start_iso, end_iso = _utc_window(decision, before_min=15, after_min=45)
+        out.append(
+            BlackoutWindow(
+                start=start_iso,
+                end=end_iso,
+                reason="ECB",
+                symbols=ECB_SYMBOLS,
+                note=f"ECB Governing Council {y}-{m:02d}-{d:02d} 13:15 CET",
+            )
+        )
     return out
 
 
@@ -241,35 +247,28 @@ def witching_windows_2026() -> list[BlackoutWindow]:
         d = _nth_weekday(2026, month, 4, 3)  # 3rd Friday
         last_hour_start = _et_to_utc(2026, d.month, d.day, 14, 0)
         last_hour_end = _et_to_utc(2026, d.month, d.day, 15, 15)
-        out.append(BlackoutWindow(
-            start=last_hour_start.isoformat(),
-            end=last_hour_end.isoformat(),
-            reason="WITCHING", symbols=WITCHING_SYMBOLS,
-            note=f"Quad witching {d.isoformat()} last-hour volume spike",
-        ))
+        out.append(
+            BlackoutWindow(
+                start=last_hour_start.isoformat(),
+                end=last_hour_end.isoformat(),
+                reason="WITCHING",
+                symbols=WITCHING_SYMBOLS,
+                note=f"Quad witching {d.isoformat()} last-hour volume spike",
+            )
+        )
     return out
 
 
 def all_2026_seeds() -> list[BlackoutWindow]:
-    return (
-        fomc_windows_2026()
-        + nfp_windows_2026()
-        + cpi_windows_2026()
-        + ecb_windows_2026()
-        + witching_windows_2026()
-    )
+    return fomc_windows_2026() + nfp_windows_2026() + cpi_windows_2026() + ecb_windows_2026() + witching_windows_2026()
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--dry-run", action="store_true",
-                    help="Show what would be seeded; do not write")
-    ap.add_argument("--seed", action="store_true",
-                    help="Append 2026 seed (dedupe by start+reason)")
-    ap.add_argument("--clear", action="store_true",
-                    help="DESTROY existing l2_news_events.jsonl (CAREFUL)")
-    ap.add_argument("--show", action="store_true",
-                    help="List existing events without seeding")
+    ap.add_argument("--dry-run", action="store_true", help="Show what would be seeded; do not write")
+    ap.add_argument("--seed", action="store_true", help="Append 2026 seed (dedupe by start+reason)")
+    ap.add_argument("--clear", action="store_true", help="DESTROY existing l2_news_events.jsonl (CAREFUL)")
+    ap.add_argument("--show", action="store_true", help="List existing events without seeding")
     args = ap.parse_args()
 
     seeds = all_2026_seeds()

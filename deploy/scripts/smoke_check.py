@@ -184,7 +184,14 @@ def check_crontab() -> tuple[bool, str]:
 
 CHECKS = (
     ("imports", check_imports),
-    ("env", lambda: check_env(Path.cwd() / ".env") if (Path.cwd() / ".env").exists() else check_env(Path.cwd() / "eta_engine" / ".env")),
+    (
+        "env",
+        lambda: (
+            check_env(Path.cwd() / ".env")
+            if (Path.cwd() / ".env").exists()
+            else check_env(Path.cwd() / "eta_engine" / ".env")
+        ),
+    ),
     ("state/log dirs", check_dirs),
     ("dispatch", check_dispatch),
     ("task handlers", check_task_handlers),

@@ -212,6 +212,7 @@ class BaseBot(abc.ABC):
             from eta_engine.strategies.warmup_policy import (
                 warmup_risk_multiplier_for_bot,
             )
+
             bot_id = getattr(self.config, "name", None)
             if bot_id is None:
                 return 1.0
@@ -315,6 +316,7 @@ class BaseBot(abc.ABC):
         # Fallback to the v22-populated global cache
         try:
             from eta_engine.brain.jarvis_v3.sage.last_report_cache import pop_last
+
             return pop_last(symbol)
         except Exception:  # noqa: BLE001
             return None
@@ -357,6 +359,7 @@ class BaseBot(abc.ABC):
             ...
         """
         from eta_engine.brain.jarvis_pre_flight import bot_pre_flight
+
         return bot_pre_flight(
             bot=self,
             symbol=symbol,
@@ -411,8 +414,10 @@ class BaseBot(abc.ABC):
                 )
             except Exception as exc:  # noqa: BLE001
                 import logging
+
                 logging.getLogger(__name__).warning(
-                    "record_fill_with_realized_r failed (non-fatal): %s", exc,
+                    "record_fill_with_realized_r failed (non-fatal): %s",
+                    exc,
                 )
 
         # Effect 2: online learning update (if attached)
@@ -456,8 +461,10 @@ class BaseBot(abc.ABC):
                     gate.record_pnl(bot_id, delta_usd)
             except Exception as exc:  # noqa: BLE001 -- never crash the fill loop
                 import logging
+
                 logging.getLogger(__name__).warning(
-                    "FleetRiskGate.record_pnl failed (non-fatal): %s", exc,
+                    "FleetRiskGate.record_pnl failed (non-fatal): %s",
+                    exc,
                 )
 
         # Effect 3 (wave-6): sage edge-tracker feedback. Only fires when
@@ -471,6 +478,7 @@ class BaseBot(abc.ABC):
         if sage_report is not None:
             try:
                 from eta_engine.brain.jarvis_v3.sage.edge_tracker import default_tracker
+
                 tracker = default_tracker()
                 per_school = getattr(sage_report, "per_school", None) or {}
                 # Recover the entry side from the cached report. SageReport
@@ -498,8 +506,10 @@ class BaseBot(abc.ABC):
                     )
             except Exception as exc:  # noqa: BLE001
                 import logging
+
                 logging.getLogger(__name__).warning(
-                    "edge_tracker observe failed (non-fatal): %s", exc,
+                    "edge_tracker observe failed (non-fatal): %s",
+                    exc,
                 )
 
     def observe_fill_for_learning(
@@ -536,8 +546,10 @@ class BaseBot(abc.ABC):
             upd.observe(feature_bucket=feature_bucket, r_multiple=r_multiple)
         except Exception as exc:  # noqa: BLE001
             import logging
+
             logging.getLogger(__name__).warning(
-                "online_updater.observe failed (non-fatal): %s", exc,
+                "online_updater.observe failed (non-fatal): %s",
+                exc,
             )
 
     @abc.abstractmethod
@@ -606,15 +618,17 @@ class BaseBot(abc.ABC):
         for pos in self.state.open_positions:
             side = (pos.side or "").lower()
             signed_qty = pos.size if side in {"long", "buy"} else -pos.size
-            positions_payload.append({
-                "symbol": pos.symbol,
-                "qty": float(signed_qty),
-                "avg_price": float(pos.entry_price),
-                "side": pos.side,
-                "size": float(pos.size),
-                "opened_at": pos.opened_at.isoformat(),
-                "unrealized_pnl": float(pos.unrealized_pnl),
-            })
+            positions_payload.append(
+                {
+                    "symbol": pos.symbol,
+                    "qty": float(signed_qty),
+                    "avg_price": float(pos.entry_price),
+                    "side": pos.side,
+                    "size": float(pos.size),
+                    "opened_at": pos.opened_at.isoformat(),
+                    "unrealized_pnl": float(pos.unrealized_pnl),
+                }
+            )
         payload = {
             "bot_name": self.config.name,
             "ts": datetime.now(UTC).isoformat(),
@@ -635,7 +649,9 @@ class BaseBot(abc.ABC):
             raise
         logging.getLogger(__name__).info(
             "persisted %d open position(s) for bot=%s -> %s",
-            len(positions_payload), self.config.name, path,
+            len(positions_payload),
+            self.config.name,
+            path,
         )
         return path
 
@@ -655,23 +671,22 @@ class BaseBot(abc.ABC):
         for entry in raw.get("positions", []) or []:
             try:
                 opened_at_raw = entry.get("opened_at")
-                opened_at = (
-                    datetime.fromisoformat(opened_at_raw)
-                    if opened_at_raw
-                    else datetime.now(UTC)
+                opened_at = datetime.fromisoformat(opened_at_raw) if opened_at_raw else datetime.now(UTC)
+                out.append(
+                    Position(
+                        symbol=str(entry["symbol"]),
+                        side=str(entry.get("side") or ("long" if float(entry.get("qty", 0.0)) >= 0 else "short")),
+                        entry_price=float(entry.get("avg_price", 0.0)),
+                        size=float(entry.get("size", abs(float(entry.get("qty", 0.0))))),
+                        unrealized_pnl=float(entry.get("unrealized_pnl", 0.0)),
+                        opened_at=opened_at,
+                    )
                 )
-                out.append(Position(
-                    symbol=str(entry["symbol"]),
-                    side=str(entry.get("side") or ("long" if float(entry.get("qty", 0.0)) >= 0 else "short")),
-                    entry_price=float(entry.get("avg_price", 0.0)),
-                    size=float(entry.get("size", abs(float(entry.get("qty", 0.0))))),
-                    unrealized_pnl=float(entry.get("unrealized_pnl", 0.0)),
-                    opened_at=opened_at,
-                ))
             except (KeyError, TypeError, ValueError) as exc:
                 logging.getLogger(__name__).warning(
                     "skipping malformed position entry for bot=%s: %s",
-                    self.config.name, exc,
+                    self.config.name,
+                    exc,
                 )
         return out
 
@@ -689,7 +704,8 @@ class BaseBot(abc.ABC):
             self.persist_positions()
         except Exception as exc:  # noqa: BLE001
             logging.getLogger(__name__).warning(
-                "persist_positions failed (non-fatal): %s", exc,
+                "persist_positions failed (non-fatal): %s",
+                exc,
             )
 
     def check_risk(self) -> bool:

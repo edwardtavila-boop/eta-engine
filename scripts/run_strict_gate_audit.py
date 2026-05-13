@@ -27,6 +27,7 @@ WalkForwardEngine's gate evaluation. Bonferroni correction is applied
 across the full submitted set, so retiring losers tightens the
 penalty for survivors on the next run.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -51,10 +52,7 @@ def main(argv: list[str] | None = None) -> int:
         "--output",
         type=Path,
         default=None,
-        help=(
-            "Output JSON path. Default: "
-            "reports/strict_gate_<UTCstamp>.json"
-        ),
+        help=("Output JSON path. Default: reports/strict_gate_<UTCstamp>.json"),
     )
     parser.add_argument(
         "--include-deactivated",
@@ -100,8 +98,7 @@ def main(argv: list[str] | None = None) -> int:
             "scorer_name": a.scorer_name,
         }
         if a.extras:
-            for k in ("sub_strategy_kind", "sub_strategy_extras",
-                      "min_score", "scorecard_config"):
+            for k in ("sub_strategy_kind", "sub_strategy_extras", "min_score", "scorecard_config"):
                 if k in a.extras:
                     spec[k] = a.extras[k]
         try:
@@ -139,8 +136,7 @@ def main(argv: list[str] | None = None) -> int:
     legacy = sum(1 for r in results if r.get("L"))
     strict = sum(1 for r in results if r.get("S"))
     print(
-        f"\nstrict-gate audit complete: {len(results)} bots, "
-        f"legacy={legacy}, strict={strict}",
+        f"\nstrict-gate audit complete: {len(results)} bots, legacy={legacy}, strict={strict}",
         flush=True,
     )
 

@@ -39,6 +39,7 @@ The spread_regime classes + ``update_spread_regime`` /
 compatibility with code/tests that import them via this module.
 The canonical implementation lives in spread_regime_filter.py.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -82,40 +83,40 @@ ROOT = Path(__file__).resolve().parents[1]
 # / COMEX product specs as of 2026-05.
 TICK_SIZE_BY_SYMBOL: dict[str, float] = {
     # CME equity-index futures
-    "MNQ":  0.25,    # CME Micro E-mini Nasdaq-100
-    "NQ":   0.25,    # CME E-mini Nasdaq-100
-    "MES":  0.25,    # CME Micro E-mini S&P 500
-    "ES":   0.25,    # CME E-mini S&P 500
-    "M2K":  0.10,    # CME Micro E-mini Russell 2000
-    "RTY":  0.10,    # CME E-mini Russell 2000
-    "MYM":  1.0,     # CBOT Micro E-mini Dow
-    "YM":   1.0,     # CBOT E-mini Dow
+    "MNQ": 0.25,  # CME Micro E-mini Nasdaq-100
+    "NQ": 0.25,  # CME E-mini Nasdaq-100
+    "MES": 0.25,  # CME Micro E-mini S&P 500
+    "ES": 0.25,  # CME E-mini S&P 500
+    "M2K": 0.10,  # CME Micro E-mini Russell 2000
+    "RTY": 0.10,  # CME E-mini Russell 2000
+    "MYM": 1.0,  # CBOT Micro E-mini Dow
+    "YM": 1.0,  # CBOT E-mini Dow
     # COMEX metals
-    "MGC":  0.10,    # COMEX Micro Gold
-    "GC":   0.10,    # COMEX Gold
-    "SIL":  0.005,   # COMEX Micro Silver
-    "SI":   0.005,   # COMEX Silver
-    "HG":   0.0005,  # COMEX Copper
+    "MGC": 0.10,  # COMEX Micro Gold
+    "GC": 0.10,  # COMEX Gold
+    "SIL": 0.005,  # COMEX Micro Silver
+    "SI": 0.005,  # COMEX Silver
+    "HG": 0.0005,  # COMEX Copper
     # NYMEX energy
-    "MCL":  0.01,    # NYMEX Micro Crude Oil
-    "CL":   0.01,    # NYMEX Crude Oil
-    "QM":   0.025,   # NYMEX E-mini Crude
-    "NG":   0.001,   # NYMEX Natural Gas
-    "RB":   0.0001,  # NYMEX RBOB Gasoline
-    "HO":   0.0001,  # NYMEX Heating Oil
+    "MCL": 0.01,  # NYMEX Micro Crude Oil
+    "CL": 0.01,  # NYMEX Crude Oil
+    "QM": 0.025,  # NYMEX E-mini Crude
+    "NG": 0.001,  # NYMEX Natural Gas
+    "RB": 0.0001,  # NYMEX RBOB Gasoline
+    "HO": 0.0001,  # NYMEX Heating Oil
     # CBOT interest rates
-    "ZN":   0.015625, # CBOT 10-yr T-Note
-    "ZB":   0.03125, # CBOT 30-yr T-Bond
+    "ZN": 0.015625,  # CBOT 10-yr T-Note
+    "ZB": 0.03125,  # CBOT 30-yr T-Bond
     # CME crypto
-    "MBT":  5.0,     # CME Micro Bitcoin
-    "BTC":  5.0,     # CME Bitcoin
-    "MET":  0.50,    # CME Micro Ether
+    "MBT": 5.0,  # CME Micro Bitcoin
+    "BTC": 5.0,  # CME Bitcoin
+    "MET": 0.50,  # CME Micro Ether
     # CME FX
-    "M6E":  0.0001,  # CME Micro Euro FX
-    "6E":   0.00005, # CME Euro FX
-    "M6B":  0.0001,  # CME Micro GBP/USD
-    "6B":   0.0001,  # CME British Pound
-    "6J":   0.0000005,  # CME Japanese Yen
+    "M6E": 0.0001,  # CME Micro Euro FX
+    "6E": 0.00005,  # CME Euro FX
+    "M6B": 0.0001,  # CME Micro GBP/USD
+    "6B": 0.0001,  # CME British Pound
+    "6J": 0.0000005,  # CME Japanese Yen
 }
 
 
@@ -125,8 +126,7 @@ def get_tick_size(symbol: str) -> float:
     base = symbol.rstrip("1") if symbol.endswith("1") and len(symbol) > 1 else symbol
     if base not in TICK_SIZE_BY_SYMBOL:
         raise ValueError(
-            f"Unknown tick size for symbol={symbol!r}. "
-            f"Add it to TICK_SIZE_BY_SYMBOL in book_imbalance_strategy.py."
+            f"Unknown tick size for symbol={symbol!r}. Add it to TICK_SIZE_BY_SYMBOL in book_imbalance_strategy.py."
         )
     return TICK_SIZE_BY_SYMBOL[base]
 
@@ -134,26 +134,28 @@ def get_tick_size(symbol: str) -> float:
 @dataclass
 class BookImbalanceConfig:
     """Tuning surface for book_imbalance entries."""
-    n_levels: int = 3                  # depth-of-book rows per side
-    entry_threshold: float = 1.75      # min bid/ask ratio for LONG (or inverse for SHORT)
-    consecutive_snaps: int = 3         # snapshots required at threshold
-    atr_stop_mult: float = 1.0         # stop = entry ± atr * mult
-    rr_target: float = 2.0             # 2x stop distance to target
-    cooldown_bars: int = 0             # optional re-entry cooldown in snap-count bars
-    cooldown_seconds: float = 0.0      # alternative wall-clock cooldown; 0 = use cooldown_bars only
+
+    n_levels: int = 3  # depth-of-book rows per side
+    entry_threshold: float = 1.75  # min bid/ask ratio for LONG (or inverse for SHORT)
+    consecutive_snaps: int = 3  # snapshots required at threshold
+    atr_stop_mult: float = 1.0  # stop = entry ± atr * mult
+    rr_target: float = 2.0  # 2x stop distance to target
+    cooldown_bars: int = 0  # optional re-entry cooldown in snap-count bars
+    cooldown_seconds: float = 0.0  # alternative wall-clock cooldown; 0 = use cooldown_bars only
     max_trades_per_day: int = 6
-    spread_min_ticks: float = 1.0      # don't enter when spread is at min (illiquid)
-    spread_max_ticks: float = 3.0      # don't enter when spread is wide (regime change)
-    min_stop_ticks: int = 4            # absolute floor on stop distance (in ticks); rejects atr too small
+    spread_min_ticks: float = 1.0  # don't enter when spread is at min (illiquid)
+    spread_max_ticks: float = 3.0  # don't enter when spread is wide (regime change)
+    min_stop_ticks: int = 4  # absolute floor on stop distance (in ticks); rejects atr too small
     snapshot_interval_seconds: float = 5.0  # depth capture cadence — used for gap detection + cooldown
-    gap_reset_multiple: float = 2.0    # if snap arrives > N * cadence late, reset consecutive counters
-    max_qty_contracts: int = 1         # absolute hard cap on emitted size; never derived from equity
-    tick_size: float | None = None     # override symbol lookup; None → derive from signal_id symbol
+    gap_reset_multiple: float = 2.0  # if snap arrives > N * cadence late, reset consecutive counters
+    max_qty_contracts: int = 1  # absolute hard cap on emitted size; never derived from equity
+    tick_size: float | None = None  # override symbol lookup; None → derive from signal_id symbol
 
 
 @dataclass
 class BookImbalanceState:
     """Per-bot state carried between bars."""
+
     consecutive_long_count: int = 0
     consecutive_short_count: int = 0
     last_signal_dt: datetime | None = None
@@ -178,16 +180,17 @@ class ImbalanceSignal:
     NEVER computed from equity / risk-per-trade math here — sizing
     discipline is enforced at signal generation, not in the router.
     """
-    side: str            # "LONG" | "SHORT"
+
+    side: str  # "LONG" | "SHORT"
     entry_price: float
     stop: float
     target: float
-    confidence: float    # 0.0 - 1.0 based on how far ratio exceeded threshold
-    rationale: str       # one-line summary for the journal
-    snapshot_ts: str     # ISO timestamp of the deciding snapshot
-    signal_id: str       # idempotency key: f"{symbol}-{side}-{snapshot_ts}"
-    qty_contracts: int   # hard-capped size; never derived from equity
-    symbol: str          # the symbol this signal was emitted for
+    confidence: float  # 0.0 - 1.0 based on how far ratio exceeded threshold
+    rationale: str  # one-line summary for the journal
+    snapshot_ts: str  # ISO timestamp of the deciding snapshot
+    signal_id: str  # idempotency key: f"{symbol}-{side}-{snapshot_ts}"
+    qty_contracts: int  # hard-capped size; never derived from equity
+    symbol: str  # the symbol this signal was emitted for
 
 
 def _compute_imbalance_with_classification(
@@ -255,8 +258,7 @@ def _snapshot_dt(snapshot: dict) -> datetime | None:
     return None
 
 
-def _within_cooldown(state: BookImbalanceState, config: BookImbalanceConfig,
-                      snap_dt: datetime | None) -> bool:
+def _within_cooldown(state: BookImbalanceState, config: BookImbalanceConfig, snap_dt: datetime | None) -> bool:
     """Return True if the strategy is still cooling down from its last
     signal — caller refuses re-entry.
 
@@ -276,8 +278,7 @@ def _within_cooldown(state: BookImbalanceState, config: BookImbalanceConfig,
     return elapsed < cooldown
 
 
-def _gap_too_large(state: BookImbalanceState, config: BookImbalanceConfig,
-                   snap_dt: datetime | None) -> bool:
+def _gap_too_large(state: BookImbalanceState, config: BookImbalanceConfig, snap_dt: datetime | None) -> bool:
     """Return True if the gap from the last snapshot to this one is
     longer than ``config.gap_reset_multiple * snapshot_interval_seconds``.
     Caller treats this as "stale conviction → reset counters".  Without
@@ -290,10 +291,9 @@ def _gap_too_large(state: BookImbalanceState, config: BookImbalanceConfig,
     return gap_s > threshold_s
 
 
-def evaluate_snapshot(snapshot: dict, config: BookImbalanceConfig,
-                      state: BookImbalanceState, *,
-                      atr: float = 1.0,
-                      symbol: str = "MNQ") -> ImbalanceSignal | None:
+def evaluate_snapshot(
+    snapshot: dict, config: BookImbalanceConfig, state: BookImbalanceState, *, atr: float = 1.0, symbol: str = "MNQ"
+) -> ImbalanceSignal | None:
     """Process one depth snapshot.  Updates `state`.  Returns a
     signal when the consecutive-snapshot threshold is hit, else None.
 
@@ -386,17 +386,23 @@ def evaluate_snapshot(snapshot: dict, config: BookImbalanceConfig,
             entry = mid + spread / 2  # cross spread to take ask
             stop = entry - stop_distance
             target = entry + stop_distance * config.rr_target
-            confidence = min(1.0, (ratio - config.entry_threshold) /
-                              max(config.entry_threshold, 0.01))
+            confidence = min(1.0, (ratio - config.entry_threshold) / max(config.entry_threshold, 0.01))
             state.consecutive_long_count = 0
             state.last_signal_dt = snap_dt or datetime.now(UTC)
             state.trades_today += 1
             return _emit_signal(
-                side="LONG", entry=entry, stop=stop, target=target,
-                confidence=confidence, ratio=ratio,
-                bid_qty=bid_qty, ask_qty=ask_qty,
-                config=config, snapshot=snapshot,
-                symbol=symbol, state=state,
+                side="LONG",
+                entry=entry,
+                stop=stop,
+                target=target,
+                confidence=confidence,
+                ratio=ratio,
+                bid_qty=bid_qty,
+                ask_qty=ask_qty,
+                config=config,
+                snapshot=snapshot,
+                symbol=symbol,
+                state=state,
             )
     # SHORT signal — ask side dominant
     elif ratio <= 1.0 / config.entry_threshold:
@@ -407,17 +413,23 @@ def evaluate_snapshot(snapshot: dict, config: BookImbalanceConfig,
             stop = entry + stop_distance
             target = entry - stop_distance * config.rr_target
             inv_ratio = 1.0 / max(ratio, 0.01)
-            confidence = min(1.0, (inv_ratio - config.entry_threshold) /
-                              max(config.entry_threshold, 0.01))
+            confidence = min(1.0, (inv_ratio - config.entry_threshold) / max(config.entry_threshold, 0.01))
             state.consecutive_short_count = 0
             state.last_signal_dt = snap_dt or datetime.now(UTC)
             state.trades_today += 1
             return _emit_signal(
-                side="SHORT", entry=entry, stop=stop, target=target,
-                confidence=confidence, ratio=1.0 / ratio,
-                bid_qty=ask_qty, ask_qty=bid_qty,  # swap for rationale
-                config=config, snapshot=snapshot,
-                symbol=symbol, state=state,
+                side="SHORT",
+                entry=entry,
+                stop=stop,
+                target=target,
+                confidence=confidence,
+                ratio=1.0 / ratio,
+                bid_qty=ask_qty,
+                ask_qty=bid_qty,  # swap for rationale
+                config=config,
+                snapshot=snapshot,
+                symbol=symbol,
+                state=state,
             )
     else:
         # Reset both counters when ratio is in neutral zone
@@ -426,12 +438,21 @@ def evaluate_snapshot(snapshot: dict, config: BookImbalanceConfig,
     return None
 
 
-def _emit_signal(*, side: str, entry: float, stop: float, target: float,
-                  confidence: float, ratio: float,
-                  bid_qty: int, ask_qty: int,
-                  config: BookImbalanceConfig, snapshot: dict,
-                  symbol: str,
-                  state: BookImbalanceState) -> ImbalanceSignal:
+def _emit_signal(
+    *,
+    side: str,
+    entry: float,
+    stop: float,
+    target: float,
+    confidence: float,
+    ratio: float,
+    bid_qty: int,
+    ask_qty: int,
+    config: BookImbalanceConfig,
+    snapshot: dict,
+    symbol: str,
+    state: BookImbalanceState,
+) -> ImbalanceSignal:
     """Build the ImbalanceSignal with idempotency key + size cap.
 
     Idempotency: signal_id = f"{symbol}-{side}-{snapshot_ts}".  If
@@ -450,8 +471,7 @@ def _emit_signal(*, side: str, entry: float, stop: float, target: float,
         stop=round(stop, 4),
         target=round(target, 4),
         confidence=round(confidence, 2),
-        rationale=f"book imbalance {ratio:.2f}x {label} "
-                  f"({bid_qty}:{ask_qty}) for {config.consecutive_snaps} snaps",
+        rationale=f"book imbalance {ratio:.2f}x {label} ({bid_qty}:{ask_qty}) for {config.consecutive_snaps} snaps",
         snapshot_ts=snapshot_ts,
         signal_id=signal_id,
         qty_contracts=qty,
@@ -479,7 +499,6 @@ def make_book_imbalance_strategy(
             self.symbol = symbol
 
         def evaluate(self, snapshot: dict, atr: float = 1.0) -> ImbalanceSignal | None:
-            return evaluate_snapshot(snapshot, self.cfg, self.state,
-                                     atr=atr, symbol=self.symbol)
+            return evaluate_snapshot(snapshot, self.cfg, self.state, atr=atr, symbol=self.symbol)
 
     return _BookImbalanceStrategy()

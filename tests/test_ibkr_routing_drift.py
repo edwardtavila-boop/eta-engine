@@ -59,11 +59,19 @@ def test_routing_yaml_ibkr_targets_all_have_contract_map_entries() -> None:
 def test_critical_futures_universe_is_routable() -> None:
     """The active fleet's futures contracts must all be IBKR-routable."""
     fleet_universe = (
-        "MNQ", "NQ", "ES", "RTY", "M2K", "MYM",  # equity index (incl. micros)
-        "GC", "MGC",                        # gold
-        "CL", "MCL",                        # crude oil
-        "NG",                               # nat gas
-        "6E", "M6E",                        # FX (Euro)
+        "MNQ",
+        "NQ",
+        "ES",
+        "RTY",
+        "M2K",
+        "MYM",  # equity index (incl. micros)
+        "GC",
+        "MGC",  # gold
+        "CL",
+        "MCL",  # crude oil
+        "NG",  # nat gas
+        "6E",
+        "M6E",  # FX (Euro)
     )
     missing = [s for s in fleet_universe if s not in FUTURES_MAP]
 

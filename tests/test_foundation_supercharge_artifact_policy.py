@@ -11,10 +11,7 @@ from eta_engine.scripts.run_foundation_supercharge_sweep import (
 
 
 def test_full_default_sweep_writes_canonical_aggregate() -> None:
-    assert (
-        _resolve_out_json(None, list(DEFAULT_ASSETS), list(DEFAULT_STRATEGIES))
-        == DEFAULT_OUT_JSON
-    )
+    assert _resolve_out_json(None, list(DEFAULT_ASSETS), list(DEFAULT_STRATEGIES)) == DEFAULT_OUT_JSON
 
 
 def test_scoped_sweep_uses_timestamped_artifact_by_default() -> None:

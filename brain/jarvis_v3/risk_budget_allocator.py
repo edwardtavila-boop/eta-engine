@@ -19,6 +19,7 @@ Caps:
 
 Pure stdlib + math. Reads from the trade-close log.
 """
+
 from __future__ import annotations
 
 import json
@@ -37,19 +38,19 @@ DEFAULT_TRADE_LOG = ROOT / "state" / "jarvis_intel" / "trade_closes.jsonl"
 class BudgetEnvelope:
     """Operator-tunable knobs for the budget allocator."""
 
-    target_monthly_r: float = 8.0           # plan: +8R/month average
-    max_drawdown_r: float = -6.0            # full stand-down at -6R MTD
-    soft_drawdown_r: float = -3.0           # start shrinking at -3R MTD
-    aggressive_threshold_r: float = 4.0     # start expanding at +4R MTD
-    max_multiplier: float = 2.0             # cap on aggression
-    min_multiplier: float = 0.0             # floor
+    target_monthly_r: float = 8.0  # plan: +8R/month average
+    max_drawdown_r: float = -6.0  # full stand-down at -6R MTD
+    soft_drawdown_r: float = -3.0  # start shrinking at -3R MTD
+    aggressive_threshold_r: float = 4.0  # start expanding at +4R MTD
+    max_multiplier: float = 2.0  # cap on aggression
+    min_multiplier: float = 0.0  # floor
 
 
 @dataclass
 class BudgetMultiplier:
     """Output of size_for_proposal."""
 
-    multiplier: float                       # in [0, max_multiplier]
+    multiplier: float  # in [0, max_multiplier]
     mtd_r: float
     drawdown_r: float
     n_trades_mtd: int
@@ -124,7 +125,9 @@ def current_envelope(
     if not mtd_trades:
         return BudgetMultiplier(
             multiplier=1.0,
-            mtd_r=0.0, drawdown_r=0.0, n_trades_mtd=0,
+            mtd_r=0.0,
+            drawdown_r=0.0,
+            n_trades_mtd=0,
             reason="no MTD trades; standard sizing",
         )
 
@@ -144,28 +147,22 @@ def current_envelope(
     if mtd_r <= cfg.max_drawdown_r:
         return BudgetMultiplier(
             multiplier=cfg.min_multiplier,
-            mtd_r=round(mtd_r, 3), drawdown_r=round(drawdown_r, 3),
+            mtd_r=round(mtd_r, 3),
+            drawdown_r=round(drawdown_r, 3),
             n_trades_mtd=len(mtd_trades),
-            reason=(
-                f"MTD {mtd_r:+.2f}R <= max_drawdown_r {cfg.max_drawdown_r:+.2f}R; "
-                f"FULL STAND-DOWN"
-            ),
+            reason=(f"MTD {mtd_r:+.2f}R <= max_drawdown_r {cfg.max_drawdown_r:+.2f}R; FULL STAND-DOWN"),
         )
 
     if mtd_r <= cfg.soft_drawdown_r:
         # Linear ramp from min_multiplier (at max_drawdown) to 0.5 at soft_drawdown
-        ratio = (
-            (mtd_r - cfg.max_drawdown_r)
-            / max(cfg.soft_drawdown_r - cfg.max_drawdown_r, 1e-9)
-        )
+        ratio = (mtd_r - cfg.max_drawdown_r) / max(cfg.soft_drawdown_r - cfg.max_drawdown_r, 1e-9)
         mult = cfg.min_multiplier + ratio * (0.5 - cfg.min_multiplier)
         return BudgetMultiplier(
             multiplier=round(max(cfg.min_multiplier, min(mult, 1.0)), 3),
-            mtd_r=round(mtd_r, 3), drawdown_r=round(drawdown_r, 3),
+            mtd_r=round(mtd_r, 3),
+            drawdown_r=round(drawdown_r, 3),
             n_trades_mtd=len(mtd_trades),
-            reason=(
-                f"MTD {mtd_r:+.2f}R in soft drawdown; defensive sizing"
-            ),
+            reason=(f"MTD {mtd_r:+.2f}R in soft drawdown; defensive sizing"),
         )
 
     if mtd_r >= cfg.aggressive_threshold_r:
@@ -176,18 +173,17 @@ def current_envelope(
         mult = 1.0 + ratio * (cfg.max_multiplier - 1.0)
         return BudgetMultiplier(
             multiplier=round(max(1.0, min(mult, cfg.max_multiplier)), 3),
-            mtd_r=round(mtd_r, 3), drawdown_r=round(drawdown_r, 3),
+            mtd_r=round(mtd_r, 3),
+            drawdown_r=round(drawdown_r, 3),
             n_trades_mtd=len(mtd_trades),
-            reason=(
-                f"MTD {mtd_r:+.2f}R above aggressive threshold; "
-                f"aggressive sizing"
-            ),
+            reason=(f"MTD {mtd_r:+.2f}R above aggressive threshold; aggressive sizing"),
         )
 
     # Standard zone
     return BudgetMultiplier(
         multiplier=1.0,
-        mtd_r=round(mtd_r, 3), drawdown_r=round(drawdown_r, 3),
+        mtd_r=round(mtd_r, 3),
+        drawdown_r=round(drawdown_r, 3),
         n_trades_mtd=len(mtd_trades),
         reason=f"MTD {mtd_r:+.2f}R in standard band",
     )
@@ -204,6 +200,8 @@ def size_for_proposal(
 
     Returns (adjusted_size, BudgetMultiplier)."""
     mult = current_envelope(
-        envelope=envelope, bot_id=bot_id, log_path=log_path,
+        envelope=envelope,
+        bot_id=bot_id,
+        log_path=log_path,
     )
     return base_size * mult.multiplier, mult

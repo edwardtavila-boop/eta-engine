@@ -25,6 +25,7 @@ Usage
     # an OOS-vs-IS PnL decay > 50%
     python -m eta_engine.scripts.fleet_realism_audit --strict
 """
+
 from __future__ import annotations
 
 import argparse
@@ -67,7 +68,7 @@ class BotAuditResult:
     oos_trades: int | None = None
     is_wr: float | None = None
     oos_wr: float | None = None
-    realism_gap_pct: float = 0.0   # (realistic - legacy) / |legacy| × 100
+    realism_gap_pct: float = 0.0  # (realistic - legacy) / |legacy| × 100
     error: str | None = None
 
     @property
@@ -88,7 +89,10 @@ class BotAuditResult:
 
 
 def _run_one_bot_audit(
-    bot_id: str, days: int, walk_forward: bool, is_fraction: float,
+    bot_id: str,
+    days: int,
+    walk_forward: bool,
+    is_fraction: float,
 ) -> dict:
     """Run all three modes + walk-forward for one bot.  Returns dict so
     it can be pickled across the ProcessPoolExecutor boundary.
@@ -104,7 +108,9 @@ def _run_one_bot_audit(
     bar_limit = int(days * daily_bars.get(a.timeframe, 288))
 
     out: dict = {
-        "bot_id": bot_id, "symbol": a.symbol, "timeframe": a.timeframe,
+        "bot_id": bot_id,
+        "symbol": a.symbol,
+        "timeframe": a.timeframe,
     }
     try:
         legacy = run_simulation(bot_id, max_bars=100000, bar_limit=bar_limit, mode="legacy")
@@ -121,18 +127,24 @@ def _run_one_bot_audit(
         out["pessimistic_pnl"] = pessimistic.total_pnl_usd
 
         if abs(legacy.total_pnl_usd) > 0.01:
-            out["realism_gap_pct"] = (
-                (realistic.total_pnl_usd - legacy.total_pnl_usd) / abs(legacy.total_pnl_usd) * 100
-            )
+            out["realism_gap_pct"] = (realistic.total_pnl_usd - legacy.total_pnl_usd) / abs(legacy.total_pnl_usd) * 100
 
         if walk_forward:
             is_res = run_simulation(
-                bot_id, max_bars=100000, bar_limit=bar_limit,
-                mode="realistic", is_fraction=is_fraction, eval_oos=False,
+                bot_id,
+                max_bars=100000,
+                bar_limit=bar_limit,
+                mode="realistic",
+                is_fraction=is_fraction,
+                eval_oos=False,
             )
             oos_res = run_simulation(
-                bot_id, max_bars=100000, bar_limit=bar_limit,
-                mode="realistic", is_fraction=is_fraction, eval_oos=True,
+                bot_id,
+                max_bars=100000,
+                bar_limit=bar_limit,
+                mode="realistic",
+                is_fraction=is_fraction,
+                eval_oos=True,
             )
             out["is_pnl"] = is_res.total_pnl_usd
             out["is_trades"] = is_res.trades_taken
@@ -146,21 +158,21 @@ def _run_one_bot_audit(
 
 
 def run_audit(
-    bots: list[str] | None = None, days: int = 30,
-    walk_forward: bool = True, is_fraction: float = 0.7,
-    workers: int = 4, sequential: bool = False,
+    bots: list[str] | None = None,
+    days: int = 30,
+    walk_forward: bool = True,
+    is_fraction: float = 0.7,
+    workers: int = 4,
+    sequential: bool = False,
 ) -> list[BotAuditResult]:
     from eta_engine.strategies.per_bot_registry import all_assignments, is_active
 
-    if bots:
-        bot_ids = bots
-    else:
-        bot_ids = [a.bot_id for a in all_assignments() if is_active(a)]
+    bot_ids = bots or [a.bot_id for a in all_assignments() if is_active(a)]
 
     print(f"Auditing {len(bot_ids)} bots {'sequentially' if sequential else f'with {workers} workers'}...")
     print("  Modes: legacy / realistic / pessimistic")
     if walk_forward:
-        print(f"  Walk-forward: IS={is_fraction*100:.0f}%, OOS={(1-is_fraction)*100:.0f}%")
+        print(f"  Walk-forward: IS={is_fraction * 100:.0f}%, OOS={(1 - is_fraction) * 100:.0f}%")
 
     results: list[BotAuditResult] = []
 
@@ -212,17 +224,20 @@ def run_audit(
         return results
 
     with ProcessPoolExecutor(max_workers=workers) as ex:
-        futures = {ex.submit(_run_one_bot_audit, b, days, walk_forward, is_fraction): b
-                   for b in bot_ids}
+        futures = {ex.submit(_run_one_bot_audit, b, days, walk_forward, is_fraction): b for b in bot_ids}
         for f in as_completed(futures):
             bot_id = futures[f]
             try:
                 d = f.result()
             except Exception as e:  # noqa: BLE001
-                results.append(BotAuditResult(
-                    bot_id=bot_id, symbol="?", timeframe="?",
-                    error=f"executor: {type(e).__name__}: {e}",
-                ))
+                results.append(
+                    BotAuditResult(
+                        bot_id=bot_id,
+                        symbol="?",
+                        timeframe="?",
+                        error=f"executor: {type(e).__name__}: {e}",
+                    )
+                )
                 print(f"  [{bot_id}] EXCEPTION {e}", flush=True)
                 continue
             _consume(bot_id, d)
@@ -240,17 +255,24 @@ def write_audit_report(results: list[BotAuditResult], strict: bool = False) -> i
         "bot_count": len(results),
         "results": [
             {
-                "bot_id": r.bot_id, "symbol": r.symbol, "timeframe": r.timeframe,
+                "bot_id": r.bot_id,
+                "symbol": r.symbol,
+                "timeframe": r.timeframe,
                 "status": r.status,
-                "legacy_pnl": r.legacy_pnl, "realistic_pnl": r.realistic_pnl,
+                "legacy_pnl": r.legacy_pnl,
+                "realistic_pnl": r.realistic_pnl,
                 "pessimistic_pnl": r.pessimistic_pnl,
                 "legacy_trades": r.legacy_trades,
-                "realistic_trades": r.realistic_trades, "realistic_wr": r.realistic_wr,
+                "realistic_trades": r.realistic_trades,
+                "realistic_wr": r.realistic_wr,
                 "realistic_signals_rejected": r.realistic_signals_rejected,
                 "rejection_codes": r.rejection_codes,
-                "is_pnl": r.is_pnl, "oos_pnl": r.oos_pnl,
-                "is_trades": r.is_trades, "oos_trades": r.oos_trades,
-                "is_wr": r.is_wr, "oos_wr": r.oos_wr,
+                "is_pnl": r.is_pnl,
+                "oos_pnl": r.oos_pnl,
+                "is_trades": r.is_trades,
+                "oos_trades": r.oos_trades,
+                "is_wr": r.is_wr,
+                "oos_wr": r.oos_wr,
                 "realism_gap_pct": r.realism_gap_pct,
                 "error": r.error,
             }
@@ -287,8 +309,10 @@ def write_audit_report(results: list[BotAuditResult], strict: bool = False) -> i
     if promotable:
         print(f"\nPROMOTABLE CANDIDATES ({len(promotable)}) — passed all gates")
         print("-" * 96)
-        print(f"{'Bot':<28} {'Sym':<5} {'TF':<4} {'Trades':>6} {'WR':>6} "
-              f"{'Realistic':>10} {'IS':>9} {'OOS':>9} {'Decay':>7}")
+        print(
+            f"{'Bot':<28} {'Sym':<5} {'TF':<4} {'Trades':>6} {'WR':>6} "
+            f"{'Realistic':>10} {'IS':>9} {'OOS':>9} {'Decay':>7}"
+        )
         for r in sorted(promotable, key=lambda x: -x.realistic_pnl):
             decay_str = ""
             if r.is_pnl is not None and r.oos_pnl is not None and r.is_pnl != 0:
@@ -296,9 +320,11 @@ def write_audit_report(results: list[BotAuditResult], strict: bool = False) -> i
                 decay_str = f"{decay:+5.0f}%"
             is_str = f"${r.is_pnl:+.0f}" if r.is_pnl is not None else "-"
             oos_str = f"${r.oos_pnl:+.0f}" if r.oos_pnl is not None else "-"
-            print(f"  {r.bot_id:<28} {r.symbol:<5} {r.timeframe:<4} "
-                  f"{r.realistic_trades:>6} {r.realistic_wr:>5.1f}% "
-                  f"${r.realistic_pnl:>+9.0f} {is_str:>9} {oos_str:>9} {decay_str:>7}")
+            print(
+                f"  {r.bot_id:<28} {r.symbol:<5} {r.timeframe:<4} "
+                f"{r.realistic_trades:>6} {r.realistic_wr:>5.1f}% "
+                f"${r.realistic_pnl:>+9.0f} {is_str:>9} {oos_str:>9} {decay_str:>7}"
+            )
 
     # Errors
     errors = by_status.get("ERROR", [])
@@ -322,23 +348,24 @@ def write_audit_report(results: list[BotAuditResult], strict: bool = False) -> i
 
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(prog="fleet_realism_audit", description=__doc__,
-                                formatter_class=argparse.RawDescriptionHelpFormatter)
+    p = argparse.ArgumentParser(
+        prog="fleet_realism_audit", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     p.add_argument("--bots", nargs="+", help="specific bot_ids (default: all active)")
     p.add_argument("--days", type=int, default=30, help="bars window in days")
     p.add_argument("--no-walk-forward", action="store_true", help="skip IS/OOS split")
     p.add_argument("--is-fraction", type=float, default=0.7, help="IS fraction for walk-forward")
     p.add_argument("--workers", type=int, default=4, help="parallel processes")
-    p.add_argument("--sequential", action="store_true",
-                   help="run one bot at a time (slower but reliable on Windows)")
-    p.add_argument("--strict", action="store_true",
-                   help="exit non-zero on any invalid signal or OOS decay > 50%%")
+    p.add_argument("--sequential", action="store_true", help="run one bot at a time (slower but reliable on Windows)")
+    p.add_argument("--strict", action="store_true", help="exit non-zero on any invalid signal or OOS decay > 50%%")
     args = p.parse_args(argv)
 
     results = run_audit(
-        bots=args.bots, days=args.days,
+        bots=args.bots,
+        days=args.days,
         walk_forward=not args.no_walk_forward,
-        is_fraction=args.is_fraction, workers=args.workers,
+        is_fraction=args.is_fraction,
+        workers=args.workers,
         sequential=args.sequential,
     )
     return write_audit_report(results, strict=args.strict)

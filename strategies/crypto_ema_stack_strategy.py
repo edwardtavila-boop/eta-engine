@@ -126,15 +126,12 @@ class CryptoEmaStackStrategy:
             raise ValueError("stack_periods must be non-empty")
         if not (0 <= self.cfg.entry_ema_idx < len(self.cfg.stack_periods)):
             raise ValueError(
-                f"entry_ema_idx {self.cfg.entry_ema_idx} out of range for "
-                f"stack of length {len(self.cfg.stack_periods)}"
+                f"entry_ema_idx {self.cfg.entry_ema_idx} out of range for stack of length {len(self.cfg.stack_periods)}"
             )
         # Stack must be sorted ascending by period (9, 21, 50, 200) so
         # bull stack = ema[0] > ema[1] > ... > ema[N-1] (fast > slow).
         if list(self.cfg.stack_periods) != sorted(self.cfg.stack_periods):
-            raise ValueError(
-                "stack_periods must be ascending by period (e.g. (9, 21, 50, 200))"
-            )
+            raise ValueError("stack_periods must be ascending by period (e.g. (9, 21, 50, 200))")
 
         self._emas: list[float | None] = [None] * len(self.cfg.stack_periods)
         self._volumes: deque[float] = deque(maxlen=self.cfg.volume_lookback)
@@ -205,8 +202,7 @@ class CryptoEmaStackStrategy:
             return None
         if (
             self._last_entry_idx is not None
-            and (self._bars_seen - self._last_entry_idx)
-            < self.cfg.min_bars_between_trades
+            and (self._bars_seen - self._last_entry_idx) < self.cfg.min_bars_between_trades
         ):
             return None
 
@@ -220,7 +216,7 @@ class CryptoEmaStackStrategy:
             return None
 
         # ATR sizing (computed early so the spread filter can use it)
-        atr_window = hist[-self.cfg.atr_period:] if hist else []
+        atr_window = hist[-self.cfg.atr_period :] if hist else []
         if len(atr_window) < 2:
             return None
         atr = sum(b.high - b.low for b in atr_window) / len(atr_window)
@@ -289,14 +285,17 @@ class CryptoEmaStackStrategy:
 
         from eta_engine.backtest.engine import _Open
 
-        regime_tag = (
-            f"ema_stack_{'bull' if side == 'BUY' else 'bear'}"
-            f"_{len(self.cfg.stack_periods)}"
-        )
+        regime_tag = f"ema_stack_{'bull' if side == 'BUY' else 'bear'}_{len(self.cfg.stack_periods)}"
         opened = _Open(
-            entry_bar=bar, side=side, qty=qty, entry_price=entry_price,
-            stop=stop, target=target, risk_usd=risk_usd,
-            confluence=10.0, leverage=1.0,
+            entry_bar=bar,
+            side=side,
+            qty=qty,
+            entry_price=entry_price,
+            stop=stop,
+            target=target,
+            risk_usd=risk_usd,
+            confluence=10.0,
+            leverage=1.0,
             regime=regime_tag,
         )
         self._last_entry_idx = self._bars_seen

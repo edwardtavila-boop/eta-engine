@@ -15,6 +15,7 @@ Usage
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import sys
 from dataclasses import dataclass
@@ -25,10 +26,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT.parent))
 
 if hasattr(sys.stdout, "reconfigure"):
-    try:
+    with contextlib.suppress(AttributeError, OSError):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    except (AttributeError, OSError):
-        pass
 
 from eta_engine.scripts import workspace_roots  # noqa: E402
 
@@ -86,15 +85,13 @@ def build_retune_queue(all_production: bool = False, bot_filter: str | None = No
         last = _last_retune(a.bot_id)
         days = _days_since(last)
         due = days is None or days >= RETUNE_INTERVAL_DAYS
-        cmd = (
-            f"python -m eta_engine.scripts.fleet_strategy_optimizer "
-            f"--only-bot {a.bot_id}"
-        )
+        cmd = f"python -m eta_engine.scripts.fleet_strategy_optimizer --only-bot {a.bot_id}"
         wf_ov = a.extras.get("walk_forward_overrides", {})
         if isinstance(wf_ov, dict) and wf_ov.get("agg_degradation_mode"):
             cmd += " --agg-degradation"
         note = (
-            f"Last retune: {days}d ago (due)" if due
+            f"Last retune: {days}d ago (due)"
+            if due
             else f"Last retune: {days}d ago (next in {RETUNE_INTERVAL_DAYS - (days or 0)}d)"
         )
         plans.append(RetunePlan(a.bot_id, a.strategy_id, last, due, cmd, note))
@@ -111,10 +108,22 @@ def main(argv: list[str] | None = None) -> int:
 
     plans = build_retune_queue(all_production=args.all_production, bot_filter=args.bot)
     if args.json:
-        print(json.dumps([
-            {"bot_id": p.bot_id, "strategy_id": p.strategy_id, "last_retune": p.last_retune,
-             "due": p.due, "command": p.command, "note": p.note} for p in plans
-        ], indent=2))
+        print(
+            json.dumps(
+                [
+                    {
+                        "bot_id": p.bot_id,
+                        "strategy_id": p.strategy_id,
+                        "last_retune": p.last_retune,
+                        "due": p.due,
+                        "command": p.command,
+                        "note": p.note,
+                    }
+                    for p in plans
+                ],
+                indent=2,
+            )
+        )
     else:
         print(f"{'Bot':<24} {'Last retune':<14} {'Due':<6} {'Command'}")
         print("-" * 120)

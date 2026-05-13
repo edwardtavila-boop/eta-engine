@@ -78,15 +78,13 @@ _COMMODITY_FUTURES = frozenset({"MCL", "CL", "MGC", "GC", "NG", "SI", "HG"})
 _RATES_FX_FUTURES = frozenset({"6E", "M6E", "ZN", "ZB", "ZF", "ZT"})
 _CME_CRYPTO_FUTURES = frozenset({"MBT", "MET"})
 _SPOT_CRYPTO = frozenset({"BTC", "ETH", "SOL", "XRP", "AVAX", "LINK", "DOGE"})
-_KNOWN_SYMBOL_ROOTS_BY_LENGTH = tuple(sorted(
-    _EQUITY_INDEX_FUTURES
-    | _COMMODITY_FUTURES
-    | _RATES_FX_FUTURES
-    | _CME_CRYPTO_FUTURES
-    | _SPOT_CRYPTO,
-    key=len,
-    reverse=True,
-))
+_KNOWN_SYMBOL_ROOTS_BY_LENGTH = tuple(
+    sorted(
+        _EQUITY_INDEX_FUTURES | _COMMODITY_FUTURES | _RATES_FX_FUTURES | _CME_CRYPTO_FUTURES | _SPOT_CRYPTO,
+        key=len,
+        reverse=True,
+    )
+)
 _FUTURES_MONTH_CODES = "FGHJKMNQUVXZ"
 
 _FUTURES_BROKER_STACK = ("ibkr", "tradovate_when_enabled", "tastytrade")
@@ -130,7 +128,7 @@ def _symbol_root(symbol: str) -> str:
         if len(cleaned) <= len(known_root):
             continue
         if cleaned.startswith(known_root):
-            suffix = cleaned[len(known_root):]
+            suffix = cleaned[len(known_root) :]
             if len(suffix) in {2, 3} and suffix[0] in _FUTURES_MONTH_CODES and suffix[1:].isdigit():
                 return known_root
     return continuous_root
@@ -163,8 +161,7 @@ def _priority_metadata(symbol: str) -> PriorityMetadata:
                 "stand aside during volatility/news spikes, and enforce stale-position SLAs."
             ),
             daily_focus=(
-                "Perfect MNQ/NQ execution quality before expanding size or adding "
-                "adjacent equity-index symbols."
+                "Perfect MNQ/NQ execution quality before expanding size or adding adjacent equity-index symbols."
             ),
         )
     if root in _COMMODITY_FUTURES:
@@ -401,9 +398,7 @@ def _promotion_status(assignment: StrategyAssignment, *, active: bool) -> str:
 def _deactivation_context(assignment: StrategyAssignment) -> tuple[str, str]:
     if bool(assignment.extras.get("deactivated", False)):
         reason = str(
-            assignment.extras.get("deactivated_reason")
-            or assignment.extras.get("deactivation_reason")
-            or "",
+            assignment.extras.get("deactivated_reason") or assignment.extras.get("deactivation_reason") or "",
         )
         return "registry_extras", reason
     try:
@@ -414,9 +409,7 @@ def _deactivation_context(assignment: StrategyAssignment) -> tuple[str, str]:
     if not record:
         return "unknown", ""
     reason_parts = [
-        str(record.get(key) or "")
-        for key in ("reason", "tier", "mc_verdict", "applied_at")
-        if record.get(key)
+        str(record.get(key) or "") for key in ("reason", "tier", "mc_verdict", "applied_at") if record.get(key)
     ]
     return "kaizen_sidecar", "; ".join(reason_parts)
 
@@ -573,11 +566,7 @@ def build_snapshot(
     for row in rows:
         lane_counts[row.launch_lane] = lane_counts.get(row.launch_lane, 0) + 1
         bucket_counts[row.priority_bucket] = bucket_counts.get(row.priority_bucket, 0) + 1
-    ordered_bucket_counts = {
-        bucket: bucket_counts[bucket]
-        for bucket in _BUCKET_ORDER
-        if bucket_counts.get(bucket)
-    }
+    ordered_bucket_counts = {bucket: bucket_counts[bucket] for bucket in _BUCKET_ORDER if bucket_counts.get(bucket)}
     return {
         "schema_version": 1,
         "generated_at": generated_at or datetime.now(UTC).isoformat(),

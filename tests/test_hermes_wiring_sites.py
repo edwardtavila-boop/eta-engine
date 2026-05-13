@@ -4,6 +4,7 @@ These verify that Phase B wiring sits cleanly on top of Phase A's
 ``hermes_client`` and never crashes the consult / enrich / decay path
 when Hermes is unreachable.
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
@@ -38,10 +39,12 @@ def test_site_a_narrative_module_imports_hermes_client():
 
     from eta_engine.brain.jarvis_v3 import jarvis_full  # noqa: F401
     from eta_engine.brain.jarvis_v3 import jarvis_full as _jf
+
     src = inspect.getsource(_jf)
     assert "hermes_calls" in src, "Site A wiring marker missing in jarvis_full.py"
-    assert "hermes_client.narrative" in src or "hermes_client import" in src, \
+    assert "hermes_client.narrative" in src or "hermes_client import" in src, (
         "Site A doesn't reference hermes_client.narrative"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -78,17 +81,16 @@ def test_site_b_web_search_called_pre_event(monkeypatch):
         )
 
     monkeypatch.setattr(
-        "eta_engine.data.event_calendar.upcoming", fake_upcoming,
+        "eta_engine.data.event_calendar.upcoming",
+        fake_upcoming,
     )
     monkeypatch.setattr(hermes_client, "web_search", fake_web_search)
 
     ec = context_enricher.enrich(symbol="MNQ", asset_class="MNQ")
     # The new field exists on EnrichedContext
-    assert hasattr(ec, "news_snippets"), \
-        "EnrichedContext should expose news_snippets after Site B wiring"
+    assert hasattr(ec, "news_snippets"), "EnrichedContext should expose news_snippets after Site B wiring"
     # Hermes was called with an FOMC-shaped query
-    assert "FOMC" in captured.get("query", ""), \
-        f"expected FOMC in web_search query, got: {captured.get('query')!r}"
+    assert "FOMC" in captured.get("query", ""), f"expected FOMC in web_search query, got: {captured.get('query')!r}"
     # The snippet was populated
     assert ec.news_snippets, "news_snippets should be non-empty after a successful web_search"
 
@@ -105,11 +107,15 @@ def test_site_b_skips_when_no_severity_3_event(monkeypatch):
     def fake_web_search(query, *, n=3, timeout_s=2.0):
         call_count["n"] += 1
         return hermes_client.HermesResult(
-            ok=True, data=[], error=None, elapsed_ms=10.0,
+            ok=True,
+            data=[],
+            error=None,
+            elapsed_ms=10.0,
         )
 
     monkeypatch.setattr(
-        "eta_engine.data.event_calendar.upcoming", fake_upcoming,
+        "eta_engine.data.event_calendar.upcoming",
+        fake_upcoming,
     )
     monkeypatch.setattr(hermes_client, "web_search", fake_web_search)
 
@@ -137,14 +143,20 @@ def test_site_c_hot_learner_persists_and_recalls(monkeypatch, tmp_path):
     def fake_persist(key, value, *, timeout_s=1.0):
         persist_calls.append((key, dict(value)))
         return hermes_client.HermesResult(
-            ok=True, data=None, error=None, elapsed_ms=50.0,
+            ok=True,
+            data=None,
+            error=None,
+            elapsed_ms=50.0,
         )
 
     def fake_recall(key, *, timeout_s=1.0):
         recall_calls.append(key)
         # Simulate "key not found" so today decays toward 1.0 (legacy path)
         return hermes_client.HermesResult(
-            ok=False, data=None, error="not_found", elapsed_ms=20.0,
+            ok=False,
+            data=None,
+            error="not_found",
+            elapsed_ms=20.0,
         )
 
     monkeypatch.setattr(hermes_client, "memory_persist", fake_persist)
@@ -162,12 +174,12 @@ def test_site_c_hot_learner_persists_and_recalls(monkeypatch, tmp_path):
 
     # Recall fired at least once per asset (BTC here)
     assert recall_calls, "decay_overnight should call memory_recall"
-    assert any("BTC" in k for k in recall_calls), \
-        f"expected BTC in recall keys, got {recall_calls}"
+    assert any("BTC" in k for k in recall_calls), f"expected BTC in recall keys, got {recall_calls}"
     # Persist fired at least once per asset
     assert persist_calls, "decay_overnight should call memory_persist after decay"
-    assert any("BTC" in k for k, _ in persist_calls), \
+    assert any("BTC" in k for k, _ in persist_calls), (
         f"expected BTC in persist keys, got {[k for k, _ in persist_calls]}"
+    )
 
 
 def test_all_three_sites_never_raise_when_hermes_down(monkeypatch, tmp_path):

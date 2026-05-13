@@ -79,10 +79,11 @@ line-length = 120
 select = ["E", "W", "F", "I", "N", "UP", "ANN", "B", "SIM", "TCH"]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["ANN001", "ANN002", "ANN003", "ANN201", "ANN202", "ANN401", "TC003"]
+"tests/*" = ["ANN001", "ANN002", "ANN003", "ANN201", "ANN202", "ANN401", "N802", "N803", "TC003"]
 # jarvis_dashboard embeds long HTML template strings (E501) and overrides
 # BaseHTTPRequestHandler.log_message whose signature uses *args: Any (ANN401).
 "scripts/jarvis_dashboard.py" = ["E501", "ANN401"]
+"scripts/jarvis_status_server.py" = ["E501"]
 # run_eta_live is a dispatch-heavy tie-together runtime: the router, bot
 # factories, and OrderRequest surface cross module boundaries where a Protocol
 # or Union would require pulling in 6+ venue/bot imports. The Any types are
@@ -102,6 +103,34 @@ select = ["E", "W", "F", "I", "N", "UP", "ANN", "B", "SIM", "TCH"]
 # hermes_bridge embeds long Telegram webhook strings (E501) and FastAPI
 # route handlers whose return types are framework-specified (ANN201/202).
 "brain/jarvis_v3/hermes_bridge.py" = ["E501", "ANN201", "ANN202"]
+"brain/jarvis_v3/quantum/qubo_supercharged.py" = ["N806"]
+"feeds/_bump_roadmap_v0_1_14.py" = ["E501"]
+"feeds/_bump_roadmap_v0_1_15.py" = ["E501"]
+"feeds/_record_codebase_decision.py" = ["E501"]
+"feeds/run_*_walk_forward.py" = ["ANN401"]
+"scripts/run_*_walk_forward.py" = ["ANN401"]
+"feeds/run_foundation_supercharge_sweep.py" = ["ANN401"]
+"scripts/run_foundation_supercharge_sweep.py" = ["ANN401"]
+"feeds/funding_ledger.py" = ["ANN401"]
+"feeds/fleet_paper_launcher.py" = ["E501"]
+"scripts/fleet_paper_launcher.py" = ["E501"]
+"feeds/paper_trade_preflight.py" = ["E501"]
+"scripts/paper_trade_preflight.py" = ["E501"]
+"feeds/venue_readiness_check.py" = ["E501"]
+"scripts/venue_readiness_check.py" = ["E501"]
+"scripts/fleet_performance_report.py" = ["E501"]
+"scripts/risk_dashboard.py" = ["E501"]
+"scripts/sweep_reclaim_params.py" = ["E501"]
+"scripts/tws_watchdog.py" = ["E501"]
+"feeds/strategy_lab/app.py" = ["E501"]
+"feeds/strategy_lab/run_fleet_sweep.py" = ["E402"]
+"tests/live_force_multiplier.py" = ["E402"]
+"scripts/jarvis_live.py" = ["E501"]
+"deploy/scripts/ibkr_auth.py" = ["E402"]
+"deploy/scripts/ibkr_bypass.py" = ["E402"]
+"deploy/scripts/ibkr_full.py" = ["E402", "E501"]
+"deploy/scripts/supercharge_fleet.py" = ["E501", "SIM102"]
+"safety/execution_lease.py" = ["N818"]
 # fetch_tws_historical_bars + its tests mirror the ib_insync API surface
 # (Future / IB / qualifyContracts / reqHistoricalData with camelCase
 # methods, camelCase params like clientId / endDateTime / barSizeSetting,

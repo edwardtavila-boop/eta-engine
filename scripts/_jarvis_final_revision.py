@@ -172,6 +172,7 @@ def _try_real_backtest_score(params: dict[str, Any]) -> CellScore | None:
     try:
         import json
         from pathlib import Path
+
         bt_path = Path(__file__).resolve().parents[1] / "state" / "sage" / "backtest.json"
         if not bt_path.exists():
             return None
@@ -213,7 +214,7 @@ def _rolling_dd(rs: list[float]) -> float:
 
 def _walk_forward_slices(rs: list[float], n_slices: int = 4) -> list[float]:
     chunk = max(1, len(rs) // n_slices)
-    return [round(sum(rs[i:i + chunk]) / chunk, 4) for i in range(0, len(rs), chunk)][:n_slices]
+    return [round(sum(rs[i : i + chunk]) / chunk, 4) for i in range(0, len(rs), chunk)][:n_slices]
 
 
 def _evaluate(params: dict[str, Any]) -> CellScore:

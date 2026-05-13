@@ -171,10 +171,7 @@ class DecisionJournal:
         evt = JournalEvent(
             actor=Actor.TRADE_ENGINE,
             intent=f"close_trade_{meta.get('action_taken', 'unknown')}",
-            rationale=(
-                f"realized_r={realized_r:+.4f} bot={meta.get('bot_id', '?')} "
-                f"regime={meta.get('regime', '?')}"
-            ),
+            rationale=(f"realized_r={realized_r:+.4f} bot={meta.get('bot_id', '?')} regime={meta.get('regime', '?')}"),
             outcome=outcome,
             links=[f"signal:{signal_id}"],
             metadata={**meta, "realized_r": realized_r},
@@ -198,6 +195,7 @@ class DecisionJournal:
             # Local import keeps the sink module optional and avoids
             # circular references at startup.
             from eta_engine.obs import supabase_sink
+
             supabase_sink.post_event(event)
         return event
 

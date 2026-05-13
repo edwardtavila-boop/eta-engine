@@ -10,6 +10,7 @@ Covers:
   * jarvis_pre_flight composes correlation throttle + JARVIS gate
   * BaseBot.observe_fill_for_learning is a no-op without an updater
 """
+
 from __future__ import annotations
 
 import json
@@ -32,6 +33,7 @@ def test_policies_package_auto_registers_v17_and_v18() -> None:
         get_candidate,
         list_candidates,
     )
+
     names = {c["name"] for c in list_candidates()}
     assert "v17" in names
     assert "v18" in names
@@ -51,6 +53,7 @@ def _build_minimal_ctx_with_stress(composite: float):
     journal, ...) -- using a stub avoids the boilerplate while still
     exercising the v18 logic that matters.
     """
+
     class _StressStub:
         def __init__(self, c: float) -> None:
             self.composite = c
@@ -65,6 +68,7 @@ def _build_minimal_ctx_with_stress(composite: float):
 
 def _build_minimal_req():
     from eta_engine.brain.jarvis_admin import ActionRequest, ActionType, SubsystemId
+
     return ActionRequest(
         subsystem=SubsystemId.BOT_MNQ,
         action=ActionType.ORDER_PLACE,
@@ -134,6 +138,7 @@ def test_v18_tightens_high_stress_conditional_cap() -> None:
     # Bypass the full evaluator: directly test the v18 wrapping logic by
     # monkeypatching evaluate_request via the module reference in v18.
     from eta_engine.brain.jarvis_v3.policies import v18_high_stress_tighten as v18_mod
+
     orig = v18_mod.evaluate_request
     try:
         v18_mod.evaluate_request = lambda req, ctx: base_resp  # type: ignore[assignment]
@@ -206,7 +211,6 @@ def test_v18_never_relaxes_a_tighter_cap() -> None:
         ctx = _build_minimal_ctx_with_stress(0.85)
         out = v18_mod.evaluate_v18(_build_minimal_req(), ctx)
         assert out.size_cap_mult == 0.20  # ratcheted down, never relaxes
-
 
     finally:
         v18_mod.evaluate_request = orig
@@ -361,6 +365,7 @@ def test_score_policy_candidate_json_reports_missing_candidate(
 
 class _StubBot:
     """Minimal bot stand-in with the _ask_jarvis helper signature."""
+
     def __init__(self, *, allowed=True, cap=None, code="ok") -> None:
         self._allowed = allowed
         self._cap = cap
@@ -441,6 +446,7 @@ def test_observe_fill_for_learning_is_noop_without_updater() -> None:
     class _Stub:
         def __init__(self) -> None:
             self._online_updater = None
+
         observe_fill_for_learning = BaseBot.observe_fill_for_learning
 
     bot = _Stub()
@@ -455,6 +461,7 @@ def test_observe_fill_for_learning_routes_to_updater() -> None:
     class _Stub:
         def __init__(self) -> None:
             self._online_updater = OnlineUpdater(bot_name="test", alpha=0.5)
+
         observe_fill_for_learning = BaseBot.observe_fill_for_learning
 
     bot = _Stub()

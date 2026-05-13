@@ -154,15 +154,22 @@ def run_one(
     if not bars:
         return SweepResult(cell, 0, 0, 0.0, 0.0, 0.0, 0.0, False)
     cfg = BacktestConfig(
-        start_date=bars[0].timestamp, end_date=bars[-1].timestamp,
-        symbol=ds.symbol, initial_equity=10_000.0,
-        risk_per_trade_pct=0.01, confluence_threshold=0.0,
+        start_date=bars[0].timestamp,
+        end_date=bars[-1].timestamp,
+        symbol=ds.symbol,
+        initial_equity=10_000.0,
+        risk_per_trade_pct=0.01,
+        confluence_threshold=0.0,
         max_trades_per_day=10,
     )
     wf = WalkForwardConfig(
-        window_days=window_days, step_days=step_days, anchored=True,
-        oos_fraction=0.3, min_trades_per_window=min_trades_per_window,
-        strict_fold_dsr_gate=True, fold_dsr_min_pass_fraction=0.5,
+        window_days=window_days,
+        step_days=step_days,
+        anchored=True,
+        oos_fraction=0.3,
+        min_trades_per_window=min_trades_per_window,
+        strict_fold_dsr_gate=True,
+        fold_dsr_min_pass_fraction=0.5,
     )
     orb_cfg = ORBConfig(
         range_minutes=cell.range_minutes,
@@ -171,13 +178,18 @@ def run_one(
         ema_bias_period=cell.ema_bias_period,
     )
     res = WalkForwardEngine().run(
-        bars=bars, pipeline=FeaturePipeline.default(), config=wf,
-        base_backtest_config=cfg, ctx_builder=lambda b, h: {},
+        bars=bars,
+        pipeline=FeaturePipeline.default(),
+        config=wf,
+        base_backtest_config=cfg,
+        ctx_builder=lambda b, h: {},
         strategy_factory=lambda: ORBStrategy(orb_cfg),
     )
     n_pos = sum(1 for w in res.windows if w.get("oos_sharpe", 0) > 0)
     return SweepResult(
-        cell=cell, n_windows=len(res.windows), n_positive_oos=n_pos,
+        cell=cell,
+        n_windows=len(res.windows),
+        n_positive_oos=n_pos,
         agg_is_sharpe=res.aggregate_is_sharpe,
         agg_oos_sharpe=res.aggregate_oos_sharpe,
         fold_dsr_median=res.fold_dsr_median,
@@ -251,14 +263,16 @@ def main() -> int:
         )
     )
     print(
-        f"[sweep] {args.symbol}/{args.timeframe} — {len(grid)} cells, "
-        f"min_trades/window={args.min_trades_per_window}\n",
+        f"[sweep] {args.symbol}/{args.timeframe} — {len(grid)} cells, min_trades/window={args.min_trades_per_window}\n",
     )
     results: list[SweepResult] = []
     for i, cell in enumerate(grid):
         r = run_one(
-            cell, symbol=args.symbol, timeframe=args.timeframe,
-            window_days=args.window_days, step_days=args.step_days,
+            cell,
+            symbol=args.symbol,
+            timeframe=args.timeframe,
+            window_days=args.window_days,
+            step_days=args.step_days,
             min_trades_per_window=args.min_trades_per_window,
             max_bars=args.max_bars,
             bar_slice=args.bar_slice,
@@ -266,10 +280,10 @@ def main() -> int:
         results.append(r)
         flag = "PASS" if r.pass_gate else ("near" if r.fold_dsr_pass_fraction >= 0.5 else "")
         print(
-            f"  {i+1:2d}/{len(grid)} range={cell.range_minutes:>2}m "
+            f"  {i + 1:2d}/{len(grid)} range={cell.range_minutes:>2}m "
             f"rr={cell.rr_target:>3.1f} atr={cell.atr_stop_mult:>3.1f} "
             f"ema={cell.ema_bias_period:>3d} -> "
-            f"OOS={r.agg_oos_sharpe:+.2f} pass={r.fold_dsr_pass_fraction*100:>4.1f}% {flag}"
+            f"OOS={r.agg_oos_sharpe:+.2f} pass={r.fold_dsr_pass_fraction * 100:>4.1f}% {flag}"
         )
 
     # Sort: passing cells first, then by DSR pass fraction desc, then by OOS Sharpe desc.

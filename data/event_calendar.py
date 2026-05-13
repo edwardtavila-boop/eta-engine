@@ -14,6 +14,7 @@ seeded with a handful of high-severity macro prints (FOMC, CPI, EIA, NFP)
 so the wiring is exercised on day one even if the operator hasn't curated
 anything yet.
 """
+
 from __future__ import annotations
 
 import logging
@@ -25,9 +26,7 @@ import yaml
 
 logger = logging.getLogger("eta_engine.data.event_calendar")
 
-DEFAULT_YAML_PATH = Path(
-    r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\event_calendar.yaml"
-)
+DEFAULT_YAML_PATH = Path(r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\event_calendar.yaml")
 
 
 @dataclass(frozen=True)

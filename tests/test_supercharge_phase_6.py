@@ -5,6 +5,7 @@
 - l2_equity_simulator: Monte Carlo equity curves
 - l2_portfolio_limits: cross-strategy concurrency limiter
 """
+
 # ruff: noqa: N802, PLR2004
 from __future__ import annotations
 
@@ -35,12 +36,16 @@ def _good_snap() -> dict:
         "ts": "2026-05-11T14:30:00+00:00",
         "epoch_s": datetime(2026, 5, 11, 14, 30, 0, tzinfo=UTC).timestamp(),
         "symbol": "MNQ",
-        "bids": [{"price": 100.0, "size": 10, "mm": "CME"},
-                  {"price": 99.75, "size": 8, "mm": "CME"},
-                  {"price": 99.50, "size": 6, "mm": "CME"}],
-        "asks": [{"price": 100.25, "size": 10, "mm": "CME"},
-                  {"price": 100.50, "size": 8, "mm": "CME"},
-                  {"price": 100.75, "size": 6, "mm": "CME"}],
+        "bids": [
+            {"price": 100.0, "size": 10, "mm": "CME"},
+            {"price": 99.75, "size": 8, "mm": "CME"},
+            {"price": 99.50, "size": 6, "mm": "CME"},
+        ],
+        "asks": [
+            {"price": 100.25, "size": 10, "mm": "CME"},
+            {"price": 100.50, "size": 8, "mm": "CME"},
+            {"price": 100.75, "size": 6, "mm": "CME"},
+        ],
         "spread": 0.25,
         "mid": 100.125,
     }
@@ -117,8 +122,7 @@ def test_anomaly_audit_file_aggregates(tmp_path: Path) -> None:
     bad = _good_snap()
     bad["bids"][0]["price"] = 101.0  # crossed
     snaps.append(bad)
-    path.write_text("\n".join(json.dumps(s) for s in snaps) + "\n",
-                     encoding="utf-8")
+    path.write_text("\n".join(json.dumps(s) for s in snaps) + "\n", encoding="utf-8")
     summary = anom.audit_capture_file(path)
     assert summary["n_total"] == 6
     assert summary["n_ok"] == 5
@@ -132,7 +136,8 @@ def test_anomaly_audit_file_aggregates(tmp_path: Path) -> None:
 
 def test_drift_no_records_insufficient(tmp_path: Path) -> None:
     report = drift.compute_drift(
-        "book_imbalance", "MNQ",
+        "book_imbalance",
+        "MNQ",
         _path=tmp_path / "nonexistent.jsonl",
     )
     assert report.drift_verdict == "INSUFFICIENT"
@@ -144,18 +149,27 @@ def test_drift_ok_when_ratio_above_1(tmp_path: Path) -> None:
     now = datetime.now(UTC)
     records = [
         # Initial valid record from 60 days ago
-        {"ts": (now - timedelta(days=60)).isoformat(),
-          "strategy": "book_imbalance", "symbol": "MNQ",
-          "sharpe_proxy": 0.5, "sharpe_proxy_valid": True,
-          "win_rate": 0.55, "n_trades": 30},
+        {
+            "ts": (now - timedelta(days=60)).isoformat(),
+            "strategy": "book_imbalance",
+            "symbol": "MNQ",
+            "sharpe_proxy": 0.5,
+            "sharpe_proxy_valid": True,
+            "win_rate": 0.55,
+            "n_trades": 30,
+        },
         # Recent record (within last 14d)
-        {"ts": (now - timedelta(days=2)).isoformat(),
-          "strategy": "book_imbalance", "symbol": "MNQ",
-          "sharpe_proxy": 0.6, "sharpe_proxy_valid": True,
-          "win_rate": 0.58, "n_trades": 35},
+        {
+            "ts": (now - timedelta(days=2)).isoformat(),
+            "strategy": "book_imbalance",
+            "symbol": "MNQ",
+            "sharpe_proxy": 0.6,
+            "sharpe_proxy_valid": True,
+            "win_rate": 0.58,
+            "n_trades": 35,
+        },
     ]
-    path.write_text("\n".join(json.dumps(r) for r in records) + "\n",
-                     encoding="utf-8")
+    path.write_text("\n".join(json.dumps(r) for r in records) + "\n", encoding="utf-8")
     report = drift.compute_drift("book_imbalance", "MNQ", _path=path)
     assert report.drift_verdict == "OK"
     assert report.sharpe_ratio is not None
@@ -167,17 +181,26 @@ def test_drift_critical_when_edge_collapses(tmp_path: Path) -> None:
     path = tmp_path / "bt.jsonl"
     now = datetime.now(UTC)
     records = [
-        {"ts": (now - timedelta(days=60)).isoformat(),
-          "strategy": "book_imbalance", "symbol": "MNQ",
-          "sharpe_proxy": 1.5, "sharpe_proxy_valid": True,
-          "win_rate": 0.70, "n_trades": 30},
-        {"ts": (now - timedelta(days=2)).isoformat(),
-          "strategy": "book_imbalance", "symbol": "MNQ",
-          "sharpe_proxy": 0.3, "sharpe_proxy_valid": True,
-          "win_rate": 0.52, "n_trades": 30},
+        {
+            "ts": (now - timedelta(days=60)).isoformat(),
+            "strategy": "book_imbalance",
+            "symbol": "MNQ",
+            "sharpe_proxy": 1.5,
+            "sharpe_proxy_valid": True,
+            "win_rate": 0.70,
+            "n_trades": 30,
+        },
+        {
+            "ts": (now - timedelta(days=2)).isoformat(),
+            "strategy": "book_imbalance",
+            "symbol": "MNQ",
+            "sharpe_proxy": 0.3,
+            "sharpe_proxy_valid": True,
+            "win_rate": 0.52,
+            "n_trades": 30,
+        },
     ]
-    path.write_text("\n".join(json.dumps(r) for r in records) + "\n",
-                     encoding="utf-8")
+    path.write_text("\n".join(json.dumps(r) for r in records) + "\n", encoding="utf-8")
     report = drift.compute_drift("book_imbalance", "MNQ", _path=path)
     assert report.drift_verdict == "CRITICAL"
 
@@ -196,9 +219,7 @@ def test_equity_sim_no_returns() -> None:
 def test_equity_sim_positive_edge_grows_account() -> None:
     """+1R / -0.5R 60% win-rate → positive expectancy → median ends positive."""
     returns = [1.0] * 60 + [-0.5] * 40  # 60% win, +1 / -0.5
-    report = eq.simulate(
-        returns, n_paths=1000, trades_per_path=100,
-        starting_equity_usd=10000.0, seed=42)
+    report = eq.simulate(returns, n_paths=1000, trades_per_path=100, starting_equity_usd=10000.0, seed=42)
     assert report.median_end_equity_usd is not None
     assert report.median_end_equity_usd > 10000.0  # positive expectancy
 
@@ -206,9 +227,7 @@ def test_equity_sim_positive_edge_grows_account() -> None:
 def test_equity_sim_negative_edge_drains_account() -> None:
     """-1R / +0.5R 60% loss-rate → negative expectancy → median ends down."""
     returns = [-1.0] * 60 + [0.5] * 40
-    report = eq.simulate(
-        returns, n_paths=1000, trades_per_path=100,
-        starting_equity_usd=10000.0, seed=42)
+    report = eq.simulate(returns, n_paths=1000, trades_per_path=100, starting_equity_usd=10000.0, seed=42)
     assert report.median_end_equity_usd is not None
     # Expected drift ≈ -40 per trade → -40*100 = -4000
     assert report.median_end_equity_usd < 10000.0
@@ -224,16 +243,14 @@ def test_equity_sim_drawdown_reported() -> None:
 def test_equity_sim_risk_of_ruin_zero_with_strong_edge() -> None:
     """All wins, no losses → never goes to zero."""
     returns = [10.0] * 100
-    report = eq.simulate(returns, n_paths=100, trades_per_path=10,
-                          starting_equity_usd=1000.0, seed=42)
+    report = eq.simulate(returns, n_paths=100, trades_per_path=10, starting_equity_usd=1000.0, seed=42)
     assert report.risk_of_ruin == 0.0
 
 
 def test_equity_sim_risk_of_ruin_high_with_big_losers() -> None:
     """Small account, large losses → some paths go to zero."""
     returns = [-100.0] * 50 + [50.0] * 50  # massive negative expectancy + tail risk
-    report = eq.simulate(returns, n_paths=1000, trades_per_path=100,
-                          starting_equity_usd=500.0, seed=42)
+    report = eq.simulate(returns, n_paths=1000, trades_per_path=100, starting_equity_usd=500.0, seed=42)
     assert report.risk_of_ruin is not None
     assert report.risk_of_ruin > 0.5  # most paths get ruined
 
@@ -245,7 +262,9 @@ def test_equity_sim_risk_of_ruin_high_with_big_losers() -> None:
 
 def test_portfolio_no_positions_passes(tmp_path: Path) -> None:
     decision = plim.check_portfolio_limits(
-        symbol="MNQ", side="LONG", qty=1,
+        symbol="MNQ",
+        side="LONG",
+        qty=1,
         _fill_path=tmp_path / "empty.jsonl",
         _log_path=tmp_path / "log.jsonl",
     )
@@ -258,18 +277,26 @@ def test_portfolio_blocks_same_side_stacking(tmp_path: Path) -> None:
     fill_path = tmp_path / "fill.jsonl"
     now = datetime.now(UTC)
     # Open LONG MNQ entry, not exited
-    fill_path.write_text(json.dumps({
-        "ts": now.isoformat(),
-        "signal_id": "MNQ-LONG-1",
-        "broker_exec_id": "x1",
-        "exit_reason": "ENTRY",
-        "side": "LONG",
-        "actual_fill_price": 100.0,
-        "qty_filled": 1,
-        "symbol": "MNQ",
-    }) + "\n", encoding="utf-8")
+    fill_path.write_text(
+        json.dumps(
+            {
+                "ts": now.isoformat(),
+                "signal_id": "MNQ-LONG-1",
+                "broker_exec_id": "x1",
+                "exit_reason": "ENTRY",
+                "side": "LONG",
+                "actual_fill_price": 100.0,
+                "qty_filled": 1,
+                "symbol": "MNQ",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     decision = plim.check_portfolio_limits(
-        symbol="MNQ", side="LONG", qty=1,
+        symbol="MNQ",
+        side="LONG",
+        qty=1,
         _fill_path=fill_path,
         _log_path=tmp_path / "log.jsonl",
         max_same_side_per_symbol=1,
@@ -284,19 +311,25 @@ def test_portfolio_blocks_total_absolute_exceeded(tmp_path: Path) -> None:
     now = datetime.now(UTC)
     lines = []
     for i in range(5):
-        lines.append(json.dumps({
-            "ts": now.isoformat(),
-            "signal_id": f"SYM{i}-LONG-1",
-            "broker_exec_id": f"x{i}",
-            "exit_reason": "ENTRY",
-            "side": "LONG",
-            "actual_fill_price": 100.0,
-            "qty_filled": 1,
-            "symbol": f"SYM{i}",  # distinct symbol per fill
-        }))
+        lines.append(
+            json.dumps(
+                {
+                    "ts": now.isoformat(),
+                    "signal_id": f"SYM{i}-LONG-1",
+                    "broker_exec_id": f"x{i}",
+                    "exit_reason": "ENTRY",
+                    "side": "LONG",
+                    "actual_fill_price": 100.0,
+                    "qty_filled": 1,
+                    "symbol": f"SYM{i}",  # distinct symbol per fill
+                }
+            )
+        )
     fill_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     decision = plim.check_portfolio_limits(
-        symbol="SYM_NEW", side="LONG", qty=1,
+        symbol="SYM_NEW",
+        side="LONG",
+        qty=1,
         _fill_path=fill_path,
         _log_path=tmp_path / "log.jsonl",
         max_total_absolute_contracts=5,
@@ -312,31 +345,37 @@ def test_portfolio_allows_after_exit(tmp_path: Path) -> None:
     fill_path = tmp_path / "fill.jsonl"
     now = datetime.now(UTC)
     lines = [
-        json.dumps({
-            "ts": (now - timedelta(seconds=60)).isoformat(),
-            "signal_id": "MNQ-LONG-old",
-            "broker_exec_id": "x1",
-            "exit_reason": "ENTRY",
-            "side": "LONG",
-            "actual_fill_price": 100.0,
-            "qty_filled": 1,
-            "symbol": "MNQ",
-        }),
+        json.dumps(
+            {
+                "ts": (now - timedelta(seconds=60)).isoformat(),
+                "signal_id": "MNQ-LONG-old",
+                "broker_exec_id": "x1",
+                "exit_reason": "ENTRY",
+                "side": "LONG",
+                "actual_fill_price": 100.0,
+                "qty_filled": 1,
+                "symbol": "MNQ",
+            }
+        ),
         # Exit the position
-        json.dumps({
-            "ts": now.isoformat(),
-            "signal_id": "MNQ-LONG-old",
-            "broker_exec_id": "x2",
-            "exit_reason": "TARGET",
-            "side": "LONG",
-            "actual_fill_price": 102.0,
-            "qty_filled": 1,
-            "symbol": "MNQ",
-        }),
+        json.dumps(
+            {
+                "ts": now.isoformat(),
+                "signal_id": "MNQ-LONG-old",
+                "broker_exec_id": "x2",
+                "exit_reason": "TARGET",
+                "side": "LONG",
+                "actual_fill_price": 102.0,
+                "qty_filled": 1,
+                "symbol": "MNQ",
+            }
+        ),
     ]
     fill_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     decision = plim.check_portfolio_limits(
-        symbol="MNQ", side="LONG", qty=1,
+        symbol="MNQ",
+        side="LONG",
+        qty=1,
         _fill_path=fill_path,
         _log_path=tmp_path / "log.jsonl",
     )

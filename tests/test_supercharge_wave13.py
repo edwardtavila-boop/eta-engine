@@ -8,6 +8,7 @@ Covers:
   * self_drift_monitor.py   -- JARVIS watching JARVIS
   * postmortem.py           -- auto-postmortem for losing trades
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -21,6 +22,7 @@ if TYPE_CHECKING:
 
 def test_replay_returns_zero_when_no_log(tmp_path: Path) -> None:
     from eta_engine.brain.jarvis_v3.replay_engine import replay_decisions
+
     rep = replay_decisions(
         verdict_log_path=tmp_path / "missing.jsonl",
         trade_log_path=tmp_path / "missing_trades.jsonl",
@@ -37,19 +39,37 @@ def test_replay_classifies_improvement_when_new_policy_avoids_loser(
     from datetime import UTC, datetime
 
     from eta_engine.brain.jarvis_v3.replay_engine import replay_decisions
+
     vlog = tmp_path / "v.jsonl"
     tlog = tmp_path / "t.jsonl"
     now = datetime.now(UTC).isoformat()
-    vlog.write_text(json.dumps({
-        "ts": now, "signal_id": "s1", "final_verdict": "APPROVED",
-    }) + "\n", encoding="utf-8")
-    tlog.write_text(json.dumps({
-        "ts": now, "signal_id": "s1", "realized_r": -1.5,
-    }) + "\n", encoding="utf-8")
+    vlog.write_text(
+        json.dumps(
+            {
+                "ts": now,
+                "signal_id": "s1",
+                "final_verdict": "APPROVED",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    tlog.write_text(
+        json.dumps(
+            {
+                "ts": now,
+                "signal_id": "s1",
+                "realized_r": -1.5,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
 
     # New policy denies what original approved -- catches the loser
     rep = replay_decisions(
-        verdict_log_path=vlog, trade_log_path=tlog,
+        verdict_log_path=vlog,
+        trade_log_path=tlog,
         n_days_back=30,
         new_policy_fn=lambda v: "DENIED",
     )
@@ -65,17 +85,35 @@ def test_replay_classifies_regression_when_new_policy_misses_winner(
     from datetime import UTC, datetime
 
     from eta_engine.brain.jarvis_v3.replay_engine import replay_decisions
+
     vlog = tmp_path / "v.jsonl"
     tlog = tmp_path / "t.jsonl"
     now = datetime.now(UTC).isoformat()
-    vlog.write_text(json.dumps({
-        "ts": now, "signal_id": "s1", "final_verdict": "APPROVED",
-    }) + "\n", encoding="utf-8")
-    tlog.write_text(json.dumps({
-        "ts": now, "signal_id": "s1", "realized_r": 2.0,
-    }) + "\n", encoding="utf-8")
+    vlog.write_text(
+        json.dumps(
+            {
+                "ts": now,
+                "signal_id": "s1",
+                "final_verdict": "APPROVED",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    tlog.write_text(
+        json.dumps(
+            {
+                "ts": now,
+                "signal_id": "s1",
+                "realized_r": 2.0,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     rep = replay_decisions(
-        verdict_log_path=vlog, trade_log_path=tlog,
+        verdict_log_path=vlog,
+        trade_log_path=tlog,
         n_days_back=30,
         new_policy_fn=lambda v: "DEFERRED",
     )
@@ -87,6 +125,7 @@ def test_replay_to_dict_serializable(tmp_path: Path) -> None:
     import json
 
     from eta_engine.brain.jarvis_v3.replay_engine import replay_decisions
+
     rep = replay_decisions(
         verdict_log_path=tmp_path / "missing.jsonl",
         trade_log_path=tmp_path / "missing_trades.jsonl",
@@ -104,14 +143,20 @@ def test_premortem_returns_kill_prob_zero_with_no_data(tmp_path: Path) -> None:
     from eta_engine.brain.jarvis_v3.firm_board import Proposal
     from eta_engine.brain.jarvis_v3.memory_hierarchy import HierarchicalMemory
     from eta_engine.brain.jarvis_v3.premortem import run_premortem
+
     mem = HierarchicalMemory(
         episodic_path=tmp_path / "ep.jsonl",
         semantic_path=tmp_path / "sem.json",
         procedural_path=tmp_path / "proc.jsonl",
     )
     p = Proposal(
-        signal_id="s1", direction="long", regime="bullish_low_vol",
-        session="rth", stress=0.3, sentiment=0.4, sage_score=0.5,
+        signal_id="s1",
+        direction="long",
+        regime="bullish_low_vol",
+        session="rth",
+        stress=0.3,
+        sentiment=0.4,
+        sage_score=0.5,
     )
     pm = run_premortem(proposal=p, memory=mem)
     assert 0.0 <= pm.kill_prob <= 1.0
@@ -121,14 +166,20 @@ def test_premortem_high_stress_adds_failure_mode(tmp_path: Path) -> None:
     from eta_engine.brain.jarvis_v3.firm_board import Proposal
     from eta_engine.brain.jarvis_v3.memory_hierarchy import HierarchicalMemory
     from eta_engine.brain.jarvis_v3.premortem import run_premortem
+
     mem = HierarchicalMemory(
         episodic_path=tmp_path / "ep.jsonl",
         semantic_path=tmp_path / "sem.json",
         procedural_path=tmp_path / "proc.jsonl",
     )
     p = Proposal(
-        signal_id="s2", direction="long", regime="bullish_low_vol",
-        session="rth", stress=0.85, sentiment=0.0, sage_score=0.3,
+        signal_id="s2",
+        direction="long",
+        regime="bullish_low_vol",
+        session="rth",
+        stress=0.85,
+        sentiment=0.0,
+        sage_score=0.3,
     )
     pm = run_premortem(proposal=p, memory=mem)
     labels = [m.label for m in pm.failure_modes]
@@ -139,6 +190,7 @@ def test_premortem_top_failure_modes_returns_k(tmp_path: Path) -> None:
     from eta_engine.brain.jarvis_v3.firm_board import Proposal
     from eta_engine.brain.jarvis_v3.memory_hierarchy import HierarchicalMemory
     from eta_engine.brain.jarvis_v3.premortem import run_premortem
+
     mem = HierarchicalMemory(
         episodic_path=tmp_path / "ep.jsonl",
         semantic_path=tmp_path / "sem.json",
@@ -147,13 +199,22 @@ def test_premortem_top_failure_modes_returns_k(tmp_path: Path) -> None:
     # Seed varied losers in one regime
     for r in [-1.5, -2.0, -1.8]:
         mem.record_episode(
-            signal_id=f"loss{r}", regime="bullish_low_vol", session="rth",
-            stress=0.3, direction="long", realized_r=r,
+            signal_id=f"loss{r}",
+            regime="bullish_low_vol",
+            session="rth",
+            stress=0.3,
+            direction="long",
+            realized_r=r,
             narrative=f"loss type {r}",
         )
     p = Proposal(
-        signal_id="s3", direction="long", regime="bullish_low_vol",
-        session="rth", stress=0.5, sentiment=-0.3, sage_score=0.3,
+        signal_id="s3",
+        direction="long",
+        regime="bullish_low_vol",
+        session="rth",
+        stress=0.5,
+        sentiment=-0.3,
+        sage_score=0.3,
     )
     pm = run_premortem(proposal=p, memory=mem)
     top = pm.top_failure_modes(k=2)
@@ -166,14 +227,20 @@ def test_premortem_to_dict_serializable(tmp_path: Path) -> None:
     from eta_engine.brain.jarvis_v3.firm_board import Proposal
     from eta_engine.brain.jarvis_v3.memory_hierarchy import HierarchicalMemory
     from eta_engine.brain.jarvis_v3.premortem import run_premortem
+
     mem = HierarchicalMemory(
         episodic_path=tmp_path / "ep.jsonl",
         semantic_path=tmp_path / "sem.json",
         procedural_path=tmp_path / "proc.jsonl",
     )
     p = Proposal(
-        signal_id="s4", direction="long", regime="neutral", session="rth",
-        stress=0.3, sentiment=0.2, sage_score=0.4,
+        signal_id="s4",
+        direction="long",
+        regime="neutral",
+        session="rth",
+        stress=0.3,
+        sentiment=0.2,
+        sage_score=0.4,
     )
     pm = run_premortem(proposal=p, memory=mem)
     s = json.dumps(pm.to_dict())
@@ -188,17 +255,22 @@ def test_thesis_tracker_open_and_close(tmp_path: Path) -> None:
         ThesisInvalidationRule,
         ThesisTracker,
     )
+
     tracker = ThesisTracker(
         theses_path=tmp_path / "open.json",
         breach_log_path=tmp_path / "breaches.jsonl",
     )
     rule = ThesisInvalidationRule(
-        kind="price_breaks", params={"level": 100.0, "direction": "below"},
+        kind="price_breaks",
+        params={"level": 100.0, "direction": "below"},
         description="price < 100",
     )
     tracker.open_thesis(
-        signal_id="t1", direction="long", narrative="bullish",
-        invalidation_rules=[rule], opened_at_price=105.0,
+        signal_id="t1",
+        direction="long",
+        narrative="bullish",
+        invalidation_rules=[rule],
+        opened_at_price=105.0,
     )
     assert len(tracker.list_open()) == 1
     closed = tracker.close_thesis("t1")
@@ -211,12 +283,15 @@ def test_thesis_tracker_detects_price_break(tmp_path: Path) -> None:
         ThesisInvalidationRule,
         ThesisTracker,
     )
+
     tracker = ThesisTracker(
         theses_path=tmp_path / "open.json",
         breach_log_path=tmp_path / "breaches.jsonl",
     )
     tracker.open_thesis(
-        signal_id="t2", direction="long", narrative="bull",
+        signal_id="t2",
+        direction="long",
+        narrative="bull",
         invalidation_rules=[
             ThesisInvalidationRule(
                 kind="price_breaks",
@@ -240,12 +315,15 @@ def test_thesis_tracker_detects_regime_change(tmp_path: Path) -> None:
         ThesisInvalidationRule,
         ThesisTracker,
     )
+
     tracker = ThesisTracker(
         theses_path=tmp_path / "open.json",
         breach_log_path=tmp_path / "breaches.jsonl",
     )
     tracker.open_thesis(
-        signal_id="t3", direction="long", narrative="bull",
+        signal_id="t3",
+        direction="long",
+        narrative="bull",
         invalidation_rules=[
             ThesisInvalidationRule(
                 kind="regime_changed_to",
@@ -273,13 +351,16 @@ def test_thesis_tracker_persists_across_instances(tmp_path: Path) -> None:
         ThesisInvalidationRule,
         ThesisTracker,
     )
+
     paths = {
         "theses_path": tmp_path / "open.json",
         "breach_log_path": tmp_path / "breaches.jsonl",
     }
     t1 = ThesisTracker(**paths)
     t1.open_thesis(
-        signal_id="persist", direction="long", narrative="x",
+        signal_id="persist",
+        direction="long",
+        narrative="x",
         invalidation_rules=[
             ThesisInvalidationRule(kind="stress_above", params={"ceiling": 0.7}),
         ],
@@ -295,12 +376,15 @@ def test_thesis_tracker_check_all_open_sweeps_each(tmp_path: Path) -> None:
         ThesisInvalidationRule,
         ThesisTracker,
     )
+
     tracker = ThesisTracker(
         theses_path=tmp_path / "open.json",
         breach_log_path=tmp_path / "breaches.jsonl",
     )
     tracker.open_thesis(
-        signal_id="a", direction="long", narrative="",
+        signal_id="a",
+        direction="long",
+        narrative="",
         invalidation_rules=[
             ThesisInvalidationRule(
                 kind="price_breaks",
@@ -310,7 +394,9 @@ def test_thesis_tracker_check_all_open_sweeps_each(tmp_path: Path) -> None:
         opened_at_price=105.0,
     )
     tracker.open_thesis(
-        signal_id="b", direction="long", narrative="",
+        signal_id="b",
+        direction="long",
+        narrative="",
         invalidation_rules=[
             ThesisInvalidationRule(
                 kind="price_breaks",
@@ -321,7 +407,7 @@ def test_thesis_tracker_check_all_open_sweeps_each(tmp_path: Path) -> None:
     )
     breaches = tracker.check_all_open(
         current_state_by_signal={
-            "a": {"price": 95.0},   # below -> breach
+            "a": {"price": 95.0},  # below -> breach
             "b": {"price": 210.0},  # above -> no breach
         },
     )
@@ -336,14 +422,20 @@ def test_ood_score_zero_when_memory_empty(tmp_path: Path) -> None:
     from eta_engine.brain.jarvis_v3.firm_board import Proposal
     from eta_engine.brain.jarvis_v3.memory_hierarchy import HierarchicalMemory
     from eta_engine.brain.jarvis_v3.ood_detector import score_ood
+
     mem = HierarchicalMemory(
         episodic_path=tmp_path / "ep.jsonl",
         semantic_path=tmp_path / "sem.json",
         procedural_path=tmp_path / "proc.jsonl",
     )
     p = Proposal(
-        signal_id="s1", direction="long", regime="neutral", session="rth",
-        stress=0.5, sentiment=0.0, sage_score=0.0,
+        signal_id="s1",
+        direction="long",
+        regime="neutral",
+        session="rth",
+        stress=0.5,
+        sentiment=0.0,
+        sage_score=0.0,
     )
     rep = score_ood(proposal=p, memory=mem)
     assert rep.score == 0.0
@@ -354,6 +446,7 @@ def test_ood_score_low_when_state_matches_distribution(tmp_path: Path) -> None:
     from eta_engine.brain.jarvis_v3.firm_board import Proposal
     from eta_engine.brain.jarvis_v3.memory_hierarchy import HierarchicalMemory
     from eta_engine.brain.jarvis_v3.ood_detector import score_ood
+
     mem = HierarchicalMemory(
         episodic_path=tmp_path / "ep.jsonl",
         semantic_path=tmp_path / "sem.json",
@@ -362,13 +455,22 @@ def test_ood_score_low_when_state_matches_distribution(tmp_path: Path) -> None:
     # Seed many episodes at stress=0.3
     for i in range(30):
         mem.record_episode(
-            signal_id=f"s{i}", regime="bullish_low_vol", session="rth",
-            stress=0.3, direction="long", realized_r=1.0,
+            signal_id=f"s{i}",
+            regime="bullish_low_vol",
+            session="rth",
+            stress=0.3,
+            direction="long",
+            realized_r=1.0,
         )
     # Probe at stress=0.3 -> should be in-distribution
     p = Proposal(
-        signal_id="probe", direction="long", regime="bullish_low_vol",
-        session="rth", stress=0.3, sentiment=0.0, sage_score=0.0,
+        signal_id="probe",
+        direction="long",
+        regime="bullish_low_vol",
+        session="rth",
+        stress=0.3,
+        sentiment=0.0,
+        sage_score=0.0,
     )
     rep = score_ood(proposal=p, memory=mem)
     assert rep.score < 0.4
@@ -378,6 +480,7 @@ def test_ood_score_high_for_extreme_stress(tmp_path: Path) -> None:
     from eta_engine.brain.jarvis_v3.firm_board import Proposal
     from eta_engine.brain.jarvis_v3.memory_hierarchy import HierarchicalMemory
     from eta_engine.brain.jarvis_v3.ood_detector import score_ood
+
     mem = HierarchicalMemory(
         episodic_path=tmp_path / "ep.jsonl",
         semantic_path=tmp_path / "sem.json",
@@ -386,13 +489,22 @@ def test_ood_score_high_for_extreme_stress(tmp_path: Path) -> None:
     # Seed all episodes at stress=0.3
     for i in range(30):
         mem.record_episode(
-            signal_id=f"s{i}", regime="bullish_low_vol", session="rth",
-            stress=0.3, direction="long", realized_r=1.0,
+            signal_id=f"s{i}",
+            regime="bullish_low_vol",
+            session="rth",
+            stress=0.3,
+            direction="long",
+            realized_r=1.0,
         )
     # Probe at stress=0.95 -> extreme
     p = Proposal(
-        signal_id="probe", direction="long", regime="bullish_low_vol",
-        session="rth", stress=0.95, sentiment=0.0, sage_score=0.0,
+        signal_id="probe",
+        direction="long",
+        regime="bullish_low_vol",
+        session="rth",
+        stress=0.95,
+        sentiment=0.0,
+        sage_score=0.0,
     )
     rep = score_ood(proposal=p, memory=mem)
     # Should flag at minimum "unusual"
@@ -401,6 +513,7 @@ def test_ood_score_high_for_extreme_stress(tmp_path: Path) -> None:
 
 def test_ood_attenuation_decreases_with_score(tmp_path: Path) -> None:
     from eta_engine.brain.jarvis_v3.ood_detector import OodReport
+
     typical = OodReport(score=0.1, label="typical", n_episodes_compared=30)
     novel = OodReport(score=0.9, label="novel", n_episodes_compared=30)
     assert typical.confidence_attenuation() > novel.confidence_attenuation()
@@ -411,6 +524,7 @@ def test_ood_attenuation_decreases_with_score(tmp_path: Path) -> None:
 
 def test_self_drift_returns_ok_with_empty_log(tmp_path: Path) -> None:
     from eta_engine.brain.jarvis_v3.self_drift_monitor import detect_self_drift
+
     rep = detect_self_drift(
         log_path=tmp_path / "missing.jsonl",
     )
@@ -423,31 +537,39 @@ def test_self_drift_flags_approved_rate_jump(tmp_path: Path) -> None:
     from datetime import UTC, datetime, timedelta
 
     from eta_engine.brain.jarvis_v3.self_drift_monitor import detect_self_drift
+
     log = tmp_path / "v.jsonl"
     now = datetime.now(UTC)
     rows = []
     # Baseline: 50 verdicts, 20% APPROVED
     baseline_ts = (now - timedelta(hours=72)).isoformat()
     for i in range(50):
-        rows.append({
-            "ts": baseline_ts,
-            "final_verdict": "APPROVED" if i < 10 else "DEFERRED",
-            "subsystem": "MNQ", "confidence": 0.5,
-        })
+        rows.append(
+            {
+                "ts": baseline_ts,
+                "final_verdict": "APPROVED" if i < 10 else "DEFERRED",
+                "subsystem": "MNQ",
+                "confidence": 0.5,
+            }
+        )
     # Recent: 20 verdicts, 90% APPROVED -> big jump
     recent_ts = now.isoformat()
     for i in range(20):
-        rows.append({
-            "ts": recent_ts,
-            "final_verdict": "APPROVED" if i < 18 else "DEFERRED",
-            "subsystem": "MNQ", "confidence": 0.5,
-        })
+        rows.append(
+            {
+                "ts": recent_ts,
+                "final_verdict": "APPROVED" if i < 18 else "DEFERRED",
+                "subsystem": "MNQ",
+                "confidence": 0.5,
+            }
+        )
     log.write_text(
         "\n".join(json.dumps(r) for r in rows) + "\n",
         encoding="utf-8",
     )
     rep = detect_self_drift(
-        recent_window_hours=24, baseline_window_hours=168,
+        recent_window_hours=24,
+        baseline_window_hours=168,
         log_path=log,
     )
     metrics = {s.metric for s in rep.signals}
@@ -458,6 +580,7 @@ def test_self_drift_to_dict_serializable(tmp_path: Path) -> None:
     import json
 
     from eta_engine.brain.jarvis_v3.self_drift_monitor import detect_self_drift
+
     rep = detect_self_drift(log_path=tmp_path / "missing.jsonl")
     s = json.dumps(rep.to_dict())
     assert "overall_status" in s
@@ -468,18 +591,22 @@ def test_self_drift_to_dict_serializable(tmp_path: Path) -> None:
 
 def test_postmortem_severity_classification(tmp_path: Path) -> None:
     from eta_engine.brain.jarvis_v3.postmortem import generate_postmortem
+
     pm_mod = generate_postmortem(
-        signal_id="t-mod", realized_r=-1.6,
+        signal_id="t-mod",
+        realized_r=-1.6,
         verdict_log_path=tmp_path / "v.jsonl",
         output_dir=tmp_path / "pms",
     )
     pm_sev = generate_postmortem(
-        signal_id="t-sev", realized_r=-2.5,
+        signal_id="t-sev",
+        realized_r=-2.5,
         verdict_log_path=tmp_path / "v.jsonl",
         output_dir=tmp_path / "pms",
     )
     pm_cat = generate_postmortem(
-        signal_id="t-cat", realized_r=-3.5,
+        signal_id="t-cat",
+        realized_r=-3.5,
         verdict_log_path=tmp_path / "v.jsonl",
         output_dir=tmp_path / "pms",
     )
@@ -493,20 +620,28 @@ def test_postmortem_attributes_layers_when_record_present(tmp_path: Path) -> Non
     import json
 
     from eta_engine.brain.jarvis_v3.postmortem import generate_postmortem
+
     vlog = tmp_path / "v.jsonl"
-    vlog.write_text(json.dumps({
-        "signal_id": "loss1",
-        "ts": "2026-04-27T15:00:00+00:00",
-        "final_verdict": "APPROVED",
-        "base_verdict": "APPROVED",
-        "causal_score": 0.6,
-        "firm_board_consensus": 0.8,
-        "world_model_expected_r": 1.5,
-        "rag_cautions": [],
-        "direction": "long",
-    }) + "\n", encoding="utf-8")
+    vlog.write_text(
+        json.dumps(
+            {
+                "signal_id": "loss1",
+                "ts": "2026-04-27T15:00:00+00:00",
+                "final_verdict": "APPROVED",
+                "base_verdict": "APPROVED",
+                "causal_score": 0.6,
+                "firm_board_consensus": 0.8,
+                "world_model_expected_r": 1.5,
+                "rag_cautions": [],
+                "direction": "long",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     pm = generate_postmortem(
-        signal_id="loss1", realized_r=-2.0,
+        signal_id="loss1",
+        realized_r=-2.0,
         verdict_log_path=vlog,
         output_dir=tmp_path / "pms",
     )
@@ -522,9 +657,11 @@ def test_postmortem_attributes_layers_when_record_present(tmp_path: Path) -> Non
 
 def test_postmortem_persists_markdown_and_json(tmp_path: Path) -> None:
     from eta_engine.brain.jarvis_v3.postmortem import generate_postmortem
+
     out_dir = tmp_path / "pms"
     pm = generate_postmortem(
-        signal_id="persist1", realized_r=-1.7,
+        signal_id="persist1",
+        realized_r=-1.7,
         verdict_log_path=tmp_path / "missing.jsonl",
         output_dir=out_dir,
         auto_persist=True,
@@ -542,14 +679,21 @@ def test_postmortem_to_markdown_renders_table() -> None:
         LayerAttribution,
         Postmortem,
     )
+
     pm = Postmortem(
-        signal_id="x", realized_r=-2.0, severity="severe",
-        ts_generated="now", direction="long",
-        regime="neutral", session="rth",
+        signal_id="x",
+        realized_r=-2.0,
+        severity="severe",
+        ts_generated="now",
+        direction="long",
+        regime="neutral",
+        session="rth",
         layer_attributions=[
             LayerAttribution(
-                layer="causal", layer_signal=0.5,
-                contribution_score=-0.5, note="overconfident",
+                layer="causal",
+                layer_signal=0.5,
+                contribution_score=-0.5,
+                note="overconfident",
             ),
         ],
     )

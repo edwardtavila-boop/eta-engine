@@ -1,4 +1,5 @@
 """Tests for disk_space_monitor — verifies threshold mapping + alert emission."""
+
 from __future__ import annotations
 
 import json
@@ -9,7 +10,7 @@ import pytest
 
 from eta_engine.scripts import disk_space_monitor as dsm
 
-GB = 1024 ** 3
+GB = 1024**3
 DiskUsage = namedtuple("DiskUsage", ["total", "used", "free"])
 
 
@@ -66,6 +67,7 @@ def test_stat_one_critical(isolated_logs: Path, monkeypatch: pytest.MonkeyPatch)
 def test_stat_one_oserror(isolated_logs: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     def raise_oserror(_p: Path) -> None:
         raise OSError("no such device")
+
     monkeypatch.setattr("shutil.disk_usage", raise_oserror)
     out = dsm._stat_one("test", isolated_logs)
     assert out["verdict"] == "ERROR"

@@ -26,8 +26,13 @@ from eta_engine.strategies.adaptive_kelly_sizing import (
 def _bar(idx: int, close: float) -> BarData:
     ts = datetime(2026, 1, 1, tzinfo=UTC) + timedelta(hours=idx)
     return BarData(
-        timestamp=ts, symbol="BTC", open=close,
-        high=close + 1.0, low=close - 1.0, close=close, volume=1000.0,
+        timestamp=ts,
+        symbol="BTC",
+        open=close,
+        high=close + 1.0,
+        low=close - 1.0,
+        close=close,
+        volume=1000.0,
     )
 
 
@@ -35,8 +40,10 @@ def _config() -> BacktestConfig:
     return BacktestConfig(
         start_date=datetime(2026, 1, 1, tzinfo=UTC),
         end_date=datetime(2026, 12, 31, tzinfo=UTC),
-        symbol="BTC", initial_equity=10_000.0,
-        risk_per_trade_pct=0.01, confluence_threshold=0.0,
+        symbol="BTC",
+        initial_equity=10_000.0,
+        risk_per_trade_pct=0.01,
+        confluence_threshold=0.0,
         max_trades_per_day=100,
     )
 
@@ -49,15 +56,25 @@ class _AlternatingStub:
     fired: int = 0
 
     def maybe_enter(
-        self, bar: BarData, hist: list[BarData], equity: float,
+        self,
+        bar: BarData,
+        hist: list[BarData],
+        equity: float,
         config: BacktestConfig,
     ) -> _Open | None:
         # Open a wide-stop wide-target trade
         self.fired += 1
         return _Open(
-            entry_bar=bar, side="BUY", qty=1.0, entry_price=bar.close,
-            stop=bar.close - 5.0, target=bar.close + 5.0,
-            risk_usd=10.0, confluence=10.0, leverage=1.0, regime="stub",
+            entry_bar=bar,
+            side="BUY",
+            qty=1.0,
+            entry_price=bar.close,
+            stop=bar.close - 5.0,
+            target=bar.close + 5.0,
+            risk_usd=10.0,
+            confluence=10.0,
+            leverage=1.0,
+            regime="stub",
         )
 
 
@@ -82,8 +99,10 @@ def test_engine_fires_callback_per_closed_trade() -> None:
     bars.append(_bar(3, 100.0))
 
     eng = BacktestEngine(
-        FeaturePipeline.default(), _config(),
-        strategy=_AlternatingStub(), on_trade_close=cb,
+        FeaturePipeline.default(),
+        _config(),
+        strategy=_AlternatingStub(),
+        on_trade_close=cb,
     )
     res = eng.run(bars)
     # 2 closed trades expected
@@ -100,13 +119,16 @@ def test_engine_fires_callback_per_closed_trade() -> None:
 
 def test_callback_exception_isolated() -> None:
     """A callback that raises must not break the backtest."""
+
     def bad_cb(t: Trade) -> None:
         raise RuntimeError("listener boom")
 
     bars = [_bar(0, 100.0), _bar(1, 110.0)]
     eng = BacktestEngine(
-        FeaturePipeline.default(), _config(),
-        strategy=_AlternatingStub(), on_trade_close=bad_cb,
+        FeaturePipeline.default(),
+        _config(),
+        strategy=_AlternatingStub(),
+        on_trade_close=bad_cb,
     )
     res = eng.run(bars)
     # The trade still closes; equity still updates; engine swallows
@@ -118,7 +140,9 @@ def test_no_callback_when_none() -> None:
     """Default behaviour: no callback attached, no invocations counted."""
     bars = [_bar(0, 100.0), _bar(1, 110.0)]
     eng = BacktestEngine(
-        FeaturePipeline.default(), _config(), strategy=_AlternatingStub(),
+        FeaturePipeline.default(),
+        _config(),
+        strategy=_AlternatingStub(),
     )
     eng.run(bars)
     assert eng.callback_stats["invocations"] == 0
@@ -130,7 +154,9 @@ def test_attach_trade_close_callback_post_construction() -> None:
 
     bars = [_bar(0, 100.0), _bar(1, 110.0)]
     eng = BacktestEngine(
-        FeaturePipeline.default(), _config(), strategy=_AlternatingStub(),
+        FeaturePipeline.default(),
+        _config(),
+        strategy=_AlternatingStub(),
     )
     eng.attach_trade_close_callback(received.append)
     eng.run(bars)
@@ -154,8 +180,10 @@ def test_adaptive_kelly_consumes_engine_callback() -> None:
     bars.append(_bar(2, 110.0))
     bars.append(_bar(3, 100.0))
     eng = BacktestEngine(
-        FeaturePipeline.default(), _config(),
-        strategy=kelly, on_trade_close=kelly.on_trade_close,
+        FeaturePipeline.default(),
+        _config(),
+        strategy=kelly,
+        on_trade_close=kelly.on_trade_close,
     )
     eng.run(bars)
     stats = kelly.kelly_stats
@@ -176,7 +204,9 @@ def test_adaptive_kelly_falls_back_to_inference_without_callback() -> None:
     kelly = AdaptiveKellySizingStrategy(sub, AdaptiveKellyConfig(streak_window=10))
     bars = [_bar(0, 100.0), _bar(1, 110.0), _bar(2, 110.0), _bar(3, 100.0)]
     eng = BacktestEngine(
-        FeaturePipeline.default(), _config(), strategy=kelly,
+        FeaturePipeline.default(),
+        _config(),
+        strategy=kelly,
     )
     eng.run(bars)
     stats = kelly.kelly_stats
@@ -193,11 +223,17 @@ def test_adaptive_kelly_callback_streak_signal_drives_multiplier() -> None:
     win_trade = Trade(
         entry_time=datetime(2026, 1, 1, tzinfo=UTC),
         exit_time=datetime(2026, 1, 1, 1, tzinfo=UTC),
-        symbol="BTC", side="BUY", qty=1.0,
-        entry_price=100.0, exit_price=103.0,
-        pnl_r=1.5, pnl_usd=15.0,
-        confluence_score=10.0, leverage_used=1.0,
-        max_drawdown_during=0.0, regime="test",
+        symbol="BTC",
+        side="BUY",
+        qty=1.0,
+        entry_price=100.0,
+        exit_price=103.0,
+        pnl_r=1.5,
+        pnl_usd=15.0,
+        confluence_score=10.0,
+        leverage_used=1.0,
+        max_drawdown_during=0.0,
+        regime="test",
         exit_reason="target_hit",
     )
     for _ in range(3):
@@ -207,8 +243,7 @@ def test_adaptive_kelly_callback_streak_signal_drives_multiplier() -> None:
     assert stats["trade_history_len"] == 3
 
 
-def test_walk_forward_engine_wires_callback_when_strategy_exposes_it(
-) -> None:
+def test_walk_forward_engine_wires_callback_when_strategy_exposes_it() -> None:
     """The walk-forward engine should auto-attach the callback when
     the strategy provides ``on_trade_close``."""
     from eta_engine.backtest import WalkForwardConfig, WalkForwardEngine
@@ -216,11 +251,15 @@ def test_walk_forward_engine_wires_callback_when_strategy_exposes_it(
     bars = [_bar(i, 100.0 + i) for i in range(60 * 24)]  # 60 days of 1h
     sub = _AlternatingStub()
     kelly_factory = lambda: AdaptiveKellySizingStrategy(  # noqa: E731
-        _AlternatingStub(), AdaptiveKellyConfig(),
+        _AlternatingStub(),
+        AdaptiveKellyConfig(),
     )
     wf_cfg = WalkForwardConfig(
-        window_days=30, step_days=15, oos_fraction=0.3,
-        min_trades_per_window=1, strict_fold_dsr_gate=False,
+        window_days=30,
+        step_days=15,
+        oos_fraction=0.3,
+        min_trades_per_window=1,
+        strict_fold_dsr_gate=False,
     )
     base_cfg = _config()
     res = WalkForwardEngine().run(

@@ -47,19 +47,27 @@ def main() -> int:
     p = argparse.ArgumentParser(prog="fleet_corr_check")
     p.add_argument("--journal", type=Path, default=_DEFAULT_JOURNAL)
     p.add_argument(
-        "--last-n", type=int, default=50,
+        "--last-n",
+        type=int,
+        default=50,
         help="recent trades per bot to consider (default 50)",
     )
     p.add_argument(
-        "--min-paired", type=int, default=10,
+        "--min-paired",
+        type=int,
+        default=10,
         help="minimum paired trades before a non-green verdict (default 10)",
     )
     p.add_argument(
-        "--amber-rho", type=float, default=0.5,
+        "--amber-rho",
+        type=float,
+        default=0.5,
         help="amber threshold (default 0.5)",
     )
     p.add_argument(
-        "--red-rho", type=float, default=0.7,
+        "--red-rho",
+        type=float,
+        default=0.7,
         help="red threshold (default 0.7)",
     )
     p.add_argument("--dry-run", action="store_true")
@@ -67,10 +75,7 @@ def main() -> int:
 
     pairs = _partner_pairs()
     if not pairs:
-        print(
-            "[fleet_corr_check] no fleet_corr_partner pairs declared in "
-            "the per-bot registry -- skipping"
-        )
+        print("[fleet_corr_check] no fleet_corr_partner pairs declared in the per-bot registry -- skipping")
         return 0
 
     if not args.journal.exists():
@@ -92,10 +97,7 @@ def main() -> int:
 
     rank = {"green": 0, "amber": 1, "red": 2}
     worst = 0
-    print(
-        f"{'pair':<32} {'severity':<8} {'n':>4} {'rho':>7} "
-        f"{'action':<18} {'reason':<40}"
-    )
+    print(f"{'pair':<32} {'severity':<8} {'n':>4} {'rho':>7} {'action':<18} {'reason':<40}")
     print("-" * 110)
     for a in assessments:
         worst = max(worst, rank[a.severity])

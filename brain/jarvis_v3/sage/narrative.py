@@ -8,6 +8,7 @@ to a deterministic template-based narrative.
 Cached on (symbol, last bar ts) so the same report only generates one
 LLM call.
 """
+
 from __future__ import annotations
 
 import logging
@@ -27,6 +28,7 @@ _CACHE_LOCK = threading.Lock()
 def _any_llm_key() -> bool:
     try:
         from eta_engine.brain.llm_provider import Provider, _get_api_key
+
         return bool(_get_api_key(Provider.DEEPSEEK) or _get_api_key(Provider.ANTHROPIC))
     except Exception:
         return bool(os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("DEEPSEEK_API_KEY"))
@@ -44,9 +46,7 @@ def _template_narrative(report: SageReport, *, symbol: str = "") -> str:
         reverse=True,
     )
     top_align = [
-        f"{name} ({v.conviction:.2f})"
-        for name, v in sorted_schools
-        if v.aligned_with_entry and v.conviction > 0.3
+        f"{name} ({v.conviction:.2f})" for name, v in sorted_schools if v.aligned_with_entry and v.conviction > 0.3
     ][:3]
     top_disagree = [
         f"{name} ({v.conviction:.2f})"
@@ -56,7 +56,7 @@ def _template_narrative(report: SageReport, *, symbol: str = "") -> str:
 
     parts = [
         f"{symbol or 'asset'}: sage reads {report.composite_bias.value} "
-        f"with {report.conviction*100:.0f}% conviction "
+        f"with {report.conviction * 100:.0f}% conviction "
         f"({aligned}/{n} schools aligned)."
     ]
     if top_align:

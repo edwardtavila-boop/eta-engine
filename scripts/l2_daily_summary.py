@@ -39,6 +39,7 @@ Run
     python -m eta_engine.scripts.l2_daily_summary --json
     python -m eta_engine.scripts.l2_daily_summary --slack
 """
+
 from __future__ import annotations
 
 # ruff: noqa: PLR2004
@@ -104,8 +105,7 @@ def _last_jsonl_record(path: Path) -> dict | None:
         return None
 
 
-def _filter_jsonl_by_field(path: Path, *, field_name: str,
-                              field_value: str) -> dict | None:
+def _filter_jsonl_by_field(path: Path, *, field_name: str, field_value: str) -> dict | None:
     """Get the latest jsonl entry where rec[field_name] == field_value."""
     if not path.exists():
         return None
@@ -131,9 +131,9 @@ def build_summary() -> DailySummary:
     from eta_engine.strategies.l2_strategy_registry import (
         L2_STRATEGIES,
     )
+
     capture_latest = _last_jsonl_record(LOG_DIR / "capture_health.jsonl")
-    capture_status = (capture_latest.get("verdict") if capture_latest
-                        else "NEVER")
+    capture_status = capture_latest.get("verdict") if capture_latest else "NEVER"
 
     heartbeat_latest_lines: list[dict] = []
     hb_path = LOG_DIR / "l2_heartbeat.jsonl"
@@ -157,15 +157,13 @@ def build_summary() -> DailySummary:
     for entry in L2_STRATEGIES:
         # Pull the latest promotion decision for this bot
         promo_path = LOG_DIR / "l2_promotion_decisions.jsonl"
-        promo = _filter_jsonl_by_field(
-            promo_path, field_name="bot_id", field_value=entry.bot_id)
+        promo = _filter_jsonl_by_field(promo_path, field_name="bot_id", field_value=entry.bot_id)
         recommended = promo.get("recommended_status") if promo else entry.promotion_status
 
         # Latest backtest stats
         bt_path = LOG_DIR / "l2_backtest_runs.jsonl"
         # Match by harness strategy name (strip _v1)
-        harness = entry.strategy_id.removesuffix("_v1") \
-                    if entry.strategy_id.endswith("_v1") else entry.strategy_id
+        harness = entry.strategy_id.removesuffix("_v1") if entry.strategy_id.endswith("_v1") else entry.strategy_id
         bt = None
         if bt_path.exists():
             try:
@@ -178,22 +176,19 @@ def build_summary() -> DailySummary:
                             rec = json.loads(line)
                         except json.JSONDecodeError:
                             continue
-                        if (rec.get("strategy") == harness
-                                and rec.get("symbol") == entry.symbol):
+                        if rec.get("strategy") == harness and rec.get("symbol") == entry.symbol:
                             bt = rec
             except OSError:
                 pass
 
         # Drift verdict
-        drift = _filter_jsonl_by_field(
-            LOG_DIR / "l2_drift_monitor.jsonl",
-            field_name="strategy", field_value=harness)
+        drift = _filter_jsonl_by_field(LOG_DIR / "l2_drift_monitor.jsonl", field_name="strategy", field_value=harness)
         drift_verdict = drift.get("drift_verdict") if drift else None
 
         # Calibration
         cal = _filter_jsonl_by_field(
-            LOG_DIR / "l2_calibration.jsonl",
-            field_name="strategy_id", field_value=entry.strategy_id)
+            LOG_DIR / "l2_calibration.jsonl", field_name="strategy_id", field_value=entry.strategy_id
+        )
         cal_brier = cal.get("brier_score") if cal else None
 
         # Fill audit (per-strategy not currently aggregated; use overall)
@@ -280,10 +275,13 @@ def build_summary() -> DailySummary:
         n_diamond_critical = int(wc.get("CRITICAL", 0))
         n_diamond_warn = int(wc.get("WARN", 0))
         if n_diamond_critical:
-            headlines.insert(0, (
-                f"DIAMOND CRITICAL: {n_diamond_critical} bot(s) below "
-                "30d retirement floor — operator review required"
-            ))
+            headlines.insert(
+                0,
+                (
+                    f"DIAMOND CRITICAL: {n_diamond_critical} bot(s) below "
+                    "30d retirement floor — operator review required"
+                ),
+            )
         if n_diamond_warn:
             headlines.append(
                 f"diamond WARN: {n_diamond_warn} bot(s) within 20% of floor",
@@ -293,14 +291,18 @@ def build_summary() -> DailySummary:
         n_diamond_cz = int(ac.get("CUBIC_ZIRCONIA", 0))
         if n_diamond_cz:
             headlines.append(
-                f"diamond CZ: {n_diamond_cz} bot(s) failed authenticity "
-                "(no statistical edge)",
+                f"diamond CZ: {n_diamond_cz} bot(s) failed authenticity (no statistical edge)",
             )
 
     if n_red > 0 or n_diamond_critical > 0:
         overall = "RED"
-    elif (n_yellow > 0 or n_alerts > 5 or capture_status not in ("GREEN", "NEVER")
-            or n_diamond_warn > 0 or n_diamond_cz > 0):
+    elif (
+        n_yellow > 0
+        or n_alerts > 5
+        or capture_status not in ("GREEN", "NEVER")
+        or n_diamond_warn > 0
+        or n_diamond_cz > 0
+    ):
         overall = "YELLOW"
     elif n_alive < n_total:
         overall = "YELLOW"
@@ -325,8 +327,9 @@ def build_summary() -> DailySummary:
 
 def format_slack(summary: DailySummary) -> str:
     """Format as Slack message — uses :emoji: + simple formatting."""
-    emoji = {"GREEN": ":white_check_mark:", "YELLOW": ":warning:",
-              "RED": ":rotating_light:"}.get(summary.overall_verdict, ":question:")
+    emoji = {"GREEN": ":white_check_mark:", "YELLOW": ":warning:", "RED": ":rotating_light:"}.get(
+        summary.overall_verdict, ":question:"
+    )
     lines = [
         f"{emoji} *L2 Daily Summary* ({summary.ts})",
         f"   Overall: *{summary.overall_verdict}*",
@@ -342,12 +345,9 @@ def format_slack(summary: DailySummary) -> str:
         lines.append("")
     lines.append("*Strategies:*")
     for s in summary.strategies:
-        rec_emoji = (":soon:" if s.recommended_status != s.promotion_status
-                      else ":white_check_mark:")
-        sharpe = (f"sharpe={s.latest_sharpe}" if s.latest_sharpe is not None
-                    else "(no sharpe yet)")
-        lines.append(f"  {rec_emoji} `{s.bot_id}` "
-                       f"[{s.promotion_status}→{s.recommended_status}] {sharpe}")
+        rec_emoji = ":soon:" if s.recommended_status != s.promotion_status else ":white_check_mark:"
+        sharpe = f"sharpe={s.latest_sharpe}" if s.latest_sharpe is not None else "(no sharpe yet)"
+        lines.append(f"  {rec_emoji} `{s.bot_id}` [{s.promotion_status}→{s.recommended_status}] {sharpe}")
     return "\n".join(lines)
 
 
@@ -379,8 +379,7 @@ def main() -> int:
     print("=" * 78)
     print(f"  OVERALL          : {summary.overall_verdict}")
     print(f"  capture health   : {summary.capture_health}")
-    print(f"  heartbeats       : {summary.heartbeat_n_alive}/"
-            f"{summary.heartbeat_n_total} alive")
+    print(f"  heartbeats       : {summary.heartbeat_n_alive}/{summary.heartbeat_n_total} alive")
     print(f"  alerts (last 24h): {summary.n_alerts_last_24h}")
     print()
     if summary.headlines:
@@ -389,7 +388,7 @@ def main() -> int:
             print(f"    - {h}")
         print()
     print(f"  {'Bot ID':<35s} {'Status→Rec':<22s} {'Sharpe':<8s} {'n_tr':<6s} {'Drift':<10s}")
-    print(f"  {'-'*35:<35s} {'-'*22:<22s} {'-'*8:<8s} {'-'*6:<6s} {'-'*10}")
+    print(f"  {'-' * 35:<35s} {'-' * 22:<22s} {'-' * 8:<8s} {'-' * 6:<6s} {'-' * 10}")
     for s in summary.strategies:
         sharpe_str = f"{s.latest_sharpe:+.3f}" if s.latest_sharpe is not None else "n/a"
         n_str = str(s.latest_n_trades) if s.latest_n_trades is not None else "n/a"

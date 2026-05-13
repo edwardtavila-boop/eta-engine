@@ -34,6 +34,7 @@ and halts trading on ``kill_all: true``.
 Per CLAUDE.md hard rule #1 every write goes under
 ``C:\\EvolutionaryTradingAlgo\\var\\eta_engine\\state``.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -127,6 +128,7 @@ def _rotate_audit_log_if_needed() -> None:
             return
         import gzip
         import shutil
+
         stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
         rotated = _AUDIT_LOG_PATH.with_name(
             f"{_AUDIT_LOG_PATH.stem}_{stamp}.jsonl.gz",
@@ -199,6 +201,7 @@ def _call_kaizen_latest() -> dict[str, Any]:
 
 def _call_trace_tail(n: int) -> list[dict[str, Any]]:
     from eta_engine.brain.jarvis_v3 import trace_emitter
+
     return trace_emitter.tail(n=n)
 
 
@@ -217,7 +220,9 @@ _EVENT_STREAMS: dict[str, Path] = {
 
 
 def _call_subscribe_events(
-    stream: str, offset: int, limit: int,
+    stream: str,
+    offset: int,
+    limit: int,
 ) -> tuple[list[dict[str, Any]], int]:
     """Read new event records from a JSONL stream past a byte offset.
 
@@ -231,6 +236,7 @@ def _call_subscribe_events(
         return [], offset
     if stream == "trace":
         from eta_engine.brain.jarvis_v3 import trace_emitter
+
         return trace_emitter.read_since(offset=offset, limit=limit, path=path)
 
     # Inline reader for non-rotating streams. Same partial-line guard
@@ -277,7 +283,8 @@ def _call_subscribe_events(
 
 
 def _apply_event_filters(
-    records: list[dict[str, Any]], filters: dict[str, Any],
+    records: list[dict[str, Any]],
+    filters: dict[str, Any],
 ) -> list[dict[str, Any]]:
     """Lightweight filter pass — kept tiny so it can't error on malformed data.
 
@@ -322,68 +329,87 @@ def _apply_event_filters(
 
 def _call_wiring_audit() -> list[Any]:
     from eta_engine.scripts import jarvis_wiring_audit
+
     return jarvis_wiring_audit.audit()
 
 
 def _call_portfolio_snapshot() -> Any:  # noqa: ANN401 — opaque context object
     from eta_engine.brain.jarvis_v3 import portfolio_brain
+
     return portfolio_brain.snapshot()
 
 
 def _call_portfolio_assess(req: Any, ctx: Any) -> Any:  # noqa: ANN401
     from eta_engine.brain.jarvis_v3 import portfolio_brain
+
     return portfolio_brain.assess(req, ctx)
 
 
 def _call_hot_weights(asset: str) -> dict[str, float]:
     from eta_engine.brain.jarvis_v3 import hot_learner
+
     return hot_learner.current_weights(asset)
 
 
 def _call_upcoming_events(horizon_min: int) -> list[Any]:
     from eta_engine.data import event_calendar
+
     return event_calendar.upcoming(datetime.now(UTC), horizon_min=horizon_min)
 
 
 def _call_kaizen_run(bootstraps: int) -> dict[str, Any]:
     from eta_engine.scripts import kaizen_loop
+
     return kaizen_loop.run_loop(bootstraps=bootstraps, apply_actions=False)
 
 
 def _call_topology() -> dict[str, Any]:
     from eta_engine.brain.jarvis_v3 import risk_topology
+
     return risk_topology.build_topology()
 
 
 def _call_register_agent(
-    agent_id: str, role: str, version: str,
+    agent_id: str,
+    role: str,
+    version: str,
 ) -> dict[str, Any]:
     from eta_engine.brain.jarvis_v3 import agent_registry
+
     return agent_registry.register_agent(agent_id, role, version)
 
 
 def _call_list_agents(only_alive: bool) -> list[dict[str, Any]]:
     from eta_engine.brain.jarvis_v3 import agent_registry
+
     return agent_registry.list_agents(only_alive=only_alive)
 
 
 def _call_acquire_lock(
-    agent_id: str, resource: str, purpose: str, ttl_seconds: int,
+    agent_id: str,
+    resource: str,
+    purpose: str,
+    ttl_seconds: int,
 ) -> dict[str, Any]:
     from eta_engine.brain.jarvis_v3 import agent_registry
+
     return agent_registry.acquire_lock(
-        agent_id=agent_id, resource=resource,
-        purpose=purpose, ttl_seconds=ttl_seconds,
+        agent_id=agent_id,
+        resource=resource,
+        purpose=purpose,
+        ttl_seconds=ttl_seconds,
     )
 
 
 def _call_release_lock(agent_id: str, resource: str) -> dict[str, Any]:
     from eta_engine.brain.jarvis_v3 import agent_registry
+
     return agent_registry.release_lock(agent_id=agent_id, resource=resource)
 
 
 def _call_causal_analyze(consult_id: str, perturbation_sigma: float) -> dict[str, Any]:
     from eta_engine.brain.jarvis_v3 import causal_attribution
+
     return causal_attribution.analyze(consult_id, perturbation_sigma=perturbation_sigma).to_dict()
 
 
@@ -394,6 +420,7 @@ def _call_consult_replay(
     override_school_inputs: dict[str, Any] | None,
 ) -> dict[str, Any]:
     from eta_engine.brain.jarvis_v3 import consult_replay
+
     return consult_replay.replay(
         consult_id,
         override_overrides=override_overrides,
@@ -409,6 +436,7 @@ def _call_counterfactual(
     pin_weight: float | None,
 ) -> dict[str, Any]:
     from eta_engine.brain.jarvis_v3 import consult_replay
+
     return consult_replay.counterfactual(
         consult_id,
         pin_size_modifier=pin_size_modifier,
@@ -418,35 +446,47 @@ def _call_counterfactual(
 
 
 def _call_attribution_query(
-    slice_by: list[str], filter_arg: dict[str, Any],
+    slice_by: list[str],
+    filter_arg: dict[str, Any],
 ) -> dict[str, Any]:
     from eta_engine.brain.jarvis_v3 import attribution_cube
+
     return attribution_cube.query(slice_by=slice_by, filter=filter_arg).to_dict()
 
 
 def _call_current_regime() -> dict[str, Any]:
     from eta_engine.brain.jarvis_v3 import regime_classifier
+
     return regime_classifier.current_regime().to_dict()
 
 
 def _call_list_regime_packs() -> list[dict[str, Any]]:
     from eta_engine.brain.jarvis_v3 import regime_classifier
+
     return regime_classifier.list_packs()
 
 
 def _call_apply_regime_pack(
-    name: str, ttl_minutes: int, bot_ids: list[str] | None,
+    name: str,
+    ttl_minutes: int,
+    bot_ids: list[str] | None,
 ) -> dict[str, Any]:
     from eta_engine.brain.jarvis_v3 import regime_classifier
+
     return regime_classifier.apply_pack(
-        name=name, ttl_minutes=ttl_minutes, bot_ids=bot_ids,
+        name=name,
+        ttl_minutes=ttl_minutes,
+        bot_ids=bot_ids,
     )
 
 
 def _call_kelly_recommend(
-    lookback_days: int, kelly_fraction: float, drawdown_penalty: float,
+    lookback_days: int,
+    kelly_fraction: float,
+    drawdown_penalty: float,
 ) -> list[dict[str, Any]]:
     from eta_engine.brain.jarvis_v3 import kelly_optimizer
+
     return kelly_optimizer.recommend_sizing(
         lookback_days=lookback_days,
         kelly_fraction=kelly_fraction,
@@ -456,28 +496,116 @@ def _call_kelly_recommend(
 
 def _call_zeus_snapshot(force_refresh: bool, trace_n: int) -> dict[str, Any]:
     from eta_engine.brain.jarvis_v3 import zeus
+
     return zeus.snapshot(force_refresh=force_refresh, trace_n=trace_n).to_dict()
+
+
+def _call_pnl_summary(window_hours: float) -> dict[str, Any]:
+    from eta_engine.brain.jarvis_v3 import pnl_summary
+
+    return pnl_summary.summarize(window_hours=window_hours).to_dict()
+
+
+def _call_pnl_multi_window() -> dict[str, Any]:
+    from eta_engine.brain.jarvis_v3 import pnl_summary
+
+    return pnl_summary.multi_window_summary()
+
+
+def _call_material_events_since(asof_iso: str) -> dict[str, Any]:
+    from eta_engine.brain.jarvis_v3 import pnl_summary
+
+    return pnl_summary.has_material_events_since(asof_iso=asof_iso)
+
+
+def _call_anomaly_scan() -> list[dict[str, Any]]:
+    from eta_engine.brain.jarvis_v3 import anomaly_watcher
+
+    return [h.to_dict() for h in anomaly_watcher.scan()]
+
+
+def _call_anomaly_recent(since_hours: int) -> list[dict[str, Any]]:
+    from eta_engine.brain.jarvis_v3 import anomaly_watcher
+
+    return anomaly_watcher.recent_hits(since_hours=since_hours)
+
+
+def _call_preflight() -> dict[str, Any]:
+    from eta_engine.brain.jarvis_v3 import preflight
+
+    return preflight.run_preflight().to_dict()
+
+
+def _call_prop_firm_status() -> list[dict[str, Any]]:
+    from eta_engine.brain.jarvis_v3 import prop_firm_guardrails as g
+
+    return [s.to_dict() for s in g.aggregate_status()]
+
+
+def _call_prop_firm_evaluate(
+    account_id: str,
+    signal: dict[str, Any],
+) -> dict[str, Any]:
+    from eta_engine.brain.jarvis_v3 import prop_firm_guardrails as g
+
+    rules = g.get_rules(account_id)
+    if rules is None:
+        return {
+            "allowed": False,
+            "reason": f"unregistered account_id: {account_id}",
+            "blockers": ["unknown_account"],
+            "headroom": {},
+            "worst_case_loss_usd": 0.0,
+            "asof": _now_iso(),
+        }
+    state = g.account_state_from_trades(account_id)
+    return g.evaluate(rules, state, signal).to_dict()
+
+
+def _call_prop_firm_killall(reason: str) -> dict[str, Any]:
+    """Engage the kill switch — same path as jarvis_kill_switch with 'kill all'."""
+    import json as _json
+
+    target_path = _HERMES_STATE_PATH
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "kill_all": True,
+        "reason": str(reason or "prop_firm_killall via MCP"),
+        "asof": _now_iso(),
+        "source": "prop_firm_guardrails",
+    }
+    tmp = target_path.with_suffix(target_path.suffix + ".tmp")
+    tmp.write_text(_json.dumps(payload, default=str), encoding="utf-8")
+    os.replace(tmp, target_path)
+    return {"status": "KILL_SWITCH_ENGAGED", "hermes_state": payload}
 
 
 def _call_cost_summary(since_days_ago: int) -> dict[str, Any]:
     from eta_engine.brain.jarvis_v3 import cost_tracker
+
     return cost_tracker.estimate_spend(since_days_ago=since_days_ago).to_dict()
 
 
 def _call_cost_today() -> dict[str, Any]:
     from eta_engine.brain.jarvis_v3 import cost_tracker
+
     return cost_tracker.today_spend()
 
 
 def _call_cost_anomaly(window_min: int) -> dict[str, Any]:
     from eta_engine.brain.jarvis_v3 import cost_tracker
+
     return cost_tracker.anomaly_check(window_min=window_min)
 
 
 def _call_apply_size_modifier(
-    bot_id: str, modifier: float, reason: str, ttl_minutes: int,
+    bot_id: str,
+    modifier: float,
+    reason: str,
+    ttl_minutes: int,
 ) -> dict[str, Any]:
     from eta_engine.brain.jarvis_v3 import hermes_overrides
+
     return hermes_overrides.apply_size_modifier(
         bot_id=bot_id,
         modifier=modifier,
@@ -488,9 +616,14 @@ def _call_apply_size_modifier(
 
 
 def _call_apply_school_weight(
-    asset: str, school: str, weight: float, reason: str, ttl_minutes: int,
+    asset: str,
+    school: str,
+    weight: float,
+    reason: str,
+    ttl_minutes: int,
 ) -> dict[str, Any]:
     from eta_engine.brain.jarvis_v3 import hermes_overrides
+
     return hermes_overrides.apply_school_weight(
         asset=asset,
         school=school,
@@ -503,15 +636,21 @@ def _call_apply_school_weight(
 
 def _call_active_overrides() -> dict[str, Any]:
     from eta_engine.brain.jarvis_v3 import hermes_overrides
+
     return hermes_overrides.active_overrides_summary()
 
 
 def _call_clear_override(
-    bot_id: str | None, asset: str | None, school: str | None,
+    bot_id: str | None,
+    asset: str | None,
+    school: str | None,
 ) -> dict[str, Any]:
     from eta_engine.brain.jarvis_v3 import hermes_overrides
+
     return hermes_overrides.clear_override(
-        bot_id=bot_id, asset=asset, school=school,
+        bot_id=bot_id,
+        asset=asset,
+        school=school,
     )
 
 
@@ -592,7 +731,8 @@ def _write_override(bot_id: str, reason: str) -> dict[str, Any]:
         "source": "hermes_mcp",
     }
     _KAIZEN_OVERRIDES_PATH.write_text(
-        json.dumps(data, indent=2, default=str), encoding="utf-8",
+        json.dumps(data, indent=2, default=str),
+        encoding="utf-8",
     )
     return data
 
@@ -751,8 +891,13 @@ def list_tools() -> list[dict[str, Any]]:
                         "type": "string",
                         "default": "trace",
                         "enum": [
-                            "trace", "dashboard", "decisions", "kaizen",
-                            "hermes", "jarvis_v3", "uptime",
+                            "trace",
+                            "dashboard",
+                            "decisions",
+                            "kaizen",
+                            "hermes",
+                            "jarvis_v3",
+                            "uptime",
                         ],
                     },
                     "since_offset": {"type": "integer", "default": 0},
@@ -1007,7 +1152,8 @@ def list_tools() -> list[dict[str, Any]]:
                     "name": {"type": "string"},
                     "ttl_minutes": {"type": "integer", "default": 240},
                     "bot_ids": {
-                        "type": "array", "items": {"type": "string"},
+                        "type": "array",
+                        "items": {"type": "string"},
                         "description": "Required when the pack uses '*' size_modifier pattern.",
                     },
                 },
@@ -1066,6 +1212,47 @@ def list_tools() -> list[dict[str, Any]]:
             },
         },
         {
+            "name": "jarvis_pnl_summary",
+            "description": (
+                "Operator PnL aggregation over a time window. Returns total R, "
+                "win rate, best/worst trade, top performers, recent trades. "
+                "Reads canonical + legacy trade_closes paths and dedupes."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    **auth_field,
+                    "window_hours": {"type": "number", "default": 24},
+                },
+            },
+        },
+        {
+            "name": "jarvis_pnl_multi_window",
+            "description": (
+                "PnL bundled across today (24h) + week (168h) + month (720h) "
+                "in one envelope. Used by the operator-briefing skill for "
+                "the PnL-first Telegram digest."
+            ),
+            "inputSchema": {"type": "object", "properties": auth_field},
+        },
+        {
+            "name": "jarvis_material_events_since",
+            "description": (
+                "True iff anything operator-material happened since asof_iso: "
+                "new trade, |R| delta >= 0.5, big win (>=+2R), big loss (<=-2R), "
+                "drawdown (<=-3R), or new override applied. Cron tasks use this "
+                "to SUPPRESS spammy quiet-window deliveries."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    **auth_field,
+                    "asof_iso": {"type": "string"},
+                },
+                "required": ["asof_iso"],
+            },
+        },
+        {
             "name": "jarvis_zeus",
             "description": (
                 "ZEUS SUPERCHARGE — unified brain snapshot. ONE call returns "
@@ -1082,6 +1269,101 @@ def list_tools() -> list[dict[str, Any]]:
                     "force_refresh": {"type": "boolean", "default": False},
                     "trace_n": {"type": "integer", "default": 10},
                 },
+            },
+        },
+        {
+            "name": "jarvis_anomaly_scan",
+            "description": (
+                "Proactive anomaly detection. Scans recent trade closes for "
+                "patterns operator should know about BEFORE asking: 3+ "
+                "consecutive losses per bot, 5+ of last 8 trades losing, "
+                "drawdown patterns. Returns NEW (post-dedup) hits only — "
+                "same anomaly is suppressed for DEDUP_HOURS=4 after first fire. "
+                "Each hit carries a suggested_skill the operator (or cron) "
+                "can route to. Used by the ETA-Anomaly-Watcher cron task to "
+                "replace noisy 'watchdog auto-healed' alerts with meaningful "
+                "'bot X has 4 losses in a row' alerts."
+            ),
+            "inputSchema": {"type": "object", "properties": auth_field},
+        },
+        {
+            "name": "jarvis_anomaly_recent",
+            "description": (
+                "Replay recent anomaly hits from the watcher log for operator "
+                "review. Returns dedup-aware hits within since_hours window. "
+                "Pair with jarvis_anomaly_scan: scan returns NEW hits, "
+                "recent returns ALL hits in the window including ones already "
+                "dispatched."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    **auth_field,
+                    "since_hours": {"type": "integer", "default": 24},
+                },
+            },
+        },
+        {
+            "name": "jarvis_preflight",
+            "description": (
+                "Live-cutover Go/No-Go preflight. Runs 13 read-only checks "
+                "(workspace + state writable, Hermes port up, status server, "
+                "trade-close stream fresh, memory backup, kaizen latest, "
+                "anomaly-pulse + bridge-autoheal cron health, telegram-inbound "
+                "alive, kill switch disengaged, active overrides under cap, "
+                "no open critical anomalies). Returns verdict READY or NOT "
+                "READY plus a per-check breakdown. NEVER writes except its "
+                "own JSONL audit log."
+            ),
+            "inputSchema": {"type": "object", "properties": auth_field},
+        },
+        {
+            "name": "jarvis_prop_firm_status",
+            "description": (
+                "Live snapshot of every registered prop firm account: rules, "
+                "current balance, day PnL, peak balance, daily-loss headroom, "
+                "trailing-DD headroom, profit-to-target, severity tag "
+                "(ok/warn/critical/blown). Includes BluSky, Apex eval+funded, "
+                "Topstep, ETF. Sorted by severity (worst first). Read-only."
+            ),
+            "inputSchema": {"type": "object", "properties": auth_field},
+        },
+        {
+            "name": "jarvis_prop_firm_evaluate",
+            "description": (
+                "Worst-case rule check on one proposed signal. Pass account_id "
+                "and signal={symbol, stop_r, size, [dollar_per_r]}. Returns "
+                "allowed=true/false, blockers (list of specific rule names "
+                "that would fail), headroom per rule, worst_case_loss_usd. "
+                "This is the safety gate every new entry should pass through "
+                "before becoming an order. Default-deny on malformed input."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    **auth_field,
+                    "account_id": {"type": "string"},
+                    "signal": {"type": "object"},
+                },
+                "required": ["account_id", "signal"],
+            },
+        },
+        {
+            "name": "jarvis_prop_firm_killall",
+            "description": (
+                "EMERGENCY: engage kill_all in hermes_state.json with a reason. "
+                "Halts every bot fleetwide. Use when an account approaches "
+                "rule breach or external risk demands halt. Functionally same "
+                "as jarvis_kill_switch with 'kill all' phrase but with "
+                "structured reason logging for prop-firm post-mortems."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    **auth_field,
+                    "reason": {"type": "string"},
+                },
+                "required": ["reason"],
             },
         },
     ]
@@ -1114,10 +1396,7 @@ def _tool_trace_tail(args: dict[str, Any]) -> list[dict[str, Any]]:
 
 def _tool_wiring_audit(_args: dict[str, Any]) -> dict[str, Any]:
     statuses = _call_wiring_audit() or []
-    dark = [
-        s for s in statuses
-        if getattr(s, "expected_to_fire", False) and getattr(s, "dark_for_days", 0) >= 7
-    ]
+    dark = [s for s in statuses if getattr(s, "expected_to_fire", False) and getattr(s, "dark_for_days", 0) >= 7]
     return {
         "n_dark": len(dark),
         "dark_modules": [getattr(s, "module", "") for s in dark],
@@ -1132,12 +1411,16 @@ def _tool_portfolio_assess(args: dict[str, Any]) -> dict[str, Any]:
     action = args.get("action", "")
     # Build a minimal request object that portfolio_brain.assess can inspect
     # for an asset key (it falls back to None when the attribute isn't present).
-    req = type("HermesReq", (), {
-        "bot_id": bot_id,
-        "asset_class": asset_class,
-        "asset": asset_class,
-        "action": action,
-    })()
+    req = type(
+        "HermesReq",
+        (),
+        {
+            "bot_id": bot_id,
+            "asset_class": asset_class,
+            "asset": asset_class,
+            "action": action,
+        },
+    )()
     ctx = _call_portfolio_snapshot()
     verdict = _call_portfolio_assess(req, ctx)
     return {
@@ -1157,12 +1440,14 @@ def _tool_upcoming_events(args: dict[str, Any]) -> list[dict[str, Any]]:
     events = _call_upcoming_events(horizon_min)
     out: list[dict[str, Any]] = []
     for ev in events:
-        out.append({
-            "ts_utc": getattr(ev, "ts_utc", ""),
-            "kind": getattr(ev, "kind", ""),
-            "symbol": getattr(ev, "symbol", None),
-            "severity": int(getattr(ev, "severity", 1)),
-        })
+        out.append(
+            {
+                "ts_utc": getattr(ev, "ts_utc", ""),
+                "kind": getattr(ev, "kind", ""),
+                "symbol": getattr(ev, "symbol", None),
+                "severity": int(getattr(ev, "severity", 1)),
+            }
+        )
     return out
 
 
@@ -1206,7 +1491,8 @@ def _tool_deploy_strategy(args: dict[str, Any]) -> dict[str, Any]:
         if isinstance(data, dict) and isinstance(data.get("deactivated"), dict):
             data["deactivated"].pop(bot_id, None)
             _KAIZEN_OVERRIDES_PATH.write_text(
-                json.dumps(data, indent=2, default=str), encoding="utf-8",
+                json.dumps(data, indent=2, default=str),
+                encoding="utf-8",
             )
     _append_kaizen_action({**prior_action_log_entry, "status": "APPLIED"})
     return {"status": "APPLIED", "prior": True}
@@ -1269,7 +1555,8 @@ def _tool_kill_switch(args: dict[str, Any]) -> dict[str, Any]:
     }
     _HERMES_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
     _HERMES_STATE_PATH.write_text(
-        json.dumps(payload, indent=2, default=str), encoding="utf-8",
+        json.dumps(payload, indent=2, default=str),
+        encoding="utf-8",
     )
     return {"status": "APPLIED", "killed_at": killed_at, "scope": "all"}
 
@@ -1295,7 +1582,10 @@ def _tool_set_size_modifier(args: dict[str, Any]) -> dict[str, Any]:
     if ttl_minutes <= 0:
         ttl_minutes = 240
     return _call_apply_size_modifier(
-        bot_id=bot_id, modifier=modifier, reason=reason, ttl_minutes=ttl_minutes,
+        bot_id=bot_id,
+        modifier=modifier,
+        reason=reason,
+        ttl_minutes=ttl_minutes,
     )
 
 
@@ -1317,8 +1607,11 @@ def _tool_pin_school_weight(args: dict[str, Any]) -> dict[str, Any]:
     if ttl_minutes <= 0:
         ttl_minutes = 240
     return _call_apply_school_weight(
-        asset=asset, school=school, weight=weight,
-        reason=reason, ttl_minutes=ttl_minutes,
+        asset=asset,
+        school=school,
+        weight=weight,
+        reason=reason,
+        ttl_minutes=ttl_minutes,
     )
 
 
@@ -1463,9 +1756,7 @@ def _tool_apply_regime_pack(args: dict[str, Any]) -> dict[str, Any]:
     if ttl <= 0:
         ttl = 240
     bot_ids_arg = args.get("bot_ids") or []
-    bot_ids: list[str] | None = (
-        [str(b) for b in bot_ids_arg] if isinstance(bot_ids_arg, list) else None
-    )
+    bot_ids: list[str] | None = [str(b) for b in bot_ids_arg] if isinstance(bot_ids_arg, list) else None
     return _call_apply_regime_pack(name=name, ttl_minutes=ttl, bot_ids=bot_ids)
 
 
@@ -1486,7 +1777,9 @@ def _tool_kelly_recommend(args: dict[str, Any]) -> list[dict[str, Any]]:
     except (TypeError, ValueError):
         dp = 0.15
     return _call_kelly_recommend(
-        lookback_days=lookback, kelly_fraction=kf, drawdown_penalty=dp,
+        lookback_days=lookback,
+        kelly_fraction=kf,
+        drawdown_penalty=dp,
     )
 
 
@@ -1517,6 +1810,30 @@ def _tool_cost_anomaly(args: dict[str, Any]) -> dict[str, Any]:
     return _call_cost_anomaly(window)
 
 
+def _tool_pnl_summary(args: dict[str, Any]) -> dict[str, Any]:
+    """Operator PnL aggregation over a window."""
+    try:
+        win = float(args.get("window_hours", 24) or 24)
+    except (TypeError, ValueError):
+        win = 24.0
+    if win <= 0:
+        win = 24.0
+    return _call_pnl_summary(win)
+
+
+def _tool_pnl_multi_window(_args: dict[str, Any]) -> dict[str, Any]:
+    """Today + week + month PnL bundle."""
+    return _call_pnl_multi_window()
+
+
+def _tool_material_events_since(args: dict[str, Any]) -> dict[str, Any]:
+    """Material-event suppress check for cron tasks."""
+    asof = str(args.get("asof_iso", "") or "")
+    if not asof:
+        return {"has_material": False, "reasons": ["missing_asof_iso"]}
+    return _call_material_events_since(asof)
+
+
 def _tool_zeus(args: dict[str, Any]) -> dict[str, Any]:
     """ZEUS SUPERCHARGE — unified brain snapshot in one call."""
     force = bool(args.get("force_refresh", False))
@@ -1527,6 +1844,88 @@ def _tool_zeus(args: dict[str, Any]) -> dict[str, Any]:
     if trace_n <= 0:
         trace_n = 10
     return _call_zeus_snapshot(force_refresh=force, trace_n=trace_n)
+
+
+def _tool_anomaly_scan(_args: dict[str, Any]) -> dict[str, Any]:
+    """Run anomaly watcher detectors. Returns NEW (post-dedup) hits."""
+    hits = _call_anomaly_scan()
+    return {
+        "n_new": len(hits),
+        "hits": hits,
+        "asof": _now_iso(),
+    }
+
+
+def _tool_anomaly_recent(args: dict[str, Any]) -> dict[str, Any]:
+    """Replay recent anomaly hits from the watcher log."""
+    try:
+        since = int(args.get("since_hours", 24) or 24)
+    except (TypeError, ValueError):
+        since = 24
+    if since <= 0:
+        since = 24
+    recent = _call_anomaly_recent(since_hours=since)
+    return {
+        "n": len(recent),
+        "since_hours": since,
+        "hits": recent,
+        "asof": _now_iso(),
+    }
+
+
+def _tool_preflight(_args: dict[str, Any]) -> dict[str, Any]:
+    """Live-cutover Go/No-Go preflight reporter."""
+    return _call_preflight()
+
+
+def _tool_prop_firm_status(_args: dict[str, Any]) -> dict[str, Any]:
+    """Snapshot every prop firm account's live state + rules + headroom."""
+    snaps = _call_prop_firm_status()
+    n_critical = sum(1 for s in snaps if s.get("severity") in ("critical", "blown"))
+    n_warn = sum(1 for s in snaps if s.get("severity") == "warn")
+    return {
+        "asof": _now_iso(),
+        "n_accounts": len(snaps),
+        "n_critical_or_blown": n_critical,
+        "n_warn": n_warn,
+        "snapshots": snaps,
+    }
+
+
+def _tool_prop_firm_evaluate(args: dict[str, Any]) -> dict[str, Any]:
+    """Worst-case rule check on one proposed signal."""
+    account_id = str(args.get("account_id", "") or "")
+    if not account_id:
+        return {
+            "allowed": False,
+            "reason": "missing account_id",
+            "blockers": ["missing_account_id"],
+            "headroom": {},
+            "worst_case_loss_usd": 0.0,
+            "asof": _now_iso(),
+        }
+    signal = args.get("signal") or {}
+    if not isinstance(signal, dict):
+        return {
+            "allowed": False,
+            "reason": "signal must be a dict",
+            "blockers": ["malformed_signal"],
+            "headroom": {},
+            "worst_case_loss_usd": 0.0,
+            "asof": _now_iso(),
+        }
+    return _call_prop_firm_evaluate(account_id, signal)
+
+
+def _tool_prop_firm_killall(args: dict[str, Any]) -> dict[str, Any]:
+    """Engage emergency kill_all with structured reason."""
+    reason = str(args.get("reason", "") or "")
+    if not reason:
+        return {
+            "status": "REJECTED",
+            "error": "reason is required (audit trail for prop-firm post-mortems)",
+        }
+    return _call_prop_firm_killall(reason)
 
 
 def _tool_clear_override(args: dict[str, Any]) -> dict[str, Any]:
@@ -1644,7 +2043,16 @@ _HANDLERS: dict[str, Callable[[dict[str, Any]], Any]] = {
     "jarvis_cost_summary": _tool_cost_summary,
     "jarvis_cost_today": _tool_cost_today,
     "jarvis_cost_anomaly": _tool_cost_anomaly,
+    "jarvis_pnl_summary": _tool_pnl_summary,
+    "jarvis_pnl_multi_window": _tool_pnl_multi_window,
+    "jarvis_material_events_since": _tool_material_events_since,
     "jarvis_zeus": _tool_zeus,
+    "jarvis_anomaly_scan": _tool_anomaly_scan,
+    "jarvis_anomaly_recent": _tool_anomaly_recent,
+    "jarvis_preflight": _tool_preflight,
+    "jarvis_prop_firm_status": _tool_prop_firm_status,
+    "jarvis_prop_firm_evaluate": _tool_prop_firm_evaluate,
+    "jarvis_prop_firm_killall": _tool_prop_firm_killall,
 }
 
 
@@ -1682,27 +2090,31 @@ def dispatch_tool_call(name: str, args: dict[str, Any] | None) -> dict[str, Any]
     #     itself is the auth. Audit-logged as `auth: env` so we can
     #     distinguish the two paths.
     if not expected:
-        _append_audit({
-            "ts": _now_iso(),
-            "tool": name,
-            "args": audit_args,
-            "auth": "failed",
-            "result_status": "auth_no_token_configured",
-            "elapsed_ms": round((time.monotonic() - started) * 1000.0, 3),
-            "caller": _CALLER,
-        })
+        _append_audit(
+            {
+                "ts": _now_iso(),
+                "tool": name,
+                "args": audit_args,
+                "auth": "failed",
+                "result_status": "auth_no_token_configured",
+                "elapsed_ms": round((time.monotonic() - started) * 1000.0, 3),
+                "caller": _CALLER,
+            }
+        )
         return {"ok": False, "data": None, "error": "auth_no_token_configured"}
 
     if auth and auth != expected:
-        _append_audit({
-            "ts": _now_iso(),
-            "tool": name,
-            "args": audit_args,
-            "auth": "failed",
-            "result_status": "auth_failed",
-            "elapsed_ms": round((time.monotonic() - started) * 1000.0, 3),
-            "caller": _CALLER,
-        })
+        _append_audit(
+            {
+                "ts": _now_iso(),
+                "tool": name,
+                "args": audit_args,
+                "auth": "failed",
+                "result_status": "auth_failed",
+                "elapsed_ms": round((time.monotonic() - started) * 1000.0, 3),
+                "caller": _CALLER,
+            }
+        )
         return {"ok": False, "data": None, "error": "auth_failed"}
 
     # Either auth matched explicitly, or auth was omitted and env-token
@@ -1711,15 +2123,17 @@ def dispatch_tool_call(name: str, args: dict[str, Any] | None) -> dict[str, Any]
 
     handler = _HANDLERS.get(name)
     if handler is None:
-        _append_audit({
-            "ts": _now_iso(),
-            "tool": name,
-            "args": audit_args,
-            "auth": _auth_mode,
-            "result_status": "unknown_tool",
-            "elapsed_ms": round((time.monotonic() - started) * 1000.0, 3),
-            "caller": _CALLER,
-        })
+        _append_audit(
+            {
+                "ts": _now_iso(),
+                "tool": name,
+                "args": audit_args,
+                "auth": _auth_mode,
+                "result_status": "unknown_tool",
+                "elapsed_ms": round((time.monotonic() - started) * 1000.0, 3),
+                "caller": _CALLER,
+            }
+        )
         return {"ok": False, "data": None, "error": f"unknown_tool: {name}"}
 
     # Strip the auth field before the handler sees it — the handler
@@ -1735,15 +2149,17 @@ def dispatch_tool_call(name: str, args: dict[str, Any] | None) -> dict[str, Any]
         if isinstance(status, str):
             result_status = status
 
-    _append_audit({
-        "ts": _now_iso(),
-        "tool": name,
-        "args": audit_args,
-        "auth": _auth_mode,
-        "result_status": result_status,
-        "elapsed_ms": round((time.monotonic() - started) * 1000.0, 3),
-        "caller": _CALLER,
-    })
+    _append_audit(
+        {
+            "ts": _now_iso(),
+            "tool": name,
+            "args": audit_args,
+            "auth": _auth_mode,
+            "result_status": result_status,
+            "elapsed_ms": round((time.monotonic() - started) * 1000.0, 3),
+            "caller": _CALLER,
+        }
+    )
     return envelope
 
 
@@ -1828,24 +2244,34 @@ def _serve_with_stdio_fallback() -> None:
         params = msg.get("params") or {}
 
         if method == "initialize":
-            resp = _jsonrpc_response(req_id, result={
-                "protocolVersion": "2024-11-05",
-                "capabilities": {"tools": {}},
-                "serverInfo": {"name": "jarvis-mcp", "version": "0.1.0"},
-            })
+            resp = _jsonrpc_response(
+                req_id,
+                result={
+                    "protocolVersion": "2024-11-05",
+                    "capabilities": {"tools": {}},
+                    "serverInfo": {"name": "jarvis-mcp", "version": "0.1.0"},
+                },
+            )
         elif method == "tools/list":
             resp = _jsonrpc_response(req_id, result={"tools": list_tools()})
         elif method == "tools/call":
             tool_name = params.get("name", "")
             args = params.get("arguments") or {}
             envelope = dispatch_tool_call(tool_name, args)
-            resp = _jsonrpc_response(req_id, result={
-                "content": [{"type": "text", "text": json.dumps(envelope, default=str)}],
-            })
+            resp = _jsonrpc_response(
+                req_id,
+                result={
+                    "content": [{"type": "text", "text": json.dumps(envelope, default=str)}],
+                },
+            )
         else:
-            resp = _jsonrpc_response(req_id, error={
-                "code": -32601, "message": f"method not found: {method}",
-            })
+            resp = _jsonrpc_response(
+                req_id,
+                error={
+                    "code": -32601,
+                    "message": f"method not found: {method}",
+                },
+            )
 
         out.write(json.dumps(resp, default=str) + "\n")
         out.flush()

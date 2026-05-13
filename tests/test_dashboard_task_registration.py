@@ -15,9 +15,7 @@ ROOT_DIRTY_INSPECT_SCRIPT = ROOT / "deploy" / "scripts" / "inspect_vps_root_dirt
 ROOT_RECONCILE_PLAN_SCRIPT = ROOT / "deploy" / "scripts" / "plan_vps_root_reconciliation.ps1"
 DIAG_COMPACT_SCRIPT = ROOT / "deploy" / "scripts" / "diag_compact.ps1"
 FULL_DIAGNOSTICS_SCRIPT = ROOT / "deploy" / "scripts" / "full_diagnostics.ps1"
-VPS_BOOTSTRAP_SCRIPTS = (
-    ROOT / "deploy" / "vps_bootstrap.ps1",
-)
+VPS_BOOTSTRAP_SCRIPTS = (ROOT / "deploy" / "vps_bootstrap.ps1",)
 VPS_BOOTSTRAP_SERVICE_SCRIPTS = (
     ROOT / "deploy" / "vps_bootstrap.ps1",
     ROOT / "deploy" / "vps_bootstrap_ascii.ps1",
@@ -40,7 +38,7 @@ def test_dashboard_api_task_registration_is_canonical_and_logged() -> None:
     assert "New-ScheduledTaskTrigger -AtStartup" in text
     assert "New-ScheduledTaskTrigger -AtLogOn" in text
     assert "RestartCount 999" in text
-    assert 'New-ScheduledTaskAction -Execute $Runner' in text
+    assert "New-ScheduledTaskAction -Execute $Runner" in text
     assert "Start-ScheduledTask -TaskName $TaskName" in text
     assert "Get-CimInstance Win32_Process" in text
     assert "deploy.scripts.dashboard_api:app" in text
@@ -292,13 +290,13 @@ def test_dashboard_sync_script_is_child_only_and_canonical() -> None:
     assert "tracked local changes" in text
     assert "non-overlapping untracked file(s)" in text
     assert "overlap incoming changes" in text
-    assert 'git ls-files --others --exclude-standard' in text
+    assert "git ls-files --others --exclude-standard" in text
     assert 'git diff --name-only HEAD.."origin/$Branch"' in text
     assert 'Invoke-Git -WorkingDirectory $EngineDir -Arguments @("pull", "--ff-only", "origin", $Branch)' in text
-    assert 'Get-ScheduledTask -TaskName $TaskName' in text
-    assert 'Start-ScheduledTask -TaskName $TaskName' in text
-    assert 'Get-ScheduledTask -TaskName $ProxyTaskName' in text
-    assert 'Start-ScheduledTask -TaskName $ProxyTaskName' in text
+    assert "Get-ScheduledTask -TaskName $TaskName" in text
+    assert "Start-ScheduledTask -TaskName $TaskName" in text
+    assert "Get-ScheduledTask -TaskName $ProxyTaskName" in text
+    assert "Start-ScheduledTask -TaskName $ProxyTaskName" in text
     assert "Dashboard proxy probe failed after" in text
     assert "proxy_probe_attempt" in text
     assert "Dashboard probe failed after" in text

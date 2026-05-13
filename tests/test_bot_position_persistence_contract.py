@@ -70,6 +70,5 @@ def test_bot_stop_hooks_persist_or_delegate_positions() -> None:
                 )
             else:
                 assert _delegates_to_super_stop(stop), (
-                    f"{class_name}.stop must delegate to super().stop() so "
-                    "the parent position-persistence hook runs"
+                    f"{class_name}.stop must delegate to super().stop() so the parent position-persistence hook runs"
                 )

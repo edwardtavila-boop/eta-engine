@@ -1,6 +1,7 @@
 """Tests for wave-6: v22 sage candidate, MultiPolicyDispatcher,
 FeatureFlags, BotPreFlightMixin (2026-04-27).
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -33,6 +34,7 @@ def test_v22_passes_through_when_no_sage_bars() -> None:
         v22_mod.evaluate_request = lambda req, ctx: base_resp  # type: ignore[assignment]
 
         from eta_engine.brain.jarvis_admin import ActionRequest, ActionType, SubsystemId
+
         # No sage_bars in payload
         req = ActionRequest(
             subsystem=SubsystemId.BOT_MNQ,
@@ -70,6 +72,7 @@ def test_v22_passes_through_for_non_risk_adding_verdicts() -> None:
         v22_mod.evaluate_request = lambda req, ctx: base_resp  # type: ignore[assignment]
 
         from eta_engine.brain.jarvis_admin import ActionRequest, ActionType, SubsystemId
+
         req = ActionRequest(
             subsystem=SubsystemId.BOT_MNQ,
             action=ActionType.ORDER_PLACE,
@@ -142,6 +145,7 @@ def test_diff_matrix_is_json_serializable() -> None:
 
 def test_pessimism_rank_orders_correctly() -> None:
     from eta_engine.brain.jarvis_v3.multi_policy_dispatcher import _verdict_pessimism_rank
+
     assert _verdict_pessimism_rank("DENIED") < _verdict_pessimism_rank("DEFERRED")
     assert _verdict_pessimism_rank("DEFERRED") < _verdict_pessimism_rank("CONDITIONAL")
     assert _verdict_pessimism_rank("CONDITIONAL") < _verdict_pessimism_rank("APPROVED")
@@ -182,11 +186,13 @@ def test_flag_overridable_via_env(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_flag_unknown_returns_false() -> None:
     from eta_engine.brain.feature_flags import is_enabled
+
     assert is_enabled("THIS_FLAG_DOES_NOT_EXIST") is False
 
 
 def test_flags_snapshot_contains_all_known() -> None:
     from eta_engine.brain.feature_flags import ETA_FLAGS
+
     snap = ETA_FLAGS.snapshot()
     assert "BANDIT_LIVE_ROUTING" in snap
     assert "PRE_FLIGHT_CORRELATION" in snap
@@ -217,6 +223,7 @@ class _MixedBot:
         self._ask_returns = ask_returns
         # Borrow the mixin method
         from eta_engine.brain.bot_preflight_mixin import BotPreFlightMixin
+
         self.gate_or_block = BotPreFlightMixin.gate_or_block.__get__(self)
 
     def _ask_jarvis(self, action, **payload):
@@ -227,7 +234,10 @@ def test_mixin_falls_back_to_ask_jarvis_when_flag_off() -> None:
     """With PER_BOT_PRE_FLIGHT default-off, mixin uses _ask_jarvis path."""
     bot = _MixedBot(ask_returns=(True, None, "approved"))
     decision = bot.gate_or_block(
-        symbol="MNQ", side="long", confluence=8.0, fleet_positions={},
+        symbol="MNQ",
+        side="long",
+        confluence=8.0,
+        fleet_positions={},
     )
     assert decision.allowed is True
     assert decision.reason == "legacy _ask_jarvis path"
@@ -236,7 +246,10 @@ def test_mixin_falls_back_to_ask_jarvis_when_flag_off() -> None:
 def test_mixin_blocks_when_ask_jarvis_says_no() -> None:
     bot = _MixedBot(ask_returns=(False, None, "denied"))
     decision = bot.gate_or_block(
-        symbol="MNQ", side="long", confluence=5.0, fleet_positions={},
+        symbol="MNQ",
+        side="long",
+        confluence=5.0,
+        fleet_positions={},
     )
     assert decision.allowed is False
     assert decision.binding == "jarvis"
@@ -257,6 +270,7 @@ def test_mixin_routes_through_pre_flight_when_flag_on(
         # _ask_jarvis (BaseBot)
         def __init__(self) -> None:
             from types import SimpleNamespace
+
             self.config = SimpleNamespace(name="x")
             self._jarvis = None
             self._journal = None
@@ -270,7 +284,9 @@ def test_mixin_routes_through_pre_flight_when_flag_on(
     bot = _PreFlightBot()
     # Open MNQ position then ask for NQ -> should hit correlation throttle
     decision = bot.gate_or_block(
-        symbol="NQ", side="long", confluence=8.0,
+        symbol="NQ",
+        side="long",
+        confluence=8.0,
         fleet_positions={"MNQ": 2.0},  # 0.99 corr
     )
     assert decision.allowed is False

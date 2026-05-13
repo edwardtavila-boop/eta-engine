@@ -99,9 +99,9 @@ class HtfRegimeClassifierConfig:
 class HtfRegimeClassification:
     """The classifier's output for a single bar."""
 
-    bias: str    # "long" | "short" | "neutral"
+    bias: str  # "long" | "short" | "neutral"
     regime: str  # "trending" | "ranging" | "volatile"
-    mode: str    # "trend_follow" | "mean_revert" | "skip"
+    mode: str  # "trend_follow" | "mean_revert" | "skip"
     # Audit: the raw values that produced the classification
     close: float = 0.0
     fast_ema: float = 0.0
@@ -146,9 +146,7 @@ class HtfRegimeClassifier:
             else 0.66 * self.cfg.slope_threshold_pct
         )
         self._atr_exit = (
-            self.cfg.atr_pct_max_exit
-            if self.cfg.atr_pct_max_exit is not None
-            else 1.5 * self.cfg.range_atr_pct_max
+            self.cfg.atr_pct_max_exit if self.cfg.atr_pct_max_exit is not None else 1.5 * self.cfg.range_atr_pct_max
         )
 
     def update(self, bar: BarData) -> None:
@@ -157,17 +155,11 @@ class HtfRegimeClassifier:
         if self._fast_ema is None:
             self._fast_ema = bar.close
         else:
-            self._fast_ema = (
-                self._fast_alpha * bar.close
-                + (1 - self._fast_alpha) * self._fast_ema
-            )
+            self._fast_ema = self._fast_alpha * bar.close + (1 - self._fast_alpha) * self._fast_ema
         if self._slow_ema is None:
             self._slow_ema = bar.close
         else:
-            self._slow_ema = (
-                self._slow_alpha * bar.close
-                + (1 - self._slow_alpha) * self._slow_ema
-            )
+            self._slow_ema = self._slow_alpha * bar.close + (1 - self._slow_alpha) * self._slow_ema
         self._slow_ema_history.append(self._slow_ema)
         self._atr_window.append((bar.high, bar.low))
 
@@ -177,13 +169,11 @@ class HtfRegimeClassifier:
         Always returns a valid classification; during warmup returns
         the safe ("neutral", "volatile", "skip") triple.
         """
-        if (
-            self._bars_seen < self.cfg.warmup_bars
-            or self._fast_ema is None
-            or self._slow_ema is None
-        ):
+        if self._bars_seen < self.cfg.warmup_bars or self._fast_ema is None or self._slow_ema is None:
             return HtfRegimeClassification(
-                bias="neutral", regime="volatile", mode="skip",
+                bias="neutral",
+                regime="volatile",
+                mode="skip",
                 close=bar.close,
                 fast_ema=self._fast_ema or 0.0,
                 slow_ema=self._slow_ema or 0.0,
@@ -194,42 +184,26 @@ class HtfRegimeClassifier:
             slope_pct = 0.0
         else:
             old = self._slow_ema_history[-self.cfg.slope_lookback - 1]
-            slope_pct = (
-                (self._slow_ema - old) / max(old, 1e-9) * 100.0
-            )
+            slope_pct = (self._slow_ema - old) / max(old, 1e-9) * 100.0
 
         # ── Distance from slow EMA ──
-        distance_pct = (
-            (bar.close - self._slow_ema) / max(self._slow_ema, 1e-9) * 100.0
-        )
+        distance_pct = (bar.close - self._slow_ema) / max(self._slow_ema, 1e-9) * 100.0
 
         # ── ATR / close as % ──
         if not self._atr_window:
             atr_pct = 0.0
         else:
-            atr = (
-                sum(h - low for h, low in self._atr_window) / len(self._atr_window)
-            )
+            atr = sum(h - low for h, low in self._atr_window) / len(self._atr_window)
             atr_pct = atr / max(bar.close, 1e-9) * 100.0
 
         # ── Bias ──
         # Asymmetric hysteresis: when CURRENTLY in trend mode, use
         # the looser exit thresholds (i.e. easier to STAY in trend
         # than to ENTER it). Prevents mode-thrash near the threshold.
-        slope_thresh = (
-            self._slope_exit
-            if self._currently_trending
-            else self.cfg.slope_threshold_pct
-        )
-        if (
-            distance_pct > 0
-            and slope_pct > slope_thresh
-        ):
+        slope_thresh = self._slope_exit if self._currently_trending else self.cfg.slope_threshold_pct
+        if distance_pct > 0 and slope_pct > slope_thresh:
             bias = "long"
-        elif (
-            distance_pct < 0
-            and slope_pct < -slope_thresh
-        ):
+        elif distance_pct < 0 and slope_pct < -slope_thresh:
             bias = "short"
         else:
             bias = "neutral"
@@ -238,11 +212,7 @@ class HtfRegimeClassifier:
         # Same hysteresis principle: when in trend mode, allow more
         # ATR before flipping to volatile (i.e. require atr_pct to
         # exceed atr_pct_max_exit, not just range_atr_pct_max).
-        atr_thresh = (
-            self._atr_exit
-            if self._currently_trending
-            else self.cfg.range_atr_pct_max
-        )
+        atr_thresh = self._atr_exit if self._currently_trending else self.cfg.range_atr_pct_max
         if abs(distance_pct) > self.cfg.trend_distance_pct:
             regime = "trending"
         elif atr_pct < atr_thresh:
@@ -260,10 +230,12 @@ class HtfRegimeClassifier:
 
         # Update hysteresis state — track whether we're currently in
         # a trending regime so the next bar uses the right thresholds.
-        self._currently_trending = (regime == "trending")
+        self._currently_trending = regime == "trending"
 
         return HtfRegimeClassification(
-            bias=bias, regime=regime, mode=mode,
+            bias=bias,
+            regime=regime,
+            mode=mode,
             close=bar.close,
             fast_ema=self._fast_ema,
             slow_ema=self._slow_ema,

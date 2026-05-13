@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
-from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, Callable
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from eta_engine.core.data_pipeline import BarData
 
 logger = logging.getLogger(__name__)
@@ -42,19 +45,21 @@ class IbGatewayFeed:
 
     async def connect(self) -> bool:
         try:
-            from ib_insync import IB, Future
+            from ib_insync import IB
         except ImportError:
             logger.error("ib_insync not installed. Run: pip install ib_insync")
             return False
         try:
             ib = IB()
-            loop = asyncio.get_event_loop()
+            asyncio.get_event_loop()
             ib.connect(self.host, self.port, clientId=self.client_id, timeout=15)
             self._ib = ib
             self._connected = True
             logger.info(
                 "IB Gateway feed connected: %s:%s client=%s",
-                self.host, self.port, self.client_id,
+                self.host,
+                self.port,
+                self.client_id,
             )
             return True
         except Exception as exc:
@@ -65,10 +70,8 @@ class IbGatewayFeed:
         self._running = False
         if self._task is not None:
             self._task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._task
-            except asyncio.CancelledError:
-                pass
             self._task = None
         if self._ib is not None:
             try:
@@ -112,23 +115,30 @@ class IbGatewayFeed:
                 formatDate=1,
                 keepUpToDate=False,
             )
-            bar_size_sec = _timeframe_seconds(self.timeframe)
+            _timeframe_seconds(self.timeframe)
             for h in hist:
-                bars.append(BarData(
-                    timestamp=h.date if hasattr(h.date, "tzinfo") else h.date.replace(tzinfo=UTC),
-                    symbol=self.symbol,
-                    open=float(h.open),
-                    high=float(h.high),
-                    low=float(h.low),
-                    close=float(h.close),
-                    volume=float(h.volume),
-                ))
+                bars.append(
+                    BarData(
+                        timestamp=h.date if hasattr(h.date, "tzinfo") else h.date.replace(tzinfo=UTC),
+                        symbol=self.symbol,
+                        open=float(h.open),
+                        high=float(h.high),
+                        low=float(h.low),
+                        close=float(h.close),
+                        volume=float(h.volume),
+                    )
+                )
             logger.info("IB Gateway: loaded %d historical %s bars", len(bars), self.timeframe)
         except Exception as exc:
             logger.warning("IB Gateway historical data failed: %s", exc)
         return bars
 
     async def _run_stream(self) -> None:
+        try:
+            from ib_insync import Future
+        except ImportError:
+            logger.error("ib_insync not installed. Run: pip install ib_insync")
+            return
         self._ib.disconnectedEvent += self._on_disconnected
         contract = Future(self.symbol, includeExpired=False)
         self._ib.reqMktData(contract, "", False, False)
@@ -147,8 +157,12 @@ class IbGatewayFeed:
                 bucket_key = _bucket_key(ts, self.timeframe)
                 if bucket_key not in bars:
                     bars[bucket_key] = {
-                        "open": price, "high": price, "low": price,
-                        "close": price, "volume": 0, "ts": ts,
+                        "open": price,
+                        "high": price,
+                        "low": price,
+                        "close": price,
+                        "volume": 0,
+                        "ts": ts,
                     }
                 bar = bars[bucket_key]
                 bar["high"] = max(bar["high"], price)

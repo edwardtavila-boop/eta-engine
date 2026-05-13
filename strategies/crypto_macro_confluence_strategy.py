@@ -205,32 +205,38 @@ class CryptoMacroConfluenceStrategy:
     # -- provider attachment --------------------------------------------------
 
     def attach_eth_alignment_provider(
-        self, p: Callable[[BarData], float] | None,
+        self,
+        p: Callable[[BarData], float] | None,
     ) -> None:
         self._eth_provider = p
 
     def attach_funding_provider(
-        self, p: Callable[[BarData], float] | None,
+        self,
+        p: Callable[[BarData], float] | None,
     ) -> None:
         self._funding_provider = p
 
     def attach_macro_provider(
-        self, p: Callable[[BarData], float] | None,
+        self,
+        p: Callable[[BarData], float] | None,
     ) -> None:
         self._macro_provider = p
 
     def attach_etf_flow_provider(
-        self, p: Callable[[BarData], float] | None,
+        self,
+        p: Callable[[BarData], float] | None,
     ) -> None:
         self._etf_provider = p
 
     def attach_onchain_provider(
-        self, p: Callable[[BarData], float] | None,
+        self,
+        p: Callable[[BarData], float] | None,
     ) -> None:
         self._onchain_provider = p
 
     def attach_sentiment_provider(
-        self, p: Callable[[BarData], float] | None,
+        self,
+        p: Callable[[BarData], float] | None,
     ) -> None:
         self._sentiment_provider = p
 
@@ -248,14 +254,16 @@ class CryptoMacroConfluenceStrategy:
         # Update HTF EMA before delegating (filter A needs it)
         if self.cfg.filters.htf_ema_period > 0:
             self._htf_ema = _ema_step(
-                self._htf_ema, bar.close, self.cfg.filters.htf_ema_period,
+                self._htf_ema,
+                bar.close,
+                self.cfg.filters.htf_ema_period,
             )
         # Stash the prior-bar EMA for the HTF filter to read
         self._prev_htf_ema = prev_htf_ema
 
         # Track ATR history for the volatility-regime filter
         if self.cfg.filters.vol_band_lookback > 0:
-            atr_window = hist[-self.cfg.base.atr_period:] if hist else []
+            atr_window = hist[-self.cfg.base.atr_period :] if hist else []
             if len(atr_window) >= 2:
                 atr = sum(b.high - b.low for b in atr_window) / len(atr_window)
                 self._atr_history.append(atr)
@@ -300,6 +308,7 @@ class CryptoMacroConfluenceStrategy:
 
         # All filters passed — annotate regime to record confluence
         from dataclasses import replace
+
         return replace(opened, regime=opened.regime + "_macro_conf")
 
     # -- filter implementations -----------------------------------------------
@@ -330,7 +339,7 @@ class CryptoMacroConfluenceStrategy:
         too high (panic) within the rolling window."""
         if self.cfg.filters.vol_band_lookback <= 0:
             return True
-        history = self._atr_history[-self.cfg.filters.vol_band_lookback:]
+        history = self._atr_history[-self.cfg.filters.vol_band_lookback :]
         if len(history) < self.cfg.filters.vol_band_lookback // 2:
             return True  # warmup — fail-open
         sorted_h = sorted(history)
@@ -448,10 +457,7 @@ class CryptoMacroConfluenceStrategy:
             self._n_provider_nan += 1
             return not self.cfg.filters.fail_closed
         if legacy and threshold <= 0.0:
-            return (
-                (opened.side == "BUY" and score > 0)
-                or (opened.side == "SELL" and score < 0)
-            )
+            return (opened.side == "BUY" and score > 0) or (opened.side == "SELL" and score < 0)
         if opened.side == "BUY":
             return score >= threshold
         return score <= -threshold
@@ -495,6 +501,4 @@ class CryptoMacroConfluenceStrategy:
         # cleared instantly. This is intentional — the entry didn't
         # actually happen, so the cooldown shouldn't apply.
         if self._base._last_entry_idx is not None:
-            self._base._last_entry_idx = (
-                self._base._bars_seen - self.cfg.base.min_bars_between_trades - 1
-            )
+            self._base._last_entry_idx = self._base._bars_seen - self.cfg.base.min_bars_between_trades - 1

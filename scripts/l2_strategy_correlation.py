@@ -29,6 +29,7 @@ Run
 
     python -m eta_engine.scripts.l2_strategy_correlation --days 60
 """
+
 from __future__ import annotations
 
 # ruff: noqa: PLR2004
@@ -83,14 +84,12 @@ def _pearson(xs: list[float], ys: list[float]) -> float | None:
     return num / (sx * sy)
 
 
-def _build_daily_data(*, since_days: int,
-                       _signal_path: Path,
-                       _fill_path: Path) -> dict[str, dict]:
+def _build_daily_data(*, since_days: int, _signal_path: Path, _fill_path: Path) -> dict[str, dict]:
     """Return per-strategy dict of:
-        {strategy_id: {
-            'pnl_by_day': {date: total_pnl_usd},
-            'sides_by_day': {date: [LONG/SHORT, ...]}
-        }}"""
+    {strategy_id: {
+        'pnl_by_day': {date: total_pnl_usd},
+        'sides_by_day': {date: [LONG/SHORT, ...]}
+    }}"""
     if not _signal_path.exists():
         return {}
     cutoff = datetime.now(UTC) - timedelta(days=since_days)
@@ -145,41 +144,35 @@ def _build_daily_data(*, since_days: int,
         strategy = sig.get("strategy_id", "unknown")
         day = sig["_dt"].strftime("%Y-%m-%d")
         side = str(sig.get("side", "?")).upper()
-        bucket = by_strategy.setdefault(
-            strategy, {"pnl_by_day": {}, "sides_by_day": {}})
+        bucket = by_strategy.setdefault(strategy, {"pnl_by_day": {}, "sides_by_day": {}})
         bucket["sides_by_day"].setdefault(day, []).append(side)
         # Find pnl: entry + terminal fill
         sig_fills = fills_by_sig.get(sid, [])
-        entry = next((f for f in sig_fills
-                       if str(f.get("exit_reason", "")).upper() == "ENTRY"),
-                      None)
-        terminal = next((f for f in sig_fills
-                          if str(f.get("exit_reason", "")).upper()
-                             in ("TARGET", "STOP", "TIMEOUT")),
-                         None)
+        entry = next((f for f in sig_fills if str(f.get("exit_reason", "")).upper() == "ENTRY"), None)
+        terminal = next(
+            (f for f in sig_fills if str(f.get("exit_reason", "")).upper() in ("TARGET", "STOP", "TIMEOUT")), None
+        )
         if entry and terminal:
             entry_price = float(entry.get("actual_fill_price", 0))
             exit_price = float(terminal.get("actual_fill_price", 0))
             is_long = side in ("LONG", "BUY")
             pts = (exit_price - entry_price) if is_long else (entry_price - exit_price)
-            commission = float(terminal.get("commission_usd", 0)) \
-                          + float(entry.get("commission_usd", 0))
+            commission = float(terminal.get("commission_usd", 0)) + float(entry.get("commission_usd", 0))
             pnl = pts * 2.0 - commission
             bucket["pnl_by_day"][day] = bucket["pnl_by_day"].get(day, 0.0) + pnl
     return by_strategy
 
 
-def compute_correlations(*, since_days: int = 60,
-                          _signal_path: Path | None = None,
-                          _fill_path: Path | None = None) -> CorrelationReport:
+def compute_correlations(
+    *, since_days: int = 60, _signal_path: Path | None = None, _fill_path: Path | None = None
+) -> CorrelationReport:
     sig_path = _signal_path if _signal_path is not None else SIGNAL_LOG
     fill_path = _fill_path if _fill_path is not None else BROKER_FILL_LOG
-    by_strategy = _build_daily_data(
-        since_days=since_days,
-        _signal_path=sig_path, _fill_path=fill_path)
+    by_strategy = _build_daily_data(since_days=since_days, _signal_path=sig_path, _fill_path=fill_path)
     if len(by_strategy) < 2:
         return CorrelationReport(
-            n_strategies=len(by_strategy), n_pairs=0,
+            n_strategies=len(by_strategy),
+            n_pairs=0,
             notes=["need at least 2 strategies with history"],
         )
 
@@ -197,8 +190,7 @@ def compute_correlations(*, since_days: int = 60,
         # Pnl correlation across days where both have data
         shared_days = sorted(set(a_pnl.keys()) & set(b_pnl.keys()))
         if len(shared_days) >= 5:
-            pnl_corr = _pearson([a_pnl[d] for d in shared_days],
-                                  [b_pnl[d] for d in shared_days])
+            pnl_corr = _pearson([a_pnl[d] for d in shared_days], [b_pnl[d] for d in shared_days])
         else:
             pnl_corr = None
         # Signal agreement: P(same side | both fire same day)
@@ -219,22 +211,26 @@ def compute_correlations(*, since_days: int = 60,
                 n_agree += 1
             else:
                 n_disagree += 1
-        agreement = (n_agree / len(shared_sig_days)
-                       if shared_sig_days else None)
+        agreement = n_agree / len(shared_sig_days) if shared_sig_days else None
         n_only_a = len(set(a_sides.keys()) - set(b_sides.keys()))
         n_only_b = len(set(b_sides.keys()) - set(a_sides.keys()))
-        pairs.append(StrategyPair(
-            strategy_a=a, strategy_b=b,
-            pnl_correlation=round(pnl_corr, 3) if pnl_corr is not None else None,
-            signal_agreement_rate=round(agreement, 3) if agreement is not None else None,
-            n_days_both_fire=len(shared_sig_days),
-            n_days_only_a=n_only_a,
-            n_days_only_b=n_only_b,
-            n_days_total=len(sorted_days),
-        ))
+        pairs.append(
+            StrategyPair(
+                strategy_a=a,
+                strategy_b=b,
+                pnl_correlation=round(pnl_corr, 3) if pnl_corr is not None else None,
+                signal_agreement_rate=round(agreement, 3) if agreement is not None else None,
+                n_days_both_fire=len(shared_sig_days),
+                n_days_only_a=n_only_a,
+                n_days_only_b=n_only_b,
+                n_days_total=len(sorted_days),
+            )
+        )
 
     return CorrelationReport(
-        n_strategies=len(strategies), n_pairs=len(pairs), pairs=pairs,
+        n_strategies=len(strategies),
+        n_pairs=len(pairs),
+        pairs=pairs,
     )
 
 
@@ -247,9 +243,7 @@ def main() -> int:
     report = compute_correlations(since_days=args.days)
     try:
         with CORRELATION_LOG.open("a", encoding="utf-8") as f:
-            f.write(json.dumps({"ts": datetime.now(UTC).isoformat(),
-                                 **asdict(report)},
-                                separators=(",", ":")) + "\n")
+            f.write(json.dumps({"ts": datetime.now(UTC).isoformat(), **asdict(report)}, separators=(",", ":")) + "\n")
     except OSError as e:
         print(f"WARN: correlation log write failed: {e}", file=sys.stderr)
 

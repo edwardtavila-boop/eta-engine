@@ -1,4 +1,5 @@
 """Tests for hermes_bridge_health — the layered health-check script."""
+
 from __future__ import annotations
 
 import json
@@ -41,11 +42,13 @@ class _MockHermesHandler(BaseHTTPRequestHandler):
                 return
             length = int(self.headers.get("Content-Length", "0"))
             self.rfile.read(length)
-            self._send_json({
-                "choices": [
-                    {"message": {"role": "assistant", "content": "pong"}},
-                ],
-            })
+            self._send_json(
+                {
+                    "choices": [
+                        {"message": {"role": "assistant", "content": "pong"}},
+                    ],
+                }
+            )
         else:
             self._send_json({"error": "not_found"}, status=404)
 
@@ -103,10 +106,14 @@ def test_probe_auth_passes_with_correct_key_fails_without() -> None:
     server, port = _start_mock_server()
     try:
         ok_with_key, _, _ = hermes_bridge_health.probe_auth(
-            "127.0.0.1", port, api_key="test-key",
+            "127.0.0.1",
+            port,
+            api_key="test-key",
         )
         ok_without, _, _ = hermes_bridge_health.probe_auth(
-            "127.0.0.1", port, api_key=None,
+            "127.0.0.1",
+            port,
+            api_key=None,
         )
         assert ok_with_key
         assert not ok_without
@@ -182,19 +189,28 @@ def test_probe_with_timing_catches_exceptions() -> None:
 
 
 def test_main_returns_nonzero_when_any_layer_fails(
-    tmp_path: Path, monkeypatch, capsys,
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
 ) -> None:
     """End-to-end: any failing layer → exit code 1."""
     from eta_engine.scripts import hermes_bridge_health
 
     # Force tunnel to a port nothing's listening on so the run reports failures
-    rc = hermes_bridge_health.main([
-        "--host", "127.0.0.1",
-        "--port", "1",
-        "--audit-path", str(tmp_path / "no_audit.jsonl"),
-        "--memory-db", str(tmp_path / "no_mem.db"),
-        "--skip", "llm,jarvis_mcp,memory,overrides",  # skip layers that need a real gateway
-    ])
+    rc = hermes_bridge_health.main(
+        [
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "1",
+            "--audit-path",
+            str(tmp_path / "no_audit.jsonl"),
+            "--memory-db",
+            str(tmp_path / "no_mem.db"),
+            "--skip",
+            "llm,jarvis_mcp,memory,overrides",  # skip layers that need a real gateway
+        ]
+    )
     captured = capsys.readouterr()
     assert "HERMES-JARVIS BRIDGE HEALTH" in captured.out
     # Tunnel + gateway + auth probes WILL fail against port 1 → rc=1
@@ -205,14 +221,21 @@ def test_main_json_output(tmp_path: Path, capsys) -> None:
     """--json mode emits a parseable JSON document."""
     from eta_engine.scripts import hermes_bridge_health
 
-    rc = hermes_bridge_health.main([
-        "--host", "127.0.0.1",
-        "--port", "1",
-        "--audit-path", str(tmp_path / "no_audit.jsonl"),
-        "--memory-db", str(tmp_path / "no_mem.db"),
-        "--skip", "llm,jarvis_mcp,memory,overrides",
-        "--json",
-    ])
+    rc = hermes_bridge_health.main(
+        [
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "1",
+            "--audit-path",
+            str(tmp_path / "no_audit.jsonl"),
+            "--memory-db",
+            str(tmp_path / "no_mem.db"),
+            "--skip",
+            "llm,jarvis_mcp,memory,overrides",
+            "--json",
+        ]
+    )
     captured = capsys.readouterr()
     payload = json.loads(captured.out)
     assert "results" in payload

@@ -23,10 +23,13 @@ def _jsonl(path, records: list[dict]) -> None:  # noqa: ANN001
 def test_commission_tier_projection_counts_recent_fills(tmp_path) -> None:
     now = datetime.now(UTC).isoformat()
     fill_path = tmp_path / "fills.jsonl"
-    _jsonl(fill_path, [
-        {"ts": now, "qty_filled": 10},
-        {"ts": now, "qty_filled": 15},
-    ])
+    _jsonl(
+        fill_path,
+        [
+            {"ts": now, "qty_filled": 10},
+            {"ts": now, "qty_filled": 15},
+        ],
+    )
 
     projection = tiers.compute_tier_projection(since_days=30, _fill_path=fill_path)
 
@@ -45,13 +48,19 @@ def test_risk_metrics_reconstructs_trade_pnl(tmp_path) -> None:
     now = datetime.now(UTC).isoformat()
     signal_path = tmp_path / "signals.jsonl"
     fill_path = tmp_path / "fills.jsonl"
-    _jsonl(signal_path, [
-        {"ts": now, "signal_id": "sig-1", "strategy_id": "book_imbalance", "side": "BUY"},
-    ])
-    _jsonl(fill_path, [
-        {"ts": now, "signal_id": "sig-1", "exit_reason": "ENTRY", "actual_fill_price": 100.0},
-        {"ts": now, "signal_id": "sig-1", "exit_reason": "TARGET", "actual_fill_price": 101.0},
-    ])
+    _jsonl(
+        signal_path,
+        [
+            {"ts": now, "signal_id": "sig-1", "strategy_id": "book_imbalance", "side": "BUY"},
+        ],
+    )
+    _jsonl(
+        fill_path,
+        [
+            {"ts": now, "signal_id": "sig-1", "exit_reason": "ENTRY", "actual_fill_price": 100.0},
+            {"ts": now, "signal_id": "sig-1", "exit_reason": "TARGET", "actual_fill_price": 101.0},
+        ],
+    )
 
     metrics = risk.compute_metrics(
         "book_imbalance",
@@ -98,9 +107,12 @@ def test_strategy_correlation_reports_pair_from_logs(tmp_path) -> None:
 def test_universe_audit_flags_unsupported_symbol(tmp_path, monkeypatch) -> None:
     now = datetime.now(UTC).isoformat()
     backtest_path = tmp_path / "backtests.jsonl"
-    _jsonl(backtest_path, [
-        {"ts": now, "strategy": "book_imbalance", "symbol": "ZZZ"},
-    ])
+    _jsonl(
+        backtest_path,
+        [
+            {"ts": now, "strategy": "book_imbalance", "symbol": "ZZZ"},
+        ],
+    )
     monkeypatch.setattr(universe, "_strategy_registry_symbols", lambda: set())
     monkeypatch.setattr(universe, "_harness_supported_symbols", lambda: {"MNQ"})
     monkeypatch.setattr(universe, "_current_capture_symbols", lambda: {"MNQ"})
@@ -138,10 +150,13 @@ def test_per_symbol_ensemble_prefers_symbol_specific_weight() -> None:
 def test_ensemble_validator_reports_underperforming_weighted_proxy(tmp_path) -> None:
     now = datetime.now(UTC).isoformat()
     backtest_path = tmp_path / "l2_backtest_runs.jsonl"
-    _jsonl(backtest_path, [
-        {"ts": now, "strategy": "book_imbalance", "sharpe_proxy_valid": True, "sharpe_proxy": 1.0},
-        {"ts": now, "strategy": "microprice_drift", "sharpe_proxy_valid": True, "sharpe_proxy": 0.2},
-    ])
+    _jsonl(
+        backtest_path,
+        [
+            {"ts": now, "strategy": "book_imbalance", "sharpe_proxy_valid": True, "sharpe_proxy": 1.0},
+            {"ts": now, "strategy": "microprice_drift", "sharpe_proxy_valid": True, "sharpe_proxy": 0.2},
+        ],
+    )
 
     report = validator.validate_ensemble(_backtest_path=backtest_path)
 

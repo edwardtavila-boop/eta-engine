@@ -9,6 +9,7 @@ These tests exercise the in-process handler surface — they do NOT spin
 up a stdio server. Spawning a real subprocess is reserved for the
 integration suite Half 3 owns.
 """
+
 from __future__ import annotations
 
 import json
@@ -83,13 +84,17 @@ def mock_underlying(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     ]
 
     portfolio_verdict = type(
-        "V", (), {"size_modifier": 0.7, "block_reason": None, "notes": ("test",)},
+        "V",
+        (),
+        {"size_modifier": 0.7, "block_reason": None, "notes": ("test",)},
     )()
 
     hot_weights = {"momentum": 1.05, "mean_revert": 0.92}
 
     cal_event = type(
-        "E", (), {"ts_utc": "2026-05-11T12:00:00Z", "kind": "CPI", "symbol": None, "severity": 3},
+        "E",
+        (),
+        {"ts_utc": "2026-05-11T12:00:00Z", "kind": "CPI", "symbol": None, "severity": 3},
     )()
 
     monkeypatch.setattr(
@@ -484,7 +489,8 @@ def test_handler_exception_returns_envelope_not_raise(
 
 
 def test_audit_log_rotates_when_threshold_exceeded(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """When the audit log crosses the rotation threshold the file is gzipped
     to a stamped sibling and a fresh active file is started.
@@ -506,11 +512,13 @@ def test_audit_log_rotates_when_threshold_exceeded(
     # Write enough entries to cross 200B. Each json.dumps row is ~80B,
     # so 5 rows ≈ 400B → guaranteed rotation by the 5th append.
     for i in range(8):
-        jarvis_mcp_server._append_audit({
-            "tool": "smoke",
-            "i": i,
-            "padding": "x" * 40,
-        })
+        jarvis_mcp_server._append_audit(
+            {
+                "tool": "smoke",
+                "i": i,
+                "padding": "x" * 40,
+            }
+        )
 
     # Rotated file(s) present
     rotated = list(tmp_path.glob("hermes_actions_*.jsonl.gz"))
@@ -530,7 +538,8 @@ def test_audit_log_rotates_when_threshold_exceeded(
 
 
 def test_audit_log_rotation_failure_does_not_break_append(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Even if rotation itself fails (gzip import error, disk error, etc),
     the next append still writes successfully.
@@ -563,8 +572,8 @@ def test_audit_log_rotation_failure_does_not_break_append(
     assert "after_rot_fail" in final_contents
 
 
-def test_tool_registry_has_all_33_tools() -> None:
-    """list_tools() exposes exactly the documented 33 tool names.
+def test_tool_registry_has_all_42_tools() -> None:
+    """list_tools() exposes exactly the documented 42 tool names.
 
     History:
       * 11 → 12 (2026-05-12): jarvis_subscribe_events (Track 1).
@@ -575,6 +584,12 @@ def test_tool_registry_has_all_33_tools() -> None:
       * 24 → 29 (2026-05-12): attribution + regime + Kelly (T12, T8, T13).
       * 29 → 30 (2026-05-12): jarvis_zeus (Zeus Supercharge).
       * 30 → 33 (2026-05-12): cost_summary + cost_today + cost_anomaly.
+      * 33 → 36 (2026-05-12): pnl_summary + pnl_multi_window + material_events_since.
+      * 36 → 38 (2026-05-12): anomaly_scan + anomaly_recent (operator-friendly
+        Telegram replacements for noisy watchdog auto-heal pings).
+      * 38 → 39 (2026-05-12): jarvis_preflight (live-cutover Go/No-Go).
+      * 39 → 42 (2026-05-12): prop_firm_status + prop_firm_evaluate +
+        prop_firm_killall (elite-level prop firm rule enforcement gate).
     """
     from eta_engine.mcp_servers import jarvis_mcp_server
 
@@ -612,10 +627,19 @@ def test_tool_registry_has_all_33_tools() -> None:
         "jarvis_cost_summary",
         "jarvis_cost_today",
         "jarvis_cost_anomaly",
+        "jarvis_pnl_summary",
+        "jarvis_pnl_multi_window",
+        "jarvis_material_events_since",
+        "jarvis_anomaly_scan",
+        "jarvis_anomaly_recent",
+        "jarvis_preflight",
+        "jarvis_prop_firm_status",
+        "jarvis_prop_firm_evaluate",
+        "jarvis_prop_firm_killall",
     }
     declared = {t["name"] for t in jarvis_mcp_server.list_tools()}
     assert declared == expected, f"missing={expected - declared} extras={declared - expected}"
-    assert len(declared) == 33
+    assert len(declared) == 42
 
 
 # ---------------------------------------------------------------------------
@@ -624,7 +648,8 @@ def test_tool_registry_has_all_33_tools() -> None:
 
 
 def test_subscribe_events_polls_cursor(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Two-poll cursor pattern: first sees existing, second sees only new."""
     from eta_engine.mcp_servers import jarvis_mcp_server
@@ -655,7 +680,8 @@ def test_subscribe_events_polls_cursor(
 
 
 def test_subscribe_events_applies_bot_id_filter(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """filters.bot_id keeps only matching records; cursor still advances past all."""
     from eta_engine.mcp_servers import jarvis_mcp_server
@@ -680,7 +706,8 @@ def test_subscribe_events_applies_bot_id_filter(
 
 
 def test_subscribe_events_limit_does_not_skip_inline_stream_records(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Non-trace streams keep the cursor after the last returned record."""
     from eta_engine.mcp_servers import jarvis_mcp_server
@@ -712,7 +739,8 @@ def test_subscribe_events_limit_does_not_skip_inline_stream_records(
 
 
 def test_subscribe_events_unknown_stream_returns_error_envelope(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Unknown stream name returns an error field but does not raise."""
     from eta_engine.mcp_servers import jarvis_mcp_server
@@ -743,7 +771,10 @@ def test_size_modifier_tool_validates_and_dispatches(
     calls: list[dict[str, Any]] = []
 
     def fake_apply(
-        bot_id: str, modifier: float, reason: str, ttl_minutes: int,
+        bot_id: str,
+        modifier: float,
+        reason: str,
+        ttl_minutes: int,
     ) -> dict[str, Any]:
         calls.append(
             {
@@ -798,7 +829,9 @@ def test_clear_override_tool_dispatches_without_side_effects(
     calls: list[dict[str, Any]] = []
 
     def fake_clear(
-        bot_id: str | None, asset: str | None, school: str | None,
+        bot_id: str | None,
+        asset: str | None,
+        school: str | None,
     ) -> dict[str, Any]:
         calls.append({"bot_id": bot_id, "asset": asset, "school": school})
         return {"status": "REMOVED", "kind": "size_modifier", "bot_id": bot_id}
@@ -812,3 +845,297 @@ def test_clear_override_tool_dispatches_without_side_effects(
     assert result["ok"] is True
     assert result["data"]["status"] == "REMOVED"
     assert calls == [{"bot_id": "mnq_floor", "asset": None, "school": None}]
+
+
+# ---------------------------------------------------------------------------
+# anomaly_watcher MCP tools — operator-friendly Telegram replacements
+# ---------------------------------------------------------------------------
+
+
+def test_anomaly_scan_tool_returns_envelope(
+    patched_paths: dict[str, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """jarvis_anomaly_scan wraps the watcher's hit list in {n_new, hits, asof}."""
+    from eta_engine.mcp_servers import jarvis_mcp_server
+
+    fake_hits = [
+        {
+            "asof": "2026-05-12T13:00:00+00:00",
+            "pattern": "loss_streak",
+            "key": "loss_streak:bleeder:4",
+            "bot_id": "bleeder",
+            "severity": "warn",
+            "detail": "bleeder has 4 consecutive losses",
+            "suggested_skill": "jarvis-anomaly-investigator",
+            "extras": {"streak": 4, "last_n_trades": []},
+        },
+    ]
+    monkeypatch.setattr(jarvis_mcp_server, "_call_anomaly_scan", lambda: fake_hits)
+
+    result = _call("jarvis_anomaly_scan", {"_auth": "test-token"})
+    assert result["ok"] is True
+    assert result["data"]["n_new"] == 1
+    assert result["data"]["hits"] == fake_hits
+    assert "asof" in result["data"]
+
+
+def test_anomaly_scan_tool_empty_when_no_hits(
+    patched_paths: dict[str, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Empty hit list still returns a clean envelope."""
+    from eta_engine.mcp_servers import jarvis_mcp_server
+
+    monkeypatch.setattr(jarvis_mcp_server, "_call_anomaly_scan", lambda: [])
+
+    result = _call("jarvis_anomaly_scan", {"_auth": "test-token"})
+    assert result["ok"] is True
+    assert result["data"]["n_new"] == 0
+    assert result["data"]["hits"] == []
+
+
+def test_anomaly_recent_tool_defaults_to_24h(
+    patched_paths: dict[str, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """jarvis_anomaly_recent defaults since_hours=24 when omitted."""
+    from eta_engine.mcp_servers import jarvis_mcp_server
+
+    received: list[int] = []
+
+    def fake_recent(since_hours: int) -> list[dict[str, Any]]:
+        received.append(since_hours)
+        return [{"pattern": "loss_streak", "bot_id": "x"}]
+
+    monkeypatch.setattr(jarvis_mcp_server, "_call_anomaly_recent", fake_recent)
+
+    result = _call("jarvis_anomaly_recent", {"_auth": "test-token"})
+    assert result["ok"] is True
+    assert result["data"]["since_hours"] == 24
+    assert result["data"]["n"] == 1
+    assert received == [24]
+
+
+def test_anomaly_recent_tool_passes_since_hours(
+    patched_paths: dict[str, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Custom since_hours propagates to the underlying call."""
+    from eta_engine.mcp_servers import jarvis_mcp_server
+
+    received: list[int] = []
+
+    def fake_recent(since_hours: int) -> list[dict[str, Any]]:
+        received.append(since_hours)
+        return []
+
+    monkeypatch.setattr(jarvis_mcp_server, "_call_anomaly_recent", fake_recent)
+
+    result = _call(
+        "jarvis_anomaly_recent",
+        {"_auth": "test-token", "since_hours": 72},
+    )
+    assert result["ok"] is True
+    assert result["data"]["since_hours"] == 72
+    assert received == [72]
+
+
+def test_anomaly_recent_tool_rejects_garbage_since(
+    patched_paths: dict[str, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Invalid since_hours coerces to the 24h default, doesn't crash."""
+    from eta_engine.mcp_servers import jarvis_mcp_server
+
+    monkeypatch.setattr(jarvis_mcp_server, "_call_anomaly_recent", lambda since_hours: [])
+
+    result = _call(
+        "jarvis_anomaly_recent",
+        {"_auth": "test-token", "since_hours": "not-a-number"},
+    )
+    assert result["ok"] is True
+    assert result["data"]["since_hours"] == 24
+
+
+# ---------------------------------------------------------------------------
+# jarvis_preflight — live-cutover Go/No-Go
+# ---------------------------------------------------------------------------
+
+
+def test_preflight_tool_passes_through_full_report(
+    patched_paths: dict[str, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """jarvis_preflight returns the verdict + per-check breakdown verbatim."""
+    from eta_engine.mcp_servers import jarvis_mcp_server
+
+    fake_report = {
+        "asof": "2026-05-12T23:00:00+00:00",
+        "verdict": "READY",
+        "n_pass": 12,
+        "n_warn": 0,
+        "n_fail": 0,
+        "checks": [
+            {"name": "workspace_writable", "status": "PASS", "detail": "ok", "extras": {}},
+        ],
+    }
+    monkeypatch.setattr(jarvis_mcp_server, "_call_preflight", lambda: fake_report)
+
+    result = _call("jarvis_preflight", {"_auth": "test-token"})
+    assert result["ok"] is True
+    assert result["data"]["verdict"] == "READY"
+    assert result["data"]["n_pass"] == 12
+    assert result["data"]["checks"][0]["name"] == "workspace_writable"
+
+
+def test_preflight_tool_returns_not_ready_envelope(
+    patched_paths: dict[str, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When the underlying preflight reports NOT READY, the tool passes it on."""
+    from eta_engine.mcp_servers import jarvis_mcp_server
+
+    fake_report = {
+        "asof": "2026-05-12T23:00:00+00:00",
+        "verdict": "NOT READY",
+        "n_pass": 10,
+        "n_warn": 1,
+        "n_fail": 1,
+        "checks": [
+            {
+                "name": "kill_switch_disengaged",
+                "status": "FAIL",
+                "detail": "kill_all engaged",
+                "extras": {},
+            }
+        ],
+    }
+    monkeypatch.setattr(jarvis_mcp_server, "_call_preflight", lambda: fake_report)
+
+    result = _call("jarvis_preflight", {"_auth": "test-token"})
+    assert result["ok"] is True
+    assert result["data"]["verdict"] == "NOT READY"
+    assert result["data"]["n_fail"] == 1
+
+
+# ---------------------------------------------------------------------------
+# Prop firm guardrail tools — elite-level rule enforcement
+# ---------------------------------------------------------------------------
+
+
+def test_prop_firm_status_envelope(
+    patched_paths: dict[str, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """jarvis_prop_firm_status returns aggregate counts + per-account snapshots."""
+    from eta_engine.mcp_servers import jarvis_mcp_server
+
+    fake_snaps = [
+        {"severity": "blown", "rules": {"account_id": "x"}, "state": {}},
+        {"severity": "warn", "rules": {"account_id": "y"}, "state": {}},
+        {"severity": "ok", "rules": {"account_id": "z"}, "state": {}},
+    ]
+    monkeypatch.setattr(jarvis_mcp_server, "_call_prop_firm_status", lambda: fake_snaps)
+
+    result = _call("jarvis_prop_firm_status", {"_auth": "test-token"})
+    assert result["ok"] is True
+    assert result["data"]["n_accounts"] == 3
+    assert result["data"]["n_critical_or_blown"] == 1
+    assert result["data"]["n_warn"] == 1
+
+
+def test_prop_firm_evaluate_rejects_missing_account(
+    patched_paths: dict[str, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No account_id → default-deny verdict."""
+
+    result = _call("jarvis_prop_firm_evaluate", {"_auth": "test-token", "signal": {}})
+    assert result["ok"] is True
+    assert result["data"]["allowed"] is False
+    assert "missing" in result["data"]["reason"].lower()
+
+
+def test_prop_firm_evaluate_rejects_garbage_signal(
+    patched_paths: dict[str, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Signal must be a dict; non-dict input is default-denied."""
+
+    result = _call(
+        "jarvis_prop_firm_evaluate",
+        {"_auth": "test-token", "account_id": "x", "signal": "not-a-dict"},
+    )
+    assert result["ok"] is True
+    assert result["data"]["allowed"] is False
+    assert "dict" in result["data"]["reason"].lower()
+
+
+def test_prop_firm_evaluate_passes_through_underlying_verdict(
+    patched_paths: dict[str, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Valid input → call goes to underlying evaluate(), result envelope returned."""
+    from eta_engine.mcp_servers import jarvis_mcp_server
+
+    fake_verdict = {
+        "allowed": True,
+        "reason": "all rules pass",
+        "blockers": [],
+        "headroom": {"daily_loss_remaining_usd": 1500.0},
+        "worst_case_loss_usd": 40.0,
+        "asof": "2026-05-12T23:00:00+00:00",
+    }
+
+    received: list[tuple[str, dict]] = []
+
+    def fake_eval(account_id: str, signal: dict) -> dict:
+        received.append((account_id, signal))
+        return fake_verdict
+
+    monkeypatch.setattr(jarvis_mcp_server, "_call_prop_firm_evaluate", fake_eval)
+
+    result = _call(
+        "jarvis_prop_firm_evaluate",
+        {
+            "_auth": "test-token",
+            "account_id": "blusky-50K-launch",
+            "signal": {"symbol": "MNQ", "stop_r": 1.0, "size": 2},
+        },
+    )
+    assert result["ok"] is True
+    assert result["data"]["allowed"] is True
+    assert received == [("blusky-50K-launch", {"symbol": "MNQ", "stop_r": 1.0, "size": 2})]
+
+
+def test_prop_firm_killall_requires_reason(
+    patched_paths: dict[str, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Killall must include a reason — audit trail is non-optional."""
+
+    result = _call("jarvis_prop_firm_killall", {"_auth": "test-token"})
+    assert result["ok"] is True
+    assert result["data"]["status"] == "REJECTED"
+    assert "reason" in result["data"]["error"].lower()
+
+
+def test_prop_firm_killall_writes_kill_state(
+    patched_paths: dict[str, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """With a reason, killall flips hermes_state.kill_all → True."""
+
+    result = _call(
+        "jarvis_prop_firm_killall",
+        {"_auth": "test-token", "reason": "approaching daily loss limit"},
+    )
+    assert result["ok"] is True
+    assert result["data"]["status"] == "KILL_SWITCH_ENGAGED"
+    state_file = patched_paths["hermes_state"]
+    assert state_file.exists()
+    state = json.loads(state_file.read_text(encoding="utf-8"))
+    assert state["kill_all"] is True
+    assert "approaching daily loss" in state["reason"]
+    assert state["source"] == "prop_firm_guardrails"

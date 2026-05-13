@@ -121,30 +121,30 @@ _CONNECT_TIMEOUT_S: float = 20.0
 # the full futures fleet (MNQ/NQ/ES/MES/MBT/MET/CL/MCL/NG/GC/MGC/ZN/ZB
 # /6E/M6E and more).
 _FUTURES_MAP: dict[str, tuple[str, str, str, str]] = {
-    "MNQ":  ("MNQ", "CME",   "USD", "2"),
-    "NQ":   ("NQ",  "CME",   "USD", "20"),
-    "ES":   ("ES",  "CME",   "USD", "50"),
-    "MES":  ("MES", "CME",   "USD", "5"),
-    "RTY":  ("RTY", "CME",   "USD", "50"),
-    "M2K":  ("M2K", "CME",   "USD", "5"),
-    "MBT":  ("MBT", "CME",   "USD", "0.1"),
-    "MET":  ("MET", "CME",   "USD", "0.1"),
-    "NG":   ("NG",  "NYMEX", "USD", "10000"),
-    "CL":   ("CL",  "NYMEX", "USD", "1000"),
-    "MCL":  ("MCL", "NYMEX", "USD", "100"),
-    "GC":   ("GC",  "COMEX", "USD", "100"),
-    "MGC":  ("MGC", "COMEX", "USD", "10"),
-    "ZN":   ("ZN",  "CBOT",  "USD", "1000"),
-    "ZB":   ("ZB",  "CBOT",  "USD", "1000"),
-    "6E":   ("EUR", "CME",   "USD", "125000"),
-    "M6E":  ("M6E", "CME",   "USD", "12500"),
+    "MNQ": ("MNQ", "CME", "USD", "2"),
+    "NQ": ("NQ", "CME", "USD", "20"),
+    "ES": ("ES", "CME", "USD", "50"),
+    "MES": ("MES", "CME", "USD", "5"),
+    "RTY": ("RTY", "CME", "USD", "50"),
+    "M2K": ("M2K", "CME", "USD", "5"),
+    "MBT": ("MBT", "CME", "USD", "0.1"),
+    "MET": ("MET", "CME", "USD", "0.1"),
+    "NG": ("NG", "NYMEX", "USD", "10000"),
+    "CL": ("CL", "NYMEX", "USD", "1000"),
+    "MCL": ("MCL", "NYMEX", "USD", "100"),
+    "GC": ("GC", "COMEX", "USD", "100"),
+    "MGC": ("MGC", "COMEX", "USD", "10"),
+    "ZN": ("ZN", "CBOT", "USD", "1000"),
+    "ZB": ("ZB", "CBOT", "USD", "1000"),
+    "6E": ("EUR", "CME", "USD", "125000"),
+    "M6E": ("M6E", "CME", "USD", "12500"),
     # Dow equity-index futures (added 2026-05-07): YM is the E-mini Dow
     # contract (CBOT, $5/pt); MYM is the Micro variant (CBOT, $0.50/pt).
     # Both list quarterly (Mar/Jun/Sep/Dec). Without these entries the
     # fetcher cannot back-fetch YM/MYM history; YM bots had to rely on
     # whatever 5m data already existed (~71 days).
-    "YM":   ("YM",  "CBOT",  "USD", "5"),
-    "MYM":  ("MYM", "CBOT",  "USD", "0.5"),
+    "YM": ("YM", "CBOT", "USD", "5"),
+    "MYM": ("MYM", "CBOT", "USD", "0.5"),
 }
 
 # Roll cadence per symbol. ``monthly`` -> every calendar month is a
@@ -155,33 +155,44 @@ _FUTURES_MAP: dict[str, tuple[str, str, str, str]] = {
 # ``quarterly`` because that's the safer, smaller enumeration.
 _ROLL_CADENCE: dict[str, str] = {
     # Monthly listings.
-    "MBT":  "monthly",
-    "MET":  "monthly",
-    "CL":   "monthly",
-    "MCL":  "monthly",
-    "NG":   "monthly",
+    "MBT": "monthly",
+    "MET": "monthly",
+    "CL": "monthly",
+    "MCL": "monthly",
+    "NG": "monthly",
     # Quarterly listings (Mar/Jun/Sep/Dec).
-    "MNQ":  "quarterly",
-    "NQ":   "quarterly",
-    "ES":   "quarterly",
-    "MES":  "quarterly",
-    "RTY":  "quarterly",
-    "M2K":  "quarterly",
-    "GC":   "quarterly",
-    "MGC":  "quarterly",
-    "ZN":   "quarterly",
-    "ZB":   "quarterly",
-    "6E":   "quarterly",
-    "M6E":  "quarterly",
+    "MNQ": "quarterly",
+    "NQ": "quarterly",
+    "ES": "quarterly",
+    "MES": "quarterly",
+    "RTY": "quarterly",
+    "M2K": "quarterly",
+    "GC": "quarterly",
+    "MGC": "quarterly",
+    "ZN": "quarterly",
+    "ZB": "quarterly",
+    "6E": "quarterly",
+    "M6E": "quarterly",
     # Dow equity-index futures roll quarterly (Mar/Jun/Sep/Dec) like the
     # rest of the CME equity-index family. Used by --back-fetch mode.
-    "YM":   "quarterly",
-    "MYM":  "quarterly",
+    "YM": "quarterly",
+    "MYM": "quarterly",
 }
 
 # CME month codes (full set, for monthly-listed contracts).
 _CME_MONTH_CODES: tuple[str, ...] = (
-    "F", "G", "H", "J", "K", "M", "N", "Q", "U", "V", "X", "Z",
+    "F",
+    "G",
+    "H",
+    "J",
+    "K",
+    "M",
+    "N",
+    "Q",
+    "U",
+    "V",
+    "X",
+    "Z",
 )
 # Quarterly subset: H=Mar, M=Jun, U=Sep, Z=Dec.
 _CME_QUARTERLY_MONTHS: tuple[int, ...] = (3, 6, 9, 12)
@@ -191,25 +202,25 @@ _CME_QUARTERLY_MONTHS: tuple[int, ...] = (3, 6, 9, 12)
 # "Historical data request limit exceeded" or empty payloads. The
 # canonical chunk per timeframe is the largest TWS reliably returns:
 _TF_TO_BAR_SIZE: dict[str, str] = {
-    "1m":  "1 min",
-    "5m":  "5 mins",
+    "1m": "1 min",
+    "5m": "5 mins",
     "15m": "15 mins",
-    "1h":  "1 hour",
+    "1h": "1 hour",
 }
 
 # Per-chunk lookback. TWS caps at 1 D for 1m, 30 D for 5m/15m, 1 Y for 1h.
 _TF_TO_CHUNK_DAYS: dict[str, int] = {
-    "1m":  1,
-    "5m":  30,
+    "1m": 1,
+    "5m": 30,
     "15m": 30,
-    "1h":  365,
+    "1h": 365,
 }
 
 _BAR_SECONDS: dict[str, int] = {
-    "1m":  60,
-    "5m":  300,
+    "1m": 60,
+    "5m": 300,
     "15m": 900,
-    "1h":  3600,
+    "1h": 3600,
 }
 
 # Pacing: sleep between chunks. TWS allows 60/10min; 10s sleep = 6/min.
@@ -222,6 +233,7 @@ _PACING_VIOLATION_BACKOFF_S: float = 60.0
 @dataclass(frozen=True)
 class _ChunkPlan:
     """One ``reqHistoricalData`` call's parameters."""
+
     end_dt: datetime
     duration_str: str
     bar_size: str
@@ -261,7 +273,10 @@ def _chunk_duration_str(timeframe: str) -> str:
 
 
 def plan_chunks(
-    *, timeframe: str, days: int, end: datetime,
+    *,
+    timeframe: str,
+    days: int,
+    end: datetime,
 ) -> list[_ChunkPlan]:
     """Plan the chunked ``reqHistoricalData`` calls.
 
@@ -283,11 +298,13 @@ def plan_chunks(
     # Cap to avoid runaway loops on degenerate inputs.
     max_chunks = 5000
     while cursor > earliest and len(plan) < max_chunks:
-        plan.append(_ChunkPlan(
-            end_dt=cursor,
-            duration_str=duration_str,
-            bar_size=bar_size,
-        ))
+        plan.append(
+            _ChunkPlan(
+                end_dt=cursor,
+                duration_str=duration_str,
+                bar_size=bar_size,
+            )
+        )
         cursor = cursor - timedelta(days=chunk_days)
     return plan
 
@@ -297,13 +314,13 @@ def _build_future(symbol: str) -> Any:
     spec = _FUTURES_MAP.get(symbol.upper().strip())
     if spec is None:
         raise ValueError(
-            f"unknown futures symbol {symbol!r}; "
-            f"supported: {sorted(_FUTURES_MAP)}",
+            f"unknown futures symbol {symbol!r}; supported: {sorted(_FUTURES_MAP)}",
         )
     root, exchange, currency, _mult = spec
     # Lazy import -- keeps tests that mock the module from paying the
     # ib_insync cold-start cost (and dodges the Py3.14 module-init bug).
     from ib_insync import Future
+
     contract = Future(symbol=root, exchange=exchange, currency=currency)
     contract.includeExpired = False
     return contract
@@ -323,11 +340,11 @@ def _build_specific_future(symbol: str, year: int, month: int) -> Any:
     spec = _FUTURES_MAP.get(symbol.upper().strip())
     if spec is None:
         raise ValueError(
-            f"unknown futures symbol {symbol!r}; "
-            f"supported: {sorted(_FUTURES_MAP)}",
+            f"unknown futures symbol {symbol!r}; supported: {sorted(_FUTURES_MAP)}",
         )
     root, exchange, currency, _mult = spec
     from ib_insync import Future
+
     yyyymm = f"{year:04d}{month:02d}"
     contract = Future(
         symbol=root,
@@ -349,11 +366,7 @@ def _last_business_day_of_month(year: int, month: int) -> datetime:
     front-month window -- being off by a few days at the roll boundary
     is tolerable because adjacent contracts overlap during the roll.
     """
-    first_of_next = (
-        datetime(year + 1, 1, 1, tzinfo=UTC)
-        if month == 12
-        else datetime(year, month + 1, 1, tzinfo=UTC)
-    )
+    first_of_next = datetime(year + 1, 1, 1, tzinfo=UTC) if month == 12 else datetime(year, month + 1, 1, tzinfo=UTC)
     last_day = first_of_next - timedelta(days=1)
     # Step back to a weekday (Mon=0 ... Sun=6).
     while last_day.weekday() >= 5:  # Sat/Sun
@@ -362,7 +375,10 @@ def _last_business_day_of_month(year: int, month: int) -> datetime:
 
 
 def enumerate_back_fetch_contracts(
-    *, symbol: str, days: int, end: datetime,
+    *,
+    symbol: str,
+    days: int,
+    end: datetime,
 ) -> list[tuple[int, int]]:
     """Enumerate (year, month) contracts that were front-month during the
     back-fetch window.
@@ -378,8 +394,7 @@ def enumerate_back_fetch_contracts(
     spec = _FUTURES_MAP.get(symbol.upper().strip())
     if spec is None:
         raise ValueError(
-            f"unknown futures symbol {symbol!r}; "
-            f"supported: {sorted(_FUTURES_MAP)}",
+            f"unknown futures symbol {symbol!r}; supported: {sorted(_FUTURES_MAP)}",
         )
     cadence = _ROLL_CADENCE.get(symbol.upper().strip(), "quarterly")
 
@@ -415,7 +430,10 @@ def enumerate_back_fetch_contracts(
 
 
 def _front_month_window_for_contract(
-    *, year: int, month: int, cadence: str,
+    *,
+    year: int,
+    month: int,
+    cadence: str,
 ) -> tuple[datetime, datetime]:
     """Return (window_start, window_end) for when (year, month) was
     front-month.
@@ -443,17 +461,23 @@ def _front_month_window_for_contract(
         prev_idx = _CME_QUARTERLY_MONTHS.index(month) - 1
         if prev_idx < 0:
             start = _last_business_day_of_month(
-                year - 1, _CME_QUARTERLY_MONTHS[-1],
+                year - 1,
+                _CME_QUARTERLY_MONTHS[-1],
             )
         else:
             start = _last_business_day_of_month(
-                year, _CME_QUARTERLY_MONTHS[prev_idx],
+                year,
+                _CME_QUARTERLY_MONTHS[prev_idx],
             )
     return start, expire
 
 
 def plan_back_fetch_chunks(
-    *, symbol: str, year: int, month: int, timeframe: str,
+    *,
+    symbol: str,
+    year: int,
+    month: int,
+    timeframe: str,
 ) -> list[_ChunkPlan]:
     """Plan the per-contract chunks for one historical contract.
 
@@ -464,14 +488,18 @@ def plan_back_fetch_chunks(
     """
     cadence = _ROLL_CADENCE.get(symbol.upper().strip(), "quarterly")
     win_start, win_end = _front_month_window_for_contract(
-        year=year, month=month, cadence=cadence,
+        year=year,
+        month=month,
+        cadence=cadence,
     )
     window_days = max(1, (win_end - win_start).days)
     return plan_chunks(timeframe=timeframe, days=window_days, end=win_end)
 
 
 def _resolve_front_month_via_details(
-    ib: _IbProto, contract: Any, symbol: str,
+    ib: _IbProto,
+    contract: Any,
+    symbol: str,
 ) -> Any | None:
     """When qualifyContracts is ambiguous, enumerate via reqContractDetails
     and pick the soonest non-expired expiration.
@@ -501,11 +529,7 @@ def _resolve_front_month_via_details(
         # contract.lastTradeDateOrContractMonth (e.g. "20260627") and
         # the bare-month form (e.g. "202606"). Pick the first available.
         c = getattr(d, "contract", d)
-        expiry_raw = (
-            getattr(c, "lastTradeDateOrContractMonth", "")
-            or getattr(d, "contractMonth", "")
-            or ""
-        )
+        expiry_raw = getattr(c, "lastTradeDateOrContractMonth", "") or getattr(d, "contractMonth", "") or ""
         expiry = str(expiry_raw).strip()
         if not expiry:
             continue
@@ -517,17 +541,17 @@ def _resolve_front_month_via_details(
 
     if not candidates:
         log.error(
-            "no non-expired contracts in reqContractDetails for %s "
-            "(today=%s, candidates=%d)",
-            symbol, today, len(details),
+            "no non-expired contracts in reqContractDetails for %s (today=%s, candidates=%d)",
+            symbol,
+            today,
+            len(details),
         )
         return None
 
     candidates.sort(key=lambda x: x[0])
     expiry, qualified = candidates[0]
     log.info(
-        "front-month resolved for %s -> %s expiry=%s "
-        "(out of %d candidates)",
+        "front-month resolved for %s -> %s expiry=%s (out of %d candidates)",
         symbol,
         getattr(qualified, "localSymbol", "?"),
         expiry,
@@ -571,7 +595,10 @@ def _connect_with_fallback(
         try:
             log.info(
                 "connecting to TWS at %s:%d (clientId=%d, timeout=%.0fs)",
-                host, port, client_id, timeout,
+                host,
+                port,
+                client_id,
+                timeout,
             )
             ib.connect(host, port, clientId=client_id, timeout=timeout)
             log.info("connected on port %d", port)
@@ -608,7 +635,8 @@ def _bar_to_row(bar: Any) -> dict[str, Any] | None:
         time_part = parts[1] if len(parts) > 1 else "00:00:00"
         try:
             dt = datetime.strptime(
-                f"{date_part} {time_part}", "%Y%m%d %H:%M:%S",
+                f"{date_part} {time_part}",
+                "%Y%m%d %H:%M:%S",
             )
             ts_s = int(dt.replace(tzinfo=UTC).timestamp())
         except ValueError:
@@ -652,7 +680,10 @@ def fetch_chunks(
     plan = plan_chunks(timeframe=timeframe, days=days, end=end_dt)
     log.info(
         "fetch %s/%s -- %d chunks of %s back to %s",
-        symbol, timeframe, len(plan), _chunk_duration_str(timeframe),
+        symbol,
+        timeframe,
+        len(plan),
+        _chunk_duration_str(timeframe),
         (end_dt - timedelta(days=days)).date(),
     )
 
@@ -664,8 +695,7 @@ def fetch_chunks(
         # they have 11+ months listed. Fall back to reqContractDetails
         # + front-month selection.
         log.warning(
-            "qualifyContracts ambiguous for %s -- falling back to "
-            "reqContractDetails for front-month resolution",
+            "qualifyContracts ambiguous for %s -- falling back to reqContractDetails for front-month resolution",
             symbol,
         )
         qualified = _resolve_front_month_via_details(ib, contract, symbol)
@@ -704,7 +734,9 @@ def fetch_chunks(
             if "pacing" in msg or "historical data request limit" in msg:
                 log.warning(
                     "[%d/%d] pacing violation -- backing off %.0fs",
-                    idx, len(plan), _PACING_VIOLATION_BACKOFF_S,
+                    idx,
+                    len(plan),
+                    _PACING_VIOLATION_BACKOFF_S,
                 )
                 time.sleep(_PACING_VIOLATION_BACKOFF_S)
             else:
@@ -719,7 +751,12 @@ def fetch_chunks(
                 rows_added += 1
         log.info(
             "[%d/%d] %s end=%s -> %d bars (cumulative=%d)",
-            idx, len(plan), symbol, end_str, rows_added, len(out),
+            idx,
+            len(plan),
+            symbol,
+            end_str,
+            rows_added,
+            len(out),
         )
 
         # Pace between chunks -- keep below 60 req / 10min.
@@ -739,7 +776,10 @@ def fetch_chunks(
     elapsed = time.monotonic() - chunk_t0
     log.info(
         "%s: %d unique bars across %d chunks in %.1fs",
-        symbol, len(deduped), len(plan), elapsed,
+        symbol,
+        len(deduped),
+        len(plan),
+        elapsed,
     )
     return deduped
 
@@ -777,9 +817,7 @@ def _stitch_continuous(
     # canonical (un-adjusted at the right edge). Each prior contract's
     # OHLC is shifted by the delta at the roll boundary.
     cumulative_delta = 0.0
-    adjusted_rows_by_contract: list[list[dict[str, Any]]] = [
-        list(rows) for _ym, rows in contract_rows
-    ]
+    adjusted_rows_by_contract: list[list[dict[str, Any]]] = [list(rows) for _ym, rows in contract_rows]
     if adjust and len(contract_rows) >= 2:
         # Walk pairs from newest down, accumulating the delta backwards.
         for i in range(len(contract_rows) - 1, 0, -1):
@@ -802,14 +840,16 @@ def _stitch_continuous(
             shifted: list[dict[str, Any]] = []
             for r in older:
                 try:
-                    shifted.append({
-                        "time": int(r["time"]),
-                        "open":  float(r["open"]) + shift,
-                        "high":  float(r["high"]) + shift,
-                        "low":   float(r["low"]) + shift,
-                        "close": float(r["close"]) + shift,
-                        "volume": float(r.get("volume", 0.0)),
-                    })
+                    shifted.append(
+                        {
+                            "time": int(r["time"]),
+                            "open": float(r["open"]) + shift,
+                            "high": float(r["high"]) + shift,
+                            "low": float(r["low"]) + shift,
+                            "close": float(r["close"]) + shift,
+                            "volume": float(r.get("volume", 0.0)),
+                        }
+                    )
                 except (KeyError, TypeError, ValueError):
                     shifted.append(r)
             adjusted_rows_by_contract[i - 1] = shifted
@@ -860,11 +900,16 @@ def fetch_back_fetch_chunks(
     end_dt = end or datetime.now(UTC)
     cadence = _ROLL_CADENCE.get(symbol.upper().strip(), "quarterly")
     contracts = enumerate_back_fetch_contracts(
-        symbol=symbol, days=days, end=end_dt,
+        symbol=symbol,
+        days=days,
+        end=end_dt,
     )
     log.info(
         "back-fetch %s/%s -- %d %s contracts back to %s",
-        symbol, timeframe, len(contracts), cadence,
+        symbol,
+        timeframe,
+        len(contracts),
+        cadence,
         (end_dt - timedelta(days=days)).date(),
     )
 
@@ -876,33 +921,48 @@ def fetch_back_fetch_chunks(
         try:
             pinned = _build_specific_future(symbol, year, month)
         except ValueError as exc:
-            log.error("back-fetch: %s %d-%02d build failed: %s",
-                      symbol, year, month, exc)
+            log.error("back-fetch: %s %d-%02d build failed: %s", symbol, year, month, exc)
             continue
         try:
             qualified_list = ib.qualifyContracts(pinned)
         except Exception as exc:  # noqa: BLE001 -- broker errors diverse
             log.warning(
                 "back-fetch [%d/%d] %s %d-%02d qualifyContracts failed: %s",
-                c_idx, len(contracts), symbol, year, month, exc,
+                c_idx,
+                len(contracts),
+                symbol,
+                year,
+                month,
+                exc,
             )
             continue
         if not qualified_list:
             log.warning(
                 "back-fetch [%d/%d] %s %d-%02d not listed -- skipping",
-                c_idx, len(contracts), symbol, year, month,
+                c_idx,
+                len(contracts),
+                symbol,
+                year,
+                month,
             )
             continue
         qualified = qualified_list[0]
 
         # Plan and fetch this contract's front-month window.
         plan = plan_back_fetch_chunks(
-            symbol=symbol, year=year, month=month, timeframe=timeframe,
+            symbol=symbol,
+            year=year,
+            month=month,
+            timeframe=timeframe,
         )
         log.info(
-            "back-fetch [%d/%d] %s %d-%02d -> %d chunks "
-            "(qualified expiry=%s)",
-            c_idx, len(contracts), symbol, year, month, len(plan),
+            "back-fetch [%d/%d] %s %d-%02d -> %d chunks (qualified expiry=%s)",
+            c_idx,
+            len(contracts),
+            symbol,
+            year,
+            month,
+            len(plan),
             getattr(qualified, "lastTradeDateOrContractMonth", "?"),
         )
         rows: list[dict[str, Any]] = []
@@ -923,13 +983,21 @@ def fetch_back_fetch_chunks(
                 if "pacing" in msg or "historical data request limit" in msg:
                     log.warning(
                         "back-fetch [%d/%d] pacing -- backing off %.0fs",
-                        idx, len(plan), _PACING_VIOLATION_BACKOFF_S,
+                        idx,
+                        len(plan),
+                        _PACING_VIOLATION_BACKOFF_S,
                     )
                     time.sleep(_PACING_VIOLATION_BACKOFF_S)
                 else:
                     log.warning(
                         "back-fetch [%d/%d] %s %d-%02d chunk %s failed: %s",
-                        idx, len(plan), symbol, year, month, end_str, exc,
+                        idx,
+                        len(plan),
+                        symbol,
+                        year,
+                        month,
+                        end_str,
+                        exc,
                     )
                 continue
             for bar in bars or []:
@@ -951,7 +1019,11 @@ def fetch_back_fetch_chunks(
             deduped.append(r)
         log.info(
             "back-fetch %s %d-%02d: %d unique bars across %d chunks",
-            symbol, year, month, len(deduped), len(plan),
+            symbol,
+            year,
+            month,
+            len(deduped),
+            len(plan),
         )
         contract_rows.append(((year, month), deduped))
 
@@ -959,10 +1031,13 @@ def fetch_back_fetch_chunks(
     out = _stitch_continuous(contract_rows, adjust=adjust)
     elapsed = time.monotonic() - chunk_t0
     log.info(
-        "%s back-fetch: %d unique bars across %d contracts (%d chunks) "
-        "in %.1fs (adjust=%s)",
-        symbol, len(out), len(contract_rows), total_chunks,
-        elapsed, adjust,
+        "%s back-fetch: %d unique bars across %d contracts (%d chunks) in %.1fs (adjust=%s)",
+        symbol,
+        len(out),
+        len(contract_rows),
+        total_chunks,
+        elapsed,
+        adjust,
     )
     return out
 
@@ -972,13 +1047,15 @@ def canonical_bar_path(symbol: str, timeframe: str, root: Path | None = None) ->
     """Match ``feeds.strategy_lab.engine._resolve_bar_path``: ``{SYMBOL}1_{TF}.csv``."""
     base = root if root is not None else MNQ_HISTORY_ROOT
     tf_for_filename = {"1d": "D", "1w": "W"}.get(
-        timeframe.lower(), timeframe,
+        timeframe.lower(),
+        timeframe,
     )
     return base / f"{symbol.upper()}1_{tf_for_filename}.csv"
 
 
 def merge_with_existing(
-    out_path: Path, new_rows: list[dict[str, Any]],
+    out_path: Path,
+    new_rows: list[dict[str, Any]],
 ) -> tuple[list[dict[str, Any]], int, int]:
     """Merge ``new_rows`` into any existing CSV at ``out_path``.
 
@@ -991,14 +1068,16 @@ def merge_with_existing(
                 reader = csv.DictReader(f)
                 for row in reader:
                     try:
-                        existing.append({
-                            "time": int(row["time"]),
-                            "open": float(row["open"]),
-                            "high": float(row["high"]),
-                            "low": float(row["low"]),
-                            "close": float(row["close"]),
-                            "volume": float(row.get("volume", 0.0)),
-                        })
+                        existing.append(
+                            {
+                                "time": int(row["time"]),
+                                "open": float(row["open"]),
+                                "high": float(row["high"]),
+                                "low": float(row["low"]),
+                                "close": float(row["close"]),
+                                "volume": float(row.get("volume", 0.0)),
+                            }
+                        )
                     except (ValueError, KeyError, TypeError):
                         continue
         except OSError:
@@ -1018,15 +1097,22 @@ def write_csv(path: Path, rows: list[dict[str, Any]]) -> int:
         w = csv.writer(f)
         w.writerow(["time", "open", "high", "low", "close", "volume"])
         for r in rows:
-            w.writerow([
-                int(r["time"]), r["open"], r["high"],
-                r["low"], r["close"], r["volume"],
-            ])
+            w.writerow(
+                [
+                    int(r["time"]),
+                    r["open"],
+                    r["high"],
+                    r["low"],
+                    r["close"],
+                    r["volume"],
+                ]
+            )
     return len(rows)
 
 
 def report_gaps(
-    rows: list[dict[str, Any]], timeframe: str,
+    rows: list[dict[str, Any]],
+    timeframe: str,
 ) -> list[tuple[int, int]]:
     """Coarse signal: consecutive bars spaced > 2x bar-size apart."""
     if not rows or timeframe not in _BAR_SECONDS:
@@ -1052,54 +1138,70 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     p.add_argument(
-        "--symbols", nargs="+", default=list(_DEFAULT_SYMBOLS),
+        "--symbols",
+        nargs="+",
+        default=list(_DEFAULT_SYMBOLS),
         help=f"Symbols to fetch (default: {' '.join(_DEFAULT_SYMBOLS)}).",
     )
     p.add_argument(
-        "--days", type=int, default=_DEFAULT_DAYS,
+        "--days",
+        type=int,
+        default=_DEFAULT_DAYS,
         help=f"Lookback in days (default: {_DEFAULT_DAYS}).",
     )
     p.add_argument(
-        "--timeframe", default=_DEFAULT_TIMEFRAME,
+        "--timeframe",
+        default=_DEFAULT_TIMEFRAME,
         choices=sorted(_TF_TO_BAR_SIZE),
         help=f"Bar size (default: {_DEFAULT_TIMEFRAME}).",
     )
     p.add_argument(
-        "--port", type=int, default=_DEFAULT_PORT,
+        "--port",
+        type=int,
+        default=_DEFAULT_PORT,
         help=(
             f"TWS API port (default: {_DEFAULT_PORT}, paper Gateway). "
             f"Falls back to {_FALLBACK_PORTS} on connect failure."
         ),
     )
     p.add_argument(
-        "--host", default=_DEFAULT_HOST,
+        "--host",
+        default=_DEFAULT_HOST,
         help=f"TWS API host (default: {_DEFAULT_HOST}).",
     )
     p.add_argument(
-        "--client-id", type=int, default=_DEFAULT_CLIENT_ID,
+        "--client-id",
+        type=int,
+        default=_DEFAULT_CLIENT_ID,
         help=(
             f"ib_insync client ID (default: {_DEFAULT_CLIENT_ID}). "
             "Pick one not used by supervisor / bar_accumulator / venues."
         ),
     )
     p.add_argument(
-        "--end", default=None,
+        "--end",
+        default=None,
         help="ISO date YYYY-MM-DD; default = now (UTC).",
     )
     p.add_argument(
-        "--root", type=Path, default=MNQ_HISTORY_ROOT,
+        "--root",
+        type=Path,
+        default=MNQ_HISTORY_ROOT,
         help="Output history root (default: canonical mnq_data/history).",
     )
     p.add_argument(
-        "--no-merge", action="store_true",
+        "--no-merge",
+        action="store_true",
         help="Overwrite existing CSV instead of merging.",
     )
     p.add_argument(
-        "--dry-run", action="store_true",
+        "--dry-run",
+        action="store_true",
         help="Print planned chunks without connecting to TWS.",
     )
     p.add_argument(
-        "--back-fetch", action="store_true",
+        "--back-fetch",
+        action="store_true",
         help=(
             "Stitch multiple expired contracts into a continuous "
             "front-month series. Required for back-windows >70 days "
@@ -1110,7 +1212,8 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     p.add_argument(
-        "--adjust", action="store_true",
+        "--adjust",
+        action="store_true",
         help=(
             "When used with --back-fetch, apply simple back-adjustment "
             "so the stitched price series is continuous at each contract "
@@ -1118,7 +1221,9 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     p.add_argument(
-        "--pacing-sleep", type=float, default=_PACING_SLEEP_S,
+        "--pacing-sleep",
+        type=float,
+        default=_PACING_SLEEP_S,
         help=(
             f"Seconds to sleep between successful chunks "
             f"(default: {_PACING_SLEEP_S}). "
@@ -1126,7 +1231,8 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     p.add_argument(
-        "--log-level", default="INFO",
+        "--log-level",
+        default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
         help="Python logging level (default: INFO).",
     )
@@ -1141,7 +1247,8 @@ def _validate_symbols(symbols: list[str]) -> list[str]:
         if sym not in _FUTURES_MAP:
             log.warning(
                 "skipping unsupported symbol %r; supported: %s",
-                sym, sorted(_FUTURES_MAP),
+                sym,
+                sorted(_FUTURES_MAP),
             )
             continue
         out.append(sym)
@@ -1167,16 +1274,16 @@ def run(argv: list[str] | None = None, *, ib: _IbProto | None = None) -> int:
         log.error("no valid symbols after filtering -- nothing to do")
         return 1
 
-    end_dt = (
-        datetime.fromisoformat(args.end).replace(tzinfo=UTC)
-        if args.end else datetime.now(UTC)
-    )
+    end_dt = datetime.fromisoformat(args.end).replace(tzinfo=UTC) if args.end else datetime.now(UTC)
 
     bar_secs = _BAR_SECONDS[args.timeframe]
     expected_bars_per_symbol = int(args.days * 86400 / bar_secs)
     log.info(
         "plan: symbols=%s tf=%s days=%d end=%s",
-        symbols, args.timeframe, args.days, end_dt.date(),
+        symbols,
+        args.timeframe,
+        args.days,
+        end_dt.date(),
     )
     log.info(
         "expected ~%d calendar-time bars/symbol (pre-session-mask)",
@@ -1188,16 +1295,22 @@ def run(argv: list[str] | None = None, *, ib: _IbProto | None = None) -> int:
             total_chunks = 0
             for sym in symbols:
                 contracts = enumerate_back_fetch_contracts(
-                    symbol=sym, days=args.days, end=end_dt,
+                    symbol=sym,
+                    days=args.days,
+                    end=end_dt,
                 )
                 out_path = canonical_bar_path(
-                    sym, args.timeframe, root=args.root,
+                    sym,
+                    args.timeframe,
+                    root=args.root,
                 )
                 cadence = _ROLL_CADENCE.get(sym, "quarterly")
                 sym_chunks = 0
                 for year, month in contracts:
                     plan = plan_back_fetch_chunks(
-                        symbol=sym, year=year, month=month,
+                        symbol=sym,
+                        year=year,
+                        month=month,
                         timeframe=args.timeframe,
                     )
                     sym_chunks += len(plan)
@@ -1222,13 +1335,14 @@ def run(argv: list[str] | None = None, *, ib: _IbProto | None = None) -> int:
             return 0
 
         plan = plan_chunks(
-            timeframe=args.timeframe, days=args.days, end=end_dt,
+            timeframe=args.timeframe,
+            days=args.days,
+            end=end_dt,
         )
         for sym in symbols:
             out_path = canonical_bar_path(sym, args.timeframe, root=args.root)
             print(
-                f"[dry-run] {sym}: {len(plan)} chunks of "
-                f"{_chunk_duration_str(args.timeframe)} -> {out_path}",
+                f"[dry-run] {sym}: {len(plan)} chunks of {_chunk_duration_str(args.timeframe)} -> {out_path}",
             )
             for i, chunk in enumerate(plan[:3]):
                 print(
@@ -1249,20 +1363,24 @@ def run(argv: list[str] | None = None, *, ib: _IbProto | None = None) -> int:
 
     if ib is None:
         from ib_insync import IB  # noqa: I001 -- lazy import; tests inject mocks.
+
         ib = IB()  # type: ignore[assignment]
 
     # -- CONNECT --------------------------------------------------
     try:
         _connect_with_fallback(
-            ib, host=args.host, primary_port=args.port,
+            ib,
+            host=args.host,
+            primary_port=args.port,
             client_id=args.client_id,
         )
     except ConnectionError as exc:
         log.error("could not connect to TWS API: %s", exc)
         log.error(
-            "operator action: ensure TWS or IB Gateway is running on "
-            "%s:%s and the client ID %d is free",
-            args.host, args.port, args.client_id,
+            "operator action: ensure TWS or IB Gateway is running on %s:%s and the client ID %d is free",
+            args.host,
+            args.port,
+            args.client_id,
         )
         return 1
 
@@ -1310,7 +1428,11 @@ def run(argv: list[str] | None = None, *, ib: _IbProto | None = None) -> int:
                 n = write_csv(out_path, merged)
                 log.info(
                     "%s: merged existing=%d new=%d total=%d -> %s",
-                    sym, n_existing, n_new, n, out_path,
+                    sym,
+                    n_existing,
+                    n_new,
+                    n,
+                    out_path,
                 )
 
             gaps = report_gaps(rows, args.timeframe)
@@ -1341,5 +1463,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
-
-

@@ -25,6 +25,7 @@ Usage
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import sys
 from dataclasses import dataclass
@@ -35,12 +36,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT.parent))
 
 if hasattr(sys.stdout, "reconfigure"):
-    try:
+    with contextlib.suppress(AttributeError, OSError):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    except (AttributeError, OSError):
-        pass
-
-
 
 
 @dataclass
@@ -60,8 +57,10 @@ def boot_health_checks() -> dict:
         from eta_engine.scripts.data_health_check import run_health_check
 
         health = run_health_check()
-        checks["data"] = {"green": sum(1 for h in health if h.status == "GREEN"),
-                          "red": sum(1 for h in health if h.status == "RED")}
+        checks["data"] = {
+            "green": sum(1 for h in health if h.status == "GREEN"),
+            "red": sum(1 for h in health if h.status == "RED"),
+        }
     except Exception as e:
         checks["data"] = {"error": str(e)}
 
@@ -77,8 +76,10 @@ def boot_health_checks() -> dict:
         from eta_engine.scripts.strategy_drift_monitor import run_drift_check
 
         drift = run_drift_check()
-        checks["drift"] = {"drift": sum(1 for d in drift if d.status == "DRIFT"),
-                           "warn": sum(1 for d in drift if d.status == "WARN")}
+        checks["drift"] = {
+            "drift": sum(1 for d in drift if d.status == "DRIFT"),
+            "warn": sum(1 for d in drift if d.status == "WARN"),
+        }
     except Exception as e:
         checks["drift"] = {"error": str(e)}
 
@@ -95,13 +96,15 @@ def build_snapshot() -> FleetSnapshot:
     active = sum(1 for a in all_assignments() if is_bot_active(a.bot_id))
     states = []
     for r in matrix:
-        states.append({
-            "bot_id": r.bot_id,
-            "strategy_id": r.strategy_id,
-            "status": r.launch_lane,
-            "can_paper_trade": r.can_paper_trade,
-            "next_action": r.next_action,
-        })
+        states.append(
+            {
+                "bot_id": r.bot_id,
+                "strategy_id": r.strategy_id,
+                "status": r.launch_lane,
+                "can_paper_trade": r.can_paper_trade,
+                "next_action": r.next_action,
+            }
+        )
     return FleetSnapshot(
         generated=datetime.now(tz=UTC).isoformat(),
         fleet_equity=100000.0,
@@ -121,8 +124,9 @@ def _enrich_bot_states(snapshot: FleetSnapshot, health_checks: dict) -> FleetSna
 
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(prog="fleet_supervisor", description=__doc__,
-                                formatter_class=argparse.RawDescriptionHelpFormatter)
+    p = argparse.ArgumentParser(
+        prog="fleet_supervisor", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     p.add_argument("--paper", action="store_true", help="enter paper-trade loop")
     p.add_argument("--status", action="store_true", help="health check only, exit")
     p.add_argument("--json", action="store_true")
@@ -156,7 +160,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  Venues:      {checks.get('venues', {})}")
             print(f"  Drift:       {checks.get('drift', {})}")
             print(f"\n  {'Bot':<24} {'Status':<18} {'Paper':<8} {'Next action'}")
-            print(f"  {'-'*24} {'-'*18} {'-'*8} {'-'*40}")
+            print(f"  {'-' * 24} {'-' * 18} {'-' * 8} {'-' * 40}")
             for s in snapshot.bot_states:
                 pp = "YES" if s["can_paper_trade"] else "no"
                 print(f"  {s['bot_id']:<24} {s['status']:<18} {pp:<8} {s['next_action'][:40]}")
@@ -184,9 +188,11 @@ def main(argv: list[str] | None = None) -> int:
                 checks = boot_health_checks()
                 snapshot = build_snapshot()
                 ts = datetime.now(tz=UTC).strftime("%H:%M:%S")
-                print(f"  [{ts}] active={snapshot.active_bots} "
-                      f"ready={snapshot.paper_ready_bots} "
-                      f"drift={checks.get('drift',{}).get('drift',0)}")
+                print(
+                    f"  [{ts}] active={snapshot.active_bots} "
+                    f"ready={snapshot.paper_ready_bots} "
+                    f"drift={checks.get('drift', {}).get('drift', 0)}"
+                )
                 time.sleep(300)
         except KeyboardInterrupt:
             print("\n  [fleet_supervisor] stopped")

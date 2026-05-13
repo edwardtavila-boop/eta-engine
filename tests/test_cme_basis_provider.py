@@ -56,8 +56,13 @@ def _bar(
     lo = low if low is not None else close - 50.0
     o = open_ if open_ is not None else close
     return BarData(
-        timestamp=ts.astimezone(UTC), symbol=symbol,
-        open=o, high=h, low=lo, close=close, volume=volume,
+        timestamp=ts.astimezone(UTC),
+        symbol=symbol,
+        open=o,
+        high=h,
+        low=lo,
+        close=close,
+        volume=volume,
     )
 
 
@@ -150,8 +155,7 @@ def test_mock_basis_provider_mapping_mode() -> None:
 def test_mock_basis_provider_sequential_mode() -> None:
     provider = MockBasisProvider(values=[0.0, 1.5, -2.0], default=99.0)
     base = datetime(2026, 6, 15, 10, 0, tzinfo=UTC)
-    out = [provider(_bar(base + timedelta(minutes=i * 5), close=60_000.0))
-           for i in range(4)]
+    out = [provider(_bar(base + timedelta(minutes=i * 5), close=60_000.0)) for i in range(4)]
     assert out == [0.0, 1.5, -2.0, 99.0]
 
 
@@ -174,8 +178,7 @@ def test_log_return_fallback_provider_matches_strategy_internal() -> None:
 
     base = datetime(2026, 6, 15, 10, 0, tzinfo=UTC)
     closes = [60_000.0, 60_300.0, 60_150.0, 60_450.0, 60_600.0]
-    bars = [_bar(base + timedelta(minutes=i * 5), close=c)
-            for i, c in enumerate(closes)]
+    bars = [_bar(base + timedelta(minutes=i * 5), close=c) for i, c in enumerate(closes)]
 
     explicit = LogReturnFallbackProvider()
     strat = MBTFundingBasisStrategy()  # no provider -> silent fallback
@@ -244,8 +247,10 @@ def test_registry_bridge_wires_provider_and_strategy_uses_basis() -> None:
     bcfg = BacktestConfig(
         start_date=datetime(2026, 1, 1, tzinfo=UTC),
         end_date=datetime(2026, 12, 31, tzinfo=UTC),
-        symbol="MBT", initial_equity=10_000.0,
-        risk_per_trade_pct=0.005, confluence_threshold=0.0,
+        symbol="MBT",
+        initial_equity=10_000.0,
+        risk_per_trade_pct=0.005,
+        confluence_threshold=0.0,
         max_trades_per_day=10,
     )
 
@@ -291,14 +296,18 @@ def test_registry_bridge_wires_provider_and_strategy_uses_basis() -> None:
     # Establish a lower-high sequence: each bar's high <= prior.
     bar_lh1 = _bar(
         (base + timedelta(minutes=8 * 5)).astimezone(UTC),
-        close=60_002.0, high=60_005.0, low=59_995.0,
+        close=60_002.0,
+        high=60_005.0,
+        low=59_995.0,
     )
     strat.maybe_enter(bar_lh1, hist, 10_000.0, bcfg)
     hist.append(bar_lh1)
 
     bar_lh2 = _bar(
         (base + timedelta(minutes=9 * 5)).astimezone(UTC),
-        close=60_001.0, high=60_003.0, low=59_990.0,
+        close=60_001.0,
+        high=60_003.0,
+        low=59_990.0,
     )
     strat.maybe_enter(bar_lh2, hist, 10_000.0, bcfg)
     hist.append(bar_lh2)
@@ -307,12 +316,12 @@ def test_registry_bridge_wires_provider_and_strategy_uses_basis() -> None:
     # jumps. high<=prior so momentum gate still passes.
     spike = _bar(
         (base + timedelta(minutes=10 * 5)).astimezone(UTC),
-        close=60_300.0, high=60_002.0, low=59_980.0,
+        close=60_300.0,
+        high=60_002.0,
+        low=59_980.0,
     )
     out = strat.maybe_enter(spike, hist, 10_000.0, bcfg)
-    assert out is not None, (
-        f"expected SHORT fire from provider-driven basis; stats={strat.stats}"
-    )
+    assert out is not None, f"expected SHORT fire from provider-driven basis; stats={strat.stats}"
     assert out.side == "SELL"
     # Confirm the fired entry came through the provider path: the
     # rolling window length should equal lookback (provider populated it).

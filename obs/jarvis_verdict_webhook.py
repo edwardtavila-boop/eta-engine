@@ -17,6 +17,7 @@ Configure via env vars:
 
 Run via ``Eta-Verdict-Webhook`` every 1 min.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -63,35 +64,39 @@ def _format_for_discord(rec: dict[str, Any]) -> dict[str, Any]:
     resp = rec.get("response", {}) or {}
     req = rec.get("request", {}) or {}
     color = {
-        "APPROVED":    0x2ECC71,
+        "APPROVED": 0x2ECC71,
         "CONDITIONAL": 0xF1C40F,
-        "DEFERRED":    0x3498DB,
-        "DENIED":      0xE74C3C,
+        "DEFERRED": 0x3498DB,
+        "DENIED": 0xE74C3C,
     }.get(resp.get("verdict", ""), 0x95A5A6)
     return {
-        "embeds": [{
-            "title": f"JARVIS {resp.get('verdict', '?')}",
-            "color": color,
-            "fields": [
-                {"name": "subsystem", "value": req.get("subsystem", "?"), "inline": True},
-                {"name": "action",    "value": req.get("action", "?"),    "inline": True},
-                {"name": "reason",    "value": resp.get("reason", "")[:1000], "inline": False},
-                {"name": "stress",    "value": f"{resp.get('stress_composite', 0):.2f}", "inline": True},
-                {"name": "session",   "value": str(resp.get("session_phase", "")), "inline": True},
-                {"name": "policy_v",  "value": str(rec.get("policy_version", 0)), "inline": True},
-            ],
-            "timestamp": rec.get("ts", datetime.now(UTC).isoformat()),
-        }]
+        "embeds": [
+            {
+                "title": f"JARVIS {resp.get('verdict', '?')}",
+                "color": color,
+                "fields": [
+                    {"name": "subsystem", "value": req.get("subsystem", "?"), "inline": True},
+                    {"name": "action", "value": req.get("action", "?"), "inline": True},
+                    {"name": "reason", "value": resp.get("reason", "")[:1000], "inline": False},
+                    {"name": "stress", "value": f"{resp.get('stress_composite', 0):.2f}", "inline": True},
+                    {"name": "session", "value": str(resp.get("session_phase", "")), "inline": True},
+                    {"name": "policy_v", "value": str(rec.get("policy_version", 0)), "inline": True},
+                ],
+                "timestamp": rec.get("ts", datetime.now(UTC).isoformat()),
+            }
+        ]
     }
 
 
 def post_webhook(url: str, payload: dict[str, Any]) -> bool:
     data = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(
-        url, data=data, headers={
+        url,
+        data=data,
+        headers={
             "Content-Type": "application/json",
             "User-Agent": "eta-engine-verdict-webhook/1.0",
-        }
+        },
     )
     try:
         with urllib.request.urlopen(req, timeout=10) as resp:
@@ -106,14 +111,10 @@ def _is_discord(url: str) -> bool:
 
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(description=__doc__,
-                                formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--audit-dir", type=Path,
-                   default=ROOT / "state" / "jarvis_audit")
-    p.add_argument("--cursor", type=Path,
-                   default=ROOT / "state" / "verdict_webhook" / "cursor.json")
-    p.add_argument("--max-per-run", type=int, default=20,
-                   help="Cap number of webhook posts per invocation (anti-spam)")
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--audit-dir", type=Path, default=ROOT / "state" / "jarvis_audit")
+    p.add_argument("--cursor", type=Path, default=ROOT / "state" / "verdict_webhook" / "cursor.json")
+    p.add_argument("--max-per-run", type=int, default=20, help="Cap number of webhook posts per invocation (anti-spam)")
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("-v", "--verbose", action="store_true")
     args = p.parse_args(argv)

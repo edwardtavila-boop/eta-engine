@@ -35,6 +35,7 @@ The output is an OodReport with:
 
 Pure stdlib + math. No NumPy.
 """
+
 from __future__ import annotations
 
 import logging
@@ -65,8 +66,8 @@ class FeatureOutlier:
 class OodReport:
     """OOD detection summary."""
 
-    score: float                        # in [0, 1]
-    label: str                          # "typical" / "unusual" / "novel"
+    score: float  # in [0, 1]
+    label: str  # "typical" / "unusual" / "novel"
     n_episodes_compared: int
     top_outlier_features: list[FeatureOutlier] = field(default_factory=list)
     recommendation: str = ""
@@ -146,11 +147,10 @@ def score_ood(
     """
     if not memory._episodes:
         return OodReport(
-            score=0.0, label="typical",
+            score=0.0,
+            label="typical",
             n_episodes_compared=0,
-            recommendation=(
-                "memory empty; OOD detection inactive (cold-start)"
-            ),
+            recommendation=("memory empty; OOD detection inactive (cold-start)"),
         )
 
     # Default feature set from proposal + extras
@@ -177,17 +177,20 @@ def score_ood(
         m, s = _moments(journal_vals)
         z = _z_score(cur_val, m, s)
         z_squares.append(z * z)
-        outliers.append(FeatureOutlier(
-            feature_name=fname,
-            current_value=round(cur_val, 4),
-            journal_mean=round(m, 4),
-            journal_std=round(s, 4),
-            z_score=round(z, 3),
-        ))
+        outliers.append(
+            FeatureOutlier(
+                feature_name=fname,
+                current_value=round(cur_val, 4),
+                journal_mean=round(m, 4),
+                journal_std=round(s, 4),
+                z_score=round(z, 3),
+            )
+        )
 
     if not z_squares:
         return OodReport(
-            score=0.0, label="typical",
+            score=0.0,
+            label="typical",
             n_episodes_compared=n_episodes,
             recommendation="no comparable feature series in journal",
         )
@@ -204,10 +207,7 @@ def score_ood(
         rec = "current state lies within journal distribution; trust models"
     elif score < 0.6:
         label = "unusual"
-        rec = (
-            "current state in tail of journal distribution; consider "
-            "shrinking size by 25%"
-        )
+        rec = "current state in tail of journal distribution; consider shrinking size by 25%"
     else:
         label = "novel"
         rec = (

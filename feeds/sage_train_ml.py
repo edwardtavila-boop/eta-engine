@@ -27,6 +27,7 @@ Labels:
     1 = LONG winner  (forward return > +0.001)
     (rows where |forward return| < 0.001 are dropped; not actionable)
 """
+
 from __future__ import annotations
 
 import argparse
@@ -50,14 +51,16 @@ def _load_bars_csv(path: Path) -> list[dict[str, Any]]:
         reader = csv.DictReader(fh)
         for row in reader:
             try:
-                bars.append({
-                    "open":   float(row["open"]),
-                    "high":   float(row["high"]),
-                    "low":    float(row["low"]),
-                    "close":  float(row["close"]),
-                    "volume": float(row.get("volume", 0)),
-                    "ts":     row.get("ts") or row.get("timestamp") or "",
-                })
+                bars.append(
+                    {
+                        "open": float(row["open"]),
+                        "high": float(row["high"]),
+                        "low": float(row["low"]),
+                        "close": float(row["close"]),
+                        "volume": float(row.get("volume", 0)),
+                        "ts": row.get("ts") or row.get("timestamp") or "",
+                    }
+                )
             except (ValueError, KeyError) as exc:
                 logger.debug("row skipped: %s", exc)
     return bars
@@ -73,15 +76,14 @@ def _features_from_window(window: list[dict[str, Any]]) -> list[float]:
     highs = [float(b["high"]) for b in window]
     lows = [float(b["low"]) for b in window]
     volumes = [float(b.get("volume", 0)) for b in window]
-    rets = [(closes[i] - closes[i - 1]) / max(closes[i - 1], 1e-9)
-            for i in range(1, len(closes))]
+    rets = [(closes[i] - closes[i - 1]) / max(closes[i - 1], 1e-9) for i in range(1, len(closes))]
     recent_vol = sum(abs(r) for r in rets[-10:]) / 10
     baseline_vol = sum(abs(r) for r in rets) / len(rets)
     last_range = highs[-1] - lows[-1]
     avg_range = sum(h - lo for h, lo in zip(highs, lows, strict=True)) / len(highs)
     mean_vol = sum(volumes) / len(volumes)
     var_vol = sum((v - mean_vol) ** 2 for v in volumes) / len(volumes)
-    sd_vol = max(var_vol ** 0.5, 1e-9)
+    sd_vol = max(var_vol**0.5, 1e-9)
     last_vol_z = (volumes[-1] - mean_vol) / sd_vol
     return [
         recent_vol / max(baseline_vol, 1e-9),
@@ -135,18 +137,15 @@ def main(argv: list[str] | None = None) -> int:
     src = p.add_mutually_exclusive_group(required=True)
     src.add_argument("--csv", type=Path, help="CSV with open,high,low,close,volume cols")
     src.add_argument("--bars", type=Path, help="JSON list of bar dicts")
-    p.add_argument("--out", type=Path,
-                   default=Path("state/sage/ml_model.pkl"))
+    p.add_argument("--out", type=Path, default=Path("state/sage/ml_model.pkl"))
     p.add_argument("--window", type=int, default=50)
     p.add_argument("--forward-bars", type=int, default=50)
     p.add_argument("--min-abs-return", type=float, default=0.001)
-    p.add_argument("--min-samples", type=int, default=200,
-                   help="Minimum (X, y) samples needed to train")
+    p.add_argument("--min-samples", type=int, default=200, help="Minimum (X, y) samples needed to train")
     p.add_argument("--n-estimators", type=int, default=100)
     p.add_argument("--max-depth", type=int, default=4)
     p.add_argument("--learning-rate", type=float, default=0.05)
-    p.add_argument("--test-split", type=float, default=0.20,
-                   help="Holdout fraction for OOS accuracy report")
+    p.add_argument("--test-split", type=float, default=0.20, help="Holdout fraction for OOS accuracy report")
     p.add_argument("-v", "--verbose", action="store_true")
     args = p.parse_args(argv)
 
@@ -179,16 +178,20 @@ def main(argv: list[str] | None = None) -> int:
         forward_bars=args.forward_bars,
         min_abs_return=args.min_abs_return,
     )
-    logger.info("built %d samples (X, y); positive=%d negative=%d",
-                len(X), sum(y), len(y) - sum(y))
+    logger.info("built %d samples (X, y); positive=%d negative=%d", len(X), sum(y), len(y) - sum(y))
 
     if len(X) < args.min_samples:
-        logger.error("only %d samples -- need >= %d. Provide more bars or "
-                     "lower --min-samples.", len(X), args.min_samples)
+        logger.error(
+            "only %d samples -- need >= %d. Provide more bars or lower --min-samples.", len(X), args.min_samples
+        )
         return 1
 
     X_train, X_test, y_train, y_test = train_test_split(  # noqa: N806  -- sklearn idiom
-        X, y, test_size=args.test_split, random_state=42, shuffle=False,
+        X,
+        y,
+        test_size=args.test_split,
+        random_state=42,
+        shuffle=False,
     )
     logger.info("train=%d test=%d", len(X_train), len(X_test))
 
@@ -202,8 +205,7 @@ def main(argv: list[str] | None = None) -> int:
     train_acc = clf.score(X_train, y_train)
     test_acc = clf.score(X_test, y_test)
     baseline = max(sum(y_test), len(y_test) - sum(y_test)) / len(y_test) if y_test else 0
-    logger.info("train_acc=%.4f test_acc=%.4f baseline=%.4f",
-                train_acc, test_acc, baseline)
+    logger.info("train_acc=%.4f test_acc=%.4f baseline=%.4f", train_acc, test_acc, baseline)
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
     joblib.dump(clf, args.out)

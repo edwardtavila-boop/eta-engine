@@ -24,6 +24,7 @@ print(f"\nBridge log exists: {bridge_log.exists()}")
 health = Path("C:/EvolutionaryTradingAlgo/var/eta_engine/state/jarvis_live_health.json")
 if health.exists():
     import json
+
     d = json.loads(health.read_text())
     print(f"\nJARVIS health: {d.get('health', '?')}")
     print(f"  Reasons: {d.get('reasons', [])}")

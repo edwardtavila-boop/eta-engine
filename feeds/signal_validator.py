@@ -29,10 +29,10 @@ Each violation returns a `ValidationFailure` with a stable code so the
 fleet audit tool can aggregate "bot X had N stop_side_inverted failures"
 without parsing strings.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
-
 
 # Hard global notional cap, expressed as a multiple of account equity.
 # Calibrated for futures: retail intraday margin on micro contracts is
@@ -90,10 +90,13 @@ def validate_signal(
 
     # 1. Side
     if side not in {"LONG", "SHORT", "BUY", "SELL"}:
-        failures.append(ValidationFailure(
-            code="invalid_side", message=f"side must be LONG/SHORT, got {side!r}",
-            detail={"side": side},
-        ))
+        failures.append(
+            ValidationFailure(
+                code="invalid_side",
+                message=f"side must be LONG/SHORT, got {side!r}",
+                detail={"side": side},
+            )
+        )
         return ValidationResult.failed(*failures)
 
     is_long = side in {"LONG", "BUY"}
@@ -101,42 +104,52 @@ def validate_signal(
     # 2. Positive prices
     for name, val in (("entry", entry), ("stop", stop), ("target", target)):
         if val <= 0 or not _is_finite(val):
-            failures.append(ValidationFailure(
-                code="non_positive_price",
-                message=f"{name} must be > 0 and finite, got {val}",
-                detail={"field": name, "value": val},
-            ))
+            failures.append(
+                ValidationFailure(
+                    code="non_positive_price",
+                    message=f"{name} must be > 0 and finite, got {val}",
+                    detail={"field": name, "value": val},
+                )
+            )
 
     if failures:
         return ValidationResult.failed(*failures)
 
     # 3. Stop on correct side of entry
     if is_long and stop >= entry:
-        failures.append(ValidationFailure(
-            code="stop_side_inverted",
-            message=f"LONG stop ({stop}) must be BELOW entry ({entry})",
-            detail={"side": side, "entry": entry, "stop": stop},
-        ))
+        failures.append(
+            ValidationFailure(
+                code="stop_side_inverted",
+                message=f"LONG stop ({stop}) must be BELOW entry ({entry})",
+                detail={"side": side, "entry": entry, "stop": stop},
+            )
+        )
     elif (not is_long) and stop <= entry:
-        failures.append(ValidationFailure(
-            code="stop_side_inverted",
-            message=f"SHORT stop ({stop}) must be ABOVE entry ({entry})",
-            detail={"side": side, "entry": entry, "stop": stop},
-        ))
+        failures.append(
+            ValidationFailure(
+                code="stop_side_inverted",
+                message=f"SHORT stop ({stop}) must be ABOVE entry ({entry})",
+                detail={"side": side, "entry": entry, "stop": stop},
+            )
+        )
 
     # 4. Target on correct side of entry
     if is_long and target <= entry:
-        failures.append(ValidationFailure(
-            code="target_side_inverted",
-            message=f"LONG target ({target}) must be ABOVE entry ({entry})",
-            detail={"side": side, "entry": entry, "target": target},
-        ))
+        failures.append(
+            ValidationFailure(
+                code="target_side_inverted",
+                message=f"LONG target ({target}) must be ABOVE entry ({entry})",
+                detail={"side": side, "entry": entry, "target": target},
+            )
+        )
     elif (not is_long) and target >= entry:
-        failures.append(ValidationFailure(
-            code="target_side_inverted",
-            message=f"SHORT target ({target}) must be BELOW entry ({entry})",
-            detail={"side": side, "entry": entry, "target": target},
-        ))
+        failures.append(
+            ValidationFailure(
+                code="target_side_inverted",
+                message=f"SHORT target ({target}) must be BELOW entry ({entry})",
+                detail={"side": side, "entry": entry, "target": target},
+            )
+        )
 
     # If sides are inverted, the rest of the checks are noise — return now.
     if failures:
@@ -146,56 +159,71 @@ def validate_signal(
     risk = abs(entry - stop)
     reward = abs(target - entry)
     if risk <= 0:
-        failures.append(ValidationFailure(
-            code="zero_risk",
-            message="entry == stop produces zero risk",
-            detail={"entry": entry, "stop": stop},
-        ))
+        failures.append(
+            ValidationFailure(
+                code="zero_risk",
+                message="entry == stop produces zero risk",
+                detail={"entry": entry, "stop": stop},
+            )
+        )
         return ValidationResult.failed(*failures)
     rr = reward / risk
     if rr < 0.1:
-        failures.append(ValidationFailure(
-            code="rr_too_small",
-            message=f"RR={rr:.3f} below sanity floor 0.1 (target too close)",
-            detail={"rr": rr, "risk": risk, "reward": reward},
-        ))
+        failures.append(
+            ValidationFailure(
+                code="rr_too_small",
+                message=f"RR={rr:.3f} below sanity floor 0.1 (target too close)",
+                detail={"rr": rr, "risk": risk, "reward": reward},
+            )
+        )
     if rr > 50:
-        failures.append(ValidationFailure(
-            code="rr_absurd",
-            message=f"RR={rr:.1f} above sanity ceiling 50 (target too far / stop too tight)",
-            detail={"rr": rr, "risk": risk, "reward": reward},
-        ))
+        failures.append(
+            ValidationFailure(
+                code="rr_absurd",
+                message=f"RR={rr:.1f} above sanity ceiling 50 (target too far / stop too tight)",
+                detail={"rr": rr, "risk": risk, "reward": reward},
+            )
+        )
 
     # 6. Stop too far in % terms (catches frozen-profile-far-away bugs)
     stop_dist_pct = risk / entry
     if stop_dist_pct > 0.20:
-        failures.append(ValidationFailure(
-            code="stop_dist_too_wide",
-            message=f"stop is {stop_dist_pct*100:.1f}% from entry — likely structural-stop drift bug",
-            detail={"stop_dist_pct": stop_dist_pct, "entry": entry, "stop": stop},
-        ))
+        failures.append(
+            ValidationFailure(
+                code="stop_dist_too_wide",
+                message=f"stop is {stop_dist_pct * 100:.1f}% from entry — likely structural-stop drift bug",
+                detail={"stop_dist_pct": stop_dist_pct, "entry": entry, "stop": stop},
+            )
+        )
 
     # 7. Qty / notional cap
     if qty <= 0:
-        failures.append(ValidationFailure(
-            code="non_positive_qty",
-            message=f"qty must be > 0, got {qty}",
-            detail={"qty": qty},
-        ))
+        failures.append(
+            ValidationFailure(
+                code="non_positive_qty",
+                message=f"qty must be > 0, got {qty}",
+                detail={"qty": qty},
+            )
+        )
     elif equity > 0 and entry > 0 and point_value > 0:
         notional = abs(qty) * abs(entry) * point_value
         if notional > MAX_QTY_NOTIONAL_PCT_OF_EQUITY * equity:
-            failures.append(ValidationFailure(
-                code="notional_exceeds_cap",
-                message=(
-                    f"notional {notional:.0f} > {MAX_QTY_NOTIONAL_PCT_OF_EQUITY:.0f}x equity "
-                    f"({equity:.0f}) — degenerate sizing, likely tiny stop_dist"
-                ),
-                detail={
-                    "qty": qty, "entry": entry, "point_value": point_value,
-                    "equity": equity, "notional": notional,
-                },
-            ))
+            failures.append(
+                ValidationFailure(
+                    code="notional_exceeds_cap",
+                    message=(
+                        f"notional {notional:.0f} > {MAX_QTY_NOTIONAL_PCT_OF_EQUITY:.0f}x equity "
+                        f"({equity:.0f}) — degenerate sizing, likely tiny stop_dist"
+                    ),
+                    detail={
+                        "qty": qty,
+                        "entry": entry,
+                        "point_value": point_value,
+                        "equity": equity,
+                        "notional": notional,
+                    },
+                )
+            )
 
     if failures:
         return ValidationResult.failed(*failures)
@@ -204,6 +232,7 @@ def validate_signal(
 
 def _is_finite(x: float) -> bool:
     import math
+
     return math.isfinite(x)
 
 

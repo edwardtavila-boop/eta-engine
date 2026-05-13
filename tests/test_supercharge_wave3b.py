@@ -8,6 +8,7 @@ Covers:
   * v21 drawdown-proximity DEFER
   * 4-arm bandit registration (v18, v19, v20, v21 + champion v17)
 """
+
 from __future__ import annotations
 
 
@@ -33,6 +34,7 @@ def _ctx(composite: float, *, binding: str = "vol", session: str = "OPEN_DRIVE")
 
 def _req():
     from eta_engine.brain.jarvis_admin import ActionRequest, ActionType, SubsystemId
+
     return ActionRequest(
         subsystem=SubsystemId.BOT_MNQ,
         action=ActionType.ORDER_PLACE,
@@ -41,10 +43,17 @@ def _req():
     )
 
 
-def _stub_resp(verdict_value: str, *, binding: str = "", session: str = "OPEN_DRIVE",
-               cap: float | None = 0.5, composite: float = 0.5):
+def _stub_resp(
+    verdict_value: str,
+    *,
+    binding: str = "",
+    session: str = "OPEN_DRIVE",
+    cap: float | None = 0.5,
+    composite: float = 0.5,
+):
     from eta_engine.brain.jarvis_admin import ActionResponse, ActionSuggestion, Verdict
     from eta_engine.brain.jarvis_context import SessionPhase
+
     return ActionResponse(
         request_id="r",
         verdict=Verdict(verdict_value),
@@ -241,9 +250,11 @@ class _StubBot:
 
     def __init__(self) -> None:
         from types import SimpleNamespace
+
         self.config = SimpleNamespace(name="stub_bot")
         # Borrow the BaseBot helpers
         from eta_engine.bots.base_bot import BaseBot
+
         self.run_pre_flight = BaseBot.run_pre_flight.__get__(self)
         self.record_fill_outcome = BaseBot.record_fill_outcome.__get__(self)
         self.observe_fill_for_learning = BaseBot.observe_fill_for_learning.__get__(self)

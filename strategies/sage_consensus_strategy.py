@@ -125,8 +125,7 @@ class SageConsensusStrategy:
             return None
         if (
             self._last_entry_idx is not None
-            and (self._bars_seen - self._last_entry_idx)
-            < self.cfg.min_bars_between_trades
+            and (self._bars_seen - self._last_entry_idx) < self.cfg.min_bars_between_trades
         ):
             return None
 
@@ -134,7 +133,7 @@ class SageConsensusStrategy:
         from eta_engine.brain.jarvis_v3.sage.base import MarketContext
         from eta_engine.brain.jarvis_v3.sage.consultation import consult_sage
 
-        bars_dicts = [_bar_to_dict(b) for b in hist[-self.cfg.sage_lookback_bars:]]
+        bars_dicts = [_bar_to_dict(b) for b in hist[-self.cfg.sage_lookback_bars :]]
         if len(bars_dicts) < 25:  # regime detector minimum
             return None
 
@@ -168,14 +167,11 @@ class SageConsensusStrategy:
 
         # alignment_score uses ctx.side="long". Translate to real
         # alignment for the chosen side.
-        real_alignment = (
-            report.alignment_score if side == "BUY"
-            else 1.0 - report.alignment_score
-        )
+        real_alignment = report.alignment_score if side == "BUY" else 1.0 - report.alignment_score
         if real_alignment < self.cfg.min_alignment:
             return None
 
-        atr_window = hist[-self.cfg.atr_period:] if hist else []
+        atr_window = hist[-self.cfg.atr_period :] if hist else []
         if len(atr_window) < 2:
             return None
         atr = sum(b.high - b.low for b in atr_window) / len(atr_window)
@@ -200,8 +196,13 @@ class SageConsensusStrategy:
         from eta_engine.backtest.engine import _Open
 
         opened = _Open(
-            entry_bar=bar, side=side, qty=qty, entry_price=entry_price,
-            stop=stop, target=target, risk_usd=risk_usd,
+            entry_bar=bar,
+            side=side,
+            qty=qty,
+            entry_price=entry_price,
+            stop=stop,
+            target=target,
+            risk_usd=risk_usd,
             confluence=10.0 * report.conviction,
             leverage=1.0,
             regime=f"sage_{bias}",

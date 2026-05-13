@@ -21,8 +21,8 @@ _TIMEFRAME_SECS = {"1m": 60, "5m": 300, "15m": 900, "1h": 3600}
 
 SYMBOL_CONFIG: dict[str, dict] = {
     "MNQ": {"conid": 770561201, "type": "futures", "exchange": "CME"},
-    "NQ":  {"conid": 750150196, "type": "futures", "exchange": "CME"},
-    "ES":  {"conid": 649180678, "type": "futures", "exchange": "CME"},
+    "NQ": {"conid": 750150196, "type": "futures", "exchange": "CME"},
+    "ES": {"conid": 649180678, "type": "futures", "exchange": "CME"},
     "BTC": {"conid": 764777976, "type": "crypto", "exchange": "PAXOS"},
     "ETH": {"conid": 764777977, "type": "crypto", "exchange": "PAXOS"},
 }
@@ -98,6 +98,7 @@ class MultiSymbolFeed:
         import ssl
 
         import aiohttp
+
         ctx = ssl.create_default_context()
         ctx.check_hostname = False
         ctx.verify_mode = ssl.CERT_NONE

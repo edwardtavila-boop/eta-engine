@@ -86,12 +86,14 @@ def _build_factory(  # noqa: C901
                 RegimeGatedStrategy,
                 mnq_intraday_preset,
             )
+
             sub = RegimeGatedStrategy(sub, mnq_intraday_preset())
         if use_kelly:
             from eta_engine.strategies.adaptive_kelly_sizing import (
                 AdaptiveKellyConfig,
                 AdaptiveKellySizingStrategy,
             )
+
             sub = AdaptiveKellySizingStrategy(
                 sub,
                 AdaptiveKellyConfig(
@@ -114,7 +116,11 @@ def _build_factory(  # noqa: C901
 
 
 def _run_one(
-    label: str, factory: Any, bars: list, backtest_cfg: Any, wf: Any,  # noqa: ANN401
+    label: str,
+    factory: Any,
+    bars: list,
+    backtest_cfg: Any,
+    wf: Any,  # noqa: ANN401
 ) -> Any:  # noqa: ANN401
     from eta_engine.backtest import WalkForwardEngine
     from eta_engine.features.pipeline import FeaturePipeline
@@ -136,11 +142,9 @@ def _print_summary(label: str, res: Any) -> None:  # noqa: ANN401
     print("=" * 82)
     print(f"Windows:                     {len(res.windows)}")
     print(f"Aggregate OOS Sharpe:        {res.aggregate_oos_sharpe:>8.4f}")
-    print(f"Positive OOS windows:        {n_pos}/{len(res.windows)}"
-          f" ({n_pos / max(len(res.windows), 1) * 100:.1f}%)")
+    print(f"Positive OOS windows:        {n_pos}/{len(res.windows)} ({n_pos / max(len(res.windows), 1) * 100:.1f}%)")
     print(f"OOS degradation avg:         {res.oos_degradation_avg:>8.4f}")
-    print(f"Per-fold DSR pass fraction:  "
-          f"{res.fold_dsr_pass_fraction * 100:>7.2f}%")
+    print(f"Per-fold DSR pass fraction:  {res.fold_dsr_pass_fraction * 100:>7.2f}%")
     print(f"Gate: {'PASS' if res.pass_gate else 'FAIL'}")
     print("=" * 82)
 
@@ -152,7 +156,8 @@ def main() -> int:
     parser.add_argument("--window-days", type=int, default=60)
     parser.add_argument("--step-days", type=int, default=30)
     parser.add_argument(
-        "--variants", default="baseline,regime,kelly,full",
+        "--variants",
+        default="baseline,regime,kelly,full",
         help="Comma-separated: baseline, regime, kelly, full",
     )
     args = parser.parse_args()
@@ -175,16 +180,22 @@ def main() -> int:
     )
 
     backtest_cfg = BacktestConfig(
-        start_date=bars[0].timestamp, end_date=bars[-1].timestamp,
-        symbol=ds.symbol, initial_equity=10_000.0,
-        risk_per_trade_pct=0.01, confluence_threshold=0.0,
+        start_date=bars[0].timestamp,
+        end_date=bars[-1].timestamp,
+        symbol=ds.symbol,
+        initial_equity=10_000.0,
+        risk_per_trade_pct=0.01,
+        confluence_threshold=0.0,
         max_trades_per_day=10,
     )
     wf = WalkForwardConfig(
-        window_days=args.window_days, step_days=args.step_days,
-        anchored=True, oos_fraction=0.3,
+        window_days=args.window_days,
+        step_days=args.step_days,
+        anchored=True,
+        oos_fraction=0.3,
         min_trades_per_window=3,
-        strict_fold_dsr_gate=True, fold_dsr_min_pass_fraction=0.5,
+        strict_fold_dsr_gate=True,
+        fold_dsr_min_pass_fraction=0.5,
     )
 
     print(f"\n[wf] window={args.window_days}d step={args.step_days}d")
@@ -217,8 +228,7 @@ def main() -> int:
         print("\n\nMNQ VARIANT MATRIX SUMMARY")
         print("=" * 82)
         cols = ["variant", "OOS Sharpe", "+OOS folds", "deg_avg", "DSR%", "gate"]
-        print(f"{cols[0]:<12}{cols[1]:>14}{cols[2]:>14}{cols[3]:>10}"
-              f"{cols[4]:>10}{cols[5]:>10}")
+        print(f"{cols[0]:<12}{cols[1]:>14}{cols[2]:>14}{cols[3]:>10}{cols[4]:>10}{cols[5]:>10}")
         print("-" * 82)
         for variant, res in results.items():
             n_pos = sum(1 for w in res.windows if w.get("oos_sharpe", 0) > 0)

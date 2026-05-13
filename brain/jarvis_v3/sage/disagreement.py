@@ -22,6 +22,7 @@ This module exposes two things:
   * KNOWN_PATTERNS -- the curated dict of recognized clash patterns
   * detect_clashes(report) -> list[ClashPattern] -- finds matches in a SageReport
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -40,14 +41,14 @@ from eta_engine.brain.jarvis_v3.sage.base import (
 class ClashPattern:
     """A recognized school-vs-school disagreement pattern."""
 
-    name: str                # e.g. "structural_uptrend_distribution"
+    name: str  # e.g. "structural_uptrend_distribution"
     school_a: str
     bias_a: Bias
     school_b: str
     bias_b: Bias
-    interpretation: str      # human-readable
-    verdict_modifier: str    # "tighten_cap" | "defer" | "loosen_cap" | "no_change"
-    cap_mult: float = 1.0    # if verdict_modifier is tighten/loosen, this is the cap
+    interpretation: str  # human-readable
+    verdict_modifier: str  # "tighten_cap" | "defer" | "loosen_cap" | "no_change"
+    cap_mult: float = 1.0  # if verdict_modifier is tighten/loosen, this is the cap
 
 
 # Curated catalog of known patterns. Add/refine from journal evidence.
@@ -56,8 +57,10 @@ class ClashPattern:
 KNOWN_PATTERNS: list[ClashPattern] = [
     ClashPattern(
         name="structural_uptrend_topping",
-        school_a="dow_theory",      bias_a=Bias.LONG,
-        school_b="wyckoff",         bias_b=Bias.SHORT,
+        school_a="dow_theory",
+        bias_a=Bias.LONG,
+        school_b="wyckoff",
+        bias_b=Bias.SHORT,
         interpretation=(
             "Dow says uptrend but Wyckoff sees distribution -- the structural "
             "trend is intact while smart money is exiting. Often precedes "
@@ -67,8 +70,10 @@ KNOWN_PATTERNS: list[ClashPattern] = [
     ),
     ClashPattern(
         name="trend_intact_choch_warning",
-        school_a="trend_following", bias_a=Bias.LONG,
-        school_b="smc_ict",          bias_b=Bias.SHORT,
+        school_a="trend_following",
+        bias_a=Bias.LONG,
+        school_b="smc_ict",
+        bias_b=Bias.SHORT,
         interpretation=(
             "Trend bullish but SMC/ICT sees ChoCH down -- likely a correction "
             "in an uptrend, not a reversal. Tighten cap; manage stop tightly."
@@ -78,8 +83,10 @@ KNOWN_PATTERNS: list[ClashPattern] = [
     ),
     ClashPattern(
         name="momentum_into_value_area_high",
-        school_a="vpa",             bias_a=Bias.LONG,
-        school_b="market_profile",  bias_b=Bias.SHORT,
+        school_a="vpa",
+        bias_a=Bias.LONG,
+        school_b="market_profile",
+        bias_b=Bias.SHORT,
         interpretation=(
             "Volume pressure long into a prior value-area high. "
             "Proceed but expect rejection at VAH; tighten profit target."
@@ -89,19 +96,22 @@ KNOWN_PATTERNS: list[ClashPattern] = [
     ),
     ClashPattern(
         name="dow_long_redteam_short",
-        school_a="dow_theory",      bias_a=Bias.LONG,
-        school_b="red_team",        bias_b=Bias.SHORT,
+        school_a="dow_theory",
+        bias_a=Bias.LONG,
+        school_b="red_team",
+        bias_b=Bias.SHORT,
         interpretation=(
-            "Dow long + adversarial red-team finds a credible short thesis. "
-            "Reduce conviction; don't size up."
+            "Dow long + adversarial red-team finds a credible short thesis. Reduce conviction; don't size up."
         ),
         verdict_modifier="tighten_cap",
         cap_mult=0.6,
     ),
     ClashPattern(
         name="risk_violated_anything_long",
-        school_a="risk_management", bias_a=Bias.NEUTRAL,  # NEUTRAL + conviction=0 = violation
-        school_b="dow_theory",      bias_b=Bias.LONG,
+        school_a="risk_management",
+        bias_a=Bias.NEUTRAL,  # NEUTRAL + conviction=0 = violation
+        school_b="dow_theory",
+        bias_b=Bias.LONG,
         interpretation=(
             "Risk management school flags non-compliance (cap violated). "
             "DEFER regardless of any other school's direction."
@@ -110,8 +120,10 @@ KNOWN_PATTERNS: list[ClashPattern] = [
     ),
     ClashPattern(
         name="wyckoff_spring_orderflow_disagree",
-        school_a="wyckoff",         bias_a=Bias.LONG,
-        school_b="order_flow",      bias_b=Bias.SHORT,
+        school_a="wyckoff",
+        bias_a=Bias.LONG,
+        school_b="order_flow",
+        bias_b=Bias.SHORT,
         interpretation=(
             "Wyckoff sees spring (long setup) but order flow shows aggressive "
             "selling -- spring may not hold. Reduce size; wait for first "
@@ -122,8 +134,10 @@ KNOWN_PATTERNS: list[ClashPattern] = [
     ),
     ClashPattern(
         name="vol_regime_quiet_breakout_long",
-        school_a="volatility_regime", bias_a=Bias.NEUTRAL,
-        school_b="trend_following",   bias_b=Bias.LONG,
+        school_a="volatility_regime",
+        bias_a=Bias.NEUTRAL,
+        school_b="trend_following",
+        bias_b=Bias.LONG,
         interpretation=(
             "Vol regime quiet + trend says breakout long. Likely "
             "low-conviction; statistically thin vol moves often fade. "
@@ -148,8 +162,8 @@ def detect_clashes(report: SageReport) -> list[ClashPattern]:
             continue
 
         # Match either ordering of (a, b) since the pattern is symmetric.
-        match_forward = (v_a.bias == pat.bias_a and v_b.bias == pat.bias_b)
-        match_reverse = (v_a.bias == pat.bias_b and v_b.bias == pat.bias_a)
+        match_forward = v_a.bias == pat.bias_a and v_b.bias == pat.bias_b
+        match_reverse = v_a.bias == pat.bias_b and v_b.bias == pat.bias_a
 
         # Risk-management special-case: NEUTRAL + conviction=0 = violation.
         # When conviction is the default 0.5 ("risk parameters not provided

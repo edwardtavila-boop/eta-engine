@@ -16,13 +16,17 @@ from eta_engine.strategies.htf_routed_strategy import (
 )
 
 
-def _bar(idx: int, *, h: float, low: float, c: float | None = None,
-         v: float = 1000.0) -> BarData:
+def _bar(idx: int, *, h: float, low: float, c: float | None = None, v: float = 1000.0) -> BarData:
     ts = datetime(2026, 1, 1, tzinfo=UTC) + timedelta(hours=idx)
     c = c if c is not None else (h + low) / 2
     return BarData(
-        timestamp=ts, symbol="BTC", open=(h + low) / 2,
-        high=h, low=low, close=c, volume=v,
+        timestamp=ts,
+        symbol="BTC",
+        open=(h + low) / 2,
+        high=h,
+        low=low,
+        close=c,
+        volume=v,
     )
 
 
@@ -30,18 +34,26 @@ def _config() -> BacktestConfig:
     return BacktestConfig(
         start_date=datetime(2026, 1, 1, tzinfo=UTC),
         end_date=datetime(2026, 12, 31, tzinfo=UTC),
-        symbol="BTC", initial_equity=10_000.0,
-        risk_per_trade_pct=0.01, confluence_threshold=0.0,
+        symbol="BTC",
+        initial_equity=10_000.0,
+        risk_per_trade_pct=0.01,
+        confluence_threshold=0.0,
         max_trades_per_day=10,
     )
 
 
 def _make_classification(
-    mode: str = "trend_follow", bias: str = "long", regime: str = "trending",
+    mode: str = "trend_follow",
+    bias: str = "long",
+    regime: str = "trending",
 ) -> HtfRegimeClassification:
     return HtfRegimeClassification(
-        bias=bias, regime=regime, mode=mode,
-        close=100.0, fast_ema=99.0, slow_ema=98.0,
+        bias=bias,
+        regime=regime,
+        mode=mode,
+        close=100.0,
+        fast_ema=99.0,
+        slow_ema=98.0,
     )
 
 
@@ -52,8 +64,10 @@ def _make_classification(
 
 def _mr(**overrides) -> MeanRevertSubStrategy:  # type: ignore[no-untyped-def]
     base = {
-        "regime_ema": 10, "warmup_bars": 15,
-        "atr_period": 5, "min_bars_between_trades": 0,
+        "regime_ema": 10,
+        "warmup_bars": 15,
+        "atr_period": 5,
+        "min_bars_between_trades": 0,
         "extreme_distance_pct": 1.5,
     }
     base.update(overrides)
@@ -124,18 +138,24 @@ def test_mean_revert_no_fire_when_close_outside_band() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _router(mode: str = "trend_follow", bias: str = "long",
-            regime: str = "trending") -> tuple[HtfRoutedStrategy, list]:  # type: ignore[type-arg]
+def _router(mode: str = "trend_follow", bias: str = "long", regime: str = "trending") -> tuple[HtfRoutedStrategy, list]:  # type: ignore[type-arg]
     """Build a router strategy + a mutable list for swapping classifications."""
     cfg = HtfRoutedConfig(
         trend_follow=CryptoRegimeTrendConfig(
-            regime_ema=20, pullback_ema=5, warmup_bars=25,
-            atr_period=5, min_bars_between_trades=0,
-            pullback_tolerance_pct=2.0, max_trades_per_day=100,
+            regime_ema=20,
+            pullback_ema=5,
+            warmup_bars=25,
+            atr_period=5,
+            min_bars_between_trades=0,
+            pullback_tolerance_pct=2.0,
+            max_trades_per_day=100,
         ),
         mean_revert=MeanRevertConfig(
-            regime_ema=10, warmup_bars=15, atr_period=5,
-            min_bars_between_trades=0, extreme_distance_pct=1.5,
+            regime_ema=10,
+            warmup_bars=15,
+            atr_period=5,
+            min_bars_between_trades=0,
+            extreme_distance_pct=1.5,
             max_trades_per_day=100,
         ),
         enforce_htf_bias_alignment=True,

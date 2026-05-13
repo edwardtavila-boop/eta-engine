@@ -82,15 +82,14 @@ def _secret(key: str) -> str:
         live_mode = _truthy(os.environ.get("ETA_LIVE_MODE"))
         if live_mode:
             raise RuntimeError(
-                f"ETA_LIVE_MODE=1 but broker secret missing for {key}; "
-                "refusing to silently fall through to mock"
+                f"ETA_LIVE_MODE=1 but broker secret missing for {key}; refusing to silently fall through to mock"
             )
         _LOG.warning(
-            "broker secret missing for %s; falling through to mock adapter "
-            "(set ETA_LIVE_MODE=1 to fail closed)",
+            "broker secret missing for %s; falling through to mock adapter (set ETA_LIVE_MODE=1 to fail closed)",
             key,
         )
     return value
+
 
 ROOT = _ROOT
 STATUS_PATH = ROOT.parent / "var" / "eta_engine" / "state" / "tradovate_auth_status.json"
@@ -162,10 +161,7 @@ def _last4(s: str | None) -> str:
 async def _run(demo: bool, prop_account: str | None = None) -> tuple[int, AuthReport]:
     # Workspace hard rule #2: Tradovate is dormant unless explicitly reactivated.
     if not _truthy(os.environ.get("ETA_TRADOVATE_ENABLED")):
-        raise RuntimeError(
-            "Tradovate is dormant per workspace policy; "
-            "set ETA_TRADOVATE_ENABLED=1 to activate"
-        )
+        raise RuntimeError("Tradovate is dormant per workspace policy; set ETA_TRADOVATE_ENABLED=1 to activate")
 
     prefix, credential_scope = _prefix_for_prop_account(prop_account)
     required = _required_keys(prefix)

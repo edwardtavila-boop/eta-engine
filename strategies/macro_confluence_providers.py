@@ -181,8 +181,10 @@ class FundingRateProvider:
             if not self._stale_logged:
                 _LOG.warning(
                     "FundingRateProvider stale: bar=%s last=%s age=%.1fh > %.1fh; returning NaN",
-                    bar.timestamp.isoformat(), t_match.isoformat(),
-                    age_hours, self.max_age_hours,
+                    bar.timestamp.isoformat(),
+                    t_match.isoformat(),
+                    age_hours,
+                    self.max_age_hours,
                 )
                 self._stale_logged = True
             return math.nan
@@ -248,11 +250,15 @@ class MacroTailwindProvider:
             spy_prev = spy_by_date[d_prev]
             dxy_slope = (dxy_now - dxy_prev) / max(dxy_prev, 1e-9)
             spy_slope = (spy_now - spy_prev) / max(spy_prev, 1e-9)
-            self._macro.append(_MacroBar(
-                date=datetime(d.year, d.month, d.day, tzinfo=UTC),
-                dxy_close=dxy_now, spy_close=spy_now,
-                dxy_slope_5d=dxy_slope, spy_slope_5d=spy_slope,
-            ))
+            self._macro.append(
+                _MacroBar(
+                    date=datetime(d.year, d.month, d.day, tzinfo=UTC),
+                    dxy_close=dxy_now,
+                    spy_close=spy_now,
+                    dxy_slope_5d=dxy_slope,
+                    spy_slope_5d=spy_slope,
+                )
+            )
         self._macro.sort(key=lambda m: m.date)
 
     def __call__(self, bar: BarData) -> float:
@@ -284,8 +290,10 @@ class MacroTailwindProvider:
             if not self._stale_logged:
                 _LOG.warning(
                     "MacroTailwindProvider stale: bar=%s last=%s age=%.1fh > %.1fh; returning NaN",
-                    bar.timestamp.isoformat(), last_date.isoformat(),
-                    age_hours, self.max_age_hours,
+                    bar.timestamp.isoformat(),
+                    last_date.isoformat(),
+                    age_hours,
+                    self.max_age_hours,
                 )
                 self._stale_logged = True
             return math.nan
@@ -313,7 +321,8 @@ def _read_yahoo_csv(p: Path) -> list[tuple[datetime, float]]:
 
 
 def _read_two_col_csv(
-    p: Path, value_col: str,
+    p: Path,
+    value_col: str,
 ) -> list[tuple[datetime, float]]:
     """Read a (time, <value_col>) CSV. Used by all three Tier-4 providers.
 
@@ -385,8 +394,10 @@ class EtfFlowProvider:
             if not self._stale_logged:
                 _LOG.warning(
                     "EtfFlowProvider stale: bar=%s last=%s age=%.1fh > %.1fh; returning NaN",
-                    bar.timestamp.isoformat(), t_match.isoformat(),
-                    age_hours, self.max_age_hours,
+                    bar.timestamp.isoformat(),
+                    t_match.isoformat(),
+                    age_hours,
+                    self.max_age_hours,
                 )
                 self._stale_logged = True
             return math.nan
@@ -463,8 +474,10 @@ class LthProxyProvider:
             if not self._stale_logged:
                 _LOG.warning(
                     "LthProxyProvider stale: bar=%s last=%s age=%.1fh > %.1fh; returning NaN",
-                    bar.timestamp.isoformat(), t_match.isoformat(),
-                    age_hours, self.max_age_hours,
+                    bar.timestamp.isoformat(),
+                    t_match.isoformat(),
+                    age_hours,
+                    self.max_age_hours,
                 )
                 self._stale_logged = True
             return math.nan

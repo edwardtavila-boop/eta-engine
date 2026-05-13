@@ -51,7 +51,7 @@ def main() -> int:
     wf = WalkForwardConfig(window_days=30, step_days=15, anchored=True, oos_fraction=0.3)
     start = bars[0].timestamp
     is_end = start + timedelta(days=int(wf.window_days * (1 - wf.oos_fraction)))  # ~21 days
-    oos_end = start + timedelta(days=wf.window_days)                              # ~30 days
+    oos_end = start + timedelta(days=wf.window_days)  # ~30 days
 
     is_bars = [b for b in bars if start <= b.timestamp < is_end]
     oos_bars = [b for b in bars if is_end <= b.timestamp < oos_end]
@@ -65,26 +65,28 @@ def main() -> int:
         confluence_threshold=5.0,
         max_trades_per_day=10,
     )
-    is_cfg = cfg_template.model_copy(
-        update={"start_date": is_bars[0].timestamp, "end_date": is_bars[-1].timestamp}
-    )
-    oos_cfg = cfg_template.model_copy(
-        update={"start_date": oos_bars[0].timestamp, "end_date": oos_bars[-1].timestamp}
-    )
+    is_cfg = cfg_template.model_copy(update={"start_date": is_bars[0].timestamp, "end_date": is_bars[-1].timestamp})
+    oos_cfg = cfg_template.model_copy(update={"start_date": oos_bars[0].timestamp, "end_date": oos_bars[-1].timestamp})
     pipeline = FeaturePipeline.default()
     is_res = BacktestEngine(
-        pipeline, is_cfg, ctx_builder=_ctx, strategy_id="w0-IS", scorer=score_confluence_mnq,
+        pipeline,
+        is_cfg,
+        ctx_builder=_ctx,
+        strategy_id="w0-IS",
+        scorer=score_confluence_mnq,
     ).run(is_bars)
     oos_res = BacktestEngine(
-        pipeline, oos_cfg, ctx_builder=_ctx, strategy_id="w0-OOS", scorer=score_confluence_mnq,
+        pipeline,
+        oos_cfg,
+        ctx_builder=_ctx,
+        strategy_id="w0-OOS",
+        scorer=score_confluence_mnq,
     ).run(oos_bars)
 
     sections: list[str] = []
     sections.append(f"# Window 0 deep-dive — generated {datetime.now(UTC).isoformat()}")
     sections.append("")
-    sections.append(
-        f"IS bars: {len(is_bars)}  range {is_bars[0].timestamp.date()} -> {is_bars[-1].timestamp.date()}"
-    )
+    sections.append(f"IS bars: {len(is_bars)}  range {is_bars[0].timestamp.date()} -> {is_bars[-1].timestamp.date()}")
     sections.append(
         f"OOS bars: {len(oos_bars)}  range {oos_bars[0].timestamp.date()} -> {oos_bars[-1].timestamp.date()}"
     )

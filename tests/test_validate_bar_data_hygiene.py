@@ -49,7 +49,7 @@ def _step_bars_to(rows: list[list[object]], start_idx: int, new_close: float) ->
         rows[i][1] = c * 0.999  # open
         rows[i][2] = c * 1.001  # high
         rows[i][3] = c * 0.998  # low
-        rows[i][4] = c          # close
+        rows[i][4] = c  # close
 
 
 # ---------------------------------------------------------------------------
@@ -268,15 +268,17 @@ def test_main_writes_valid_json_schema(tmp_path: Path) -> None:
     _write_csv(p, _bars(start, 10))
     out = tmp_path / "report.json"
 
-    rc = mod.main([
-        "--files",
-        str(p),
-        "--workspace",
-        str(tmp_path),
-        "--output",
-        str(out),
-        "--quiet",
-    ])
+    rc = mod.main(
+        [
+            "--files",
+            str(p),
+            "--workspace",
+            str(tmp_path),
+            "--output",
+            str(out),
+            "--quiet",
+        ]
+    )
 
     assert rc == 0
     payload = json.loads(out.read_text(encoding="utf-8"))
@@ -294,13 +296,15 @@ def test_main_returns_nonzero_on_warn(tmp_path: Path) -> None:
     _step_bars_to(rows, start_idx=5, new_close=110.0)
     _write_csv(p, rows)
 
-    rc = mod.main([
-        "--files",
-        str(p),
-        "--workspace",
-        str(tmp_path),
-        "--quiet",
-    ])
+    rc = mod.main(
+        [
+            "--files",
+            str(p),
+            "--workspace",
+            str(tmp_path),
+            "--quiet",
+        ]
+    )
 
     assert rc in (1, 2)  # WARN or FAIL — at minimum non-zero
 

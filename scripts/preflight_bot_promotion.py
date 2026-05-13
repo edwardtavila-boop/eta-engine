@@ -186,10 +186,7 @@ def _check_registry_production(bot_id: str):  # type: ignore[no-untyped-def]  # 
             summary=f"strategy_baselines.json unreadable: {exc}",
         )
     strategies = payload.get("strategies") or []
-    matching = [
-        s for s in strategies
-        if isinstance(s, dict) and s.get("strategy_id") == a.strategy_id
-    ]
+    matching = [s for s in strategies if isinstance(s, dict) and s.get("strategy_id") == a.strategy_id]
     if not matching:
         return CheckResult(
             name="registry_production_status",
@@ -242,8 +239,7 @@ def _check_baseline_complete(bot_id: str):  # type: ignore[no-untyped-def]  # no
             summary="strategy_baselines.json missing/invalid",
         )
     matching = next(
-        (s for s in (payload.get("strategies") or [])
-         if s.get("strategy_id") == a.strategy_id),
+        (s for s in (payload.get("strategies") or []) if s.get("strategy_id") == a.strategy_id),
         None,
     )
     if matching is None:
@@ -280,7 +276,8 @@ def _check_warmup_policy(bot_id: str):  # type: ignore[no-untyped-def]  # noqa: 
     if a is None:
         return CheckResult(
             name="warmup_policy",
-            severity="skip", summary="no registry row",
+            severity="skip",
+            summary="no registry row",
         )
     warmup = a.extras.get("warmup_policy")
     if not isinstance(warmup, dict):
@@ -309,18 +306,12 @@ def _check_warmup_policy(bot_id: str):  # type: ignore[no-untyped-def]  # noqa: 
                 return CheckResult(
                     name="warmup_policy",
                     severity="amber",
-                    summary=(
-                        f"warmup expired {elapsed - days}d ago — "
-                        "promote risk multiplier to 1.0 in registry"
-                    ),
+                    summary=(f"warmup expired {elapsed - days}d ago — promote risk multiplier to 1.0 in registry"),
                 )
             return CheckResult(
                 name="warmup_policy",
                 severity="green",
-                summary=(
-                    f"warmup active: {elapsed}/{days}d elapsed at "
-                    f"{mult * 100:.0f}% size"
-                ),
+                summary=(f"warmup active: {elapsed}/{days}d elapsed at {mult * 100:.0f}% size"),
             )
     return CheckResult(
         name="warmup_policy",
@@ -355,8 +346,7 @@ def _check_drift_watchdog_recent():  # type: ignore[no-untyped-def]  # noqa: ANN
             name="drift_watchdog_recent",
             severity="amber",
             summary=(
-                f"drift_watchdog last ran {age_h:.0f}h ago at {display_path} "
-                "(threshold 24h) -- schedule a daily task"
+                f"drift_watchdog last ran {age_h:.0f}h ago at {display_path} (threshold 24h) -- schedule a daily task"
             ),
             details={"path": display_path, "age_h": age_h},
         )
@@ -380,7 +370,8 @@ def _check_grid_still_passes(bot_id: str):  # type: ignore[no-untyped-def]  # no
     if a is None:
         return CheckResult(
             name="grid_still_passes",
-            severity="skip", summary="no registry row",
+            severity="skip",
+            summary="no registry row",
         )
     cell = ResearchCell(
         label=a.bot_id,
@@ -436,9 +427,11 @@ def _check_bot_dir_exists(bot_id: str):  # type: ignore[no-untyped-def]  # noqa:
     candidates = [
         bot_id,
         bot_id.replace("_futures", "").replace("_perp", ""),
-        bot_id.replace("_sage", "").replace("_daily_drb", "")
-              .replace("_regime_trend", "").replace("_ensemble_2of3", "")
-              .replace("_compression", ""),
+        bot_id.replace("_sage", "")
+        .replace("_daily_drb", "")
+        .replace("_regime_trend", "")
+        .replace("_ensemble_2of3", "")
+        .replace("_compression", ""),
         bot_id.split("_")[0],
     ]
     bots_root = ROOT / "bots"
@@ -465,7 +458,8 @@ def _check_broker_keys(bot_id: str):  # type: ignore[no-untyped-def]  # noqa: AN
     if a is None:
         return CheckResult(
             name="broker_keys",
-            severity="skip", summary="no registry row",
+            severity="skip",
+            summary="no registry row",
         )
     venue_class = _venue_class_for(a.symbol)
     if venue_class == "unknown":
@@ -475,11 +469,7 @@ def _check_broker_keys(bot_id: str):  # type: ignore[no-untyped-def]  # noqa: AN
             summary=f"unknown venue class for symbol {a.symbol}",
         )
     missing_by_broker = _broker_config_missing(venue_class, os.environ)
-    missing = [
-        f"{broker}: {item}"
-        for broker, items in missing_by_broker.items()
-        for item in items
-    ]
+    missing = [f"{broker}: {item}" for broker, items in missing_by_broker.items() for item in items]
     if missing:
         return CheckResult(
             name="broker_keys",
@@ -557,34 +547,22 @@ def _check_ibkr_drift_gate(bot_id: str):  # type: ignore[no-untyped-def]  # noqa
         return CheckResult(
             name="ibkr_drift_gate",
             severity="red",
-            summary=(
-                "no <bot>_data_swap_*.md research log entry — "
-                "run scripts/compare_coinbase_vs_ibkr before live"
-            ),
+            summary=("no <bot>_data_swap_*.md research log entry — run scripts/compare_coinbase_vs_ibkr before live"),
         )
     most_recent = candidates[-1]
-    age_d = (
-        datetime.now(UTC)
-        - datetime.fromtimestamp(most_recent.stat().st_mtime, tz=UTC)
-    ).days
+    age_d = (datetime.now(UTC) - datetime.fromtimestamp(most_recent.stat().st_mtime, tz=UTC)).days
     if age_d > 14:
         return CheckResult(
             name="ibkr_drift_gate",
             severity="amber",
-            summary=(
-                f"last drift comparison was {age_d}d ago "
-                f"({most_recent.name}) — re-run to refresh within 14d"
-            ),
+            summary=(f"last drift comparison was {age_d}d ago ({most_recent.name}) — re-run to refresh within 14d"),
         )
     text = most_recent.read_text(encoding="utf-8", errors="replace")
     if "Severity: `red`" in text or "Severity: `amber`" in text:
         return CheckResult(
             name="ibkr_drift_gate",
             severity="red",
-            summary=(
-                f"most recent drift gate ({most_recent.name}) is NOT GREEN "
-                "— re-tune on IBKR data before live"
-            ),
+            summary=(f"most recent drift gate ({most_recent.name}) is NOT GREEN — re-tune on IBKR data before live"),
         )
     return CheckResult(
         name="ibkr_drift_gate",
@@ -600,17 +578,16 @@ def _check_loss_limit(bot_id: str):  # type: ignore[no-untyped-def]  # noqa: ANN
     a = get_for_bot(bot_id)
     if a is None:
         return CheckResult(
-            name="loss_limit", severity="skip", summary="no registry row",
+            name="loss_limit",
+            severity="skip",
+            summary="no registry row",
         )
     cap = a.extras.get("daily_loss_limit_pct")
     if cap is None:
         return CheckResult(
             name="loss_limit",
             severity="amber",
-            summary=(
-                "no extras['daily_loss_limit_pct']; falling back to "
-                "system-wide kill-switch"
-            ),
+            summary=("no extras['daily_loss_limit_pct']; falling back to system-wide kill-switch"),
         )
     return CheckResult(
         name="loss_limit",
@@ -627,7 +604,8 @@ def _check_position_size_sanity(bot_id: str):  # type: ignore[no-untyped-def]  #
     if a is None:
         return CheckResult(
             name="position_size_sanity",
-            severity="skip", summary="no registry row",
+            severity="skip",
+            summary="no registry row",
         )
     # Conservative envelope: full risk per trade × max trades per day,
     # adjusted for the warmup multiplier if present.
@@ -722,14 +700,13 @@ def main() -> int:
             (ROOT / "docs" / "strategy_baselines.json").read_text(encoding="utf-8"),
         )
         prod_ids = {
-            s["strategy_id"] for s in (baselines.get("strategies") or [])
+            s["strategy_id"]
+            for s in (baselines.get("strategies") or [])
             if s.get("_promotion_status", "production") == "production"
         }
         from eta_engine.strategies.per_bot_registry import all_assignments
-        bot_ids = [
-            a.bot_id for a in all_assignments()
-            if a.strategy_id in prod_ids
-        ]
+
+        bot_ids = [a.bot_id for a in all_assignments() if a.strategy_id in prod_ids]
 
     reports = [run_for_bot(b) for b in bot_ids]
 
@@ -737,18 +714,21 @@ def main() -> int:
         print(
             json.dumps(
                 [asdict(r) for r in reports],
-                indent=2, default=str,
+                indent=2,
+                default=str,
             ),
         )
     else:
         for r in reports:
             sev_glyph = {
-                "green": "[GREEN]", "amber": "[AMBER]",
-                "red": "[RED]", "skip": "[SKIP]",
+                "green": "[GREEN]",
+                "amber": "[AMBER]",
+                "red": "[RED]",
+                "skip": "[SKIP]",
             }
-            print(f"\n{'='*70}")
+            print(f"\n{'=' * 70}")
             print(f"{r.bot_id}  =>  {sev_glyph.get(r.overall_severity, r.overall_severity).upper()}")
-            print(f"{'='*70}")
+            print(f"{'=' * 70}")
             for c in r.checks:
                 tag = sev_glyph.get(c.severity, c.severity).upper()
                 print(f"  {tag:10s} {c.name:30s} {c.summary}")

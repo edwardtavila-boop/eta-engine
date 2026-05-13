@@ -9,6 +9,7 @@ Covers:
   evaluate_advanced_stack       — full v23→v27 cascade entrypoint
   JarvisAdmin dispatch          — JARVIS_V3_ADVANCED env routes through stack
 """
+
 from __future__ import annotations
 
 import os
@@ -40,13 +41,18 @@ def _make_ctx() -> JarvisContext:
         ts=datetime.now(UTC),
         macro=MacroSnapshot(vix_level=16.0, macro_bias="neutral"),
         equity=EquitySnapshot(
-            account_equity=50_000.0, daily_pnl=0.0,
-            daily_drawdown_pct=0.0, open_positions=1, open_risk_r=0.5,
+            account_equity=50_000.0,
+            daily_pnl=0.0,
+            daily_drawdown_pct=0.0,
+            open_positions=1,
+            open_risk_r=0.5,
         ),
         regime=RegimeSnapshot(regime="TRENDING_UP", confidence=0.8, flipped_recently=False),
         journal=JournalSnapshot(
-            kill_switch_active=False, autopilot_mode="ACTIVE",
-            overrides_last_24h=0, recent_correlated_loss=False,
+            kill_switch_active=False,
+            autopilot_mode="ACTIVE",
+            overrides_last_24h=0,
+            recent_correlated_loss=False,
         ),
         suggestion=JarvisSuggestion(action=ActionSuggestion.TRADE, reason="t", confidence=0.7),
         session_phase=SessionPhase.MORNING,
@@ -73,10 +79,12 @@ def _make_approved_resp() -> ActionResponse:
 class TestV24CorrelationThrottle:
     def setup_method(self) -> None:
         from eta_engine.brain.jarvis_v3.policies.v24_correlation_throttle import reset_state
+
         reset_state()
 
     def test_under_threshold_passes_through(self) -> None:
         from eta_engine.brain.jarvis_v3.policies.v24_correlation_throttle import evaluate_v24
+
         ctx = _make_ctx()
         base = _make_approved_resp()
         # Mock registry lookup to return a crypto bot
@@ -96,6 +104,7 @@ class TestV24CorrelationThrottle:
 
     def test_over_threshold_throttles(self) -> None:
         from eta_engine.brain.jarvis_v3.policies.v24_correlation_throttle import evaluate_v24
+
         ctx = _make_ctx()
         base = _make_approved_resp()
         with mock.patch(
@@ -119,6 +128,7 @@ class TestV24CorrelationThrottle:
     def test_unknown_class_passes_through(self) -> None:
         """If class can't be resolved, base verdict returns unchanged."""
         from eta_engine.brain.jarvis_v3.policies.v24_correlation_throttle import evaluate_v24
+
         ctx = _make_ctx()
         base = _make_approved_resp()
         with mock.patch(
@@ -137,6 +147,7 @@ class TestV24CorrelationThrottle:
 
     def test_different_sides_dont_throttle_each_other(self) -> None:
         from eta_engine.brain.jarvis_v3.policies.v24_correlation_throttle import evaluate_v24
+
         ctx = _make_ctx()
         base = _make_approved_resp()
         with mock.patch(
@@ -160,10 +171,12 @@ class TestV24CorrelationThrottle:
 class TestV25ClassLossLimit:
     def setup_method(self) -> None:
         from eta_engine.brain.jarvis_v3.policies.v25_class_loss_limit import reset_cache
+
         reset_cache()
 
     def test_no_heartbeat_passes_through(self) -> None:
         from eta_engine.brain.jarvis_v3.policies.v25_class_loss_limit import evaluate_v25
+
         ctx = _make_ctx()
         base = _make_approved_resp()
         with mock.patch(
@@ -181,14 +194,18 @@ class TestV25ClassLossLimit:
 
     def test_class_pnl_above_limit_passes(self) -> None:
         from eta_engine.brain.jarvis_v3.policies.v25_class_loss_limit import evaluate_v25
+
         ctx = _make_ctx()
         base = _make_approved_resp()
-        with mock.patch(
-            "eta_engine.brain.jarvis_v3.policies.v25_class_loss_limit._class_realized_pnl",
-            return_value=-100.0,  # losing $100, default limit is -$300
-        ), mock.patch(
-            "eta_engine.brain.jarvis_v3.policies.v25_class_loss_limit._resolve_class",
-            return_value="crypto",
+        with (
+            mock.patch(
+                "eta_engine.brain.jarvis_v3.policies.v25_class_loss_limit._class_realized_pnl",
+                return_value=-100.0,  # losing $100, default limit is -$300
+            ),
+            mock.patch(
+                "eta_engine.brain.jarvis_v3.policies.v25_class_loss_limit._resolve_class",
+                return_value="crypto",
+            ),
         ):
             req = ActionRequest(
                 subsystem=SubsystemId.BOT_BTC_HYBRID,
@@ -201,14 +218,18 @@ class TestV25ClassLossLimit:
 
     def test_class_pnl_below_limit_freezes(self) -> None:
         from eta_engine.brain.jarvis_v3.policies.v25_class_loss_limit import evaluate_v25
+
         ctx = _make_ctx()
         base = _make_approved_resp()
-        with mock.patch(
-            "eta_engine.brain.jarvis_v3.policies.v25_class_loss_limit._class_realized_pnl",
-            return_value=-500.0,  # below default -$300 limit
-        ), mock.patch(
-            "eta_engine.brain.jarvis_v3.policies.v25_class_loss_limit._resolve_class",
-            return_value="crypto",
+        with (
+            mock.patch(
+                "eta_engine.brain.jarvis_v3.policies.v25_class_loss_limit._class_realized_pnl",
+                return_value=-500.0,  # below default -$300 limit
+            ),
+            mock.patch(
+                "eta_engine.brain.jarvis_v3.policies.v25_class_loss_limit._resolve_class",
+                return_value="crypto",
+            ),
         ):
             req = ActionRequest(
                 subsystem=SubsystemId.BOT_BTC_HYBRID,
@@ -227,10 +248,12 @@ class TestV25ClassLossLimit:
 class TestV26FillConfirmation:
     def setup_method(self) -> None:
         from eta_engine.brain.jarvis_v3.policies.v26_fill_confirmation import reset_cache
+
         reset_cache()
 
     def test_healthy_bot_passes_through(self) -> None:
         from eta_engine.brain.jarvis_v3.policies.v26_fill_confirmation import evaluate_v26
+
         ctx = _make_ctx()
         base = _make_approved_resp()
         # bot has signals AND entries — not degraded
@@ -254,6 +277,7 @@ class TestV26FillConfirmation:
 
     def test_degraded_bot_size_capped(self) -> None:
         from eta_engine.brain.jarvis_v3.policies.v26_fill_confirmation import evaluate_v26
+
         ctx = _make_ctx()
         base = _make_approved_resp()
         # signals firing but no entries → degraded
@@ -285,10 +309,12 @@ class TestV26FillConfirmation:
 class TestV27SharpeDrift:
     def setup_method(self) -> None:
         from eta_engine.brain.jarvis_v3.policies.v27_sharpe_drift import reset_cache
+
         reset_cache()
 
     def test_no_lab_stamp_passes_through(self) -> None:
         from eta_engine.brain.jarvis_v3.policies.v27_sharpe_drift import evaluate_v27
+
         ctx = _make_ctx()
         base = _make_approved_resp()
         with mock.patch(
@@ -307,14 +333,18 @@ class TestV27SharpeDrift:
     def test_few_exits_no_drift_check(self) -> None:
         """v27 doesn't penalize bots with too-small live samples."""
         from eta_engine.brain.jarvis_v3.policies.v27_sharpe_drift import evaluate_v27
+
         ctx = _make_ctx()
         base = _make_approved_resp()
-        with mock.patch(
-            "eta_engine.brain.jarvis_v3.policies.v27_sharpe_drift._lab_exp_r",
-            return_value=0.1,
-        ), mock.patch(
-            "eta_engine.brain.jarvis_v3.policies.v27_sharpe_drift._bot_state",
-            return_value={"n_exits": 3, "realized_pnl": -50.0},  # only 3 exits
+        with (
+            mock.patch(
+                "eta_engine.brain.jarvis_v3.policies.v27_sharpe_drift._lab_exp_r",
+                return_value=0.1,
+            ),
+            mock.patch(
+                "eta_engine.brain.jarvis_v3.policies.v27_sharpe_drift._bot_state",
+                return_value={"n_exits": 3, "realized_pnl": -50.0},  # only 3 exits
+            ),
         ):
             req = ActionRequest(
                 subsystem=SubsystemId.BOT_BTC_HYBRID,
@@ -328,14 +358,18 @@ class TestV27SharpeDrift:
     def test_drift_negative_live_pnl_caps_size(self) -> None:
         """Lab claimed positive expectancy but live is negative → size capped."""
         from eta_engine.brain.jarvis_v3.policies.v27_sharpe_drift import evaluate_v27
+
         ctx = _make_ctx()
         base = _make_approved_resp()
-        with mock.patch(
-            "eta_engine.brain.jarvis_v3.policies.v27_sharpe_drift._lab_exp_r",
-            return_value=0.1,
-        ), mock.patch(
-            "eta_engine.brain.jarvis_v3.policies.v27_sharpe_drift._bot_state",
-            return_value={"n_exits": 20, "realized_pnl": -100.0},
+        with (
+            mock.patch(
+                "eta_engine.brain.jarvis_v3.policies.v27_sharpe_drift._lab_exp_r",
+                return_value=0.1,
+            ),
+            mock.patch(
+                "eta_engine.brain.jarvis_v3.policies.v27_sharpe_drift._bot_state",
+                return_value={"n_exits": 20, "realized_pnl": -100.0},
+            ),
         ):
             req = ActionRequest(
                 subsystem=SubsystemId.BOT_BTC_HYBRID,
@@ -357,6 +391,7 @@ def test_evaluate_advanced_stack_runs_clean() -> None:
     from eta_engine.brain.jarvis_v3.policies.v27_sharpe_drift import (
         evaluate_advanced_stack,
     )
+
     ctx = _make_ctx()
     req = ActionRequest(
         subsystem=SubsystemId.BOT_MNQ,
@@ -365,8 +400,7 @@ def test_evaluate_advanced_stack_runs_clean() -> None:
         rationale="t",
     )
     resp = evaluate_advanced_stack(req, ctx)
-    assert resp.verdict in {Verdict.APPROVED, Verdict.CONDITIONAL,
-                            Verdict.DENIED, Verdict.DEFERRED}
+    assert resp.verdict in {Verdict.APPROVED, Verdict.CONDITIONAL, Verdict.DENIED, Verdict.DEFERRED}
 
 
 def test_jarvis_admin_advanced_flag_dispatch() -> None:
@@ -383,5 +417,4 @@ def test_jarvis_admin_advanced_flag_dispatch() -> None:
     )
     with mock.patch.dict(os.environ, {"JARVIS_V3_ADVANCED": "1"}):
         resp = admin.request_approval(req, ctx=ctx)
-    assert resp.verdict in {Verdict.APPROVED, Verdict.CONDITIONAL,
-                            Verdict.DENIED, Verdict.DEFERRED}
+    assert resp.verdict in {Verdict.APPROVED, Verdict.CONDITIONAL, Verdict.DENIED, Verdict.DEFERRED}

@@ -30,6 +30,7 @@ sys.path.insert(0, str(ROOT.parent))
 
 if hasattr(sys.stdout, "reconfigure"):
     import contextlib
+
     with contextlib.suppress(AttributeError, OSError):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
@@ -70,19 +71,19 @@ class PaperTrade:
     exit_price: float
     qty: float
     pnl_points: float
-    gross_pnl_usd: float        # before commission, after slippage
-    commission_usd: float       # round-trip
-    net_pnl_usd: float          # gross - commission - funding
+    gross_pnl_usd: float  # before commission, after slippage
+    commission_usd: float  # round-trip
+    net_pnl_usd: float  # gross - commission - funding
     exit_reason: str
     entry_ts: str
     exit_ts: str
-    session_rth: bool           # True if entry+exit both during RTH
+    session_rth: bool  # True if entry+exit both during RTH
     entry_slippage_ticks: float
     exit_slippage_ticks: float
-    funding_cost_usd: float = 0.0   # Crypto perp funding cost (positive = paid).
-                                    # Always 0.0 unless funding_cost_enabled=True
-                                    # AND the symbol is a perpetual swap. See
-                                    # eta_engine.feeds.funding_ledger.
+    funding_cost_usd: float = 0.0  # Crypto perp funding cost (positive = paid).
+    # Always 0.0 unless funding_cost_enabled=True
+    # AND the symbol is a perpetual swap. See
+    # eta_engine.feeds.funding_ledger.
 
 
 @dataclass
@@ -93,26 +94,26 @@ class SimResult:
     mode: str
     bars_processed: int
     signals_generated: int
-    signals_rejected: int       # hard-validation failures (stop on wrong side, RR absurd, etc.)
+    signals_rejected: int  # hard-validation failures (stop on wrong side, RR absurd, etc.)
     trades_taken: int
     winners: int
     losers: int
     win_rate_pct: float
-    gross_pnl_usd: float        # before commissions, after slippage
+    gross_pnl_usd: float  # before commissions, after slippage
     total_commission_usd: float
-    total_pnl_usd: float        # net of commissions AND funding (when enabled)
+    total_pnl_usd: float  # net of commissions AND funding (when enabled)
     avg_pnl_per_trade: float
     max_dd_usd: float
     rth_trades: int
     overnight_trades: int
     rth_pnl_usd: float
     overnight_pnl_usd: float
-    straddle_resolutions: int   # how many bars triggered straddle resolver
+    straddle_resolutions: int  # how many bars triggered straddle resolver
     rejection_codes: dict[str, int] = field(default_factory=dict)
     trades: list[PaperTrade] = field(default_factory=list)
     equity_curve: list[float] = field(default_factory=list)
     total_funding_cost_usd: float = 0.0  # Sum of per-trade funding costs.
-                                         # Always 0.0 unless funding_cost_enabled.
+    # Always 0.0 unless funding_cost_enabled.
 
 
 # Legacy multiplier table — kept for back-compat with external callers
@@ -121,19 +122,29 @@ class SimResult:
 # The old MNQ value (0.50) is wrong by 4x; do NOT trust this dict for
 # new code.
 _LEGACY_MULTIPLIERS: dict[str, float] = {
-    "MNQ": 2.00, "MNQ1": 2.00,
-    "NQ": 20.0, "NQ1": 20.0,
-    "ES": 50.0, "ES1": 50.0,
-    "BTC": 5.0, "ETH": 50.0,
-    "MBT": 0.10, "MET": 0.10,
-    "SOL": 1.0, "XRP": 1.0,
+    "MNQ": 2.00,
+    "MNQ1": 2.00,
+    "NQ": 20.0,
+    "NQ1": 20.0,
+    "ES": 50.0,
+    "ES1": 50.0,
+    "BTC": 5.0,
+    "ETH": 50.0,
+    "MBT": 0.10,
+    "MET": 0.10,
+    "SOL": 1.0,
+    "XRP": 1.0,
 }
 
 
 def _bar_to_ohlcv(b: object, ts_iso: str) -> BarOHLCV:
     return BarOHLCV(
-        open=float(b.open), high=float(b.high), low=float(b.low),
-        close=float(b.close), volume=float(b.volume), ts_iso=ts_iso,
+        open=float(b.open),
+        high=float(b.high),
+        low=float(b.low),
+        close=float(b.close),
+        volume=float(b.volume),
+        ts_iso=ts_iso,
     )
 
 
@@ -185,8 +196,10 @@ def run_simulation(  # noqa: PLR0915 — single coherent loop, intentionally inl
         raise ValueError(f"No data for {assignment.symbol}/{assignment.timeframe}")
 
     bars = lib.load_bars(
-        ds, limit=min(bar_limit or 999999, max_bars),
-        limit_from="tail", require_positive_prices=True,
+        ds,
+        limit=min(bar_limit or 999999, max_bars),
+        limit_from="tail",
+        require_positive_prices=True,
     )
     if len(bars) < 50:
         raise ValueError(f"Not enough bars: {len(bars)}")
@@ -197,10 +210,9 @@ def run_simulation(  # noqa: PLR0915 — single coherent loop, intentionally inl
         skip_bpd = daily_bars_map.get(assignment.timeframe, 288)
         skip_extra = int(skip_days * skip_bpd)
         needed = min(bar_limit + skip_extra, 200000)
-        all_bars = lib.load_bars(ds, limit=needed, limit_from="tail",
-                                 require_positive_prices=True)
+        all_bars = lib.load_bars(ds, limit=needed, limit_from="tail", require_positive_prices=True)
         if len(all_bars) > skip_extra:
-            bars = all_bars[:len(all_bars) - skip_extra]
+            bars = all_bars[: len(all_bars) - skip_extra]
 
     spec = get_spec(assignment.symbol)
     # Allow caller override but prefer the spec table.
@@ -213,6 +225,7 @@ def run_simulation(  # noqa: PLR0915 — single coherent loop, intentionally inl
     else:
         try:
             from eta_engine.feeds.instrument_specs import effective_point_value
+
             pv = float(effective_point_value(assignment.symbol, route="auto") or spec.point_value)
         except Exception:  # noqa: BLE001
             pv = spec.point_value
@@ -252,8 +265,11 @@ def run_simulation(  # noqa: PLR0915 — single coherent loop, intentionally inl
     eta_bars = [
         EBar(
             ts=int(b.timestamp.timestamp() * 1000),
-            open=float(b.open), high=float(b.high), low=float(b.low),
-            close=float(b.close), volume=float(b.volume),
+            open=float(b.open),
+            high=float(b.high),
+            low=float(b.low),
+            close=float(b.close),
+            volume=float(b.volume),
         )
         for b in bars
     ]
@@ -303,7 +319,9 @@ def run_simulation(  # noqa: PLR0915 — single coherent loop, intentionally inl
         if pending_entry_signal is not None and position is None:
             sig = pending_entry_signal
             entry_fill = fill_sim.simulate_entry(
-                side=sig.side.value, entry_bar=bar_ohlcv, spec=spec,
+                side=sig.side.value,
+                entry_bar=bar_ohlcv,
+                spec=spec,
             )
             # Recompute qty from the FILLED entry price so risk-per-trade
             # honors the actual stop distance, not the signal's idealized one.
@@ -325,10 +343,10 @@ def run_simulation(  # noqa: PLR0915 — single coherent loop, intentionally inl
                 from eta_engine.feeds.signal_validator import (
                     MAX_QTY_NOTIONAL_PCT_OF_EQUITY,
                 )
+
                 if entry_fill.fill_price > 0 and pv > 0:
                     max_qty_by_notional = (
-                        0.95 * MAX_QTY_NOTIONAL_PCT_OF_EQUITY * peak_equity
-                        / (entry_fill.fill_price * pv)
+                        0.95 * MAX_QTY_NOTIONAL_PCT_OF_EQUITY * peak_equity / (entry_fill.fill_price * pv)
                     )
                     qty = min(qty, max_qty_by_notional)
                 qty = max(qty, 0.01)
@@ -337,9 +355,14 @@ def run_simulation(  # noqa: PLR0915 — single coherent loop, intentionally inl
                 # become positions.  Catches stop-on-wrong-side, RR
                 # absurdity, stop-too-far, and notional-cap breaches.
                 vr = validate_signal(
-                    side=sig.side.value, entry=entry_fill.fill_price,
-                    stop=sig.stop, target=sig.target, qty=qty,
-                    equity=peak_equity, point_value=pv, spec_symbol=spec.symbol,
+                    side=sig.side.value,
+                    entry=entry_fill.fill_price,
+                    stop=sig.stop,
+                    target=sig.target,
+                    qty=qty,
+                    equity=peak_equity,
+                    point_value=pv,
+                    spec_symbol=spec.symbol,
                 )
                 if not vr.ok:
                     signals_rejected += 1
@@ -391,6 +414,7 @@ def run_simulation(  # noqa: PLR0915 — single coherent loop, intentionally inl
                 if funding_ledger is not None:
                     try:
                         from datetime import datetime as _dt
+
                         entry_dt = _dt.fromisoformat(position.entry_bar_ts)
                         exit_dt = _dt.fromisoformat(bar_ts_iso)
                         funding_cost_usd = funding_ledger.compute_funding_cost(
@@ -411,7 +435,8 @@ def run_simulation(  # noqa: PLR0915 — single coherent loop, intentionally inl
 
                 exit_session_rth = is_rth_session(bar_ts_iso, spec.symbol)
                 trade = PaperTrade(
-                    bot_id=bot_id, side=position.side,
+                    bot_id=bot_id,
+                    side=position.side,
                     entry_price=position.entry_price,
                     exit_price=exit_fill.fill_price,
                     qty=qty,
@@ -433,7 +458,7 @@ def run_simulation(  # noqa: PLR0915 — single coherent loop, intentionally inl
 
         # --- 3. Generate a NEW signal if flat -----------------------
         if position is None and pending_entry_signal is None:
-            signal = fn(eta_bars[:i + 1], ctx)
+            signal = fn(eta_bars[: i + 1], ctx)
             if signal.is_actionable and signal.stop > 0 and signal.target > 0:
                 signals += 1
                 pending_entry_signal = signal
@@ -489,27 +514,37 @@ def run_simulation(  # noqa: PLR0915 — single coherent loop, intentionally inl
 
 
 def main(argv: list[str] | None = None) -> int:  # noqa: PLR0915
-    p = argparse.ArgumentParser(prog="paper_trade_sim", description=__doc__,
-                                formatter_class=argparse.RawDescriptionHelpFormatter)
+    p = argparse.ArgumentParser(
+        prog="paper_trade_sim", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     p.add_argument("--bot", type=str, required=True, help="bot_id to simulate")
     p.add_argument("--days", type=int, default=30, help="approximate days of data to simulate")
-    p.add_argument("--mode", type=str, default="realistic",
-                   choices=["realistic", "pessimistic", "legacy"],
-                   help="fill realism mode (default: realistic)")
+    p.add_argument(
+        "--mode",
+        type=str,
+        default="realistic",
+        choices=["realistic", "pessimistic", "legacy"],
+        help="fill realism mode (default: realistic)",
+    )
     p.add_argument("--seed", type=int, default=0, help="RNG seed for straddle/thin-bar resolvers")
-    p.add_argument("--walk-forward", action="store_true",
-                   help="run two simulations: IS (first 70%% of bars) + OOS (last 30%%) "
-                        "and report both")
-    p.add_argument("--skip-days", type=int, default=0,
-                   help="skip the most recent N days of data before loading "
-                        "(advances the simulation window backward in time)")
-    p.add_argument("--is-fraction", type=float, default=0.7,
-                   help="train fraction for --walk-forward (default 0.7)")
+    p.add_argument(
+        "--walk-forward",
+        action="store_true",
+        help="run two simulations: IS (first 70%% of bars) + OOS (last 30%%) and report both",
+    )
+    p.add_argument(
+        "--skip-days",
+        type=int,
+        default=0,
+        help="skip the most recent N days of data before loading (advances the simulation window backward in time)",
+    )
+    p.add_argument("--is-fraction", type=float, default=0.7, help="train fraction for --walk-forward (default 0.7)")
     p.add_argument("--json", action="store_true")
     args = p.parse_args(argv)
 
     assignment = __import__(
-        "eta_engine.strategies.per_bot_registry", fromlist=["get_for_bot"],
+        "eta_engine.strategies.per_bot_registry",
+        fromlist=["get_for_bot"],
     ).get_for_bot(args.bot)
     if assignment is None:
         print(f"Unknown bot: {args.bot}")
@@ -525,15 +560,21 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0915
     # ``spec.point_value`` for futures and unknown symbols.
     try:
         from eta_engine.feeds.instrument_specs import effective_point_value
+
         pv = float(effective_point_value(assignment.symbol, route="auto") or spec.point_value)
     except Exception:  # noqa: BLE001
         pv = spec.point_value
 
     def _run(eval_oos: bool, is_fraction: float | None) -> SimResult:
         return run_simulation(
-            args.bot, max_bars=100000, bar_limit=bar_limit,
-            point_value=pv, mode=args.mode, seed=args.seed,
-            is_fraction=is_fraction, eval_oos=eval_oos,
+            args.bot,
+            max_bars=100000,
+            bar_limit=bar_limit,
+            point_value=pv,
+            mode=args.mode,
+            seed=args.seed,
+            is_fraction=is_fraction,
+            eval_oos=eval_oos,
             skip_days=args.skip_days,
         )
 
@@ -549,26 +590,35 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0915
         return 1
 
     if args.json:
+
         def _result_to_dict(r: SimResult) -> dict:
             return {
-                "bot_id": r.bot_id, "symbol": r.symbol, "timeframe": r.timeframe,
-                "mode": r.mode, "bars": r.bars_processed,
+                "bot_id": r.bot_id,
+                "symbol": r.symbol,
+                "timeframe": r.timeframe,
+                "mode": r.mode,
+                "bars": r.bars_processed,
                 "signals": r.signals_generated,
                 "signals_rejected": r.signals_rejected,
                 "rejection_codes": r.rejection_codes,
                 "trades": r.trades_taken,
-                "winners": r.winners, "losers": r.losers, "win_rate": r.win_rate_pct,
+                "winners": r.winners,
+                "losers": r.losers,
+                "win_rate": r.win_rate_pct,
                 "gross_pnl": r.gross_pnl_usd,
                 "total_commission": r.total_commission_usd,
                 "total_funding_cost": r.total_funding_cost_usd,
                 "total_pnl": r.total_pnl_usd,
                 "avg_pnl_per_trade": r.avg_pnl_per_trade,
                 "max_dd": r.max_dd_usd,
-                "rth_trades": r.rth_trades, "overnight_trades": r.overnight_trades,
-                "rth_pnl": r.rth_pnl_usd, "overnight_pnl": r.overnight_pnl_usd,
+                "rth_trades": r.rth_trades,
+                "overnight_trades": r.overnight_trades,
+                "rth_pnl": r.rth_pnl_usd,
+                "overnight_pnl": r.overnight_pnl_usd,
                 "straddle_resolutions": r.straddle_resolutions,
                 "equity_curve": r.equity_curve,
             }
+
         out = {"in_sample": _result_to_dict(is_result)}
         if oos_result is not None:
             out["out_of_sample"] = _result_to_dict(oos_result)
@@ -589,8 +639,10 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0915
         print(f"  Gross PnL (post-slip): ${r.gross_pnl_usd:+.2f}")
         print(f"  Commissions:         -${r.total_commission_usd:.2f}")
         if r.total_funding_cost_usd != 0.0:
-            print(f"  Funding (perp 8h):   {-r.total_funding_cost_usd:+.2f}  "
-                  f"(positive number = paid by trader, deducted from net)")
+            print(
+                f"  Funding (perp 8h):   {-r.total_funding_cost_usd:+.2f}  "
+                f"(positive number = paid by trader, deducted from net)"
+            )
         print(f"  NET PnL:             ${r.total_pnl_usd:+.2f}")
         print(f"  Avg net per trade:   ${r.avg_pnl_per_trade:+.2f}")
         print(f"  Max drawdown:        ${r.max_dd_usd:.2f}")
@@ -601,16 +653,14 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0915
             print("  Last 5 trades:")
             for t in r.trades[-5:]:
                 tag = "RTH" if t.session_rth else "ON"
-                fund_str = (
-                    f" funding=${t.funding_cost_usd:+.2f}"
-                    if t.funding_cost_usd != 0.0
-                    else ""
+                fund_str = f" funding=${t.funding_cost_usd:+.2f}" if t.funding_cost_usd != 0.0 else ""
+                print(
+                    f"    {t.exit_ts[:16]} {t.side:<5} {tag} qty={t.qty:6.2f} "
+                    f"entry={t.entry_price:.2f} exit={t.exit_price:.2f} "
+                    f"net=${t.net_pnl_usd:+8.2f}  ({t.exit_reason}, "
+                    f"slip e={t.entry_slippage_ticks:.1f}t/x={t.exit_slippage_ticks:.1f}t"
+                    f"{fund_str})"
                 )
-                print(f"    {t.exit_ts[:16]} {t.side:<5} {tag} qty={t.qty:6.2f} "
-                      f"entry={t.entry_price:.2f} exit={t.exit_price:.2f} "
-                      f"net=${t.net_pnl_usd:+8.2f}  ({t.exit_reason}, "
-                      f"slip e={t.entry_slippage_ticks:.1f}t/x={t.exit_slippage_ticks:.1f}t"
-                      f"{fund_str})")
 
     _print(is_result, "IN-SAMPLE" if oos_result is not None else "FULL WINDOW")
     if oos_result is not None:

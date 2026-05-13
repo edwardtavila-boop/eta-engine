@@ -64,6 +64,7 @@ from eta_engine.brain.model_policy import COST_RATIO, ModelTier, tier_for
 
 try:
     from eta_engine.brain.multi_model_executor import MultiModelExecutor
+
     _HAS_MULTIMODEL = True
 except ImportError:
     _HAS_MULTIMODEL = False
@@ -151,26 +152,38 @@ class Fleet:
         if deepseek_personas:
             self._personas: dict[PersonaId, Persona] = {
                 PersonaId.DEEPSEEK_REASONER: DeepSeekReasoner(
-                    executor=exe, admin=admin, journal_path=path,
+                    executor=exe,
+                    admin=admin,
+                    journal_path=path,
                 ),
                 PersonaId.DEEPSEEK_STEWARD: DeepSeekSteward(
-                    executor=exe, admin=admin, journal_path=path,
+                    executor=exe,
+                    admin=admin,
+                    journal_path=path,
                 ),
                 PersonaId.DEEPSEEK_EXECUTOR: DeepSeekExecutor(
-                    executor=exe, admin=admin, journal_path=path,
+                    executor=exe,
+                    admin=admin,
+                    journal_path=path,
                 ),
             }
         else:
             # Legacy Batman/Alfred/Robin (default for backward compat)
             self._personas: dict[PersonaId, Persona] = {
                 PersonaId.BATMAN: Batman(
-                    executor=exe, admin=admin, journal_path=path,
+                    executor=exe,
+                    admin=admin,
+                    journal_path=path,
                 ),
                 PersonaId.ALFRED: Alfred(
-                    executor=exe, admin=admin, journal_path=path,
+                    executor=exe,
+                    admin=admin,
+                    journal_path=path,
                 ),
                 PersonaId.ROBIN: Robin(
-                    executor=exe, admin=admin, journal_path=path,
+                    executor=exe,
+                    admin=admin,
+                    journal_path=path,
                 ),
             }
         # Metrics counters. Plain Counter/defaultdict so arithmetic is easy;

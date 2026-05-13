@@ -94,10 +94,7 @@ def test_load_missing_registry_returns_safe_default_catalog() -> None:
     # hard rule #1. The path must not exist for this test (load() returns
     # the safe default catalog when the file is missing).
     registry = MCPRegistry.load(
-        Path(
-            "C:/EvolutionaryTradingAlgo/var/eta_engine/state/"
-            "definitely_missing_mcp_registry_for_test.json"
-        )
+        Path("C:/EvolutionaryTradingAlgo/var/eta_engine/state/definitely_missing_mcp_registry_for_test.json")
     )
 
     assert registry.get("tradingview", "quote_get") is not None

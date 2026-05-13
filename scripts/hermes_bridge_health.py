@@ -32,6 +32,7 @@ Designed to be safe to run from any machine that has tunnel access; no
 secrets in args, all secrets read from env (HERMES_API_KEY or
 JARVIS_MCP_TOKEN) or from the gitignored secrets sidecar.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -126,7 +127,10 @@ def _http_get_json(url: str, api_key: str | None, timeout: float = 5.0) -> dict[
 
 
 def _http_post_json(
-    url: str, payload: dict[str, Any], api_key: str | None, timeout: float = 60.0,
+    url: str,
+    payload: dict[str, Any],
+    api_key: str | None,
+    timeout: float = 60.0,
 ) -> dict[str, Any]:
     data = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(url, data=data, method="POST")
@@ -227,14 +231,16 @@ def probe_jarvis_mcp(host: str, port: int, api_key: str | None) -> tuple[bool, s
             f"http://{host}:{port}/v1/chat/completions",
             payload={
                 "model": "deepseek-v4-pro",
-                "messages": [{
-                    "role": "user",
-                    "content": (
-                        "Call jarvis_fleet_status with no args. Then reply ONLY "
-                        "with: jarvis_fleet_status_ok if you got back an envelope, "
-                        "or jarvis_fleet_status_failed otherwise. No prose."
-                    ),
-                }],
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": (
+                            "Call jarvis_fleet_status with no args. Then reply ONLY "
+                            "with: jarvis_fleet_status_ok if you got back an envelope, "
+                            "or jarvis_fleet_status_failed otherwise. No prose."
+                        ),
+                    }
+                ],
                 "max_tokens": 32,
                 "stream": False,
             },
@@ -262,14 +268,16 @@ def probe_memory(host: str, port: int, api_key: str | None) -> tuple[bool, str, 
             f"http://{host}:{port}/v1/chat/completions",
             payload={
                 "model": "deepseek-v4-pro",
-                "messages": [{
-                    "role": "user",
-                    "content": (
-                        "Call fact_store with action=search, query=health, limit=1. "
-                        "Then reply ONLY with: memory_ok regardless of whether anything "
-                        "was found. Reply memory_failed if the tool call itself errored."
-                    ),
-                }],
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": (
+                            "Call fact_store with action=search, query=health, limit=1. "
+                            "Then reply ONLY with: memory_ok regardless of whether anything "
+                            "was found. Reply memory_failed if the tool call itself errored."
+                        ),
+                    }
+                ],
                 "max_tokens": 16,
                 "stream": False,
             },
@@ -297,14 +305,16 @@ def probe_overrides(host: str, port: int, api_key: str | None) -> tuple[bool, st
             f"http://{host}:{port}/v1/chat/completions",
             payload={
                 "model": "deepseek-v4-pro",
-                "messages": [{
-                    "role": "user",
-                    "content": (
-                        "Call jarvis_active_overrides with no args. Reply ONLY with: "
-                        "overrides_ok if you got an envelope with size_modifiers and "
-                        "school_weights keys, overrides_failed otherwise."
-                    ),
-                }],
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": (
+                            "Call jarvis_active_overrides with no args. Reply ONLY with: "
+                            "overrides_ok if you got an envelope with size_modifiers and "
+                            "school_weights keys, overrides_failed otherwise."
+                        ),
+                    }
+                ],
                 "max_tokens": 16,
                 "stream": False,
             },
@@ -429,10 +439,7 @@ def render_table(results: list[LayerResult]) -> str:
     name_w = max(len(r.name) for r in results) if results else 10
     for r in results:
         glyph = "PASS" if r.ok else "FAIL"
-        lines.append(
-            f"  [{glyph}]  {r.name.ljust(name_w)}  "
-            f"({r.elapsed_ms:5.0f}ms)  {r.detail}"
-        )
+        lines.append(f"  [{glyph}]  {r.name.ljust(name_w)}  ({r.elapsed_ms:5.0f}ms)  {r.detail}")
     n_ok = sum(1 for r in results if r.ok)
     n_total = len(results)
     lines.append("-" * 53)
@@ -453,8 +460,7 @@ def _build_parser() -> argparse.ArgumentParser:
         default="",
         help="Comma-separated layers to skip (e.g. --skip llm,memory)",
     )
-    p.add_argument("--json", action="store_true",
-                   help="Emit machine-readable JSON instead of human table")
+    p.add_argument("--json", action="store_true", help="Emit machine-readable JSON instead of human table")
     return p
 
 

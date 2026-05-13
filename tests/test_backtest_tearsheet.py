@@ -36,11 +36,13 @@ def test_tearsheet_builder_smoke() -> None:
 def test_tearsheet_surfaces_oos_regime_performance_from_trade_labels() -> None:
     from eta_engine.backtest.tearsheet import TearsheetBuilder
 
-    result = _result_with_trades([
-        _trade(pnl_r=1.5, regime="trending_up", hours=1),
-        _trade(pnl_r=-0.5, regime="trending_up", hours=2),
-        _trade(pnl_r=-1.0, regime="chop", hours=3),
-    ])
+    result = _result_with_trades(
+        [
+            _trade(pnl_r=1.5, regime="trending_up", hours=1),
+            _trade(pnl_r=-0.5, regime="trending_up", hours=2),
+            _trade(pnl_r=-1.0, regime="chop", hours=3),
+        ]
+    )
 
     sheet = TearsheetBuilder.from_result(result)
 
@@ -52,10 +54,12 @@ def test_tearsheet_surfaces_oos_regime_performance_from_trade_labels() -> None:
 def test_tearsheet_falls_back_to_regime_state_contract_for_unlabeled_trades() -> None:
     from eta_engine.backtest.tearsheet import TearsheetBuilder
 
-    result = _result_with_trades([
-        _trade(symbol="MNQ", pnl_r=0.75, regime=None, hours=1),
-        _trade(symbol="MNQ", pnl_r=0.25, regime=None, hours=2),
-    ])
+    result = _result_with_trades(
+        [
+            _trade(symbol="MNQ", pnl_r=0.75, regime=None, hours=1),
+            _trade(symbol="MNQ", pnl_r=0.25, regime=None, hours=2),
+        ]
+    )
     regime_state = {
         "global_regime": "risk_on",
         "asset_regimes": {

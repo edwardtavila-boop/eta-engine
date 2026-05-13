@@ -1,4 +1,5 @@
 """Smoke test for Force Multiplier integration (Wave-19) — pytest format."""
+
 import sys
 from collections import Counter
 
@@ -10,12 +11,14 @@ def test_cli_provider_imports():
         call_claude,
         call_codex,
     )
+
     assert call_claude is not None
     assert call_codex is not None
 
 
 def test_force_provider_enum():
     from eta_engine.brain.model_policy import ForceProvider
+
     assert ForceProvider.CLAUDE.value == "claude"
     assert ForceProvider.DEEPSEEK.value == "deepseek"
     assert ForceProvider.CODEX.value == "codex"
@@ -25,11 +28,13 @@ def test_multi_model_imports():
     from eta_engine.brain.multi_model import (
         route_and_execute,
     )
+
     assert route_and_execute is not None
 
 
 def test_cli_health_check():
     from eta_engine.brain.cli_provider import cli_provider_status
+
     status = cli_provider_status()
     assert "claude_available" in status
     assert "codex_available" in status
@@ -41,6 +46,7 @@ def test_cli_health_check():
 
 def test_force_multiplier_status():
     from eta_engine.brain.multi_model import force_multiplier_status
+
     fm = force_multiplier_status()
     assert fm["mode"] == "force_multiplier"
     assert "claude" in fm["providers"]
@@ -51,6 +57,7 @@ def test_force_multiplier_status():
 
 def test_routing_counts():
     from eta_engine.brain.model_policy import ForceProvider, TaskCategory, force_provider_for
+
     counts = Counter(force_provider_for(c) for c in TaskCategory)
     assert counts.get(ForceProvider.CLAUDE, 0) == 7
     assert counts.get(ForceProvider.CODEX, 0) == 4
@@ -71,6 +78,7 @@ def test_specific_routes():
 
 def test_fallback_routing():
     from eta_engine.brain.model_policy import ForceProvider, TaskCategory, force_provider_for
+
     all_cats = set(TaskCategory)
     routed = {c: force_provider_for(c) for c in all_cats}
     for cat, provider in routed.items():

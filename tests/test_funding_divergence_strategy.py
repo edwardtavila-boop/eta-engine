@@ -22,8 +22,13 @@ from eta_engine.strategies.funding_divergence_strategy import (
 def _bar(idx: int, close: float = 100.0) -> BarData:
     ts = datetime(2026, 1, 1, tzinfo=UTC) + timedelta(hours=idx)
     return BarData(
-        timestamp=ts, symbol="BTC", open=close,
-        high=close + 1.0, low=close - 1.0, close=close, volume=1000.0,
+        timestamp=ts,
+        symbol="BTC",
+        open=close,
+        high=close + 1.0,
+        low=close - 1.0,
+        close=close,
+        volume=1000.0,
     )
 
 
@@ -31,8 +36,10 @@ def _config() -> BacktestConfig:
     return BacktestConfig(
         start_date=datetime(2026, 1, 1, tzinfo=UTC),
         end_date=datetime(2026, 12, 31, tzinfo=UTC),
-        symbol="BTC", initial_equity=10_000.0,
-        risk_per_trade_pct=0.01, confluence_threshold=0.0,
+        symbol="BTC",
+        initial_equity=10_000.0,
+        risk_per_trade_pct=0.01,
+        confluence_threshold=0.0,
         max_trades_per_day=10,
     )
 
@@ -55,9 +62,12 @@ def test_returns_none_without_funding_provider() -> None:
 
 def test_warmup_blocks_entries() -> None:
     """During warmup, no entries fire even with extreme funding."""
-    s = FundingDivergenceStrategy(FundingDivergenceConfig(
-        entry_threshold=0.0001, warmup_bars=20,
-    ))
+    s = FundingDivergenceStrategy(
+        FundingDivergenceConfig(
+            entry_threshold=0.0001,
+            warmup_bars=20,
+        )
+    )
     s.attach_funding_provider(lambda b: 0.01)  # extreme overheated longs
     cfg = _config()
     hist: list[BarData] = []
@@ -69,12 +79,14 @@ def test_warmup_blocks_entries() -> None:
 
 def test_long_when_funding_extreme_negative() -> None:
     """Funding < -threshold → BUY (mean-revert capitulated shorts)."""
-    s = FundingDivergenceStrategy(FundingDivergenceConfig(
-        entry_threshold=0.001,
-        warmup_bars=20,
-        atr_period=10,
-        min_bars_between_trades=0,
-    ))
+    s = FundingDivergenceStrategy(
+        FundingDivergenceConfig(
+            entry_threshold=0.001,
+            warmup_bars=20,
+            atr_period=10,
+            min_bars_between_trades=0,
+        )
+    )
     s.attach_funding_provider(lambda b: -0.01)  # extreme negative
     cfg = _config()
     hist: list[BarData] = []
@@ -92,12 +104,14 @@ def test_long_when_funding_extreme_negative() -> None:
 
 def test_short_when_funding_extreme_positive() -> None:
     """Funding > +threshold → SELL (mean-revert overheated longs)."""
-    s = FundingDivergenceStrategy(FundingDivergenceConfig(
-        entry_threshold=0.001,
-        warmup_bars=20,
-        atr_period=10,
-        min_bars_between_trades=0,
-    ))
+    s = FundingDivergenceStrategy(
+        FundingDivergenceConfig(
+            entry_threshold=0.001,
+            warmup_bars=20,
+            atr_period=10,
+            min_bars_between_trades=0,
+        )
+    )
     s.attach_funding_provider(lambda b: 0.01)
     cfg = _config()
     hist: list[BarData] = []
@@ -114,10 +128,14 @@ def test_short_when_funding_extreme_positive() -> None:
 
 def test_no_entry_at_neutral_funding() -> None:
     """Funding within threshold → no entry."""
-    s = FundingDivergenceStrategy(FundingDivergenceConfig(
-        entry_threshold=0.001, warmup_bars=20, atr_period=10,
-        min_bars_between_trades=0,
-    ))
+    s = FundingDivergenceStrategy(
+        FundingDivergenceConfig(
+            entry_threshold=0.001,
+            warmup_bars=20,
+            atr_period=10,
+            min_bars_between_trades=0,
+        )
+    )
     s.attach_funding_provider(lambda b: 0.0001)  # below threshold
     cfg = _config()
     hist: list[BarData] = []
@@ -129,11 +147,15 @@ def test_no_entry_at_neutral_funding() -> None:
 
 def test_cooldown_throttles_consecutive_entries() -> None:
     """min_bars_between_trades blocks rapid-fire entries."""
-    s = FundingDivergenceStrategy(FundingDivergenceConfig(
-        entry_threshold=0.001, warmup_bars=20, atr_period=10,
-        min_bars_between_trades=24,
-        max_trades_per_day=999,  # disable per-day cap
-    ))
+    s = FundingDivergenceStrategy(
+        FundingDivergenceConfig(
+            entry_threshold=0.001,
+            warmup_bars=20,
+            atr_period=10,
+            min_bars_between_trades=24,
+            max_trades_per_day=999,  # disable per-day cap
+        )
+    )
     s.attach_funding_provider(lambda b: 0.01)
     cfg = _config()
     hist: list[BarData] = []
@@ -155,10 +177,14 @@ def test_cooldown_throttles_consecutive_entries() -> None:
 
 
 def test_stats_track_funding_extremes_and_fires() -> None:
-    s = FundingDivergenceStrategy(FundingDivergenceConfig(
-        entry_threshold=0.001, warmup_bars=10, atr_period=5,
-        min_bars_between_trades=0,
-    ))
+    s = FundingDivergenceStrategy(
+        FundingDivergenceConfig(
+            entry_threshold=0.001,
+            warmup_bars=10,
+            atr_period=5,
+            min_bars_between_trades=0,
+        )
+    )
     s.attach_funding_provider(lambda b: 0.01)
     cfg = _config()
     hist: list[BarData] = []
@@ -187,11 +213,15 @@ def test_directional_confirmation_vetoes_against_sage() -> None:
         direction: str
         conviction: float = 0.5
 
-    s = FundingDivergenceStrategy(FundingDivergenceConfig(
-        entry_threshold=0.001, warmup_bars=10, atr_period=5,
-        min_bars_between_trades=0,
-        require_directional_confirmation=True,
-    ))
+    s = FundingDivergenceStrategy(
+        FundingDivergenceConfig(
+            entry_threshold=0.001,
+            warmup_bars=10,
+            atr_period=5,
+            min_bars_between_trades=0,
+            require_directional_confirmation=True,
+        )
+    )
     s.attach_funding_provider(lambda b: 0.01)  # would short
     # But sage says LONG → veto the SHORT
     s.attach_daily_verdict_provider(lambda d: Verdict(direction="long"))
@@ -217,11 +247,15 @@ def test_directional_confirmation_allows_aligned_sage() -> None:
         direction: str
         conviction: float = 0.5
 
-    s = FundingDivergenceStrategy(FundingDivergenceConfig(
-        entry_threshold=0.001, warmup_bars=10, atr_period=5,
-        min_bars_between_trades=0,
-        require_directional_confirmation=True,
-    ))
+    s = FundingDivergenceStrategy(
+        FundingDivergenceConfig(
+            entry_threshold=0.001,
+            warmup_bars=10,
+            atr_period=5,
+            min_bars_between_trades=0,
+            require_directional_confirmation=True,
+        )
+    )
     s.attach_funding_provider(lambda b: 0.01)  # SHORT signal
     s.attach_daily_verdict_provider(lambda d: Verdict(direction="short"))
     cfg = _config()

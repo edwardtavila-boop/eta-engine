@@ -25,6 +25,7 @@ Run
     python -m eta_engine.scripts.l2_risk_metrics \\
         --strategy book_imbalance --symbol MNQ --days 30
 """
+
 from __future__ import annotations
 
 # ruff: noqa: PLR2004
@@ -53,8 +54,8 @@ class RiskMetrics:
     win_rate: float | None
     avg_win: float | None
     avg_loss: float | None
-    expectancy: float | None         # mean per-trade pnl
-    profit_factor: float | None      # gross_wins / gross_losses
+    expectancy: float | None  # mean per-trade pnl
+    profit_factor: float | None  # gross_wins / gross_losses
     sharpe: float | None
     sortino: float | None
     calmar: float | None
@@ -81,15 +82,14 @@ def compute_sortino(returns: list[float]) -> float | None:
         return None
     # Use mean-deviation downside (Sortino's original); some sources
     # use 0-centered.  We use 0-centered (target = 0 break-even).
-    sq_neg = [r ** 2 for r in returns if r < 0]
+    sq_neg = [r**2 for r in returns if r < 0]
     downside_std = (sum(sq_neg) / len(returns)) ** 0.5
     if downside_std <= 0:
         return None
     return round(mean / downside_std, 4)
 
 
-def compute_calmar(equity_curve: list[float],
-                    *, annualization_factor: float = 252.0) -> float | None:
+def compute_calmar(equity_curve: list[float], *, annualization_factor: float = 252.0) -> float | None:
     """Calmar = annualized_return / max_drawdown_pct.
 
     equity_curve is a list of equity values in chronological order.
@@ -143,8 +143,7 @@ def compute_max_drawdown(equity_curve: list[float]) -> tuple[float, float]:
     return round(max_dd_usd, 2), round(max_dd_pct * 100, 2)
 
 
-def _read_pnl_records(strategy_id: str | None, *, since_days: int,
-                       _signal_path: Path, _fill_path: Path) -> list[dict]:
+def _read_pnl_records(strategy_id: str | None, *, since_days: int, _signal_path: Path, _fill_path: Path) -> list[dict]:
     """Reconstruct per-trade pnl records by joining signals + terminal fills.
     Returns list of {ts, signal_id, pnl_usd, side}."""
     if not _signal_path.exists() or not _fill_path.exists():
@@ -198,13 +197,10 @@ def _read_pnl_records(strategy_id: str | None, *, since_days: int,
     out: list[dict] = []
     for sid, sig in sigs.items():
         sig_fills = fills_by_sig.get(sid, [])
-        entry = next((f for f in sig_fills
-                       if str(f.get("exit_reason", "")).upper() == "ENTRY"),
-                      None)
-        terminal = next((f for f in sig_fills
-                          if str(f.get("exit_reason", "")).upper()
-                             in ("TARGET", "STOP", "TIMEOUT")),
-                         None)
+        entry = next((f for f in sig_fills if str(f.get("exit_reason", "")).upper() == "ENTRY"), None)
+        terminal = next(
+            (f for f in sig_fills if str(f.get("exit_reason", "")).upper() in ("TARGET", "STOP", "TIMEOUT")), None
+        )
         if not entry or not terminal:
             continue
         entry_price = float(entry.get("actual_fill_price", 0))
@@ -215,8 +211,7 @@ def _read_pnl_records(strategy_id: str | None, *, since_days: int,
         # for the metrics computation the relative pnl matters more
         # than the absolute scale
         pts = (exit_price - entry_price) if is_long else (entry_price - exit_price)
-        commission = float(terminal.get("commission_usd", 0)) \
-                      + float(entry.get("commission_usd", 0))
+        commission = float(terminal.get("commission_usd", 0)) + float(entry.get("commission_usd", 0))
         # Use slip-corrected pnl_usd if available, else points × 2
         pnl_usd = pts * 2.0 - commission
         terminal_ts = terminal.get("ts")
@@ -227,27 +222,40 @@ def _read_pnl_records(strategy_id: str | None, *, since_days: int,
                 dt = datetime.now(UTC)
         else:
             dt = datetime.now(UTC)
-        out.append({"ts": dt, "signal_id": sid,
-                     "pnl_usd": round(pnl_usd, 2), "side": side})
+        out.append({"ts": dt, "signal_id": sid, "pnl_usd": round(pnl_usd, 2), "side": side})
     return out
 
 
-def compute_metrics(strategy_id: str | None = None,
-                     *, since_days: int = 60,
-                     starting_equity: float = 10000.0,
-                     _signal_path: Path | None = None,
-                     _fill_path: Path | None = None) -> RiskMetrics:
+def compute_metrics(
+    strategy_id: str | None = None,
+    *,
+    since_days: int = 60,
+    starting_equity: float = 10000.0,
+    _signal_path: Path | None = None,
+    _fill_path: Path | None = None,
+) -> RiskMetrics:
     sig_path = _signal_path if _signal_path is not None else SIGNAL_LOG
     fill_path = _fill_path if _fill_path is not None else BROKER_FILL_LOG
-    trades = _read_pnl_records(strategy_id, since_days=since_days,
-                                  _signal_path=sig_path, _fill_path=fill_path)
+    trades = _read_pnl_records(strategy_id, since_days=since_days, _signal_path=sig_path, _fill_path=fill_path)
     if not trades:
         return RiskMetrics(
-            strategy_id=strategy_id, n_trades=0, n_wins=0, n_losses=0,
-            win_rate=None, avg_win=None, avg_loss=None, expectancy=None,
-            profit_factor=None, sharpe=None, sortino=None, calmar=None,
-            max_drawdown_usd=None, max_drawdown_pct=None,
-            max_consecutive_losers=0, worst_day_usd=None, best_day_usd=None,
+            strategy_id=strategy_id,
+            n_trades=0,
+            n_wins=0,
+            n_losses=0,
+            win_rate=None,
+            avg_win=None,
+            avg_loss=None,
+            expectancy=None,
+            profit_factor=None,
+            sharpe=None,
+            sortino=None,
+            calmar=None,
+            max_drawdown_usd=None,
+            max_drawdown_pct=None,
+            max_consecutive_losers=0,
+            worst_day_usd=None,
+            best_day_usd=None,
             n_trading_days=0,
             notes=["no matched trade lifecycle data"],
         )
@@ -281,8 +289,7 @@ def compute_metrics(strategy_id: str | None = None,
     for t in trades:
         day = t["ts"].strftime("%Y-%m-%d")
         by_day[day] = by_day.get(day, 0.0) + t["pnl_usd"]
-    daily_records = [{"date": d, "pnl_usd": round(v, 2)}
-                       for d, v in sorted(by_day.items())]
+    daily_records = [{"date": d, "pnl_usd": round(v, 2)} for d, v in sorted(by_day.items())]
     worst_day = min(by_day.values()) if by_day else None
     best_day = max(by_day.values()) if by_day else None
     # Calmar uses daily equity curve, not per-trade
@@ -292,14 +299,20 @@ def compute_metrics(strategy_id: str | None = None,
     calmar = compute_calmar(daily_equity, annualization_factor=252.0)
 
     return RiskMetrics(
-        strategy_id=strategy_id, n_trades=len(returns),
-        n_wins=n_wins, n_losses=n_losses,
+        strategy_id=strategy_id,
+        n_trades=len(returns),
+        n_wins=n_wins,
+        n_losses=n_losses,
         win_rate=round(win_rate, 3),
-        avg_win=round(avg_win, 2), avg_loss=round(avg_loss, 2),
+        avg_win=round(avg_win, 2),
+        avg_loss=round(avg_loss, 2),
         expectancy=round(expectancy, 2),
         profit_factor=round(profit_factor, 3) if profit_factor else None,
-        sharpe=sharpe, sortino=sortino, calmar=calmar,
-        max_drawdown_usd=max_dd_usd, max_drawdown_pct=max_dd_pct,
+        sharpe=sharpe,
+        sortino=sortino,
+        calmar=calmar,
+        max_drawdown_usd=max_dd_usd,
+        max_drawdown_pct=max_dd_pct,
         max_consecutive_losers=compute_max_consecutive_losers(returns),
         worst_day_usd=round(worst_day, 2) if worst_day is not None else None,
         best_day_usd=round(best_day, 2) if best_day is not None else None,
@@ -316,14 +329,12 @@ def main() -> int:
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
 
-    metrics = compute_metrics(args.strategy, since_days=args.days,
-                                starting_equity=args.starting_equity)
+    metrics = compute_metrics(args.strategy, since_days=args.days, starting_equity=args.starting_equity)
     try:
         with RISK_METRICS_LOG.open("a", encoding="utf-8") as f:
             d = asdict(metrics)
             d.pop("daily_pnl", None)  # trim from log
-            f.write(json.dumps({"ts": datetime.now(UTC).isoformat(),
-                                 **d}, separators=(",", ":")) + "\n")
+            f.write(json.dumps({"ts": datetime.now(UTC).isoformat(), **d}, separators=(",", ":")) + "\n")
     except OSError as e:
         print(f"WARN: risk metrics log write failed: {e}", file=sys.stderr)
 
@@ -345,11 +356,9 @@ def main() -> int:
     print(f"  sortino               : {metrics.sortino}")
     print(f"  calmar                : {metrics.calmar}")
     print()
-    print(f"  max drawdown          : ${metrics.max_drawdown_usd} "
-          f"({metrics.max_drawdown_pct}%)")
+    print(f"  max drawdown          : ${metrics.max_drawdown_usd} ({metrics.max_drawdown_pct}%)")
     print(f"  max consec losers     : {metrics.max_consecutive_losers}")
-    print(f"  worst day / best day  : ${metrics.worst_day_usd} / "
-          f"${metrics.best_day_usd}")
+    print(f"  worst day / best day  : ${metrics.worst_day_usd} / ${metrics.best_day_usd}")
     if metrics.notes:
         print()
         print("  Notes:")

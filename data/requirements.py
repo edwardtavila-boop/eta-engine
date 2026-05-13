@@ -80,14 +80,12 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
         requirements=(
             DataRequirement("bars", "MNQ1", "5m", critical=True),
             DataRequirement("bars", "MNQ1", "1h", critical=True),
-            DataRequirement("bars", "MNQ1", "4h", critical=False,
-                note="best DSR-pass timeframe per 2026-04-27 grid"),
-            DataRequirement("correlation", "ES1", "5m", critical=True,
-                note="ES correlation is a primary MNQ price driver"),
-            DataRequirement("correlation", "DXY", "5m", critical=False,
-                note="dollar-index regime context"),
-            DataRequirement("correlation", "VIX", "5m", critical=False,
-                note="volatility regime"),
+            DataRequirement("bars", "MNQ1", "4h", critical=False, note="best DSR-pass timeframe per 2026-04-27 grid"),
+            DataRequirement(
+                "correlation", "ES1", "5m", critical=True, note="ES correlation is a primary MNQ price driver"
+            ),
+            DataRequirement("correlation", "DXY", "5m", critical=False, note="dollar-index regime context"),
+            DataRequirement("correlation", "VIX", "5m", critical=False, note="volatility regime"),
         ),
         sources_hint=(
             "tradingview-mcp",
@@ -99,8 +97,7 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
         requirements=(
             DataRequirement("bars", "NQ1", "1h", critical=True),
             DataRequirement("bars", "NQ1", "4h", critical=True),
-            DataRequirement("bars", "NQ1", "D", critical=True,
-                note="27-yr daily history is the strongest available"),
+            DataRequirement("bars", "NQ1", "D", critical=True, note="27-yr daily history is the strongest available"),
             DataRequirement("correlation", "ES1", "5m", critical=True),
             DataRequirement("correlation", "VIX", "1m", critical=False),
         ),
@@ -116,8 +113,9 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
         requirements=(
             DataRequirement("bars", "MNQ1", "5m", critical=True),
             DataRequirement("bars", "MNQ1", "1h", critical=True),
-            DataRequirement("correlation", "ES1", "5m", critical=True,
-                note="ES correlation feeds the sage's institutional school"),
+            DataRequirement(
+                "correlation", "ES1", "5m", critical=True, note="ES correlation feeds the sage's institutional school"
+            ),
             DataRequirement("correlation", "DXY", "5m", critical=False),
             DataRequirement("correlation", "VIX", "5m", critical=False),
         ),
@@ -134,8 +132,9 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
         requirements=(
             DataRequirement("bars", "MNQ1", "5m", critical=True),
             DataRequirement("bars", "MNQ1", "1h", critical=True),
-            DataRequirement("correlation", "ES1", "5m", critical=True,
-                note="ES correlation feeds the sage's institutional school"),
+            DataRequirement(
+                "correlation", "ES1", "5m", critical=True, note="ES correlation feeds the sage's institutional school"
+            ),
             DataRequirement("correlation", "DXY", "5m", critical=False),
             DataRequirement("correlation", "VIX", "5m", critical=False),
         ),
@@ -152,8 +151,9 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
         requirements=(
             DataRequirement("bars", "NQ1", "5m", critical=True),
             DataRequirement("bars", "NQ1", "1h", critical=True),
-            DataRequirement("correlation", "ES1", "5m", critical=True,
-                note="ES correlation feeds the sage's institutional school"),
+            DataRequirement(
+                "correlation", "ES1", "5m", critical=True, note="ES correlation feeds the sage's institutional school"
+            ),
             DataRequirement("correlation", "VIX", "5m", critical=False),
         ),
         sources_hint=("tradingview-mcp",),
@@ -165,8 +165,7 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
     BotRequirements(
         bot_id="nq_daily_drb",
         requirements=(
-            DataRequirement("bars", "NQ1", "D", critical=True,
-                note="DRB walk-forward needs the 27-yr daily history"),
+            DataRequirement("bars", "NQ1", "D", critical=True, note="DRB walk-forward needs the 27-yr daily history"),
             DataRequirement("correlation", "ES1", "5m", critical=False),
         ),
         sources_hint=("tradingview-mcp",),
@@ -175,20 +174,27 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
     BotRequirements(
         bot_id="btc_hybrid",
         requirements=(
-            DataRequirement("bars", "BTC", "1m", critical=False,
-                note="entry timing; optional — 5m/1h/D enough for paper"),
+            DataRequirement(
+                "bars", "BTC", "1m", critical=False, note="entry timing; optional — 5m/1h/D enough for paper"
+            ),
             DataRequirement("bars", "BTC", "5m", critical=True),
             DataRequirement("bars", "BTC", "1h", critical=True),
-            DataRequirement("bars", "BTC", "D", critical=True,
-                note="regime + macro lens"),
-            DataRequirement("funding", "BTC", "8h", critical=False,
-                note="funding skew is the dominant edge for BTC perps; "
-                "optional for paper"),
-            DataRequirement("onchain", "BTC", None, critical=False,
-                note="whale transfers, exchange netflow, active addresses; "
-                "optional — bar data sufficient for paper"),
-            DataRequirement("sentiment", "BTC", "1h", critical=False,
-                note="LunarCrush galaxy_score / fear_greed"),
+            DataRequirement("bars", "BTC", "D", critical=True, note="regime + macro lens"),
+            DataRequirement(
+                "funding",
+                "BTC",
+                "8h",
+                critical=False,
+                note="funding skew is the dominant edge for BTC perps; optional for paper",
+            ),
+            DataRequirement(
+                "onchain",
+                "BTC",
+                None,
+                critical=False,
+                note="whale transfers, exchange netflow, active addresses; optional — bar data sufficient for paper",
+            ),
+            DataRequirement("sentiment", "BTC", "1h", critical=False, note="LunarCrush galaxy_score / fear_greed"),
             DataRequirement("correlation", "ETH", "1h", critical=False),
             DataRequirement("correlation", "DXY", "1h", critical=False),
         ),
@@ -207,10 +213,10 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
         bot_id="btc_hybrid_sage",
         requirements=(
             DataRequirement("bars", "BTC", "1h", critical=True),
-            DataRequirement("bars", "BTC", "D", critical=True,
-                note="regime + macro lens"),
-            DataRequirement("funding", "BTC", "8h", critical=False,
-                note="sage panel reads funding skew when available"),
+            DataRequirement("bars", "BTC", "D", critical=True, note="regime + macro lens"),
+            DataRequirement(
+                "funding", "BTC", "8h", critical=False, note="sage panel reads funding skew when available"
+            ),
         ),
         sources_hint=(
             "scripts/fetch_btc_bars.py (Coinbase spot bars)",
@@ -224,10 +230,10 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
         bot_id="btc_regime_trend",
         requirements=(
             DataRequirement("bars", "BTC", "1h", critical=True),
-            DataRequirement("bars", "BTC", "D", critical=True,
-                note="regime classifier baseline"),
-            DataRequirement("correlation", "ETH", "1h", critical=False,
-                note="ETH-BTC correlation as regime confirmation"),
+            DataRequirement("bars", "BTC", "D", critical=True, note="regime classifier baseline"),
+            DataRequirement(
+                "correlation", "ETH", "1h", critical=False, note="ETH-BTC correlation as regime confirmation"
+            ),
         ),
         sources_hint=("scripts/fetch_btc_bars.py (Coinbase spot bars)",),
     ),
@@ -239,10 +245,10 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
         bot_id="btc_sage_daily_etf",
         requirements=(
             DataRequirement("bars", "BTC", "1h", critical=True),
-            DataRequirement("bars", "BTC", "D", critical=True,
-                note="daily timeframe is the primary signal frame"),
-            DataRequirement("funding", "BTC", "8h", critical=False,
-                note="sage panel reads funding skew when available"),
+            DataRequirement("bars", "BTC", "D", critical=True, note="daily timeframe is the primary signal frame"),
+            DataRequirement(
+                "funding", "BTC", "8h", critical=False, note="sage panel reads funding skew when available"
+            ),
         ),
         sources_hint=(
             "scripts/fetch_btc_bars.py (Coinbase spot bars)",
@@ -253,10 +259,10 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
         bot_id="btc_regime_trend_etf",
         requirements=(
             DataRequirement("bars", "BTC", "1h", critical=True),
-            DataRequirement("bars", "BTC", "D", critical=True,
-                note="regime classifier baseline"),
-            DataRequirement("correlation", "ETH", "1h", critical=False,
-                note="ETH-BTC correlation as regime confirmation"),
+            DataRequirement("bars", "BTC", "D", critical=True, note="regime classifier baseline"),
+            DataRequirement(
+                "correlation", "ETH", "1h", critical=False, note="ETH-BTC correlation as regime confirmation"
+            ),
         ),
         sources_hint=("scripts/fetch_btc_bars.py (Coinbase spot bars)",),
     ),
@@ -268,10 +274,10 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
         bot_id="btc_ensemble_2of3",
         requirements=(
             DataRequirement("bars", "BTC", "1h", critical=True),
-            DataRequirement("bars", "BTC", "D", critical=True,
-                note="regime classifier baseline + sage daily cadence"),
-            DataRequirement("correlation", "ETH", "1h", critical=False,
-                note="ETH-BTC correlation as regime confirmation"),
+            DataRequirement("bars", "BTC", "D", critical=True, note="regime classifier baseline + sage daily cadence"),
+            DataRequirement(
+                "correlation", "ETH", "1h", critical=False, note="ETH-BTC correlation as regime confirmation"
+            ),
         ),
         sources_hint=(
             "scripts/fetch_btc_bars.py (Coinbase spot bars)",
@@ -284,13 +290,20 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
             DataRequirement("bars", "ETH", "5m", critical=True),
             DataRequirement("bars", "ETH", "1h", critical=True),
             DataRequirement("bars", "ETH", "D", critical=True),
-            DataRequirement("funding", "ETH", "8h", critical=False,
-                note="sage panel reads funding skew when available"),
-            DataRequirement("onchain", "ETH", None, critical=False,
-                note="whale transfers + gas-fee regime + staking yield; optional for paper"),
+            DataRequirement(
+                "funding", "ETH", "8h", critical=False, note="sage panel reads funding skew when available"
+            ),
+            DataRequirement(
+                "onchain",
+                "ETH",
+                None,
+                critical=False,
+                note="whale transfers + gas-fee regime + staking yield; optional for paper",
+            ),
             DataRequirement("sentiment", "ETH", "1h", critical=False),
-            DataRequirement("correlation", "BTC", "1h", critical=True,
-                note="ETH-BTC correlation is a primary regime indicator"),
+            DataRequirement(
+                "correlation", "BTC", "1h", critical=True, note="ETH-BTC correlation is a primary regime indicator"
+            ),
         ),
         sources_hint=(
             "Coinbase/Binance ETH bars + funding",
@@ -305,16 +318,15 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
         bot_id="eth_sage_daily",
         requirements=(
             DataRequirement("bars", "ETH", "1h", critical=True),
-            DataRequirement("bars", "ETH", "D", critical=True,
-                note="daily timeframe is the primary signal frame"),
-            DataRequirement("funding", "ETH", "8h", critical=False,
-                note="sage panel reads funding skew when available"),
-            DataRequirement("correlation", "BTC", "1h", critical=True,
-                note="ETH-BTC correlation as regime confirmation"),
+            DataRequirement("bars", "ETH", "D", critical=True, note="daily timeframe is the primary signal frame"),
+            DataRequirement(
+                "funding", "ETH", "8h", critical=False, note="sage panel reads funding skew when available"
+            ),
+            DataRequirement(
+                "correlation", "BTC", "1h", critical=True, note="ETH-BTC correlation as regime confirmation"
+            ),
         ),
-        sources_hint=(
-            "Coinbase/Binance ETH bars + funding",
-        ),
+        sources_hint=("Coinbase/Binance ETH bars + funding",),
     ),
     # eth_compression is the compression-breakout variant of eth_perp.
     # Same ETH 1h bars as eth_perp; needs ATR + BB-width (computed
@@ -324,12 +336,9 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
         bot_id="crypto_seed",
         requirements=(
             DataRequirement("bars", "BTC", "1h", critical=True),
-            DataRequirement("bars", "BTC", "4h", critical=True,
-                note="grid-level sizing decision interval"),
-            DataRequirement("bars", "BTC", "D", critical=True,
-                note="regime + macro lens"),
-            DataRequirement("correlation", "ETH", "1h", critical=False,
-                note="ETH-BTC correlation for dual regime"),
+            DataRequirement("bars", "BTC", "4h", critical=True, note="grid-level sizing decision interval"),
+            DataRequirement("bars", "BTC", "D", critical=True, note="regime + macro lens"),
+            DataRequirement("correlation", "ETH", "1h", critical=False, note="ETH-BTC correlation for dual regime"),
         ),
         sources_hint=(
             "scripts/fetch_btc_bars.py (Coinbase spot bars)",
@@ -340,10 +349,8 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
         bot_id="sol_perp",
         requirements=(
             DataRequirement("bars", "SOL", "1h", critical=True),
-            DataRequirement("bars", "SOL", "D", critical=True,
-                note="regime + macro lens"),
-            DataRequirement("correlation", "BTC", "1h", critical=False,
-                note="SOL-BTC correlation for regime"),
+            DataRequirement("bars", "SOL", "D", critical=True, note="regime + macro lens"),
+            DataRequirement("correlation", "BTC", "1h", critical=False, note="SOL-BTC correlation for regime"),
         ),
         sources_hint=(
             "Coinbase/Binance SOL bars",
@@ -358,10 +365,10 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
         requirements=(
             DataRequirement("bars", "SOL", "5m", critical=True),
             DataRequirement("bars", "SOL", "1h", critical=True),
-            DataRequirement("bars", "SOL", "D", critical=True,
-                note="regime + macro lens"),
-            DataRequirement("correlation", "BTC", "1h", critical=False,
-                note="SOL-BTC correlation for crypto beta regime"),
+            DataRequirement("bars", "SOL", "D", critical=True, note="regime + macro lens"),
+            DataRequirement(
+                "correlation", "BTC", "1h", critical=False, note="SOL-BTC correlation for crypto beta regime"
+            ),
         ),
         sources_hint=("Coinbase SOL bars (scripts/fetch_crypto_bars_coinbase.py)",),
     ),
@@ -370,7 +377,6 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
         requirements=(),
         sources_hint=("DEACTIVATED — no news/regulatory feed for XRP.",),
     ),
-
     # ── MBT/MET — CME micro crypto futures ─────────────────────────
     # MBT (Micro Bitcoin) / MET (Micro Ether) track BTCUSDT/ETHUSDT
     # through the M2 translation layer. Data needs mirror the proven
@@ -380,10 +386,10 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
         requirements=(
             DataRequirement("bars", "MBT1", "5m", critical=True),
             DataRequirement("bars", "MBT1", "1h", critical=True),
-            DataRequirement("bars", "MBT1", "D", critical=True,
-                note="regime + macro lens"),
-            DataRequirement("correlation", "ETH", "1h", critical=False,
-                note="ETH-BTC correlation as regime confirmation"),
+            DataRequirement("bars", "MBT1", "D", critical=True, note="regime + macro lens"),
+            DataRequirement(
+                "correlation", "ETH", "1h", critical=False, note="ETH-BTC correlation as regime confirmation"
+            ),
             DataRequirement("correlation", "DXY", "1h", critical=False),
         ),
         sources_hint=("IBKR CME bars (via Client Portal Gateway)", "scripts/fetch_ibkr_crypto_bars.py"),
@@ -393,10 +399,10 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
         requirements=(
             DataRequirement("bars", "MET1", "5m", critical=True),
             DataRequirement("bars", "MET1", "1h", critical=True),
-            DataRequirement("bars", "MET1", "D", critical=True,
-                note="regime + macro lens"),
-            DataRequirement("correlation", "BTC", "1h", critical=False,
-                note="BTC-ETH correlation as regime confirmation"),
+            DataRequirement("bars", "MET1", "D", critical=True, note="regime + macro lens"),
+            DataRequirement(
+                "correlation", "BTC", "1h", critical=False, note="BTC-ETH correlation as regime confirmation"
+            ),
             DataRequirement("correlation", "DXY", "1h", critical=False),
         ),
         sources_hint=("IBKR CME bars (via Client Portal Gateway)", "scripts/fetch_ibkr_crypto_bars.py"),
@@ -406,12 +412,11 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
         requirements=(
             DataRequirement("bars", "MBT1", "5m", critical=True),
             DataRequirement("bars", "MBT1", "1h", critical=True),
-            DataRequirement("bars", "MBT1", "D", critical=True,
-                note="contract regime + expiry context"),
-            DataRequirement("bars", "BTC", "5m", critical=True,
-                note="spot BTC reference for MBT basis proxy"),
-            DataRequirement("funding", "BTC", "8h", critical=False,
-                note="perp funding skew enriches basis-premium context"),
+            DataRequirement("bars", "MBT1", "D", critical=True, note="contract regime + expiry context"),
+            DataRequirement("bars", "BTC", "5m", critical=True, note="spot BTC reference for MBT basis proxy"),
+            DataRequirement(
+                "funding", "BTC", "8h", critical=False, note="perp funding skew enriches basis-premium context"
+            ),
         ),
         sources_hint=(
             "IBKR CME bars (via Client Portal Gateway)",
@@ -424,10 +429,10 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
         requirements=(
             DataRequirement("bars", "MBT1", "5m", critical=True),
             DataRequirement("bars", "MBT1", "1h", critical=True),
-            DataRequirement("bars", "MBT1", "D", critical=True,
-                note="prior RTH close and overnight gap context"),
-            DataRequirement("bars", "BTC", "5m", critical=False,
-                note="spot BTC cross-check for overnight dislocations"),
+            DataRequirement("bars", "MBT1", "D", critical=True, note="prior RTH close and overnight gap context"),
+            DataRequirement(
+                "bars", "BTC", "5m", critical=False, note="spot BTC cross-check for overnight dislocations"
+            ),
         ),
         sources_hint=("IBKR CME bars (via Client Portal Gateway)", "scripts/fetch_ibkr_crypto_bars.py"),
     ),
@@ -435,12 +440,9 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
         bot_id="mbt_zfade",
         requirements=(
             DataRequirement("bars", "MBT1", "5m", critical=True),
-            DataRequirement("bars", "MBT1", "1h", critical=True,
-                note="HTF trend-opposition filter"),
-            DataRequirement("bars", "MBT1", "D", critical=False,
-                note="contract regime and volatility context"),
-            DataRequirement("bars", "BTC", "5m", critical=False,
-                note="spot BTC cross-check for MBT dislocations"),
+            DataRequirement("bars", "MBT1", "1h", critical=True, note="HTF trend-opposition filter"),
+            DataRequirement("bars", "MBT1", "D", critical=False, note="contract regime and volatility context"),
+            DataRequirement("bars", "BTC", "5m", critical=False, note="spot BTC cross-check for MBT dislocations"),
         ),
         sources_hint=("IBKR CME bars (via Client Portal Gateway)", "scripts/fetch_ibkr_crypto_bars.py"),
     ),
@@ -448,10 +450,8 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
         bot_id="mbt_rth_orb",
         requirements=(
             DataRequirement("bars", "MBT1", "5m", critical=True),
-            DataRequirement("bars", "MBT1", "1h", critical=True,
-                note="opening-range context and trend filter"),
-            DataRequirement("bars", "MBT1", "D", critical=False,
-                note="RTH regime and contract context"),
+            DataRequirement("bars", "MBT1", "1h", critical=True, note="opening-range context and trend filter"),
+            DataRequirement("bars", "MBT1", "D", critical=False, note="RTH regime and contract context"),
         ),
         sources_hint=("IBKR CME bars (via Client Portal Gateway)", "scripts/fetch_ibkr_crypto_bars.py"),
     ),
@@ -460,14 +460,13 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
         requirements=(
             DataRequirement("bars", "MET1", "5m", critical=True),
             DataRequirement("bars", "MET1", "1h", critical=True),
-            DataRequirement("bars", "MET1", "D", critical=True,
-                note="RTH opening-range and daily ETH regime context"),
-            DataRequirement("correlation", "BTC", "1h", critical=False,
-                note="BTC-ETH correlation as regime confirmation"),
+            DataRequirement("bars", "MET1", "D", critical=True, note="RTH opening-range and daily ETH regime context"),
+            DataRequirement(
+                "correlation", "BTC", "1h", critical=False, note="BTC-ETH correlation as regime confirmation"
+            ),
         ),
         sources_hint=("IBKR CME bars (via Client Portal Gateway)", "scripts/fetch_ibkr_crypto_bars.py"),
     ),
-
     # ── Wave-18 fleet additions ────────────────────────────────────
     # Stub requirements added 2026-05-03 to clear the registry/requirements
     # sync drift discovered during the live VPS paper-live cutover. Each
@@ -476,31 +475,28 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
     # minimum critical bars needed for honest signals; enrichment (funding,
     # onchain, sentiment, correlations) can be promoted from optional to
     # critical bot-by-bot as research validates the dependency.
-
     # confluence_scorecard variants on BTC — sweep_reclaim sub-strategy
     BotRequirements(
         bot_id="btc_optimized",
         requirements=(
             DataRequirement("bars", "BTC", "5m", critical=True),
             DataRequirement("bars", "BTC", "1h", critical=True),
-            DataRequirement("bars", "BTC", "D", critical=True,
-                note="regime + macro lens"),
+            DataRequirement("bars", "BTC", "D", critical=True, note="regime + macro lens"),
         ),
         sources_hint=("scripts/fetch_btc_bars.py (Coinbase spot bars)",),
     ),
-
     # MNQ confluence_scorecard sweep_reclaim sub-strategy
     BotRequirements(
         bot_id="mnq_sweep_reclaim",
         requirements=(
             DataRequirement("bars", "MNQ1", "5m", critical=True),
             DataRequirement("bars", "MNQ1", "1h", critical=True),
-            DataRequirement("correlation", "ES1", "5m", critical=False,
-                note="ES correlation is a primary MNQ regime driver"),
+            DataRequirement(
+                "correlation", "ES1", "5m", critical=False, note="ES correlation is a primary MNQ regime driver"
+            ),
         ),
         sources_hint=("scripts/fetch_index_futures_bars.py",),
     ),
-
     # Named-anchor variant of sweep_reclaim. Tracks PDH/PDL/PMH/PML/ONH/ONL
     # as fixed liquidity pools (vs the dynamic-band mnq_sweep_reclaim).
     # Same underlying instrument + timeframe, so data needs are identical.
@@ -509,12 +505,12 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
         requirements=(
             DataRequirement("bars", "MNQ1", "5m", critical=True),
             DataRequirement("bars", "MNQ1", "1h", critical=True),
-            DataRequirement("correlation", "ES1", "5m", critical=False,
-                note="ES correlation is a primary MNQ regime driver"),
+            DataRequirement(
+                "correlation", "ES1", "5m", critical=False, note="ES correlation is a primary MNQ regime driver"
+            ),
         ),
         sources_hint=("scripts/fetch_index_futures_bars.py",),
     ),
-
     # NQ variant of mnq_anchor_sweep. Same Nasdaq-100 underlying ($20/pt
     # vs $2/pt — qty sizing absorbs the difference) so the data shape is
     # identical, just NQ1 as the symbol.
@@ -523,12 +519,12 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
         requirements=(
             DataRequirement("bars", "NQ1", "5m", critical=True),
             DataRequirement("bars", "NQ1", "1h", critical=True),
-            DataRequirement("correlation", "ES1", "5m", critical=False,
-                note="ES correlation is a primary NQ regime driver"),
+            DataRequirement(
+                "correlation", "ES1", "5m", critical=False, note="ES correlation is a primary NQ regime driver"
+            ),
         ),
         sources_hint=("scripts/fetch_index_futures_bars.py",),
     ),
-
     # RSI mean-reversion variants
     BotRequirements(
         bot_id="rsi_mr_mnq",
@@ -554,7 +550,6 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
         ),
         sources_hint=("scripts/fetch_btc_bars.py (Coinbase spot bars)",),
     ),
-
     # VWAP mean-reversion variants
     BotRequirements(
         bot_id="vwap_mr_mnq",
@@ -572,7 +567,6 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
         ),
         sources_hint=("scripts/fetch_btc_bars.py (Coinbase spot bars)",),
     ),
-
     BotRequirements(
         bot_id="vwap_mr_nq",
         requirements=(
@@ -581,15 +575,13 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
         ),
         sources_hint=("scripts/fetch_index_futures_bars.py",),
     ),
-
     # Volume-profile (POC/value-area) — needs daily for context
     BotRequirements(
         bot_id="volume_profile_mnq",
         requirements=(
             DataRequirement("bars", "MNQ1", "5m", critical=True),
             DataRequirement("bars", "MNQ1", "1h", critical=True),
-            DataRequirement("bars", "MNQ1", "D", critical=True,
-                note="daily POC anchors session value-area"),
+            DataRequirement("bars", "MNQ1", "D", critical=True, note="daily POC anchors session value-area"),
         ),
         sources_hint=("scripts/fetch_index_futures_bars.py",),
     ),
@@ -598,8 +590,7 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
         requirements=(
             DataRequirement("bars", "BTC", "5m", critical=True),
             DataRequirement("bars", "BTC", "1h", critical=True),
-            DataRequirement("bars", "BTC", "D", critical=True,
-                note="daily POC anchors session value-area"),
+            DataRequirement("bars", "BTC", "D", critical=True, note="daily POC anchors session value-area"),
         ),
         sources_hint=("scripts/fetch_btc_bars.py (Coinbase spot bars)",),
     ),
@@ -611,8 +602,7 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
         requirements=(
             DataRequirement("bars", "NQ1", "5m", critical=True),
             DataRequirement("bars", "NQ1", "1h", critical=True),
-            DataRequirement("bars", "NQ1", "D", critical=True,
-                note="daily POC anchors session value-area"),
+            DataRequirement("bars", "NQ1", "D", critical=True, note="daily POC anchors session value-area"),
         ),
         sources_hint=("scripts/fetch_index_futures_bars.py",),
     ),
@@ -648,8 +638,7 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
         bot_id="mes_sweep_reclaim_v2",
         requirements=(
             DataRequirement("bars", "MES1", "5m", critical=True),
-            DataRequirement("bars", "MES1", "1h", critical=True,
-                note="HTF context for scorecard"),
+            DataRequirement("bars", "MES1", "1h", critical=True, note="HTF context for scorecard"),
         ),
         sources_hint=("scripts/fetch_tws_historical_bars.py --symbols MES",),
     ),
@@ -661,15 +650,13 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
         ),
         sources_hint=("scripts/fetch_tws_historical_bars.py --symbols MGC",),
     ),
-
     # Gap-fill — needs daily to detect overnight gap
     BotRequirements(
         bot_id="gap_fill_mnq",
         requirements=(
             DataRequirement("bars", "MNQ1", "5m", critical=True),
             DataRequirement("bars", "MNQ1", "1h", critical=True),
-            DataRequirement("bars", "MNQ1", "D", critical=True,
-                note="daily prev-close anchors gap detection"),
+            DataRequirement("bars", "MNQ1", "D", critical=True, note="daily prev-close anchors gap detection"),
         ),
         sources_hint=("scripts/fetch_index_futures_bars.py",),
     ),
@@ -678,125 +665,117 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
         requirements=(
             DataRequirement("bars", "BTC", "5m", critical=True),
             DataRequirement("bars", "BTC", "1h", critical=True),
-            DataRequirement("bars", "BTC", "D", critical=True,
-                note="daily prev-close anchors gap detection"),
+            DataRequirement("bars", "BTC", "D", critical=True, note="daily prev-close anchors gap detection"),
         ),
         sources_hint=("scripts/fetch_btc_bars.py (Coinbase spot bars)",),
     ),
-
     # Cross-asset (correlation-driven entries)
     BotRequirements(
         bot_id="cross_asset_mnq",
         requirements=(
             DataRequirement("bars", "MNQ1", "5m", critical=True),
             DataRequirement("bars", "MNQ1", "1h", critical=True),
-            DataRequirement("correlation", "ES1", "5m", critical=True,
-                note="ES is the primary cross-asset reference for MNQ"),
+            DataRequirement(
+                "correlation", "ES1", "5m", critical=True, note="ES is the primary cross-asset reference for MNQ"
+            ),
             DataRequirement("correlation", "DXY", "5m", critical=False),
             DataRequirement("correlation", "VIX", "5m", critical=False),
         ),
-        sources_hint=("scripts/fetch_index_futures_bars.py",
-                      "scripts/fetch_market_context_bars.py"),
+        sources_hint=("scripts/fetch_index_futures_bars.py", "scripts/fetch_market_context_bars.py"),
     ),
     BotRequirements(
         bot_id="cross_asset_btc",
         requirements=(
             DataRequirement("bars", "BTC", "5m", critical=True),
             DataRequirement("bars", "BTC", "1h", critical=True),
-            DataRequirement("correlation", "ETH", "1h", critical=True,
-                note="ETH-BTC is the primary intra-crypto cross-asset signal"),
+            DataRequirement(
+                "correlation", "ETH", "1h", critical=True, note="ETH-BTC is the primary intra-crypto cross-asset signal"
+            ),
             DataRequirement("correlation", "DXY", "1h", critical=False),
         ),
-        sources_hint=("scripts/fetch_btc_bars.py (Coinbase spot bars)",
-                      "scripts/fetch_market_context_bars.py"),
+        sources_hint=("scripts/fetch_btc_bars.py (Coinbase spot bars)", "scripts/fetch_market_context_bars.py"),
     ),
-
     # Funding-rate skew bot — funding is the actual edge
     BotRequirements(
         bot_id="funding_rate_btc",
         requirements=(
             DataRequirement("bars", "BTC", "1h", critical=True),
-            DataRequirement("bars", "BTC", "D", critical=True,
-                note="daily timeframe is the primary signal frame"),
-            DataRequirement("funding", "BTC", "8h", critical=True,
-                note="funding skew IS the edge; non-optional for this bot"),
+            DataRequirement("bars", "BTC", "D", critical=True, note="daily timeframe is the primary signal frame"),
+            DataRequirement(
+                "funding", "BTC", "8h", critical=True, note="funding skew IS the edge; non-optional for this bot"
+            ),
         ),
-        sources_hint=("scripts/fetch_btc_bars.py (Coinbase spot bars)",
-                      "scripts/fetch_funding_rates.py (OKX/Binance funding)"),
+        sources_hint=(
+            "scripts/fetch_btc_bars.py (Coinbase spot bars)",
+            "scripts/fetch_funding_rates.py (OKX/Binance funding)",
+        ),
     ),
-
     # ETH compression-breakout
     BotRequirements(
         bot_id="eth_compression",
         requirements=(
             DataRequirement("bars", "ETH", "5m", critical=True),
             DataRequirement("bars", "ETH", "1h", critical=True),
-            DataRequirement("correlation", "BTC", "1h", critical=False,
-                note="ETH-BTC correlation as regime confirmation"),
+            DataRequirement(
+                "correlation", "BTC", "1h", critical=False, note="ETH-BTC correlation as regime confirmation"
+            ),
         ),
         sources_hint=("Coinbase ETH bars (scripts/fetch_crypto_bars_coinbase.py)",),
     ),
-
     # MNQ optimized — full-stack OHLCV + ES correlation
     BotRequirements(
         bot_id="mnq_futures_optimized",
         requirements=(
             DataRequirement("bars", "MNQ1", "5m", critical=True),
             DataRequirement("bars", "MNQ1", "1h", critical=True),
-            DataRequirement("bars", "MNQ1", "D", critical=True,
-                note="regime + walk-forward window"),
-            DataRequirement("correlation", "ES1", "5m", critical=True,
-                note="ES correlation is a primary MNQ price driver"),
+            DataRequirement("bars", "MNQ1", "D", critical=True, note="regime + walk-forward window"),
+            DataRequirement(
+                "correlation", "ES1", "5m", critical=True, note="ES correlation is a primary MNQ price driver"
+            ),
             DataRequirement("correlation", "DXY", "5m", critical=False),
             DataRequirement("correlation", "VIX", "5m", critical=False),
         ),
-        sources_hint=("scripts/fetch_index_futures_bars.py",
-                      "scripts/fetch_market_context_bars.py"),
+        sources_hint=("scripts/fetch_index_futures_bars.py", "scripts/fetch_market_context_bars.py"),
     ),
-
     # BTC crypto scalper — short-timeframe entry
     BotRequirements(
         bot_id="btc_crypto_scalp",
         requirements=(
-            DataRequirement("bars", "BTC", "1m", critical=True,
-                note="1m bars drive scalp entry timing"),
+            DataRequirement("bars", "BTC", "1m", critical=True, note="1m bars drive scalp entry timing"),
             DataRequirement("bars", "BTC", "5m", critical=True),
         ),
         sources_hint=("Coinbase 1m granularity (scripts/fetch_crypto_bars_coinbase.py)",),
     ),
-
     # SOL sweep scalp — pulls SOL bars at multiple timeframes
     BotRequirements(
         bot_id="sol_sweep_scalp",
         requirements=(
             DataRequirement("bars", "SOL", "5m", critical=True),
             DataRequirement("bars", "SOL", "1h", critical=True),
-            DataRequirement("correlation", "BTC", "1h", critical=False,
-                note="BTC-SOL correlation as regime confirmation"),
+            DataRequirement(
+                "correlation", "BTC", "1h", critical=False, note="BTC-SOL correlation as regime confirmation"
+            ),
         ),
         sources_hint=("Coinbase SOL bars (scripts/fetch_crypto_bars_coinbase.py)",),
     ),
-
     # ETH sweep_reclaim — same shape as btc/sol sweep variants
     BotRequirements(
         bot_id="eth_sweep_reclaim",
         requirements=(
             DataRequirement("bars", "ETH", "5m", critical=True),
             DataRequirement("bars", "ETH", "1h", critical=True),
-            DataRequirement("bars", "ETH", "D", critical=True,
-                note="regime + macro lens"),
-            DataRequirement("correlation", "BTC", "1h", critical=False,
-                note="ETH-BTC correlation as regime confirmation"),
+            DataRequirement("bars", "ETH", "D", critical=True, note="regime + macro lens"),
+            DataRequirement(
+                "correlation", "BTC", "1h", critical=False, note="ETH-BTC correlation as regime confirmation"
+            ),
         ),
         sources_hint=("Coinbase ETH bars (scripts/fetch_crypto_bars_coinbase.py)",),
     ),
-
     # ── Phase-2 commodities + FX (2026-05-03) ──────────────────────
     # Multi-asset expansion beyond equity-index futures + crypto. Same
     # IBKR Gateway, same yfinance backfill, same DataLibrary discovery,
     # same supervisor + JARVIS dispatch. Each bot mirrors a proven
     # pattern from an existing market.
-
     # gold_sweep_reclaim — gold mirror of eth_sweep_reclaim champion.
     # Gold has clean liquidity sweeps at London/NY transitions.
     # Symbol "GC1" matches the front-month CSV naming convention
@@ -806,12 +785,15 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
         requirements=(
             DataRequirement("bars", "GC1", "5m", critical=True),
             DataRequirement("bars", "GC1", "1h", critical=True),
-            DataRequirement("bars", "GC1", "D", critical=True,
-                note="regime + macro lens (DXY-driven)"),
-            DataRequirement("correlation", "DXY", "1h", critical=True,
-                note="DXY-gold inverse correlation is the primary macro driver"),
-            DataRequirement("correlation", "VIX", "1h", critical=False,
-                note="risk-off bid for gold during VIX spikes"),
+            DataRequirement("bars", "GC1", "D", critical=True, note="regime + macro lens (DXY-driven)"),
+            DataRequirement(
+                "correlation",
+                "DXY",
+                "1h",
+                critical=True,
+                note="DXY-gold inverse correlation is the primary macro driver",
+            ),
+            DataRequirement("correlation", "VIX", "1h", critical=False, note="risk-off bid for gold during VIX spikes"),
         ),
         sources_hint=(
             "scripts/fetch_index_futures_bars.py --symbol GC",
@@ -819,7 +801,6 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
         ),
         pending_assignment=True,
     ),
-
     # crude_compression — CL is news-driven and explosive; volatility
     # contraction reliably precedes directional fires.
     BotRequirements(
@@ -827,12 +808,9 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
         requirements=(
             DataRequirement("bars", "CL1", "5m", critical=True),
             DataRequirement("bars", "CL1", "1h", critical=True),
-            DataRequirement("bars", "CL1", "D", critical=True,
-                note="daily ATR regime"),
-            DataRequirement("correlation", "DXY", "1h", critical=False,
-                note="dollar/oil inverse"),
-            DataRequirement("correlation", "ES1", "5m", critical=False,
-                note="risk-on/off backdrop"),
+            DataRequirement("bars", "CL1", "D", critical=True, note="daily ATR regime"),
+            DataRequirement("correlation", "DXY", "1h", critical=False, note="dollar/oil inverse"),
+            DataRequirement("correlation", "ES1", "5m", critical=False, note="risk-on/off backdrop"),
         ),
         sources_hint=(
             "scripts/fetch_index_futures_bars.py --symbol CL",
@@ -840,7 +818,6 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
         ),
         pending_assignment=True,
     ),
-
     # euro_vwap_mr — 6E is the quietest of the new commodities; clean
     # session VWAP returns. RTH-windowed 5m mean-reversion.
     BotRequirements(
@@ -848,10 +825,10 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
         requirements=(
             DataRequirement("bars", "6E1", "5m", critical=True),
             DataRequirement("bars", "6E1", "1h", critical=True),
-            DataRequirement("correlation", "DXY", "5m", critical=True,
-                note="6E is essentially inverse-DXY by construction"),
-            DataRequirement("correlation", "ES1", "5m", critical=False,
-                note="risk regime"),
+            DataRequirement(
+                "correlation", "DXY", "5m", critical=True, note="6E is essentially inverse-DXY by construction"
+            ),
+            DataRequirement("correlation", "ES1", "5m", critical=False, note="risk regime"),
         ),
         sources_hint=(
             "scripts/fetch_index_futures_bars.py --symbol 6E",
@@ -859,7 +836,6 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
         ),
         pending_assignment=True,
     ),
-
     # ── Phase-3 rates + energy (2026-05-03) ──────────────────────
     # zn_confluence — 10-yr T-note. Range-bound around econ data,
     # FOMC. confluence_scorecard catches the cleanest setups.
@@ -868,10 +844,8 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
         requirements=(
             DataRequirement("bars", "ZN1", "5m", critical=True),
             DataRequirement("bars", "ZN1", "1h", critical=True),
-            DataRequirement("bars", "ZN1", "D", critical=True,
-                note="rates regime"),
-            DataRequirement("correlation", "ES1", "5m", critical=False,
-                note="risk-on/off cross-check"),
+            DataRequirement("bars", "ZN1", "D", critical=True, note="rates regime"),
+            DataRequirement("correlation", "ES1", "5m", critical=False, note="risk-on/off cross-check"),
             DataRequirement("correlation", "DXY", "1h", critical=False),
         ),
         sources_hint=(
@@ -880,7 +854,6 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
         ),
         pending_assignment=True,
     ),
-
     # natgas_compression — NG is most volatile commodity, news/weather
     # driven. Volatility contraction precedes most fires.
     BotRequirements(
@@ -888,10 +861,8 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
         requirements=(
             DataRequirement("bars", "NG1", "5m", critical=True),
             DataRequirement("bars", "NG1", "1h", critical=True),
-            DataRequirement("bars", "NG1", "D", critical=True,
-                note="seasonal regime"),
-            DataRequirement("correlation", "CL1", "1h", critical=False,
-                note="energy complex co-movement"),
+            DataRequirement("bars", "NG1", "D", critical=True, note="seasonal regime"),
+            DataRequirement("correlation", "CL1", "1h", critical=False, note="energy complex co-movement"),
         ),
         sources_hint=(
             "scripts/fetch_index_futures_bars.py --symbol NG",
@@ -899,14 +870,12 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
         ),
         pending_assignment=True,
     ),
-
     # ── Phase-4 Micros (2026-05-04) ────────────────────────────
     # Micros share price stream with their parent contract; bar
     # requirements reuse parent symbols so the audit doesn't demand
     # separate MES1/MGC1/MCL1/M6E1 CSVs that would just duplicate data.
     # The micro distinction is sizing (contract_multiplier in extras),
     # not data.
-
     # mes_confluence — Micro E-mini S&P
     BotRequirements(
         bot_id="mes_confluence",
@@ -922,15 +891,13 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
         ),
         pending_assignment=True,
     ),
-
     # mgc_sweep — Micro Gold
     BotRequirements(
         bot_id="mgc_sweep",
         requirements=(
             DataRequirement("bars", "GC1", "5m", critical=True),
             DataRequirement("bars", "GC1", "1h", critical=True),
-            DataRequirement("bars", "GC1", "D", critical=True,
-                note="regime + macro lens (DXY-driven)"),
+            DataRequirement("bars", "GC1", "D", critical=True, note="regime + macro lens (DXY-driven)"),
             DataRequirement("correlation", "DXY", "1h", critical=True),
         ),
         sources_hint=(
@@ -939,15 +906,13 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
         ),
         pending_assignment=True,
     ),
-
     # mcl_compression — Micro WTI Crude
     BotRequirements(
         bot_id="mcl_compression",
         requirements=(
             DataRequirement("bars", "CL1", "5m", critical=True),
             DataRequirement("bars", "CL1", "1h", critical=True),
-            DataRequirement("bars", "CL1", "D", critical=True,
-                note="daily ATR regime"),
+            DataRequirement("bars", "CL1", "D", critical=True, note="daily ATR regime"),
             DataRequirement("correlation", "DXY", "1h", critical=False),
         ),
         sources_hint=(
@@ -956,7 +921,6 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
         ),
         pending_assignment=True,
     ),
-
     # m6e_vwap_mr — Micro Euro FX
     BotRequirements(
         bot_id="m6e_vwap_mr",
@@ -971,11 +935,9 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
         ),
         pending_assignment=True,
     ),
-
     # ── Phase-3.5 diversification (2026-05-04) ────────────────
     # Second strategy on existing Phase-3 symbols — same bars, different
     # signal generators, low marginal data cost.
-
     BotRequirements(
         bot_id="zn_compression",
         requirements=(
@@ -986,20 +948,17 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
         sources_hint=("scripts/fetch_index_futures_bars.py --symbol ZN",),
         pending_assignment=True,
     ),
-
     BotRequirements(
         bot_id="natgas_sweep",
         requirements=(
             DataRequirement("bars", "NG1", "5m", critical=True),
             DataRequirement("bars", "NG1", "1h", critical=True),
-            DataRequirement("bars", "NG1", "D", critical=True,
-                note="daily extremes anchor sweep targets"),
+            DataRequirement("bars", "NG1", "D", critical=True, note="daily extremes anchor sweep targets"),
             DataRequirement("correlation", "CL1", "1h", critical=False),
         ),
         sources_hint=("scripts/fetch_index_futures_bars.py --symbol NG",),
         pending_assignment=True,
     ),
-
     # ── Phase-5 crypto alt expansion (2026-05-04) ──────────────────
     # Coinbase spot — same architecture as BTC/ETH/SOL bots.
     BotRequirements(
@@ -1007,10 +966,8 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
         requirements=(
             DataRequirement("bars", "AVAX", "5m", critical=True),
             DataRequirement("bars", "AVAX", "1h", critical=True),
-            DataRequirement("bars", "AVAX", "D", critical=True,
-                note="regime + macro lens"),
-            DataRequirement("correlation", "BTC", "1h", critical=False,
-                note="crypto-cohort regime confirmation"),
+            DataRequirement("bars", "AVAX", "D", critical=True, note="regime + macro lens"),
+            DataRequirement("correlation", "BTC", "1h", critical=False, note="crypto-cohort regime confirmation"),
         ),
         sources_hint=(
             "scripts/fetch_crypto_bars_coinbase.py --symbol AVAX",
@@ -1018,16 +975,13 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
         ),
         pending_assignment=True,
     ),
-
     BotRequirements(
         bot_id="link_sweep_reclaim",
         requirements=(
             DataRequirement("bars", "LINK", "5m", critical=True),
             DataRequirement("bars", "LINK", "1h", critical=True),
-            DataRequirement("bars", "LINK", "D", critical=True,
-                note="regime + macro lens"),
-            DataRequirement("correlation", "ETH", "1h", critical=False,
-                note="LINK tightly coupled to ETH/DeFi regime"),
+            DataRequirement("bars", "LINK", "D", critical=True, note="regime + macro lens"),
+            DataRequirement("correlation", "ETH", "1h", critical=False, note="LINK tightly coupled to ETH/DeFi regime"),
         ),
         sources_hint=(
             "scripts/fetch_crypto_bars_coinbase.py --symbol LINK",
@@ -1035,16 +989,13 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
         ),
         pending_assignment=True,
     ),
-
     BotRequirements(
         bot_id="doge_sweep_reclaim",
         requirements=(
             DataRequirement("bars", "DOGE", "5m", critical=True),
             DataRequirement("bars", "DOGE", "1h", critical=True),
-            DataRequirement("bars", "DOGE", "D", critical=True,
-                note="regime + macro lens"),
-            DataRequirement("correlation", "BTC", "1h", critical=False,
-                note="DOGE moves with BTC narrative; loose"),
+            DataRequirement("bars", "DOGE", "D", critical=True, note="regime + macro lens"),
+            DataRequirement("correlation", "BTC", "1h", critical=False, note="DOGE moves with BTC narrative; loose"),
         ),
         sources_hint=(
             "scripts/fetch_crypto_bars_coinbase.py --symbol DOGE",
@@ -1052,87 +1003,71 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
         ),
         pending_assignment=True,
     ),
-
     # ── Commodity + FX tier (2026-05-04) ─────────────────────────
     # Five sweep_reclaim+scorecard bots launched alongside the
     # composite-feed expansion that wired yfinance bars for 40+ futures
     # symbols. Each bot consumes 1h bars on its symbol; correlation
     # hints help cross_asset_correlation school. Active (not pending).
-
     BotRequirements(
         bot_id="gc_sweep_reclaim",
         requirements=(
             DataRequirement("bars", "GC1", "1h", critical=True),
-            DataRequirement("bars", "GC1", "D", critical=False,
-                note="daily structure for sage daily gate"),
-            DataRequirement("correlation", "DXY", "1h", critical=False,
-                note="gold inversely tracks DXY"),
-            DataRequirement("correlation", "ES1", "1h", critical=False,
-                note="risk-off proxy"),
+            DataRequirement("bars", "GC1", "D", critical=False, note="daily structure for sage daily gate"),
+            DataRequirement("correlation", "DXY", "1h", critical=False, note="gold inversely tracks DXY"),
+            DataRequirement("correlation", "ES1", "1h", critical=False, note="risk-off proxy"),
         ),
         sources_hint=(
             "yfinance GC=F via composite feed",
             "IBKR COMEX (near 24h Globex)",
         ),
     ),
-
     BotRequirements(
         bot_id="cl_sweep_reclaim",
         requirements=(
             DataRequirement("bars", "CL1", "1h", critical=True),
-            DataRequirement("bars", "CL1", "D", critical=False,
-                note="daily inventory cycle"),
-            DataRequirement("correlation", "DXY", "1h", critical=False,
-                note="WTI is dollar-priced; loose inverse"),
+            DataRequirement("bars", "CL1", "D", critical=False, note="daily inventory cycle"),
+            DataRequirement("correlation", "DXY", "1h", critical=False, note="WTI is dollar-priced; loose inverse"),
         ),
         sources_hint=(
             "yfinance CL=F via composite feed",
             "IBKR NYMEX",
         ),
     ),
-
     BotRequirements(
         bot_id="ng_sweep_reclaim",
         requirements=(
             DataRequirement("bars", "NG1", "1h", critical=True),
-            DataRequirement("bars", "NG1", "D", critical=False,
-                note="weekly EIA storage cycle"),
+            DataRequirement("bars", "NG1", "D", critical=False, note="weekly EIA storage cycle"),
         ),
         sources_hint=(
             "yfinance NG=F via composite feed",
             "IBKR NYMEX",
         ),
     ),
-
     BotRequirements(
         bot_id="zn_sweep_reclaim",
         requirements=(
             DataRequirement("bars", "ZN1", "1h", critical=True),
-            DataRequirement("bars", "ZN1", "D", critical=False,
-                note="rate-cycle context"),
+            DataRequirement("bars", "ZN1", "D", critical=False, note="rate-cycle context"),
             DataRequirement("correlation", "DXY", "1h", critical=False),
-            DataRequirement("correlation", "ES1", "1h", critical=False,
-                note="risk-on/off cross-check"),
+            DataRequirement("correlation", "ES1", "1h", critical=False, note="risk-on/off cross-check"),
         ),
         sources_hint=(
             "yfinance ZN=F via composite feed",
             "IBKR CBOT (near-24h Globex)",
         ),
     ),
-
     BotRequirements(
         bot_id="eur_sweep_reclaim",
         requirements=(
             DataRequirement("bars", "6E1", "1h", critical=True),
-            DataRequirement("correlation", "DXY", "1h", critical=False,
-                note="6E is essentially inverse-DXY"),
+            DataRequirement("correlation", "DXY", "1h", critical=False, note="6E is essentially inverse-DXY"),
         ),
         sources_hint=(
             "yfinance 6E=F via composite feed",
             "IBKR CME FX",
         ),
     ),
-
     # ── Equity-index micros tier (2026-05-04) ──────────────────
     # MES, M2K, YM — small-notional siblings of ES, RTY, full-size
     # YM. All RTH-priority via composite feed (yfinance during regular
@@ -1144,23 +1079,21 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
         bot_id="gc_momentum",
         requirements=(
             DataRequirement("bars", "GC1", "1h", critical=True),
-            DataRequirement("bars", "GC1", "D", critical=False,
-                note="daily trend and risk-off context"),
-            DataRequirement("correlation", "DXY", "1h", critical=False,
-                note="gold momentum needs dollar-regime context"),
+            DataRequirement("bars", "GC1", "D", critical=False, note="daily trend and risk-off context"),
+            DataRequirement(
+                "correlation", "DXY", "1h", critical=False, note="gold momentum needs dollar-regime context"
+            ),
         ),
         sources_hint=(
             "yfinance GC=F via composite feed",
             "IBKR COMEX",
         ),
     ),
-
     BotRequirements(
         bot_id="cl_momentum",
         requirements=(
             DataRequirement("bars", "CL1", "1h", critical=True),
-            DataRequirement("bars", "CL1", "D", critical=False,
-                note="daily energy-trend context"),
+            DataRequirement("bars", "CL1", "D", critical=False, note="daily energy-trend context"),
             DataRequirement("correlation", "DXY", "1h", critical=False),
         ),
         sources_hint=(
@@ -1168,16 +1101,13 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
             "IBKR NYMEX",
         ),
     ),
-
     BotRequirements(
         bot_id="cl_macro",
         requirements=(
             DataRequirement("bars", "CL1", "1h", critical=True),
-            DataRequirement("bars", "CL1", "D", critical=False,
-                note="daily oil inventory and macro shock context"),
+            DataRequirement("bars", "CL1", "D", critical=False, note="daily oil inventory and macro shock context"),
             DataRequirement("correlation", "DXY", "1h", critical=False),
-            DataRequirement("macro", "OPEC", None, critical=False,
-                note="headline and production-cut risk context"),
+            DataRequirement("macro", "OPEC", None, critical=False, note="headline and production-cut risk context"),
         ),
         sources_hint=(
             "yfinance CL=F via composite feed",
@@ -1185,26 +1115,24 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
             "operator headline notes / future news feed",
         ),
     ),
-
     BotRequirements(
         bot_id="eur_range",
         requirements=(
             DataRequirement("bars", "6E1", "1h", critical=True),
-            DataRequirement("correlation", "DXY", "1h", critical=True,
-                note="range specialist uses inverse-dollar confirmation"),
+            DataRequirement(
+                "correlation", "DXY", "1h", critical=True, note="range specialist uses inverse-dollar confirmation"
+            ),
         ),
         sources_hint=(
             "yfinance 6E=F via composite feed",
             "IBKR CME FX",
         ),
     ),
-
     BotRequirements(
         bot_id="zn_range",
         requirements=(
             DataRequirement("bars", "ZN1", "1h", critical=True),
-            DataRequirement("bars", "ZN1", "D", critical=False,
-                note="rate-cycle range context"),
+            DataRequirement("bars", "ZN1", "D", critical=False, note="rate-cycle range context"),
             DataRequirement("correlation", "DXY", "1h", critical=False),
             DataRequirement("correlation", "ES1", "1h", critical=False),
         ),
@@ -1213,7 +1141,6 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
             "IBKR CBOT",
         ),
     ),
-
     # Equity-index micros tier. MES, M2K, YM are small-notional siblings
     # of ES, RTY, and full-size YM. All are RTH-priority via composite feed.
     BotRequirements(
@@ -1221,36 +1148,33 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
         requirements=(
             DataRequirement("bars", "MES1", "5m", critical=True),
             DataRequirement("bars", "MES1", "1h", critical=False),
-            DataRequirement("correlation", "MNQ1", "5m", critical=False,
-                note="MES vs MNQ disagreement = sector rotation signal"),
+            DataRequirement(
+                "correlation", "MNQ1", "5m", critical=False, note="MES vs MNQ disagreement = sector rotation signal"
+            ),
         ),
         sources_hint=(
             "yfinance MES=F via composite feed",
             "IBKR CME (RTH primary, ETH fallback)",
         ),
     ),
-
     BotRequirements(
         bot_id="m2k_sweep_reclaim",
         requirements=(
             DataRequirement("bars", "M2K1", "5m", critical=True),
             DataRequirement("bars", "M2K1", "1h", critical=False),
-            DataRequirement("correlation", "MES1", "5m", critical=False,
-                note="small caps vs S&P leadership signal"),
+            DataRequirement("correlation", "MES1", "5m", critical=False, note="small caps vs S&P leadership signal"),
         ),
         sources_hint=(
             "yfinance M2K=F via composite feed",
             "IBKR CME",
         ),
     ),
-
     BotRequirements(
         bot_id="ym_sweep_reclaim",
         requirements=(
             DataRequirement("bars", "YM1", "5m", critical=True),
             DataRequirement("bars", "YM1", "1h", critical=False),
-            DataRequirement("correlation", "MES1", "5m", critical=False,
-                note="blue-chip vs S&P broader index signal"),
+            DataRequirement("correlation", "MES1", "5m", critical=False, note="blue-chip vs S&P broader index signal"),
         ),
         sources_hint=(
             "yfinance YM=F via composite feed",

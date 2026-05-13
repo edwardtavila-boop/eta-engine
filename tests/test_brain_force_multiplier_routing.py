@@ -46,6 +46,7 @@ from eta_engine.brain.multi_model_telemetry import (
 # Routing policy coverage
 # ---------------------------------------------------------------------------
 
+
 class TestRoutingCoverage:
     """The reviewer flagged that adding a new TaskCategory could silently fall
     through to the DEEPSEEK default. These tests force every category to be
@@ -68,6 +69,7 @@ class TestRoutingCoverage:
         to.
         """
         from eta_engine.brain.model_policy import _CATEGORY_TO_PROVIDER
+
         missing = [c.value for c in TaskCategory if c not in _CATEGORY_TO_PROVIDER]
         assert not missing, (
             f"TaskCategory members missing from _CATEGORY_TO_PROVIDER: {missing}. "
@@ -99,9 +101,7 @@ class TestRoutingCoverage:
             TaskCategory.COMPUTER_USE_TASK,
         ]
         for cat in system:
-            assert force_provider_for(cat) == ForceProvider.CODEX, (
-                f"{cat.value} should route to CODEX (Systems Expert)"
-            )
+            assert force_provider_for(cat) == ForceProvider.CODEX, f"{cat.value} should route to CODEX (Systems Expert)"
 
     def test_grunt_work_routes_to_deepseek(self) -> None:
         """Mechanical / boilerplate / formatting must route to DeepSeek."""
@@ -124,15 +124,21 @@ class TestRoutingCoverage:
 # Failure classifier coverage
 # ---------------------------------------------------------------------------
 
+
 class TestCLIFailureClassifier:
     """The reviewer's P0: 'exit_nonzero with text content was misclassified
     as success'. These tests pin the corrected classifier."""
 
     def _mk_resp(self, *, text: str = "", exit_code: int = 0) -> CLIResponse:
         return CLIResponse(
-            text=text, provider="claude", model="opus",
-            input_tokens=0, output_tokens=0, cost_usd=0.0,
-            elapsed_ms=0.0, exit_code=exit_code,
+            text=text,
+            provider="claude",
+            model="opus",
+            input_tokens=0,
+            output_tokens=0,
+            cost_usd=0.0,
+            elapsed_ms=0.0,
+            exit_code=exit_code,
         )
 
     def test_success_returns_none(self) -> None:
@@ -211,7 +217,7 @@ class TestAuthErrorMarkers:
 
     def test_detects_claude_401(self) -> None:
         text = (
-            'Failed to authenticate. API Error: 401 '
+            "Failed to authenticate. API Error: 401 "
             '{"type":"error","error":{"type":"authentication_error",'
             '"message":"Invalid authentication credentials"}}'
         )
@@ -230,10 +236,7 @@ class TestAuthErrorMarkers:
 
     def test_quota_marker_does_not_match_normal_explanation(self) -> None:
         """A model EXPLAINING what rate limiting is shouldn't trigger detection."""
-        text = (
-            "Rate limiting is a technique used to control the rate of requests. "
-            "When implementing it..."
-        )
+        text = "Rate limiting is a technique used to control the rate of requests. When implementing it..."
         # 'rate limit' is in our markers — this IS a known false-positive risk.
         # Document it: the markers are lowercased substrings. If this becomes
         # a problem, we'd need to anchor to error-prefix patterns like
@@ -244,6 +247,7 @@ class TestAuthErrorMarkers:
 # ---------------------------------------------------------------------------
 # Chain orchestrator
 # ---------------------------------------------------------------------------
+
 
 class TestChainSkipSemantics:
     """``force_multiplier_chain`` should let callers skip stages cleanly."""
@@ -273,6 +277,7 @@ class TestChainSkipSemantics:
 # ARCHITECTURAL fallback escalation
 # ---------------------------------------------------------------------------
 
+
 class TestArchitecturalFallbackLogging:
     """The reviewer's P1: a silent DeepSeek fallback on a RISK_POLICY_DESIGN
     task is a quality regression that should show up in dashboards."""
@@ -295,6 +300,7 @@ class TestArchitecturalFallbackLogging:
 # Telemetry module
 # ---------------------------------------------------------------------------
 
+
 class TestTelemetry:
     """The telemetry module is the foundation for observability — these tests
     pin down (1) records survive a round-trip through JSONL, (2) summary
@@ -304,14 +310,16 @@ class TestTelemetry:
     def test_log_and_read_round_trip(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         log = tmp_path / "fm.jsonl"
         monkeypatch.setenv("ETA_FM_TELEMETRY_LOG", str(log))
-        log_call(record={
-            "kind": "route",
-            "category": "boilerplate",
-            "actual_provider": "deepseek",
-            "cost_usd": 0.001,
-            "elapsed_ms": 100,
-            "fallback_used": False,
-        })
+        log_call(
+            record={
+                "kind": "route",
+                "category": "boilerplate",
+                "actual_provider": "deepseek",
+                "cost_usd": 0.001,
+                "elapsed_ms": 100,
+                "fallback_used": False,
+            }
+        )
         records = read_recent(limit=10)
         assert len(records) == 1
         assert records[0]["category"] == "boilerplate"
@@ -331,7 +339,9 @@ class TestTelemetry:
         assert not log.exists(), "disabled telemetry should not create the log file"
 
     def test_summary_aggregates_per_provider(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         log = tmp_path / "fm.jsonl"
         monkeypatch.setenv("ETA_FM_TELEMETRY_LOG", str(log))
@@ -341,11 +351,15 @@ class TestTelemetry:
             ("deepseek", 0.001, True),
             ("deepseek", 0.002, False),
         ]:
-            log_call(record={
-                "kind": "route", "category": "x",
-                "actual_provider": prov, "cost_usd": cost,
-                "fallback_used": fallback,
-            })
+            log_call(
+                record={
+                    "kind": "route",
+                    "category": "x",
+                    "actual_provider": prov,
+                    "cost_usd": cost,
+                    "fallback_used": fallback,
+                }
+            )
         s = summarize(limit=10)
         assert s["calls"] == 4
         assert s["fallback_count"] == 1
@@ -354,12 +368,14 @@ class TestTelemetry:
         assert s["by_provider"]["deepseek"]["cost_usd"] == 0.003
 
     def test_malformed_lines_do_not_break_read(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         log = tmp_path / "fm.jsonl"
         log.write_text(
             '{"kind":"route","category":"a","actual_provider":"deepseek"}\n'
-            'not valid json\n'
+            "not valid json\n"
             '{"kind":"route","category":"b","actual_provider":"claude"}\n',
             encoding="utf-8",
         )
@@ -385,6 +401,7 @@ class TestTelemetry:
 # ---------------------------------------------------------------------------
 # Per-call cost ceiling
 # ---------------------------------------------------------------------------
+
 
 class TestCallBudgetCeiling:
     """``route_and_execute(max_cost_usd=...)`` raises BEFORE making the call
@@ -437,6 +454,7 @@ class TestCallBudgetCeiling:
 # Async wrapper
 # ---------------------------------------------------------------------------
 
+
 class TestRouteAndExecuteAsync:
     """``route_and_execute_async`` must offload to a thread so the event
     loop stays responsive. We can't easily mock the synchronous call, so
@@ -447,21 +465,23 @@ class TestRouteAndExecuteAsync:
         # coroutine when called — i.e. it's a real async def.
         # (asyncio.iscoroutinefunction is deprecated in 3.16+.)
         import inspect
+
         assert inspect.iscoroutinefunction(route_and_execute_async)
 
     def test_wrapper_signature_includes_chain_id(self) -> None:
         import inspect
+
         sig = inspect.signature(route_and_execute_async)
         # All chain/budget parameters must be exposed so async callers
         # have the same control surface as sync callers.
-        for required in ("category", "user_message", "chain_id",
-                         "chain_stage", "max_cost_usd", "force_provider"):
+        for required in ("category", "user_message", "chain_id", "chain_stage", "max_cost_usd", "force_provider"):
             assert required in sig.parameters, f"async wrapper missing arg: {required}"
 
 
 # ---------------------------------------------------------------------------
 # Avengers Fleet bridge
 # ---------------------------------------------------------------------------
+
 
 class TestMultiModelExecutor:
     """``MultiModelExecutor`` bridges the Avengers Fleet to the FM orchestrator.
@@ -486,9 +506,7 @@ class TestMultiModelExecutor:
         for param_name in proto_sig.parameters:
             if param_name == "self":
                 continue
-            assert param_name in impl_sig.parameters, (
-                f"MultiModelExecutor missing Executor protocol arg: {param_name}"
-            )
+            assert param_name in impl_sig.parameters, f"MultiModelExecutor missing Executor protocol arg: {param_name}"
 
     def test_factory_function_is_lazy(self) -> None:
         """``create_multimodel_fleet`` must defer Fleet import to call time
@@ -497,6 +515,7 @@ class TestMultiModelExecutor:
         import inspect
 
         from eta_engine.brain.multi_model_executor import create_multimodel_fleet  # noqa: PLC0415
+
         # The function exists, has the expected signature.
         sig = inspect.signature(create_multimodel_fleet)
         assert "admin" in sig.parameters

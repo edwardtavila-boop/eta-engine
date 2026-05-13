@@ -80,9 +80,9 @@ TREASURY_SYMBOL_PREFIXES = ("ZN", "ZT", "ZB", "ZF", "TN", "FV", "TY", "US")
 # CME equity index futures resume Sunday 22:00 UTC; energies/grains differ
 # slightly but using 22:00 keeps false-positive rate low without missing real
 # Mon-morning gaps that almost never start before 23:00 UTC anyway.
-WEEKEND_OPEN_WEEKDAY = 5      # Saturday
-WEEKEND_CLOSE_WEEKDAY = 6     # Sunday
-WEEKEND_CLOSE_HOUR = 22       # 22:00 UTC
+WEEKEND_OPEN_WEEKDAY = 5  # Saturday
+WEEKEND_CLOSE_WEEKDAY = 6  # Sunday
+WEEKEND_CLOSE_HOUR = 22  # 22:00 UTC
 
 
 # ---------------------------------------------------------------------------
@@ -332,31 +332,37 @@ def scan_file(
         try:
             ts = int(float(row["time"]))
         except (KeyError, ValueError, TypeError):
-            report.issues.append(Issue(
-                row=idx,
-                type="bad_timestamp",
-                detail=f"unparseable time={row.get('time')!r}",
-            ))
+            report.issues.append(
+                Issue(
+                    row=idx,
+                    type="bad_timestamp",
+                    detail=f"unparseable time={row.get('time')!r}",
+                )
+            )
             continue
 
         # --- duplicate / out-of-order ---------------------------------------
         if ts in seen_ts:
-            report.issues.append(Issue(
-                row=idx,
-                type="duplicate_timestamp",
-                detail=f"ts={ts} also at row {seen_ts[ts]}",
-                ts=ts,
-            ))
+            report.issues.append(
+                Issue(
+                    row=idx,
+                    type="duplicate_timestamp",
+                    detail=f"ts={ts} also at row {seen_ts[ts]}",
+                    ts=ts,
+                )
+            )
         else:
             seen_ts[ts] = idx
 
         if prev_ts is not None and ts < prev_ts:
-            report.issues.append(Issue(
-                row=idx,
-                type="out_of_order_timestamp",
-                detail=f"ts={ts} < prev_ts={prev_ts}",
-                ts=ts,
-            ))
+            report.issues.append(
+                Issue(
+                    row=idx,
+                    type="out_of_order_timestamp",
+                    detail=f"ts={ts} < prev_ts={prev_ts}",
+                    ts=ts,
+                )
+            )
 
         # --- field parsing ---------------------------------------------------
         o = _parse_float(row["open"])
@@ -368,114 +374,108 @@ def scan_file(
         # --- non-finite -----------------------------------------------------
         for name, val in (("open", o), ("high", h), ("low", low_), ("close", c)):
             if not math.isfinite(val):
-                report.issues.append(Issue(
-                    row=idx,
-                    type="non_finite_ohlc",
-                    detail=f"{name}={val}",
-                    ts=ts,
-                ))
+                report.issues.append(
+                    Issue(
+                        row=idx,
+                        type="non_finite_ohlc",
+                        detail=f"{name}={val}",
+                        ts=ts,
+                    )
+                )
 
         # --- ohlc invariants -------------------------------------------------
         if math.isfinite(low_) and math.isfinite(h) and low_ > h:
-            report.issues.append(Issue(
-                row=idx,
-                type="ohlc_invalid",
-                detail=f"low {low_} > high {h}",
-                ts=ts,
-            ))
+            report.issues.append(
+                Issue(
+                    row=idx,
+                    type="ohlc_invalid",
+                    detail=f"low {low_} > high {h}",
+                    ts=ts,
+                )
+            )
         if math.isfinite(low_) and math.isfinite(o) and math.isfinite(c) and low_ > min(o, c):
-            report.issues.append(Issue(
-                row=idx,
-                type="ohlc_invalid",
-                detail=f"low {low_} > min(open={o}, close={c})",
-                ts=ts,
-            ))
+            report.issues.append(
+                Issue(
+                    row=idx,
+                    type="ohlc_invalid",
+                    detail=f"low {low_} > min(open={o}, close={c})",
+                    ts=ts,
+                )
+            )
         if math.isfinite(h) and math.isfinite(o) and math.isfinite(c) and h < max(o, c):
-            report.issues.append(Issue(
-                row=idx,
-                type="ohlc_invalid",
-                detail=f"high {h} < max(open={o}, close={c})",
-                ts=ts,
-            ))
+            report.issues.append(
+                Issue(
+                    row=idx,
+                    type="ohlc_invalid",
+                    detail=f"high {h} < max(open={o}, close={c})",
+                    ts=ts,
+                )
+            )
 
         # Intra-bar range anomaly — catches yfinance "low=31.75" while close=3875
         # patterns that don't violate ordering invariants but are clearly wrong.
         # Range > 50% of close is not a real bar at any timeframe.
-        if (
-            math.isfinite(h)
-            and math.isfinite(low_)
-            and math.isfinite(c)
-            and c > 0
-            and (h - low_) > 0.5 * c
-        ):
-            report.issues.append(Issue(
-                row=idx,
-                type="ohlc_invalid",
-                detail=(
-                    f"intra-bar range {h - low_:.4f} > 50% of close {c:.4f} "
-                    f"(high={h}, low={low_})"
-                ),
-                ts=ts,
-            ))
+        if math.isfinite(h) and math.isfinite(low_) and math.isfinite(c) and c > 0 and (h - low_) > 0.5 * c:
+            report.issues.append(
+                Issue(
+                    row=idx,
+                    type="ohlc_invalid",
+                    detail=(f"intra-bar range {h - low_:.4f} > 50% of close {c:.4f} (high={h}, low={low_})"),
+                    ts=ts,
+                )
+            )
 
         # --- volume ----------------------------------------------------------
         if not math.isfinite(v):
-            report.issues.append(Issue(
-                row=idx,
-                type="volume_invalid",
-                detail=f"volume={v}",
-                ts=ts,
-            ))
+            report.issues.append(
+                Issue(
+                    row=idx,
+                    type="volume_invalid",
+                    detail=f"volume={v}",
+                    ts=ts,
+                )
+            )
         elif v < 0:
-            report.issues.append(Issue(
-                row=idx,
-                type="volume_invalid",
-                detail=f"volume={v} < 0",
-                ts=ts,
-            ))
+            report.issues.append(
+                Issue(
+                    row=idx,
+                    type="volume_invalid",
+                    detail=f"volume={v} < 0",
+                    ts=ts,
+                )
+            )
 
         # --- gap detection --------------------------------------------------
-        if (
-            bar_seconds is not None
-            and prev_ts is not None
-            and ts > prev_ts
-        ):
+        if bar_seconds is not None and prev_ts is not None and ts > prev_ts:
             gap = ts - prev_ts
-            if gap > bar_seconds * gap_intervals and not (
-                not is_crypto and _is_weekend_gap(prev_ts, ts)
-            ):
-                report.issues.append(Issue(
-                    row=idx,
-                    type="gap",
-                    detail=(
-                        f"{gap}s gap = {gap / bar_seconds:.1f} bar intervals "
-                        f"(threshold={gap_intervals})"
-                    ),
-                    ts=ts,
-                ))
+            if gap > bar_seconds * gap_intervals and not (not is_crypto and _is_weekend_gap(prev_ts, ts)):
+                report.issues.append(
+                    Issue(
+                        row=idx,
+                        type="gap",
+                        detail=(f"{gap}s gap = {gap / bar_seconds:.1f} bar intervals (threshold={gap_intervals})"),
+                        ts=ts,
+                    )
+                )
 
         # --- adjacent jump --------------------------------------------------
-        if (
-            prev_close is not None
-            and math.isfinite(prev_close)
-            and math.isfinite(c)
-            and prev_close > 0
-            and c > 0
-        ):
+        if prev_close is not None and math.isfinite(prev_close) and math.isfinite(c) and prev_close > 0 and c > 0:
             log_ret = math.log(c / prev_close)
             if abs(log_ret) > threshold_log:
                 pct = (math.exp(log_ret) - 1.0) * 100.0
                 rollover = _is_rollover_candidate(path.name, ts)
-                report.issues.append(Issue(
-                    row=idx,
-                    type="adjacent_jump",
-                    detail=f"log_return={log_ret:.4f} ({pct:+.2f}%) threshold={threshold:.2f}%",
-                    ts=ts,
-                    rollover_candidate=rollover,
-                    magnitude_pct=round(pct, 4),
-                    prev_close=prev_close,
-                    close=c,
-                ))
+                report.issues.append(
+                    Issue(
+                        row=idx,
+                        type="adjacent_jump",
+                        detail=f"log_return={log_ret:.4f} ({pct:+.2f}%) threshold={threshold:.2f}%",
+                        ts=ts,
+                        rollover_candidate=rollover,
+                        magnitude_pct=round(pct, 4),
+                        prev_close=prev_close,
+                        close=c,
+                    )
+                )
 
         prev_ts = ts
         if math.isfinite(c):
@@ -546,9 +546,7 @@ def overall_status(reports: list[FileReport]) -> str:
                 has_fail = True
             else:
                 has_warn = True
-        non_rollover_jumps = sum(
-            1 for i in r.issues if i.type == "adjacent_jump" and not i.rollover_candidate
-        )
+        non_rollover_jumps = sum(1 for i in r.issues if i.type == "adjacent_jump" and not i.rollover_candidate)
         if non_rollover_jumps > 50:
             has_fail = True
     if has_fail:
@@ -564,10 +562,7 @@ def build_report(
     threshold_pct: float | None = None,
     gap_intervals: int = DEFAULT_GAP_INTERVALS,
 ) -> Report:
-    file_reports = [
-        scan_file(p, threshold_pct=threshold_pct, gap_intervals=gap_intervals)
-        for p in files
-    ]
+    file_reports = [scan_file(p, threshold_pct=threshold_pct, gap_intervals=gap_intervals) for p in files]
     return Report(
         scanned_at=datetime.now(UTC).isoformat(),
         files=file_reports,
@@ -703,9 +698,7 @@ def main(argv: list[str] | None = None) -> int:
             if fr.summary.get("total_issues", 0) == 0:
                 print(f"[OK]    {fr.path}: {fr.rows} rows clean")
             else:
-                by_type = ", ".join(
-                    f"{k}={v}" for k, v in sorted(fr.summary["by_type"].items())
-                )
+                by_type = ", ".join(f"{k}={v}" for k, v in sorted(fr.summary["by_type"].items()))
                 print(
                     f"[WARN]  {fr.path}: {fr.rows} rows; "
                     f"{fr.summary['total_issues']} issues ({by_type}); "

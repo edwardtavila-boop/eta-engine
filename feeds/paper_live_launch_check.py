@@ -53,20 +53,37 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT.parent))
 
 # Strategy kinds we know how to resolve at runtime
-_RESOLVABLE_KINDS: frozenset[str] = frozenset({
-    "confluence", "orb", "drb", "grid",
-    "crypto_orb", "crypto_trend", "crypto_meanrev", "crypto_scalp",
-    "sage_consensus", "orb_sage_gated", "crypto_regime_trend",
-    "crypto_macro_confluence", "sage_daily_gated", "ensemble_voting",
-    "compression_breakout", "sweep_reclaim",
-})
-_SHADOW_ONLY_STATUSES: frozenset[str] = frozenset({
-    "shadow_benchmark",
-    "deprecated",
-})
-_NON_EDGE_STATUSES: frozenset[str] = frozenset({
-    "non_edge_strategy",
-})
+_RESOLVABLE_KINDS: frozenset[str] = frozenset(
+    {
+        "confluence",
+        "orb",
+        "drb",
+        "grid",
+        "crypto_orb",
+        "crypto_trend",
+        "crypto_meanrev",
+        "crypto_scalp",
+        "sage_consensus",
+        "orb_sage_gated",
+        "crypto_regime_trend",
+        "crypto_macro_confluence",
+        "sage_daily_gated",
+        "ensemble_voting",
+        "compression_breakout",
+        "sweep_reclaim",
+    }
+)
+_SHADOW_ONLY_STATUSES: frozenset[str] = frozenset(
+    {
+        "shadow_benchmark",
+        "deprecated",
+    }
+)
+_NON_EDGE_STATUSES: frozenset[str] = frozenset(
+    {
+        "non_edge_strategy",
+    }
+)
 
 
 def _check_data_available(symbol: str, timeframe: str) -> bool:
@@ -130,11 +147,7 @@ def _matches_primary_launch_dataset(
     primary_symbol: str,
     primary_timeframe: str,
 ) -> bool:
-    return (
-        req.kind == "bars"
-        and req.symbol.upper() == primary_symbol.upper()
-        and req.timeframe == primary_timeframe
-    )
+    return req.kind == "bars" and req.symbol.upper() == primary_symbol.upper() and req.timeframe == primary_timeframe
 
 
 def _critical_feed_freshness_warning(req: Any, freshness: dict[str, object]) -> str | None:  # noqa: ANN401
@@ -214,8 +227,8 @@ def _check_bot_dir_exists(bot_id: str) -> bool:
         return True
     # Variant mapping (mirror of test_bots_registry_sync.VARIANT_BOT_IDS)
     variant_map = {
-        "mnq_futures": "mnq",         # base bot — registered under bots/mnq/
-        "nq_futures": "nq",            # base bot — registered under bots/nq/
+        "mnq_futures": "mnq",  # base bot — registered under bots/mnq/
+        "nq_futures": "nq",  # base bot — registered under bots/nq/
         "nq_daily_drb": "nq",
         "mnq_futures_sage": "mnq",
         "nq_futures_sage": "nq",
@@ -251,10 +264,7 @@ def _load_baseline_entry(bot_id: str, strategy_id: str) -> dict[str, Any] | None
         return None
     strategies = baselines.get("strategies") or []
     for s in strategies:
-        if isinstance(s, dict) and (
-            s.get("strategy_id") == strategy_id
-            or s.get("bot_id") == bot_id
-        ):
+        if isinstance(s, dict) and (s.get("strategy_id") == strategy_id or s.get("bot_id") == bot_id):
             return s
     return None
 
@@ -461,7 +471,8 @@ def _audit_bot(assignment: Any) -> dict:  # noqa: ANN401
     # * No baseline → real validation gap, WARN.
     # * Explicit warmup_policy → applied as override.
     baseline_entry = _load_baseline_entry(
-        assignment.bot_id, assignment.strategy_id,
+        assignment.bot_id,
+        assignment.strategy_id,
     )
     has_baseline = baseline_entry is not None
     has_warmup_override = bool(
@@ -504,8 +515,7 @@ def _audit_bot(assignment: Any) -> dict:  # noqa: ANN401
         "evidence": {
             "baseline_present": has_baseline,
             "warmup_policy": (
-                extras.get("warmup_policy")
-                if has_warmup_override else "implicit_standard_30d_half_risk"
+                extras.get("warmup_policy") if has_warmup_override else "implicit_standard_30d_half_risk"
             ),
             **evidence,
         },
@@ -513,8 +523,7 @@ def _audit_bot(assignment: Any) -> dict:  # noqa: ANN401
 
 
 def _print_table(results: list[dict]) -> None:
-    print(f"\n{'STATUS':<7}  {'bot_id':<22}  {'strategy_id':<28}"
-          f"  {'kind':<22}  notes")
+    print(f"\n{'STATUS':<7}  {'bot_id':<22}  {'strategy_id':<28}  {'kind':<22}  notes")
     print("-" * 150)
     for r in results:
         symbol_status = {
@@ -525,53 +534,53 @@ def _print_table(results: list[dict]) -> None:
         notes = "; ".join(r["issues"] + r["warnings"]) or "-"
         if len(notes) > 96:
             notes = notes[:93] + "..."
-        print(
-            f"{symbol_status:<7}  {r['bot_id']:<22}  {r['strategy_id']:<28}"
-            f"  {r['strategy_kind']:<22}  {notes}"
-        )
+        print(f"{symbol_status:<7}  {r['bot_id']:<22}  {r['strategy_id']:<28}  {r['strategy_kind']:<22}  {notes}")
     print("-" * 150)
     counts = {"READY": 0, "WARN": 0, "BLOCK": 0}
     for r in results:
         counts[r["status"]] = counts.get(r["status"], 0) + 1
-    print(f"\nSummary: {counts['READY']} READY, {counts['WARN']} WARN, "
-          f"{counts['BLOCK']} BLOCK (out of {len(results)} bots)")
+    print(
+        f"\nSummary: {counts['READY']} READY, {counts['WARN']} WARN, "
+        f"{counts['BLOCK']} BLOCK (out of {len(results)} bots)"
+    )
 
 
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument(
-        "--bots", default=None,
+        "--bots",
+        default=None,
         help="Comma-separated bot_ids to audit (default: all)",
     )
-    p.add_argument("--json", action="store_true",
-                   help="Emit JSON instead of a table")
+    p.add_argument("--json", action="store_true", help="Emit JSON instead of a table")
     args = p.parse_args()
 
     from eta_engine.strategies.per_bot_registry import ASSIGNMENTS
 
-    filt = (
-        {b.strip() for b in args.bots.split(",") if b.strip()}
-        if args.bots else None
-    )
-    targets = [
-        a for a in ASSIGNMENTS
-        if filt is None or a.bot_id in filt
-    ]
+    filt = {b.strip() for b in args.bots.split(",") if b.strip()} if args.bots else None
+    targets = [a for a in ASSIGNMENTS if filt is None or a.bot_id in filt]
 
     results = [_audit_bot(a) for a in targets]
-    results.sort(key=lambda r: (
-        {"READY": 0, "WARN": 1, "BLOCK": 2}[r["status"]],
-        r["bot_id"],
-    ))
+    results.sort(
+        key=lambda r: (
+            {"READY": 0, "WARN": 1, "BLOCK": 2}[r["status"]],
+            r["bot_id"],
+        )
+    )
 
     if args.json:
-        print(json.dumps({
-            "timestamp": datetime.now(UTC).isoformat(),
-            "n_bots": len(results),
-            "ready": [r for r in results if r["status"] == "READY"],
-            "warn": [r for r in results if r["status"] == "WARN"],
-            "block": [r for r in results if r["status"] == "BLOCK"],
-        }, indent=2))
+        print(
+            json.dumps(
+                {
+                    "timestamp": datetime.now(UTC).isoformat(),
+                    "n_bots": len(results),
+                    "ready": [r for r in results if r["status"] == "READY"],
+                    "warn": [r for r in results if r["status"] == "WARN"],
+                    "block": [r for r in results if r["status"] == "BLOCK"],
+                },
+                indent=2,
+            )
+        )
     else:
         print(f"[paper-live-check] {datetime.now(UTC).isoformat()}")
         print(f"[paper-live-check] auditing {len(results)} bots")

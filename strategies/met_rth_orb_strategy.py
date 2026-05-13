@@ -117,11 +117,7 @@ class METRTHORBStrategy:
         self._tz = ZoneInfo(self.cfg.timezone_name)
         self._day: _DayState | None = None
         self._ema: float | None = None
-        self._ema_alpha = (
-            2.0 / (self.cfg.ema_bias_period + 1)
-            if self.cfg.ema_bias_period > 0
-            else 0.0
-        )
+        self._ema_alpha = 2.0 / (self.cfg.ema_bias_period + 1) if self.cfg.ema_bias_period > 0 else 0.0
         # Audit
         self._n_breakouts_seen: int = 0
         self._n_min_range_rejects: int = 0
@@ -185,27 +181,19 @@ class METRTHORBStrategy:
             if self._ema is None:
                 self._ema = bar.close
             else:
-                self._ema = (
-                    self._ema_alpha * bar.close
-                    + (1 - self._ema_alpha) * self._ema
-                )
+                self._ema = self._ema_alpha * bar.close + (1 - self._ema_alpha) * self._ema
 
         # Phase 1: build opening range
         if not self._day.range_complete:
             if local_t < self.cfg.rth_open_local:
                 return None
             range_end = self._add_minutes(
-                self.cfg.rth_open_local, self.cfg.range_minutes,
+                self.cfg.rth_open_local,
+                self.cfg.range_minutes,
             )
             if local_t < range_end:
-                self._day.range_high = (
-                    bar.high if self._day.range_high is None
-                    else max(self._day.range_high, bar.high)
-                )
-                self._day.range_low = (
-                    bar.low if self._day.range_low is None
-                    else min(self._day.range_low, bar.low)
-                )
+                self._day.range_high = bar.high if self._day.range_high is None else max(self._day.range_high, bar.high)
+                self._day.range_low = bar.low if self._day.range_low is None else min(self._day.range_low, bar.low)
                 return None
             self._day.range_complete = True
 
@@ -252,7 +240,7 @@ class METRTHORBStrategy:
 
         # Volume confirmation (optional)
         if self.cfg.volume_mult > 0.0:
-            recent = hist[-self.cfg.volume_lookback:] if hist else []
+            recent = hist[-self.cfg.volume_lookback :] if hist else []
             avg_vol = sum(b.volume for b in recent) / len(recent) if recent else 0.0
             if avg_vol > 0.0 and bar.volume < self.cfg.volume_mult * avg_vol:
                 self._n_volume_rejects += 1
@@ -299,9 +287,15 @@ class METRTHORBStrategy:
         self._day.trades_today += 1
         self._n_fired += 1
         return _Open(
-            entry_bar=bar, side=side, qty=qty, entry_price=entry,
-            stop=stop, target=target, risk_usd=risk_usd,
-            confluence=8.0, leverage=1.0,
+            entry_bar=bar,
+            side=side,
+            qty=qty,
+            entry_price=entry,
+            stop=stop,
+            target=target,
+            risk_usd=risk_usd,
+            confluence=8.0,
+            leverage=1.0,
             regime=f"met_rth_orb_{side.lower()}",
         )
 
@@ -333,4 +327,3 @@ def met_rth_orb_preset() -> METRTHORBConfig:
         risk_per_trade_pct=0.005,
         max_trades_per_day=1,
     )
-

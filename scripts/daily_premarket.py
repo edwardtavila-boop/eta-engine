@@ -76,11 +76,7 @@ def _bot_strategy_readiness_notes(*, limit: int = 3) -> list[str]:
     blocked_data = int(summary.get("blocked_data") or lanes.get("blocked_data") or 0)
     paper_ready = int(summary.get("can_paper_trade") or 0)
     can_live_any = bool(summary.get("can_live_any"))
-    lane_text = ", ".join(
-        f"{lane}={lanes[lane]}"
-        for lane in _READINESS_LANE_ORDER
-        if lane in lanes
-    )
+    lane_text = ", ".join(f"{lane}={lanes[lane]}" for lane in _READINESS_LANE_ORDER if lane in lanes)
     notes = [
         (
             f"bot readiness: status={status} paper_ready={paper_ready} "

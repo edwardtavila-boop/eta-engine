@@ -22,8 +22,13 @@ from eta_engine.strategies.multi_strategy_composite import (
 def _bar(idx: int, close: float = 100.0) -> BarData:
     ts = datetime(2026, 1, 1, tzinfo=UTC) + timedelta(hours=idx)
     return BarData(
-        timestamp=ts, symbol="BTC", open=close,
-        high=close + 1.0, low=close - 1.0, close=close, volume=1000.0,
+        timestamp=ts,
+        symbol="BTC",
+        open=close,
+        high=close + 1.0,
+        low=close - 1.0,
+        close=close,
+        volume=1000.0,
     )
 
 
@@ -31,20 +36,27 @@ def _config() -> BacktestConfig:
     return BacktestConfig(
         start_date=datetime(2026, 1, 1, tzinfo=UTC),
         end_date=datetime(2026, 12, 31, tzinfo=UTC),
-        symbol="BTC", initial_equity=10_000.0,
-        risk_per_trade_pct=0.01, confluence_threshold=0.0,
+        symbol="BTC",
+        initial_equity=10_000.0,
+        risk_per_trade_pct=0.01,
+        confluence_threshold=0.0,
         max_trades_per_day=100,
     )
 
 
-def _open(side: str, conf: float, entry: float, stop_dist: float, target_dist: float,
-          regime: str = "stub") -> _Open:
+def _open(side: str, conf: float, entry: float, stop_dist: float, target_dist: float, regime: str = "stub") -> _Open:
     bar = _bar(0, entry)
     return _Open(
-        entry_bar=bar, side=side, qty=1.0, entry_price=entry,
+        entry_bar=bar,
+        side=side,
+        qty=1.0,
+        entry_price=entry,
         stop=entry - stop_dist if side == "BUY" else entry + stop_dist,
         target=entry + target_dist if side == "BUY" else entry - target_dist,
-        risk_usd=10.0, confluence=conf, leverage=1.0, regime=regime,
+        risk_usd=10.0,
+        confluence=conf,
+        leverage=1.0,
+        regime=regime,
     )
 
 
@@ -58,12 +70,14 @@ class _AlwaysFireStub:
     stop_dist: float = 1.0
 
     def maybe_enter(
-        self, bar: BarData, hist: list[BarData], equity: float,
+        self,
+        bar: BarData,
+        hist: list[BarData],
+        equity: float,
         config: BacktestConfig,
     ) -> _Open | None:
         self.fired += 1
-        return _open(self.side, self.confluence, bar.close,
-                     self.stop_dist, self.target_dist)
+        return _open(self.side, self.confluence, bar.close, self.stop_dist, self.target_dist)
 
     def on_trade_close(self, trade: Trade) -> None:
         self.closed += 1
@@ -74,7 +88,9 @@ class _NeverFireStub:
     fired: int = 0
 
     def maybe_enter(
-        self, *args, **kwargs,
+        self,
+        *args,
+        **kwargs,
     ) -> _Open | None:
         self.fired += 1
         return None
@@ -88,6 +104,7 @@ class _NeverFireStub:
 def test_empty_subs_raises() -> None:
     """At least one sub-strategy required."""
     import pytest
+
     with pytest.raises(ValueError, match="at least 1 sub"):
         MultiStrategyComposite([])
 
@@ -205,11 +222,17 @@ def test_on_trade_close_routes_to_originator() -> None:
     fake_trade = Trade(
         entry_time=datetime(2026, 1, 1, tzinfo=UTC),
         exit_time=datetime(2026, 1, 1, 1, tzinfo=UTC),
-        symbol="BTC", side="BUY", qty=1.0,
-        entry_price=100.0, exit_price=103.0,
-        pnl_r=1.5, pnl_usd=15.0,
-        confluence_score=10.0, leverage_used=1.0,
-        max_drawdown_during=0.0, regime="stub",
+        symbol="BTC",
+        side="BUY",
+        qty=1.0,
+        entry_price=100.0,
+        exit_price=103.0,
+        pnl_r=1.5,
+        pnl_usd=15.0,
+        confluence_score=10.0,
+        leverage_used=1.0,
+        max_drawdown_during=0.0,
+        regime="stub",
         exit_reason="target_hit",
     )
     composite.on_trade_close(fake_trade)
@@ -220,6 +243,7 @@ def test_on_trade_close_routes_to_originator() -> None:
 
 def test_callback_isolation_when_sub_listener_raises() -> None:
     """A bad sub-listener can't break the composite."""
+
     @dataclass
     class _BadListener:
         fired: int = 0
@@ -237,11 +261,17 @@ def test_callback_isolation_when_sub_listener_raises() -> None:
     fake_trade = Trade(
         entry_time=datetime(2026, 1, 1, tzinfo=UTC),
         exit_time=datetime(2026, 1, 1, 1, tzinfo=UTC),
-        symbol="BTC", side="BUY", qty=1.0,
-        entry_price=100.0, exit_price=103.0,
-        pnl_r=1.5, pnl_usd=15.0,
-        confluence_score=10.0, leverage_used=1.0,
-        max_drawdown_during=0.0, regime="stub",
+        symbol="BTC",
+        side="BUY",
+        qty=1.0,
+        entry_price=100.0,
+        exit_price=103.0,
+        pnl_r=1.5,
+        pnl_usd=15.0,
+        confluence_score=10.0,
+        leverage_used=1.0,
+        max_drawdown_during=0.0,
+        regime="stub",
         exit_reason="target_hit",
     )
     # Must not raise

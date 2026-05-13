@@ -18,7 +18,8 @@ from pathlib import Path
 PENDING_DIR = Path("C:/EvolutionaryTradingAlgo/eta_engine/docs/btc_live/broker_fleet")
 PROCESSED_DIR = PENDING_DIR / "processed"
 
-async def process_order(venue, fpath: Path) -> None:
+
+async def process_order(venue: object, fpath: Path) -> None:
     """Read a pending order, submit through live venue, archive."""
     try:
         data = json.loads(fpath.read_text())
@@ -51,12 +52,14 @@ async def process_order(venue, fpath: Path) -> None:
     fpath.rename(PROCESSED_DIR / f"{fpath.stem}_{ts}.json")
     print(f"BRIDGE: Archived {fpath.name}")
 
-async def main():
+
+async def main() -> None:
     print("IBKR Order Bridge starting...")
     print(f"Watching: {PENDING_DIR}")
     PENDING_DIR.mkdir(parents=True, exist_ok=True)
 
     from eta_engine.venues.ibkr_live import LiveIbkrVenue
+
     venue = LiveIbkrVenue()
 
     if not await venue._ensure_connected():
@@ -67,6 +70,7 @@ async def main():
         for fpath in pending:
             await process_order(venue, fpath)
         await asyncio.sleep(15)
+
 
 if __name__ == "__main__":
     asyncio.run(main())

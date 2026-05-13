@@ -25,6 +25,7 @@ The current champion (``v17``) is the unmodified ``evaluate_request``
 from ``jarvis_admin.py`` -- registered here as a passthrough so the
 bandit always has a baseline arm.
 """
+
 from __future__ import annotations
 
 # Side-effect imports register the candidates.

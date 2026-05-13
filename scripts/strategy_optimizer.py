@@ -32,6 +32,7 @@ Usage
         --grid level_lookback=10,20,30 reclaim_window=2,3,4 \\
               min_wick_pct=0.4,0.6,0.8 rr_target=1.5,2.0,2.5
 """
+
 from __future__ import annotations
 
 import argparse
@@ -153,8 +154,13 @@ def _parse_grid_arg(spec: list[str]) -> dict[str, list]:
 
 
 def _evaluate_one_cell(
-    kind: str, symbol: str, timeframe: str, days: int,
-    is_fraction: float, params: dict, mode: str,
+    kind: str,
+    symbol: str,
+    timeframe: str,
+    days: int,
+    is_fraction: float,
+    params: dict,
+    mode: str,
 ) -> dict:
     """Run IS+OOS for one parameter cell.  Returns a dict (pickleable).
 
@@ -168,25 +174,39 @@ def _evaluate_one_cell(
         register_assignment,
     )
 
-    bot_id = f"_optimizer_{kind}_{symbol}_{timeframe}_" + "_".join(
-        f"{k}{v}" for k, v in sorted(params.items())
-    ).replace(".", "p")[:200]
+    bot_id = (
+        f"_optimizer_{kind}_{symbol}_{timeframe}_"
+        + "_".join(f"{k}{v}" for k, v in sorted(params.items())).replace(".", "p")[:200]
+    )
 
     try:
-        register_assignment(StrategyAssignment(
-            bot_id=bot_id, symbol=symbol, timeframe=timeframe,
-            strategy_kind=kind, extras={**params, "promotion_status": "optimizer"},
-        ))
+        register_assignment(
+            StrategyAssignment(
+                bot_id=bot_id,
+                symbol=symbol,
+                timeframe=timeframe,
+                strategy_kind=kind,
+                extras={**params, "promotion_status": "optimizer"},
+            )
+        )
         daily_bars = {"1m": 1440, "5m": 288, "15m": 96, "1h": 24, "4h": 6, "D": 1, "W": 0.14}
         bar_limit = int(days * daily_bars.get(timeframe, 288))
 
         is_res = run_simulation(
-            bot_id, max_bars=100000, bar_limit=bar_limit,
-            mode=mode, is_fraction=is_fraction, eval_oos=False,
+            bot_id,
+            max_bars=100000,
+            bar_limit=bar_limit,
+            mode=mode,
+            is_fraction=is_fraction,
+            eval_oos=False,
         )
         oos_res = run_simulation(
-            bot_id, max_bars=100000, bar_limit=bar_limit,
-            mode=mode, is_fraction=is_fraction, eval_oos=True,
+            bot_id,
+            max_bars=100000,
+            bar_limit=bar_limit,
+            mode=mode,
+            is_fraction=is_fraction,
+            eval_oos=True,
         )
 
         is_rets = _trade_returns(is_res.equity_curve)
@@ -213,25 +233,26 @@ def _evaluate_one_cell(
 
 
 def run_optimization(
-    kind: str, symbol: str, timeframe: str, grid: dict[str, list],
-    days: int = 90, is_fraction: float = 0.7, mode: str = "realistic",
+    kind: str,
+    symbol: str,
+    timeframe: str,
+    grid: dict[str, list],
+    days: int = 90,
+    is_fraction: float = 0.7,
+    mode: str = "realistic",
     workers: int = 4,
 ) -> list[GridCellResult]:
     """Walk-forward grid search over the supplied parameter cells."""
     keys = sorted(grid.keys())
-    cells = [
-        dict(zip(keys, combo, strict=True))
-        for combo in itertools.product(*[grid[k] for k in keys])
-    ]
+    cells = [dict(zip(keys, combo, strict=True)) for combo in itertools.product(*[grid[k] for k in keys])]
     n_trials = len(cells)
     print(f"Optimizing {kind} on {symbol}/{timeframe}: {n_trials} cells, {workers} workers")
-    print(f"  IS={is_fraction*100:.0f}% / OOS={(1-is_fraction)*100:.0f}%, mode={mode}")
+    print(f"  IS={is_fraction * 100:.0f}% / OOS={(1 - is_fraction) * 100:.0f}%, mode={mode}")
 
     results: list[GridCellResult] = []
     with ProcessPoolExecutor(max_workers=workers) as ex:
         futures = {
-            ex.submit(_evaluate_one_cell, kind, symbol, timeframe, days,
-                      is_fraction, cell, mode): cell
+            ex.submit(_evaluate_one_cell, kind, symbol, timeframe, days, is_fraction, cell, mode): cell
             for cell in cells
         }
         for f in as_completed(futures):
@@ -240,19 +261,21 @@ def run_optimization(
                 d = f.result()
             except Exception as e:  # noqa: BLE001
                 d = {"params": cell, "error": f"executor: {type(e).__name__}: {e}"}
-            results.append(GridCellResult(
-                params=d.get("params", cell),
-                is_pnl=d.get("is_pnl", 0.0),
-                oos_pnl=d.get("oos_pnl", 0.0),
-                is_trades=d.get("is_trades", 0),
-                oos_trades=d.get("oos_trades", 0),
-                is_wr=d.get("is_wr", 0.0),
-                oos_wr=d.get("oos_wr", 0.0),
-                is_sharpe=d.get("is_sharpe", 0.0),
-                oos_sharpe=d.get("oos_sharpe", 0.0),
-                rejection_count=d.get("rejection_count", 0),
-                error=d.get("error"),
-            ))
+            results.append(
+                GridCellResult(
+                    params=d.get("params", cell),
+                    is_pnl=d.get("is_pnl", 0.0),
+                    oos_pnl=d.get("oos_pnl", 0.0),
+                    is_trades=d.get("is_trades", 0),
+                    oos_trades=d.get("oos_trades", 0),
+                    is_wr=d.get("is_wr", 0.0),
+                    oos_wr=d.get("oos_wr", 0.0),
+                    is_sharpe=d.get("is_sharpe", 0.0),
+                    oos_sharpe=d.get("oos_sharpe", 0.0),
+                    rejection_count=d.get("rejection_count", 0),
+                    error=d.get("error"),
+                )
+            )
             n = len(results)
             tag = "ERR" if d.get("error") else f"OOS=${results[-1].oos_pnl:+.0f} sharpe={results[-1].oos_sharpe:.2f}"
             print(f"  [{n:3d}/{n_trials}] {cell} {tag}")
@@ -260,40 +283,59 @@ def run_optimization(
 
 
 def write_optimizer_report(
-    results: list[GridCellResult], kind: str, symbol: str,
-    timeframe: str, n_trials: int,
+    results: list[GridCellResult],
+    kind: str,
+    symbol: str,
+    timeframe: str,
+    n_trials: int,
 ) -> int:
     OPTIMIZER_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     now = datetime.now(tz=UTC)
-    out_path = OPTIMIZER_OUTPUT_DIR / (
-        f"opt_{kind}_{symbol}_{timeframe}_{now.strftime('%Y%m%dT%H%M%SZ')}.json"
-    )
+    out_path = OPTIMIZER_OUTPUT_DIR / (f"opt_{kind}_{symbol}_{timeframe}_{now.strftime('%Y%m%dT%H%M%SZ')}.json")
 
     valid = [r for r in results if r.error is None]
     invalid = [r for r in results if r.error is not None]
 
     if not valid:
         print(f"\nALL {n_trials} cells errored — fix the strategy or grid.")
-        out_path.write_text(json.dumps({
-            "ts": now.isoformat(), "kind": kind, "symbol": symbol,
-            "timeframe": timeframe, "n_trials": n_trials,
-            "errors": [{"params": r.params, "error": r.error} for r in invalid],
-        }, indent=2, default=str), encoding="utf-8")
+        out_path.write_text(
+            json.dumps(
+                {
+                    "ts": now.isoformat(),
+                    "kind": kind,
+                    "symbol": symbol,
+                    "timeframe": timeframe,
+                    "n_trials": n_trials,
+                    "errors": [{"params": r.params, "error": r.error} for r in invalid],
+                },
+                indent=2,
+                default=str,
+            ),
+            encoding="utf-8",
+        )
         return 1
 
     valid.sort(key=lambda x: -x.oos_sharpe)
     top10 = valid[:10]
 
     snapshot = {
-        "ts": now.isoformat(), "kind": kind, "symbol": symbol, "timeframe": timeframe,
-        "n_trials": n_trials, "n_errors": len(invalid),
+        "ts": now.isoformat(),
+        "kind": kind,
+        "symbol": symbol,
+        "timeframe": timeframe,
+        "n_trials": n_trials,
+        "n_errors": len(invalid),
         "results": [
             {
                 "params": r.params,
-                "is_pnl": r.is_pnl, "oos_pnl": r.oos_pnl,
-                "is_trades": r.is_trades, "oos_trades": r.oos_trades,
-                "is_wr": r.is_wr, "oos_wr": r.oos_wr,
-                "is_sharpe": r.is_sharpe, "oos_sharpe": r.oos_sharpe,
+                "is_pnl": r.is_pnl,
+                "oos_pnl": r.oos_pnl,
+                "is_trades": r.is_trades,
+                "oos_trades": r.oos_trades,
+                "is_wr": r.is_wr,
+                "oos_wr": r.oos_wr,
+                "is_sharpe": r.is_sharpe,
+                "oos_sharpe": r.oos_sharpe,
                 "decay_pct": r.decay_pct,
                 "rejection_count": r.rejection_count,
                 "error": r.error,
@@ -310,13 +352,14 @@ def write_optimizer_report(
     print(f"  {n_trials} cells tested, {len(invalid)} errored, {len(valid)} valid")
 
     print("\nTop 10 by OOS Sharpe:")
-    print(f"{'Rank':<5} {'Params':<60} {'IS$':>8} {'OOS$':>8} {'OOS-Tr':>6} "
-          f"{'OOS-WR':>7} {'OOS-Sh':>7} {'Decay':>7}")
+    print(f"{'Rank':<5} {'Params':<60} {'IS$':>8} {'OOS$':>8} {'OOS-Tr':>6} {'OOS-WR':>7} {'OOS-Sh':>7} {'Decay':>7}")
     print("-" * 110)
     for i, r in enumerate(top10, 1):
         params_str = " ".join(f"{k}={v}" for k, v in sorted(r.params.items()))[:60]
-        print(f"{i:<5} {params_str:<60} ${r.is_pnl:>+7.0f} ${r.oos_pnl:>+7.0f} "
-              f"{r.oos_trades:>6} {r.oos_wr:>6.1f}% {r.oos_sharpe:>+7.2f} {r.decay_pct:>+6.0f}%")
+        print(
+            f"{i:<5} {params_str:<60} ${r.is_pnl:>+7.0f} ${r.oos_pnl:>+7.0f} "
+            f"{r.oos_trades:>6} {r.oos_wr:>6.1f}% {r.oos_sharpe:>+7.2f} {r.decay_pct:>+6.0f}%"
+        )
 
     # Deflated Sharpe of the BEST cell vs the trial count
     if valid:
@@ -337,13 +380,13 @@ def write_optimizer_report(
 
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(prog="strategy_optimizer", description=__doc__,
-                                formatter_class=argparse.RawDescriptionHelpFormatter)
+    p = argparse.ArgumentParser(
+        prog="strategy_optimizer", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     p.add_argument("--kind", required=True, help="strategy_kind (sweep_reclaim, vwap_reversion, ...)")
     p.add_argument("--symbol", required=True, help="instrument symbol (MNQ1, BTC, ...)")
     p.add_argument("--timeframe", required=True, help="bar timeframe (5m, 1h, ...)")
-    p.add_argument("--grid", nargs="+", required=True,
-                   help="grid specs as 'key=v1,v2,v3' (one per parameter)")
+    p.add_argument("--grid", nargs="+", required=True, help="grid specs as 'key=v1,v2,v3' (one per parameter)")
     p.add_argument("--days", type=int, default=90, help="bars window")
     p.add_argument("--is-fraction", type=float, default=0.7)
     p.add_argument("--mode", default="realistic", choices=["realistic", "pessimistic", "legacy"])
@@ -360,9 +403,14 @@ def main(argv: list[str] | None = None) -> int:
         print("         Consider reducing the grid.")
 
     results = run_optimization(
-        kind=args.kind, symbol=args.symbol, timeframe=args.timeframe,
-        grid=grid, days=args.days, is_fraction=args.is_fraction,
-        mode=args.mode, workers=args.workers,
+        kind=args.kind,
+        symbol=args.symbol,
+        timeframe=args.timeframe,
+        grid=grid,
+        days=args.days,
+        is_fraction=args.is_fraction,
+        mode=args.mode,
+        workers=args.workers,
     )
     return write_optimizer_report(results, args.kind, args.symbol, args.timeframe, n_trials)
 

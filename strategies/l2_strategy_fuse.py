@@ -36,6 +36,7 @@ Three reset paths:
   3. A winning trade resets the consecutive counter (only counts the
      trades that succeeded post-reset)
 """
+
 from __future__ import annotations
 
 import json
@@ -57,6 +58,7 @@ DEFAULT_COOLDOWN_SECONDS = 3600
 @dataclass
 class FuseState:
     """Per-(strategy, symbol) fuse state."""
+
     strategy_id: str
     symbol: str
     consecutive_losses: int
@@ -93,24 +95,32 @@ def save_registry(reg: FuseRegistry, *, _path: Path | None = None) -> None:
     path = _path if _path is not None else FUSE_STATE_FILE
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps({
-            "states": {k: asdict(v) for k, v in reg.states.items()}
-        }, indent=2), encoding="utf-8")
+        path.write_text(
+            json.dumps({"states": {k: asdict(v) for k, v in reg.states.items()}}, indent=2), encoding="utf-8"
+        )
     except OSError as e:
         print(f"l2_strategy_fuse WARN: save failed: {e}", file=sys.stderr)
 
 
-def record_outcome(strategy_id: str, symbol: str, *, won: bool,
-                     ts: datetime | None = None,
-                     fuse_threshold: int = DEFAULT_FUSE_THRESHOLD,
-                     _path: Path | None = None) -> FuseState:
+def record_outcome(
+    strategy_id: str,
+    symbol: str,
+    *,
+    won: bool,
+    ts: datetime | None = None,
+    fuse_threshold: int = DEFAULT_FUSE_THRESHOLD,
+    _path: Path | None = None,
+) -> FuseState:
     """Record a terminal trade outcome.  Updates consecutive count and
     blows the fuse when threshold is hit.  Returns the new state."""
     reg = load_registry(_path=_path)
     k = _key(strategy_id, symbol)
     state = reg.states.get(k) or FuseState(
-        strategy_id=strategy_id, symbol=symbol,
-        consecutive_losses=0, blown=False, blown_at=None,
+        strategy_id=strategy_id,
+        symbol=symbol,
+        consecutive_losses=0,
+        blown=False,
+        blown_at=None,
         last_outcome_ts=None,
     )
     ts = ts or datetime.now(UTC)
@@ -130,18 +140,21 @@ def record_outcome(strategy_id: str, symbol: str, *, won: bool,
     return state
 
 
-def check_fuse(strategy_id: str, symbol: str,
-                *, cooldown_seconds: float = DEFAULT_COOLDOWN_SECONDS,
-                now: datetime | None = None,
-                _path: Path | None = None) -> dict:
+def check_fuse(
+    strategy_id: str,
+    symbol: str,
+    *,
+    cooldown_seconds: float = DEFAULT_COOLDOWN_SECONDS,
+    now: datetime | None = None,
+    _path: Path | None = None,
+) -> dict:
     """Check whether a strategy is currently fuse-blown.  Auto-resets
     if cooldown_seconds has elapsed since blown_at."""
     reg = load_registry(_path=_path)
     k = _key(strategy_id, symbol)
     state = reg.states.get(k)
     if state is None or not state.blown:
-        return {"blocked": False, "reason": "ok",
-                 "consecutive_losses": state.consecutive_losses if state else 0}
+        return {"blocked": False, "reason": "ok", "consecutive_losses": state.consecutive_losses if state else 0}
     now = now or datetime.now(UTC)
     if state.blown_at:
         try:
@@ -154,24 +167,23 @@ def check_fuse(strategy_id: str, symbol: str,
                 state.consecutive_losses = 0
                 reg.states[k] = state
                 save_registry(reg, _path=_path)
-                return {"blocked": False, "reason": "cooldown_elapsed",
-                         "consecutive_losses": 0}
+                return {"blocked": False, "reason": "cooldown_elapsed", "consecutive_losses": 0}
         except ValueError:
             pass
-    return {"blocked": True, "reason": "strategy_fuse_blown",
-             "consecutive_losses": state.consecutive_losses,
-             "blown_at": state.blown_at,
-             "cooldown_remaining_seconds": (
-                 cooldown_seconds - (now -
-                                       datetime.fromisoformat(
-                                           state.blown_at.replace("Z", "+00:00")
-                                       )).total_seconds()
-                 if state.blown_at else None
-             )}
+    return {
+        "blocked": True,
+        "reason": "strategy_fuse_blown",
+        "consecutive_losses": state.consecutive_losses,
+        "blown_at": state.blown_at,
+        "cooldown_remaining_seconds": (
+            cooldown_seconds - (now - datetime.fromisoformat(state.blown_at.replace("Z", "+00:00"))).total_seconds()
+            if state.blown_at
+            else None
+        ),
+    }
 
 
-def reset_fuse(strategy_id: str, symbol: str,
-                *, _path: Path | None = None) -> bool:
+def reset_fuse(strategy_id: str, symbol: str, *, _path: Path | None = None) -> bool:
     """Operator manual reset.  Returns True if a fuse was actually cleared."""
     reg = load_registry(_path=_path)
     k = _key(strategy_id, symbol)

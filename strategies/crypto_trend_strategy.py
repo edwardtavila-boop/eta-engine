@@ -97,9 +97,7 @@ class CryptoTrendStrategy:
         self._htf: float | None = None
         self._fast_alpha = 2.0 / (self.cfg.fast_ema + 1)
         self._slow_alpha = 2.0 / (self.cfg.slow_ema + 1)
-        self._htf_alpha = (
-            2.0 / (self.cfg.htf_ema + 1) if self.cfg.htf_ema > 0 else 0.0
-        )
+        self._htf_alpha = 2.0 / (self.cfg.htf_ema + 1) if self.cfg.htf_ema > 0 else 0.0
         self._prev_diff: float | None = None  # fast - slow on prior bar
         self._bars_seen: int = 0
         self._last_entry_idx: int | None = None
@@ -157,8 +155,7 @@ class CryptoTrendStrategy:
             return None
         if (
             self._last_entry_idx is not None
-            and (self._bars_seen - self._last_entry_idx)
-            < self.cfg.min_bars_between_trades
+            and (self._bars_seen - self._last_entry_idx) < self.cfg.min_bars_between_trades
         ):
             return None
 
@@ -179,7 +176,7 @@ class CryptoTrendStrategy:
                 return None
 
         # ── ATR sizing ──
-        atr_window = hist[-self.cfg.atr_period:] if hist else []
+        atr_window = hist[-self.cfg.atr_period :] if hist else []
         if len(atr_window) < 2:
             return None
         atr = sum(b.high - b.low for b in atr_window) / len(atr_window)
@@ -204,9 +201,15 @@ class CryptoTrendStrategy:
         from eta_engine.backtest.engine import _Open
 
         opened = _Open(
-            entry_bar=bar, side=side, qty=qty, entry_price=entry_price,
-            stop=stop, target=target, risk_usd=risk_usd,
-            confluence=10.0, leverage=1.0,
+            entry_bar=bar,
+            side=side,
+            qty=qty,
+            entry_price=entry_price,
+            stop=stop,
+            target=target,
+            risk_usd=risk_usd,
+            confluence=10.0,
+            leverage=1.0,
             regime="crypto_trend",
         )
         self._last_entry_idx = self._bars_seen

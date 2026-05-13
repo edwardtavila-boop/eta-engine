@@ -85,10 +85,7 @@ def build_summary(*, skip_backup_test: bool = True) -> dict[str, Any]:
 def _print_human(summary: dict[str, Any]) -> None:
     """Print an operator-friendly blocker summary."""
     print(f"VPS failover readiness: {summary['overall_severity'].upper()}")
-    print(
-        "Counts: "
-        + ", ".join(f"{key}={value}" for key, value in summary["counts"].items())
-    )
+    print("Counts: " + ", ".join(f"{key}={value}" for key, value in summary["counts"].items()))
     blockers = summary["blockers"]
     if not blockers:
         print("No red/amber blockers.")

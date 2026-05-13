@@ -104,13 +104,13 @@ def compute_optimal_size(
         multiplier *= 1.25  # solid confluence
         rules.append("confluence_solid")
     elif confluence_score >= 2:
-        multiplier *= 1.0   # standard
+        multiplier *= 1.0  # standard
         rules.append("confluence_standard")
     elif confluence_score == 1:
         multiplier *= 0.50  # marginal: half size
         rules.append("confluence_marginal")
     else:
-        multiplier *= 0.0   # no confluence: skip
+        multiplier *= 0.0  # no confluence: skip
         rules.append("confluence_none")
 
     size = base_risk_pct * multiplier * equity
@@ -171,6 +171,7 @@ def risk_profile_for_bot(bot_id: str) -> dict:
         warmup_mult = wp.get("risk_multiplier_during_warmup", 1.0)
         if promoted:
             from datetime import UTC, datetime
+
             try:
                 promoted_dt = datetime.fromisoformat(str(promoted))
                 days_since = (datetime.now(tz=UTC) - promoted_dt).days
@@ -183,7 +184,9 @@ def risk_profile_for_bot(bot_id: str) -> dict:
     return {
         "risk_pct": round(risk_pct_base * risk_mult, 4),
         "daily_loss_pct": dd_cap,
-        "max_trades_per_day": int(a.extras.get("max_trades_per_day", a.extras.get("orb_config", {}).get("max_trades_per_day", 2))),  # noqa: E501
+        "max_trades_per_day": int(
+            a.extras.get("max_trades_per_day", a.extras.get("orb_config", {}).get("max_trades_per_day", 2))
+        ),  # noqa: E501
         "oos_sharpe": oos_sharpe,
         "tier": tier,
         "in_warmup": in_warmup,

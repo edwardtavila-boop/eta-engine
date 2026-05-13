@@ -110,6 +110,7 @@ def default_path() -> Path:
         return Path(override)
     # Local import keeps core/ free of script-package import cycles.
     from eta_engine.scripts import workspace_roots
+
     return workspace_roots.ETA_KILL_SWITCH_LATCH_PATH
 
 
@@ -121,6 +122,7 @@ def default_legacy_path() -> Path:
     persisted at the legacy location. NEVER used as a write target.
     """
     from eta_engine.scripts import workspace_roots
+
     return workspace_roots.ETA_LEGACY_KILL_SWITCH_LATCH_PATH
 
 

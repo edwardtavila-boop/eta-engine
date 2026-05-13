@@ -210,16 +210,21 @@ class KaizenGuard:
             return False
         degradation = pre_change_sharpe - post_change_sharpe
         if degradation > 0.1:
-            self._rollbacks.append({
-                "parameter": parameter,
-                "ts": datetime.now(UTC).isoformat(),
-                "pre_sharpe": pre_change_sharpe,
-                "post_sharpe": post_change_sharpe,
-                "trades_since": trades_since_change,
-            })
+            self._rollbacks.append(
+                {
+                    "parameter": parameter,
+                    "ts": datetime.now(UTC).isoformat(),
+                    "pre_sharpe": pre_change_sharpe,
+                    "post_sharpe": post_change_sharpe,
+                    "trades_since": trades_since_change,
+                }
+            )
             logger.warning(
                 "ROLLBACK: %s degraded Sharpe %.3f -> %.3f after %d trades",
-                parameter, pre_change_sharpe, post_change_sharpe, trades_since_change,
+                parameter,
+                pre_change_sharpe,
+                post_change_sharpe,
+                trades_since_change,
             )
             return True
         return False

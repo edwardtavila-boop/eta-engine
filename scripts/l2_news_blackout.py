@@ -55,6 +55,7 @@ Run
     # List all upcoming blackouts
     python -m eta_engine.scripts.l2_news_blackout --list
 """
+
 from __future__ import annotations
 
 # ruff: noqa: PLR2004
@@ -73,9 +74,9 @@ EVENTS_FILE = LOG_DIR / "l2_news_events.jsonl"
 
 @dataclass
 class BlackoutWindow:
-    start: str          # ISO 8601 UTC
-    end: str            # ISO 8601 UTC
-    reason: str         # "FOMC" | "NFP" | "CPI" | ...
+    start: str  # ISO 8601 UTC
+    end: str  # ISO 8601 UTC
+    reason: str  # "FOMC" | "NFP" | "CPI" | ...
     symbols: list[str]  # symbols affected; ["*"] for all
     note: str = ""
 
@@ -131,8 +132,7 @@ def add_event(window: BlackoutWindow, *, _path: Path | None = None) -> None:
         print(f"WARN: blackout add failed: {e}", file=sys.stderr)
 
 
-def is_in_blackout(symbol: str, when: datetime | None = None,
-                    *, _path: Path | None = None) -> BlackoutCheck:
+def is_in_blackout(symbol: str, when: datetime | None = None, *, _path: Path | None = None) -> BlackoutCheck:
     when = when or datetime.now(UTC)
     when_iso = when.isoformat()
     windows = load_events(_path=_path)
@@ -149,15 +149,16 @@ def is_in_blackout(symbol: str, when: datetime | None = None,
     # Pick the latest end-time across affecting windows
     latest_end = max(_parse_ts(w.end) for w in affecting if _parse_ts(w.end))
     return BlackoutCheck(
-        symbol=symbol, when=when_iso, in_blackout=True,
+        symbol=symbol,
+        when=when_iso,
+        in_blackout=True,
         reason=", ".join(w.reason for w in affecting),
         until=latest_end.isoformat() if latest_end else None,
         affected_by=[w.reason for w in affecting],
     )
 
 
-def list_upcoming(*, after: datetime | None = None,
-                    _path: Path | None = None) -> list[BlackoutWindow]:
+def list_upcoming(*, after: datetime | None = None, _path: Path | None = None) -> list[BlackoutWindow]:
     after = after or datetime.now(UTC)
     windows = load_events(_path=_path)
     upcoming = []
@@ -171,17 +172,12 @@ def list_upcoming(*, after: datetime | None = None,
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--check", metavar="SYMBOL",
-                    help="Check if SYMBOL is currently in a blackout")
+    ap.add_argument("--check", metavar="SYMBOL", help="Check if SYMBOL is currently in a blackout")
     ap.add_argument("--add", action="store_true")
-    ap.add_argument("--start", default=None,
-                    help="ISO 8601 UTC; required for --add")
-    ap.add_argument("--end", default=None,
-                    help="ISO 8601 UTC; required for --add")
-    ap.add_argument("--reason", default=None,
-                    help="event tag (FOMC/NFP/CPI/...)")
-    ap.add_argument("--symbols", nargs="+", default=None,
-                    help="symbols affected; or '*' for all")
+    ap.add_argument("--start", default=None, help="ISO 8601 UTC; required for --add")
+    ap.add_argument("--end", default=None, help="ISO 8601 UTC; required for --add")
+    ap.add_argument("--reason", default=None, help="event tag (FOMC/NFP/CPI/...)")
+    ap.add_argument("--symbols", nargs="+", default=None, help="symbols affected; or '*' for all")
     ap.add_argument("--list", action="store_true")
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
@@ -192,23 +188,24 @@ def main() -> int:
             print(json.dumps(asdict(result), indent=2))
             return 1 if result.in_blackout else 0
         if result.in_blackout:
-            print(f"[BLACKOUT] {args.check} blocked: {result.reason} "
-                    f"(until {result.until})")
+            print(f"[BLACKOUT] {args.check} blocked: {result.reason} (until {result.until})")
             return 1
         print(f"[CLEAR] {args.check} not in any blackout window")
         return 0
 
     if args.add:
         if not all([args.start, args.end, args.reason, args.symbols]):
-            print("--add requires --start --end --reason --symbols",
-                  file=sys.stderr)
+            print("--add requires --start --end --reason --symbols", file=sys.stderr)
             return 2
-        add_event(BlackoutWindow(
-            start=args.start, end=args.end,
-            reason=args.reason, symbols=args.symbols,
-        ))
-        print(f"Added blackout: {args.reason} {args.start}→{args.end} "
-                f"for {args.symbols}")
+        add_event(
+            BlackoutWindow(
+                start=args.start,
+                end=args.end,
+                reason=args.reason,
+                symbols=args.symbols,
+            )
+        )
+        print(f"Added blackout: {args.reason} {args.start}→{args.end} for {args.symbols}")
         return 0
 
     # Default: list
@@ -224,8 +221,7 @@ def main() -> int:
         print("  (no scheduled blackouts)")
         return 0
     for w in upcoming:
-        print(f"  {w.reason:<8s}  {w.start}  →  {w.end}  "
-                f"symbols={','.join(w.symbols)}")
+        print(f"  {w.reason:<8s}  {w.start}  →  {w.end}  symbols={','.join(w.symbols)}")
         if w.note:
             print(f"    note: {w.note}")
     print()

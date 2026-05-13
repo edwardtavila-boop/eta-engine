@@ -19,6 +19,7 @@ the side is missing/unknown.
 These tests cover the supervisor-side derivation logic via a small
 helper that mirrors the fix without invoking the entire supervisor.
 """
+
 # ruff: noqa: PLR2004
 from __future__ import annotations
 
@@ -45,9 +46,9 @@ def _derive_direction(raw_side: str | None, bot_default: str) -> str:
     [
         ("BUY", "long"),
         ("SELL", "short"),
-        ("buy", "long"),       # case-insensitive
+        ("buy", "long"),  # case-insensitive
         ("sell", "short"),
-        (" BUY ", "long"),     # whitespace-tolerant via strip? No — must be exact
+        (" BUY ", "long"),  # whitespace-tolerant via strip? No — must be exact
     ],
 )
 def test_direction_derives_from_side(raw_side: str, expected: str) -> None:
@@ -92,7 +93,7 @@ def test_supervisor_script_uses_derived_direction() -> None:
         "wave-10 derivation block missing from scripts/jarvis_strategy_supervisor.py "
         "— bot.direction is stale; do not revert"
     )
-    assert 'direction=_trade_direction,' in text, (
+    assert "direction=_trade_direction," in text, (
         "close_trade must receive the derived _trade_direction, not bot.direction"
     )
 
@@ -107,7 +108,7 @@ def test_feeds_supervisor_uses_derived_direction() -> None:
     assert '_raw_side = (getattr(rec, "side", "") or "").upper()' in text, (
         "wave-10 derivation block missing from feeds/jarvis_strategy_supervisor.py"
     )
-    assert 'direction=_trade_direction,' in text
+    assert "direction=_trade_direction," in text
 
 
 def test_pre_wave10_pattern_absent_in_both_supervisors() -> None:
@@ -129,6 +130,5 @@ def test_pre_wave10_pattern_absent_in_both_supervisors() -> None:
         # logging) — only flag when it's the direct argument value.
         offending = "                direction=bot.direction,\n"
         assert offending not in text, (
-            f"{relpath} still contains pre-wave-10 anti-pattern "
-            "`direction=bot.direction,` on a close_trade call"
+            f"{relpath} still contains pre-wave-10 anti-pattern `direction=bot.direction,` on a close_trade call"
         )

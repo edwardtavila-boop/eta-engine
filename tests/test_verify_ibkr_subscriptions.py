@@ -1,4 +1,5 @@
 """Tests for IBKR subscription verifier setup/readiness handling."""
+
 from __future__ import annotations
 
 import json

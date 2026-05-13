@@ -208,9 +208,7 @@ def main(argv: list[str] | None = None) -> int:
         sym_set = {s.strip().upper() for s in ns.symbols.split(",") if s.strip()}
     local_set: set[str] | None = None
     if ns.local_symbols:
-        local_set = {
-            s.strip().upper() for s in ns.local_symbols.split(",") if s.strip()
-        }
+        local_set = {s.strip().upper() for s in ns.local_symbols.split(",") if s.strip()}
 
     try:
         results = flatten_ibkr_positions(

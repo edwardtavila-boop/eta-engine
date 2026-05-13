@@ -31,6 +31,7 @@ Why this is real, not theatrics:
     here or send it to a real quantum machine via cloud_adapter --
     so this module is also the staging ground for cloud calls
 """
+
 from __future__ import annotations
 
 import logging
@@ -218,9 +219,7 @@ def portfolio_allocation_qubo(
         # The constant K^2 is dropped (doesn't affect argmin).
         for i in range(n):
             for j in range(n):
-                Q.setdefault(i, {})[j] = (
-                    Q.get(i, {}).get(j, 0.0) + cardinality_penalty
-                )
+                Q.setdefault(i, {})[j] = Q.get(i, {}).get(j, 0.0) + cardinality_penalty
             # -2K coefficient on each diagonal
             Q[i][i] = Q.get(i, {}).get(i, 0.0) - 2.0 * cardinality_penalty * target_k
 

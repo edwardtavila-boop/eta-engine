@@ -43,6 +43,7 @@ Limitations
 - "Hidden liquidity" is inferred from visible-qty stability, not
   directly observed (impossible without exchange-level iceberg data).
 """
+
 from __future__ import annotations
 
 # ruff: noqa: ANN401
@@ -55,6 +56,7 @@ from typing import Any
 @dataclass
 class FootprintAbsorptionConfig:
     """Tuning surface."""
+
     # Print size threshold — print must exceed this z-score above
     # the rolling mean of recent print sizes to qualify as "large"
     prints_size_z_min: float = 1.5
@@ -82,6 +84,7 @@ class FootprintAbsorptionConfig:
 @dataclass
 class FootprintAbsorptionState:
     """Carried across ticks + snaps."""
+
     recent_prints: deque[dict] = field(default_factory=lambda: deque(maxlen=200))
     last_signal_dt: datetime | None = None
     trades_today: int = 0
@@ -91,7 +94,7 @@ class FootprintAbsorptionState:
 
 @dataclass
 class FootprintSignal:
-    side: str            # "LONG" | "SHORT"
+    side: str  # "LONG" | "SHORT"
     entry_price: float
     stop: float
     target: float
@@ -107,25 +110,36 @@ class FootprintSignal:
     opposite_qty_drop_pct: float
 
 
-def record_print(state: FootprintAbsorptionState, *, price: float, size: float,
-                  side: str, ts: datetime, mid_before: float, mid_after: float,
-                  opposite_qty_before: int, opposite_qty_after: int) -> None:
+def record_print(
+    state: FootprintAbsorptionState,
+    *,
+    price: float,
+    size: float,
+    side: str,
+    ts: datetime,
+    mid_before: float,
+    mid_after: float,
+    opposite_qty_before: int,
+    opposite_qty_after: int,
+) -> None:
     """Caller wires this from the tick stream + a depth snapshot
     pair (one just before the print, one just after).
 
     side is the aggressor side: BUY = trade printed on the ask (lifted),
     SELL = trade printed on the bid (hit).
     """
-    state.recent_prints.append({
-        "ts": ts,
-        "price": price,
-        "size": size,
-        "side": side.upper(),
-        "mid_before": mid_before,
-        "mid_after": mid_after,
-        "opposite_qty_before": opposite_qty_before,
-        "opposite_qty_after": opposite_qty_after,
-    })
+    state.recent_prints.append(
+        {
+            "ts": ts,
+            "price": price,
+            "size": size,
+            "side": side.upper(),
+            "mid_before": mid_before,
+            "mid_after": mid_after,
+            "opposite_qty_before": opposite_qty_before,
+            "opposite_qty_after": opposite_qty_after,
+        }
+    )
 
 
 def _z_score(value: float, series: list[float]) -> float:
@@ -134,16 +148,15 @@ def _z_score(value: float, series: list[float]) -> float:
         return 0.0
     mean = sum(series) / len(series)
     var = sum((x - mean) ** 2 for x in series) / max(len(series) - 1, 1)
-    std = var ** 0.5
+    std = var**0.5
     if std <= 0:
         return 0.0
     return (value - mean) / std
 
 
-def evaluate_footprint(state: FootprintAbsorptionState,
-                        config: FootprintAbsorptionConfig,
-                        *, atr: float = 1.0,
-                        symbol: str = "MNQ") -> FootprintSignal | None:
+def evaluate_footprint(
+    state: FootprintAbsorptionState, config: FootprintAbsorptionConfig, *, atr: float = 1.0, symbol: str = "MNQ"
+) -> FootprintSignal | None:
     """Evaluate the most recent print for absorption pattern.
 
     Caller should invoke this AFTER calling record_print() with the
@@ -184,8 +197,7 @@ def evaluate_footprint(state: FootprintAbsorptionState,
         return None
 
     # Compute z-score of latest print's size vs prior prints
-    history_sizes = [float(p.get("size") or 0.0)
-                      for p in list(state.recent_prints)[-config.prints_lookback:-1]]
+    history_sizes = [float(p.get("size") or 0.0) for p in list(state.recent_prints)[-config.prints_lookback : -1]]
     z = _z_score(print_size, history_sizes)
     if z < config.prints_size_z_min:
         return None
@@ -237,10 +249,12 @@ def evaluate_footprint(state: FootprintAbsorptionState,
         stop=round(stop, 4),
         target=round(target, 4),
         confidence=round(min(1.0, z / 5.0), 2),  # confidence scales with z-score
-        rationale=(f"footprint absorption: {aggressor}-print size={print_size:.0f} "
-                   f"(z={z:.2f}) absorbed (opp_qty_drop={drop_fraction*100:.0f}% < "
-                   f"{config.absorption_ratio*100:.0f}%, "
-                   f"price_move={price_move:.4f} <= {band:.4f})"),
+        rationale=(
+            f"footprint absorption: {aggressor}-print size={print_size:.0f} "
+            f"(z={z:.2f}) absorbed (opp_qty_drop={drop_fraction * 100:.0f}% < "
+            f"{config.absorption_ratio * 100:.0f}%, "
+            f"price_move={price_move:.4f} <= {band:.4f})"
+        ),
         snapshot_ts=snapshot_ts,
         signal_id=signal_id,
         qty_contracts=1,  # hard-capped paper default
@@ -251,8 +265,7 @@ def evaluate_footprint(state: FootprintAbsorptionState,
     )
 
 
-def make_footprint_strategy(config: FootprintAbsorptionConfig | None = None,
-                              *, symbol: str = "MNQ") -> Any:
+def make_footprint_strategy(config: FootprintAbsorptionConfig | None = None, *, symbol: str = "MNQ") -> Any:
     """Factory mirror of the registry pattern."""
     cfg = config or FootprintAbsorptionConfig()
     state = FootprintAbsorptionState()

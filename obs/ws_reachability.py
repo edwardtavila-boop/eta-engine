@@ -43,9 +43,10 @@ from enum import StrEnum
 
 class EndpointStatus(StrEnum):
     """Coarse health buckets used for routing + alert payloads."""
-    HEALTHY     = "HEALTHY"      # RTT below threshold + recent frames
-    DEGRADED    = "DEGRADED"     # RTT elevated OR frames slow but not stale
-    STALE       = "STALE"        # last frame older than stale_after_seconds
+
+    HEALTHY = "HEALTHY"  # RTT below threshold + recent frames
+    DEGRADED = "DEGRADED"  # RTT elevated OR frames slow but not stale
+    STALE = "STALE"  # last frame older than stale_after_seconds
     UNREACHABLE = "UNREACHABLE"  # no successful ping in unreachable_after_seconds
 
 
@@ -60,21 +61,22 @@ class EndpointHealth:
 
     Thread-safety: NOT thread-safe; use one instance per asyncio task.
     """
+
     name: str
     url: str
     # Tunables (caller may override per-endpoint in ctor):
-    rtt_warn_ms:               float = 250.0   # > this -> DEGRADED
-    rtt_unreachable_ms:        float = 2000.0  # > this -> UNREACHABLE
-    stale_after_seconds:       float = 30.0    # frame-age -> STALE
-    unreachable_after_seconds: float = 90.0    # no successful ping -> UNREACHABLE
-    rtt_window:                int   = 16      # rolling samples for median RTT
+    rtt_warn_ms: float = 250.0  # > this -> DEGRADED
+    rtt_unreachable_ms: float = 2000.0  # > this -> UNREACHABLE
+    stale_after_seconds: float = 30.0  # frame-age -> STALE
+    unreachable_after_seconds: float = 90.0  # no successful ping -> UNREACHABLE
+    rtt_window: int = 16  # rolling samples for median RTT
     # State (auto-managed):
     _rtt_samples_ms: list[float] = field(default_factory=list)
-    _last_frame_at:  float       = 0.0
-    _last_ping_at:   float       = 0.0
-    _last_pong_at:   float       = 0.0
-    _connected:      bool        = False
-    _last_status:    EndpointStatus = EndpointStatus.UNREACHABLE
+    _last_frame_at: float = 0.0
+    _last_ping_at: float = 0.0
+    _last_pong_at: float = 0.0
+    _connected: bool = False
+    _last_status: EndpointStatus = EndpointStatus.UNREACHABLE
 
     # ------------------------------------------------------------------
     # State updates -- caller invokes from real WS callbacks
@@ -105,7 +107,7 @@ class EndpointHealth:
             rtt_ms = max(0.0, (n - self._last_ping_at) * 1000.0)
             self._rtt_samples_ms.append(rtt_ms)
             if len(self._rtt_samples_ms) > self.rtt_window:
-                self._rtt_samples_ms = self._rtt_samples_ms[-self.rtt_window:]
+                self._rtt_samples_ms = self._rtt_samples_ms[-self.rtt_window :]
 
     # ------------------------------------------------------------------
     # Read-only accessors
@@ -156,14 +158,14 @@ class EndpointHealth:
     def snapshot(self, now: float | None = None) -> dict[str, object]:
         n = now if now is not None else time.time()
         return {
-            "name":              self.name,
-            "url":               self.url,
-            "status":            self.status(n).value,
-            "connected":         self._connected,
-            "rtt_ms_median":     self.median_rtt_ms(),
-            "rtt_samples":       len(self._rtt_samples_ms),
+            "name": self.name,
+            "url": self.url,
+            "status": self.status(n).value,
+            "connected": self._connected,
+            "rtt_ms_median": self.median_rtt_ms(),
+            "rtt_samples": len(self._rtt_samples_ms),
             "frame_age_seconds": self.frame_age_seconds(n),
-            "ping_age_seconds":  self.ping_age_seconds(n),
+            "ping_age_seconds": self.ping_age_seconds(n),
         }
 
 
@@ -201,35 +203,32 @@ class ReachabilityMonitor:
         Tie-break: most recently observed frame.
         """
         n = now if now is not None else time.time()
-        healthy = [e for e in self._endpoints.values()
-                   if e.status(n) == EndpointStatus.HEALTHY]
+        healthy = [e for e in self._endpoints.values() if e.status(n) == EndpointStatus.HEALTHY]
         if not healthy:
             return None
+
         # Sort by (median_rtt_or_inf, -frame_age) so smallest RTT wins,
         # then most-recent-frame wins as tie-break.
         def _key(e: EndpointHealth) -> tuple[float, float]:
             rtt = e.median_rtt_ms()
-            return (rtt if rtt is not None else float("inf"),
-                    e.frame_age_seconds(n))
+            return (rtt if rtt is not None else float("inf"), e.frame_age_seconds(n))
+
         healthy.sort(key=_key)
         return healthy[0]
 
     def degraded(self, now: float | None = None) -> list[EndpointHealth]:
         """Return endpoints whose status is anything other than HEALTHY."""
         n = now if now is not None else time.time()
-        return [e for e in self._endpoints.values()
-                if e.status(n) != EndpointStatus.HEALTHY]
+        return [e for e in self._endpoints.values() if e.status(n) != EndpointStatus.HEALTHY]
 
     def snapshot(self, now: float | None = None) -> dict[str, object]:
         n = now if now is not None else time.time()
         endpoints = [e.snapshot(n) for e in self._endpoints.values()]
         preferred = self.preferred(n)
         return {
-            "preferred":   preferred.name if preferred else None,
-            "endpoints":   endpoints,
-            "all_healthy": all(
-                e["status"] == EndpointStatus.HEALTHY.value for e in endpoints
-            ) if endpoints else False,
+            "preferred": preferred.name if preferred else None,
+            "endpoints": endpoints,
+            "all_healthy": all(e["status"] == EndpointStatus.HEALTHY.value for e in endpoints) if endpoints else False,
         }
 
 
@@ -241,10 +240,11 @@ class ReachabilityMonitor:
 @dataclass
 class FailoverEvent:
     """Emitted by :meth:`PrimaryBackupRouter.poll` on active-endpoint change."""
+
     from_name: str
-    to_name:   str
-    reason:    str  # short human string, e.g. "primary STALE; backup HEALTHY"
-    at:        float
+    to_name: str
+    reason: str  # short human string, e.g. "primary STALE; backup HEALTHY"
+    at: float
 
 
 class PrimaryBackupRouter:
@@ -259,11 +259,11 @@ class PrimaryBackupRouter:
     def __init__(
         self,
         primary: EndpointHealth,
-        backup:  EndpointHealth,
+        backup: EndpointHealth,
         recovery_grace_seconds: float = 60.0,
     ) -> None:
         self.primary = primary
-        self.backup  = backup
+        self.backup = backup
         self.recovery_grace_seconds = recovery_grace_seconds
         self._active_name = primary.name
         # When the primary first reaches HEALTHY *while we're on backup*,
@@ -278,20 +278,18 @@ class PrimaryBackupRouter:
         n = now if now is not None else time.time()
         active = self.active()
         primary_status = self.primary.status(n)
-        backup_status  = self.backup.status(n)
+        backup_status = self.backup.status(n)
 
         # Currently on primary:
         if self._active_name == self.primary.name:
             # Stay on primary unless primary degraded AND backup is healthy.
-            if primary_status != EndpointStatus.HEALTHY \
-                    and backup_status == EndpointStatus.HEALTHY:
+            if primary_status != EndpointStatus.HEALTHY and backup_status == EndpointStatus.HEALTHY:
                 self._active_name = self.backup.name
                 self._primary_recovered_at = None
                 return FailoverEvent(
                     from_name=self.primary.name,
                     to_name=self.backup.name,
-                    reason=f"primary {primary_status.value}; "
-                           f"backup {backup_status.value}",
+                    reason=f"primary {primary_status.value}; backup {backup_status.value}",
                     at=n,
                 )
             return None

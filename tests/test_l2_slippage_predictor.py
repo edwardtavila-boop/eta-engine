@@ -24,30 +24,36 @@ def test_train_model_builds_bucket_from_stop_fills(tmp_path) -> None:
     now = datetime.now(UTC)
     fill_path = tmp_path / "fills.jsonl"
     signal_path = tmp_path / "signals.jsonl"
-    _jsonl(fill_path, [
-        {
-            "ts": now.isoformat(),
-            "signal_id": "sig-1",
-            "exit_reason": "STOP",
-            "slip_ticks_vs_intended": 1.5,
-            "qty_filled": 2,
-        },
-        {
-            "ts": now.isoformat(),
-            "signal_id": "sig-1",
-            "exit_reason": "STOP",
-            "slip_ticks_vs_intended": 2.5,
-            "qty_filled": 2,
-        },
-    ])
-    _jsonl(signal_path, [
-        {
-            "ts": now.isoformat(),
-            "signal_id": "sig-1",
-            "regime": "NORMAL",
-            "vol_proxy": 1.0,
-        },
-    ])
+    _jsonl(
+        fill_path,
+        [
+            {
+                "ts": now.isoformat(),
+                "signal_id": "sig-1",
+                "exit_reason": "STOP",
+                "slip_ticks_vs_intended": 1.5,
+                "qty_filled": 2,
+            },
+            {
+                "ts": now.isoformat(),
+                "signal_id": "sig-1",
+                "exit_reason": "STOP",
+                "slip_ticks_vs_intended": 2.5,
+                "qty_filled": 2,
+            },
+        ],
+    )
+    _jsonl(
+        signal_path,
+        [
+            {
+                "ts": now.isoformat(),
+                "signal_id": "sig-1",
+                "regime": "NORMAL",
+                "vol_proxy": 1.0,
+            },
+        ],
+    )
 
     model = slip.train_model(_fill_path=fill_path, _signal_path=signal_path)
 

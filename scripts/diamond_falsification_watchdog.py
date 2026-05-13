@@ -89,11 +89,11 @@ RETIREMENT_THRESHOLDS_USD: dict[str, float] = {
     # Set conservatively at ~3x typical-stopout USD for each contract.
     # These get tightened once 30 calendar days of live data accumulate.
     # Wave-16: volume_profile_btc removed (Alpaca spot, cellared).
-    "met_sweep_reclaim":    -500.0,   # MET ($0.10/pt ETH) — CME micro crypto
+    "met_sweep_reclaim": -500.0,  # MET ($0.10/pt ETH) — CME micro crypto
     "mes_sweep_reclaim_v2": -1000.0,  # MES ($5/pt) — CME micro index
-    "mes_sweep_reclaim":    -1000.0,  # MES same contract, different tuning
-    "eur_range":            -300.0,   # 6E ($125k notional) — tight like eur_sweep
-    "ng_sweep_reclaim":     -800.0,   # NG ($10k/contract) — wide stops needed for vol
+    "mes_sweep_reclaim": -1000.0,  # MES same contract, different tuning
+    "eur_range": -300.0,  # 6E ($125k notional) — tight like eur_sweep
+    "ng_sweep_reclaim": -800.0,  # NG ($10k/contract) — wide stops needed for vol
 }
 
 #: R-multiple retirement thresholds — complementary to USD basis.
@@ -129,11 +129,11 @@ RETIREMENT_THRESHOLDS_R: dict[str, float] = {
     # Computed as ~ -0.25 * cum_r baseline (gives operator
     # ~25% drawdown room before the floor trips).
     # Wave-16: volume_profile_btc removed (Alpaca spot, cellared).
-    "met_sweep_reclaim":    -10.0,  # +136R baseline → -10R floor
+    "met_sweep_reclaim": -10.0,  # +136R baseline → -10R floor
     "mes_sweep_reclaim_v2": -10.0,  # +136R baseline → -10R floor
-    "mes_sweep_reclaim":    -5.0,   # +56R baseline → -5R floor
-    "eur_range":            -5.0,   # +64R baseline → -5R floor
-    "ng_sweep_reclaim":     -8.0,   # +91R baseline → -8R floor
+    "mes_sweep_reclaim": -5.0,  # +56R baseline → -5R floor
+    "eur_range": -5.0,  # +64R baseline → -5R floor
+    "ng_sweep_reclaim": -8.0,  # +91R baseline → -8R floor
 }
 
 

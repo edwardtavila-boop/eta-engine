@@ -1,4 +1,5 @@
 """Test the EXACT submit_entry path the supervisor uses."""
+
 import asyncio
 import json
 from pathlib import Path
@@ -6,7 +7,7 @@ from pathlib import Path
 from eta_engine.scripts.jarvis_strategy_supervisor import BotInstance, ExecutionRouter, SupervisorConfig
 
 
-async def main():
+async def main() -> None:
     print("=== Testing submit_entry execution path ===\n")
 
     # Setup
@@ -43,5 +44,6 @@ async def main():
     print("\nPending files:")
     for f in sorted(bf_dir.glob("*.pending_order.json")):
         print(f"  {f.name}: {json.loads(f.read_text())}")
+
 
 asyncio.run(main())

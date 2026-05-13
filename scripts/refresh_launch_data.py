@@ -153,18 +153,20 @@ def build_plan(
         ),
     ]
     if not skip_optional:
-        plan.extend([
-            PlanStep(
-                "fear_greed_macro",
-                [py, "-m", "eta_engine.scripts.fetch_fear_greed_alternative"],
-                required=False,
-            ),
-            PlanStep(
-                "sol_onchain",
-                [py, "-m", "eta_engine.scripts.fetch_onchain_history", "--symbol", "SOL"],
-                required=False,
-            ),
-        ])
+        plan.extend(
+            [
+                PlanStep(
+                    "fear_greed_macro",
+                    [py, "-m", "eta_engine.scripts.fetch_fear_greed_alternative"],
+                    required=False,
+                ),
+                PlanStep(
+                    "sol_onchain",
+                    [py, "-m", "eta_engine.scripts.fetch_onchain_history", "--symbol", "SOL"],
+                    required=False,
+                ),
+            ]
+        )
     if not skip_inventory:
         plan.append(PlanStep("announce_data_library", [py, "-m", "eta_engine.scripts.announce_data_library"]))
     if not skip_verify:

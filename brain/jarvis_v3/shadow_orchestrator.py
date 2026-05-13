@@ -5,6 +5,7 @@ ShadowPaperTracker → PromotionGate evaluation.
 
 Runs alongside the Jarvis daemon in the same process.
 """
+
 from __future__ import annotations
 
 import json
@@ -88,13 +89,15 @@ class ShadowOrchestrator:
                 is_win=self._estimate_win(sig),
                 regime=sig.regime,
             )
-            results.append({
-                "bot_id": sig.bot_id,
-                "strategy_id": sig.strategy_id,
-                "side": sig.side,
-                "entry": sig.entry_price,
-                "pnl_r": round(self._estimate_r(sig), 3),
-            })
+            results.append(
+                {
+                    "bot_id": sig.bot_id,
+                    "strategy_id": sig.strategy_id,
+                    "side": sig.side,
+                    "entry": sig.entry_price,
+                    "pnl_r": round(self._estimate_r(sig), 3),
+                }
+            )
 
         # Evaluate promotions every 10 ticks
         if i > 0 and i % 10 == 0:
@@ -126,17 +129,19 @@ class ShadowOrchestrator:
             direction = "long" if close > open_ else "short"
             if i % 5 == 0:  # throttle: one signal every 5 ticks
                 atr = (high - low) * 0.5
-                signals.append(ShadowSignal(
-                    bot_id="mnq_futures",
-                    strategy_id="mnq_orb_v2",
-                    symbol="MNQ",
-                    side=direction,
-                    qty=1,
-                    entry_price=close,
-                    stop_price=close - atr * 2 if direction == "long" else close + atr * 2,
-                    target_price=close + atr * 3 if direction == "long" else close - atr * 3,
-                    regime="intraday",
-                ))
+                signals.append(
+                    ShadowSignal(
+                        bot_id="mnq_futures",
+                        strategy_id="mnq_orb_v2",
+                        symbol="MNQ",
+                        side=direction,
+                        qty=1,
+                        entry_price=close,
+                        stop_price=close - atr * 2 if direction == "long" else close + atr * 2,
+                        target_price=close + atr * 3 if direction == "long" else close - atr * 3,
+                        regime="intraday",
+                    )
+                )
 
         # BTC strategy: simple trend
         btc = bars.get("BTC", {})
@@ -145,17 +150,19 @@ class ShadowOrchestrator:
             open_ = btc["open"]
             direction = "long" if close > open_ else "short"
             if i % 8 == 0:
-                signals.append(ShadowSignal(
-                    bot_id="btc_sage_daily_etf",
-                    strategy_id="btc_orb_v1",
-                    symbol="BTC",
-                    side=direction,
-                    qty=1,
-                    entry_price=close,
-                    stop_price=close * 0.98 if direction == "long" else close * 1.02,
-                    target_price=close * 1.03 if direction == "long" else close * 0.97,
-                    regime="trend",
-                ))
+                signals.append(
+                    ShadowSignal(
+                        bot_id="btc_sage_daily_etf",
+                        strategy_id="btc_orb_v1",
+                        symbol="BTC",
+                        side=direction,
+                        qty=1,
+                        entry_price=close,
+                        stop_price=close * 0.98 if direction == "long" else close * 1.02,
+                        target_price=close * 1.03 if direction == "long" else close * 0.97,
+                        regime="trend",
+                    )
+                )
 
         return signals
 
@@ -182,7 +189,8 @@ class ShadowOrchestrator:
         try:
             self.state_path.parent.mkdir(parents=True, exist_ok=True)
             self.state_path.write_text(
-                json.dumps(self.summary(), indent=2), encoding="utf-8",
+                json.dumps(self.summary(), indent=2),
+                encoding="utf-8",
             )
         except OSError as exc:
             logger.warning("shadow_orch: save failed: %s", exc)

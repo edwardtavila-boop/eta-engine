@@ -19,6 +19,7 @@ A pyramid request flows through ``can_add_now()`` -- which is a
 pure function that returns ``AddDecision(allowed, reason)`` so the
 bot or JARVIS can audit each decision without side effects.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -71,7 +72,8 @@ def can_add_now(
     # Cap on adds
     if state.adds_so_far >= plan.max_adds:
         return AddDecision(
-            allowed=False, reason_code="max_adds_reached",
+            allowed=False,
+            reason_code="max_adds_reached",
             reason=f"already added {state.adds_so_far} times (max {plan.max_adds})",
         )
 
@@ -80,7 +82,8 @@ def can_add_now(
         delta_min = (now - state.last_add_ts).total_seconds() / 60
         if delta_min < plan.min_minutes_between:
             return AddDecision(
-                allowed=False, reason_code="too_soon",
+                allowed=False,
+                reason_code="too_soon",
                 reason=f"{delta_min:.1f}m since last add (min {plan.min_minutes_between}m)",
             )
 
@@ -93,18 +96,23 @@ def can_add_now(
         progress_r = progress / state.initial_stop_distance_r
         if progress_r < plan.min_progress_r:
             return AddDecision(
-                allowed=False, reason_code="insufficient_r_progress",
+                allowed=False,
+                reason_code="insufficient_r_progress",
                 reason=f"only {progress_r:.2f}R favorable since last add (need {plan.min_progress_r}R)",
             )
 
     return AddDecision(
-        allowed=True, reason_code="approved",
+        allowed=True,
+        reason_code="approved",
         reason=f"pyramid add #{state.adds_so_far + 1} approved",
     )
 
 
 def commit_add(
-    state: PyramidState, *, at_price: float, when: datetime | None = None,
+    state: PyramidState,
+    *,
+    at_price: float,
+    when: datetime | None = None,
 ) -> PyramidState:
     """Update state after a confirmed pyramid add."""
     now = when or datetime.now(UTC)

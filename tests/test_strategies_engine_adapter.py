@@ -434,9 +434,7 @@ class TestRegistryKillSwitchChokepoint:
         adapter = RouterAdapter(asset="MNQ", bot_id="xrp_perp")
         out = adapter.push_bar(_bar_dict(0))
         assert out is None
-        assert adapter.last_decision is None, (
-            "muted bots must not record a dispatch decision either"
-        )
+        assert adapter.last_decision is None, "muted bots must not record a dispatch decision either"
 
     def test_active_bot_runs_normally(self) -> None:
         # Pin history:

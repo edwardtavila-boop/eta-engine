@@ -99,7 +99,9 @@ def _sol_round2() -> tuple[Candidate, ...]:
     cells: list[Candidate] = []
     # Bollinger+RSI mean-reversion: wider parameter ranges
     for bb, rsi_lo, rsi_hi in product(
-        (1.5, 2.0, 2.5, 3.0), (20.0, 25.0, 30.0), (70.0, 75.0, 80.0),
+        (1.5, 2.0, 2.5, 3.0),
+        (20.0, 25.0, 30.0),
+        (70.0, 75.0, 80.0),
     ):
         cells.append(
             Candidate(
@@ -153,7 +155,8 @@ def _grid_round2() -> tuple[Candidate, ...]:
     """Tighter spacing for BTC 1h's typical 0.1-0.3pct micro-moves."""
     cells = []
     for spacing_pct, n_levels in product(
-        (0.001, 0.002, 0.003, 0.005), (4, 6, 8),
+        (0.001, 0.002, 0.003, 0.005),
+        (4, 6, 8),
     ):
         cells.append(
             Candidate(
@@ -237,7 +240,9 @@ def main() -> int:
     p = argparse.ArgumentParser(prog="fleet_strategy_optimizer_round2")
     p.add_argument("--only-bot", default=None)
     p.add_argument(
-        "--out-dir", type=Path, default=ROOT / "docs" / "research_log",
+        "--out-dir",
+        type=Path,
+        default=ROOT / "docs" / "research_log",
     )
     args = p.parse_args()
 
@@ -276,8 +281,7 @@ def main() -> int:
                     f"dsr_pass={r.fold_dsr_pass_fraction * 100:4.1f}%"
                 )
             print(
-                f"  [{i + 1:2d}/{len(plan.candidates)}] "
-                f"{cand.kind}:{cand.label:30}  {tag}",
+                f"  [{i + 1:2d}/{len(plan.candidates)}] {cand.kind}:{cand.label:30}  {tag}",
             )
         per_bot[plan.bot_id] = results
         ranked = _rank(results)
@@ -291,9 +295,7 @@ def main() -> int:
         else:
             best = ranked[0]
             print(
-                f"  -> NO PASS; closest: "
-                f"{best.candidate.kind}:{best.candidate.label} "
-                f"OOS={best.agg_oos_sharpe:+.2f}",
+                f"  -> NO PASS; closest: {best.candidate.kind}:{best.candidate.label} OOS={best.agg_oos_sharpe:+.2f}",
             )
         print()
 

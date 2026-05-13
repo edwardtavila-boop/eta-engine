@@ -38,6 +38,7 @@ Usage (scheduled — Windows Task Scheduler runs daily 06:00 UTC):
     schtasks /Create /TN "ETA-Kaizen-Loop" /SC DAILY /ST 06:00 ^
         /TR "python -m eta_engine.scripts.kaizen_loop --apply"
 """
+
 from __future__ import annotations
 
 import argparse
@@ -82,6 +83,7 @@ def _run_elite_scoreboard(since_iso: str | None) -> dict[str, Any]:
     """Run the per-bot tier classification."""
     try:
         from eta_engine.scripts import elite_scoreboard
+
         return elite_scoreboard.analyze(since_iso=since_iso)
     except Exception as exc:  # noqa: BLE001
         logger.exception("elite_scoreboard failed: %s", exc)
@@ -92,8 +94,11 @@ def _run_monte_carlo(since_iso: str | None, bootstraps: int) -> dict[str, Any]:
     """Run the bootstrap robustness validator."""
     try:
         from eta_engine.scripts import monte_carlo_validator
+
         return monte_carlo_validator.analyze(
-            since_iso=since_iso, bootstraps=bootstraps, seed=42,
+            since_iso=since_iso,
+            bootstraps=bootstraps,
+            seed=42,
         )
     except Exception as exc:  # noqa: BLE001
         logger.exception("monte_carlo_validator failed: %s", exc)
@@ -104,6 +109,7 @@ def _read_edge_tracker_snapshot() -> dict[str, Any]:
     """Pull the live per-school edge attribution."""
     try:
         from eta_engine.brain.jarvis_v3.sage.edge_tracker import default_tracker
+
         return default_tracker().snapshot()
     except Exception as exc:  # noqa: BLE001
         logger.warning("edge_tracker snapshot failed: %s", exc)
@@ -164,52 +170,67 @@ def _action_queue(per_bot: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
         if tier == "INSUFFICIENT" or n < 30:
             continue
 
-        if (
-            tier in {"MIXED", "DECAY"}
-            and mc in {"DEAD", "MIXED"}
-            and exp_r < 0
-        ):
-            actions.append({
-                "bot_id": bot_id, "action": "RETIRE",
-                "reason": (
-                    f"tier={tier} mc={mc} expR={exp_r:+.4f} n={n} — "
-                    "negative expectancy + MC confirms no edge"
-                ),
-                "tier": tier, "mc_verdict": mc,
-                "expectancy_r": exp_r, "n": n,
-                "auto_apply_safe": True,
-            })
+        if tier in {"MIXED", "DECAY"} and mc in {"DEAD", "MIXED"} and exp_r < 0:
+            actions.append(
+                {
+                    "bot_id": bot_id,
+                    "action": "RETIRE",
+                    "reason": (
+                        f"tier={tier} mc={mc} expR={exp_r:+.4f} n={n} — negative expectancy + MC confirms no edge"
+                    ),
+                    "tier": tier,
+                    "mc_verdict": mc,
+                    "expectancy_r": exp_r,
+                    "n": n,
+                    "auto_apply_safe": True,
+                }
+            )
             continue
 
         if tier == "ELITE" and mc == "ROBUST" and luck < 0.05:
-            actions.append({
-                "bot_id": bot_id, "action": "SCALE_UP",
-                "reason": (
-                    f"tier=ELITE mc=ROBUST luck={luck:.3f} — true producer; "
-                    "operator should consider capital increase"
-                ),
-                "tier": tier, "mc_verdict": mc,
-                "luck_score": luck, "n": n,
-                "auto_apply_safe": False,  # capital changes need operator
-            })
+            actions.append(
+                {
+                    "bot_id": bot_id,
+                    "action": "SCALE_UP",
+                    "reason": (
+                        f"tier=ELITE mc=ROBUST luck={luck:.3f} — true producer; "
+                        "operator should consider capital increase"
+                    ),
+                    "tier": tier,
+                    "mc_verdict": mc,
+                    "luck_score": luck,
+                    "n": n,
+                    "auto_apply_safe": False,  # capital changes need operator
+                }
+            )
             continue
 
         if tier == "DECAY" or mc == "LUCKY":
-            actions.append({
-                "bot_id": bot_id, "action": "MONITOR",
-                "reason": f"tier={tier} mc={mc} — needs more observations",
-                "tier": tier, "mc_verdict": mc, "n": n,
-                "auto_apply_safe": False,
-            })
+            actions.append(
+                {
+                    "bot_id": bot_id,
+                    "action": "MONITOR",
+                    "reason": f"tier={tier} mc={mc} — needs more observations",
+                    "tier": tier,
+                    "mc_verdict": mc,
+                    "n": n,
+                    "auto_apply_safe": False,
+                }
+            )
             continue
 
         if tier in {"PRODUCER", "MARGINAL"} or mc == "FRAGILE":
-            actions.append({
-                "bot_id": bot_id, "action": "EVOLVE",
-                "reason": f"tier={tier} mc={mc} — work on parameter tuning",
-                "tier": tier, "mc_verdict": mc, "n": n,
-                "auto_apply_safe": False,
-            })
+            actions.append(
+                {
+                    "bot_id": bot_id,
+                    "action": "EVOLVE",
+                    "reason": f"tier={tier} mc={mc} — work on parameter tuning",
+                    "tier": tier,
+                    "mc_verdict": mc,
+                    "n": n,
+                    "auto_apply_safe": False,
+                }
+            )
 
     return actions
 
@@ -285,12 +306,16 @@ def _apply_kaizen_deactivation(bot_id: str, action_record: dict[str, Any]) -> No
             "n": action_record.get("n"),
         }
         _OVERRIDES_PATH.write_text(
-            json.dumps(data, indent=2, default=str), encoding="utf-8",
+            json.dumps(data, indent=2, default=str),
+            encoding="utf-8",
         )
         logger.info(
             "kaizen-deactivated %s (tier=%s mc=%s expR=%s n=%s)",
-            bot_id, action_record.get("tier"), action_record.get("mc_verdict"),
-            action_record.get("expectancy_r"), action_record.get("n"),
+            bot_id,
+            action_record.get("tier"),
+            action_record.get("mc_verdict"),
+            action_record.get("expectancy_r"),
+            action_record.get("n"),
         )
     except OSError as exc:
         logger.warning("kaizen override write failed for %s: %s", bot_id, exc)
@@ -359,16 +384,18 @@ def run_loop(
     # Write action records (HELD or APPLIED) for next-run cross-check.
     for a in actions:
         if a["action"] == "RETIRE":
-            _append_action_log({
-                "ts": datetime.now(UTC).isoformat(),
-                "action": "RETIRE",
-                "bot_id": a["bot_id"],
-                "reason": a["reason"],
-                "tier": a.get("tier"),
-                "mc_verdict": a.get("mc_verdict"),
-                "expectancy_r": a.get("expectancy_r"),
-                "status": a.get("status", "RECOMMENDED"),
-            })
+            _append_action_log(
+                {
+                    "ts": datetime.now(UTC).isoformat(),
+                    "action": "RETIRE",
+                    "bot_id": a["bot_id"],
+                    "reason": a["reason"],
+                    "tier": a.get("tier"),
+                    "mc_verdict": a.get("mc_verdict"),
+                    "expectancy_r": a.get("expectancy_r"),
+                    "status": a.get("status", "RECOMMENDED"),
+                }
+            )
 
     # Tier rollups
     tier_counts: dict[str, int] = defaultdict(int)
@@ -386,14 +413,16 @@ def run_loop(
     for school, snap in (edge or {}).items():
         n_obs = int(snap.get("n_obs", 0))
         if n_obs >= 5:
-            school_edges.append({
-                "school": school,
-                "n_obs": n_obs,
-                "hit_rate": snap.get("hit_rate"),
-                "avg_r": snap.get("avg_r"),
-                "expectancy": snap.get("expectancy"),
-                "weight_modifier": snap.get("weight_modifier"),
-            })
+            school_edges.append(
+                {
+                    "school": school,
+                    "n_obs": n_obs,
+                    "hit_rate": snap.get("hit_rate"),
+                    "avg_r": snap.get("avg_r"),
+                    "expectancy": snap.get("expectancy"),
+                    "weight_modifier": snap.get("weight_modifier"),
+                }
+            )
     school_edges.sort(key=lambda r: -float(r.get("expectancy") or 0))
 
     # JARVIS Supercharge overnight maintenance —
@@ -405,6 +434,7 @@ def run_loop(
     # rest of the kaizen pass.
     try:
         from eta_engine.brain.jarvis_v3 import hot_learner
+
         hot_learner.decay_overnight()
     except Exception as exc:  # noqa: BLE001
         logger.warning("hot_learner.decay_overnight failed: %s", exc)
@@ -412,21 +442,18 @@ def run_loop(
     wiring_statuses: list[Any] = []
     try:
         from eta_engine.scripts import jarvis_wiring_audit
+
         wiring_statuses = jarvis_wiring_audit.audit()
     except Exception as exc:  # noqa: BLE001
         logger.warning("jarvis_wiring_audit.audit failed: %s", exc)
 
     dark_modules = [
-        s for s in wiring_statuses
-        if getattr(s, "expected_to_fire", False)
-        and getattr(s, "dark_for_days", 0) >= 7
+        s for s in wiring_statuses if getattr(s, "expected_to_fire", False) and getattr(s, "dark_for_days", 0) >= 7
     ]
     wiring_summary = {
         "n_dark_modules": len(dark_modules),
         "dark_modules": [getattr(s, "module", "") for s in dark_modules],
-        "n_total_expected_to_fire": sum(
-            1 for s in wiring_statuses if getattr(s, "expected_to_fire", False)
-        ),
+        "n_total_expected_to_fire": sum(1 for s in wiring_statuses if getattr(s, "expected_to_fire", False)),
         "n_total_modules": len(wiring_statuses),
     }
 
@@ -446,11 +473,14 @@ def run_loop(
     }
     try:
         from eta_engine.brain.jarvis_v3 import hermes_client  # type: ignore[import-not-found]
+
         hermes_health["hermes_available"] = hermes_client.health()
         # Backoff state is module-level inside hermes_client; expose
         # via a helper if it's defined, else fall back to False.
         hermes_health["backoff_active"] = getattr(
-            hermes_client, "_backoff_active_for_kaizen", lambda: False,
+            hermes_client,
+            "_backoff_active_for_kaizen",
+            lambda: False,
         )()
     except Exception as exc:  # noqa: BLE001
         logger.warning("hermes_health: hermes_client probe failed: %s", exc)
@@ -529,7 +559,8 @@ def run_loop(
         out.write_text(json.dumps(report, indent=2, default=str), encoding="utf-8")
         _LATEST_PATH.parent.mkdir(parents=True, exist_ok=True)
         _LATEST_PATH.write_text(
-            json.dumps(report, indent=2, default=str), encoding="utf-8",
+            json.dumps(report, indent=2, default=str),
+            encoding="utf-8",
         )
     except OSError as exc:
         logger.warning("kaizen report write failed: %s", exc)
@@ -540,8 +571,7 @@ def run_loop(
 def _print_summary(report: dict[str, Any]) -> None:
     print("=" * 102)
     print(
-        f" KAIZEN LOOP — {report['started_at']}  "
-        f"applied={report['applied']}  bots={report['n_bots']}",
+        f" KAIZEN LOOP — {report['started_at']}  applied={report['applied']}  bots={report['n_bots']}",
     )
     print("=" * 102)
     print(f" tier counts: {report['tier_counts']}")
@@ -591,14 +621,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     with contextlib.suppress(AttributeError, ValueError):
         import sys as _sys
+
         _sys.stdout.reconfigure(errors="replace")  # type: ignore[union-attr]
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--since", default=None,
-                   help="ISO ts filter on trade closes (e.g., post-brake-fix)")
-    p.add_argument("--bootstraps", type=int,
-                   default=int(os.getenv("ETA_KAIZEN_BOOTSTRAPS", "1000")))
-    p.add_argument("--apply", action="store_true",
-                   help="Apply confirmed RETIRE recommendations (2-run confirmation)")
+    p.add_argument("--since", default=None, help="ISO ts filter on trade closes (e.g., post-brake-fix)")
+    p.add_argument("--bootstraps", type=int, default=int(os.getenv("ETA_KAIZEN_BOOTSTRAPS", "1000")))
+    p.add_argument("--apply", action="store_true", help="Apply confirmed RETIRE recommendations (2-run confirmation)")
     p.add_argument("--json", action="store_true")
     args = p.parse_args(argv)
 

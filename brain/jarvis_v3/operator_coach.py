@@ -18,6 +18,7 @@ This is an ADVISORY layer -- it does not block JARVIS. It feeds:
 
 Pure stdlib + math.
 """
+
 from __future__ import annotations
 
 import json
@@ -39,7 +40,7 @@ class CellPosterior:
     regime: str
     session: str
     action: str
-    alpha: int = 1                 # Beta(1,1) prior = uniform
+    alpha: int = 1  # Beta(1,1) prior = uniform
     beta: int = 1
     last_updated: str = ""
 
@@ -66,8 +67,8 @@ class CoachAdvice:
 
     override_probability: float
     n_observations: int
-    recommendation: str            # "auto_proceed" / "soften" / "escalate"
-    suggested_size_shrink: float   # multiplier, 1.0 = no shrink
+    recommendation: str  # "auto_proceed" / "soften" / "escalate"
+    suggested_size_shrink: float  # multiplier, 1.0 = no shrink
     note: str = ""
 
 
@@ -149,20 +150,14 @@ class OperatorCoach:
                 n_observations=cell.n_observations,
                 recommendation="soften",
                 suggested_size_shrink=round(shrink, 3),
-                note=(
-                    f"operator overrides {p:.0%} in this cell; "
-                    f"shrink to {shrink:.0%}"
-                ),
+                note=(f"operator overrides {p:.0%} in this cell; shrink to {shrink:.0%}"),
             )
         return CoachAdvice(
             override_probability=round(p, 3),
             n_observations=cell.n_observations,
             recommendation="escalate",
             suggested_size_shrink=0.0,
-            note=(
-                f"operator overrides {p:.0%} in this cell; "
-                f"escalate before acting"
-            ),
+            note=(f"operator overrides {p:.0%} in this cell; escalate before acting"),
         )
 
     def report(self) -> list[dict]:
@@ -199,7 +194,8 @@ class OperatorCoach:
             self.state_path.parent.mkdir(parents=True, exist_ok=True)
             self.state_path.write_text(
                 json.dumps(
-                    {k: asdict(c) for k, c in self._cells.items()}, indent=2,
+                    {k: asdict(c) for k, c in self._cells.items()},
+                    indent=2,
                 ),
                 encoding="utf-8",
             )

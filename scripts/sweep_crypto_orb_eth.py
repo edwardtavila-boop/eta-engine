@@ -259,13 +259,8 @@ def main() -> int:
             bar_slice=args.bar_slice,
         )
         results.append(r)
-        deg_str = (
-            f"deg={r.avg_oos_degradation * 100:>5.1f}%"
-            if r.n_windows else "no_data"
-        )
-        flag = "PASS" if r.pass_gate else (
-            "near" if (r.avg_oos_degradation < 0.35 and r.agg_oos_sharpe > 0) else ""
-        )
+        deg_str = f"deg={r.avg_oos_degradation * 100:>5.1f}%" if r.n_windows else "no_data"
+        flag = "PASS" if r.pass_gate else ("near" if (r.avg_oos_degradation < 0.35 and r.agg_oos_sharpe > 0) else "")
         print(
             f"  {i + 1:2d}/{len(grid)} "
             f"range={cell.range_minutes:>3}m "

@@ -137,12 +137,13 @@ def _open_order_linkage_key(order: dict[str, Any]) -> str:
 
 
 def _open_order_leg_kind(order: dict[str, Any]) -> str:
-    order_type = str(
-        order.get("order_type")
-        or order.get("orderType")
-        or order.get("type")
-        or "",
-    ).strip().upper()
+    order_type = (
+        str(
+            order.get("order_type") or order.get("orderType") or order.get("type") or "",
+        )
+        .strip()
+        .upper()
+    )
     if "STP" in order_type or "STOP" in order_type or "TRAIL" in order_type:
         return "stop"
     if order_type in {"LMT", "LIMIT"} or "LIMIT" in order_type:
@@ -202,9 +203,7 @@ def build_broker_oco_evidence(
     open_orders: list[Any],
 ) -> dict[str, Any]:
     """Conservatively prove broker-native OCO coverage from read-only open orders."""
-    normalized_orders = [
-        order for order in (_normalize_open_order(raw_order) for raw_order in open_orders) if order
-    ]
+    normalized_orders = [order for order in (_normalize_open_order(raw_order) for raw_order in open_orders) if order]
     evidence_rows: list[dict[str, Any]] = []
     for position in positions:
         symbol = _position_symbol(position)
@@ -266,11 +265,7 @@ def build_broker_oco_evidence(
             },
         )
     verified_symbols = sorted(
-        {
-            row["symbol"]
-            for row in evidence_rows
-            if row.get("coverage_status") == "broker_oco_verified"
-        },
+        {row["symbol"] for row in evidence_rows if row.get("coverage_status") == "broker_oco_verified"},
     )
     return {
         "kind": "eta_broker_oco_evidence",
@@ -497,10 +492,7 @@ def _normalize_open_position(
 ) -> dict[str, Any]:
     position = _as_dict(raw_position)
     symbol = str(
-        position.get("symbol")
-        or position.get("localSymbol")
-        or position.get("contractSymbol")
-        or "",
+        position.get("symbol") or position.get("localSymbol") or position.get("contractSymbol") or "",
     ).strip()
     if not symbol:
         return {}
@@ -537,10 +529,12 @@ def _normalize_open_position(
         "market_value": _as_float(position.get("market_value")),
         "unrealized_pnl": _as_float(position.get("unrealized_pnl")),
     }
-    normalized["broker_bracket_required"] = _position_requires_broker_bracket({
-        **position,
-        **normalized,
-    })
+    normalized["broker_bracket_required"] = _position_requires_broker_bracket(
+        {
+            **position,
+            **normalized,
+        }
+    )
     normalized["coverage_status"] = "requires_manual_oco_verification"
     return normalized
 
@@ -620,10 +614,7 @@ def _manual_ack_covers(
     *,
     now: datetime | None = None,
 ) -> bool:
-    return any(
-        _single_manual_ack_covers(position, entry, now=now)
-        for entry in _manual_ack_entries(manual_ack)
-    )
+    return any(_single_manual_ack_covers(position, entry, now=now) for entry in _manual_ack_entries(manual_ack))
 
 
 def _position_coverage_key(position: dict[str, Any]) -> tuple[str, str, str, float | None]:
@@ -666,9 +657,7 @@ def _unprotected_positions(
     if missing_brackets <= 0:
         return []
     positions = [
-        position
-        for position in _candidate_open_positions(fleet)
-        if position.get("broker_bracket_required") is True
+        position for position in _candidate_open_positions(fleet) if position.get("broker_bracket_required") is True
     ]
     return positions[:missing_brackets]
 
@@ -716,8 +705,8 @@ def _operator_actions(summary: str, positions: list[dict[str, Any]]) -> list[dic
             if str(position.get("symbol") or "").strip()
         },
     )
-    descriptor = ", ".join(symbols) if symbols else (
-        _position_descriptor(primary) if primary else "current broker exposure"
+    descriptor = (
+        ", ".join(symbols) if symbols else (_position_descriptor(primary) if primary else "current broker exposure")
     )
     oco_verb = "have" if len(symbols) > 1 else "has"
     symbol = str(primary.get("symbol") or "").strip() or None
@@ -797,9 +786,7 @@ def build_bracket_audit(
         _open_orders_from_fleet(fleet),
     )
     manual_oco_verified_positions = [
-        position
-        for position in candidate_unprotected_positions
-        if _manual_ack_covers(position, manual_ack)
+        position for position in candidate_unprotected_positions if _manual_ack_covers(position, manual_ack)
     ]
     manual_verified_keys = {_position_coverage_key(position) for position in manual_oco_verified_positions}
     broker_oco_verified_positions: list[dict[str, Any]] = []
@@ -828,29 +815,17 @@ def build_bracket_audit(
     position_summary["missing_bracket_count"] = missing_brackets
     position_summary["manual_oco_verified_count"] = len(manual_oco_verified_positions)
     position_summary["manual_oco_verified_symbols"] = sorted(
-        {
-            str(position.get("symbol") or "")
-            for position in manual_oco_verified_positions
-            if position.get("symbol")
-        },
+        {str(position.get("symbol") or "") for position in manual_oco_verified_positions if position.get("symbol")},
     )
     position_summary["broker_oco_verified_count"] = len(broker_oco_verified_positions)
     position_summary["broker_oco_verified_symbols"] = sorted(
-        {
-            str(position.get("symbol") or "")
-            for position in broker_oco_verified_positions
-            if position.get("symbol")
-        },
+        {str(position.get("symbol") or "") for position in broker_oco_verified_positions if position.get("symbol")},
     )
 
     if unprotected_positions:
         position_summary = dict(position_summary)
         position_summary["unprotected_symbols"] = sorted(
-            {
-                str(position.get("symbol") or "")
-                for position in unprotected_positions
-                if position.get("symbol")
-            },
+            {str(position.get("symbol") or "") for position in unprotected_positions if position.get("symbol")},
         )
     adapter_support = _adapter_support()
     adapter_ok = bool(adapter_support.get("ibkr_futures_server_oco")) and bool(
@@ -872,8 +847,7 @@ def build_bracket_audit(
 
     if summary == "BLOCKED_FLEET_TRUTH_UNAVAILABLE":
         next_action = (
-            "Bot-fleet position truth is unavailable; restore /api/bot-fleet before "
-            "treating broker exposure as flat."
+            "Bot-fleet position truth is unavailable; restore /api/bot-fleet before treating broker exposure as flat."
         )
     elif summary == "BLOCKED_UNBRACKETED_EXPOSURE" and missing_brackets > 0:
         next_action = (

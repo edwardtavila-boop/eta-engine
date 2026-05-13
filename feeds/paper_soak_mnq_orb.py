@@ -65,17 +65,17 @@ from eta_engine.strategies.per_bot_registry import get_for_bot  # noqa: E402
 # US market holidays in 2026 + early 2027 — RTH closed.
 # Source: NYSE/CME 2026 calendar. Update ahead of 2027 H1 if soak runs span.
 _US_HOLIDAYS_2026: set[date] = {
-    date(2026, 1, 1),   # New Year
+    date(2026, 1, 1),  # New Year
     date(2026, 1, 19),  # MLK Day
     date(2026, 2, 16),  # Presidents Day
-    date(2026, 4, 3),   # Good Friday
+    date(2026, 4, 3),  # Good Friday
     date(2026, 5, 25),  # Memorial Day
     date(2026, 6, 19),  # Juneteenth
-    date(2026, 7, 3),   # Independence Day (observed)
-    date(2026, 9, 7),   # Labor Day
-    date(2026, 11, 26), # Thanksgiving
-    date(2026, 12, 25), # Christmas
-    date(2027, 1, 1),   # buffer
+    date(2026, 7, 3),  # Independence Day (observed)
+    date(2026, 9, 7),  # Labor Day
+    date(2026, 11, 26),  # Thanksgiving
+    date(2026, 12, 25),  # Christmas
+    date(2027, 1, 1),  # buffer
 }
 
 PAPER_SOAK_DOCS_DIR = ROOT / "docs" / "paper_soak"
@@ -176,9 +176,14 @@ def _redact_account(account_id: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-_SUPPORTED_KINDS: frozenset[str] = frozenset({
-    "orb", "orb_sage_gated", "sage_daily_gated", "crypto_macro_confluence",
-})
+_SUPPORTED_KINDS: frozenset[str] = frozenset(
+    {
+        "orb",
+        "orb_sage_gated",
+        "sage_daily_gated",
+        "crypto_macro_confluence",
+    }
+)
 
 
 def _registry_check(bot_id: str = "mnq_futures") -> tuple[bool, str, dict[str, Any]]:
@@ -206,13 +211,17 @@ def _registry_check(bot_id: str = "mnq_futures") -> tuple[bool, str, dict[str, A
             f"no pinned baseline for {a.strategy_id} in docs/strategy_baselines.json",
             {},
         )
-    return True, "registry + baseline OK", {
-        "bot_id": a.bot_id,
-        "strategy_id": a.strategy_id,
-        "symbol": a.symbol,
-        "timeframe": a.timeframe,
-        "baseline": baseline,
-    }
+    return (
+        True,
+        "registry + baseline OK",
+        {
+            "bot_id": a.bot_id,
+            "strategy_id": a.strategy_id,
+            "symbol": a.symbol,
+            "timeframe": a.timeframe,
+            "baseline": baseline,
+        },
+    )
 
 
 def _ibkr_preflight() -> tuple[bool, str, dict[str, Any]]:
@@ -265,11 +274,15 @@ def _ibkr_preflight() -> tuple[bool, str, dict[str, Any]]:
     if not venue.has_credentials():
         return False, "IBKR venue rejects credentials post-construction", {}
 
-    return True, "IBKR config + credentials OK (paper-account confirmed)", {
-        "venue": "ibkr_paper",
-        "account_id_redacted": _redact_account(cfg.account_id),
-        "endpoint": cfg.base_url,
-    }
+    return (
+        True,
+        "IBKR config + credentials OK (paper-account confirmed)",
+        {
+            "venue": "ibkr_paper",
+            "account_id_redacted": _redact_account(cfg.account_id),
+            "endpoint": cfg.base_url,
+        },
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -289,7 +302,10 @@ def _expected_trade_band(n_sessions: int) -> tuple[int, int]:
 
 
 def build_plan(
-    start: date, days: int, *, bot_id: str = "mnq_futures",
+    start: date,
+    days: int,
+    *,
+    bot_id: str = "mnq_futures",
 ) -> SoakPlan | None:
     """Build a SoakPlan or return None if any pre-flight fails.
 
@@ -312,9 +328,7 @@ def build_plan(
     # 2) Sessions
     sessions = _session_dates(start, days)
     if not sessions:
-        print(
-            f"[FAIL] calendar: 0 RTH session days in {days}d window starting {start}"
-        )
+        print(f"[FAIL] calendar: 0 RTH session days in {days}d window starting {start}")
         sys.exit(3)
     end = sessions[-1]
     print(f"[OK] calendar: {len(sessions)} RTH sessions ({sessions[0]} ->{end})")
@@ -420,9 +434,12 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         "--bot-id",
         default="mnq_futures",
         choices=[
-            "mnq_futures", "mnq_futures_sage",
-            "nq_futures", "nq_futures_sage",
-            "btc_sage_daily_etf", "btc_regime_trend_etf",
+            "mnq_futures",
+            "mnq_futures_sage",
+            "nq_futures",
+            "nq_futures_sage",
+            "btc_sage_daily_etf",
+            "btc_regime_trend_etf",
         ],
         help=(
             "Registry bot id to soak-prep. ORB-family bots use the "

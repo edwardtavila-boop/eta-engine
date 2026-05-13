@@ -159,18 +159,13 @@ class MeanRevertSubStrategy:
         self._bars_seen += 1
         self._regime_ema = _ema_step(self._regime_ema, bar.close, self.cfg.regime_ema)
 
-        if (
-            self._bars_seen < self.cfg.warmup_bars
-            or self._regime_ema is None
-            or len(hist) < self.cfg.atr_period + 1
-        ):
+        if self._bars_seen < self.cfg.warmup_bars or self._regime_ema is None or len(hist) < self.cfg.atr_period + 1:
             return None
         if self._trades_today >= self.cfg.max_trades_per_day:
             return None
         if (
             self._last_entry_idx is not None
-            and (self._bars_seen - self._last_entry_idx)
-            < self.cfg.min_bars_between_trades
+            and (self._bars_seen - self._last_entry_idx) < self.cfg.min_bars_between_trades
         ):
             return None
 
@@ -190,7 +185,7 @@ class MeanRevertSubStrategy:
             return None
 
         # ATR sizing
-        atr_window = hist[-self.cfg.atr_period:] if hist else []
+        atr_window = hist[-self.cfg.atr_period :] if hist else []
         atr = sum(b.high - b.low for b in atr_window) / max(len(atr_window), 1)
         if atr <= 0.0:
             return None
@@ -213,9 +208,15 @@ class MeanRevertSubStrategy:
         from eta_engine.backtest.engine import _Open
 
         opened = _Open(
-            entry_bar=bar, side=side, qty=qty, entry_price=entry_price,
-            stop=stop, target=target, risk_usd=risk_usd,
-            confluence=10.0, leverage=1.0,
+            entry_bar=bar,
+            side=side,
+            qty=qty,
+            entry_price=entry_price,
+            stop=stop,
+            target=target,
+            risk_usd=risk_usd,
+            confluence=10.0,
+            leverage=1.0,
             regime="htf_routed_mean_revert",
         )
         self._last_entry_idx = self._bars_seen
@@ -248,7 +249,8 @@ class HtfRoutedStrategy:
         self._mode_history: deque[str] = deque(maxlen=100)
 
     def attach_htf_classification_provider(
-        self, provider: Callable[[BarData], HtfRegimeClassification] | None,
+        self,
+        provider: Callable[[BarData], HtfRegimeClassification] | None,
     ) -> None:
         """Wire up the HTF classification source.
 
@@ -299,20 +301,14 @@ class HtfRoutedStrategy:
             return None
 
         # HTF bias enforcement (only for trend_follow mode)
-        if (
-            cls.mode == "trend_follow"
-            and self.cfg.enforce_htf_bias_alignment
-            and cls.bias != "neutral"
-        ):
+        if cls.mode == "trend_follow" and self.cfg.enforce_htf_bias_alignment and cls.bias != "neutral":
             htf_side = "BUY" if cls.bias == "long" else "SELL"
             if chosen.side != htf_side:
                 self._rollback_one(chosen, is_trend=True)
                 return None
 
         # Tag regime so the audit trail captures the route
-        new_tag = (
-            f"htf_routed_{cls.mode}_{cls.bias}_{cls.regime}"
-        )
+        new_tag = f"htf_routed_{cls.mode}_{cls.bias}_{cls.regime}"
         return replace(chosen, regime=new_tag)
 
     # -- helpers --------------------------------------------------------------
@@ -328,9 +324,7 @@ class HtfRoutedStrategy:
         s = self._trend if is_trend else self._mean_revert
         s._trades_today = max(0, s._trades_today - 1)
         cooldown = (
-            self.cfg.trend_follow.min_bars_between_trades
-            if is_trend
-            else self.cfg.mean_revert.min_bars_between_trades
+            self.cfg.trend_follow.min_bars_between_trades if is_trend else self.cfg.mean_revert.min_bars_between_trades
         )
         if s._last_entry_idx is not None:
             s._last_entry_idx = s._bars_seen - cooldown - 1

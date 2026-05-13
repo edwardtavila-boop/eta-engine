@@ -21,6 +21,7 @@ Usage::
         hb.tick({"cycle": n, "last_signal": "MNQ"})
         time.sleep(30)
 """
+
 from __future__ import annotations
 
 import json
@@ -79,8 +80,7 @@ class HeartbeatWriter:
         try:
             self.path.write_text(json.dumps(payload, default=str), encoding="utf-8")
         except OSError as exc:
-            logger.warning("heartbeat write failed for %s (%s): %s",
-                           self.name, self.path, exc)
+            logger.warning("heartbeat write failed for %s (%s): %s", self.name, self.path, exc)
         return self.path
 
     def stale(self, threshold_s: float) -> bool:
@@ -88,7 +88,7 @@ class HeartbeatWriter:
         if not self.path.exists():
             return True
         try:
-            age = (datetime.now(UTC).timestamp() - self.path.stat().st_mtime)
+            age = datetime.now(UTC).timestamp() - self.path.stat().st_mtime
             return age > threshold_s
         except OSError:
             return True

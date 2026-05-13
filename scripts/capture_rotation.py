@@ -37,6 +37,7 @@ Run
     python -m eta_engine.scripts.capture_rotation --apply \\
         --keep-days 7 --cold-days 60
 """
+
 from __future__ import annotations
 
 import argparse
@@ -102,20 +103,25 @@ def _gzip_in_place(src: Path) -> Path:
     return dst
 
 
-def _process_kind(d: Path, kind: str, today: date, keep_days: int,
-                  cold_days: int, *, apply: bool) -> dict:
+def _process_kind(d: Path, kind: str, today: date, keep_days: int, cold_days: int, *, apply: bool) -> dict:
     """Walk d, compress files older than keep_days, cold-archive files
     older than cold_days.  Return per-file outcomes."""
     if not d.exists():
-        return {"kind": kind, "dir": str(d), "n_compressed": 0,
-                "n_cold_archived": 0, "actions": [], "note": "dir missing"}
+        return {
+            "kind": kind,
+            "dir": str(d),
+            "n_compressed": 0,
+            "n_cold_archived": 0,
+            "actions": [],
+            "note": "dir missing",
+        }
 
     actions: list[dict] = []
     n_compressed = 0
     n_cold = 0
-    n_would_compress = 0   # D3: count pending work for dashboard
+    n_would_compress = 0  # D3: count pending work for dashboard
     n_would_cold = 0
-    n_unparsed = 0         # files that didn't match the date pattern
+    n_unparsed = 0  # files that didn't match the date pattern
     cold_root = d / "cold"
 
     for p in sorted(d.iterdir()):
@@ -130,8 +136,13 @@ def _process_kind(d: Path, kind: str, today: date, keep_days: int,
             n_unparsed += 1
             continue
         age_days = (today - file_date).days
-        action = {"file": p.name, "age_days": age_days, "size_bytes": p.stat().st_size,
-                  "ext": p.suffix, "outcome": "kept-hot"}
+        action = {
+            "file": p.name,
+            "age_days": age_days,
+            "size_bytes": p.stat().st_size,
+            "ext": p.suffix,
+            "outcome": "kept-hot",
+        }
 
         if p.suffix == ".jsonl" and age_days > keep_days:
             # Compress
@@ -167,8 +178,10 @@ def _process_kind(d: Path, kind: str, today: date, keep_days: int,
         actions.append(action)
 
     return {
-        "kind": kind, "dir": str(d),
-        "n_compressed": n_compressed, "n_cold_archived": n_cold,
+        "kind": kind,
+        "dir": str(d),
+        "n_compressed": n_compressed,
+        "n_cold_archived": n_cold,
         "n_would_compress": n_would_compress,
         "n_would_cold_archived": n_would_cold,
         "n_unparsed": n_unparsed,
@@ -179,21 +192,17 @@ def _process_kind(d: Path, kind: str, today: date, keep_days: int,
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--keep-days", type=int, default=14,
-                    help="Days to keep raw .jsonl hot (default 14)")
-    ap.add_argument("--cold-days", type=int, default=90,
-                    help="Days to keep .gz online before cold-archiving (default 90)")
-    ap.add_argument("--apply", action="store_true",
-                    help="Actually compress + move (default: dry-run)")
-    ap.add_argument("--json", action="store_true",
-                    help="JSON output (machine-readable)")
+    ap.add_argument("--keep-days", type=int, default=14, help="Days to keep raw .jsonl hot (default 14)")
+    ap.add_argument(
+        "--cold-days", type=int, default=90, help="Days to keep .gz online before cold-archiving (default 90)"
+    )
+    ap.add_argument("--apply", action="store_true", help="Actually compress + move (default: dry-run)")
+    ap.add_argument("--json", action="store_true", help="JSON output (machine-readable)")
     args = ap.parse_args()
 
     today = datetime.now(UTC).date()
-    ticks = _process_kind(TICKS_DIR, "ticks", today, args.keep_days,
-                          args.cold_days, apply=args.apply)
-    depth = _process_kind(DEPTH_DIR, "depth", today, args.keep_days,
-                          args.cold_days, apply=args.apply)
+    ticks = _process_kind(TICKS_DIR, "ticks", today, args.keep_days, args.cold_days, apply=args.apply)
+    depth = _process_kind(DEPTH_DIR, "depth", today, args.keep_days, args.cold_days, apply=args.apply)
 
     digest = {
         "ts": datetime.now(UTC).isoformat(),
@@ -212,8 +221,7 @@ def main() -> int:
         with ROTATION_LOG.open("a", encoding="utf-8") as f:
             f.write(json.dumps(digest, separators=(",", ":")) + "\n")
     except OSError as e:
-        print(f"capture_rotation WARN: could not append digest to "
-              f"{ROTATION_LOG}: {e}", file=sys.stderr)
+        print(f"capture_rotation WARN: could not append digest to {ROTATION_LOG}: {e}", file=sys.stderr)
 
     if args.json:
         out = dict(digest)
@@ -223,12 +231,16 @@ def main() -> int:
     else:
         mode = "APPLY" if args.apply else "DRY-RUN"
         print(f"capture-rotation: {mode}")
-        print(f"  ticks dir: {ticks['n_files_total']} files, "
-              f"{ticks['n_compressed']} {'compressed' if args.apply else 'would-compress'}, "
-              f"{ticks['n_cold_archived']} {'archived' if args.apply else 'would-archive'}")
-        print(f"  depth dir: {depth['n_files_total']} files, "
-              f"{depth['n_compressed']} {'compressed' if args.apply else 'would-compress'}, "
-              f"{depth['n_cold_archived']} {'archived' if args.apply else 'would-archive'}")
+        print(
+            f"  ticks dir: {ticks['n_files_total']} files, "
+            f"{ticks['n_compressed']} {'compressed' if args.apply else 'would-compress'}, "
+            f"{ticks['n_cold_archived']} {'archived' if args.apply else 'would-archive'}"
+        )
+        print(
+            f"  depth dir: {depth['n_files_total']} files, "
+            f"{depth['n_compressed']} {'compressed' if args.apply else 'would-compress'}, "
+            f"{depth['n_cold_archived']} {'archived' if args.apply else 'would-archive'}"
+        )
 
     return 0
 

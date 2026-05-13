@@ -50,6 +50,7 @@ Promotion from paper → live requires additionally:
 These criteria are checked by the supercharge orchestrator and
 materialized as per-bot verdicts.
 """
+
 from __future__ import annotations
 
 # ruff: noqa: ANN401
@@ -64,12 +65,13 @@ if TYPE_CHECKING:
 @dataclass(frozen=True)
 class L2StrategyEntry:
     """One L2-aware strategy registration."""
+
     bot_id: str
     strategy_id: str
     symbol: str
     factory: Callable[[], Any]
-    capture_required: bool       # True when no depth = no signals
-    promotion_status: str        # "shadow" | "paper" | "live" | "deactivated"
+    capture_required: bool  # True when no depth = no signals
+    promotion_status: str  # "shadow" | "paper" | "live" | "deactivated"
     # Sizing policy — hard-capped, NEVER derived from equity
     max_qty_contracts: int = 1
     max_daily_loss_dollars: float = 200.0  # circuit breaker
@@ -87,6 +89,7 @@ def _factory_book_imbalance() -> Any:
         BookImbalanceConfig,
         make_book_imbalance_strategy,
     )
+
     cfg = BookImbalanceConfig(
         n_levels=3,
         entry_threshold=1.75,
@@ -106,6 +109,7 @@ def _factory_spread_regime_filter() -> Any:
         SpreadRegimeConfig,
         make_spread_regime_filter,
     )
+
     return make_spread_regime_filter(SpreadRegimeConfig())
 
 
@@ -114,6 +118,7 @@ def _factory_footprint_absorption() -> Any:
         FootprintAbsorptionConfig,
         make_footprint_strategy,
     )
+
     return make_footprint_strategy(
         FootprintAbsorptionConfig(
             prints_size_z_min=1.5,
@@ -130,6 +135,7 @@ def _factory_aggressor_flow() -> Any:
         AggressorFlowConfig,
         make_aggressor_flow_strategy,
     )
+
     return make_aggressor_flow_strategy(
         AggressorFlowConfig(
             window_bars=10,
@@ -146,6 +152,7 @@ def _factory_microprice_drift() -> Any:
         MicropriceConfig,
         make_microprice_strategy,
     )
+
     return make_microprice_strategy(
         MicropriceConfig(
             drift_threshold_ticks=2.0,
@@ -269,7 +276,8 @@ L2_STRATEGIES: tuple[L2StrategyEntry, ...] = (
 
 
 def iter_active_l2_strategies(
-    *, statuses: tuple[str, ...] = ("shadow", "paper", "live"),
+    *,
+    statuses: tuple[str, ...] = ("shadow", "paper", "live"),
 ) -> tuple[L2StrategyEntry, ...]:
     """Iterate L2 strategies currently in one of the given statuses.
     Default returns everything not 'deactivated'."""
@@ -284,7 +292,8 @@ def get_l2_strategy(bot_id: str) -> L2StrategyEntry | None:
 
 
 def required_capture_symbols(
-    *, statuses: tuple[str, ...] = ("shadow", "paper", "live"),
+    *,
+    statuses: tuple[str, ...] = ("shadow", "paper", "live"),
 ) -> tuple[str, ...]:
     """Return the distinct symbols whose capture daemon MUST be alive
     for at least one active L2 strategy.  Caller passes these to
@@ -299,7 +308,8 @@ def required_capture_symbols(
 
 
 def session_start_hook(
-    *, when: datetime | None = None,
+    *,
+    when: datetime | None = None,
     statuses: tuple[str, ...] = ("shadow", "paper", "live"),
 ) -> dict:
     """Call this once at the start of each trading session.
@@ -313,6 +323,7 @@ def session_start_hook(
     degradation when a capture daemon dies mid-session.
     """
     from eta_engine.strategies.l2_overlay import mark_captures_expected
+
     when = when or datetime.now(UTC)
     symbols = required_capture_symbols(statuses=statuses)
     for sym in symbols:

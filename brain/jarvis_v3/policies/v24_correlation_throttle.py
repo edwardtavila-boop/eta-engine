@@ -21,6 +21,7 @@ State is in-process — resets on supervisor restart. That's fine for a
 5-minute window: cold-start risk is low and the supervisor restarts
 infrequently.
 """
+
 from __future__ import annotations
 
 import logging
@@ -70,9 +71,7 @@ def _window_seconds() -> float:
 
 # key: (class, side)  →  deque[timestamp]
 # At most max_concurrent_per_class_side + 1 entries kept (older evicted).
-_RECENT_APPROVALS: dict[tuple[str, str], deque[float]] = defaultdict(
-    lambda: deque(maxlen=10)
-)
+_RECENT_APPROVALS: dict[tuple[str, str], deque[float]] = defaultdict(lambda: deque(maxlen=10))
 
 
 def _prune_old(buffer: deque[float], window_s: float, now: float) -> None:
@@ -96,6 +95,7 @@ def _resolve_class_and_side(req: ActionRequest, ctx: JarvisContext) -> tuple[str
             _INSTRUMENT_CLASS_TO_BROAD,
         )
         from eta_engine.strategies.per_bot_registry import get_for_bot
+
         a = get_for_bot(bot_id)
     except Exception:  # noqa: BLE001
         return ("", "")
@@ -133,6 +133,7 @@ def evaluate_v24(
     if base_resp is None:
         if wrapped_evaluator is None:
             from eta_engine.brain.jarvis_v3.policies.v23_fleet_aware import evaluate_v23
+
             base_resp = evaluate_v23(req, ctx)
         else:
             base_resp = wrapped_evaluator(req, ctx)
@@ -161,26 +162,31 @@ def evaluate_v24(
         bot_id = str(req.payload.get("bot_id") or "") if isinstance(req.payload, dict) else ""
         try:
             from eta_engine.brain.jarvis_v3.policies._v3_events import emit_event
+
             emit_event(
-                layer="v24", event="correlation_throttle",
-                bot_id=bot_id, cls=cls,
-                details={"side": side, "recent_count": len(buffer),
-                         "max_per_window": max_n, "window_s": int(window_s)},
+                layer="v24",
+                event="correlation_throttle",
+                bot_id=bot_id,
+                cls=cls,
+                details={"side": side, "recent_count": len(buffer), "max_per_window": max_n, "window_s": int(window_s)},
                 severity="INFO",
             )
         except Exception:  # noqa: BLE001
             pass
-        return base_resp.model_copy(update={
-            "verdict": Verdict.DEFERRED,
-            "reason": f"v24 correlation throttle: {len(buffer)} {cls}/{side} approvals in last {int(window_s)}s",
-            "reason_code": "v24_correlation_throttle",
-            "conditions": (base_resp.conditions or []) + [
-                f"throttle_class={cls}",
-                f"throttle_side={side}",
-                f"recent_count={len(buffer)}",
-                f"max_per_window={max_n}",
-            ],
-        })
+        return base_resp.model_copy(
+            update={
+                "verdict": Verdict.DEFERRED,
+                "reason": f"v24 correlation throttle: {len(buffer)} {cls}/{side} approvals in last {int(window_s)}s",
+                "reason_code": "v24_correlation_throttle",
+                "conditions": (base_resp.conditions or [])
+                + [
+                    f"throttle_class={cls}",
+                    f"throttle_side={side}",
+                    f"recent_count={len(buffer)}",
+                    f"max_per_window={max_n}",
+                ],
+            }
+        )
 
     # Record this approval so future requests see it
     buffer.append(now)

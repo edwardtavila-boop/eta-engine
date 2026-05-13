@@ -57,8 +57,7 @@ if TYPE_CHECKING:
             hist: list[BarData],
             equity: float,
             config: BacktestConfig,
-        ) -> _Open | None:
-            ...
+        ) -> _Open | None: ...
 
 
 @dataclass(frozen=True)
@@ -124,8 +123,7 @@ class EnsembleVotingStrategy:
             raise ValueError("min_agreement_count must be >= 1")
         if self.cfg.min_agreement_count > len(self._subs):
             raise ValueError(
-                f"min_agreement_count {self.cfg.min_agreement_count} "
-                f"exceeds number of sub-strategies {len(self._subs)}"
+                f"min_agreement_count {self.cfg.min_agreement_count} exceeds number of sub-strategies {len(self._subs)}"
             )
 
     def maybe_enter(
@@ -179,7 +177,8 @@ class EnsembleVotingStrategy:
             # is the gate only.  Avoids averaging brackets to a geometry
             # no individual sub designed.
             winner = max(
-                chosen_proposals, key=lambda p: self._proposal_weight(p),
+                chosen_proposals,
+                key=lambda p: self._proposal_weight(p),
             )
             avg_entry = winner.entry_price
             avg_stop = winner.stop
@@ -225,16 +224,13 @@ class EnsembleVotingStrategy:
             if avg_stop <= avg_entry or avg_target >= avg_entry:
                 return None
 
-        agreement_names = "+".join(name for name, _ in proposals if name in {
-            n_ for n_, p in self._subs_for_proposals(chosen_proposals)
-        })
+        agreement_names = "+".join(
+            name for name, _ in proposals if name in {n_ for n_, p in self._subs_for_proposals(chosen_proposals)}
+        )
         if not agreement_names:
             agreement_names = ",".join(name for name, p in proposals if p.side == chosen_side)
 
-        regime_tag = (
-            f"{self.cfg.regime_prefix}_{chosen_side.lower()}_"
-            f"{n}of{len(self._subs)}_{agreement_names}"
-        )
+        regime_tag = f"{self.cfg.regime_prefix}_{chosen_side.lower()}_{n}of{len(self._subs)}_{agreement_names}"
 
         # Use the FIRST agreeing proposal as the base (for entry_bar
         # + leverage etc.), then overlay the averaged values.
@@ -330,7 +326,8 @@ class EnsembleVotingStrategy:
     # -- helper for audit-trail name tagging ---------------------------------
 
     def _subs_for_proposals(
-        self, proposals: list[_Open],  # noqa: ARG002 - reserved for future ref-matching
+        self,
+        proposals: list[_Open],  # noqa: ARG002 - reserved for future ref-matching
     ) -> list[tuple[str, _SubStrategy]]:
         # Reverse-map proposals back to (name, sub) pairs by matching
         # references where possible. Best-effort; tagging is informational.

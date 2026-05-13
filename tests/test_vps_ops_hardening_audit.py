@@ -4,10 +4,7 @@ from eta_engine.scripts import vps_ops_hardening_audit as audit
 
 
 def _running_services() -> dict[str, dict[str, object]]:
-    return {
-        name: {"name": name, "status": "Running", "start_type": "Automatic"}
-        for name in audit.CRITICAL_SERVICES
-    }
+    return {name: {"name": name, "status": "Running", "start_type": "Automatic"} for name in audit.CRITICAL_SERVICES}
 
 
 def _listening_ports() -> dict[int, dict[str, object]]:
@@ -224,10 +221,7 @@ def test_dashboard_ports_live_but_durable_tasks_missing_is_yellow_gap() -> None:
         broker_bracket_audit={"summary": {"status": "PASS", "ready_for_prop_dry_run": True}},
         promotion_audit={"summary": {"status": "PASS", "ready_for_live": True}},
         service_config={"fm_status_server": {"matches_expected": True}},
-        tasks={
-            name: {"task_name": name, "state": "Missing"}
-            for name in audit.DASHBOARD_DURABLE_TASKS
-        },
+        tasks={name: {"task_name": name, "state": "Missing"} for name in audit.DASHBOARD_DURABLE_TASKS},
         ibgateway_reauth={"status": "healthy"},
     )
 

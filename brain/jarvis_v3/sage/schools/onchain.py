@@ -8,6 +8,7 @@ BTC integration 2026-05-01:
   * whale_concentration_pct → top-10 wallet share (high = manipulation risk)
   * options_open_interest → max pain zones, elephant positioning
 """
+
 from __future__ import annotations
 
 from eta_engine.brain.jarvis_v3.sage.base import (
@@ -42,7 +43,9 @@ class OnChainSchool(SchoolBase):
         onchain = getattr(ctx, "onchain", None)
         if not onchain or not isinstance(onchain, dict):
             return SchoolVerdict(
-                school=self.NAME, bias=Bias.NEUTRAL, conviction=0.0,
+                school=self.NAME,
+                bias=Bias.NEUTRAL,
+                conviction=0.0,
                 aligned_with_entry=False,
                 rationale="no on-chain telemetry on ctx",
                 signals={"missing": ["ctx.onchain"]},
@@ -138,7 +141,9 @@ class OnChainSchool(SchoolBase):
 
         entry_bias = Bias.LONG if ctx.side.lower() == "long" else Bias.SHORT
         return SchoolVerdict(
-            school=self.NAME, bias=bias, conviction=conv,
+            school=self.NAME,
+            bias=bias,
+            conviction=conv,
             aligned_with_entry=(bias == entry_bias),
             rationale=rationale,
             signals=signals,

@@ -22,6 +22,7 @@ Pure stdlib still -- the shape mirrors what a Dreamer-style latent
 model would produce so swapping in a learned encoder later is a
 contained change.
 """
+
 from __future__ import annotations
 
 import logging
@@ -51,6 +52,7 @@ ALL_ACTIONS: tuple[Action, ...] = ("approve_full", "approve_half", "defer", "den
 
 def _state_id(ep: Episode) -> int:
     from eta_engine.brain.jarvis_v3.world_model import encode_state
+
     return encode_state(regime=ep.regime, session=ep.session, stress=ep.stress)
 
 
@@ -101,10 +103,7 @@ class ActionConditionedTable:
         rs = self.rewards_by_sa.get(s, {}).get(a, [])
         if not rs:
             # Fallback: any-action mean for this state
-            all_rs = [
-                r for action_rs in self.rewards_by_sa.get(s, {}).values()
-                for r in action_rs
-            ]
+            all_rs = [r for action_rs in self.rewards_by_sa.get(s, {}).values() for r in action_rs]
             if not all_rs:
                 return 0.0
             return rng.choice(all_rs)
@@ -122,7 +121,7 @@ class ValueEstimate:
     action: Action
     expected_return: float
     n_samples: int
-    confidence: float            # in [0, 1] -- 0 = no data, 1 = strong evidence
+    confidence: float  # in [0, 1] -- 0 = no data, 1 = strong evidence
 
 
 def _wilson_lower_bound(n_pos: int, n_total: int, z: float = 1.96) -> float:
@@ -157,8 +156,11 @@ def estimate_value(
     n = len(rs)
     if n == 0:
         return ValueEstimate(
-            state=state, action=action,
-            expected_return=0.0, n_samples=0, confidence=0.0,
+            state=state,
+            action=action,
+            expected_return=0.0,
+            n_samples=0,
+            confidence=0.0,
         )
     returns: list[float] = []
     for _ in range(n_rollouts):
@@ -180,7 +182,8 @@ def estimate_value(
     n_pos = sum(1 for r in returns if r > 0)
     confidence = _wilson_lower_bound(n_pos, len(returns))
     return ValueEstimate(
-        state=state, action=action,
+        state=state,
+        action=action,
         expected_return=round(mean, 4),
         n_samples=n,
         confidence=round(confidence, 3),
@@ -217,11 +220,17 @@ def rank_actions(
     at the current state. Returns the actions in descending value
     order so ``ranked[0][0]`` is the model's recommendation."""
     from eta_engine.brain.jarvis_v3.world_model import describe_state
+
     estimates: list[tuple[Action, ValueEstimate]] = []
     for a in ALL_ACTIONS:
         v = estimate_value(
-            table, state, a,
-            discount=discount, horizon=horizon, n_rollouts=n_rollouts, rng=rng,
+            table,
+            state,
+            a,
+            discount=discount,
+            horizon=horizon,
+            n_rollouts=n_rollouts,
+            rng=rng,
         )
         estimates.append((a, v))
     estimates.sort(key=lambda t: t[1].expected_return, reverse=True)
@@ -269,8 +278,12 @@ def counterfactual_expected_return(
     weighted = 0.0
     for s, count in state_counts.items():
         v = estimate_value(
-            table, s, proposed_action,
-            horizon=horizon, n_rollouts=n_rollouts, rng=rng,
+            table,
+            s,
+            proposed_action,
+            horizon=horizon,
+            n_rollouts=n_rollouts,
+            rng=rng,
         )
         weighted += (count / total) * v.expected_return
     return round(weighted, 4)

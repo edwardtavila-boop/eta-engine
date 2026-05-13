@@ -1,4 +1,5 @@
 """Tests for bar_builder_l1 — Phase-2 buy/sell-split bar reconstruction."""
+
 from __future__ import annotations
 
 import csv
@@ -70,8 +71,7 @@ def test_bar_accum_from_first_tick_unknown_side() -> None:
 
 
 def test_bar_accum_absorb_buy_sell() -> None:
-    bar = bb.BarAccum.from_first_tick(
-        bb.TickRecord(epoch_s=0, price=100.0, size=0.0, side="UNKNOWN"))
+    bar = bb.BarAccum.from_first_tick(bb.TickRecord(epoch_s=0, price=100.0, size=0.0, side="UNKNOWN"))
     bar.absorb(bb.TickRecord(epoch_s=10, price=101.0, size=3.0, side="BUY"))
     bar.absorb(bb.TickRecord(epoch_s=20, price=99.0, size=2.0, side="SELL"))
     bar.absorb(bb.TickRecord(epoch_s=30, price=100.0, size=1.0, side="UNKNOWN"))
@@ -87,9 +87,9 @@ def test_bar_accum_absorb_buy_sell() -> None:
 # ── build_bars (end-to-end with synthetic ticks) ──────────────────
 
 
-def _ticks_from_sequence(prices_sizes: list[tuple[float, float]],
-                          start_epoch: float = 1700000000.0,
-                          step: float = 1.0) -> list[bb.TickRecord]:
+def _ticks_from_sequence(
+    prices_sizes: list[tuple[float, float]], start_epoch: float = 1700000000.0, step: float = 1.0
+) -> list[bb.TickRecord]:
     """Convert (price, size) sequence to TickRecord with tick-rule
     classification."""
     out: list[bb.TickRecord] = []
@@ -97,8 +97,7 @@ def _ticks_from_sequence(prices_sizes: list[tuple[float, float]],
     prev_side = "UNKNOWN"
     for i, (p, s) in enumerate(prices_sizes):
         side = bb._classify_tick(p, prev_price, prev_side)
-        out.append(bb.TickRecord(epoch_s=start_epoch + i * step,
-                                  price=p, size=s, side=side))
+        out.append(bb.TickRecord(epoch_s=start_epoch + i * step, price=p, size=s, side=side))
         prev_price = p
         prev_side = side
     return out
@@ -106,9 +105,14 @@ def _ticks_from_sequence(prices_sizes: list[tuple[float, float]],
 
 def test_build_bars_single_bucket() -> None:
     # All ticks fall within one 5m bucket
-    ticks = _ticks_from_sequence([
-        (100.0, 1), (101.0, 2), (99.0, 3), (100.5, 1),
-    ])
+    ticks = _ticks_from_sequence(
+        [
+            (100.0, 1),
+            (101.0, 2),
+            (99.0, 3),
+            (100.5, 1),
+        ]
+    )
     bars = bb.build_bars(ticks, "5m")
     assert len(bars) == 1
     b = bars[0]
@@ -169,13 +173,19 @@ def test_read_ticks_handles_missing_file(isolated_dirs: dict) -> None:
 
 def test_read_ticks_skips_malformed_lines(isolated_dirs: dict) -> None:
     p = isolated_dirs["ticks"] / "MNQ_20260101.jsonl"
-    p.write_text("\n".join([
-        json.dumps({"ts": "2026-01-01T00:00:00+00:00", "epoch_s": 1, "price": 100.0, "size": 1}),
-        "garbage line",
-        json.dumps({"price": "not-a-number"}),
-        json.dumps({"ts": "2026-01-01T00:00:01+00:00", "epoch_s": 2, "price": 101.0, "size": 2}),
-        "",  # blank
-    ]) + "\n", encoding="utf-8")
+    p.write_text(
+        "\n".join(
+            [
+                json.dumps({"ts": "2026-01-01T00:00:00+00:00", "epoch_s": 1, "price": 100.0, "size": 1}),
+                "garbage line",
+                json.dumps({"price": "not-a-number"}),
+                json.dumps({"ts": "2026-01-01T00:00:01+00:00", "epoch_s": 2, "price": 101.0, "size": 2}),
+                "",  # blank
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     ticks = bb._read_ticks(p)
     assert len(ticks) == 2
     assert ticks[0].price == 100.0
@@ -186,11 +196,20 @@ def test_read_ticks_skips_malformed_lines(isolated_dirs: dict) -> None:
 
 
 def test_write_bars_csv_atomic(isolated_dirs: dict) -> None:
-    bars = [{
-        "timestamp_utc": "2026-01-01T00:00:00+00:00",
-        "epoch_s": 0, "open": 1.0, "high": 1.5, "low": 0.9, "close": 1.2,
-        "volume_total": 10.0, "volume_buy": 6.0, "volume_sell": 4.0, "n_trades": 5,
-    }]
+    bars = [
+        {
+            "timestamp_utc": "2026-01-01T00:00:00+00:00",
+            "epoch_s": 0,
+            "open": 1.0,
+            "high": 1.5,
+            "low": 0.9,
+            "close": 1.2,
+            "volume_total": 10.0,
+            "volume_buy": 6.0,
+            "volume_sell": 4.0,
+            "n_trades": 5,
+        }
+    ]
     out_path = isolated_dirs["out"] / "MNQ_5m_l1.csv"
     bb.write_bars_csv(out_path, bars)
     assert out_path.exists()
@@ -213,10 +232,11 @@ def test_rebuild_one_symbol_full_path(isolated_dirs: dict) -> None:
     # Write a tick file with 4 ticks in the same 5m bucket
     p = isolated_dirs["ticks"] / "MNQ_20260101.jsonl"
     base = 1700000000
-    p.write_text("\n".join([
-        json.dumps({"ts": f"t{i}", "epoch_s": base + i, "price": 100.0 + i, "size": 1.0})
-        for i in range(4)
-    ]) + "\n", encoding="utf-8")
+    p.write_text(
+        "\n".join([json.dumps({"ts": f"t{i}", "epoch_s": base + i, "price": 100.0 + i, "size": 1.0}) for i in range(4)])
+        + "\n",
+        encoding="utf-8",
+    )
     result = bb.rebuild_one_symbol("MNQ", "5m")
     assert result["n_ticks"] == 4
     assert result["n_bars"] == 1

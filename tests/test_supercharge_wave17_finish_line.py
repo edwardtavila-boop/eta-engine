@@ -1,4 +1,5 @@
 """Finish-line hardening for JARVIS/Sage/Quantum max batch."""
+
 from __future__ import annotations
 
 import json
@@ -20,15 +21,17 @@ def _bars(n: int = 80, *, trend: str = "up", symbol: str = "MNQ") -> list[dict]:
     for i in range(n):
         price += drift
         ts = datetime(2026, 4, 27, tzinfo=UTC) + timedelta(minutes=i)
-        rows.append({
-            "ts": ts.isoformat().replace("+00:00", "Z"),
-            "symbol": symbol,
-            "open": price - 0.2,
-            "high": price + 0.6,
-            "low": price - 0.6,
-            "close": price,
-            "volume": 1000 + i,
-        })
+        rows.append(
+            {
+                "ts": ts.isoformat().replace("+00:00", "Z"),
+                "symbol": symbol,
+                "open": price - 0.2,
+                "high": price + 0.6,
+                "low": price - 0.6,
+                "close": price,
+                "volume": 1000 + i,
+            }
+        )
     return rows
 
 
@@ -131,12 +134,15 @@ def test_sage_backtester_replays_jsonl_journal_with_file_bars(tmp_path: Path) ->
 
     journal = tmp_path / "closed_trades.jsonl"
     journal.write_text(
-        json.dumps({
-            "symbol": "MNQ",
-            "side": "long",
-            "entry_ts": "2026-04-27T01:00:00Z",
-            "realized_r": 1.25,
-        }) + "\n",
+        json.dumps(
+            {
+                "symbol": "MNQ",
+                "side": "long",
+                "entry_ts": "2026-04-27T01:00:00Z",
+                "realized_r": 1.25,
+            }
+        )
+        + "\n",
         encoding="utf-8",
     )
     bars_dir = tmp_path / "bars"
@@ -147,11 +153,19 @@ def test_sage_backtester_replays_jsonl_journal_with_file_bars(tmp_path: Path) ->
     )
     output = tmp_path / "sage_backtest.json"
 
-    assert main([
-        "--journal", str(journal),
-        "--bars-source", str(bars_dir),
-        "--output", str(output),
-    ]) == 0
+    assert (
+        main(
+            [
+                "--journal",
+                str(journal),
+                "--bars-source",
+                str(bars_dir),
+                "--output",
+                str(output),
+            ]
+        )
+        == 0
+    )
     payload = json.loads(output.read_text(encoding="utf-8"))
     assert payload["status"] == "ok"
     assert payload["n_trades"] == 1
@@ -208,11 +222,14 @@ def test_jarvis_health_endpoint_surfaces_authority_and_quantum(tmp_path: Path, m
     quantum_dir = tmp_path / "quantum"
     quantum_dir.mkdir()
     (quantum_dir / "jobs.jsonl").write_text(
-        json.dumps({
-            "backend": "classical_sa",
-            "fell_back_to_classical": True,
-            "cost_estimate_usd": 0.0,
-        }) + "\n",
+        json.dumps(
+            {
+                "backend": "classical_sa",
+                "fell_back_to_classical": True,
+                "cost_estimate_usd": 0.0,
+            }
+        )
+        + "\n",
         encoding="utf-8",
     )
 

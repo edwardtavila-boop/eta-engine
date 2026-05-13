@@ -1,5 +1,6 @@
 # ruff: noqa: N802
 """Tests for the L2 strategy registry + session-start hook (Phase 3)."""
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -88,8 +89,10 @@ def test_falsification_criteria_present_for_all_entry_strategies() -> None:
     for entry in reg.L2_STRATEGIES:
         if entry.max_qty_contracts > 0:
             assert entry.falsification, f"{entry.bot_id} missing falsification"
-            assert "retire_if_oos_sharpe_lt" in entry.falsification or \
-                   "retire_after_n_days_shadow_loss" in entry.falsification
+            assert (
+                "retire_if_oos_sharpe_lt" in entry.falsification
+                or "retire_after_n_days_shadow_loss" in entry.falsification
+            )
 
 
 def test_sizing_policy_hard_capped() -> None:
@@ -97,5 +100,4 @@ def test_sizing_policy_hard_capped() -> None:
     discipline."""
     for entry in reg.L2_STRATEGIES:
         if entry.promotion_status == "shadow":
-            assert entry.max_qty_contracts <= 1, \
-                f"{entry.bot_id} shadow status with qty>{entry.max_qty_contracts}"
+            assert entry.max_qty_contracts <= 1, f"{entry.bot_id} shadow status with qty>{entry.max_qty_contracts}"

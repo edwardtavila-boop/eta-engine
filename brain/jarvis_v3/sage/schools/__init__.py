@@ -4,6 +4,7 @@ Implementations of each market-theory school.
 
 Side-effect imports register every school in the sage registry.
 """
+
 from __future__ import annotations
 
 from eta_engine.brain.jarvis_v3.sage.schools import (  # noqa: F401

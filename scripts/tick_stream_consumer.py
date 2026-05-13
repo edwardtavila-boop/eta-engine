@@ -48,6 +48,7 @@ Run
     python -m eta_engine.scripts.tick_stream_consumer \\
         --symbol MNQ --date 20260511 --strategy microprice_drift_v1
 """
+
 from __future__ import annotations
 
 # ruff: noqa: PLR2004
@@ -69,6 +70,7 @@ TICKS_DIR = ROOT.parent / "mnq_data" / "ticks"
 @dataclass
 class TickRecord:
     """Normalized tick representation delivered to subscribers."""
+
     ts: datetime
     epoch_s: float
     symbol: str
@@ -131,8 +133,7 @@ def iter_ticks_from_file(path: Path) -> Iterator[TickRecord]:
                 if tick is not None:
                     yield tick
     except OSError as e:
-        print(f"tick_stream_consumer WARN: read failed for {path}: {e}",
-              file=sys.stderr)
+        print(f"tick_stream_consumer WARN: read failed for {path}: {e}", file=sys.stderr)
 
 
 def iter_ticks_from_day(symbol: str, date_str: str) -> Iterator[TickRecord]:
@@ -141,10 +142,9 @@ def iter_ticks_from_day(symbol: str, date_str: str) -> Iterator[TickRecord]:
     yield from iter_ticks_from_file(path)
 
 
-def feed_strategy_microprice(symbol: str, date_str: str,
-                              strategy: object,
-                              *, max_ticks: int | None = None,
-                              log: logging.Logger | None = None) -> int:
+def feed_strategy_microprice(
+    symbol: str, date_str: str, strategy: object, *, max_ticks: int | None = None, log: logging.Logger | None = None
+) -> int:
     """Backfill all of one day's ticks into a microprice_drift strategy.
 
     Calls strategy.update_trade(price, ts) for each tick.  Returns
@@ -171,10 +171,8 @@ def feed_strategy_microprice(symbol: str, date_str: str,
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--symbol", default="MNQ")
-    ap.add_argument("--date", default=None,
-                    help="YYYYMMDD (default: today)")
-    ap.add_argument("--strategy", default="microprice_drift_v1",
-                    help="strategy_id to feed (informational)")
+    ap.add_argument("--date", default=None, help="YYYYMMDD (default: today)")
+    ap.add_argument("--strategy", default="microprice_drift_v1", help="strategy_id to feed (informational)")
     ap.add_argument("--max-ticks", type=int, default=None)
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()

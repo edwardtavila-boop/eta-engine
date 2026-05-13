@@ -1,4 +1,5 @@
 """Tests for diamond_direction_stratify (wave-11)."""
+
 # ruff: noqa: N802, PLR2004, SLF001
 from __future__ import annotations
 
@@ -212,13 +213,11 @@ def test_run_writes_json_receipt(tmp_path: Path, monkeypatch: object) -> None:
 
     can_path = tmp_path / "canonical.jsonl"
     leg_path = tmp_path / "legacy.jsonl"
-    _write_jsonl(can_path, [
-        _trade("m2k_sweep_reclaim", r=0.5, side="BUY", idx=i)
-        for i in range(20)
-    ] + [
-        _trade("m2k_sweep_reclaim", r=0.4, side="SELL", idx=i)
-        for i in range(20, 40)
-    ])
+    _write_jsonl(
+        can_path,
+        [_trade("m2k_sweep_reclaim", r=0.5, side="BUY", idx=i) for i in range(20)]
+        + [_trade("m2k_sweep_reclaim", r=0.4, side="SELL", idx=i) for i in range(20, 40)],
+    )
     _write_jsonl(leg_path, [])
     monkeypatch.setattr(ds, "TRADE_CLOSES_CANONICAL", can_path)  # type: ignore[attr-defined]
     monkeypatch.setattr(ds, "TRADE_CLOSES_LEGACY", leg_path)  # type: ignore[attr-defined]

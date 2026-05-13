@@ -7,6 +7,7 @@ flags break points.
 
 A high recent correlation that suddenly drops = regime shift signal.
 """
+
 from __future__ import annotations
 
 import math
@@ -49,7 +50,9 @@ class CrossAssetCorrelationSchool(SchoolBase):
         peer_returns = getattr(ctx, "peer_returns", None)
         if not peer_returns or not isinstance(peer_returns, dict):
             return SchoolVerdict(
-                school=self.NAME, bias=Bias.NEUTRAL, conviction=0.0,
+                school=self.NAME,
+                bias=Bias.NEUTRAL,
+                conviction=0.0,
                 aligned_with_entry=False,
                 rationale="no peer_returns on ctx -- school skipped",
                 signals={"missing": ["ctx.peer_returns"]},
@@ -57,14 +60,16 @@ class CrossAssetCorrelationSchool(SchoolBase):
 
         if ctx.n_bars < 30:
             return SchoolVerdict(
-                school=self.NAME, bias=Bias.NEUTRAL, conviction=0.0,
-                aligned_with_entry=False, rationale="insufficient bars",
+                school=self.NAME,
+                bias=Bias.NEUTRAL,
+                conviction=0.0,
+                aligned_with_entry=False,
+                rationale="insufficient bars",
             )
 
         own_closes = ctx.closes()
         own_rets = [
-            (own_closes[i] - own_closes[i - 1]) / max(own_closes[i - 1], 1e-9)
-            for i in range(1, len(own_closes))
+            (own_closes[i] - own_closes[i - 1]) / max(own_closes[i - 1], 1e-9) for i in range(1, len(own_closes))
         ]
         recent_n = 20
 
@@ -73,14 +78,15 @@ class CrossAssetCorrelationSchool(SchoolBase):
             if not isinstance(peer_rets, list) or len(peer_rets) < 30:
                 continue
             recent_c = _correlation(own_rets[-recent_n:], peer_rets[-recent_n:])
-            prior_c = _correlation(own_rets[-(2 * recent_n):-recent_n],
-                                   peer_rets[-(2 * recent_n):-recent_n])
+            prior_c = _correlation(own_rets[-(2 * recent_n) : -recent_n], peer_rets[-(2 * recent_n) : -recent_n])
             if abs(recent_c - prior_c) > 0.30 and abs(prior_c) > 0.5:
                 decouplings.append((peer, recent_c, prior_c))
 
         if not decouplings:
             return SchoolVerdict(
-                school=self.NAME, bias=Bias.NEUTRAL, conviction=0.10,
+                school=self.NAME,
+                bias=Bias.NEUTRAL,
+                conviction=0.10,
                 aligned_with_entry=False,
                 rationale="no peer decouplings in window",
                 signals={"n_peers": len(peer_returns)},
@@ -92,7 +98,9 @@ class CrossAssetCorrelationSchool(SchoolBase):
         # flat while peers are moving (exhaustion risk).
         own_recent_dir = sum(own_rets[-5:])
         return SchoolVerdict(
-            school=self.NAME, bias=Bias.NEUTRAL, conviction=0.50,
+            school=self.NAME,
+            bias=Bias.NEUTRAL,
+            conviction=0.50,
             aligned_with_entry=False,
             rationale=(
                 f"peer decoupling detected with {len(decouplings)} peer(s) "

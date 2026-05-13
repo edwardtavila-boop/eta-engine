@@ -115,19 +115,13 @@ def build_parser() -> argparse.ArgumentParser:
         "--operator",
         type=str,
         default=None,
-        help=(
-            "Operator identifier to record in both the latch's "
-            "cleared_by field and the clear-audit log. Required."
-        ),
+        help=("Operator identifier to record in both the latch's cleared_by field and the clear-audit log. Required."),
     )
     parser.add_argument(
         "--reason",
         type=str,
         default=None,
-        help=(
-            "Optional free-text justification for the clear. Recorded "
-            "in the audit log. Strongly recommended."
-        ),
+        help=("Optional free-text justification for the clear. Recorded in the audit log. Strongly recommended."),
     )
     parser.add_argument(
         "--latch-path",
@@ -142,10 +136,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help=(
-            "Read the latch and print what WOULD be done; do not "
-            "write the latch file or the audit log."
-        ),
+        help=("Read the latch and print what WOULD be done; do not write the latch file or the audit log."),
     )
     return parser
 
@@ -293,8 +284,7 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0911
     # --- Required-arg checks (exit 4) --------------------------------------- #
     if not args.confirm:
         sys.stderr.write(
-            "ERROR: --confirm is required. Refusing to clear without "
-            "explicit confirmation.\n",
+            "ERROR: --confirm is required. Refusing to clear without explicit confirmation.\n",
         )
         return EXIT_BAD_ARGS
 
@@ -325,8 +315,7 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0911
         return EXIT_FILE_MISSING
     if classification == "malformed":
         sys.stderr.write(
-            f"ERROR: latch file at {read_path} is malformed JSON. "
-            f"Inspect manually before clearing.\n",
+            f"ERROR: latch file at {read_path} is malformed JSON. Inspect manually before clearing.\n",
         )
         return EXIT_MALFORMED
 
@@ -335,8 +324,7 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0911
 
     if not prior_record.is_tripped():
         sys.stderr.write(
-            f"ERROR: latch at {read_path} is not TRIPPED "
-            f"(state={prior_record.state.value}). Nothing to clear.\n",
+            f"ERROR: latch at {read_path} is not TRIPPED (state={prior_record.state.value}). Nothing to clear.\n",
         )
         return EXIT_NOT_TRIPPED
 
@@ -400,8 +388,7 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0911
     # loudly -- this would indicate a bug in KillSwitchLatch.clear().
     if new_record.state is not LatchState.ARMED:
         sys.stderr.write(
-            f"ERROR: post-clear record is not ARMED "
-            f"(state={new_record.state.value}). Inspect immediately.\n",
+            f"ERROR: post-clear record is not ARMED (state={new_record.state.value}). Inspect immediately.\n",
         )
         return EXIT_MALFORMED
 

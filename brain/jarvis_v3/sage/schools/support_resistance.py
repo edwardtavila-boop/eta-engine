@@ -3,6 +3,7 @@
 Detect pivot highs + lows over the last 50 bars; check whether price is
 currently at, breaking above, or rejecting a known level.
 """
+
 from __future__ import annotations
 
 from eta_engine.brain.jarvis_v3.sage.base import (
@@ -52,7 +53,9 @@ class SupportResistanceSchool(SchoolBase):
         n = ctx.n_bars
         if n < 30:
             return SchoolVerdict(
-                school=self.NAME, bias=Bias.NEUTRAL, conviction=0.0,
+                school=self.NAME,
+                bias=Bias.NEUTRAL,
+                conviction=0.0,
                 aligned_with_entry=False,
                 rationale=f"insufficient bars ({n} < 30) for pivot detection",
             )
@@ -63,7 +66,9 @@ class SupportResistanceSchool(SchoolBase):
         pivot_lows = [v for _, v in _cached_pivots_low(ctx)]
         if not pivot_highs or not pivot_lows:
             return SchoolVerdict(
-                school=self.NAME, bias=Bias.NEUTRAL, conviction=0.10,
+                school=self.NAME,
+                bias=Bias.NEUTRAL,
+                conviction=0.10,
                 aligned_with_entry=False,
                 rationale="no clear pivot structure",
             )
@@ -76,7 +81,7 @@ class SupportResistanceSchool(SchoolBase):
         if resistance_above is not None and support_below is not None:
             dist_to_r = (resistance_above - last_close) / last_close
             dist_to_s = (last_close - support_below) / last_close
-            at_resistance = dist_to_r < 0.005   # within 50 bps
+            at_resistance = dist_to_r < 0.005  # within 50 bps
             at_support = dist_to_s < 0.005
         else:
             dist_to_r = dist_to_s = 0

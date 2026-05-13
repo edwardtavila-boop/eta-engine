@@ -12,6 +12,7 @@ Inputs are JSON snapshots written by an agent-layer worker that polls
 spot vs CME futures every N minutes:
   ``state/basis/<symbol>.json``
 """
+
 from __future__ import annotations
 
 import json
@@ -28,11 +29,11 @@ BASIS_DIR = ROOT / "state" / "basis"
 
 @dataclass(frozen=True)
 class BasisSnapshot:
-    symbol: str            # CME contract code (e.g. "MBT" / "MET")
+    symbol: str  # CME contract code (e.g. "MBT" / "MET")
     ts: datetime
     spot_price: float
     futures_price: float
-    basis_pct: float       # (futures - spot) / spot
+    basis_pct: float  # (futures - spot) / spot
     days_to_expiry: int
     annualized_basis: float
     is_stale: bool = False
@@ -73,15 +74,21 @@ def current_snapshot(symbol: str, *, max_age_min: float = 30.0) -> BasisSnapshot
 def write_snapshot(snap: BasisSnapshot) -> Path:
     BASIS_DIR.mkdir(parents=True, exist_ok=True)
     path = BASIS_DIR / f"{snap.symbol}.json"
-    path.write_text(json.dumps({
-        "symbol": snap.symbol,
-        "ts": snap.ts.isoformat(),
-        "spot_price": snap.spot_price,
-        "futures_price": snap.futures_price,
-        "basis_pct": snap.basis_pct,
-        "days_to_expiry": snap.days_to_expiry,
-        "annualized_basis": snap.annualized_basis,
-    }, indent=2), encoding="utf-8")
+    path.write_text(
+        json.dumps(
+            {
+                "symbol": snap.symbol,
+                "ts": snap.ts.isoformat(),
+                "spot_price": snap.spot_price,
+                "futures_price": snap.futures_price,
+                "basis_pct": snap.basis_pct,
+                "days_to_expiry": snap.days_to_expiry,
+                "annualized_basis": snap.annualized_basis,
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
     return path
 
 
@@ -89,6 +96,6 @@ def regime_label(snap: BasisSnapshot) -> str:
     """Classify the basis state: BACKWARDATION / NORMAL / STEEP_CONTANGO."""
     if snap.basis_pct < -0.001:
         return "BACKWARDATION"
-    if snap.annualized_basis > 0.10:   # 10%+ annualized
+    if snap.annualized_basis > 0.10:  # 10%+ annualized
         return "STEEP_CONTANGO"
     return "NORMAL"

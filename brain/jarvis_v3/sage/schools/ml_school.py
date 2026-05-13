@@ -14,6 +14,7 @@ To train a model:
     python scripts/sage_train_ml_school.py --window-days 60 \\
         --out state/sage/ml_model.pkl
 """
+
 from __future__ import annotations
 
 import logging
@@ -42,12 +43,9 @@ class MLSchool(SchoolBase):
         "ML earns weight vs human-encoded schools."
     )
 
-    MODEL_PATH = (
-        Path(__file__).resolve().parents[4]
-        / "state" / "sage" / "ml_model.pkl"
-    )
+    MODEL_PATH = Path(__file__).resolve().parents[4] / "state" / "sage" / "ml_model.pkl"
 
-    _model = None     # cached after first load
+    _model = None  # cached after first load
     _load_attempted = False
 
     def _load_model(self) -> None:
@@ -58,6 +56,7 @@ class MLSchool(SchoolBase):
             return
         try:
             import joblib
+
             self.__class__._model = joblib.load(self.MODEL_PATH)
             logger.info("ML school model loaded from %s", self.MODEL_PATH)
         except Exception as exc:  # noqa: BLE001
@@ -71,8 +70,7 @@ class MLSchool(SchoolBase):
         lows = ctx.lows()[-50:]
         volumes = ctx.volumes()[-50:]
         # 5 simple features; real model would use many more
-        rets = [(closes[i] - closes[i - 1]) / max(closes[i - 1], 1e-9)
-                for i in range(1, len(closes))]
+        rets = [(closes[i] - closes[i - 1]) / max(closes[i - 1], 1e-9) for i in range(1, len(closes))]
         recent_vol = sum(abs(r) for r in rets[-10:]) / 10
         baseline_vol = sum(abs(r) for r in rets) / len(rets)
         last_range = highs[-1] - lows[-1]
@@ -84,7 +82,7 @@ class MLSchool(SchoolBase):
             recent_vol / max(baseline_vol, 1e-9),
             last_range / max(avg_range, 1e-9),
             last_vol_z,
-            sum(rets[-5:]) * 100,   # last 5-bar return %
+            sum(rets[-5:]) * 100,  # last 5-bar return %
             (closes[-1] - closes[0]) / max(closes[0], 1e-9) * 100,  # 50-bar return %
         ]
 
@@ -125,7 +123,9 @@ class MLSchool(SchoolBase):
         feats = self._features(ctx)
         if feats is None:
             return SchoolVerdict(
-                school=self.NAME, bias=Bias.NEUTRAL, conviction=0.0,
+                school=self.NAME,
+                bias=Bias.NEUTRAL,
+                conviction=0.0,
                 aligned_with_entry=False,
                 rationale="insufficient bars for feature window",
             )
@@ -140,7 +140,9 @@ class MLSchool(SchoolBase):
                 source = "trained_model"
         except Exception as exc:  # noqa: BLE001
             return SchoolVerdict(
-                school=self.NAME, bias=Bias.NEUTRAL, conviction=0.0,
+                school=self.NAME,
+                bias=Bias.NEUTRAL,
+                conviction=0.0,
                 aligned_with_entry=False,
                 rationale=f"model inference failed: {exc}",
             )
@@ -154,7 +156,9 @@ class MLSchool(SchoolBase):
 
         entry_bias = Bias.LONG if ctx.side.lower() == "long" else Bias.SHORT
         return SchoolVerdict(
-            school=self.NAME, bias=bias, conviction=min(0.85 if self._model else 0.65, conv),
+            school=self.NAME,
+            bias=bias,
+            conviction=min(0.85 if self._model else 0.65, conv),
             aligned_with_entry=(bias == entry_bias),
             rationale=rationale,
             signals={

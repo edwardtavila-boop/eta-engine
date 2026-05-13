@@ -41,17 +41,23 @@ from eta_engine.strategies.sweep_reclaim_strategy import (
 
 
 def _bar(
-    idx: int, close: float = 100.0, *,
-    high: float | None = None, low: float | None = None,
-    open_: float | None = None, volume: float = 1000.0,
+    idx: int,
+    close: float = 100.0,
+    *,
+    high: float | None = None,
+    low: float | None = None,
+    open_: float | None = None,
+    volume: float = 1000.0,
 ) -> BarData:
     ts = datetime(2026, 1, 1, tzinfo=UTC) + timedelta(hours=idx)
     return BarData(
-        timestamp=ts, symbol="BTC",
+        timestamp=ts,
+        symbol="BTC",
         open=open_ if open_ is not None else close,
         high=high if high is not None else close + 0.5,
         low=low if low is not None else close - 0.5,
-        close=close, volume=volume,
+        close=close,
+        volume=volume,
     )
 
 
@@ -59,8 +65,10 @@ def _config() -> BacktestConfig:
     return BacktestConfig(
         start_date=datetime(2026, 1, 1, tzinfo=UTC),
         end_date=datetime(2026, 12, 31, tzinfo=UTC),
-        symbol="BTC", initial_equity=10_000.0,
-        risk_per_trade_pct=0.005, confluence_threshold=0.0,
+        symbol="BTC",
+        initial_equity=10_000.0,
+        risk_per_trade_pct=0.005,
+        confluence_threshold=0.0,
         max_trades_per_day=10,
     )
 
@@ -72,12 +80,17 @@ def _config() -> BacktestConfig:
 
 def test_sweep_reclaim_long_fires_on_classic_spring() -> None:
     """Wyckoff spring: low pierces recent low, close reclaims it."""
-    s = SweepReclaimStrategy(SweepReclaimConfig(
-        level_lookback=10, reclaim_window=2,
-        min_wick_pct=0.30, min_volume_z=0.0,
-        warmup_bars=15, atr_period=5,
-        min_bars_between_trades=0,
-    ))
+    s = SweepReclaimStrategy(
+        SweepReclaimConfig(
+            level_lookback=10,
+            reclaim_window=2,
+            min_wick_pct=0.30,
+            min_volume_z=0.0,
+            warmup_bars=15,
+            atr_period=5,
+            min_bars_between_trades=0,
+        )
+    )
     cfg = _config()
     hist: list[BarData] = []
     out = None
@@ -99,9 +112,12 @@ def test_sweep_reclaim_long_fires_on_classic_spring() -> None:
 
 
 def test_sweep_reclaim_warmup_blocks() -> None:
-    s = SweepReclaimStrategy(SweepReclaimConfig(
-        warmup_bars=50, level_lookback=10,
-    ))
+    s = SweepReclaimStrategy(
+        SweepReclaimConfig(
+            warmup_bars=50,
+            level_lookback=10,
+        )
+    )
     cfg = _config()
     hist: list[BarData] = []
     fired = 0
@@ -115,13 +131,17 @@ def test_sweep_reclaim_warmup_blocks() -> None:
 
 def test_sweep_reclaim_wick_quality_gates() -> None:
     """A shallow sweep with small wick gets rejected on quality."""
-    s = SweepReclaimStrategy(SweepReclaimConfig(
-        level_lookback=10, reclaim_window=2,
-        min_wick_pct=0.80,  # very strict
-        min_volume_z=0.0,
-        warmup_bars=15, atr_period=5,
-        min_bars_between_trades=0,
-    ))
+    s = SweepReclaimStrategy(
+        SweepReclaimConfig(
+            level_lookback=10,
+            reclaim_window=2,
+            min_wick_pct=0.80,  # very strict
+            min_volume_z=0.0,
+            warmup_bars=15,
+            atr_period=5,
+            min_bars_between_trades=0,
+        )
+    )
     cfg = _config()
     hist: list[BarData] = []
     for i in range(15):
@@ -159,12 +179,17 @@ def test_sweep_reclaim_presets_differ() -> None:
 
 
 def test_compression_breakout_warmup_blocks() -> None:
-    s = CompressionBreakoutStrategy(CompressionBreakoutConfig(
-        warmup_bars=50, breakout_lookback=5,
-        bb_period=10, bb_width_window=20,
-        atr_period=5, atr_ma_period=10,
-        trend_ema_period=20,
-    ))
+    s = CompressionBreakoutStrategy(
+        CompressionBreakoutConfig(
+            warmup_bars=50,
+            breakout_lookback=5,
+            bb_period=10,
+            bb_width_window=20,
+            atr_period=5,
+            atr_ma_period=10,
+            trend_ema_period=20,
+        )
+    )
     cfg = _config()
     hist: list[BarData] = []
     fired = 0
@@ -178,16 +203,24 @@ def test_compression_breakout_warmup_blocks() -> None:
 
 def test_compression_breakout_fires_on_compression_release() -> None:
     """Build a compressed range then break out → expect BUY."""
-    s = CompressionBreakoutStrategy(CompressionBreakoutConfig(
-        warmup_bars=30, breakout_lookback=10,
-        bb_period=10, bb_width_window=20, bb_width_max_percentile=0.90,
-        atr_period=5, atr_ma_period=10,
-        trend_ema_period=10, require_trend_alignment=True,
-        volume_z_lookback=10, min_volume_z=0.0,
-        min_close_location=0.50,
-        min_bars_between_trades=0,
-        max_trades_per_day=99,
-    ))
+    s = CompressionBreakoutStrategy(
+        CompressionBreakoutConfig(
+            warmup_bars=30,
+            breakout_lookback=10,
+            bb_period=10,
+            bb_width_window=20,
+            bb_width_max_percentile=0.90,
+            atr_period=5,
+            atr_ma_period=10,
+            trend_ema_period=10,
+            require_trend_alignment=True,
+            volume_z_lookback=10,
+            min_volume_z=0.0,
+            min_close_location=0.50,
+            min_bars_between_trades=0,
+            max_trades_per_day=99,
+        )
+    )
     cfg = _config()
     hist: list[BarData] = []
     # 30 flat-ish bars (compression)
@@ -232,9 +265,16 @@ class _AlwaysFireBuy:
     def maybe_enter(self, bar, hist, equity, config) -> _Open | None:  # noqa: ANN001
         self.fired += 1
         return _Open(
-            entry_bar=bar, side="BUY", qty=1.0, entry_price=bar.close,
-            stop=bar.close - 1.0, target=bar.close + 3.0,
-            risk_usd=10.0, confluence=10.0, leverage=1.0, regime="stub",
+            entry_bar=bar,
+            side="BUY",
+            qty=1.0,
+            entry_price=bar.close,
+            stop=bar.close - 1.0,
+            target=bar.close + 3.0,
+            risk_usd=10.0,
+            confluence=10.0,
+            leverage=1.0,
+            regime="stub",
         )
 
 
@@ -242,12 +282,16 @@ def test_scorecard_vetoes_when_no_factors() -> None:
     """With min_score=3 and no predicates attached and a flat tape,
     the scorecard veto every fire."""
     sub = _AlwaysFireBuy()
-    sc = ConfluenceScorecardStrategy(sub, ConfluenceScorecardConfig(
-        min_score=3, a_plus_score=4,
-        # Disable factors that can't activate on a flat synthetic tape
-        enable_atr_regime_factor=False,
-        enable_volume_factor=False,
-    ))
+    sc = ConfluenceScorecardStrategy(
+        sub,
+        ConfluenceScorecardConfig(
+            min_score=3,
+            a_plus_score=4,
+            # Disable factors that can't activate on a flat synthetic tape
+            enable_atr_regime_factor=False,
+            enable_volume_factor=False,
+        ),
+    )
     cfg = _config()
     hist: list[BarData] = []
     fires = 0
@@ -264,12 +308,16 @@ def test_scorecard_vetoes_when_no_factors() -> None:
 def test_scorecard_passes_in_uptrend_and_above_vwap() -> None:
     """Uptrend + above VWAP should give 2+ factors → check threshold."""
     sub = _AlwaysFireBuy()
-    sc = ConfluenceScorecardStrategy(sub, ConfluenceScorecardConfig(
-        min_score=2, a_plus_score=10,  # never A+
-        # enable trend + vwap; disable factors that need long history
-        enable_atr_regime_factor=False,
-        enable_volume_factor=False,
-    ))
+    sc = ConfluenceScorecardStrategy(
+        sub,
+        ConfluenceScorecardConfig(
+            min_score=2,
+            a_plus_score=10,  # never A+
+            # enable trend + vwap; disable factors that need long history
+            enable_atr_regime_factor=False,
+            enable_volume_factor=False,
+        ),
+    )
     cfg = _config()
     hist: list[BarData] = []
     out = None
@@ -287,14 +335,18 @@ def test_scorecard_passes_in_uptrend_and_above_vwap() -> None:
 def test_scorecard_a_plus_size_boost() -> None:
     """When score >= a_plus_score, qty is multiplied by a_plus_size_mult."""
     sub = _AlwaysFireBuy()
-    sc = ConfluenceScorecardStrategy(sub, ConfluenceScorecardConfig(
-        min_score=1, a_plus_score=1,  # any fire = A+
-        a_plus_size_mult=2.0,
-        # Only trend factor
-        enable_atr_regime_factor=False,
-        enable_volume_factor=False,
-        enable_vwap_factor=False,
-    ))
+    sc = ConfluenceScorecardStrategy(
+        sub,
+        ConfluenceScorecardConfig(
+            min_score=1,
+            a_plus_score=1,  # any fire = A+
+            a_plus_size_mult=2.0,
+            # Only trend factor
+            enable_atr_regime_factor=False,
+            enable_volume_factor=False,
+            enable_vwap_factor=False,
+        ),
+    )
     cfg = _config()
     hist: list[BarData] = []
     out = None
@@ -314,11 +366,17 @@ def test_scorecard_a_plus_size_boost() -> None:
 def test_scorecard_attached_predicates_count_as_factors() -> None:
     """HTF + session + liquidity predicates each contribute to score."""
     sub = _AlwaysFireBuy()
-    sc = ConfluenceScorecardStrategy(sub, ConfluenceScorecardConfig(
-        min_score=3, a_plus_score=99,
-        enable_trend_factor=False, enable_vwap_factor=False,
-        enable_atr_regime_factor=False, enable_volume_factor=False,
-    ))
+    sc = ConfluenceScorecardStrategy(
+        sub,
+        ConfluenceScorecardConfig(
+            min_score=3,
+            a_plus_score=99,
+            enable_trend_factor=False,
+            enable_vwap_factor=False,
+            enable_atr_regime_factor=False,
+            enable_volume_factor=False,
+        ),
+    )
     sc.attach_htf_agreement(lambda b, side: True)
     sc.attach_session_predicate(lambda b: True)
     sc.attach_liquidity_predicate(lambda b, side: True)
@@ -344,13 +402,17 @@ def test_scorecard_attached_predicates_count_as_factors() -> None:
 def test_grid_adaptive_kill_switch_engages() -> None:
     """With adaptive_volatility=True and a high-ATR tape, the kill
     switch should engage (current ATR rank > kill threshold)."""
-    s = GridTradingStrategy(GridConfig(
-        ref_lookback=20, n_levels=3, atr_period=5,
-        min_warmup_bars=10,
-        adaptive_volatility=True,
-        adaptive_atr_pct_lookback=30,
-        adaptive_kill_atr_pct=0.50,  # easy to trigger
-    ))
+    s = GridTradingStrategy(
+        GridConfig(
+            ref_lookback=20,
+            n_levels=3,
+            atr_period=5,
+            min_warmup_bars=10,
+            adaptive_volatility=True,
+            adaptive_atr_pct_lookback=30,
+            adaptive_kill_atr_pct=0.50,  # easy to trigger
+        )
+    )
     cfg = _config()
     hist: list[BarData] = []
     # _adaptive_spacing_pct needs at least lookback+atr_period+1 = 36 bars
@@ -370,11 +432,16 @@ def test_grid_adaptive_kill_switch_engages() -> None:
 def test_grid_range_break_kill_switch() -> None:
     """When price closes well outside the grid's range, the
     range-break kill switch should fire."""
-    s = GridTradingStrategy(GridConfig(
-        ref_lookback=10, n_levels=2, grid_spacing_pct=0.005,
-        atr_period=5, min_warmup_bars=10,
-        range_break_mult=1.0,
-    ))
+    s = GridTradingStrategy(
+        GridConfig(
+            ref_lookback=10,
+            n_levels=2,
+            grid_spacing_pct=0.005,
+            atr_period=5,
+            min_warmup_bars=10,
+            range_break_mult=1.0,
+        )
+    )
     cfg = _config()
     hist: list[BarData] = []
     # 20 bars near 100
@@ -392,17 +459,21 @@ def test_grid_range_break_kill_switch() -> None:
 def test_grid_adaptive_widens_at_high_vol() -> None:
     """When ATR rank in middle of band, spacing should be between
     min and max settings."""
-    s = GridTradingStrategy(GridConfig(
-        ref_lookback=20, n_levels=3, atr_period=5,
-        min_warmup_bars=10,
-        adaptive_volatility=True,
-        adaptive_atr_pct_lookback=30,
-        adaptive_atr_pct_min=0.30,
-        adaptive_atr_pct_max=0.70,
-        adaptive_min_spacing_pct=0.001,
-        adaptive_max_spacing_pct=0.020,
-        adaptive_kill_atr_pct=1.5,  # impossible to trigger
-    ))
+    s = GridTradingStrategy(
+        GridConfig(
+            ref_lookback=20,
+            n_levels=3,
+            atr_period=5,
+            min_warmup_bars=10,
+            adaptive_volatility=True,
+            adaptive_atr_pct_lookback=30,
+            adaptive_atr_pct_min=0.30,
+            adaptive_atr_pct_max=0.70,
+            adaptive_min_spacing_pct=0.001,
+            adaptive_max_spacing_pct=0.020,
+            adaptive_kill_atr_pct=1.5,  # impossible to trigger
+        )
+    )
     # Build hist with VARIED ATR so the percentile computation has
     # a meaningful distribution.
     hist: list[BarData] = []

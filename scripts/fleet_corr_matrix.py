@@ -17,6 +17,7 @@ Usage
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import sys
 from dataclasses import dataclass
@@ -28,10 +29,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT.parent))
 
 if hasattr(sys.stdout, "reconfigure"):
-    try:
+    with contextlib.suppress(AttributeError, OSError):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    except (AttributeError, OSError):
-        pass
 
 from eta_engine.data.library import default_library  # noqa: E402
 
@@ -116,7 +115,7 @@ def instrument_correlation(limit_symbols: list[str] | None = None) -> list[CorrP
     pairs: list[CorrPair] = []
     symbols = sorted(returns_map.keys())
     for i, sa in enumerate(symbols):
-        for sb in symbols[i + 1:]:
+        for sb in symbols[i + 1 :]:
             ra = returns_map[sa]
             rb = returns_map[sb]
             rho = _pearson(ra, rb)
@@ -143,7 +142,7 @@ def strategy_correlation() -> list[CorrPair]:
     pairs: list[CorrPair] = []
     bots = sorted(oos_sharpe_map.keys())
     for i, ba in enumerate(bots):
-        for bb in bots[i + 1:]:
+        for bb in bots[i + 1 :]:
             ra = oos_sharpe_map[ba]
             rb = oos_sharpe_map[bb]
             rho = _pearson(ra, rb)
@@ -152,8 +151,9 @@ def strategy_correlation() -> list[CorrPair]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(prog="fleet_corr_matrix", description=__doc__,
-                                formatter_class=argparse.RawDescriptionHelpFormatter)
+    p = argparse.ArgumentParser(
+        prog="fleet_corr_matrix", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     p.add_argument("--instrument", action="store_true", help="instrument daily-return correlation")
     p.add_argument("--strategy", action="store_true", help="strategy OOS Sharpe correlation")
     p.add_argument("--json", action="store_true")
@@ -171,8 +171,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.json:
         out = {
             "pairs": [
-                {"a": p.symbol_a, "b": p.symbol_b, "rho": p.rho, "n": p.n_common, "severity": p.severity}
-                for p in pairs
+                {"a": p.symbol_a, "b": p.symbol_b, "rho": p.rho, "n": p.n_common, "severity": p.severity} for p in pairs
             ],
             "generated": datetime.now(tz=UTC).isoformat(),
         }
@@ -184,7 +183,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{p.symbol_a:<16} {p.symbol_b:<24} {p.rho:>+8.3f} {p.n_common:>6} {p.severity:<8}")
         reds = sum(1 for p in pairs if p.severity == "RED")
         ambers = sum(1 for p in pairs if p.severity == "AMBER")
-        print(f"\n{len(pairs)} pairs: {reds} RED, {ambers} AMBER, {len(pairs)-reds-ambers} GREEN")
+        print(f"\n{len(pairs)} pairs: {reds} RED, {ambers} AMBER, {len(pairs) - reds - ambers} GREEN")
     return 0
 
 

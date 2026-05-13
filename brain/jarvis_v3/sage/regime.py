@@ -16,6 +16,7 @@ The confluence aggregator uses the regime to reweight schools:
 This module is pure -- it returns a Regime enum + signals dict; the
 confluence layer applies the weight modulators.
 """
+
 from __future__ import annotations
 
 from enum import StrEnum
@@ -56,7 +57,7 @@ def _directional_strength(bars: list[dict[str, Any]], period: int = 20) -> float
     """
     if len(bars) < period + 1:
         return 0.0
-    closes = [float(b["close"]) for b in bars[-period - 1:]]
+    closes = [float(b["close"]) for b in bars[-period - 1 :]]
     net = abs(closes[-1] - closes[0])
     path = sum(abs(closes[i] - closes[i - 1]) for i in range(1, len(closes)))
     return net / path if path > 0 else 0.0
@@ -71,9 +72,9 @@ def _atr_thresholds(instrument_class: str | None) -> dict[str, float]:
     """
     defaults = {"quiet": 0.001, "normal": 0.003}  # 10bps / 30bps (futures/equity)
     thresholds: dict[str, dict[str, float]] = {
-        "crypto":  {"quiet": 0.005, "normal": 0.015},  # 50bps / 150bps
+        "crypto": {"quiet": 0.005, "normal": 0.015},  # 50bps / 150bps
         "futures": {"quiet": 0.0005, "normal": 0.002},  # 5bps / 20bps
-        "fx":      {"quiet": 0.0002, "normal": 0.001},  # 2bps / 10bps
+        "fx": {"quiet": 0.0002, "normal": 0.001},  # 2bps / 10bps
     }
     cls = instrument_class or ""
     return thresholds.get(cls, defaults)
@@ -129,45 +130,45 @@ def detect_regime(ctx: MarketContext) -> tuple[Regime, dict[str, float]]:
 REGIME_WEIGHT_MULTIPLIERS: dict[str, dict[Regime, float]] = {
     "trend_following": {
         Regime.TRENDING: 1.5,
-        Regime.RANGING:  0.4,
+        Regime.RANGING: 0.4,
         Regime.VOLATILE: 0.7,
-        Regime.QUIET:    0.6,
+        Regime.QUIET: 0.6,
     },
     "support_resistance": {
         Regime.TRENDING: 0.7,
-        Regime.RANGING:  1.4,
+        Regime.RANGING: 1.4,
         Regime.VOLATILE: 1.0,
-        Regime.QUIET:    1.0,
+        Regime.QUIET: 1.0,
     },
     "market_profile": {
-        Regime.RANGING:  1.3,  # value area concept shines in rotation
+        Regime.RANGING: 1.3,  # value area concept shines in rotation
         Regime.TRENDING: 0.85,
         Regime.VOLATILE: 1.0,
-        Regime.QUIET:    1.0,
+        Regime.QUIET: 1.0,
     },
     "vpa": {
         Regime.VOLATILE: 1.2,
-        Regime.QUIET:    0.7,
+        Regime.QUIET: 0.7,
         Regime.TRENDING: 1.0,
-        Regime.RANGING:  1.0,
+        Regime.RANGING: 1.0,
     },
     "order_flow": {
         Regime.VOLATILE: 1.3,
-        Regime.QUIET:    0.6,
+        Regime.QUIET: 0.6,
         Regime.TRENDING: 1.0,
-        Regime.RANGING:  1.0,
+        Regime.RANGING: 1.0,
     },
     "elliott_wave": {
         Regime.TRENDING: 1.2,
-        Regime.RANGING:  0.5,
+        Regime.RANGING: 0.5,
         Regime.VOLATILE: 0.8,
-        Regime.QUIET:    0.5,
+        Regime.QUIET: 0.5,
     },
     "neowave": {
         Regime.TRENDING: 1.3,
-        Regime.RANGING:  0.5,
+        Regime.RANGING: 0.5,
         Regime.VOLATILE: 0.8,
-        Regime.QUIET:    0.5,
+        Regime.QUIET: 0.5,
     },
 }
 

@@ -29,6 +29,7 @@ Usage:
     python -m eta_engine.scripts.monte_carlo_validator --since 2026-05-04T23:31:00 --bootstraps 1000
     python -m eta_engine.scripts.monte_carlo_validator --json
 """
+
 from __future__ import annotations
 
 import argparse
@@ -200,8 +201,7 @@ def analyze(
 def _print_text(report: dict[str, Any]) -> None:
     print("=" * 102)
     print(
-        f" MONTE CARLO VALIDATOR — {report['n_bots']} bots, "
-        f"{report['bootstraps_per_bot']} bootstraps each",
+        f" MONTE CARLO VALIDATOR — {report['n_bots']} bots, {report['bootstraps_per_bot']} bootstraps each",
     )
     vc = report["verdict_counts"]
     print(
@@ -218,8 +218,12 @@ def _print_text(report: dict[str, Any]) -> None:
     print("-" * 102)
 
     verdict_order = {
-        "ROBUST": 0, "FRAGILE": 1, "MIXED": 2,
-        "LUCKY": 3, "DEAD": 4, "INSUFFICIENT": 5,
+        "ROBUST": 0,
+        "FRAGILE": 1,
+        "MIXED": 2,
+        "LUCKY": 3,
+        "DEAD": 4,
+        "INSUFFICIENT": 5,
     }
     sorted_bots = sorted(
         report["bots"].values(),
@@ -231,8 +235,7 @@ def _print_text(report: dict[str, Any]) -> None:
     for r in sorted_bots:
         if r["verdict"] == "INSUFFICIENT":
             print(
-                f"{r['bot_id']:<25} {r['verdict']:<14} {r['n']:>4}  "
-                f"(need 30+ closes)",
+                f"{r['bot_id']:<25} {r['verdict']:<14} {r['n']:>4}  (need 30+ closes)",
             )
             continue
         print(
@@ -240,7 +243,7 @@ def _print_text(report: dict[str, Any]) -> None:
             f"{r['actual_final_R']:>+10.3f} {r['p05_final_R']:>+9.3f} "
             f"{r['p50_final_R']:>+9.3f} {r['p95_final_R']:>+9.3f} "
             f"{r['p95_max_drawdown_R']:>9.3f} "
-            f"{r['p_negative']*100:>5.1f}% {r['luck_score']:>6.3f}",
+            f"{r['p_negative'] * 100:>5.1f}% {r['luck_score']:>6.3f}",
         )
     print("=" * 102)
     print("\nLEGEND:")
@@ -258,12 +261,14 @@ def _print_text(report: dict[str, Any]) -> None:
 def main(argv: list[str] | None = None) -> int:
     with contextlib.suppress(AttributeError, ValueError):
         import sys as _sys
+
         _sys.stdout.reconfigure(errors="replace")  # type: ignore[union-attr]
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--bot", default=None)
     p.add_argument("--since", default=None)
     p.add_argument(
-        "--bootstraps", type=int,
+        "--bootstraps",
+        type=int,
         default=int(os.getenv("ETA_MC_BOOTSTRAPS", "1000")),
     )
     p.add_argument("--seed", type=int, default=None)

@@ -146,6 +146,7 @@ def _render_sage() -> dict[str, object]:
     try:
         from eta_engine.brain.jarvis_v3.sage.edge_tracker import default_tracker
         from eta_engine.brain.jarvis_v3.sage.health import default_monitor
+
         tracker = default_tracker()
         edges = tracker.snapshot()
         monitor = default_monitor()
@@ -171,6 +172,7 @@ def _render_sage() -> dict[str, object]:
 def _render_sage_edge() -> dict[str, object]:
     try:
         from eta_engine.brain.jarvis_v3.sage.edge_tracker import default_tracker
+
         tracker = default_tracker()
         return {
             "status": "ok",

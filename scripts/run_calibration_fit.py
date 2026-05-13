@@ -11,6 +11,7 @@ via ``PlattSigmoid.parse_file(path)``.
 
 Run via ``Eta-Calibration-Daily`` at 23:00 ET (after kaizen close + critique).
 """
+
 from __future__ import annotations
 
 import argparse
@@ -27,13 +28,10 @@ logger = logging.getLogger("run_calibration_fit")
 
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(description=__doc__,
-                                formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--audit-dir", type=Path,
-                   default=ROOT / "state" / "jarvis_audit")
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--audit-dir", type=Path, default=ROOT / "state" / "jarvis_audit")
     p.add_argument("--window-days", type=int, default=14)
-    p.add_argument("--out-path", type=Path,
-                   default=ROOT / "state" / "calibration" / "platt_sigmoid.json")
+    p.add_argument("--out-path", type=Path, default=ROOT / "state" / "calibration" / "platt_sigmoid.json")
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("-v", "--verbose", action="store_true")
     args = p.parse_args(argv)
@@ -47,8 +45,12 @@ def main(argv: list[str] | None = None) -> int:
 
     cutoff = datetime.now(UTC) - timedelta(days=args.window_days)
     audit_files = list(args.audit_dir.glob("*.jsonl")) if args.audit_dir.exists() else []
-    logger.info("fitting calibrator over %d audit files (window=%dd, cutoff=%s)",
-                len(audit_files), args.window_days, cutoff.date())
+    logger.info(
+        "fitting calibrator over %d audit files (window=%dd, cutoff=%s)",
+        len(audit_files),
+        args.window_days,
+        cutoff.date(),
+    )
 
     if not audit_files:
         logger.warning("no audit files -- skipping fit")
@@ -60,14 +62,12 @@ def main(argv: list[str] | None = None) -> int:
         logger.error("fit_from_audit failed: %s", exc)
         return 1
 
-    logger.info("fit succeeded: sigmoid=%s",
-                sigmoid.model_dump() if hasattr(sigmoid, "model_dump") else sigmoid)
+    logger.info("fit succeeded: sigmoid=%s", sigmoid.model_dump() if hasattr(sigmoid, "model_dump") else sigmoid)
 
     if not args.dry_run:
         args.out_path.parent.mkdir(parents=True, exist_ok=True)
         args.out_path.write_text(
-            sigmoid.model_dump_json(indent=2)
-            if hasattr(sigmoid, "model_dump_json") else str(sigmoid),
+            sigmoid.model_dump_json(indent=2) if hasattr(sigmoid, "model_dump_json") else str(sigmoid),
             encoding="utf-8",
         )
         logger.info("wrote calibrator -> %s", args.out_path)

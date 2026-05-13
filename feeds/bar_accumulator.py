@@ -1,30 +1,29 @@
 """Bar Data Accumulator — pulls bars from TWS, saves CSV, feeds regime detector.
- 
+
 Connects to IB Gateway, pulls historical bars for all active trading symbols,
 and saves to canonical CSV paths. Runs every 5 minutes to keep bar files fresh.
- 
+
 Also generates synthetic bar data for symbols where TWS data is unavailable
 by reading last/bid/ask from the ticker and constructing minute-bars.
 """
- 
+
 from __future__ import annotations
- 
+
+import contextlib
 import csv
 import logging
 import os
-import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
- 
+
 import numpy as np
- 
+
 log = logging.getLogger("bar_accumulator")
 
 DATA_DIR = Path("C:/EvolutionaryTradingAlgo/data")
 STATE_DIR = Path("C:/EvolutionaryTradingAlgo/var/eta_engine/state")
 LOCK_PATH = STATE_DIR / "bar_accumulator.lock"
- 
+
 # All symbols we track — mapped to TWS contract specs
 SYMBOLS = [
     # Major futures
@@ -93,23 +92,19 @@ def _acquire_run_lock() -> int | None:
         fd = os.open(str(LOCK_PATH), os.O_CREAT | os.O_EXCL | os.O_RDWR)
     except FileExistsError:
         return None
-    os.write(fd, f"{os.getpid()}\n{datetime.now(UTC).isoformat()}\n".encode("utf-8"))
+    os.write(fd, f"{os.getpid()}\n{datetime.now(UTC).isoformat()}\n".encode())
     return fd
 
 
 def _release_run_lock(fd: int | None) -> None:
     if fd is not None:
-        try:
+        with contextlib.suppress(OSError):
             os.close(fd)
-        except OSError:
-            pass
-    try:
+    with contextlib.suppress(OSError):
         LOCK_PATH.unlink()
-    except OSError:
-        pass
- 
- 
-def accumulate_bars():
+
+
+def accumulate_bars() -> None:
     """Main entry: pull bars from TWS, write CSVs."""
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     lock_fd = _acquire_run_lock()
@@ -119,8 +114,8 @@ def accumulate_bars():
 
     try:
         try:
-            import asyncio
             from ib_insync import IB, Contract, util
+
             util.patchAsyncio()
 
             ib = IB()
@@ -130,10 +125,11 @@ def accumulate_bars():
             log.warning("TWS not available for bar accumulation: %s", e)
             _synthetic_bar_fallback()
             return
- 
+
         # Lazy import so the helper is only attempted under the FUT branch
         try:
             from ib_insync import ContFuture
+
             _has_contfuture = True
         except ImportError:
             _has_contfuture = False
@@ -156,20 +152,20 @@ def accumulate_bars():
                 # is the CURRENCY ROOT (EUR/GBP/JPY), not the operator symbol
                 # ("6E"). The "6E" is the trading class. Without this remap,
                 # ContFuture(symbol="6E") returns "No security definition".
-                _CURRENCY_FUTURES = {
-                    "6E":  ("EUR", "6E"),   # Euro FX (full size)
+                currency_futures = {
+                    "6E": ("EUR", "6E"),  # Euro FX (full size)
                     "M6E": ("EUR", "M6E"),  # Micro Euro FX
-                    "6B":  ("GBP", "6B"),   # GB Pound
+                    "6B": ("GBP", "6B"),  # GB Pound
                     "M6B": ("GBP", "M6B"),
-                    "6J":  ("JPY", "6J"),   # JP Yen
-                    "6C":  ("CAD", "6C"),   # CA Dollar
-                    "6A":  ("AUD", "6A"),   # AU Dollar
+                    "6J": ("JPY", "6J"),  # JP Yen
+                    "6C": ("CAD", "6C"),  # CA Dollar
+                    "6A": ("AUD", "6A"),  # AU Dollar
                 }
 
                 if spec["secType"] == "FUT" and _has_contfuture:
                     root_sym = spec["symbol"][:-1] if spec["symbol"].endswith("1") else spec["symbol"]
-                    if root_sym in _CURRENCY_FUTURES:
-                        ibkr_sym, trading_class = _CURRENCY_FUTURES[root_sym]
+                    if root_sym in currency_futures:
+                        ibkr_sym, trading_class = currency_futures[root_sym]
                         contract = ContFuture(
                             ibkr_sym,
                             exchange=ibkr_exchange,
@@ -202,9 +198,13 @@ def accumulate_bars():
                 # the right whatToShow value per asset class.
                 what_to_show = "AGGTRADES" if spec["secType"] == "CRYPTO" else "TRADES"
                 bars = ib.reqHistoricalData(
-                    c, endDateTime="", durationStr="2 D",
-                    barSizeSetting="5 mins", whatToShow=what_to_show,
-                    useRTH=True, formatDate=1,
+                    c,
+                    endDateTime="",
+                    durationStr="2 D",
+                    barSizeSetting="5 mins",
+                    whatToShow=what_to_show,
+                    useRTH=True,
+                    formatDate=1,
                 )
 
                 if bars:
@@ -216,18 +216,16 @@ def accumulate_bars():
                 log.debug("Bar pull failed for %s: %s", spec["symbol"], e)
                 _synthetic_bar_for_symbol(spec)
 
-        try:
+        with contextlib.suppress(Exception):
             ib.disconnect()
-        except Exception:
-            pass
 
         # Also write a data inventory manifest
         _write_inventory()
         log.info("Bar accumulation complete")
     finally:
         _release_run_lock(lock_fd)
- 
- 
+
+
 def _write_csv(filename: str, bars: list) -> None:
     """Write bar data as CSV with OHLCV columns."""
     path = DATA_DIR / filename
@@ -235,44 +233,50 @@ def _write_csv(filename: str, bars: list) -> None:
         w = csv.writer(f)
         w.writerow(["timestamp", "open", "high", "low", "close", "volume"])
         for b in bars:
-            w.writerow([
-                str(b.date) if hasattr(b, "date") else datetime.now(UTC).isoformat(),
-                b.open, b.high, b.low, b.close,
-                b.volume if hasattr(b, "volume") else 0,
-            ])
- 
- 
-def _synthetic_bar_fallback():
+            w.writerow(
+                [
+                    str(b.date) if hasattr(b, "date") else datetime.now(UTC).isoformat(),
+                    b.open,
+                    b.high,
+                    b.low,
+                    b.close,
+                    b.volume if hasattr(b, "volume") else 0,
+                ]
+            )
+
+
+def _synthetic_bar_fallback() -> None:
     """Generate synthetic bar data from TWS ticker when historical bars don't work."""
     try:
-        import asyncio
-        from ib_insync import IB, Contract, util
+        from ib_insync import IB, util
+
         util.patchAsyncio()
- 
+
         ib = IB()
         ib.connect("127.0.0.1", 4002, clientId=51, timeout=10)
- 
+
         for spec in SYMBOLS:
             _synthetic_bar_for_symbol(spec, ib=ib)
- 
+
         ib.disconnect()
     except Exception:
         for spec in SYMBOLS:
             _synthetic_bar_for_symbol(spec)
     _write_inventory()
- 
- 
-def _synthetic_bar_for_symbol(spec: dict, ib=None):
+
+
+def _synthetic_bar_for_symbol(spec: dict, ib: object | None = None) -> None:
     """Build synthetic bars from ticker data or base prices."""
     path = DATA_DIR / spec["csv"]
     if path.is_file() and path.stat().st_size > 100:
         return  # already has data
- 
+
     # Try to get a price from TWS ticker
     base_price = None
     if ib is not None:
         try:
             from ib_insync import Contract
+
             c = Contract()
             c.symbol = spec["symbol"]
             c.secType = spec["secType"]
@@ -282,6 +286,7 @@ def _synthetic_bar_for_symbol(spec: dict, ib=None):
             if q:
                 ib.reqMktData(q[0], "", False, False)
                 import asyncio
+
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 loop.run_until_complete(asyncio.sleep(1))
@@ -290,17 +295,27 @@ def _synthetic_bar_for_symbol(spec: dict, ib=None):
                     base_price = float(t.last)
         except Exception:
             pass
- 
+
     # Fallback base prices per symbol
     if base_price is None:
         base_prices = {
-            "MNQ": 19000, "NQ": 19000, "ES": 5500, "GC": 3200,
-            "CL": 62, "NG": 3.5, "6E": 1.12, "ZN": 112,
-            "MES": 5500, "MGC": 320, "MCL": 62, "M6E": 1.12,
-            "MBT": 0.00002, "MET": 0.003,
+            "MNQ": 19000,
+            "NQ": 19000,
+            "ES": 5500,
+            "GC": 3200,
+            "CL": 62,
+            "NG": 3.5,
+            "6E": 1.12,
+            "ZN": 112,
+            "MES": 5500,
+            "MGC": 320,
+            "MCL": 62,
+            "M6E": 1.12,
+            "MBT": 0.00002,
+            "MET": 0.003,
         }
         base_price = base_prices.get(spec["symbol"], 100)
- 
+
     # Generate 48 hours of 5-minute bars with random walk
     np.random.seed(hash(spec["symbol"]) % 2**31)
     n = 576  # 48h of 5m bars
@@ -308,9 +323,9 @@ def _synthetic_bar_for_symbol(spec: dict, ib=None):
     returns = np.random.normal(0, volatility, n)
     prices = base_price + np.cumsum(returns)
     prices = np.maximum(prices, base_price * 0.7)  # floor at 70%
- 
+
     now = datetime.now(UTC)
- 
+
     with open(path, "w", newline="") as f:
         w = csv.writer(f)
         w.writerow(["timestamp", "open", "high", "low", "close", "volume"])
@@ -319,16 +334,17 @@ def _synthetic_bar_for_symbol(spec: dict, ib=None):
             o = round(prices[i], 4)
             c = round(prices[i] + np.random.normal(0, volatility * 0.5), 4)
             h = round(max(o, c) + abs(np.random.normal(0, volatility * 0.3)), 4)
-            l = round(min(o, c) - abs(np.random.normal(0, volatility * 0.3)), 4)
+            low = round(min(o, c) - abs(np.random.normal(0, volatility * 0.3)), 4)
             v = int(np.random.uniform(100, 5000))
-            w.writerow([ts.isoformat(), o, h, l, c, v])
- 
+            w.writerow([ts.isoformat(), o, h, low, c, v])
+
     log.info("Synthetic bars written for %s (%d bars)", spec["symbol"], n)
- 
- 
-def _write_inventory():
+
+
+def _write_inventory() -> None:
     """Write data inventory manifest for data quality monitor."""
     import json
+
     inv = {"updated_at": datetime.now(UTC).isoformat(), "symbols": {}}
     for spec in SYMBOLS:
         path = DATA_DIR / spec["csv"]
@@ -338,8 +354,8 @@ def _write_inventory():
             "size_bytes": path.stat().st_size if path.is_file() else 0,
         }
     (DATA_DIR / "inventory.json").write_text(json.dumps(inv, indent=2))
- 
- 
+
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(levelname)s: %(message)s")
     accumulate_bars()

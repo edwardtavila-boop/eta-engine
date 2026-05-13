@@ -89,9 +89,7 @@ class CodexOperatorPaths:
 class CodexOperatorReport:
     """Serializable report emitted after each operator cycle."""
 
-    cycle_id: str = field(
-        default_factory=lambda: f"CODEX-{datetime.now(UTC).strftime('%Y%m%dT%H%M%S')}"
-    )
+    cycle_id: str = field(default_factory=lambda: f"CODEX-{datetime.now(UTC).strftime('%Y%m%dT%H%M%S')}")
     ts: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
     mode: str = "observe_coordinate_verify"
     safety: dict[str, object] = field(

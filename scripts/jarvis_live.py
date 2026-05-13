@@ -303,6 +303,7 @@ async def _tasty_refresh_tick(i: int) -> None:
         return
     try:
         from eta_engine.venues.tastytrade import TastytradeConfig, TastytradeVenue
+
         cfg = TastytradeConfig.from_env()
         if cfg.login and cfg.password:
             venue = TastytradeVenue(config=cfg)
@@ -327,25 +328,26 @@ async def _background_feed_connect(feed: object) -> None:
         logger.debug("multi_feed: background connect failed: %s", exc)
 
 
-def _build_heartbeat_message(supervisor=None, reports=None, _live_feed=None) -> str:
+def _build_heartbeat_message(
+    supervisor: object | None = None,
+    reports: list[object] | None = None,
+    live_feed: object | None = None,
+) -> str:
     """Build a rich status message for the periodic Telegram heartbeat."""
     lines = ["*ETA Fleet Status*"]
     try:
-        from pathlib import Path
         import json
+        from pathlib import Path
+
         state_dir = os.environ.get("ETA_STATE_DIR", "C:/EvolutionaryTradingAlgo/var/eta_engine/state")
         ledger_path = Path(state_dir) / "paper_soak_ledger.json"
         if ledger_path.exists():
             ledger = json.loads(ledger_path.read_text(encoding="utf-8"))
             sessions = ledger.get("bot_sessions", {})
             if sessions:
-                total_pnl = sum(
-                    sum(s.get("pnl", 0) for s in bot_sessions)
-                    for bot_sessions in sessions.values()
-                )
+                total_pnl = sum(sum(s.get("pnl", 0) for s in bot_sessions) for bot_sessions in sessions.values())
                 diamond_bots = sum(
-                    1 for bot_sessions in sessions.values()
-                    if sum(s.get("pnl", 0) for s in bot_sessions) > 0
+                    1 for bot_sessions in sessions.values() if sum(s.get("pnl", 0) for s in bot_sessions) > 0
                 )
                 total_bots = len(sessions)
                 lines.append(f"Fleet: {diamond_bots}/{total_bots} profitable | PnL: `${total_pnl:+,.0f}`")
@@ -367,9 +369,9 @@ def _build_heartbeat_message(supervisor=None, reports=None, _live_feed=None) -> 
             lines.append(f"Tick: {getattr(last, 'tick_count', '?')} | Stale: {getattr(last, 'stale_s', '?')}s ago")
         except Exception:
             pass
-    if _live_feed is not None:
+    if live_feed is not None:
         try:
-            all_bars = getattr(_live_feed, "all_bars", lambda: {})()
+            all_bars = getattr(live_feed, "all_bars", lambda: {})()
             for sym in ("MNQ", "BTC", "ETH", "NQ"):
                 bar = all_bars.get(sym, {})
                 if bar and bar.get("close"):
@@ -388,18 +390,24 @@ def _build_heartbeat_message(supervisor=None, reports=None, _live_feed=None) -> 
     return "\n".join(lines)
 
 
-async def _hermes_tick(i: int, supervisor=None, reports=None, _live_feed=None) -> None:
+async def _hermes_tick(
+    i: int,
+    supervisor: object | None = None,
+    reports: list[object] | None = None,
+    live_feed: object | None = None,
+) -> None:
     """Poll Telegram for commands every tick with staggered heartbeat.
     On every 30th tick, sends a rich status summary instead of bare 'nominal'."""
     if i == 0:
         return
     try:
         from eta_engine.brain.jarvis_v3.hermes_bridge import send_alert, tick_poll
+
         responses = await tick_poll()
         if responses:
             logger.info("hermes: %d command(s) processed", len(responses))
         if i % 30 == 0 and os.environ.get("TELEGRAM_BOT_TOKEN"):
-            msg = _build_heartbeat_message(supervisor, reports, _live_feed)
+            msg = _build_heartbeat_message(supervisor, reports, live_feed)
             await send_alert("ETA Status", msg, "INFO")
     except Exception as exc:
         logger.debug("hermes tick error (non-fatal): %s", exc)
@@ -413,10 +421,13 @@ async def _ibkr_reauth_tick(i: int) -> None:
         import os
         import subprocess
         import sys
+
         script = str(Path(__file__).resolve().parent / "ibkr_reauth.py")
         result = subprocess.run(
             [sys.executable, script],
-            capture_output=True, text=True, timeout=60,
+            capture_output=True,
+            text=True,
+            timeout=60,
             env={**os.environ},
         )
         logger.info("ibkr reauth tick=%d: rc=%d", i, result.returncode)
@@ -433,6 +444,7 @@ async def run_live(
     max_ticks: int | None = None,
     stop_event: asyncio.Event | None = None,
     live_feed: object = None,
+    shadow_orch: object | None = None,
 ) -> list[JarvisHealthReport]:
     """Run the supervised tick loop until ``stop_event`` fires or
     ``max_ticks`` elapses. Returns all health reports recorded.
@@ -451,7 +463,7 @@ async def run_live(
         while not stop_event.is_set() and (max_ticks is None or i < max_ticks):
             # Inject varied data each tick (live IBKR data when available)
             try:
-                _all_bars = getattr(_live_feed, "all_bars", lambda: {})() if _live_feed else {}
+                _all_bars = getattr(live_feed, "all_bars", lambda: {})() if live_feed else {}
                 _mnq_bar = _all_bars.get("MNQ", {})
                 _btc_bar = _all_bars.get("BTC", {})
                 _nq_bar = _all_bars.get("NQ", {})
@@ -464,16 +476,26 @@ async def run_live(
                     _dd = 0.0
                 else:
                     _phase = i % 12
-                    if _phase < 3: _risk, _dd, _vix, _bias = 2.5, 0.0, 12.0, "bullish"
-                    elif _phase < 6: _risk, _dd, _vix, _bias = 0.5, 4.0, 28.0, "bearish"
-                    elif _phase < 9: _risk, _dd, _vix, _bias = 1.5, 1.5, 18.0, "neutral"
-                    else: _risk, _dd, _vix, _bias = 3.0, 0.5, 35.0, "crisis"
+                    if _phase < 3:
+                        _risk, _dd, _vix, _bias = 2.5, 0.0, 12.0, "bullish"
+                    elif _phase < 6:
+                        _risk, _dd, _vix, _bias = 0.5, 4.0, 28.0, "bearish"
+                    elif _phase < 9:
+                        _risk, _dd, _vix, _bias = 1.5, 1.5, 18.0, "neutral"
+                    else:
+                        _risk, _dd, _vix, _bias = 3.0, 0.5, 35.0, "crisis"
                 _pnl = (i % 8 - 3) * 50
                 _pos = (i % 4) + 1
                 _conf = 0.5 + (i % 5) * 0.08
                 varied = {
                     "macro": {"vix_level": _vix, "macro_bias": _bias},
-                    "equity": {"account_equity": 100000.0, "daily_pnl": _pnl, "daily_drawdown_pct": _dd, "open_positions": _pos, "open_risk_r": _risk},
+                    "equity": {
+                        "account_equity": 100000.0,
+                        "daily_pnl": _pnl,
+                        "daily_drawdown_pct": _dd,
+                        "open_positions": _pos,
+                        "open_risk_r": _risk,
+                    },
                     "regime": {"regime": _bias, "confidence": _conf},
                     "journal": {"autopilot_mode": "ACTIVE", "executed_last_24h": i % 10},
                 }
@@ -504,7 +526,7 @@ async def run_live(
             except Exception:
                 logger.debug("ibkr reauth error (non-fatal)")
             try:
-                await _hermes_tick(i, supervisor, reports, _live_feed)
+                await _hermes_tick(i, supervisor, reports, live_feed)
             except Exception:
                 logger.debug("hermes tick error (non-fatal)")
             try:
@@ -544,9 +566,9 @@ async def run_live(
             except Exception:
                 logger.debug("market data capture error")
             try:
-                if _shadow_orch is not None:
-                    _all_bars = getattr(_live_feed, "all_bars", lambda: {})() if _live_feed else {}
-                    await _shadow_orch.tick(_all_bars, i)
+                if shadow_orch is not None:
+                    _all_bars = getattr(live_feed, "all_bars", lambda: {})() if live_feed else {}
+                    await shadow_orch.tick(_all_bars, i)
             except Exception:
                 logger.debug("shadow_orch error (non-fatal)")
             i += 1
@@ -612,6 +634,7 @@ async def _register_hermes_webhook_async() -> None:
     await asyncio.sleep(5)
     try:
         from eta_engine.brain.jarvis_v3.hermes_bridge import register_webhook
+
         public_url = os.environ.get("HERMES_PUBLIC_URL", "https://ops.evolutionarytradingalgo.com")
         ok = await register_webhook(public_url)
         if ok:
@@ -624,6 +647,7 @@ async def _hermes_send(text: str) -> None:
     """Send a one-off Telegram message from a daemon lifecycle event."""
     try:
         from eta_engine.brain.jarvis_v3.hermes_bridge import send_message
+
         await send_message(text)
     except Exception:
         pass
@@ -643,11 +667,14 @@ async def _execute_approved_verdicts(i: int) -> None:
             if v.get("verdict") == "APPROVED" and os.environ.get("ETA_MODE", "PAPER") == "PAPER":
                 try:
                     from eta_engine.venues.tastytrade import TastytradeConfig, TastytradeVenue
+
                     cfg = TastytradeConfig.from_env()
                     if cfg.login and cfg.password:
                         venue = TastytradeVenue(config=cfg)
                         await venue.connect()
-                        resp = await venue.place_order(symbol=v.get("symbol"), side=v.get("side"), qty=1, order_type="market")
+                        resp = await venue.place_order(
+                            symbol=v.get("symbol"), side=v.get("side"), qty=1, order_type="market"
+                        )
                         logger.info("tastytrade exec: %s %s -> %s", v.get("symbol"), v.get("side"), resp)
                         await _write_pnl_journal(v, resp)
                 except Exception as exec_exc:
@@ -671,12 +698,12 @@ async def _enforce_risk_circuit_breaker(supervisor: JarvisSupervisor, i: int) ->
             if latch_file.exists():
                 logger.warning("KILL SWITCH LATCH DETECTED — halting supervisor")
                 policy = supervisor.policy
-                if hasattr(policy, 'circuit_open'):
+                if hasattr(policy, "circuit_open"):
                     policy.circuit_open = True
                 return
 
         report = supervisor.snapshot_health()
-        metrics = report.model_dump() if hasattr(report, 'model_dump') else {}
+        metrics = report.model_dump() if hasattr(report, "model_dump") else {}
         drawdown = abs(metrics.get("equity", {}).get("daily_drawdown_pct", 0))
         if drawdown > 5.0:
             logger.warning("circuit breaker: drawdown %.1f%% exceeds limit", drawdown)
@@ -707,6 +734,7 @@ async def _reconcile_orders(i: int) -> None:
         return
     try:
         from eta_engine.venues.tastytrade import TastytradeConfig, TastytradeVenue
+
         cfg = TastytradeConfig.from_env()
         if cfg.login and cfg.password:
             venue = TastytradeVenue(config=cfg)
@@ -778,6 +806,7 @@ async def _check_data_freshness(i: int) -> None:
             if age_s > 300:
                 logger.warning("data freshness: last bar %.0fs ago — possible feed stall", age_s)
                 from eta_engine.brain.jarvis_v3.hermes_bridge import send_alert
+
                 await send_alert("Data Feed Stale", f"Last bar {age_s:.0f}s ago", "WARN")
     except Exception:
         logger.debug("freshness check error (non-fatal)")
@@ -790,11 +819,13 @@ async def _check_ibkr_health(i: int) -> None:
     try:
         import ssl
         import urllib.request
+
         ctx = ssl.create_default_context()
         ctx.check_hostname = False
         ctx.verify_mode = ssl.CERT_NONE
         with urllib.request.urlopen("https://127.0.0.1:5000/v1/api/iserver/auth/status", context=ctx, timeout=5) as r:
             import json as j
+
             auth = j.loads(r.read())
             if not auth.get("authenticated"):
                 logger.warning("IBKR gateway unauthenticated — reconnecting")
@@ -809,6 +840,7 @@ async def _capture_market_data(i: int) -> None:
     try:
         import pyarrow as pa
         import pyarrow.parquet as pq
+
         health_file = ROOT / "docs" / "jarvis_live_health.json"
         if not health_file.exists():
             return
@@ -819,15 +851,17 @@ async def _capture_market_data(i: int) -> None:
             return
         out_dir = ROOT / "data" / "bars" / "live"
         out_dir.mkdir(parents=True, exist_ok=True)
-        table = pa.table({
-            "ts": [bar_data.get("ts", datetime.now(UTC).isoformat())],
-            "symbol": [bar_data.get("symbol", "MNQ")],
-            "open": [float(bar_data.get("open", 0))],
-            "high": [float(bar_data.get("high", 0))],
-            "low": [float(bar_data.get("low", 0))],
-            "close": [float(bar_data.get("close", 0))],
-            "volume": [int(bar_data.get("volume", 0))],
-        })
+        table = pa.table(
+            {
+                "ts": [bar_data.get("ts", datetime.now(UTC).isoformat())],
+                "symbol": [bar_data.get("symbol", "MNQ")],
+                "open": [float(bar_data.get("open", 0))],
+                "high": [float(bar_data.get("high", 0))],
+                "low": [float(bar_data.get("low", 0))],
+                "close": [float(bar_data.get("close", 0))],
+                "volume": [int(bar_data.get("volume", 0))],
+            }
+        )
         date_str = datetime.now(UTC).strftime("%Y%m%d")
         out_path = out_dir / f"{bar_data.get('symbol', 'MNQ')}_{date_str}.parquet"
         if out_path.exists():
@@ -846,11 +880,21 @@ async def _warm_llm_caches() -> None:
             PromptCacheTracker,
             build_cached_prompt,
         )
+
         _ = PromptCacheTracker()
         warm_patterns = [
-            ("regime_assessment", "You are a market regime classifier. Classify the current market regime as BULLISH, BEARISH, or NEUTRAL based on the following indicators:"),
-            ("gate_check", "You are a risk gate evaluator. Determine whether the following trading action should be APPROVED, DENIED, or DEFERRED:"),
-            ("confluence", "You are a trading signal confluence aggregator. Given the following school verdicts, produce a composite recommendation:"),
+            (
+                "regime_assessment",
+                "You are a market regime classifier. Classify the current market regime as BULLISH, BEARISH, or NEUTRAL based on the following indicators:",
+            ),
+            (
+                "gate_check",
+                "You are a risk gate evaluator. Determine whether the following trading action should be APPROVED, DENIED, or DEFERRED:",
+            ),
+            (
+                "confluence",
+                "You are a trading signal confluence aggregator. Given the following school verdicts, produce a composite recommendation:",
+            ),
         ]
         for _name, prefix in warm_patterns:
             _ = build_cached_prompt(system="", prefix=prefix, suffix="warmup")
@@ -866,16 +910,17 @@ async def _self_diagnosis_tick(supervisor: JarvisSupervisor, i: int) -> None:
     try:
         from eta_engine.brain.anomaly import AnomalyDetector
         from eta_engine.brain.jarvis_v3.self_drift_monitor import SelfDriftMonitor
+
         report = supervisor.snapshot_health()
-        metrics = report.model_dump() if hasattr(report, 'model_dump') else {}
+        metrics = report.model_dump() if hasattr(report, "model_dump") else {}
         detector = AnomalyDetector()
-        drift_check = SelfDriftMonitor.check(metrics) if hasattr(SelfDriftMonitor, 'check') else None
+        drift_check = SelfDriftMonitor.check(metrics) if hasattr(SelfDriftMonitor, "check") else None
         if drift_check and drift_check.get("drift_detected"):
             logger.info("self-diagnosis: drift detected (%s), tightening thresholds", drift_check.get("reason"))
             policy = supervisor.policy
-            if hasattr(policy, 'tighten'):
+            if hasattr(policy, "tighten"):
                 policy.tighten(factor=0.8)
-        anomaly_score = detector.score(metrics) if hasattr(detector, 'score') else 0.0
+        anomaly_score = detector.score(metrics) if hasattr(detector, "score") else 0.0
         if anomaly_score > 0.8:
             logger.info("self-diagnosis: anomaly score %.2f, initiating circuit breaker", anomaly_score)
     except Exception as _e:
@@ -891,6 +936,7 @@ async def _kaizen_cycle_tick(i: int) -> None:
         from eta_engine.brain.jarvis_v3.kaizen import KaizenLedger
         from eta_engine.brain.jarvis_v3.kaizen_engine import KaizenEngine
         from eta_engine.brain.jarvis_v3.kaizen_guard import KaizenGuard
+
         engine = KaizenEngine(
             instruments=[],
             state_dir=ROOT / "state" / "kaizen",
@@ -920,6 +966,7 @@ async def _async_main(
     shadow_pipe: object = None
     try:
         from eta_engine.brain.jarvis_v3.shadow_pipeline import ShadowPipeline
+
         shadow_pipe = ShadowPipeline.default()
         shadow_pipe.load_fills()
         if shadow_pipe.enabled:
@@ -934,6 +981,7 @@ async def _async_main(
     _live_bar: dict | None = None
     try:
         from eta_engine.feeds.multi_symbol_feed import MultiSymbolFeed
+
         _feed = MultiSymbolFeed(timeframe="5m", poll_interval_s=1.0)
         _task = asyncio.create_task(_background_feed_connect(_feed))
         _live_feed = _feed
@@ -944,6 +992,7 @@ async def _async_main(
     # Start Telegram webhook server for instant responses
     try:
         from eta_engine.brain.jarvis_v3.hermes_bridge import start_webhook_bg
+
         start_webhook_bg(host="127.0.0.1", port=8842)
         logger.info("hermes webhook: started on port 8842")
     except Exception as _e:
@@ -958,6 +1007,7 @@ async def _async_main(
     _shadow_orch: object = None
     try:
         from eta_engine.brain.jarvis_v3.shadow_orchestrator import ShadowOrchestrator
+
         _shadow_orch = ShadowOrchestrator.default()
         logger.info("shadow_orch: %s", "ENABLED" if _shadow_orch.enabled else "DISABLED")
     except Exception as _e:
@@ -986,6 +1036,7 @@ async def _async_main(
             max_ticks=max_ticks,
             stop_event=stop_event,
             live_feed=_live_feed,
+            shadow_orch=_shadow_orch,
         )
     except KeyboardInterrupt:
         stop_event.set()

@@ -21,7 +21,7 @@ def test_supervisor_task_registration_is_canonical_and_logged() -> None:
     assert "New-ScheduledTaskTrigger -AtStartup" in text
     assert "New-ScheduledTaskTrigger -AtLogOn" in text
     assert "RestartCount 999" in text
-    assert 'New-ScheduledTaskAction -Execute $Runner' in text
+    assert "New-ScheduledTaskAction -Execute $Runner" in text
 
 
 def test_supervisor_task_registration_avoids_legacy_and_opaque_launchers() -> None:
@@ -105,7 +105,7 @@ def test_supervisor_task_runner_pins_only_readiness_approved_paper_bots() -> Non
         #
         # The deflated-Sharpe survivors:
         "volume_profile_mnq",  # STRICT-GATE PASS: sh_def +2.86 on 2916 trades
-        "volume_profile_nq",   # sh_def +2.08 on 3073 trades (just below strict)
+        "volume_profile_nq",  # sh_def +2.08 on 3073 trades (just below strict)
         # Commodity / FX sweep_reclaim (positive net on corrected engine):
         "m2k_sweep_reclaim",
         "eur_sweep_reclaim",
@@ -187,22 +187,33 @@ def test_supervisor_task_runner_pins_only_readiness_approved_paper_bots() -> Non
     # trade quality (+0.616 expR_net) is the third-highest in the
     # audited fleet. Routes via broker_router to Alpaca paper.
     assert "mbt_sweep_reclaim" not in bots, (
-        "mbt_sweep_reclaim shows zero trades in the audit; awaits "
-        "MBT 1h bar-data hydration."
+        "mbt_sweep_reclaim shows zero trades in the audit; awaits MBT 1h bar-data hydration."
     )
     assert "met_sweep_reclaim" not in bots
     assert "mbt_overnight_gap" not in bots
     # Round-1 + round-2 + round-3 + round-4 retires must not appear:
     for retired in (
         # Round-1/2/3:
-        "vwap_mr_mnq", "vwap_mr_nq", "funding_rate_btc", "mbt_zfade",
-        "btc_optimized", "mnq_sweep_reclaim", "zn_sweep_reclaim",
-        "btc_crypto_scalp", "btc_hybrid_sage", "cross_asset_mnq",
-        "crypto_seed", "btc_ensemble_2of3", "vwap_mr_btc",
+        "vwap_mr_mnq",
+        "vwap_mr_nq",
+        "funding_rate_btc",
+        "mbt_zfade",
+        "btc_optimized",
+        "mnq_sweep_reclaim",
+        "zn_sweep_reclaim",
+        "btc_crypto_scalp",
+        "btc_hybrid_sage",
+        "cross_asset_mnq",
+        "crypto_seed",
+        "btc_ensemble_2of3",
+        "vwap_mr_btc",
         "nq_futures_sage",
         # Round-4 (corrected-engine audit 2026-05-08):
-        "volume_profile_btc", "rsi_mr_mnq", "gc_sweep_reclaim",
-        "cl_sweep_reclaim", "mes_sweep_reclaim",
+        "volume_profile_btc",
+        "rsi_mr_mnq",
+        "gc_sweep_reclaim",
+        "cl_sweep_reclaim",
+        "mes_sweep_reclaim",
     ):
         assert retired not in bots, f"retired bot '{retired}' must not be pinned"
 

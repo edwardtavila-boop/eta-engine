@@ -35,6 +35,7 @@ Module layout intentionally mirrors ``trace_emitter`` and
 ``hot_learner``: a small dataclass for the on-disk shape, an internal
 ``_load()/_save()`` pair, and a tight ``apply_*/get_*`` public API.
 """
+
 from __future__ import annotations
 
 import contextlib
@@ -226,7 +227,8 @@ def apply_size_modifier(
         }
     except Exception as exc:  # noqa: BLE001 — write surface must never raise
         logger.warning(
-            "hermes_overrides.apply_size_modifier dropped: %s", exc,
+            "hermes_overrides.apply_size_modifier dropped: %s",
+            exc,
         )
         return {
             "status": "WRITE_FAILED",
@@ -236,7 +238,9 @@ def apply_size_modifier(
 
 
 def get_size_modifier(
-    bot_id: str, now: datetime | None = None, path: Path | None = None,
+    bot_id: str,
+    now: datetime | None = None,
+    path: Path | None = None,
 ) -> float | None:
     """Return the active modifier for ``bot_id`` or ``None`` if no live pin.
 
@@ -315,7 +319,8 @@ def apply_school_weight(
         }
     except Exception as exc:  # noqa: BLE001 — write surface must never raise
         logger.warning(
-            "hermes_overrides.apply_school_weight dropped: %s", exc,
+            "hermes_overrides.apply_school_weight dropped: %s",
+            exc,
         )
         return {
             "status": "WRITE_FAILED",
@@ -326,7 +331,9 @@ def apply_school_weight(
 
 
 def get_school_weights(
-    asset: str, now: datetime | None = None, path: Path | None = None,
+    asset: str,
+    now: datetime | None = None,
+    path: Path | None = None,
 ) -> dict[str, float]:
     """Return ``{school: weight}`` for the asset, filtered to live entries.
 
@@ -358,7 +365,8 @@ def get_school_weights(
 
 
 def active_overrides_summary(
-    now: datetime | None = None, path: Path | None = None,
+    now: datetime | None = None,
+    path: Path | None = None,
 ) -> dict[str, Any]:
     """Compact dict of currently-active overrides + their expiry timestamps.
 
@@ -377,11 +385,7 @@ def active_overrides_summary(
         for asset, bucket in data.get("school_weights", {}).items():
             if not isinstance(bucket, dict):
                 continue
-            live = {
-                school: entry
-                for school, entry in bucket.items()
-                if _is_active(entry, now_dt)
-            }
+            live = {school: entry for school, entry in bucket.items() if _is_active(entry, now_dt)}
             if live:
                 active_schools[asset] = live
         return {

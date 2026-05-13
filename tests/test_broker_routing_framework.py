@@ -161,7 +161,9 @@ class TestYamlSchema:
 
 class TestVenueResolutionOrder:
     def test_venue_for_per_bot_override_wins(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         # Even with a hostile env override AND a different asset-class
         # default, the explicit per-bot pin must win.
@@ -170,7 +172,9 @@ class TestVenueResolutionOrder:
         assert cfg.venue_for("btc_optimized", symbol="BTC") == "alpaca"
 
     def test_venue_for_env_override_beats_yaml_default(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         # Bot is unlisted, so per-bot doesn't apply. Env override should
         # beat the yaml asset-class default ("alpaca").
@@ -181,7 +185,9 @@ class TestVenueResolutionOrder:
         assert cfg.venue_for("never_seen", symbol="MNQ") == "ibkr"
 
     def test_venue_for_asset_class_default_when_no_per_bot(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         # No env override, no per-bot pin -> asset-class default applies.
         monkeypatch.delenv("ETA_VENUE_OVERRIDE_CRYPTO", raising=False)
@@ -191,7 +197,8 @@ class TestVenueResolutionOrder:
         assert cfg.venue_for("never_seen", symbol="MNQ") == "ibkr"
 
     def test_venue_for_v1_back_compat_no_symbol_emits_deprecation(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         # The no-symbol form must still resolve (back-compat for old
         # callers) but it MUST emit a DeprecationWarning so we can grep
@@ -203,7 +210,9 @@ class TestVenueResolutionOrder:
         assert any(issubclass(w.category, DeprecationWarning) for w in caught)
 
     def test_venue_for_falls_back_to_ibkr_when_nothing_configured(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         # An empty config (only the version key) must still resolve to
         # the documented last-resort default.
@@ -220,7 +229,9 @@ class TestVenueResolutionOrder:
 
 class TestFailoverChain:
     def test_failover_chain_resolves(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         monkeypatch.delenv("ETA_VENUE_OVERRIDE_CRYPTO", raising=False)
         cfg = broker_router.RoutingConfig.load(_write(tmp_path, _V2_YAML))
@@ -230,7 +241,9 @@ class TestFailoverChain:
         assert chain == ("alpaca", "tastytrade")
 
     def test_failover_chain_promotes_per_bot_primary_to_front(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         # If a bot's per-bot pin disagrees with the chain primary, the
         # bot's pin must come FIRST and the original primary follows
@@ -249,7 +262,9 @@ class TestFailoverChain:
         assert chain.count("tastytrade") == 1
 
     def test_failover_chain_collapses_to_primary_when_no_chain(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         monkeypatch.delenv("ETA_VENUE_OVERRIDE_CRYPTO", raising=False)
         cfg = broker_router.RoutingConfig.load(_write(tmp_path, _V1_YAML))
@@ -283,10 +298,10 @@ class TestAssetClassDetection:
             ("NQ", "futures"),
             ("CL", "futures"),
             ("GC", "futures"),
-            ("MNQ1", "futures"),       # supervisor numeric form
-            ("MNQM6", "futures"),      # CME month-coded form
-            ("ESH26", "futures"),      # full month+yy
-            ("/MNQ", "futures"),       # slash-prefix bare root
+            ("MNQ1", "futures"),  # supervisor numeric form
+            ("MNQM6", "futures"),  # CME month-coded form
+            ("ESH26", "futures"),  # full month+yy
+            ("/MNQ", "futures"),  # slash-prefix bare root
             # Equity
             ("SPY", "equity"),
             ("AAPL", "equity"),
@@ -296,7 +311,9 @@ class TestAssetClassDetection:
         ],
     )
     def test_asset_class_detection_for_known_symbols(
-        self, symbol: str, expected: str,
+        self,
+        symbol: str,
+        expected: str,
     ) -> None:
         assert broker_router._asset_class_for_symbol(symbol) == expected
 
@@ -348,7 +365,8 @@ class TestValidator:
             ("mnq_v7", "MNQ"),
         ]
         results = validator.check_routing_config(
-            cfg=cfg, bot_pairs=bot_pairs,
+            cfg=cfg,
+            bot_pairs=bot_pairs,
             smart_router=_StubSmartRouter(venues),
         )
         assert all(r.ok for r in results), [r.line() for r in results if not r.ok]
@@ -373,7 +391,8 @@ class TestValidator:
         }
         bot_pairs = [("btc_optimized", "BTC"), ("mnq_v7", "MNQ")]
         results = validator.check_routing_config(
-            cfg=cfg, bot_pairs=bot_pairs,
+            cfg=cfg,
+            bot_pairs=bot_pairs,
             smart_router=_StubSmartRouter(venues),
         )
         by_bot = {r.bot_id: r for r in results}

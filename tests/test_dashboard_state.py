@@ -1,4 +1,5 @@
 """Tests for safe state-file reader (Wave-7 dashboard, 2026-04-27)."""
+
 from __future__ import annotations
 
 import json

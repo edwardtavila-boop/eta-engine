@@ -1,4 +1,5 @@
 """Tests for kaizen_loop's supercharge hooks: hot_learner decay + wiring audit."""
+
 from __future__ import annotations
 
 import contextlib
@@ -22,13 +23,8 @@ def _mock_kaizen_deps(
     elite = elite or {"bots": {}, "tier_counts": {}}
     mc = mc or {"bots": {}, "verdict_counts": {}}
     audit = audit if audit is not None else []
-    audit_kw = (
-        {"side_effect": audit_side_effect}
-        if audit_side_effect is not None else {"return_value": audit}
-    )
-    decay_kw = (
-        {"side_effect": decay_side_effect} if decay_side_effect is not None else {}
-    )
+    audit_kw = {"side_effect": audit_side_effect} if audit_side_effect is not None else {"return_value": audit}
+    decay_kw = {"side_effect": decay_side_effect} if decay_side_effect is not None else {}
     with (
         patch("eta_engine.scripts.elite_scoreboard.analyze", return_value=elite),
         patch("eta_engine.scripts.monte_carlo_validator.analyze", return_value=mc),
@@ -59,6 +55,7 @@ def test_run_loop_invokes_wiring_audit():
 def test_dark_module_appears_in_report():
     """A module that's been dark for >=7 days surfaces in report['wiring']."""
     from eta_engine.scripts.jarvis_wiring_audit import ModuleStatus
+
     fake_status = [
         ModuleStatus(
             module="portfolio_brain",
@@ -82,7 +79,9 @@ def test_dark_module_appears_in_report():
     ]
     with _mock_kaizen_deps(audit=fake_status):
         report = kaizen_loop.run_loop(
-            since_iso=None, bootstraps=10, apply_actions=False,
+            since_iso=None,
+            bootstraps=10,
+            apply_actions=False,
         )
     wiring = report["wiring"]
     assert wiring["n_dark_modules"] == 1
@@ -98,7 +97,9 @@ def test_wiring_summary_present_even_when_audit_returns_empty():
     appears with zero counts."""
     with _mock_kaizen_deps():
         report = kaizen_loop.run_loop(
-            since_iso=None, bootstraps=10, apply_actions=False,
+            since_iso=None,
+            bootstraps=10,
+            apply_actions=False,
         )
     assert "wiring" in report
     assert report["wiring"]["n_dark_modules"] == 0
@@ -109,7 +110,9 @@ def test_hot_learner_decay_failure_does_not_block_pass():
     """If hot_learner explodes, the kaizen pass must still complete."""
     with _mock_kaizen_deps(decay_side_effect=RuntimeError("learner is dead")):
         report = kaizen_loop.run_loop(
-            since_iso=None, bootstraps=10, apply_actions=False,
+            since_iso=None,
+            bootstraps=10,
+            apply_actions=False,
         )
     assert report is not None
     assert "wiring" in report
@@ -120,7 +123,9 @@ def test_wiring_audit_failure_does_not_block_pass():
     with an empty wiring summary."""
     with _mock_kaizen_deps(audit_side_effect=RuntimeError("audit on fire")):
         report = kaizen_loop.run_loop(
-            since_iso=None, bootstraps=10, apply_actions=False,
+            since_iso=None,
+            bootstraps=10,
+            apply_actions=False,
         )
     assert report["wiring"]["n_total_modules"] == 0
 

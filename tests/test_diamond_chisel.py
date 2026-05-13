@@ -26,6 +26,7 @@ deep-dive audit:
      accidental divergence so the operator notices if the configs
      start to disagree (which would invalidate the dedup rule).
 """
+
 # ruff: noqa: N802, PLR2004
 from __future__ import annotations
 
@@ -50,6 +51,7 @@ class _MockBar:
         """Compatibility shim for strategies that expect datetime-typed
         timestamps (sweep_reclaim_strategy uses bar.timestamp.date())."""
         from datetime import datetime as _dt
+
         return _dt.fromisoformat(self.ts.replace("Z", "+00:00"))
 
 
@@ -62,8 +64,7 @@ def _make_trending_history(n: int = 100, slope: float = 0.5) -> list[_MockBar]:
         close = open_ + slope
         high = max(open_, close) + 0.1
         low = min(open_, close) - 0.1
-        bars.append(_MockBar(open=open_, high=high, low=low, close=close,
-                              volume=1000.0 + (i % 5) * 50))
+        bars.append(_MockBar(open=open_, high=high, low=low, close=close, volume=1000.0 + (i % 5) * 50))
         price = close
     return bars
 
@@ -78,8 +79,7 @@ def _make_chop_history(n: int = 100, amplitude: float = 0.5) -> list[_MockBar]:
         close = 100.0 + delta
         high = max(open_, close) + 0.05
         low = min(open_, close) - 0.05
-        bars.append(_MockBar(open=open_, high=high, low=low, close=close,
-                              volume=1000.0))
+        bars.append(_MockBar(open=open_, high=high, low=low, close=close, volume=1000.0))
     return bars
 
 
@@ -116,9 +116,7 @@ def test_adx_high_in_trending_regime() -> None:
         hist.append(bar)
     assert strat._adx is not None
     # A monotonic slope=1.0 trend = textbook ADX > 50
-    assert strat._adx > 25, (
-        f"trending regime ADX={strat._adx:.1f} should be >25 (chop threshold)"
-    )
+    assert strat._adx > 25, f"trending regime ADX={strat._adx:.1f} should be >25 (chop threshold)"
 
 
 def test_adx_low_in_chop_regime() -> None:
@@ -135,9 +133,7 @@ def test_adx_low_in_chop_regime() -> None:
         hist.append(bar)
     assert strat._adx is not None
     # +/- oscillation cancels DM → near-zero ADX
-    assert strat._adx < 25, (
-        f"chop regime ADX={strat._adx:.1f} should be <25 (would gate entries)"
-    )
+    assert strat._adx < 25, f"chop regime ADX={strat._adx:.1f} should be <25 (would gate entries)"
 
 
 def test_thrust_blocked_when_adx_below_threshold() -> None:
@@ -150,8 +146,7 @@ def test_thrust_blocked_when_adx_below_threshold() -> None:
 
     # Force adx_threshold above ADX's valid 0..100 range so any computed
     # trend strength must still block.
-    strat = MomentumStrategy(MomentumConfig(adx_period=14, warmup_bars=10,
-                                              adx_threshold=101))
+    strat = MomentumStrategy(MomentumConfig(adx_period=14, warmup_bars=10, adx_threshold=101))
     hist: list = []
     for bar in _make_trending_history(50, slope=1.0):
         strat._update_indicators(bar, hist)
@@ -173,12 +168,10 @@ def test_oil_macro_atr_floor_blocks_dead_tape() -> None:
         OilMacroStrategy,
     )
 
-    cfg = OilMacroConfig(warmup_bars=2, min_atr_usd=10.0,
-                          enforce_session_gate=False)
+    cfg = OilMacroConfig(warmup_bars=2, min_atr_usd=10.0, enforce_session_gate=False)
     strat = OilMacroStrategy(cfg)
     # Pump a bunch of bars to clear warmup
-    bars = [_MockBar(open=70.0, high=70.05, low=69.95, close=70.0,
-                       volume=1000.0) for _ in range(20)]
+    bars = [_MockBar(open=70.0, high=70.05, low=69.95, close=70.0, volume=1000.0) for _ in range(20)]
     for i, b in enumerate(bars):
         sig = strat.maybe_enter(b, bars[:i], 100_000.0, None)
         assert sig is None  # tiny TR → tiny ATR → below floor → no signal
@@ -191,17 +184,13 @@ def test_oil_macro_panic_day_counter_tracks_distinct_dates() -> None:
         OilMacroStrategy,
     )
 
-    cfg = OilMacroConfig(warmup_bars=2, min_atr_usd=0.01,
-                          enforce_session_gate=False,
-                          panic_day_count_window=30)
+    cfg = OilMacroConfig(warmup_bars=2, min_atr_usd=0.01, enforce_session_gate=False, panic_day_count_window=30)
     strat = OilMacroStrategy(cfg)
     # Manually advance state through bars on the same date
     base = "2026-05-12T"
     bars = [
-        _MockBar(open=70.0, high=72.0, low=68.0, close=69.0, volume=2000.0,
-                 ts=base + "14:00:00+00:00"),
-        _MockBar(open=69.0, high=71.0, low=67.0, close=70.0, volume=2000.0,
-                 ts=base + "15:00:00+00:00"),
+        _MockBar(open=70.0, high=72.0, low=68.0, close=69.0, volume=2000.0, ts=base + "14:00:00+00:00"),
+        _MockBar(open=69.0, high=71.0, low=67.0, close=70.0, volume=2000.0, ts=base + "15:00:00+00:00"),
     ]
     for i, b in enumerate(bars):
         strat.maybe_enter(b, bars[:i], 100_000.0, None)
@@ -220,9 +209,15 @@ def test_oil_macro_falsification_triggers_below_floor() -> None:
     # Empty panic_dates → falsification triggered (count=0 < 4)
     assert strat.falsification_triggered() is True
     # Seed 5 distinct dates → falsification cleared
-    strat._panic_dates.extend([
-        "2026-04-15", "2026-04-20", "2026-05-01", "2026-05-05", "2026-05-10",
-    ])
+    strat._panic_dates.extend(
+        [
+            "2026-04-15",
+            "2026-04-20",
+            "2026-05-01",
+            "2026-05-05",
+            "2026-05-10",
+        ]
+    )
     strat._last_panic_date = "2026-05-10"
     assert strat.falsification_triggered() is False
 
@@ -236,20 +231,21 @@ def test_oil_macro_session_gate_rejects_quiet_hour() -> None:
     )
 
     cfg = OilMacroConfig(
-        warmup_bars=2, min_atr_usd=0.01, enforce_session_gate=True,
+        warmup_bars=2,
+        min_atr_usd=0.01,
+        enforce_session_gate=True,
         allowed_hours_utc=((12, 16),),  # only NY morning
     )
     strat = OilMacroStrategy(cfg)
     # Seed history so ATR is real
-    hist = [_MockBar(open=70.0, high=70.5, low=69.5, close=70.0,
-                       volume=1000.0,
-                       ts=f"2026-05-12T{h:02d}:00:00+00:00") for h in range(14)]
+    hist = [
+        _MockBar(open=70.0, high=70.5, low=69.5, close=70.0, volume=1000.0, ts=f"2026-05-12T{h:02d}:00:00+00:00")
+        for h in range(14)
+    ]
     for i, b in enumerate(hist):
         strat.maybe_enter(b, hist[:i], 100_000.0, None)
     # Now fire a real spike at 04:00 UTC (Asia early — NOT in allowed window)
-    spike = _MockBar(open=70.0, high=75.0, low=65.0, close=66.0,
-                      volume=5000.0,
-                      ts="2026-05-13T04:00:00+00:00")
+    spike = _MockBar(open=70.0, high=75.0, low=65.0, close=66.0, volume=5000.0, ts="2026-05-13T04:00:00+00:00")
     sig = strat.maybe_enter(spike, hist, 100_000.0, None)
     assert sig is None  # session gate blocked
 
@@ -268,9 +264,7 @@ def test_mgc_sweep_preset_pins_2026_05_12_refinement() -> None:
     )
 
     cfg = mgc_sweep_preset()
-    assert cfg.atr_stop_mult == 2.5, (
-        f"atr_stop_mult {cfg.atr_stop_mult} drifted from 2.5 refinement"
-    )
+    assert cfg.atr_stop_mult == 2.5, f"atr_stop_mult {cfg.atr_stop_mult} drifted from 2.5 refinement"
     assert cfg.rr_target == 3.5
     assert cfg.min_volume_z == 0.5
     assert cfg.min_wick_pct == 0.40  # NOT relaxed — v2 audit proved load-bearing
@@ -313,17 +307,14 @@ def test_mnq_nq_sage_extras_are_identical_or_flagged() -> None:
     # symbol-bound override keys to differ
     ignore_keys = {
         "per_ticker_optimal",  # MNQ vs NQ — expected
-        "warmup_policy",        # may differ between bots
+        "warmup_policy",  # may differ between bots
         "sub_strategy_extras",  # symbol-bound (sweep_preset etc)
         "rationale",
     }
     mnq_keys = set(mnq.extras.keys()) - ignore_keys
     nq_keys = set(nq.extras.keys()) - ignore_keys
     # Same key set
-    assert mnq_keys == nq_keys, (
-        f"sage_corb keys diverged — mnq has {mnq_keys-nq_keys}, "
-        f"nq has {nq_keys-mnq_keys}"
-    )
+    assert mnq_keys == nq_keys, f"sage_corb keys diverged — mnq has {mnq_keys - nq_keys}, nq has {nq_keys - mnq_keys}"
 
 
 # ────────────────────────────────────────────────────────────────────
@@ -345,19 +336,22 @@ def test_sweep_reclaim_does_not_inspect_current_bar_before_appending() -> None:
         SweepReclaimStrategy,
     )
 
-    cfg = SweepReclaimConfig(level_lookback=10, reclaim_window=3,
-                              warmup_bars=15, min_bars_between_trades=0,
-                              risk_per_trade_pct=0.005,
-                              atr_stop_mult=2.0, rr_target=2.5)
+    cfg = SweepReclaimConfig(
+        level_lookback=10,
+        reclaim_window=3,
+        warmup_bars=15,
+        min_bars_between_trades=0,
+        risk_per_trade_pct=0.005,
+        atr_stop_mult=2.0,
+        rr_target=2.5,
+    )
     strat = SweepReclaimStrategy(cfg)
 
     # Smoke test: build a level window, then fire a trigger bar that
     # creates a new high — sweep detection must NOT see the trigger's
     # own high as part of the level window.
     base = 100.0
-    flat_bars = [_MockBar(open=base, high=base + 0.1, low=base - 0.1,
-                           close=base, volume=1000.0)
-                  for _ in range(20)]
+    flat_bars = [_MockBar(open=base, high=base + 0.1, low=base - 0.1, close=base, volume=1000.0) for _ in range(20)]
     # Run warmup
     for i, b in enumerate(flat_bars):
         strat.maybe_enter(b, flat_bars[:i], 100_000.0, None)
@@ -371,6 +365,5 @@ def test_sweep_reclaim_does_not_inspect_current_bar_before_appending() -> None:
         # iteration if the level was determined from PRIOR bars.
         prior_max = max(b.high for b in flat_bars[:-1])
         assert strat._level_high <= prior_max + 1e-9, (
-            f"level_high={strat._level_high} > prior_max={prior_max} — "
-            "current bar leaked into level window"
+            f"level_high={strat._level_high} > prior_max={prior_max} — current bar leaked into level window"
         )

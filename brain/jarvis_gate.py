@@ -111,7 +111,10 @@ def ask_jarvis(
     # ``ETA_USE_JARVIS_FULL=1`` is unset, this is a no-op and we fall
     # through to the JarvisAdmin-only path below (zero behavior change).
     full_result = _maybe_consult_jarvis_full(
-        jarvis=jarvis, req=req, ctx=ctx, subsystem=subsystem,
+        jarvis=jarvis,
+        req=req,
+        ctx=ctx,
+        subsystem=subsystem,
         log_name=log_name,
     )
     if full_result is not None:
@@ -157,8 +160,13 @@ _JARVIS_FULL_CACHE: dict[int, Any] = {}
 def _is_jarvis_full_enabled() -> bool:
     """True iff the operator opted into the wave-12 intelligence stack."""
     import os
+
     return os.getenv("ETA_USE_JARVIS_FULL", "0") in (
-        "1", "true", "TRUE", "yes", "on",
+        "1",
+        "true",
+        "TRUE",
+        "yes",
+        "on",
     )
 
 
@@ -188,13 +196,15 @@ def _maybe_consult_jarvis_full(
             from eta_engine.brain.jarvis_v3.memory_hierarchy import (
                 HierarchicalMemory,
             )
+
             mem = HierarchicalMemory()
             full = JarvisFull.bootstrap(admin=jarvis, memory=mem)
             _JARVIS_FULL_CACHE[id(jarvis)] = full
         except Exception as exc:  # noqa: BLE001 -- never break the bot
             logger.warning(
                 "%s jarvis_full bootstrap failed (%s); falling back to admin",
-                log_name or subsystem.value, exc,
+                log_name or subsystem.value,
+                exc,
             )
             return None
 
@@ -209,38 +219,37 @@ def _maybe_consult_jarvis_full(
 
     try:
         verdict = full.consult(
-            req=req, ctx=ctx,
+            req=req,
+            ctx=ctx,
             current_narrative=narrative,
             bot_id=log_name or subsystem.value,
         )
     except Exception as exc:  # noqa: BLE001 -- never break the bot
         logger.warning(
             "%s jarvis_full.consult failed (%s); falling back to admin",
-            log_name or subsystem.value, exc,
+            log_name or subsystem.value,
+            exc,
         )
         return None
 
     allowed = not verdict.is_blocked()
-    size_mult = (
-        verdict.final_size_multiplier
-        if allowed and verdict.final_size_multiplier > 0
-        else None
-    )
-    reason_code = (
-        verdict.consolidated.base_reason
-        or verdict.consolidated.final_verdict
-    )
+    size_mult = verdict.final_size_multiplier if allowed and verdict.final_size_multiplier > 0 else None
+    reason_code = verdict.consolidated.base_reason or verdict.consolidated.final_verdict
     prefix = log_name or subsystem.value
     if not allowed:
         logger.info(
             "%s jarvis-full BLOCKED: %s | ood=%.2f kp=%.2f",
-            prefix, verdict.narrative_terse,
-            verdict.ood_score, verdict.premortem_kill_prob,
+            prefix,
+            verdict.narrative_terse,
+            verdict.ood_score,
+            verdict.premortem_kill_prob,
         )
     elif size_mult is not None and size_mult < 0.99:
         logger.info(
             "%s jarvis-full size-attenuated to %.0f%%: %s",
-            prefix, 100 * size_mult, verdict.narrative_terse,
+            prefix,
+            100 * size_mult,
+            verdict.narrative_terse,
         )
     return allowed, size_mult, reason_code
 

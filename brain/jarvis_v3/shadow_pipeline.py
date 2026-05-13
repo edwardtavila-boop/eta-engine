@@ -78,8 +78,11 @@ class ShadowPipeline:
         from eta_engine.strategies.shadow_paper_tracker import (
             ShadowPaperTracker,
         )
+
         tracker = ShadowPaperTracker(
-            window_size=20, reinstate_windows=3, win_rate_floor=0.52,
+            window_size=20,
+            reinstate_windows=3,
+            win_rate_floor=0.52,
         )
         inst = cls(tracker=tracker)
         with contextlib.suppress(Exception):
@@ -93,14 +96,23 @@ class ShadowPipeline:
                 PromotionStage,
                 StageThresholds,
             )
+
             thresholds = {
                 PromotionStage.SHADOW: StageThresholds(
-                    min_days=14, min_trades=50, min_sharpe=1.0,
-                    max_dd_pct=5.0, min_win_rate=0.45, max_slip_bps=3.0,
+                    min_days=14,
+                    min_trades=50,
+                    min_sharpe=1.0,
+                    max_dd_pct=5.0,
+                    min_win_rate=0.45,
+                    max_slip_bps=3.0,
                 ),
                 PromotionStage.PAPER: StageThresholds(
-                    min_days=21, min_trades=100, min_sharpe=1.3,
-                    max_dd_pct=4.0, min_win_rate=0.48, max_slip_bps=2.5,
+                    min_days=21,
+                    min_trades=100,
+                    min_sharpe=1.3,
+                    max_dd_pct=4.0,
+                    min_win_rate=0.48,
+                    max_slip_bps=2.5,
                 ),
             }
             self._gate = PromotionGate(
@@ -145,7 +157,7 @@ class ShadowPipeline:
         variance = sum((r - mean_r) ** 2 for r in rs) / (len(rs) - 1)
         if variance <= 0:
             return 0.0
-        return mean_r / (variance ** 0.5) * (252 ** 0.5)
+        return mean_r / (variance**0.5) * (252**0.5)
 
     def record_fill(
         self,
@@ -225,20 +237,24 @@ class ShadowPipeline:
                 self._gate.update_metrics(strategy_id, metrics)
                 decision = self._gate.evaluate(strategy_id)
 
-                results.append({
-                    "strategy_id": strategy_id,
-                    "regime": regime,
-                    "action": decision.action.value,
-                    "sharpe": round(sharpe, 4),
-                    "win_rate": round(wr, 4),
-                    "trades": total_trades,
-                    "should_reinstate": should,
-                    "reasons": decision.reasons,
-                })
+                results.append(
+                    {
+                        "strategy_id": strategy_id,
+                        "regime": regime,
+                        "action": decision.action.value,
+                        "sharpe": round(sharpe, 4),
+                        "win_rate": round(wr, 4),
+                        "trades": total_trades,
+                        "should_reinstate": should,
+                        "reasons": decision.reasons,
+                    }
+                )
             except Exception as exc:
                 logger.warning(
                     "shadow_pipeline: evaluate failed for %s/%s: %s",
-                    strategy_id, regime, exc,
+                    strategy_id,
+                    regime,
+                    exc,
                 )
 
         self._save_state()

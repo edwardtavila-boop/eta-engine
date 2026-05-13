@@ -12,6 +12,7 @@ Pure stdlib + string templates. No LLM. When LLM access is wired
 in production, the same call signature lets you swap in a richer
 generator without changing call sites.
 """
+
 from __future__ import annotations
 
 import logging
@@ -46,9 +47,7 @@ def verdict_to_narrative(
 
 def _terse(v: ConsolidatedVerdict) -> str:
     if v.operator_override_level in {"HARD_PAUSE", "KILL"}:
-        return (
-            f"BLOCKED ({v.operator_override_level}): operator override active."
-        )
+        return f"BLOCKED ({v.operator_override_level}): operator override active."
     base_to_phrase = {
         "APPROVED": "approved",
         "CONDITIONAL": "approved at half size",
@@ -57,10 +56,7 @@ def _terse(v: ConsolidatedVerdict) -> str:
     }
     phrase = base_to_phrase.get(v.final_verdict, v.final_verdict.lower())
     size_pct = int(round(v.final_size_multiplier * 100))
-    return (
-        f"{phrase.capitalize()} at {size_pct}% size, "
-        f"{int(v.confidence * 100)}% confidence."
-    )
+    return f"{phrase.capitalize()} at {size_pct}% size, {int(v.confidence * 100)}% confidence."
 
 
 def _standard(v: ConsolidatedVerdict) -> str:
@@ -73,41 +69,34 @@ def _standard(v: ConsolidatedVerdict) -> str:
     if v.intelligence_enabled:
         if v.firm_board_consensus >= 0.6:
             parts.append(
-                f"Firm board reached strong consensus "
-                f"({v.firm_board_consensus:.2f}).",
+                f"Firm board reached strong consensus ({v.firm_board_consensus:.2f}).",
             )
         elif v.firm_board_consensus < 0.4:
             parts.append(
-                f"Firm board split ({v.firm_board_consensus:.2f}) -- "
-                f"low conviction.",
+                f"Firm board split ({v.firm_board_consensus:.2f}) -- low conviction.",
             )
 
         if v.causal_score > 0.3:
             parts.append(
-                f"Causal evidence supports the trade "
-                f"(score {v.causal_score:+.2f}).",
+                f"Causal evidence supports the trade (score {v.causal_score:+.2f}).",
             )
         elif v.causal_score < -0.2:
             parts.append(
-                f"Causal evidence is weak (score {v.causal_score:+.2f}); "
-                f"signal may be correlation-only.",
+                f"Causal evidence is weak (score {v.causal_score:+.2f}); signal may be correlation-only.",
             )
 
         if v.world_model_expected_r > 0.5:
             parts.append(
-                f"World model expects +{v.world_model_expected_r:.2f}R "
-                f"on this state.",
+                f"World model expects +{v.world_model_expected_r:.2f}R on this state.",
             )
         elif v.world_model_expected_r < -0.3:
             parts.append(
-                f"World model expects {v.world_model_expected_r:+.2f}R -- "
-                f"unfavorable.",
+                f"World model expects {v.world_model_expected_r:+.2f}R -- unfavorable.",
             )
 
         if v.rag_cautions:
             parts.append(
-                f"RAG flagged {len(v.rag_cautions)} caution(s) from "
-                f"analog episodes.",
+                f"RAG flagged {len(v.rag_cautions)} caution(s) from analog episodes.",
             )
         if v.rag_boosts:
             parts.append(
@@ -155,12 +144,10 @@ def _verbose(v: ConsolidatedVerdict) -> str:
             f"devils advocate: {v.firm_board_devils_advocate or 'none'}.",
         )
         intel.append(
-            f"Causal evidence: score {v.causal_score:+.3f}. "
-            f"{v.causal_reason}",
+            f"Causal evidence: score {v.causal_score:+.3f}. {v.causal_reason}",
         )
         intel.append(
-            f"World model: best action '{v.world_model_best_action}' "
-            f"with expected R {v.world_model_expected_r:+.3f}.",
+            f"World model: best action '{v.world_model_best_action}' with expected R {v.world_model_expected_r:+.3f}.",
         )
         if v.rag_summary:
             intel.append(f"RAG: {v.rag_summary}")

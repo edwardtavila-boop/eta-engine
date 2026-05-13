@@ -48,9 +48,7 @@ from typing import Any
 
 log = logging.getLogger(__name__)
 
-DEFAULT_CACHE_PATH = (
-    Path("~/.local/state/eta_engine/files_cache.json").expanduser()
-)
+DEFAULT_CACHE_PATH = Path("~/.local/state/eta_engine/files_cache.json").expanduser()
 DEFAULT_TTL_SECONDS = 30 * 86_400  # 30 days
 
 
@@ -62,11 +60,12 @@ DEFAULT_TTL_SECONDS = 30 * 86_400  # 30 days
 @dataclass(frozen=True)
 class CachedFile:
     """One uploaded blob's metadata."""
-    sha256:       str
-    file_id:      str
-    uploaded_at:  str       # ISO 8601
-    bytes:        int
-    label:        str       # caller-supplied; useful for ops grep
+
+    sha256: str
+    file_id: str
+    uploaded_at: str  # ISO 8601
+    bytes: int
+    label: str  # caller-supplied; useful for ops grep
 
 
 # ---------------------------------------------------------------------------
@@ -93,7 +92,7 @@ class FilesCache:
         api_key: str | None = None,
     ) -> None:
         self._path = Path(cache_path).expanduser() if cache_path else DEFAULT_CACHE_PATH
-        self._ttl  = ttl_seconds
+        self._ttl = ttl_seconds
         self._api_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
         self._index: dict[str, CachedFile] = {}
         self._load()
@@ -132,8 +131,7 @@ class FilesCache:
             }
             for sha, f in self._index.items()
         }
-        fd, tmp = tempfile.mkstemp(prefix=self._path.name + ".",
-                                   dir=str(self._path.parent))
+        fd, tmp = tempfile.mkstemp(prefix=self._path.name + ".", dir=str(self._path.parent))
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as fh:
                 json.dump(payload, fh, indent=2, sort_keys=True)
@@ -208,8 +206,7 @@ class FilesCache:
                 import anthropic
             except ImportError:
                 log.info(
-                    "FilesCache: anthropic SDK not installed; "
-                    "caller should inline content",
+                    "FilesCache: anthropic SDK not installed; caller should inline content",
                 )
                 return None
             client = anthropic.Anthropic(api_key=self._api_key)

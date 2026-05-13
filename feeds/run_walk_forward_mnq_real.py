@@ -65,10 +65,7 @@ def _load_csv(path: Path, limit: int | None = None) -> list:
     from eta_engine.core.data_pipeline import BarData
 
     if not path.exists():
-        raise FileNotFoundError(
-            f"MNQ data file not found at {path}. "
-            "Set MNQ_DATA_PATH env var to override."
-        )
+        raise FileNotFoundError(f"MNQ data file not found at {path}. Set MNQ_DATA_PATH env var to override.")
     bars: list = []
     with path.open("r", encoding="utf-8", newline="") as fh:
         reader = csv.DictReader(fh)
@@ -133,11 +130,9 @@ def _load_es_bars_aligned(_target_ts: object) -> list:
         pass
     try:
         from eta_engine.data.library import default_library
+
         ds = default_library().get(symbol="ES1", timeframe="5m")
-        bars = (
-            default_library().load_bars(ds, require_positive_prices=True)
-            if ds else []
-        )
+        bars = default_library().load_bars(ds, require_positive_prices=True) if ds else []
     except Exception:  # noqa: BLE001
         bars = []
     _ES_BARS_CACHE = bars  # type: ignore[name-defined]
@@ -182,10 +177,7 @@ def _ctx(bar, hist) -> dict:  # noqa: ANN001
         recent = hist[-20:]
         ema_short = sum(b.close for b in recent) / len(recent)
         baseline = hist[-50:-20] if len(hist) >= 50 else hist[:-20]
-        ema_long = (
-            sum(b.close for b in baseline) / len(baseline)
-            if baseline else ema_short
-        )
+        ema_long = sum(b.close for b in baseline) / len(baseline) if baseline else ema_short
         slope = (ema_short - ema_long) / ema_long if ema_long else 0.0
         # bias: +1 / -1 / 0
         bias = 1 if slope > 0.0005 else (-1 if slope < -0.0005 else 0)
@@ -193,10 +185,7 @@ def _ctx(bar, hist) -> dict:  # noqa: ANN001
         trend_bias_raw = max(-1.0, min(1.0, slope * 200.0))
         # ATR-based vol regime
         recent_atr = sum(b.high - b.low for b in recent) / len(recent)
-        long_atr = (
-            sum(b.high - b.low for b in baseline) / len(baseline)
-            if baseline else recent_atr
-        )
+        long_atr = sum(b.high - b.low for b in baseline) / len(baseline) if baseline else recent_atr
         vol_ratio = recent_atr / long_atr if long_atr > 0.0 else 1.0
     else:
         bias = 0
@@ -231,9 +220,7 @@ def _ctx(bar, hist) -> dict:  # noqa: ANN001
         "session_ok": session_ok,
         "es_aligned": es_aligned,
         # Crypto-tuned defaults — see docstring for rationale.
-        "funding_history": [
-            FundingRate(timestamp=now, symbol=bar.symbol, rate=-0.0008, predicted_rate=-0.0008)
-        ] * 8,
+        "funding_history": [FundingRate(timestamp=now, symbol=bar.symbol, rate=-0.0008, predicted_rate=-0.0008)] * 8,
         "onchain": {
             "whale_transfers": 40,
             "whale_transfers_baseline": 20,
@@ -257,32 +244,21 @@ def _explain_gate(res, wf) -> list[str]:  # noqa: ANN001
     state with the demo.
     """
     reasons: list[str] = []
-    high_deg_windows = [
-        w for w in res.windows if w.get("degradation_pct", 0.0) > 0.50
-    ]
+    high_deg_windows = [w for w in res.windows if w.get("degradation_pct", 0.0) > 0.50]
     if high_deg_windows:
         idxs = ", ".join(str(w["window"]) for w in high_deg_windows)
-        reasons.append(
-            f"OOS degradation > 50% in window(s): {idxs} (IS-overfit)"
-        )
+        reasons.append(f"OOS degradation > 50% in window(s): {idxs} (IS-overfit)")
     if res.fold_dsr_median <= 0.5:
-        reasons.append(
-            f"Per-fold DSR median {res.fold_dsr_median:.3f} <= 0.5 threshold"
-        )
+        reasons.append(f"Per-fold DSR median {res.fold_dsr_median:.3f} <= 0.5 threshold")
     if res.fold_dsr_pass_fraction < wf.fold_dsr_min_pass_fraction:
         reasons.append(
             f"Per-fold DSR pass fraction {res.fold_dsr_pass_fraction * 100:.1f}% "
             f"< {wf.fold_dsr_min_pass_fraction * 100:.0f}% threshold"
         )
-    low_trade_windows = [
-        w for w in res.windows if w.get("oos_trades", 0) < wf.min_trades_per_window
-    ]
+    low_trade_windows = [w for w in res.windows if w.get("oos_trades", 0) < wf.min_trades_per_window]
     if low_trade_windows:
         idxs = ", ".join(str(w["window"]) for w in low_trade_windows)
-        reasons.append(
-            f"OOS trade count below min ({wf.min_trades_per_window}) "
-            f"in window(s): {idxs}"
-        )
+        reasons.append(f"OOS trade count below min ({wf.min_trades_per_window}) in window(s): {idxs}")
     return reasons
 
 
@@ -367,10 +343,7 @@ def main() -> int:
     # them all by default — only low_vol_choppy and high_vol_choppy
     # are tradeable in MNQ given the Window 0 finding. Override via
     # MNQ_BLOCK_REGIMES="" to compare against ungated.
-    default_block = (
-        "low_vol_trend_up,low_vol_trend_down,"
-        "high_vol_trend_up,high_vol_trend_down,panic"
-    )
+    default_block = "low_vol_trend_up,low_vol_trend_down,high_vol_trend_up,high_vol_trend_down,panic"
     block_raw = os.environ.get("MNQ_BLOCK_REGIMES", default_block)
     block_regimes = frozenset(r.strip() for r in block_raw.split(",") if r.strip())
 
@@ -392,10 +365,7 @@ def main() -> int:
 
     print("EVOLUTIONARY TRADING ALGO -- MNQ Real-Data Walk-Forward")
     print("=" * 82)
-    print(
-        f"Data: {data_path}  bars: {len(bars)}  "
-        f"range: {bars[0].timestamp.date()} -> {bars[-1].timestamp.date()}"
-    )
+    print(f"Data: {data_path}  bars: {len(bars)}  range: {bars[0].timestamp.date()} -> {bars[-1].timestamp.date()}")
     print(f"Anchored={wf.anchored}  windows={len(res.windows)}")
     print("-" * 82)
     print(

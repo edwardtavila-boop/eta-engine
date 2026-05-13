@@ -218,16 +218,13 @@ def evaluate_gate(
         )
         per_fold_dsr.append(fold_dsr)
     fold_median = _median(per_fold_dsr)
-    fold_pass_frac = (
-        sum(1 for d in per_fold_dsr if d > 0.5) / n_folds
-        if n_folds else 0.0
-    )
+    fold_pass_frac = sum(1 for d in per_fold_dsr if d > 0.5) / n_folds if n_folds else 0.0
 
     # min_trades coverage
     n_met = sum(
-        1 for w in windows
-        if w.is_trades >= cfg.min_trades_per_window
-        and w.oos_trades >= cfg.min_trades_per_window
+        1
+        for w in windows
+        if w.is_trades >= cfg.min_trades_per_window and w.oos_trades >= cfg.min_trades_per_window
     )
     met_frac = n_met / n_folds
     all_met = met_frac >= cfg.min_trades_met_fraction
@@ -236,9 +233,7 @@ def evaluate_gate(
 
     reasons: list[str] = []
     deg_check = agg_deg if cfg.agg_degradation_mode else deg_avg
-    legacy_gate = (
-        dsr > 0.5 and deg_check < 0.35 and all_met and is_positive
-    )
+    legacy_gate = dsr > 0.5 and deg_check < 0.35 and all_met and is_positive
     if not is_positive:
         reasons.append(f"agg IS Sharpe {agg_is:+.3f} not positive")
     if dsr <= 0.5:
@@ -250,16 +245,13 @@ def evaluate_gate(
         )
     if not all_met:
         reasons.append(
-            f"min_trades met {met_frac * 100:.0f}% < "
-            f"{cfg.min_trades_met_fraction * 100:.0f}%",
+            f"min_trades met {met_frac * 100:.0f}% < {cfg.min_trades_met_fraction * 100:.0f}%",
         )
 
     if cfg.grid_mode:
         n_pos = sum(1 for w in windows if w.oos_sharpe > 0.0)
         pos_frac = n_pos / n_folds
-        pfs = sorted(
-            min(float(w.oos_profit_factor or 0.0), 10.0) for w in windows
-        )
+        pfs = sorted(min(float(w.oos_profit_factor or 0.0), 10.0) for w in windows)
         agg_pf = pfs[len(pfs) // 2] if pfs else 0.0
         worst_dd = max(
             (float(w.oos_max_dd_pct or 0.0) for w in windows),
@@ -283,22 +275,13 @@ def evaluate_gate(
                 )
             if pos_frac < cfg.grid_min_pos_fraction:
                 reasons.append(
-                    f"positive-fold {pos_frac * 100:.0f}% < "
-                    f"{cfg.grid_min_pos_fraction * 100:.0f}%",
+                    f"positive-fold {pos_frac * 100:.0f}% < {cfg.grid_min_pos_fraction * 100:.0f}%",
                 )
     elif cfg.long_haul_mode:
         n_pos = sum(1 for w in windows if w.oos_sharpe > 0.0)
         pos_frac = n_pos / n_folds
-        long_haul_legacy = (
-            dsr > 0.5
-            and agg_deg < 0.35
-            and all_met
-            and is_positive
-        )
-        gate = (
-            long_haul_legacy
-            and pos_frac >= cfg.long_haul_min_pos_fraction
-        )
+        long_haul_legacy = dsr > 0.5 and agg_deg < 0.35 and all_met and is_positive
+        gate = long_haul_legacy and pos_frac >= cfg.long_haul_min_pos_fraction
         if pos_frac < cfg.long_haul_min_pos_fraction:
             reasons.append(
                 f"positive-fold {pos_frac * 100:.0f}% < "
@@ -308,9 +291,7 @@ def evaluate_gate(
             reasons.append(f"aggregate deg {agg_deg:.3f} >= 0.35")
     elif cfg.strict_fold_dsr_gate:
         gate = (
-            legacy_gate
-            and fold_median > 0.5
-            and fold_pass_frac >= cfg.fold_dsr_min_pass_fraction
+            legacy_gate and fold_median > 0.5 and fold_pass_frac >= cfg.fold_dsr_min_pass_fraction
         )
         if fold_median <= 0.5:
             reasons.append(f"fold DSR median {fold_median:.3f} <= 0.5")

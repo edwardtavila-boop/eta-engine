@@ -28,6 +28,7 @@ Trigger pattern (called from feedback_loop.close_trade):
 Pure stdlib. The "narrative" leg is template-driven (no LLM); when
 LLM access is wired in production a richer narrative is a drop-in.
 """
+
 from __future__ import annotations
 
 import json
@@ -49,9 +50,9 @@ class LayerAttribution:
     the bad call?"""
 
     layer: str
-    layer_signal: float                 # the layer's expressed value
-    contribution_score: float           # in [-1, +1]; negative = layer's
-                                        # signal was wrong
+    layer_signal: float  # the layer's expressed value
+    contribution_score: float  # in [-1, +1]; negative = layer's
+    # signal was wrong
     note: str = ""
 
 
@@ -61,7 +62,7 @@ class Postmortem:
 
     signal_id: str
     realized_r: float
-    severity: str                       # "moderate" / "severe" / "catastrophic"
+    severity: str  # "moderate" / "severe" / "catastrophic"
     ts_generated: str
     ts_original_decision: str = ""
     direction: str = ""
@@ -102,7 +103,9 @@ class Postmortem:
 
     def to_markdown(self) -> str:
         sev_marker = {
-            "moderate": "[!]", "severe": "[!!]", "catastrophic": "[!!!]",
+            "moderate": "[!]",
+            "severe": "[!!]",
+            "catastrophic": "[!!!]",
         }.get(self.severity, "")
         lines: list[str] = []
         lines.append(f"# Postmortem {sev_marker}: {self.signal_id}")
@@ -129,8 +132,7 @@ class Postmortem:
             lines.append("|---|---|---|---|")
             for a in self.layer_attributions:
                 lines.append(
-                    f"| {a.layer} | {a.layer_signal:+.3f} | "
-                    f"{a.contribution_score:+.3f} | {a.note} |",
+                    f"| {a.layer} | {a.layer_signal:+.3f} | {a.contribution_score:+.3f} | {a.note} |",
                 )
         else:
             lines.append("(no layer outputs available)")
@@ -176,52 +178,56 @@ def _attribute_layers(verdict_record: dict, realized_r: float) -> list[LayerAttr
     # Causal layer
     causal_score = float(verdict_record.get("causal_score", 0.0))
     causal_reason = str(verdict_record.get("causal_reason", ""))
-    out.append(LayerAttribution(
-        layer="causal",
-        layer_signal=causal_score,
-        contribution_score=round(-causal_score, 3) if realized_r < 0 else round(causal_score, 3),
-        note=causal_reason[:100],
-    ))
+    out.append(
+        LayerAttribution(
+            layer="causal",
+            layer_signal=causal_score,
+            contribution_score=round(-causal_score, 3) if realized_r < 0 else round(causal_score, 3),
+            note=causal_reason[:100],
+        )
+    )
 
     # Firm board consensus
     fb_consensus = float(verdict_record.get("firm_board_consensus", 0.0))
-    out.append(LayerAttribution(
-        layer="firm_board",
-        layer_signal=fb_consensus,
-        contribution_score=(
-            round(-(fb_consensus - 0.5) * 2, 3) if realized_r < 0
-            else round((fb_consensus - 0.5) * 2, 3)
-        ),
-        note=f"consensus {fb_consensus:.2f}",
-    ))
+    out.append(
+        LayerAttribution(
+            layer="firm_board",
+            layer_signal=fb_consensus,
+            contribution_score=(
+                round(-(fb_consensus - 0.5) * 2, 3) if realized_r < 0 else round((fb_consensus - 0.5) * 2, 3)
+            ),
+            note=f"consensus {fb_consensus:.2f}",
+        )
+    )
 
     # World-model expected R
     wm_r = float(verdict_record.get("world_model_expected_r", 0.0))
-    out.append(LayerAttribution(
-        layer="world_model",
-        layer_signal=wm_r,
-        contribution_score=round(
-            (-wm_r if realized_r < 0 else wm_r) / 2.0, 3,
-        ),
-        note=(
-            f"expected R was {wm_r:+.2f}, realized {realized_r:+.2f}"
-        ),
-    ))
+    out.append(
+        LayerAttribution(
+            layer="world_model",
+            layer_signal=wm_r,
+            contribution_score=round(
+                (-wm_r if realized_r < 0 else wm_r) / 2.0,
+                3,
+            ),
+            note=(f"expected R was {wm_r:+.2f}, realized {realized_r:+.2f}"),
+        )
+    )
 
     # RAG cautions: positive contribution if we ignored cautions
     rag_cautions = verdict_record.get("rag_cautions") or []
     rag_score = -0.5 if rag_cautions else 0.0
-    out.append(LayerAttribution(
-        layer="rag",
-        layer_signal=len(rag_cautions),
-        contribution_score=round(
-            rag_score if realized_r < 0 else 0.0, 3,
-        ),
-        note=(
-            f"had {len(rag_cautions)} caution(s)" if rag_cautions
-            else "no cautions"
-        ),
-    ))
+    out.append(
+        LayerAttribution(
+            layer="rag",
+            layer_signal=len(rag_cautions),
+            contribution_score=round(
+                rag_score if realized_r < 0 else 0.0,
+                3,
+            ),
+            note=(f"had {len(rag_cautions)} caution(s)" if rag_cautions else "no cautions"),
+        )
+    )
 
     return out
 
@@ -277,8 +283,7 @@ def _suggested_adjustments(
     out: list[str] = []
     if severity == "catastrophic":
         out.append(
-            "URGENT: pause this signal class via operator_override "
-            "until manual review",
+            "URGENT: pause this signal class via operator_override until manual review",
         )
     if not attributions:
         return out
@@ -286,8 +291,7 @@ def _suggested_adjustments(
     layer = worst.layer
     if layer == "causal":
         out.append(
-            "rerun causal_discovery with a fresh time window and "
-            "re-evaluate causal-veto threshold",
+            "rerun causal_discovery with a fresh time window and re-evaluate causal-veto threshold",
         )
     if layer == "firm_board":
         out.append(
@@ -295,8 +299,7 @@ def _suggested_adjustments(
         )
     if layer == "world_model":
         out.append(
-            "trigger meta_learner shadow trial with cooler "
-            "world-model rollout horizon (h=3 instead of h=5)",
+            "trigger meta_learner shadow trial with cooler world-model rollout horizon (h=3 instead of h=5)",
         )
     if layer == "rag":
         out.append(
@@ -376,10 +379,12 @@ def generate_postmortem(
         try:
             output_dir.mkdir(parents=True, exist_ok=True)
             (output_dir / f"{_safe_name(signal_id)}.md").write_text(
-                pm.to_markdown(), encoding="utf-8",
+                pm.to_markdown(),
+                encoding="utf-8",
             )
             (output_dir / f"{_safe_name(signal_id)}.json").write_text(
-                json.dumps(asdict(pm), indent=2), encoding="utf-8",
+                json.dumps(asdict(pm), indent=2),
+                encoding="utf-8",
             )
         except OSError as exc:
             logger.warning("postmortem: persist failed (%s)", exc)

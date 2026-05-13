@@ -36,6 +36,7 @@ Run
 
     python -m eta_engine.scripts.l2_commission_tier_optimizer
 """
+
 from __future__ import annotations
 
 # ruff: noqa: PLR2004
@@ -57,11 +58,11 @@ TIER_LOG = LOG_DIR / "l2_commission_tier.jsonl"
 # Account Management for exact current rates).  Each tier is (max
 # monthly contracts at this rate, per-side commission usd).
 IBKR_PRO_FUTURES_TIERS: list[tuple[int, float]] = [
-    (1_000,   0.85),
-    (10_000,  0.65),
-    (20_000,  0.45),
+    (1_000, 0.85),
+    (10_000, 0.65),
+    (20_000, 0.45),
     (100_000, 0.25),
-    (10**9,   0.25),  # cap at the lowest rate
+    (10**9, 0.25),  # cap at the lowest rate
 ]
 
 
@@ -81,8 +82,7 @@ class TierProjection:
     notes: list[str] = field(default_factory=list)
 
 
-def _read_fill_count(*, since_days: int = 30,
-                       _path: Path) -> int:
+def _read_fill_count(*, since_days: int = 30, _path: Path) -> int:
     if not _path.exists():
         return 0
     cutoff = datetime.now(UTC) - timedelta(days=since_days)
@@ -122,8 +122,7 @@ def _tier_for_monthly(monthly_fills: float) -> tuple[int, float]:
     return last, IBKR_PRO_FUTURES_TIERS[last][1]
 
 
-def compute_tier_projection(*, since_days: int = 30,
-                              _fill_path: Path | None = None) -> TierProjection:
+def compute_tier_projection(*, since_days: int = 30, _fill_path: Path | None = None) -> TierProjection:
     fill_path = _fill_path if _fill_path is not None else BROKER_FILL_LOG
     n_recent = _read_fill_count(since_days=since_days, _path=fill_path)
     # Project to monthly
@@ -132,8 +131,7 @@ def compute_tier_projection(*, since_days: int = 30,
     current_cost = monthly * per_side
     notes: list[str] = []
     if n_recent == 0:
-        notes.append("no fills in recent window — paper-soak hasn't started "
-                       "or broker_fills log is empty")
+        notes.append("no fills in recent window — paper-soak hasn't started or broker_fills log is empty")
 
     # What's the next tier threshold?
     next_threshold: int | None = None
@@ -141,8 +139,7 @@ def compute_tier_projection(*, since_days: int = 30,
     if tier_idx + 1 < len(IBKR_PRO_FUTURES_TIERS):
         next_threshold = IBKR_PRO_FUTURES_TIERS[tier_idx][0]
         next_rate = IBKR_PRO_FUTURES_TIERS[tier_idx + 1][1]
-    fills_to_next = (max(0, next_threshold - int(monthly))
-                       if next_threshold is not None else None)
+    fills_to_next = max(0, next_threshold - int(monthly)) if next_threshold is not None else None
     monthly_savings = None
     annual_savings = None
     if next_rate is not None:
@@ -161,10 +158,8 @@ def compute_tier_projection(*, since_days: int = 30,
         next_tier_threshold=next_threshold,
         fills_needed_for_next_tier=fills_to_next,
         next_tier_per_side_usd=next_rate,
-        monthly_savings_if_next_tier_usd=round(monthly_savings, 2)
-                                                if monthly_savings else None,
-        annual_savings_if_next_tier_usd=round(annual_savings, 2)
-                                                if annual_savings else None,
+        monthly_savings_if_next_tier_usd=round(monthly_savings, 2) if monthly_savings else None,
+        annual_savings_if_next_tier_usd=round(annual_savings, 2) if annual_savings else None,
         notes=notes,
     )
 
@@ -178,9 +173,7 @@ def main() -> int:
     proj = compute_tier_projection(since_days=args.days)
     try:
         with TIER_LOG.open("a", encoding="utf-8") as f:
-            f.write(json.dumps({"ts": datetime.now(UTC).isoformat(),
-                                 **asdict(proj)},
-                                separators=(",", ":")) + "\n")
+            f.write(json.dumps({"ts": datetime.now(UTC).isoformat(), **asdict(proj)}, separators=(",", ":")) + "\n")
     except OSError as e:
         print(f"WARN: tier log write failed: {e}", file=sys.stderr)
 
@@ -194,20 +187,17 @@ def main() -> int:
     print("=" * 78)
     print(f"  recent fills ({args.days}d)  : {proj.n_fills_recent_days}")
     print(f"  projected monthly        : {proj.monthly_projected_fills}")
-    print(f"  current tier             : tier {proj.current_tier_idx + 1} "
-          f"(${proj.current_per_side_usd}/side)")
+    print(f"  current tier             : tier {proj.current_tier_idx + 1} (${proj.current_per_side_usd}/side)")
     print(f"  monthly commission       : ${proj.current_monthly_cost_usd}")
     print()
     if proj.next_tier_threshold:
-        print(f"  next tier threshold      : {proj.next_tier_threshold} "
-                f"fills/mo")
+        print(f"  next tier threshold      : {proj.next_tier_threshold} fills/mo")
         print(f"  fills needed for next    : {proj.fills_needed_for_next_tier}")
         print(f"  next-tier rate           : ${proj.next_tier_per_side_usd}/side")
         print(f"  monthly savings (next)   : ${proj.monthly_savings_if_next_tier_usd}")
         print(f"  annual savings (next)    : ${proj.annual_savings_if_next_tier_usd}")
     else:
-        print("  Already at the lowest commission tier — no further tier "
-                "savings available.")
+        print("  Already at the lowest commission tier — no further tier savings available.")
     if proj.notes:
         print()
         print("  Notes:")

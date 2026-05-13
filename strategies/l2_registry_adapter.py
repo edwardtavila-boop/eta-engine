@@ -41,6 +41,7 @@ Mapping rules:
     otherwise
         → YELLOW (active but no promotion path)
 """
+
 from __future__ import annotations
 
 import json
@@ -69,8 +70,7 @@ def _verdict_for(current: str, recommended: str) -> tuple[str, str]:
     return "YELLOW", f"transition: {current} → {recommended}"
 
 
-def _read_latest_promotion_per_bot(*,
-                                       _path: Path | None = None) -> dict[str, dict]:
+def _read_latest_promotion_per_bot(*, _path: Path | None = None) -> dict[str, dict]:
     """Read promotion log, return latest entry per bot_id."""
     path = _path if _path is not None else PROMOTION_LOG
     latest: dict[str, dict] = {}
@@ -96,8 +96,7 @@ def _read_latest_promotion_per_bot(*,
     return latest
 
 
-def sync_l2_to_verdict_cache(*, _promotion_path: Path | None = None,
-                                _cache_path: Path | None = None) -> dict:
+def sync_l2_to_verdict_cache(*, _promotion_path: Path | None = None, _cache_path: Path | None = None) -> dict:
     """Read latest promotion decisions and merge them into
     verdict_cache.json.  Returns summary {n_synced, bot_ids}.
     """
@@ -135,8 +134,7 @@ def sync_l2_to_verdict_cache(*, _promotion_path: Path | None = None,
         cache_path.parent.mkdir(parents=True, exist_ok=True)
         cache_path.write_text(json.dumps(cache, indent=2), encoding="utf-8")
     except OSError as e:
-        print(f"l2_registry_adapter WARN: could not write verdict_cache: {e}",
-              file=sys.stderr)
+        print(f"l2_registry_adapter WARN: could not write verdict_cache: {e}", file=sys.stderr)
 
     return {
         "n_synced": len(synced),
@@ -149,8 +147,7 @@ def main() -> int:
     """CLI entry-point — typically called as a daily cron after
     l2_promotion_evaluator finishes."""
     summary = sync_l2_to_verdict_cache()
-    print(f"Synced {summary['n_synced']} L2 bots to verdict_cache: "
-          f"{summary['bot_ids']}")
+    print(f"Synced {summary['n_synced']} L2 bots to verdict_cache: {summary['bot_ids']}")
     return 0
 
 

@@ -5,6 +5,7 @@ Covers:
   * bandit_promotion_check: identifies promotable candidates correctly
   * run_anomaly_scan helpers: window stress aggregation
 """
+
 from __future__ import annotations
 
 import json
@@ -77,8 +78,13 @@ def test_format_discord_uses_correct_color_per_verdict() -> None:
         rec = {
             "ts": "2026-04-27T10:00:00Z",
             "request": {},
-            "response": {"verdict": verdict, "reason": "", "reason_code": "",
-                         "stress_composite": 0, "session_phase": ""},
+            "response": {
+                "verdict": verdict,
+                "reason": "",
+                "reason_code": "",
+                "stress_composite": 0,
+                "session_phase": "",
+            },
         }
         payload = _format_for_discord(rec)
         assert payload["embeds"][0]["color"] == color, f"verdict {verdict}"
@@ -86,6 +92,7 @@ def test_format_discord_uses_correct_color_per_verdict() -> None:
 
 def test_is_discord_url_detection() -> None:
     from eta_engine.obs.jarvis_verdict_webhook import _is_discord
+
     assert _is_discord("https://discord.com/api/webhooks/123/abc") is True
     assert _is_discord("https://discordapp.com/api/webhooks/123/abc") is True
     assert _is_discord("https://hooks.slack.com/services/T/B/X") is False
@@ -100,13 +107,19 @@ def test_bandit_promotion_check_skips_when_too_few_records(tmp_path: Path, monke
     from eta_engine.scripts import bandit_promotion_check as bp
 
     # Patch the module so it points at an empty audit dir + tmp out dir
-    rc = bp.main([
-        "--audit-dir", str(tmp_path / "audit"),
-        "--out-dir", str(tmp_path / "out"),
-        "--window-days", "30",
-        "--min-decisions", "100",
-        "--dry-run",
-    ])
+    rc = bp.main(
+        [
+            "--audit-dir",
+            str(tmp_path / "audit"),
+            "--out-dir",
+            str(tmp_path / "out"),
+            "--window-days",
+            "30",
+            "--min-decisions",
+            "100",
+            "--dry-run",
+        ]
+    )
     assert rc == 0
 
 
@@ -119,12 +132,12 @@ def test_anomaly_load_recent_filters_by_window(tmp_path: Path) -> None:
     audit = tmp_path / "x.jsonl"
     now = datetime.now(UTC)
     rows = [
-        {"ts": (now - timedelta(hours=1)).isoformat(),
-         "response": {"stress_composite": 0.5}},
-        {"ts": (now - timedelta(hours=10)).isoformat(),
-         "response": {"stress_composite": 0.7}},
-        {"ts": (now - timedelta(hours=100)).isoformat(),  # outside any window
-         "response": {"stress_composite": 0.2}},
+        {"ts": (now - timedelta(hours=1)).isoformat(), "response": {"stress_composite": 0.5}},
+        {"ts": (now - timedelta(hours=10)).isoformat(), "response": {"stress_composite": 0.7}},
+        {
+            "ts": (now - timedelta(hours=100)).isoformat(),  # outside any window
+            "response": {"stress_composite": 0.2},
+        },
     ]
     audit.write_text("\n".join(json.dumps(r) for r in rows), encoding="utf-8")
 
@@ -139,4 +152,5 @@ def test_anomaly_load_recent_filters_by_window(tmp_path: Path) -> None:
 
 def test_anomaly_in_cooldown_returns_false_when_no_state(tmp_path: Path) -> None:
     from eta_engine.scripts.run_anomaly_scan import _in_cooldown
+
     assert _in_cooldown(tmp_path / "missing.json", cooldown_min=60.0) is False

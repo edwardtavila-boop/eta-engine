@@ -53,11 +53,7 @@ def _broker_router_heartbeat_path() -> Path:
     state_root = os.getenv("ETA_BROKER_ROUTER_STATE_ROOT", "").strip()
     if state_root:
         return Path(state_root) / "broker_router_heartbeat.json"
-    return (
-        workspace_roots.ETA_RUNTIME_STATE_DIR
-        / "router"
-        / "broker_router_heartbeat.json"
-    )
+    return workspace_roots.ETA_RUNTIME_STATE_DIR / "router" / "broker_router_heartbeat.json"
 
 
 def _disabled_flag_path() -> Path:
@@ -96,12 +92,10 @@ def main(argv: list[str] | None = None) -> int:
         ),
         "stale_s": stale_s,
         "disabled_flag_path": _disabled_flag_path(),
-        "watchdog_heartbeat_path": (
-            workspace_roots.ETA_RUNTIME_STATE_DIR
-            / "broker_router_watchdog_heartbeat.json"
-        ),
+        "watchdog_heartbeat_path": (workspace_roots.ETA_RUNTIME_STATE_DIR / "broker_router_watchdog_heartbeat.json"),
         "task_name": os.getenv(
-            "ETA_BROKER_ROUTER_WATCHDOG_TASK_NAME", "ETA-Broker-Router",
+            "ETA_BROKER_ROUTER_WATCHDOG_TASK_NAME",
+            "ETA-Broker-Router",
         ),
         "wrapper_cmd": os.getenv("ETA_BROKER_ROUTER_WATCHDOG_WRAPPER_CMD") or None,
     }
@@ -110,7 +104,8 @@ def main(argv: list[str] | None = None) -> int:
         decision = watchdog_tick(**common_kwargs)
         logger.info(
             "broker_router watchdog tick: action=%s heartbeat_age_s=%s",
-            decision.action, decision.heartbeat_age_s,
+            decision.action,
+            decision.heartbeat_age_s,
         )
         return 0
 
@@ -119,7 +114,8 @@ def main(argv: list[str] | None = None) -> int:
             decision = watchdog_tick(**common_kwargs)
             logger.info(
                 "broker_router watchdog tick: action=%s heartbeat_age_s=%s",
-                decision.action, decision.heartbeat_age_s,
+                decision.action,
+                decision.heartbeat_age_s,
             )
         except Exception as exc:  # noqa: BLE001
             logger.exception("broker_router watchdog tick raised: %s", exc)

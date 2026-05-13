@@ -87,8 +87,7 @@ def main() -> int:
     bars = default_library().load_bars(ds, require_positive_prices=True)
     if not bars:
         print(
-            f"ABORT: no positive-price tradable bars for {symbol}/{timeframe} "
-            "after data-quality filtering.",
+            f"ABORT: no positive-price tradable bars for {symbol}/{timeframe} after data-quality filtering.",
         )
         return 1
     print(
@@ -98,8 +97,10 @@ def main() -> int:
     )
 
     cfg = BacktestConfig(
-        start_date=bars[0].timestamp, end_date=bars[-1].timestamp,
-        symbol=ds.symbol, initial_equity=10_000.0,
+        start_date=bars[0].timestamp,
+        end_date=bars[-1].timestamp,
+        symbol=ds.symbol,
+        initial_equity=10_000.0,
         risk_per_trade_pct=0.01,
         confluence_threshold=0.0,  # ORB doesn't use confluence
         max_trades_per_day=10,
@@ -127,9 +128,11 @@ def main() -> int:
 
     print("EVOLUTIONARY TRADING ALGO -- ORB Walk-Forward")
     print("=" * 82)
-    print(f"Strategy: ORB(range={orb_cfg.range_minutes}m, "
-          f"max_entry={orb_cfg.max_entry_local}, "
-          f"rr={orb_cfg.rr_target}, atr_stop={orb_cfg.atr_stop_mult})")
+    print(
+        f"Strategy: ORB(range={orb_cfg.range_minutes}m, "
+        f"max_entry={orb_cfg.max_entry_local}, "
+        f"rr={orb_cfg.rr_target}, atr_stop={orb_cfg.atr_stop_mult})"
+    )
     print(f"Windows: {len(res.windows)}")
     print("-" * 82)
     print(

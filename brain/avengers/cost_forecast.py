@@ -142,13 +142,15 @@ class CostForecast:
                         ts = ts.replace(tzinfo=UTC)
                 except (ValueError, TypeError):
                     continue
-                rows.append({
-                    "ts": ts,
-                    "persona": env.get("persona", res.get("persona_id", "")),
-                    "caller": env.get("caller", ""),
-                    "category": env.get("category", res.get("category", "")),
-                    "cost_multiplier": float(res.get("cost_multiplier", 0.0) or 0.0),
-                })
+                rows.append(
+                    {
+                        "ts": ts,
+                        "persona": env.get("persona", res.get("persona_id", "")),
+                        "caller": env.get("caller", ""),
+                        "category": env.get("category", res.get("category", "")),
+                        "cost_multiplier": float(res.get("cost_multiplier", 0.0) or 0.0),
+                    }
+                )
         except OSError:
             return []
         self._all_rows_cache = rows

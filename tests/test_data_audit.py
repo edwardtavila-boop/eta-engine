@@ -152,10 +152,15 @@ def test_audit_uses_fear_greed_as_crypto_sentiment_proxy(tmp_path: Path) -> None
     # validates the proxy-mapping logic via direct DataLibrary lookup
     # rather than the full audit pipeline.
     from eta_engine.data.requirements import DataRequirement
+
     sentiment_req = DataRequirement(
-        kind="sentiment", symbol="BTC", timeframe="1h", critical=False,
+        kind="sentiment",
+        symbol="BTC",
+        timeframe="1h",
+        critical=False,
     )
     from eta_engine.data.audit import _resolve_library_lookup
+
     ds = _resolve_library_lookup(sentiment_req, DataLibrary(roots=[history]))
     assert ds is not None, "fear-greed proxy must resolve sentiment/BTC/1h"
     assert ds.symbol == "FEAR_GREEDMACRO"
@@ -196,10 +201,9 @@ def test_summary_markdown_includes_source_hints_for_blocked() -> None:
     audits = audit_all()
     blocked = [a for a in audits if a.missing_critical]
     if blocked:
-        assert (
-            "Coinbase" in md or "Binance" in md
-            or "blockscout" in md or "lunarcrush" in md
-        ), "blocked bots present but no source hints surfaced in markdown"
+        assert "Coinbase" in md or "Binance" in md or "blockscout" in md or "lunarcrush" in md, (
+            "blocked bots present but no source hints surfaced in markdown"
+        )
 
 
 # ---------------------------------------------------------------------------

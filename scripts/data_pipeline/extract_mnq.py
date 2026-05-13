@@ -2,6 +2,7 @@
 
 Uses raw Chrome DevTools Protocol over websockets - bypasses MCP token limits.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -25,6 +26,7 @@ OUT_DIR = WORKSPACE_ROOT / "mnq_data"
 # Weekly halt = Fri 16:00 CT - Sun 17:00 CT (roughly 46 hours)
 # Daily maintenance halt for NQ futures = 16:00-17:00 CT Mon-Thu (1 hour)
 # For simplicity and robustness, we compute from UTC using fixed DST-aware rules.
+
 
 def _is_us_dst(dt_utc: datetime) -> bool:
     """US DST: 2nd Sun Mar 07:00 UTC -> 1st Sun Nov 06:00 UTC (approx)."""
@@ -95,6 +97,7 @@ def session_flag(epoch_s: int) -> str:
 
 # --- CDP client ---
 
+
 def get_chart_target_ws() -> str:
     with urllib.request.urlopen(f"{CDP_URL}/json") as r:
         targets = json.loads(r.read())
@@ -133,15 +136,19 @@ EXTRACT_JS = r"""
 async def cdp_eval(ws_url: str, expression: str) -> dict:
     # Bump websocket max message to 128 MB for large CSV payloads
     async with websockets.connect(ws_url, max_size=128 * 1024 * 1024) as ws:
-        await ws.send(json.dumps({
-            "id": 1,
-            "method": "Runtime.evaluate",
-            "params": {
-                "expression": expression,
-                "returnByValue": True,
-                "awaitPromise": True,
-            },
-        }))
+        await ws.send(
+            json.dumps(
+                {
+                    "id": 1,
+                    "method": "Runtime.evaluate",
+                    "params": {
+                        "expression": expression,
+                        "returnByValue": True,
+                        "awaitPromise": True,
+                    },
+                }
+            )
+        )
         while True:
             msg = json.loads(await ws.recv())
             if msg.get("id") == 1:

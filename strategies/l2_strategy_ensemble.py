@@ -46,6 +46,7 @@ Limitations
   needs to ensure portfolio limits aren't violated by parallel
   per-strategy fires (use l2_portfolio_limits)
 """
+
 from __future__ import annotations
 
 # ruff: noqa: ANN401, PLR2004
@@ -66,9 +67,10 @@ L2_BACKTEST_LOG = LOG_DIR / "l2_backtest_runs.jsonl"
 @dataclass
 class EnsembleSignal:
     """What the ensemble emits when its weighted vote crosses threshold."""
-    side: str            # "LONG" | "SHORT"
+
+    side: str  # "LONG" | "SHORT"
     weighted_vote: float
-    confidence: float    # |vote| / sum_weights
+    confidence: float  # |vote| / sum_weights
     constituent_signals: list[dict] = field(default_factory=list)
     # Each dict: {strategy_id, side, confidence, weight}
     signal_id: str = ""
@@ -78,13 +80,14 @@ class EnsembleSignal:
 @dataclass
 class EnsembleWeights:
     """Per-strategy weights derived from recent sharpe history."""
+
     weights: dict[str, float] = field(default_factory=dict)
     ts: str = ""
 
 
-def compute_weights_from_history(*, since_days: int = 30,
-                                    min_sharpe_floor: float = 0.0,
-                                    _path: Path | None = None) -> EnsembleWeights:
+def compute_weights_from_history(
+    *, since_days: int = 30, min_sharpe_floor: float = 0.0, _path: Path | None = None
+) -> EnsembleWeights:
     """Read l2_backtest_runs.jsonl and compute per-strategy weights.
 
     Weights are clipped at min_sharpe_floor (default 0 = mute losers).
@@ -125,12 +128,12 @@ def compute_weights_from_history(*, since_days: int = 30,
     except OSError:
         return EnsembleWeights(weights={}, ts=datetime.now(UTC).isoformat())
     weights = {s: max(min_sharpe_floor, v) for s, v in latest_sharpe.items()}
-    return EnsembleWeights(weights=weights,
-                              ts=datetime.now(UTC).isoformat())
+    return EnsembleWeights(weights=weights, ts=datetime.now(UTC).isoformat())
 
 
-def vote(signals: Iterable[Any], weights: dict[str, float],
-          *, ensemble_threshold: float = 0.5) -> EnsembleSignal | None:
+def vote(
+    signals: Iterable[Any], weights: dict[str, float], *, ensemble_threshold: float = 0.5
+) -> EnsembleSignal | None:
     """Aggregate constituent signals with weighted vote.
 
     ``signals`` is an iterable of objects with attributes:
@@ -149,8 +152,7 @@ def vote(signals: Iterable[Any], weights: dict[str, float],
     for sig in signals:
         if sig is None:
             continue
-        strategy = getattr(sig, "strategy_id", None) or \
-                    getattr(sig, "_strategy", None) or "unknown"
+        strategy = getattr(sig, "strategy_id", None) or getattr(sig, "_strategy", None) or "unknown"
         weight = weights.get(strategy, 0.0)
         if weight <= 0:
             continue  # this strategy has no positive history → ignore
@@ -161,13 +163,15 @@ def vote(signals: Iterable[Any], weights: dict[str, float],
         signed = confidence if is_long else -confidence
         weighted_sum += weight * signed
         total_weight += weight
-        constituents.append({
-            "strategy_id": strategy,
-            "side": "LONG" if is_long else "SHORT",
-            "confidence": round(confidence, 3),
-            "weight": round(weight, 3),
-            "signed_contribution": round(weight * signed, 3),
-        })
+        constituents.append(
+            {
+                "strategy_id": strategy,
+                "side": "LONG" if is_long else "SHORT",
+                "confidence": round(confidence, 3),
+                "weight": round(weight, 3),
+                "signed_contribution": round(weight * signed, 3),
+            }
+        )
 
     if total_weight <= 0:
         return None
@@ -176,30 +180,25 @@ def vote(signals: Iterable[Any], weights: dict[str, float],
         return None
     side = "LONG" if vote_val > 0 else "SHORT"
     # Generate ensemble signal_id from constituent IDs
-    sig_ids = [getattr(s, "signal_id", "")
-                for s in signals if s is not None]
+    sig_ids = [getattr(s, "signal_id", "") for s in signals if s is not None]
     sig_ids_clean = [s for s in sig_ids if s]
-    composite_id = "ENSEMBLE-" + side + "-" + "_".join(sig_ids_clean[:3]) \
-                     if sig_ids_clean else f"ENSEMBLE-{side}"
+    composite_id = "ENSEMBLE-" + side + "-" + "_".join(sig_ids_clean[:3]) if sig_ids_clean else f"ENSEMBLE-{side}"
     return EnsembleSignal(
         side=side,
         weighted_vote=round(vote_val, 4),
         confidence=round(abs(vote_val), 3),
         constituent_signals=constituents,
         signal_id=composite_id[:200],
-        rationale=(f"ensemble vote={vote_val:+.3f} "
-                    f"(threshold={ensemble_threshold}, "
-                    f"n_constituents={len(constituents)})"),
+        rationale=(
+            f"ensemble vote={vote_val:+.3f} (threshold={ensemble_threshold}, n_constituents={len(constituents)})"
+        ),
     )
 
 
-def make_ensemble(*, since_days: int = 30,
-                    ensemble_threshold: float = 0.5,
-                    min_sharpe_floor: float = 0.0) -> Any:
+def make_ensemble(*, since_days: int = 30, ensemble_threshold: float = 0.5, min_sharpe_floor: float = 0.0) -> Any:
     """Factory: returns a callable wrapper that loads weights at
     construction time and exposes ``decide(signals)`` for callers."""
-    weights = compute_weights_from_history(
-        since_days=since_days, min_sharpe_floor=min_sharpe_floor)
+    weights = compute_weights_from_history(since_days=since_days, min_sharpe_floor=min_sharpe_floor)
 
     class _Ensemble:
         def __init__(self) -> None:
@@ -208,7 +207,6 @@ def make_ensemble(*, since_days: int = 30,
             self.ensemble_threshold = ensemble_threshold
 
         def decide(self, signals: Iterable[Any]) -> EnsembleSignal | None:
-            return vote(signals, self.weights,
-                          ensemble_threshold=self.ensemble_threshold)
+            return vote(signals, self.weights, ensemble_threshold=self.ensemble_threshold)
 
     return _Ensemble()

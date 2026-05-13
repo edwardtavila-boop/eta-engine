@@ -23,6 +23,7 @@ Usage
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import sys
 from dataclasses import dataclass, field
@@ -34,10 +35,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT.parent))
 
 if hasattr(sys.stdout, "reconfigure"):
-    try:
+    with contextlib.suppress(AttributeError, OSError):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    except (AttributeError, OSError):
-        pass
 
 from eta_engine.scripts import workspace_roots  # noqa: E402
 
@@ -128,10 +127,7 @@ def run_preflight(bot_filter: str | None = None) -> list[PreflightVerdict]:
         is_active,
     )
 
-    assignments = [
-        a for a in all_assignments()
-        if is_active(a) and a.bot_id != "xrp_perp"
-    ]
+    assignments = [a for a in all_assignments() if is_active(a) and a.bot_id != "xrp_perp"]
     if bot_filter:
         assignments = [a for a in assignments if a.bot_id == bot_filter]
 
@@ -180,9 +176,7 @@ def run_preflight(bot_filter: str | None = None) -> list[PreflightVerdict]:
             reasons.append("bot is research_candidate")
             overall = "WARN"
         elif not all(checks.values()):
-            overall = "WARN" if not reasons or all(
-                "stale" not in r for r in reasons
-            ) else "BLOCK"
+            overall = "WARN" if not reasons or all("stale" not in r for r in reasons) else "BLOCK"
         else:
             overall = "READY"
 
@@ -199,13 +193,26 @@ def main(argv: list[str] | None = None) -> int:
 
     results = run_preflight(bot_filter=args.bot)
     if args.json:
-        print(json.dumps(
-            [{"bot_id": r.bot_id, "strategy_id": r.strategy_id, "overall": r.overall,
-              "checks": r.checks, "reasons": r.reasons} for r in results],
-            indent=2, default=str,
-        ))
+        print(
+            json.dumps(
+                [
+                    {
+                        "bot_id": r.bot_id,
+                        "strategy_id": r.strategy_id,
+                        "overall": r.overall,
+                        "checks": r.checks,
+                        "reasons": r.reasons,
+                    }
+                    for r in results
+                ],
+                indent=2,
+                default=str,
+            )
+        )
     else:
-        print(f"{'Bot':<24} {'Overall':<8} {'Data':<8} {'Baseline':<10} {'Bot Dir':<9} {'Warmup':<8} {'Venue':<8} {'Journal':<8} {'Reasons'}")
+        print(
+            f"{'Bot':<24} {'Overall':<8} {'Data':<8} {'Baseline':<10} {'Bot Dir':<9} {'Warmup':<8} {'Venue':<8} {'Journal':<8} {'Reasons'}"
+        )
         print("-" * 140)
         for r in results:
             ch = " ".join(

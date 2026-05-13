@@ -40,6 +40,7 @@ Output is consumed by the firm-board:
   - Risk Committee checks ``rec.cardinality`` against fleet caps
   - Executor uses ``rec.execution_order`` if present
 """
+
 from __future__ import annotations
 
 import logging
@@ -86,7 +87,7 @@ class Recommendation:
     cost_estimate_usd: float
     used_cache: bool
     fell_back_to_classical: bool
-    contribution_summary: str          # operator-readable narrative
+    contribution_summary: str  # operator-readable narrative
     raw_solution: list[int] = field(default_factory=list)
     extra: dict = field(default_factory=dict)
 
@@ -149,9 +150,7 @@ class QuantumOptimizerAgent:
           4. Otherwise → YES
         """
         if n_symbols < QuantumOptimizerAgent.MIN_ASSETS_FOR_QUANTUM:
-            return False, (
-                f"portfolio_size={n_symbols} < min={QuantumOptimizerAgent.MIN_ASSETS_FOR_QUANTUM}"
-            )
+            return False, (f"portfolio_size={n_symbols} < min={QuantumOptimizerAgent.MIN_ASSETS_FOR_QUANTUM}")
         if not regime_changed_since_last and volatility_changed_pct < 0.15:
             return False, "no regime change and vol stable — rebalance not needed"
         if last_invoked_seconds_ago is not None and last_invoked_seconds_ago < 60:
@@ -160,6 +159,7 @@ class QuantumOptimizerAgent:
 
     def _check_budget(self) -> bool:
         from datetime import UTC, datetime
+
         today = datetime.now(UTC).strftime("%Y%m%d")
         if today != self._spent_date:
             self._spent_today = 0.0
@@ -190,7 +190,8 @@ class QuantumOptimizerAgent:
             asset_labels=symbols,
         )
         result, record = self.adapter.solve(
-            problem, n_iterations=self.n_iterations,
+            problem,
+            n_iterations=self.n_iterations,
         )
         selected = result.selected_labels()
         contrib = (
@@ -243,7 +244,8 @@ class QuantumOptimizerAgent:
                 signal_labels=[c.name for c in candidates],
             )
             result, record = self.adapter.solve(
-                problem, n_iterations=self.n_iterations,
+                problem,
+                n_iterations=self.n_iterations,
             )
             selected = result.selected_labels()
             contrib = (
@@ -307,17 +309,19 @@ class QuantumOptimizerAgent:
         too many at once.
         """
         n = len(order_labels)
-        Q: dict[int, dict[int, float]] = {}
+        q: dict[int, dict[int, float]] = {}
         for i in range(n):
-            Q.setdefault(i, {})[i] = impact_estimates_bps[i]
+            q.setdefault(i, {})[i] = impact_estimates_bps[i]
             for j in range(n):
                 if i == j:
                     continue
-                Q[i][j] = adjacency_penalty_bps
+                q[i][j] = adjacency_penalty_bps
         from eta_engine.brain.jarvis_v3.quantum.qubo_solver import QuboProblem
-        problem = QuboProblem(n_vars=n, Q=Q, labels=order_labels)
+
+        problem = QuboProblem(n_vars=n, Q=q, labels=order_labels)
         result, record = self.adapter.solve(
-            problem, n_iterations=self.n_iterations,
+            problem,
+            n_iterations=self.n_iterations,
         )
         selected = result.selected_labels()
         contrib = (
@@ -359,6 +363,7 @@ class QuantumOptimizerAgent:
         from eta_engine.brain.jarvis_v3.quantum.qubo_supercharged import (
             risk_parity_qubo,
         )
+
         problem = risk_parity_qubo(
             expected_returns=expected_returns,
             covariance=covariance,
@@ -367,7 +372,8 @@ class QuantumOptimizerAgent:
             asset_labels=symbols,
         )
         result, record = self.adapter.solve(
-            problem, n_iterations=self.n_iterations,
+            problem,
+            n_iterations=self.n_iterations,
         )
         selected = result.selected_labels()
         contrib = (
@@ -412,6 +418,7 @@ class QuantumOptimizerAgent:
         from eta_engine.brain.jarvis_v3.quantum.qubo_supercharged import (
             regime_aware_qubo,
         )
+
         problem = regime_aware_qubo(
             expected_returns=expected_returns,
             covariance=covariance,
@@ -421,7 +428,8 @@ class QuantumOptimizerAgent:
             asset_labels=symbols,
         )
         result, record = self.adapter.solve(
-            problem, n_iterations=self.n_iterations,
+            problem,
+            n_iterations=self.n_iterations,
         )
         selected = result.selected_labels()
         contrib = (
@@ -469,6 +477,7 @@ class QuantumOptimizerAgent:
         from eta_engine.brain.jarvis_v3.quantum.qubo_supercharged import (
             hedging_basket_qubo,
         )
+
         problem = hedging_basket_qubo(
             positions=positions,
             candidates=candidates,
@@ -479,7 +488,8 @@ class QuantumOptimizerAgent:
             hedge_labels=hedge_labels,
         )
         result, record = self.adapter.solve(
-            problem, n_iterations=self.n_iterations,
+            problem,
+            n_iterations=self.n_iterations,
         )
         selected = result.selected_labels()
         contrib = (
@@ -514,7 +524,7 @@ class QuantumOptimizerAgent:
         covariance: list[list[float]] | None = None,
         risk_aversion: float = 1.0,
         max_picks: int | None = None,
-        **kwargs,
+        **kwargs: object,
     ) -> Recommendation:
         """Real-time event-driven optimization — uses adaptive solver.
 
@@ -580,26 +590,6 @@ class QuantumOptimizerAgent:
             cost_estimate_usd=0.0,
             used_cache=False,
             fell_back_to_classical=False,
-            contribution_summary=contrib,
-            raw_solution=list(result.x),
-        )
-        selected = result.selected_labels()
-        contrib = (
-            f"Execution sequencer picked {len(selected)}/{n} orders "
-            f"to send this slice ({', '.join(selected)}); "
-            f"estimated cumulative impact {result.energy:.2f} bps."
-        )
-        return Recommendation(
-            ts=datetime.now(UTC).isoformat(),
-            kind=ProblemKind.EXECUTION_SEQUENCING,
-            selected_labels=selected,
-            objective=result.energy,
-            backend_used=record.backend,
-            n_vars=record.n_vars,
-            runtime_ms=record.runtime_ms,
-            cost_estimate_usd=record.cost_estimate_usd,
-            used_cache=record.used_cache,
-            fell_back_to_classical=record.fell_back_to_classical,
             contribution_summary=contrib,
             raw_solution=list(result.x),
         )

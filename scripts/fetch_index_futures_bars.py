@@ -74,23 +74,23 @@ _YF_SYMBOL: dict[str, str] = {
     "ES": "ES=F",
     "MES": "MES=F",
     # Phase-2 commodities + FX expansion (2026-05-03)
-    "GC": "GC=F",      # Gold (100 oz)
-    "MGC": "MGC=F",    # Micro Gold
-    "CL": "CL=F",      # WTI Crude (1000 bbl)
-    "MCL": "MCL=F",    # Micro Crude
-    "6E": "6E=F",      # Euro FX
-    "M6E": "M6E=F",    # Micro Euro FX
+    "GC": "GC=F",  # Gold (100 oz)
+    "MGC": "MGC=F",  # Micro Gold
+    "CL": "CL=F",  # WTI Crude (1000 bbl)
+    "MCL": "MCL=F",  # Micro Crude
+    "6E": "6E=F",  # Euro FX
+    "M6E": "M6E=F",  # Micro Euro FX
     # Phase-3 rates + energy (2026-05-03)
-    "ZN": "ZN=F",      # 10-Year T-Note
-    "ZB": "ZB=F",      # 30-Year T-Bond
-    "NG": "NG=F",      # Henry Hub Natural Gas
+    "ZN": "ZN=F",  # 10-Year T-Note
+    "ZB": "ZB=F",  # 30-Year T-Bond
+    "NG": "NG=F",  # Henry Hub Natural Gas
     # CME crypto micro futures (2026-05-04 — needed by mbt_sweep_reclaim
     # and met_sweep_reclaim bots). yfinance ticker uses parent name.
-    "MBT": "BTC=F",    # Micro Bitcoin (CME)
-    "MET": "ETH=F",    # Micro Ether (CME)
+    "MBT": "BTC=F",  # Micro Bitcoin (CME)
+    "MET": "ETH=F",  # Micro Ether (CME)
     # Index futures (extended)
-    "YM": "YM=F",      # Mini Dow ($5)
-    "M2K": "M2K=F",    # Micro Russell 2000
+    "YM": "YM=F",  # Mini Dow ($5)
+    "M2K": "M2K=F",  # Micro Russell 2000
 }
 
 # yfinance period limits per timeframe (1m: 7-30d max; 5m: 60d; 1h: 730d)
@@ -119,14 +119,16 @@ def _resample_4h(rows: list[dict]) -> list[dict]:
     out: list[dict] = []
     for bucket_ts in sorted(buckets):
         bucket_rows = sorted(buckets[bucket_ts], key=lambda row: row["time"])
-        out.append({
-            "time": bucket_ts,
-            "open": bucket_rows[0]["open"],
-            "high": max(row["high"] for row in bucket_rows),
-            "low": min(row["low"] for row in bucket_rows),
-            "close": bucket_rows[-1]["close"],
-            "volume": sum(row["volume"] for row in bucket_rows),
-        })
+        out.append(
+            {
+                "time": bucket_ts,
+                "open": bucket_rows[0]["open"],
+                "high": max(row["high"] for row in bucket_rows),
+                "low": min(row["low"] for row in bucket_rows),
+                "close": bucket_rows[-1]["close"],
+                "volume": sum(row["volume"] for row in bucket_rows),
+            }
+        )
     return out
 
 
@@ -150,14 +152,16 @@ def _fetch_via_yfinance(symbol: str, timeframe: str, period: str) -> list[dict]:
     for ts, r in df.iterrows():
         # yfinance index is timezone-aware (NY time for futures)
         ts_utc = ts.tz_convert(UTC) if ts.tzinfo else ts.tz_localize(UTC)
-        rows.append({
-            "time": int(ts_utc.timestamp()),
-            "open": float(r["Open"]),
-            "high": float(r["High"]),
-            "low": float(r["Low"]),
-            "close": float(r["Close"]),
-            "volume": float(r.get("Volume", 0.0)),
-        })
+        rows.append(
+            {
+                "time": int(ts_utc.timestamp()),
+                "open": float(r["Open"]),
+                "high": float(r["High"]),
+                "low": float(r["Low"]),
+                "close": float(r["Close"]),
+                "volume": float(r.get("Volume", 0.0)),
+            }
+        )
     if timeframe == "4h":
         rows = _resample_4h(rows)
     return rows
@@ -176,7 +180,8 @@ def _fetch_via_ibkr(symbol: str, timeframe: str, period: str) -> list[dict]:
 
 
 def _merge_with_existing(
-    out_path: Path, new_rows: list[dict],
+    out_path: Path,
+    new_rows: list[dict],
 ) -> tuple[list[dict], int, int]:
     """Merge new rows with any existing CSV at out_path.
     Returns (merged_rows, n_existing, n_new_unique)."""
@@ -187,14 +192,16 @@ def _merge_with_existing(
                 r = csv.DictReader(f)
                 for row in r:
                     try:
-                        existing.append({
-                            "time": int(row["time"]),
-                            "open": float(row["open"]),
-                            "high": float(row["high"]),
-                            "low": float(row["low"]),
-                            "close": float(row["close"]),
-                            "volume": float(row.get("volume", 0.0)),
-                        })
+                        existing.append(
+                            {
+                                "time": int(row["time"]),
+                                "open": float(row["open"]),
+                                "high": float(row["high"]),
+                                "low": float(row["low"]),
+                                "close": float(row["close"]),
+                                "volume": float(row.get("volume", 0.0)),
+                            }
+                        )
                     except (ValueError, KeyError, TypeError):
                         continue
         except OSError:
@@ -214,31 +221,36 @@ def _write_csv(path: Path, rows: list[dict]) -> int:
         w = csv.writer(f)
         w.writerow(["time", "open", "high", "low", "close", "volume"])
         for r in rows:
-            w.writerow([
-                int(r["time"]), r["open"], r["high"],
-                r["low"], r["close"], r["volume"],
-            ])
+            w.writerow(
+                [
+                    int(r["time"]),
+                    r["open"],
+                    r["high"],
+                    r["low"],
+                    r["close"],
+                    r["volume"],
+                ]
+            )
     return len(rows)
 
 
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--symbol", default="MNQ", choices=sorted(_YF_SYMBOL))
-    p.add_argument("--timeframe", default="5m",
-                   choices=sorted(_YF_PERIOD_BY_TF))
+    p.add_argument("--timeframe", default="5m", choices=sorted(_YF_PERIOD_BY_TF))
     p.add_argument(
-        "--period", default=None,
-        help="yfinance period string (e.g. '60d', '730d'). Defaults to "
-             "the max for the timeframe.",
+        "--period",
+        default=None,
+        help="yfinance period string (e.g. '60d', '730d'). Defaults to the max for the timeframe.",
     )
-    p.add_argument("--source", default="yfinance",
-                   choices=["yfinance", "ibkr"])
+    p.add_argument("--source", default="yfinance", choices=["yfinance", "ibkr"])
     p.add_argument(
-        "--out", type=Path, default=None,
+        "--out",
+        type=Path,
+        default=None,
         help="Output CSV path. Default: canonical ETA MNQ history root/{SYMBOL}1_{TF}.csv",
     )
-    p.add_argument("--no-merge", action="store_true",
-                   help="Overwrite existing file instead of merging")
+    p.add_argument("--no-merge", action="store_true", help="Overwrite existing file instead of merging")
     args = p.parse_args()
 
     period = args.period or _YF_PERIOD_BY_TF[args.timeframe]
@@ -271,10 +283,7 @@ def main() -> int:
 
     merged, n_existing, n_new = _merge_with_existing(out_path, rows)
     n = _write_csv(out_path, merged)
-    print(
-        f"[index-futures] merged: existing={n_existing} new={n_new} "
-        f"total={n} -> {out_path}"
-    )
+    print(f"[index-futures] merged: existing={n_existing} new={n_new} total={n} -> {out_path}")
     if merged:
         first = datetime.fromtimestamp(merged[0]["time"], UTC).date()
         last = datetime.fromtimestamp(merged[-1]["time"], UTC).date()

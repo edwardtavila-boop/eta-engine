@@ -4,6 +4,7 @@ Focuses on price-volume waves: cumulative volume per price wave (up vs
 down) reveals when sellers are exhausted (selling waves shrinking on
 declines) or buyers are exhausted (buying waves shrinking on rallies).
 """
+
 from __future__ import annotations
 
 from eta_engine.brain.jarvis_v3.sage.base import (
@@ -29,7 +30,9 @@ class WeisWyckoffSchool(SchoolBase):
         n = ctx.n_bars
         if n < 20:
             return SchoolVerdict(
-                school=self.NAME, bias=Bias.NEUTRAL, conviction=0.0,
+                school=self.NAME,
+                bias=Bias.NEUTRAL,
+                conviction=0.0,
                 aligned_with_entry=False,
                 rationale=f"insufficient bars ({n} < 20)",
             )
@@ -54,7 +57,9 @@ class WeisWyckoffSchool(SchoolBase):
         dn_vols = [v for d, v in waves if d == "down"]
         if len(up_vols) < 2 or len(dn_vols) < 2:
             return SchoolVerdict(
-                school=self.NAME, bias=Bias.NEUTRAL, conviction=0.10,
+                school=self.NAME,
+                bias=Bias.NEUTRAL,
+                conviction=0.10,
                 aligned_with_entry=False,
                 rationale="insufficient wave count",
                 signals={"n_waves": len(waves)},
@@ -91,8 +96,10 @@ class WeisWyckoffSchool(SchoolBase):
             rationale=rationale,
             signals={
                 "n_waves": len(waves),
-                "u1": u1, "u2": u2,
-                "d1": d1, "d2": d2,
+                "u1": u1,
+                "u2": u2,
+                "d1": d1,
+                "d2": d2,
                 "sellers_exhausted": sellers_exhausted,
                 "buyers_exhausted": buyers_exhausted,
             },

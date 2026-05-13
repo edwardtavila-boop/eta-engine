@@ -26,6 +26,7 @@ EdgeAmplifier wraps any strategy with the same ``maybe_enter`` contract.
 Each layer is a standalone method returning a verdict (pass/veto/boost/shrink).
 Layers are configurable per asset class via presets.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
@@ -55,42 +56,42 @@ if TYPE_CHECKING:
 
 # Futures RTH session phases (ET times)
 _FUTURES_SESSION_PHASES: dict[str, tuple[time, time]] = {
-    "open_drive": (time(9, 30), time(10, 30)),       # 1st hour — highest volume, trend-following edge
-    "morning":     (time(10, 30), time(12, 0)),       # still good, normal conviction
-    "lunch":       (time(12, 0), time(13, 30)),       # CHOP — block all entries
-    "afternoon":   (time(13, 30), time(15, 30)),      # mean-reversion edge builds
-    "close":       (time(15, 30), time(16, 0)),       # MOC imbalance, good for directional
-    "post_close":  (time(16, 0), time(23, 59)),       # globex — block entries
-    "overnight":   (time(0, 0), time(9, 30)),         # pre-market — block entries
+    "open_drive": (time(9, 30), time(10, 30)),  # 1st hour — highest volume, trend-following edge
+    "morning": (time(10, 30), time(12, 0)),  # still good, normal conviction
+    "lunch": (time(12, 0), time(13, 30)),  # CHOP — block all entries
+    "afternoon": (time(13, 30), time(15, 30)),  # mean-reversion edge builds
+    "close": (time(15, 30), time(16, 0)),  # MOC imbalance, good for directional
+    "post_close": (time(16, 0), time(23, 59)),  # globex — block entries
+    "overnight": (time(0, 0), time(9, 30)),  # pre-market — block entries
 }
 
 # Crypto UTC session phases
 _CRYPTO_SESSION_PHASES: dict[str, tuple[int, int]] = {
-    "asia_open":    (0, 3),     # Asia open — trend-following, BTC dominant
-    "asia_flow":    (3, 7),     # Asia mid-session — medium conviction
-    "london_open":  (7, 9),     # London open — ranges, mean-reversion
-    "london_am":    (9, 13),    # London mid — lower vol, avoid
-    "ny_open":      (13, 16),   # NY open — HIGHEST conviction, both directions
-    "ny_afternoon": (16, 20),   # NY afternoon — still good
-    "low_flow":     (20, 0),    # Overnight gap — BLOCK entries, worst spreads
+    "asia_open": (0, 3),  # Asia open — trend-following, BTC dominant
+    "asia_flow": (3, 7),  # Asia mid-session — medium conviction
+    "london_open": (7, 9),  # London open — ranges, mean-reversion
+    "london_am": (9, 13),  # London mid — lower vol, avoid
+    "ny_open": (13, 16),  # NY open — HIGHEST conviction, both directions
+    "ny_afternoon": (16, 20),  # NY afternoon — still good
+    "low_flow": (20, 0),  # Overnight gap — BLOCK entries, worst spreads
 }
 
 # Which phases allow which mode (trend_follow vs mean_revert vs both vs block)
 _SESSION_MODE_MAP: dict[str, str] = {
-    "open_drive":   "trend",       # momentum breaks only
-    "morning":      "both",
-    "lunch":        "block",       # chop — no edge at all
-    "afternoon":    "mean_revert", # fade the morning extremes
-    "close":        "both",        # MOC imbalance — directional but also mean-revert
-    "post_close":   "block",       # globex — too thin
-    "overnight":    "block",       # pre-market — no edge
-    "asia_open":    "trend",
-    "asia_flow":    "both",
-    "london_open":  "mean_revert",
-    "london_am":    "block",
-    "ny_open":      "both",
+    "open_drive": "trend",  # momentum breaks only
+    "morning": "both",
+    "lunch": "block",  # chop — no edge at all
+    "afternoon": "mean_revert",  # fade the morning extremes
+    "close": "both",  # MOC imbalance — directional but also mean-revert
+    "post_close": "block",  # globex — too thin
+    "overnight": "block",  # pre-market — no edge
+    "asia_open": "trend",
+    "asia_flow": "both",
+    "london_open": "mean_revert",
+    "london_am": "block",
+    "ny_open": "both",
     "ny_afternoon": "both",
-    "low_flow":     "block",
+    "low_flow": "block",
 }
 
 
@@ -98,6 +99,7 @@ def _get_session_phase_local(bar: BarData, tz_name: str) -> str | None:
     """Resolve session phase from bar's local time for futures assets."""
     try:
         from zoneinfo import ZoneInfo
+
         local = bar.timestamp.astimezone(ZoneInfo(tz_name)).time()
         local_t = time(local.hour, local.minute)
     except Exception:
@@ -140,9 +142,11 @@ def session_phase_allows(mode: str, side: str, bar: BarData, tz_name: str = "Ame
 # Exhaustion detector — when a move has gone too far
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class _ExhaustionState:
     """Per-bot tracking of bar-level directional streaks."""
+
     consecutive_up: int = 0
     consecutive_down: int = 0
     last_side: str | None = None  # 'up' or 'down'
@@ -202,6 +206,7 @@ def exhaustion_check(
 # ---------------------------------------------------------------------------
 # Effort-vs-Result — volume absorption detection
 # ---------------------------------------------------------------------------
+
 
 def effort_vs_result(
     bar: BarData,
@@ -266,6 +271,7 @@ def effort_vs_result(
 # Post-event drift — continuation after high-volume directional bars
 # ---------------------------------------------------------------------------
 
+
 def post_event_drift(
     bar: BarData,
     hist: list[BarData],
@@ -316,6 +322,7 @@ def post_event_drift(
 # Structural stop engine — composite stop placement
 # ---------------------------------------------------------------------------
 
+
 def structural_stop(
     entry_price: float,
     side: str,
@@ -363,6 +370,7 @@ def structural_stop(
 # Vol-regime sizing — inversely scale with ATR percentile
 # ---------------------------------------------------------------------------
 
+
 def vol_regime_size_mult(
     hist: list[BarData],
     vol_lookback: int = 100,
@@ -383,7 +391,7 @@ def vol_regime_size_mult(
     current_atr = sum(b.high - b.low for b in hist[-atr_period:]) / atr_period
     atr_history: list[float] = []
     for i in range(atr_period, vol_lookback):
-        window = hist[-i - atr_period:-i]
+        window = hist[-i - atr_period : -i]
         if len(window) >= atr_period:
             atr_history.append(sum(b.high - b.low for b in window) / atr_period)
 
@@ -395,16 +403,16 @@ def vol_regime_size_mult(
     pct = rank / max(len(sorted_atr) - 1, 1)
 
     if pct < 0.20:
-        return 1.3   # bottom 20% = cheap vol = go big
+        return 1.3  # bottom 20% = cheap vol = go big
     if pct < 0.40:
         return 1.15
     if pct < 0.60:
-        return 1.0   # normal
+        return 1.0  # normal
     if pct < 0.80:
-        return 0.7   # expensive vol = shrink
+        return 0.7  # expensive vol = shrink
     if pct < 0.95:
-        return 0.5   # very expensive = half-size
-    return 0.3       # top 5% = panic = token size
+        return 0.5  # very expensive = half-size
+    return 0.3  # top 5% = panic = token size
 
 
 # ---------------------------------------------------------------------------
@@ -514,7 +522,10 @@ class EdgeAmplifier:
                         return None
             else:
                 allowed, _ = session_phase_allows(
-                    self.cfg.strategy_mode, side, bar, self.cfg.timezone_name,
+                    self.cfg.strategy_mode,
+                    side,
+                    bar,
+                    self.cfg.timezone_name,
                 )
                 if not allowed:
                     return None
@@ -533,38 +544,47 @@ class EdgeAmplifier:
                 return None
 
         # ── Layer 3: Effort vs Result (Absorption) ──
-        if self.cfg.enable_absorption_gate and not effort_vs_result(bar, hist, side,
-                                 absorption_vol_z_min=self.cfg.absorption_vol_z_min,
-                                 absorption_range_z_max=self.cfg.absorption_range_z_max):
+        if self.cfg.enable_absorption_gate and not effort_vs_result(
+            bar,
+            hist,
+            side,
+            absorption_vol_z_min=self.cfg.absorption_vol_z_min,
+            absorption_range_z_max=self.cfg.absorption_range_z_max,
+        ):
             return None
 
         # ── Layer 4: Post-Event Drift Boost ──
         drift_mult = 1.0
         if self.cfg.enable_drift_boost:
-            drift_mult = post_event_drift(bar, hist, side,
-                                          drift_vol_z_min=self.cfg.drift_vol_z_min,
-                                          drift_clv_min=self.cfg.drift_clv_min,
-                                          drift_recency_bars=self.cfg.drift_recency_bars)
+            drift_mult = post_event_drift(
+                bar,
+                hist,
+                side,
+                drift_vol_z_min=self.cfg.drift_vol_z_min,
+                drift_clv_min=self.cfg.drift_clv_min,
+                drift_recency_bars=self.cfg.drift_recency_bars,
+            )
 
         # ── Layer 5: Structural Stops ──
         if self.cfg.enable_structural_stops:
             atr_stop_dist = abs(opened.entry_price - opened.stop)
             new_stop, new_dist = structural_stop(
-                opened.entry_price, side, hist, atr_stop_dist,
+                opened.entry_price,
+                side,
+                hist,
+                atr_stop_dist,
                 structural_lookback=self.cfg.structural_lookback,
                 structural_buffer_mult=self.cfg.structural_buffer_mult,
             )
             # rr_target may not exist on all _Open subclasses; compute from
             # existing stop/target distances when absent.
-            rr = getattr(opened, 'rr_target', None)
+            rr = getattr(opened, "rr_target", None)
             if rr is None:
                 risk_dist = max(abs(opened.entry_price - opened.stop), 1e-9)
                 reward_dist = abs(opened.target - opened.entry_price)
                 rr = reward_dist / risk_dist
             new_target = (
-                opened.entry_price + rr * new_dist
-                if side.upper() == "BUY"
-                else opened.entry_price - rr * new_dist
+                opened.entry_price + rr * new_dist if side.upper() == "BUY" else opened.entry_price - rr * new_dist
             )
             opened = replace(opened, stop=new_stop, target=new_target)
 
@@ -589,26 +609,28 @@ class EdgeAmplifier:
                     compute_rsi,
                     detect_rsi_divergence,
                 )
-                closes = [b.close for b in hist[-self.cfg.rsi_divergence_lookback - self.cfg.rsi_period:]]
+
+                closes = [b.close for b in hist[-self.cfg.rsi_divergence_lookback - self.cfg.rsi_period :]]
                 if len(closes) >= self.cfg.rsi_period + 1:
                     rsi_vals = []
                     for i in range(self.cfg.rsi_period, len(closes)):
-                        rsi_vals.append(compute_rsi(closes[:i + 1], self.cfg.rsi_period))
+                        rsi_vals.append(compute_rsi(closes[: i + 1], self.cfg.rsi_period))
                     div = detect_rsi_divergence(
-                        closes, rsi_vals,
+                        closes,
+                        rsi_vals,
                         lookback=self.cfg.rsi_divergence_lookback,
                         peak_tolerance=self.cfg.rsi_peak_tolerance,
                     )
                     if div.detected:
                         is_long = side.upper() == "BUY"
-                        if div.divergence_type in ('hidden_bullish', 'regular_bullish') and is_long:
+                        if div.divergence_type in ("hidden_bullish", "regular_bullish") and is_long:
                             rsi_div_mult = 1.3  # strong confirmation
-                        elif div.divergence_type in ('hidden_bearish', 'regular_bearish') and not is_long:
+                        elif div.divergence_type in ("hidden_bearish", "regular_bearish") and not is_long:
                             rsi_div_mult = 1.3
-                        elif div.divergence_type in ('regular_bearish',) and is_long:
+                        elif div.divergence_type in ("regular_bearish",) and is_long:
                             rsi_div_mult = 0.0  # regular bearish = potential reversal → veto long
                             return None
-                        elif div.divergence_type in ('regular_bullish',) and not is_long:
+                        elif div.divergence_type in ("regular_bullish",) and not is_long:
                             rsi_div_mult = 0.0  # regular bullish = potential reversal → veto short
                             return None
             except Exception:
@@ -621,6 +643,7 @@ class EdgeAmplifier:
         if self.cfg.enable_rejection_candle:
             try:
                 from eta_engine.strategies.technical_edges import is_rejection_candle
+
                 is_rej, candle_type, rej_mult = is_rejection_candle(bar, side)
                 if is_rej:
                     rejection_mult = rej_mult
@@ -635,14 +658,15 @@ class EdgeAmplifier:
         if self.cfg.enable_squeeze_gate:
             try:
                 from eta_engine.strategies.technical_edges import detect_squeeze
-                closes_sq = [b.close for b in hist[-self.cfg.squeeze_bb_lookback:]]
-                highs_sq = [b.high for b in hist[-self.cfg.squeeze_bb_lookback:]]
-                lows_sq = [b.low for b in hist[-self.cfg.squeeze_bb_lookback:]]
-                sq = detect_squeeze(closes_sq, highs_sq, lows_sq,
-                                    bb_width_lookback=self.cfg.squeeze_bb_lookback)
+
+                closes_sq = [b.close for b in hist[-self.cfg.squeeze_bb_lookback :]]
+                highs_sq = [b.high for b in hist[-self.cfg.squeeze_bb_lookback :]]
+                lows_sq = [b.low for b in hist[-self.cfg.squeeze_bb_lookback :]]
+                sq = detect_squeeze(closes_sq, highs_sq, lows_sq, bb_width_lookback=self.cfg.squeeze_bb_lookback)
                 if sq is not None and sq.is_squeezed:
-                    if ((side.upper() == "BUY" and sq.direction_hint == "bullish_break")
-                            or (side.upper() == "SELL" and sq.direction_hint == "bearish_break")):
+                    if (side.upper() == "BUY" and sq.direction_hint == "bullish_break") or (
+                        side.upper() == "SELL" and sq.direction_hint == "bearish_break"
+                    ):
                         squeeze_mult = 1.5  # explosive expansion in our direction
                     else:
                         squeeze_mult = 1.1  # squeeze exists but direction unclear
@@ -666,6 +690,7 @@ class EdgeAmplifier:
 # ---------------------------------------------------------------------------
 # Asset-class presets — ready to use, calibrated per market
 # ---------------------------------------------------------------------------
+
 
 def mnq_futures_preset() -> EdgeAmplifierConfig:
     """Edge amplifier for MNQ/NQ futures on 5m bars.

@@ -156,7 +156,8 @@ def _backoff_result() -> HermesResult:
 
 
 def _decode_response(
-    response: httpx.Response, started_at: float,
+    response: httpx.Response,
+    started_at: float,
 ) -> HermesResult:
     """Convert an httpx.Response into a HermesResult.
 
@@ -169,14 +170,20 @@ def _decode_response(
     if status >= 400:
         logger.warning("hermes_client: http %s", status)
         return HermesResult(
-            ok=False, data=None, error=f"http_{status}", elapsed_ms=elapsed,
+            ok=False,
+            data=None,
+            error=f"http_{status}",
+            elapsed_ms=elapsed,
         )
     try:
         payload = response.json()
     except Exception as exc:  # noqa: BLE001
         logger.warning("hermes_client: json decode failed: %s", exc)
         return HermesResult(
-            ok=False, data=None, error="json_decode", elapsed_ms=elapsed,
+            ok=False,
+            data=None,
+            error="json_decode",
+            elapsed_ms=elapsed,
         )
     return HermesResult(ok=True, data=payload, error=None, elapsed_ms=elapsed)
 
@@ -193,7 +200,9 @@ def _url(path: str) -> str:
 
 
 def narrative(
-    verdict: dict[str, Any], *, timeout_s: float = DEFAULT_TIMEOUT_S,
+    verdict: dict[str, Any],
+    *,
+    timeout_s: float = DEFAULT_TIMEOUT_S,
 ) -> HermesResult:
     """Ask Hermes to render a one-sentence narrative for a JARVIS verdict.
 
@@ -221,7 +230,10 @@ def narrative(
 
 
 def web_search(
-    query: str, *, n: int = 3, timeout_s: float = 2.0,
+    query: str,
+    *,
+    n: int = 3,
+    timeout_s: float = 2.0,
 ) -> HermesResult:
     """Run a web search through Hermes' web_search tool.
 
@@ -249,7 +261,10 @@ def web_search(
 
 
 def memory_persist(
-    key: str, value: dict[str, Any], *, timeout_s: float = 1.0,
+    key: str,
+    value: dict[str, Any],
+    *,
+    timeout_s: float = 1.0,
 ) -> HermesResult:
     """Persist a key/value pair into Hermes-managed memory.
 

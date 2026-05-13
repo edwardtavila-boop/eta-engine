@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en" class="dark">
 <head>
 <meta charset="UTF-8">
@@ -52,6 +52,9 @@ tr:nth-child(even) td{background:rgba(255,255,255,.01)}
 .status-dot.live{background:var(--green);animation:pulse 1.5s infinite}
 .status-dot.stale{background:var(--yellow)}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+@keyframes dataSweep{0%{transform:translateX(-120%)}100%{transform:translateX(140%)}}
+@keyframes gridFloat{0%,100%{transform:translate3d(0,0,0) scale(1)}50%{transform:translate3d(0,-18px,0) scale(1.015)}}
+@keyframes techPulse{0%,100%{opacity:.13}50%{opacity:.24}}
 .loading{text-align:center;color:var(--dim);padding:3rem;font-size:.85rem}
 .hidden{display:none}
 .risk-bar{height:4px;border-radius:2px;margin-top:.5rem;background:var(--border)}
@@ -83,29 +86,34 @@ tr:nth-child(even) td{background:rgba(255,255,255,.01)}
 :root{--bg:#02050a;--card:rgba(9,15,24,.78);--border:rgba(137,170,199,.18);--green:#36f0a2;--red:#ff5b6e;--yellow:#ffd166;--blue:#64d7ff;--text:#edf7ff;--dim:#8294a7;--accent:#e6b85c;--glass:rgba(255,255,255,.045);--line:rgba(255,255,255,.075)}
 body{background:radial-gradient(circle at 18% 0%,rgba(100,215,255,.18),transparent 34%),radial-gradient(circle at 90% 12%,rgba(230,184,92,.12),transparent 28%),linear-gradient(145deg,#02050a,#07111c 45%,#02050a);font-family:"Aptos Display","Bahnschrift","Segoe UI",sans-serif;letter-spacing:.01em;overflow-x:hidden}
 html{overflow-x:hidden}
-body:before{content:"";position:fixed;inset:0;pointer-events:none;background:linear-gradient(115deg,transparent 0 42%,rgba(255,255,255,.035) 43%,transparent 46% 100%),radial-gradient(circle at 50% -20%,rgba(255,255,255,.16),transparent 35%);mix-blend-mode:screen}
+body:before{content:"";position:fixed;inset:0;pointer-events:none;background:linear-gradient(115deg,transparent 0 42%,rgba(255,255,255,.035) 43%,transparent 46% 100%),radial-gradient(circle at 50% -20%,rgba(255,255,255,.16),transparent 35%);mix-blend-mode:screen;animation:techPulse 18s ease-in-out infinite}
+body:after{content:"";position:fixed;inset:-8%;pointer-events:none;background:linear-gradient(rgba(100,215,255,.085) 1px,transparent 1px),linear-gradient(90deg,rgba(100,215,255,.085) 1px,transparent 1px),radial-gradient(circle at 50% 42%,rgba(100,215,255,.08),transparent 58%);background-size:52px 52px,52px 52px,auto;mask-image:radial-gradient(circle at 50% 36%,#000 28%,transparent 80%);opacity:.16;mix-blend-mode:screen;animation:gridFloat 32s ease-in-out infinite,techPulse 18s ease-in-out infinite}
 .header{backdrop-filter:blur(18px);background:linear-gradient(180deg,rgba(5,10,18,.92),rgba(5,10,18,.68));box-shadow:0 18px 60px rgba(0,0,0,.28)}
-.header h1{font-size:1.35rem;letter-spacing:.04em;background:linear-gradient(90deg,#fff4d6,var(--accent),var(--blue));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.header h1{font-size:1.45rem;font-weight:900;letter-spacing:.03em;background:linear-gradient(90deg,#fff4d6,var(--accent),var(--blue));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
 .header .meta{margin-top:.22rem;color:#a9bad0;font-size:.74rem;letter-spacing:.02em}
 .grid{padding:.85rem 2rem 1.15rem;grid-template-columns:repeat(auto-fit,minmax(148px,1fr));gap:.72rem}
 .card{background:linear-gradient(145deg,rgba(12,19,30,.84),rgba(3,8,14,.88));border-color:var(--border);border-radius:16px;box-shadow:0 16px 50px rgba(0,0,0,.22),inset 0 1px 0 rgba(255,255,255,.06);padding:.95rem .95rem 1rem;transition:transform .28s ease,border-color .28s ease,box-shadow .28s ease}
 .card:hover{transform:translateY(-2px);border-color:rgba(230,184,92,.24);box-shadow:0 18px 44px rgba(0,0,0,.22),inset 0 1px 0 rgba(255,255,255,.06)}
-.card h3{color:#a7b7c8;letter-spacing:1.8px;margin-bottom:.5rem;font-size:.58rem;line-height:1.4}
+.card h3{color:#c5d5e6;letter-spacing:2px;margin-bottom:.5rem;font-size:.6rem;font-weight:800;line-height:1.35}
 .card .stat{font-size:1.28rem;line-height:1.02}
-.status-bar{padding:1rem 2rem .5rem;color:#9cb0c5;gap:1rem 1.5rem}
+.status-bar{position:relative;overflow:hidden;padding:1rem 2rem .6rem;color:#9cb0c5;gap:1rem 1.5rem;border-top:1px solid rgba(255,255,255,.04);border-bottom:1px solid rgba(255,255,255,.06);background:linear-gradient(90deg,rgba(11,19,30,.74),rgba(17,31,44,.74),rgba(11,19,30,.74));backdrop-filter:blur(14px)}
+.status-bar:before{content:"";position:absolute;inset:0;background:linear-gradient(100deg,transparent 0%,rgba(100,215,255,.075) 42%,rgba(230,184,92,.06) 58%,transparent 86%);animation:dataSweep 14s linear infinite}
+.status-bar>span{position:relative;z-index:1}
 .controls{padding:0;justify-content:flex-end}
 .controls button{border-radius:999px;background:rgba(255,255,255,.055);border-color:rgba(255,255,255,.12);padding:.54rem 1rem;font-size:.71rem;letter-spacing:.02em}
 .controls button.active,.controls button:hover{background:rgba(230,184,92,.16);border-color:rgba(230,184,92,.5)}
 .portfolio-command{display:grid;grid-template-columns:minmax(0,1.22fr) minmax(250px,.78fr);gap:.85rem;padding:1rem 2rem .45rem}
 .portfolio-hero,.premium-panel{border:1px solid var(--border);border-radius:24px;background:linear-gradient(140deg,rgba(14,23,36,.86),rgba(4,10,18,.86));box-shadow:0 22px 80px rgba(0,0,0,.28),inset 0 1px 0 rgba(255,255,255,.07);overflow:hidden;position:relative;transition:transform .35s ease,border-color .35s ease,box-shadow .35s ease}
+.portfolio-hero:before,.premium-panel:before{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(120deg,transparent 0 58%,rgba(100,215,255,.06) 63%,transparent 68% 100%);opacity:.8;animation:dataSweep 18s linear infinite}
 .portfolio-hero:after,.premium-panel:after{content:"";position:absolute;inset:auto -15% -45% 35%;height:170px;background:radial-gradient(circle,rgba(100,215,255,.18),transparent 66%);pointer-events:none}
 .portfolio-hero:hover,.premium-panel:hover{transform:translateY(-2px);border-color:rgba(230,184,92,.24);box-shadow:0 26px 84px rgba(0,0,0,.32),inset 0 1px 0 rgba(255,255,255,.08)}
 .portfolio-hero{padding:1.1rem 1.15rem 1.02rem}
-.eyebrow{font-size:.66rem;text-transform:uppercase;letter-spacing:2.5px;color:var(--accent);margin-bottom:.5rem}
-.portfolio-hero h2{font-size:clamp(1.34rem,2.08vw,2.12rem);line-height:1.06;max-width:700px;color:#f7fbff}
-.portfolio-narrative{max-width:720px;margin:.56rem 0 .72rem;color:#a7b7c8;font-size:.82rem;line-height:1.42}
+.eyebrow{font-size:.66rem;font-weight:800;text-transform:uppercase;letter-spacing:2.8px;color:var(--accent);margin-bottom:.5rem}
+.portfolio-hero h2{font-size:clamp(1.46rem,2.35vw,2.5rem);font-weight:900;letter-spacing:-.035em;line-height:1.02;max-width:700px;color:#f7fbff}
+.portfolio-narrative{max-width:720px;margin:.56rem 0 .72rem;color:#b3c4d6;font-size:.8rem;line-height:1.36}
 .hero-chips,.allocation-pills{display:flex;gap:.45rem;flex-wrap:wrap}
-.hero-chip,.allocation-pill{border:1px solid rgba(255,255,255,.11);border-radius:999px;padding:.38rem .62rem;background:linear-gradient(145deg,rgba(255,255,255,.065),rgba(255,255,255,.03));font-size:.68rem;color:#c7d5e6;box-shadow:inset 0 1px 0 rgba(255,255,255,.04)}
+.hero-chip,.allocation-pill{border:1px solid rgba(255,255,255,.11);border-radius:999px;padding:.38rem .62rem;background:linear-gradient(145deg,rgba(255,255,255,.065),rgba(255,255,255,.03));font-size:.67rem;color:#d3dfeb;font-weight:600;box-shadow:inset 0 1px 0 rgba(255,255,255,.04);transition:border-color .24s ease,transform .24s ease,background .24s ease}
+.hero-chip:hover,.allocation-pill:hover{border-color:rgba(100,215,255,.28);transform:translateY(-1px)}
 .hero-chip strong,.allocation-pill strong{color:#f7fbff;letter-spacing:.01em}
 .portfolio-orb{min-height:100%;padding:.9rem .9rem .98rem;display:grid;place-items:center;text-align:center;row-gap:.45rem}
 @keyframes orb-glow{0%,100%{box-shadow:0 0 0 1px rgba(255,255,255,.06),0 0 28px rgba(230,184,92,.22),0 0 88px rgba(100,215,255,.18)}50%{box-shadow:0 0 0 1px rgba(255,255,255,.08),0 0 42px rgba(230,184,92,.28),0 0 110px rgba(100,215,255,.24)}}
@@ -201,7 +209,7 @@ tr:hover td{background:rgba(100,215,255,.055)}
 .collapsible-summary:after{content:"+";display:grid;place-items:center;width:24px;height:24px;border:1px solid rgba(255,255,255,.12);border-radius:999px;color:var(--accent);flex:0 0 auto}
 .collapsible-section[open]>.collapsible-summary:after{content:"-"}
 .collapsible-summary small{margin-left:.45rem;color:#94a8bd;font-weight:500;font-size:.66rem}
-.collapsible-section>.card,.collapsible-section>.supercharge-wrap,.collapsible-section>.ops-truth-wrap,.collapsible-section>.allocation-sections,.collapsible-section>.table-wrap{margin:0;padding:0 1rem 1rem}
+.collapsible-section>.card,.collapsible-section>.ops-truth-wrap,.collapsible-section>.allocation-sections,.collapsible-section>.table-wrap{margin:0;padding:0 1rem 1rem}
 .collapsible-section>.card{background:transparent;border:0;box-shadow:none}
 .collapsible-section>.table-wrap{overflow-x:auto}
 .collapsible-section.vps-root-detail-wrap{padding:0}
@@ -232,8 +240,8 @@ tr:hover td{background:rgba(100,215,255,.055)}
 @media(max-width:980px){.portfolio-command,.portfolio-analytics,.vps-root-detail-grid{grid-template-columns:1fr}.portfolio-command,.portfolio-analytics,.allocation-sections,.vps-root-detail-wrap{padding-left:1rem;padding-right:1rem}}
 @media(max-width:980px){.collapsible-section{margin-left:1rem;margin-right:1rem}.grid{grid-template-columns:repeat(auto-fit,minmax(136px,1fr));padding-left:1rem;padding-right:1rem}.portfolio-command{grid-template-columns:1fr}.portfolio-analytics{grid-template-columns:1fr}}
 @media(max-width:860px){.header{padding:.95rem 1rem;flex-direction:column;align-items:flex-start;gap:.75rem}.controls{width:100%;justify-content:stretch;gap:.55rem}.controls button{flex:1 1 0}.status-bar{padding:.72rem 1rem .42rem;flex-direction:column;align-items:flex-start;gap:.35rem}.ops-truth-wrap{grid-template-columns:1fr}.panel-head{flex-direction:column;align-items:flex-start}.hero-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.contribution-row{grid-template-columns:1fr;gap:.45rem}}
-@media(max-width:640px){.portfolio-command{gap:.78rem;padding:1rem .9rem .45rem;justify-items:center}.portfolio-hero,.premium-panel,.collapsible-section,.card,.wide-card{width:100%;max-width:100%;margin-left:auto;margin-right:auto}.portfolio-hero{padding:1rem .95rem .95rem;text-align:center}.portfolio-hero h2{font-size:clamp(1.22rem,7vw,1.72rem)}.portfolio-narrative{font-size:.79rem;line-height:1.48}.hero-chips{gap:.35rem;justify-content:center}.hero-chip,.allocation-pill{padding:.4rem .58rem;font-size:.67rem}.hero-metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:.45rem}.hero-metric{padding:.54rem;text-align:left}.portfolio-orb{padding:.92rem .82rem 1rem;align-items:center}.orb-ring{width:min(188px,66vw);margin-inline:auto}.orb-sub{font-size:.64rem;max-width:146px}.orb-allocation-pills{grid-template-columns:repeat(2,minmax(0,1fr));width:100%;max-width:100%}.ops-truth-wrap,.position-list,.router-tape,.close-history-list,.truth-summary,.hero-metrics,.grid{width:100%;max-width:100%;min-width:0}.grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:.65rem;padding:.8rem .9rem 1.1rem}.card{padding:.85rem}.position-card,.tape-row,.close-row{width:100%;max-width:100%;min-width:0}.position-head,.tape-head,.allocation-group-head,.vps-root-step-top,.close-history-heading,.close-row-top{flex-direction:column;align-items:flex-start}.position-meta,.tape-meta{grid-template-columns:repeat(2,minmax(0,1fr))}.position-meta span,.tape-meta span,.close-row-meta span{min-width:0}.close-row-pnl{text-align:left}.table-wrap{padding:0 .9rem 1.2rem;max-width:100%}.collapsible-section{margin:0 .9rem .9rem;max-width:calc(100vw - 1.8rem)}.collapsible-summary{display:block;position:relative;padding:.9rem 3rem .85rem .95rem}.collapsible-summary small{display:block;margin:.25rem 0 0}.collapsible-summary:after{position:absolute;top:.8rem;right:.95rem}}
-@media(max-width:420px){.hero-metrics{grid-template-columns:1fr}.orb-ring{width:min(184px,74vw)}.status-bar{font-size:.72rem}.controls button{min-height:38px}}
+@media(max-width:640px){.header{align-items:stretch}.header>div:first-child{width:100%;text-align:center}.header .meta{display:flex;justify-content:center;flex-wrap:wrap;gap:.25rem;text-align:center}.controls{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));width:100%;gap:.55rem}.controls button{width:100%;max-width:none;min-width:0}.status-bar{padding:.72rem .9rem .45rem;align-items:center;justify-content:center;text-align:center}.status-bar>span{width:100%;max-width:100%;overflow-wrap:anywhere}.portfolio-command{gap:.78rem;padding:1rem .9rem .45rem;justify-items:center}.portfolio-hero,.premium-panel,.collapsible-section,.card,.wide-card{width:100%;max-width:100%;margin-left:auto;margin-right:auto;min-width:0}.portfolio-hero{padding:1rem .95rem .95rem;text-align:center}.portfolio-hero h2{font-size:clamp(1.22rem,7vw,1.72rem)}.portfolio-narrative{font-size:.79rem;line-height:1.48}.hero-chips,.truth-summary,.allocation-pills{gap:.35rem;justify-content:center}.hero-chip,.truth-chip,.allocation-pill{max-width:100%;padding:.4rem .58rem;font-size:.67rem;text-align:center;white-space:normal;justify-content:center}.hero-metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:.45rem}.hero-metric{padding:.54rem;text-align:center}.hero-metric span,.hero-metric strong,.hero-metric small{white-space:normal;overflow-wrap:anywhere;text-align:center}.portfolio-orb{padding:.92rem .82rem 1rem;align-items:center}.orb-ring{width:min(188px,66vw);margin-inline:auto}.orb-sub{font-size:.64rem;max-width:146px}.orb-allocation-pills{grid-template-columns:repeat(2,minmax(0,1fr));width:100%;max-width:100%}.ops-truth-wrap,.position-list,.router-tape,.close-history-list,.truth-summary,.hero-metrics,.grid{width:100%;max-width:100%;min-width:0}.grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:.65rem;padding:.8rem .9rem 1.1rem}.card{padding:.85rem}.position-card,.tape-row,.close-row{width:100%;max-width:100%;min-width:0}.position-head,.tape-head,.allocation-group-head,.vps-root-step-top,.close-history-heading,.close-row-top{flex-direction:column;align-items:flex-start}.position-meta,.tape-meta{grid-template-columns:repeat(2,minmax(0,1fr))}.position-meta span,.tape-meta span,.close-row-meta span,.close-row-title strong{min-width:0;white-space:normal;overflow-wrap:anywhere}.close-row-pnl{text-align:left}.table-wrap{padding:0 .9rem 1.2rem;max-width:100%}.collapsible-section{margin:0 .9rem .9rem;max-width:calc(100vw - 1.8rem)}.collapsible-summary{display:block;position:relative;padding:.9rem 3rem .85rem .95rem;text-align:left}.collapsible-summary small{display:block;margin:.25rem 0 0}.collapsible-summary:after{position:absolute;top:.8rem;right:.95rem}}
+@media(max-width:420px){.hero-metrics{grid-template-columns:1fr}.orb-ring{width:min(184px,74vw)}.status-bar{font-size:.72rem}.controls{grid-template-columns:1fr}.controls button{min-height:38px}.position-meta,.tape-meta{grid-template-columns:1fr}.close-row-meta{display:grid;grid-template-columns:1fr;gap:.18rem}}
 @media (prefers-reduced-motion:reduce){.card,.portfolio-hero,.premium-panel,.orb-ring,.orb-ring::before,.orb-inner{animation:none;transition:none;transform:none}}
 </style>
 </head>
@@ -241,7 +249,7 @@ tr:hover td{background:rgba(100,215,255,.055)}
 <div class="header">
   <div>
     <h1>Evolutionary Trading Algo</h1>
-    <div class="meta">ETA Reasoner | Steward | Executor | <a href="/track-record">Track Record</a></div>
+    <div class="meta">ETA Ops | <a href="/track-record">Track Record</a></div>
   </div>
   <div class="controls" id="quickControls">
     <button onclick="toggleRefresh()" id="btnRefresh">Auto-Refresh: ON</button>
@@ -250,7 +258,7 @@ tr:hover td{background:rgba(100,215,255,.055)}
 </div>
 
 <div class="status-bar">
-  <span><span class="status-dot" id="statusDot"></span><span id="statusText">Connecting to live ops truth...</span></span>
+  <span><span class="status-dot" id="statusDot"></span><span id="statusText">Syncing live book...</span></span>
   <span id="clockText"></span>
   <span id="apiSourceText"></span>
   <span id="lastTradeText"></span>
@@ -258,26 +266,26 @@ tr:hover td{background:rgba(100,215,255,.055)}
 
 <section class="portfolio-command">
   <div class="portfolio-hero">
-    <div class="eyebrow">Operator Surface</div>
-    <h2>Live futures capital, exposure, and execution at a glance.</h2>
-    <p class="portfolio-narrative" id="portfolioNarrative">Loading live futures capital and execution truth...</p>
+    <div class="eyebrow">Ops Command</div>
+    <h2>LIVE FUTURES. REAL RISK. FAST TRUTH.</h2>
+    <p class="portfolio-narrative" id="portfolioNarrative">Syncing live book and close ledger...</p>
     <div class="hero-chips" id="portfolioHeroChips">
-      <span class="hero-chip">Loading allocation...</span>
+      <span class="hero-chip">Loading live scope...</span>
     </div>
     <div class="hero-metrics" id="portfolioHeroMetrics">
-      <div class="hero-metric"><span>Futures Net</span><strong>--</strong><small>broker truth pending</small></div>
-      <div class="hero-metric"><span>Lifetime PnL</span><strong>--</strong><small>ledger pending</small></div>
-      <div class="hero-metric"><span>Live Exposure</span><strong>--</strong><small>broker open book</small></div>
-      <div class="hero-metric"><span>Readiness</span><strong>--</strong><small>paper/live</small></div>
+      <div class="hero-metric"><span>Session Net</span><strong>--</strong><small>IBKR live pending</small></div>
+      <div class="hero-metric"><span>Broker MTD</span><strong>--</strong><small>IBKR portfolio pending</small></div>
+      <div class="hero-metric"><span>Open Risk</span><strong>--</strong><small>live open book</small></div>
+      <div class="hero-metric"><span>Readiness</span><strong>--</strong><small>paper | live</small></div>
     </div>
   </div>
   <div class="premium-panel portfolio-orb">
     <div class="orb-ring" id="allocationOrbRing" aria-label="Broker net and allocation ring">
       <div class="orb-inner">
         <div>
-          <div class="orb-label">Futures Focus Net</div>
+          <div class="orb-label">Futures Net</div>
           <div class="orb-value" id="portfolioNetOrb">--</div>
-          <div class="orb-sub" id="portfolioNetOrbSub">realized + unrealized</div>
+          <div class="orb-sub" id="portfolioNetOrbSub">realized | open</div>
         </div>
       </div>
     </div>
@@ -288,21 +296,21 @@ tr:hover td{background:rgba(100,215,255,.055)}
 </section>
 
 <details class="collapsible-section ops-priority-section" id="opsTruthSection" open>
-  <summary class="collapsible-summary">Open Positions, Exit Cover, and Router Tape <small id="opsTruthSummaryLine">broker truth loading</small></summary>
+  <summary class="collapsible-summary">Open Book, Exit Cover, Tape <small id="opsTruthSummaryLine">live book loading</small></summary>
 <div class="ops-truth-wrap">
   <div class="card">
-    <h3>Open Positions &amp; Exit Protection</h3>
+    <h3>Open Book &amp; Exit Cover</h3>
     <div class="truth-summary" id="positionSummary"></div>
     <div class="bracket-action-strip" id="bracketActionStrip"></div>
     <div class="position-list" id="openPositionsPanel">
-      <div class="empty-panel">Waiting for close-ledger and broker position truth...</div>
+      <div class="empty-panel">Loading open book and exit cover...</div>
     </div>
   </div>
   <div class="card">
-    <h3>Broker Router Tape</h3>
+    <h3>Router Tape</h3>
     <div class="truth-summary" id="routerTapeSummary"></div>
     <div class="router-tape" id="routerTapePanel">
-      <div class="empty-panel">Waiting for router executions...</div>
+      <div class="empty-panel">Loading router tape...</div>
     </div>
   </div>
 </div>
@@ -312,39 +320,39 @@ tr:hover td{background:rgba(100,215,255,.055)}
   <div class="card wide-card">
     <div class="panel-head">
       <div>
-        <h3>Portfolio PnL Contribution</h3>
-        <div class="panel-kicker" id="contributionSub">Open exposure and realized closes</div>
+        <h3>PnL Map</h3>
+        <div class="panel-kicker" id="contributionSub">Open risk + closed edge</div>
       </div>
       <div class="truth-chip" id="contributionSource">broker first</div>
     </div>
     <div class="contribution-graph" id="pnlContributionGraph">
-      <div class="empty-panel">Waiting for contribution data...</div>
+      <div class="empty-panel">Loading PnL map...</div>
     </div>
   </div>
 </section>
 
 <div class="grid">
-  <div class="card"><h3>Focus Bots</h3><div class="stat green" id="totalBots">—</div></div>
-  <div class="card"><h3>Active</h3><div class="stat blue" id="activeBots">—</div><div class="sub" id="activeBotsSub">Runtime-active bots</div></div>
-  <div class="card"><h3>Today PnL</h3><div class="stat dim" id="todayPnl">—</div><div class="sub" id="todayPnlSub"></div></div>
-  <div class="card"><h3 id="totalPnlLabel">Closed PnL</h3><div class="stat dim" id="totalPnl">—</div><div class="sub" id="totalPnlSub">window closes pending</div></div>
-  <div class="card"><h3 id="cumulativeRLabel">Window R</h3><div class="stat dim" id="cumulativeR">—</div><div class="sub" id="cumulativeRSub">waiting for selected-window realized-R outcomes</div></div>
-  <div class="card"><h3 id="totalTradesLabel">Window Trades</h3><div class="stat blue" id="totalTrades">—</div><div class="sub" id="totalTradesSub"></div></div>
-  <div class="card"><h3>Win Rate</h3><div class="stat blue" id="winRate">—</div><div class="sub" id="winRateDetail"></div></div>
-  <div class="card"><h3>Approved</h3><div class="stat green" id="approvedCount">—</div><div class="sub">APPROVED + CONDITIONAL verdicts</div></div>
-  <div class="card"><h3>JARVIS Mode</h3><div class="stat yellow" id="jarvisMode">—</div></div>
-  <div class="card"><h3>Admin AI</h3><div class="stat" id="adminAiStatus">-</div><div class="sub" id="adminAiSub">Jarvis/Hermes bridge</div></div>
-  <div class="card"><h3>IBKR Gateway</h3><div class="stat" id="gatewayStatus">—</div><div class="sub" id="gatewayStatusSub"></div></div>
+  <div class="card"><h3>Focus Bots</h3><div class="stat green" id="totalBots">--</div></div>
+  <div class="card"><h3>Active</h3><div class="stat blue" id="activeBots">--</div><div class="sub" id="activeBotsSub">live runtime</div></div>
+  <div class="card"><h3>Session Net</h3><div class="stat dim" id="todayPnl">--</div><div class="sub" id="todayPnlSub"></div></div>
+  <div class="card"><h3 id="totalPnlLabel">Broker MTD</h3><div class="stat dim" id="totalPnl">--</div><div class="sub" id="totalPnlSub">IBKR portfolio pending</div></div>
+  <div class="card"><h3 id="cumulativeRLabel">MTD R</h3><div class="stat dim" id="cumulativeR">--</div><div class="sub" id="cumulativeRSub">realized-R pending</div></div>
+  <div class="card"><h3 id="totalTradesLabel">MTD Closes</h3><div class="stat blue" id="totalTrades">--</div><div class="sub" id="totalTradesSub"></div></div>
+  <div class="card"><h3>Win Rate</h3><div class="stat blue" id="winRate">--</div><div class="sub" id="winRateDetail"></div></div>
+  <div class="card"><h3>Approved</h3><div class="stat green" id="approvedCount">--</div><div class="sub">go + conditional</div></div>
+  <div class="card"><h3>JARVIS Mode</h3><div class="stat yellow" id="jarvisMode">--</div></div>
+  <div class="card"><h3>Admin AI</h3><div class="stat" id="adminAiStatus">-</div><div class="sub" id="adminAiSub">Jarvis | Hermes</div></div>
+  <div class="card"><h3>IBKR Gateway</h3><div class="stat" id="gatewayStatus">--</div><div class="sub" id="gatewayStatusSub"></div></div>
   <div class="card"><h3>Broker Router</h3><div class="stat" id="brokerRouterStatus">-</div><div class="sub" id="brokerRouterSub"></div></div>
-  <div class="card"><h3>Bracket Audit</h3><div class="stat" id="bracketAuditStatus">-</div><div class="sub" id="bracketAuditSub">broker OCO coverage</div></div>
-  <div class="card exit-watch-card"><h3>Exit Watch</h3><div class="stat" id="exitWatchStatus">-</div><div class="sub" id="exitWatchSub">target/stop monitor</div></div>
-  <div class="card"><h3>Paper Live</h3><div class="stat" id="paperLiveStatus">—</div><div class="sub" id="paperLiveSub"></div></div>
-  <div class="card"><h3>Operator Queue</h3><div class="stat" id="operatorQueueStatus">—</div><div class="sub" id="operatorQueueSub"></div></div>
-  <div class="card"><h3>Risk Level</h3><div class="stat yellow" id="riskLevel">—</div><div class="risk-bar"><div class="risk-fill" id="riskBar" style="width:0%"></div></div><div class="sub" id="riskSub">drawdown + exit-watch SLA</div></div>
-  <div class="card"><h3>Signal Cadence</h3><div class="stat" id="signalCadenceStatus">-</div><div class="sub" id="signalCadenceSub">waiting for signal timing</div></div>
-  <div class="card"><h3>Ops Proxy</h3><div class="stat" id="opsProxyStatus">-</div><div class="sub" id="opsProxySub">8421 bridge self-heal</div></div>
-  <div class="card"><h3>Ops Watchdog</h3><div class="stat" id="opsWatchdogStatus">-</div><div class="sub" id="opsWatchdogSub">Command Center doctor</div></div>
-  <div class="card vps-root-card" role="button" tabindex="0" onclick="focusVpsRootDetails()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();focusVpsRootDetails();}"><h3>VPS Root Review</h3><div class="stat" id="vpsRootStatus">-</div><div class="sub" id="vpsRootSub">dirty-tree reconciliation</div></div>
+  <div class="card"><h3>Bracket Audit</h3><div class="stat" id="bracketAuditStatus">-</div><div class="sub" id="bracketAuditSub">OCO cover</div></div>
+  <div class="card exit-watch-card"><h3>Exit Watch</h3><div class="stat" id="exitWatchStatus">-</div><div class="sub" id="exitWatchSub">target | stop</div></div>
+  <div class="card"><h3>Paper Live</h3><div class="stat" id="paperLiveStatus">--</div><div class="sub" id="paperLiveSub"></div></div>
+  <div class="card"><h3>Operator Queue</h3><div class="stat" id="operatorQueueStatus">--</div><div class="sub" id="operatorQueueSub"></div></div>
+  <div class="card"><h3>Risk Level</h3><div class="stat yellow" id="riskLevel">--</div><div class="risk-bar"><div class="risk-fill" id="riskBar" style="width:0%"></div></div><div class="sub" id="riskSub">drawdown + exit-watch SLA</div></div>
+  <div class="card"><h3>Signal Cadence</h3><div class="stat" id="signalCadenceStatus">-</div><div class="sub" id="signalCadenceSub">timing sync</div></div>
+  <div class="card"><h3>Ops Proxy</h3><div class="stat" id="opsProxyStatus">-</div><div class="sub" id="opsProxySub">8421 self-heal</div></div>
+  <div class="card"><h3>Ops Watchdog</h3><div class="stat" id="opsWatchdogStatus">-</div><div class="sub" id="opsWatchdogSub">surface doctor</div></div>
+  <div class="card vps-root-card" role="button" tabindex="0" onclick="focusVpsRootDetails()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();focusVpsRootDetails();}"><h3>VPS Root Review</h3><div class="stat" id="vpsRootStatus">-</div><div class="sub" id="vpsRootSub">root drift review</div></div>
 </div>
 
 <div class="compat-anchors" style="display:none" aria-hidden="true">
@@ -356,43 +364,24 @@ tr:hover td{background:rgba(100,215,255,.055)}
     <button type="button" data-close-window="all">All</button>
   </div>
   <div id="pnlWindowStrip"></div>
-  <span id="pnlHistoryLabel">selected-window Close History</span>
-  <span id="pnlHistorySub">MTD closed outcomes; selected-window close history</span>
+  <span id="pnlHistoryLabel">close history window</span>
+  <span id="pnlHistorySub">MTD close ledger pending</span>
   <canvas id="pnlChart"></canvas>
 </div>
 
-<details class="collapsible-section" data-panel-id="cc-strategy-supercharge-results">
-  <summary class="collapsible-summary">Strategy Supercharge Results <small id="strategySuperchargeSummary">waiting for strategy_supercharge_results</small></summary>
-  <div class="supercharge-wrap">
-    <div class="card supercharge-card">
-      <div class="supercharge-metrics">
-        <div class="metric"><div class="label">Tested</div><div class="value" id="strategyTested">—</div></div>
-        <div class="metric"><div class="label">Passed</div><div class="value green" id="strategyPassed">—</div></div>
-        <div class="metric"><div class="label">Failed</div><div class="value red" id="strategyFailed">—</div></div>
-        <div class="metric"><div class="label">Pending</div><div class="value yellow" id="strategyPending">—</div></div>
-        <div class="metric"><div class="label">Best Near Miss</div><div class="value blue" id="strategyBestNearMiss">none</div></div>
-      </div>
-      <div class="supercharge-lists">
-        <div class="supercharge-list"><h4>Near Misses</h4><ul id="strategyNearMisses"><li class="dim">Waiting for /api/jarvis/strategy_supercharge_results</li></ul></div>
-        <div class="supercharge-list"><h4>Retune Queue</h4><ul id="strategyRetuneQueue"><li class="dim">Waiting for retune_queue</li></ul></div>
-      </div>
-    </div>
-  </div>
-</details>
-
 <details class="collapsible-section vps-root-detail-wrap" id="vpsRootDetailsWrap">
-  <summary class="collapsible-summary">VPS Root Reconciliation <small>review gates and dirty-tree plan</small></summary>
+  <summary class="collapsible-summary">VPS Root Reconciliation <small>gates and drift plan</small></summary>
   <div class="card vps-root-detail-card">
     <div class="panel-head">
       <div>
-        <h3>VPS Root Reconciliation Details</h3>
-        <div class="panel-kicker" id="vpsRootDetailKicker">review-only plan</div>
+        <h3>VPS Root Details</h3>
+        <div class="panel-kicker" id="vpsRootDetailKicker">review only</div>
       </div>
       <div class="truth-chip" id="vpsRootDetailStatus">waiting for plan</div>
     </div>
     <div class="vps-root-detail-grid">
       <div class="vps-root-detail-summary" id="vpsRootSummaryTiles">
-        <div class="empty-panel">Waiting for VPS root plan...</div>
+        <div class="empty-panel">Loading root plan...</div>
       </div>
       <div class="vps-root-step-list" id="vpsRootSteps">
         <div class="empty-panel">Review steps will appear here.</div>
@@ -402,13 +391,13 @@ tr:hover td{background:rgba(100,215,255,.055)}
 </details>
 
 <details class="collapsible-section" id="allocationSectionWrap" hidden>
-  <summary class="collapsible-summary">Portfolio Sleeve Details <small id="allocationSectionSummary">grouped allocation rows</small></summary>
+  <summary class="collapsible-summary">Portfolio Sleeve Details <small id="allocationSectionSummary">sleeve groups</small></summary>
 <section class="allocation-sections" id="allocationSections">
   <div class="allocation-group">
     <div class="allocation-group-head">
       <div>
         <div class="allocation-group-title">Portfolio Sleeves</div>
-        <div class="allocation-group-sub">Live bots will group here by asset class once the roster loads.</div>
+        <div class="allocation-group-sub">Visible bots will group here by sleeve once the roster loads.</div>
       </div>
     </div>
   </div>
@@ -416,13 +405,13 @@ tr:hover td{background:rgba(100,215,255,.055)}
 </details>
 
 <details class="collapsible-section" id="botRosterDetails">
-  <summary class="collapsible-summary">Full Bot Roster <small id="botRosterSummary">loading table</small></summary>
+  <summary class="collapsible-summary">Full Bot Roster <small id="botRosterSummary">roster loading</small></summary>
 <div class="table-wrap">
   <table>
     <thead>
       <tr><th>Bot</th><th>Symbol</th><th>Strategy</th><th>Mode</th><th>Status</th><th>Verdict</th><th>PnL</th><th>Position</th><th>Protection</th><th>Last Activity</th><th>WR%</th><th>Sharpe</th></tr>
     </thead>
-    <tbody id="botTable"><tr><td colspan="12" class="loading">Loading fleet data...</td></tr></tbody>
+    <tbody id="botTable"><tr><td colspan="12" class="loading">Loading roster...</td></tr></tbody>
   </table>
 </div>
 </details>
@@ -431,7 +420,6 @@ tr:hover td{background:rgba(100,215,255,.055)}
 let autoRefresh = true, refreshTimer;
 const API = '/api/bot-fleet';
 const API_ALT = 'https://jarvis.evolutionarytradingalgo.com/api/bot-fleet';
-const STRATEGY_RESULTS_API = '/api/jarvis/strategy_supercharge_results';
 const OPERATOR_QUEUE_API = '/api/jarvis/operator_queue';
 const PAPER_LIVE_API = '/api/jarvis/paper_live_transition';
 const DASHBOARD_DIAGNOSTICS_API = '/api/dashboard/diagnostics';
@@ -716,9 +704,74 @@ function formatMoneyOrUnavailable(value, digits = 2) {
   return n == null ? 'n/a' : formatMoney(n, digits);
 }
 
+function formatIsoDate(value) {
+  if (!value) return '';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toISOString().slice(0, 10);
+}
+
 function brokerHasPnlTruth(liveBroker) {
   return finiteNumber(liveBroker?.today_realized_pnl) != null
     || finiteNumber(liveBroker?.total_unrealized_pnl) != null;
+}
+
+function tradovateVenueText(liveBroker = null) {
+  const status = String(liveBroker?.tradovate?.status || '').toLowerCase();
+  if (status === 'paper_enabled') return 'Tradovate paper live';
+  if (status === 'auth_failed' || status === 'dormant_auth_failed') return 'Tradovate auth blocked';
+  if (status === 'awaiting_auth') return 'Tradovate auth pending';
+  return 'Tradovate dormant';
+}
+
+function brokerSessionSourceLabel(liveBroker = null) {
+  const raw = String(liveBroker?.sources?.session_pnl || '').toLowerCase();
+  if (raw.includes('tradovate')) return 'Tradovate session';
+  if (raw.includes('ibkr')) return 'IBKR session';
+  return 'Broker session';
+}
+
+function brokerMtdSourceLabel(liveBroker = null) {
+  const raw = String(liveBroker?.sources?.broker_mtd_pnl || '').toLowerCase();
+  if (raw.includes('pa_performance')) return 'IBKR portfolio MTD';
+  if (raw.includes('net_liquidation_month_tracker')) return 'IBKR tracked MTD';
+  if (raw.includes('account_summary')) return 'IBKR realized';
+  return 'IBKR portfolio MTD';
+}
+
+function brokerMtdEvidence(liveBroker = null) {
+  const value = finiteNumber(liveBroker?.broker_mtd_pnl ?? liveBroker?.ibkr?.account_mtd_pnl);
+  const returnPct = finiteNumber(liveBroker?.broker_mtd_return_pct ?? liveBroker?.ibkr?.account_mtd_return_pct);
+  const baselineDate = formatIsoDate(liveBroker?.ibkr?.account_mtd_baseline_set_at);
+  const rawSource = String(liveBroker?.sources?.broker_mtd_pnl || '').toLowerCase();
+  const error = String(liveBroker?.ibkr?.account_mtd_error || '').trim();
+  if (value == null) {
+    return {
+      value: null,
+      label: 'Broker MTD',
+      source: error ? 'IBKR portfolio MTD unavailable' : 'IBKR portfolio MTD pending'
+    };
+  }
+  if (rawSource.includes('net_liquidation_month_tracker')) {
+    return {
+      value,
+      label: 'Broker MTD',
+      source: baselineDate ? `IBKR tracked MTD | baseline ${baselineDate}` : 'IBKR tracked MTD'
+    };
+  }
+  return {
+    value,
+    label: 'Broker MTD',
+    source: returnPct == null
+      ? brokerMtdSourceLabel(liveBroker)
+      : `${brokerMtdSourceLabel(liveBroker)} | ${returnPct.toFixed(2)}%`
+  };
+}
+
+function closeLedgerSourceLabel(liveBroker = null) {
+  const raw = String(liveBroker?.sources?.focus_mtd_closed_pnl || '').toLowerCase();
+  if (raw.includes('trade_close_ledger')) return 'MTD ledger';
+  return 'MTD ledger';
 }
 
 function fleetEquityLifetimeEvidence(fleetEquity) {
@@ -793,8 +846,8 @@ function lifetimePnlEvidence(summary, portfolioSummary, fleetEquity, diagnostics
   ];
   const usable = candidates.find(item => item.value != null);
   return usable
-    ? {...usable, label: 'Lifetime PnL', isLifetime: true}
-    : {value: null, label: 'Lifetime PnL', isLifetime: false, source: fleetEvidence.source || 'waiting for lifetime ledger'};
+    ? {...usable, label: 'Lifetime Net', isLifetime: true}
+    : {value: null, label: 'Lifetime Net', isLifetime: false, source: fleetEvidence.source || 'lifetime ledger'};
 }
 
 function closeHistoryWindowPayload(liveBroker, windowKey, rootPayload = {}) {
@@ -876,17 +929,16 @@ function closeEvidenceSummary(liveBroker, portfolioSummary, windowKey = selected
 
 function winRateSourceText(source, windowLabel) {
   const raw = String(source || '').toLowerCase();
-  if (raw.includes('trade_close_ledger')) return `${windowLabel} close-ledger outcomes`;
-  if (raw.includes('live_fill_ledger')) return `${windowLabel} live fill-ledger outcomes`;
-  if (raw.includes('alpaca_filled_order_pairs')) return `${windowLabel} Alpaca filled-order outcomes`;
-  return `${windowLabel} closed-trade outcomes`;
+  if (raw.includes('trade_close_ledger')) return `${windowLabel} ledger`;
+  if (raw.includes('live_fill_ledger')) return `${windowLabel} fills`;
+  if (raw.includes('alpaca_filled_order_pairs')) return `${windowLabel} Alpaca fills`;
+  return `${windowLabel} closes`;
 }
 
 function rerenderLastData() {
   if (!lastRenderArgs) return;
   render(
     lastRenderArgs.d,
-    lastRenderArgs.strategyResults,
     lastRenderArgs.operatorQueue,
     lastRenderArgs.paperLive,
     lastRenderArgs.diagnostics,
@@ -923,7 +975,7 @@ function renderPnlWindowStrip(closeHistory) {
   const windows = closeHistory?.windows || {};
   const available = CLOSE_HISTORY_WINDOWS.filter(([key]) => windows[key]);
   if (!available.length) {
-    strip.innerHTML = '<button type="button" class="history-window-tile active" data-close-window="mtd"><span>MTD PnL</span><strong>n/a</strong><small>waiting for close ledger</small></button>';
+    strip.innerHTML = '<button type="button" class="history-window-tile active" data-close-window="mtd"><span>MTD Closed</span><strong>n/a</strong><small>close ledger</small></button>';
   } else {
     strip.innerHTML = available.map(([key, label]) => {
       const payload = windows[key] || {};
@@ -935,7 +987,7 @@ function renderPnlWindowStrip(closeHistory) {
       const value = pnl == null ? 'n/a' : formatMoney(pnl, 0);
       return `
         <button type="button" class="history-window-tile${active}" data-close-window="${esc(key)}" title="${esc(label)} selected-window realized PnL">
-          <span>${esc(label)} PnL</span>
+          <span>${esc(label)} Closed</span>
           <strong>${esc(value)}</strong>
           <small>${esc(count)} close${count === 1 ? '' : 's'} | ${esc(wrText)}</small>
         </button>
@@ -951,15 +1003,15 @@ function pnlHistoryEvidence(summary, portfolioSummary, fleetEquity, closeHistory
   const lifetimeEvidence = lifetimePnlEvidence(summary, portfolioSummary, fleetEquity, diagnostics);
   if (closeHistory?.realizedPnl != null) {
     const label = closeHistory.label || 'Close';
-    const closeText = `${closeHistory.count} ${label} closed outcome${closeHistory.count === 1 ? '' : 's'}`;
+    const closeText = `${closeHistory.count} close${closeHistory.count === 1 ? '' : 's'}`;
     const winText = closeHistory.winRatePct == null
       ? ''
-      : `; ${closeHistory.winRatePct.toFixed(1)}% WR`;
+      : ` | ${closeHistory.winRatePct.toFixed(1)}% WR`;
     return {
       value: closeHistory.realizedPnl,
-      label: `${label} Closed PnL`,
+      label: `${label} Closed`,
       isLifetime: false,
-      source: `${closeText}${winText}; selected-window realized PnL; lifetime ledger pending`
+      source: `${closeText}${winText} | ${closeLedgerSourceLabel()}`
     };
   }
   if (lifetimeEvidence.value != null && lifetimeEvidence.isLifetime) return lifetimeEvidence;
@@ -984,7 +1036,7 @@ function brokerBracketActionLabels(bracketAudit, summary) {
     : [];
   summaryLabels.forEach(add);
   const fallbackById = {
-    verify_manual_broker_oco: 'Verify broker OCO coverage',
+    verify_manual_broker_oco: 'Verify OCO cover',
     flatten_unprotected_paper_exposure: 'Flatten unprotected paper exposure'
   };
   const ids = Array.isArray(summary?.broker_bracket_operator_action_ids)
@@ -1047,7 +1099,7 @@ function renderBracketActionStrip(d) {
     primaryText ? `primary unprotected: ${primaryText}` : '',
     propDryRunBlocked ? 'paper-live launch held until operator verifies coverage or flattens' : ''
   ].filter(Boolean).join('; ');
-  const actionList = actions.length ? actions : ['Verify broker OCO coverage'];
+  const actionList = actions.length ? actions : ['Verify OCO cover'];
   el.className = 'bracket-action-strip active';
   el.innerHTML = actionList.map((label, index) => `
     <div class="bracket-action-card">
@@ -1120,7 +1172,7 @@ function buildBrokerPositions(liveBroker) {
         pnlPct: p.unrealized_pct,
         protection: venue === 'ibkr'
           ? 'Futures route requires broker-side TP/SL OCO bracket on new entries; watchdog backs up detached brackets.'
-          : 'Supervisor-local target/stop monitor; exits submit reduce-only close orders.'
+      : 'Supervisor target/stop cover; reduce-only exits armed.'
       };
     });
   }
@@ -1138,7 +1190,7 @@ function buildBrokerPositions(liveBroker) {
       value: p.market_value,
       pnl: p.unrealized_pl,
       pnlPct: p.unrealized_plpc,
-      protection: 'Supervisor-local target/stop monitor; exits submit reduce-only close orders.'
+    protection: 'Supervisor target/stop cover; reduce-only exits armed.'
     });
   }
   const ibkrPositions = liveBroker?.ibkr?.open_positions || [];
@@ -1464,7 +1516,7 @@ function renderContributionGraph(bots, liveBroker, portfolioSummary) {
   if (source) source.textContent = sourceLabelText;
   if (sub) sub.textContent = topRows.length
     ? `${topRows.length} live contributors ranked by absolute PnL impact`
-    : 'Waiting for open exposure, fills, or bot PnL movement';
+      : 'Waiting for book, fills, or PnL';
   if (!topRows.length) {
     el.innerHTML = '<div class="empty-panel">No PnL contribution yet. The graph will populate from broker exposure first, then bot PnL fallback.</div>';
     return;
@@ -1529,7 +1581,7 @@ function allocationBuckets(bots, liveBroker, portfolioSummary) {
   });
 }
 
-function renderPortfolioCommand(bots, hiddenCount, liveBroker, summary, d, todaysPnl, portfolioSummary, lifetimeEvidence, paperLive, diagnostics) {
+function renderPortfolioCommand(bots, hiddenCount, liveBroker, summary, d, todaysPnl, portfolioSummary, brokerMtd, paperLive, diagnostics) {
   const brokerPositions = buildBrokerPositions(liveBroker);
   const active = bots.filter(isRuntimeActiveBot).length;
   const realized = finiteNumber(liveBroker?.today_realized_pnl);
@@ -1553,6 +1605,7 @@ function renderPortfolioCommand(bots, hiddenCount, liveBroker, summary, d, today
   const unassignedBrokerPositions = Math.max(0, finiteNumber(portfolioSummary?.unassigned_broker_position_count) || 0);
   const paperReady = finiteNumber(paperLive?.paper_ready_bots) ?? bots.filter(bot => bot.can_paper_trade).length;
   const venueFocusText = brokerVenueFocusSummary(focusPolicy, liveBroker);
+  const sessionSourceText = brokerSessionSourceLabel(liveBroker);
   const orb = document.getElementById('portfolioNetOrb');
   const orbSub = document.getElementById('portfolioNetOrbSub');
   const narrative = document.getElementById('portfolioNarrative');
@@ -1563,40 +1616,35 @@ function renderPortfolioCommand(bots, hiddenCount, liveBroker, summary, d, today
     orb.textContent = formatMoney(net, 0);
     orb.className = 'orb-value ' + (net > 0 ? 'green' : net < 0 ? 'red' : '');
   }
-  if (orbSub) orbSub.textContent = `${formatMoneyOrUnavailable(realized, 2)} realized | ${formatMoneyOrUnavailable(unrealized, 2)} unrealized`;
+  if (orbSub) orbSub.textContent = `${formatMoneyOrUnavailable(realized, 2)} realized | ${formatMoneyOrUnavailable(unrealized, 2)} open`;
   if (narrative) {
-    const truth = d.truth_summary_line || summary.truth_summary_line || 'waiting for truth summary';
-    const compactTruth = compactText(String(truth).replace(/^Live ETA truth:\s*/i, 'ETA truth: '), 92);
-    const sleeveText = portfolioSleeves
-      ? `${portfolioSleeves} sleeve${portfolioSleeves === 1 ? '' : 's'}`
-      : 'sleeves loading';
-    const readinessText = `${paperReady} paper-ready lane${paperReady === 1 ? '' : 's'}`;
-    const cellarText = cellarCount > 0
-      ? `${cellarCount} backburner lane${cellarCount === 1 ? '' : 's'} parked off the focus board.`
-      : '';
-    narrative.textContent = [
-      `${bots.length} focus bot${bots.length === 1 ? '' : 's'}, ${sleeveText}, ${readinessText}.`,
-      active > 0 ? `${active} active now.` : 'Flat right now.',
-      venueFocusText ? `${venueFocusText}.` : '',
-      cellarText,
-      compactTruth
-    ].filter(Boolean).join(' ');
+    const isMobileNarrow = typeof window !== 'undefined' && window.matchMedia('(max-width: 640px)').matches;
+    const truth = d.truth_summary_line || summary.truth_summary_line || 'truth syncing';
+    const truthLine = compactText(String(truth).replace(/^Live ETA truth:\s*/i, ''), isMobileNarrow ? 54 : 82);
+    const scopeLine = [
+      `${bots.length} focus`,
+      `${paperReady} ready`,
+      active > 0 ? `${active} active` : 'flat'
+    ].join(' | ');
+    const narrativeParts = [scopeLine, venueFocusText, truthLine];
+    narrative.textContent = compactText(
+      narrativeParts.filter(Boolean).join(' | '),
+      isMobileNarrow ? 92 : 168
+    );
   }
   if (chips) {
     chips.innerHTML = [
-      `<span class="hero-chip"><strong>${bots.length}</strong> focus bots</span>`,
-      `<span class="hero-chip"><strong>${active}</strong> active</span>`,
+      `<span class="hero-chip"><strong>${bots.length}</strong> focus</span>`,
+      `<span class="hero-chip"><strong>${active}</strong> live</span>`,
       `<span class="hero-chip"><strong>${paperReady}</strong> ready</span>`,
       `<span class="hero-chip"><strong>${brokerPositions.length}</strong> open</span>`,
-      `<span class="hero-chip"><strong>${formatMoney(portfolioExposure ?? openExposure, 0)}</strong> exposure</span>`,
+      `<span class="hero-chip"><strong>${formatMoney(portfolioExposure ?? openExposure, 0)}</strong> risk</span>`,
       ...brokerVenueChipMarkup(focusPolicy, liveBroker),
-      cellarCount > 0 ? `<span class="hero-chip"><strong>${cellarCount}</strong> backburner lanes</span>` : '',
-      hiddenCount > 0 ? `<span class="hero-chip"><strong>${hiddenCount}</strong> hidden lanes</span>` : '',
-      unassignedBrokerPositions > 0 ? `<span class="hero-chip"><strong>${unassignedBrokerPositions}</strong> unassigned rows</span>` : '',
+      cellarCount > 0 ? `<span class="hero-chip"><strong>${cellarCount}</strong> parked</span>` : '',
     ].filter(Boolean).join('');
   }
   if (heroMetrics) {
-    const lifetimeValue = lifetimeEvidence?.value;
+    const brokerMtdValue = brokerMtd?.value;
     const readinessSnapshot = diagnostics?.eta_readiness_snapshot && typeof diagnostics.eta_readiness_snapshot === 'object'
       ? diagnostics.eta_readiness_snapshot
       : {};
@@ -1607,19 +1655,19 @@ function renderPortfolioCommand(bots, hiddenCount, liveBroker, summary, d, today
         ? 'Ready'
         : readinessStatus === 'stale_receipt'
           ? 'Snapshot Stale'
-          : `${paperReady} paper-ready`;
+          : `${paperReady} ready`;
     const bracketCount = Number(readinessSnapshot.broker_missing_bracket_count || 0);
     const readinessSub = readinessStatus === 'blocked'
       ? (bracketCount > 0
-        ? `${bracketCount} broker bracket gap; ${readinessSnapshot.prop_primary_bot || 'prop bot'} gated`
-        : readinessSnapshot.primary_action || readinessSnapshot.promotion_summary || 'readiness gates blocked')
+        ? `${bracketCount} bracket gap | ${readinessSnapshot.prop_primary_bot || 'prop bot'} gated`
+        : readinessSnapshot.primary_action || readinessSnapshot.promotion_summary || 'gates blocked')
       : readinessStatus === 'ready'
-        ? `${paperReady} paper-ready; ${active} active now`
-        : `${active} active now`;
+        ? `${paperReady} ready | ${active} live`
+        : `${active} live now`;
     heroMetrics.innerHTML = [
-      {label: 'Futures Net', value: formatMoney(todaysPnl, 0), sub: venueFocusText || 'realized + unrealized'},
-      {label: lifetimeEvidence?.label || 'Lifetime PnL', value: lifetimeValue == null ? 'n/a' : formatMoney(lifetimeValue, 0), sub: lifetimeEvidence?.source || 'lifetime ledger'},
-      {label: 'Live Exposure', value: formatMoney(portfolioExposure ?? openExposure, 0), sub: `${brokerPositions.length} broker position${brokerPositions.length === 1 ? '' : 's'} on book`},
+      {label: 'Session Net', value: formatMoney(todaysPnl, 0), sub: `${sessionSourceText} | ${formatMoneyOrUnavailable(realized, 2)} realized | ${formatMoneyOrUnavailable(unrealized, 2)} open`},
+      {label: brokerMtd?.label || 'Broker MTD', value: brokerMtdValue == null ? 'n/a' : formatMoney(brokerMtdValue, 0), sub: brokerMtd?.source || 'IBKR portfolio MTD pending'},
+      {label: 'Open Risk', value: formatMoney(portfolioExposure ?? openExposure, 0), sub: `${brokerPositions.length} open on book`},
       {label: 'Readiness', value: readinessText, sub: readinessSub}
     ].map(item => `<div class="hero-metric"><span>${esc(item.label)}</span><strong>${esc(item.value)}</strong><small>${esc(compactText(item.sub, 38))}</small></div>`).join('');
   }
@@ -1793,9 +1841,8 @@ async function fetchData() {
   if (loadInFlight) return;
   loadInFlight = true;
   try {
-    const [data, strategyResults, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity] = await Promise.all([
+    const [data, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity] = await Promise.all([
       fetchBestFleetData(),
-      fetchJson(endpointCandidates(STRATEGY_RESULTS_API), AUX_FETCH_TIMEOUT_MS),
       fetchJson(endpointCandidates(OPERATOR_QUEUE_API), AUX_FETCH_TIMEOUT_MS),
       fetchJson(endpointCandidates(PAPER_LIVE_API), AUX_FETCH_TIMEOUT_MS),
       fetchJson(endpointCandidates(DASHBOARD_DIAGNOSTICS_API), DASHBOARD_DIAGNOSTICS_TIMEOUT_MS),
@@ -1805,7 +1852,6 @@ async function fetchData() {
     if (!data) { showOffline(!hasRendered); return; }
     render(
       data.payload,
-      strategyResults ? strategyResults.payload : {},
       operatorQueue ? operatorQueue.payload : {},
       paperLive ? paperLive.payload : {},
       diagnostics ? diagnostics.payload : {},
@@ -1821,15 +1867,15 @@ async function fetchData() {
 
 function showOffline(clearDashboard = true) {
   document.getElementById('statusDot').className = 'status-dot stale';
-  document.getElementById('statusText').textContent = clearDashboard ? 'API Offline' : 'Last data retained - reconnecting';
-  document.getElementById('apiSourceText').textContent = clearDashboard ? 'Source: unavailable' : 'Source: retrying; last good data retained';
+  document.getElementById('statusText').textContent = clearDashboard ? 'Feed offline' : 'Holding last live read';
+  document.getElementById('apiSourceText').textContent = clearDashboard ? 'Source unavailable' : 'Retrying source | last live read held';
   if (!clearDashboard) {
     updateClock();
     return;
   }
   ['totalBots','activeBots','todayPnl','totalPnl','cumulativeR','totalTrades','winRate','approvedCount','jarvisMode','adminAiStatus','gatewayStatus','brokerRouterStatus','bracketAuditStatus','paperLiveStatus','operatorQueueStatus','signalCadenceStatus','opsProxyStatus','opsWatchdogStatus','vpsRootStatus','riskLevel'].forEach(id => {
     const el = document.getElementById(id);
-    if (el) el.textContent = '—';
+    if (el) el.textContent = '--';
   });
   const routerSub = document.getElementById('brokerRouterSub');
   if (routerSub) routerSub.textContent = '';
@@ -1879,34 +1925,52 @@ function venueListText(values) {
 
 function brokerVenueFocusSummary(focusPolicy = {}, liveBroker = null) {
   const active = Array.isArray(focusPolicy.active_venues) ? focusPolicy.active_venues.map(v => String(v).toLowerCase()) : [];
+  const standby = Array.isArray(focusPolicy.standby_venues) ? focusPolicy.standby_venues.map(v => String(v).toLowerCase()) : [];
   const pending = Array.isArray(focusPolicy.pending_venues) ? focusPolicy.pending_venues.map(v => String(v).toLowerCase()) : [];
+  const dormant = Array.isArray(focusPolicy.dormant_venues) ? focusPolicy.dormant_venues.map(v => String(v).toLowerCase()) : [];
   const paused = Array.isArray(focusPolicy.paused_venues) ? focusPolicy.paused_venues.map(v => String(v).toLowerCase()) : [];
   const parts = [];
   if (active.includes('ibkr') || liveBroker?.ibkr) {
     parts.push(liveBroker?.ibkr?.ready ? 'IBKR live' : 'IBKR primary');
   }
-  if (pending.includes('tradovate')) {
-    parts.push('Tradovate queued');
+  if (standby.includes('tastytrade')) {
+    parts.push('Tasty standby');
+  }
+  if (dormant.includes('tradovate') || pending.includes('tradovate') || liveBroker?.tradovate) {
+    parts.push(tradovateVenueText(liveBroker));
   }
   if (paused.includes('alpaca')) {
-    parts.push('Alpaca/spot paused');
+    parts.push('Alpaca parked');
   }
   return parts.join(' | ');
 }
 
 function brokerVenueChipMarkup(focusPolicy = {}, liveBroker = null) {
   const active = Array.isArray(focusPolicy.active_venues) ? focusPolicy.active_venues.map(v => String(v).toLowerCase()) : [];
+  const standby = Array.isArray(focusPolicy.standby_venues) ? focusPolicy.standby_venues.map(v => String(v).toLowerCase()) : [];
   const pending = Array.isArray(focusPolicy.pending_venues) ? focusPolicy.pending_venues.map(v => String(v).toLowerCase()) : [];
+  const dormant = Array.isArray(focusPolicy.dormant_venues) ? focusPolicy.dormant_venues.map(v => String(v).toLowerCase()) : [];
   const paused = Array.isArray(focusPolicy.paused_venues) ? focusPolicy.paused_venues.map(v => String(v).toLowerCase()) : [];
   const chips = [];
   if (active.includes('ibkr') || liveBroker?.ibkr) {
-    chips.push('<span class="hero-chip"><strong>IBKR</strong> primary truth</span>');
+    chips.push('<span class="hero-chip"><strong>IBKR</strong> live</span>');
   }
-  if (pending.includes('tradovate')) {
-    chips.push('<span class="hero-chip"><strong>Tradovate</strong> queued</span>');
+  if (standby.includes('tastytrade')) {
+    chips.push('<span class="hero-chip"><strong>Tasty</strong> standby</span>');
+  }
+  if (dormant.includes('tradovate') || pending.includes('tradovate') || liveBroker?.tradovate) {
+    const tvStatus = String(liveBroker?.tradovate?.status || '').toLowerCase();
+    const tvLabel = tvStatus === 'paper_enabled'
+      ? 'TV live'
+      : tvStatus === 'auth_failed' || tvStatus === 'dormant_auth_failed'
+        ? 'TV blocked'
+        : tvStatus === 'awaiting_auth'
+          ? 'TV auth'
+          : 'TV dormant';
+    chips.push(`<span class="hero-chip"><strong>${tvLabel}</strong></span>`);
   }
   if (paused.includes('alpaca')) {
-    chips.push('<span class="hero-chip"><strong>Alpaca/spot</strong> paused</span>');
+    chips.push('<span class="hero-chip"><strong>Alpaca</strong> parked</span>');
   }
   return chips;
 }
@@ -2101,8 +2165,8 @@ function renderVpsRootDetails(vpsRoot) {
   }).join('');
 }
 
-function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, dataSource) {
-  lastRenderArgs = {d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, dataSource};
+function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, dataSource) {
+  lastRenderArgs = {d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, dataSource};
   const allBots = Array.isArray(d.bots) ? d.bots : [];
   const bots = allBots.filter(isDisplayableBot);
   const summary = d.summary || {};
@@ -2126,32 +2190,32 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
   document.getElementById('statusDot').className = 'status-dot ' + (stale ? 'stale' : 'live');
   document.getElementById('statusText').textContent =
     truthStatus === 'working'
-      ? bots.length + ' bots · ' + active + ' active · working'
+      ? `${bots.length} live | ${active} active`
       : stale
-        ? 'Bots · stale'
-        : bots.length + ' bots · ' + active + ' active';
-  document.getElementById('apiSourceText').textContent = usingFallback ? 'Venue focus loading | fallback' : 'Venue focus loading...';
+        ? 'Feed stale'
+        : `${bots.length} live | ${active} active`;
+  document.getElementById('apiSourceText').textContent = usingFallback ? 'Focus sync | fallback' : 'Focus sync...';
   document.getElementById('totalBots').textContent = bots.length;
 
   document.getElementById('activeBots').textContent = active;
   document.getElementById('activeBots').className = 'stat ' + (active > 0 ? 'green' : 'blue');
   const activeSub = document.getElementById('activeBotsSub');
   if (activeSub) activeSub.textContent = hiddenCount > 0
-    ? `${staged} staged; ${cellarCount} Alpaca backburner; ${hiddenCount} hidden`
-    : staged > 0 ? staged + ' readiness/staged rows' : 'runtime-active bots';
+    ? `${staged} staged | ${cellarCount} parked | ${hiddenCount} hidden`
+    : staged > 0 ? `${staged} staged` : 'runtime-active';
 
   // Live broker truth (Alpaca + IBKR REST). When present, this is the
-  // authoritative source for "Today PnL" and "Actual Trades" — broker
+  // authoritative source for "Today PnL" and "Actual Trades" -- broker
   // books > supervisor signal-emit journal. Falls back to per-bot
   // aggregates when the broker probe is unavailable so the panel still
   // renders something.
   const liveBroker = d.live_broker_state || null;
-  const liveBrokerReady = liveBroker && (liveBroker.ready || liveBroker.ibkr?.ready || liveBroker.tastytrade?.ready);
+  const liveBrokerReady = liveBroker && (liveBroker.ready || liveBroker.ibkr?.ready || liveBroker.tastytrade?.ready || liveBroker.tradovate?.ready);
   const liveBrokerPnlReady = liveBrokerReady && brokerHasPnlTruth(liveBroker);
   const venueFocusText = brokerVenueFocusSummary(liveBroker?.focus_policy || {}, liveBroker);
   document.getElementById('apiSourceText').textContent = venueFocusText
-    ? 'Venue focus: ' + venueFocusText + (usingFallback ? ' | fallback' : '')
-    : 'Live source: ' + sourceLabel(dataSource) + (usingFallback ? ' (fallback)' : '');
+    ? 'Focus: ' + venueFocusText + (usingFallback ? ' | fallback' : '')
+    : 'Source: ' + sourceLabel(dataSource) + (usingFallback ? ' | fallback' : '');
   const availableCloseWindows = closeHistoryWindowPayload(liveBroker, selectedCloseHistoryWindow, d);
   const rootCloseHistory = d.close_history || {};
   if (!availableCloseWindows.payload && (liveBroker?.position_exposure?.close_history?.default_window || rootCloseHistory.default_window)) {
@@ -2164,9 +2228,10 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
   renderPnlWindowControls(closeHistory);
   renderPnlWindowStrip(closeHistory);
   const readinessPerformance = readinessSnapshotPerformanceEvidence(diagnostics || {});
-  const lifetimeEvidence = pnlHistoryEvidence(summary, portfolioSummary, fleetEquity || {}, closeHistory, diagnostics || {});
+  const brokerMtd = brokerMtdEvidence(liveBroker);
+  const historyEvidence = pnlHistoryEvidence(summary, portfolioSummary, fleetEquity || {}, closeHistory, diagnostics || {});
 
-  // Today PnL — prefer broker today_realized_pnl + total_unrealized_pnl
+  // Today PnL -- prefer broker today_realized_pnl + total_unrealized_pnl
   // so the panel reflects what actually moved on the broker today.
   let todaysPnl;
   let todayPnlSub;
@@ -2174,46 +2239,45 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
     const realizedToday = finiteNumber(liveBroker.today_realized_pnl) || 0;
     const unrealized = finiteNumber(liveBroker.total_unrealized_pnl) || 0;
     todaysPnl = realizedToday + unrealized;
-    todayPnlSub = `${formatMoney(realizedToday, 2)} realized + ${formatMoney(unrealized, 2)} unrealized (${venueFocusText || 'futures-focus broker'})`;
+    todayPnlSub = `${formatMoney(realizedToday, 2)} realized | ${formatMoney(unrealized, 2)} open | ${brokerSessionSourceLabel(liveBroker)}`;
   } else {
     todaysPnl = bots.reduce((s,b) => s + (b.todays_pnl || 0), 0);
     todayPnlSub = liveBroker?.ibkr?.error
-      ? `IBKR live PnL unavailable; using bot fallback while ${Array.isArray(liveBroker?.focus_policy?.pending_venues) && liveBroker.focus_policy.pending_venues.map(v => String(v).toLowerCase()).includes('tradovate') ? 'Tradovate stays queued' : 'futures routing stays queued'}`
+      ? 'IBKR feed down | bot fallback'
       : liveBrokerReady
-        ? 'broker PnL fields unavailable; using bot PnL fallback'
-        : bots.length + ' bots aggregated';
+        ? 'broker pnl missing | bot fallback'
+        : `${bots.length} bots aggregated`;
   }
   const pnlEl = document.getElementById('todayPnl');
   pnlEl.textContent = '$' + todaysPnl.toFixed(0);
   pnlEl.className = 'stat ' + (todaysPnl > 0 ? 'green' : todaysPnl < 0 ? 'red' : 'dim');
   document.getElementById('todayPnlSub').textContent = todayPnlSub;
-  renderPortfolioCommand(bots, hiddenCount, liveBroker, summary, d, todaysPnl, portfolioSummary, lifetimeEvidence, paperLive || {}, diagnostics || {});
+  renderPortfolioCommand(bots, hiddenCount, liveBroker, summary, d, todaysPnl, portfolioSummary, brokerMtd, paperLive || {}, diagnostics || {});
   renderContributionGraph(bots, liveBroker, portfolioSummary);
   renderAllocationPillsAndSections(bots, liveBroker, portfolioSummary);
   const vpsRootPlan = vpsRoot || d.vps_root_reconciliation || {};
   renderVpsRootReview(vpsRootPlan);
   renderVpsRootDetails(vpsRootPlan);
 
-  // Total/history PnL: never coerce a missing lifetime ledger to $0. If the API
-  // has a real lifetime field, show it; otherwise display the verified close
-  // ledger as Closed PnL so history profits are visible without
-  // pretending they are a complete lifetime ledger.
-  const totalPnl = lifetimeEvidence.value;
+  // Broker MTD: only show verified broker-side portfolio performance here.
+  // Close-ledger PnL stays in the history lane below so we never present it
+  // as the broker account's month-to-date truth.
+  const totalPnl = brokerMtd.value;
   const tpnlEl = document.getElementById('totalPnl');
   const totalPnlSub = document.getElementById('totalPnlSub');
   const totalPnlLabel = document.getElementById('totalPnlLabel');
   if (totalPnl == null) {
-    if (totalPnlLabel) totalPnlLabel.textContent = 'Lifetime PnL';
-    tpnlEl.textContent = '—';
+    if (totalPnlLabel) totalPnlLabel.textContent = brokerMtd.label || 'Broker MTD';
+    tpnlEl.textContent = '--';
     tpnlEl.className = 'stat dim';
     if (totalPnlSub) totalPnlSub.textContent = liveBrokerReady
-      ? 'lifetime ledger not attached; today shown above'
-      : 'lifetime ledger unavailable';
+      ? (brokerMtd.source || 'IBKR portfolio MTD pending')
+      : 'Broker MTD unavailable';
   } else {
-    if (totalPnlLabel) totalPnlLabel.textContent = lifetimeEvidence.label || 'Lifetime PnL';
+    if (totalPnlLabel) totalPnlLabel.textContent = brokerMtd.label || 'Broker MTD';
     tpnlEl.textContent = '$' + totalPnl.toFixed(0);
     tpnlEl.className = 'stat ' + (totalPnl > 0 ? 'green' : totalPnl < 0 ? 'red' : 'dim');
-    if (totalPnlSub) totalPnlSub.textContent = lifetimeEvidence.source || 'lifetime ledger';
+    if (totalPnlSub) totalPnlSub.textContent = brokerMtd.source || 'IBKR portfolio MTD';
   }
 
   // Selected-window R: bind this to the same close-history window as PnL,
@@ -2228,11 +2292,11 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
   const rEl = document.getElementById('cumulativeR');
   const rSub = document.getElementById('cumulativeRSub');
   if (cumR == null) {
-    rEl.textContent = '—';
+    rEl.textContent = '--';
     rEl.className = 'stat dim';
     if (rSub) rSub.textContent = closeRows.length
-      ? `${selectedWindowLabel} close ledger present; realized R unavailable or dollar-like values hidden`
-      : `waiting for ${selectedWindowLabel} realized-R outcomes`;
+      ? `${selectedWindowLabel} closes present | realized R hidden`
+      : `${selectedWindowLabel} realized-R pending`;
   } else {
     rEl.textContent = cumR >= 0 ? '+' + cumR.toFixed(2) + 'R' : cumR.toFixed(2) + 'R';
     rEl.className = 'stat ' + (cumR > 0 ? 'green' : cumR < 0 ? 'red' : 'dim');
@@ -2241,7 +2305,7 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
       const hiddenText = Number(closeHistory.suppressedRCount || 0) > 0
         ? `; ${closeHistory.suppressedRCount} dollar-like R value${Number(closeHistory.suppressedRCount) === 1 ? '' : 's'} hidden`
         : '';
-      rSub.textContent = `${rCount || selectedWindowCount} R-tagged ${selectedWindowLabel} closed outcome${(rCount || selectedWindowCount) === 1 ? '' : 's'}${hiddenText}`;
+      rSub.textContent = `${rCount || selectedWindowCount} R-tagged close${(rCount || selectedWindowCount) === 1 ? '' : 's'}${hiddenText}`;
     }
   }
 
@@ -2252,7 +2316,7 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
   const fillBackedRows = bots.filter(b => b.last_trade_ts).length;
   const signalUpdates = bots.filter(b => !b.last_trade_ts && b.last_signal_ts).length;
   const tradesLabel = document.getElementById('totalTradesLabel');
-  if (tradesLabel) tradesLabel.textContent = `${selectedWindowLabel} Trades`;
+  if (tradesLabel) tradesLabel.textContent = `${selectedWindowLabel} Closes`;
   if (liveBrokerReady) {
     const liveFills = Number(liveBroker.today_actual_fills || 0);
     const exposure = liveBroker.position_exposure || {};
@@ -2261,22 +2325,22 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
     const supervisorWatch = Number(exposure.supervisor_watch_count || 0);
     const displayTrades = selectedWindowCount || (closeHistory.window === 'today' ? liveFills : 0);
     const openText = supervisorOpen > 0
-      ? `${brokerOpen} broker open; ${supervisorOpen} paper-local watched`
+      ? `${brokerOpen} broker open | ${supervisorOpen} watched`
       : `${brokerOpen} broker open`;
-    const watchText = supervisorWatch > 0 ? `; ${supervisorWatch} target/stop watchers` : '';
+    const watchText = supervisorWatch > 0 ? ` | ${supervisorWatch} exit watch` : '';
     const closeHistoryText = selectedWindowCount > 0
-      ? `${selectedWindowCount} ${selectedWindowLabel} closed outcomes in ledger`
+      ? `${selectedWindowCount} ledger close${selectedWindowCount === 1 ? '' : 's'}`
       : '';
     document.getElementById('totalTrades').textContent = displayTrades;
-    document.getElementById('totalTradesSub').textContent = `${closeHistoryText || 'no selected-window closes yet'}; ${liveFills} broker fills today; ${openText}${watchText}`;
+    document.getElementById('totalTradesSub').textContent = `${closeHistoryText || 'no ledger closes yet'} | ${liveFills} fills today | ${openText}${watchText}`;
   } else {
     document.getElementById('totalTrades').textContent = selectedWindowCount || trades || fillBackedRows || 0;
     document.getElementById('totalTradesSub').textContent = selectedWindowCount
-      ? `${selectedWindowCount} ${selectedWindowLabel} selected-window close outcomes`
-      : trades ? 'closed trades' : fillBackedRows ? 'bots with fill evidence' : signalUpdates ? '0 fills; ' + signalUpdates + ' signal updates' : 'waiting for fills';
+      ? `${selectedWindowCount} ${selectedWindowLabel} ledger close${selectedWindowCount === 1 ? '' : 's'}`
+      : trades ? 'closed trades' : fillBackedRows ? 'fill evidence found' : signalUpdates ? `0 fills | ${signalUpdates} signal updates` : 'waiting for fills';
   }
 
-  // Verdicts — APPROVED/CONDITIONAL count as approved; NONE/DEFERRED are not.
+  // Verdicts -- APPROVED/CONDITIONAL count as approved; NONE/DEFERRED are not.
   const verdicts = bots.map(b => b.last_jarvis_verdict || '');
   const approved = verdicts.filter(v => v === 'APPROVED' || v === 'CONDITIONAL').length;
   const denied = verdicts.filter(v => v === 'DENIED' || v === 'KILL' || v === 'REDUCE').length;
@@ -2318,7 +2382,7 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
   document.getElementById('signalCadenceSub').textContent = compactText(`${cadenceDetail}; max ${maxSameSecond}/sec${cadenceAge}`);
 
   // IBKR gateway: prefer the live REST probe (live_broker_state.ibkr.ready)
-  // when present — that is the same probe the supervisor uses, so it
+  // when present -- that is the same probe the supervisor uses, so it
   // matches reality. Otherwise fall back to the broker_gateway snapshot.
   const ibkrGateway = (d.broker_gateway && d.broker_gateway.ibkr) || {};
   const gatewayKnown = ibkrGateway.status && ibkrGateway.status !== 'unknown';
@@ -2330,7 +2394,7 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
       gatewayLabel = 'Connected';
       gatewayClass = 'green';
       const acct = (liveBroker.ibkr.managed_accounts || [])[0];
-      gatewaySub = acct ? 'live REST · ' + acct : 'live REST probe ok';
+      gatewaySub = acct ? 'live REST | ' + acct : 'live REST probe ok';
     } else if (ibkrGateway.status === 'connected') {
       gatewayLabel = 'Connected';
       gatewayClass = 'green';
@@ -2361,7 +2425,7 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
   document.getElementById('gatewayStatusSub').textContent = gatewaySub;
 
   // Per-bot Alpaca live performance vs backtest target. Only render
-  // when we actually have per_bot data — otherwise hide the card so
+  // when we actually have per_bot data -- otherwise hide the card so
   // the front page stays clean. Drift alarms are highlighted in red
   // so the operator can spot a degrading bot at a glance.
   const perBot = liveBroker && liveBroker.per_bot_alpaca;
@@ -2390,9 +2454,9 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
         const liveWr = info.live_wr_today ?? info.live_wr;
         const btWr = info.backtest_wr_target;
         const drift = info.drift_alarm;
-        const liveWrTxt = (liveWr === null || liveWr === undefined) ? '—' : (Number(liveWr) * 100).toFixed(1) + '%';
-        const btWrTxt = (btWr === null || btWr === undefined) ? '—' : (Number(btWr) * 100).toFixed(1) + '%';
-        const driftTxt = drift ? '<span style="color:#ff5555;font-weight:bold;">⚠ ALARM</span>' : '<span style="color:#888;">ok</span>';
+        const liveWrTxt = (liveWr === null || liveWr === undefined) ? '--' : (Number(liveWr) * 100).toFixed(1) + '%';
+        const btWrTxt = (btWr === null || btWr === undefined) ? '--' : (Number(btWr) * 100).toFixed(1) + '%';
+        const driftTxt = drift ? '<span style="color:#ff5555;font-weight:bold;">Ã¢Å¡Â  ALARM</span>' : '<span style="color:#888;">ok</span>';
         const rowStyle = drift ? 'background:#3a1a1a;' : '';
         rows.push(`<tr style="border-bottom:1px solid #333;${rowStyle}"><td style="padding:6px 8px;font-family:monospace;">${botId}</td><td style="padding:6px 8px;">${fills}</td><td style="padding:6px 8px;">${liveWrTxt}</td><td style="padding:6px 8px;">${btWrTxt}</td><td style="padding:6px 8px;">${driftTxt}</td></tr>`);
       }
@@ -2434,7 +2498,7 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
           ? processing + ' processing; ' + pending + ' pending'
           : (results || failed)
             ? 'history: ' + results + ' results; ' + actualRouterFills + ' filled; ' + openNoFill + ' open/no-fill; ' + rejected + ' rejected; ' + failed + ' failed'
-            : 'waiting for orders';
+      : 'waiting for flow';
 
   const bracketAudit = d.broker_bracket_audit || summary.broker_bracket_audit || {};
   const bracketPosition = bracketAudit.position_summary || {};
@@ -2517,7 +2581,7 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
     bracketStatusEl.textContent = bracketLabels[bracketKey] || 'Review';
     bracketStatusEl.className = 'stat ' + (bracketClasses[bracketKey] || 'yellow');
     bracketSubEl.textContent = compactText(
-      bracketSubParts.length ? bracketSubParts.join('; ') : 'broker OCO coverage verified',
+    bracketSubParts.length ? bracketSubParts.join('; ') : 'OCO cover verified',
       145
     );
   }
@@ -2688,7 +2752,7 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
     paperClass = 'yellow';
   }
   const paperDetail = compactText(
-    paperGateHeld ? paperBracketHold : firstPaperGate?.detail || paperAction || paperLive?.error || 'waiting for launch readiness'
+    paperGateHeld ? paperBracketHold : firstPaperGate?.detail || paperAction || paperLive?.error || 'launch readiness pending'
   );
   document.getElementById('paperLiveStatus').textContent = paperLabel;
   document.getElementById('paperLiveStatus').className = 'stat ' + paperClass;
@@ -2769,7 +2833,7 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
   const adminActions = Array.isArray(adminAi.next_actions) ? adminAi.next_actions : [];
   const hardeningAge = formatAgeSeconds(opsHardening.age_s);
   const adminDetail = adminActions[0]
-    || (adminReady ? 'Jarvis/Hermes admin bridge audit passed' : 'waiting for VPS hardening audit');
+    || (adminReady ? 'Jarvis/Hermes bridge audit passed' : 'VPS audit pending');
   document.getElementById('adminAiStatus').textContent = adminLabels[adminStatus] || adminStatus.toUpperCase();
   document.getElementById('adminAiStatus').className = 'stat ' + (adminClasses[adminStatus] || 'yellow');
   document.getElementById('adminAiSub').textContent = compactText(
@@ -2818,33 +2882,33 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
     const historyWr = closeHistory.winRatePct;
     document.getElementById('winRate').textContent = historyWr.toFixed(1) + '%';
     document.getElementById('winRate').className = 'stat ' + (historyWr > 50 ? 'green' : historyWr > 25 ? 'yellow' : 'red');
-    document.getElementById('winRateDetail').textContent = `${closeHistory.evaluated || selectedWindowCount} ${selectedWindowLabel} selected-window outcome${(closeHistory.evaluated || selectedWindowCount) === 1 ? '' : 's'}: ${closeHistory.wins}W / ${closeHistory.losses}L`;
+    document.getElementById('winRateDetail').textContent = `${closeHistory.evaluated || selectedWindowCount} closes | ${closeHistory.wins}W ${closeHistory.losses}L`;
   } else if (closeHistory.window === 'today' && brokerWrToday != null && Number.isFinite(brokerWrToday)) {
     const outcomeCount = Number(liveBroker.closed_outcome_count_today || liveBroker.evaluated_outcome_count_today || 0);
     const wrSource = winRateSourceText(liveBroker.win_rate_source, 'today');
     document.getElementById('winRate').textContent = brokerWrToday.toFixed(1) + '%';
     document.getElementById('winRate').className = 'stat ' + (brokerWrToday > 50 ? 'green' : brokerWrToday > 25 ? 'yellow' : 'red');
-    document.getElementById('winRateDetail').textContent = `${outcomeCount} ${wrSource}`;
+    document.getElementById('winRateDetail').textContent = `${outcomeCount} closes | ${wrSource}`;
   } else if (brokerWr != null && Number.isFinite(brokerWr)) {
     document.getElementById('winRate').textContent = brokerWr.toFixed(1) + '%';
     document.getElementById('winRate').className = 'stat ' + (brokerWr > 50 ? 'green' : brokerWr > 25 ? 'yellow' : 'red');
-    document.getElementById('winRateDetail').textContent = `${selectedWindowLabel} WR unavailable; 30d fallback from ${winRateSourceText(liveBroker.win_rate_30d_source || liveBroker.win_rate_source, '30d')}`;
+    document.getElementById('winRateDetail').textContent = `${selectedWindowLabel} WR missing | 30d ${winRateSourceText(liveBroker.win_rate_30d_source || liveBroker.win_rate_source, '30d')}`;
   } else if (readinessPerformance.winRatePct != null) {
     const readinessWr = readinessPerformance.winRatePct;
     document.getElementById('winRate').textContent = readinessWr.toFixed(1) + '%';
     document.getElementById('winRate').className = 'stat ' + (readinessWr > 50 ? 'green' : readinessWr > 25 ? 'yellow' : 'red');
-    document.getElementById('winRateDetail').textContent = `${readinessPerformance.count} readiness ledger closed outcome${readinessPerformance.count === 1 ? '' : 's'}`;
+    document.getElementById('winRateDetail').textContent = `${readinessPerformance.count} readiness close${readinessPerformance.count === 1 ? '' : 's'}`;
   } else {
-    document.getElementById('winRate').textContent = '—';
+    document.getElementById('winRate').textContent = '--';
     document.getElementById('winRate').className = 'stat dim';
     document.getElementById('winRateDetail').textContent = liveBrokerReady
-      ? `${Number(liveBroker.today_actual_fills || 0)} fills; closed outcome PnL not tagged yet`
-      : 'broker outcome history unavailable';
+      ? `${Number(liveBroker.today_actual_fills || 0)} fills | outcome tags pending`
+      : 'Outcome history unavailable';
   }
 
   const pnlHistoryLabel = document.getElementById('pnlHistoryLabel');
   if (pnlHistoryLabel) {
-    pnlHistoryLabel.textContent = lifetimeEvidence?.isLifetime
+    pnlHistoryLabel.textContent = historyEvidence?.isLifetime
       ? 'lifetime curve'
       : closeHistory.realizedPnl != null
         ? `${closeHistory.label || 'Close'} closed outcomes`
@@ -2853,12 +2917,12 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
   const pnlHistorySub = document.getElementById('pnlHistorySub');
   if (pnlHistorySub) {
     pnlHistorySub.textContent = closeHistory.realizedPnl != null
-      ? `${formatMoney(closeHistory.realizedPnl, 2)} realized; ${closeHistory.count} closed outcomes; ${closeHistory.winRatePct == null ? 'WR n/a' : closeHistory.winRatePct.toFixed(1) + '% WR'}`
-      : (lifetimeEvidence?.source || 'waiting for close ledger');
+      ? `${formatMoney(closeHistory.realizedPnl, 2)} | ${closeHistory.count} closes | ${closeHistory.winRatePct == null ? 'WR n/a' : closeHistory.winRatePct.toFixed(1) + '% WR'}`
+      : (historyEvidence?.source || 'close ledger');
   }
 
-  // PnL chart — will draw once data flows
-  drawSelfContainedChart(bots, todaysPnl, totalPnl, lifetimeEvidence, closeHistory);
+  // PnL chart -- will draw once data flows
+  drawSelfContainedChart(bots, todaysPnl, historyEvidence.value, historyEvidence, closeHistory);
 
   // Table
   let html = '';
@@ -2869,22 +2933,22 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
       : (v === 'DENIED' || v === 'KILL' || v === 'REDUCE') ? 'badge-deny'
       : 'badge-idle';
     const activity = activityForBot(b);
-    const activityText = activity ? activity.type + ' ' + String(activity.ts).replace('T',' ').substring(0,19) + (activity.side ? ' ' + activity.side : '') : '—';
+    const activityText = activity ? activity.type + ' ' + String(activity.ts).replace('T',' ').substring(0,19) + (activity.side ? ' ' + activity.side : '') : '--';
     const position = positionForBot(b);
     const protection = protectionForBot(b);
     html += '<tr>' +
       '<td><strong>' + (b.id || b.name || '?') + '</strong></td>' +
-      '<td>' + (b.symbol || '—') + '</td>' +
-      '<td>' + (b.tier || b.strategy || '—') + '</td>' +
-      '<td>' + (b.mode || '—') + '</td>' +
-      '<td><span class="' + (b.status === 'idle' ? 'badge-idle' : b.status === 'error' ? 'badge-loss' : 'badge-approve') + '">' + (b.status || '—') + '</span></td>' +
-      '<td><span class="' + verdictClass + '">' + (b.last_jarvis_verdict || '—') + '</span></td>' +
+      '<td>' + (b.symbol || '--') + '</td>' +
+      '<td>' + (b.tier || b.strategy || '--') + '</td>' +
+      '<td>' + (b.mode || '--') + '</td>' +
+      '<td><span class="' + (b.status === 'idle' ? 'badge-idle' : b.status === 'error' ? 'badge-loss' : 'badge-approve') + '">' + (b.status || '--') + '</span></td>' +
+      '<td><span class="' + verdictClass + '">' + (b.last_jarvis_verdict || '--') + '</span></td>' +
       '<td class="' + ((b.todays_pnl || 0) > 0 ? 'green' : (b.todays_pnl || 0) < 0 ? 'red' : '') + '">$' + (b.todays_pnl || 0).toFixed(0) + '</td>' +
       '<td class="position-cell"><span class="main">' + esc(position.text) + '</span><span class="subline">' + esc(position.sub) + '</span></td>' +
       '<td class="protection-cell"><span class="main">' + esc(protection.text) + '</span><span class="subline">' + esc(protection.sub) + '</span></td>' +
       '<td>' + esc(activityText) + '</td>' +
-      '<td>' + (b.win_rate_pct || '—') + '</td>' +
-      '<td>' + (b.sharpe || '—') + '</td>' +
+      '<td>' + (b.win_rate_pct || '--') + '</td>' +
+      '<td>' + (b.sharpe || '--') + '</td>' +
       '</tr>';
   }
   const botRosterSummary = document.getElementById('botRosterSummary');
@@ -2893,48 +2957,6 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
   }
   document.getElementById('botTable').innerHTML = html || '<tr><td colspan="12" class="loading">No visible active/staged bots after disabled and removed filters.</td></tr>';
   updateClock();
-}
-
-function renderStrategySuperchargeResults(data) {
-  const testedEl = document.getElementById('strategyTested');
-  const passedEl = document.getElementById('strategyPassed');
-  const failedEl = document.getElementById('strategyFailed');
-  const pendingEl = document.getElementById('strategyPending');
-  const bestNearMissEl = document.getElementById('strategyBestNearMiss');
-  const nearMissesEl = document.getElementById('strategyNearMisses');
-  const retuneQueueEl = document.getElementById('strategyRetuneQueue');
-  if (!testedEl || !passedEl || !failedEl || !pendingEl || !bestNearMissEl || !nearMissesEl || !retuneQueueEl) {
-    return;
-  }
-  const summary = data.summary || {};
-  const nearMisses = Array.isArray(data.near_misses) ? data.near_misses : [];
-  const retuneQueue = Array.isArray(data.retune_queue) ? data.retune_queue : [];
-  testedEl.textContent = summary.tested ?? '—';
-  passedEl.textContent = summary.passed ?? '—';
-  failedEl.textContent = summary.failed ?? '—';
-  pendingEl.textContent = summary.pending ?? '—';
-  bestNearMissEl.textContent = summary.best_near_miss_bot || 'none';
-  const strategySummary = document.getElementById('strategySuperchargeSummary');
-  if (strategySummary) {
-    strategySummary.textContent = `${summary.passed ?? 0} passed, ${summary.failed ?? 0} failed, ${nearMisses.length} near-miss, ${retuneQueue.length} retune`;
-  }
-
-  if (data.error || data.status === 'unreadable') {
-    nearMissesEl.innerHTML = '<li class="yellow">strategy_supercharge_results degraded: ' + esc(data.error || 'unreadable') + '</li>';
-    retuneQueueEl.innerHTML = '<li class="dim">No retune queue available.</li>';
-    return;
-  }
-
-  nearMissesEl.innerHTML = nearMisses.slice(0, 5).map(item => {
-    const sharpe = Number(item.oos_sharpe || 0).toFixed(2);
-    const dsr = (Number(item.dsr_pass_fraction || 0) * 100).toFixed(1) + '%';
-    return '<li><div class="supercharge-row"><strong class="blue">' + esc(item.bot_id || 'bot') + '</strong><span class="badge badge-deny">' + esc(item.result_status || 'near') + '</span></div><div class="supercharge-note">OOS Sharpe ' + sharpe + ' · DSR ' + dsr + '</div></li>';
-  }).join('') || '<li class="green">No near misses. Strategy queue is clean.</li>';
-
-  retuneQueueEl.innerHTML = retuneQueue.slice(0, 5).map(item => {
-    const priority = Number(item.priority_score || 0).toFixed(2);
-    return '<li><div class="supercharge-row"><strong class="blue">' + esc(item.bot_id || 'bot') + '</strong><span class="green">' + priority + '</span></div><div>' + esc(item.issue_code || item.primary_focus || 'retune') + '</div><div class="supercharge-note">' + esc(item.next_step || '') + '</div></li>';
-  }).join('') || '<li class="green">No retunes queued.</li>';
 }
 
 function drawSelfContainedChart(bots, todaysPnl, totalPnl, lifetimeEvidence, closeHistory) {
@@ -2963,7 +2985,7 @@ function drawSelfContainedChart(bots, todaysPnl, totalPnl, lifetimeEvidence, clo
   const winText = closeHistory?.winRatePct == null
     ? ''
     : ' | WR: ' + closeHistory.winRatePct.toFixed(1) + '% (' + closeHistory.evaluated + ' evaluated)';
-  ctx.fillText(todaysPnl === 0 && totalPnl == null ? 'Waiting for first broker PnL...' : 'Today: $' + todaysPnl.toFixed(0) + ' | ' + historyText + winText, w/2, h/2);
+  ctx.fillText(todaysPnl === 0 && totalPnl == null ? 'Waiting for first live PnL...' : 'Today: $' + todaysPnl.toFixed(0) + ' | ' + historyText + winText, w/2, h/2);
 }
 
 function updateClock() {

@@ -133,8 +133,7 @@ class TradingViewClient:
         self.auth_state = auth_state or load_auth_state(auth_path)
         if not self.auth_state.has_session_cookie:
             log.warning(
-                "tradingview client: auth state has no sessionid cookie; "
-                "auth refresh likely required",
+                "tradingview client: auth state has no sessionid cookie; auth refresh likely required",
             )
         self._stop = False
 
@@ -190,7 +189,8 @@ class TradingViewClient:
     # ------------------------------------------------------------------
     async def _run_chart_tab(self, context: Any, target: ChartTarget) -> None:  # noqa: ANN401 -- Playwright BrowserContext is optional at import time
         url = self.config.chart_url_template.format(
-            symbol=target.symbol, interval=target.interval,
+            symbol=target.symbol,
+            interval=target.interval,
         )
         try:
             page = await context.new_page()
@@ -203,12 +203,18 @@ class TradingViewClient:
                 payload = event.get("response", {}).get("payloadData", "")
                 for rec in parse_quote_frame(payload):
                     if rec["kind"] == "bar":
-                        self.journal.record_bar(BarEntry(
-                            ts=rec["ts"], symbol=rec["symbol"],
-                            interval=target.interval,
-                            o=rec["o"], h=rec["h"], l=rec["l"],
-                            c=rec["c"], v=rec["v"],
-                        ))
+                        self.journal.record_bar(
+                            BarEntry(
+                                ts=rec["ts"],
+                                symbol=rec["symbol"],
+                                interval=target.interval,
+                                o=rec["o"],
+                                h=rec["h"],
+                                l=rec["l"],
+                                c=rec["c"],
+                                v=rec["v"],
+                            )
+                        )
 
             cdp.on("Network.webSocketFrameReceived", _on_ws_frame)
 
@@ -217,11 +223,7 @@ class TradingViewClient:
             log.error("tradingview client: chart tab %s crashed: %s", target.symbol, e)
 
     async def _poll_indicators(self, page: Any, target: ChartTarget) -> None:  # noqa: ANN401 -- Playwright Page is optional at import time
-        legend_js = (
-            "Array.from("
-            "document.querySelectorAll('[data-name=\"legend-source-item\"]')"
-            ").map(e=>e.innerText)"
-        )
+        legend_js = "Array.from(document.querySelectorAll('[data-name=\"legend-source-item\"]')).map(e=>e.innerText)"
         while not self._stop:
             try:
                 rows: list[str] = await page.evaluate(legend_js)
@@ -230,18 +232,21 @@ class TradingViewClient:
                     if not parsed:
                         continue
                     if target.indicators and not _name_matches(
-                        parsed["indicator"], target.indicators,
+                        parsed["indicator"],
+                        target.indicators,
                     ):
                         continue
-                    self.journal.record_indicator(IndicatorEntry(
-                        ts=now_iso(),
-                        symbol=target.symbol,
-                        interval=target.interval,
-                        indicator=parsed["indicator"],
-                        params=parsed["params"],
-                        value=parsed["value"],
-                        all=parsed["all"],
-                    ))
+                    self.journal.record_indicator(
+                        IndicatorEntry(
+                            ts=now_iso(),
+                            symbol=target.symbol,
+                            interval=target.interval,
+                            indicator=parsed["indicator"],
+                            params=parsed["params"],
+                            value=parsed["value"],
+                            all=parsed["all"],
+                        )
+                    )
             except Exception as e:  # noqa: BLE001
                 log.warning("tradingview client: indicator poll error: %s", e)
             await asyncio.sleep(self.config.poll_indicators_seconds)
@@ -271,9 +276,12 @@ class TradingViewClient:
             try:
                 rows: list[dict[str, Any]] = await page.evaluate(scrape_js)
                 normalized = [r for r in (parse_watchlist_row(x) for x in rows) if r]
-                self.journal.record_watchlist(WatchlistSnapshot(
-                    ts=now_iso(), lists={"default": normalized},
-                ))
+                self.journal.record_watchlist(
+                    WatchlistSnapshot(
+                        ts=now_iso(),
+                        lists={"default": normalized},
+                    )
+                )
             except Exception as e:  # noqa: BLE001
                 log.warning("tradingview client: watchlist scrape error: %s", e)
             await asyncio.sleep(self.config.poll_watchlist_seconds)
@@ -308,16 +316,18 @@ class TradingViewClient:
                     parsed = parse_alert_row(raw)
                     if not parsed:
                         continue
-                    self.journal.record_alert(AlertEntry(
-                        ts=now_iso(),
-                        kind="fired" if parsed.get("fired_at") else "definition",
-                        symbol=parsed["symbol"],
-                        name=parsed["name"],
-                        condition=parsed["condition"],
-                        value=parsed["value"],
-                        active=parsed["active"],
-                        fired_at=parsed["fired_at"],
-                    ))
+                    self.journal.record_alert(
+                        AlertEntry(
+                            ts=now_iso(),
+                            kind="fired" if parsed.get("fired_at") else "definition",
+                            symbol=parsed["symbol"],
+                            name=parsed["name"],
+                            condition=parsed["condition"],
+                            value=parsed["value"],
+                            active=parsed["active"],
+                            fired_at=parsed["fired_at"],
+                        )
+                    )
             except Exception as e:  # noqa: BLE001
                 log.warning("tradingview client: alerts scrape error: %s", e)
             await asyncio.sleep(self.config.poll_alerts_seconds)

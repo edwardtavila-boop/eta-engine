@@ -110,9 +110,9 @@ class FeatureRegimeConfig:
 class FeatureRegimeOutput:
     """Per-bar classifier output."""
 
-    score: float                            # composite [-1, +1]
-    label: str                              # 'bull_aligned'|'bear_aligned'|'neutral'
-    bias: str                               # 'long'|'short'|'neutral'
+    score: float  # composite [-1, +1]
+    label: str  # 'bull_aligned'|'bear_aligned'|'neutral'
+    bias: str  # 'long'|'short'|'neutral'
     components: dict[str, float] = field(default_factory=dict)
     n_features_active: int = 0
 
@@ -134,7 +134,9 @@ class FeatureRegimeClassifier:
         # Audit
         self._n_classified: int = 0
         self._regime_counts: dict[str, int] = {
-            "bull_aligned": 0, "bear_aligned": 0, "neutral": 0,
+            "bull_aligned": 0,
+            "bear_aligned": 0,
+            "neutral": 0,
         }
         # Counter for NaN provider readings (stale-data sentinel from
         # macro_confluence_providers). When a feature's provider
@@ -145,22 +147,26 @@ class FeatureRegimeClassifier:
     # -- provider attachment -----------------------------------------------
 
     def attach_funding_provider(
-        self, p: Callable[[BarData], float] | None,
+        self,
+        p: Callable[[BarData], float] | None,
     ) -> None:
         self._funding_provider = p
 
     def attach_etf_flow_provider(
-        self, p: Callable[[BarData], float] | None,
+        self,
+        p: Callable[[BarData], float] | None,
     ) -> None:
         self._etf_flow_provider = p
 
     def attach_fear_greed_provider(
-        self, p: Callable[[BarData], float] | None,
+        self,
+        p: Callable[[BarData], float] | None,
     ) -> None:
         self._fear_greed_provider = p
 
     def attach_sage_daily_provider(
-        self, p: Callable[[date], object] | None,
+        self,
+        p: Callable[[date], object] | None,
     ) -> None:
         self._sage_provider = p
 
@@ -220,11 +226,7 @@ class FeatureRegimeClassifier:
             # Append the daily flow only when the date changes
             if not self._etf_window or self._etf_window[-1][0] != d:
                 self._etf_window.append((d, today_flow))
-            recent = [
-                v for _, v in list(self._etf_window)[
-                    -self.cfg.etf_flow_window_days:
-                ]
-            ]
+            recent = [v for _, v in list(self._etf_window)[-self.cfg.etf_flow_window_days :]]
             rolling = sum(recent)
             if rolling > self.cfg.etf_flow_threshold:
                 es = +1.0
@@ -285,12 +287,14 @@ class FeatureRegimeClassifier:
                 score_sum += ss
 
         # Normalize to [-1, +1] by dividing by max possible (number of enabled features)
-        n_enabled = sum([
-            self.cfg.use_funding,
-            self.cfg.use_etf_flow,
-            self.cfg.use_fear_greed,
-            self.cfg.use_sage_daily,
-        ])
+        n_enabled = sum(
+            [
+                self.cfg.use_funding,
+                self.cfg.use_etf_flow,
+                self.cfg.use_fear_greed,
+                self.cfg.use_sage_daily,
+            ]
+        )
         score = score_sum / max(n_enabled, 1)
 
         if score > self.cfg.bull_threshold:
@@ -339,7 +343,9 @@ def make_feature_regime_provider(
         regime = "trending" if out.label != "neutral" else "ranging"
         mode = "trend_follow" if out.label != "neutral" else "mean_revert"
         classifications[b.timestamp.date()] = HtfRegimeClassification(
-            bias=out.bias, regime=regime, mode=mode,
+            bias=out.bias,
+            regime=regime,
+            mode=mode,
             close=b.close,
             components={
                 "edge_score": out.score,
@@ -355,7 +361,9 @@ def make_feature_regime_provider(
             if prev <= d:
                 return classifications[prev]
         return HtfRegimeClassification(
-            bias="neutral", regime="volatile", mode="skip",
+            bias="neutral",
+            regime="volatile",
+            mode="skip",
         )
 
     return _provider

@@ -1,4 +1,5 @@
 """Tests for dashboard auth (Wave-7, 2026-04-27)."""
+
 from __future__ import annotations
 
 import json
@@ -109,6 +110,7 @@ def test_session_expired_returns_none(tmp_path: Path, monkeypatch) -> None:
 
     # Fast-forward time
     import time
+
     monkeypatch.setattr(da, "_now", lambda: time.time() + 10)
     assert da.get_session(sessions_path, token) is None
 

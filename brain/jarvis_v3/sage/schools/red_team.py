@@ -6,6 +6,7 @@ BTC integration 2026-05-01:
   * Weekend/session liquidity: crypto 24/7 ≠ uniform liquidity
   * Stablecoin/flow manipulation risk
 """
+
 from __future__ import annotations
 
 from eta_engine.brain.jarvis_v3.sage.base import (
@@ -79,10 +80,10 @@ class RedTeamSchool(SchoolBase):
 
             if overstretched_up and bearish_div:
                 conviction = 0.75
-                counter_reasons.append(f"overstretched +{stretch*100:.1f}% + bearish vol divergence")
+                counter_reasons.append(f"overstretched +{stretch * 100:.1f}% + bearish vol divergence")
             elif overstretched_up:
                 conviction = 0.45
-                counter_reasons.append(f"overstretched +{stretch*100:.1f}% from EMA20")
+                counter_reasons.append(f"overstretched +{stretch * 100:.1f}% from EMA20")
             elif bearish_div:
                 conviction = 0.40
                 counter_reasons.append("bearish volume divergence")
@@ -96,13 +97,17 @@ class RedTeamSchool(SchoolBase):
 
             if conviction >= 0.40:
                 return SchoolVerdict(
-                    school=self.NAME, bias=counter_bias, conviction=conviction,
+                    school=self.NAME,
+                    bias=counter_bias,
+                    conviction=conviction,
                     aligned_with_entry=False,
                     rationale="COUNTER to long: " + "; ".join(counter_reasons),
                     signals={**signals, "stretch": stretch, "crypto_attacks": len(crypto_attack)},
                 )
             return SchoolVerdict(
-                school=self.NAME, bias=Bias.NEUTRAL, conviction=0.10,
+                school=self.NAME,
+                bias=Bias.NEUTRAL,
+                conviction=0.10,
                 aligned_with_entry=True,
                 rationale="no credible counter to long entry",
                 signals={"stretch": stretch},
@@ -114,10 +119,10 @@ class RedTeamSchool(SchoolBase):
 
             if overstretched_dn and bullish_div:
                 conviction = 0.75
-                counter_reasons.append(f"overstretched {stretch*100:.1f}% + bullish vol divergence")
+                counter_reasons.append(f"overstretched {stretch * 100:.1f}% + bullish vol divergence")
             elif overstretched_dn:
                 conviction = 0.45
-                counter_reasons.append(f"overstretched {stretch*100:.1f}% below EMA20")
+                counter_reasons.append(f"overstretched {stretch * 100:.1f}% below EMA20")
             elif bullish_div:
                 conviction = 0.40
                 counter_reasons.append("bullish volume divergence")
@@ -131,13 +136,17 @@ class RedTeamSchool(SchoolBase):
 
             if conviction >= 0.40:
                 return SchoolVerdict(
-                    school=self.NAME, bias=counter_bias, conviction=conviction,
+                    school=self.NAME,
+                    bias=counter_bias,
+                    conviction=conviction,
                     aligned_with_entry=False,
                     rationale="COUNTER to short: " + "; ".join(counter_reasons),
                     signals={**signals, "stretch": stretch, "crypto_attacks": len(crypto_attack)},
                 )
             return SchoolVerdict(
-                school=self.NAME, bias=Bias.NEUTRAL, conviction=0.10,
+                school=self.NAME,
+                bias=Bias.NEUTRAL,
+                conviction=0.10,
                 aligned_with_entry=True,
                 rationale="no credible counter to short entry",
                 signals={"stretch": stretch},
@@ -157,30 +166,26 @@ class RedTeamSchool(SchoolBase):
 
         # 2. Weekend/session risk
         from datetime import datetime
+
         now = datetime.now()
         if now.weekday() >= 5:
             vol_factor = telemetry.get("weekend_vol_factor", 1.0)
             if vol_factor < self.WEEKEND_VOL_DROP_THRESHOLD:
                 attacks.append(
-                    f"weekend liquidity {vol_factor*100:.0f}% of weekday — "
+                    f"weekend liquidity {vol_factor * 100:.0f}% of weekday — "
                     "slippage risk 2-5x, whale moves close markets"
                 )
 
         # 3. Stablecoin flow manipulation
         stablecoin_ratio = telemetry.get("stablecoin_supply_ratio")
-        if isinstance(stablecoin_ratio, (int, float)):
-            if stablecoin_ratio < 0.05:
-                attacks.append(
-                    "stablecoin supply depleted (<5%) — limited buying power, "
-                    "any sell order can cascade"
-                )
+        if isinstance(stablecoin_ratio, (int, float)) and stablecoin_ratio < 0.05:
+            attacks.append("stablecoin supply depleted (<5%) — limited buying power, any sell order can cascade")
 
         # 4. Exchange concentration risk
         exchange_netflow = telemetry.get("exchange_netflow")
         if isinstance(exchange_netflow, (int, float)) and exchange_netflow > 5000:
             attacks.append(
-                f"large exchange inflow {exchange_netflow:+,.0f} — "
-                "potential sell-side pressure from exchange deposits"
+                f"large exchange inflow {exchange_netflow:+,.0f} — potential sell-side pressure from exchange deposits"
             )
 
         return attacks

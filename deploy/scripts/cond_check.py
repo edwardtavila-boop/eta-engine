@@ -42,4 +42,6 @@ if conds:
     # Show all CONDITIONAL entries
     print("\nAll CONDITIONAL verdicts:")
     for v in conds[-10:]:
-        print(f"  {v['ts'][:19]} {v['subsystem']:<18s} mult={v.get('final_size_multiplier','?'):>5} reason={v['base_reason']}")
+        print(
+            f"  {v['ts'][:19]} {v['subsystem']:<18s} mult={v.get('final_size_multiplier', '?'):>5} reason={v['base_reason']}"
+        )

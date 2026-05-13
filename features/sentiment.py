@@ -86,8 +86,7 @@ async def fetch_sentiment_snapshot(
     if use_mcp_taps_enabled():
         if mcp_client is None:
             logger.warning(
-                "ETA_USE_MCP_TAPS=1 but no mcp_client provided; "
-                "falling back to REST LunarCrushClient for %s",
+                "ETA_USE_MCP_TAPS=1 but no mcp_client provided; falling back to REST LunarCrushClient for %s",
                 asset,
             )
         else:

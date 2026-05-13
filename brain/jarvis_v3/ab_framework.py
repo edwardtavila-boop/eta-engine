@@ -24,6 +24,7 @@ Persisted state: state/jarvis_intel/ab_experiments.json
 
 Pure stdlib + math.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -44,9 +45,9 @@ DEFAULT_STATE_PATH = ROOT / "state" / "jarvis_intel" / "ab_experiments.json"
 class AbBounds:
     """Hard guardrails for any A/B experiment."""
 
-    max_traffic_split: float = 0.10        # max 10% to challenger
-    single_loss_kill_r: float = 2.0         # > 2R single loss = kill
-    cumulative_dd_kill_r: float = 4.0       # > 4R cumulative DD = kill
+    max_traffic_split: float = 0.10  # max 10% to challenger
+    single_loss_kill_r: float = 2.0  # > 2R single loss = kill
+    cumulative_dd_kill_r: float = 4.0  # > 4R cumulative DD = kill
     min_sample_size: int = 30
     significance_alpha: float = 0.05
 
@@ -72,9 +73,7 @@ class AbVariantStats:
         if self.n_trades < 2:
             return 0.0
         m = self.avg_r
-        return (
-            self.realized_r_squared_sum / self.n_trades - m * m
-        ) * (self.n_trades / (self.n_trades - 1))
+        return (self.realized_r_squared_sum / self.n_trades - m * m) * (self.n_trades / (self.n_trades - 1))
 
 
 @dataclass
@@ -83,7 +82,7 @@ class AbExperiment:
 
     experiment_id: str
     started_at: str
-    traffic_split: float                    # in [0, max_traffic_split]
+    traffic_split: float  # in [0, max_traffic_split]
     control: AbVariantStats
     treatment: AbVariantStats
     is_active: bool = True
@@ -171,7 +170,8 @@ class AbManager:
         if exp is None or not exp.is_active:
             return "control"
         return route_signal(
-            signal_id=signal_id, traffic_split=exp.traffic_split,
+            signal_id=signal_id,
+            traffic_split=exp.traffic_split,
         )
 
     def record_outcome(
@@ -204,20 +204,19 @@ class AbManager:
             if abs(realized_r) > exp.bounds.single_loss_kill_r and realized_r < 0:
                 exp.is_active = False
                 exp.killed_reason = (
-                    f"single-loss kill: {realized_r:+.2f}R "
-                    f"exceeded {exp.bounds.single_loss_kill_r:.2f}R limit"
+                    f"single-loss kill: {realized_r:+.2f}R exceeded {exp.bounds.single_loss_kill_r:.2f}R limit"
                 )
             elif v_stats.max_dd_r > exp.bounds.cumulative_dd_kill_r:
                 exp.is_active = False
                 exp.killed_reason = (
-                    f"cumulative-DD kill: {v_stats.max_dd_r:.2f}R "
-                    f"exceeded {exp.bounds.cumulative_dd_kill_r:.2f}R"
+                    f"cumulative-DD kill: {v_stats.max_dd_r:.2f}R exceeded {exp.bounds.cumulative_dd_kill_r:.2f}R"
                 )
         self._save()
         return exp
 
     def can_declare_winner(
-        self, experiment_id: str,
+        self,
+        experiment_id: str,
     ) -> tuple[bool, str, float]:
         """Return (can_declare, winner, p_value).
 
@@ -229,18 +228,12 @@ class AbManager:
         exp = self._experiments.get(experiment_id)
         if exp is None:
             return False, "", 1.0
-        if (
-            exp.control.n_trades < exp.bounds.min_sample_size
-            or exp.treatment.n_trades < exp.bounds.min_sample_size
-        ):
+        if exp.control.n_trades < exp.bounds.min_sample_size or exp.treatment.n_trades < exp.bounds.min_sample_size:
             return False, "", 1.0
         p = welch_t_p_value(exp.treatment, exp.control)
         if p > exp.bounds.significance_alpha:
             return False, "", p
-        winner = (
-            "treatment" if exp.treatment.avg_r > exp.control.avg_r
-            else "control"
-        )
+        winner = "treatment" if exp.treatment.avg_r > exp.control.avg_r else "control"
         return True, winner, p
 
     def list_active(self) -> list[AbExperiment]:
@@ -286,7 +279,8 @@ class AbManager:
                 d.get("treatment", {}).pop("_peak", None)
                 payload[eid] = d
             self.state_path.write_text(
-                json.dumps(payload, indent=2), encoding="utf-8",
+                json.dumps(payload, indent=2),
+                encoding="utf-8",
             )
         except OSError as exc:
             logger.warning("ab_framework: save failed (%s)", exc)

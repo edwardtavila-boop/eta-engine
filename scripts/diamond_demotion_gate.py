@@ -55,6 +55,7 @@ Run
     python -m eta_engine.scripts.diamond_demotion_gate
     python -m eta_engine.scripts.diamond_demotion_gate --json
 """
+
 from __future__ import annotations
 
 # ruff: noqa: PLR2004
@@ -69,37 +70,34 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKSPACE_ROOT = ROOT.parent
-TRADE_CLOSES_CANONICAL = (
-    WORKSPACE_ROOT / "var" / "eta_engine" / "state"
-    / "jarvis_intel" / "trade_closes.jsonl"
-)
+TRADE_CLOSES_CANONICAL = WORKSPACE_ROOT / "var" / "eta_engine" / "state" / "jarvis_intel" / "trade_closes.jsonl"
 TRADE_CLOSES_LEGACY = (
-    WORKSPACE_ROOT / "eta_engine" / "state"  # HISTORICAL-PATH-OK
-    / "jarvis_intel" / "trade_closes.jsonl"
+    WORKSPACE_ROOT
+    / "eta_engine"
+    / "state"  # HISTORICAL-PATH-OK
+    / "jarvis_intel"
+    / "trade_closes.jsonl"
 )
-OUT_LATEST = (
-    WORKSPACE_ROOT / "var" / "eta_engine" / "state"
-    / "diamond_demotion_gate_latest.json"
-)
+OUT_LATEST = WORKSPACE_ROOT / "var" / "eta_engine" / "state" / "diamond_demotion_gate_latest.json"
 
 #: Recent-window definitions
-RECENT_TRADES_WINDOW = 50      # trades for R_BLEED + R_DRIFT
-RECENT_DAYS_WINDOW = 14         # calendar days for TEMPORAL_DECAY + LOW_SAMPLE_GROWTH
+RECENT_TRADES_WINDOW = 50  # trades for R_BLEED + R_DRIFT
+RECENT_DAYS_WINDOW = 14  # calendar days for TEMPORAL_DECAY + LOW_SAMPLE_GROWTH
 
 #: Hard demote thresholds
-D1_MIN_ACTIVE_DAYS = 1          # ≥1 day of activity in last 14 days
-D2_R_BLEED_FLOOR = -5.0         # cum_r over last 50 trades must be ≥ -5R
+D1_MIN_ACTIVE_DAYS = 1  # ≥1 day of activity in last 14 days
+D2_R_BLEED_FLOOR = -5.0  # cum_r over last 50 trades must be ≥ -5R
 
 #: Soft watch thresholds
-W1_MIN_NEW_TRADES_14D = 10      # ≥10 trades in last 14 days
-W2_R_DRIFT_FLOOR = 0.05         # avg_r over last 50 trades ≥ +0.05R
+W1_MIN_NEW_TRADES_14D = 10  # ≥10 trades in last 14 days
+W2_R_DRIFT_FLOOR = 0.05  # avg_r over last 50 trades ≥ +0.05R
 
 
 @dataclass
 class DemotionScorecard:
     bot_id: str
     n_total: int = 0
-    n_recent_trades: int = 0      # last RECENT_TRADES_WINDOW
+    n_recent_trades: int = 0  # last RECENT_TRADES_WINDOW
     cum_r_recent: float = 0.0
     avg_r_recent: float = 0.0
     n_new_trades_14d: int = 0
@@ -123,12 +121,14 @@ def _read_trades_dual_source() -> list[dict[str, Any]]:
                     rec = json.loads(line)
                 except json.JSONDecodeError:
                     continue
-                key = "|".join([
-                    str(rec.get("signal_id") or ""),
-                    str(rec.get("bot_id") or ""),
-                    str(rec.get("ts") or ""),
-                    str(rec.get("realized_r") or ""),
-                ])
+                key = "|".join(
+                    [
+                        str(rec.get("signal_id") or ""),
+                        str(rec.get("bot_id") or ""),
+                        str(rec.get("ts") or ""),
+                        str(rec.get("realized_r") or ""),
+                    ]
+                )
                 if key in seen:
                     continue
                 seen.add(key)
@@ -145,8 +145,7 @@ def _parse_ts(ts_str: Any) -> datetime | None:  # noqa: ANN401
         return None
 
 
-def _score_bot(bot_id: str, trades: list[dict[str, Any]],
-               now_utc: datetime | None = None) -> DemotionScorecard:
+def _score_bot(bot_id: str, trades: list[dict[str, Any]], now_utc: datetime | None = None) -> DemotionScorecard:
     sc = DemotionScorecard(bot_id=bot_id, n_total=len(trades))
     if now_utc is None:
         now_utc = datetime.now(UTC)
@@ -186,13 +185,11 @@ def _score_bot(bot_id: str, trades: list[dict[str, Any]],
     # D1: TEMPORAL_DECAY
     if sc.n_active_days_14d < D1_MIN_ACTIVE_DAYS:
         hard.append(
-            f"D1_TEMPORAL_DECAY (active days in last 14d = "
-            f"{sc.n_active_days_14d}, need >= {D1_MIN_ACTIVE_DAYS})",
+            f"D1_TEMPORAL_DECAY (active days in last 14d = {sc.n_active_days_14d}, need >= {D1_MIN_ACTIVE_DAYS})",
         )
 
     # D2: R_BLEED
-    if (sc.n_recent_trades >= 10
-            and sc.cum_r_recent < D2_R_BLEED_FLOOR):
+    if sc.n_recent_trades >= 10 and sc.cum_r_recent < D2_R_BLEED_FLOOR:
         hard.append(
             f"D2_R_BLEED (last {sc.n_recent_trades} trades cum_R = "
             f"{sc.cum_r_recent:+.2f}R, floor = {D2_R_BLEED_FLOOR}R)",
@@ -201,13 +198,11 @@ def _score_bot(bot_id: str, trades: list[dict[str, Any]],
     # W1: LOW_SAMPLE_GROWTH
     if sc.n_new_trades_14d < W1_MIN_NEW_TRADES_14D:
         soft.append(
-            f"W1_LOW_SAMPLE_GROWTH (new trades in last 14d = "
-            f"{sc.n_new_trades_14d}, want >= {W1_MIN_NEW_TRADES_14D})",
+            f"W1_LOW_SAMPLE_GROWTH (new trades in last 14d = {sc.n_new_trades_14d}, want >= {W1_MIN_NEW_TRADES_14D})",
         )
 
     # W2: R_DRIFT
-    if (sc.n_recent_trades >= 10
-            and sc.avg_r_recent < W2_R_DRIFT_FLOOR):
+    if sc.n_recent_trades >= 10 and sc.avg_r_recent < W2_R_DRIFT_FLOOR:
         soft.append(
             f"W2_R_DRIFT (last {sc.n_recent_trades} trades avg_R = "
             f"{sc.avg_r_recent:+.4f}, floor = +{W2_R_DRIFT_FLOOR})",
@@ -218,16 +213,10 @@ def _score_bot(bot_id: str, trades: list[dict[str, Any]],
 
     if hard:
         sc.verdict = "DEMOTE_CANDIDATE"
-        sc.rationale = (
-            f"{len(hard)} hard demotion criteria failed: "
-            f"{'; '.join(hard)}"
-        )
+        sc.rationale = f"{len(hard)} hard demotion criteria failed: {'; '.join(hard)}"
     elif soft:
         sc.verdict = "WATCH"
-        sc.rationale = (
-            f"{len(soft)} soft criteria warrant attention: "
-            f"{'; '.join(soft)}"
-        )
+        sc.rationale = f"{len(soft)} soft criteria warrant attention: {'; '.join(soft)}"
     else:
         sc.verdict = "KEEP"
         sc.rationale = (
@@ -253,10 +242,7 @@ def run() -> dict[str, Any]:
         if bid in DIAMOND_BOTS:
             by_bot[bid].append(t)
 
-    scorecards = [
-        _score_bot(bot_id, by_bot.get(bot_id, []))
-        for bot_id in sorted(DIAMOND_BOTS)
-    ]
+    scorecards = [_score_bot(bot_id, by_bot.get(bot_id, [])) for bot_id in sorted(DIAMOND_BOTS)]
 
     counts: dict[str, int] = defaultdict(int)
     for sc in scorecards:
@@ -279,7 +265,8 @@ def run() -> dict[str, Any]:
     try:
         OUT_LATEST.parent.mkdir(parents=True, exist_ok=True)
         OUT_LATEST.write_text(
-            json.dumps(summary, indent=2, default=str), encoding="utf-8",
+            json.dumps(summary, indent=2, default=str),
+            encoding="utf-8",
         )
     except OSError as exc:
         print(f"WARN: write_latest failed: {exc}", file=sys.stderr)
@@ -307,9 +294,9 @@ def _print(summary: dict[str, Any]) -> None:
             f"{sc['n_new_trades_14d']:>8d} "
             f"{sc['n_active_days_14d']:>9d}",
         )
-        for f_ in (sc.get("hard_failures") or []):
+        for f_ in sc.get("hard_failures") or []:
             print(f"   ✗ HARD: {f_}")
-        for f_ in (sc.get("soft_failures") or []):
+        for f_ in sc.get("soft_failures") or []:
             print(f"   ⚠ SOFT: {f_}")
     print()
 

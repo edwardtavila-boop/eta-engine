@@ -21,6 +21,7 @@ metrics (default 3 of 5) to pass the gauntlet. Wins on:
 Champion spec is read from ``mnq_backtest/configs/champion_spec.txt``
 (default: ``cascade_hunter_v1``).
 """
+
 from __future__ import annotations
 
 import argparse
@@ -55,20 +56,30 @@ def run_backtest(spec_path: Path, *, bars: int = 500) -> GauntletScore:
     py = str(venv_py) if venv_py.exists() else sys.executable
 
     # The regression script expects --spec <path>
-    cmd = [py, str(MNQ_BACKTEST / "scripts" / "eta_engine_nightly_regression.py"),
-           "--spec", str(spec_path), "--bars", str(bars), "--json-out"]
+    cmd = [
+        py,
+        str(MNQ_BACKTEST / "scripts" / "eta_engine_nightly_regression.py"),
+        "--spec",
+        str(spec_path),
+        "--bars",
+        str(bars),
+        "--json-out",
+    ]
     logger.info("running: %s", " ".join(cmd))
     try:
         result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=900, check=False,
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=900,
+            check=False,
             cwd=str(MNQ_BACKTEST),
         )
     except (subprocess.SubprocessError, OSError) as exc:
         raise RuntimeError(f"backtest invocation failed: {exc}") from exc
     if result.returncode != 0:
         raise RuntimeError(
-            f"backtest exit={result.returncode}\nstdout: {result.stdout[-500:]}\n"
-            f"stderr: {result.stderr[-500:]}"
+            f"backtest exit={result.returncode}\nstdout: {result.stdout[-500:]}\nstderr: {result.stderr[-500:]}"
         )
     # Parse the last JSON object printed
     last_line = result.stdout.strip().splitlines()[-1] if result.stdout.strip() else "{}"
@@ -109,15 +120,16 @@ def compare(candidate: GauntletScore, champion: GauntletScore) -> dict[str, str]
 
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(description=__doc__,
-                                formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--candidate", type=Path, required=True,
-                   help="Path to candidate Pine spec or strategy module")
-    p.add_argument("--champion", type=Path,
-                   default=MNQ_BACKTEST / "pine" / "cascade_hunter_v1.0_strategy.pine")
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--candidate", type=Path, required=True, help="Path to candidate Pine spec or strategy module")
+    p.add_argument("--champion", type=Path, default=MNQ_BACKTEST / "pine" / "cascade_hunter_v1.0_strategy.pine")
     p.add_argument("--bars", type=int, default=500)
-    p.add_argument("--required-wins", type=int, default=3,
-                   help="Min number of WIN verdicts to pass gauntlet (default 3 of 5 on core metrics)")
+    p.add_argument(
+        "--required-wins",
+        type=int,
+        default=3,
+        help="Min number of WIN verdicts to pass gauntlet (default 3 of 5 on core metrics)",
+    )
     p.add_argument("--json", action="store_true")
     p.add_argument("-v", "--verbose", action="store_true")
     args = p.parse_args(argv)
@@ -145,21 +157,26 @@ def main(argv: list[str] | None = None) -> int:
     pass_gauntlet = win_count >= args.required_wins and win_count > loss_count
 
     if args.json:
-        print(json.dumps({
-            "ts": datetime.now(UTC).isoformat(),
-            "candidate": cand_score.spec_id,
-            "champion":  champ_score.spec_id,
-            "verdicts":  verdicts,
-            "wins":      win_count,
-            "losses":    loss_count,
-            "pass":      pass_gauntlet,
-        }, indent=2))
+        print(
+            json.dumps(
+                {
+                    "ts": datetime.now(UTC).isoformat(),
+                    "candidate": cand_score.spec_id,
+                    "champion": champ_score.spec_id,
+                    "verdicts": verdicts,
+                    "wins": win_count,
+                    "losses": loss_count,
+                    "pass": pass_gauntlet,
+                },
+                indent=2,
+            )
+        )
     else:
         print()
         print(f"  {'METRIC':<22}  {'CANDIDATE':>12}  {'CHAMPION':>12}  VERDICT")
         for k in sorted(verdicts.keys()):
-            a = cand_score.metrics.get(k, float('nan'))
-            b = champ_score.metrics.get(k, float('nan'))
+            a = cand_score.metrics.get(k, float("nan"))
+            b = champ_score.metrics.get(k, float("nan"))
             print(f"  {k:<22}  {a:>12.4f}  {b:>12.4f}  {verdicts[k]}")
         print()
         print(f"  WINS:   {win_count}")

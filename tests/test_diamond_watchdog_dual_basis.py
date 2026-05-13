@@ -10,6 +10,7 @@ Pre-wave-7 the watchdog was USD-only; cl_momentum and gc_momentum
 flagged CRITICAL on -$4,645 / -$650 USD even though their R-multiples
 (-1.71R / +0.24R) were inside the strategy-health envelope.
 """
+
 # ruff: noqa: N802, PLR2004, SLF001
 from __future__ import annotations
 
@@ -35,8 +36,8 @@ def test_buffer_under_20_pct_is_WARN() -> None:
 
 
 def test_buffer_20_to_50_pct_is_WATCH() -> None:
-    assert wd._classify_buffer(60.0, -200.0) == "WATCH"   # 30%
-    assert wd._classify_buffer(99.0, -200.0) == "WATCH"   # 49.5%
+    assert wd._classify_buffer(60.0, -200.0) == "WATCH"  # 30%
+    assert wd._classify_buffer(99.0, -200.0) == "WATCH"  # 49.5%
 
 
 def test_buffer_above_50_pct_is_HEALTHY() -> None:
@@ -86,8 +87,7 @@ def test_worst_of_order_warn_watch_healthy() -> None:
 # ────────────────────────────────────────────────────────────────────
 
 
-def _make_ledger(bot_id: str, total_pnl: float, cum_r: float,
-                 n_trades: int = 50) -> dict:
+def _make_ledger(bot_id: str, total_pnl: float, cum_r: float, n_trades: int = 50) -> dict:
     """Build a minimal closed_trade_ledger dict for one bot."""
     return {
         "per_bot": {
@@ -180,27 +180,18 @@ def test_every_diamond_has_an_R_threshold() -> None:
     from eta_engine.feeds.capital_allocator import DIAMOND_BOTS
 
     missing = [b for b in DIAMOND_BOTS if b not in wd.RETIREMENT_THRESHOLDS_R]
-    assert not missing, (
-        f"diamonds missing from RETIREMENT_THRESHOLDS_R: {sorted(missing)}"
-    )
+    assert not missing, f"diamonds missing from RETIREMENT_THRESHOLDS_R: {sorted(missing)}"
 
 
 def test_every_diamond_has_a_USD_threshold() -> None:
     """Same coverage check on the legacy USD threshold dict."""
     from eta_engine.feeds.capital_allocator import DIAMOND_BOTS
 
-    missing = [
-        b for b in DIAMOND_BOTS if b not in wd.RETIREMENT_THRESHOLDS_USD
-    ]
-    assert not missing, (
-        f"diamonds missing from RETIREMENT_THRESHOLDS_USD: {sorted(missing)}"
-    )
+    missing = [b for b in DIAMOND_BOTS if b not in wd.RETIREMENT_THRESHOLDS_USD]
+    assert not missing, f"diamonds missing from RETIREMENT_THRESHOLDS_USD: {sorted(missing)}"
 
 
 def test_R_thresholds_are_all_negative() -> None:
     """Sanity: R retirement floors are losses, not gains."""
     for bot, threshold in wd.RETIREMENT_THRESHOLDS_R.items():
-        assert threshold < 0, (
-            f"R threshold for {bot} must be negative (a loss floor), "
-            f"got {threshold}"
-        )
+        assert threshold < 0, f"R threshold for {bot} must be negative (a loss floor), got {threshold}"

@@ -1,4 +1,5 @@
 """Tests for asset-specific strategy routing helpers."""
+
 from __future__ import annotations
 
 from eta_engine.feeds.asset_specific_config import (

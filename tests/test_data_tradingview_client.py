@@ -34,9 +34,13 @@ from eta_engine.scripts import workspace_roots
 def _auth(has_sess: bool = True) -> AuthState:
     cookies = []
     if has_sess:
-        cookies.append({
-            "name": "sessionid", "value": "x", "domain": ".tradingview.com",
-        })
+        cookies.append(
+            {
+                "name": "sessionid",
+                "value": "x",
+                "domain": ".tradingview.com",
+            }
+        )
     return AuthState(cookies=cookies, origins=[])
 
 
@@ -59,7 +63,8 @@ def test_client_accepts_targets_only(tmp_path) -> None:  # noqa: ANN001
     journal = TradingViewJournal(tmp_path)
     cfg = TradingViewConfig(
         targets=(ChartTarget(symbol="X:Y", interval="1"),),
-        watchlist_url="", alerts_url="",
+        watchlist_url="",
+        alerts_url="",
     )
     client = TradingViewClient(cfg, journal, auth_state=_auth())
     assert client.config.targets[0].symbol == "X:Y"
@@ -78,10 +83,12 @@ def test_client_accepts_watchlist_only(tmp_path) -> None:  # noqa: ANN001
 
 def test_client_warns_when_no_session_cookie(tmp_path, caplog) -> None:  # noqa: ANN001
     import logging
+
     journal = TradingViewJournal(tmp_path)
     cfg = TradingViewConfig(
         targets=(ChartTarget(symbol="X:Y"),),
-        watchlist_url="", alerts_url="",
+        watchlist_url="",
+        alerts_url="",
     )
     with caplog.at_level(logging.WARNING):
         TradingViewClient(cfg, journal, auth_state=_auth(has_sess=False))
@@ -91,6 +98,7 @@ def test_client_warns_when_no_session_cookie(tmp_path, caplog) -> None:  # noqa:
 def test_is_available_matches_playwright_import() -> None:
     try:
         import playwright.async_api  # noqa: F401
+
         expected = True
     except ImportError:
         expected = False
@@ -112,7 +120,9 @@ def _playwright_installed() -> bool:
 def test_run_raises_unavailable_without_playwright(tmp_path) -> None:  # noqa: ANN001
     journal = TradingViewJournal(tmp_path)
     cfg = TradingViewConfig(
-        targets=(ChartTarget(symbol="X:Y"),), watchlist_url="", alerts_url="",
+        targets=(ChartTarget(symbol="X:Y"),),
+        watchlist_url="",
+        alerts_url="",
     )
     client = TradingViewClient(cfg, journal, auth_state=_auth())
     with pytest.raises(TradingViewUnavailable):
@@ -122,7 +132,9 @@ def test_run_raises_unavailable_without_playwright(tmp_path) -> None:  # noqa: A
 def test_request_stop_sets_flag(tmp_path) -> None:  # noqa: ANN001
     journal = TradingViewJournal(tmp_path)
     cfg = TradingViewConfig(
-        targets=(ChartTarget(symbol="X:Y"),), watchlist_url="", alerts_url="",
+        targets=(ChartTarget(symbol="X:Y"),),
+        watchlist_url="",
+        alerts_url="",
     )
     client = TradingViewClient(cfg, journal, auth_state=_auth())
     assert client._stop is False

@@ -20,6 +20,7 @@ from pathlib import Path
 def _generate_bar_data(n_bars: int = 500, volatility: float = 0.01) -> list[dict]:
     """Generate synthetic 1-min bar data with realistic price movement."""
     import random
+
     random.seed(42)
     price = 20100.0
     bars = []
@@ -27,22 +28,27 @@ def _generate_bar_data(n_bars: int = 500, volatility: float = 0.01) -> list[dict
     for i in range(n_bars):
         change = random.gauss(0, volatility * price)
         price += change
-        bars.append({
-            "ts": (base_time + timedelta(minutes=i)).isoformat(),
-            "open": price - change * 0.3,
-            "high": price + abs(change) * 0.5,
-            "low": price - abs(change) * 0.5,
-            "close": price,
-            "volume": int(random.gauss(500, 100)),
-        })
+        bars.append(
+            {
+                "ts": (base_time + timedelta(minutes=i)).isoformat(),
+                "open": price - change * 0.3,
+                "high": price + abs(change) * 0.5,
+                "low": price - abs(change) * 0.5,
+                "close": price,
+                "volume": int(random.gauss(500, 100)),
+            }
+        )
     return bars
 
 
 def _generate_trades_from_bars(
-    bars: list[dict], n_trades: int = 60, win_rate: float = 0.55,
+    bars: list[dict],
+    n_trades: int = 60,
+    win_rate: float = 0.55,
 ) -> list[dict]:
     """Generate synthetic trade outcomes from bar data."""
     import random
+
     random.seed(42)
     trades = []
     for i in range(min(n_trades, len(bars))):
@@ -50,20 +56,22 @@ def _generate_trades_from_bars(
         is_win = random.random() < win_rate
         pnl = random.gauss(40, 15) if is_win else random.gauss(-25, 10)
         r_mult = 1.5 if is_win else -1.0
-        trades.append({
-            "ts": bar["ts"],
-            "pnl_dollars": round(pnl, 2),
-            "exit_reason": "take_profit" if is_win else "stop",
-            "bars_held": random.randint(2, 8) if is_win else random.randint(5, 15),
-            "r_multiple": round(r_mult, 2),
-            "regime": "trend" if i < n_trades * 0.6 else "mean_revert",
-            "side": "long" if random.random() < 0.6 else "short",
-            "symbol": "MNQ" if i % 3 != 0 else "BTC",
-            "route_name": f"route_{chr(97 + i % 3)}",
-            "route_family": f"family_{chr(97 + i % 2)}",
-            "bot_id": f"bot_{i % 3}",
-            "commission_dollars": 0.50,
-        })
+        trades.append(
+            {
+                "ts": bar["ts"],
+                "pnl_dollars": round(pnl, 2),
+                "exit_reason": "take_profit" if is_win else "stop",
+                "bars_held": random.randint(2, 8) if is_win else random.randint(5, 15),
+                "r_multiple": round(r_mult, 2),
+                "regime": "trend" if i < n_trades * 0.6 else "mean_revert",
+                "side": "long" if random.random() < 0.6 else "short",
+                "symbol": "MNQ" if i % 3 != 0 else "BTC",
+                "route_name": f"route_{chr(97 + i % 3)}",
+                "route_family": f"family_{chr(97 + i % 2)}",
+                "bot_id": f"bot_{i % 3}",
+                "commission_dollars": 0.50,
+            }
+        )
     return trades
 
 
@@ -121,7 +129,7 @@ class TestPaperTradingHarness:
             assert engine._cycle_count == 5
 
             # Guard should be tripped by cycle 4 (negative PnL)
-            guard_status = engine._guard.status()
+            engine._guard.status()
             # Not asserting circuit because synthetic data may not trigger it
 
             # State persisted
@@ -140,7 +148,8 @@ class TestPaperTradingHarness:
         # Large portfolio with regime change -> invoke
         agent = QuantumOptimizerAgent()
         should, reason = QuantumOptimizerAgent.should_invoke(
-            n_symbols=6, regime_changed_since_last=True,
+            n_symbols=6,
+            regime_changed_since_last=True,
         )
         assert should is True
 

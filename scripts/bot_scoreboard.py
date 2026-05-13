@@ -12,6 +12,7 @@ Usage:
     python -m eta_engine.scripts.bot_scoreboard --asset crypto
     python -m eta_engine.scripts.bot_scoreboard --top 10
 """
+
 from __future__ import annotations
 
 import argparse
@@ -34,8 +35,7 @@ _TRADE_CLOSES_PATH = workspace_roots.ETA_JARVIS_TRADE_CLOSES_PATH
 
 
 _CRYPTO_ROOTS = {"BTC", "ETH", "SOL", "AVAX", "LINK", "DOGE", "MBT", "MET"}
-_FUTURES_ROOTS = {"MNQ", "NQ", "ES", "MES", "MNQ1", "NQ1", "ES1", "MES1",
-                  "RTY", "M2K", "GC", "CL", "NG", "ZN", "6E"}
+_FUTURES_ROOTS = {"MNQ", "NQ", "ES", "MES", "MNQ1", "NQ1", "ES1", "MES1", "RTY", "M2K", "GC", "CL", "NG", "ZN", "6E"}
 
 
 def _root(symbol: str) -> str:
@@ -90,11 +90,7 @@ def _bot_metrics(bot: dict[str, Any], closes: list[dict[str, Any]]) -> dict[str,
     bid = bot.get("bot_id", "")
     bot_closes = [c for c in closes if c.get("bot_id") == bid]
     n_closes = len(bot_closes)
-    rs = [
-        float(c.get("realized_r", 0) or 0)
-        for c in bot_closes
-        if c.get("realized_r") is not None
-    ]
+    rs = [float(c.get("realized_r", 0) or 0) for c in bot_closes if c.get("realized_r") is not None]
     # Trade closes are written by feedback_loop.close_trade. Older
     # records carry only realized_r; newer ones include realized_pnl
     # in extra={}. Read both shapes so this works pre/post upgrade.
@@ -125,10 +121,7 @@ def _bot_metrics(bot: dict[str, Any], closes: list[dict[str, Any]]) -> dict[str,
         "realized_pnl": realized_pnl,
         "win_rate": win_rate,
         "avg_r": avg_r,
-        "open_pos": (
-            f"{open_pos['side']} {open_pos['qty']} @ {open_pos['entry_price']:.2f}"
-            if open_pos else "-"
-        ),
+        "open_pos": (f"{open_pos['side']} {open_pos['qty']} @ {open_pos['entry_price']:.2f}" if open_pos else "-"),
     }
 
 
@@ -164,12 +157,15 @@ def _summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument(
-        "--sort", default="pnl",
+        "--sort",
+        default="pnl",
         choices=("pnl", "win_rate", "avg_r", "closes", "in", "bot_id"),
         help="Column to sort by (descending). Default: pnl.",
     )
     p.add_argument(
-        "--asset", default=None, choices=("crypto", "futures", "other"),
+        "--asset",
+        default=None,
+        choices=("crypto", "futures", "other"),
         help="Filter to one asset class.",
     )
     p.add_argument("--top", type=int, default=None, help="Show top N bots.")
@@ -183,9 +179,14 @@ def main(argv: list[str] | None = None) -> int:
     rows = [_bot_metrics(b, closes) for b in bots]
     if args.asset:
         rows = [r for r in rows if r["asset"] == args.asset]
-    sort_key = {"pnl": "realized_pnl", "win_rate": "win_rate",
-                "avg_r": "avg_r", "closes": "closes", "in": "in",
-                "bot_id": "bot_id"}[args.sort]
+    sort_key = {
+        "pnl": "realized_pnl",
+        "win_rate": "win_rate",
+        "avg_r": "avg_r",
+        "closes": "closes",
+        "in": "in",
+        "bot_id": "bot_id",
+    }[args.sort]
     rows.sort(key=lambda r: r[sort_key], reverse=(args.sort != "bot_id"))
     if args.top:
         rows = rows[: args.top]
@@ -194,8 +195,10 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps({"rows": rows, "summary": _summary(rows)}, indent=2, default=str))
         return 0
 
-    print(f"{'bot_id':<28} {'sym':<6} {'asset':<7} {'in/out':<10} "
-          f"{'closes':<7} {'pnl':<14} {'wr':<7} {'avgR':<6}  open_pos")
+    print(
+        f"{'bot_id':<28} {'sym':<6} {'asset':<7} {'in/out':<10} "
+        f"{'closes':<7} {'pnl':<14} {'wr':<7} {'avgR':<6}  open_pos"
+    )
     print("-" * 130)
     for r in rows:
         print(_format_row(r))

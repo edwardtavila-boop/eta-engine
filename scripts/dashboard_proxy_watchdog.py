@@ -41,9 +41,7 @@ DEFAULT_TIMEOUT_S = float(os.getenv("ETA_DASHBOARD_PROXY_TIMEOUT_S", "5"))
 DEFAULT_TASK_NAME = os.getenv("ETA_DASHBOARD_PROXY_TASK_NAME", "ETA-Proxy-8421")
 DEFAULT_INTERVAL_S = float(os.getenv("ETA_DASHBOARD_PROXY_WATCHDOG_INTERVAL_S", "60"))
 DEFAULT_RESTART_DELAY_S = float(os.getenv("ETA_DASHBOARD_PROXY_RESTART_DELAY_S", "3"))
-DEFAULT_HEARTBEAT_PATH = (
-    workspace_roots.ETA_RUNTIME_STATE_DIR / "dashboard_proxy_watchdog_heartbeat.json"
-)
+DEFAULT_HEARTBEAT_PATH = workspace_roots.ETA_RUNTIME_STATE_DIR / "dashboard_proxy_watchdog_heartbeat.json"
 
 
 @dataclass(slots=True)

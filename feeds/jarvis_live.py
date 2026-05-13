@@ -253,6 +253,7 @@ async def _tasty_refresh_tick(i: int) -> None:
         return
     try:
         from eta_engine.venues.tastytrade import TastytradeConfig, TastytradeVenue
+
         cfg = TastytradeConfig.from_env()
         if cfg.login and cfg.password:
             venue = TastytradeVenue(config=cfg)
@@ -369,6 +370,7 @@ async def _async_main(
     shadow_pipe: object = None
     try:
         from eta_engine.brain.jarvis_v3.shadow_pipeline import ShadowPipeline
+
         shadow_pipe = ShadowPipeline.default()
         shadow_pipe.load_fills()
         if shadow_pipe.enabled:

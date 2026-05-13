@@ -26,6 +26,7 @@ Usage:
     python -m eta_engine.scripts.edge_analyzer --json
     python -m eta_engine.scripts.edge_analyzer --asset crypto
 """
+
 from __future__ import annotations
 
 import argparse
@@ -42,14 +43,11 @@ logger = logging.getLogger(__name__)
 
 
 _LAB_REPORTS_DIR = Path(r"C:\EvolutionaryTradingAlgo\reports\lab_reports")
-_TRADE_CLOSES = Path(
-    r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\jarvis_intel\trade_closes.jsonl"
-)
+_TRADE_CLOSES = Path(r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\jarvis_intel\trade_closes.jsonl")
 
 
 _CRYPTO_ROOTS = {"BTC", "ETH", "SOL", "AVAX", "LINK", "DOGE", "MBT", "MET"}
-_FUTURES_ROOTS = {"MNQ", "NQ", "ES", "MES", "MNQ1", "NQ1", "RTY", "GC",
-                  "CL", "NG", "ZN", "6E"}
+_FUTURES_ROOTS = {"MNQ", "NQ", "ES", "MES", "MNQ1", "NQ1", "RTY", "GC", "CL", "NG", "ZN", "6E"}
 
 
 def _root(symbol: str) -> str:
@@ -164,8 +162,11 @@ def _live_metrics(closes: list[dict[str, Any]]) -> dict[str, Any]:
     n = len(rs)
     if n == 0:
         return {
-            "live_n_closes": 0, "live_sharpe": 0.0, "live_win_rate": 0.0,
-            "live_expectancy_r": 0.0, "live_realized_pnl_usd": 0.0,
+            "live_n_closes": 0,
+            "live_sharpe": 0.0,
+            "live_win_rate": 0.0,
+            "live_expectancy_r": 0.0,
+            "live_realized_pnl_usd": 0.0,
         }
 
     mean_r = sum(rs) / n
@@ -218,22 +219,23 @@ def analyze(since_iso: str | None = None) -> list[dict[str, Any]]:
         live = _live_metrics(closes_by_bot.get(bid, []))
         symbol = lab.get("lab_symbol") or _infer_symbol_from_bot_id(bid)
         tier = _classify_tier(lab, live)
-        rows.append({
-            "bot_id": bid,
-            "symbol": symbol,
-            "asset": _asset_class(symbol),
-            "tier": tier,
-            **lab,
-            **live,
-        })
+        rows.append(
+            {
+                "bot_id": bid,
+                "symbol": symbol,
+                "asset": _asset_class(symbol),
+                "tier": tier,
+                **lab,
+                **live,
+            }
+        )
     return rows
 
 
 def _infer_symbol_from_bot_id(bot_id: str) -> str:
     """Fallback when lab report missing — guess from bot_id prefix."""
     bid = bot_id.lower()
-    for token in ("btc", "eth", "sol", "avax", "link", "doge",
-                  "mnq", "nq", "es", "gc", "cl", "ng", "zn", "6e"):
+    for token in ("btc", "eth", "sol", "avax", "link", "doge", "mnq", "nq", "es", "gc", "cl", "ng", "zn", "6e"):
         if token in bid:
             return token.upper()
     return "?"
@@ -242,11 +244,12 @@ def _infer_symbol_from_bot_id(bot_id: str) -> str:
 def _print_text(rows: list[dict[str, Any]], asset_filter: str | None = None) -> None:
     if asset_filter:
         rows = [r for r in rows if r["asset"] == asset_filter]
-    rows.sort(key=lambda r: (
-        {"DIAMOND": 0, "LIVE_ONLY": 1, "LAB_ONLY": 2,
-         "INSUFFICIENT_LIVE_DATA": 3, "NOISE": 4}.get(r["tier"], 9),
-        -float(r.get("lab_sharpe", 0) or 0),
-    ))
+    rows.sort(
+        key=lambda r: (
+            {"DIAMOND": 0, "LIVE_ONLY": 1, "LAB_ONLY": 2, "INSUFFICIENT_LIVE_DATA": 3, "NOISE": 4}.get(r["tier"], 9),
+            -float(r.get("lab_sharpe", 0) or 0),
+        )
+    )
 
     by_tier: dict[str, int] = defaultdict(int)
     for r in rows:

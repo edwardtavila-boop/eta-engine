@@ -36,6 +36,7 @@ Environment:
     ETA_OOS_TEST_MONTHS  default 3
     ETA_OOS_REPORT_DIR   default reports/oos_validation/
 """
+
 from __future__ import annotations
 
 import argparse
@@ -84,7 +85,10 @@ def _list_promoted_bots() -> list[str]:
         extras = getattr(a, "extras", {}) or {}
         lane = extras.get("launch_lane") or extras.get("promotion_status", "")
         if str(lane).lower() in {
-            "paper_soak", "live_preflight", "production_candidate", "live",
+            "paper_soak",
+            "live_preflight",
+            "production_candidate",
+            "live",
         }:
             promoted.append(a.bot_id)
     return promoted
@@ -135,8 +139,7 @@ def _validate_bot(bot_id: str, *, test_months: int) -> dict[str, Any]:
     is_window = f"start={None}|end={train_end}"
     oos_window = f"start={test_start}|end={test_end}"
 
-    logger.info("OOS validating %s — train≤%s, test=%s..%s",
-                bot_id, train_end, test_start, test_end)
+    logger.info("OOS validating %s — train≤%s, test=%s..%s", bot_id, train_end, test_start, test_end)
 
     in_sample = _run_lab(bot_id, window=is_window)
     out_sample = _run_lab(bot_id, window=oos_window)
@@ -154,11 +157,11 @@ def _validate_bot(bot_id: str, *, test_months: int) -> dict[str, Any]:
     sharpe_drift = drift.get("sharpe")
     if isinstance(sharpe_drift, (int, float)):
         if sharpe_drift >= -0.10:
-            verdict = "robust"      # OOS held up
+            verdict = "robust"  # OOS held up
         elif sharpe_drift >= -0.40:
             verdict = "soft_drift"  # some degradation
         else:
-            verdict = "curve_fit"   # strong indicator of overfit
+            verdict = "curve_fit"  # strong indicator of overfit
 
     return {
         "bot_id": bot_id,
@@ -175,11 +178,13 @@ def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--bot", default=None, help="Validate a single bot_id")
     p.add_argument(
-        "--test-months", type=int,
+        "--test-months",
+        type=int,
         default=int(os.getenv("ETA_OOS_TEST_MONTHS", "3")),
     )
     p.add_argument(
-        "--report-dir", default=os.getenv(
+        "--report-dir",
+        default=os.getenv(
             "ETA_OOS_REPORT_DIR",
             str(Path(r"C:\EvolutionaryTradingAlgo\reports\oos_validation")),
         ),
@@ -202,29 +207,38 @@ def main(argv: list[str] | None = None) -> int:
         out_path = report_dir / f"{bid}__{ts}.json"
         with out_path.open("w", encoding="utf-8") as fh:
             json.dump(res, fh, indent=2, default=str)
-        fleet_report.append({
-            "bot_id": bid,
-            "verdict": res["verdict"],
-            "is_sharpe": res["in_sample"].get("sharpe"),
-            "oos_sharpe": res["out_sample"].get("sharpe"),
-            "drift_sharpe": res["drift"].get("sharpe"),
-        })
+        fleet_report.append(
+            {
+                "bot_id": bid,
+                "verdict": res["verdict"],
+                "is_sharpe": res["in_sample"].get("sharpe"),
+                "oos_sharpe": res["out_sample"].get("sharpe"),
+                "drift_sharpe": res["drift"].get("sharpe"),
+            }
+        )
         logger.info(
             "%s → %s (drift_sharpe=%s)",
-            bid, res["verdict"], res["drift"].get("sharpe"),
+            bid,
+            res["verdict"],
+            res["drift"].get("sharpe"),
         )
 
     summary_path = report_dir / f"_fleet_summary__{ts}.json"
     with summary_path.open("w", encoding="utf-8") as fh:
-        json.dump({
-            "checked_at": datetime.now(UTC).isoformat(),
-            "test_months": args.test_months,
-            "bots": fleet_report,
-            "verdicts": {
-                v: sum(1 for r in fleet_report if r["verdict"] == v)
-                for v in {"robust", "soft_drift", "curve_fit", "indeterminate"}
+        json.dump(
+            {
+                "checked_at": datetime.now(UTC).isoformat(),
+                "test_months": args.test_months,
+                "bots": fleet_report,
+                "verdicts": {
+                    v: sum(1 for r in fleet_report if r["verdict"] == v)
+                    for v in {"robust", "soft_drift", "curve_fit", "indeterminate"}
+                },
             },
-        }, fh, indent=2, default=str)
+            fh,
+            indent=2,
+            default=str,
+        )
 
     logger.info("fleet summary → %s", summary_path)
     return 0

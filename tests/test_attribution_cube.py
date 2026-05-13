@@ -245,33 +245,53 @@ def test_query_slices_by_direction_from_extra_side(tmp_path: Path) -> None:
     path = tmp_path / "tc.jsonl"
     trades = [
         # 3 BUY trades = long
-        {"bot_id": "x", "ts": "2026-05-12T14:00:00+00:00",
-         "realized_r": 1.0, "direction": "long",
-         "extra": {"side": "BUY"}},
-        {"bot_id": "x", "ts": "2026-05-12T15:00:00+00:00",
-         "realized_r": 0.5, "direction": "long",
-         "extra": {"side": "BUY"}},
-        {"bot_id": "x", "ts": "2026-05-12T16:00:00+00:00",
-         "realized_r": -0.3, "direction": "long",
-         "extra": {"side": "BUY"}},
+        {
+            "bot_id": "x",
+            "ts": "2026-05-12T14:00:00+00:00",
+            "realized_r": 1.0,
+            "direction": "long",
+            "extra": {"side": "BUY"},
+        },
+        {
+            "bot_id": "x",
+            "ts": "2026-05-12T15:00:00+00:00",
+            "realized_r": 0.5,
+            "direction": "long",
+            "extra": {"side": "BUY"},
+        },
+        {
+            "bot_id": "x",
+            "ts": "2026-05-12T16:00:00+00:00",
+            "realized_r": -0.3,
+            "direction": "long",
+            "extra": {"side": "BUY"},
+        },
         # 2 SELL trades = short (note: direction field STILL says "long" —
         # the wave-10 writer bug — but the cube must override)
-        {"bot_id": "x", "ts": "2026-05-12T17:00:00+00:00",
-         "realized_r": 0.7, "direction": "long",
-         "extra": {"side": "SELL"}},
-        {"bot_id": "x", "ts": "2026-05-12T18:00:00+00:00",
-         "realized_r": -0.2, "direction": "long",
-         "extra": {"side": "SELL"}},
+        {
+            "bot_id": "x",
+            "ts": "2026-05-12T17:00:00+00:00",
+            "realized_r": 0.7,
+            "direction": "long",
+            "extra": {"side": "SELL"},
+        },
+        {
+            "bot_id": "x",
+            "ts": "2026-05-12T18:00:00+00:00",
+            "realized_r": -0.2,
+            "direction": "long",
+            "extra": {"side": "SELL"},
+        },
     ]
     _write_trades(path, trades)
 
     result = attribution_cube.query(
-        slice_by=["direction"], trade_closes_path=path,
+        slice_by=["direction"],
+        trade_closes_path=path,
     )
     rows_by_dir = {r.key["direction"]: r for r in result.rows}
     assert "long" in rows_by_dir, (
-        "BUY records did not map to 'long' — wave-11 direction "
-        "derivation broken in attribution_cube._key_for"
+        "BUY records did not map to 'long' — wave-11 direction derivation broken in attribution_cube._key_for"
     )
     assert "short" in rows_by_dir, (
         "SELL records did not map to 'short' — pre-wave-11 attribution "
@@ -294,15 +314,14 @@ def test_query_direction_falls_back_to_direction_field_when_no_side(
 
     path = tmp_path / "tc.jsonl"
     trades = [
-        {"bot_id": "x", "ts": "2026-05-12T14:00:00+00:00",
-         "realized_r": 1.0, "direction": "short", "extra": {}},
-        {"bot_id": "x", "ts": "2026-05-12T15:00:00+00:00",
-         "realized_r": 0.5, "direction": "short", "extra": {}},
+        {"bot_id": "x", "ts": "2026-05-12T14:00:00+00:00", "realized_r": 1.0, "direction": "short", "extra": {}},
+        {"bot_id": "x", "ts": "2026-05-12T15:00:00+00:00", "realized_r": 0.5, "direction": "short", "extra": {}},
     ]
     _write_trades(path, trades)
 
     result = attribution_cube.query(
-        slice_by=["direction"], trade_closes_path=path,
+        slice_by=["direction"],
+        trade_closes_path=path,
     )
     rows_by_dir = {r.key["direction"]: r for r in result.rows}
     assert "short" in rows_by_dir
@@ -325,25 +344,20 @@ def test_query_multi_dim_with_direction(tmp_path: Path) -> None:
     path = tmp_path / "tc.jsonl"
     trades = [
         # m2k longs
-        {"bot_id": "m2k", "ts": "2026-05-12T14:00:00+00:00",
-         "realized_r": 0.5, "extra": {"side": "BUY"}},
-        {"bot_id": "m2k", "ts": "2026-05-12T15:00:00+00:00",
-         "realized_r": 0.5, "extra": {"side": "BUY"}},
+        {"bot_id": "m2k", "ts": "2026-05-12T14:00:00+00:00", "realized_r": 0.5, "extra": {"side": "BUY"}},
+        {"bot_id": "m2k", "ts": "2026-05-12T15:00:00+00:00", "realized_r": 0.5, "extra": {"side": "BUY"}},
         # m2k shorts
-        {"bot_id": "m2k", "ts": "2026-05-12T16:00:00+00:00",
-         "realized_r": 0.4, "extra": {"side": "SELL"}},
+        {"bot_id": "m2k", "ts": "2026-05-12T16:00:00+00:00", "realized_r": 0.4, "extra": {"side": "SELL"}},
         # eur longs
-        {"bot_id": "eur", "ts": "2026-05-12T17:00:00+00:00",
-         "realized_r": 0.3, "extra": {"side": "BUY"}},
+        {"bot_id": "eur", "ts": "2026-05-12T17:00:00+00:00", "realized_r": 0.3, "extra": {"side": "BUY"}},
     ]
     _write_trades(path, trades)
 
     result = attribution_cube.query(
-        slice_by=["bot", "direction"], trade_closes_path=path,
+        slice_by=["bot", "direction"],
+        trade_closes_path=path,
     )
-    rows_by_key = {
-        (r.key["bot"], r.key["direction"]): r for r in result.rows
-    }
+    rows_by_key = {(r.key["bot"], r.key["direction"]): r for r in result.rows}
     assert ("m2k", "long") in rows_by_key
     assert ("m2k", "short") in rows_by_key
     assert ("eur", "long") in rows_by_key

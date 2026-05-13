@@ -44,6 +44,7 @@ THE ENTRY POINT:
         return None
     size = base_size * verdict.final_size_multiplier
 """
+
 from __future__ import annotations
 
 import json
@@ -86,14 +87,14 @@ class ConsolidatedVerdict:
     action: str
 
     # ── Base verdict (from JarvisAdmin) ──
-    base_verdict: str                       # APPROVED / DENIED / CONDITIONAL / DEFERRED
+    base_verdict: str  # APPROVED / DENIED / CONDITIONAL / DEFERRED
     base_reason: str
     base_size_cap_qty: float | None = None
 
     # ── Final adjusted verdict (after enrichment) ──
     final_verdict: str = ""
-    final_size_multiplier: float = 1.0      # 0.0 = blocked, 1.0 = full
-    confidence: float = 0.0                 # in [0, 1]
+    final_size_multiplier: float = 1.0  # 0.0 = blocked, 1.0 = full
+    confidence: float = 0.0  # in [0, 1]
 
     # ── Operator-override snapshot ──
     operator_override_level: str = "NORMAL"
@@ -140,15 +141,15 @@ class ConsolidatedVerdict:
 class IntelligenceConfig:
     """Operator-tunable knobs for the intelligence layer."""
 
-    enable_intelligence: bool = True              # master switch
-    enable_iterative_debate: bool = True          # 3-round firm-board vs single-pass
+    enable_intelligence: bool = True  # master switch
+    enable_iterative_debate: bool = True  # 3-round firm-board vs single-pass
     enable_world_model: bool = True
     enable_rag: bool = True
     enable_causal: bool = True
 
-    causal_veto_threshold: float = -0.4           # below this -> downgrade
-    rag_caution_size_shrink: float = 0.25         # per caution
-    consensus_warning_threshold: float = 0.4       # below this -> low confidence flag
+    causal_veto_threshold: float = -0.4  # below this -> downgrade
+    rag_caution_size_shrink: float = 0.25  # per caution
+    consensus_warning_threshold: float = 0.4  # below this -> low confidence flag
 
     # Whether to actually downgrade a verdict on causal veto, or just
     # annotate. Conservative default: annotate-only, so JarvisAdmin
@@ -241,13 +242,17 @@ class JarvisIntelligence:
         proposal = self._req_to_proposal(req, ctx)
         rag_ctx = self._consult_rag(proposal, current_narrative, layer_errors)
         causal_score, causal_reason = self._consult_causal(
-            proposal, causal_feature_history, layer_errors,
+            proposal,
+            causal_feature_history,
+            layer_errors,
         )
         wm_action, wm_expected_r = self._consult_world_model(
-            proposal, layer_errors,
+            proposal,
+            layer_errors,
         )
         firm_consensus, firm_advocate = self._consult_firm_board(
-            proposal, layer_errors,
+            proposal,
+            layer_errors,
         )
 
         # ── 4. Synthesize final verdict ──
@@ -271,7 +276,9 @@ class JarvisIntelligence:
     # ── Hard-block / passthrough / error paths ───────────────
 
     def _hard_block_verdict(
-        self, req: ActionRequest, override_level: str,
+        self,
+        req: ActionRequest,
+        override_level: str,
     ) -> ConsolidatedVerdict:
         v = ConsolidatedVerdict(
             ts=datetime.now(UTC).isoformat(),
@@ -296,7 +303,8 @@ class JarvisIntelligence:
         override_level: str,
     ) -> ConsolidatedVerdict:
         size_mult = self._verdict_to_size(
-            base.verdict, getattr(base, "size_cap_mult", None),
+            base.verdict,
+            getattr(base, "size_cap_mult", None),
         )
         v = ConsolidatedVerdict(
             ts=datetime.now(UTC).isoformat(),
@@ -316,7 +324,10 @@ class JarvisIntelligence:
         return v
 
     def _error_verdict(
-        self, req: ActionRequest, override_level: str, error_msg: str,
+        self,
+        req: ActionRequest,
+        override_level: str,
+        error_msg: str,
     ) -> ConsolidatedVerdict:
         return ConsolidatedVerdict(
             ts=datetime.now(UTC).isoformat(),
@@ -337,6 +348,7 @@ class JarvisIntelligence:
     def _operator_override_level(self) -> str:
         try:
             from eta_engine.obs.operator_override import get_state
+
             return str(get_state().level.value)
         except Exception as exc:  # noqa: BLE001
             logger.debug("jarvis_intel: override read failed (%s)", exc)
@@ -348,6 +360,7 @@ class JarvisIntelligence:
         ctx: JarvisContext | None,
     ) -> Proposal:
         from eta_engine.brain.jarvis_v3.firm_board import Proposal
+
         # Best-effort field extraction. We keep this defensive because
         # different subsystems serialize different payloads.
         payload = getattr(req, "payload", {}) or {}
@@ -375,6 +388,7 @@ class JarvisIntelligence:
                 else:
                     # Unknown shape -- keep payload-derived stress on failure
                     import contextlib
+
                     with contextlib.suppress(TypeError, ValueError):
                         stress = float(ctx_stress)
         return Proposal(
@@ -400,11 +414,15 @@ class JarvisIntelligence:
             from eta_engine.brain.jarvis_v3.memory_rag import (
                 rag_enrich_decision_context,
             )
+
             return rag_enrich_decision_context(
                 current_narrative=narrative,
-                regime=proposal.regime, session=proposal.session,
-                stress=proposal.stress, direction=proposal.direction,
-                memory=self.memory, k=5,
+                regime=proposal.regime,
+                session=proposal.session,
+                stress=proposal.stress,
+                direction=proposal.direction,
+                memory=self.memory,
+                k=5,
             )
         except Exception as exc:  # noqa: BLE001
             errors.append(f"rag: {exc}")
@@ -422,15 +440,18 @@ class JarvisIntelligence:
             from eta_engine.brain.jarvis_v3.causal_layer import (
                 score_causal_support,
             )
+
             ev = score_causal_support(
                 signal_features={
                     "sentiment": proposal.sentiment,
                     "sage_score": proposal.sage_score,
                 },
                 proposed_action="approve_full",
-                regime=proposal.regime, session=proposal.session,
+                regime=proposal.regime,
+                session=proposal.session,
                 direction=proposal.direction,
-                memory=self.memory, feature_history=feature_history,
+                memory=self.memory,
+                feature_history=feature_history,
             )
             return ev.score, ev.reason
         except Exception as exc:  # noqa: BLE001
@@ -450,6 +471,7 @@ class JarvisIntelligence:
                 ActionConditionedTable,
                 rank_actions,
             )
+
             s = encode_state(
                 regime=proposal.regime,
                 session=proposal.session,
@@ -458,13 +480,13 @@ class JarvisIntelligence:
             table = ActionConditionedTable()
             table.fit_from_episodes(self.memory._episodes)
             ranking = rank_actions(
-                state=s, table=table, n_rollouts=10, horizon=4,
+                state=s,
+                table=table,
+                n_rollouts=10,
+                horizon=4,
             )
             best = ranking.best_action() or ""
-            best_value = (
-                ranking.ranked[0][1].expected_return
-                if ranking.ranked else 0.0
-            )
+            best_value = ranking.ranked[0][1].expected_return if ranking.ranked else 0.0
             return best, best_value
         except Exception as exc:  # noqa: BLE001
             errors.append(f"world_model: {exc}")
@@ -480,14 +502,16 @@ class JarvisIntelligence:
                 from eta_engine.brain.jarvis_v3.firm_board_debate import (
                     deliberate_iterative,
                 )
+
                 v = deliberate_iterative(
-                    proposal=proposal, memory=self.memory,
+                    proposal=proposal,
+                    memory=self.memory,
                 )
                 return v.round_3_consensus, (
-                    v.devils_advocate_role.value
-                    if v.devils_advocate_role is not None else None
+                    v.devils_advocate_role.value if v.devils_advocate_role is not None else None
                 )
             from eta_engine.brain.jarvis_v3.firm_board import deliberate
+
             v_single = deliberate(proposal=proposal, memory=self.memory)
             return v_single.consensus, None
         except Exception as exc:  # noqa: BLE001
@@ -497,7 +521,9 @@ class JarvisIntelligence:
     # ── Synthesis ────────────────────────────────────────────
 
     def _verdict_to_size(
-        self, verdict_value: str, size_cap_mult: float | None = None,
+        self,
+        verdict_value: str,
+        size_cap_mult: float | None = None,
     ) -> float:
         """Map a base verdict to a size multiplier.
 
@@ -536,7 +562,8 @@ class JarvisIntelligence:
     ) -> ConsolidatedVerdict:
         base_verdict = str(base_response.verdict)
         size_mult = self._verdict_to_size(
-            base_verdict, getattr(base_response, "size_cap_mult", None),
+            base_verdict,
+            getattr(base_response, "size_cap_mult", None),
         )
         final_verdict = base_verdict
 
@@ -603,5 +630,6 @@ class JarvisIntelligence:
                 f.write(json.dumps(v.to_audit_record(), default=str) + "\n")
         except OSError as exc:
             logger.warning(
-                "jarvis_intel: verdict log append failed (%s)", exc,
+                "jarvis_intel: verdict log append failed (%s)",
+                exc,
             )

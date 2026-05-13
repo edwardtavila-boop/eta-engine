@@ -252,7 +252,8 @@ class SageGatedORBStrategy:
         self._orb.attach_es_provider(provider)
 
     def attach_vix_provider(
-        self, provider: Callable[[BarData], float | None] | None,
+        self,
+        provider: Callable[[BarData], float | None] | None,
     ) -> None:
         """Wire (or detach) a VIX provider after construction.
 
@@ -307,7 +308,7 @@ class SageGatedORBStrategy:
         from eta_engine.brain.jarvis_v3.sage.base import MarketContext
         from eta_engine.brain.jarvis_v3.sage.consultation import consult_sage
 
-        bars_dicts = [_bar_to_dict(b) for b in hist[-self.cfg.sage.sage_lookback_bars:]]
+        bars_dicts = [_bar_to_dict(b) for b in hist[-self.cfg.sage.sage_lookback_bars :]]
         if len(bars_dicts) < 25:
             # Not enough bars for the regime detector — let ORB fire as
             # if the overlay were off. Failing-closed here would silence
@@ -324,10 +325,7 @@ class SageGatedORBStrategy:
         try:
             report = consult_sage(
                 ctx,
-                enabled=(
-                    set(self.cfg.sage.enabled_schools)
-                    if self.cfg.sage.enabled_schools else None
-                ),
+                enabled=(set(self.cfg.sage.enabled_schools) if self.cfg.sage.enabled_schools else None),
                 parallel=False,
                 use_cache=True,
                 apply_edge_weights=self.cfg.sage.apply_edge_weights,
@@ -341,10 +339,7 @@ class SageGatedORBStrategy:
         # conviction >= threshold AND alignment_score >= threshold.
         # alignment_score uses ctx.side so already side-correct.
         bias_str = report.composite_bias.value
-        bias_aligned = (
-            (opened.side == "BUY" and bias_str == "long")
-            or (opened.side == "SELL" and bias_str == "short")
-        )
+        bias_aligned = (opened.side == "BUY" and bias_str == "long") or (opened.side == "SELL" and bias_str == "short")
         if not bias_aligned:
             self._reset_orb_day_state()
             return None
@@ -358,6 +353,7 @@ class SageGatedORBStrategy:
         # Trade survived — annotate regime so the audit trail tells us
         # WHY it fired (sage-confirmed vs naked ORB).
         from dataclasses import replace
+
         confirmed = replace(opened, regime="orb_sage_confirmed")
         return self._maybe_attach_scale_out(confirmed)
 
@@ -414,6 +410,7 @@ class SageGatedORBStrategy:
         if not self.cfg.enable_scale_out:
             return opened
         from dataclasses import replace
+
         stop_dist = abs(opened.entry_price - opened.stop)
         if stop_dist <= 0:
             return opened

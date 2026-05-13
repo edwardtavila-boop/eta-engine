@@ -131,7 +131,6 @@ class RSIMeanReversionConfig:
 
 
 class RSIMeanReversionStrategy:
-
     def __init__(self, config: RSIMeanReversionConfig | None = None) -> None:
         self.cfg = config or RSIMeanReversionConfig()
         self._closes: deque[float] = deque(maxlen=max(self.cfg.bb_window, self.cfg.rsi_period) + 5)
@@ -198,12 +197,12 @@ class RSIMeanReversionStrategy:
         return 100.0 - 100.0 / (1.0 + rs)
 
     def _compute_bb(self) -> tuple[float, float, float] | None:
-        window = list(self._closes)[-self.cfg.bb_window:]
+        window = list(self._closes)[-self.cfg.bb_window :]
         if len(window) < self.cfg.bb_window:
             return None
         mean = sum(window) / len(window)
         var = sum((c - mean) ** 2 for c in window) / len(window)
-        std = var ** 0.5
+        std = var**0.5
         mult = self.cfg.bb_std_mult
         return (mean + mult * std, mean, mean - mult * std)
 
@@ -235,7 +234,7 @@ class RSIMeanReversionStrategy:
         vols = list(self._volume_window)
         mean = sum(vols) / len(vols)
         var = sum((v - mean) ** 2 for v in vols) / len(vols)
-        std = var ** 0.5
+        std = var**0.5
         if std <= 0.0:
             return 0.0
         return (bar.volume - mean) / std
@@ -285,8 +284,11 @@ class RSIMeanReversionStrategy:
         return 0
 
     def maybe_enter(
-        self, bar: BarData, hist: list[BarData],
-        equity: float, config: BacktestConfig,
+        self,
+        bar: BarData,
+        hist: list[BarData],
+        equity: float,
+        config: BacktestConfig,
     ) -> _Open | None:
         bar_date = bar.timestamp.date()
         if self._last_day != bar_date:
@@ -324,11 +326,7 @@ class RSIMeanReversionStrategy:
             if bar.close <= bb_lower + buffer:
                 side = "BUY"
                 self._n_long_sig += 1
-        elif (
-            self.cfg.allow_short
-            and rsi >= self.cfg.rsi_short_threshold
-            and bar.close >= bb_upper - buffer
-        ):
+        elif self.cfg.allow_short and rsi >= self.cfg.rsi_short_threshold and bar.close >= bb_upper - buffer:
             side = "SELL"
             self._n_short_sig += 1
 
@@ -362,13 +360,13 @@ class RSIMeanReversionStrategy:
         if not self._is_rejection(bar, side):
             return None
 
-        if (
-            self.cfg.enable_adx_filter
-            and len(self._highs) >= self.cfg.adx_period * 2 + 1
-        ):
+        if self.cfg.enable_adx_filter and len(self._highs) >= self.cfg.adx_period * 2 + 1:
             from eta_engine.strategies.technical_edges import compute_adx
+
             adx_result = compute_adx(
-                list(self._highs), list(self._lows), list(self._closes),
+                list(self._highs),
+                list(self._lows),
+                list(self._closes),
                 self.cfg.adx_period,
             )
             if adx_result is not None and adx_result.adx > self.cfg.adx_max:
@@ -380,7 +378,7 @@ class RSIMeanReversionStrategy:
             self._n_vol_reject += 1
             return None
 
-        atr_window = hist[-self.cfg.atr_period:] if hist else []
+        atr_window = hist[-self.cfg.atr_period :] if hist else []
         if len(atr_window) < 2:
             return None
         atr = sum(b.high - b.low for b in atr_window) / len(atr_window)
@@ -425,9 +423,15 @@ class RSIMeanReversionStrategy:
         self._trades_today += 1
         self._n_fired += 1
         return _Open(
-            entry_bar=bar, side=side, qty=qty, entry_price=entry,
-            stop=stop, target=target, risk_usd=risk_usd,
-            confluence=8.0, leverage=1.0,
+            entry_bar=bar,
+            side=side,
+            qty=qty,
+            entry_price=entry,
+            stop=stop,
+            target=target,
+            risk_usd=risk_usd,
+            confluence=8.0,
+            leverage=1.0,
             regime=f"rsi_mr_{side.lower()}_rsi{rsi:.0f}",
         )
 
@@ -442,14 +446,24 @@ def mnq_rsi_mr_preset() -> RSIMeanReversionConfig:
     activated the HTF trend gate to avoid fading bear capitulations."""
     return RSIMeanReversionConfig(
         rsi_period=10,
-        oversold_threshold=25.0, overbought_threshold=75.0,
-        rsi_long_threshold=20.0, rsi_short_threshold=80.0,
-        bb_window=20, bb_std_mult=2.0,
-        volume_z_lookback=20, min_volume_z=0.3, require_rejection=True,
-        atr_period=14, atr_stop_mult=1.5, rr_target=2.0,
-        risk_per_trade_pct=0.005, min_bars_between_trades=12,
-        max_trades_per_day=3, warmup_bars=50,
-        htf_lookback_5m_bars=12, htf_ema_period=50,
+        oversold_threshold=25.0,
+        overbought_threshold=75.0,
+        rsi_long_threshold=20.0,
+        rsi_short_threshold=80.0,
+        bb_window=20,
+        bb_std_mult=2.0,
+        volume_z_lookback=20,
+        min_volume_z=0.3,
+        require_rejection=True,
+        atr_period=14,
+        atr_stop_mult=1.5,
+        rr_target=2.0,
+        risk_per_trade_pct=0.005,
+        min_bars_between_trades=12,
+        max_trades_per_day=3,
+        warmup_bars=50,
+        htf_lookback_5m_bars=12,
+        htf_ema_period=50,
         require_htf_agreement=True,
     )
 
@@ -457,14 +471,24 @@ def mnq_rsi_mr_preset() -> RSIMeanReversionConfig:
 def nq_rsi_mr_preset() -> RSIMeanReversionConfig:
     return RSIMeanReversionConfig(
         rsi_period=10,
-        oversold_threshold=25.0, overbought_threshold=75.0,
-        rsi_long_threshold=20.0, rsi_short_threshold=80.0,
-        bb_window=20, bb_std_mult=2.0,
-        volume_z_lookback=20, min_volume_z=0.3, require_rejection=True,
-        atr_period=14, atr_stop_mult=1.0, rr_target=1.5,
-        risk_per_trade_pct=0.005, min_bars_between_trades=12,
-        max_trades_per_day=3, warmup_bars=50,
-        htf_lookback_5m_bars=12, htf_ema_period=50,
+        oversold_threshold=25.0,
+        overbought_threshold=75.0,
+        rsi_long_threshold=20.0,
+        rsi_short_threshold=80.0,
+        bb_window=20,
+        bb_std_mult=2.0,
+        volume_z_lookback=20,
+        min_volume_z=0.3,
+        require_rejection=True,
+        atr_period=14,
+        atr_stop_mult=1.0,
+        rr_target=1.5,
+        risk_per_trade_pct=0.005,
+        min_bars_between_trades=12,
+        max_trades_per_day=3,
+        warmup_bars=50,
+        htf_lookback_5m_bars=12,
+        htf_ema_period=50,
         require_htf_agreement=True,
     )
 
@@ -472,14 +496,24 @@ def nq_rsi_mr_preset() -> RSIMeanReversionConfig:
 def btc_rsi_mr_preset() -> RSIMeanReversionConfig:
     return RSIMeanReversionConfig(
         rsi_period=14,
-        oversold_threshold=30.0, overbought_threshold=70.0,
-        rsi_long_threshold=20.0, rsi_short_threshold=80.0,
-        bb_window=20, bb_std_mult=2.0,
-        volume_z_lookback=24, min_volume_z=0.2, require_rejection=True,
-        atr_period=14, atr_stop_mult=1.5, rr_target=2.0,
-        risk_per_trade_pct=0.005, min_bars_between_trades=12,
-        max_trades_per_day=2, warmup_bars=72,
-        htf_lookback_5m_bars=12, htf_ema_period=50,
+        oversold_threshold=30.0,
+        overbought_threshold=70.0,
+        rsi_long_threshold=20.0,
+        rsi_short_threshold=80.0,
+        bb_window=20,
+        bb_std_mult=2.0,
+        volume_z_lookback=24,
+        min_volume_z=0.2,
+        require_rejection=True,
+        atr_period=14,
+        atr_stop_mult=1.5,
+        rr_target=2.0,
+        risk_per_trade_pct=0.005,
+        min_bars_between_trades=12,
+        max_trades_per_day=2,
+        warmup_bars=72,
+        htf_lookback_5m_bars=12,
+        htf_ema_period=50,
         require_htf_agreement=True,
     )
 
@@ -487,13 +521,23 @@ def btc_rsi_mr_preset() -> RSIMeanReversionConfig:
 def eth_rsi_mr_preset() -> RSIMeanReversionConfig:
     return RSIMeanReversionConfig(
         rsi_period=14,
-        oversold_threshold=25.0, overbought_threshold=75.0,
-        rsi_long_threshold=20.0, rsi_short_threshold=80.0,
-        bb_window=20, bb_std_mult=2.5,
-        volume_z_lookback=24, min_volume_z=0.2, require_rejection=True,
-        atr_period=14, atr_stop_mult=1.8, rr_target=2.0,
-        risk_per_trade_pct=0.005, min_bars_between_trades=12,
-        max_trades_per_day=2, warmup_bars=72,
-        htf_lookback_5m_bars=12, htf_ema_period=50,
+        oversold_threshold=25.0,
+        overbought_threshold=75.0,
+        rsi_long_threshold=20.0,
+        rsi_short_threshold=80.0,
+        bb_window=20,
+        bb_std_mult=2.5,
+        volume_z_lookback=24,
+        min_volume_z=0.2,
+        require_rejection=True,
+        atr_period=14,
+        atr_stop_mult=1.8,
+        rr_target=2.0,
+        risk_per_trade_pct=0.005,
+        min_bars_between_trades=12,
+        max_trades_per_day=2,
+        warmup_bars=72,
+        htf_lookback_5m_bars=12,
+        htf_ema_period=50,
         require_htf_agreement=True,
     )

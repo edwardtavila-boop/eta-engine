@@ -30,6 +30,7 @@ Usage::
     python scripts/generate_investor_dashboard.py
     python scripts/generate_investor_dashboard.py --output state/investor_dashboard/index.html
 """
+
 from __future__ import annotations
 
 import argparse
@@ -48,6 +49,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def gather_payload() -> dict[str, Any]:
     """Pull non-sensitive state from various sources."""
     import os
+
     mode = os.environ.get("ETA_MODE", "PAPER").upper()
     mode_display = "LIVE" if mode == "LIVE" else "PAPER SIM"
 
@@ -55,8 +57,7 @@ def gather_payload() -> dict[str, Any]:
         "generated_at": datetime.now(UTC).isoformat(),
         "fleet": {
             "size": 7,
-            "names": ["MnqBot", "NqBot", "CryptoSeedBot", "EthPerpBot",
-                      "SolPerpBot", "XrpPerpBot", "BtcHybridBot"],
+            "names": ["MnqBot", "NqBot", "CryptoSeedBot", "EthPerpBot", "SolPerpBot", "XrpPerpBot", "BtcHybridBot"],
             "mode": mode_display,
         },
         "kaizen_recent": [],
@@ -70,11 +71,17 @@ def gather_payload() -> dict[str, Any]:
     if ledger_path.exists():
         try:
             from eta_engine.brain.jarvis_v3.kaizen import KaizenLedger
+
             ledger = KaizenLedger.load(ledger_path)
             tickets = sorted(ledger.tickets(), key=lambda t: t.opened_at, reverse=True)[:7]
             payload["kaizen_recent"] = [
-                {"id": t.id, "title": t.title, "status": t.status.value,
-                 "impact": t.impact, "opened": t.opened_at.isoformat()}
+                {
+                    "id": t.id,
+                    "title": t.title,
+                    "status": t.status.value,
+                    "impact": t.impact,
+                    "opened": t.opened_at.isoformat(),
+                }
                 for t in tickets
             ]
         except Exception as exc:  # noqa: BLE001
@@ -83,6 +90,7 @@ def gather_payload() -> dict[str, Any]:
     # Today's verdict-stream summary (compact; no per-event)
     try:
         from eta_engine.obs.jarvis_today_verdicts import aggregate_today
+
         agg = aggregate_today()
         payload["todays_verdicts"] = {
             "totals": agg.get("totals", {}),
@@ -178,15 +186,14 @@ HTML_TEMPLATE = """<!doctype html>
 
 def render_html(payload: dict[str, Any]) -> str:
     fleet_rows = "\n".join(
-        f"<tr><td>{i+1}</td><td>{name}</td></tr>"
-        for i, name in enumerate(payload["fleet"]["names"])
+        f"<tr><td>{i + 1}</td><td>{name}</td></tr>" for i, name in enumerate(payload["fleet"]["names"])
     )
     kaizen = payload.get("kaizen_recent") or []
     if kaizen:
         kaizen_rows = "\n".join(
             f'<div class="ticket"><div class="ticket-title">{t["title"]}</div>'
             f'<div class="ticket-meta">{t["id"]} &middot; impact: {t["impact"]} &middot; '
-            f'status: {t["status"]} &middot; opened: {t["opened"][:10]}</div></div>'
+            f"status: {t['status']} &middot; opened: {t['opened'][:10]}</div></div>"
             for t in kaizen
         )
     else:
@@ -198,11 +205,13 @@ def render_html(payload: dict[str, Any]) -> str:
     # Heatmap rows: one row per hour, simple text bars
     timeline = payload.get("todays_verdicts", {}).get("hourly_timeline", [])
     if timeline:
-        max_n = max(
-            max(int(row.get("approved", 0)), int(row.get("conditional", 0)),
-                int(row.get("rejected", 0)))
-            for row in timeline
-        ) or 1
+        max_n = (
+            max(
+                max(int(row.get("approved", 0)), int(row.get("conditional", 0)), int(row.get("rejected", 0)))
+                for row in timeline
+            )
+            or 1
+        )
         heatmap_rows = "<br>".join(
             f"  {row['hr']}:00&nbsp; "
             f"<span style='color:#2ECC71'>{'&block;' * int(int(row.get('approved', 0)) / max_n * 18)}</span>"
@@ -228,12 +237,14 @@ def render_html(payload: dict[str, Any]) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(description=__doc__,
-                                formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--output", type=Path,
-                   default=ROOT / "state" / "investor_dashboard" / "index.html")
-    p.add_argument("--json-payload", type=Path, default=None,
-                   help="Also dump the raw JSON payload to this path (for API consumers)")
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--output", type=Path, default=ROOT / "state" / "investor_dashboard" / "index.html")
+    p.add_argument(
+        "--json-payload",
+        type=Path,
+        default=None,
+        help="Also dump the raw JSON payload to this path (for API consumers)",
+    )
     p.add_argument("-v", "--verbose", action="store_true")
     args = p.parse_args(argv)
 

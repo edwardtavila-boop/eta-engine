@@ -23,6 +23,7 @@ Usage:
   # Walk-forward only
   python -m eta_engine.scripts.strategy_lab --bot mnq_futures_sage --wf-only
 """
+
 from __future__ import annotations
 
 import argparse
@@ -117,6 +118,7 @@ def _read_soak_returns(bot_id: str) -> list[float]:
     """Read trade-level returns from the paper soak ledger.
     Returns list of per-session PnL deltas for Monte Carlo analysis."""
     from eta_engine.scripts.workspace_roots import ETA_RUNTIME_STATE_DIR
+
     ledger_path = ETA_RUNTIME_STATE_DIR / "paper_soak_ledger.json"
     if not ledger_path.exists():
         return []
@@ -214,9 +216,15 @@ def _walk_forward(bot_id: str, days: int = 60, windows: int = 3) -> tuple[list[W
     for i in range(windows):
         skip = i * step
         cmd = [
-            sys.executable, str(ROOT / "scripts" / "paper_trade_sim.py"),
-            "--bot", bot_id, "--days", str(days),
-            "--skip-days", str(skip), "--json",
+            sys.executable,
+            str(ROOT / "scripts" / "paper_trade_sim.py"),
+            "--bot",
+            bot_id,
+            "--days",
+            str(days),
+            "--skip-days",
+            str(skip),
+            "--json",
         ]
         try:
             proc = sp.run(cmd, capture_output=True, text=True, timeout=300)
@@ -231,16 +239,22 @@ def _walk_forward(bot_id: str, days: int = 60, windows: int = 3) -> tuple[list[W
                 eq = iso.get("equity_curve", [])
                 if len(eq) > 1:
                     for j in range(1, len(eq)):
-                        delta = eq[j] - eq[j-1]
+                        delta = eq[j] - eq[j - 1]
                         if abs(delta) > 0.01:  # only trade-level changes
                             all_returns.append(delta)
 
-                windows_out.append(WalkForwardWindow(
-                    window_id=i, is_sharpe=0.0, oos_sharpe=0.0,
-                    is_trades=trades, oos_trades=0,
-                    is_win_rate=wr, oos_win_rate=0,
-                    degradation=0.0,
-                ))
+                windows_out.append(
+                    WalkForwardWindow(
+                        window_id=i,
+                        is_sharpe=0.0,
+                        oos_sharpe=0.0,
+                        is_trades=trades,
+                        oos_trades=0,
+                        is_win_rate=wr,
+                        oos_win_rate=0,
+                        degradation=0.0,
+                    )
+                )
         except (sp.TimeoutExpired, json.JSONDecodeError, KeyError):
             pass
 
@@ -273,6 +287,7 @@ def validate_bot(bot_id: str, days: int = 60, wf_windows: int = 3, mc_bootstraps
 
     try:
         from eta_engine.strategies.per_bot_registry import get_for_bot
+
         assignment = get_for_bot(bot_id)
         if assignment is None:
             report.errors.append(f"Bot not found: {bot_id}")
@@ -334,8 +349,7 @@ def format_report(report: LabReport) -> str:
         f"LAB {report.bot_id} ({report.symbol} {report.timeframe}) {report.strategy_kind}",
         f"  TRADES: {report.total_trades}  WR: {report.win_rate:.1f}%  "
         f"PnL: ${report.total_pnl:+.2f}  Avg R: {report.avg_r_per_trade:+.3f}",
-        f"  SHARPE: {report.sharpe_ratio:.3f}  SORTINO: {report.sortino_ratio:.3f}  "
-        f"PF: {report.profit_factor:.2f}",
+        f"  SHARPE: {report.sharpe_ratio:.3f}  SORTINO: {report.sortino_ratio:.3f}  PF: {report.profit_factor:.2f}",
         f"  WALK-FORWARD: IS={report.agg_is_sharpe:+.3f}  "
         f"OOS={report.agg_oos_sharpe:+.3f}  "
         f"Deg={report.degradation_avg:+.3f}  DSR={report.dsr_pass}",
@@ -350,8 +364,9 @@ def format_report(report: LabReport) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(prog="strategy_lab", description=__doc__,
-                                formatter_class=argparse.RawDescriptionHelpFormatter)
+    p = argparse.ArgumentParser(
+        prog="strategy_lab", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     p.add_argument("--bot", type=str, help="bot_id to validate")
     p.add_argument("--all", action="store_true", help="validate all active bots")
     p.add_argument("--days", type=int, default=60, help="days per walk-forward window")
@@ -371,6 +386,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.all:
         from eta_engine.strategies.per_bot_registry import all_assignments, is_active
+
         bots = [a.bot_id for a in all_assignments() if is_active(a)]
         results: list[LabReport] = []
 
@@ -379,8 +395,10 @@ def main(argv: list[str] | None = None) -> int:
             report = validate_bot(bot, args.days, args.windows, args.bootstraps)
             results.append(report)
             verdict = report.mc_verdict if report.total_trades > 0 else "NO_TRADES"
-            print(f"  {bot:28s} {report.total_trades:>4}T  WR={report.win_rate:>5.1f}%  "
-                  f"OOS={report.agg_oos_sharpe:>+6.3f}  MC={verdict}")
+            print(
+                f"  {bot:28s} {report.total_trades:>4}T  WR={report.win_rate:>5.1f}%  "
+                f"OOS={report.agg_oos_sharpe:>+6.3f}  MC={verdict}"
+            )
 
         if args.json:
             print(json.dumps([r.__dict__ for r in results], indent=2, default=str))

@@ -84,17 +84,19 @@ def compute_sessions(ledger: dict) -> list[dict]:
         elif total_pnl < 0:
             flag = "RED"
 
-        results.append({
-            "bot_id": bot_id,
-            "symbol": symbol,
-            "strategy": strategy,
-            "total_pnl": round(total_pnl, 2),
-            "wr": round(wr, 1),
-            "sharpe": round(sharpe, 2),
-            "n_sessions": n_sessions,
-            "n_trades": n_trades,
-            "flag": flag,
-        })
+        results.append(
+            {
+                "bot_id": bot_id,
+                "symbol": symbol,
+                "strategy": strategy,
+                "total_pnl": round(total_pnl, 2),
+                "wr": round(wr, 1),
+                "sharpe": round(sharpe, 2),
+                "n_sessions": n_sessions,
+                "n_trades": n_trades,
+                "flag": flag,
+            }
+        )
 
     return results
 
@@ -157,4 +159,5 @@ async def health() -> dict[str, object]:
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="127.0.0.1", port=8424)

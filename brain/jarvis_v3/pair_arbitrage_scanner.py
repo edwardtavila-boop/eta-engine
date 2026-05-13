@@ -17,6 +17,7 @@ Method:
 
 Pure stdlib + math.
 """
+
 from __future__ import annotations
 
 import logging
@@ -30,11 +31,11 @@ logger = logging.getLogger(__name__)
 class PairSpec:
     """Definition of one pair to scan."""
 
-    label: str                          # e.g. "MNQ_vs_ES1"
-    leg_a: str                          # e.g. "MNQ"
-    leg_b: str                          # e.g. "ES1"
-    prices_a: list[float]               # historical prices, oldest -> newest
-    prices_b: list[float]               # same length
+    label: str  # e.g. "MNQ_vs_ES1"
+    leg_a: str  # e.g. "MNQ"
+    leg_b: str  # e.g. "ES1"
+    prices_a: list[float]  # historical prices, oldest -> newest
+    prices_b: list[float]  # same length
     lookback_bars: int = 60
     entry_z: float = 2.0
     exit_z: float = 0.5
@@ -52,8 +53,8 @@ class ArbitrageSignal:
     basis_mean: float
     basis_std: float
     z_score: float
-    direction: str                      # "long_a_short_b" / "short_a_long_b"
-    target_z: float                     # exit at |z| <= target
+    direction: str  # "long_a_short_b" / "short_a_long_b"
+    target_z: float  # exit at |z| <= target
     note: str = ""
 
 
@@ -90,16 +91,14 @@ def scan_pair(spec: PairSpec) -> ArbitrageSignal | None:
     n = min(len(spec.prices_a), len(spec.prices_b))
     if n < spec.lookback_bars:
         return None
-    a = spec.prices_a[-spec.lookback_bars:]
-    b = spec.prices_b[-spec.lookback_bars:]
+    a = spec.prices_a[-spec.lookback_bars :]
+    b = spec.prices_b[-spec.lookback_bars :]
 
     # Hedge ratio = OLS slope of a on b
     hedge_ratio = _ols_slope(b, a)
 
     # Historical basis (OOS-safe: use bars [0..n-2] for stats, last for entry)
-    historical_basis = [
-        a[i] - hedge_ratio * b[i] for i in range(len(a) - 1)
-    ]
+    historical_basis = [a[i] - hedge_ratio * b[i] for i in range(len(a) - 1)]
     mean, std = _moments(historical_basis)
     if std == 0:
         return None
@@ -124,10 +123,7 @@ def scan_pair(spec: PairSpec) -> ArbitrageSignal | None:
         z_score=round(z, 3),
         direction=direction,
         target_z=spec.exit_z,
-        note=(
-            f"basis {current_basis:+.4f} vs mean {mean:+.4f} "
-            f"(z={z:+.2f}); revert to |z|<={spec.exit_z}"
-        ),
+        note=(f"basis {current_basis:+.4f} vs mean {mean:+.4f} (z={z:+.2f}); revert to |z|<={spec.exit_z}"),
     )
 
 
@@ -142,7 +138,8 @@ def scan_pairs(specs: list[PairSpec]) -> ScanReport:
         except Exception as exc:  # noqa: BLE001
             logger.warning(
                 "pair_arb_scanner: scan_pair failed for %s (%s)",
-                spec.label, exc,
+                spec.label,
+                exc,
             )
     signals.sort(key=lambda s: abs(s.z_score), reverse=True)
     return ScanReport(

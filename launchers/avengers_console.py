@@ -6,6 +6,7 @@ Four personas, one fleet, one dashboard:
 * ALFRED  — Sonnet-tier default persona
 * ROBIN   — Haiku-tier grunt persona
 """
+
 from __future__ import annotations
 
 import sys

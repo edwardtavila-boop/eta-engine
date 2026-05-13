@@ -21,6 +21,7 @@ Parquet bar files at ``data/parquet/<symbol>_1d.parquet`` per the
 existing data layout. Symbols: MNQ, NQ, BTCUSDT, ETHUSDT, SOLUSDT,
 XRPUSDT (also accepts CME aliases like MBT/MET).
 """
+
 from __future__ import annotations
 
 import argparse
@@ -52,6 +53,7 @@ def _load_returns(parquet_dir: Path, symbol: str, *, days: int) -> list[float] |
         return None
     try:
         import pandas as pd
+
         df = pd.read_parquet(path)
     except (ImportError, OSError) as exc:
         logger.debug("load %s failed: %s", path, exc)
@@ -85,13 +87,10 @@ def _pearson(a: list[float], b: list[float]) -> float:
 
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(description=__doc__,
-                                formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--parquet-dir", type=Path,
-                   default=ROOT.parent / "data" / "parquet")
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--parquet-dir", type=Path, default=ROOT.parent / "data" / "parquet")
     p.add_argument("--days", type=int, default=90)
-    p.add_argument("--out", type=Path,
-                   default=ROOT / "state" / "correlation" / "learned.json")
+    p.add_argument("--out", type=Path, default=ROOT / "state" / "correlation" / "learned.json")
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("-v", "--verbose", action="store_true")
     args = p.parse_args(argv)
@@ -121,7 +120,7 @@ def main(argv: list[str] | None = None) -> int:
     pairs: dict[str, float] = {}
     syms = sorted(returns.keys())
     for i, a in enumerate(syms):
-        for b in syms[i+1:]:
+        for b in syms[i + 1 :]:
             corr = _pearson(returns[a], returns[b])
             pairs[f"{a}|{b}"] = corr
             logger.info("  corr(%s,%s) = %.4f", a, b, corr)

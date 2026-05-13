@@ -65,9 +65,7 @@ FORBIDDEN_STAGED_PATHS = frozenset(
         "docs/drift_watchdog.jsonl",
     }
 )
-FORBIDDEN_STAGED_PREFIXES = (
-    "docs/live_data/",
-)
+FORBIDDEN_STAGED_PREFIXES = ("docs/live_data/",)
 FORBIDDEN_STAGED_REGEXES = (
     re.compile(
         r"^docs/(broker_connections|btc_live|btc_paper|btc_inventory)/.*_20\d{6}T.*Z\.json$",
@@ -150,11 +148,7 @@ def _forbidden_staged_check(*, root: Path) -> int:
 def _stale_path_lint_candidates_from_lines(lines: list[str]) -> list[str]:
     """Return staged text/config files that should be stale-path linted."""
     normalized = [line.replace("\\", "/") for line in lines]
-    return [
-        line
-        for line in normalized
-        if Path(line).suffix.lower() in STALE_PATH_LINT_EXTENSIONS
-    ]
+    return [line for line in normalized if Path(line).suffix.lower() in STALE_PATH_LINT_EXTENSIONS]
 
 
 def _stale_path_lint_check(*, root: Path) -> int:

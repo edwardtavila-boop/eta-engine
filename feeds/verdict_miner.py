@@ -10,6 +10,7 @@ Analyzes verdict history to find:
 
 Output: ``reports/verdict_patterns/daily_report.json``.
 """
+
 from __future__ import annotations
 
 import json
@@ -143,12 +144,14 @@ class VerdictPatternMiner:
         hotspots: list[dict] = []
         for bot, stats in sorted(by_bot.items(), key=lambda x: x[1]["deny_pct"], reverse=True):
             if stats["denied"] >= 3:
-                hotspots.append({
-                    "bot": bot,
-                    "denied": stats["denied"],
-                    "deny_pct": stats["deny_pct"],
-                    "total": stats["total"],
-                })
+                hotspots.append(
+                    {
+                        "bot": bot,
+                        "denied": stats["denied"],
+                        "deny_pct": stats["deny_pct"],
+                        "total": stats["total"],
+                    }
+                )
         return hotspots[:10]
 
     def _size_cap_patterns(self, verdicts: list[dict]) -> list[dict]:
@@ -157,24 +160,20 @@ class VerdictPatternMiner:
         patterns: list[dict] = []
         for bot, stats in sorted(by_bot.items(), key=lambda x: x[1]["size_caps"], reverse=True):
             if stats["size_caps"] > 0:
-                patterns.append({
-                    "bot": bot,
-                    "size_caps": stats["size_caps"],
-                    "size_cap_rate": round(stats["size_caps"] / stats["total"] * 100, 1),
-                    "total": stats["total"],
-                })
+                patterns.append(
+                    {
+                        "bot": bot,
+                        "size_caps": stats["size_caps"],
+                        "size_cap_rate": round(stats["size_caps"] / stats["total"] * 100, 1),
+                        "total": stats["total"],
+                    }
+                )
         return patterns[:10]
 
     def _overall_rate(self, verdicts: list[dict]) -> dict:
         total = len(verdicts)
-        approved = sum(
-            1 for v in verdicts
-            if str(v.get("verdict", v.get("decision", ""))).upper() == "APPROVED"
-        )
-        denied = sum(
-            1 for v in verdicts
-            if str(v.get("verdict", v.get("decision", ""))).upper() == "DENIED"
-        )
+        approved = sum(1 for v in verdicts if str(v.get("verdict", v.get("decision", ""))).upper() == "APPROVED")
+        denied = sum(1 for v in verdicts if str(v.get("verdict", v.get("decision", ""))).upper() == "DENIED")
         return {
             "total": total,
             "approved": approved,
@@ -188,8 +187,7 @@ class VerdictPatternMiner:
         hotspots = self._denied_hotspots(verdicts)
         if hotspots:
             recs.append(
-                f"Review {hotspots[0]['bot']}: "
-                f"{hotspots[0]['denied']} denials ({hotspots[0]['deny_pct']}%)",
+                f"Review {hotspots[0]['bot']}: {hotspots[0]['denied']} denials ({hotspots[0]['deny_pct']}%)",
             )
         hourly = self._analyze_by_hour(verdicts)
         if hourly:
@@ -203,32 +201,36 @@ class VerdictPatternMiner:
     def _write(self, report: dict[str, Any]) -> None:
         self.output_path.parent.mkdir(parents=True, exist_ok=True)
         self.output_path.write_text(
-            json.dumps(report, indent=2, default=str), encoding="utf-8",
+            json.dumps(report, indent=2, default=str),
+            encoding="utf-8",
         )
 
 
 def main() -> None:
     from argparse import ArgumentParser
+
     parser = ArgumentParser(description="JARVIS Verdict Pattern Miner")
     parser.add_argument(
-        "--verdicts", type=Path,
+        "--verdicts",
+        type=Path,
         default=Path("C:/EvolutionaryTradingAlgo/var/eta_engine/state/jarvis_live_log.jsonl"),
     )
     parser.add_argument(
-        "--output", type=Path,
+        "--output",
+        type=Path,
         default=Path("C:/EvolutionaryTradingAlgo/reports/verdict_patterns/daily_report.json"),
     )
     args = parser.parse_args()
 
     logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
+        level=logging.INFO,
+        format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
     )
     miner = VerdictPatternMiner(verdicts_path=args.verdicts, output_path=args.output)
     report = miner.run()
     if "overall_approval_rate" in report:
         print(
-            f"Verdicts: {report['total_verdicts']} | "
-            f"Approve: {report['overall_approval_rate']['approve_pct']}%",
+            f"Verdicts: {report['total_verdicts']} | Approve: {report['overall_approval_rate']['approve_pct']}%",
         )
     else:
         print(f"Verdicts: {report.get('message', 'no data')}")

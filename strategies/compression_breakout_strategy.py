@@ -64,23 +64,23 @@ class CompressionBreakoutConfig:
     """Knobs for compression-release breakout."""
 
     # Compression detection
-    bb_period: int = 20             # Bollinger band period
-    bb_std_mult: float = 2.0        # Standard BB
-    bb_width_window: int = 100      # Lookback for width-percentile compute
+    bb_period: int = 20  # Bollinger band period
+    bb_std_mult: float = 2.0  # Standard BB
+    bb_width_window: int = 100  # Lookback for width-percentile compute
     bb_width_max_percentile: float = 0.30  # Compression = width in bottom 30%
     atr_period: int = 14
-    atr_ma_period: int = 20         # Compression = ATR < ATR_MA
+    atr_ma_period: int = 20  # Compression = ATR < ATR_MA
 
     # Breakout window — bar.close must clear the high/low of last N bars
     breakout_lookback: int = 20
 
     # Trend filter
-    trend_ema_period: int = 200     # 200-EMA on the LTF stream
+    trend_ema_period: int = 200  # 200-EMA on the LTF stream
     require_trend_alignment: bool = True
 
     # Quality gates
     volume_z_lookback: int = 20
-    min_volume_z: float = 0.5       # breakout volume z >= this
+    min_volume_z: float = 0.5  # breakout volume z >= this
     min_close_location: float = 0.70  # close in top 30% of bar range
 
     # Risk
@@ -91,7 +91,7 @@ class CompressionBreakoutConfig:
     # Hygiene
     min_bars_between_trades: int = 12
     max_trades_per_day: int = 2
-    warmup_bars: int = 220          # 200-EMA needs ~220 bars
+    warmup_bars: int = 220  # 200-EMA needs ~220 bars
 
     # Direction
     allow_long: bool = True
@@ -123,7 +123,8 @@ class CompressionBreakoutStrategy:
                 self.cfg.bb_period,
                 self.cfg.breakout_lookback,
                 self.cfg.atr_ma_period,
-            ) + 5,
+            )
+            + 5,
         )
         # BB width history for percentile compute
         self._bb_width_history: deque[float] = deque(
@@ -178,10 +179,10 @@ class CompressionBreakoutStrategy:
         if not enough data."""
         if len(self._closes) < self.cfg.bb_period:
             return None
-        recent = list(self._closes)[-self.cfg.bb_period:]
+        recent = list(self._closes)[-self.cfg.bb_period :]
         mean = sum(recent) / len(recent)
         var = sum((c - mean) ** 2 for c in recent) / len(recent)
-        std = var ** 0.5
+        std = var**0.5
         if mean <= 0.0:
             return None
         upper = mean + self.cfg.bb_std_mult * std
@@ -199,10 +200,7 @@ class CompressionBreakoutStrategy:
         """True if current BB width is in bottom N percentile OR
         current ATR < ATR_MA."""
         bb_width = self._bb_width_pct()
-        if (
-            bb_width is not None
-            and len(self._bb_width_history) >= self.cfg.bb_width_window
-        ):
+        if bb_width is not None and len(self._bb_width_history) >= self.cfg.bb_width_window:
             widths = sorted(self._bb_width_history)
             cutoff_idx = int(self.cfg.bb_width_max_percentile * len(widths))
             cutoff = widths[cutoff_idx] if cutoff_idx < len(widths) else widths[-1]
@@ -210,10 +208,7 @@ class CompressionBreakoutStrategy:
                 return True
         # ATR < ATR_MA fallback
         if len(self._tr_window) >= self.cfg.atr_ma_period:
-            atr = (
-                sum(list(self._tr_window)[-self.cfg.atr_period:])
-                / self.cfg.atr_period
-            )
+            atr = sum(list(self._tr_window)[-self.cfg.atr_period :]) / self.cfg.atr_period
             atr_ma = sum(self._tr_window) / len(self._tr_window)
             if atr < atr_ma:
                 return True
@@ -225,7 +220,7 @@ class CompressionBreakoutStrategy:
         vols = list(self._volume_window)
         mean = sum(vols) / len(vols)
         var = sum((v - mean) ** 2 for v in vols) / len(vols)
-        std = var ** 0.5
+        std = var**0.5
         if std <= 0.0:
             return 0.0
         return (bar.volume - mean) / std
@@ -269,7 +264,9 @@ class CompressionBreakoutStrategy:
         self._tr_window.append(tr)
         # Trend EMA
         self._trend_ema = _ema_step(
-            self._trend_ema, bar.close, self.cfg.trend_ema_period,
+            self._trend_ema,
+            bar.close,
+            self.cfg.trend_ema_period,
         )
         # Track BB-width history every bar (including warmup) so the
         # percentile is well-populated before we start checking.
@@ -285,8 +282,7 @@ class CompressionBreakoutStrategy:
             return None
         if (
             self._last_entry_idx is not None
-            and (self._bars_seen - self._last_entry_idx)
-            < self.cfg.min_bars_between_trades
+            and (self._bars_seen - self._last_entry_idx) < self.cfg.min_bars_between_trades
         ):
             self._high_window.append(bar.high)
             self._low_window.append(bar.low)
@@ -301,24 +297,14 @@ class CompressionBreakoutStrategy:
             self._bars_since_compression = 0
         else:
             self._bars_since_compression += 1
-        compression_recent = (
-            self._bars_since_compression <= self.cfg.compression_recency_window
-        )
+        compression_recent = self._bars_since_compression <= self.cfg.compression_recency_window
 
         # Detect breakout vs PRIOR window (not including current bar)
         side: str | None = None
-        if (
-            self.cfg.allow_long
-            and self._high_window
-            and bar.close > max(self._high_window)
-        ):
+        if self.cfg.allow_long and self._high_window and bar.close > max(self._high_window):
             side = "BUY"
             self._n_breakouts_seen += 1
-        elif (
-            self.cfg.allow_short
-            and self._low_window
-            and bar.close < min(self._low_window)
-        ):
+        elif self.cfg.allow_short and self._low_window and bar.close < min(self._low_window):
             side = "SELL"
             self._n_breakouts_seen += 1
 
@@ -380,9 +366,15 @@ class CompressionBreakoutStrategy:
         self._trades_today += 1
         self._n_fires += 1
         return _Open(
-            entry_bar=bar, side=side, qty=qty, entry_price=entry,
-            stop=stop, target=target, risk_usd=risk_usd,
-            confluence=10.0, leverage=1.0,
+            entry_bar=bar,
+            side=side,
+            qty=qty,
+            entry_price=entry,
+            stop=stop,
+            target=target,
+            risk_usd=risk_usd,
+            confluence=10.0,
+            leverage=1.0,
             regime=f"compression_breakout_{side.lower()}",
         )
 
@@ -395,14 +387,20 @@ class CompressionBreakoutStrategy:
 def btc_compression_preset() -> CompressionBreakoutConfig:
     """Calibrated for BTC 1h bars."""
     return CompressionBreakoutConfig(
-        bb_period=20, bb_std_mult=2.0,
-        bb_width_window=100, bb_width_max_percentile=0.30,
-        atr_period=14, atr_ma_period=20,
+        bb_period=20,
+        bb_std_mult=2.0,
+        bb_width_window=100,
+        bb_width_max_percentile=0.30,
+        atr_period=14,
+        atr_ma_period=20,
         breakout_lookback=20,
-        trend_ema_period=200, require_trend_alignment=True,
-        volume_z_lookback=20, min_volume_z=0.5,
+        trend_ema_period=200,
+        require_trend_alignment=True,
+        volume_z_lookback=20,
+        min_volume_z=0.5,
         min_close_location=0.70,
-        atr_stop_mult=1.5, rr_target=2.5,
+        atr_stop_mult=1.5,
+        rr_target=2.5,
         risk_per_trade_pct=0.005,
         min_bars_between_trades=12,
         max_trades_per_day=2,
@@ -413,16 +411,20 @@ def btc_compression_preset() -> CompressionBreakoutConfig:
 def mnq_compression_preset() -> CompressionBreakoutConfig:
     """Calibrated for MNQ 5m intraday."""
     return CompressionBreakoutConfig(
-        bb_period=20, bb_std_mult=2.0,
-        bb_width_window=78,    # 1 RTH session at 5m
+        bb_period=20,
+        bb_std_mult=2.0,
+        bb_width_window=78,  # 1 RTH session at 5m
         bb_width_max_percentile=0.30,
-        atr_period=14, atr_ma_period=20,
+        atr_period=14,
+        atr_ma_period=20,
         breakout_lookback=10,  # ~50 min on 5m
-        trend_ema_period=50,   # tighter trend on intraday
+        trend_ema_period=50,  # tighter trend on intraday
         require_trend_alignment=True,
-        volume_z_lookback=20, min_volume_z=0.5,
+        volume_z_lookback=20,
+        min_volume_z=0.5,
         min_close_location=0.70,
-        atr_stop_mult=1.0, rr_target=2.0,
+        atr_stop_mult=1.0,
+        rr_target=2.0,
         risk_per_trade_pct=0.005,
         min_bars_between_trades=6,
         max_trades_per_day=2,
@@ -442,16 +444,20 @@ def nq_compression_preset() -> CompressionBreakoutConfig:
     NQ-specific tuning has a clean home.
     """
     return CompressionBreakoutConfig(
-        bb_period=20, bb_std_mult=2.0,
+        bb_period=20,
+        bb_std_mult=2.0,
         bb_width_window=78,
         bb_width_max_percentile=0.30,
-        atr_period=14, atr_ma_period=20,
+        atr_period=14,
+        atr_ma_period=20,
         breakout_lookback=10,
         trend_ema_period=50,
         require_trend_alignment=True,
-        volume_z_lookback=20, min_volume_z=0.5,
+        volume_z_lookback=20,
+        min_volume_z=0.5,
         min_close_location=0.70,
-        atr_stop_mult=1.0, rr_target=2.0,
+        atr_stop_mult=1.0,
+        rr_target=2.0,
         risk_per_trade_pct=0.005,
         min_bars_between_trades=6,
         max_trades_per_day=2,
@@ -468,14 +474,20 @@ def eth_compression_preset() -> CompressionBreakoutConfig:
     walk-forward OOS first.
     """
     return CompressionBreakoutConfig(
-        bb_period=20, bb_std_mult=2.0,
-        bb_width_window=100, bb_width_max_percentile=0.35,
-        atr_period=14, atr_ma_period=20,
+        bb_period=20,
+        bb_std_mult=2.0,
+        bb_width_window=100,
+        bb_width_max_percentile=0.35,
+        atr_period=14,
+        atr_ma_period=20,
         breakout_lookback=20,
-        trend_ema_period=200, require_trend_alignment=True,
-        volume_z_lookback=20, min_volume_z=0.4,
+        trend_ema_period=200,
+        require_trend_alignment=True,
+        volume_z_lookback=20,
+        min_volume_z=0.4,
         min_close_location=0.65,
-        atr_stop_mult=1.0, rr_target=2.0,
+        atr_stop_mult=1.0,
+        rr_target=2.0,
         risk_per_trade_pct=0.005,
         min_bars_between_trades=12,
         max_trades_per_day=2,
@@ -491,14 +503,20 @@ def sol_compression_preset() -> CompressionBreakoutConfig:
     bumped to 3.0 to compensate for the wider stops.
     """
     return CompressionBreakoutConfig(
-        bb_period=20, bb_std_mult=2.0,
-        bb_width_window=100, bb_width_max_percentile=0.40,
-        atr_period=14, atr_ma_period=20,
+        bb_period=20,
+        bb_std_mult=2.0,
+        bb_width_window=100,
+        bb_width_max_percentile=0.40,
+        atr_period=14,
+        atr_ma_period=20,
         breakout_lookback=20,
-        trend_ema_period=200, require_trend_alignment=True,
-        volume_z_lookback=20, min_volume_z=0.3,
+        trend_ema_period=200,
+        require_trend_alignment=True,
+        volume_z_lookback=20,
+        min_volume_z=0.3,
         min_close_location=0.60,
-        atr_stop_mult=2.2, rr_target=3.0,
+        atr_stop_mult=2.2,
+        rr_target=3.0,
         risk_per_trade_pct=0.004,  # smaller risk per trade
         min_bars_between_trades=12,
         max_trades_per_day=2,

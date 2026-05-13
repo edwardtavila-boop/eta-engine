@@ -10,6 +10,7 @@ Wave-5 enhancements (2026-04-27):
   * memoization cache (LRU on bar timestamp)
   * edge tracker integration: learned weights modulate confluence
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -58,7 +59,8 @@ logger = logging.getLogger(__name__)
 
 
 SCHOOLS: dict[str, SchoolBase] = {
-    s.NAME: s for s in (
+    s.NAME: s
+    for s in (
         # Classical (10)
         DowTheorySchool(),
         WyckoffSchool(),
@@ -133,6 +135,7 @@ def _observe_health(report: SageReport) -> None:
     """Feed the best-effort health monitor without touching the fast path."""
     try:
         from eta_engine.brain.jarvis_v3.sage.health import default_monitor
+
         monitor = default_monitor()
         monitor.observe(report)
     except Exception as exc:  # noqa: BLE001 -- health is best-effort
@@ -159,9 +162,7 @@ def consult_sage(
     apply_edge_weights: multiply each school's WEIGHT by the EdgeTracker's
                        learned modifier (default True; turn off for backtests).
     """
-    enabled_fset: frozenset[str] | None = (
-        frozenset(enabled) if enabled is not None else None
-    )
+    enabled_fset: frozenset[str] | None = frozenset(enabled) if enabled is not None else None
 
     if use_cache:
         key = _cache_key(ctx, enabled_fset)
@@ -192,6 +193,7 @@ def consult_sage(
     quality_filtered = []
     try:
         from eta_engine.brain.jarvis_v3.sage.edge_tracker import get_tracker
+
         tracker = get_tracker()
         for name, school in schools_to_run:
             edge = tracker.get(name)
@@ -230,7 +232,8 @@ def consult_sage(
                 verdicts[name] = v
 
     report = aggregate(
-        verdicts, SCHOOLS,
+        verdicts,
+        SCHOOLS,
         entry_side=ctx.side,
         regime=ctx.detected_regime,
         apply_edge_weights=apply_edge_weights,
@@ -252,6 +255,7 @@ def consult_sage(
     # Drop per-ctx feature cache to prevent unbounded memory growth
     try:
         from eta_engine.brain.jarvis_v3.sage.feature_cache import clear_for_ctx
+
         clear_for_ctx(ctx)
     except Exception:  # noqa: BLE001
         pass
@@ -275,6 +279,7 @@ def _precompute_shared_features(ctx: MarketContext) -> None:
     impact -- it's a pure optimization.
     """
     from eta_engine.brain.jarvis_v3.sage.feature_cache import get_or_compute
+
     n = ctx.n_bars
     if n < 10:
         return
@@ -296,7 +301,7 @@ def _find_pivots(values: list[float], lookback: int = 3, *, kind: str = "high") 
         raise ValueError("kind must be 'high' or 'low'")
     out: list[tuple[int, float]] = []
     for i in range(lookback, len(values) - lookback):
-        window = values[i - lookback: i + lookback + 1]
+        window = values[i - lookback : i + lookback + 1]
         if kind == "high" and values[i] == max(window) or kind == "low" and values[i] == min(window):
             out.append((i, values[i]))
     return out

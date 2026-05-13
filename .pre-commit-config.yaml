@@ -29,14 +29,13 @@ repos:
   # ---------------------------------------------------------------------
   # Operator mandates M1 + M4 (2026-04-26): all paths under
   # C:\EvolutionaryTradingAlgo\. Block any commit that introduces a stale
-  # OneDrive\Desktop\Base, OneDrive\The_Firm, or C:\dev\ reference in
-  # active code. Add '# HISTORICAL-PATH-OK' on the line for an explicit
-  # one-off bypass.
+  # legacy workspace reference in active code. Add '# HISTORICAL-PATH-OK'
+  # on the line for an explicit one-off bypass.
   # ---------------------------------------------------------------------
   - repo: local
     hooks:
       - id: lint-stale-paths
-        name: lint stale paths (M1/M4 — block OneDrive/C:\dev refs)
+        name: lint stale paths (M1/M4 - block legacy workspace refs)
         entry: python scripts/lint_stale_paths.py
         language: system
         files: \.(py|ps1|bat|cmd|sh|md|yaml|yml|toml|json|js|ts|tsx)$

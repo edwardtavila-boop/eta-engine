@@ -28,16 +28,26 @@ from eta_engine.strategies.rsi_mean_reversion_strategy import (
 
 
 def _bar(
-    minute: int, *, h: float, low: float, c: float | None = None,
-    o: float | None = None, v: float = 1000.0,
+    minute: int,
+    *,
+    h: float,
+    low: float,
+    c: float | None = None,
+    o: float | None = None,
+    v: float = 1000.0,
 ) -> BarData:
     """One 5m bar on 2026-01-01."""
     ts = datetime(2026, 1, 1, 9, minute % 60, tzinfo=UTC)
     o = o if o is not None else c if c is not None else (h + low) / 2
     c = c if c is not None else (h + low) / 2
     return BarData(
-        timestamp=ts, symbol="MNQ", open=o, high=h, low=low,
-        close=c, volume=v,
+        timestamp=ts,
+        symbol="MNQ",
+        open=o,
+        high=h,
+        low=low,
+        close=c,
+        volume=v,
     )
 
 
@@ -45,8 +55,10 @@ def _config() -> BacktestConfig:
     return BacktestConfig(
         start_date=datetime(2026, 1, 1, tzinfo=UTC),
         end_date=datetime(2026, 1, 31, tzinfo=UTC),
-        symbol="MNQ", initial_equity=10_000.0,
-        risk_per_trade_pct=0.005, confluence_threshold=0.0,
+        symbol="MNQ",
+        initial_equity=10_000.0,
+        risk_per_trade_pct=0.005,
+        confluence_threshold=0.0,
         max_trades_per_day=10,
     )
 
@@ -54,16 +66,24 @@ def _config() -> BacktestConfig:
 def _make_strategy(*, require_htf_agreement: bool = True) -> RSIMeanReversionStrategy:
     """Strategy tuned for fast unit tests: filters off, short windows."""
     cfg = RSIMeanReversionConfig(
-        rsi_period=5, bb_window=5, bb_std_mult=2.0,
-        rsi_long_threshold=20.0, rsi_short_threshold=80.0,
+        rsi_period=5,
+        bb_window=5,
+        bb_std_mult=2.0,
+        rsi_long_threshold=20.0,
+        rsi_short_threshold=80.0,
         enable_adx_filter=False,
-        volume_z_lookback=5, min_volume_z=-100.0,
+        volume_z_lookback=5,
+        min_volume_z=-100.0,
         require_rejection=False,
-        atr_period=3, atr_stop_mult=1.0, rr_target=1.5,
+        atr_period=3,
+        atr_stop_mult=1.0,
+        rr_target=1.5,
         risk_per_trade_pct=0.005,
-        min_bars_between_trades=1, max_trades_per_day=10,
+        min_bars_between_trades=1,
+        max_trades_per_day=10,
         warmup_bars=1,
-        htf_lookback_5m_bars=12, htf_ema_period=50,
+        htf_lookback_5m_bars=12,
+        htf_ema_period=50,
         require_htf_agreement=require_htf_agreement,
     )
     return RSIMeanReversionStrategy(cfg)
@@ -104,15 +124,13 @@ def _prime_for_short(s: RSIMeanReversionStrategy) -> None:
     s._last_day = datetime(2026, 1, 1, tzinfo=UTC).date()
 
 
-def _set_htf_uptrend(s: RSIMeanReversionStrategy, *, ema: float = 100.0,
-                     last_1h: float = 110.0) -> None:
+def _set_htf_uptrend(s: RSIMeanReversionStrategy, *, ema: float = 100.0, last_1h: float = 110.0) -> None:
     """Force HTF state into uptrend: last 1h close > EMA."""
     s._htf_ema = ema
     s._htf_last_1h_close = last_1h
 
 
-def _set_htf_downtrend(s: RSIMeanReversionStrategy, *, ema: float = 100.0,
-                       last_1h: float = 90.0) -> None:
+def _set_htf_downtrend(s: RSIMeanReversionStrategy, *, ema: float = 100.0, last_1h: float = 90.0) -> None:
     """Force HTF state into downtrend: last 1h close < EMA."""
     s._htf_ema = ema
     s._htf_last_1h_close = last_1h

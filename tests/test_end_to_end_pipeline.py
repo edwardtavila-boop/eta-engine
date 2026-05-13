@@ -64,6 +64,7 @@ class TestEndToEndPipeline:
 
             # Stop Hermes from trying real Telegram
             import hermes_jarvis_telegram.hermes_bridge as hb
+
             if hasattr(hb, "reset_bridge"):
                 hb.reset_bridge()
 
@@ -79,6 +80,7 @@ class TestEndToEndPipeline:
 
             # 1. KaizenEngine auto-cycle
             from eta_engine.brain.jarvis_v3.kaizen_engine import KaizenEngine
+
             engine = KaizenEngine(instruments=[cfg], state_dir=tmp)
             report = engine.cycle(
                 trades_by_instrument={"MNQ": trades},
@@ -169,6 +171,7 @@ class TestEndToEndPipeline:
 
     def test_autonomous_mode_constants_exist(self):
         from pathlib import Path
+
         eta_root = Path(__file__).resolve().parents[1]
         content = (eta_root / "brain" / "jarvis_admin.py").read_text()
         assert "AUTOPILOT_RESUME" in content
@@ -185,8 +188,14 @@ class TestInstrumentAgnostic:
         from common.jarvis import EdgeOptimizer, InstrumentConfig, LossReducer
 
         trades = [_make_trade(i) for i in range(10)]
-        for factory in [InstrumentConfig.mnq, InstrumentConfig.nq, InstrumentConfig.mes,
-                        InstrumentConfig.btc, InstrumentConfig.eth, InstrumentConfig.sol]:
+        for factory in [
+            InstrumentConfig.mnq,
+            InstrumentConfig.nq,
+            InstrumentConfig.mes,
+            InstrumentConfig.btc,
+            InstrumentConfig.eth,
+            InstrumentConfig.sol,
+        ]:
             cfg = factory()
             eo = EdgeOptimizer(trades, cfg=cfg)
             report = eo.full_report()
@@ -212,7 +221,11 @@ class TestParallelTemperingTimeout:
             problem.Q.setdefault(i, {})[i] = -1.0
         t0 = time.perf_counter()
         result = parallel_tempering_solve(
-            problem, n_replicas=8, n_iterations=50000, timeout_seconds=0.5, seed=42,
+            problem,
+            n_replicas=8,
+            n_iterations=50000,
+            timeout_seconds=0.5,
+            seed=42,
         )
         elapsed = time.perf_counter() - t0
         assert elapsed < 5.0  # Should not run for 5+ seconds
@@ -268,6 +281,7 @@ class TestTwoWayBridge:
 
         # Extract command_id and confirm
         import re
+
         cmd_id_match = re.search(r"CMD-[A-Za-z0-9-]+", reply)
         assert cmd_id_match is not None
         ok, reply = dispatcher.dispatch(f"/jarvis CONFIRM {cmd_id_match.group()}", "chat1")

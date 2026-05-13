@@ -30,6 +30,7 @@ This is more sample-efficient than per-arm marginal stats because
 v18's "advantage in high stress" doesn't dilute v17's "advantage in
 calm". Each arm gets the contexts where it's actually better.
 """
+
 from __future__ import annotations
 
 import json
@@ -45,10 +46,7 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_STATE_PATH = (
-    Path(__file__).resolve().parents[2]
-    / "state" / "contextual_bandit" / "posterior.json"
-)
+DEFAULT_STATE_PATH = Path(__file__).resolve().parents[2] / "state" / "contextual_bandit" / "posterior.json"
 
 
 def _stress_bucket(composite: float) -> str:
@@ -75,7 +73,7 @@ def context_key(
 @dataclass
 class _ArmPosterior:
     alpha: float = 1.0  # priors -- weak Beta(1, 1)
-    beta: float  = 1.0
+    beta: float = 1.0
     pulls: int = 0
     last_reward: float = 0.0
 
@@ -119,21 +117,27 @@ class ContextualBandit:
     def _save(self) -> None:
         try:
             self.state_path.parent.mkdir(parents=True, exist_ok=True)
-            self.state_path.write_text(json.dumps({
-                "ts": datetime.now(UTC).isoformat(),
-                "registered_arms": self._registered_arms,
-                "posterior": [
+            self.state_path.write_text(
+                json.dumps(
                     {
-                        "context_key": ck,
-                        "arm_id": aid,
-                        "alpha": p.alpha,
-                        "beta": p.beta,
-                        "pulls": p.pulls,
-                        "last_reward": p.last_reward,
-                    }
-                    for (ck, aid), p in self._posterior.items()
-                ],
-            }, indent=2), encoding="utf-8")
+                        "ts": datetime.now(UTC).isoformat(),
+                        "registered_arms": self._registered_arms,
+                        "posterior": [
+                            {
+                                "context_key": ck,
+                                "arm_id": aid,
+                                "alpha": p.alpha,
+                                "beta": p.beta,
+                                "pulls": p.pulls,
+                                "last_reward": p.last_reward,
+                            }
+                            for (ck, aid), p in self._posterior.items()
+                        ],
+                    },
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
         except OSError as exc:
             logger.warning("posterior save failed (%s)", exc)
 
@@ -189,15 +193,17 @@ class ContextualBandit:
             for (ck, aid), p in sorted(self._posterior.items()):
                 # mean of Beta(alpha, beta) = alpha / (alpha + beta)
                 mean = p.alpha / (p.alpha + p.beta)
-                out.append({
-                    "context_key": ck,
-                    "arm_id": aid,
-                    "alpha": round(p.alpha, 4),
-                    "beta": round(p.beta, 4),
-                    "pulls": p.pulls,
-                    "mean_reward_p": round(mean, 4),
-                    "last_reward": round(p.last_reward, 4),
-                })
+                out.append(
+                    {
+                        "context_key": ck,
+                        "arm_id": aid,
+                        "alpha": round(p.alpha, 4),
+                        "beta": round(p.beta, 4),
+                        "pulls": p.pulls,
+                        "mean_reward_p": round(mean, 4),
+                        "last_reward": round(p.last_reward, 4),
+                    }
+                )
             return out
 
 

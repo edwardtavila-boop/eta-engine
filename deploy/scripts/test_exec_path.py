@@ -1,9 +1,10 @@
 """Test the exact execution path the supervisor uses."""
+
 import asyncio
 from pathlib import Path
 
 
-async def main():
+async def main() -> None:
     print("=== Testing supervisor execution path ===")
 
     # 1. Test direct venue creation (same code as supervisor)
@@ -11,6 +12,7 @@ async def main():
     try:
         from eta_engine.venues.base import OrderRequest, OrderType, Side
         from eta_engine.venues.ibkr_live import LiveIbkrVenue
+
         venue = LiveIbkrVenue()
         report = await venue.connect()
         print(f"   Connected: {report.status} (details: {report.details})")
@@ -30,6 +32,7 @@ async def main():
     except Exception as e:
         print(f"   ERROR: {type(e).__name__}: {e}")
         import traceback
+
         traceback.print_exc()
 
     # 3. Check the pending directory the supervisor writes to
@@ -49,6 +52,7 @@ async def main():
     print("\n4. Checking IBKR orders via TWS...")
     try:
         from ib_insync import IB
+
         ib = IB()
         ib.connect("127.0.0.1", 4002, clientId=102, timeout=5)
         trades = ib.trades()
@@ -58,5 +62,6 @@ async def main():
         ib.disconnect()
     except Exception as e:
         print(f"   ERROR: {e}")
+
 
 asyncio.run(main())

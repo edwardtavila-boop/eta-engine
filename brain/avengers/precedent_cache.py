@@ -165,35 +165,40 @@ class PrecedentCache:
                 continue
             if ts < cutoff:
                 continue
-            out.append({
-                "ts": ts,
-                "category": env.get("category", ""),
-                "caller": env.get("caller", ""),
-                "goal": env.get("goal", ""),
-                "success": bool(res.get("success", False)),
-                "artifact": res.get("artifact", "") or "",
-            })
+            out.append(
+                {
+                    "ts": ts,
+                    "category": env.get("category", ""),
+                    "caller": env.get("caller", ""),
+                    "goal": env.get("goal", ""),
+                    "success": bool(res.get("success", False)),
+                    "artifact": res.get("artifact", "") or "",
+                }
+            )
         return out
 
     def _mem0_lookup(self, envelope: TaskEnvelope, *, k: int) -> list[PrecedentHit] | None:
         """Try Mem0 semantic search. Returns None if unavailable."""
         try:
             from eta_engine.brain.jarvis_v3.mem0_memory import Mem0Memory
+
             mem0 = Mem0Memory()
             results = mem0.search(envelope.goal, k=k)
             if not results:
                 return None
             hits = []
             for r in results:
-                hits.append(PrecedentHit(
-                    ts=r.get("ts", ""),
-                    category=r.get("category", envelope.category.value),
-                    caller="mem0",
-                    goal=r.get("text", ""),
-                    success=True,
-                    similarity=r.get("score", 0.0),
-                    artifact_snippet=r.get("text", "")[:500],
-                ))
+                hits.append(
+                    PrecedentHit(
+                        ts=r.get("ts", ""),
+                        category=r.get("category", envelope.category.value),
+                        caller="mem0",
+                        goal=r.get("text", ""),
+                        success=True,
+                        similarity=r.get("score", 0.0),
+                        artifact_snippet=r.get("text", "")[:500],
+                    )
+                )
             return hits
         except Exception:  # noqa: BLE001
             return None

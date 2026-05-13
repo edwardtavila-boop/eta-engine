@@ -1,8 +1,9 @@
 """Polish-pass regression tests for the supervisor:
-  1. ExecutionRouter._fleet_open_notional_for_symbol aggregates by class.
-  2. JarvisStrategySupervisor.reconcile_with_broker surfaces divergence.
-  3. v26 _broker_router_rejects_for_bot honors the ETA_V26_REJECT_WINDOW_S.
+1. ExecutionRouter._fleet_open_notional_for_symbol aggregates by class.
+2. JarvisStrategySupervisor.reconcile_with_broker surfaces divergence.
+3. v26 _broker_router_rejects_for_bot honors the ETA_V26_REJECT_WINDOW_S.
 """
+
 from __future__ import annotations
 
 import os
@@ -24,6 +25,7 @@ class _BtcSlightDeltaAlpaca:
     async def get_positions(self) -> list[dict]:
         return [{"symbol": "BTCUSD", "qty": "0.008560545"}]
 
+
 # ─── ExecutionRouter fleet aggregation ──────────────────────────
 
 
@@ -36,29 +38,37 @@ def test_fleet_open_notional_sums_same_class_only(tmp_path) -> None:
         ExecutionRouter,
         SupervisorConfig,
     )
+
     bot_btc = BotInstance(
-        bot_id="btc1", symbol="BTC", strategy_kind="x",
-        direction="long", cash=5000.0,
+        bot_id="btc1",
+        symbol="BTC",
+        strategy_kind="x",
+        direction="long",
+        cash=5000.0,
     )
-    bot_btc.open_position = {"side": "BUY", "qty": 0.01, "entry_price": 100000.0,
-                             "entry_ts": "x", "signal_id": "x"}
+    bot_btc.open_position = {"side": "BUY", "qty": 0.01, "entry_price": 100000.0, "entry_ts": "x", "signal_id": "x"}
     bot_mnq = BotInstance(
-        bot_id="mnq1", symbol="MNQ1", strategy_kind="x",
-        direction="long", cash=5000.0,
+        bot_id="mnq1",
+        symbol="MNQ1",
+        strategy_kind="x",
+        direction="long",
+        cash=5000.0,
     )
-    bot_mnq.open_position = {"side": "BUY", "qty": 1.0, "entry_price": 27500.0,
-                             "entry_ts": "x", "signal_id": "x"}
+    bot_mnq.open_position = {"side": "BUY", "qty": 1.0, "entry_price": 27500.0, "entry_ts": "x", "signal_id": "x"}
     bot_eth = BotInstance(
-        bot_id="eth1", symbol="ETH", strategy_kind="x",
-        direction="long", cash=5000.0,
+        bot_id="eth1",
+        symbol="ETH",
+        strategy_kind="x",
+        direction="long",
+        cash=5000.0,
     )
-    bot_eth.open_position = {"side": "BUY", "qty": 0.5, "entry_price": 2400.0,
-                             "entry_ts": "x", "signal_id": "x"}
+    bot_eth.open_position = {"side": "BUY", "qty": 0.5, "entry_price": 2400.0, "entry_ts": "x", "signal_id": "x"}
 
     cfg = SupervisorConfig()
     cfg.state_dir = tmp_path / "state"
     router = ExecutionRouter(
-        cfg=cfg, bf_dir=tmp_path,
+        cfg=cfg,
+        bf_dir=tmp_path,
         bots_ref=lambda: [bot_btc, bot_mnq, bot_eth],
     )
 
@@ -76,6 +86,7 @@ def test_fleet_open_notional_handles_no_positions() -> None:
         ExecutionRouter,
         SupervisorConfig,
     )
+
     bot = MagicMock()
     bot.symbol = "BTC"
     bot.open_position = None
@@ -99,21 +110,27 @@ def test_broker_position_qty_crypto_route_skips_ibkr(tmp_path) -> None:
     cfg.mode = "paper_live"
     cfg.state_dir = tmp_path / "state"
     bot = BotInstance(
-        bot_id="btc_optimized", symbol="BTC",
+        bot_id="btc_optimized",
+        symbol="BTC",
         strategy_kind="confluence_scorecard",
-        direction="long", cash=5000.0,
+        direction="long",
+        cash=5000.0,
     )
     router = ExecutionRouter(cfg=cfg, bf_dir=tmp_path)
 
-    with patch(
-        "eta_engine.scripts.jarvis_strategy_supervisor._resolve_bot_routing",
-        return_value=("alpaca", "crypto"),
-    ), patch(
-        "eta_engine.scripts.jarvis_strategy_supervisor._get_live_ibkr_venue",
-        side_effect=AssertionError("IBKR should not size Alpaca crypto exits"),
-    ) as ibkr_venue, patch(
-        "eta_engine.venues.alpaca.AlpacaVenue",
-        return_value=_CryptoPositionsAlpaca(),
+    with (
+        patch(
+            "eta_engine.scripts.jarvis_strategy_supervisor._resolve_bot_routing",
+            return_value=("alpaca", "crypto"),
+        ),
+        patch(
+            "eta_engine.scripts.jarvis_strategy_supervisor._get_live_ibkr_venue",
+            side_effect=AssertionError("IBKR should not size Alpaca crypto exits"),
+        ) as ibkr_venue,
+        patch(
+            "eta_engine.venues.alpaca.AlpacaVenue",
+            return_value=_CryptoPositionsAlpaca(),
+        ),
     ):
         qty = router._get_broker_position_qty(bot)
 
@@ -129,6 +146,7 @@ def test_reconcile_skips_when_not_paper_live(tmp_path) -> None:
         JarvisStrategySupervisor,
         SupervisorConfig,
     )
+
     cfg = SupervisorConfig()
     cfg.mode = "paper_sim"
     cfg.state_dir = tmp_path / "state"
@@ -144,6 +162,7 @@ def test_reconcile_detects_broker_only_position(tmp_path) -> None:
         JarvisStrategySupervisor,
         SupervisorConfig,
     )
+
     cfg = SupervisorConfig()
     cfg.mode = "paper_live"
     cfg.state_dir = tmp_path / "state"
@@ -152,17 +171,21 @@ def test_reconcile_detects_broker_only_position(tmp_path) -> None:
 
     fake_venue = MagicMock()
     fake_venue.get_positions = MagicMock()
-    with patch(
-        "eta_engine.scripts.jarvis_strategy_supervisor._get_live_ibkr_venue",
-        return_value=fake_venue,
-    ), patch(
-        "eta_engine.scripts.jarvis_strategy_supervisor._run_on_live_ibkr_loop",
-        return_value=[
-            {"symbol": "MNQ", "position": 2.0, "avgCost": 27500.0},
-        ],
-    ), patch(
-        "eta_engine.venues.alpaca.AlpacaVenue",
-        return_value=_NoPositionsAlpaca(),
+    with (
+        patch(
+            "eta_engine.scripts.jarvis_strategy_supervisor._get_live_ibkr_venue",
+            return_value=fake_venue,
+        ),
+        patch(
+            "eta_engine.scripts.jarvis_strategy_supervisor._run_on_live_ibkr_loop",
+            return_value=[
+                {"symbol": "MNQ", "position": 2.0, "avgCost": 27500.0},
+            ],
+        ),
+        patch(
+            "eta_engine.venues.alpaca.AlpacaVenue",
+            return_value=_NoPositionsAlpaca(),
+        ),
     ):
         findings = sup.reconcile_with_broker()
 
@@ -183,9 +206,11 @@ def test_reconcile_tolerates_tiny_crypto_fractional_fill_delta(tmp_path) -> None
     cfg.state_dir = tmp_path / "state"
     sup = JarvisStrategySupervisor(cfg=cfg)
     bot = BotInstance(
-        bot_id="btc_optimized", symbol="BTC",
+        bot_id="btc_optimized",
+        symbol="BTC",
         strategy_kind="confluence_scorecard",
-        direction="long", cash=5000.0,
+        direction="long",
+        cash=5000.0,
     )
     bot.open_position = {
         "side": "BUY",
@@ -196,15 +221,19 @@ def test_reconcile_tolerates_tiny_crypto_fractional_fill_delta(tmp_path) -> None
     }
     sup.bots = [bot]
 
-    with patch(
-        "eta_engine.scripts.jarvis_strategy_supervisor._resolve_bot_routing",
-        return_value=("alpaca", "crypto"),
-    ), patch(
-        "eta_engine.scripts.jarvis_strategy_supervisor._get_live_ibkr_venue",
-        side_effect=AssertionError("IBKR should not be queried for Alpaca crypto"),
-    ), patch(
-        "eta_engine.venues.alpaca.AlpacaVenue",
-        return_value=_BtcSlightDeltaAlpaca(),
+    with (
+        patch(
+            "eta_engine.scripts.jarvis_strategy_supervisor._resolve_bot_routing",
+            return_value=("alpaca", "crypto"),
+        ),
+        patch(
+            "eta_engine.scripts.jarvis_strategy_supervisor._get_live_ibkr_venue",
+            side_effect=AssertionError("IBKR should not be queried for Alpaca crypto"),
+        ),
+        patch(
+            "eta_engine.venues.alpaca.AlpacaVenue",
+            return_value=_BtcSlightDeltaAlpaca(),
+        ),
     ):
         findings = sup.reconcile_with_broker()
 
@@ -223,27 +252,34 @@ def test_reconcile_detects_supervisor_only_position(tmp_path) -> None:
         JarvisStrategySupervisor,
         SupervisorConfig,
     )
+
     cfg = SupervisorConfig()
     cfg.mode = "paper_live"
     cfg.state_dir = tmp_path / "state"
     sup = JarvisStrategySupervisor(cfg=cfg)
     bot = BotInstance(
-        bot_id="btc_a", symbol="BTC", strategy_kind="x",
-        direction="long", cash=5000.0,
+        bot_id="btc_a",
+        symbol="BTC",
+        strategy_kind="x",
+        direction="long",
+        cash=5000.0,
     )
-    bot.open_position = {"side": "BUY", "qty": 0.01, "entry_price": 80000.0,
-                         "entry_ts": "x", "signal_id": "x"}
+    bot.open_position = {"side": "BUY", "qty": 0.01, "entry_price": 80000.0, "entry_ts": "x", "signal_id": "x"}
     sup.bots = [bot]
 
-    with patch(
-        "eta_engine.scripts.jarvis_strategy_supervisor._get_live_ibkr_venue",
-        return_value=MagicMock(),
-    ), patch(
-        "eta_engine.scripts.jarvis_strategy_supervisor._run_on_live_ibkr_loop",
-        return_value=[],  # broker has nothing
-    ), patch(
-        "eta_engine.venues.alpaca.AlpacaVenue",
-        return_value=_NoPositionsAlpaca(),
+    with (
+        patch(
+            "eta_engine.scripts.jarvis_strategy_supervisor._get_live_ibkr_venue",
+            return_value=MagicMock(),
+        ),
+        patch(
+            "eta_engine.scripts.jarvis_strategy_supervisor._run_on_live_ibkr_loop",
+            return_value=[],  # broker has nothing
+        ),
+        patch(
+            "eta_engine.venues.alpaca.AlpacaVenue",
+            return_value=_NoPositionsAlpaca(),
+        ),
     ):
         findings = sup.reconcile_with_broker()
 
@@ -258,24 +294,30 @@ def test_reconcile_crypto_only_skips_ibkr_query(tmp_path) -> None:
         JarvisStrategySupervisor,
         SupervisorConfig,
     )
+
     cfg = SupervisorConfig()
     cfg.mode = "paper_live"
     cfg.state_dir = tmp_path / "state"
     sup = JarvisStrategySupervisor(cfg=cfg)
     sup.bots = [
         BotInstance(
-            bot_id="btc_optimized", symbol="BTC",
+            bot_id="btc_optimized",
+            symbol="BTC",
             strategy_kind="confluence_scorecard",
-            direction="long", cash=5000.0,
+            direction="long",
+            cash=5000.0,
         )
     ]
 
-    with patch(
-        "eta_engine.scripts.jarvis_strategy_supervisor._get_live_ibkr_venue",
-        side_effect=AssertionError("IBKR should not be queried for Alpaca crypto"),
-    ) as ibkr_venue, patch(
-        "eta_engine.venues.alpaca.AlpacaVenue",
-        return_value=_NoPositionsAlpaca(),
+    with (
+        patch(
+            "eta_engine.scripts.jarvis_strategy_supervisor._get_live_ibkr_venue",
+            side_effect=AssertionError("IBKR should not be queried for Alpaca crypto"),
+        ) as ibkr_venue,
+        patch(
+            "eta_engine.venues.alpaca.AlpacaVenue",
+            return_value=_NoPositionsAlpaca(),
+        ),
     ):
         findings = sup.reconcile_with_broker()
 
@@ -292,27 +334,34 @@ def test_reconcile_match_when_aligned(tmp_path) -> None:
         JarvisStrategySupervisor,
         SupervisorConfig,
     )
+
     cfg = SupervisorConfig()
     cfg.mode = "paper_live"
     cfg.state_dir = tmp_path / "state"
     sup = JarvisStrategySupervisor(cfg=cfg)
     bot = BotInstance(
-        bot_id="mnq_a", symbol="MNQ1", strategy_kind="x",
-        direction="long", cash=5000.0,
+        bot_id="mnq_a",
+        symbol="MNQ1",
+        strategy_kind="x",
+        direction="long",
+        cash=5000.0,
     )
-    bot.open_position = {"side": "BUY", "qty": 1.0, "entry_price": 27500.0,
-                         "entry_ts": "x", "signal_id": "x"}
+    bot.open_position = {"side": "BUY", "qty": 1.0, "entry_price": 27500.0, "entry_ts": "x", "signal_id": "x"}
     sup.bots = [bot]
 
-    with patch(
-        "eta_engine.scripts.jarvis_strategy_supervisor._get_live_ibkr_venue",
-        return_value=MagicMock(),
-    ), patch(
-        "eta_engine.scripts.jarvis_strategy_supervisor._run_on_live_ibkr_loop",
-        return_value=[{"symbol": "MNQ", "position": 1.0, "avgCost": 27500.0}],
-    ), patch(
-        "eta_engine.venues.alpaca.AlpacaVenue",
-        return_value=_NoPositionsAlpaca(),
+    with (
+        patch(
+            "eta_engine.scripts.jarvis_strategy_supervisor._get_live_ibkr_venue",
+            return_value=MagicMock(),
+        ),
+        patch(
+            "eta_engine.scripts.jarvis_strategy_supervisor._run_on_live_ibkr_loop",
+            return_value=[{"symbol": "MNQ", "position": 1.0, "avgCost": 27500.0}],
+        ),
+        patch(
+            "eta_engine.venues.alpaca.AlpacaVenue",
+            return_value=_NoPositionsAlpaca(),
+        ),
     ):
         findings = sup.reconcile_with_broker()
 
@@ -342,19 +391,25 @@ def test_v26_ignores_stale_rejects(tmp_path) -> None:
     os.environ["ETA_V26_REJECT_WINDOW_S"] = "600"
     try:
         with patch.object(
-            v26, "_load_broker_router_fills_cached", return_value=fake_fills,
+            v26,
+            "_load_broker_router_fills_cached",
+            return_value=fake_fills,
         ):
             count = v26._broker_router_rejects_for_bot("vwap_mr_mnq")
             assert count == 0  # all stale, ignored
 
         # Now mix in 3 fresh ones
-        fake_fills.extend([
-            {"bot_id": "vwap_mr_mnq", "status": "rejected", "ts": fresh_ts},
-            {"bot_id": "vwap_mr_mnq", "status": "rejected", "ts": fresh_ts},
-            {"bot_id": "vwap_mr_mnq", "status": "rejected", "ts": fresh_ts},
-        ])
+        fake_fills.extend(
+            [
+                {"bot_id": "vwap_mr_mnq", "status": "rejected", "ts": fresh_ts},
+                {"bot_id": "vwap_mr_mnq", "status": "rejected", "ts": fresh_ts},
+                {"bot_id": "vwap_mr_mnq", "status": "rejected", "ts": fresh_ts},
+            ]
+        )
         with patch.object(
-            v26, "_load_broker_router_fills_cached", return_value=fake_fills,
+            v26,
+            "_load_broker_router_fills_cached",
+            return_value=fake_fills,
         ):
             count = v26._broker_router_rejects_for_bot("vwap_mr_mnq")
             assert count == 3  # only the fresh ones counted
@@ -365,13 +420,16 @@ def test_v26_ignores_stale_rejects(tmp_path) -> None:
 def test_v26_unparseable_timestamp_is_treated_as_stale() -> None:
     """A row with a missing or malformed ts must NOT count as recent."""
     from eta_engine.brain.jarvis_v3.policies import v26_fill_confirmation as v26
+
     fake_fills = [
         {"bot_id": "vwap_mr_mnq", "status": "rejected"},  # no ts
         {"bot_id": "vwap_mr_mnq", "status": "rejected", "ts": "not-a-date"},
         {"bot_id": "vwap_mr_mnq", "status": "rejected", "ts": ""},
     ]
     with patch.object(
-        v26, "_load_broker_router_fills_cached", return_value=fake_fills,
+        v26,
+        "_load_broker_router_fills_cached",
+        return_value=fake_fills,
     ):
         assert v26._broker_router_rejects_for_bot("vwap_mr_mnq") == 0
 
@@ -388,19 +446,26 @@ def test_maybe_exit_defers_when_broker_bracket_active(tmp_path) -> None:
         JarvisStrategySupervisor,
         SupervisorConfig,
     )
+
     cfg = SupervisorConfig()
     cfg.mode = "paper_live"
     cfg.state_dir = tmp_path / "state"
     sup = JarvisStrategySupervisor(cfg=cfg)
     bot = BotInstance(
-        bot_id="btc1", symbol="BTC", strategy_kind="x",
-        direction="long", cash=5000.0,
+        bot_id="btc1",
+        symbol="BTC",
+        strategy_kind="x",
+        direction="long",
+        cash=5000.0,
     )
     bot.open_position = {
-        "side": "BUY", "qty": 0.01, "entry_price": 100.0,
-        "entry_ts": "x", "signal_id": "x",
-        "broker_bracket": True,         # ← bracket is at the broker
-        "bracket_stop": 98.0,           # 2% below entry
+        "side": "BUY",
+        "qty": 0.01,
+        "entry_price": 100.0,
+        "entry_ts": "x",
+        "signal_id": "x",
+        "broker_bracket": True,  # ← bracket is at the broker
+        "bracket_stop": 98.0,  # 2% below entry
         "bracket_target": 103.0,
     }
     sup.bots = [bot]
@@ -420,19 +485,26 @@ def test_maybe_exit_emergency_override_when_2x_stop_breached(tmp_path) -> None:
         JarvisStrategySupervisor,
         SupervisorConfig,
     )
+
     cfg = SupervisorConfig()
     cfg.mode = "paper_live"
     cfg.state_dir = tmp_path / "state"
     sup = JarvisStrategySupervisor(cfg=cfg)
     bot = BotInstance(
-        bot_id="btc1", symbol="BTC", strategy_kind="x",
-        direction="long", cash=5000.0,
+        bot_id="btc1",
+        symbol="BTC",
+        strategy_kind="x",
+        direction="long",
+        cash=5000.0,
     )
     bot.open_position = {
-        "side": "BUY", "qty": 0.01, "entry_price": 100.0,
-        "entry_ts": "x", "signal_id": "x",
+        "side": "BUY",
+        "qty": 0.01,
+        "entry_price": 100.0,
+        "entry_ts": "x",
+        "signal_id": "x",
         "broker_bracket": True,
-        "bracket_stop": 98.0,           # 2% — emergency threshold = 4%
+        "bracket_stop": 98.0,  # 2% — emergency threshold = 4%
         "bracket_target": 103.0,
     }
     sup.bots = [bot]
@@ -453,17 +525,24 @@ def test_maybe_exit_runs_normally_without_broker_bracket(tmp_path) -> None:
         JarvisStrategySupervisor,
         SupervisorConfig,
     )
+
     cfg = SupervisorConfig()
     cfg.mode = "paper_live"
     cfg.state_dir = tmp_path / "state"
     sup = JarvisStrategySupervisor(cfg=cfg)
     bot = BotInstance(
-        bot_id="btc1", symbol="BTC", strategy_kind="x",
-        direction="long", cash=5000.0,
+        bot_id="btc1",
+        symbol="BTC",
+        strategy_kind="x",
+        direction="long",
+        cash=5000.0,
     )
     bot.open_position = {
-        "side": "BUY", "qty": 0.01, "entry_price": 100.0,
-        "entry_ts": "x", "signal_id": "x",
+        "side": "BUY",
+        "qty": 0.01,
+        "entry_price": 100.0,
+        "entry_ts": "x",
+        "signal_id": "x",
         # broker_bracket absent → supervisor-side exits active
     }
     sup.bots = [bot]
@@ -484,10 +563,14 @@ def test_compute_bracket_honors_per_bot_overrides() -> None:
     override the global env defaults — keeping live and lab geometry
     aligned per-bot for v27 sharpe-drift to be meaningful."""
     from eta_engine.scripts.bracket_sizing import compute_bracket
+
     bars = [{"high": 105, "low": 95, "close": 100}] * 16  # ATR = 10
     stop, target, _ = compute_bracket(
-        side="BUY", entry_price=100.0, bars=bars,
-        stop_mult_override=2.5, target_mult_override=3.5,
+        side="BUY",
+        entry_price=100.0,
+        bars=bars,
+        stop_mult_override=2.5,
+        target_mult_override=3.5,
     )
     # 100 - 2.5*10 = 75; 100 + 3.5*10 = 135
     assert abs(stop - 75.0) < 1e-6
@@ -500,6 +583,7 @@ def test_lookup_bot_bracket_params_finds_nested_config() -> None:
     from unittest.mock import MagicMock
 
     from eta_engine.scripts import bracket_sizing as bs
+
     fake_assignment = MagicMock(
         bot_id="eth_sage_daily",
         extras={
@@ -511,11 +595,13 @@ def test_lookup_bot_bracket_params_finds_nested_config() -> None:
             },
         },
     )
-    with patch.object(bs, "ASSIGNMENTS", [fake_assignment], create=True), \
-         patch(
+    with (
+        patch.object(bs, "ASSIGNMENTS", [fake_assignment], create=True),
+        patch(
             "eta_engine.strategies.per_bot_registry.ASSIGNMENTS",
             [fake_assignment],
-         ):
+        ),
+    ):
         sm, tm = bs.lookup_bot_bracket_params("eth_sage_daily")
     assert sm == 2.5
     assert tm == 3.0
@@ -523,6 +609,7 @@ def test_lookup_bot_bracket_params_finds_nested_config() -> None:
 
 def test_lookup_bot_bracket_params_returns_none_for_unknown_bot() -> None:
     from eta_engine.scripts.bracket_sizing import lookup_bot_bracket_params
+
     sm, tm = lookup_bot_bracket_params("not_a_real_bot_id")
     assert sm is None
     assert tm is None
@@ -538,6 +625,7 @@ def test_emit_feed_health_alerts_above_threshold(tmp_path) -> None:
         JarvisStrategySupervisor,
         SupervisorConfig,
     )
+
     cfg = SupervisorConfig()
     cfg.state_dir = tmp_path / "state"
     sup = JarvisStrategySupervisor(cfg=cfg)
@@ -547,7 +635,8 @@ def test_emit_feed_health_alerts_above_threshold(tmp_path) -> None:
     snapshot = {"yfinance::MNQ": {"ok": 3, "empty": 7}}
     fake_emit = MagicMock()
     with patch(
-        "eta_engine.brain.jarvis_v3.policies._v3_events.emit_event", fake_emit,
+        "eta_engine.brain.jarvis_v3.policies._v3_events.emit_event",
+        fake_emit,
     ):
         sup._emit_feed_health_alerts(snapshot)
         sup._emit_feed_health_alerts(snapshot)  # second call should dedup
@@ -565,6 +654,7 @@ def test_emit_feed_health_alerts_below_threshold_no_event(tmp_path) -> None:
         JarvisStrategySupervisor,
         SupervisorConfig,
     )
+
     cfg = SupervisorConfig()
     cfg.state_dir = tmp_path / "state"
     sup = JarvisStrategySupervisor(cfg=cfg)
@@ -572,7 +662,8 @@ def test_emit_feed_health_alerts_below_threshold_no_event(tmp_path) -> None:
     snapshot = {"coinbase::BTC": {"ok": 50, "empty": 1}}  # 2% empty
     fake_emit = MagicMock()
     with patch(
-        "eta_engine.brain.jarvis_v3.policies._v3_events.emit_event", fake_emit,
+        "eta_engine.brain.jarvis_v3.policies._v3_events.emit_event",
+        fake_emit,
     ):
         sup._emit_feed_health_alerts(snapshot)
     fake_emit.assert_not_called()
@@ -584,6 +675,7 @@ def test_emit_feed_health_alerts_skips_low_sample_count(tmp_path) -> None:
         JarvisStrategySupervisor,
         SupervisorConfig,
     )
+
     cfg = SupervisorConfig()
     cfg.state_dir = tmp_path / "state"
     sup = JarvisStrategySupervisor(cfg=cfg)
@@ -592,7 +684,8 @@ def test_emit_feed_health_alerts_skips_low_sample_count(tmp_path) -> None:
     snapshot = {"yfinance::ZN": {"ok": 0, "empty": 3}}
     fake_emit = MagicMock()
     with patch(
-        "eta_engine.brain.jarvis_v3.policies._v3_events.emit_event", fake_emit,
+        "eta_engine.brain.jarvis_v3.policies._v3_events.emit_event",
+        fake_emit,
     ):
         sup._emit_feed_health_alerts(snapshot)
     fake_emit.assert_not_called()
@@ -605,6 +698,7 @@ def test_feed_health_alert_resets_when_recovers(tmp_path) -> None:
         JarvisStrategySupervisor,
         SupervisorConfig,
     )
+
     cfg = SupervisorConfig()
     cfg.state_dir = tmp_path / "state"
     sup = JarvisStrategySupervisor(cfg=cfg)
@@ -639,32 +733,37 @@ def test_maybe_exit_uses_planned_bracket_in_paper_mode(tmp_path) -> None:
     cfg.state_dir = tmp_path / "state"
     sup = JarvisStrategySupervisor(cfg=cfg)
     sup._router = ExecutionRouter(
-        cfg=cfg, bf_dir=tmp_path, bots_ref=lambda: [],
+        cfg=cfg,
+        bf_dir=tmp_path,
+        bots_ref=lambda: [],
     )
 
     bot = BotInstance(
-        bot_id="t1", symbol="BTC", strategy_kind="x",
-        direction="long", cash=5000.0,
+        bot_id="t1",
+        symbol="BTC",
+        strategy_kind="x",
+        direction="long",
+        cash=5000.0,
     )
     # Planned: long entry at 60000, stop 59000 (-1.67%), target 63000 (+5%)
     bot.open_position = {
-        "side": "BUY", "qty": 0.001, "entry_price": 60000.0,
-        "entry_ts": "x", "signal_id": "s1",
-        "bracket_stop": 59000.0, "bracket_target": 63000.0,
+        "side": "BUY",
+        "qty": 0.001,
+        "entry_price": 60000.0,
+        "entry_ts": "x",
+        "signal_id": "s1",
+        "bracket_stop": 59000.0,
+        "bracket_target": 63000.0,
     }
 
     # Bar 1: price drifts to 60010 (+0.017%) — below both stop and target.
     # Legacy logic could have random-closed; new logic must hold.
     sup._maybe_exit(bot, {"close": 60010.0})
-    assert bot.open_position is not None, (
-        "must NOT exit on trivial price drift when bracket levels exist"
-    )
+    assert bot.open_position is not None, "must NOT exit on trivial price drift when bracket levels exist"
 
     # Bar 2: price hits bracket_target 63000 → must exit cleanly.
     sup._maybe_exit(bot, {"close": 63000.0})
-    assert bot.open_position is None, (
-        "must exit when price reaches planned bracket_target"
-    )
+    assert bot.open_position is None, "must exit when price reaches planned bracket_target"
 
 
 def test_realized_r_uses_bracket_distance_denominator(tmp_path) -> None:
@@ -683,16 +782,23 @@ def test_realized_r_uses_bracket_distance_denominator(tmp_path) -> None:
     router = ExecutionRouter(cfg=cfg, bf_dir=tmp_path, bots_ref=lambda: [])
 
     bot = BotInstance(
-        bot_id="t2", symbol="BTC", strategy_kind="x",
-        direction="long", cash=5000.0,
+        bot_id="t2",
+        symbol="BTC",
+        strategy_kind="x",
+        direction="long",
+        cash=5000.0,
     )
     # Long 0.01 BTC: entry 60000, stop 59000 → planned risk = 1000 * 0.01 = $10.
     # Exit at 60100 → pnl = +$1.00. realized_r = 1.0 / 10.0 = 0.10.
     # If the old denominator (cash*0.01 = $50) had been used, R would be 0.02.
     bot.open_position = {
-        "side": "BUY", "qty": 0.01, "entry_price": 60000.0,
-        "entry_ts": "x", "signal_id": "s2",
-        "bracket_stop": 59000.0, "bracket_target": 63000.0,
+        "side": "BUY",
+        "qty": 0.01,
+        "entry_price": 60000.0,
+        "entry_ts": "x",
+        "signal_id": "s2",
+        "bracket_stop": 59000.0,
+        "bracket_target": 63000.0,
     }
 
     rec = router.submit_exit(bot=bot, bar={"close": 60100.0})
@@ -701,8 +807,7 @@ def test_realized_r_uses_bracket_distance_denominator(tmp_path) -> None:
     # so realized_r is ~0.0909, not exactly 0.10. Just verify it lands in
     # the bracket-denominator range, not the legacy cash-denominator range.
     assert 0.05 < (rec.realized_r or 0.0) < 0.20, (
-        f"realized_r={rec.realized_r} not in bracket-denominator range "
-        "(legacy denominator would have produced ~0.02)"
+        f"realized_r={rec.realized_r} not in bracket-denominator range (legacy denominator would have produced ~0.02)"
     )
 
 
@@ -733,13 +838,20 @@ def test_synthetic_ctx_open_risk_r_uses_planned_stop_distance(tmp_path) -> None:
     sup.bots = []
     for i in range(5):
         b = BotInstance(
-            bot_id=f"b{i}", symbol="BTC", strategy_kind="x",
-            direction="long", cash=5000.0,
+            bot_id=f"b{i}",
+            symbol="BTC",
+            strategy_kind="x",
+            direction="long",
+            cash=5000.0,
         )
         b.open_position = {
-            "side": "BUY", "qty": 0.00167, "entry_price": 60000.0,
-            "entry_ts": "x", "signal_id": f"s{i}",
-            "bracket_stop": 59000.0, "bracket_target": 63000.0,
+            "side": "BUY",
+            "qty": 0.00167,
+            "entry_price": 60000.0,
+            "entry_ts": "x",
+            "signal_id": f"s{i}",
+            "bracket_stop": 59000.0,
+            "bracket_target": 63000.0,
         }
         sup.bots.append(b)
 
@@ -748,8 +860,7 @@ def test_synthetic_ctx_open_risk_r_uses_planned_stop_distance(tmp_path) -> None:
     # Real R-at-risk: 5 bots × ($1000 stop × 0.00167 qty / $50 R-unit)
     # = 5 × 0.0334 ≈ 0.167R total. Must be well under the 3R cap.
     assert ctx.equity.open_risk_r < 1.0, (
-        f"open_risk_r={ctx.equity.open_risk_r} too high; legacy bug "
-        "would have set it to 5.0 (the open_count)"
+        f"open_risk_r={ctx.equity.open_risk_r} too high; legacy bug would have set it to 5.0 (the open_count)"
     )
 
 
@@ -776,31 +887,45 @@ def test_propagate_close_uses_live_regime_label(tmp_path, monkeypatch) -> None:
     sup = JarvisStrategySupervisor(cfg=cfg)
 
     bot = BotInstance(
-        bot_id="rt", symbol="BTC", strategy_kind="x",
-        direction="long", cash=5000.0,
+        bot_id="rt",
+        symbol="BTC",
+        strategy_kind="x",
+        direction="long",
+        cash=5000.0,
     )
     rec = FillRecord(
-        bot_id="rt", signal_id="sig-1", side="SELL", symbol="BTC",
-        qty=0.001, fill_price=60000.0, fill_ts="2026-05-04T12:00:00Z",
-        realized_r=0.5, realized_pnl=10.0, paper=True, note="",
+        bot_id="rt",
+        signal_id="sig-1",
+        side="SELL",
+        symbol="BTC",
+        qty=0.001,
+        fill_price=60000.0,
+        fill_ts="2026-05-04T12:00:00Z",
+        realized_r=0.5,
+        realized_pnl=10.0,
+        paper=True,
+        note="",
     )
 
-    with patch.object(
-        sup, "_load_live_regime",
-        return_value={
-            "primary_regime": "trending_up",
-            "macro_bias": "risk_on",
-        },
-    ), patch(
-        "eta_engine.brain.jarvis_v3.feedback_loop.close_trade",
-    ) as mock_close:
+    with (
+        patch.object(
+            sup,
+            "_load_live_regime",
+            return_value={
+                "primary_regime": "trending_up",
+                "macro_bias": "risk_on",
+            },
+        ),
+        patch(
+            "eta_engine.brain.jarvis_v3.feedback_loop.close_trade",
+        ) as mock_close,
+    ):
         sup._propagate_close(bot, rec)
 
     assert mock_close.called, "close_trade must be invoked"
     kwargs = mock_close.call_args.kwargs
     assert kwargs["regime"] == "trending_up", (
-        f"regime={kwargs.get('regime')!r} — must reflect live "
-        "regime_state.json, not hardcoded 'neutral'"
+        f"regime={kwargs.get('regime')!r} — must reflect live regime_state.json, not hardcoded 'neutral'"
     )
     assert kwargs["extra"]["macro_bias"] == "risk_on"
 
@@ -831,8 +956,11 @@ def test_maybe_enter_uses_sage_bias_to_pick_side(tmp_path, monkeypatch) -> None:
     sup = JarvisStrategySupervisor(cfg=cfg)
 
     bot = BotInstance(
-        bot_id="t1", symbol="BTC", strategy_kind="x",
-        direction="long", cash=5000.0,
+        bot_id="t1",
+        symbol="BTC",
+        strategy_kind="x",
+        direction="long",
+        cash=5000.0,
     )
 
     # Mock Sage probe → composite bias SHORT @ conv 0.7
@@ -849,9 +977,11 @@ def test_maybe_enter_uses_sage_bias_to_pick_side(tmp_path, monkeypatch) -> None:
 
     submit_mock = MagicMock(return_value=None)
 
-    with patch.object(sup, "_consult_sage_for_bot", return_value=mock_report), \
-         patch.object(sup, "_consult_jarvis", return_value=mock_verdict), \
-         patch.object(sup, "_router") as router:
+    with (
+        patch.object(sup, "_consult_sage_for_bot", return_value=mock_report),
+        patch.object(sup, "_consult_jarvis", return_value=mock_verdict),
+        patch.object(sup, "_router") as router,
+    ):
         router.submit_entry = submit_mock
         # Force the random dice to fire
         with patch("random.random", return_value=0.0):
@@ -860,8 +990,7 @@ def test_maybe_enter_uses_sage_bias_to_pick_side(tmp_path, monkeypatch) -> None:
     assert submit_mock.called, "submit_entry must be called"
     kwargs = submit_mock.call_args.kwargs
     assert kwargs["side"] == "SELL", (
-        f"side={kwargs.get('side')!r} — Sage SHORT conv=0.7 should "
-        "have flipped the long-registered bot to SELL"
+        f"side={kwargs.get('side')!r} — Sage SHORT conv=0.7 should have flipped the long-registered bot to SELL"
     )
 
 
@@ -880,6 +1009,7 @@ def _make_supervisor_for_consult(tmp_path):
         JarvisStrategySupervisor,
         SupervisorConfig,
     )
+
     cfg = SupervisorConfig()
     cfg.state_dir = tmp_path / "state"
     return JarvisStrategySupervisor(cfg=cfg)
@@ -895,12 +1025,17 @@ def test_consult_jarvis_none_reason_tagged_when_jarvis_not_bootstrapped(tmp_path
     sup = _make_supervisor_for_consult(tmp_path)
     sup._jarvis_full = None  # simulate bootstrap failure
     bot = BotInstance(
-        bot_id="test_bot", symbol="MNQ1", strategy_kind="orb_sage_gated",
-        direction="long", cash=5000.0,
+        bot_id="test_bot",
+        symbol="MNQ1",
+        strategy_kind="orb_sage_gated",
+        direction="long",
+        cash=5000.0,
     )
 
     verdict = sup._consult_jarvis(
-        bot=bot, signal_id="sig1", action="ORDER_PLACE",
+        bot=bot,
+        signal_id="sig1",
+        action="ORDER_PLACE",
         payload={"symbol": "MNQ1", "side": "buy", "qty": 1.0},
         narrative="test",
     )
@@ -925,9 +1060,11 @@ def test_consult_jarvis_none_reason_tagged_when_regime_blocks_strategy(tmp_path)
     # _jarvis_full must be truthy to clear the bootstrap branch
     sup._jarvis_full = object()
     bot = BotInstance(
-        bot_id="btc_optimized", symbol="BTC",
+        bot_id="btc_optimized",
+        symbol="BTC",
         strategy_kind="confluence_scorecard",
-        direction="long", cash=5000.0,
+        direction="long",
+        cash=5000.0,
     )
 
     fake_regime = {
@@ -936,14 +1073,16 @@ def test_consult_jarvis_none_reason_tagged_when_regime_blocks_strategy(tmp_path)
     }
     with patch.object(sup, "_load_live_regime", return_value=fake_regime):
         verdict = sup._consult_jarvis(
-            bot=bot, signal_id="sig1", action="ORDER_PLACE",
+            bot=bot,
+            signal_id="sig1",
+            action="ORDER_PLACE",
             payload={"symbol": "BTC", "side": "buy", "qty": 1.0},
             narrative="test",
         )
     assert verdict is None
-    assert bot.last_jarvis_verdict_reason == (
-        "regime_block:confluence_scorecard@vol_expansion"
-    ), f"got reason={bot.last_jarvis_verdict_reason!r}"
+    assert bot.last_jarvis_verdict_reason == ("regime_block:confluence_scorecard@vol_expansion"), (
+        f"got reason={bot.last_jarvis_verdict_reason!r}"
+    )
 
 
 def test_consult_jarvis_none_reason_tagged_when_consult_raises(tmp_path) -> None:
@@ -963,20 +1102,24 @@ def test_consult_jarvis_none_reason_tagged_when_consult_raises(tmp_path) -> None
     jf.consult.side_effect = RuntimeError("simulated layer failure")
     sup._jarvis_full = jf
     bot = BotInstance(
-        bot_id="eth_perp", symbol="ETH", strategy_kind="sage_daily_gated",
-        direction="long", cash=5000.0,
+        bot_id="eth_perp",
+        symbol="ETH",
+        strategy_kind="sage_daily_gated",
+        direction="long",
+        cash=5000.0,
     )
 
     with patch.object(sup, "_load_live_regime", return_value={}):
         verdict = sup._consult_jarvis(
-            bot=bot, signal_id="sig1", action="ORDER_PLACE",
+            bot=bot,
+            signal_id="sig1",
+            action="ORDER_PLACE",
             payload={"symbol": "ETH", "side": "buy", "qty": 1.0},
             narrative="test",
         )
     assert verdict is None
     assert bot.last_jarvis_verdict_reason == "consult_exception:RuntimeError", (
-        f"got reason={bot.last_jarvis_verdict_reason!r} — expected "
-        "'consult_exception:RuntimeError'"
+        f"got reason={bot.last_jarvis_verdict_reason!r} — expected 'consult_exception:RuntimeError'"
     )
 
 
@@ -999,25 +1142,30 @@ def test_consult_jarvis_clears_reason_on_successful_verdict(tmp_path) -> None:
     sup._jarvis_full = jf
 
     bot = BotInstance(
-        bot_id="mnq_futures_sage", symbol="MNQ1",
+        bot_id="mnq_futures_sage",
+        symbol="MNQ1",
         strategy_kind="orb_sage_gated",
-        direction="long", cash=5000.0,
+        direction="long",
+        cash=5000.0,
     )
     # Pre-populate the reason as if a previous regime block fired.
     bot.last_jarvis_verdict_reason = "regime_block:orb_sage_gated@chop"
 
-    with patch.object(sup, "_load_live_regime", return_value={}), \
-         patch.object(sup, "_build_synthetic_ctx", return_value=None):
+    with (
+        patch.object(sup, "_load_live_regime", return_value={}),
+        patch.object(sup, "_build_synthetic_ctx", return_value=None),
+    ):
         verdict = sup._consult_jarvis(
-            bot=bot, signal_id="sig1", action="ORDER_PLACE",
+            bot=bot,
+            signal_id="sig1",
+            action="ORDER_PLACE",
             payload={"symbol": "MNQ1", "side": "buy", "qty": 1.0},
             narrative="test",
         )
 
     assert verdict is fake_verdict
     assert bot.last_jarvis_verdict_reason == "", (
-        f"reason was not cleared after successful consult: "
-        f"{bot.last_jarvis_verdict_reason!r}"
+        f"reason was not cleared after successful consult: {bot.last_jarvis_verdict_reason!r}"
     )
 
 
@@ -1029,7 +1177,9 @@ def test_botinstance_to_state_includes_verdict_reason() -> None:
     from eta_engine.scripts.jarvis_strategy_supervisor import BotInstance
 
     bot = BotInstance(
-        bot_id="b1", symbol="MNQ1", strategy_kind="orb_sage_gated",
+        bot_id="b1",
+        symbol="MNQ1",
+        strategy_kind="orb_sage_gated",
     )
     bot.last_jarvis_verdict = "NONE"
     bot.last_jarvis_verdict_reason = "regime_block:orb_sage_gated@chop"
@@ -1038,6 +1188,4 @@ def test_botinstance_to_state_includes_verdict_reason() -> None:
         "to_state() must surface last_jarvis_verdict_reason or the "
         "operator can't see WHY a bot's verdict is NONE in the heartbeat"
     )
-    assert state["last_jarvis_verdict_reason"] == (
-        "regime_block:orb_sage_gated@chop"
-    )
+    assert state["last_jarvis_verdict_reason"] == ("regime_block:orb_sage_gated@chop")

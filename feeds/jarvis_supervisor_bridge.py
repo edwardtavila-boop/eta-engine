@@ -24,6 +24,7 @@ The function lives in a tracked module so:
 Failure modes are silent on purpose -- a missing or unparseable
 heartbeat must never break the dashboard endpoint.
 """
+
 from __future__ import annotations
 
 import json
@@ -32,9 +33,7 @@ from typing import Any
 
 # ROOT = the repo root (parents[1] of scripts/)
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_HEARTBEAT_PATH = (
-    ROOT / "state" / "jarvis_intel" / "supervisor" / "heartbeat.json"
-)
+DEFAULT_HEARTBEAT_PATH = ROOT / "state" / "jarvis_intel" / "supervisor" / "heartbeat.json"
 
 
 def jarvis_supervisor_bot_accounts(
@@ -91,35 +90,37 @@ def jarvis_supervisor_bot_accounts(
         readiness_payload = strategy_readiness if isinstance(strategy_readiness, dict) else {}
         running = bool(bot.get("open_position")) or n_entries > 0
         status = "running" if running else "idle"
-        accounts.append({
-            "id": str(bot.get("bot_id") or ""),
-            "name": str(bot.get("bot_id") or ""),
-            "broker": "paper-sim",
-            "strategy": str(bot.get("strategy_kind") or ""),
-            "mode": mode,
-            "status": status,
-            "confirmed": True,
-            "today": {
-                "trades": n_exits,
-                "wins": wins,
-                "losses": losses,
-                "pnl": realized_pnl,
-                "max_drawdown": 0.0,
-            },
-            "open_position": bot.get("open_position") or {},
-            "source": "jarvis_strategy_supervisor",
-            "updated_at": str(bot.get("last_bar_ts") or hb_ts),
-            # Extra fields the dashboard ignores but useful for clients
-            # reading the JSON directly:
-            "symbol": str(bot.get("symbol") or ""),
-            "direction": str(bot.get("direction") or ""),
-            "last_jarvis_verdict": last_verdict,
-            "strategy_readiness": readiness_payload,
-            "launch_lane": readiness_payload.get("launch_lane"),
-            "can_paper_trade": bool(readiness_payload.get("can_paper_trade")),
-            "can_live_trade": bool(readiness_payload.get("can_live_trade")),
-            "readiness_next_action": readiness_payload.get("next_action"),
-        })
+        accounts.append(
+            {
+                "id": str(bot.get("bot_id") or ""),
+                "name": str(bot.get("bot_id") or ""),
+                "broker": "paper-sim",
+                "strategy": str(bot.get("strategy_kind") or ""),
+                "mode": mode,
+                "status": status,
+                "confirmed": True,
+                "today": {
+                    "trades": n_exits,
+                    "wins": wins,
+                    "losses": losses,
+                    "pnl": realized_pnl,
+                    "max_drawdown": 0.0,
+                },
+                "open_position": bot.get("open_position") or {},
+                "source": "jarvis_strategy_supervisor",
+                "updated_at": str(bot.get("last_bar_ts") or hb_ts),
+                # Extra fields the dashboard ignores but useful for clients
+                # reading the JSON directly:
+                "symbol": str(bot.get("symbol") or ""),
+                "direction": str(bot.get("direction") or ""),
+                "last_jarvis_verdict": last_verdict,
+                "strategy_readiness": readiness_payload,
+                "launch_lane": readiness_payload.get("launch_lane"),
+                "can_paper_trade": bool(readiness_payload.get("can_paper_trade")),
+                "can_live_trade": bool(readiness_payload.get("can_live_trade")),
+                "readiness_next_action": readiness_payload.get("next_action"),
+            }
+        )
     return accounts
 
 
@@ -143,8 +144,7 @@ def merge_supervisor_into_payload(
     existing_list = list(existing) if isinstance(existing, list) else []
     sup_ids = {acc["id"] for acc in sup_accounts}
     merged = [
-        row for row in existing_list
-        if isinstance(row, dict) and str(row.get("id") or "") not in sup_ids
+        row for row in existing_list if isinstance(row, dict) and str(row.get("id") or "") not in sup_ids
     ] + sup_accounts
     return {**payload, "bot_accounts": merged}
 

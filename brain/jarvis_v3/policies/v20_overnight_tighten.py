@@ -16,6 +16,7 @@ v20 adds a single session-phase rule on top of v17:
 Doesn't touch APPROVED orders (which already imply normal market
 conditions). Doesn't touch DENIED/DEFERRED (those are already blocked).
 """
+
 from __future__ import annotations
 
 from eta_engine.brain.jarvis_admin import (
@@ -29,10 +30,12 @@ from eta_engine.brain.jarvis_v3.candidate_policy import register_candidate
 
 #: Sessions where v20 tightens. PREMARKET is included because the gap
 #: from overnight close to RTH open is the highest-variance window.
-OVERNIGHT_SESSIONS: frozenset[SessionPhase] = frozenset({
-    SessionPhase.OVERNIGHT,
-    SessionPhase.PREMARKET,
-})
+OVERNIGHT_SESSIONS: frozenset[SessionPhase] = frozenset(
+    {
+        SessionPhase.OVERNIGHT,
+        SessionPhase.PREMARKET,
+    }
+)
 
 #: Tighter cap for overnight CONDITIONAL approvals.
 OVERNIGHT_CAP: float = 0.40
@@ -49,11 +52,13 @@ def evaluate_v20(req: ActionRequest, ctx: JarvisContext) -> ActionResponse:
     new_cap = min(current_cap, OVERNIGHT_CAP)
     if new_cap >= current_cap:
         return resp
-    return resp.model_copy(update={
-        "size_cap_mult": new_cap,
-        "reason": f"{resp.reason} [v20 overnight-tighten {current_cap:.2f}->{new_cap:.2f}]",
-        "conditions": [*resp.conditions, f"v20_overnight_tightened_to_{new_cap:.2f}"],
-    })
+    return resp.model_copy(
+        update={
+            "size_cap_mult": new_cap,
+            "reason": f"{resp.reason} [v20 overnight-tighten {current_cap:.2f}->{new_cap:.2f}]",
+            "conditions": [*resp.conditions, f"v20_overnight_tightened_to_{new_cap:.2f}"],
+        }
+    )
 
 
 register_candidate(
@@ -61,8 +66,7 @@ register_candidate(
     evaluate_v20,
     parent_version=17,
     rationale=(
-        f"tighten CONDITIONAL cap to {OVERNIGHT_CAP:.2f} in OVERNIGHT/PREMARKET; "
-        f"thin books + headline-gap risk"
+        f"tighten CONDITIONAL cap to {OVERNIGHT_CAP:.2f} in OVERNIGHT/PREMARKET; thin books + headline-gap risk"
     ),
     metadata={
         "overnight_sessions": [s.value for s in sorted(OVERNIGHT_SESSIONS)],

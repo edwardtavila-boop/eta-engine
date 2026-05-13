@@ -11,6 +11,7 @@ These tests pin the wave-8 risk values so an accidental revert is
 caught at CI rather than only being noticed when the watchdog starts
 firing CRITICAL again.
 """
+
 # ruff: noqa: PLR2004
 from __future__ import annotations
 

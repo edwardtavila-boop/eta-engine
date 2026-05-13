@@ -8,6 +8,7 @@ and the replay scoring engine has a labelled baseline.
 Future champions get their own version-numbered modules in this package
 and update the ``CHAMPION_NAME`` in ``policies/__init__.py``.
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING

@@ -14,6 +14,7 @@ Usage::
     python scripts/monte_carlo_stress.py --paths 5000 --horizon-days 60
     python scripts/monte_carlo_stress.py --bot mnq_eta --json
 """
+
 from __future__ import annotations
 
 import argparse
@@ -52,8 +53,8 @@ class StressReport:
     p05_terminal_equity_usd: float
     p50_terminal_equity_usd: float
     p95_terminal_equity_usd: float
-    pct_paths_underwater: float    # % of paths ending below starting_equity
-    pct_paths_blown_up: float       # % of paths hitting 50% drawdown
+    pct_paths_underwater: float  # % of paths ending below starting_equity
+    pct_paths_blown_up: float  # % of paths hitting 50% drawdown
     realized_r_sample_size: int
     notes: list[str] = field(default_factory=list)
 
@@ -98,7 +99,10 @@ def load_realized_r_samples(journal_path: Path, *, since: datetime | None = None
 
 
 def synthetic_r_distribution(
-    *, win_rate: float = 0.45, avg_winner_r: float = 1.6, avg_loser_r: float = -1.0,
+    *,
+    win_rate: float = 0.45,
+    avg_winner_r: float = 1.6,
+    avg_loser_r: float = -1.0,
     n: int = 200,
 ) -> list[float]:
     """Default-ish R-multiple distribution when no real journal exists.
@@ -112,11 +116,7 @@ def synthetic_r_distribution(
     out: list[float] = []
     for _ in range(n):
         # Winner: skewed positive; loser: concentrated around -1R (stop)
-        r = (
-            max(0.0, rng.gauss(avg_winner_r, 0.4))
-            if rng.random() < win_rate
-            else min(0.0, rng.gauss(avg_loser_r, 0.3))
-        )
+        r = max(0.0, rng.gauss(avg_winner_r, 0.4)) if rng.random() < win_rate else min(0.0, rng.gauss(avg_loser_r, 0.3))
         out.append(round(r, 4))
     return out
 
@@ -166,8 +166,11 @@ def run_stress(
 
     for _ in range(paths):
         equity, max_dd = simulate_path(
-            samples, starting_equity_usd=starting_equity_usd,
-            risk_per_trade_usd=risk_usd, n_trades=n_trades, rng=rng,
+            samples,
+            starting_equity_usd=starting_equity_usd,
+            risk_per_trade_usd=risk_usd,
+            n_trades=n_trades,
+            rng=rng,
         )
         terminal_equities.append(equity)
         max_drawdowns.append(max_dd)
@@ -188,10 +191,7 @@ def run_stress(
             f"sizing may be too aggressive given realized win-rate"
         )
     if pct(terminal_equities, 50) < starting_equity_usd:
-        notes.append(
-            "WARNING: median terminal equity is below starting equity -- "
-            "current edge does not cover variance"
-        )
+        notes.append("WARNING: median terminal equity is below starting equity -- current edge does not cover variance")
 
     return StressReport(
         paths=paths,
@@ -213,19 +213,26 @@ def run_stress(
 
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(description=__doc__,
-                                formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--journal", type=Path, default=_DEFAULT_JOURNAL,
-                   help="Decision journal JSONL (default: var/eta_engine/state/decision_journal.jsonl)")
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument(
+        "--journal",
+        type=Path,
+        default=_DEFAULT_JOURNAL,
+        help="Decision journal JSONL (default: var/eta_engine/state/decision_journal.jsonl)",
+    )
     p.add_argument("--paths", type=int, default=1000)
-    p.add_argument("--horizon-days", type=int, default=60,
-                   help="Trades per simulated path (use ~1 trade/day for swing, more for intraday)")
+    p.add_argument(
+        "--horizon-days",
+        type=int,
+        default=60,
+        help="Trades per simulated path (use ~1 trade/day for swing, more for intraday)",
+    )
     p.add_argument("--starting-equity", type=float, default=10_000.0)
     p.add_argument("--risk-per-trade-pct", type=float, default=0.01)
-    p.add_argument("--lookback-days", type=int, default=90,
-                   help="Only bootstrap from R-samples within last N days")
-    p.add_argument("--allow-synthetic", action="store_true",
-                   help="When journal empty, fall back to a synthetic R distribution")
+    p.add_argument("--lookback-days", type=int, default=90, help="Only bootstrap from R-samples within last N days")
+    p.add_argument(
+        "--allow-synthetic", action="store_true", help="When journal empty, fall back to a synthetic R distribution"
+    )
     p.add_argument("--json", action="store_true")
     p.add_argument("--out", type=Path, default=_DEFAULT_OUT_DIR)
     p.add_argument("-v", "--verbose", action="store_true")

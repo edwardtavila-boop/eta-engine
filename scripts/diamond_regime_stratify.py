@@ -46,6 +46,7 @@ Run
 
     python -m eta_engine.scripts.diamond_regime_stratify
 """
+
 from __future__ import annotations
 
 # ruff: noqa: PLR2004
@@ -102,9 +103,9 @@ class BotStratifyReport:
     notes: list[str] = field(default_factory=list)
 
 
-def _bootstrap_ci_mean(samples: list[float],
-                         n_resamples: int = BOOTSTRAP_N,
-                         confidence: float = 0.95) -> tuple[float, float]:
+def _bootstrap_ci_mean(
+    samples: list[float], n_resamples: int = BOOTSTRAP_N, confidence: float = 0.95
+) -> tuple[float, float]:
     rng = random.Random(RANDOM_SEED)
     n = len(samples)
     means: list[float] = []
@@ -126,8 +127,7 @@ def _classify(bucket: BucketStats) -> None:
     if bucket.bootstrap_ci_lower is None:
         bucket.verdict = "SPARSE"
         return
-    if (bucket.bootstrap_ci_lower > STRONG_CI_LOWER_THRESHOLD
-            and bucket.n_trades >= 20):
+    if bucket.bootstrap_ci_lower > STRONG_CI_LOWER_THRESHOLD and bucket.n_trades >= 20:
         bucket.verdict = "STRONG"
     elif bucket.bootstrap_ci_lower > 0:
         bucket.verdict = "WEAK"
@@ -187,7 +187,8 @@ def _stratify_bot(bot_id: str) -> BotStratifyReport:
         wr = round(100.0 * wins / max(n, 1), 2)
         bucket = BucketStats(
             bucket_key=f"{regime}|{session}",
-            regime=regime, session=session,
+            regime=regime,
+            session=session,
             n_trades=n,
             cumulative_r=round(cum, 4),
             mean_r=round(mean_r, 4),
@@ -220,8 +221,7 @@ def run() -> dict:
     }
     try:
         OUT_LATEST.parent.mkdir(parents=True, exist_ok=True)
-        OUT_LATEST.write_text(
-            json.dumps(summary, indent=2, default=str), encoding="utf-8")
+        OUT_LATEST.write_text(json.dumps(summary, indent=2, default=str), encoding="utf-8")
     except OSError as exc:
         print(f"WARN: write_latest failed: {exc}", file=sys.stderr)
     return summary
@@ -232,8 +232,7 @@ def _print(summary: dict) -> None:
     print(f" DIAMOND REGIME STRATIFICATION — {summary['ts']}")
     print("=" * 100)
     for r in summary["reports"]:
-        print(f"\n  {r['bot_id']} — {r['total_trades']} trades, "
-              f"cumR={r['total_r']:+.2f}")
+        print(f"\n  {r['bot_id']} — {r['total_trades']} trades, cumR={r['total_r']:+.2f}")
         if not r["buckets"]:
             print("    (no buckets)")
             continue
@@ -244,8 +243,7 @@ def _print(summary: dict) -> None:
         )
         # Sort buckets by cumulative R descending
         for b in sorted(r["buckets"], key=lambda x: -x["cumulative_r"]):
-            ci_s = (f"{b['bootstrap_ci_lower']:+.3f}"
-                     if b.get("bootstrap_ci_lower") is not None else "n/a")
+            ci_s = f"{b['bootstrap_ci_lower']:+.3f}" if b.get("bootstrap_ci_lower") is not None else "n/a"
             print(
                 f"    {b['regime']:14s} {b['session']:12s} "
                 f"{b['n_trades']:>5d} {b['cumulative_r']:>+8.2f} "
@@ -254,8 +252,7 @@ def _print(summary: dict) -> None:
             )
         if r.get("strongest_bucket"):
             print(
-                f"    -> STRONGEST: {r['strongest_bucket']}  "
-                f"WEAKEST: {r['weakest_bucket']}",
+                f"    -> STRONGEST: {r['strongest_bucket']}  WEAKEST: {r['weakest_bucket']}",
             )
     print()
 

@@ -90,7 +90,8 @@ def _http_json(url: str, *, timeout: float = 10.0) -> dict | None:
     )
     try:
         with urllib.request.urlopen(  # noqa: S310 -- public SEC endpoint
-            request, timeout=timeout,
+            request,
+            timeout=timeout,
         ) as resp:
             payload = json.loads(resp.read().decode("utf-8"))
     except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError) as exc:
@@ -126,7 +127,8 @@ def _query_edgar(query: str, dates: tuple[date, date]) -> list[dict]:
 
 
 def _build_daily_series(  # noqa: PLR0912 -- straight-line aggregation over one date window
-    queries: list[str], days: int,
+    queries: list[str],
+    days: int,
 ) -> dict[date, dict[str, int]]:
     end_d = datetime.now(UTC).date()
     start_d = end_d - timedelta(days=days)
@@ -166,8 +168,12 @@ def _filename(symbol: str) -> str:
 
 
 def write_csv(  # noqa: PLR0913 - explicit args keep CSV shape intentional
-    *, path: Path, series: dict[date, dict[str, int]],
-    queries: list[str], days: int, end_d: date,
+    *,
+    path: Path,
+    series: dict[date, dict[str, int]],
+    queries: list[str],
+    days: int,
+    end_d: date,
 ) -> None:
     """Write XRPSENT_D.csv with one row per day, including zero-count days.
 
@@ -188,9 +194,14 @@ def write_csv(  # noqa: PLR0913 - explicit args keep CSV shape intentional
         while cursor <= end_d_actual:
             day_data = series.get(cursor, {})
             total = sum(day_data.get(c, 0) for c in cols)
-            ts = int(datetime(
-                cursor.year, cursor.month, cursor.day, tzinfo=UTC,
-            ).timestamp())
+            ts = int(
+                datetime(
+                    cursor.year,
+                    cursor.month,
+                    cursor.day,
+                    tzinfo=UTC,
+                ).timestamp()
+            )
             row = [
                 ts,
                 float(total),  # open
@@ -208,18 +219,21 @@ def main() -> int:
     p = argparse.ArgumentParser(prog="fetch_xrp_news_history")
     p.add_argument("--days", type=int, default=365)
     p.add_argument(
-        "--root", type=Path, default=SENTIMENT_ROOT,
+        "--root",
+        type=Path,
+        default=SENTIMENT_ROOT,
         help="output directory (default: canonical ETA crypto sentiment root)",
     )
     p.add_argument(
-        "--queries", nargs="+", default=["ripple", "XRP"],
+        "--queries",
+        nargs="+",
+        default=["ripple", "XRP"],
         help="EDGAR full-text search terms (whitespace separates terms)",
     )
     args = p.parse_args()
 
     print(
-        f"[fetch_xrp_news_history] last {args.days}d, "
-        f"queries={args.queries} -> {args.root}",
+        f"[fetch_xrp_news_history] last {args.days}d, queries={args.queries} -> {args.root}",
     )
     series = _build_daily_series(args.queries, args.days)
     end_d = datetime.now(UTC).date()
@@ -231,12 +245,9 @@ def main() -> int:
         days=args.days,
         end_d=end_d,
     )
-    n_active = sum(
-        1 for d in series if any(series[d].get(c) for c in series[d])
-    )
+    n_active = sum(1 for d in series if any(series[d].get(c) for c in series[d]))
     print(
-        f"  wrote {args.days + 1} day rows to {out}  "
-        f"(non-zero days = {n_active})",
+        f"  wrote {args.days + 1} day rows to {out}  (non-zero days = {n_active})",
     )
     return 0
 

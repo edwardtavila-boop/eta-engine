@@ -110,10 +110,10 @@ def parse_quote_frame(payload: str | bytes) -> list[dict[str, Any]]:
             if sym and price is not None:
                 out.append(
                     {
-                        "kind":   "tick",
+                        "kind": "tick",
                         "symbol": sym,
-                        "ts":     float(ts) if ts is not None else 0.0,
-                        "price":  float(price),
+                        "ts": float(ts) if ts is not None else 0.0,
+                        "price": float(price),
                     },
                 )
         elif method == "timescale_update" and len(params) >= 2:
@@ -123,7 +123,7 @@ def parse_quote_frame(payload: str | bytes) -> list[dict[str, Any]]:
                 if not isinstance(series, dict):
                     continue
                 series_name = series.get("ns", {}).get("d", "")
-                bars = (series.get("s") or [])
+                bars = series.get("s") or []
                 for entry in bars:
                     arr = entry.get("v") or []
                     if len(arr) < 6:
@@ -131,14 +131,14 @@ def parse_quote_frame(payload: str | bytes) -> list[dict[str, Any]]:
                     ts, op, hi, lo, cl, vol = arr[:6]
                     out.append(
                         {
-                            "kind":   "bar",
+                            "kind": "bar",
                             "symbol": series_name or params[0],
-                            "ts":     float(ts),
-                            "o":      float(op),
-                            "h":      float(hi),
-                            "l":      float(lo),
-                            "c":      float(cl),
-                            "v":      float(vol),
+                            "ts": float(ts),
+                            "o": float(op),
+                            "h": float(hi),
+                            "l": float(lo),
+                            "c": float(cl),
+                            "v": float(vol),
                         },
                     )
     return out
@@ -209,9 +209,9 @@ def parse_indicator_tooltip(text: str) -> dict[str, Any] | None:
         return None
     return {
         "indicator": name,
-        "params":    params_str,
-        "value":     nums[0],
-        "all":       nums,
+        "params": params_str,
+        "value": nums[0],
+        "all": nums,
     }
 
 
@@ -246,8 +246,9 @@ def parse_watchlist_row(row: dict[str, Any]) -> dict[str, Any] | None:
     out["last"] = last if last is not None else 0.0
     # TradingView "chg" is already a percentage; we store it directly so
     # ``chg_pct`` is the displayed percent (NOT divided by 100 again).
-    out["chg_pct"] = (chg_pct * 100.0) if chg_pct is not None and abs(chg_pct) < 1 \
-        else (chg_pct if chg_pct is not None else 0.0)
+    out["chg_pct"] = (
+        (chg_pct * 100.0) if chg_pct is not None and abs(chg_pct) < 1 else (chg_pct if chg_pct is not None else 0.0)
+    )
     out["vol"] = vol if vol is not None else 0.0
     return out
 
@@ -286,10 +287,10 @@ def parse_alert_row(row: dict[str, Any]) -> dict[str, Any] | None:
         active = True
     fired_at = row.get("fired_at") or None
     return {
-        "symbol":    sym or None,
-        "name":      name,
+        "symbol": sym or None,
+        "name": name,
         "condition": cond,
-        "value":     value,
-        "active":    bool(active),
-        "fired_at":  fired_at,
+        "value": value,
+        "active": bool(active),
+        "fired_at": fired_at,
     }

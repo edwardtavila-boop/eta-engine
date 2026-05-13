@@ -24,10 +24,12 @@ runnable standalone for debugging:
 
     python -m eta_engine.scripts.drift_alarm_alerter --once
 """
+
 from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 import json
 import logging
 import os
@@ -41,9 +43,7 @@ from typing import Any
 logger = logging.getLogger("drift_alarm_alerter")
 
 # ---- canonical paths (CLAUDE.md hard rule #1: workspace-only writes) ----
-_WORKSPACE_ROOT = Path(
-    os.environ.get("ETA_WORKSPACE_ROOT", r"C:\EvolutionaryTradingAlgo")
-)
+_WORKSPACE_ROOT = Path(os.environ.get("ETA_WORKSPACE_ROOT", r"C:\EvolutionaryTradingAlgo"))
 _STATE_DIR = _WORKSPACE_ROOT / "var" / "eta_engine" / "state"
 _STATE_FILE = _STATE_DIR / "drift_alert_state.json"
 
@@ -248,8 +248,8 @@ def run_once(
     dashboard_url: str | None = None,
     dedup_s: int | None = None,
     now_ts: float | None = None,
-    fetcher: "object | None" = None,
-    dispatcher: "object | None" = None,
+    fetcher: object | None = None,
+    dispatcher: object | None = None,
 ) -> dict[str, Any]:
     """Single poll cycle. Returns a heartbeat-style summary dict."""
     if dedup_s is None:
@@ -298,14 +298,12 @@ def run_forever(
     dedup = dedup_s if dedup_s is not None else _dedup_s()
     stop_flag = {"stop": False}
 
-    def _stop(*_args: Any) -> None:
+    def _stop(*_args: object) -> None:
         stop_flag["stop"] = True
 
     for sig in (signal.SIGINT, signal.SIGTERM):
-        try:
+        with contextlib.suppress(ValueError, OSError):
             signal.signal(sig, _stop)
-        except (ValueError, OSError):
-            pass
 
     logger.info(
         "drift_alerter starting | url=%s interval=%ss dedup=%ss state=%s",
@@ -335,9 +333,15 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--once", action="store_true", help="Run a single poll cycle then exit (debugging)")
     parser.add_argument("--url", default=None, help="Dashboard endpoint URL (default $ETA_DRIFT_ALERT_URL)")
-    parser.add_argument("--interval", type=int, default=None, help="Poll interval seconds (default $ETA_DRIFT_ALERT_INTERVAL_S=300)")
-    parser.add_argument("--dedup", type=int, default=None, help="Dedup window seconds (default $ETA_DRIFT_ALERT_DEDUP_S=3600)")
-    parser.add_argument("--state", default=None, help="State file path (default var/eta_engine/state/drift_alert_state.json)")
+    parser.add_argument(
+        "--interval", type=int, default=None, help="Poll interval seconds (default $ETA_DRIFT_ALERT_INTERVAL_S=300)"
+    )
+    parser.add_argument(
+        "--dedup", type=int, default=None, help="Dedup window seconds (default $ETA_DRIFT_ALERT_DEDUP_S=3600)"
+    )
+    parser.add_argument(
+        "--state", default=None, help="State file path (default var/eta_engine/state/drift_alert_state.json)"
+    )
     args = parser.parse_args(argv)
 
     logging.basicConfig(

@@ -1,0 +1,452 @@
+"""
+EVOLUTIONARY TRADING ALGO  //  scripts.diamond_prop_launch_readiness
+======================================================================
+Pre-launch GO/NO-GO gate for the Monday 2026-05-18 prop-fund cutover.
+
+Operator goal (2026-05-12)
+--------------------------
+Monday 2026-05-18: PROP_READY top-3 go LIVE on the $50K prop firm.
+Until then (5 paper-live days), this gate runs every cron cycle and
+tells the operator exactly what's blocking a clean Monday launch.
+
+NO single signal is enough — a clean launch requires every gate to
+say GO simultaneously.  This script aggregates all of them.
+
+Pre-launch checklist (each must be GO):
+---------------------------------------
+
+  R1_PROP_READY_DESIGNATED   At least 2 of 3 PROP_READY bots designated
+                              by the leaderboard
+  R2_DRAWDOWN_OK              diamond_prop_drawdown_guard signal != HALT
+  R3_FEED_SANITY_CLEAN        No PROP_READY bot in feed_sanity FLAGGED
+                              (STUCK_PRICE / ZERO_PNL / MISSING fields)
+  R4_SIZING_NOT_BREACHED      No PROP_READY bot in sizing_audit BREACHED
+  R5_WATCHDOG_NOT_CRITICAL    No PROP_READY bot in watchdog CRITICAL
+  R6_ALLOCATOR_RECEIPT_FRESH  Allocator receipt < AGE_LIMIT_HOURS old
+                              (proves the cron is firing)
+  R7_LEDGER_FRESH             closed_trade_ledger < AGE_LIMIT_HOURS old
+                              (proves the data feed is alive)
+
+Verdict bands:
+  GO            All 7 gates pass — safe to cut over Monday
+  HOLD          1+ soft warnings; review before commit
+  NO_GO         Any hard gate fails — Monday launch blocked
+
+Output
+------
+- stdout: per-gate status table with rationale + countdown to Monday
+- ``var/eta_engine/state/diamond_prop_launch_readiness_latest.json``
+- exit code: 0=GO, 1=HOLD, 2=NO_GO
+
+Run
+---
+::
+
+    python -m eta_engine.scripts.diamond_prop_launch_readiness
+    python -m eta_engine.scripts.diamond_prop_launch_readiness --json
+    python -m eta_engine.scripts.diamond_prop_launch_readiness --launch-date 2026-05-18
+"""
+from __future__ import annotations
+
+# ruff: noqa: N802, PLR2004
+import argparse
+import json
+import sys
+from dataclasses import asdict, dataclass, field
+from datetime import UTC, date, datetime, timedelta
+from pathlib import Path
+from typing import Any
+
+ROOT = Path(__file__).resolve().parents[1]
+WORKSPACE_ROOT = ROOT.parent
+STATE_DIR = WORKSPACE_ROOT / "var" / "eta_engine" / "state"
+
+LEADERBOARD_PATH        = STATE_DIR / "diamond_leaderboard_latest.json"
+PROP_ALLOCATOR_PATH     = STATE_DIR / "diamond_prop_allocator_latest.json"
+DRAWDOWN_GUARD_PATH     = STATE_DIR / "diamond_prop_drawdown_guard_latest.json"
+SIZING_AUDIT_PATH       = STATE_DIR / "diamond_sizing_audit_latest.json"
+WATCHDOG_PATH           = STATE_DIR / "diamond_watchdog_latest.json"
+FEED_SANITY_PATH        = STATE_DIR / "diamond_feed_sanity_audit_latest.json"
+LEDGER_PATH             = STATE_DIR / "closed_trade_ledger_latest.json"
+OUT_LATEST              = STATE_DIR / "diamond_prop_launch_readiness_latest.json"
+
+#: Default operator-set launch target.
+DEFAULT_LAUNCH_DATE = "2026-05-18"
+
+#: Receipts older than this are stale (cron isn't firing).
+AGE_LIMIT_HOURS = 2.0
+
+#: Minimum number of PROP_READY bots for the launch to be viable.
+MIN_PROP_READY_BOTS = 2
+
+
+@dataclass
+class GateResult:
+    name: str
+    status: str  # "GO" / "HOLD" / "NO_GO"
+    rationale: str = ""
+    detail: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class LaunchReadinessReceipt:
+    ts: str
+    launch_date: str
+    days_until_launch: int
+    overall_verdict: str  # "GO" / "HOLD" / "NO_GO"
+    summary: str
+    gates: list[GateResult] = field(default_factory=list)
+
+
+def _load_json(path: Path) -> dict[str, Any] | None:
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def _file_age_hours(path: Path) -> float | None:
+    if not path.exists():
+        return None
+    mtime = datetime.fromtimestamp(path.stat().st_mtime, tz=UTC)
+    return (datetime.now(UTC) - mtime).total_seconds() / 3600.0
+
+
+def _parse_launch_date(s: str) -> date:
+    return datetime.strptime(s, "%Y-%m-%d").replace(tzinfo=UTC).date()
+
+
+# ────────────────────────────────────────────────────────────────────
+# Individual gate checks
+# ────────────────────────────────────────────────────────────────────
+
+
+def _check_R1_prop_ready_designated(leaderboard: dict | None) -> GateResult:
+    if not leaderboard:
+        return GateResult(
+            "R1_PROP_READY_DESIGNATED", "NO_GO",
+            rationale="leaderboard receipt missing — cron not firing or empty",
+        )
+    pr = leaderboard.get("prop_ready_bots") or []
+    n = len(pr)
+    if n >= 3:
+        return GateResult(
+            "R1_PROP_READY_DESIGNATED", "GO",
+            rationale=f"{n} PROP_READY bots designated: {pr}",
+            detail={"prop_ready_bots": pr, "n": n},
+        )
+    if n >= MIN_PROP_READY_BOTS:
+        return GateResult(
+            "R1_PROP_READY_DESIGNATED", "HOLD",
+            rationale=(
+                f"only {n} PROP_READY bots ({pr}); below the 3-bot "
+                "DOMINANT/BALANCED design but launch still possible "
+                "in DEGRADED mode"
+            ),
+            detail={"prop_ready_bots": pr, "n": n},
+        )
+    return GateResult(
+        "R1_PROP_READY_DESIGNATED", "NO_GO",
+        rationale=(
+            f"only {n} PROP_READY bot(s); need >= {MIN_PROP_READY_BOTS} "
+            "before going live"
+        ),
+        detail={"prop_ready_bots": pr, "n": n},
+    )
+
+
+def _check_R2_drawdown(guard: dict | None) -> GateResult:
+    if not guard:
+        return GateResult(
+            "R2_DRAWDOWN_OK", "NO_GO",
+            rationale="drawdown guard receipt missing — cron not firing",
+        )
+    sig = guard.get("signal", "UNKNOWN")
+    if sig == "OK":
+        return GateResult(
+            "R2_DRAWDOWN_OK", "GO",
+            rationale="prop drawdown guard: OK across all rules",
+            detail={"signal": sig},
+        )
+    if sig == "WATCH":
+        return GateResult(
+            "R2_DRAWDOWN_OK", "HOLD",
+            rationale=f"prop drawdown guard: WATCH — {guard.get('rationale', '')}",
+            detail={"signal": sig},
+        )
+    return GateResult(
+        "R2_DRAWDOWN_OK", "NO_GO",
+        rationale=f"prop drawdown guard: HALT — {guard.get('rationale', '')}",
+        detail={"signal": sig, "guard_rationale": guard.get("rationale", "")},
+    )
+
+
+def _check_R3_feed_sanity(feed: dict | None,
+                            prop_ready: set[str]) -> GateResult:
+    if not feed:
+        return GateResult(
+            "R3_FEED_SANITY_CLEAN", "NO_GO",
+            rationale="feed sanity audit receipt missing",
+        )
+    flagged = []
+    for sc in feed.get("scorecards") or []:
+        bid = sc.get("bot_id")
+        if bid in prop_ready and sc.get("verdict") == "FLAGGED":
+            flagged.append({"bot_id": bid, "flags": sc.get("flags", [])})
+    if not flagged:
+        return GateResult(
+            "R3_FEED_SANITY_CLEAN", "GO",
+            rationale=(
+                f"all {len(prop_ready)} PROP_READY bots passed feed sanity"
+            ),
+            detail={"prop_ready_count": len(prop_ready)},
+        )
+    return GateResult(
+        "R3_FEED_SANITY_CLEAN", "NO_GO",
+        rationale=(
+            f"{len(flagged)} PROP_READY bot(s) flagged on feed sanity: "
+            f"{[f['bot_id'] for f in flagged]} — data quality must be "
+            "fixed before going live"
+        ),
+        detail={"flagged": flagged},
+    )
+
+
+def _check_R4_sizing(sizing: dict | None,
+                      prop_ready: set[str]) -> GateResult:
+    if not sizing:
+        return GateResult(
+            "R4_SIZING_NOT_BREACHED", "NO_GO",
+            rationale="sizing audit receipt missing",
+        )
+    breached = []
+    for sc in sizing.get("statuses") or []:
+        bid = sc.get("bot_id")
+        if bid in prop_ready and sc.get("verdict") == "SIZING_BREACHED":
+            breached.append(bid)
+    if not breached:
+        return GateResult(
+            "R4_SIZING_NOT_BREACHED", "GO",
+            rationale="no PROP_READY bot has sizing BREACHED",
+        )
+    return GateResult(
+        "R4_SIZING_NOT_BREACHED", "NO_GO",
+        rationale=(
+            f"sizing BREACHED on PROP_READY bots: {breached} — single "
+            "stopout breaches the floor; cut risk_per_trade_pct first"
+        ),
+        detail={"breached_bots": breached},
+    )
+
+
+def _check_R5_watchdog(watchdog: dict | None,
+                        prop_ready: set[str]) -> GateResult:
+    if not watchdog:
+        return GateResult(
+            "R5_WATCHDOG_NOT_CRITICAL", "NO_GO",
+            rationale="watchdog receipt missing",
+        )
+    critical = []
+    warn = []
+    for st in watchdog.get("statuses") or []:
+        bid = st.get("bot_id")
+        if bid not in prop_ready:
+            continue
+        cls = st.get("classification", "INCONCLUSIVE")
+        if cls == "CRITICAL":
+            critical.append(bid)
+        elif cls == "WARN":
+            warn.append(bid)
+    if critical:
+        return GateResult(
+            "R5_WATCHDOG_NOT_CRITICAL", "NO_GO",
+            rationale=(
+                f"watchdog CRITICAL on PROP_READY bots: {critical} — "
+                "either USD floor breached or R-edge decayed"
+            ),
+            detail={"critical": critical, "warn": warn},
+        )
+    if warn:
+        return GateResult(
+            "R5_WATCHDOG_NOT_CRITICAL", "HOLD",
+            rationale=(
+                f"watchdog WARN on PROP_READY bots: {warn} — within 20% "
+                "of floor; review before going live"
+            ),
+            detail={"warn": warn},
+        )
+    return GateResult(
+        "R5_WATCHDOG_NOT_CRITICAL", "GO",
+        rationale="no PROP_READY bot in watchdog CRITICAL/WARN bands",
+    )
+
+
+def _check_R6_allocator_fresh(allocator_path: Path) -> GateResult:
+    age = _file_age_hours(allocator_path)
+    if age is None:
+        return GateResult(
+            "R6_ALLOCATOR_RECEIPT_FRESH", "NO_GO",
+            rationale="allocator receipt missing — hourly cron never fired",
+        )
+    if age > AGE_LIMIT_HOURS:
+        return GateResult(
+            "R6_ALLOCATOR_RECEIPT_FRESH", "NO_GO",
+            rationale=(
+                f"allocator receipt {age:.1f}h old > {AGE_LIMIT_HOURS}h "
+                "limit — cron has stalled; investigate"
+            ),
+            detail={"age_hours": round(age, 2)},
+        )
+    return GateResult(
+        "R6_ALLOCATOR_RECEIPT_FRESH", "GO",
+        rationale=f"allocator receipt fresh ({age:.2f}h old)",
+        detail={"age_hours": round(age, 2)},
+    )
+
+
+def _check_R7_ledger_fresh(ledger_path: Path) -> GateResult:
+    age = _file_age_hours(ledger_path)
+    if age is None:
+        return GateResult(
+            "R7_LEDGER_FRESH", "NO_GO",
+            rationale=(
+                "closed_trade_ledger receipt missing — 15-min cron "
+                "never fired; supervisor has no data"
+            ),
+        )
+    # Ledger should be very fresh — 15-min cron means < 0.5h is normal
+    if age > 0.5:
+        return GateResult(
+            "R7_LEDGER_FRESH", "HOLD",
+            rationale=(
+                f"ledger {age:.1f}h old; 15-min cron should keep < 0.5h"
+            ),
+            detail={"age_hours": round(age, 2)},
+        )
+    return GateResult(
+        "R7_LEDGER_FRESH", "GO",
+        rationale=f"ledger fresh ({age:.2f}h old)",
+        detail={"age_hours": round(age, 2)},
+    )
+
+
+# ────────────────────────────────────────────────────────────────────
+# Aggregator
+# ────────────────────────────────────────────────────────────────────
+
+
+def _aggregate_verdict(gates: list[GateResult]) -> tuple[str, str]:
+    """Worst-of: any NO_GO -> NO_GO; else any HOLD -> HOLD; else GO."""
+    if any(g.status == "NO_GO" for g in gates):
+        no_go = [g.name for g in gates if g.status == "NO_GO"]
+        return "NO_GO", (
+            f"NO_GO — {len(no_go)} hard gate(s) failing: "
+            f"{', '.join(no_go)}"
+        )
+    if any(g.status == "HOLD" for g in gates):
+        hold = [g.name for g in gates if g.status == "HOLD"]
+        return "HOLD", (
+            f"HOLD — {len(hold)} soft warning(s): {', '.join(hold)} — "
+            "review before commit"
+        )
+    return "GO", "ALL GATES GO — safe to cut over to live prop fund"
+
+
+def run(launch_date_str: str = DEFAULT_LAUNCH_DATE) -> dict[str, Any]:
+    leaderboard = _load_json(LEADERBOARD_PATH) or {}
+    drawdown = _load_json(DRAWDOWN_GUARD_PATH)
+    sizing = _load_json(SIZING_AUDIT_PATH)
+    watchdog = _load_json(WATCHDOG_PATH)
+    feed = _load_json(FEED_SANITY_PATH)
+
+    prop_ready = set(leaderboard.get("prop_ready_bots") or [])
+
+    gates = [
+        _check_R1_prop_ready_designated(leaderboard),
+        _check_R2_drawdown(drawdown),
+        _check_R3_feed_sanity(feed, prop_ready),
+        _check_R4_sizing(sizing, prop_ready),
+        _check_R5_watchdog(watchdog, prop_ready),
+        _check_R6_allocator_fresh(PROP_ALLOCATOR_PATH),
+        _check_R7_ledger_fresh(LEDGER_PATH),
+    ]
+
+    verdict, summary = _aggregate_verdict(gates)
+    today = datetime.now(UTC).date()
+    try:
+        launch = _parse_launch_date(launch_date_str)
+    except ValueError:
+        launch = today + timedelta(days=7)
+    days_until = (launch - today).days
+
+    receipt = LaunchReadinessReceipt(
+        ts=datetime.now(UTC).isoformat(),
+        launch_date=launch_date_str,
+        days_until_launch=days_until,
+        overall_verdict=verdict,
+        summary=summary,
+        gates=gates,
+    )
+    summary_dict = asdict(receipt)
+    try:
+        OUT_LATEST.parent.mkdir(parents=True, exist_ok=True)
+        OUT_LATEST.write_text(
+            json.dumps(summary_dict, indent=2, default=str), encoding="utf-8",
+        )
+    except OSError as exc:
+        print(f"WARN: write_latest failed: {exc}", file=sys.stderr)
+    return summary_dict
+
+
+def _print(s: dict[str, Any]) -> None:
+    print("=" * 100)
+    print(
+        f" PROP-FUND LAUNCH READINESS  ({s['ts']})  "
+        f"verdict={s['overall_verdict']}  "
+        f"days_until_{s['launch_date']}={s['days_until_launch']}",
+    )
+    print("=" * 100)
+    print(f" {s['summary']}")
+    print()
+    print(f" {'gate':30s}  {'status':6s}  rationale")
+    print("-" * 100)
+    for g in s["gates"]:
+        print(f" {g['name']:30s}  {g['status']:6s}  {g['rationale'][:55]}")
+        if len(g["rationale"]) > 55:
+            print(f" {'':30s}  {'':6s}  {g['rationale'][55:]}")
+    print()
+    if s["overall_verdict"] == "GO":
+        print(
+            f" >>> READY FOR LIVE CUTOVER on {s['launch_date']} <<<",
+        )
+    elif s["overall_verdict"] == "HOLD":
+        print(
+            " >>> Soft warnings — operator review needed before live cutover",
+        )
+    else:
+        print(
+            " >>> LAUNCH BLOCKED — fix the NO_GO gates before going live",
+        )
+    print()
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument(
+        "--launch-date", type=str, default=DEFAULT_LAUNCH_DATE,
+        help=f"Target launch date YYYY-MM-DD (default {DEFAULT_LAUNCH_DATE})",
+    )
+    ap.add_argument("--json", action="store_true")
+    args = ap.parse_args()
+    summary = run(launch_date_str=args.launch_date)
+    if args.json:
+        print(json.dumps(summary, indent=2, default=str))
+    else:
+        _print(summary)
+    return {"GO": 0, "HOLD": 1, "NO_GO": 2}.get(summary["overall_verdict"], 2)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

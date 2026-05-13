@@ -107,19 +107,19 @@ class SubsystemId(StrEnum):
     # L5 / Commodities + FX (Phase-2 expansion, 2026-05-03)
     # Globex-traded futures with near-24h sessions; eligible for the
     # overnight whitelist alongside the equity-index futures.
-    BOT_ES = "bot.es"          # E-mini S&P futures (CME) — covers MES routing
-    BOT_GC = "bot.gc"          # Gold futures (CME)
-    BOT_CL = "bot.cl"          # WTI Crude oil (NYMEX)
-    BOT_6E = "bot.6e"          # Euro FX futures (CME)
+    BOT_ES = "bot.es"  # E-mini S&P futures (CME) — covers MES routing
+    BOT_GC = "bot.gc"  # Gold futures (CME)
+    BOT_CL = "bot.cl"  # WTI Crude oil (NYMEX)
+    BOT_6E = "bot.6e"  # Euro FX futures (CME)
     # L6 / Rates + Energy (Phase-3 expansion, 2026-05-03)
-    BOT_ZN = "bot.zn"          # 10-Year T-Note futures (CBOT)
-    BOT_ZB = "bot.zb"          # 30-Year T-Bond futures (CBOT)
-    BOT_NG = "bot.ng"          # Natural Gas futures (NYMEX)
+    BOT_ZN = "bot.zn"  # 10-Year T-Note futures (CBOT)
+    BOT_ZB = "bot.zb"  # 30-Year T-Bond futures (CBOT)
+    BOT_NG = "bot.ng"  # Natural Gas futures (NYMEX)
 
     # L7 / Crypto extension — alts on Coinbase (Phase-5 expansion, 2026-05-04)
-    BOT_AVAX = "bot.avax"      # Avalanche
-    BOT_LINK = "bot.link"      # Chainlink
-    BOT_DOGE = "bot.doge"      # Dogecoin
+    BOT_AVAX = "bot.avax"  # Avalanche
+    BOT_LINK = "bot.link"  # Chainlink
+    BOT_DOGE = "bot.doge"  # Dogecoin
 
     # mnq_bot v3 framework
     FRAMEWORK_AUTOPILOT = "framework.autopilot"
@@ -639,13 +639,11 @@ class JarvisAdmin:
         # confirmation, sharpe drift). Precedence:
         #   JARVIS_V3_ADVANCED > JARVIS_V3_FLEET_AWARE > V22_SAGE > v17
         def _env_flag(name: str) -> bool:
-            return (
-                __import__("os").environ.get(name, "")
-                .strip().lower() in {"1", "true", "yes", "on"}
-            )
+            return __import__("os").environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
 
         try:
             from eta_engine.brain.feature_flags import is_enabled as _ff_enabled
+
             sage_live = _ff_enabled("V22_SAGE_MODULATION")
             fleet_aware_live = _ff_enabled("JARVIS_V3_FLEET_AWARE") or _env_flag("JARVIS_V3_FLEET_AWARE")
             advanced_live = _ff_enabled("JARVIS_V3_ADVANCED") or _env_flag("JARVIS_V3_ADVANCED")
@@ -659,6 +657,7 @@ class JarvisAdmin:
                 from eta_engine.brain.jarvis_v3.policies.v27_sharpe_drift import (
                     evaluate_advanced_stack,
                 )
+
                 resp = evaluate_advanced_stack(req, ctx)
             except Exception as exc:  # noqa: BLE001 -- fall back through stack
                 logger.warning(
@@ -671,11 +670,13 @@ class JarvisAdmin:
                 # Cascade fallback: try v23, then v22, then v17.
                 try:
                     from eta_engine.brain.jarvis_v3.policies.v23_fleet_aware import evaluate_v23
+
                     resp = evaluate_v23(req, ctx)
                 except Exception:  # noqa: BLE001
                     if sage_live:
                         try:
                             from eta_engine.brain.jarvis_v3.policies.v22_sage_confluence import evaluate_v22
+
                             resp = evaluate_v22(req, ctx)
                         except Exception:  # noqa: BLE001
                             resp = evaluate_request(req, ctx)
@@ -686,6 +687,7 @@ class JarvisAdmin:
                 from eta_engine.brain.jarvis_v3.policies.v23_fleet_aware import (
                     evaluate_v23,
                 )
+
                 resp = evaluate_v23(req, ctx)
             except Exception as exc:  # noqa: BLE001 -- fall back to v22/v17
                 logger.warning(
@@ -700,6 +702,7 @@ class JarvisAdmin:
                         from eta_engine.brain.jarvis_v3.policies.v22_sage_confluence import (
                             evaluate_v22,
                         )
+
                         resp = evaluate_v22(req, ctx)
                     except Exception:  # noqa: BLE001
                         resp = evaluate_request(req, ctx)
@@ -710,6 +713,7 @@ class JarvisAdmin:
                 from eta_engine.brain.jarvis_v3.policies.v22_sage_confluence import (
                     evaluate_v22,
                 )
+
                 resp = evaluate_v22(req, ctx)
             except Exception as exc:  # noqa: BLE001 -- fall back to champion on any failure
                 logger.warning(

@@ -44,6 +44,7 @@ Two integration modes:
 The batch mode reads a day's depth file and emits a per-snap
 verdict log to ``logs/eta_engine/depth_anomalies.jsonl``.
 """
+
 from __future__ import annotations
 
 # ruff: noqa: PLR2004
@@ -66,7 +67,7 @@ DEPTH_DIR = ROOT.parent / "mnq_data" / "depth"
 
 @dataclass
 class ValidationResult:
-    verdict: str               # "OK" | "WARN" | "SKIP" | "FAIL_CLOSE"
+    verdict: str  # "OK" | "WARN" | "SKIP" | "FAIL_CLOSE"
     anomalies: list[str] = field(default_factory=list)
     details: dict = field(default_factory=dict)
 
@@ -79,9 +80,9 @@ def _is_finite_number(x: object) -> bool:
     return math.isfinite(v)
 
 
-def validate_snapshot(snap: dict,
-                       *, max_ts_drift_seconds: float = 60.0,
-                       max_spread_inconsistency_pct: float = 0.20) -> ValidationResult:
+def validate_snapshot(
+    snap: dict, *, max_ts_drift_seconds: float = 60.0, max_spread_inconsistency_pct: float = 0.20
+) -> ValidationResult:
     """Validate a depth snapshot.  Returns a ValidationResult.
 
     The strategy/overlay caller decides what to do based on verdict.
@@ -97,8 +98,7 @@ def validate_snapshot(snap: dict,
         if key not in snap:
             anomalies.append(f"missing_field:{key}")
     if anomalies:
-        return ValidationResult(verdict="FAIL_CLOSE",
-                                  anomalies=anomalies, details=details)
+        return ValidationResult(verdict="FAIL_CLOSE", anomalies=anomalies, details=details)
 
     bids = snap.get("bids", [])
     asks = snap.get("asks", [])
@@ -106,16 +106,13 @@ def validate_snapshot(snap: dict,
     # ── 2. Empty sides ─────────────────────────────────────────────
     if not bids and not asks:
         anomalies.append("both_sides_empty")
-        return ValidationResult(verdict="FAIL_CLOSE",
-                                  anomalies=anomalies, details=details)
+        return ValidationResult(verdict="FAIL_CLOSE", anomalies=anomalies, details=details)
     if not bids:
         anomalies.append("empty_bids")
-        return ValidationResult(verdict="SKIP",
-                                  anomalies=anomalies, details=details)
+        return ValidationResult(verdict="SKIP", anomalies=anomalies, details=details)
     if not asks:
         anomalies.append("empty_asks")
-        return ValidationResult(verdict="SKIP",
-                                  anomalies=anomalies, details=details)
+        return ValidationResult(verdict="SKIP", anomalies=anomalies, details=details)
 
     # ── 3. Each level structurally valid ──────────────────────────
     for side_name, levels in (("bids", bids), ("asks", asks)):
@@ -132,8 +129,7 @@ def validate_snapshot(snap: dict,
             elif float(size) < 0:
                 anomalies.append(f"{side_name}[{i}]_negative_size:{size}")
     if any(a.startswith(("bids[", "asks[")) for a in anomalies):
-        return ValidationResult(verdict="SKIP",
-                                  anomalies=anomalies, details=details)
+        return ValidationResult(verdict="SKIP", anomalies=anomalies, details=details)
 
     # ── 4. NBBO sanity ─────────────────────────────────────────────
     best_bid = float(bids[0].get("price", 0))
@@ -143,12 +139,10 @@ def validate_snapshot(snap: dict,
 
     if not _is_finite_number(mid):
         anomalies.append(f"bad_mid:{mid}")
-        return ValidationResult(verdict="SKIP",
-                                  anomalies=anomalies, details=details)
+        return ValidationResult(verdict="SKIP", anomalies=anomalies, details=details)
     if not _is_finite_number(spread):
         anomalies.append(f"bad_spread:{spread}")
-        return ValidationResult(verdict="SKIP",
-                                  anomalies=anomalies, details=details)
+        return ValidationResult(verdict="SKIP", anomalies=anomalies, details=details)
 
     mid_f = float(mid)
     spread_f = float(spread)
@@ -158,8 +152,7 @@ def validate_snapshot(snap: dict,
         anomalies.append(f"crossed_book:bid={best_bid}_ask={best_ask}")
         details["best_bid"] = best_bid
         details["best_ask"] = best_ask
-        return ValidationResult(verdict="SKIP",
-                                  anomalies=anomalies, details=details)
+        return ValidationResult(verdict="SKIP", anomalies=anomalies, details=details)
 
     # Mid not between NBBO
     if not (best_bid <= mid_f <= best_ask):
@@ -171,15 +164,12 @@ def validate_snapshot(snap: dict,
     if nbbo_spread > 0:
         ratio = abs(spread_f - nbbo_spread) / nbbo_spread
         if ratio > max_spread_inconsistency_pct:
-            anomalies.append(
-                f"spread_inconsistent:reported={spread_f}_nbbo={nbbo_spread}"
-                f"_ratio={ratio:.2f}")
+            anomalies.append(f"spread_inconsistent:reported={spread_f}_nbbo={nbbo_spread}_ratio={ratio:.2f}")
             verdict = "WARN"
 
     if spread_f < 0:
         anomalies.append(f"negative_spread:{spread_f}")
-        return ValidationResult(verdict="SKIP",
-                                  anomalies=anomalies, details=details)
+        return ValidationResult(verdict="SKIP", anomalies=anomalies, details=details)
 
     # ── 5. Monotonic prices within each side ──────────────────────
     bid_prices = [float(lv.get("price", 0)) for lv in bids]
@@ -229,10 +219,15 @@ def audit_capture_file(path: Path, *, max_emit: int = 0) -> dict:
     n_fail_close, anomaly_counts}.  When max_emit > 0, also writes
     first N anomalous records to ANOMALY_LOG.
     """
-    summary: dict = {"path": str(path), "n_total": 0,
-                      "n_ok": 0, "n_warn": 0,
-                      "n_skip": 0, "n_fail_close": 0,
-                      "anomaly_counts": {}}
+    summary: dict = {
+        "path": str(path),
+        "n_total": 0,
+        "n_ok": 0,
+        "n_warn": 0,
+        "n_skip": 0,
+        "n_fail_close": 0,
+        "anomaly_counts": {},
+    }
     if not path.exists():
         summary["error"] = "file_not_found"
         return summary
@@ -248,8 +243,7 @@ def audit_capture_file(path: Path, *, max_emit: int = 0) -> dict:
                     snap = json.loads(line)
                 except json.JSONDecodeError:
                     summary["n_fail_close"] += 1
-                    summary["anomaly_counts"]["bad_json"] = \
-                        summary["anomaly_counts"].get("bad_json", 0) + 1
+                    summary["anomaly_counts"]["bad_json"] = summary["anomaly_counts"].get("bad_json", 0) + 1
                     continue
                 result = validate_snapshot(snap)
                 verdict_key = f"n_{result.verdict.lower()}"
@@ -257,24 +251,28 @@ def audit_capture_file(path: Path, *, max_emit: int = 0) -> dict:
                 for a in result.anomalies:
                     # Strip indices for grouping (e.g. "bids[3]_bad_price" → "bids_bad_price")
                     key = a.split(":", 1)[0]
-                    summary["anomaly_counts"][key] = \
-                        summary["anomaly_counts"].get(key, 0) + 1
+                    summary["anomaly_counts"][key] = summary["anomaly_counts"].get(key, 0) + 1
                 # Emit detailed record for first N anomalies
                 if result.verdict != "OK" and emitted < max_emit:
                     try:
                         with ANOMALY_LOG.open("a", encoding="utf-8") as out:
-                            out.write(json.dumps({
-                                "ts": datetime.now(UTC).isoformat(),
-                                "source_file": str(path),
-                                "snap_ts": snap.get("ts"),
-                                "verdict": result.verdict,
-                                "anomalies": result.anomalies,
-                                "details": result.details,
-                            }, separators=(",", ":")) + "\n")
+                            out.write(
+                                json.dumps(
+                                    {
+                                        "ts": datetime.now(UTC).isoformat(),
+                                        "source_file": str(path),
+                                        "snap_ts": snap.get("ts"),
+                                        "verdict": result.verdict,
+                                        "anomalies": result.anomalies,
+                                        "details": result.details,
+                                    },
+                                    separators=(",", ":"),
+                                )
+                                + "\n"
+                            )
                         emitted += 1
                     except OSError as e:
-                        print(f"WARN: anomaly log write failed: {e}",
-                              file=sys.stderr)
+                        print(f"WARN: anomaly log write failed: {e}", file=sys.stderr)
     except OSError as e:
         summary["error"] = str(e)
     return summary
@@ -283,11 +281,13 @@ def audit_capture_file(path: Path, *, max_emit: int = 0) -> dict:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--symbol", default="MNQ")
-    ap.add_argument("--date", default=None,
-                    help="YYYYMMDD; default = today")
-    ap.add_argument("--max-emit", type=int, default=50,
-                    help="Max anomalous records to write to anomaly log "
-                    "(default 50; 0 = aggregate-only)")
+    ap.add_argument("--date", default=None, help="YYYYMMDD; default = today")
+    ap.add_argument(
+        "--max-emit",
+        type=int,
+        default=50,
+        help="Max anomalous records to write to anomaly log (default 50; 0 = aggregate-only)",
+    )
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
 
@@ -322,8 +322,7 @@ def main() -> int:
     print()
     if summary.get("anomaly_counts"):
         print("  Anomaly breakdown:")
-        for k, v in sorted(summary["anomaly_counts"].items(),
-                            key=lambda kv: kv[1], reverse=True):
+        for k, v in sorted(summary["anomaly_counts"].items(), key=lambda kv: kv[1], reverse=True):
             print(f"    {k:<40s} {v:,}")
     print()
     if summary.get("n_fail_close", 0) > 0:

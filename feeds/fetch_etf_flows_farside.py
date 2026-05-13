@@ -54,8 +54,7 @@ _ENDPOINTS: tuple[str, ...] = (
 )
 
 _USER_AGENT = (
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/120 Safari/537.36"
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36"
 )
 
 
@@ -82,7 +81,9 @@ def _parse_farside_html(html: str) -> list[tuple[datetime, float]]:
     # Very permissive row regex — any <tr>...</tr>
     for tr in re.findall(r"<tr[^>]*>(.*?)</tr>", html, flags=re.IGNORECASE | re.DOTALL):
         cells = re.findall(
-            r"<t[dh][^>]*>(.*?)</t[dh]>", tr, flags=re.IGNORECASE | re.DOTALL,
+            r"<t[dh][^>]*>(.*?)</t[dh]>",
+            tr,
+            flags=re.IGNORECASE | re.DOTALL,
         )
         if not cells:
             continue
@@ -172,17 +173,15 @@ def fetch(out_path: Path, *, dry_run: bool = False) -> int:
         return len(rows)
     n = _write_csv(out_path, rows)
     last_dt, last_val = rows[-1]
-    print(
-        f"[etf-flows] wrote {n} rows to {out_path}; "
-        f"last={last_dt.date()} ({last_val:+.1f} M USD)"
-    )
+    print(f"[etf-flows] wrote {n} rows to {out_path}; last={last_dt.date()} ({last_val:+.1f} M USD)")
     return n
 
 
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument(
-        "--out", type=Path,
+        "--out",
+        type=Path,
         default=MNQ_HISTORY_ROOT / "BTC_ETF_FLOWS.csv",
     )
     p.add_argument("--dry-run", action="store_true")

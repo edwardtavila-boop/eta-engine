@@ -45,6 +45,8 @@ from common.jarvis.controller import (
 
 if TYPE_CHECKING:
     from common.jarvis.instrument import InstrumentConfig
+    from eta_engine.brain.jarvis_v3.kaizen import KaizenLedger
+    from eta_engine.brain.jarvis_v3.kaizen_guard import KaizenGuard
 
 logger = logging.getLogger(__name__)
 
@@ -198,6 +200,7 @@ class KaizenEngine:
     ) -> KaizenCycleReport:
         """Run one full kaizen cycle across all instruments."""
         import time
+
         t0 = time.perf_counter()
         now = now or datetime.now(UTC)
         self._cycle_count += 1
@@ -283,7 +286,10 @@ class KaizenEngine:
 
             # ── Quantum (cost-gated) ──
             q_invocations, q_cost, q_skip = self._cost_aware_quantum(
-                symbol, trades, cfg, now,
+                symbol,
+                trades,
+                cfg,
+                now,
             )
             quantum_count += q_invocations
             quantum_cost += q_cost
@@ -335,12 +341,14 @@ class KaizenEngine:
     def _notify_hermes(self, report: KaizenCycleReport) -> None:
         try:
             from eta_engine.brain.jarvis_v3.hermes_bridge import send_alert
+
             summary = (
                 f"Kaizen cycle {report.cycle_id}: "
                 f"{report.proposals_approved} approved, {report.proposals_rejected} rejected, "
                 f"{len(report.strategies_promoted)} promoted, {len(report.strategies_retired)} retired"
             )
             import asyncio
+
             try:
                 loop = asyncio.get_running_loop()
                 if loop.is_running():
@@ -384,6 +392,7 @@ class KaizenEngine:
                 ProblemKind,
                 QuantumOptimizerAgent,
             )
+
             agent = QuantumOptimizerAgent(cost_budget_daily_usd=self.QUANTUM_DAILY_BUDGET_USD)
             returns = self._compute_expected_returns(trades)
             cov = self._compute_covariance(trades, unique_symbols)
@@ -459,7 +468,9 @@ class KaizenEngine:
         return [sum(v) / len(v) if v else 0.0 for v in by_symbol.values()]
 
     def _compute_covariance(
-        self, trades: list[dict[str, Any]], symbols: list[str],
+        self,
+        trades: list[dict[str, Any]],
+        symbols: list[str],
     ) -> list[list[float]]:
         """Simple covariance from per-trade R-multiples."""
         n = len(symbols)
@@ -598,16 +609,22 @@ class KaizenEngine:
         state = {
             "cycle_count": self._cycle_count,
             "parameter_history": {
-                k: [(ts, str(v)) for ts, v in vals[-20:]]
-                for k, vals in self._parameter_history.items()
+                k: [(ts, str(v)) for ts, v in vals[-20:]] for k, vals in self._parameter_history.items()
             },
             "strategies": {
-                sym: {name: {
-                    "name": e.name, "status": e.status.value,
-                    "sharpe_30d": e.sharpe_30d, "win_rate_30d": e.win_rate_30d,
-                    "total_trades": e.total_trades, "pnl_total": e.pnl_total,
-                    "days_live": e.days_live, "last_promoted_at": e.last_promoted_at,
-                } for name, e in entries.items()}
+                sym: {
+                    name: {
+                        "name": e.name,
+                        "status": e.status.value,
+                        "sharpe_30d": e.sharpe_30d,
+                        "win_rate_30d": e.win_rate_30d,
+                        "total_trades": e.total_trades,
+                        "pnl_total": e.pnl_total,
+                        "days_live": e.days_live,
+                        "last_promoted_at": e.last_promoted_at,
+                    }
+                    for name, e in entries.items()
+                }
                 for sym, entries in self._strategies.items()
             },
             "quantum_daily_spent": self._quantum_daily_spent,
@@ -624,16 +641,17 @@ class KaizenEngine:
             state = json.loads(path.read_text())
             self._cycle_count = state.get("cycle_count", 0)
             self._parameter_history = {
-                k: [(ts, v) for ts, v in vals]
-                for k, vals in state.get("parameter_history", {}).items()
+                k: [(ts, v) for ts, v in vals] for k, vals in state.get("parameter_history", {}).items()
             }
             self._strategies = {}
             for sym, entries in state.get("strategies", {}).items():
                 self._strategies[sym] = {}
                 for name, e in entries.items():
                     self._strategies[sym][name] = StrategyEntry(
-                        name=e["name"], status=StrategyLifecycle(e["status"]),
-                        instrument=sym, sharpe_30d=e.get("sharpe_30d", 0),
+                        name=e["name"],
+                        status=StrategyLifecycle(e["status"]),
+                        instrument=sym,
+                        sharpe_30d=e.get("sharpe_30d", 0),
                         win_rate_30d=e.get("win_rate_30d", 0),
                         total_trades=e.get("total_trades", 0),
                         pnl_total=e.get("pnl_total", 0),

@@ -8,6 +8,7 @@ Designed for the dashboard's /api/live/stream endpoint:
   * audit JSONL  -> 'verdict' events
   * fills JSONL  -> 'fill' events
 """
+
 from __future__ import annotations
 
 import asyncio

@@ -9,6 +9,7 @@ Examples:
   * trend_following long + smc_ict ChoCH down = conflict -> 0.5x penalty on weaker
   * stat_significance high + any directional school = boost (signal is real)
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -37,41 +38,69 @@ KNOWN_DEPENDENCIES: list[DependencyRule] = [
     # Wyckoff spring + VPA confirms = mutual boost
     DependencyRule(
         name="wyckoff_spring_confirmed_by_vpa",
-        when_school="wyckoff", when_bias=Bias.LONG, when_min_conviction=0.7,
-        target_school="vpa", target_bias=Bias.LONG, boost=1.3,
+        when_school="wyckoff",
+        when_bias=Bias.LONG,
+        when_min_conviction=0.7,
+        target_school="vpa",
+        target_bias=Bias.LONG,
+        boost=1.3,
     ),
     DependencyRule(
         name="vpa_confirms_wyckoff_long",
-        when_school="vpa", when_bias=Bias.LONG, when_min_conviction=0.6,
-        target_school="wyckoff", target_bias=Bias.LONG, boost=1.3,
+        when_school="vpa",
+        when_bias=Bias.LONG,
+        when_min_conviction=0.6,
+        target_school="wyckoff",
+        target_bias=Bias.LONG,
+        boost=1.3,
     ),
     # Statistical significance amplifies any directional school
     DependencyRule(
         name="stat_sig_amplifies_long",
-        when_school="stat_significance", when_bias=Bias.LONG, when_min_conviction=0.6,
-        target_school="trend_following", target_bias=Bias.LONG, boost=1.2,
+        when_school="stat_significance",
+        when_bias=Bias.LONG,
+        when_min_conviction=0.6,
+        target_school="trend_following",
+        target_bias=Bias.LONG,
+        boost=1.2,
     ),
     DependencyRule(
         name="stat_sig_amplifies_short",
-        when_school="stat_significance", when_bias=Bias.SHORT, when_min_conviction=0.6,
-        target_school="trend_following", target_bias=Bias.SHORT, boost=1.2,
+        when_school="stat_significance",
+        when_bias=Bias.SHORT,
+        when_min_conviction=0.6,
+        target_school="trend_following",
+        target_bias=Bias.SHORT,
+        boost=1.2,
     ),
     # Volatility expanding makes order-flow more important
     DependencyRule(
         name="vol_expansion_amplifies_orderflow",
-        when_school="volatility_regime", when_bias=Bias.NEUTRAL, when_min_conviction=0.5,
-        target_school="order_flow", target_bias=None, boost=1.2,
+        when_school="volatility_regime",
+        when_bias=Bias.NEUTRAL,
+        when_min_conviction=0.5,
+        target_school="order_flow",
+        target_bias=None,
+        boost=1.2,
     ),
     # Red team finds counter -> penalize the trade-side schools
     DependencyRule(
         name="red_team_counter_penalizes_aligned_schools",
-        when_school="red_team", when_bias=Bias.SHORT, when_min_conviction=0.6,
-        target_school="trend_following", target_bias=Bias.LONG, boost=0.6,
+        when_school="red_team",
+        when_bias=Bias.SHORT,
+        when_min_conviction=0.6,
+        target_school="trend_following",
+        target_bias=Bias.LONG,
+        boost=0.6,
     ),
     DependencyRule(
         name="red_team_counter_penalizes_aligned_schools_short",
-        when_school="red_team", when_bias=Bias.LONG, when_min_conviction=0.6,
-        target_school="trend_following", target_bias=Bias.SHORT, boost=0.6,
+        when_school="red_team",
+        when_bias=Bias.LONG,
+        when_min_conviction=0.6,
+        target_school="trend_following",
+        target_bias=Bias.SHORT,
+        boost=0.6,
     ),
 ]
 

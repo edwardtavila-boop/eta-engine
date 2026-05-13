@@ -55,13 +55,15 @@ def _build_grid() -> list[dict[str, Any]]:
         (200, 400, 600),
         ("crypto", "futures"),
     ):
-        cells.append({
-            "min_conviction": conv,
-            "min_alignment": align,
-            "range_minutes": rng,
-            "sage_lookback_bars": lb,
-            "instrument_class": ic,
-        })
+        cells.append(
+            {
+                "min_conviction": conv,
+                "min_alignment": align,
+                "range_minutes": rng,
+                "sage_lookback_bars": lb,
+                "instrument_class": ic,
+            }
+        )
     return cells
 
 
@@ -100,9 +102,12 @@ def _run_cell(cell: dict[str, Any]) -> dict[str, Any]:
         return {"error": f"no tradable positive-price bars for {symbol}/{timeframe}"}
 
     backtest_cfg = BacktestConfig(
-        start_date=bars[0].timestamp, end_date=bars[-1].timestamp,
-        symbol=ds.symbol, initial_equity=10_000.0,
-        risk_per_trade_pct=0.01, confluence_threshold=0.0,
+        start_date=bars[0].timestamp,
+        end_date=bars[-1].timestamp,
+        symbol=ds.symbol,
+        initial_equity=10_000.0,
+        risk_per_trade_pct=0.01,
+        confluence_threshold=0.0,
         max_trades_per_day=10,
     )
     wf = WalkForwardConfig(
@@ -127,7 +132,9 @@ def _run_cell(cell: dict[str, Any]) -> dict[str, Any]:
             max_entry_local=time(6, 0),
             flatten_at_local=time(23, 55),
             timezone_name="UTC",
-            atr_stop_mult=2.5, rr_target=2.5, ema_bias_period=100,
+            atr_stop_mult=2.5,
+            rr_target=2.5,
+            ema_bias_period=100,
             max_trades_per_day=2,
         ),
         sage=SageConsensusConfig(
@@ -135,9 +142,12 @@ def _run_cell(cell: dict[str, Any]) -> dict[str, Any]:
             min_alignment=cell["min_alignment"],
             min_consensus=0.30,
             sage_lookback_bars=cell["sage_lookback_bars"],
-            atr_period=14, atr_stop_mult=1.5, rr_target=2.0,
+            atr_period=14,
+            atr_stop_mult=1.5,
+            rr_target=2.0,
             risk_per_trade_pct=0.01,
-            min_bars_between_trades=6, max_trades_per_day=2,
+            min_bars_between_trades=6,
+            max_trades_per_day=2,
             warmup_bars=60,
             instrument_class=cell["instrument_class"],
             apply_edge_weights=False,
@@ -206,7 +216,7 @@ def _render_md(rows: list[dict[str, Any]]) -> str:
             f"{r.get('agg_oos_sharpe', 0):.3f} | "
             f"{r.get('n_pos_oos', 0)}/{r.get('windows', 0)} | "
             f"{r.get('fold_dsr_median', 0):.3f} | "
-            f"{r.get('fold_dsr_pass_fraction', 0)*100:.0f}% | "
+            f"{r.get('fold_dsr_pass_fraction', 0) * 100:.0f}% | "
             f"{r.get('total_oos_trades', 0)} | "
             f"{'PASS' if r.get('pass_gate') else 'FAIL'} |"
         )
@@ -214,10 +224,7 @@ def _render_md(rows: list[dict[str, Any]]) -> str:
 
 
 def main() -> int:
-    out_md = (
-        ROOT / "docs" / "research_log"
-        / f"crypto_sage_sweep_{datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ')}.md"
-    )
+    out_md = ROOT / "docs" / "research_log" / f"crypto_sage_sweep_{datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ')}.md"
     out_json = out_md.with_suffix(".json")
     rows: list[dict[str, Any]] = []
     n_pass = 0
@@ -234,7 +241,7 @@ def main() -> int:
                     f"rng={cell['range_minutes']} lb={cell['sage_lookback_bars']} "
                     f"ic={cell['instrument_class']} -> "
                     f"OOS Sh {row.get('agg_oos_sharpe', 0):.3f}, "
-                    f"DSR_pass {row.get('fold_dsr_pass_fraction', 0)*100:.0f}%, "
+                    f"DSR_pass {row.get('fold_dsr_pass_fraction', 0) * 100:.0f}%, "
                     f"trades={row.get('total_oos_trades', 0)}"
                 )
         except Exception as e:  # noqa: BLE001

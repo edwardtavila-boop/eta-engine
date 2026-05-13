@@ -5,6 +5,7 @@ Normal momentum fails because trend changes on every headline.
 This strategy fades extreme moves — enter on the mean-reversion after
 a 2+ ATR spike, assuming headlines fade and price returns to range.
 """
+
 from __future__ import annotations
 
 from collections import deque
@@ -31,15 +32,14 @@ if TYPE_CHECKING:
 #
 # Hours are UTC.  Each tuple is (start, end_exclusive) in hours.
 DEFAULT_ALLOWED_HOURS_UTC: tuple[tuple[int, int], ...] = (
-    (12, 16),   # NY morning (08:00-12:00 ET)
-    (14, 16),   # EIA window (Wednesdays only — extra-tight band)
-    (23, 24),   # Asia open part 1
-    (0, 3),     # Asia open part 2 (wraps midnight UTC)
+    (12, 16),  # NY morning (08:00-12:00 ET)
+    (14, 16),  # EIA window (Wednesdays only — extra-tight band)
+    (23, 24),  # Asia open part 1
+    (0, 3),  # Asia open part 2 (wraps midnight UTC)
 )
 
 
-def _hour_in_windows(hour_utc: int,
-                       windows: tuple[tuple[int, int], ...]) -> bool:
+def _hour_in_windows(hour_utc: int, windows: tuple[tuple[int, int], ...]) -> bool:
     for lo, hi in windows:
         if lo <= hi:
             if lo <= hour_utc < hi:
@@ -54,24 +54,23 @@ def _hour_in_windows(hour_utc: int,
 
 @dataclass(frozen=True)
 class OilMacroConfig:
-    spike_atr_mult: float = 2.0     # Bar range must be 2x ATR to trigger
+    spike_atr_mult: float = 2.0  # Bar range must be 2x ATR to trigger
     volume_z_lookback: int = 24
-    min_volume_z: float = 0.3       # Spike must have volume confirmation
-    fade_atr_mult: float = 0.5      # Fade the spike by this much ATR
+    min_volume_z: float = 0.3  # Spike must have volume confirmation
+    fade_atr_mult: float = 0.5  # Fade the spike by this much ATR
     atr_period: int = 14
-    atr_stop_mult: float = 3.0      # Wide stop for continued volatility
-    rr_target: float = 3.5          # High RR for macro fade
+    atr_stop_mult: float = 3.0  # Wide stop for continued volatility
+    rr_target: float = 3.5  # High RR for macro fade
     risk_per_trade_pct: float = 0.005
     min_bars_between_trades: int = 12
     max_trades_per_day: int = 3
     warmup_bars: int = 72
     # 2026-05-12 refinements
-    min_atr_usd: float = 0.20       # Reject signals when ATR<this (dead-tape gate)
-    allowed_hours_utc: tuple[tuple[int, int], ...] = field(
-        default_factory=lambda: DEFAULT_ALLOWED_HOURS_UTC)
+    min_atr_usd: float = 0.20  # Reject signals when ATR<this (dead-tape gate)
+    allowed_hours_utc: tuple[tuple[int, int], ...] = field(default_factory=lambda: DEFAULT_ALLOWED_HOURS_UTC)
     enforce_session_gate: bool = True
     panic_day_count_window: int = 30  # Track 2x-ATR bar count over N days
-    panic_day_min_per_30d: int = 4    # Falsification trigger threshold
+    panic_day_min_per_30d: int = 4  # Falsification trigger threshold
 
 
 class OilMacroStrategy:
@@ -88,8 +87,7 @@ class OilMacroStrategy:
         # Panic-day counter (2026-05-12 — moves operator's falsification
         # criterion from prose into code).  Tracks dates on which at
         # least one bar's range exceeded spike_atr_mult * ATR.
-        self._panic_dates: deque[str] = deque(
-            maxlen=self.cfg.panic_day_count_window)
+        self._panic_dates: deque[str] = deque(maxlen=self.cfg.panic_day_count_window)
         self._last_panic_date: str | None = None
 
     def maybe_enter(self, bar: BarData, hist: list[BarData], equity: float, config: BacktestConfig) -> _Open | None:
@@ -174,10 +172,17 @@ class OilMacroStrategy:
         self._trades_today += 1
 
         from eta_engine.backtest.engine import _Open
+
         return _Open(
-            entry_bar=bar, side=side, qty=qty,
-            entry_price=entry, stop=stop, target=target,
-            risk_usd=risk_usd, confluence=5.0, leverage=1.0,
+            entry_bar=bar,
+            side=side,
+            qty=qty,
+            entry_price=entry,
+            stop=stop,
+            target=target,
+            risk_usd=risk_usd,
+            confluence=5.0,
+            leverage=1.0,
             regime=f"oil_fade_{side.lower()}",
         )
 
@@ -234,8 +239,14 @@ class OilMacroStrategy:
 def cl_macro_fade_preset() -> OilMacroConfig:
     """Crude oil macro fade — enter against 2x ATR spikes, wide 3x stops, 3.5 RR."""
     return OilMacroConfig(
-        spike_atr_mult=2.0, volume_z_lookback=24, min_volume_z=0.3,
-        atr_period=14, atr_stop_mult=3.0, rr_target=3.5,
-        risk_per_trade_pct=0.005, min_bars_between_trades=12,
-        max_trades_per_day=3, warmup_bars=72,
+        spike_atr_mult=2.0,
+        volume_z_lookback=24,
+        min_volume_z=0.3,
+        atr_period=14,
+        atr_stop_mult=3.0,
+        rr_target=3.5,
+        risk_per_trade_pct=0.005,
+        min_bars_between_trades=12,
+        max_trades_per_day=3,
+        warmup_bars=72,
     )

@@ -14,9 +14,7 @@ def test_append_drift_watchdog_smoke_writes_canonical_jsonl_shape(tmp_path: Path
 
     evidence = drift_watchdog_smoke.append_drift_watchdog_smoke(log_path, source="pytest")
 
-    assert evidence["path"].replace("\\", "/").endswith(
-        "var/eta_engine/state/drift_watchdog.jsonl"
-    )
+    assert evidence["path"].replace("\\", "/").endswith("var/eta_engine/state/drift_watchdog.jsonl")
     assert evidence["bytes"] > 0
     lines = [line for line in log_path.read_text(encoding="utf-8").splitlines() if line.strip()]
     assert len(lines) == 1

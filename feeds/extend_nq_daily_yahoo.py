@@ -94,14 +94,16 @@ def _fetch_yahoo_daily(symbol: str, start_date: datetime) -> list[dict[str, Any]
         # yfinance returns a DataFrame indexed by Timestamp; ``ts`` IS
         # the index value, ``row`` is the per-day Series.
         unix_ts = int(ts.replace(tzinfo=UTC).timestamp())
-        rows.append({
-            "time": unix_ts,
-            "open": _cell(row, "Open"),
-            "high": _cell(row, "High"),
-            "low": _cell(row, "Low"),
-            "close": _cell(row, "Close"),
-            "volume": int(_cell(row, "Volume")),
-        })
+        rows.append(
+            {
+                "time": unix_ts,
+                "open": _cell(row, "Open"),
+                "high": _cell(row, "High"),
+                "low": _cell(row, "Low"),
+                "close": _cell(row, "Close"),
+                "volume": int(_cell(row, "Volume")),
+            }
+        )
     return rows
 
 
@@ -152,7 +154,10 @@ def _append_rows(out_path: Path, rows: list[dict[str, Any]]) -> int:
 
 
 def extend(
-    symbol: str, out_path: Path, *, dry_run: bool = False,
+    symbol: str,
+    out_path: Path,
+    *,
+    dry_run: bool = False,
 ) -> dict[str, Any]:
     """Run the extend; return a summary dict (also suitable for a JSON log)."""
     last_ts, n_existing = _read_existing(out_path)
@@ -164,7 +169,10 @@ def extend(
     else:
         # Start one day after the last on-disk bar.
         start = datetime.fromtimestamp(last_ts, UTC).replace(
-            hour=0, minute=0, second=0, microsecond=0,
+            hour=0,
+            minute=0,
+            second=0,
+            microsecond=0,
         )
 
     print(f"[fetch] symbol={symbol} start={start.date()} existing_rows={n_existing}")
@@ -200,18 +208,23 @@ def extend(
 
 def _parse_args(argv: list[str]) -> argparse.Namespace:
     p = argparse.ArgumentParser(
-        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p.add_argument(
-        "--symbol", default="NQ=F",
+        "--symbol",
+        default="NQ=F",
         help="Yahoo Finance ticker (default: NQ=F continuous-front).",
     )
     p.add_argument(
-        "--out", type=Path, default=MNQ_HISTORY_ROOT / "NQ1_D.csv",
+        "--out",
+        type=Path,
+        default=MNQ_HISTORY_ROOT / "NQ1_D.csv",
         help="Output CSV. Appended in-place; header written if file is new.",
     )
     p.add_argument(
-        "--dry-run", action="store_true",
+        "--dry-run",
+        action="store_true",
         help="Fetch + report but do NOT modify disk.",
     )
     return p.parse_args(argv)

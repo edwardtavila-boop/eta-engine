@@ -33,6 +33,7 @@ When a (strategy, symbol) tuple has no history, fall back to the
 strategy's global weight (from l2_strategy_ensemble).  This way new
 symbols don't get muted immediately on launch.
 """
+
 from __future__ import annotations
 
 # ruff: noqa: ANN401, PLR2004
@@ -58,14 +59,15 @@ L2_BACKTEST_LOG = LOG_DIR / "l2_backtest_runs.jsonl"
 @dataclass
 class PerSymbolWeights:
     """Nested dict: weights[(strategy_id, symbol)] -> weight."""
+
     weights: dict[tuple[str, str], float] = field(default_factory=dict)
     global_fallback: dict[str, float] = field(default_factory=dict)
     ts: str = ""
 
 
-def compute_per_symbol_weights(*, since_days: int = 30,
-                                  min_sharpe_floor: float = 0.0,
-                                  _path: Path | None = None) -> PerSymbolWeights:
+def compute_per_symbol_weights(
+    *, since_days: int = 30, min_sharpe_floor: float = 0.0, _path: Path | None = None
+) -> PerSymbolWeights:
     """Read backtest log, return per-(strategy, symbol) weights.
 
     A symbol's weight is its strategy's latest sharpe_proxy on that
@@ -77,11 +79,9 @@ def compute_per_symbol_weights(*, since_days: int = 30,
     weights_by_pair: dict[tuple[str, str], float] = {}
     if not path.exists():
         global_weights = compute_weights_from_history(
-            since_days=since_days, min_sharpe_floor=min_sharpe_floor,
-            _path=path)
-        return PerSymbolWeights(
-            weights={}, global_fallback=global_weights.weights,
-            ts=datetime.now(UTC).isoformat())
+            since_days=since_days, min_sharpe_floor=min_sharpe_floor, _path=path
+        )
+        return PerSymbolWeights(weights={}, global_fallback=global_weights.weights, ts=datetime.now(UTC).isoformat())
     cutoff = datetime.now(UTC) - timedelta(days=since_days)
     try:
         with path.open("r", encoding="utf-8") as f:
@@ -114,9 +114,7 @@ def compute_per_symbol_weights(*, since_days: int = 30,
     except OSError:
         pass
 
-    global_weights = compute_weights_from_history(
-        since_days=since_days, min_sharpe_floor=min_sharpe_floor,
-        _path=path)
+    global_weights = compute_weights_from_history(since_days=since_days, min_sharpe_floor=min_sharpe_floor, _path=path)
     return PerSymbolWeights(
         weights=weights_by_pair,
         global_fallback=global_weights.weights,
@@ -124,9 +122,9 @@ def compute_per_symbol_weights(*, since_days: int = 30,
     )
 
 
-def vote_per_symbol(signals: Iterable[Any], weights: PerSymbolWeights,
-                     *, symbol: str,
-                     ensemble_threshold: float = 0.5) -> EnsembleSignal | None:
+def vote_per_symbol(
+    signals: Iterable[Any], weights: PerSymbolWeights, *, symbol: str, ensemble_threshold: float = 0.5
+) -> EnsembleSignal | None:
     """Weighted vote using per-(strategy, symbol) weights with global
     fallback.  Same semantics as l2_strategy_ensemble.vote() otherwise."""
     constituents: list[dict] = []
@@ -151,15 +149,17 @@ def vote_per_symbol(signals: Iterable[Any], weights: PerSymbolWeights,
         signed = confidence if is_long else -confidence
         weighted_sum += weight * signed
         total_weight += weight
-        constituents.append({
-            "strategy_id": strategy,
-            "symbol": symbol,
-            "side": "LONG" if is_long else "SHORT",
-            "confidence": round(confidence, 3),
-            "weight": round(weight, 3),
-            "weight_source": weight_source,
-            "signed_contribution": round(weight * signed, 3),
-        })
+        constituents.append(
+            {
+                "strategy_id": strategy,
+                "symbol": symbol,
+                "side": "LONG" if is_long else "SHORT",
+                "confidence": round(confidence, 3),
+                "weight": round(weight, 3),
+                "weight_source": weight_source,
+                "signed_contribution": round(weight * signed, 3),
+            }
+        )
 
     if total_weight <= 0:
         return None
@@ -167,19 +167,22 @@ def vote_per_symbol(signals: Iterable[Any], weights: PerSymbolWeights,
     if abs(vote_val) < ensemble_threshold:
         return None
     side = "LONG" if vote_val > 0 else "SHORT"
-    sig_ids = [getattr(s, "signal_id", "")
-                for s in signals if s is not None]
+    sig_ids = [getattr(s, "signal_id", "") for s in signals if s is not None]
     sig_ids_clean = [s for s in sig_ids if s]
-    composite_id = (f"ENSEMBLE-PER-SYMBOL-{symbol}-{side}-"
-                      + "_".join(sig_ids_clean[:3])
-                      if sig_ids_clean else f"ENSEMBLE-PER-SYMBOL-{symbol}-{side}")
+    composite_id = (
+        f"ENSEMBLE-PER-SYMBOL-{symbol}-{side}-" + "_".join(sig_ids_clean[:3])
+        if sig_ids_clean
+        else f"ENSEMBLE-PER-SYMBOL-{symbol}-{side}"
+    )
     return EnsembleSignal(
         side=side,
         weighted_vote=round(vote_val, 4),
         confidence=round(abs(vote_val), 3),
         constituent_signals=constituents,
         signal_id=composite_id[:200],
-        rationale=(f"per-symbol ensemble vote={vote_val:+.3f} "
-                    f"(symbol={symbol}, threshold={ensemble_threshold}, "
-                    f"n_constituents={len(constituents)})"),
+        rationale=(
+            f"per-symbol ensemble vote={vote_val:+.3f} "
+            f"(symbol={symbol}, threshold={ensemble_threshold}, "
+            f"n_constituents={len(constituents)})"
+        ),
     )

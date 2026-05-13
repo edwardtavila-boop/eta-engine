@@ -37,6 +37,7 @@ Public interface
 * ``today_spend()`` — convenience for today's running total.
 * ``anomaly_check(window_min=60)`` — recent-spike detector.
 """
+
 from __future__ import annotations
 
 import json
@@ -74,9 +75,9 @@ class SpendSummary:
     window_end: str
     total_usd: float
     n_calls: int
-    by_tool: dict[str, dict[str, float]]      # {tool: {n, usd}}
-    by_day: dict[str, dict[str, float]]        # {YYYY-MM-DD: {n, usd}}
-    by_skill: dict[str, dict[str, float]]      # {skill_name: {n, usd}}
+    by_tool: dict[str, dict[str, float]]  # {tool: {n, usd}}
+    by_day: dict[str, dict[str, float]]  # {YYYY-MM-DD: {n, usd}}
+    by_skill: dict[str, dict[str, float]]  # {skill_name: {n, usd}}
     error: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
@@ -120,8 +121,7 @@ def estimate_call_cost(
     """
     if input_tokens is not None and output_tokens is not None:
         return round(
-            (input_tokens / 1000.0) * _input_price_per_1k()
-            + (output_tokens / 1000.0) * _output_price_per_1k(),
+            (input_tokens / 1000.0) * _input_price_per_1k() + (output_tokens / 1000.0) * _output_price_per_1k(),
             5,
         )
     return _flat_rate_per_call()
@@ -133,7 +133,8 @@ def estimate_call_cost(
 
 
 def _read_audit_records(
-    path: Path | None = None, since_dt: datetime | None = None,
+    path: Path | None = None,
+    since_dt: datetime | None = None,
 ) -> list[dict[str, Any]]:
     """Read audit log records, filtered to ts >= since_dt."""
     target = path or DEFAULT_AUDIT_PATH
@@ -237,16 +238,13 @@ def estimate_spend(
 
     # Compose dict-of-dicts output structure
     by_tool: dict[str, dict[str, float]] = {
-        k: {"n": float(by_tool_n[k]), "usd": round(by_tool_usd[k], 4)}
-        for k in by_tool_n
+        k: {"n": float(by_tool_n[k]), "usd": round(by_tool_usd[k], 4)} for k in by_tool_n
     }
     by_day: dict[str, dict[str, float]] = {
-        k: {"n": float(by_day_n[k]), "usd": round(by_day_usd[k], 4)}
-        for k in by_day_n
+        k: {"n": float(by_day_n[k]), "usd": round(by_day_usd[k], 4)} for k in by_day_n
     }
     by_skill: dict[str, dict[str, float]] = {
-        k: {"n": float(by_skill_n[k]), "usd": round(by_skill_usd[k], 4)}
-        for k in by_skill_n
+        k: {"n": float(by_skill_n[k]), "usd": round(by_skill_usd[k], 4)} for k in by_skill_n
     }
 
     return SpendSummary(
@@ -303,10 +301,7 @@ def anomaly_check(
     baseline_start = now - timedelta(hours=24)
     try:
         all_records = _read_audit_records(audit_path, baseline_start)
-        recent_n = sum(
-            1 for r in all_records
-            if (_parse_iso(r.get("ts")) or now) >= recent_start
-        )
+        recent_n = sum(1 for r in all_records if (_parse_iso(r.get("ts")) or now) >= recent_start)
         baseline_n = len(all_records)
         # Normalize to per-hour rates
         recent_rate = recent_n / (window_min / 60.0)

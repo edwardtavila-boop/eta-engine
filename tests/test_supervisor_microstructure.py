@@ -9,6 +9,7 @@ Pins the four fixes landed for paper-sim and bracket-pricing paths:
    wickers and target-touches don't latch into the next bar.
 4. Tick-grid rounding via ``_round_to_tick`` for real-broker prices.
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -32,21 +33,27 @@ def test_buy_entry_slippage_is_adverse_above_ref(tmp_path: Path) -> None:
         ExecutionRouter,
         SupervisorConfig,
     )
+
     cfg = SupervisorConfig()
     cfg.mode = "paper_sim"
     router = ExecutionRouter(cfg=cfg, bf_dir=tmp_path)
     bot = BotInstance(
-        bot_id="test_buy_slip", symbol="SOL", strategy_kind="x",
-        direction="long", cash=5000.0,
+        bot_id="test_buy_slip",
+        symbol="SOL",
+        strategy_kind="x",
+        direction="long",
+        cash=5000.0,
     )
     bar = {"close": 100.0, "high": 100.5, "low": 99.5, "open": 99.8}
     rec = router.submit_entry(
-        bot=bot, signal_id="sig_buy", side="BUY", bar=bar, size_mult=1.0,
+        bot=bot,
+        signal_id="sig_buy",
+        side="BUY",
+        bar=bar,
+        size_mult=1.0,
     )
     assert rec is not None
-    assert rec.fill_price > 100.0, (
-        f"BUY at ref=100 must fill above mid (adverse), got {rec.fill_price}"
-    )
+    assert rec.fill_price > 100.0, f"BUY at ref=100 must fill above mid (adverse), got {rec.fill_price}"
 
 
 def test_sell_entry_slippage_is_adverse_below_ref(tmp_path: Path) -> None:
@@ -61,21 +68,27 @@ def test_sell_entry_slippage_is_adverse_below_ref(tmp_path: Path) -> None:
         ExecutionRouter,
         SupervisorConfig,
     )
+
     cfg = SupervisorConfig()
     cfg.mode = "paper_sim"
     router = ExecutionRouter(cfg=cfg, bf_dir=tmp_path)
     bot = BotInstance(
-        bot_id="test_sell_slip", symbol="SOL", strategy_kind="x",
-        direction="short", cash=5000.0,
+        bot_id="test_sell_slip",
+        symbol="SOL",
+        strategy_kind="x",
+        direction="short",
+        cash=5000.0,
     )
     bar = {"close": 100.0, "high": 100.5, "low": 99.5, "open": 99.8}
     rec = router.submit_entry(
-        bot=bot, signal_id="sig_sell", side="SELL", bar=bar, size_mult=1.0,
+        bot=bot,
+        signal_id="sig_sell",
+        side="SELL",
+        bar=bar,
+        size_mult=1.0,
     )
     assert rec is not None
-    assert rec.fill_price < 100.0, (
-        f"SELL at ref=100 must fill below mid (adverse), got {rec.fill_price}"
-    )
+    assert rec.fill_price < 100.0, f"SELL at ref=100 must fill below mid (adverse), got {rec.fill_price}"
 
 
 # ─── Fix 2 + Fix 3: Paper-sim exits at bracket levels (intrabar) ──
@@ -95,12 +108,16 @@ def test_paper_exit_at_stop_fills_at_stop_price_not_close(
         ExecutionRouter,
         SupervisorConfig,
     )
+
     cfg = SupervisorConfig()
     cfg.mode = "paper_sim"
     router = ExecutionRouter(cfg=cfg, bf_dir=tmp_path)
     bot = BotInstance(
-        bot_id="test_long_stop", symbol="SOL", strategy_kind="x",
-        direction="long", cash=5000.0,
+        bot_id="test_long_stop",
+        symbol="SOL",
+        strategy_kind="x",
+        direction="long",
+        cash=5000.0,
     )
     bot.open_position = {
         "side": "BUY",
@@ -120,8 +137,7 @@ def test_paper_exit_at_stop_fills_at_stop_price_not_close(
     # for SELL: 99 - 99 * 1.5/10000 = 99 - 0.01485 ≈ 98.985, then
     # tick-rounded to SOL's 0.01 grid → 98.99.
     assert 98.95 <= rec.fill_price <= 99.0, (
-        f"paper_stop fill should be ~99 (stop) minus adverse slippage, "
-        f"not bar.close=99.5; got {rec.fill_price}"
+        f"paper_stop fill should be ~99 (stop) minus adverse slippage, not bar.close=99.5; got {rec.fill_price}"
     )
 
 
@@ -139,12 +155,16 @@ def test_paper_exit_at_target_uses_intrabar_high(tmp_path: Path) -> None:
         JarvisStrategySupervisor,
         SupervisorConfig,
     )
+
     cfg = SupervisorConfig()
     cfg.mode = "paper_sim"
     router = ExecutionRouter(cfg=cfg, bf_dir=tmp_path)
     bot = BotInstance(
-        bot_id="test_long_target_intrabar", symbol="SOL", strategy_kind="x",
-        direction="long", cash=5000.0,
+        bot_id="test_long_target_intrabar",
+        symbol="SOL",
+        strategy_kind="x",
+        direction="long",
+        cash=5000.0,
     )
     bot.open_position = {
         "side": "BUY",
@@ -173,8 +193,7 @@ def test_paper_exit_at_target_uses_intrabar_high(tmp_path: Path) -> None:
     # After Fix 3, _maybe_exit should have closed the position via
     # the paper_target path → fill at target_price exactly.
     assert bot.open_position is None, (
-        "Fix 3: bar.high >= target should trigger paper_target exit "
-        "even when close < target"
+        "Fix 3: bar.high >= target should trigger paper_target exit even when close < target"
     )
     assert captured["rec"].fill_price == 110.4
 
@@ -188,9 +207,7 @@ def test_round_to_tick_mnq_quarter_grid() -> None:
 
     rounded = _round_to_tick(21437.83, "MNQ")
     # 21437.83 / 0.25 = 85751.32 → round() = 85751 → 85751 * 0.25 = 21437.75
-    assert rounded == 21437.75, (
-        f"21437.83 should round to 21437.75 on MNQ 0.25-tick grid; got {rounded}"
-    )
+    assert rounded == 21437.75, f"21437.83 should round to 21437.75 on MNQ 0.25-tick grid; got {rounded}"
 
 
 def test_round_to_tick_unknown_symbol_passthrough() -> None:
@@ -204,11 +221,7 @@ def test_round_to_tick_unknown_symbol_passthrough() -> None:
 
     # 100.50 is already on a 0.25 grid (100.50 / 0.25 = 402.0)
     rounded = _round_to_tick(100.50, "ZZZ_UNKNOWN_SYMBOL")
-    assert abs(rounded - 100.50) < 1e-9, (
-        f"on-grid price should round-trip unchanged; got {rounded}"
-    )
+    assert abs(rounded - 100.50) < 1e-9, f"on-grid price should round-trip unchanged; got {rounded}"
     # And a price that's already on the GC 0.10 tick grid via real spec:
     rounded_gc = _round_to_tick(2050.50, "GC")
-    assert abs(rounded_gc - 2050.50) < 1e-9, (
-        f"on-grid GC price should round-trip; got {rounded_gc}"
-    )
+    assert abs(rounded_gc - 2050.50) < 1e-9, f"on-grid GC price should round-trip; got {rounded_gc}"

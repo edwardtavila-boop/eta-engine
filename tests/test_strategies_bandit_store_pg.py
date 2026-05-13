@@ -57,8 +57,11 @@ def test_row_to_trial_with_string_vector() -> None:
 def test_row_to_trial_with_list_vector() -> None:
     row = {
         "ts": datetime(2026, 4, 27, tzinfo=UTC),
-        "strategy": "beta", "bot": "btc", "action": "EXIT",
-        "reward": None, "regime": None,
+        "strategy": "beta",
+        "bot": "btc",
+        "action": "EXIT",
+        "reward": None,
+        "regime": None,
         "context_vec": [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8],
         "meta": None,
     }
@@ -71,8 +74,11 @@ def test_row_to_trial_with_list_vector() -> None:
 def test_row_to_trial_handles_empty_vec() -> None:
     row = {
         "ts": datetime(2026, 4, 27, tzinfo=UTC),
-        "strategy": "x", "bot": "y", "action": "SKIP",
-        "reward": None, "regime": None,
+        "strategy": "x",
+        "bot": "y",
+        "action": "SKIP",
+        "reward": None,
+        "regime": None,
         "context_vec": "[]",
         "meta": {},
     }
@@ -88,11 +94,13 @@ def test_store_construction_raises_when_asyncpg_missing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import sys
+
     monkeypatch.setitem(sys.modules, "asyncpg", None)
     # Reimport so the fresh sys.modules state is honored.
     from importlib import reload
 
     import eta_engine.strategies.bandit_store_pg as mod
+
     reload(mod)
     # NOTE: after reload, the exception class identity is the freshly
     # loaded one, not the symbol we imported at module top.
@@ -106,8 +114,11 @@ def test_store_construction_raises_when_asyncpg_missing(
 def test_bandit_trial_dataclass_fields() -> None:
     t = BanditTrial(
         ts=datetime(2026, 4, 27, tzinfo=UTC),
-        strategy="s", bot="b", action="ENTER",
-        reward=2.0, regime="r",
+        strategy="s",
+        bot="b",
+        action="ENTER",
+        reward=2.0,
+        regime="r",
         context_vec=tuple([0.0] * 8),
     )
     assert t.strategy == "s"

@@ -45,6 +45,7 @@ Run
     python -m eta_engine.scripts.l2_fill_latency --strategy microprice_drift_v1
     python -m eta_engine.scripts.l2_fill_latency --json
 """
+
 from __future__ import annotations
 
 # ruff: noqa: PLR2004
@@ -88,8 +89,7 @@ class LatencyReport:
     notes: list[str] = field(default_factory=list)
 
 
-def _read_jsonl(path: Path, *, since_days: int = 30,
-                 strategy_id: str | None = None) -> list[dict]:
+def _read_jsonl(path: Path, *, since_days: int = 30, strategy_id: str | None = None) -> list[dict]:
     if not path.exists():
         return []
     cutoff = datetime.now(UTC) - timedelta(days=since_days)
@@ -122,8 +122,7 @@ def _read_jsonl(path: Path, *, since_days: int = 30,
     return out
 
 
-def _compute_latencies(signals: list[dict],
-                         fills: list[dict]) -> list[float]:
+def _compute_latencies(signals: list[dict], fills: list[dict]) -> list[float]:
     """Match signals to FIRST entry fill by signal_id, return latency
     in seconds.  Only considers ENTRY fills (not exit fills)."""
     sig_by_id: dict[str, datetime] = {}
@@ -169,26 +168,30 @@ def _verdict(p90: float | None, threshold: float) -> str:
     return "FAIL"
 
 
-def run_latency_audit(strategy_id: str | None = None,
-                       *, since_days: int = 30,
-                       _signal_path: Path | None = None,
-                       _fill_path: Path | None = None,
-                       _override_threshold: float | None = None) -> LatencyReport:
+def run_latency_audit(
+    strategy_id: str | None = None,
+    *,
+    since_days: int = 30,
+    _signal_path: Path | None = None,
+    _fill_path: Path | None = None,
+    _override_threshold: float | None = None,
+) -> LatencyReport:
     signals = _read_jsonl(
-        _signal_path if _signal_path is not None else SIGNAL_LOG,
-        since_days=since_days, strategy_id=strategy_id)
-    fills = _read_jsonl(
-        _fill_path if _fill_path is not None else BROKER_FILL_LOG,
-        since_days=since_days)
+        _signal_path if _signal_path is not None else SIGNAL_LOG, since_days=since_days, strategy_id=strategy_id
+    )
+    fills = _read_jsonl(_fill_path if _fill_path is not None else BROKER_FILL_LOG, since_days=since_days)
     latencies = _compute_latencies(signals, fills)
-    threshold = _override_threshold or DECAY_THRESHOLDS.get(
-        strategy_id, DEFAULT_DECAY_THRESHOLD)
+    threshold = _override_threshold or DECAY_THRESHOLDS.get(strategy_id, DEFAULT_DECAY_THRESHOLD)
     if not latencies:
         return LatencyReport(
-            strategy_id=strategy_id, n_observations=0,
-            p50_latency_s=None, p90_latency_s=None,
-            p99_latency_s=None, max_latency_s=None,
-            decay_threshold_s=threshold, verdict="INSUFFICIENT",
+            strategy_id=strategy_id,
+            n_observations=0,
+            p50_latency_s=None,
+            p90_latency_s=None,
+            p99_latency_s=None,
+            max_latency_s=None,
+            decay_threshold_s=threshold,
+            verdict="INSUFFICIENT",
             notes=["no matched signal/fill pairs found"],
         )
     sorted_lat = sorted(latencies)
@@ -199,30 +202,30 @@ def run_latency_audit(strategy_id: str | None = None,
     verdict = _verdict(p90, threshold)
     notes: list[str] = []
     if len(latencies) < 30:
-        notes.append(f"Only {len(latencies)} observations — "
-                       "verdict is statistically weak below n=30")
+        notes.append(f"Only {len(latencies)} observations — verdict is statistically weak below n=30")
     if verdict in ("MARGINAL", "FAIL"):
         notes.append(
             f"p90 latency {p90:.2f}s exceeds decay threshold {threshold:.1f}s; "
-            "strategy may be trading on stale signal information.")
+            "strategy may be trading on stale signal information."
+        )
     return LatencyReport(
-        strategy_id=strategy_id, n_observations=len(latencies),
+        strategy_id=strategy_id,
+        n_observations=len(latencies),
         p50_latency_s=round(p50, 3),
         p90_latency_s=round(p90, 3) if p90 is not None else None,
         p99_latency_s=round(p99, 3) if p99 is not None else None,
         max_latency_s=round(mx, 3),
-        decay_threshold_s=threshold, verdict=verdict,
+        decay_threshold_s=threshold,
+        verdict=verdict,
         notes=notes,
     )
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--strategy", default=None,
-                    help="Filter to one strategy_id (default: all)")
+    ap.add_argument("--strategy", default=None, help="Filter to one strategy_id (default: all)")
     ap.add_argument("--days", type=int, default=30)
-    ap.add_argument("--threshold", type=float, default=None,
-                    help="Override decay threshold in seconds")
+    ap.add_argument("--threshold", type=float, default=None, help="Override decay threshold in seconds")
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
 
@@ -234,9 +237,7 @@ def main() -> int:
 
     try:
         with LATENCY_LOG.open("a", encoding="utf-8") as f:
-            f.write(json.dumps({"ts": datetime.now(UTC).isoformat(),
-                                 **asdict(report)},
-                                separators=(",", ":")) + "\n")
+            f.write(json.dumps({"ts": datetime.now(UTC).isoformat(), **asdict(report)}, separators=(",", ":")) + "\n")
     except OSError as e:
         print(f"WARN: latency log write failed: {e}", file=sys.stderr)
 

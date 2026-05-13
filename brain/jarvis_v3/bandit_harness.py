@@ -22,6 +22,7 @@ The multi-arm dispatch and reward-feedback plumbing is implemented,
 but live routing is fail-closed behind ``ETA_BANDIT_ENABLED=true`` and
 the operator's explicit go-ahead.
 """
+
 from __future__ import annotations
 
 import logging

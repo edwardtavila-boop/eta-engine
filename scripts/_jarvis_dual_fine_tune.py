@@ -203,6 +203,7 @@ def _score_btc(params: dict[str, Any]) -> CellScore:
     from eta_engine.scripts._jarvis_final_revision import (
         _try_real_backtest_score,
     )
+
     real = _try_real_backtest_score(params)
     if real is not None:
         return real

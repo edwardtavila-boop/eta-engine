@@ -136,10 +136,7 @@ $results | ConvertTo-Json -Depth 4
 """
     payload = _run_powershell_json(command)
     if isinstance(payload, dict) and "error" in payload:
-        return {
-            name: {"name": name, "status": "Unknown", "error": payload["error"]}
-            for name in names
-        }
+        return {name: {"name": name, "status": "Unknown", "error": payload["error"]} for name in names}
     rows = payload if isinstance(payload, list) else [payload]
     services: dict[str, dict[str, Any]] = {}
     for row in rows:
@@ -169,8 +166,7 @@ $results | ConvertTo-Json -Depth 4
     payload = _run_powershell_json(command)
     if isinstance(payload, dict) and "error" in payload:
         return {
-            port: {"port": port, "listening": False, "error": payload["error"], "owners": []}
-            for port in REQUIRED_PORTS
+            port: {"port": port, "listening": False, "error": payload["error"], "owners": []} for port in REQUIRED_PORTS
         }
     rows = payload if isinstance(payload, list) else [payload]
     ports: dict[int, dict[str, Any]] = {}
@@ -304,18 +300,12 @@ def collect_service_config_status() -> dict[str, dict[str, Any]]:
 
 def _service_down(services: dict[str, dict[str, Any]]) -> list[str]:
     return [
-        name
-        for name in CRITICAL_SERVICES
-        if str(_as_dict(services.get(name)).get("status") or "").lower() != "running"
+        name for name in CRITICAL_SERVICES if str(_as_dict(services.get(name)).get("status") or "").lower() != "running"
     ]
 
 
 def _missing_ports(ports: dict[int, dict[str, Any]]) -> list[int]:
-    return [
-        port
-        for port in REQUIRED_PORTS
-        if not bool(_as_dict(ports.get(port)).get("listening"))
-    ]
+    return [port for port in REQUIRED_PORTS if not bool(_as_dict(ports.get(port)).get("listening"))]
 
 
 def _missing_dashboard_tasks(tasks: dict[str, dict[str, Any]]) -> list[str]:
@@ -365,11 +355,7 @@ def _broker_gate_summary(broker_bracket_audit: dict[str, Any]) -> dict[str, Any]
         or broker_bracket_audit.get("artifact_status")
         or "UNKNOWN"
     )
-    symbols = [
-        str(symbol)
-        for symbol in _as_list(summary.get("missing_bracket_symbols"))
-        if str(symbol)
-    ]
+    symbols = [str(symbol) for symbol in _as_list(summary.get("missing_bracket_symbols")) if str(symbol)]
     if not symbols:
         symbols = [
             str(item.get("symbol"))
@@ -385,9 +371,7 @@ def _broker_gate_summary(broker_bracket_audit: dict[str, Any]) -> dict[str, Any]
         "status": status,
         "ready": ready,
         "missing_bracket_count": int(
-            summary.get("missing_bracket_count")
-            or position_summary.get("missing_bracket_count")
-            or 0
+            summary.get("missing_bracket_count") or position_summary.get("missing_bracket_count") or 0
         ),
         "missing_bracket_symbols": symbols,
     }
@@ -402,10 +386,7 @@ def _promotion_gate_summary(promotion_audit: dict[str, Any]) -> dict[str, Any]:
         or promotion_audit.get("artifact_status")
         or "UNKNOWN"
     )
-    ready = bool(
-        summary.get("ready_for_live")
-        or promotion_audit.get("ready_for_prop_dry_run_review")
-    ) and status in {
+    ready = bool(summary.get("ready_for_live") or promotion_audit.get("ready_for_prop_dry_run_review")) and status in {
         "PASS",
         "READY_FOR_PROP_DRY_RUN_REVIEW",
         "READY",
@@ -425,11 +406,7 @@ def _ibgateway_summary(
             "port_listening": bool(_as_dict(ports.get(4002)).get("listening")),
             "reason": None,
         }
-    status = str(
-        ibgateway_reauth.get("status")
-        or ibgateway_reauth.get("artifact_status")
-        or "UNKNOWN"
-    )
+    status = str(ibgateway_reauth.get("status") or ibgateway_reauth.get("artifact_status") or "UNKNOWN")
     port_listening = bool(_as_dict(ports.get(4002)).get("listening"))
     ready = status == "healthy" and port_listening
     return {
@@ -474,11 +451,7 @@ def _jarvis_hermes_admin_summary(
 
 
 def _config_drift(service_config: dict[str, dict[str, Any]]) -> list[str]:
-    return [
-        name
-        for name, config in service_config.items()
-        if not bool(_as_dict(config).get("matches_expected"))
-    ]
+    return [name for name, config in service_config.items() if not bool(_as_dict(config).get("matches_expected"))]
 
 
 def build_report(
@@ -507,11 +480,7 @@ def build_report(
     admin_ai_gate = _jarvis_hermes_admin_summary(jarvis_hermes_admin)
     runtime_ready = not service_down and not missing_ports and not endpoint_failures
     dashboard_durable = not missing_dashboard_tasks
-    trading_gate_ready = bool(
-        broker_gate["ready"]
-        and promotion_gate["ready"]
-        and ibgateway_gate["ready"]
-    )
+    trading_gate_ready = bool(broker_gate["ready"] and promotion_gate["ready"] and ibgateway_gate["ready"])
     next_actions: list[str] = []
 
     for name in service_down:
@@ -524,9 +493,7 @@ def build_report(
         next_actions.append(
             "Run elevated dashboard durability repair: "
             "eta_engine\\deploy\\scripts\\repair_dashboard_durability_admin.cmd "
-            "(registers "
-            + ", ".join(missing_dashboard_tasks)
-            + ")"
+            "(registers " + ", ".join(missing_dashboard_tasks) + ")"
         )
     if dashboard_schema_drift:
         next_actions.append(
@@ -534,10 +501,7 @@ def build_report(
             + ", ".join(dashboard_schema_drift)
         )
     if drifted_configs:
-        next_actions.append(
-            "Run an elevated restart/install for drifted WinSW services: "
-            + ", ".join(drifted_configs)
-        )
+        next_actions.append("Run an elevated restart/install for drifted WinSW services: " + ", ".join(drifted_configs))
     if not ibgateway_gate["ready"]:
         if ibgateway_gate["status"] == "missing_ibc_credentials":
             next_actions.append(
@@ -550,34 +514,23 @@ def build_report(
                 "and ibgateway_reauth.json reports healthy"
             )
         else:
-            next_actions.append(
-                "Repair IBKR Gateway readiness state before any broker promotion"
-            )
+            next_actions.append("Repair IBKR Gateway readiness state before any broker promotion")
     missing_symbols = ", ".join(broker_gate["missing_bracket_symbols"])
     if missing_symbols:
-        next_actions.append(
-            "Do not promote: verify native broker brackets/OCO protection for "
-            f"{missing_symbols}"
-        )
+        next_actions.append(f"Do not promote: verify native broker brackets/OCO protection for {missing_symbols}")
     elif broker_gate["missing_bracket_count"]:
         next_actions.append(
             "Do not promote: verify native broker brackets/OCO protection for "
             f"{broker_gate['missing_bracket_count']} unprotected broker position(s)"
         )
     if not promotion_gate["ready"]:
-        next_actions.append(
-            "Keep strategy lane in paper soak until prop promotion audit is PASS/READY"
-        )
+        next_actions.append("Keep strategy lane in paper soak until prop promotion audit is PASS/READY")
     if not admin_ai_gate["ready"]:
         admin_actions = admin_ai_gate["next_actions"]
         if admin_actions:
-            next_actions.append(
-                "Review Jarvis/Hermes admin-AI readiness: " + str(admin_actions[0])
-            )
+            next_actions.append("Review Jarvis/Hermes admin-AI readiness: " + str(admin_actions[0]))
         else:
-            next_actions.append(
-                "Review Jarvis/Hermes admin-AI readiness before fully unlocking VPS admin AI"
-            )
+            next_actions.append("Review Jarvis/Hermes admin-AI readiness before fully unlocking VPS admin AI")
 
     if not runtime_ready:
         status = "RED_RUNTIME_DEGRADED"

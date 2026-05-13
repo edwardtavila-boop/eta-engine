@@ -17,6 +17,7 @@ has a monthly cap (default $50, configurable via
 Doesn't replace ``model_policy.py`` -- that one decides WHICH tier to
 use; this one decides whether to spend AT ALL given budget pressure.
 """
+
 from __future__ import annotations
 
 import logging
@@ -56,7 +57,8 @@ def allow_llm_call(*, estimated_cost_usd: float, tier: str = "sonnet") -> Budget
     # budget-blocked).
     if tier.lower() == "critical":
         return BudgetVerdict(
-            allowed=True, reason_code="critical_bypass",
+            allowed=True,
+            reason_code="critical_bypass",
             detail=f"tier=critical bypasses budget cap ({cap:.2f})",
             budget_usd=cap,
         )
@@ -83,8 +85,7 @@ def allow_llm_call(*, estimated_cost_usd: float, tier: str = "sonnet") -> Budget
             allowed=True,
             reason_code="within_budget",
             detail=(
-                f"spend ${spent:.2f} + ${estimated_cost_usd:.4f} = ${spent + estimated_cost_usd:.4f} "
-                f"<= cap ${cap:.2f}"
+                f"spend ${spent:.2f} + ${estimated_cost_usd:.4f} = ${spent + estimated_cost_usd:.4f} <= cap ${cap:.2f}"
             ),
             spent_usd=spent,
             budget_usd=cap,
@@ -95,7 +96,8 @@ def allow_llm_call(*, estimated_cost_usd: float, tier: str = "sonnet") -> Budget
         # JARVIS during an outage of the cost subsystem.
         logger.warning("cost_forecast unavailable: %s -- failing open", exc)
         return BudgetVerdict(
-            allowed=True, reason_code="forecast_unavailable",
+            allowed=True,
+            reason_code="forecast_unavailable",
             detail=f"cost_forecast subsystem error: {exc}",
             budget_usd=cap,
         )

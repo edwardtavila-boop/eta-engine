@@ -1,4 +1,5 @@
 """Tests for diamond_sizing_audit — codified wave-8 sizing forensic."""
+
 # ruff: noqa: N802, PLR2004, SLF001
 from __future__ import annotations
 
@@ -24,7 +25,8 @@ def test_classify_sizing_breached_when_one_stopout_exceeds_floor() -> None:
     from eta_engine.scripts import diamond_sizing_audit as sa
 
     verdict, ratio = sa._classify_sizing(
-        usd_per_r_max_abs=250.0, threshold_usd=-200.0,
+        usd_per_r_max_abs=250.0,
+        threshold_usd=-200.0,
     )
     assert verdict == "SIZING_BREACHED"
     assert ratio == 0.8
@@ -35,7 +37,8 @@ def test_classify_sizing_fragile_when_under_two_stopouts() -> None:
     from eta_engine.scripts import diamond_sizing_audit as sa
 
     verdict, ratio = sa._classify_sizing(
-        usd_per_r_max_abs=150.0, threshold_usd=-200.0,
+        usd_per_r_max_abs=150.0,
+        threshold_usd=-200.0,
     )
     assert verdict == "SIZING_FRAGILE"
     assert ratio is not None
@@ -47,7 +50,8 @@ def test_classify_sizing_tight_when_under_four_stopouts() -> None:
     from eta_engine.scripts import diamond_sizing_audit as sa
 
     verdict, ratio = sa._classify_sizing(
-        usd_per_r_max_abs=80.0, threshold_usd=-200.0,
+        usd_per_r_max_abs=80.0,
+        threshold_usd=-200.0,
     )
     assert verdict == "SIZING_TIGHT"
     assert ratio is not None
@@ -59,7 +63,8 @@ def test_classify_sizing_ok_when_at_least_four_stopouts() -> None:
     from eta_engine.scripts import diamond_sizing_audit as sa
 
     verdict, ratio = sa._classify_sizing(
-        usd_per_r_max_abs=10.0, threshold_usd=-200.0,
+        usd_per_r_max_abs=10.0,
+        threshold_usd=-200.0,
     )
     assert verdict == "SIZING_OK"
     assert ratio is not None
@@ -87,8 +92,7 @@ def test_classify_sizing_insufficient_data_when_no_pnl_samples() -> None:
 # ────────────────────────────────────────────────────────────────────
 
 
-def _trade(bot_id: str, r: float, pnl: float | None,
-           qty: float = 1.0, idx: int = 0) -> dict:
+def _trade(bot_id: str, r: float, pnl: float | None, qty: float = 1.0, idx: int = 0) -> dict:
     """Build a minimal trade-close record."""
     row: dict = {
         "bot_id": bot_id,
@@ -106,10 +110,7 @@ def test_score_bot_clean_pnl_samples_classifies() -> None:
     """Bot with consistent $50/R per trade, $200 floor → 4 stopouts → OK."""
     from eta_engine.scripts import diamond_sizing_audit as sa
 
-    trades = [
-        _trade("test", r=1.0, pnl=50.0, idx=i)
-        for i in range(10)
-    ]
+    trades = [_trade("test", r=1.0, pnl=50.0, idx=i) for i in range(10)]
     sc = sa._score_bot("test", trades, threshold_usd=-200.0)
     assert sc.n_trades_with_pnl == 10
     assert sc.usd_per_r_max_abs == 50.0
@@ -144,7 +145,7 @@ def test_score_bot_excludes_near_zero_r_samples() -> None:
 
     trades = [
         _trade("test", r=0.001, pnl=1000.0, idx=0),  # tiny R, huge pnl
-        _trade("test", r=0.0, pnl=500.0, idx=1),     # exactly zero
+        _trade("test", r=0.0, pnl=500.0, idx=1),  # exactly zero
         *[_trade("test", r=1.0, pnl=30.0, idx=i + 10) for i in range(10)],
     ]
     sc = sa._score_bot("test", trades, threshold_usd=-200.0)
@@ -205,10 +206,7 @@ def test_run_writes_json_receipt(tmp_path: Path, monkeypatch: object) -> None:
 
     can_path = tmp_path / "canonical.jsonl"
     leg_path = tmp_path / "legacy.jsonl"
-    _write_jsonl(can_path, [
-        _trade("m2k_sweep_reclaim", r=1.0, pnl=20.0, idx=i)
-        for i in range(10)
-    ])
+    _write_jsonl(can_path, [_trade("m2k_sweep_reclaim", r=1.0, pnl=20.0, idx=i) for i in range(10)])
     _write_jsonl(leg_path, [])
     monkeypatch.setattr(sa, "TRADE_CLOSES_CANONICAL", can_path)  # type: ignore[attr-defined]
     monkeypatch.setattr(sa, "TRADE_CLOSES_LEGACY", leg_path)  # type: ignore[attr-defined]

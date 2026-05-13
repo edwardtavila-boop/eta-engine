@@ -88,7 +88,8 @@ class CryptoHtfConvictionConfig:
 
 
 def _conviction_multiplier(
-    cfg: HtfConvictionSizingConfig, conviction: float,
+    cfg: HtfConvictionSizingConfig,
+    conviction: float,
 ) -> float:
     """Map conviction in [0, 1] to a size multiplier (linear ramp)."""
     raw = cfg.base_multiplier + (conviction - 0.5) * cfg.conviction_gain
@@ -107,7 +108,8 @@ class CryptoHtfConvictionStrategy:
     """
 
     def __init__(
-        self, config: CryptoHtfConvictionConfig | None = None,
+        self,
+        config: CryptoHtfConvictionConfig | None = None,
     ) -> None:
         self.cfg = config or CryptoHtfConvictionConfig()
         self._base = CryptoRegimeTrendStrategy(self.cfg.base)
@@ -208,6 +210,4 @@ class CryptoHtfConvictionStrategy:
         can still fire (the entry didn't actually happen)."""
         self._base._trades_today = max(0, self._base._trades_today - 1)
         if self._base._last_entry_idx is not None:
-            self._base._last_entry_idx = (
-                self._base._bars_seen - self.cfg.base.min_bars_between_trades - 1
-            )
+            self._base._last_entry_idx = self._base._bars_seen - self.cfg.base.min_bars_between_trades - 1

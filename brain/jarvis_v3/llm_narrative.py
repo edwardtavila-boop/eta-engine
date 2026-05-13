@@ -45,9 +45,7 @@ def llm_narrative(
         context = _build_llm_context(verdict)
 
         if verbosity == "terse":
-            prompt = (
-                f"Generate ONE sentence summarizing this trading decision:\n\n{context}"
-            )
+            prompt = f"Generate ONE sentence summarizing this trading decision:\n\n{context}"
             max_tok = 80
         elif verbosity == "verbose":
             prompt = (
@@ -56,10 +54,7 @@ def llm_narrative(
             )
             max_tok = 600
         else:
-            prompt = (
-                f"Generate a 3-6 sentence narrative for the operator from "
-                f"this structured verdict:\n\n{context}"
-            )
+            prompt = f"Generate a 3-6 sentence narrative for the operator from this structured verdict:\n\n{context}"
             max_tok = 300
 
         resp = route_and_execute(
@@ -97,9 +92,7 @@ def _build_llm_context(verdict: ConsolidatedVerdict) -> str:
     lines.append(f"Base reason: {verdict.base_reason}")
 
     if verdict.final_size_multiplier is not None:
-        lines.append(
-            f"Size multiplier: {verdict.final_size_multiplier:.2f}"
-        )
+        lines.append(f"Size multiplier: {verdict.final_size_multiplier:.2f}")
 
     if verdict.intelligence_enabled:
         lines.append(f"Firm board consensus: {verdict.firm_board_consensus:.2f}")
@@ -107,32 +100,18 @@ def _build_llm_context(verdict: ConsolidatedVerdict) -> str:
         lines.append(f"Causal reason: {verdict.causal_reason}")
 
         if verdict.world_model_expected_r is not None:
-            lines.append(
-                f"World model expected R: {verdict.world_model_expected_r:+.3f}"
-            )
+            lines.append(f"World model expected R: {verdict.world_model_expected_r:+.3f}")
         if verdict.world_model_best_action:
-            lines.append(
-                f"World model best action: {verdict.world_model_best_action}"
-            )
+            lines.append(f"World model best action: {verdict.world_model_best_action}")
 
         if verdict.rag_cautions:
-            lines.append(
-                f"RAG cautions ({len(verdict.rag_cautions)}): "
-                + "; ".join(verdict.rag_cautions[:3])
-            )
+            lines.append(f"RAG cautions ({len(verdict.rag_cautions)}): " + "; ".join(verdict.rag_cautions[:3]))
         if verdict.rag_boosts:
-            lines.append(
-                f"RAG boosts ({len(verdict.rag_boosts)}): "
-                + "; ".join(verdict.rag_boosts[:3])
-            )
+            lines.append(f"RAG boosts ({len(verdict.rag_boosts)}): " + "; ".join(verdict.rag_boosts[:3]))
         if verdict.firm_board_devils_advocate:
-            lines.append(
-                f"Devil's advocate: {verdict.firm_board_devils_advocate}"
-            )
+            lines.append(f"Devil's advocate: {verdict.firm_board_devils_advocate}")
 
         if verdict.layer_errors:
-            lines.append(
-                f"Layer errors: {'; '.join(verdict.layer_errors[:3])}"
-            )
+            lines.append(f"Layer errors: {'; '.join(verdict.layer_errors[:3])}")
 
     return "\n".join(lines)

@@ -41,6 +41,7 @@ Scaffold limitations (intentionally narrow):
   * Reward sampled from past observed R conditional on state
   * No action conditioning beyond observed action-tagged episodes
 """
+
 from __future__ import annotations
 
 import logging
@@ -61,11 +62,17 @@ logger = logging.getLogger(__name__)
 
 
 _REGIME_BUCKETS = {
-    "bearish_high_vol": 0, "bearish_low_vol": 1,
-    "neutral": 2, "bullish_low_vol": 3, "bullish_high_vol": 4,
+    "bearish_high_vol": 0,
+    "bearish_low_vol": 1,
+    "neutral": 2,
+    "bullish_low_vol": 3,
+    "bullish_high_vol": 4,
 }
 _SESSION_BUCKETS = {
-    "overnight": 0, "premarket": 1, "rth": 2, "afterhours": 1,
+    "overnight": 0,
+    "premarket": 1,
+    "rth": 2,
+    "afterhours": 1,
 }
 
 
@@ -110,13 +117,16 @@ class TransitionTable:
         pair contributes a transition."""
         for i, ep in enumerate(episodes):
             s = encode_state(
-                regime=ep.regime, session=ep.session, stress=ep.stress,
+                regime=ep.regime,
+                session=ep.session,
+                stress=ep.stress,
             )
             self.rewards_by_state.setdefault(s, []).append(ep.realized_r)
             if i + 1 < len(episodes):
                 nxt_ep = episodes[i + 1]
                 s_next = encode_state(
-                    regime=nxt_ep.regime, session=nxt_ep.session,
+                    regime=nxt_ep.regime,
+                    session=nxt_ep.session,
                     stress=nxt_ep.stress,
                 )
                 row = self.transitions.setdefault(s, {})
@@ -158,7 +168,7 @@ class DreamReport:
     median_terminal_r: float
     worst_terminal_r: float
     best_terminal_r: float
-    pct_paths_blown_up: float    # % of paths with cum R <= -2
+    pct_paths_blown_up: float  # % of paths with cum R <= -2
     sample_paths: list[list[float]] = field(default_factory=list)
 
 
@@ -213,11 +223,15 @@ def dream(
 
     if not paths_terminal_r:
         return DreamReport(
-            n_paths=0, horizon=horizon, starting_state=current_state,
+            n_paths=0,
+            horizon=horizon,
+            starting_state=current_state,
             starting_state_label=describe_state(current_state),
             pct_paths_profitable=0.0,
-            avg_terminal_r=0.0, median_terminal_r=0.0,
-            worst_terminal_r=0.0, best_terminal_r=0.0,
+            avg_terminal_r=0.0,
+            median_terminal_r=0.0,
+            worst_terminal_r=0.0,
+            best_terminal_r=0.0,
             pct_paths_blown_up=0.0,
         )
     pct_profitable = sum(1 for r in paths_terminal_r if r > 0) / len(paths_terminal_r)

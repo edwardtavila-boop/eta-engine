@@ -99,8 +99,8 @@ COST_RATIO: dict[ModelTier, float] = {
 # Source: eta_engine.brain.llm_provider.COST_RATIO
 # DeepSeek V4 Flash is ~21× cheaper than Claude Sonnet for input tokens.
 DEEPSEEK_COST_RATIO: dict[ModelTier, float] = {
-    ModelTier.OPUS: 0.145,   # V4 Pro = $0.435/1M vs Sonnet $3.00/1M
-    ModelTier.SONNET: 0.047, # V4 Flash = $0.14/1M
+    ModelTier.OPUS: 0.145,  # V4 Pro = $0.435/1M vs Sonnet $3.00/1M
+    ModelTier.SONNET: 0.047,  # V4 Flash = $0.14/1M
     ModelTier.HAIKU: 0.047,  # V4 Flash = $0.14/1M (cost floor)
 }
 
@@ -217,13 +217,11 @@ _CATEGORY_TO_PROVIDER: dict[TaskCategory, ForceProvider] = {
     TaskCategory.RED_TEAM_SCORING: ForceProvider.CLAUDE,
     TaskCategory.ADVERSARIAL_REVIEW: ForceProvider.CLAUDE,
     TaskCategory.CODE_REVIEW: ForceProvider.CLAUDE,
-
     # CODEX (Systems Expert) — debugging, test execution, security, computer use
     TaskCategory.DEBUG: ForceProvider.CODEX,
     TaskCategory.TEST_EXECUTION: ForceProvider.CODEX,
     TaskCategory.SECURITY_AUDIT: ForceProvider.CODEX,
     TaskCategory.COMPUTER_USE_TASK: ForceProvider.CODEX,
-
     # DEEPSEEK (Worker Bee) — everything else: high volume, cheap, boilerplate
     TaskCategory.STRATEGY_EDIT: ForceProvider.DEEPSEEK,
     TaskCategory.TEST_RUN: ForceProvider.DEEPSEEK,

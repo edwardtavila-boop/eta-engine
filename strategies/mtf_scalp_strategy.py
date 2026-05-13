@@ -81,14 +81,14 @@ class MtfScalpConfig:
 
     # HTF (15m) layer
     htf_bars_per_aggregate: int = 15  # 1m → 15m
-    htf_ema_period: int = 100         # in HTF bars (EMA-100 captures ~95% of EMA-200 smoothing in half the time)
-    htf_atr_period: int = 14          # in HTF bars
+    htf_ema_period: int = 100  # in HTF bars (EMA-100 captures ~95% of EMA-200 smoothing in half the time)
+    htf_atr_period: int = 14  # in HTF bars
     # ATR percent of close: skip when too quiet (chop) or too loud (panic)
-    htf_atr_pct_min: float = 0.05     # 0.05% of close
-    htf_atr_pct_max: float = 0.50     # 0.50% of close
+    htf_atr_pct_min: float = 0.05  # 0.05% of close
+    htf_atr_pct_max: float = 0.50  # 0.50% of close
 
     # LTF (1m) layer
-    ltf_recent_high_lookback: int = 5     # break recent N-bar high
+    ltf_recent_high_lookback: int = 5  # break recent N-bar high
     ltf_fast_ema_period: int = 9
     ltf_atr_period: int = 14
     ltf_atr_stop_mult: float = 1.5
@@ -96,9 +96,9 @@ class MtfScalpConfig:
     risk_per_trade_pct: float = 0.005  # smaller risk per scalp
 
     # Hygiene
-    min_bars_between_trades: int = 30   # 30 1m bars = 30 min cooldown
+    min_bars_between_trades: int = 30  # 30 1m bars = 30 min cooldown
     max_trades_per_day: int = 6
-    warmup_bars: int = 1500             # = htf_ema_period (100) * htf_bars_per_aggregate (15)
+    warmup_bars: int = 1500  # = htf_ema_period (100) * htf_bars_per_aggregate (15)
 
     # Session window — defaults to PERMISSIVE (full day) so 24/7 ticker
     # trading and Globex futures both work.  Operators may opt in to
@@ -166,6 +166,7 @@ class MtfScalpStrategy:
     def _get_tz(self) -> ZoneInfo:
         if self._tz is None:
             from zoneinfo import ZoneInfo
+
             self._tz = ZoneInfo(self.cfg.timezone_name)
         return self._tz
 
@@ -199,7 +200,9 @@ class MtfScalpStrategy:
         htf_low = min(lows)
         htf_close = closes[-1]
         self._htf_ema = _ema_step(
-            self._htf_ema, htf_close, self.cfg.htf_ema_period,
+            self._htf_ema,
+            htf_close,
+            self.cfg.htf_ema_period,
         )
         self._htf_atr_window.append(htf_high - htf_low)
         # Avoid an unused-variable lint by referencing htf_open in the
@@ -208,7 +211,9 @@ class MtfScalpStrategy:
         return True
 
     def _ltf_recent_break(
-        self, bar: BarData, side: str,
+        self,
+        bar: BarData,
+        side: str,
     ) -> bool:
         """Did this 1m bar break the recent N-bar high (long) or
         low (short)? Compares the close against the PRIOR window
@@ -240,7 +245,9 @@ class MtfScalpStrategy:
 
         # Update LTF EMA + recent-extreme windows on every bar
         self._ltf_ema = _ema_step(
-            self._ltf_ema, bar.close, self.cfg.ltf_fast_ema_period,
+            self._ltf_ema,
+            bar.close,
+            self.cfg.ltf_fast_ema_period,
         )
         self._ltf_recent_highs.append(bar.high)
         self._ltf_recent_lows.append(bar.low)
@@ -260,19 +267,14 @@ class MtfScalpStrategy:
             return None
         if (
             self._last_entry_idx is not None
-            and (self._bars_seen - self._last_entry_idx)
-            < self.cfg.min_bars_between_trades
+            and (self._bars_seen - self._last_entry_idx) < self.cfg.min_bars_between_trades
         ):
             return None
 
         # HTF direction read
         htf_atr = sum(self._htf_atr_window) / len(self._htf_atr_window)
-        htf_atr_pct = (
-            htf_atr / max(bar.close, 1e-9) * 100.0
-        )
-        if not (
-            self.cfg.htf_atr_pct_min <= htf_atr_pct <= self.cfg.htf_atr_pct_max
-        ):
+        htf_atr_pct = htf_atr / max(bar.close, 1e-9) * 100.0
+        if not (self.cfg.htf_atr_pct_min <= htf_atr_pct <= self.cfg.htf_atr_pct_max):
             self._n_vol_regime_blocks += 1
             return None
         htf_bias = "long" if bar.close > self._htf_ema else "short"
@@ -298,7 +300,7 @@ class MtfScalpStrategy:
         self._n_ltf_triggered += 1
 
         # Risk sizing off LTF ATR
-        ltf_atr_window = hist[-self.cfg.ltf_atr_period:] if hist else []
+        ltf_atr_window = hist[-self.cfg.ltf_atr_period :] if hist else []
         if len(ltf_atr_window) < 2:
             return None
         ltf_atr = sum(b.high - b.low for b in ltf_atr_window) / len(ltf_atr_window)
@@ -321,11 +323,18 @@ class MtfScalpStrategy:
             target = entry - self.cfg.ltf_rr_target * stop_dist
 
         from eta_engine.backtest.engine import _Open  # local import
+
         self._last_entry_idx = self._bars_seen
         self._trades_today += 1
         return _Open(
-            entry_bar=bar, side=side, qty=qty, entry_price=entry,
-            stop=stop, target=target, risk_usd=risk_usd,
-            confluence=10.0, leverage=1.0,
+            entry_bar=bar,
+            side=side,
+            qty=qty,
+            entry_price=entry,
+            stop=stop,
+            target=target,
+            risk_usd=risk_usd,
+            confluence=10.0,
+            leverage=1.0,
             regime=f"mtf_scalp_htf_{htf_bias}_ltf_{side.lower()}",
         )

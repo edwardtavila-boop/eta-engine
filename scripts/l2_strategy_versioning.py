@@ -52,6 +52,7 @@ Run
     python -m eta_engine.scripts.l2_strategy_versioning \\
         --active --strategy book_imbalance
 """
+
 from __future__ import annotations
 
 # ruff: noqa: PLR2004
@@ -104,22 +105,25 @@ def load_registry(*, _path: Path | None = None) -> VersionsRegistry:
         return VersionsRegistry()
 
 
-def save_registry(reg: VersionsRegistry,
-                    *, _path: Path | None = None) -> None:
+def save_registry(reg: VersionsRegistry, *, _path: Path | None = None) -> None:
     path = _path if _path is not None else VERSIONS_FILE
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        data = {"versions": {s: [asdict(v) for v in vs]
-                                for s, vs in reg.versions.items()}}
+        data = {"versions": {s: [asdict(v) for v in vs] for s, vs in reg.versions.items()}}
         path.write_text(json.dumps(data, indent=2), encoding="utf-8")
     except OSError as e:
         print(f"WARN: versions save failed: {e}", file=sys.stderr)
 
 
-def register_version(strategy: str, version: str, config: dict,
-                       *, rationale: str = "",
-                       effective_from: datetime | None = None,
-                       _path: Path | None = None) -> StrategyVersion:
+def register_version(
+    strategy: str,
+    version: str,
+    config: dict,
+    *,
+    rationale: str = "",
+    effective_from: datetime | None = None,
+    _path: Path | None = None,
+) -> StrategyVersion:
     """Register a new version of a strategy.  Closes the prior version's
     effective_to window if it was open."""
     reg = load_registry(_path=_path)
@@ -143,8 +147,7 @@ def register_version(strategy: str, version: str, config: dict,
     return new_version
 
 
-def active_version(strategy: str,
-                     *, _path: Path | None = None) -> StrategyVersion | None:
+def active_version(strategy: str, *, _path: Path | None = None) -> StrategyVersion | None:
     reg = load_registry(_path=_path)
     versions = reg.versions.get(strategy, [])
     for v in reversed(versions):
@@ -153,8 +156,7 @@ def active_version(strategy: str,
     return None
 
 
-def version_for_date(strategy: str, when: datetime,
-                       *, _path: Path | None = None) -> StrategyVersion | None:
+def version_for_date(strategy: str, when: datetime, *, _path: Path | None = None) -> StrategyVersion | None:
     """Return the version that was active for the given datetime."""
     reg = load_registry(_path=_path)
     versions = reg.versions.get(strategy, [])
@@ -165,9 +167,9 @@ def version_for_date(strategy: str, when: datetime,
     return None
 
 
-def filter_records_to_version(records: list[dict], strategy: str,
-                                 version: str,
-                                 *, _path: Path | None = None) -> list[dict]:
+def filter_records_to_version(
+    records: list[dict], strategy: str, version: str, *, _path: Path | None = None
+) -> list[dict]:
     """Filter a list of records (must have 'ts' field) to those that
     fall within the given version's effective window."""
     reg = load_registry(_path=_path)
@@ -195,25 +197,23 @@ def main() -> int:
     ap.add_argument("--active", action="store_true")
     ap.add_argument("--strategy", default=None)
     ap.add_argument("--version", default=None)
-    ap.add_argument("--config", default=None,
-                    help="JSON-encoded config dict")
+    ap.add_argument("--config", default=None, help="JSON-encoded config dict")
     ap.add_argument("--rationale", default="")
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
 
     if args.register:
         if not args.strategy or not args.version or not args.config:
-            print("--register requires --strategy + --version + --config",
-                  file=sys.stderr)
+            print("--register requires --strategy + --version + --config", file=sys.stderr)
             return 2
         config = json.loads(args.config)
-        v = register_version(args.strategy, args.version, config,
-                              rationale=args.rationale)
+        v = register_version(args.strategy, args.version, config, rationale=args.rationale)
         if args.json:
             print(json.dumps(asdict(v), indent=2))
         else:
-            print(f"Registered {args.strategy} {args.version} "
-                    f"(hash {v.config_hash}, effective from {v.effective_from})")
+            print(
+                f"Registered {args.strategy} {args.version} (hash {v.config_hash}, effective from {v.effective_from})"
+            )
         return 0
 
     if args.active:
@@ -237,8 +237,7 @@ def main() -> int:
     # Default to --list
     reg = load_registry()
     if args.json:
-        print(json.dumps({s: [asdict(v) for v in vs]
-                            for s, vs in reg.versions.items()}, indent=2))
+        print(json.dumps({s: [asdict(v) for v in vs] for s, vs in reg.versions.items()}, indent=2))
         return 0
     print()
     print("=" * 78)

@@ -51,6 +51,7 @@ def ibkr_connect_timeout_seconds() -> int:
         return 20
     return timeout
 
+
 # ─── Crypto guard startup-log latch ──────────────────────────────
 #
 # The local crypto pre-check (see place_order) emits one of two startup
@@ -87,10 +88,7 @@ def _emit_crypto_guard_startup_log() -> None:
         return
     _CRYPTO_GUARD_LOG_EMITTED = True
     if _crypto_env_enabled():
-        logger.info(
-            "ETA_IBKR_CRYPTO=1 — local crypto guard disabled; "
-            "relying on IBKR-side permissions"
-        )
+        logger.info("ETA_IBKR_CRYPTO=1 — local crypto guard disabled; relying on IBKR-side permissions")
     else:
         logger.warning(
             "crypto guard active — local pre-check will reject crypto orders. "
@@ -105,29 +103,30 @@ def _reset_crypto_guard_log_latch() -> None:
     global _CRYPTO_GUARD_LOG_EMITTED
     _CRYPTO_GUARD_LOG_EMITTED = False
 
+
 # ─── SYMBOL → CONTRACT MAP ───────────────────────────────────────
 # Futures: (symbol_root, exchange, multiplier)
 FUTURES_MAP: dict[str, tuple[str, str, str]] = {
-    "MNQ":  ("MNQ", "CME", "2"),
+    "MNQ": ("MNQ", "CME", "2"),
     "MNQ1": ("MNQ", "CME", "2"),
-    "NQ":   ("NQ",  "CME", "20"),
-    "NQ1":  ("NQ",  "CME", "20"),
-    "ES":   ("ES",  "CME", "50"),
-    "ES1":  ("ES",  "CME", "50"),
-    "MES":  ("MES", "CME", "5"),
-    "RTY":  ("RTY", "CME", "50"),
-    "M2K":  ("M2K", "CME", "5"),
-    "MYM":  ("MYM", "CBOT", "0.5"),
+    "NQ": ("NQ", "CME", "20"),
+    "NQ1": ("NQ", "CME", "20"),
+    "ES": ("ES", "CME", "50"),
+    "ES1": ("ES", "CME", "50"),
+    "MES": ("MES", "CME", "5"),
+    "RTY": ("RTY", "CME", "50"),
+    "M2K": ("M2K", "CME", "5"),
+    "MYM": ("MYM", "CBOT", "0.5"),
     "MYM1": ("MYM", "CBOT", "0.5"),
-    "MBT":  ("MBT", "CME", "0.1"),
-    "MET":  ("MET", "CME", "0.1"),
-    "NG":   ("NG",  "NYMEX", "10000"),
-    "CL":   ("CL",  "NYMEX", "1000"),
-    "MCL":  ("MCL", "NYMEX", "100"),
-    "GC":   ("GC",  "COMEX", "100"),
-    "MGC":  ("MGC", "COMEX", "10"),
-    "ZN":   ("ZN",  "CBOT", "1000"),
-    "ZB":   ("ZB",  "CBOT", "1000"),
+    "MBT": ("MBT", "CME", "0.1"),
+    "MET": ("MET", "CME", "0.1"),
+    "NG": ("NG", "NYMEX", "10000"),
+    "CL": ("CL", "NYMEX", "1000"),
+    "MCL": ("MCL", "NYMEX", "100"),
+    "GC": ("GC", "COMEX", "100"),
+    "MGC": ("MGC", "COMEX", "10"),
+    "ZN": ("ZN", "CBOT", "1000"),
+    "ZB": ("ZB", "CBOT", "1000"),
     # CME Euro FX (full size): IB indexes the standard contract under
     # symbol "EUR", not the operator-friendly "6E" trading code that
     # appears on charts and in the supervisor. ContFuture(6E, CME)
@@ -135,19 +134,19 @@ FUTURES_MAP: dict[str, tuple[str, str, str]] = {
     # cleanly. Keep "6E" as the supervisor-facing key so routing yaml
     # stays readable, but use "EUR" as the IB symbol. Caught by smoke
     # harness 2026-05-05.
-    "6E":   ("EUR", "CME", "125000"),
+    "6E": ("EUR", "CME", "125000"),
     # Micro Euro FX: IB does index the micro under "M6E" (verified by
     # the same smoke harness — qualified cleanly with month=20260615).
-    "M6E":  ("M6E", "CME", "12500"),
+    "M6E": ("M6E", "CME", "12500"),
 }
 
 # Crypto symbols — these use PAXOS spot or crypto contracts
 CRYPTO_MAP: dict[str, tuple[str, str, str]] = {
-    "BTC":   ("BTC", "PAXOS", "0.001"),
+    "BTC": ("BTC", "PAXOS", "0.001"),
     "BTCUSD": ("BTC", "PAXOS", "0.001"),
-    "ETH":   ("ETH", "PAXOS", "0.01"),
+    "ETH": ("ETH", "PAXOS", "0.01"),
     "ETHUSD": ("ETH", "PAXOS", "0.01"),
-    "SOL":   ("SOL", "PAXOS", "1"),
+    "SOL": ("SOL", "PAXOS", "1"),
     "SOLUSD": ("SOL", "PAXOS", "1"),
 }
 
@@ -165,8 +164,8 @@ CRYPTO_MAP: dict[str, tuple[str, str, str]] = {
 _ASSET_PRIMARY_SESSION_ET: dict[str, tuple[time, time]] = {
     # CME equity-index futures: RTH 09:30 - 16:00 ET
     "MNQ": (time(9, 30), time(16, 0)),
-    "NQ":  (time(9, 30), time(16, 0)),
-    "ES":  (time(9, 30), time(16, 0)),
+    "NQ": (time(9, 30), time(16, 0)),
+    "ES": (time(9, 30), time(16, 0)),
     "MES": (time(9, 30), time(16, 0)),
     "RTY": (time(9, 30), time(16, 0)),
     "M2K": (time(9, 30), time(16, 0)),
@@ -175,18 +174,18 @@ _ASSET_PRIMARY_SESSION_ET: dict[str, tuple[time, time]] = {
     "MBT": (time(9, 30), time(16, 0)),
     "MET": (time(9, 30), time(16, 0)),
     # NYMEX energy: 09:00 - 14:30 ET pit/RTH window
-    "CL":  (time(9, 0),  time(14, 30)),
-    "MCL": (time(9, 0),  time(14, 30)),
-    "NG":  (time(9, 0),  time(14, 30)),
+    "CL": (time(9, 0), time(14, 30)),
+    "MCL": (time(9, 0), time(14, 30)),
+    "NG": (time(9, 0), time(14, 30)),
     # COMEX metals: 08:20 - 13:30 ET
-    "GC":  (time(8, 20), time(13, 30)),
+    "GC": (time(8, 20), time(13, 30)),
     "MGC": (time(8, 20), time(13, 30)),
     # CME FX: 08:20 - 15:00 ET (note IB indexes Euro FX as "EUR", not "6E")
     "EUR": (time(8, 20), time(15, 0)),
     "M6E": (time(8, 20), time(15, 0)),
     # CBOT rates: 08:20 - 15:00 ET
-    "ZN":  (time(8, 20), time(15, 0)),
-    "ZB":  (time(8, 20), time(15, 0)),
+    "ZN": (time(8, 20), time(15, 0)),
+    "ZB": (time(8, 20), time(15, 0)),
 }
 
 
@@ -249,7 +248,8 @@ def _in_primary_session(symbol: str, now_utc: datetime | None = None) -> bool:
     except Exception as exc:  # noqa: BLE001 — must never raise
         logger.warning(
             "primary-session check failed for %s (%s); defaulting permissive",
-            symbol, exc,
+            symbol,
+            exc,
         )
         return True
 
@@ -335,9 +335,7 @@ def _trade_submit_snapshot(trade: Any) -> dict[str, Any]:  # noqa: ANN401 - ib_i
     status = getattr(trade, "orderStatus", None)
     return {
         "order_id": getattr(order, "orderId", None),
-        "perm_id": getattr(order, "permId", None)
-        or getattr(status, "permId", None)
-        or 0,
+        "perm_id": getattr(order, "permId", None) or getattr(status, "permId", None) or 0,
         "status": str(getattr(status, "status", "") or "Unknown"),
         "filled": float(getattr(status, "filled", 0.0) or 0.0),
         "remaining": float(getattr(status, "remaining", 0.0) or 0.0),
@@ -369,22 +367,18 @@ def _filled_summary_from_statuses(statuses: list[dict[str, Any]]) -> tuple[float
 
 
 def _ibkr_submission_reject_reason(statuses: list[dict[str, Any]]) -> str:
-    rejected = [
-        item for item in statuses
-        if str(item.get("status") or "") in _IBKR_REJECTED_STATUSES
-    ]
+    rejected = [item for item in statuses if str(item.get("status") or "") in _IBKR_REJECTED_STATUSES]
     if rejected:
         return f"IBKR rejected/cancelled submitted order legs: {rejected}"
     confirmed = [
-        item for item in statuses
-        if (
-            str(item.get("status") or "") in _IBKR_CONFIRMED_STATUSES
-            or int(item.get("perm_id") or 0) > 0
-        )
+        item
+        for item in statuses
+        if (str(item.get("status") or "") in _IBKR_CONFIRMED_STATUSES or int(item.get("perm_id") or 0) > 0)
     ]
     if statuses and not confirmed:
         return f"IBKR submission unconfirmed after confirm window: {statuses}"
     return ""
+
 
 # Per-process cache of resolved front-month YYYYMM strings keyed by
 # (root, exchange). Populated lazily on first contract build via an IB
@@ -454,7 +448,9 @@ async def _resolve_front_month_mnq(ib: Any, root: str = "MNQ", exchange: str = "
     _FRONT_MONTH_CACHE[cache_key] = last_trade
     logger.info(
         "Resolved front-month %s/%s = %s (cached for session)",
-        root, exchange, last_trade,
+        root,
+        exchange,
+        last_trade,
     )
     return last_trade
 
@@ -480,8 +476,7 @@ async def _make_contract(symbol: str, ib: Any | None = None) -> Any | None:  # n
         root, exchange, mult = FUTURES_MAP[sym]
         if ib is None:
             raise RuntimeError(
-                f"_make_contract({sym}) requires an IB connection to resolve "
-                f"the front-month contract; got ib=None",
+                f"_make_contract({sym}) requires an IB connection to resolve the front-month contract; got ib=None",
             )
         contract_month = await _resolve_front_month_mnq(ib, root=root, exchange=exchange)
         contract = Future(symbol=root, exchange=exchange, currency="USD")
@@ -557,14 +552,15 @@ class LiveIbkrVenue(VenueBase):
             except ValueError:
                 logger.warning(
                     "ETA_IBKR_CLIENT_ID=%r is not an int; falling back to default %d",
-                    env_cid, self._client_id,
+                    env_cid,
+                    self._client_id,
                 )
             else:
                 if parsed_client_id <= 0:
                     logger.warning(
-                        "ETA_IBKR_CLIENT_ID=%r is not safe for order entry; "
-                        "falling back to default %d",
-                        env_cid, self._client_id,
+                        "ETA_IBKR_CLIENT_ID=%r is not safe for order entry; falling back to default %d",
+                        env_cid,
+                        self._client_id,
                     )
                 else:
                     self._client_id = parsed_client_id
@@ -651,6 +647,7 @@ class LiveIbkrVenue(VenueBase):
                 self._ib = None
 
             from ib_insync import IB
+
             # Retry up to 3 times to handle cross-process clientId stickiness:
             # when the supervisor is bounced, TWS can hold the previous PID's
             # clientId for several seconds before releasing it, so the first
@@ -662,14 +659,14 @@ class LiveIbkrVenue(VenueBase):
                 try:
                     self._ib = IB()
                     await self._ib.connectAsync(
-                        "127.0.0.1", 4002,
+                        "127.0.0.1",
+                        4002,
                         clientId=self._client_id,
                         timeout=connect_timeout_s,
                     )
                     self._connected = True
                     logger.info(
-                        "LiveIbkrVenue connected to TWS on port 4002 "
-                        "(clientId=%d, attempt=%d, timeout=%ss)",
+                        "LiveIbkrVenue connected to TWS on port 4002 (clientId=%d, attempt=%d, timeout=%ss)",
                         self._client_id,
                         attempt + 1,
                         connect_timeout_s,
@@ -710,12 +707,15 @@ class LiveIbkrVenue(VenueBase):
     async def place_order(self, request: OrderRequest) -> OrderResult:
         # ── SAFETY GATES (same as mock venue) ──────────────────────
         from eta_engine.safety.live_gate import assert_live_allowed
+
         assert_live_allowed()
 
         from eta_engine.safety.fleet_risk_gate import assert_fleet_within_budget
+
         assert_fleet_within_budget(bot_id=getattr(request, "bot_id", None))
 
         from eta_engine.safety.position_cap import assert_within_caps
+
         signed_qty = float(getattr(request, "qty", 0) or 0)
         side_str = str(getattr(request, "side", "buy")).lower()
         signed_qty = -abs(signed_qty) if side_str in ("sell", "short") else abs(signed_qty)
@@ -728,8 +728,17 @@ class LiveIbkrVenue(VenueBase):
         # after _ensure_connected() so the front-month resolver has an
         # active IB instance to query.
         _sym_norm = request.symbol.upper().strip()
-        if _sym_norm not in FUTURES_MAP and _sym_norm not in CRYPTO_MAP and _sym_norm not in (
-            "SPY", "QQQ", "AAPL", "TSLA", "NVDA",
+        if (
+            _sym_norm not in FUTURES_MAP
+            and _sym_norm not in CRYPTO_MAP
+            and _sym_norm
+            not in (
+                "SPY",
+                "QQQ",
+                "AAPL",
+                "TSLA",
+                "NVDA",
+            )
         ):
             return OrderResult(
                 order_id=self.idempotency_key(request),
@@ -746,6 +755,7 @@ class LiveIbkrVenue(VenueBase):
                 check_or_register,
                 record_result,
             )
+
             intent = {
                 "symbol": request.symbol,
                 "side": str(getattr(request, "side", "?")),
@@ -836,16 +846,17 @@ class LiveIbkrVenue(VenueBase):
             _emit_crypto_guard_startup_log()
             if not _crypto_env_enabled():
                 reason = (
-                    "crypto disabled - account lacks crypto permissions; "
-                    "set ETA_IBKR_CRYPTO=1 once enabled at IBKR"
+                    "crypto disabled - account lacks crypto permissions; set ETA_IBKR_CRYPTO=1 once enabled at IBKR"
                 )
                 from eta_engine.safety.idempotency import evict as _idem_evict
+
                 with contextlib.suppress(Exception):
                     _idem_evict(order_id)
                 logger.info(
                     "LiveIbkrVenue crypto pre-reject signal=%s symbol=%s "
                     "(set ETA_IBKR_CRYPTO=1 to bypass once IBKR perms enabled)",
-                    order_id, request.symbol,
+                    order_id,
+                    request.symbol,
                 )
                 return OrderResult(
                     order_id=order_id,
@@ -907,8 +918,7 @@ class LiveIbkrVenue(VenueBase):
             _emit_crypto_guard_startup_log()
             if not _crypto_env_enabled():
                 reason = (
-                    "crypto disabled - account lacks crypto permissions; "
-                    "set ETA_IBKR_CRYPTO=1 once enabled at IBKR"
+                    "crypto disabled - account lacks crypto permissions; set ETA_IBKR_CRYPTO=1 once enabled at IBKR"
                 )
                 # Permanent-class rejection: do NOT cache. If we recorded
                 # this through the idempotency store, the row would sit
@@ -919,12 +929,14 @@ class LiveIbkrVenue(VenueBase):
                 # Evict the pending row so a fresh client_order_id can
                 # be tried immediately once the env var flips.
                 from eta_engine.safety.idempotency import evict as _idem_evict
+
                 with contextlib.suppress(Exception):
                     _idem_evict(order_id)
                 logger.info(
                     "LiveIbkrVenue crypto pre-reject signal=%s symbol=%s "
                     "(set ETA_IBKR_CRYPTO=1 to bypass once IBKR perms enabled)",
-                    order_id, request.symbol,
+                    order_id,
+                    request.symbol,
                 )
                 return OrderResult(
                     order_id=order_id,
@@ -972,11 +984,7 @@ class LiveIbkrVenue(VenueBase):
         # Crypto orders (PAXOS) are NOT affected — they don't have a
         # globex-style night session and the bracket apparatus differs.
         ref_price = getattr(request, "price", None)
-        if (
-            order_type == OrderType.MARKET
-            and not is_crypto
-            and not _in_primary_session(request.symbol)
-        ):
+        if order_type == OrderType.MARKET and not is_crypto and not _in_primary_session(request.symbol):
             if ref_price is None:
                 reason = "market_order_outside_primary_session_no_ref_price"
                 _record_idempotency_status(
@@ -997,6 +1005,7 @@ class LiveIbkrVenue(VenueBase):
             # 3 ticks under. Tick size from instrument_specs when known.
             try:
                 from eta_engine.feeds.instrument_specs import get_spec
+
                 tick_size = float(get_spec(request.symbol).tick_size)
                 if tick_size <= 0:
                     tick_size = 0.25
@@ -1010,8 +1019,12 @@ class LiveIbkrVenue(VenueBase):
             logger.info(
                 "LiveIbkrVenue session-aware order: %s %s outside primary "
                 "session → MKT → LMT @ %.6f (ref=%.6f, ticks=%d, tick_size=%.6f)",
-                action, request.symbol, limit_price, float(ref_price),
-                buffer_ticks, tick_size,
+                action,
+                request.symbol,
+                limit_price,
+                float(ref_price),
+                buffer_ticks,
+                tick_size,
             )
             order_type = OrderType.LIMIT
             # Mutate the request's price so downstream paths (bracket /
@@ -1063,7 +1076,10 @@ class LiveIbkrVenue(VenueBase):
                 submitted_trades = [trade]
                 logger.info(
                     "LiveIbkrVenue CRYPTO ENTRY: %s %s %.6f MKT → orderId=%s",
-                    action, request.symbol, float(qty), trade.order.orderId,
+                    action,
+                    request.symbol,
+                    float(qty),
+                    trade.order.orderId,
                 )
 
                 if stop_price is not None and target_price is not None:
@@ -1091,10 +1107,9 @@ class LiveIbkrVenue(VenueBase):
                         except ValueError:
                             trail_pct = 0.0
                         from ib_insync import Order, StopOrder
+
                         if trail_pct > 0:
-                            entry_fill = float(
-                                trade.orderStatus.avgFillPrice or stop_price
-                            )
+                            entry_fill = float(trade.orderStatus.avgFillPrice or stop_price)
                             trail_amount = round(entry_fill * (trail_pct / 100.0), 4)
                             stop_order = Order(
                                 action=opposite,
@@ -1124,9 +1139,12 @@ class LiveIbkrVenue(VenueBase):
                             def _cb(*_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
                                 with contextlib.suppress(Exception):
                                     if other_trade.orderStatus.status not in (
-                                        "Filled", "Cancelled", "ApiCancelled",
+                                        "Filled",
+                                        "Cancelled",
+                                        "ApiCancelled",
                                     ):
                                         self._ib.cancelOrder(other_trade.order)
+
                             return _cb
 
                         stop_trade.filledEvent += _make_canceler(target_trade)
@@ -1138,8 +1156,10 @@ class LiveIbkrVenue(VenueBase):
                             "LiveIbkrVenue CRYPTO BRACKET: filled @ %.4f, "
                             "stop=%.4f (id=%s) target=%.4f (id=%s) — OCO via callback",
                             float(trade.orderStatus.avgFillPrice or 0.0),
-                            float(stop_price), stop_trade.order.orderId,
-                            float(target_price), target_trade.order.orderId,
+                            float(stop_price),
+                            stop_trade.order.orderId,
+                            float(target_price),
+                            target_trade.order.orderId,
                         )
                     else:
                         logger.warning(
@@ -1168,9 +1188,14 @@ class LiveIbkrVenue(VenueBase):
                 submitted_trades = trades
                 logger.info(
                     "LiveIbkrVenue BRACKET: %s %s %d %s entry @ %s sl=%.4f tp=%.4f → parentId=%s",
-                    action, request.symbol, qty, order_type.value,
-                    getattr(request, "price", None), float(stop_price),
-                    float(target_price), trade.order.orderId,
+                    action,
+                    request.symbol,
+                    qty,
+                    order_type.value,
+                    getattr(request, "price", None),
+                    float(stop_price),
+                    float(target_price),
+                    trade.order.orderId,
                 )
             else:
                 # Reduce-only exit — single MKT/LMT, no bracket
@@ -1185,7 +1210,11 @@ class LiveIbkrVenue(VenueBase):
                 submitted_trades = [trade]
                 logger.info(
                     "LiveIbkrVenue EXIT: %s %s %d @ %s → orderId=%s",
-                    action, request.symbol, qty, order_type.value, trade.order.orderId,
+                    action,
+                    request.symbol,
+                    qty,
+                    order_type.value,
+                    trade.order.orderId,
                 )
 
             submit_confirm_seconds = _submit_confirm_seconds()

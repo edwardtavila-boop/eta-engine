@@ -69,6 +69,7 @@ buffers in-memory and flushes every 100 ticks or 1 second
 (whichever comes first), so kill -9 loses at most ~1 second of
 data per symbol.
 """
+
 from __future__ import annotations
 
 # ruff: noqa: ANN401, SIM105, BLE001
@@ -105,28 +106,35 @@ _CONNECT_TIMEOUT_S: float = 20.0
 # Pinned-bot symbol set (matches the 12-bot active pin as of 2026-05-08).
 # Crypto SOL is on Alpaca, not IBKR -- excluded here.
 _DEFAULT_SYMBOLS: tuple[str, ...] = (
-    "MNQ", "NQ", "M2K", "6E", "MCL", "MYM", "NG", "MBT",
+    "MNQ",
+    "NQ",
+    "M2K",
+    "6E",
+    "MCL",
+    "MYM",
+    "NG",
+    "MBT",
 )
 
 # Symbol -> (root, exchange, currency). Mirrors fetch_tws_historical_bars.
 _FUTURES_MAP: dict[str, tuple[str, str, str]] = {
-    "MNQ":  ("MNQ", "CME",   "USD"),
-    "NQ":   ("NQ",  "CME",   "USD"),
-    "ES":   ("ES",  "CME",   "USD"),
-    "MES":  ("MES", "CME",   "USD"),
-    "RTY":  ("RTY", "CME",   "USD"),
-    "M2K":  ("M2K", "CME",   "USD"),
-    "MBT":  ("MBT", "CME",   "USD"),
-    "MET":  ("MET", "CME",   "USD"),
-    "NG":   ("NG",  "NYMEX", "USD"),
-    "CL":   ("CL",  "NYMEX", "USD"),
-    "MCL":  ("MCL", "NYMEX", "USD"),
-    "GC":   ("GC",  "COMEX", "USD"),
-    "MGC":  ("MGC", "COMEX", "USD"),
-    "ZN":   ("ZN",  "CBOT",  "USD"),
-    "6E":   ("EUR", "CME",   "USD"),
-    "YM":   ("YM",  "CBOT",  "USD"),
-    "MYM":  ("MYM", "CBOT",  "USD"),
+    "MNQ": ("MNQ", "CME", "USD"),
+    "NQ": ("NQ", "CME", "USD"),
+    "ES": ("ES", "CME", "USD"),
+    "MES": ("MES", "CME", "USD"),
+    "RTY": ("RTY", "CME", "USD"),
+    "M2K": ("M2K", "CME", "USD"),
+    "MBT": ("MBT", "CME", "USD"),
+    "MET": ("MET", "CME", "USD"),
+    "NG": ("NG", "NYMEX", "USD"),
+    "CL": ("CL", "NYMEX", "USD"),
+    "MCL": ("MCL", "NYMEX", "USD"),
+    "GC": ("GC", "COMEX", "USD"),
+    "MGC": ("MGC", "COMEX", "USD"),
+    "ZN": ("ZN", "CBOT", "USD"),
+    "6E": ("EUR", "CME", "USD"),
+    "YM": ("YM", "CBOT", "USD"),
+    "MYM": ("MYM", "CBOT", "USD"),
 }
 
 # Where ticks land. The default stays inside the canonical workspace; the env
@@ -171,10 +179,7 @@ class TickWriter:
         with self._buf_lock:
             self._buf.append(json.dumps(record, separators=(",", ":")))
         now = time.monotonic()
-        if (
-            len(self._buf) >= _FLUSH_EVERY_TICKS
-            or (now - self._last_flush) >= _FLUSH_EVERY_SECONDS
-        ):
+        if len(self._buf) >= _FLUSH_EVERY_TICKS or (now - self._last_flush) >= _FLUSH_EVERY_SECONDS:
             self.flush()
 
     def flush(self) -> None:
@@ -212,9 +217,7 @@ class TickStreamCapture:
         self.host = host
         self.port = port
         self.client_id = client_id
-        self.writers: dict[str, TickWriter] = {
-            s: TickWriter(s, TICK_ROOT) for s in symbols
-        }
+        self.writers: dict[str, TickWriter] = {s: TickWriter(s, TICK_ROOT) for s in symbols}
         self._stale_flagged: set[str] = set()
         self._counts: dict[str, int] = defaultdict(int)
         self._tick_offsets: dict[str, int] = defaultdict(int)
@@ -226,7 +229,9 @@ class TickStreamCapture:
 
         ib = IB()
         ib.connect(
-            self.host, self.port, clientId=self.client_id,
+            self.host,
+            self.port,
+            clientId=self.client_id,
             timeout=_CONNECT_TIMEOUT_S,
         )
         # 1 = realtime; if account lacks subscription this silently
@@ -235,7 +240,9 @@ class TickStreamCapture:
         self._ib = ib
         log.info(
             "connected ib_insync host=%s port=%s clientId=%s realtime requested",
-            self.host, self.port, self.client_id,
+            self.host,
+            self.port,
+            self.client_id,
         )
 
     def _resolve(self, sym: str) -> Any:
@@ -300,7 +307,8 @@ class TickStreamCapture:
                         "realtime. Operator action: enable the exchange "
                         "subscription in Account Mgmt; until then ETA "
                         "is making decisions on 15-min stale prices.",
-                        sym, age_s,
+                        sym,
+                        age_s,
                     )
                     self._stale_flagged.add(sym)
                 else:
@@ -349,20 +357,23 @@ def _setup_logging(level: str) -> None:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--symbols", nargs="+", default=list(_DEFAULT_SYMBOLS),
+        "--symbols",
+        nargs="+",
+        default=list(_DEFAULT_SYMBOLS),
         help=f"futures roots to subscribe (default: {' '.join(_DEFAULT_SYMBOLS)})",
     )
     parser.add_argument("--host", default=_DEFAULT_HOST)
     parser.add_argument("--port", type=int, default=_DEFAULT_PORT)
     parser.add_argument("--client-id", type=int, default=_DEFAULT_CLIENT_ID)
-    parser.add_argument("--log-level", default="INFO",
-                        choices=["DEBUG", "INFO", "WARNING", "ERROR"])
+    parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
     args = parser.parse_args(argv)
     _setup_logging(args.log_level)
 
     capture = TickStreamCapture(
         symbols=list(args.symbols),
-        host=args.host, port=args.port, client_id=args.client_id,
+        host=args.host,
+        port=args.port,
+        client_id=args.client_id,
     )
 
     def _shutdown(_signum: int, _frame: Any) -> None:

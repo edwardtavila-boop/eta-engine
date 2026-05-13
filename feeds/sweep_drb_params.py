@@ -51,13 +51,15 @@ def _build_grid() -> list[dict[str, Any]]:
         (0, 50, 100, 200),
         (0.0, 50.0, 100.0),
     ):
-        cells.append({
-            "lookback_days": lb,
-            "rr_target": rr,
-            "atr_stop_mult": atr_mult,
-            "ema_bias_period": ema,
-            "min_range_pts": min_rng,
-        })
+        cells.append(
+            {
+                "lookback_days": lb,
+                "rr_target": rr,
+                "atr_stop_mult": atr_mult,
+                "ema_bias_period": ema,
+                "min_range_pts": min_rng,
+            }
+        )
     return cells
 
 
@@ -89,9 +91,12 @@ def _run_cell(cell: dict[str, Any]) -> dict[str, Any]:
         return {"error": f"no tradable positive-price bars for {symbol}/{timeframe}"}
 
     backtest_cfg = BacktestConfig(
-        start_date=bars[0].timestamp, end_date=bars[-1].timestamp,
-        symbol=ds.symbol, initial_equity=10_000.0,
-        risk_per_trade_pct=0.01, confluence_threshold=0.0,
+        start_date=bars[0].timestamp,
+        end_date=bars[-1].timestamp,
+        symbol=ds.symbol,
+        initial_equity=10_000.0,
+        risk_per_trade_pct=0.01,
+        confluence_threshold=0.0,
         max_trades_per_day=10,
     )
     wf = WalkForwardConfig(
@@ -159,7 +164,7 @@ def _render_md(rows: list[dict[str, Any]]) -> str:
             f"{r.get('agg_oos_sharpe', 0):.3f} | "
             f"{r.get('n_pos_oos', 0)}/{r.get('windows', 0)} | "
             f"{r.get('fold_dsr_median', 0):.3f} | "
-            f"{r.get('fold_dsr_pass_fraction', 0)*100:.0f}% | "
+            f"{r.get('fold_dsr_pass_fraction', 0) * 100:.0f}% | "
             f"{r.get('total_oos_trades', 0)} | "
             f"{'PASS' if r.get('pass_gate') else 'FAIL'} |"
         )
@@ -167,10 +172,7 @@ def _render_md(rows: list[dict[str, Any]]) -> str:
 
 
 def main() -> int:
-    out_md = (
-        ROOT / "docs" / "research_log"
-        / f"drb_sweep_{datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ')}.md"
-    )
+    out_md = ROOT / "docs" / "research_log" / f"drb_sweep_{datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ')}.md"
     out_json = out_md.with_suffix(".json")
     rows: list[dict[str, Any]] = []
     n_pass = 0
@@ -186,7 +188,7 @@ def main() -> int:
                     f"rr={cell['rr_target']:.1f} atr={cell['atr_stop_mult']:.1f} "
                     f"ema={cell['ema_bias_period']} -> "
                     f"OOS Sh {row.get('agg_oos_sharpe', 0):.3f}, "
-                    f"DSR_pass {row.get('fold_dsr_pass_fraction', 0)*100:.0f}%"
+                    f"DSR_pass {row.get('fold_dsr_pass_fraction', 0) * 100:.0f}%"
                 )
         except Exception as e:  # noqa: BLE001
             row = {**cell, "error": str(e)}

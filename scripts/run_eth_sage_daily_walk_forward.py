@@ -62,7 +62,8 @@ def _bar_to_sage_dict(b: Any) -> dict[str, Any]:  # noqa: ANN401 - any BarData
 
 
 def _build_daily_verdicts(
-    symbol: str, instrument_class: str = "crypto",
+    symbol: str,
+    instrument_class: str = "crypto",
 ) -> dict:
     """Pre-compute sage daily verdicts for the symbol's daily bars.
 
@@ -100,7 +101,9 @@ def _build_daily_verdicts(
         )
         try:
             r = consult_sage(
-                ctx, parallel=False, use_cache=True,
+                ctx,
+                parallel=False,
+                use_cache=True,
                 apply_edge_weights=False,
             )
         except Exception as e:  # noqa: BLE001
@@ -144,16 +147,15 @@ def main() -> int:
     parser.add_argument("--window-days", type=int, default=90)
     parser.add_argument("--step-days", type=int, default=30)
     parser.add_argument(
-        "--baseline-only", action="store_true",
+        "--baseline-only",
+        action="store_true",
         help="Skip sage gate; report plain underlying baseline.",
     )
     parser.add_argument(
-        "--base", default="regime_trend",
+        "--base",
+        default="regime_trend",
         choices=["regime_trend", "crypto_orb"],
-        help=(
-            "Underlying strategy. regime_trend = the BTC champion's "
-            "base; crypto_orb = the ETH sweep winner's base."
-        ),
+        help=("Underlying strategy. regime_trend = the BTC champion's base; crypto_orb = the ETH sweep winner's base."),
     )
     args = parser.parse_args()
 
@@ -189,22 +191,25 @@ def main() -> int:
     )
 
     # Pre-compute daily sage verdicts (skip when --baseline-only)
-    provider = (
-        None if args.baseline_only
-        else _build_daily_verdicts(args.symbol, instrument_class="crypto")
-    )
+    provider = None if args.baseline_only else _build_daily_verdicts(args.symbol, instrument_class="crypto")
 
     backtest_cfg = BacktestConfig(
-        start_date=bars[0].timestamp, end_date=bars[-1].timestamp,
-        symbol=ds.symbol, initial_equity=10_000.0,
-        risk_per_trade_pct=0.01, confluence_threshold=0.0,
+        start_date=bars[0].timestamp,
+        end_date=bars[-1].timestamp,
+        symbol=ds.symbol,
+        initial_equity=10_000.0,
+        risk_per_trade_pct=0.01,
+        confluence_threshold=0.0,
         max_trades_per_day=10,
     )
     wf = WalkForwardConfig(
-        window_days=args.window_days, step_days=args.step_days,
-        anchored=True, oos_fraction=0.3,
+        window_days=args.window_days,
+        step_days=args.step_days,
+        anchored=True,
+        oos_fraction=0.3,
         min_trades_per_window=3,
-        strict_fold_dsr_gate=True, fold_dsr_min_pass_fraction=0.5,
+        strict_fold_dsr_gate=True,
+        fold_dsr_min_pass_fraction=0.5,
     )
     base_cfg = CryptoRegimeTrendConfig(
         regime_ema=100,
@@ -223,24 +228,24 @@ def main() -> int:
             CryptoORBConfig,
             crypto_orb_strategy,
         )
-        return crypto_orb_strategy(CryptoORBConfig(
-            range_minutes=120,
-            rth_open_local=time(0, 0),
-            rth_close_local=time(23, 59),
-            max_entry_local=time(6, 0),
-            flatten_at_local=time(23, 55),
-            timezone_name="UTC",
-            atr_stop_mult=3.0,
-            rr_target=2.5,
-            ema_bias_period=100,
-            max_trades_per_day=2,
-        ))
+
+        return crypto_orb_strategy(
+            CryptoORBConfig(
+                range_minutes=120,
+                rth_open_local=time(0, 0),
+                rth_close_local=time(23, 59),
+                max_entry_local=time(6, 0),
+                flatten_at_local=time(23, 55),
+                timezone_name="UTC",
+                atr_stop_mult=3.0,
+                rr_target=2.5,
+                ema_bias_period=100,
+                max_trades_per_day=2,
+            )
+        )
 
     def _factory():  # noqa: ANN202
-        sub = (
-            CryptoRegimeTrendStrategy(base_cfg) if args.base == "regime_trend"
-            else _crypto_orb_factory()
-        )
+        sub = CryptoRegimeTrendStrategy(base_cfg) if args.base == "regime_trend" else _crypto_orb_factory()
         if provider is None:
             return sub
         wrapped = GenericSageDailyGateStrategy(
@@ -259,9 +264,9 @@ def main() -> int:
         else "crypto_orb(range=120m, atr=3.0, rr=2.5, ema=100, max/day=2)"
     )
     label = base_label + (
-        f" + sage_daily_gate(conv>={args.min_conviction:.2f}, "
-        f"{'strict' if args.strict else 'loose'})"
-        if provider is not None else " [BASELINE-ONLY]"
+        f" + sage_daily_gate(conv>={args.min_conviction:.2f}, {'strict' if args.strict else 'loose'})"
+        if provider is not None
+        else " [BASELINE-ONLY]"
     )
     print(f"[wf] strategy: {label}")
 

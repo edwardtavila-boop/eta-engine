@@ -34,10 +34,7 @@ def _called_events(root: pathlib.Path = ROOT) -> set[tuple[str, str]]:
 def _reserved_event_notes(routing: dict[str, Any]) -> dict[str, str]:
     reserved = routing.get("reserved_events", {})
     if isinstance(reserved, dict):
-        return {
-            str(key): str(value).strip()
-            for key, value in reserved.items()
-        }
+        return {str(key): str(value).strip() for key, value in reserved.items()}
     return {}
 
 
@@ -118,8 +115,7 @@ def main() -> int:
         return 1
     elif reserved_without_reason:
         print(
-            f"FAIL -- {len(reserved_without_reason)} reserved event(s) need "
-            "a non-empty reservation reason.",
+            f"FAIL -- {len(reserved_without_reason)} reserved event(s) need a non-empty reservation reason.",
         )
         return 1
     else:

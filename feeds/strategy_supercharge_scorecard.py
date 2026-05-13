@@ -148,11 +148,7 @@ def build_scorecard(
             str(row.get("bot_id") or ""),
         ),
     )
-    rows_by_bot = {
-        str(row["bot_id"]): row
-        for row in scored_rows
-        if row.get("bot_id")
-    }
+    rows_by_bot = {str(row["bot_id"]): row for row in scored_rows if row.get("bot_id")}
     phase_counts: dict[str, int] = {}
     for row in scored_rows:
         phase = str(row.get("supercharge_phase") or "UNKNOWN")

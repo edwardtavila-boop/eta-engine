@@ -28,6 +28,7 @@ Usage:
     python -m eta_engine.scripts.elite_scoreboard --bot btc_optimized
     python -m eta_engine.scripts.elite_scoreboard --correlations
 """
+
 from __future__ import annotations
 
 import argparse
@@ -141,10 +142,7 @@ def _per_bot_metrics(closes: list[dict[str, Any]]) -> dict[str, Any]:
             rolling_sharpes.append(ws)
         rolling_now = rolling_sharpes[-1]
         rolling_peak = max(rolling_sharpes) if rolling_sharpes else 0.0
-        rolling_decay_pct = (
-            max(0.0, (rolling_peak - rolling_now) / rolling_peak)
-            if rolling_peak > 0.5 else 0.0
-        )
+        rolling_decay_pct = max(0.0, (rolling_peak - rolling_now) / rolling_peak) if rolling_peak > 0.5 else 0.0
     else:
         rolling_now = 0.0
         rolling_peak = 0.0
@@ -191,7 +189,8 @@ def _classify_tier(m: dict[str, Any]) -> str:
     elite_n = int(os.getenv("ETA_ELITE_N_MIN", "50"))
 
     if (
-        pf is not None and pf >= elite_pf
+        pf is not None
+        and pf >= elite_pf
         and sharpe >= elite_sharpe
         and max_dd < elite_dd
         and n >= elite_n
@@ -201,11 +200,7 @@ def _classify_tier(m: dict[str, Any]) -> str:
 
     producer_pf = float(os.getenv("ETA_ELITE_PRODUCER_PF", "1.3"))
     producer_sharpe = float(os.getenv("ETA_ELITE_PRODUCER_SHARPE", "0.7"))
-    if (
-        pf is not None and pf >= producer_pf
-        and sharpe >= producer_sharpe
-        and expectancy > 0
-    ):
+    if pf is not None and pf >= producer_pf and sharpe >= producer_sharpe and expectancy > 0:
         return "PRODUCER"
 
     if pf is not None and pf >= 1.0 and expectancy > 0:
@@ -252,8 +247,7 @@ def _correlation_matrix(closes_by_bot: dict[str, list[dict[str, Any]]]) -> dict[
             mb = sum(sb) / n_pair
             num = sum((sa[k] - ma) * (sb[k] - mb) for k in range(n_pair))
             denom = math.sqrt(
-                sum((sa[k] - ma) ** 2 for k in range(n_pair))
-                * sum((sb[k] - mb) ** 2 for k in range(n_pair)),
+                sum((sa[k] - ma) ** 2 for k in range(n_pair)) * sum((sb[k] - mb) ** 2 for k in range(n_pair)),
             )
             corr = (num / denom) if denom > 0 else 0.0
             matrix[a][b] = round(corr, 3)
@@ -311,10 +305,7 @@ def _print_text(report: dict[str, Any], show_correlations: bool = False) -> None
     print("=" * 102)
     print(
         f" ELITE SCOREBOARD — {report['n_bots']} bots, "
-        f"{report['total_closes']} closes" + (
-            f" (since {report['since_iso']})"
-            if report.get("since_iso") else ""
-        ),
+        f"{report['total_closes']} closes" + (f" (since {report['since_iso']})" if report.get("since_iso") else ""),
     )
     if report["tier_counts"]:
         tc = report["tier_counts"]
@@ -334,8 +325,11 @@ def _print_text(report: dict[str, Any], show_correlations: bool = False) -> None
     print("-" * 102)
 
     tier_order = {
-        "ELITE": 0, "PRODUCER": 1, "MARGINAL": 2,
-        "DECAY": 3, "INSUFFICIENT": 4,
+        "ELITE": 0,
+        "PRODUCER": 1,
+        "MARGINAL": 2,
+        "DECAY": 3,
+        "INSUFFICIENT": 4,
     }
     sorted_bots = sorted(
         report["bots"].values(),
@@ -356,7 +350,7 @@ def _print_text(report: dict[str, Any], show_correlations: bool = False) -> None
         pnl = m.get("sum_pnl_usd", 0)
         print(
             f"{m['bot_id']:<25} {m['tier']:<13} "
-            f"{n:>4} {wr*100:>4.1f}% {pf_str} "
+            f"{n:>4} {wr * 100:>4.1f}% {pf_str} "
             f"{sharpe:>7.2f} {exp_r:>+7.4f} {max_dd:>7.2f}R "
             f"{roll_now:>8.2f} ${pnl:>+8.2f}",
         )
@@ -390,16 +384,14 @@ def _print_text(report: dict[str, Any], show_correlations: bool = False) -> None
             print("       " + "".join(f"{b[:6]:>7}" for b in bots))
             for a in bots:
                 row = report["correlations"][a]
-                cells = "".join(
-                    f"{row.get(b, 0):>+6.2f} " if a != b else f"{'  *  ':>7}"
-                    for b in bots
-                )
+                cells = "".join(f"{row.get(b, 0):>+6.2f} " if a != b else f"{'  *  ':>7}" for b in bots)
                 print(f"{a[:6]:<7}{cells}")
 
 
 def main(argv: list[str] | None = None) -> int:
     with contextlib.suppress(AttributeError, ValueError):
         import sys as _sys
+
         _sys.stdout.reconfigure(errors="replace")  # type: ignore[union-attr]
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--bot", default=None, help="Single bot detail")

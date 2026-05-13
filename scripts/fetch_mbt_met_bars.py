@@ -154,7 +154,9 @@ def _http_get_json(url: str, *, timeout: float = 15.0) -> Any:  # noqa: ANN401 -
     )
     try:
         with urllib.request.urlopen(  # noqa: S310 -- localhost gateway
-            request, timeout=timeout, context=_make_ctx(),
+            request,
+            timeout=timeout,
+            context=_make_ctx(),
         ) as resp:
             return json.loads(resp.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
@@ -170,7 +172,9 @@ def _http_get_json(url: str, *, timeout: float = 15.0) -> Any:  # noqa: ANN401 -
 
 
 def resolve_front_month_conid(
-    symbol: str, *, base_url: str = _DEFAULT_BASE_URL,
+    symbol: str,
+    *,
+    base_url: str = _DEFAULT_BASE_URL,
 ) -> int | None:
     """Resolve the front-month conid for a CME futures symbol.
 
@@ -187,20 +191,24 @@ def resolve_front_month_conid(
         return None
     now_ms = int(datetime.now(UTC).timestamp() * 1000)
     # Pick the earliest expiry that is still in the future.
-    candidates = [
-        c for c in contracts
-        if isinstance(c, dict) and isinstance(c.get("expirationDate"), int | str)
-    ]
+    candidates = [c for c in contracts if isinstance(c, dict) and isinstance(c.get("expirationDate"), int | str)]
+
     def _exp_ms(c: dict) -> int:
         raw = c.get("expirationDate")
         if isinstance(raw, int):
             return raw
         try:
-            return int(datetime.strptime(str(raw), "%Y%m%d").replace(
-                tzinfo=UTC,
-            ).timestamp() * 1000)
+            return int(
+                datetime.strptime(str(raw), "%Y%m%d")
+                .replace(
+                    tzinfo=UTC,
+                )
+                .timestamp()
+                * 1000
+            )
         except (TypeError, ValueError):
             return 0
+
     future_only = [c for c in candidates if _exp_ms(c) > now_ms]
     target_pool = future_only or candidates
     target_pool.sort(key=_exp_ms)
@@ -212,15 +220,13 @@ def resolve_front_month_conid(
 
 
 def _fetch_chunk(
-    base_url: str, req: _ChunkRequest, *, timeout: float = 15.0,
+    base_url: str,
+    req: _ChunkRequest,
+    *,
+    timeout: float = 15.0,
 ) -> list[dict]:
     """Hit ``/iserver/marketdata/history`` once. Returns the raw bar list."""
-    qs = (
-        f"?conid={req.conid}"
-        f"&period={req.period}"
-        f"&bar={req.bar}"
-        f"&startTime={req.end_ms}"
-    )
+    qs = f"?conid={req.conid}&period={req.period}&bar={req.bar}&startTime={req.end_ms}"
     url = f"{base_url}/iserver/marketdata/history{qs}"
     payload = _http_get_json(url, timeout=timeout)
     if not isinstance(payload, dict):
@@ -253,7 +259,10 @@ def _period_for_chunk(bar: str) -> str:
 
 
 def plan_chunks(
-    *, timeframe: str, start: datetime, end: datetime,
+    *,
+    timeframe: str,
+    start: datetime,
+    end: datetime,
 ) -> list[tuple[str, datetime]]:
     """Plan the (period, cursor) pairs the fetcher will request.
 
@@ -276,7 +285,11 @@ def plan_chunks(
 
 
 def fetch_bars(
-    *, symbol: str, timeframe: str, start: datetime, end: datetime,
+    *,
+    symbol: str,
+    timeframe: str,
+    start: datetime,
+    end: datetime,
     base_url: str = _DEFAULT_BASE_URL,
     conid: int | None = None,
 ) -> list[dict]:
@@ -312,8 +325,7 @@ def fetch_bars(
         end_ms = int(cursor.timestamp() * 1000)
         req = _ChunkRequest(conid=conid, bar=bar, period=period, end_ms=end_ms)
         print(
-            f"  fetching {symbol}/{timeframe} <= {cursor.isoformat()} "
-            f"(conid={conid}, period={period}) ...",
+            f"  fetching {symbol}/{timeframe} <= {cursor.isoformat()} (conid={conid}, period={period}) ...",
         )
         rows = _fetch_chunk(base_url, req)
         if not rows:
@@ -357,7 +369,8 @@ def canonical_bar_path(symbol: str, timeframe: str) -> Path:
     ``<HISTORY>/{SYMBOL}1_{TF}.csv`` first for futures.
     """
     tf_for_filename = {"1d": "D", "1w": "W"}.get(
-        timeframe.lower(), timeframe,
+        timeframe.lower(),
+        timeframe,
     )
     return MNQ_HISTORY_ROOT / f"{symbol.upper()}1_{tf_for_filename}.csv"
 
@@ -369,19 +382,22 @@ def _normalize_rows(raw: list[dict]) -> list[dict]:
         ts_ms = int(r.get("t", 0))
         if ts_ms <= 0:
             continue
-        rows.append({
-            "time": ts_ms // 1000,
-            "open": float(r.get("o", 0.0)),
-            "high": float(r.get("h", 0.0)),
-            "low": float(r.get("l", 0.0)),
-            "close": float(r.get("c", 0.0)),
-            "volume": float(r.get("v", 0.0)),
-        })
+        rows.append(
+            {
+                "time": ts_ms // 1000,
+                "open": float(r.get("o", 0.0)),
+                "high": float(r.get("h", 0.0)),
+                "low": float(r.get("l", 0.0)),
+                "close": float(r.get("c", 0.0)),
+                "volume": float(r.get("v", 0.0)),
+            }
+        )
     return rows
 
 
 def merge_with_existing(
-    out_path: Path, new_rows: list[dict],
+    out_path: Path,
+    new_rows: list[dict],
 ) -> tuple[list[dict], int, int]:
     """Merge ``new_rows`` (canonical schema) with any existing CSV.
 
@@ -394,14 +410,16 @@ def merge_with_existing(
                 reader = csv.DictReader(f)
                 for row in reader:
                     try:
-                        existing.append({
-                            "time": int(row["time"]),
-                            "open": float(row["open"]),
-                            "high": float(row["high"]),
-                            "low": float(row["low"]),
-                            "close": float(row["close"]),
-                            "volume": float(row.get("volume", 0.0)),
-                        })
+                        existing.append(
+                            {
+                                "time": int(row["time"]),
+                                "open": float(row["open"]),
+                                "high": float(row["high"]),
+                                "low": float(row["low"]),
+                                "close": float(row["close"]),
+                                "volume": float(row.get("volume", 0.0)),
+                            }
+                        )
                     except (ValueError, KeyError, TypeError):
                         continue
         except OSError:
@@ -421,10 +439,16 @@ def write_csv(path: Path, rows: list[dict]) -> int:
         w = csv.writer(f)
         w.writerow(["time", "open", "high", "low", "close", "volume"])
         for r in rows:
-            w.writerow([
-                int(r["time"]), r["open"], r["high"],
-                r["low"], r["close"], r["volume"],
-            ])
+            w.writerow(
+                [
+                    int(r["time"]),
+                    r["open"],
+                    r["high"],
+                    r["low"],
+                    r["close"],
+                    r["volume"],
+                ]
+            )
     return len(rows)
 
 
@@ -456,40 +480,49 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     p.add_argument(
-        "--symbols", nargs="+", default=list(_SUPPORTED_SYMBOLS),
+        "--symbols",
+        nargs="+",
+        default=list(_SUPPORTED_SYMBOLS),
         choices=list(_SUPPORTED_SYMBOLS),
         help="Symbols to fetch (default: MBT MET).",
     )
     p.add_argument(
-        "--timeframe", default="5m", choices=sorted(_TF_TO_IBKR_BAR),
+        "--timeframe",
+        default="5m",
+        choices=sorted(_TF_TO_IBKR_BAR),
         help="Bar size (default: 5m).",
     )
     p.add_argument(
-        "--days", type=int, default=540,
+        "--days",
+        type=int,
+        default=540,
         help="Lookback in days (default: 540 ≈ 18 months).",
     )
     p.add_argument(
-        "--end", default=None,
+        "--end",
+        default=None,
         help="ISO date YYYY-MM-DD; default = now (UTC).",
     )
     p.add_argument(
-        "--root", type=Path, default=MNQ_HISTORY_ROOT,
+        "--root",
+        type=Path,
+        default=MNQ_HISTORY_ROOT,
         help="Output history root (default: canonical mnq_data/history).",
     )
     p.add_argument(
-        "--base-url", default=_DEFAULT_BASE_URL,
+        "--base-url",
+        default=_DEFAULT_BASE_URL,
         help="IBKR Client Portal Gateway base URL.",
     )
     p.add_argument(
-        "--no-merge", action="store_true",
+        "--no-merge",
+        action="store_true",
         help="Overwrite existing CSV instead of merging new rows.",
     )
     p.add_argument(
-        "--dry-run", action="store_true",
-        help=(
-            "Print planned chunked requests and target CSV paths without "
-            "hitting the gateway or writing files."
-        ),
+        "--dry-run",
+        action="store_true",
+        help=("Print planned chunked requests and target CSV paths without hitting the gateway or writing files."),
     )
     return p
 
@@ -498,10 +531,7 @@ def run(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
 
-    end_dt = (
-        datetime.fromisoformat(args.end).replace(tzinfo=UTC)
-        if args.end else datetime.now(UTC)
-    )
+    end_dt = datetime.fromisoformat(args.end).replace(tzinfo=UTC) if args.end else datetime.now(UTC)
     start_dt = end_dt - timedelta(days=int(args.days))
 
     print(
@@ -515,19 +545,21 @@ def run(argv: list[str] | None = None) -> int:
     # session masking — the operator-side check confirms actual coverage).
     expected_bars_per_symbol = int(args.days * 86400 / bar_secs)
     print(
-        f"[fetch_mbt_met_bars] expected ~{expected_bars_per_symbol:,} "
-        f"calendar-time bars per symbol (pre-session-mask)",
+        f"[fetch_mbt_met_bars] expected ~{expected_bars_per_symbol:,} calendar-time bars per symbol (pre-session-mask)",
     )
 
     if args.dry_run:
         plan = plan_chunks(
-            timeframe=args.timeframe, start=start_dt, end=end_dt,
+            timeframe=args.timeframe,
+            start=start_dt,
+            end=end_dt,
         )
         for sym in args.symbols:
             out_path = canonical_bar_path(sym, args.timeframe)
             if args.root != MNQ_HISTORY_ROOT:
                 tf_for_filename = {"1d": "D", "1w": "W"}.get(
-                    args.timeframe.lower(), args.timeframe,
+                    args.timeframe.lower(),
+                    args.timeframe,
                 )
                 out_path = args.root / f"{sym}1_{tf_for_filename}.csv"
             print(
@@ -535,8 +567,7 @@ def run(argv: list[str] | None = None) -> int:
             )
             for i, (period, cursor) in enumerate(plan[:3]):
                 print(
-                    f"  [{i + 1}/{len(plan)}] period={period} "
-                    f"end={cursor.isoformat()}",
+                    f"  [{i + 1}/{len(plan)}] period={period} end={cursor.isoformat()}",
                 )
             if len(plan) > 3:
                 print(f"  ... ({len(plan) - 3} more)")
@@ -547,14 +578,18 @@ def run(argv: list[str] | None = None) -> int:
         out_path = canonical_bar_path(sym, args.timeframe)
         if args.root != MNQ_HISTORY_ROOT:
             tf_for_filename = {"1d": "D", "1w": "W"}.get(
-                args.timeframe.lower(), args.timeframe,
+                args.timeframe.lower(),
+                args.timeframe,
             )
             out_path = args.root / f"{sym}1_{tf_for_filename}.csv"
 
         print(f"\n[fetch_mbt_met_bars] === {sym} ===")
         raw = fetch_bars(
-            symbol=sym, timeframe=args.timeframe,
-            start=start_dt, end=end_dt, base_url=args.base_url,
+            symbol=sym,
+            timeframe=args.timeframe,
+            start=start_dt,
+            end=end_dt,
+            base_url=args.base_url,
         )
         if not raw:
             print(
@@ -576,15 +611,13 @@ def run(argv: list[str] | None = None) -> int:
             merged, n_existing, n_new = merge_with_existing(out_path, new_rows)
             n = write_csv(out_path, merged)
             print(
-                f"[fetch_mbt_met_bars] {sym}: merged "
-                f"existing={n_existing} new={n_new} total={n} -> {out_path}",
+                f"[fetch_mbt_met_bars] {sym}: merged existing={n_existing} new={n_new} total={n} -> {out_path}",
             )
 
         gaps = report_gaps(new_rows, args.timeframe)
         if gaps:
             print(
-                f"[fetch_mbt_met_bars] {sym}: detected {len(gaps)} "
-                f"intra-window gap(s) >2x bar size",
+                f"[fetch_mbt_met_bars] {sym}: detected {len(gaps)} intra-window gap(s) >2x bar size",
             )
             for gs, ge in gaps[:5]:
                 print(
@@ -596,9 +629,7 @@ def run(argv: list[str] | None = None) -> int:
         if new_rows:
             first = datetime.fromtimestamp(new_rows[0]["time"], UTC).date()
             last = datetime.fromtimestamp(new_rows[-1]["time"], UTC).date()
-            span_days = (
-                new_rows[-1]["time"] - new_rows[0]["time"]
-            ) / 86400
+            span_days = (new_rows[-1]["time"] - new_rows[0]["time"]) / 86400
             print(
                 f"[fetch_mbt_met_bars] {sym}: coverage {first} -> {last} "
                 f"({span_days:.1f} days, {len(new_rows)} new bars)",

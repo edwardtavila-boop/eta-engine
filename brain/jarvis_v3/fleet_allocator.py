@@ -30,6 +30,7 @@ Use case (called by an orchestrator that batches per-tick requests):
     for entry in allocation.entries:
         bot.size = entry.size_multiplier * base_size
 """
+
 from __future__ import annotations
 
 import logging
@@ -43,16 +44,16 @@ class FleetRequest:
     """One bot's request to enter."""
 
     bot_id: str
-    expected_r: float                  # bot's own expected R (best estimate)
-    base_size: float = 1.0             # bot's already-sized intended notional
-    direction: str = "long"            # "long" or "short"
-    priority: float = 1.0              # operator-tunable: 1.0 = standard
+    expected_r: float  # bot's own expected R (best estimate)
+    base_size: float = 1.0  # bot's already-sized intended notional
+    direction: str = "long"  # "long" or "short"
+    priority: float = 1.0  # operator-tunable: 1.0 = standard
 
 
 @dataclass
 class FleetAllocationEntry:
     bot_id: str
-    size_multiplier: float             # in [0, 1]
+    size_multiplier: float  # in [0, 1]
     rank: int
     note: str = ""
 
@@ -114,7 +115,9 @@ def allocate_fleet(
             correlation_penalty=correlation_penalty,
         )
     return _allocate_greedy(
-        requests=requests, corr=eff_corr, max_picks=max_picks,
+        requests=requests,
+        corr=eff_corr,
+        max_picks=max_picks,
         correlation_penalty=correlation_penalty,
     )
 
@@ -137,7 +140,9 @@ def _allocate_qubo(
     except ImportError as exc:
         logger.warning("fleet_allocator: QUBO solver unavailable (%s); greedy", exc)
         return _allocate_greedy(
-            requests=requests, corr=corr, max_picks=max_picks,
+            requests=requests,
+            corr=corr,
+            max_picks=max_picks,
             correlation_penalty=correlation_penalty,
         )
 
@@ -152,27 +157,33 @@ def _allocate_qubo(
         signal_labels=labels,
     )
     result = simulated_annealing_solve(
-        problem, n_iterations=2_000, seed=42,
+        problem,
+        n_iterations=2_000,
+        seed=42,
     )
 
     entries: list[FleetAllocationEntry] = []
     rank = 0
     for i, picked in enumerate(result.x):
         if picked == 1:
-            entries.append(FleetAllocationEntry(
-                bot_id=requests[i].bot_id,
-                size_multiplier=1.0,
-                rank=rank,
-                note="picked by joint QUBO",
-            ))
+            entries.append(
+                FleetAllocationEntry(
+                    bot_id=requests[i].bot_id,
+                    size_multiplier=1.0,
+                    rank=rank,
+                    note="picked by joint QUBO",
+                )
+            )
             rank += 1
         else:
-            entries.append(FleetAllocationEntry(
-                bot_id=requests[i].bot_id,
-                size_multiplier=0.0,
-                rank=-1,
-                note="not picked (joint allocation)",
-            ))
+            entries.append(
+                FleetAllocationEntry(
+                    bot_id=requests[i].bot_id,
+                    size_multiplier=0.0,
+                    rank=-1,
+                    note="not picked (joint allocation)",
+                )
+            )
 
     return FleetAllocation(
         entries=entries,
@@ -206,9 +217,7 @@ def _allocate_greedy(
         if not picked:
             picked.append(idx)
             continue
-        avg_overlap = sum(
-            abs(corr[idx][p]) for p in picked
-        ) / len(picked)
+        avg_overlap = sum(abs(corr[idx][p]) for p in picked) / len(picked)
         # Adjusted score
         base_score = requests[idx].priority * requests[idx].expected_r
         adj = base_score - correlation_penalty * avg_overlap
@@ -219,25 +228,27 @@ def _allocate_greedy(
     rank_lookup = {idx: r for r, idx in enumerate(picked)}
     for i, req in enumerate(requests):
         if i in rank_lookup:
-            entries.append(FleetAllocationEntry(
-                bot_id=req.bot_id,
-                size_multiplier=1.0,
-                rank=rank_lookup[i],
-                note="picked by greedy diversity",
-            ))
+            entries.append(
+                FleetAllocationEntry(
+                    bot_id=req.bot_id,
+                    size_multiplier=1.0,
+                    rank=rank_lookup[i],
+                    note="picked by greedy diversity",
+                )
+            )
         else:
-            entries.append(FleetAllocationEntry(
-                bot_id=req.bot_id,
-                size_multiplier=0.0,
-                rank=-1,
-                note="not picked",
-            ))
+            entries.append(
+                FleetAllocationEntry(
+                    bot_id=req.bot_id,
+                    size_multiplier=0.0,
+                    rank=-1,
+                    note="not picked",
+                )
+            )
 
     return FleetAllocation(
         entries=entries,
-        objective=sum(
-            requests[i].priority * requests[i].expected_r for i in picked
-        ),
+        objective=sum(requests[i].priority * requests[i].expected_r for i in picked),
         n_picked=len(picked),
         n_total=len(requests),
         method="greedy",

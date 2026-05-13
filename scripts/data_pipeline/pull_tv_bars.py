@@ -29,6 +29,7 @@ The symbol list is intentionally biased toward day-trading confluence:
 
 Missing symbols are skipped with a warning instead of aborting the run.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -48,12 +49,13 @@ class _WebSocketLike(Protocol):
     async def send(self, message: str) -> object: ...
     async def recv(self) -> str: ...
 
+
 CDP_URL = "http://localhost:9222"
 WORKSPACE_ROOT = Path(__file__).resolve().parents[3]
 OUT_DIR = WORKSPACE_ROOT / "mnq_data"
 
 DEFAULT_SYMBOLS = ["MNQ1!", "NQ1!", "ES1!", "RTY1!", "DXY", "TICK", "VIX"]
-DEFAULT_TIMEFRAMES = ["5", "1"]        # minutes; "1S" for 1-second
+DEFAULT_TIMEFRAMES = ["5", "1"]  # minutes; "1S" for 1-second
 SCROLL_BARS_PER_PASS = 2000
 SCROLL_WAIT_MS = 1200
 
@@ -68,11 +70,15 @@ def get_chart_ws() -> str:
 
 
 async def _eval(ws: _WebSocketLike, expr: str, rid: int) -> object:
-    await ws.send(json.dumps({
-        "id": rid,
-        "method": "Runtime.evaluate",
-        "params": {"expression": expr, "returnByValue": True, "awaitPromise": True},
-    }))
+    await ws.send(
+        json.dumps(
+            {
+                "id": rid,
+                "method": "Runtime.evaluate",
+                "params": {"expression": expr, "returnByValue": True, "awaitPromise": True},
+            }
+        )
+    )
     while True:
         msg = json.loads(await ws.recv())
         if msg.get("id") == rid:
@@ -128,6 +134,7 @@ async def _wait_for_load(
 ) -> tuple[int, object]:
     """Poll state until loading=False and symbol matches (TV is async)."""
     import time
+
     deadline = time.time() + timeout_s
     while time.time() < deadline:
         st = await _eval(ws, STATE_JS, rid)
@@ -167,17 +174,14 @@ def _write_csv(data: dict, symbol: str, tf_label: str) -> Path:
     lines = (data.get("csv") or "").split("\n")
     with out.open("w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
-        w.writerow(["timestamp_utc", "epoch_s", "open", "high", "low",
-                    "close", "volume", "session"])
+        w.writerow(["timestamp_utc", "epoch_s", "open", "high", "low", "close", "volume", "session"])
         for line in lines:
             parts = line.split(",")
             if len(parts) != 6:
                 continue
             t = int(parts[0])
-            iso = datetime.fromtimestamp(t, tz=UTC) \
-                .isoformat(timespec="seconds").replace("+00:00", "Z")
-            w.writerow([iso, t, parts[1], parts[2], parts[3],
-                        parts[4], parts[5], session_flag(t)])
+            iso = datetime.fromtimestamp(t, tz=UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
+            w.writerow([iso, t, parts[1], parts[2], parts[3], parts[4], parts[5], session_flag(t)])
     return out
 
 
@@ -197,8 +201,7 @@ async def _pull_one(ws: _WebSocketLike, rid: int, symbol: str, tf: str, scroll: 
             print(f"  [skip] {symbol} @ {tf}: no bars returned")
             return rid
         out = _write_csv(data, symbol, tf)
-        print(f"  [ok]   {symbol} @ {tf}: {data['count']} bars -> {out.name} "
-              f"({out.stat().st_size:,} bytes)")
+        print(f"  [ok]   {symbol} @ {tf}: {data['count']} bars -> {out.name} ({out.stat().st_size:,} bytes)")
     except Exception as e:
         print(f"  [fail] {symbol} @ {tf}: {e}")
     return rid
@@ -217,12 +220,13 @@ async def main_async(symbols: list[str], timeframes: list[str], scroll: int) -> 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--symbols", default=",".join(DEFAULT_SYMBOLS),
-                    help=f"comma-separated list; default {DEFAULT_SYMBOLS}")
-    ap.add_argument("--timeframes", default=",".join(DEFAULT_TIMEFRAMES),
-                    help="comma-separated TV resolutions (e.g. 1,5,1S)")
-    ap.add_argument("--scroll", type=int, default=0,
-                    help="scroll-back passes per (sym,tf); 0=disabled")
+    ap.add_argument(
+        "--symbols", default=",".join(DEFAULT_SYMBOLS), help=f"comma-separated list; default {DEFAULT_SYMBOLS}"
+    )
+    ap.add_argument(
+        "--timeframes", default=",".join(DEFAULT_TIMEFRAMES), help="comma-separated TV resolutions (e.g. 1,5,1S)"
+    )
+    ap.add_argument("--scroll", type=int, default=0, help="scroll-back passes per (sym,tf); 0=disabled")
     args = ap.parse_args()
     symbols = [s.strip() for s in args.symbols.split(",") if s.strip()]
     timeframes = [t.strip() for t in args.timeframes.split(",") if t.strip()]

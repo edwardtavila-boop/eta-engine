@@ -15,8 +15,7 @@ from eta_engine.chaos.drills import (
 
 def test_registry_has_built_in_drills() -> None:
     names = {d.name for d in list_drills()}
-    assert {"chrony_kill", "redis_stall", "ws_disconnect_bybit",
-            "dns_jam", "disk_pressure"}.issubset(names)
+    assert {"chrony_kill", "redis_stall", "ws_disconnect_bybit", "dns_jam", "disk_pressure"}.issubset(names)
 
 
 def test_run_drill_dry_run_is_safe() -> None:
@@ -41,8 +40,11 @@ def test_run_drill_unknown_raises_keyerror() -> None:
 
 def test_drill_spec_is_immutable() -> None:
     from dataclasses import FrozenInstanceError
+
     spec = DrillSpec(
-        name="x", description="y", severity="low",
+        name="x",
+        description="y",
+        severity="low",
     )
     with pytest.raises(FrozenInstanceError):
         spec.name = "z"  # type: ignore[misc]

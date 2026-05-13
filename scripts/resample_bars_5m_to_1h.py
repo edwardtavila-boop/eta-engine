@@ -25,6 +25,7 @@ Usage:
     python -m eta_engine.scripts.resample_bars_5m_to_1h --symbols MBT MET NQ
     python -m eta_engine.scripts.resample_bars_5m_to_1h --dry-run
 """
+
 from __future__ import annotations
 
 import argparse
@@ -59,13 +60,19 @@ def resample_one(symbol: str, *, dry_run: bool = False) -> int:
     # Resample to 1h with right-closed, right-labelled bars (matches IBKR
     # convention: a bar labelled 14:00 contains trades from 13:00 (excl)
     # to 14:00 (incl)). Drop any bar with no trades (volume=0 + flat OHLC).
-    agg = df.resample("1h", label="right", closed="right").agg({
-        "open": "first",
-        "high": "max",
-        "low": "min",
-        "close": "last",
-        "volume": "sum",
-    }).dropna(subset=["open", "high", "low", "close"])
+    agg = (
+        df.resample("1h", label="right", closed="right")
+        .agg(
+            {
+                "open": "first",
+                "high": "max",
+                "low": "min",
+                "close": "last",
+                "volume": "sum",
+            }
+        )
+        .dropna(subset=["open", "high", "low", "close"])
+    )
 
     # Convert back to epoch-seconds time column to match the source schema.
     # ``DatetimeIndex.asi8`` returns int64 in the index's storage precision,
@@ -82,10 +89,7 @@ def resample_one(symbol: str, *, dry_run: bool = False) -> int:
 
     src_rows = len(df)
     out_rows = len(out_df)
-    out_days = (
-        (int(out_df["time"].iloc[-1]) - int(out_df["time"].iloc[0])) / 86400
-        if out_rows else 0.0
-    )
+    out_days = (int(out_df["time"].iloc[-1]) - int(out_df["time"].iloc[0])) / 86400 if out_rows else 0.0
     print(f"  {symbol}: {src_rows} 5m -> {out_rows} 1h ({out_days:.1f} days)", flush=True)
 
     if dry_run:

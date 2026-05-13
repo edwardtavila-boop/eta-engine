@@ -95,20 +95,19 @@ def _coinglass_payload(points: list[tuple[int, float]]) -> dict:
 
 def _bitmex_payload(points: list[tuple[str, float]]) -> list[dict]:
     """Build a BitMEX-shaped success response."""
-    return [
-        {"timestamp": ts_iso, "symbol": "XBTUSD", "fundingRate": rate}
-        for ts_iso, rate in points
-    ]
+    return [{"timestamp": ts_iso, "symbol": "XBTUSD", "fundingRate": rate} for ts_iso, rate in points]
 
 
 # ── CoinGlass adapter ────────────────────────────────────────────────
 
 
 def test_coinglass_parses_response_to_seconds_and_floats():
-    payload = _coinglass_payload([
-        (1_700_000_000_000, 0.0001234),
-        (1_700_028_800_000, -0.0000567),
-    ])
+    payload = _coinglass_payload(
+        [
+            (1_700_000_000_000, 0.0001234),
+            (1_700_028_800_000, -0.0000567),
+        ]
+    )
     with _mock_urlopen([payload]):
         rows = fetch_funding_rates("BTC", days=2, source="coinglass", api_key="k")
     assert rows == [
@@ -136,7 +135,11 @@ def test_coinglass_api_error_code_returns_empty_list_without_raising():
 
 def test_coinglass_http_500_returns_empty_without_raising():
     err = urllib.error.HTTPError(
-        url="https://x", code=500, msg="server error", hdrs=None, fp=io.BytesIO(b"oops"),
+        url="https://x",
+        code=500,
+        msg="server error",
+        hdrs=None,
+        fp=io.BytesIO(b"oops"),
     )
     with _mock_urlopen([err]):
         rows = fetch_funding_rates("BTC", days=2, source="coinglass", api_key="k")
@@ -148,8 +151,8 @@ def test_coinglass_malformed_entries_are_skipped():
         "code": "0",
         "data": [
             {"time": 1_700_000_000_000, "close": 0.0001},
-            {"time": "not-a-number", "close": 0.0002},   # bad ts
-            {"time": 1_700_028_800_000, "close": "x"},    # bad rate
+            {"time": "not-a-number", "close": 0.0002},  # bad ts
+            {"time": 1_700_028_800_000, "close": "x"},  # bad rate
             {"time": 1_700_057_600_000, "close": 0.0003},  # ok
             {"missing": "fields"},
         ],
@@ -168,15 +171,19 @@ def test_coinglass_unsupported_symbol_raises():
 
 
 def test_bitmex_parses_response_and_dedups_overlap():
-    chunk_a = _bitmex_payload([
-        ("2026-01-01T00:00:00.000Z", 0.0001),
-        ("2026-01-01T08:00:00.000Z", 0.0002),
-    ])
+    chunk_a = _bitmex_payload(
+        [
+            ("2026-01-01T00:00:00.000Z", 0.0001),
+            ("2026-01-01T08:00:00.000Z", 0.0002),
+        ]
+    )
     # Pagination chunk covering the same span: BitMEX may return overlap.
-    chunk_b = _bitmex_payload([
-        ("2026-01-01T08:00:00.000Z", 0.0002),  # duplicate ts
-        ("2026-01-01T16:00:00.000Z", 0.0003),
-    ])
+    chunk_b = _bitmex_payload(
+        [
+            ("2026-01-01T08:00:00.000Z", 0.0002),  # duplicate ts
+            ("2026-01-01T16:00:00.000Z", 0.0003),
+        ]
+    )
     # _fetch_bitmex paginates while cursor < end, but the cursor is force-
     # advanced to chunk_end after each iteration, so two pages are sufficient
     # for the 2-day window.
@@ -198,7 +205,7 @@ def test_bitmex_does_not_support_sol():
 
 def test_bitmex_empty_response_returns_empty_list():
     # Any number of empty pages are OK — the cursor force-advances per iter.
-    with _mock_urlopen([[]]*10):
+    with _mock_urlopen([[]] * 10):
         rows = fetch_funding_rates("ETH", days=1, source="bitmex")
     assert rows == []
 
@@ -299,23 +306,36 @@ def test_unknown_source_raises():
 
 def test_cli_main_writes_expected_csvs(tmp_path: Path):
     """End-to-end: main() reads CoinGlass payloads, merges, writes valid CSVs."""
-    btc_payload = _coinglass_payload([
-        (1_700_000_000_000, 0.0001),
-        (1_700_028_800_000, 0.0002),
-    ])
-    eth_payload = _coinglass_payload([
-        (1_700_000_000_000, -0.0001),
-    ])
+    btc_payload = _coinglass_payload(
+        [
+            (1_700_000_000_000, 0.0001),
+            (1_700_028_800_000, 0.0002),
+        ]
+    )
+    eth_payload = _coinglass_payload(
+        [
+            (1_700_000_000_000, -0.0001),
+        ]
+    )
     sol_payload = _coinglass_payload([])  # empty for SOL — exit code 1
 
     with _mock_urlopen([btc_payload, eth_payload, sol_payload]):
-        rc = main([
-            "--symbols", "BTC", "ETH", "SOL",
-            "--days", "30",
-            "--source", "coinglass",
-            "--api-key", "fake-key",
-            "--root", str(tmp_path),
-        ])
+        rc = main(
+            [
+                "--symbols",
+                "BTC",
+                "ETH",
+                "SOL",
+                "--days",
+                "30",
+                "--source",
+                "coinglass",
+                "--api-key",
+                "fake-key",
+                "--root",
+                str(tmp_path),
+            ]
+        )
     # Empty response counts as a soft failure: rc >= 1.
     assert rc >= 1
     btc_csv = tmp_path / "BTCFUND_8h.csv"
@@ -329,12 +349,18 @@ def test_cli_main_writes_expected_csvs(tmp_path: Path):
 
 def test_cli_main_aborts_when_coinglass_without_api_key(monkeypatch, tmp_path: Path):
     monkeypatch.delenv("CRYPTO_FUNDING_API_KEY", raising=False)
-    rc = main([
-        "--symbols", "BTC",
-        "--days", "30",
-        "--source", "coinglass",
-        "--root", str(tmp_path),
-    ])
+    rc = main(
+        [
+            "--symbols",
+            "BTC",
+            "--days",
+            "30",
+            "--source",
+            "coinglass",
+            "--root",
+            str(tmp_path),
+        ]
+    )
     assert rc == 3
 
 
@@ -345,12 +371,20 @@ def test_cli_main_with_bitmex_skips_sol_with_clear_error(tmp_path: Path, caplog)
     # (chunk_end immediately reaches end_dt because chunk_days=150). One
     # mock response per symbol is sufficient.
     with _mock_urlopen([btc_chunk, eth_chunk]):
-        rc = main([
-            "--symbols", "BTC", "ETH", "SOL",
-            "--days", "1",
-            "--source", "bitmex",
-            "--root", str(tmp_path),
-        ])
+        rc = main(
+            [
+                "--symbols",
+                "BTC",
+                "ETH",
+                "SOL",
+                "--days",
+                "1",
+                "--source",
+                "bitmex",
+                "--root",
+                str(tmp_path),
+            ]
+        )
     # SOL is unsupported on BitMEX → rc=2 (continued past it without aborting).
     assert rc == 2
     assert (tmp_path / "BTCFUND_8h.csv").exists()

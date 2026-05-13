@@ -7,6 +7,7 @@
 - l2_strategy_ensemble
 - l2_cross_broker_arb
 """
+
 # ruff: noqa: N802, PLR2004
 from __future__ import annotations
 
@@ -38,25 +39,31 @@ def _write_tick_file(path: Path, n: int = 10, start_price: float = 100.0) -> Non
     lines = []
     for i in range(n):
         ts = base + timedelta(seconds=i)
-        lines.append(json.dumps({
-            "ts": ts.isoformat(),
-            "epoch_s": ts.timestamp(),
-            "symbol": "MNQ",
-            "price": round(start_price + i * 0.25, 4),
-            "size": 1,
-            "exchange": "CME",
-        }))
+        lines.append(
+            json.dumps(
+                {
+                    "ts": ts.isoformat(),
+                    "epoch_s": ts.timestamp(),
+                    "symbol": "MNQ",
+                    "price": round(start_price + i * 0.25, 4),
+                    "size": 1,
+                    "exchange": "CME",
+                }
+            )
+        )
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def test_tick_parse_line_valid() -> None:
-    line = json.dumps({
-        "ts": "2026-05-11T14:30:00+00:00",
-        "epoch_s": 1746950400.0,
-        "symbol": "MNQ",
-        "price": 29270.25,
-        "size": 1,
-    })
+    line = json.dumps(
+        {
+            "ts": "2026-05-11T14:30:00+00:00",
+            "epoch_s": 1746950400.0,
+            "symbol": "MNQ",
+            "price": 29270.25,
+            "size": 1,
+        }
+    )
     rec = tick._parse_line(line)
     assert rec is not None
     assert rec.price == 29270.25
@@ -76,8 +83,7 @@ def test_tick_iter_from_file(tmp_path: Path) -> None:
     assert all(t.symbol == "MNQ" for t in ticks)
 
 
-def test_tick_feed_strategy_microprice(tmp_path: Path,
-                                          monkeypatch) -> None:
+def test_tick_feed_strategy_microprice(tmp_path: Path, monkeypatch) -> None:
     path = tmp_path / "MNQ_20260511.jsonl"
     _write_tick_file(path, n=20)
     monkeypatch.setattr(tick, "TICKS_DIR", tmp_path)
@@ -115,16 +121,14 @@ def test_tick_anomaly_nan_price_skips() -> None:
 
 
 def test_tick_anomaly_unreported_flag_warns() -> None:
-    result = tick_anom.validate_tick(
-        {"price": 100.0, "size": 1, "unreported": True})
+    result = tick_anom.validate_tick({"price": 100.0, "size": 1, "unreported": True})
     assert result.verdict == "WARN"
     assert "unreported_flag" in result.anomalies
 
 
 def test_tick_anomaly_implausible_jump_skips() -> None:
     """20% jump from prior price → SKIP."""
-    result = tick_anom.validate_tick(
-        {"price": 120.0, "size": 1}, last_real_price=100.0)
+    result = tick_anom.validate_tick({"price": 120.0, "size": 1}, last_real_price=100.0)
     assert result.verdict == "SKIP"
     assert any("implausible_jump" in a for a in result.anomalies)
 
@@ -166,8 +170,7 @@ def test_cpcv_generates_expected_split_count() -> None:
 def test_cpcv_train_excludes_test_and_purge() -> None:
     folds = l2_cpcv._build_fold_indices(60, 6)
     # test fold = first one (0..10)
-    train_idx = l2_cpcv._purged_train_indices(
-        60, [folds[0]], purge_size=5, embargo_size=5)
+    train_idx = l2_cpcv._purged_train_indices(60, [folds[0]], purge_size=5, embargo_size=5)
     # Test indices 0..10 excluded; embargo 10..15 also excluded
     # First training index should be 15
     assert min(train_idx) == 15
@@ -197,7 +200,8 @@ def test_cpcv_with_positive_mean_returns_positive_score() -> None:
 def test_attribution_perfect_fill_alpha_only() -> None:
     """Trade with no slip, no timing → entire pnl is alpha."""
     signal = {
-        "signal_id": "s1", "side": "LONG",
+        "signal_id": "s1",
+        "side": "LONG",
         "entry_price": 100.0,
         "intended_stop_price": 99.0,
         "intended_target_price": 102.0,
@@ -205,11 +209,14 @@ def test_attribution_perfect_fill_alpha_only() -> None:
     entry_fill = {"actual_fill_price": 100.0, "exit_reason": "ENTRY"}
     exit_fill = {"actual_fill_price": 102.0, "exit_reason": "TARGET"}
     attr = pa.attribute_trade(
-        signal=signal, entry_fill=entry_fill, exit_fill=exit_fill,
-        point_value=2.0, commission_per_rt=0.5,
+        signal=signal,
+        entry_fill=entry_fill,
+        exit_fill=exit_fill,
+        point_value=2.0,
+        commission_per_rt=0.5,
     )
     assert attr.entry_timing == 0.0  # exact fill
-    assert attr.exit_slip == 0.0     # hit target exactly
+    assert attr.exit_slip == 0.0  # hit target exactly
     # Total pnl = (102-100)*2 - 0.5 = 3.5
     assert attr.pnl_total == 3.5
 
@@ -217,7 +224,8 @@ def test_attribution_perfect_fill_alpha_only() -> None:
 def test_attribution_decomposes_entry_timing() -> None:
     """Trade filled 0.5 below intended → +1 USD entry_timing."""
     signal = {
-        "signal_id": "s1", "side": "LONG",
+        "signal_id": "s1",
+        "side": "LONG",
         "entry_price": 100.0,
         "intended_stop_price": 99.0,
         "intended_target_price": 102.0,
@@ -225,14 +233,16 @@ def test_attribution_decomposes_entry_timing() -> None:
     entry_fill = {"actual_fill_price": 99.5, "exit_reason": "ENTRY"}
     exit_fill = {"actual_fill_price": 102.0, "exit_reason": "TARGET"}
     attr = pa.attribute_trade(
-        signal=signal, entry_fill=entry_fill, exit_fill=exit_fill,
-        point_value=2.0, commission_per_rt=0.5,
+        signal=signal,
+        entry_fill=entry_fill,
+        exit_fill=exit_fill,
+        point_value=2.0,
+        commission_per_rt=0.5,
     )
     assert attr.entry_timing == 1.0  # (100 - 99.5) * 2 = +1 USD
 
 
-def test_attribution_no_data_returns_empty(tmp_path: Path,
-                                              monkeypatch) -> None:
+def test_attribution_no_data_returns_empty(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(pa, "SIGNAL_LOG", tmp_path / "sig.jsonl")
     monkeypatch.setattr(pa, "BROKER_FILL_LOG", tmp_path / "fill.jsonl")
     monkeypatch.setattr(pa, "ATTRIBUTION_LOG", tmp_path / "attr.jsonl")
@@ -252,18 +262,22 @@ def test_slip_predict_with_no_model_returns_default() -> None:
 def test_slip_predict_uses_bucket_data() -> None:
     model = slip.SlipModel(
         ts_trained=datetime.now(UTC).isoformat(),
-        n_fills=10, default_slip_ticks=1.0,
+        n_fills=10,
+        default_slip_ticks=1.0,
         buckets=[
             slip.SlipBucket(
-                regime="NORMAL", session="RTH_MID",
-                size_bucket="1", vol_bucket="mid",
-                n=10, mean_slip_ticks=0.5,
-                p90_slip_ticks=1.5, stddev_slip_ticks=0.3),
+                regime="NORMAL",
+                session="RTH_MID",
+                size_bucket="1",
+                vol_bucket="mid",
+                n=10,
+                mean_slip_ticks=0.5,
+                p90_slip_ticks=1.5,
+                stddev_slip_ticks=0.3,
+            ),
         ],
     )
-    pred = slip.predict_slip(
-        regime="NORMAL", session="RTH_MID", size=1, vol=None,
-        model=model)
+    pred = slip.predict_slip(regime="NORMAL", session="RTH_MID", size=1, vol=None, model=model)
     assert pred == 0.5
 
 
@@ -271,25 +285,34 @@ def test_slip_predict_falls_back_to_session_match() -> None:
     """When exact bucket doesn't match, fall back to session-only."""
     model = slip.SlipModel(
         ts_trained=datetime.now(UTC).isoformat(),
-        n_fills=20, default_slip_ticks=1.0,
+        n_fills=20,
+        default_slip_ticks=1.0,
         buckets=[
             slip.SlipBucket(
-                regime="WIDE", session="RTH_OPEN",
-                size_bucket="2-5", vol_bucket="high",
-                n=10, mean_slip_ticks=3.0,
-                p90_slip_ticks=5.0, stddev_slip_ticks=1.0),
+                regime="WIDE",
+                session="RTH_OPEN",
+                size_bucket="2-5",
+                vol_bucket="high",
+                n=10,
+                mean_slip_ticks=3.0,
+                p90_slip_ticks=5.0,
+                stddev_slip_ticks=1.0,
+            ),
             slip.SlipBucket(
-                regime="NORMAL", session="RTH_OPEN",
-                size_bucket="1", vol_bucket="low",
-                n=10, mean_slip_ticks=1.5,
-                p90_slip_ticks=2.5, stddev_slip_ticks=0.5),
+                regime="NORMAL",
+                session="RTH_OPEN",
+                size_bucket="1",
+                vol_bucket="low",
+                n=10,
+                mean_slip_ticks=1.5,
+                p90_slip_ticks=2.5,
+                stddev_slip_ticks=0.5,
+            ),
         ],
     )
     # Different regime/size/vol but same session → fallback to mean of
     # all RTH_OPEN buckets = (3.0 + 1.5) / 2 = 2.25
-    pred = slip.predict_slip(
-        regime="OTHER", session="RTH_OPEN", size=99, vol=None,
-        model=model)
+    pred = slip.predict_slip(regime="OTHER", session="RTH_OPEN", size=99, vol=None, model=model)
     assert pred == 2.25
 
 
@@ -329,8 +352,7 @@ def test_ensemble_no_signals_returns_none() -> None:
 
 
 def test_ensemble_unanimous_long_fires() -> None:
-    weights = {"book_imbalance": 1.0, "microprice_drift": 1.0,
-                "footprint_absorption": 1.0}
+    weights = {"book_imbalance": 1.0, "microprice_drift": 1.0, "footprint_absorption": 1.0}
     signals = [
         _StubSig(side="LONG", confidence=0.8, strategy_id="book_imbalance"),
         _StubSig(side="LONG", confidence=0.7, strategy_id="microprice_drift"),
@@ -371,15 +393,16 @@ def test_ensemble_compute_weights_from_history(tmp_path: Path) -> None:
     path = tmp_path / "bt.jsonl"
     now = datetime.now(UTC)
     records = [
-        {"ts": now.isoformat(), "strategy": "book_imbalance",
-          "sharpe_proxy": 0.8, "sharpe_proxy_valid": True},
-        {"ts": now.isoformat(), "strategy": "microprice_drift",
-          "sharpe_proxy": -0.5, "sharpe_proxy_valid": True},  # negative
-        {"ts": now.isoformat(), "strategy": "aggressor_flow",
-          "sharpe_proxy": 1.2, "sharpe_proxy_valid": True},
+        {"ts": now.isoformat(), "strategy": "book_imbalance", "sharpe_proxy": 0.8, "sharpe_proxy_valid": True},
+        {
+            "ts": now.isoformat(),
+            "strategy": "microprice_drift",
+            "sharpe_proxy": -0.5,
+            "sharpe_proxy_valid": True,
+        },  # negative
+        {"ts": now.isoformat(), "strategy": "aggressor_flow", "sharpe_proxy": 1.2, "sharpe_proxy_valid": True},
     ]
-    path.write_text("\n".join(json.dumps(r) for r in records) + "\n",
-                     encoding="utf-8")
+    path.write_text("\n".join(json.dumps(r) for r in records) + "\n", encoding="utf-8")
     weights = ens.compute_weights_from_history(_path=path)
     # Negative sharpe should be floored to 0
     assert weights.weights["book_imbalance"] == 0.8
@@ -406,10 +429,8 @@ def test_arb_no_discrepancy_when_prices_match() -> None:
 
 def test_arb_flags_discrepancy_above_threshold() -> None:
     # 100 bps = 1% difference
-    snaps_a = [{"epoch_s": float(i), "mid": 100.0, "spread": 0.25}
-                for i in range(10)]
-    snaps_b = [{"epoch_s": float(i), "mid": 101.0, "spread": 0.25}
-                for i in range(10)]
+    snaps_a = [{"epoch_s": float(i), "mid": 100.0, "spread": 0.25} for i in range(10)]
+    snaps_b = [{"epoch_s": float(i), "mid": 101.0, "spread": 0.25} for i in range(10)]
     report = arb.check_discrepancy(snaps_a, snaps_b, threshold_bps=50.0)
     assert report.n_pairs_checked == 10
     assert report.n_discrepancies == 10
@@ -418,10 +439,8 @@ def test_arb_flags_discrepancy_above_threshold() -> None:
 
 
 def test_arb_pair_by_time_aligns_correctly() -> None:
-    snaps_a = [{"epoch_s": float(i), "mid": 100.0, "spread": 0.25}
-                for i in range(0, 100, 10)]
-    snaps_b = [{"epoch_s": float(i + 1), "mid": 100.0, "spread": 0.25}
-                for i in range(0, 100, 10)]
+    snaps_a = [{"epoch_s": float(i), "mid": 100.0, "spread": 0.25} for i in range(0, 100, 10)]
+    snaps_b = [{"epoch_s": float(i + 1), "mid": 100.0, "spread": 0.25} for i in range(0, 100, 10)]
     pairs = arb._pair_by_time(snaps_a, snaps_b, max_skew_seconds=2.0)
     assert len(pairs) == 10  # all within 1s skew
 

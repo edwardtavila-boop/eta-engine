@@ -32,6 +32,7 @@ Cross-symbol data is injected via attach_* methods (same pattern
 as sage providers). When no cross-symbol providers are attached,
 the sniper operates in tape-reading mode (same-symbol only).
 """
+
 from __future__ import annotations
 
 from collections import deque
@@ -64,17 +65,18 @@ if TYPE_CHECKING:
 @dataclass(frozen=True)
 class BarType:
     """Classify a bar's internal structure to determine what it represents."""
+
     is_bull: bool
     is_bear: bool
-    body_ratio: float        # body / range — 1.0 = full marubozu, 0.0 = doji
-    upper_wick_ratio: float   # upper wick / range
-    lower_wick_ratio: float   # lower wick / range
-    clv: float               # close location value (0=low, 1=high)
-    is_doji: bool            # body < 10% of range
-    is_marubozu: bool        # body > 80% of range, minimal wicks
-    is_hammer: bool          # small body near top, long lower wick
-    is_shooting_star: bool   # small body near bottom, long upper wick
-    is_absorption: bool      # small range, above-average volume (detected elsewhere)
+    body_ratio: float  # body / range — 1.0 = full marubozu, 0.0 = doji
+    upper_wick_ratio: float  # upper wick / range
+    lower_wick_ratio: float  # lower wick / range
+    clv: float  # close location value (0=low, 1=high)
+    is_doji: bool  # body < 10% of range
+    is_marubozu: bool  # body > 80% of range, minimal wicks
+    is_hammer: bool  # small body near top, long lower wick
+    is_shooting_star: bool  # small body near bottom, long upper wick
+    is_absorption: bool  # small range, above-average volume (detected elsewhere)
 
 
 def classify_bar(bar: BarData) -> BarType:
@@ -95,21 +97,22 @@ def classify_bar(bar: BarData) -> BarType:
     is_bear = close_val < open_val
     is_doji = body_ratio < 0.10
     is_marubozu = body_ratio > 0.80 and upper_wick_ratio < 0.10 and lower_wick_ratio < 0.10
-    is_hammer = (body_ratio < 0.40 and lower_wick_ratio > 0.50
-                 and upper_wick_ratio < 0.15 and clv > 0.60)
-    is_shooting_star = (body_ratio < 0.40 and upper_wick_ratio > 0.50
-                        and lower_wick_ratio < 0.15 and clv < 0.40)
+    is_hammer = body_ratio < 0.40 and lower_wick_ratio > 0.50 and upper_wick_ratio < 0.15 and clv > 0.60
+    is_shooting_star = body_ratio < 0.40 and upper_wick_ratio > 0.50 and lower_wick_ratio < 0.15 and clv < 0.40
     # Absorption: calculated externally (needs volume context)
     is_absorption = False
 
     return BarType(
-        is_bull=is_bull, is_bear=is_bear,
+        is_bull=is_bull,
+        is_bear=is_bear,
         body_ratio=body_ratio,
         upper_wick_ratio=upper_wick_ratio,
         lower_wick_ratio=lower_wick_ratio,
         clv=clv,
-        is_doji=is_doji, is_marubozu=is_marubozu,
-        is_hammer=is_hammer, is_shooting_star=is_shooting_star,
+        is_doji=is_doji,
+        is_marubozu=is_marubozu,
+        is_hammer=is_hammer,
+        is_shooting_star=is_shooting_star,
         is_absorption=is_absorption,
     )
 
@@ -177,11 +180,11 @@ def tape_confirms_entry(bar: BarData, side: str) -> tuple[bool, float, str]:
 
 # Which symbol pairs to confirm against
 _INTERMARKET_PAIRS: dict[str, list[str]] = {
-    "MNQ": ["ES", "NQ"],   # MNQ confirms with ES (lead) and NQ (sister)
-    "NQ":  ["ES", "MNQ"],  # NQ confirms with ES (lead) and MNQ (sister)
-    "ETH": ["BTC"],        # ETH confirms with BTC (crypto lead)
-    "SOL": ["BTC", "ETH"], # SOL confirms with BTC and ETH
-    "BTC": ["ES"],         # BTC confirms with ES (risk-on/off proxy)
+    "MNQ": ["ES", "NQ"],  # MNQ confirms with ES (lead) and NQ (sister)
+    "NQ": ["ES", "MNQ"],  # NQ confirms with ES (lead) and MNQ (sister)
+    "ETH": ["BTC"],  # ETH confirms with BTC (crypto lead)
+    "SOL": ["BTC", "ETH"],  # SOL confirms with BTC and ETH
+    "BTC": ["ES"],  # BTC confirms with ES (risk-on/off proxy)
 }
 
 # Maximum divergence ATR before we call it a fakeout
@@ -238,7 +241,7 @@ def intermarket_confirms(
             peer_close = float(peer_bar.get("close", 0))
             peer_open = float(peer_bar.get("open", peer_close))
             peer_dir = 1 if peer_close > peer_open else 0
-        elif hasattr(peer_bar, 'close') and hasattr(peer_bar, 'open'):
+        elif hasattr(peer_bar, "close") and hasattr(peer_bar, "open"):
             peer_dir = 1 if peer_bar.close > peer_bar.open else 0
         else:
             continue
@@ -268,6 +271,7 @@ def intermarket_confirms(
 # ---------------------------------------------------------------------------
 # Spread quality check — tight spread = real market, wide = trap
 # ---------------------------------------------------------------------------
+
 
 def spread_confirms(
     bid: float | None,
@@ -413,7 +417,10 @@ class AlphaSniper:
                 pass
 
         allowed, spread_mult, spread_reason = spread_confirms(
-            bid, ask, max(bar.high - bar.low, 1e-9), self.cfg.max_spread_pct,
+            bid,
+            ask,
+            max(bar.high - bar.low, 1e-9),
+            self.cfg.max_spread_pct,
         )
         if not allowed:
             return None
@@ -422,7 +429,7 @@ class AlphaSniper:
         # ── Layer 3: Intermarket confirmation (if cross-symbol data available) ──
         if self.cfg.enable_intermarket and self._cross_bar_provider is not None:
             cross_bars: dict[str, dict | None] = {}
-            symbol = getattr(bar, 'symbol', None) or 'MNQ'
+            symbol = getattr(bar, "symbol", None) or "MNQ"
             sym_base = symbol.upper().rstrip("1")  # MNQ1 → MNQ
             for peer in _INTERMARKET_PAIRS.get(sym_base, []):
                 try:
@@ -431,7 +438,11 @@ class AlphaSniper:
                     cross_bars[peer] = None
 
             allowed, im_mult, im_reason = intermarket_confirms(
-                sym_base, bar, hist, cross_bars, side,
+                sym_base,
+                bar,
+                hist,
+                cross_bars,
+                side,
             )
             if not allowed:
                 return None
@@ -455,6 +466,7 @@ class AlphaSniper:
 # Cross-symbol bar loader for paper simulation
 # ---------------------------------------------------------------------------
 
+
 def build_cross_symbol_provider_for_paper(
     bot_symbol: str,
     data_directory: str | None = None,
@@ -473,12 +485,12 @@ def build_cross_symbol_provider_for_paper(
 
     peers_map = {
         "MNQ1": ["ES1", "NQ1"],
-        "NQ1":  ["ES1", "MNQ1"],
-        "MNQ":  ["ES", "NQ"],
-        "NQ":   ["ES", "MNQ"],
-        "ETH":  ["BTC"],
-        "SOL":  ["BTC", "ETH"],
-        "BTC":  ["ES"],
+        "NQ1": ["ES1", "MNQ1"],
+        "MNQ": ["ES", "NQ"],
+        "NQ": ["ES", "MNQ"],
+        "ETH": ["BTC"],
+        "SOL": ["BTC", "ETH"],
+        "BTC": ["ES"],
     }
     peers = peers_map.get(bot_symbol, [])
     if not peers:

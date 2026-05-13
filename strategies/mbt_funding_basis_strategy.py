@@ -96,9 +96,9 @@ class MBTFundingBasisConfig:
     # Basis proxy window
     # TODO(walk-forward): tune lookback against historical MBT/BTC
     # premium-mean-reversion half-life.
-    basis_lookback: int = 24       # ~24 5m bars = 2h, or 24 15m bars = 6h
-    entry_z: float = 1.5            # z-score threshold to fade premium
-    exit_z: float = 0.0             # exit when premium re-touches the mean
+    basis_lookback: int = 24  # ~24 5m bars = 2h, or 24 15m bars = 6h
+    entry_z: float = 1.5  # z-score threshold to fade premium
+    exit_z: float = 0.0  # exit when premium re-touches the mean
 
     # Momentum confirmation: fade only if the latest N bars are
     # showing reversal (lower highs / lower closes). Helps avoid
@@ -108,7 +108,7 @@ class MBTFundingBasisConfig:
 
     # Risk / sizing
     atr_period: int = 14
-    atr_stop_mult: float = 1.0      # tighter than spot crypto
+    atr_stop_mult: float = 1.0  # tighter than spot crypto
     rr_target: float = 2.0
     risk_per_trade_pct: float = 0.005
 
@@ -198,7 +198,7 @@ class MBTFundingBasisStrategy:
         vals = list(self._basis_window)
         mean = sum(vals) / len(vals)
         var = sum((v - mean) ** 2 for v in vals) / len(vals)
-        std = var ** 0.5
+        std = var**0.5
         if std <= 0.0:
             return 0.0
         return (value - mean) / std
@@ -261,8 +261,7 @@ class MBTFundingBasisStrategy:
             return None
         if (
             self._last_entry_idx is not None
-            and (self._bars_seen - self._last_entry_idx)
-            < self.cfg.min_bars_between_trades
+            and (self._bars_seen - self._last_entry_idx) < self.cfg.min_bars_between_trades
         ):
             return None
         if not self._in_session(bar):
@@ -286,7 +285,7 @@ class MBTFundingBasisStrategy:
             return None
 
         # Risk sizing
-        atr_window = hist[-self.cfg.atr_period:] if hist else []
+        atr_window = hist[-self.cfg.atr_period :] if hist else []
         if len(atr_window) < 2:
             return None
         atr = sum(b.high - b.low for b in atr_window) / len(atr_window)
@@ -323,9 +322,15 @@ class MBTFundingBasisStrategy:
         self._trades_today += 1
         self._n_fired += 1
         return _Open(
-            entry_bar=bar, side="SELL", qty=qty, entry_price=entry,
-            stop=stop, target=target, risk_usd=risk_usd,
-            confluence=8.0, leverage=1.0,
+            entry_bar=bar,
+            side="SELL",
+            qty=qty,
+            entry_price=entry,
+            stop=stop,
+            target=target,
+            risk_usd=risk_usd,
+            confluence=8.0,
+            leverage=1.0,
             regime=f"mbt_basis_fade_z{z:.2f}",
         )
 

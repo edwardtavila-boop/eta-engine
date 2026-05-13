@@ -26,6 +26,7 @@ Thresholds are dynamically tuned from EdgeTracker realized-R data when
 enough observations exist; fall back to env-var overrides, then to
 hardcoded defaults.
 """
+
 from __future__ import annotations
 
 import logging
@@ -80,6 +81,7 @@ def get_sage_thresholds() -> dict[str, float]:
     # all schools, nudge thresholds based on aggregate edge.
     try:
         from eta_engine.brain.jarvis_v3.sage.edge_tracker import default_tracker
+
         tracker = default_tracker()
         edges = tracker.all_weight_modifiers()
         if edges:
@@ -103,15 +105,43 @@ def get_sage_thresholds() -> dict[str, float]:
         "disagree_tighten_cap": round(tighten, 3),
     }
 
+
 #: Symbol-prefix map for instrument-class auto-detection. Bots can
 #: always override by passing ``instrument_class`` in the payload.
 _CRYPTO_PREFIXES: tuple[str, ...] = (
-    "BTC", "ETH", "SOL", "XRP", "DOGE", "ADA", "MATIC", "AVAX",
-    "LTC", "BNB", "ATOM", "NEAR", "DOT", "LINK", "UNI", "MBT", "MET",
+    "BTC",
+    "ETH",
+    "SOL",
+    "XRP",
+    "DOGE",
+    "ADA",
+    "MATIC",
+    "AVAX",
+    "LTC",
+    "BNB",
+    "ATOM",
+    "NEAR",
+    "DOT",
+    "LINK",
+    "UNI",
+    "MBT",
+    "MET",
 )
 _FUTURES_PREFIXES: tuple[str, ...] = (
-    "MNQ", "NQ", "MES", "ES", "MGC", "GC", "MCL", "CL", "MYM", "YM",
-    "M2K", "RTY", "MBT", "MET",  # MBT/MET are CME micro crypto futures
+    "MNQ",
+    "NQ",
+    "MES",
+    "ES",
+    "MGC",
+    "GC",
+    "MCL",
+    "CL",
+    "MYM",
+    "YM",
+    "M2K",
+    "RTY",
+    "MBT",
+    "MET",  # MBT/MET are CME micro crypto futures
 )
 
 
@@ -126,15 +156,20 @@ def _infer_instrument_class(symbol: str) -> str | None:
         return None
     s = symbol.upper()
     # Spot/perp crypto first because BTC futures share the BTC prefix
-    if (
-        (s.endswith("USDT") or s.endswith("USD") or s.endswith("PERP"))
-        and any(s.startswith(p) for p in _CRYPTO_PREFIXES)
+    if (s.endswith("USDT") or s.endswith("USD") or s.endswith("PERP")) and any(
+        s.startswith(p) for p in _CRYPTO_PREFIXES
     ):
         return "crypto"
     # CME-style micro / standard futures (no USD suffix)
-    if any(s == p or s.startswith(p + "!") or s.startswith(p + "Z")
-           or s.startswith(p + "H") or s.startswith(p + "M")
-           or s.startswith(p + "U") for p in _FUTURES_PREFIXES):
+    if any(
+        s == p
+        or s.startswith(p + "!")
+        or s.startswith(p + "Z")
+        or s.startswith(p + "H")
+        or s.startswith(p + "M")
+        or s.startswith(p + "U")
+        for p in _FUTURES_PREFIXES
+    ):
         return "futures"
     # Bare spot-ish crypto tickers remain crypto, but MBT/MET are CME micros.
     if s in _CRYPTO_PREFIXES and s not in _FUTURES_PREFIXES:
@@ -176,6 +211,7 @@ def evaluate_v22(req: ActionRequest, ctx: JarvisContext) -> ActionResponse:
         # safety net that only fires when the cache is cold.
         try:
             from eta_engine.brain.jarvis_v3.sage.onchain_fetcher import _CACHE
+
             cache_key = symbol.upper()[:3]
             entry = _CACHE.get(cache_key)
             if entry is not None and hasattr(entry, "value"):
@@ -186,12 +222,14 @@ def evaluate_v22(req: ActionRequest, ctx: JarvisContext) -> ActionResponse:
         if not onchain:
             try:
                 from eta_engine.brain.jarvis_v3.sage.onchain_fetcher import fetch_onchain
+
                 onchain = fetch_onchain(symbol) or {}
             except Exception as exc:  # noqa: BLE001
                 logger.debug("fetch_onchain raised %s (non-fatal)", exc)
 
     try:
         from eta_engine.brain.jarvis_v3.sage import MarketContext, consult_sage
+
         m_ctx = MarketContext(
             bars=sage_bars,
             side=side,
@@ -219,6 +257,7 @@ def evaluate_v22(req: ActionRequest, ctx: JarvisContext) -> ActionResponse:
     # Last-write-wins per (symbol, side); read-once on pop.
     try:
         from eta_engine.brain.jarvis_v3.sage.last_report_cache import set_last
+
         set_last(symbol, side, report)
     except Exception as exc:  # noqa: BLE001
         logger.debug("last_report_cache.set_last raised %s (non-fatal)", exc)
@@ -232,6 +271,7 @@ def evaluate_v22(req: ActionRequest, ctx: JarvisContext) -> ActionResponse:
             detect_clashes,
             strongest_clash_modifier,
         )
+
         clashes = detect_clashes(report)
         clash_verdict, clash_modifier = strongest_clash_modifier(clashes)
         if clashes:
@@ -251,40 +291,43 @@ def evaluate_v22(req: ActionRequest, ctx: JarvisContext) -> ActionResponse:
     ):
         # Loosen the cap (boost up to 1.0)
         new_cap = min(1.0, (base.size_cap_mult or 0.5) * 1.2)
-        return base.model_copy(update={
-            "size_cap_mult": new_cap,
-            "verdict": Verdict.APPROVED if new_cap >= 1.0 else base.verdict,
-            "reason": f"{base.reason} [v22 sage agrees ({report.summary_line()}) -> loosen]",
-            "conditions": [*base.conditions, "v22_sage_loosened"],
-        })
+        return base.model_copy(
+            update={
+                "size_cap_mult": new_cap,
+                "verdict": Verdict.APPROVED if new_cap >= 1.0 else base.verdict,
+                "reason": f"{base.reason} [v22 sage agrees ({report.summary_line()}) -> loosen]",
+                "conditions": [*base.conditions, "v22_sage_loosened"],
+            }
+        )
 
     # High-conviction disagreement -> tighten or defer, enriched by clash patterns
-    if (
-        report.conviction >= t["conviction_high"]
-        and report.alignment_score <= t["disagree_threshold"]
-    ):
+    if report.conviction >= t["conviction_high"] and report.alignment_score <= t["disagree_threshold"]:
         cap = t["disagree_tighten_cap"] * clash_modifier
         clash_note = f", clash={','.join(clash_names)}" if clash_names else ""
         if base.verdict == Verdict.APPROVED:
-            return base.model_copy(update={
-                "verdict": Verdict.CONDITIONAL,
-                "size_cap_mult": cap,
-                "reason": (
-                    f"{base.reason} [v22 sage disagrees strongly "
-                    f"({report.summary_line()}) -> downgrade APPROVED to CONDITIONAL@{cap:.2f}{clash_note}]"
-                ),
-                "conditions": [*base.conditions, "v22_sage_disagree_tighten"],
-            })
+            return base.model_copy(
+                update={
+                    "verdict": Verdict.CONDITIONAL,
+                    "size_cap_mult": cap,
+                    "reason": (
+                        f"{base.reason} [v22 sage disagrees strongly "
+                        f"({report.summary_line()}) -> downgrade APPROVED to CONDITIONAL@{cap:.2f}{clash_note}]"
+                    ),
+                    "conditions": [*base.conditions, "v22_sage_disagree_tighten"],
+                }
+            )
         else:  # CONDITIONAL
-            return base.model_copy(update={
-                "verdict": Verdict.DEFERRED,
-                "size_cap_mult": 0.0,
-                "reason": (
-                    f"{base.reason} [v22 sage disagrees strongly + already CONDITIONAL "
-                    f"-> DEFER ({report.summary_line()}){clash_note}]"
-                ),
-                "conditions": [*base.conditions, "v22_sage_disagree_defer"],
-            })
+            return base.model_copy(
+                update={
+                    "verdict": Verdict.DEFERRED,
+                    "size_cap_mult": 0.0,
+                    "reason": (
+                        f"{base.reason} [v22 sage disagrees strongly + already CONDITIONAL "
+                        f"-> DEFER ({report.summary_line()}){clash_note}]"
+                    ),
+                    "conditions": [*base.conditions, "v22_sage_disagree_defer"],
+                }
+            )
 
     # Mid-range or split -> no modulation
     return base

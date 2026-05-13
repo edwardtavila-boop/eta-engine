@@ -177,14 +177,17 @@ class TestComputePerFoldDsr:
             fake_compute_dsr,
         )
 
-        assert compute_per_fold_dsr(
-            sharpe=1.2,
-            n_trades=80,
-            skew=0.0,
-            kurtosis=3.0,
-            n_folds=3,
-            sweep_n=4,
-        ) == 0.42
+        assert (
+            compute_per_fold_dsr(
+                sharpe=1.2,
+                n_trades=80,
+                skew=0.0,
+                kurtosis=3.0,
+                n_folds=3,
+                sweep_n=4,
+            )
+            == 0.42
+        )
         assert captured == [12]
 
 

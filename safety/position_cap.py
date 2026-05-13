@@ -102,10 +102,7 @@ def assert_within_caps(
     cap = _resolve_cap(side, venue, symbol)
     if abs(float(requested_delta)) > cap:
         raise PositionCapExceededError(
-            (
-                f"position cap exceeded: side={side} venue={venue} "
-                f"symbol={symbol} requested={requested_delta} cap={cap}"
-            ),
+            (f"position cap exceeded: side={side} venue={venue} symbol={symbol} requested={requested_delta} cap={cap}"),
             cap=cap,
             requested=float(requested_delta),
             side=side,

@@ -177,7 +177,8 @@ class TestPreEntryGateFutures:
         gate = build_session_gate(symbol="MNQ", extras=_futures_extras_with_gate())
         state = BotSessionState(gate=gate)
         ok, reason = evaluate_pre_entry_gate(
-            state, now=_ct_to_utc(2026, 5, 15, 10, 0),
+            state,
+            now=_ct_to_utc(2026, 5, 15, 10, 0),
         )
         assert ok is True
         assert reason == ""
@@ -186,25 +187,31 @@ class TestPreEntryGateFutures:
         gate = build_session_gate(symbol="MNQ", extras=_futures_extras_with_gate())
         state = BotSessionState(gate=gate)
         ok, reason = evaluate_pre_entry_gate(
-            state, now=_ct_to_utc(2026, 5, 15, 15, 59),
+            state,
+            now=_ct_to_utc(2026, 5, 15, 15, 59),
         )
         assert ok is False
         assert reason == "eod_cutoff"
 
     def test_news_blackout_blocks_entries(self) -> None:
-        cal = EventsCalendar(events=[
-            CalendarEvent(
-                tag="FOMC",
-                scheduled_utc=_ct_to_utc(2026, 5, 15, 13, 0),
-                impact="high",
-            ),
-        ])
+        cal = EventsCalendar(
+            events=[
+                CalendarEvent(
+                    tag="FOMC",
+                    scheduled_utc=_ct_to_utc(2026, 5, 15, 13, 0),
+                    impact="high",
+                ),
+            ]
+        )
         gate = build_session_gate(
-            symbol="MNQ", extras=_futures_extras_with_gate(), calendar=cal,
+            symbol="MNQ",
+            extras=_futures_extras_with_gate(),
+            calendar=cal,
         )
         state = BotSessionState(gate=gate)
         ok, reason = evaluate_pre_entry_gate(
-            state, now=_ct_to_utc(2026, 5, 15, 12, 50),
+            state,
+            now=_ct_to_utc(2026, 5, 15, 12, 50),
         )
         assert ok is False
         assert "news_blackout" in reason
@@ -238,7 +245,8 @@ class TestShouldFlattenNow:
         # Pick a few representative UTC times across the 24-hour cycle
         for hh in (1, 8, 13, 19, 23):
             flat, _ = should_flatten_now(
-                state, now=datetime(2026, 5, 15, hh, 0, tzinfo=UTC),
+                state,
+                now=datetime(2026, 5, 15, hh, 0, tzinfo=UTC),
             )
             assert flat is False, f"crypto flatten fired at hour={hh}"
 
@@ -252,7 +260,8 @@ class TestDailyLossCap:
     def test_anchor_initializes_on_first_call(self) -> None:
         state = BotSessionState()
         rolled = update_daily_loss_anchor(
-            state, realized_pnl=100.0,
+            state,
+            realized_pnl=100.0,
             now=datetime(2026, 5, 15, 14, 0, tzinfo=UTC),
         )
         assert rolled is True
@@ -262,11 +271,13 @@ class TestDailyLossCap:
     def test_anchor_does_not_roll_within_session(self) -> None:
         state = BotSessionState()
         update_daily_loss_anchor(
-            state, realized_pnl=100.0,
+            state,
+            realized_pnl=100.0,
             now=datetime(2026, 5, 15, 14, 0, tzinfo=UTC),
         )
         rolled = update_daily_loss_anchor(
-            state, realized_pnl=200.0,
+            state,
+            realized_pnl=200.0,
             now=datetime(2026, 5, 15, 18, 0, tzinfo=UTC),
         )
         assert rolled is False
@@ -280,9 +291,11 @@ class TestDailyLossCap:
         # Now -$200 cumulative against $5,000 starting cash = -4%
         # which is > 3% limit → halted.
         halted, loss_pct = enforce_daily_loss_cap(
-            state, realized_pnl=-200.0,
+            state,
+            realized_pnl=-200.0,
             starting_cash=5_000.0,
-            daily_loss_limit_pct=3.0, now=now,
+            daily_loss_limit_pct=3.0,
+            now=now,
         )
         assert halted is True
         assert loss_pct == pytest.approx(4.0)
@@ -294,9 +307,11 @@ class TestDailyLossCap:
         update_daily_loss_anchor(state, realized_pnl=0.0, now=now)
         # Loss = $100 / $5,000 = 2% < 3% limit → NOT halted.
         halted, loss_pct = enforce_daily_loss_cap(
-            state, realized_pnl=-100.0,
+            state,
+            realized_pnl=-100.0,
             starting_cash=5_000.0,
-            daily_loss_limit_pct=3.0, now=now,
+            daily_loss_limit_pct=3.0,
+            now=now,
         )
         assert halted is False
         assert loss_pct == pytest.approx(2.0)
@@ -307,15 +322,21 @@ class TestDailyLossCap:
         now1 = datetime(2026, 5, 15, 14, 0, tzinfo=UTC)
         update_daily_loss_anchor(state, realized_pnl=0.0, now=now1)
         enforce_daily_loss_cap(
-            state, realized_pnl=-200.0, starting_cash=5_000.0,
-            daily_loss_limit_pct=3.0, now=now1,
+            state,
+            realized_pnl=-200.0,
+            starting_cash=5_000.0,
+            daily_loss_limit_pct=3.0,
+            now=now1,
         )
         assert state.halted_until_session_date != ""
         # Day 2: anchor rolls to current realized_pnl (-200), session_pnl=0
         now2 = datetime(2026, 5, 17, 14, 0, tzinfo=UTC)  # +2 days for safety
         halted, _ = enforce_daily_loss_cap(
-            state, realized_pnl=-200.0, starting_cash=5_000.0,
-            daily_loss_limit_pct=3.0, now=now2,
+            state,
+            realized_pnl=-200.0,
+            starting_cash=5_000.0,
+            daily_loss_limit_pct=3.0,
+            now=now2,
         )
         # Anchor rolled to -200 → session_pnl = 0 → not halted
         assert halted is False
@@ -329,8 +350,11 @@ class TestDailyLossCap:
         now1 = datetime(2026, 5, 15, 14, 0, tzinfo=UTC)
         update_daily_loss_anchor(state, realized_pnl=500.0, now=now1)
         halted, loss_pct = enforce_daily_loss_cap(
-            state, realized_pnl=400.0, starting_cash=5_000.0,
-            daily_loss_limit_pct=3.0, now=now1,
+            state,
+            realized_pnl=400.0,
+            starting_cash=5_000.0,
+            daily_loss_limit_pct=3.0,
+            now=now1,
         )
         assert halted is False
         assert loss_pct == pytest.approx(2.0)
@@ -362,11 +386,15 @@ def _make_supervisor_with_gated_bot(
     cfg.data_feed = "mock"
     sup = JarvisStrategySupervisor(cfg=cfg)
     gate = build_session_gate(
-        symbol=symbol, extras=extras or _futures_extras_with_gate(),
+        symbol=symbol,
+        extras=extras or _futures_extras_with_gate(),
     )
     bot = BotInstance(
-        bot_id="test_bot", symbol=symbol, strategy_kind="x",
-        direction="long", cash=5_000.0,
+        bot_id="test_bot",
+        symbol=symbol,
+        strategy_kind="x",
+        direction="long",
+        cash=5_000.0,
         daily_loss_limit_pct=daily_cap,
         session_state=BotSessionState(gate=gate),
     )
@@ -381,7 +409,8 @@ def test_maybe_enter_skips_submit_entry_outside_rth(monkeypatch) -> None:
     monkeypatch.setattr("random.random", lambda: 0.0)  # always fire dice
     submit_entry_called: list[bool] = []
     monkeypatch.setattr(
-        sup._router, "submit_entry",
+        sup._router,
+        "submit_entry",
         lambda **kwargs: submit_entry_called.append(True) or None,
     )
     # Pin "now" inside _maybe_enter to outside-RTH (04:00 CT)
@@ -404,30 +433,40 @@ def test_maybe_enter_allows_submit_entry_during_rth(monkeypatch) -> None:
     monkeypatch.setattr("random.random", lambda: 0.0)
 
     submit_called: list[dict[str, Any]] = []
+
     def _fake_submit_entry(**kwargs: Any) -> None:
         submit_called.append(kwargs)
         return None
+
     monkeypatch.setattr(sup._router, "submit_entry", _fake_submit_entry)
 
     # Stub JARVIS consult to a permissive verdict so we reach submit_entry.
     class _FakeConsolidated:
         final_verdict = "APPROVED"
+
     class _FakeVerdict:
         consolidated = _FakeConsolidated()
         final_size_multiplier = 1.0
+
         def is_blocked(self) -> bool:
             return False
+
     monkeypatch.setattr(
-        sup, "_consult_jarvis", lambda **kwargs: _FakeVerdict(),
+        sup,
+        "_consult_jarvis",
+        lambda **kwargs: _FakeVerdict(),
     )
     monkeypatch.setattr(sup, "_consult_sage_for_bot", lambda *a, **kw: None)
     monkeypatch.setattr(
-        sup, "_check_signal_aggregation", lambda **kwargs: "",
+        sup,
+        "_check_signal_aggregation",
+        lambda **kwargs: "",
     )
     # Stub the kill-switch (it imports a module that reads files).
     monkeypatch.setattr(
         "eta_engine.scripts.daily_loss_killswitch.is_killswitch_tripped",
-        lambda: (False, ""), raising=False,
+        lambda: (False, ""),
+        raising=False,
     )
 
     fake_now = _ct_to_utc(2026, 5, 15, 10, 0)  # mid-RTH
@@ -472,8 +511,11 @@ def test_maybe_flatten_for_eod_calls_submit_exit(monkeypatch) -> None:
         fill_price = 21440.0
         fill_ts = "2026-05-15T20:59:00Z"
         entry_snapshot = {
-            "side": "BUY", "entry_price": 21450.0, "qty": 1,
-            "bracket_stop": 21430.0, "bracket_target": 21490.0,
+            "side": "BUY",
+            "entry_price": 21450.0,
+            "qty": 1,
+            "bracket_stop": 21430.0,
+            "bracket_target": 21490.0,
             "signal_id": "sig-x",
         }
 
@@ -482,9 +524,11 @@ def test_maybe_flatten_for_eod_calls_submit_exit(monkeypatch) -> None:
         bot.open_position = None
         bot.realized_pnl += _FakeFill.realized_pnl
         return _FakeFill()
+
     monkeypatch.setattr(sup._router, "submit_exit", _fake_submit_exit)
     monkeypatch.setattr(
-        sup, "_propagate_close",
+        sup,
+        "_propagate_close",
         lambda bot, rec, entry_snapshot=None: propagated.append(rec),
     )
 
@@ -516,12 +560,14 @@ def test_daily_loss_cap_halts_new_entries(monkeypatch) -> None:
 
     submit_called: list[bool] = []
     monkeypatch.setattr(
-        sup._router, "submit_entry",
+        sup._router,
+        "submit_entry",
         lambda **kw: submit_called.append(True) or None,
     )
     consult_called: list[bool] = []
     monkeypatch.setattr(
-        sup, "_consult_jarvis",
+        sup,
+        "_consult_jarvis",
         lambda **kw: consult_called.append(True) or None,
     )
 
@@ -551,7 +597,8 @@ def test_daily_loss_cap_does_not_halt_when_below_floor(monkeypatch) -> None:
 
     consult_called: list[bool] = []
     monkeypatch.setattr(
-        sup, "_consult_jarvis",
+        sup,
+        "_consult_jarvis",
         lambda **kw: consult_called.append(True) or None,
     )
     monkeypatch.setattr(sup._router, "submit_entry", lambda **kw: None)
@@ -559,7 +606,8 @@ def test_daily_loss_cap_does_not_halt_when_below_floor(monkeypatch) -> None:
     monkeypatch.setattr(sup, "_check_signal_aggregation", lambda **kw: "")
     monkeypatch.setattr(
         "eta_engine.scripts.daily_loss_killswitch.is_killswitch_tripped",
-        lambda: (False, ""), raising=False,
+        lambda: (False, ""),
+        raising=False,
     )
 
     monkeypatch.setattr(

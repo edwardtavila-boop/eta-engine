@@ -79,11 +79,7 @@ def _check_model_policy() -> HealthCheckResult:
         architectural = select_model(TaskCategory.RED_TEAM_SCORING)
         routine = select_model(TaskCategory.STRATEGY_EDIT)
         grunt = select_model(TaskCategory.LOG_PARSING)
-        if (
-            architectural.tier.value != "opus"
-            or routine.tier.value != "sonnet"
-            or grunt.tier.value != "haiku"
-        ):
+        if architectural.tier.value != "opus" or routine.tier.value != "sonnet" or grunt.tier.value != "haiku":
             return HealthCheckResult(
                 name="model_policy_routes",
                 passed=False,

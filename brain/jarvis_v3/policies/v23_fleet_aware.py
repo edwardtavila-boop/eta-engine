@@ -44,6 +44,7 @@ name) to activate. Default OFF — every new behavior is opt-in.
 
 Tests in eta_engine/tests/test_jarvis_v23_fleet_aware.py.
 """
+
 from __future__ import annotations
 
 import json
@@ -73,35 +74,33 @@ logger = logging.getLogger(__name__)
 # Maps registry's `instrument_class` extras values to broad gate-relevant
 # categories. Multiple registry values can collapse to one class.
 _INSTRUMENT_CLASS_TO_BROAD = {
-    "crypto":             "crypto",
-    "crypto_native":      "crypto",
-    "crypto_alt":         "crypto",
-    "crypto_alt_meme":    "crypto",
-    "crypto_perp":        "crypto",
+    "crypto": "crypto",
+    "crypto_native": "crypto",
+    "crypto_alt": "crypto",
+    "crypto_alt_meme": "crypto",
+    "crypto_perp": "crypto",
     # equity-index futures (CME): MNQ/NQ/ES/MES
-    "futures_index":      "futures_index",
-    "equity_index":       "futures_index",
+    "futures_index": "futures_index",
+    "equity_index": "futures_index",
     # commodities — all roughly 23h Globex sessions
-    "commodity":          "commodity",
-    "commodity_metals":   "commodity",
+    "commodity": "commodity",
+    "commodity_metals": "commodity",
     "commodity_metals_micro": "commodity",
-    "commodity_energy":   "commodity",
-    "commodity_grains":   "commodity",
+    "commodity_energy": "commodity",
+    "commodity_grains": "commodity",
     # rates futures (CBOT): ZN/ZB/ZF
-    "rates":              "rates",
+    "rates": "rates",
     "rates_intermediate": "rates",
     "rates_long_duration": "rates",
     # FX futures (CME): 6E/M6E/6B/6J
-    "fx":                 "fx",
-    "currency_futures":   "fx",
+    "fx": "fx",
+    "currency_futures": "fx",
 }
 
 # Broad classes that trade ~24h via Globex / Coinbase — eligible for the
 # OVERNIGHT whitelist on the same confluence-pre-gated basis as the legacy
 # hardcoded list. Each represents a real session structure, not a guess.
-_OVERNIGHT_ELIGIBLE_CLASSES: frozenset[str] = frozenset(
-    {"crypto", "futures_index", "commodity", "rates", "fx"}
-)
+_OVERNIGHT_ELIGIBLE_CLASSES: frozenset[str] = frozenset({"crypto", "futures_index", "commodity", "rates", "fx"})
 
 
 def _resolve_bot_assignment(req: ActionRequest) -> dict[str, Any] | None:
@@ -127,6 +126,7 @@ def _resolve_bot_assignment(req: ActionRequest) -> dict[str, Any] | None:
         return None
     try:
         from eta_engine.strategies.per_bot_registry import get_for_bot
+
         a = get_for_bot(bot_id)
     except Exception as exc:  # noqa: BLE001
         logger.debug("v23: registry lookup failed for %s: %s", bot_id, exc)
@@ -187,8 +187,10 @@ def _lab_sharpe(assignment: dict[str, Any]) -> float | None:
         return None
     candidates: list[tuple[str, dict]] = []
     for k, v in extras.items():
-        if isinstance(k, str) and isinstance(v, dict) and (
-            k.startswith("lab_audit_") or k.startswith("lab_promotion_")
+        if (
+            isinstance(k, str)
+            and isinstance(v, dict)
+            and (k.startswith("lab_audit_") or k.startswith("lab_promotion_"))
         ):
             candidates.append((k, v))
     if not candidates:
@@ -223,6 +225,7 @@ def _is_v23_enabled() -> bool:
         return True
     try:
         from eta_engine.brain.feature_flags import is_enabled as _ff_enabled
+
         return bool(_ff_enabled("JARVIS_V3_FLEET_AWARE"))
     except Exception:  # noqa: BLE001
         return False
@@ -254,6 +257,7 @@ def evaluate_v23(req: ActionRequest, ctx: JarvisContext) -> ActionResponse:
     # Choose the wrapped policy: v22 if its flag is on, else v17 champion.
     try:
         from eta_engine.brain.feature_flags import is_enabled as _ff_enabled
+
         sage_live = bool(_ff_enabled("V22_SAGE_MODULATION"))
     except Exception:  # noqa: BLE001
         sage_live = False
@@ -263,6 +267,7 @@ def evaluate_v23(req: ActionRequest, ctx: JarvisContext) -> ActionResponse:
             from eta_engine.brain.jarvis_v3.policies.v22_sage_confluence import (
                 evaluate_v22,
             )
+
             base_resp = evaluate_v22(req, ctx)
         except Exception as exc:  # noqa: BLE001
             logger.warning("v23: v22 wrap failed (%s); falling back to v17", exc)
@@ -281,19 +286,27 @@ def evaluate_v23(req: ActionRequest, ctx: JarvisContext) -> ActionResponse:
         active = _load_active_regime()
         # Don't override KILL or operator-only denials; only veto
         # when base verdict was approving or conditional.
-        if active and active in block_regimes and base_resp.verdict in (
-            Verdict.APPROVED,
-            Verdict.CONDITIONAL,
+        if (
+            active
+            and active in block_regimes
+            and base_resp.verdict
+            in (
+                Verdict.APPROVED,
+                Verdict.CONDITIONAL,
+            )
         ):
-            return base_resp.model_copy(update={
-                "verdict": Verdict.DEFERRED,
-                "reason": f"v23 regime-block: bot blocks regime '{active}'",
-                "reason_code": "v23_regime_blocked",
-                "conditions": (base_resp.conditions or []) + [
-                    f"blocked_regime={active}",
-                    f"block_regimes={sorted(block_regimes)}",
-                ],
-            })
+            return base_resp.model_copy(
+                update={
+                    "verdict": Verdict.DEFERRED,
+                    "reason": f"v23 regime-block: bot blocks regime '{active}'",
+                    "reason_code": "v23_regime_blocked",
+                    "conditions": (base_resp.conditions or [])
+                    + [
+                        f"blocked_regime={active}",
+                        f"block_regimes={sorted(block_regimes)}",
+                    ],
+                }
+            )
 
     # ---- Layer 2: class-derived overnight upgrade ----
     if (
@@ -306,13 +319,15 @@ def evaluate_v23(req: ActionRequest, ctx: JarvisContext) -> ActionResponse:
         # restoring the legacy whitelist behavior for new bots).
         live_size = ctx.sizing_hint.size_mult if ctx.sizing_hint is not None else 1.0
         cls = _instrument_class(assignment)
-        base_resp = base_resp.model_copy(update={
-            "verdict": Verdict.CONDITIONAL,
-            "reason": f"v23 class-eligible overnight ({cls}); confluence pre-validated",
-            "reason_code": "v23_overnight_class_eligible",
-            "conditions": [f"size_mult<={live_size:.4f}", f"instrument_class={cls}"],
-            "size_cap_mult": min(live_size, 0.75),  # tighter than RTH
-        })
+        base_resp = base_resp.model_copy(
+            update={
+                "verdict": Verdict.CONDITIONAL,
+                "reason": f"v23 class-eligible overnight ({cls}); confluence pre-validated",
+                "reason_code": "v23_overnight_class_eligible",
+                "conditions": [f"size_mult<={live_size:.4f}", f"instrument_class={cls}"],
+                "size_cap_mult": min(live_size, 0.75),  # tighter than RTH
+            }
+        )
 
     # ---- Layer 3: lab-sharpe sizing ----
     if base_resp.verdict in (Verdict.APPROVED, Verdict.CONDITIONAL):
@@ -327,9 +342,11 @@ def evaluate_v23(req: ActionRequest, ctx: JarvisContext) -> ActionResponse:
                 f"v23_lab_sharpe={sharpe:.3f}" if sharpe is not None else "v23_lab_sharpe=untested",
                 f"v23_size_factor={factor:.2f}",
             ]
-            base_resp = base_resp.model_copy(update={
-                "size_cap_mult": new_cap,
-                "conditions": (base_resp.conditions or []) + extra_conds,
-            })
+            base_resp = base_resp.model_copy(
+                update={
+                    "size_cap_mult": new_cap,
+                    "conditions": (base_resp.conditions or []) + extra_conds,
+                }
+            )
 
     return base_resp

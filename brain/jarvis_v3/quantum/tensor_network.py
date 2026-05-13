@@ -37,6 +37,7 @@ Use case (firm-board hand-off):
     pick = select_top_signal_combination(candidates, k=2)
     # -> picks the most-orthogonal high-scorers, not just the top-2 by raw score
 """
+
 from __future__ import annotations
 
 import logging
@@ -52,7 +53,7 @@ class SignalScore:
     (typically 4-12) so contractions stay cheap."""
 
     name: str
-    score: float                     # individual conviction in [-1, +1] or [0, 1]
+    score: float  # individual conviction in [-1, +1] or [0, 1]
     features: list[float] = field(default_factory=list)
 
 
@@ -106,8 +107,10 @@ def select_top_signal_combination(
     """
     if not candidates:
         return CombinationResult(
-            selected=[], total_raw_score=0.0,
-            total_diversity_score=0.0, objective=0.0,
+            selected=[],
+            total_raw_score=0.0,
+            total_diversity_score=0.0,
+            objective=0.0,
             label="empty input",
         )
     if k >= len(candidates):
@@ -128,11 +131,9 @@ def select_top_signal_combination(
 
     # Steps 2..k: pick by score minus diversity penalty
     while len(selected) < k and remaining:
+
         def adj_score(c: SignalScore) -> float:
-            overlap = (
-                sum(abs(_contract(c.features, s.features)) for s in selected)
-                / max(len(selected), 1)
-            )
+            overlap = sum(abs(_contract(c.features, s.features)) for s in selected) / max(len(selected), 1)
             return c.score - diversity_weight * overlap
 
         best = max(remaining, key=adj_score)
@@ -142,11 +143,7 @@ def select_top_signal_combination(
     raw = sum(c.score for c in selected)
     # Diversity bonus = 1 - avg_pairwise_overlap (higher = more diverse)
     if len(selected) >= 2:
-        overlaps = [
-            abs(_contract(a.features, b.features))
-            for i, a in enumerate(selected)
-            for b in selected[i + 1:]
-        ]
+        overlaps = [abs(_contract(a.features, b.features)) for i, a in enumerate(selected) for b in selected[i + 1 :]]
         diversity = 1.0 - (sum(overlaps) / len(overlaps))
     else:
         diversity = 1.0

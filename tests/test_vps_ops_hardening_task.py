@@ -51,10 +51,7 @@ def test_vps_ops_hardening_is_wired_into_bootstrap_and_runbook() -> None:
 
 
 def test_vps_ops_hardening_task_scripts_do_not_use_legacy_write_paths() -> None:
-    combined = "\n".join(
-        path.read_text(encoding="utf-8")
-        for path in (RUNNER, REGISTRAR)
-    )
+    combined = "\n".join(path.read_text(encoding="utf-8") for path in (RUNNER, REGISTRAR))
 
     assert "OneDrive" not in combined
     assert "LOCALAPPDATA" not in combined

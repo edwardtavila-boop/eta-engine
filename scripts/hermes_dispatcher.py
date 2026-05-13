@@ -30,6 +30,7 @@ Routing rules:
 
 Operator opt-out: ``ETA_HERMES_ALERTS_DISABLED=1`` mutes everything.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -56,7 +57,10 @@ _ROUTING: dict[tuple[str, str], tuple[str, str]] = {
 
 def _alerts_disabled() -> bool:
     return os.getenv("ETA_HERMES_ALERTS_DISABLED", "").lower() in {
-        "1", "true", "yes", "on",
+        "1",
+        "true",
+        "yes",
+        "on",
     }
 
 
@@ -114,24 +118,25 @@ def tail_and_dispatch(
     optionally polls forever (--follow) or returns after one pass.
     """
     if path is None:
-        path = Path(
-            r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\jarvis_v3_events.jsonl"
-        )
+        path = Path(r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\jarvis_v3_events.jsonl")
     path = Path(path)
     if not path.exists():
         logger.warning("no events file at %s", path)
         return 1
 
-    offset_file = Path(os.getenv(
-        "ETA_HERMES_DISPATCHER_OFFSET_FILE",
-        str(path.parent / ".hermes_dispatcher_offset"),
-    ))
+    offset_file = Path(
+        os.getenv(
+            "ETA_HERMES_DISPATCHER_OFFSET_FILE",
+            str(path.parent / ".hermes_dispatcher_offset"),
+        )
+    )
     try:
         start = int(offset_file.read_text(encoding="utf-8").strip())
     except (OSError, ValueError):
         start = path.stat().st_size  # default: only new lines from now on
 
     import time
+
     while True:
         try:
             cur_size = path.stat().st_size
@@ -162,16 +167,18 @@ def tail_and_dispatch(
 
 if __name__ == "__main__":
     import argparse
+
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--follow", action="store_true", default=True)
-    p.add_argument("--once", action="store_true",
-                   help="Process current pending events and exit")
+    p.add_argument("--once", action="store_true", help="Process current pending events and exit")
     p.add_argument("--path", type=Path, default=None)
     p.add_argument("--poll", type=float, default=5.0)
     args = p.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
     raise SystemExit(
         tail_and_dispatch(
-            args.path, follow=not args.once, poll_interval_s=args.poll,
+            args.path,
+            follow=not args.once,
+            poll_interval_s=args.poll,
         )
     )

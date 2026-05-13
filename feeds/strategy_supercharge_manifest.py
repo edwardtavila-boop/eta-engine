@@ -270,16 +270,8 @@ def build_manifest(
         batch.extend(b_later)
     if max_targets is not None and max_targets >= 0:
         batch = batch[:max_targets]
-    commands = [
-        row["command"]
-        for row in batch
-        if isinstance(row.get("command"), list)
-    ]
-    rows_by_bot = {
-        _bot_id(row): row
-        for row in rows
-        if _bot_id(row)
-    }
+    commands = [row["command"] for row in batch if isinstance(row.get("command"), list)]
+    rows_by_bot = {_bot_id(row): row for row in rows if _bot_id(row)}
     next_bot = str(batch[0].get("bot_id") or "") if batch else ""
     return {
         "schema_version": 1,

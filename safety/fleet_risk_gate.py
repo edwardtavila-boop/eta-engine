@@ -122,10 +122,7 @@ class FleetRiskGate:
 
     def __post_init__(self) -> None:
         if self.fleet_starting_equity_usd <= 0:
-            raise ValueError(
-                f"fleet_starting_equity_usd must be positive, "
-                f"got {self.fleet_starting_equity_usd}"
-            )
+            raise ValueError(f"fleet_starting_equity_usd must be positive, got {self.fleet_starting_equity_usd}")
 
     # ── Public API ──
 

@@ -95,19 +95,11 @@ class PropRiskRule:
 
     @property
     def daily_room_usd(self) -> float:
-        return (
-            self.daily_loss_limit_usd
-            - self.daily_loss_used_usd
-            - self.liquidation_buffer_usd
-        )
+        return self.daily_loss_limit_usd - self.daily_loss_used_usd - self.liquidation_buffer_usd
 
     @property
     def trailing_room_usd(self) -> float:
-        return (
-            self.current_equity_usd
-            - self.trailing_floor_usd
-            - self.liquidation_buffer_usd
-        )
+        return self.current_equity_usd - self.trailing_floor_usd - self.liquidation_buffer_usd
 
     @property
     def usable_entry_room_usd(self) -> float:
@@ -120,11 +112,7 @@ class PropRiskRule:
     def consistency_room_usd(self) -> float | None:
         if self.consistency_profit_cap_usd is None:
             return None
-        return (
-            self.consistency_profit_cap_usd
-            - self.daily_profit_usd
-            - self.consistency_buffer_usd
-        )
+        return self.consistency_profit_cap_usd - self.daily_profit_usd - self.consistency_buffer_usd
 
 
 class PendingOrderLike(Protocol):
@@ -272,11 +260,7 @@ def _rule_from_account(
     trailing_drawdown = required("trailing_drawdown_usd")
     daily_loss_limit = required("daily_loss_limit_usd")
 
-    peak_configured = (
-        "peak_equity_usd" in account
-        or "peak_equity_env" in account
-        or "peak_equity_usd_env" in account
-    )
+    peak_configured = "peak_equity_usd" in account or "peak_equity_env" in account or "peak_equity_usd_env" in account
     peak_equity = _resolve_float(account, "peak_equity_usd", env=env_map)
     if peak_configured and peak_equity is None:
         missing.append("peak_equity_usd")
@@ -356,11 +340,7 @@ def _resolve_float(
 ) -> float | None:
     env_field = _env_field_name(key)
     explicit_env_key = str(account.get(env_field) or account.get(f"{key}_env") or "").strip()
-    raw = (
-        str(env.get(explicit_env_key) or "").strip()
-        if explicit_env_key
-        else str(account.get(key) or "").strip()
-    )
+    raw = str(env.get(explicit_env_key) or "").strip() if explicit_env_key else str(account.get(key) or "").strip()
     if not raw:
         return None
     try:
@@ -407,26 +387,16 @@ def _rule_context(rule: PropRiskRule, risk_usd: float) -> dict[str, Any]:
         "trailing_floor_usd": round(rule.trailing_floor_usd, 2),
         "daily_room_usd": round(rule.daily_room_usd, 2),
         "trailing_room_usd": round(rule.trailing_room_usd, 2),
-        "max_order_risk_usd": (
-            None
-            if rule.max_order_risk_usd is None
-            else round(rule.max_order_risk_usd, 2)
-        ),
+        "max_order_risk_usd": (None if rule.max_order_risk_usd is None else round(rule.max_order_risk_usd, 2)),
         "open_risk_usd": round(rule.open_risk_usd, 2),
         "usable_entry_room_usd": round(rule.usable_entry_room_usd, 2),
         "liquidation_buffer_usd": round(rule.liquidation_buffer_usd, 2),
         "daily_profit_usd": round(rule.daily_profit_usd, 2),
         "consistency_profit_cap_usd": (
-            None
-            if rule.consistency_profit_cap_usd is None
-            else round(rule.consistency_profit_cap_usd, 2)
+            None if rule.consistency_profit_cap_usd is None else round(rule.consistency_profit_cap_usd, 2)
         ),
         "consistency_buffer_usd": round(rule.consistency_buffer_usd, 2),
-        "consistency_room_usd": (
-            None
-            if rule.consistency_room_usd is None
-            else round(rule.consistency_room_usd, 2)
-        ),
+        "consistency_room_usd": (None if rule.consistency_room_usd is None else round(rule.consistency_room_usd, 2)),
     }
 
 
@@ -439,7 +409,7 @@ def _futures_root(symbol: str) -> str | None:
             return root
         if not compact.startswith(root):
             continue
-        suffix = compact[len(root):]
+        suffix = compact[len(root) :]
         if not suffix:
             return root
         if suffix in {"USD", "USDT"}:

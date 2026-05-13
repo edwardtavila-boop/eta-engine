@@ -1,4 +1,5 @@
 """Tests for eta_engine.data.event_calendar — operator-curated event YAML reader."""
+
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
@@ -25,11 +26,11 @@ def test_load_valid_yaml(tmp_path) -> None:
     """A two-event YAML returns two CalendarEvents with fields populated."""
     yaml_text = (
         "events:\n"
-        "  - ts_utc: \"2026-06-18T18:00:00Z\"\n"
+        '  - ts_utc: "2026-06-18T18:00:00Z"\n'
         "    kind: FOMC\n"
         "    symbol: null\n"
         "    severity: 3\n"
-        "  - ts_utc: \"2026-05-13T12:30:00Z\"\n"
+        '  - ts_utc: "2026-05-13T12:30:00Z"\n'
         "    kind: CPI\n"
         "    symbol: null\n"
         "    severity: 3\n"
@@ -54,10 +55,7 @@ def test_upcoming_filters_horizon(tmp_path) -> None:
     yaml_text = "events:\n"
     for ts, kind in events:
         yaml_text += (
-            f"  - ts_utc: \"{ts.strftime('%Y-%m-%dT%H:%M:%SZ')}\"\n"
-            f"    kind: {kind}\n"
-            "    symbol: null\n"
-            "    severity: 2\n"
+            f'  - ts_utc: "{ts.strftime("%Y-%m-%dT%H:%M:%SZ")}"\n    kind: {kind}\n    symbol: null\n    severity: 2\n'
         )
     path = tmp_path / "cal.yaml"
     path.write_text(yaml_text, encoding="utf-8")
@@ -73,7 +71,7 @@ def test_upcoming_ignores_past(tmp_path) -> None:
     past_ts = now - timedelta(minutes=10)
     yaml_text = (
         "events:\n"
-        f"  - ts_utc: \"{past_ts.strftime('%Y-%m-%dT%H:%M:%SZ')}\"\n"
+        f'  - ts_utc: "{past_ts.strftime("%Y-%m-%dT%H:%M:%SZ")}"\n'
         "    kind: FOMC\n"
         "    symbol: null\n"
         "    severity: 3\n"

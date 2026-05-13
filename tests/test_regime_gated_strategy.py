@@ -28,8 +28,13 @@ from eta_engine.strategies.regime_gated_strategy import (
 def _bar(idx: int, close: float, *, hi_off: float = 0.5, lo_off: float = 0.5) -> BarData:
     ts = datetime(2026, 1, 1, tzinfo=UTC) + timedelta(hours=idx)
     return BarData(
-        timestamp=ts, symbol="BTC", open=close,
-        high=close + hi_off, low=close - lo_off, close=close, volume=1000.0,
+        timestamp=ts,
+        symbol="BTC",
+        open=close,
+        high=close + hi_off,
+        low=close - lo_off,
+        close=close,
+        volume=1000.0,
     )
 
 
@@ -37,25 +42,41 @@ def _config() -> BacktestConfig:
     return BacktestConfig(
         start_date=datetime(2026, 1, 1, tzinfo=UTC),
         end_date=datetime(2026, 12, 31, tzinfo=UTC),
-        symbol="BTC", initial_equity=10_000.0,
-        risk_per_trade_pct=0.01, confluence_threshold=0.0,
+        symbol="BTC",
+        initial_equity=10_000.0,
+        risk_per_trade_pct=0.01,
+        confluence_threshold=0.0,
         max_trades_per_day=100,
     )
 
 
 def _open_buy(bar: BarData) -> _Open:
     return _Open(
-        entry_bar=bar, side="BUY", qty=1.0, entry_price=bar.close,
-        stop=bar.close - 1.0, target=bar.close + 3.0,
-        risk_usd=10.0, confluence=10.0, leverage=1.0, regime="stub",
+        entry_bar=bar,
+        side="BUY",
+        qty=1.0,
+        entry_price=bar.close,
+        stop=bar.close - 1.0,
+        target=bar.close + 3.0,
+        risk_usd=10.0,
+        confluence=10.0,
+        leverage=1.0,
+        regime="stub",
     )
 
 
 def _open_sell(bar: BarData) -> _Open:
     return _Open(
-        entry_bar=bar, side="SELL", qty=1.0, entry_price=bar.close,
-        stop=bar.close + 1.0, target=bar.close - 3.0,
-        risk_usd=10.0, confluence=10.0, leverage=1.0, regime="stub",
+        entry_bar=bar,
+        side="SELL",
+        qty=1.0,
+        entry_price=bar.close,
+        stop=bar.close + 1.0,
+        target=bar.close - 3.0,
+        risk_usd=10.0,
+        confluence=10.0,
+        leverage=1.0,
+        regime="stub",
     )
 
 
@@ -66,7 +87,10 @@ class _AlwaysBuyStub:
     fired: int = 0
 
     def maybe_enter(
-        self, bar: BarData, hist: list[BarData], equity: float,
+        self,
+        bar: BarData,
+        hist: list[BarData],
+        equity: float,
         config: BacktestConfig,
     ) -> _Open | None:
         self.fired += 1
@@ -80,7 +104,10 @@ class _AlwaysSellStub:
     fired: int = 0
 
     def maybe_enter(
-        self, bar: BarData, hist: list[BarData], equity: float,
+        self,
+        bar: BarData,
+        hist: list[BarData],
+        equity: float,
         config: BacktestConfig,
     ) -> _Open | None:
         self.fired += 1
@@ -92,7 +119,10 @@ class _NeverFireStub:
     """Sub-strategy that never proposes any entry."""
 
     def maybe_enter(
-        self, bar: BarData, hist: list[BarData], equity: float,
+        self,
+        bar: BarData,
+        hist: list[BarData],
+        equity: float,
         config: BacktestConfig,
     ) -> _Open | None:
         return None
@@ -101,9 +131,14 @@ class _NeverFireStub:
 def _short_warmup_cfg(**overrides: object) -> RegimeGatedConfig:
     """Tiny classifier so tests don't need 220 bars to warm up."""
     cls_cfg = HtfRegimeClassifierConfig(
-        fast_ema=5, slow_ema=15, slope_lookback=3,
-        slope_threshold_pct=0.05, trend_distance_pct=2.0,
-        range_atr_pct_max=2.0, atr_period=5, warmup_bars=20,
+        fast_ema=5,
+        slow_ema=15,
+        slope_lookback=3,
+        slope_threshold_pct=0.05,
+        trend_distance_pct=2.0,
+        range_atr_pct_max=2.0,
+        atr_period=5,
+        warmup_bars=20,
     )
     return RegimeGatedConfig(classifier=cls_cfg, **overrides)  # type: ignore[arg-type]
 
@@ -237,7 +272,10 @@ class _StubWithProviders:
         self.lth_attached = p
 
     def maybe_enter(
-        self, bar: BarData, hist: list[BarData], equity: float,
+        self,
+        bar: BarData,
+        hist: list[BarData],
+        equity: float,
         config: BacktestConfig,
     ) -> _Open | None:
         return None

@@ -31,16 +31,28 @@ from eta_engine.strategies.crypto_trend_strategy import (
 # ---------------------------------------------------------------------------
 
 
-def _bar(idx: int, *, h: float, low: float, c: float | None = None,
-         o: float | None = None, v: float = 1000.0,
-         tf_minutes: int = 60) -> BarData:
+def _bar(
+    idx: int,
+    *,
+    h: float,
+    low: float,
+    c: float | None = None,
+    o: float | None = None,
+    v: float = 1000.0,
+    tf_minutes: int = 60,
+) -> BarData:
     """Synthetic bar at 2026-01-01 00:00 UTC + idx*tf_minutes."""
     ts = datetime(2026, 1, 1, tzinfo=UTC) + timedelta(minutes=idx * tf_minutes)
     o = o if o is not None else (h + low) / 2
     c = c if c is not None else (h + low) / 2
     return BarData(
-        timestamp=ts, symbol="BTC", open=o, high=h, low=low,
-        close=c, volume=v,
+        timestamp=ts,
+        symbol="BTC",
+        open=o,
+        high=h,
+        low=low,
+        close=c,
+        volume=v,
     )
 
 
@@ -48,8 +60,10 @@ def _config() -> BacktestConfig:
     return BacktestConfig(
         start_date=datetime(2026, 1, 1, tzinfo=UTC),
         end_date=datetime(2026, 12, 31, tzinfo=UTC),
-        symbol="BTC", initial_equity=10_000.0,
-        risk_per_trade_pct=0.01, confluence_threshold=0.0,
+        symbol="BTC",
+        initial_equity=10_000.0,
+        risk_per_trade_pct=0.01,
+        confluence_threshold=0.0,
         max_trades_per_day=10,
     )
 
@@ -61,8 +75,12 @@ def _config() -> BacktestConfig:
 
 def _trend(**overrides) -> CryptoTrendStrategy:  # type: ignore[no-untyped-def]
     base = {
-        "warmup_bars": 5, "fast_ema": 3, "slow_ema": 7,
-        "htf_ema": 0, "atr_period": 5, "min_bars_between_trades": 0,
+        "warmup_bars": 5,
+        "fast_ema": 3,
+        "slow_ema": 7,
+        "htf_ema": 0,
+        "atr_period": 5,
+        "min_bars_between_trades": 0,
     }
     base.update(overrides)
     return CryptoTrendStrategy(CryptoTrendConfig(**base))
@@ -89,8 +107,7 @@ def test_trend_long_fires_on_fast_over_slow_cross() -> None:
     # Sharp reversal up — fast EMA snaps above slow within a few bars
     out_signal: object = None
     for i in range(15, 35):
-        b = _bar(i, h=70 + (i - 14) * 5 + 2, low=70 + (i - 14) * 5 - 2,
-                c=70 + (i - 14) * 5)
+        b = _bar(i, h=70 + (i - 14) * 5 + 2, low=70 + (i - 14) * 5 - 2, c=70 + (i - 14) * 5)
         hist.append(b)
         out = s.maybe_enter(b, hist, 10_000.0, cfg)
         if out is not None:
@@ -134,7 +151,9 @@ def test_trend_htf_bias_blocks_long_below_htf() -> None:
 
 def _meanrev(**overrides) -> CryptoMeanRevStrategy:  # type: ignore[no-untyped-def]
     base = {
-        "bb_period": 10, "rsi_period": 5, "atr_period": 5,
+        "bb_period": 10,
+        "rsi_period": 5,
+        "atr_period": 5,
         "min_bars_between_trades": 0,
     }
     base.update(overrides)
@@ -217,8 +236,11 @@ def test_meanrev_no_signal_on_drift_within_band() -> None:
 
 def _scalp(**overrides) -> CryptoScalpStrategy:  # type: ignore[no-untyped-def]
     base = {
-        "lookback_bars": 5, "vwap_lookback": 5, "rsi_period": 5,
-        "atr_period": 5, "min_bars_between_trades": 0,
+        "lookback_bars": 5,
+        "vwap_lookback": 5,
+        "rsi_period": 5,
+        "atr_period": 5,
+        "min_bars_between_trades": 0,
     }
     base.update(overrides)
     return CryptoScalpStrategy(CryptoScalpConfig(**base))

@@ -1,5 +1,6 @@
 """Direct fleet soak — bypass paper_soak_tracker's threading issues on VPS.
 Supports multi-session mode: soak_direct.py 7  for 7 sessions x 60d each."""
+
 import json
 import os
 import subprocess
@@ -86,13 +87,13 @@ with open(str(LOG), "w", encoding="utf-8") as log:
                         "bars": iso.get("bars_processed", 0),
                         "signals": iso.get("signals", 0),
                         "trades": trades,
-                        "winners": sum(1 for _ in range(trades) if _ < trades * wr/100),
-                        "losers": trades - int(trades * wr/100) if wr > 0 else trades,
+                        "winners": sum(1 for _ in range(trades) if _ < trades * wr / 100),
+                        "losers": trades - int(trades * wr / 100) if wr > 0 else trades,
                         "win_rate": wr,
                         "pnl": pnl,
                         "gross_pnl": iso.get("gross_pnl", pnl),
                         "commissions": iso.get("total_comm", 0),
-                        "avg_pnl_per_trade": pnl/max(trades, 1),
+                        "avg_pnl_per_trade": pnl / max(trades, 1),
                         "max_dd": iso.get("mdd", 0),
                         "rth_trades": rth,
                         "overnight_trades": ovn,
@@ -122,18 +123,15 @@ with open(str(LOG), "w", encoding="utf-8") as log:
             for b in eligible
             if ledger["bot_sessions"].get(b.bot_id)
         )
-        print(f"  Session {session_num+1} PnL: ${session_pnl:+.0f} ({session_elapsed/60:.1f} min)", flush=True)
-        log.write(f"Session {session_num+1} complete: {session_elapsed/60:.1f} min\n")
+        print(f"  Session {session_num + 1} PnL: ${session_pnl:+.0f} ({session_elapsed / 60:.1f} min)", flush=True)
+        log.write(f"Session {session_num + 1} complete: {session_elapsed / 60:.1f} min\n")
         log.flush()
 
 elapsed = time.time() - t0
 
 # Summary
-print(f"\n=== COMPLETE ({elapsed/60:.1f} min, {SESSIONS} sessions) ===")
-total_pnl = sum(
-    sum(s.get("pnl", 0) for s in sessions)
-    for sessions in ledger.get("bot_sessions", {}).values()
-)
+print(f"\n=== COMPLETE ({elapsed / 60:.1f} min, {SESSIONS} sessions) ===")
+total_pnl = sum(sum(s.get("pnl", 0) for s in sessions) for sessions in ledger.get("bot_sessions", {}).values())
 sessions_total = sum(len(s) for s in ledger.get("bot_sessions", {}).values())
 print(f"Bots: {len(eligible)} | Sessions: {sessions_total} | Fleet PnL: ${total_pnl:+.2f}")
 print(f"Ledger: {LEDGER}")

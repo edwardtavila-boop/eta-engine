@@ -22,6 +22,7 @@ Rules (applied in order, accumulating):
 4. ``open_correlated_exposure > 0.75`` -> multiply by 0.6.
 5. Clamp modifier to [0.0, 1.5].
 """
+
 from __future__ import annotations
 
 import importlib
@@ -41,9 +42,7 @@ _BUDGET_SENTINEL = 1e9
 
 # Fallback fleet-state JSON path (used when fleet_allocator.current_exposure
 # is not available at runtime).
-_FLEET_STATE_PATH = Path(
-    r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\fleet_state.json"
-)
+_FLEET_STATE_PATH = Path(r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\fleet_state.json")
 
 # Rule thresholds (kept module-level for easy operator override + testing).
 _DRAWDOWN_TIGHTEN_R = -2.0
@@ -63,8 +62,8 @@ class PortfolioContext:
     fleet_long_notional_by_asset: dict[str, float]
     fleet_short_notional_by_asset: dict[str, float]
     recent_entries_by_asset: dict[str, int]
-    open_correlated_exposure: float       # 0..1
-    portfolio_drawdown_today_r: float     # negative when in drawdown
+    open_correlated_exposure: float  # 0..1
+    portfolio_drawdown_today_r: float  # negative when in drawdown
     fleet_kill_active: bool
 
 
@@ -72,7 +71,7 @@ class PortfolioContext:
 class PortfolioVerdict:
     """Result of evaluating a request against the current portfolio."""
 
-    size_modifier: float                  # multiplicative, clamped [0.0, 1.5]
+    size_modifier: float  # multiplicative, clamped [0.0, 1.5]
     block_reason: str | None
     notes: tuple[str, ...] = field(default_factory=tuple)
 
@@ -99,21 +98,15 @@ def assess(req: Any, ctx: PortfolioContext) -> PortfolioVerdict:  # noqa: ANN401
     # Rule 2: drawdown tighten.
     if ctx.portfolio_drawdown_today_r < _DRAWDOWN_TIGHTEN_R:
         modifier *= _DRAWDOWN_MODIFIER
-        notes.append(
-            f"drawdown_tighten: {ctx.portfolio_drawdown_today_r:.1f}R"
-        )
+        notes.append(f"drawdown_tighten: {ctx.portfolio_drawdown_today_r:.1f}R")
 
     # Rule 3: same-asset notional concentration.
     asset_key = _extract_asset_key(req)
     if asset_key is not None:
-        same_asset_notional = ctx.fleet_long_notional_by_asset.get(
-            asset_key, 0.0
-        )
+        same_asset_notional = ctx.fleet_long_notional_by_asset.get(asset_key, 0.0)
         if same_asset_notional > _SAME_ASSET_NOTIONAL_LIMIT:
             modifier *= _SAME_ASSET_MODIFIER
-            notes.append(
-                f"correlated_exposure_${int(same_asset_notional / 1000)}k"
-            )
+            notes.append(f"correlated_exposure_${int(same_asset_notional / 1000)}k")
 
     # Rule 4: macro correlation cluster.
     if ctx.open_correlated_exposure > _CORRELATION_CLUSTER_LIMIT:
@@ -130,6 +123,7 @@ def assess(req: Any, ctx: PortfolioContext) -> PortfolioVerdict:  # noqa: ANN401
     # own clamp inside hermes_overrides.get_size_modifier(). NEVER raises.
     try:
         from eta_engine.brain.jarvis_v3 import hermes_overrides
+
         bot_id = getattr(req, "bot_id", "") or ""
         op_override = hermes_overrides.get_size_modifier(bot_id) if bot_id else None
         if op_override is not None:
@@ -174,36 +168,22 @@ def snapshot() -> PortfolioContext:
     if fleet_mod is not None:
         exposure = _safe_call(fleet_mod, "current_exposure")
         if isinstance(exposure, dict):
-            long_by_asset = _coerce_float_dict(
-                exposure.get("long_notional_by_asset", {})
-            )
-            short_by_asset = _coerce_float_dict(
-                exposure.get("short_notional_by_asset", {})
-            )
-            recent_by_asset = _coerce_int_dict(
-                exposure.get("recent_entries_by_asset", {})
-            )
+            long_by_asset = _coerce_float_dict(exposure.get("long_notional_by_asset", {}))
+            short_by_asset = _coerce_float_dict(exposure.get("short_notional_by_asset", {}))
+            recent_by_asset = _coerce_int_dict(exposure.get("recent_entries_by_asset", {}))
 
     # Fleet-state JSON fallback when fleet_allocator doesn't expose
     # current_exposure (or both notional dicts came back empty).
     if not long_by_asset and not short_by_asset:
         fleet_state = _load_fleet_state_json()
         if fleet_state:
-            long_by_asset = _coerce_float_dict(
-                fleet_state.get("long_notional_by_asset", {})
-            )
-            short_by_asset = _coerce_float_dict(
-                fleet_state.get("short_notional_by_asset", {})
-            )
-            recent_by_asset = _coerce_int_dict(
-                fleet_state.get("recent_entries_by_asset", {})
-            )
+            long_by_asset = _coerce_float_dict(fleet_state.get("long_notional_by_asset", {}))
+            short_by_asset = _coerce_float_dict(fleet_state.get("short_notional_by_asset", {}))
+            recent_by_asset = _coerce_int_dict(fleet_state.get("recent_entries_by_asset", {}))
 
     # Correlation regime detector -> open_correlated_exposure ----------------
     try:
-        corr_mod = _safe_import(
-            "eta_engine.brain.jarvis_v3.corr_regime_detector"
-        )
+        corr_mod = _safe_import("eta_engine.brain.jarvis_v3.corr_regime_detector")
     except Exception as exc:  # noqa: BLE001
         logger.debug("portfolio_brain: corr_regime_detector import errored: %s", exc)
         corr_mod = None
@@ -217,9 +197,7 @@ def snapshot() -> PortfolioContext:
         logger.debug("portfolio_brain: budget import errored: %s", exc)
         budget_mod = None
     if budget_mod is not None:
-        budget_remaining = _safe_call(
-            budget_mod, "risk_budget_remaining_today_r"
-        )
+        budget_remaining = _safe_call(budget_mod, "risk_budget_remaining_today_r")
         if budget_remaining is None:
             budget_remaining = _BUDGET_SENTINEL
         # ``risk_budget_remaining_today_r`` is informational; we don't
@@ -360,9 +338,6 @@ def _compute_open_correlation(corr_mod: ModuleType) -> float:
         shifts = _safe_call(corr_mod, "detect_shifts", rolling, baseline)
         if isinstance(shifts, list) and shifts:
             severity_rank = {"minor": 0.3, "material": 0.6, "extreme": 0.9}
-            worst = max(
-                severity_rank.get(getattr(s, "severity", "minor"), 0.0)
-                for s in shifts
-            )
+            worst = max(severity_rank.get(getattr(s, "severity", "minor"), 0.0) for s in shifts)
             return worst
     return 0.0

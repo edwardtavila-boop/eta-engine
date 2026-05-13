@@ -69,8 +69,7 @@ if TYPE_CHECKING:
             hist: list[BarData],
             equity: float,
             config: BacktestConfig,
-        ) -> _Open | None:
-            ...
+        ) -> _Open | None: ...
 
 
 @dataclass(frozen=True)
@@ -138,8 +137,8 @@ class ConfluenceScorecardStrategy:
         self._fast_ema: float | None = None
         self._mid_ema: float | None = None
         self._slow_ema: float | None = None
-        self._vwap_pv: float = 0.0   # cumulative price*volume (session)
-        self._vwap_v: float = 0.0    # cumulative volume (session)
+        self._vwap_pv: float = 0.0  # cumulative price*volume (session)
+        self._vwap_v: float = 0.0  # cumulative volume (session)
         self._vwap_day: object | None = None
         self._tr_window: deque[float] = deque(
             maxlen=self.cfg.atr_pct_lookback + 5,
@@ -160,7 +159,8 @@ class ConfluenceScorecardStrategy:
     # -- predicate plumbing -------------------------------------------------
 
     def attach_htf_agreement(
-        self, predicate: Callable[[BarData, str], bool] | None,
+        self,
+        predicate: Callable[[BarData, str], bool] | None,
     ) -> None:
         """Attach a higher-timeframe agreement predicate.
         Signature: ``predicate(bar, side) -> bool``.
@@ -168,14 +168,16 @@ class ConfluenceScorecardStrategy:
         self._htf_predicate = predicate
 
     def attach_session_predicate(
-        self, predicate: Callable[[BarData], bool] | None,
+        self,
+        predicate: Callable[[BarData], bool] | None,
     ) -> None:
         """Attach a high-liquidity-session predicate.
         Returns True if bar timestamp is in a desirable session window."""
         self._session_predicate = predicate
 
     def attach_liquidity_predicate(
-        self, predicate: Callable[[BarData, str], bool] | None,
+        self,
+        predicate: Callable[[BarData, str], bool] | None,
     ) -> None:
         """Attach a liquidity-level proximity predicate.
         Returns True if a key level (PDH/PDL/VWAP/round-number) was
@@ -199,23 +201,11 @@ class ConfluenceScorecardStrategy:
         """+1 if EMA stack agrees with side; 0 otherwise."""
         if not self.cfg.enable_trend_factor:
             return 0
-        if (
-            self._fast_ema is None
-            or self._mid_ema is None
-            or self._slow_ema is None
-        ):
+        if self._fast_ema is None or self._mid_ema is None or self._slow_ema is None:
             return 0
-        if (
-            side == "BUY"
-            and self._fast_ema > self._mid_ema > self._slow_ema
-            and bar.close > self._fast_ema
-        ):
+        if side == "BUY" and self._fast_ema > self._mid_ema > self._slow_ema and bar.close > self._fast_ema:
             return 1
-        if (
-            side == "SELL"
-            and self._fast_ema < self._mid_ema < self._slow_ema
-            and bar.close < self._fast_ema
-        ):
+        if side == "SELL" and self._fast_ema < self._mid_ema < self._slow_ema and bar.close < self._fast_ema:
             return 1
         return 0
 
@@ -238,7 +228,7 @@ class ConfluenceScorecardStrategy:
             return 0
         if len(self._tr_window) < self.cfg.atr_period:
             return 0
-        recent_tr = list(self._tr_window)[-self.cfg.atr_period:]
+        recent_tr = list(self._tr_window)[-self.cfg.atr_period :]
         atr = sum(recent_tr) / len(recent_tr)
         if len(self._tr_window) < self.cfg.atr_pct_lookback:
             return 0
@@ -259,7 +249,7 @@ class ConfluenceScorecardStrategy:
         vols = list(self._volume_window)
         mean = sum(vols) / len(vols)
         var = sum((v - mean) ** 2 for v in vols) / len(vols)
-        std = var ** 0.5
+        std = var**0.5
         if std <= 0.0:
             return 0
         z = (bar.volume - mean) / std
@@ -357,12 +347,12 @@ class ConfluenceScorecardStrategy:
             self._n_a_plus += 1
             scaled_qty = opened.qty * self.cfg.a_plus_size_mult
             scaled_risk = opened.risk_usd * self.cfg.a_plus_size_mult
-            new_tag = (
-                f"{opened.regime}_score{score}_aplus"
-                if self.cfg.tag_score else opened.regime
-            )
+            new_tag = f"{opened.regime}_score{score}_aplus" if self.cfg.tag_score else opened.regime
             return replace(
-                opened, qty=scaled_qty, risk_usd=scaled_risk, regime=new_tag,
+                opened,
+                qty=scaled_qty,
+                risk_usd=scaled_risk,
+                regime=new_tag,
             )
 
         if self.cfg.tag_score:

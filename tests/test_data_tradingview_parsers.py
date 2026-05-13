@@ -22,13 +22,19 @@ def _frame(payload_json: str) -> str:
 
 
 def test_parse_quote_frame_qsd_tick() -> None:
-    body = json.dumps({
-        "m": "qsd",
-        "p": ["sess1", {
-            "n": "BINANCE:BTCUSDT", "s": "ok",
-            "v": {"lp": 50_000.5, "lp_time": 1_714_000_000},
-        }],
-    })
+    body = json.dumps(
+        {
+            "m": "qsd",
+            "p": [
+                "sess1",
+                {
+                    "n": "BINANCE:BTCUSDT",
+                    "s": "ok",
+                    "v": {"lp": 50_000.5, "lp_time": 1_714_000_000},
+                },
+            ],
+        }
+    )
     out = parse_quote_frame(_frame(body))
     assert len(out) == 1
     assert out[0]["kind"] == "tick"
@@ -38,15 +44,20 @@ def test_parse_quote_frame_qsd_tick() -> None:
 
 
 def test_parse_quote_frame_timescale_update_bar() -> None:
-    body = json.dumps({
-        "m": "timescale_update",
-        "p": ["chart1", {
-            "sds_1": {
-                "ns": {"d": "BINANCE:BTCUSDT"},
-                "s":  [{"i": 0, "v": [1_714_000_000, 50000, 50100, 49900, 50050, 12.5]}],
-            },
-        }],
-    })
+    body = json.dumps(
+        {
+            "m": "timescale_update",
+            "p": [
+                "chart1",
+                {
+                    "sds_1": {
+                        "ns": {"d": "BINANCE:BTCUSDT"},
+                        "s": [{"i": 0, "v": [1_714_000_000, 50000, 50100, 49900, 50050, 12.5]}],
+                    },
+                },
+            ],
+        }
+    )
     out = parse_quote_frame(_frame(body))
     assert len(out) == 1
     bar = out[0]
@@ -123,10 +134,14 @@ def test_parse_indicator_tooltip_returns_none_on_garbage() -> None:
 
 
 def test_parse_watchlist_row_basic() -> None:
-    row = parse_watchlist_row({
-        "symbol": "BINANCE:BTCUSDT", "last": "50,123.4",
-        "chg": "+1.42%",  "vol": "1.2B",
-    })
+    row = parse_watchlist_row(
+        {
+            "symbol": "BINANCE:BTCUSDT",
+            "last": "50,123.4",
+            "chg": "+1.42%",
+            "vol": "1.2B",
+        }
+    )
     assert row is not None
     assert row["symbol"] == "BINANCE:BTCUSDT"
     assert row["last"] == 50_123.4
@@ -149,13 +164,15 @@ def test_parse_watchlist_row_handles_empty_fields() -> None:
 
 
 def test_parse_alert_row_definition() -> None:
-    out = parse_alert_row({
-        "name": "BTCUSDT > 60000",
-        "symbol": "BINANCE:BTCUSDT",
-        "condition": ">",
-        "value": "60000",
-        "active": True,
-    })
+    out = parse_alert_row(
+        {
+            "name": "BTCUSDT > 60000",
+            "symbol": "BINANCE:BTCUSDT",
+            "condition": ">",
+            "value": "60000",
+            "active": True,
+        }
+    )
     assert out is not None
     assert out["symbol"] == "BINANCE:BTCUSDT"
     assert out["condition"] == ">"
@@ -165,14 +182,16 @@ def test_parse_alert_row_definition() -> None:
 
 
 def test_parse_alert_row_fired() -> None:
-    out = parse_alert_row({
-        "name": "ETH cross",
-        "symbol": "BINANCE:ETHUSDT",
-        "condition": "==",
-        "value": "3000",
-        "active": False,
-        "fired_at": "2026-04-20T12:00:00Z",
-    })
+    out = parse_alert_row(
+        {
+            "name": "ETH cross",
+            "symbol": "BINANCE:ETHUSDT",
+            "condition": "==",
+            "value": "3000",
+            "active": False,
+            "fired_at": "2026-04-20T12:00:00Z",
+        }
+    )
     assert out is not None
     assert out["active"] is False
     assert out["fired_at"] == "2026-04-20T12:00:00Z"

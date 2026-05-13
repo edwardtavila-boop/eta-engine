@@ -47,6 +47,7 @@ Run
     python -m eta_engine.scripts.diamond_direction_stratify
     python -m eta_engine.scripts.diamond_direction_stratify --json
 """
+
 from __future__ import annotations
 
 # ruff: noqa: PLR2004
@@ -61,18 +62,15 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKSPACE_ROOT = ROOT.parent
-TRADE_CLOSES_CANONICAL = (
-    WORKSPACE_ROOT / "var" / "eta_engine" / "state"
-    / "jarvis_intel" / "trade_closes.jsonl"
-)
+TRADE_CLOSES_CANONICAL = WORKSPACE_ROOT / "var" / "eta_engine" / "state" / "jarvis_intel" / "trade_closes.jsonl"
 TRADE_CLOSES_LEGACY = (
-    WORKSPACE_ROOT / "eta_engine" / "state"  # HISTORICAL-PATH-OK
-    / "jarvis_intel" / "trade_closes.jsonl"
+    WORKSPACE_ROOT
+    / "eta_engine"
+    / "state"  # HISTORICAL-PATH-OK
+    / "jarvis_intel"
+    / "trade_closes.jsonl"
 )
-OUT_LATEST = (
-    WORKSPACE_ROOT / "var" / "eta_engine" / "state"
-    / "diamond_direction_stratify_latest.json"
-)
+OUT_LATEST = WORKSPACE_ROOT / "var" / "eta_engine" / "state" / "diamond_direction_stratify_latest.json"
 
 #: Minimum trades per direction before the asymmetry verdict is trusted.
 #: With fewer, sampling noise dominates the comparison.
@@ -124,12 +122,14 @@ def _read_trades_dual_source() -> list[dict[str, Any]]:
                     rec = json.loads(line)
                 except json.JSONDecodeError:
                     continue
-                key = "|".join([
-                    str(rec.get("signal_id") or ""),
-                    str(rec.get("bot_id") or ""),
-                    str(rec.get("ts") or ""),
-                    str(rec.get("realized_r") or ""),
-                ])
+                key = "|".join(
+                    [
+                        str(rec.get("signal_id") or ""),
+                        str(rec.get("bot_id") or ""),
+                        str(rec.get("ts") or ""),
+                        str(rec.get("realized_r") or ""),
+                    ]
+                )
                 if key in seen:
                     continue
                 seen.add(key)
@@ -184,7 +184,8 @@ def _build_slice(rs: list[float]) -> DirectionSlice:
     sl.cum_r = round(sum(rs), 4)
     sl.avg_r = round(sum(rs) / len(rs), 4)
     sl.win_rate_pct = round(
-        100.0 * sum(1 for r in rs if r > 0) / len(rs), 2,
+        100.0 * sum(1 for r in rs if r > 0) / len(rs),
+        2,
     )
     return sl
 
@@ -193,10 +194,7 @@ def _classify(sc: DirectionScorecard) -> None:
     """Compute the verdict + rationale from the slice stats."""
     if sc.n_long < MIN_PER_DIRECTION or sc.n_short < MIN_PER_DIRECTION:
         sc.verdict = "INSUFFICIENT_DATA"
-        sc.rationale = (
-            f"need >= {MIN_PER_DIRECTION} per direction; "
-            f"have long={sc.n_long}, short={sc.n_short}"
-        )
+        sc.rationale = f"need >= {MIN_PER_DIRECTION} per direction; have long={sc.n_long}, short={sc.n_short}"
         return
 
     long_avg = sc.long.avg_r if sc.long.avg_r is not None else 0.0
@@ -209,8 +207,7 @@ def _classify(sc: DirectionScorecard) -> None:
     if not long_positive and not short_positive:
         sc.verdict = "BIDIRECTIONAL_LOSS"
         sc.rationale = (
-            f"both sides negative: long_avg={long_avg:+.3f}R, "
-            f"short_avg={short_avg:+.3f}R — strategy not working"
+            f"both sides negative: long_avg={long_avg:+.3f}R, short_avg={short_avg:+.3f}R — strategy not working"
         )
         return
     if long_positive and not short_positive:
@@ -234,8 +231,7 @@ def _classify(sc: DirectionScorecard) -> None:
     if diff < DOMINANCE_THRESHOLD_R:
         sc.verdict = "SYMMETRIC"
         sc.rationale = (
-            f"both sides similarly profitable: long={long_avg:+.3f}R, "
-            f"short={short_avg:+.3f}R, |diff|={diff:.3f}R"
+            f"both sides similarly profitable: long={long_avg:+.3f}R, short={short_avg:+.3f}R, |diff|={diff:.3f}R"
         )
         return
     if long_avg > short_avg:
@@ -301,8 +297,7 @@ def run() -> dict[str, Any]:
             by_bot[bid].append(t)
 
     scorecards: list[DirectionScorecard] = [
-        _score_bot(bot_id, by_bot.get(bot_id, []))
-        for bot_id in sorted(DIAMOND_BOTS)
+        _score_bot(bot_id, by_bot.get(bot_id, [])) for bot_id in sorted(DIAMOND_BOTS)
     ]
 
     counts: dict[str, int] = defaultdict(int)
@@ -320,7 +315,8 @@ def run() -> dict[str, Any]:
     try:
         OUT_LATEST.parent.mkdir(parents=True, exist_ok=True)
         OUT_LATEST.write_text(
-            json.dumps(summary, indent=2, default=str), encoding="utf-8",
+            json.dumps(summary, indent=2, default=str),
+            encoding="utf-8",
         )
     except OSError as exc:
         print(f"WARN: write_latest failed: {exc}", file=sys.stderr)
@@ -349,9 +345,7 @@ def _print(summary: dict[str, Any]) -> None:
         asym = sc.get("asymmetry_r")
         long_avg_s = f"{long_avg:>+9.3f}" if long_avg is not None else f"{'—':>9s}"
         long_wr_s = f"{long_wr:>6.1f}%" if long_wr is not None else f"{'—':>7s}"
-        short_avg_s = (
-            f"{short_avg:>+10.3f}" if short_avg is not None else f"{'—':>10s}"
-        )
+        short_avg_s = f"{short_avg:>+10.3f}" if short_avg is not None else f"{'—':>10s}"
         short_wr_s = f"{short_wr:>7.1f}%" if short_wr is not None else f"{'—':>8s}"
         asym_s = f"{asym:>+7.3f}" if asym is not None else f"{'—':>7s}"
         print(

@@ -572,7 +572,7 @@ class TestStatusCli:
                             }
                         ],
                     },
-                )
+                ),
             ],
         )
 
@@ -587,7 +587,5 @@ class TestStatusCli:
         assert queue["summary"]["BLOCKED"] == 2
         assert queue["top_blockers"][0]["op_id"] == "OP-18"
         assert queue["top_blockers"][0]["evidence"]["overall_severity"] == "amber"
-        assert queue["top_blockers"][0]["next_actions"] == [
-            "cp .env.example .env && chmod 600 .env"
-        ]
+        assert queue["top_blockers"][0]["next_actions"] == ["cp .env.example .env && chmod 600 .env"]
         assert queue["next_actions"][0] == "cp .env.example .env && chmod 600 .env"

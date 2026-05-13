@@ -5,6 +5,7 @@ with Hermes Agent and tools propagate naturally. This module remains
 the backstop for unreachable-Hermes alerting and existing
 firm_command_center slash-command flows.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -39,9 +40,7 @@ DEFAULT_HEALTH_FILE = ROOT / "docs" / "jarvis_live_health.json"
 # now points at the single canonical hermes state file under
 # ``<workspace>/var/eta_engine/state/jarvis_intel/``.
 _WORKSPACE_ROOT = Path(__file__).resolve().parents[3]
-DEFAULT_STATE_FILE = (
-    _WORKSPACE_ROOT / "var" / "eta_engine" / "state" / "jarvis_intel" / "hermes_state.json"
-)
+DEFAULT_STATE_FILE = _WORKSPACE_ROOT / "var" / "eta_engine" / "state" / "jarvis_intel" / "hermes_state.json"
 
 _LAST_UPDATE_ID = 0
 
@@ -66,6 +65,7 @@ async def send_message(text: str, parse_mode: str = "Markdown") -> bool:
         return False
     try:
         import httpx
+
         async with httpx.AsyncClient(timeout=10) as c:
             r = await c.post(
                 f"https://api.telegram.org/bot{tok}/sendMessage",
@@ -78,7 +78,13 @@ async def send_message(text: str, parse_mode: str = "Markdown") -> bool:
 
 
 async def send_alert(title: str, message: str, level: str = "INFO") -> bool:
-    icon = {"INFO": "\u2139\ufe0f", "WARN": "\u26a0\ufe0f", "ERROR": "\u274c", "CRITICAL": "\ud83d\udd34", "KILL": "\ud83d\udc80"}
+    icon = {
+        "INFO": "\u2139\ufe0f",
+        "WARN": "\u26a0\ufe0f",
+        "ERROR": "\u274c",
+        "CRITICAL": "\ud83d\udd34",
+        "KILL": "\ud83d\udc80",
+    }
     prefix = icon.get(level, "\u2139\ufe0f")
     text = f"{prefix} *{title}*\n{message}"
     return await send_message(text)
@@ -103,17 +109,11 @@ async def send_hermes_backoff_alert(*, recovered: bool = False) -> bool:
     _LAST_BACKOFF_ALERT_AT = now
     if recovered:
         title = "Hermes Agent recovered"
-        message = (
-            "Hermes is responding again; JARVIS hot-path Hermes calls "
-            "re-enabled."
-        )
+        message = "Hermes is responding again; JARVIS hot-path Hermes calls re-enabled."
         level = "INFO"
     else:
         title = "Hermes Agent unreachable"
-        message = (
-            "3+ consecutive Hermes calls failed. JARVIS falling back to "
-            "legacy paths for ~5 min."
-        )
+        message = "3+ consecutive Hermes calls failed. JARVIS falling back to legacy paths for ~5 min."
         level = "WARN"
     return await send_alert(title, message, level=level)
 
@@ -139,6 +139,7 @@ async def poll_commands() -> list[dict]:
         return []
     try:
         import httpx
+
         async with httpx.AsyncClient(timeout=10) as c:
             r = await c.get(
                 f"https://api.telegram.org/bot{tok}/getUpdates",
@@ -157,12 +158,14 @@ async def poll_commands() -> list[dict]:
                 text = msg.get("text", "").strip()
                 chat_id = str(msg.get("chat", {}).get("id", ""))
                 if text.startswith("/") and chat_id == _chat_id():
-                    commands.append({
-                        "text": text,
-                        "chat_id": chat_id,
-                        "update_id": upd.get("update_id"),
-                        "timestamp": datetime.now(UTC).isoformat(),
-                    })
+                    commands.append(
+                        {
+                            "text": text,
+                            "chat_id": chat_id,
+                            "update_id": upd.get("update_id"),
+                            "timestamp": datetime.now(UTC).isoformat(),
+                        }
+                    )
             return commands
     except Exception as exc:
         logger.debug("hermes: poll failed: %s", exc)
@@ -172,7 +175,7 @@ async def poll_commands() -> list[dict]:
 async def process_command(cmd_text: str) -> str | None:
     """Process a Telegram command and return a response text."""
     cmd = cmd_text.lower().split()[0]
-    args = cmd_text[len(cmd):].strip()
+    args = cmd_text[len(cmd) :].strip()
 
     try:
         if cmd == "/start":
@@ -223,6 +226,7 @@ async def _cmd_status() -> str:
         import json as j
         import ssl
         import urllib.request
+
         ctx = ssl.create_default_context()
         ctx.check_hostname = False
         ctx.verify_mode = ssl.CERT_NONE
@@ -244,6 +248,7 @@ async def _cmd_strategies() -> str:
     try:
         sys.path.insert(0, str(ROOT))
         from eta_engine.strategies.per_bot_registry import bots
+
         bot_list = list(bots())
         if not bot_list:
             return "No strategies registered"
@@ -288,11 +293,7 @@ async def _cmd_kaizen() -> str:
 
 async def _cmd_kill(args: str) -> str:
     if args.strip().lower() != "confirm":
-        return (
-            "\u2622\ufe0f *KILL COMMAND*\n"
-            "This halts ALL trading. To confirm:\n"
-            "`/kill confirm`"
-        )
+        return "\u2622\ufe0f *KILL COMMAND*\nThis halts ALL trading. To confirm:\n`/kill confirm`"
     try:
         # Single canonical write target per CLAUDE.md hard rule #1.
         # The previous fan-out across three latch directories
@@ -301,27 +302,32 @@ async def _cmd_kill(args: str) -> str:
         # earlier migration \u2014 we collapse it now so the runtime has one
         # source of truth for the kill latch.
         from eta_engine.scripts import workspace_roots  # noqa: PLC0415
+
         canonical_latch = workspace_roots.ETA_HERMES_KILL_LATCH_PATH
         canonical_latch.parent.mkdir(parents=True, exist_ok=True)
-        canonical_latch.write_text(
-            json.dumps({"killed_by": "telegram", "ts": datetime.now(UTC).isoformat()})
-        )
+        canonical_latch.write_text(json.dumps({"killed_by": "telegram", "ts": datetime.now(UTC).isoformat()}))
 
         # Stop FirmCore service
         try:
             import subprocess
-            subprocess.run(["powershell", "-Command", "Stop-Service FirmCore -Force"],
-                         capture_output=True, text=True, timeout=10)
-            subprocess.run(["powershell", "-Command", "Stop-Service FirmWatchdog -Force"],
-                         capture_output=True, text=True, timeout=10)
+
+            subprocess.run(
+                ["powershell", "-Command", "Stop-Service FirmCore -Force"], capture_output=True, text=True, timeout=10
+            )
+            subprocess.run(
+                ["powershell", "-Command", "Stop-Service FirmWatchdog -Force"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
         except Exception:
             pass
 
         # Stop Jarvis daemon
         try:
             import subprocess
-            subprocess.run(["schtasks", "/End", "/TN", "JarvisLiveDaemon"],
-                         capture_output=True, text=True, timeout=10)
+
+            subprocess.run(["schtasks", "/End", "/TN", "JarvisLiveDaemon"], capture_output=True, text=True, timeout=10)
         except Exception:
             pass
 
@@ -344,6 +350,7 @@ async def tick_poll() -> list[str]:
 
 # ── Telegram Webhook (FastAPI) ──────────────────────────────────────
 
+
 def create_webhook_app():
     """Return a FastAPI app with POST /webhook/telegram.
 
@@ -351,6 +358,7 @@ def create_webhook_app():
         curl -sk "https://api.telegram.org/bot<TOKEN>/setWebhook?url=https://<host>/webhook/telegram"
     """
     from fastapi import FastAPI, Request
+
     app = FastAPI(title="Hermes")
 
     @app.post("/webhook/telegram")
@@ -375,6 +383,7 @@ def create_webhook_app():
 async def start_webhook(host: str = "127.0.0.1", port: int = 8842) -> None:
     """Start the webhook server (blocking)."""
     import uvicorn
+
     app = create_webhook_app()
     cfg = uvicorn.Config(app, host=host, port=port, log_level="info")
     srv = uvicorn.Server(cfg)
@@ -386,10 +395,12 @@ def start_webhook_bg(host: str = "127.0.0.1", port: int = 8842):
     """Start webhook in a daemon thread (for use from scheduled task)."""
     import asyncio
     import threading
+
     def _run() -> None:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         loop.run_until_complete(start_webhook(host=host, port=port))
+
     t = threading.Thread(target=_run, daemon=True)
     t.start()
     return t
@@ -401,11 +412,11 @@ async def register_webhook(public_url: str) -> bool:
     if not tok or not public_url:
         return False
     import httpx
+
     try:
         url = f"{public_url.rstrip('/')}/webhook/telegram"
         async with httpx.AsyncClient(timeout=10) as c:
-            r = await c.get(f"https://api.telegram.org/bot{tok}/setWebhook",
-                          params={"url": url})
+            r = await c.get(f"https://api.telegram.org/bot{tok}/setWebhook", params={"url": url})
             ok = r.json().get("ok", False)
             logger.info("hermes webhook %s: %s", "registered" if ok else "failed", url)
             return ok
@@ -433,7 +444,6 @@ class JarvisNotification:
     body: str
     ts: datetime = field(default_factory=lambda: datetime.now(UTC))
     metadata: dict | None = None
-
 
     def as_telegram_html(self) -> str:
         icon = {"low": "", "normal": "", "high": "", "critical": "\u26a0\ufe0f "}
@@ -478,15 +488,17 @@ class HermesBridge:
         size: float = 1.0,
         pnl: float | None = None,
     ) -> None:
-        body_lines = [f"Action: {action}", f"Symbol: {symbol}", f"Size: {size*100:.0f}%", f"Verdict: {verdict}"]
+        body_lines = [f"Action: {action}", f"Symbol: {symbol}", f"Size: {size * 100:.0f}%", f"Verdict: {verdict}"]
         if pnl is not None:
             body_lines.append(f"PnL: {pnl:+.2f}")
-        self._enqueue(JarvisNotification(
-            priority=MessagePriority.HIGH,
-            title=f"Trade: {subsystem}",
-            body="\n".join(body_lines),
-            metadata={"subsystem": subsystem, "action": action, "symbol": symbol, "size": size, "pnl": pnl},
-        ))
+        self._enqueue(
+            JarvisNotification(
+                priority=MessagePriority.HIGH,
+                title=f"Trade: {subsystem}",
+                body="\n".join(body_lines),
+                metadata={"subsystem": subsystem, "action": action, "symbol": symbol, "size": size, "pnl": pnl},
+            )
+        )
 
     def notify_kaizen_cycle(
         self,
@@ -508,41 +520,57 @@ class HermesBridge:
             f"Quantum: {quantum_count} ops ${quantum_cost:.4f}\n"
             f"Duration: {duration_ms}ms"
         )
-        self._enqueue(JarvisNotification(
-            priority=MessagePriority.NORMAL,
-            title=f"Kaizen {cycle_id}",
-            body=body,
-            metadata={"cycle_id": cycle_id, "approved": proposals_approved, "rejected": proposals_rejected,
-                       "promoted": pro, "retired": ret},
-        ))
+        self._enqueue(
+            JarvisNotification(
+                priority=MessagePriority.NORMAL,
+                title=f"Kaizen {cycle_id}",
+                body=body,
+                metadata={
+                    "cycle_id": cycle_id,
+                    "approved": proposals_approved,
+                    "rejected": proposals_rejected,
+                    "promoted": pro,
+                    "retired": ret,
+                },
+            )
+        )
 
     def notify_strategy_lifecycle(
-        self, strategy_name: str, instrument: str = "MNQ",
-        from_status: str = "paper", to_status: str = "live",
+        self,
+        strategy_name: str,
+        instrument: str = "MNQ",
+        from_status: str = "paper",
+        to_status: str = "live",
     ) -> None:
-        self._enqueue(JarvisNotification(
-            priority=MessagePriority.CRITICAL,
-            title=f"Strategy {from_status}\u2192{to_status}: {instrument}/{strategy_name}",
-            body=f"Lifecycle transition: {from_status} \u2192 {to_status}",
-            metadata={"strategy": strategy_name, "instrument": instrument, "from": from_status, "to": to_status},
-        ))
+        self._enqueue(
+            JarvisNotification(
+                priority=MessagePriority.CRITICAL,
+                title=f"Strategy {from_status}\u2192{to_status}: {instrument}/{strategy_name}",
+                body=f"Lifecycle transition: {from_status} \u2192 {to_status}",
+                metadata={"strategy": strategy_name, "instrument": instrument, "from": from_status, "to": to_status},
+            )
+        )
 
     def notify_kill_switch(self, trigger: str = "drawdown", action: str = "flatten_all") -> None:
-        self._enqueue(JarvisNotification(
-            priority=MessagePriority.CRITICAL,
-            title="\u2620\ufe0f KILL SWITCH: " + trigger,
-            body=f"Jarvis triggered kill switch. Action: {action}",
-            metadata={"trigger": trigger, "action": action},
-        ))
+        self._enqueue(
+            JarvisNotification(
+                priority=MessagePriority.CRITICAL,
+                title="\u2620\ufe0f KILL SWITCH: " + trigger,
+                body=f"Jarvis triggered kill switch. Action: {action}",
+                metadata={"trigger": trigger, "action": action},
+            )
+        )
 
     def notify_system_health(self, health_score: float = 1.0, verdict: str = "healthy") -> None:
         pct = int(health_score * 100)
-        self._enqueue(JarvisNotification(
-            priority=MessagePriority.LOW if health_score >= 0.8 else MessagePriority.HIGH,
-            title=f"\U0001f7e2 System Health: {pct}%",
-            body=f"Verdict: {verdict}",
-            metadata={"health_score": health_score, "verdict": verdict},
-        ))
+        self._enqueue(
+            JarvisNotification(
+                priority=MessagePriority.LOW if health_score >= 0.8 else MessagePriority.HIGH,
+                title=f"\U0001f7e2 System Health: {pct}%",
+                body=f"Verdict: {verdict}",
+                metadata={"health_score": health_score, "verdict": verdict},
+            )
+        )
 
     # -- internal --
 
@@ -561,8 +589,10 @@ class HermesBridge:
             self.STORE_AND_FORWARD_PATH = path
         path.parent.mkdir(parents=True, exist_ok=True)
         record = {
-            "ts": note.ts.isoformat(), "priority": note.priority.value,
-            "title": note.title, "body": note.body,
+            "ts": note.ts.isoformat(),
+            "priority": note.priority.value,
+            "title": note.title,
+            "body": note.body,
             "metadata": note.metadata or {},
         }
         with path.open("a", encoding="utf-8") as f:
@@ -601,7 +631,8 @@ class HermesBridge:
                 record = json.loads(line)
                 note = JarvisNotification(
                     priority=MessagePriority(record["priority"]),
-                    title=record["title"], body=record["body"],
+                    title=record["title"],
+                    body=record["body"],
                     metadata=record.get("metadata"),
                 )
                 if await self._deliver(note):

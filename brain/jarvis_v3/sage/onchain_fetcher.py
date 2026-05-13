@@ -25,6 +25,7 @@ Usage::
 A single fetch is cached in-memory for ``CACHE_TTL_SECONDS`` (default
 300s) so the school doesn't pound public APIs every consult.
 """
+
 from __future__ import annotations
 
 import json
@@ -113,7 +114,9 @@ def _eth_onchain() -> dict[str, Any]:
             out["ethereum_tvl_usd"] = latest["tvl"]
 
     # Coingecko ETH market data
-    cg = _http_json("https://api.coingecko.com/api/v3/coins/ethereum?localization=false&tickers=false&community_data=false&developer_data=false")
+    cg = _http_json(
+        "https://api.coingecko.com/api/v3/coins/ethereum?localization=false&tickers=false&community_data=false&developer_data=false"
+    )
     if cg and isinstance(cg, dict):
         md = cg.get("market_data", {}) or {}
         out["price_usd"] = (md.get("current_price") or {}).get("usd")
@@ -172,13 +175,15 @@ def pre_fetch_boot_symbols() -> None:
     waits on HTTP round-trips. Safe to call from boot / warm scripts.
     """
     import threading
-    def _warm():
+
+    def _warm() -> None:
         for sym in ("BTCUSDT", "ETHUSDT"):
             try:
                 fetch_onchain(sym)
                 logger.debug("onchain pre-fetch: %s warmed", sym)
             except Exception:  # noqa: BLE001
                 pass
+
     t = threading.Thread(target=_warm, daemon=True)
     t.start()
 

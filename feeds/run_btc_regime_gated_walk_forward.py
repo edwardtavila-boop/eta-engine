@@ -103,19 +103,20 @@ def _build_daily_verdicts(symbol: str = "BTC") -> Any:  # noqa: ANN401
         )
         try:
             r = consult_sage(
-                ctx, parallel=False, use_cache=True,
+                ctx,
+                parallel=False,
+                use_cache=True,
                 apply_edge_weights=False,
             )
         except Exception as e:  # noqa: BLE001
             print(f"  WARN: sage failed at i={i}: {e!r}")
             continue
         bias = r.composite_bias.value
-        composite = (
-            1.0 if bias == "long"
-            else (-1.0 if bias == "short" else 0.0)
-        )
+        composite = 1.0 if bias == "long" else (-1.0 if bias == "short" else 0.0)
         verdicts[daily_bars[i - 1].timestamp.date()] = SageDailyVerdict(
-            direction=bias, conviction=r.conviction, composite=composite,
+            direction=bias,
+            conviction=r.conviction,
+            composite=composite,
         )
     print(f"[sage-daily] computed {len(verdicts)} daily verdicts")
 
@@ -167,10 +168,14 @@ def _build_daily_regime_provider(symbol: str = "BTC") -> Any:  # noqa: ANN401
     )
 
     cls_cfg = HtfRegimeClassifierConfig(
-        fast_ema=50, slow_ema=200,
-        slope_lookback=10, slope_threshold_pct=0.5,
-        trend_distance_pct=3.0, range_atr_pct_max=2.0,
-        atr_period=14, warmup_bars=220,
+        fast_ema=50,
+        slow_ema=200,
+        slope_lookback=10,
+        slope_threshold_pct=0.5,
+        trend_distance_pct=3.0,
+        range_atr_pct_max=2.0,
+        atr_period=14,
+        warmup_bars=220,
     )
     classifier = HtfRegimeClassifier(cls_cfg)
 
@@ -196,7 +201,9 @@ def _build_daily_regime_provider(symbol: str = "BTC") -> Any:  # noqa: ANN401
                 return classifications[prev]
         # Pre-coverage → return safe-veto neutral/volatile/skip
         return HtfRegimeClassification(
-            bias="neutral", regime="volatile", mode="skip",
+            bias="neutral",
+            regime="volatile",
+            mode="skip",
         )
 
     return _provider
@@ -286,7 +293,11 @@ def _build_regime_gated_factory(
 
 
 def _run_one(
-    label: str, factory: Any, bars: list, backtest_cfg: Any, wf: Any,  # noqa: ANN401
+    label: str,
+    factory: Any,
+    bars: list,
+    backtest_cfg: Any,
+    wf: Any,  # noqa: ANN401
 ) -> Any:  # noqa: ANN401
     from eta_engine.backtest import WalkForwardEngine
     from eta_engine.features.pipeline import FeaturePipeline
@@ -310,12 +321,10 @@ def _print_summary(label: str, res: Any) -> None:  # noqa: ANN401
     print(f"Windows:                     {len(res.windows)}")
     print(f"Aggregate IS Sharpe:         {res.aggregate_is_sharpe:>8.4f}")
     print(f"Aggregate OOS Sharpe:        {res.aggregate_oos_sharpe:>8.4f}")
-    print(f"Positive OOS windows:        {n_pos}/{len(res.windows)}"
-          f" ({n_pos / max(len(res.windows), 1) * 100:.1f}%)")
+    print(f"Positive OOS windows:        {n_pos}/{len(res.windows)} ({n_pos / max(len(res.windows), 1) * 100:.1f}%)")
     print(f"OOS degradation avg:         {res.oos_degradation_avg:>8.4f}")
     print(f"Per-fold DSR median:         {res.fold_dsr_median:>8.4f}")
-    print(f"Per-fold DSR pass fraction:  "
-          f"{res.fold_dsr_pass_fraction * 100:>7.2f}%")
+    print(f"Per-fold DSR pass fraction:  {res.fold_dsr_pass_fraction * 100:>7.2f}%")
     print(f"Gate: {'PASS' if res.pass_gate else 'FAIL'}")
     print("=" * 82)
 
@@ -327,19 +336,23 @@ def main() -> int:
     parser.add_argument("--window-days", type=int, default=90)
     parser.add_argument("--step-days", type=int, default=30)
     parser.add_argument(
-        "--etf-path", type=Path,
+        "--etf-path",
+        type=Path,
         default=MNQ_HISTORY_ROOT / "BTC_ETF_FLOWS.csv",
     )
     parser.add_argument(
-        "--compare", action="store_true",
+        "--compare",
+        action="store_true",
         help="Run BOTH ungated baseline and regime-gated; compare side-by-side.",
     )
     parser.add_argument(
-        "--strict-long-only", action="store_true",
+        "--strict-long-only",
+        action="store_true",
         help="Regime gate forces BUY only under LONG bias.",
     )
     parser.add_argument(
-        "--regime-only", action="store_true",
+        "--regime-only",
+        action="store_true",
         help="Run only the regime-gated variant (skip baseline).",
     )
     args = parser.parse_args()
@@ -368,30 +381,40 @@ def main() -> int:
     regime_provider = _build_daily_regime_provider(args.symbol)
 
     backtest_cfg = BacktestConfig(
-        start_date=bars[0].timestamp, end_date=bars[-1].timestamp,
-        symbol=ds.symbol, initial_equity=10_000.0,
-        risk_per_trade_pct=0.01, confluence_threshold=0.0,
+        start_date=bars[0].timestamp,
+        end_date=bars[-1].timestamp,
+        symbol=ds.symbol,
+        initial_equity=10_000.0,
+        risk_per_trade_pct=0.01,
+        confluence_threshold=0.0,
         max_trades_per_day=10,
     )
     wf = WalkForwardConfig(
-        window_days=args.window_days, step_days=args.step_days,
-        anchored=True, oos_fraction=0.3,
+        window_days=args.window_days,
+        step_days=args.step_days,
+        anchored=True,
+        oos_fraction=0.3,
         min_trades_per_window=3,
-        strict_fold_dsr_gate=True, fold_dsr_min_pass_fraction=0.5,
+        strict_fold_dsr_gate=True,
+        fold_dsr_min_pass_fraction=0.5,
     )
 
-    print(f"\n[wf] window={args.window_days}d step={args.step_days}d  "
-          f"strict_long_only={args.strict_long_only}")
+    print(f"\n[wf] window={args.window_days}d step={args.step_days}d  strict_long_only={args.strict_long_only}")
     print(f"[wf] timestamp: {datetime.now(UTC).isoformat()}")
 
     if args.regime_only:
         gated_factory = _build_regime_gated_factory(
-            provider, regime_provider, args.etf_path,
+            provider,
+            regime_provider,
+            args.etf_path,
             strict_long_only=args.strict_long_only,
         )
         res_g = _run_one(
-            "regime-gated +6.00 champion", gated_factory, bars,
-            backtest_cfg, wf,
+            "regime-gated +6.00 champion",
+            gated_factory,
+            bars,
+            backtest_cfg,
+            wf,
         )
         _print_summary("REGIME-GATED RESULT", res_g)
         return 0
@@ -399,18 +422,26 @@ def main() -> int:
     if args.compare:
         base_factory = _build_base_factory(provider, args.etf_path)
         res_b = _run_one(
-            "ungated +6.00 champion (baseline)", base_factory, bars,
-            backtest_cfg, wf,
+            "ungated +6.00 champion (baseline)",
+            base_factory,
+            bars,
+            backtest_cfg,
+            wf,
         )
         _print_summary("UNGATED BASELINE", res_b)
 
         gated_factory = _build_regime_gated_factory(
-            provider, regime_provider, args.etf_path,
+            provider,
+            regime_provider,
+            args.etf_path,
             strict_long_only=args.strict_long_only,
         )
         res_g = _run_one(
-            "regime-gated +6.00 champion", gated_factory, bars,
-            backtest_cfg, wf,
+            "regime-gated +6.00 champion",
+            gated_factory,
+            bars,
+            backtest_cfg,
+            wf,
         )
         _print_summary("REGIME-GATED RESULT", res_g)
 
@@ -446,22 +477,23 @@ def main() -> int:
             f"{res_g.fold_dsr_pass_fraction * 100:>14.2f}%"
             f"{(res_g.fold_dsr_pass_fraction - res_b.fold_dsr_pass_fraction) * 100:>+14.2f}%"
         )
-        print(
-            f"{'gate':<32}"
-            f"{'PASS' if res_b.pass_gate else 'FAIL':>15}"
-            f"{'PASS' if res_g.pass_gate else 'FAIL':>15}"
-        )
+        print(f"{'gate':<32}{'PASS' if res_b.pass_gate else 'FAIL':>15}{'PASS' if res_g.pass_gate else 'FAIL':>15}")
         print("=" * 82)
         return 0
 
     # Default: just run the regime-gated variant
     gated_factory = _build_regime_gated_factory(
-        provider, regime_provider, args.etf_path,
+        provider,
+        regime_provider,
+        args.etf_path,
         strict_long_only=args.strict_long_only,
     )
     res_g = _run_one(
-        "regime-gated +6.00 champion", gated_factory, bars,
-        backtest_cfg, wf,
+        "regime-gated +6.00 champion",
+        gated_factory,
+        bars,
+        backtest_cfg,
+        wf,
     )
     _print_summary("REGIME-GATED RESULT", res_g)
     return 0

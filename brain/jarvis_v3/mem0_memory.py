@@ -16,6 +16,7 @@ Usage::
     mem.store(category="trade_close", text="MNQ long breakout +2.4R", ...)
     hits = mem.search("long breakout above resistance high volume")
 """
+
 from __future__ import annotations
 
 import logging
@@ -45,6 +46,7 @@ class Mem0Memory:
         self._init_attempted = True
         try:
             import mem0  # noqa: F401
+
             try:
                 # Try FAISS in-memory (no external deps needed)
                 config = {
@@ -85,8 +87,13 @@ class Mem0Memory:
         return False
 
     def store(
-        self, *, category: str, goal: str, outcome: bool,
-        realized_r: float, metadata: dict[str, Any] | None = None,
+        self,
+        *,
+        category: str,
+        goal: str,
+        outcome: bool,
+        realized_r: float,
+        metadata: dict[str, Any] | None = None,
     ) -> bool:
         """Store one trading episode for future semantic retrieval."""
         if not self._ensure_init():
@@ -102,7 +109,11 @@ class Mem0Memory:
             return False
 
     def search(
-        self, query: str, *, k: int = 5, min_score: float = 0.25,
+        self,
+        query: str,
+        *,
+        k: int = 5,
+        min_score: float = 0.25,
     ) -> list[dict[str, Any]]:
         """Semantic search for similar trading episodes.
 
@@ -120,12 +131,14 @@ class Mem0Memory:
                     continue
                 mem = r.get("memory", "") or ""
                 meta = r.get("metadata", {}) or {}
-                filtered.append({
-                    "text": mem,
-                    "score": score,
-                    "category": meta.get("category", ""),
-                    "realized_r": meta.get("realized_r", 0.0),
-                })
+                filtered.append(
+                    {
+                        "text": mem,
+                        "score": score,
+                        "category": meta.get("category", ""),
+                        "realized_r": meta.get("realized_r", 0.0),
+                    }
+                )
             return filtered
         except Exception as exc:  # noqa: BLE001
             logger.debug("Mem0 search failed: %s", exc)

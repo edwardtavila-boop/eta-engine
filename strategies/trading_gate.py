@@ -34,6 +34,7 @@ for high-frequency callers.  Live entries fire at most a few per
 minute, so the cache TTL never gates a real decision in a
 meaningful way.
 """
+
 from __future__ import annotations
 
 import json
@@ -54,7 +55,7 @@ BLOCKING_DISK_VERDICTS = {"RED", "CRITICAL", "ERROR"}
 BLOCKING_CAPTURE_VERDICTS = {"RED", "ERROR"}
 
 # How stale can the most-recent digest be before we treat it as missing?
-MAX_DISK_DIGEST_AGE_SECONDS = 600    # 10 minutes
+MAX_DISK_DIGEST_AGE_SECONDS = 600  # 10 minutes
 MAX_CAPTURE_DIGEST_AGE_SECONDS = 1800  # 30 minutes
 
 # Cache TTL on the gate result so high-frequency callers don't pound disk
@@ -64,10 +65,11 @@ _CACHE_TTL_SECONDS = 30.0
 @dataclass
 class GateDecision:
     """Pre-trade gate verdict."""
+
     blocked: bool
-    reason: str           # "ok" | "disk_<verdict>" | "capture_<verdict>"
-                          # "disk_digest_stale" | "capture_digest_stale"
-                          # "no_disk_digest" | "no_capture_digest"
+    reason: str  # "ok" | "disk_<verdict>" | "capture_<verdict>"
+    # "disk_digest_stale" | "capture_digest_stale"
+    # "no_disk_digest" | "no_capture_digest"
     disk_verdict: str | None = None
     capture_verdict: str | None = None
     disk_age_seconds: float | None = None
@@ -96,8 +98,7 @@ def _last_jsonl_record(path: Path) -> dict | None:
         return None
 
 
-def _digest_age_seconds(record: dict | None,
-                         *, now: datetime | None = None) -> float | None:
+def _digest_age_seconds(record: dict | None, *, now: datetime | None = None) -> float | None:
     if record is None:
         return None
     ts = record.get("ts") or record.get("timestamp_utc")
@@ -119,9 +120,9 @@ def _digest_age_seconds(record: dict | None,
     return (now - dt).total_seconds()
 
 
-def check_pre_trade_gate(symbol: str | None = None,
-                          *, force_refresh: bool = False,
-                          now: datetime | None = None) -> GateDecision:
+def check_pre_trade_gate(
+    symbol: str | None = None, *, force_refresh: bool = False, now: datetime | None = None
+) -> GateDecision:
     """Read the latest disk-space + capture-health digests.  Return
     a GateDecision.  Strategies call this BEFORE placing entries.
 
@@ -155,43 +156,61 @@ def check_pre_trade_gate(symbol: str | None = None,
 
     if disk is None:
         decision = GateDecision(
-            blocked=True, reason="no_disk_digest",
-            disk_verdict=None, capture_verdict=cap_verdict,
-            disk_age_seconds=None, capture_age_seconds=cap_age,
+            blocked=True,
+            reason="no_disk_digest",
+            disk_verdict=None,
+            capture_verdict=cap_verdict,
+            disk_age_seconds=None,
+            capture_age_seconds=cap_age,
         )
     elif disk_verdict in BLOCKING_DISK_VERDICTS:
         decision = GateDecision(
-            blocked=True, reason=f"disk_{disk_verdict}",
-            disk_verdict=disk_verdict, capture_verdict=cap_verdict,
-            disk_age_seconds=disk_age, capture_age_seconds=cap_age,
+            blocked=True,
+            reason=f"disk_{disk_verdict}",
+            disk_verdict=disk_verdict,
+            capture_verdict=cap_verdict,
+            disk_age_seconds=disk_age,
+            capture_age_seconds=cap_age,
             detail={"worst_partition": disk.get("worst_partition")},
         )
     elif disk_age is not None and disk_age > MAX_DISK_DIGEST_AGE_SECONDS:
         decision = GateDecision(
-            blocked=True, reason="disk_digest_stale",
-            disk_verdict=disk_verdict, capture_verdict=cap_verdict,
-            disk_age_seconds=disk_age, capture_age_seconds=cap_age,
+            blocked=True,
+            reason="disk_digest_stale",
+            disk_verdict=disk_verdict,
+            capture_verdict=cap_verdict,
+            disk_age_seconds=disk_age,
+            capture_age_seconds=cap_age,
             detail={"max_age": MAX_DISK_DIGEST_AGE_SECONDS},
         )
     elif cap is not None and cap_verdict in BLOCKING_CAPTURE_VERDICTS:
         decision = GateDecision(
-            blocked=True, reason=f"capture_{cap_verdict}",
-            disk_verdict=disk_verdict, capture_verdict=cap_verdict,
-            disk_age_seconds=disk_age, capture_age_seconds=cap_age,
+            blocked=True,
+            reason=f"capture_{cap_verdict}",
+            disk_verdict=disk_verdict,
+            capture_verdict=cap_verdict,
+            disk_age_seconds=disk_age,
+            capture_age_seconds=cap_age,
             detail={"issues": cap.get("issues", [])},
         )
     elif cap_age is not None and cap_age > MAX_CAPTURE_DIGEST_AGE_SECONDS:
         decision = GateDecision(
-            blocked=True, reason="capture_digest_stale",
-            disk_verdict=disk_verdict, capture_verdict=cap_verdict,
-            disk_age_seconds=disk_age, capture_age_seconds=cap_age,
+            blocked=True,
+            reason="capture_digest_stale",
+            disk_verdict=disk_verdict,
+            capture_verdict=cap_verdict,
+            disk_age_seconds=disk_age,
+            capture_age_seconds=cap_age,
             detail={"max_age": MAX_CAPTURE_DIGEST_AGE_SECONDS},
         )
     else:
         decision = GateDecision(
-            blocked=False, reason="ok",
-            disk_verdict=disk_verdict, capture_verdict=cap_verdict,
-            disk_age_seconds=disk_age, capture_age_seconds=cap_age,
+            blocked=False,
+            reason="ok",
+            disk_verdict=disk_verdict,
+            capture_verdict=cap_verdict,
+            disk_age_seconds=disk_age,
+            capture_age_seconds=cap_age,
         )
 
     _maybe_log_decision(symbol, decision, now_dt)
@@ -199,13 +218,12 @@ def check_pre_trade_gate(symbol: str | None = None,
     return decision
 
 
-def _maybe_log_decision(symbol: str | None, decision: GateDecision,
-                         now: datetime) -> None:
+def _maybe_log_decision(symbol: str | None, decision: GateDecision, now: datetime) -> None:
     """Append to gate log when blocked OR when a transition just happened.
     We don't write every check (would be noisy at 30s cache TTL)."""
     global _cached_result
     prev = _cached_result[1] if _cached_result else None
-    transition = (prev is not None and prev.blocked != decision.blocked)
+    transition = prev is not None and prev.blocked != decision.blocked
     if not (decision.blocked or transition):
         return
     record = {
@@ -227,8 +245,7 @@ def _maybe_log_decision(symbol: str | None, decision: GateDecision,
     except OSError as e:
         # D6: surface alert-write failures to stderr so the cron
         # operator captures them, instead of silently swallowing.
-        print(f"trading_gate WARN: could not write to {GATE_LOG}: {e}",
-              file=sys.stderr)
+        print(f"trading_gate WARN: could not write to {GATE_LOG}: {e}", file=sys.stderr)
 
 
 def _reset_cache_for_tests() -> None:

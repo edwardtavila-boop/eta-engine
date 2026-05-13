@@ -58,10 +58,8 @@ def _operator_queue_summary(*, limit: int = 5) -> dict[str, object]:
         operator_action_queue.VERDICT_OBSERVED,
         operator_action_queue.VERDICT_UNKNOWN,
     )
-    summary = {
-        verdict: sum(1 for item in items if item.verdict == verdict)
-        for verdict in verdict_order
-    }
+    summary = {verdict: sum(1 for item in items if item.verdict == verdict) for verdict in verdict_order}
+
     def blocker_priority(item: object) -> tuple[int, str]:
         evidence = getattr(item, "evidence", {})
         severity = evidence.get("overall_severity") if isinstance(evidence, dict) else None
@@ -102,11 +100,7 @@ def _operator_queue_summary(*, limit: int = 5) -> dict[str, object]:
         }
         for item in blocked_items
     ]
-    next_actions = [
-        action
-        for blocker in blockers
-        for action in blocker.get("next_actions", [])
-    ][:limit]
+    next_actions = [action for blocker in blockers for action in blocker.get("next_actions", [])][:limit]
     return {
         "source": "operator_action_queue",
         "error": None,
@@ -361,6 +355,7 @@ def _collect_sage_state() -> dict:
         from eta_engine.brain.jarvis_v3.sage.edge_tracker import default_tracker
         from eta_engine.brain.jarvis_v3.sage.health import default_monitor
         from eta_engine.brain.jarvis_v3.sage.last_report_cache import cache_size
+
         tracker = default_tracker()
         monitor = default_monitor()
         edges = tracker.snapshot()
@@ -380,10 +375,7 @@ def _collect_sage_state() -> dict:
             },
             "health": {
                 "n_degraded": len(issues),
-                "issues": [
-                    {"school": i.school, "severity": i.severity, "detail": i.detail}
-                    for i in issues
-                ],
+                "issues": [{"school": i.school, "severity": i.severity, "detail": i.detail} for i in issues],
             },
             "cache_entries": cache_size(),
         }

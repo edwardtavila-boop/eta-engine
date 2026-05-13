@@ -80,7 +80,6 @@ class GapFillConfig:
 
 
 class GapFillStrategy:
-
     def __init__(self, config: GapFillConfig | None = None) -> None:
         self.cfg = config or GapFillConfig()
         self._volume_window: deque[float] = deque(maxlen=self.cfg.volume_z_lookback)
@@ -136,14 +135,17 @@ class GapFillStrategy:
         vols = list(self._volume_window)
         mean = sum(vols) / len(vols)
         var = sum((v - mean) ** 2 for v in vols) / len(vols)
-        std = var ** 0.5
+        std = var**0.5
         if std <= 0.0:
             return 0.0
         return (bar.volume - mean) / std
 
     def maybe_enter(
-        self, bar: BarData, hist: list[BarData],
-        equity: float, config: BacktestConfig,
+        self,
+        bar: BarData,
+        hist: list[BarData],
+        equity: float,
+        config: BacktestConfig,
     ) -> _Open | None:
         bar_date = bar.timestamp.date()
 
@@ -160,7 +162,7 @@ class GapFillStrategy:
             if self._yesterday_close is not None and len(hist) >= 2:
                 time_gap_hours = (bar.timestamp - hist[-1].timestamp).total_seconds() / 3600.0
                 if time_gap_hours >= self.cfg.min_session_gap_hours:
-                    atr_window = hist[-self.cfg.atr_period:] if len(hist) >= self.cfg.atr_period else hist
+                    atr_window = hist[-self.cfg.atr_period :] if len(hist) >= self.cfg.atr_period else hist
                     if len(atr_window) >= 2:
                         atr = sum(b.high - b.low for b in atr_window) / len(atr_window)
                         gap = abs(self._today_open - self._yesterday_close)
@@ -222,7 +224,7 @@ class GapFillStrategy:
                 self._n_vol_reject += 1
                 return None
 
-        atr_window = hist[-self.cfg.atr_period:] if hist else []
+        atr_window = hist[-self.cfg.atr_period :] if hist else []
         if len(atr_window) < 2:
             return None
         atr = sum(b.high - b.low for b in atr_window) / len(atr_window)
@@ -256,52 +258,90 @@ class GapFillStrategy:
         self._trades_today += 1
         self._n_fired += 1
         return _Open(
-            entry_bar=bar, side=side, qty=qty, entry_price=entry,
-            stop=stop, target=target, risk_usd=risk_usd,
-            confluence=9.0, leverage=1.0,
+            entry_bar=bar,
+            side=side,
+            qty=qty,
+            entry_price=entry,
+            stop=stop,
+            target=target,
+            risk_usd=risk_usd,
+            confluence=9.0,
+            leverage=1.0,
             regime=f"gap_fill_{side.lower()}_gap{self._gap_size:.1f}",
         )
 
 
 def mnq_gap_fill_preset() -> GapFillConfig:
     return GapFillConfig(
-        gap_threshold_atr_mult=0.2, fill_max_bars=48, gap_min_atr_mult=0.15,
+        gap_threshold_atr_mult=0.2,
+        fill_max_bars=48,
+        gap_min_atr_mult=0.15,
         min_session_gap_hours=4.0,
-        volume_z_lookback=20, min_volume_z=0.2, require_rejection=False,
-        atr_period=14, atr_stop_mult=1.0, rr_target=2.0,
-        risk_per_trade_pct=0.005, min_bars_between_trades=12,
-        max_trades_per_day=2, warmup_bars=50,
+        volume_z_lookback=20,
+        min_volume_z=0.2,
+        require_rejection=False,
+        atr_period=14,
+        atr_stop_mult=1.0,
+        rr_target=2.0,
+        risk_per_trade_pct=0.005,
+        min_bars_between_trades=12,
+        max_trades_per_day=2,
+        warmup_bars=50,
     )
 
 
 def nq_gap_fill_preset() -> GapFillConfig:
     return GapFillConfig(
-        gap_threshold_atr_mult=0.2, fill_max_bars=48, gap_min_atr_mult=0.15,
+        gap_threshold_atr_mult=0.2,
+        fill_max_bars=48,
+        gap_min_atr_mult=0.15,
         min_session_gap_hours=4.0,
-        volume_z_lookback=20, min_volume_z=0.2, require_rejection=False,
-        atr_period=14, atr_stop_mult=1.0, rr_target=2.0,
-        risk_per_trade_pct=0.005, min_bars_between_trades=12,
-        max_trades_per_day=2, warmup_bars=50,
+        volume_z_lookback=20,
+        min_volume_z=0.2,
+        require_rejection=False,
+        atr_period=14,
+        atr_stop_mult=1.0,
+        rr_target=2.0,
+        risk_per_trade_pct=0.005,
+        min_bars_between_trades=12,
+        max_trades_per_day=2,
+        warmup_bars=50,
     )
 
 
 def btc_gap_fill_preset() -> GapFillConfig:
     return GapFillConfig(
-        gap_threshold_atr_mult=1.0, fill_max_bars=12, gap_min_atr_mult=0.5,
+        gap_threshold_atr_mult=1.0,
+        fill_max_bars=12,
+        gap_min_atr_mult=0.5,
         min_session_gap_hours=12.0,
-        volume_z_lookback=24, min_volume_z=0.2, require_rejection=True,
-        atr_period=14, atr_stop_mult=1.5, rr_target=2.0,
-        risk_per_trade_pct=0.005, min_bars_between_trades=12,
-        max_trades_per_day=1, warmup_bars=72,
+        volume_z_lookback=24,
+        min_volume_z=0.2,
+        require_rejection=True,
+        atr_period=14,
+        atr_stop_mult=1.5,
+        rr_target=2.0,
+        risk_per_trade_pct=0.005,
+        min_bars_between_trades=12,
+        max_trades_per_day=1,
+        warmup_bars=72,
     )
 
 
 def eth_gap_fill_preset() -> GapFillConfig:
     return GapFillConfig(
-        gap_threshold_atr_mult=1.0, fill_max_bars=12, gap_min_atr_mult=0.5,
+        gap_threshold_atr_mult=1.0,
+        fill_max_bars=12,
+        gap_min_atr_mult=0.5,
         min_session_gap_hours=12.0,
-        volume_z_lookback=24, min_volume_z=0.2, require_rejection=True,
-        atr_period=14, atr_stop_mult=1.8, rr_target=2.0,
-        risk_per_trade_pct=0.005, min_bars_between_trades=12,
-        max_trades_per_day=1, warmup_bars=72,
+        volume_z_lookback=24,
+        min_volume_z=0.2,
+        require_rejection=True,
+        atr_period=14,
+        atr_stop_mult=1.8,
+        rr_target=2.0,
+        risk_per_trade_pct=0.005,
+        min_bars_between_trades=12,
+        max_trades_per_day=1,
+        warmup_bars=72,
     )

@@ -21,6 +21,7 @@ If that's negative when lab said exp_R > 0, that's the alpha-decay
 signal. We don't try to normalize to R precisely; just check sign +
 magnitude relative to lab claim.
 """
+
 from __future__ import annotations
 
 import json
@@ -45,9 +46,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-HEARTBEAT_PATH = Path(
-    r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\jarvis_intel\supervisor\heartbeat.json"
-)
+HEARTBEAT_PATH = Path(r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\jarvis_intel\supervisor\heartbeat.json")
 _CACHE_TTL_SECONDS = 30.0
 _HEARTBEAT_CACHE: dict[str, float | dict] = {"loaded_at": 0.0, "data": {}}
 
@@ -114,6 +113,7 @@ def _lab_exp_r(bot_id: str) -> float | None:
     """Pull lab `exp_R` from the registry's most-recent lab_audit stamp."""
     try:
         from eta_engine.strategies.per_bot_registry import get_for_bot
+
         a = get_for_bot(bot_id)
     except Exception:  # noqa: BLE001
         return None
@@ -124,8 +124,10 @@ def _lab_exp_r(bot_id: str) -> float | None:
         return None
     candidates = []
     for k, v in extras.items():
-        if isinstance(k, str) and isinstance(v, dict) and (
-            k.startswith("lab_audit_") or k.startswith("lab_promotion_")
+        if (
+            isinstance(k, str)
+            and isinstance(v, dict)
+            and (k.startswith("lab_audit_") or k.startswith("lab_promotion_"))
         ):
             candidates.append((k, v))
     if not candidates:
@@ -172,6 +174,7 @@ def evaluate_v27(
     if base_resp is None:
         if wrapped_evaluator is None:
             from eta_engine.brain.jarvis_v3.policies.v26_fill_confirmation import evaluate_v26
+
             base_resp = evaluate_v26(req, ctx)
         else:
             base_resp = wrapped_evaluator(req, ctx)
@@ -205,26 +208,30 @@ def evaluate_v27(
         new_cap = factor if existing_cap is None else min(existing_cap, factor)
         try:
             from eta_engine.brain.jarvis_v3.policies._v3_events import emit_event
+
             emit_event(
-                layer="v27", event="sharpe_drift",
+                layer="v27",
+                event="sharpe_drift",
                 bot_id=bot_id,
-                details={"lab_exp_r": round(lab_exp, 3), "live_ratio": round(ratio, 3),
-                         "size_factor": factor},
+                details={"lab_exp_r": round(lab_exp, 3), "live_ratio": round(ratio, 3), "size_factor": factor},
                 severity="WARN",
             )
         except Exception:  # noqa: BLE001
             pass
-        return base_resp.model_copy(update={
-            "verdict": Verdict.CONDITIONAL,
-            "reason": f"v27 sharpe drift: live/lab ratio {ratio:.2f} < {_drift_threshold_factor():.2f}",
-            "reason_code": "v27_sharpe_drift",
-            "size_cap_mult": new_cap,
-            "conditions": (base_resp.conditions or []) + [
-                f"v27_lab_exp_r={lab_exp:.3f}",
-                f"v27_live_ratio={ratio:.2f}",
-                f"v27_size_factor={factor:.2f}",
-            ],
-        })
+        return base_resp.model_copy(
+            update={
+                "verdict": Verdict.CONDITIONAL,
+                "reason": f"v27 sharpe drift: live/lab ratio {ratio:.2f} < {_drift_threshold_factor():.2f}",
+                "reason_code": "v27_sharpe_drift",
+                "size_cap_mult": new_cap,
+                "conditions": (base_resp.conditions or [])
+                + [
+                    f"v27_lab_exp_r={lab_exp:.3f}",
+                    f"v27_live_ratio={ratio:.2f}",
+                    f"v27_size_factor={factor:.2f}",
+                ],
+            }
+        )
     return base_resp
 
 

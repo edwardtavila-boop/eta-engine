@@ -180,10 +180,7 @@ class MBTOvernightGapStrategy:
 
     def _is_rth_open_bar(self, bar: BarData) -> bool:
         local_only = self._local_time(bar)
-        return (
-            local_only.hour == self.cfg.rth_open_local.hour
-            and local_only.minute == self.cfg.rth_open_local.minute
-        )
+        return local_only.hour == self.cfg.rth_open_local.hour and local_only.minute == self.cfg.rth_open_local.minute
 
     @staticmethod
     def _quantize_to_tick(price: float, tick: float) -> float:
@@ -194,7 +191,7 @@ class MBTOvernightGapStrategy:
     def _atr(self, hist: list[BarData]) -> float:
         if not hist:
             return 0.0
-        window = hist[-self.cfg.atr_period:]
+        window = hist[-self.cfg.atr_period :]
         if not window:
             return 0.0
         return sum(b.high - b.low for b in window) / len(window)
@@ -248,17 +245,11 @@ class MBTOvernightGapStrategy:
 
         # Detect RTH-open: first in-session bar after a non-session
         # gap of >= min_session_gap_hours since prior bar.
-        if (
-            in_sess
-            and self._today_rth_open is None
-            and (self._is_rth_open_bar(bar) or new_day)
-        ):
+        if in_sess and self._today_rth_open is None and (self._is_rth_open_bar(bar) or new_day):
             # Validate gap-of-time vs prior bar
             time_gap_ok = True
             if hist:
-                dt_hours = (
-                    bar.timestamp - hist[-1].timestamp
-                ).total_seconds() / 3600.0
+                dt_hours = (bar.timestamp - hist[-1].timestamp).total_seconds() / 3600.0
                 if dt_hours < self.cfg.min_session_gap_hours:
                     time_gap_ok = False
             if time_gap_ok:
@@ -280,7 +271,7 @@ class MBTOvernightGapStrategy:
                             # gap-down -> SHORT. The legacy code
                             # had these reversed (fade thesis).
                             if self._today_rth_open > self._last_rth_close:
-                                self._gap_side = "BUY"   # continue gap up
+                                self._gap_side = "BUY"  # continue gap up
                             else:
                                 self._gap_side = "SELL"  # continue gap down
 
@@ -373,13 +364,16 @@ class MBTOvernightGapStrategy:
         # Mark as "consumed" so we don't re-fire even if window allows
         self._gap_side = None
         return _Open(
-            entry_bar=bar, side=side, qty=qty, entry_price=entry,
-            stop=stop, target=target, risk_usd=risk_usd,
-            confluence=8.0, leverage=1.0,
-            regime=(
-                f"mbt_overnight_gap_continuation_{side.lower()}_"
-                f"{self._gap_size:.0f}"
-            ),
+            entry_bar=bar,
+            side=side,
+            qty=qty,
+            entry_price=entry,
+            stop=stop,
+            target=target,
+            risk_usd=risk_usd,
+            confluence=8.0,
+            leverage=1.0,
+            regime=(f"mbt_overnight_gap_continuation_{side.lower()}_{self._gap_size:.0f}"),
         )
 
 

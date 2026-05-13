@@ -4,6 +4,7 @@
 Run with:
   pytest eta_engine/tests/test_dashboard_e2e.py -v
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -26,6 +27,7 @@ def dashboard_server(tmp_path_factory):
 
     # Seed an operator account
     from eta_engine.deploy.scripts.dashboard_auth import create_user
+
     create_user(users_path, "edward", "test-pass")
 
     # Resolve the project root (parent of the eta_engine package dir) so the
@@ -43,14 +45,22 @@ def dashboard_server(tmp_path_factory):
     full_env = {**os.environ, **env}
 
     proc = subprocess.Popen(
-        [sys.executable, "-m", "uvicorn",
-         "eta_engine.deploy.scripts.dashboard_api:app",
-         "--port", "8521", "--host", "127.0.0.1"],
+        [
+            sys.executable,
+            "-m",
+            "uvicorn",
+            "eta_engine.deploy.scripts.dashboard_api:app",
+            "--port",
+            "8521",
+            "--host",
+            "127.0.0.1",
+        ],
         env=full_env,
         cwd=str(repo_root),
     )
     # Wait for it to start
     import urllib.request
+
     for _ in range(40):
         try:
             urllib.request.urlopen("http://127.0.0.1:8521/health", timeout=0.5)
@@ -67,8 +77,8 @@ def dashboard_server(tmp_path_factory):
 
 @pytest.mark.skip(
     reason="2026-05-05: dashboard e2e flaky in full pre-commit sweep "
-           "(passes in isolation, fails in batch — module-level state "
-           "pollution from other tests). Run separately with -k.",
+    "(passes in isolation, fails in batch — module-level state "
+    "pollution from other tests). Run separately with -k.",
 )
 @pytest.mark.asyncio
 async def test_dashboard_loads_no_console_errors(dashboard_server) -> None:
@@ -157,9 +167,11 @@ async def test_lifecycle_button_prompts_step_up(dashboard_server) -> None:
             if dialog.type == "prompt":
                 # Type the exact confirmation phrase the dashboard expects
                 import asyncio as _asyncio
+
                 _asyncio.create_task(dialog.accept("kill mnq"))
             else:
                 import asyncio as _asyncio
+
                 _asyncio.create_task(dialog.accept())
 
         page.on("dialog", _handle_dialog)

@@ -44,6 +44,7 @@ Run
     python -m eta_engine.scripts.l2_slippage_predictor \\
         --predict --regime NORMAL --session RTH_MID --size 1
 """
+
 from __future__ import annotations
 
 # ruff: noqa: PLR2004
@@ -65,10 +66,10 @@ SLIP_MODEL_LOG = LOG_DIR / "l2_slip_model.json"
 
 @dataclass
 class SlipBucket:
-    regime: str          # NORMAL | WIDE | PAUSE
-    session: str         # RTH_OPEN | RTH_MID | RTH_CLOSE | ETH
-    size_bucket: str     # "1" | "2-5" | "6-10" | "10+"
-    vol_bucket: str      # "low" | "mid" | "high"
+    regime: str  # NORMAL | WIDE | PAUSE
+    session: str  # RTH_OPEN | RTH_MID | RTH_CLOSE | ETH
+    size_bucket: str  # "1" | "2-5" | "6-10" | "10+"
+    vol_bucket: str  # "low" | "mid" | "high"
     n: int
     mean_slip_ticks: float
     p90_slip_ticks: float
@@ -78,6 +79,7 @@ class SlipBucket:
 @dataclass
 class SlipModel:
     """Persisted slip model — one entry per non-empty bucket."""
+
     ts_trained: str
     n_fills: int
     default_slip_ticks: float  # fallback when bucket empty
@@ -111,9 +113,7 @@ def _size_bucket(qty: int) -> str:
     return "10+"
 
 
-def _vol_bucket(vol: float | None,
-                 *, low_threshold: float = 0.5,
-                 high_threshold: float = 2.0) -> str:
+def _vol_bucket(vol: float | None, *, low_threshold: float = 0.5, high_threshold: float = 2.0) -> str:
     if vol is None:
         return "mid"
     if vol < low_threshold:
@@ -131,10 +131,13 @@ def _percentile(sorted_data: list[float], pct: float) -> float:
     return sorted_data[idx]
 
 
-def train_model(*, since_days: int = 60,
-                 default_slip_ticks: float = 1.0,
-                 _fill_path: Path | None = None,
-                 _signal_path: Path | None = None) -> SlipModel:
+def train_model(
+    *,
+    since_days: int = 60,
+    default_slip_ticks: float = 1.0,
+    _fill_path: Path | None = None,
+    _signal_path: Path | None = None,
+) -> SlipModel:
     """Walk recent fills + signals, build per-bucket slip statistics."""
     fill_path = _fill_path or BROKER_FILL_LOG
     sig_path = _signal_path or SIGNAL_LOG
@@ -206,28 +209,31 @@ def train_model(*, since_days: int = 60,
 
     notes: list[str] = []
     if not buckets:
-        notes.append("no fills with slip_ticks_vs_intended available; "
-                       "predictor falls back to default")
+        notes.append("no fills with slip_ticks_vs_intended available; predictor falls back to default")
 
     out_buckets: list[SlipBucket] = []
     for (regime, session, size_b, vol_b), slips in buckets.items():
         slips_sorted = sorted(slips)
         n = len(slips)
-        out_buckets.append(SlipBucket(
-            regime=regime, session=session,
-            size_bucket=size_b, vol_bucket=vol_b,
-            n=n,
-            mean_slip_ticks=round(statistics.mean(slips), 3),
-            p90_slip_ticks=round(_percentile(slips_sorted, 90), 3),
-            stddev_slip_ticks=round(statistics.stdev(slips), 3)
-                                  if n >= 2 else 0.0,
-        ))
+        out_buckets.append(
+            SlipBucket(
+                regime=regime,
+                session=session,
+                size_bucket=size_b,
+                vol_bucket=vol_b,
+                n=n,
+                mean_slip_ticks=round(statistics.mean(slips), 3),
+                p90_slip_ticks=round(_percentile(slips_sorted, 90), 3),
+                stddev_slip_ticks=round(statistics.stdev(slips), 3) if n >= 2 else 0.0,
+            )
+        )
 
     return SlipModel(
         ts_trained=datetime.now(UTC).isoformat(),
         n_fills=sum(b.n for b in out_buckets),
         default_slip_ticks=default_slip_ticks,
-        buckets=out_buckets, notes=notes,
+        buckets=out_buckets,
+        notes=notes,
     )
 
 
@@ -235,8 +241,7 @@ def save_model(model: SlipModel, *, path: Path | None = None) -> None:
     target = path or SLIP_MODEL_LOG
     try:
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(json.dumps(asdict(model), indent=2),
-                            encoding="utf-8")
+        target.write_text(json.dumps(asdict(model), indent=2), encoding="utf-8")
     except OSError as e:
         print(f"WARN: slip model save failed: {e}", file=sys.stderr)
 
@@ -254,11 +259,14 @@ def load_model(*, path: Path | None = None) -> SlipModel | None:
         return None
 
 
-def predict_slip(*, regime: str = "NORMAL",
-                  session: str = "RTH_MID",
-                  size: int = 1,
-                  vol: float | None = None,
-                  model: SlipModel | None = None) -> float:
+def predict_slip(
+    *,
+    regime: str = "NORMAL",
+    session: str = "RTH_MID",
+    size: int = 1,
+    vol: float | None = None,
+    model: SlipModel | None = None,
+) -> float:
     """Predict slip in ticks for a hypothetical fill.
 
     Returns the bucket's mean slip if the bucket has data; otherwise
@@ -273,8 +281,7 @@ def predict_slip(*, regime: str = "NORMAL",
     vol_b = _vol_bucket(vol)
     # Try exact match first
     for b in model.buckets:
-        if (b.regime == regime and b.session == session
-                and b.size_bucket == size_b and b.vol_bucket == vol_b):
+        if b.regime == regime and b.session == session and b.size_bucket == size_b and b.vol_bucket == vol_b:
             return b.mean_slip_ticks
     # Fall back to session match (drop vol/size)
     matches = [b for b in model.buckets if b.session == session]
@@ -301,23 +308,25 @@ def main() -> int:
         if args.json:
             print(json.dumps(asdict(model), indent=2))
         else:
-            print(f"Trained slip model on {model.n_fills} fills, "
-                    f"{len(model.buckets)} non-empty buckets")
+            print(f"Trained slip model on {model.n_fills} fills, {len(model.buckets)} non-empty buckets")
             for b in model.buckets[:10]:
-                print(f"  [{b.regime}/{b.session}/qty{b.size_bucket}/vol{b.vol_bucket}]"
-                        f" n={b.n}, mean={b.mean_slip_ticks} ticks, "
-                        f"p90={b.p90_slip_ticks}")
+                print(
+                    f"  [{b.regime}/{b.session}/qty{b.size_bucket}/vol{b.vol_bucket}]"
+                    f" n={b.n}, mean={b.mean_slip_ticks} ticks, "
+                    f"p90={b.p90_slip_ticks}"
+                )
         return 0
 
     if args.predict:
-        pred = predict_slip(regime=args.regime, session=args.session,
-                              size=args.size, vol=args.vol)
+        pred = predict_slip(regime=args.regime, session=args.session, size=args.size, vol=args.vol)
         if args.json:
             print(json.dumps({"predicted_slip_ticks": pred}))
         else:
-            print(f"Predicted slip: {pred} ticks "
-                    f"(regime={args.regime}, session={args.session}, "
-                    f"size={args.size}, vol={args.vol})")
+            print(
+                f"Predicted slip: {pred} ticks "
+                f"(regime={args.regime}, session={args.session}, "
+                f"size={args.size}, vol={args.vol})"
+            )
         return 0
 
     ap.print_help()

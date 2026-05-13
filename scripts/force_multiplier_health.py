@@ -210,22 +210,23 @@ def _emit_json(*, results: list[tuple[str, bool, str]], live: bool, write_to: Pa
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Force Multiplier health probe")
-    parser.add_argument("--live", action="store_true",
-                        help="Also run live calls (costs ~$0.000005 + sub quota)")
+    parser.add_argument("--live", action="store_true", help="Also run live calls (costs ~$0.000005 + sub quota)")
     parser.add_argument("--verbose", action="store_true", help="Show DEBUG logs")
-    parser.add_argument("--json", action="store_true",
-                        help="Emit JSON to stdout (machine-readable)")
+    parser.add_argument("--json", action="store_true", help="Emit JSON to stdout (machine-readable)")
     parser.add_argument(
         "--json-out",
         nargs="?",
         const="",  # bare flag -> use canonical default_path()
-        help=("Write JSON snapshot to this path. Useful with Task Scheduler — "
-              "bare --json-out writes to var/eta_engine/state/fm_health.json "
-              "(or $ETA_FM_HEALTH_SNAPSHOT_PATH override) so dashboards can "
-              "poll it."),
+        help=(
+            "Write JSON snapshot to this path. Useful with Task Scheduler — "
+            "bare --json-out writes to var/eta_engine/state/fm_health.json "
+            "(or $ETA_FM_HEALTH_SNAPSHOT_PATH override) so dashboards can "
+            "poll it."
+        ),
     )
-    parser.add_argument("--quiet", action="store_true",
-                        help="Suppress human-readable output (use with --json-out for cron)")
+    parser.add_argument(
+        "--quiet", action="store_true", help="Suppress human-readable output (use with --json-out for cron)"
+    )
     args = parser.parse_args()
 
     if args.verbose:

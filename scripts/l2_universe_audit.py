@@ -33,6 +33,7 @@ Run
 
     python -m eta_engine.scripts.l2_universe_audit
 """
+
 from __future__ import annotations
 
 # ruff: noqa: PLR2004
@@ -71,8 +72,7 @@ class UniverseAuditReport:
     notes: list[str] = field(default_factory=list)
 
 
-def _read_backtest_symbols(*, _path: Path,
-                              since_days: int = 90) -> dict[str, list[dict]]:
+def _read_backtest_symbols(*, _path: Path, since_days: int = 90) -> dict[str, list[dict]]:
     """Read backtest log, return {(strategy, symbol): [records...]}."""
     if not _path.exists():
         return {}
@@ -120,8 +120,8 @@ def _strategy_registry_symbols() -> set[str]:
     """Symbols listed as active in l2_strategy_registry."""
     try:
         from eta_engine.strategies.l2_strategy_registry import L2_STRATEGIES
-        return {s.symbol for s in L2_STRATEGIES
-                 if s.promotion_status != "deactivated"}
+
+        return {s.symbol for s in L2_STRATEGIES if s.promotion_status != "deactivated"}
     except (ImportError, AttributeError):
         return set()
 
@@ -130,16 +130,16 @@ def _harness_supported_symbols() -> set[str]:
     """Symbols defined in SYMBOL_SPECS."""
     try:
         from eta_engine.scripts.l2_backtest_harness import SYMBOL_SPECS
+
         return set(SYMBOL_SPECS.keys())
     except ImportError:
         return set()
 
 
-def run_audit(*, since_days: int = 90,
-                _backtest_path: Path | None = None) -> UniverseAuditReport:
+def run_audit(*, since_days: int = 90, _backtest_path: Path | None = None) -> UniverseAuditReport:
     backtest = _read_backtest_symbols(
-        _path=_backtest_path if _backtest_path is not None else L2_BACKTEST_LOG,
-        since_days=since_days)
+        _path=_backtest_path if _backtest_path is not None else L2_BACKTEST_LOG, since_days=since_days
+    )
     capture_syms = _current_capture_symbols()
     registry_syms = _strategy_registry_symbols()
     harness_syms = _harness_supported_symbols()
@@ -163,14 +163,17 @@ def run_audit(*, since_days: int = 90,
             finding = "STALE_SYMBOL"
         else:
             finding = "OK"
-        findings.append(SurvivorshipFinding(
-            strategy=strategy, symbol=symbol,
-            last_seen_in_backtest=last_rec["_parsed_ts"].isoformat(),
-            in_capture_set=in_cap,
-            in_strategy_registry=in_reg,
-            in_harness_specs=in_harness,
-            finding=finding,
-        ))
+        findings.append(
+            SurvivorshipFinding(
+                strategy=strategy,
+                symbol=symbol,
+                last_seen_in_backtest=last_rec["_parsed_ts"].isoformat(),
+                in_capture_set=in_cap,
+                in_strategy_registry=in_reg,
+                in_harness_specs=in_harness,
+                finding=finding,
+            )
+        )
 
     n_stale = sum(1 for f in findings if f.finding == "STALE_SYMBOL")
     n_unsupported = sum(1 for f in findings if f.finding == "UNSUPPORTED_SYMBOL")
@@ -181,11 +184,12 @@ def run_audit(*, since_days: int = 90,
         notes.append(
             f"{n_unsupported} (strategy, symbol) pairs have backtest "
             "data but symbol not in SYMBOL_SPECS — strategy cannot "
-            "be promoted on these.")
+            "be promoted on these."
+        )
     if n_stale > 0:
         notes.append(
-            f"{n_stale} (strategy, symbol) pairs no longer captured "
-            "or registered — drop from active universe.")
+            f"{n_stale} (strategy, symbol) pairs no longer captured or registered — drop from active universe."
+        )
     return UniverseAuditReport(
         n_strategies_audited=len({f.strategy for f in findings}),
         n_findings=len(findings),
@@ -207,8 +211,7 @@ def main() -> int:
         with UNIVERSE_AUDIT_LOG.open("a", encoding="utf-8") as f:
             d = asdict(report)
             d.pop("findings", None)  # trim
-            f.write(json.dumps({"ts": datetime.now(UTC).isoformat(),
-                                 **d}, separators=(",", ":")) + "\n")
+            f.write(json.dumps({"ts": datetime.now(UTC).isoformat(), **d}, separators=(",", ":")) + "\n")
     except OSError as e:
         print(f"WARN: universe audit log write failed: {e}", file=sys.stderr)
 
@@ -227,10 +230,9 @@ def main() -> int:
     print()
     if report.findings:
         print(f"  {'Strategy':<25s} {'Symbol':<8s} {'Last seen':<22s} {'Finding'}")
-        print(f"  {'-'*25:<25s} {'-'*8:<8s} {'-'*22:<22s} {'-'*15}")
+        print(f"  {'-' * 25:<25s} {'-' * 8:<8s} {'-' * 22:<22s} {'-' * 15}")
         for f in report.findings:
-            print(f"  {f.strategy:<25s} {f.symbol:<8s} "
-                  f"{f.last_seen_in_backtest[:19]:<22s} {f.finding}")
+            print(f"  {f.strategy:<25s} {f.symbol:<8s} {f.last_seen_in_backtest[:19]:<22s} {f.finding}")
     if report.notes:
         print()
         print("  Notes:")

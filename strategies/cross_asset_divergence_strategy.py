@@ -79,7 +79,6 @@ class CrossAssetDivergenceConfig:
 
 
 class CrossAssetDivergenceStrategy:
-
     def __init__(self, config: CrossAssetDivergenceConfig | None = None) -> None:
         self.cfg = config or CrossAssetDivergenceConfig()
         self._ratios: deque[float] = deque(maxlen=self.cfg.z_lookback + 5)
@@ -107,19 +106,20 @@ class CrossAssetDivergenceStrategy:
         }
 
     def attach_reference_provider(
-        self, provider: Callable[[BarData], float] | None,
+        self,
+        provider: Callable[[BarData], float] | None,
     ) -> None:
         self._reference_provider = provider
 
     def _compute_z_score(self) -> float:
         if len(self._ratios) < self.cfg.z_lookback // 2:
             return 0.0
-        recent = list(self._ratios)[-self.cfg.z_lookback:]
+        recent = list(self._ratios)[-self.cfg.z_lookback :]
         if not recent:
             return 0.0
         mean = sum(recent) / len(recent)
         var = sum((r - mean) ** 2 for r in recent) / len(recent)
-        std = var ** 0.5
+        std = var**0.5
         if std <= 0.0:
             return 0.0
         return (recent[-1] - mean) / std
@@ -130,14 +130,17 @@ class CrossAssetDivergenceStrategy:
         vols = list(self._volume_window)
         mean = sum(vols) / len(vols)
         var = sum((v - mean) ** 2 for v in vols) / len(vols)
-        std = var ** 0.5
+        std = var**0.5
         if std <= 0.0:
             return 0.0
         return (bar.volume - mean) / std
 
     def maybe_enter(
-        self, bar: BarData, hist: list[BarData],
-        equity: float, config: BacktestConfig,
+        self,
+        bar: BarData,
+        hist: list[BarData],
+        equity: float,
+        config: BacktestConfig,
     ) -> _Open | None:
         bar_date = bar.timestamp.date()
         if self._last_day != bar_date:
@@ -185,7 +188,7 @@ class CrossAssetDivergenceStrategy:
             self._n_vol_reject += 1
             return None
 
-        atr_window = hist[-self.cfg.atr_period:] if hist else []
+        atr_window = hist[-self.cfg.atr_period :] if hist else []
         if len(atr_window) < 2:
             return None
         atr = sum(b.high - b.low for b in atr_window) / len(atr_window)
@@ -215,38 +218,65 @@ class CrossAssetDivergenceStrategy:
         self._trades_today += 1
         self._n_fired += 1
         return _Open(
-            entry_bar=bar, side=side, qty=qty, entry_price=entry,
-            stop=stop, target=target, risk_usd=risk_usd,
-            confluence=7.0, leverage=1.0,
+            entry_bar=bar,
+            side=side,
+            qty=qty,
+            entry_price=entry,
+            stop=stop,
+            target=target,
+            risk_usd=risk_usd,
+            confluence=7.0,
+            leverage=1.0,
             regime=f"xasset_div_{side.lower()}_z{z_score:.1f}",
         )
 
 
 def mnq_vs_es_divergence_preset() -> CrossAssetDivergenceConfig:
     return CrossAssetDivergenceConfig(
-        z_lookback=100, entry_z_threshold=2.0, min_z_threshold=1.5,
-        volume_z_lookback=20, min_volume_z=0.3,
-        atr_period=14, atr_stop_mult=1.0, rr_target=2.0,
-        risk_per_trade_pct=0.005, min_bars_between_trades=12,
-        max_trades_per_day=2, warmup_bars=100,
+        z_lookback=100,
+        entry_z_threshold=2.0,
+        min_z_threshold=1.5,
+        volume_z_lookback=20,
+        min_volume_z=0.3,
+        atr_period=14,
+        atr_stop_mult=1.0,
+        rr_target=2.0,
+        risk_per_trade_pct=0.005,
+        min_bars_between_trades=12,
+        max_trades_per_day=2,
+        warmup_bars=100,
     )
 
 
 def nq_vs_es_divergence_preset() -> CrossAssetDivergenceConfig:
     return CrossAssetDivergenceConfig(
-        z_lookback=100, entry_z_threshold=2.0, min_z_threshold=1.5,
-        volume_z_lookback=20, min_volume_z=0.3,
-        atr_period=14, atr_stop_mult=1.0, rr_target=2.0,
-        risk_per_trade_pct=0.005, min_bars_between_trades=12,
-        max_trades_per_day=2, warmup_bars=100,
+        z_lookback=100,
+        entry_z_threshold=2.0,
+        min_z_threshold=1.5,
+        volume_z_lookback=20,
+        min_volume_z=0.3,
+        atr_period=14,
+        atr_stop_mult=1.0,
+        rr_target=2.0,
+        risk_per_trade_pct=0.005,
+        min_bars_between_trades=12,
+        max_trades_per_day=2,
+        warmup_bars=100,
     )
 
 
 def btc_vs_eth_divergence_preset() -> CrossAssetDivergenceConfig:
     return CrossAssetDivergenceConfig(
-        z_lookback=168, entry_z_threshold=2.0, min_z_threshold=1.5,
-        volume_z_lookback=24, min_volume_z=0.2,
-        atr_period=14, atr_stop_mult=1.5, rr_target=2.5,
-        risk_per_trade_pct=0.005, min_bars_between_trades=12,
-        max_trades_per_day=2, warmup_bars=168,
+        z_lookback=168,
+        entry_z_threshold=2.0,
+        min_z_threshold=1.5,
+        volume_z_lookback=24,
+        min_volume_z=0.2,
+        atr_period=14,
+        atr_stop_mult=1.5,
+        rr_target=2.5,
+        risk_per_trade_pct=0.005,
+        min_bars_between_trades=12,
+        max_trades_per_day=2,
+        warmup_bars=168,
     )

@@ -117,19 +117,15 @@ def _resolve_inputs(bot_id: str, start: str | None, end: str | None) -> _Compari
     cb = COINBASE_HISTORY_ROOT / fname
     ib = IBKR_HISTORY_ROOT / fname
 
-    s = (
-        datetime.fromisoformat(start).replace(tzinfo=UTC)
-        if start else datetime(1970, 1, 1, tzinfo=UTC)
-    )
-    e = (
-        datetime.fromisoformat(end).replace(tzinfo=UTC)
-        if end else datetime.now(UTC)
-    )
+    s = datetime.fromisoformat(start).replace(tzinfo=UTC) if start else datetime(1970, 1, 1, tzinfo=UTC)
+    e = datetime.fromisoformat(end).replace(tzinfo=UTC) if end else datetime.now(UTC)
     return _ComparisonInputs(bot_id=bot_id, coinbase_csv=cb, ibkr_csv=ib, start=s, end=e)
 
 
-def _run_strategy(  # type: ignore[no-untyped-def]  # noqa: ANN202, ANN001
-    *, assignment, bars: list,  # noqa: ANN001
+def _run_strategy(  # type: ignore[no-untyped-def]  # noqa: ANN202
+    *,
+    assignment: object,
+    bars: list,  # noqa: ANN001
 ):
     """Run the bot's registered strategy over bars; return BacktestResult."""
     from eta_engine.backtest import BacktestConfig, BacktestEngine
@@ -148,11 +144,14 @@ def _run_strategy(  # type: ignore[no-untyped-def]  # noqa: ANN202, ANN001
         max_trades_per_day=10,
     )
     factory = _build_crypto_strategy_factory(
-        assignment.strategy_kind, dict(assignment.extras),
+        assignment.strategy_kind,
+        dict(assignment.extras),
     )
     strat = factory()
     return BacktestEngine(
-        pipeline=FeaturePipeline.default(), config=cfg, strategy=strat,
+        pipeline=FeaturePipeline.default(),
+        config=cfg,
+        strategy=strat,
     ).run(bars)
 
 
@@ -162,11 +161,14 @@ def main() -> int:
     p.add_argument("--start", help="ISO date YYYY-MM-DD; default = beginning of overlap")
     p.add_argument("--end", help="ISO date YYYY-MM-DD; default = today")
     p.add_argument(
-        "--min-trades", type=int, default=20,
+        "--min-trades",
+        type=int,
+        default=20,
         help="minimum recent (IBKR) trades for a non-green verdict",
     )
     p.add_argument(
-        "--out-dir", type=Path,
+        "--out-dir",
+        type=Path,
         default=ROOT / "docs" / "research_log",
         help="research-log destination",
     )
@@ -192,8 +194,7 @@ def main() -> int:
         return 1
     if not inputs.ibkr_csv.exists():
         print(
-            "[compare] IBKR CSV missing — run "
-            "scripts/fetch_ibkr_crypto_bars first (gateway must be running)",
+            "[compare] IBKR CSV missing — run scripts/fetch_ibkr_crypto_bars first (gateway must be running)",
         )
         return 1
 
@@ -213,12 +214,12 @@ def main() -> int:
         print("[compare] backtest produced no result")
         return 1
     print(
-        f"  coinbase trades: {cb_res.n_trades}  "
-        f"ibkr trades: {ib_res.n_trades}",
+        f"  coinbase trades: {cb_res.n_trades}  ibkr trades: {ib_res.n_trades}",
     )
 
     baseline = BaselineSnapshot.from_trades(
-        strategy_id=a.strategy_id, trades=cb_res.trades,
+        strategy_id=a.strategy_id,
+        trades=cb_res.trades,
     )
     assessment = assess_drift(
         strategy_id=a.strategy_id,

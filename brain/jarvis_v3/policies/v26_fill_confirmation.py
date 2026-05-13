@@ -24,6 +24,7 @@ bypassing broker_router. So we can't just count broker_router_fills.jsonl
 entries. The supervisor's `n_entries` is the most reliable execution
 signal — it increments on a successful entry regardless of routing path.
 """
+
 from __future__ import annotations
 
 import json
@@ -49,16 +50,12 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-HEARTBEAT_PATH = Path(
-    r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\jarvis_intel\supervisor\heartbeat.json"
-)
+HEARTBEAT_PATH = Path(r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\jarvis_intel\supervisor\heartbeat.json")
 # Secondary signal: broker_router fills journal. If supervisor's path goes
 # through broker_router (queue-based), failed/rejected fills land here.
 # DeepSeek's LiveIbkrVenue path bypasses this — heartbeat n_entries is the
 # primary signal; broker_router_fills is corroborating evidence when present.
-BROKER_ROUTER_FILLS_PATH = Path(
-    r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\broker_router_fills.jsonl"
-)
+BROKER_ROUTER_FILLS_PATH = Path(r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\broker_router_fills.jsonl")
 _CACHE_TTL_SECONDS = 30.0
 _HEARTBEAT_CACHE: dict[str, float | dict] = {"loaded_at": 0.0, "data": {}}
 _BROKER_FILLS_CACHE: dict[str, float | list] = {"loaded_at": 0.0, "data": []}
@@ -218,6 +215,7 @@ def evaluate_v26(
     if base_resp is None:
         if wrapped_evaluator is None:
             from eta_engine.brain.jarvis_v3.policies.v25_class_loss_limit import evaluate_v25
+
             base_resp = evaluate_v25(req, ctx)
         else:
             base_resp = wrapped_evaluator(req, ctx)
@@ -246,25 +244,29 @@ def evaluate_v26(
         new_cap = factor if existing_cap is None else min(existing_cap, factor)
         try:
             from eta_engine.brain.jarvis_v3.policies._v3_events import emit_event
+
             emit_event(
-                layer="v26", event="execution_degraded",
+                layer="v26",
+                event="execution_degraded",
                 bot_id=bot_id,
-                details={"size_factor": factor,
-                         "broker_router_rejects": _broker_router_rejects_for_bot(bot_id)},
+                details={"size_factor": factor, "broker_router_rejects": _broker_router_rejects_for_bot(bot_id)},
                 severity="WARN",
             )
         except Exception:  # noqa: BLE001
             pass
-        return base_resp.model_copy(update={
-            "verdict": Verdict.CONDITIONAL,
-            "reason": "v26 execution-health degraded: signals firing without entries, size halved",
-            "reason_code": "v26_execution_degraded",
-            "size_cap_mult": new_cap,
-            "conditions": (base_resp.conditions or []) + [
-                "v26_degraded=True",
-                f"v26_size_factor={factor:.2f}",
-            ],
-        })
+        return base_resp.model_copy(
+            update={
+                "verdict": Verdict.CONDITIONAL,
+                "reason": "v26 execution-health degraded: signals firing without entries, size halved",
+                "reason_code": "v26_execution_degraded",
+                "size_cap_mult": new_cap,
+                "conditions": (base_resp.conditions or [])
+                + [
+                    "v26_degraded=True",
+                    f"v26_size_factor={factor:.2f}",
+                ],
+            }
+        )
     return base_resp
 
 

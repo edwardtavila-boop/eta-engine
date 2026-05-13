@@ -60,7 +60,7 @@ log = logging.getLogger(__name__)
 
 _NOTIFY_SOCKET_ENV = "NOTIFY_SOCKET"
 _WATCHDOG_USEC_ENV = "WATCHDOG_USEC"
-_WATCHDOG_PID_ENV  = "WATCHDOG_PID"
+_WATCHDOG_PID_ENV = "WATCHDOG_PID"
 
 
 def sd_notify(state: str) -> bool:

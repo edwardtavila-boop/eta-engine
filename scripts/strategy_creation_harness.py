@@ -35,6 +35,7 @@ Usage
     python -m eta_engine.scripts.strategy_creation_harness \\
         --bot variant_a variant_b --days 90 --random-baseline
 """
+
 from __future__ import annotations
 
 import argparse
@@ -106,31 +107,40 @@ def _evaluate_bot(bot_id: str, days: int, is_fraction: float) -> dict:
         realistic = run_simulation(bot_id, max_bars=100000, bar_limit=bar_limit, mode="realistic")
         pessimistic = run_simulation(bot_id, max_bars=100000, bar_limit=bar_limit, mode="pessimistic")
         is_res = run_simulation(
-            bot_id, max_bars=100000, bar_limit=bar_limit,
-            mode="realistic", is_fraction=is_fraction, eval_oos=False,
+            bot_id,
+            max_bars=100000,
+            bar_limit=bar_limit,
+            mode="realistic",
+            is_fraction=is_fraction,
+            eval_oos=False,
         )
         oos_res = run_simulation(
-            bot_id, max_bars=100000, bar_limit=bar_limit,
-            mode="realistic", is_fraction=is_fraction, eval_oos=True,
+            bot_id,
+            max_bars=100000,
+            bar_limit=bar_limit,
+            mode="realistic",
+            is_fraction=is_fraction,
+            eval_oos=True,
         )
 
-        out.update({
-            "realistic_pnl": realistic.total_pnl_usd,
-            "pessimistic_pnl": pessimistic.total_pnl_usd,
-            "is_pnl": is_res.total_pnl_usd,
-            "oos_pnl": oos_res.total_pnl_usd,
-            "oos_trades": oos_res.trades_taken,
-            "oos_wr": oos_res.win_rate_pct,
-            "signals_rejected": realistic.signals_rejected,
-            "rejection_codes": dict(realistic.rejection_codes),
-        })
+        out.update(
+            {
+                "realistic_pnl": realistic.total_pnl_usd,
+                "pessimistic_pnl": pessimistic.total_pnl_usd,
+                "is_pnl": is_res.total_pnl_usd,
+                "oos_pnl": oos_res.total_pnl_usd,
+                "oos_trades": oos_res.trades_taken,
+                "oos_wr": oos_res.win_rate_pct,
+                "signals_rejected": realistic.signals_rejected,
+                "rejection_codes": dict(realistic.rejection_codes),
+            }
+        )
     except Exception as e:  # noqa: BLE001
         out["error"] = f"{type(e).__name__}: {e}"
     return out
 
 
-def _random_baseline(symbol: str, timeframe: str, days: int, n_trades: int = 100,
-                     seed: int = 0) -> float:
+def _random_baseline(symbol: str, timeframe: str, days: int, n_trades: int = 100, seed: int = 0) -> float:
     """Compute the expected PnL of a random-entry strategy on the same bars.
 
     Algorithm: pick `n_trades` random bars; on each, randomly LONG or SHORT
@@ -160,9 +170,8 @@ def _random_baseline(symbol: str, timeframe: str, days: int, n_trades: int = 100
     # the pnl calc below in place of ``spec.point_value``.
     try:
         from eta_engine.feeds.instrument_specs import effective_point_value
-        _harness_pv = float(
-            effective_point_value(symbol, route="auto") or spec.point_value
-        )
+
+        _harness_pv = float(effective_point_value(symbol, route="auto") or spec.point_value)
     except Exception:  # noqa: BLE001
         _harness_pv = spec.point_value
     sim = RealisticFillSim(mode="realistic", seed=seed)
@@ -177,15 +186,19 @@ def _random_baseline(symbol: str, timeframe: str, days: int, n_trades: int = 100
 
     for i in chosen:
         side = rng.choice(["LONG", "SHORT"])
-        atr_window = bars[max(0, i - 14):i]
+        atr_window = bars[max(0, i - 14) : i]
         atr = sum(b.high - b.low for b in atr_window) / max(1, len(atr_window))
         if atr <= 0:
             continue
         entry_bar = bars[i + 1]
-        ohlcv_entry = BarOHLCV(open=float(entry_bar.open), high=float(entry_bar.high),
-                                low=float(entry_bar.low), close=float(entry_bar.close),
-                                volume=float(entry_bar.volume),
-                                ts_iso=entry_bar.timestamp.isoformat())
+        ohlcv_entry = BarOHLCV(
+            open=float(entry_bar.open),
+            high=float(entry_bar.high),
+            low=float(entry_bar.low),
+            close=float(entry_bar.close),
+            volume=float(entry_bar.volume),
+            ts_iso=entry_bar.timestamp.isoformat(),
+        )
         entry_fill = sim.simulate_entry(side, ohlcv_entry, spec)
         if side == "LONG":
             stop = entry_fill.fill_price - atr
@@ -199,14 +212,23 @@ def _random_baseline(symbol: str, timeframe: str, days: int, n_trades: int = 100
         # Walk forward up to 20 bars
         qty = 1.0
         for j in range(i + 2, min(i + 22, len(bars))):
-            ohlcv = BarOHLCV(open=float(bars[j].open), high=float(bars[j].high),
-                              low=float(bars[j].low), close=float(bars[j].close),
-                              volume=float(bars[j].volume),
-                              ts_iso=bars[j].timestamp.isoformat())
+            ohlcv = BarOHLCV(
+                open=float(bars[j].open),
+                high=float(bars[j].high),
+                low=float(bars[j].low),
+                close=float(bars[j].close),
+                volume=float(bars[j].volume),
+                ts_iso=bars[j].timestamp.isoformat(),
+            )
             sim.feed_bar_volume(float(bars[j].volume))
-            ex = sim.simulate_exit(side=side, position_entry=entry_fill.fill_price,
-                                   stop_price=stop, target_price=target,
-                                   bar=ohlcv, spec=spec)
+            ex = sim.simulate_exit(
+                side=side,
+                position_entry=entry_fill.fill_price,
+                stop_price=stop,
+                target_price=target,
+                bar=ohlcv,
+                spec=spec,
+            )
             if ex.exit_reason != "no_exit":
                 if side == "LONG":
                     pnl = (ex.fill_price - entry_fill.fill_price) * qty * _harness_pv
@@ -232,28 +254,27 @@ def _build_lights(d: dict, baseline_pnl: float | None) -> list[HarnessLight]:
     else:
         codes = d.get("rejection_codes") or {}
         codes_str = ", ".join(f"{k}={v}" for k, v in codes.items())
-        lights.append(HarnessLight("Signal validity", "RED",
-                                   f"{d['signals_rejected']} rejected ({codes_str})"))
+        lights.append(HarnessLight("Signal validity", "RED", f"{d['signals_rejected']} rejected ({codes_str})"))
 
     # 2. Sample size
     oos_n = d.get("oos_trades", 0)
     if oos_n >= 30:
         lights.append(HarnessLight("Sample size", "GREEN", f"OOS trades {oos_n}"))
     elif oos_n >= 10:
-        lights.append(HarnessLight("Sample size", "YELLOW",
-                                   f"OOS trades {oos_n} — too small for confidence, increase --days"))
+        lights.append(
+            HarnessLight("Sample size", "YELLOW", f"OOS trades {oos_n} — too small for confidence, increase --days")
+        )
     else:
-        lights.append(HarnessLight("Sample size", "RED",
-                                   f"OOS trades {oos_n} — meaningless"))
+        lights.append(HarnessLight("Sample size", "RED", f"OOS trades {oos_n} — meaningless"))
 
     # 3. OOS profitability
     oos_pnl = d.get("oos_pnl", 0.0)
     if oos_pnl > 0:
-        lights.append(HarnessLight("OOS profitability", "GREEN",
-                                   f"OOS net ${oos_pnl:+.0f}"))
+        lights.append(HarnessLight("OOS profitability", "GREEN", f"OOS net ${oos_pnl:+.0f}"))
     else:
-        lights.append(HarnessLight("OOS profitability", "RED",
-                                   f"OOS net ${oos_pnl:+.0f} — strategy loses on held-out data"))
+        lights.append(
+            HarnessLight("OOS profitability", "RED", f"OOS net ${oos_pnl:+.0f} — strategy loses on held-out data")
+        )
 
     # 4. OOS-vs-IS decay
     is_pnl = d.get("is_pnl", 0.0)
@@ -266,30 +287,36 @@ def _build_lights(d: dict, baseline_pnl: float | None) -> list[HarnessLight]:
         elif decay > -50:
             lights.append(HarnessLight("OOS decay", "YELLOW", f"{decay:+.0f}% (overfit suspected)"))
         else:
-            lights.append(HarnessLight("OOS decay", "RED",
-                                       f"{decay:+.0f}% (severe overfit — IS-tuned only)"))
+            lights.append(HarnessLight("OOS decay", "RED", f"{decay:+.0f}% (severe overfit — IS-tuned only)"))
 
     # 5. Beats baseline
     if baseline_pnl is None:
-        lights.append(HarnessLight("Beats baseline", "YELLOW",
-                                   "no baseline run; rerun with --random-baseline"))
+        lights.append(HarnessLight("Beats baseline", "YELLOW", "no baseline run; rerun with --random-baseline"))
     else:
         if oos_pnl > baseline_pnl * 1.5 and oos_pnl > 0:
-            lights.append(HarnessLight("Beats baseline", "GREEN",
-                                       f"OOS ${oos_pnl:+.0f} vs random ${baseline_pnl:+.0f}"))
+            lights.append(
+                HarnessLight("Beats baseline", "GREEN", f"OOS ${oos_pnl:+.0f} vs random ${baseline_pnl:+.0f}")
+            )
         elif oos_pnl > baseline_pnl:
-            lights.append(HarnessLight("Beats baseline", "YELLOW",
-                                       f"OOS ${oos_pnl:+.0f} vs random ${baseline_pnl:+.0f} (margin too small)"))
+            lights.append(
+                HarnessLight(
+                    "Beats baseline", "YELLOW", f"OOS ${oos_pnl:+.0f} vs random ${baseline_pnl:+.0f} (margin too small)"
+                )
+            )
         else:
-            lights.append(HarnessLight("Beats baseline", "RED",
-                                       f"OOS ${oos_pnl:+.0f} <= random ${baseline_pnl:+.0f} — no edge"))
+            lights.append(
+                HarnessLight("Beats baseline", "RED", f"OOS ${oos_pnl:+.0f} <= random ${baseline_pnl:+.0f} — no edge")
+            )
 
     return lights
 
 
 def run_harness(
-    bot_ids: list[str], days: int, is_fraction: float,
-    workers: int, random_baseline: bool,
+    bot_ids: list[str],
+    days: int,
+    is_fraction: float,
+    workers: int,
+    random_baseline: bool,
 ) -> list[HarnessReport]:
     print(f"Strategy creation harness — {len(bot_ids)} candidates, {workers} workers")
 
@@ -305,22 +332,34 @@ def run_harness(
             if "error" in bot_results[b]:
                 print(f"  [{b}] ERROR {bot_results[b]['error']}")
             else:
-                print(f"  [{b}] OOS=${bot_results[b].get('oos_pnl', 0):+.0f} "
-                      f"trades={bot_results[b].get('oos_trades', 0)} "
-                      f"rejected={bot_results[b].get('signals_rejected', 0)}")
+                print(
+                    f"  [{b}] OOS=${bot_results[b].get('oos_pnl', 0):+.0f} "
+                    f"trades={bot_results[b].get('oos_trades', 0)} "
+                    f"rejected={bot_results[b].get('signals_rejected', 0)}"
+                )
 
     reports: list[HarnessReport] = []
     for b in bot_ids:
         d = bot_results.get(b, {})
         if "error" in d:
-            reports.append(HarnessReport(
-                bot_id=b, symbol="?", timeframe="?",
-                realistic_pnl=0.0, pessimistic_pnl=0.0,
-                is_pnl=0.0, oos_pnl=0.0, oos_trades=0, oos_wr=0.0,
-                signals_rejected=0, rejection_codes={},
-                decay_pct=0.0, baseline_pnl=None,
-                lights=[HarnessLight("Run completed", "RED", d["error"])],
-            ))
+            reports.append(
+                HarnessReport(
+                    bot_id=b,
+                    symbol="?",
+                    timeframe="?",
+                    realistic_pnl=0.0,
+                    pessimistic_pnl=0.0,
+                    is_pnl=0.0,
+                    oos_pnl=0.0,
+                    oos_trades=0,
+                    oos_wr=0.0,
+                    signals_rejected=0,
+                    rejection_codes={},
+                    decay_pct=0.0,
+                    baseline_pnl=None,
+                    lights=[HarnessLight("Run completed", "RED", d["error"])],
+                )
+            )
             continue
 
         baseline_pnl: float | None = None
@@ -333,19 +372,24 @@ def run_harness(
         is_pnl = d.get("is_pnl", 0.0)
         oos_pnl = d.get("oos_pnl", 0.0)
         decay = ((oos_pnl - is_pnl) / abs(is_pnl) * 100) if abs(is_pnl) > 0.01 else 0.0
-        reports.append(HarnessReport(
-            bot_id=b, symbol=d.get("symbol", "?"), timeframe=d.get("timeframe", "?"),
-            realistic_pnl=d.get("realistic_pnl", 0.0),
-            pessimistic_pnl=d.get("pessimistic_pnl", 0.0),
-            is_pnl=is_pnl, oos_pnl=oos_pnl,
-            oos_trades=d.get("oos_trades", 0),
-            oos_wr=d.get("oos_wr", 0.0),
-            signals_rejected=d.get("signals_rejected", 0),
-            rejection_codes=d.get("rejection_codes", {}),
-            decay_pct=decay,
-            baseline_pnl=baseline_pnl,
-            lights=lights,
-        ))
+        reports.append(
+            HarnessReport(
+                bot_id=b,
+                symbol=d.get("symbol", "?"),
+                timeframe=d.get("timeframe", "?"),
+                realistic_pnl=d.get("realistic_pnl", 0.0),
+                pessimistic_pnl=d.get("pessimistic_pnl", 0.0),
+                is_pnl=is_pnl,
+                oos_pnl=oos_pnl,
+                oos_trades=d.get("oos_trades", 0),
+                oos_wr=d.get("oos_wr", 0.0),
+                signals_rejected=d.get("signals_rejected", 0),
+                rejection_codes=d.get("rejection_codes", {}),
+                decay_pct=decay,
+                baseline_pnl=baseline_pnl,
+                lights=lights,
+            )
+        )
     return reports
 
 
@@ -358,8 +402,10 @@ def print_reports(reports: list[HarnessReport]) -> int:
     for r in reports:
         print(f"\n--- {r.bot_id} ({r.symbol} {r.timeframe}) ---")
         print(f"  Realistic PnL: ${r.realistic_pnl:+.2f}   Pessimistic: ${r.pessimistic_pnl:+.2f}")
-        print(f"  IS PnL: ${r.is_pnl:+.2f}   OOS PnL: ${r.oos_pnl:+.2f}   "
-              f"OOS trades: {r.oos_trades}   OOS WR: {r.oos_wr:.1f}%")
+        print(
+            f"  IS PnL: ${r.is_pnl:+.2f}   OOS PnL: ${r.oos_pnl:+.2f}   "
+            f"OOS trades: {r.oos_trades}   OOS WR: {r.oos_wr:.1f}%"
+        )
         if r.baseline_pnl is not None:
             print(f"  Random-baseline PnL: ${r.baseline_pnl:+.2f}")
         print("  Gate:")
@@ -377,19 +423,24 @@ def print_reports(reports: list[HarnessReport]) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(prog="strategy_creation_harness", description=__doc__,
-                                formatter_class=argparse.RawDescriptionHelpFormatter)
+    p = argparse.ArgumentParser(
+        prog="strategy_creation_harness", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     p.add_argument("--bot", nargs="+", required=True, help="bot_id(s) to evaluate")
     p.add_argument("--days", type=int, default=90)
     p.add_argument("--is-fraction", type=float, default=0.7)
     p.add_argument("--workers", type=int, default=4)
-    p.add_argument("--random-baseline", action="store_true",
-                   help="compute random-entry baseline for the 'beats noise' check")
+    p.add_argument(
+        "--random-baseline", action="store_true", help="compute random-entry baseline for the 'beats noise' check"
+    )
     args = p.parse_args(argv)
 
     reports = run_harness(
-        bot_ids=args.bot, days=args.days, is_fraction=args.is_fraction,
-        workers=args.workers, random_baseline=args.random_baseline,
+        bot_ids=args.bot,
+        days=args.days,
+        is_fraction=args.is_fraction,
+        workers=args.workers,
+        random_baseline=args.random_baseline,
     )
     return print_reports(reports)
 

@@ -54,24 +54,24 @@ DrillSeverity = Literal["low", "medium", "high"]
 
 @dataclass(frozen=True)
 class DrillSpec:
-    name:        str
+    name: str
     description: str
-    severity:    DrillSeverity
-    apply_fn:    Callable[[], None] = lambda: None
-    recover_fn:  Callable[[], None] = lambda: None
-    observe_fn:  Callable[[], dict[str, object]] = lambda: {}
+    severity: DrillSeverity
+    apply_fn: Callable[[], None] = lambda: None
+    recover_fn: Callable[[], None] = lambda: None
+    observe_fn: Callable[[], dict[str, object]] = lambda: {}
     blast_seconds: float = 30.0
 
 
 @dataclass(frozen=True)
 class DrillResult:
-    drill:        str
-    started_at:   str
-    ended_at:     str
-    executed:     bool
-    success:      bool
+    drill: str
+    started_at: str
+    ended_at: str
+    executed: bool
+    success: bool
     observations: dict[str, object] = field(default_factory=dict)
-    notes:        str = ""
+    notes: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -84,7 +84,9 @@ def _systemd_stop(unit: str) -> None:
     try:
         subprocess.run(
             ["systemctl", "stop", unit],
-            check=False, capture_output=True, timeout=5,
+            check=False,
+            capture_output=True,
+            timeout=5,
         )
     except (subprocess.SubprocessError, FileNotFoundError) as e:
         log.warning("chaos: systemctl stop %s failed: %s", unit, e)
@@ -94,7 +96,9 @@ def _systemd_start(unit: str) -> None:
     try:
         subprocess.run(
             ["systemctl", "start", unit],
-            check=False, capture_output=True, timeout=10,
+            check=False,
+            capture_output=True,
+            timeout=10,
         )
     except (subprocess.SubprocessError, FileNotFoundError) as e:
         log.warning("chaos: systemctl start %s failed: %s", unit, e)
@@ -104,10 +108,14 @@ def _observe_chrony() -> dict[str, object]:
     try:
         result = subprocess.run(
             ["chronyc", "tracking"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
-        return {"chronyc_returncode": result.returncode,
-                "tail": result.stdout.splitlines()[-3:] if result.stdout else []}
+        return {
+            "chronyc_returncode": result.returncode,
+            "tail": result.stdout.splitlines()[-3:] if result.stdout else [],
+        }
     except (subprocess.SubprocessError, FileNotFoundError) as e:
         return {"error": str(e)}
 
@@ -116,7 +124,9 @@ def _observe_redis() -> dict[str, object]:
     try:
         result = subprocess.run(
             ["redis-cli", "ping"],
-            capture_output=True, text=True, timeout=2,
+            capture_output=True,
+            text=True,
+            timeout=2,
         )
         return {"ping": result.stdout.strip()}
     except (subprocess.SubprocessError, FileNotFoundError) as e:
@@ -196,7 +206,10 @@ def run_drill(name: str, *, execute: bool = False) -> DrillResult:
     started = datetime.now(UTC).isoformat()
     log.info(
         "chaos.drill: name=%s severity=%s execute=%s -- %s",
-        spec.name, spec.severity, execute, spec.description,
+        spec.name,
+        spec.severity,
+        execute,
+        spec.description,
     )
     notes = ""
     success = True
@@ -215,8 +228,7 @@ def run_drill(name: str, *, execute: bool = False) -> DrillResult:
 
     if spec.severity == "high":
         log.warning(
-            "chaos.drill: HIGH-severity drill %s; sleeping 5s for operator "
-            "to ctrl-c if needed",
+            "chaos.drill: HIGH-severity drill %s; sleeping 5s for operator to ctrl-c if needed",
             spec.name,
         )
         time.sleep(5.0)

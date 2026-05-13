@@ -1,4 +1,5 @@
 """Tests for hermes_memory_backup — SQLite online-backup script."""
+
 from __future__ import annotations
 
 import sqlite3
@@ -68,8 +69,9 @@ def test_backup_prunes_to_keep_last(tmp_path: Path) -> None:
     # Manually seed 5 fake old backups with staggered mtimes
     import os
     import time
+
     for i in range(5):
-        p = dest_dir / f"hermes_memory_2025010{i+1}T000000Z.db"
+        p = dest_dir / f"hermes_memory_2025010{i + 1}T000000Z.db"
         p.write_bytes(b"fake")
         # Make them progressively older — i=4 is newest among fakes
         os.utime(p, (time.time() - (10 - i) * 100, time.time() - (10 - i) * 100))
@@ -84,7 +86,8 @@ def test_backup_prunes_to_keep_last(tmp_path: Path) -> None:
 
 
 def test_backup_unlinks_corrupt_dest_on_verify_failure(
-    tmp_path: Path, monkeypatch,
+    tmp_path: Path,
+    monkeypatch,
 ) -> None:
     """If integrity_check fails on the new backup, the corrupt file is removed."""
     from eta_engine.scripts import hermes_memory_backup
@@ -95,7 +98,9 @@ def test_backup_unlinks_corrupt_dest_on_verify_failure(
 
     # Force verify to always fail
     monkeypatch.setattr(
-        hermes_memory_backup, "verify_backup", lambda p: False,
+        hermes_memory_backup,
+        "verify_backup",
+        lambda p: False,
     )
 
     result = hermes_memory_backup.run(src=src, dest_dir=dest_dir, keep_last=10)

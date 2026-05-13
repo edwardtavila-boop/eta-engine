@@ -45,8 +45,13 @@ def _bar(
     o = open_ if open_ is not None else (high + low) / 2
     c = close if close is not None else (high + low) / 2
     return BarData(
-        timestamp=utc_dt, symbol="MBT", open=o, high=high, low=low,
-        close=c, volume=volume,
+        timestamp=utc_dt,
+        symbol="MBT",
+        open=o,
+        high=high,
+        low=low,
+        close=c,
+        volume=volume,
     )
 
 
@@ -54,8 +59,10 @@ def _config() -> BacktestConfig:
     return BacktestConfig(
         start_date=datetime(2026, 1, 1, tzinfo=UTC),
         end_date=datetime(2026, 12, 31, tzinfo=UTC),
-        symbol="MBT", initial_equity=10_000.0,
-        risk_per_trade_pct=0.005, confluence_threshold=0.0,
+        symbol="MBT",
+        initial_equity=10_000.0,
+        risk_per_trade_pct=0.005,
+        confluence_threshold=0.0,
         max_trades_per_day=10,
     )
 
@@ -145,8 +152,7 @@ def test_z_below_threshold_yields_no_signal() -> None:
     for i in range(20):
         ts = base + timedelta(minutes=i * 5)
         # Flat tape, no proxy spike
-        bar = _bar(ts, high=60_000.0, low=59_950.0, close=59_975.0,
-                   volume=1000.0)
+        bar = _bar(ts, high=60_000.0, low=59_950.0, close=59_975.0, volume=1000.0)
         out = s.maybe_enter(bar, hist, 10_000.0, bcfg)
         assert out is None
         hist.append(bar)
@@ -205,7 +211,9 @@ def _build_z_spike_session(
         cl = base_close + i * htf_drift_per_bar
         bar = _bar(
             ts,
-            high=cl + 50.0, low=cl - 50.0, close=cl,
+            high=cl + 50.0,
+            low=cl - 50.0,
+            close=cl,
             volume=1000.0,
         )
         s.maybe_enter(bar, hist, 10_000.0, bcfg)
@@ -214,7 +222,9 @@ def _build_z_spike_session(
     cl = base_close + n_pre * htf_drift_per_bar
     spike = _bar(
         spike_ts,
-        high=cl + 50.0, low=cl - 50.0, close=cl,
+        high=cl + 50.0,
+        low=cl - 50.0,
+        close=cl,
         volume=1000.0,
     )
     return hist, spike
@@ -227,18 +237,24 @@ def test_z_spike_with_htf_agreeing_is_filtered() -> None:
     the start of a real trend.
     """
     cfg = _permissive_cfg(
-        proxy_lookback=6, entry_z=1.0,
-        htf_trend_lookback_5m_bars=4, htf_ema_period=3,
-        warmup_bars=8, atr_period=5,
+        proxy_lookback=6,
+        entry_z=1.0,
+        htf_trend_lookback_5m_bars=4,
+        htf_ema_period=3,
+        warmup_bars=8,
+        atr_period=5,
         require_htf_opposition=True,
     )
     s = MBTZFadeStrategy(cfg)
     bcfg = _config()
 
-    proxies_pre = [0.0] * 9   # quiet baseline (9 calm bars)
+    proxies_pre = [0.0] * 9  # quiet baseline (9 calm bars)
     # Strong upward drift in closes -> 1h EMA slope is positive.
     hist, spike = _build_z_spike_session(
-        s, bcfg, proxies_pre, spike_proxy=50.0,
+        s,
+        bcfg,
+        proxies_pre,
+        spike_proxy=50.0,
         htf_drift_per_bar=20.0,  # +20 per bar -> rising HTF
     )
     out = s.maybe_enter(spike, hist, 10_000.0, bcfg)
@@ -251,9 +267,12 @@ def test_z_spike_with_htf_agreeing_is_filtered() -> None:
 def test_z_spike_with_htf_opposing_fires_short() -> None:
     """z >= entry_z and 1h slope DOWN -> SHORT fade fires."""
     cfg = _permissive_cfg(
-        proxy_lookback=6, entry_z=1.0,
-        htf_trend_lookback_5m_bars=4, htf_ema_period=3,
-        warmup_bars=8, atr_period=5,
+        proxy_lookback=6,
+        entry_z=1.0,
+        htf_trend_lookback_5m_bars=4,
+        htf_ema_period=3,
+        warmup_bars=8,
+        atr_period=5,
         require_htf_opposition=True,
     )
     s = MBTZFadeStrategy(cfg)
@@ -262,7 +281,10 @@ def test_z_spike_with_htf_opposing_fires_short() -> None:
     proxies_pre = [0.0] * 9  # quiet baseline
     # Strong DOWNWARD drift -> 1h EMA slope is negative.
     hist, spike = _build_z_spike_session(
-        s, bcfg, proxies_pre, spike_proxy=50.0,
+        s,
+        bcfg,
+        proxies_pre,
+        spike_proxy=50.0,
         htf_drift_per_bar=-20.0,
     )
     out = s.maybe_enter(spike, hist, 10_000.0, bcfg)
@@ -275,9 +297,12 @@ def test_z_spike_with_htf_opposing_fires_short() -> None:
 def test_negative_z_with_htf_opposing_fires_long() -> None:
     """z <= -entry_z and 1h slope UP -> LONG fade fires."""
     cfg = _permissive_cfg(
-        proxy_lookback=6, entry_z=1.0,
-        htf_trend_lookback_5m_bars=4, htf_ema_period=3,
-        warmup_bars=8, atr_period=5,
+        proxy_lookback=6,
+        entry_z=1.0,
+        htf_trend_lookback_5m_bars=4,
+        htf_ema_period=3,
+        warmup_bars=8,
+        atr_period=5,
         require_htf_opposition=True,
     )
     s = MBTZFadeStrategy(cfg)
@@ -286,7 +311,10 @@ def test_negative_z_with_htf_opposing_fires_long() -> None:
     proxies_pre = [0.0] * 9
     # Upward drift -> HTF slope positive -> opposes a NEGATIVE spike.
     hist, spike = _build_z_spike_session(
-        s, bcfg, proxies_pre, spike_proxy=-50.0,
+        s,
+        bcfg,
+        proxies_pre,
+        spike_proxy=-50.0,
         htf_drift_per_bar=+20.0,
     )
     out = s.maybe_enter(spike, hist, 10_000.0, bcfg)
@@ -305,9 +333,12 @@ def test_time_stop_bookkeeping_clears_after_n_bars() -> None:
     """After a fire, _open_entry_bar_idx is set; after time_stop_bars
     additional bars, the bookkeeping clears."""
     cfg = _permissive_cfg(
-        proxy_lookback=6, entry_z=1.0,
-        htf_trend_lookback_5m_bars=4, htf_ema_period=3,
-        warmup_bars=8, atr_period=5,
+        proxy_lookback=6,
+        entry_z=1.0,
+        htf_trend_lookback_5m_bars=4,
+        htf_ema_period=3,
+        warmup_bars=8,
+        atr_period=5,
         time_stop_bars=4,
         require_htf_opposition=True,
         min_bars_between_trades=100,  # block re-entry to keep test clean
@@ -317,7 +348,10 @@ def test_time_stop_bookkeeping_clears_after_n_bars() -> None:
 
     proxies_pre = [0.0] * 9
     hist, spike = _build_z_spike_session(
-        s, bcfg, proxies_pre, spike_proxy=50.0,
+        s,
+        bcfg,
+        proxies_pre,
+        spike_proxy=50.0,
         htf_drift_per_bar=-20.0,
     )
     out = s.maybe_enter(spike, hist, 10_000.0, bcfg)
@@ -332,7 +366,9 @@ def test_time_stop_bookkeeping_clears_after_n_bars() -> None:
         ts = last_ts + timedelta(minutes=(i + 1) * 5)
         bar = _bar(
             ts.astimezone(_CT),
-            high=last_close + 50, low=last_close - 50, close=last_close,
+            high=last_close + 50,
+            low=last_close - 50,
+            close=last_close,
             volume=1000.0,
         )
         s.maybe_enter(bar, hist, 10_000.0, bcfg)
@@ -343,9 +379,12 @@ def test_time_stop_bookkeeping_clears_after_n_bars() -> None:
 def test_day_rollover_resets_trades_today() -> None:
     """A new RTH session clears the trades_today counter."""
     cfg = _permissive_cfg(
-        proxy_lookback=6, entry_z=1.0,
-        htf_trend_lookback_5m_bars=4, htf_ema_period=3,
-        warmup_bars=8, atr_period=5,
+        proxy_lookback=6,
+        entry_z=1.0,
+        htf_trend_lookback_5m_bars=4,
+        htf_ema_period=3,
+        warmup_bars=8,
+        atr_period=5,
         max_trades_per_day=1,
         require_htf_opposition=True,
     )
@@ -354,7 +393,10 @@ def test_day_rollover_resets_trades_today() -> None:
 
     proxies_pre = [0.0] * 9
     hist, spike = _build_z_spike_session(
-        s, bcfg, proxies_pre, spike_proxy=50.0,
+        s,
+        bcfg,
+        proxies_pre,
+        spike_proxy=50.0,
         htf_drift_per_bar=-20.0,
     )
     out = s.maybe_enter(spike, hist, 10_000.0, bcfg)
@@ -365,7 +407,11 @@ def test_day_rollover_resets_trades_today() -> None:
     # Roll to next day at 10:00 CT -- _last_day != bar_date triggers reset.
     next_day_ts = datetime(2026, 6, 16, 10, 0, tzinfo=_CT)
     bar_next = _bar(
-        next_day_ts, high=60_050, low=59_950, close=60_000, volume=1000.0,
+        next_day_ts,
+        high=60_050,
+        low=59_950,
+        close=60_000,
+        volume=1000.0,
     )
     s.maybe_enter(bar_next, hist, 10_000.0, bcfg)
     assert s._trades_today == 0
@@ -380,9 +426,12 @@ def test_qty_uses_point_value_010_for_sizing() -> None:
     qty would be 10x smaller -- this test catches that regression.
     """
     cfg = _permissive_cfg(
-        proxy_lookback=6, entry_z=1.0,
-        htf_trend_lookback_5m_bars=4, htf_ema_period=3,
-        warmup_bars=8, atr_period=5,
+        proxy_lookback=6,
+        entry_z=1.0,
+        htf_trend_lookback_5m_bars=4,
+        htf_ema_period=3,
+        warmup_bars=8,
+        atr_period=5,
         risk_per_trade_pct=0.005,
         require_htf_opposition=True,
     )
@@ -391,7 +440,10 @@ def test_qty_uses_point_value_010_for_sizing() -> None:
 
     proxies_pre = [0.0] * 9
     hist, spike = _build_z_spike_session(
-        s, bcfg, proxies_pre, spike_proxy=50.0,
+        s,
+        bcfg,
+        proxies_pre,
+        spike_proxy=50.0,
         htf_drift_per_bar=-20.0,
     )
     out = s.maybe_enter(spike, hist, 10_000.0, bcfg)
@@ -401,6 +453,4 @@ def test_qty_uses_point_value_010_for_sizing() -> None:
     # stop_dist = 1.0 * 100 = 100. risk = 0.005 * 10_000 = $50.
     # qty = 50 / (100 * 0.10) = 5 contracts.
     expected_qty = 50.0 / (100.0 * 0.10)
-    assert abs(out.qty - expected_qty) < 0.01, (
-        f"qty math wrong; got {out.qty}, expected ~{expected_qty}"
-    )
+    assert abs(out.qty - expected_qty) < 0.01, f"qty math wrong; got {out.qty}, expected ~{expected_qty}"

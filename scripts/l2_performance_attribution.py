@@ -52,6 +52,7 @@ Run
     python -m eta_engine.scripts.l2_performance_attribution \\
         --strategy book_imbalance --symbol MNQ --days 30
 """
+
 from __future__ import annotations
 
 # ruff: noqa: PLR2004
@@ -97,8 +98,7 @@ class AttributionReport:
     notes: list[str] = field(default_factory=list)
 
 
-def _read_jsonl(path: Path, *, since_days: int = 30,
-                 strategy_id: str | None = None) -> list[dict]:
+def _read_jsonl(path: Path, *, since_days: int = 30, strategy_id: str | None = None) -> list[dict]:
     if not path.exists():
         return []
     cutoff = datetime.now(UTC) - timedelta(days=since_days)
@@ -130,11 +130,16 @@ def _read_jsonl(path: Path, *, since_days: int = 30,
     return out
 
 
-def attribute_trade(*, signal: dict, entry_fill: dict, exit_fill: dict,
-                     baseline_alpha: float = 0.0,
-                     regime_baseline: float = 0.0,
-                     point_value: float = 2.0,
-                     commission_per_rt: float = 0.85) -> TradeAttribution:
+def attribute_trade(
+    *,
+    signal: dict,
+    entry_fill: dict,
+    exit_fill: dict,
+    baseline_alpha: float = 0.0,
+    regime_baseline: float = 0.0,
+    point_value: float = 2.0,
+    commission_per_rt: float = 0.85,
+) -> TradeAttribution:
     """Decompose a single trade's pnl."""
     intended_entry = float(signal.get("entry_price", 0))
     intended_target = float(signal.get("intended_target_price", 0))
@@ -151,11 +156,11 @@ def attribute_trade(*, signal: dict, entry_fill: dict, exit_fill: dict,
     if is_long:
         pnl_points = actual_exit - actual_entry
         entry_timing_pts = intended_entry - actual_entry  # positive = bought cheaper
-        exit_slip_pts = actual_exit - intended_exit       # positive = sold higher than target
+        exit_slip_pts = actual_exit - intended_exit  # positive = sold higher than target
     else:
         pnl_points = actual_entry - actual_exit
         entry_timing_pts = actual_entry - intended_entry  # positive = sold higher than intended
-        exit_slip_pts = intended_exit - actual_exit       # positive = bought back lower
+        exit_slip_pts = intended_exit - actual_exit  # positive = bought back lower
 
     pnl_total = pnl_points * point_value - commission_per_rt
     entry_timing_usd = entry_timing_pts * point_value
@@ -166,8 +171,7 @@ def attribute_trade(*, signal: dict, entry_fill: dict, exit_fill: dict,
     regime_contrib = gross - regime_baseline
     # Alpha = pnl_total - (entry_timing + exit_slip + regime + commission)
     # Equivalently: alpha = (gross - regime) - commission - entry_timing - exit_slip
-    alpha = pnl_total - (entry_timing_usd + exit_slip_usd
-                          + regime_contrib + commission_usd)
+    alpha = pnl_total - (entry_timing_usd + exit_slip_usd + regime_contrib + commission_usd)
 
     return TradeAttribution(
         signal_id=signal.get("signal_id", ""),
@@ -180,18 +184,19 @@ def attribute_trade(*, signal: dict, entry_fill: dict, exit_fill: dict,
     )
 
 
-def run_attribution(strategy_id: str | None = None,
-                     *, since_days: int = 30,
-                     point_value: float = 2.0,
-                     commission_per_rt: float = 0.85,
-                     _signal_path: Path | None = None,
-                     _fill_path: Path | None = None) -> AttributionReport:
+def run_attribution(
+    strategy_id: str | None = None,
+    *,
+    since_days: int = 30,
+    point_value: float = 2.0,
+    commission_per_rt: float = 0.85,
+    _signal_path: Path | None = None,
+    _fill_path: Path | None = None,
+) -> AttributionReport:
     signals = _read_jsonl(
-        _signal_path if _signal_path is not None else SIGNAL_LOG,
-        since_days=since_days, strategy_id=strategy_id)
-    fills = _read_jsonl(
-        _fill_path if _fill_path is not None else BROKER_FILL_LOG,
-        since_days=since_days)
+        _signal_path if _signal_path is not None else SIGNAL_LOG, since_days=since_days, strategy_id=strategy_id
+    )
+    fills = _read_jsonl(_fill_path if _fill_path is not None else BROKER_FILL_LOG, since_days=since_days)
 
     # Group fills by signal_id
     fills_by_sig: dict[str, list[dict]] = {}
@@ -206,29 +211,35 @@ def run_attribution(strategy_id: str | None = None,
         if not sid or sid not in fills_by_sig:
             continue
         sig_fills = fills_by_sig[sid]
-        entry_fill = next((f for f in sig_fills
-                            if str(f.get("exit_reason", "")).upper() == "ENTRY"),
-                           None)
-        exit_fill = next((f for f in sig_fills
-                           if str(f.get("exit_reason", "")).upper()
-                              in ("TARGET", "STOP", "TIMEOUT")),
-                          None)
+        entry_fill = next((f for f in sig_fills if str(f.get("exit_reason", "")).upper() == "ENTRY"), None)
+        exit_fill = next(
+            (f for f in sig_fills if str(f.get("exit_reason", "")).upper() in ("TARGET", "STOP", "TIMEOUT")), None
+        )
         if not entry_fill or not exit_fill:
             continue
         # Naive regime baseline: trailing mean pnl across all signals
         # (could be enriched with actual regime classification)
         attr = attribute_trade(
-            signal=sig, entry_fill=entry_fill, exit_fill=exit_fill,
-            baseline_alpha=0.0, regime_baseline=0.0,
-            point_value=point_value, commission_per_rt=commission_per_rt,
+            signal=sig,
+            entry_fill=entry_fill,
+            exit_fill=exit_fill,
+            baseline_alpha=0.0,
+            regime_baseline=0.0,
+            point_value=point_value,
+            commission_per_rt=commission_per_rt,
         )
         trade_attributions.append(attr)
 
     if not trade_attributions:
         return AttributionReport(
-            strategy_id=strategy_id, n_trades=0, total_pnl=0.0,
-            alpha_pct=None, entry_timing_pct=None,
-            exit_slip_pct=None, regime_pct=None, commission_pct=None,
+            strategy_id=strategy_id,
+            n_trades=0,
+            total_pnl=0.0,
+            alpha_pct=None,
+            entry_timing_pct=None,
+            exit_slip_pct=None,
+            regime_pct=None,
+            commission_pct=None,
             notes=["no matched trade lifecycles (signal + ENTRY + exit)"],
         )
 
@@ -248,7 +259,7 @@ def run_attribution(strategy_id: str | None = None,
             return 0.0
         m = statistics.mean(values)
         var = sum((x - m) ** 2 for x in values) / max(len(values) - 1, 1)
-        std = var ** 0.5
+        std = var**0.5
         return round(m / std, 4) if std > 0 else 0.0
 
     sharpe_attributed = {
@@ -259,7 +270,8 @@ def run_attribution(strategy_id: str | None = None,
     }
 
     return AttributionReport(
-        strategy_id=strategy_id, n_trades=len(trade_attributions),
+        strategy_id=strategy_id,
+        n_trades=len(trade_attributions),
         total_pnl=round(total, 2),
         alpha_pct=round(alpha_total / denom * 100, 1),
         entry_timing_pct=round(timing_total / denom * 100, 1),
@@ -273,24 +285,22 @@ def run_attribution(strategy_id: str | None = None,
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--strategy", default=None,
-                    help="strategy_id filter (default: all)")
+    ap.add_argument("--strategy", default=None, help="strategy_id filter (default: all)")
     ap.add_argument("--days", type=int, default=30)
-    ap.add_argument("--point-value", type=float, default=2.0,
-                    help="USD per point (default 2.0 for MNQ)")
+    ap.add_argument("--point-value", type=float, default=2.0, help="USD per point (default 2.0 for MNQ)")
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
 
     report = run_attribution(
-        strategy_id=args.strategy, since_days=args.days,
+        strategy_id=args.strategy,
+        since_days=args.days,
         point_value=args.point_value,
     )
     try:
         with ATTRIBUTION_LOG.open("a", encoding="utf-8") as f:
             d = asdict(report)
             d.pop("trades", None)  # trim per-trade detail from log
-            f.write(json.dumps({"ts": datetime.now(UTC).isoformat(),
-                                 **d}, separators=(",", ":")) + "\n")
+            f.write(json.dumps({"ts": datetime.now(UTC).isoformat(), **d}, separators=(",", ":")) + "\n")
     except OSError as e:
         print(f"WARN: attribution log write failed: {e}", file=sys.stderr)
 

@@ -16,6 +16,7 @@ flag (that's a code-level decision made when a bot was diamond-cut by
 the operator). Only kaizen-applied auto-deactivations are reversible
 through this tool.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -49,7 +50,8 @@ def _read() -> dict[str, dict]:
 def _write(data: dict) -> None:
     _OVERRIDES_PATH.parent.mkdir(parents=True, exist_ok=True)
     _OVERRIDES_PATH.write_text(
-        json.dumps(data, indent=2, default=str), encoding="utf-8",
+        json.dumps(data, indent=2, default=str),
+        encoding="utf-8",
     )
 
 
@@ -59,11 +61,14 @@ def _audit(action: str, bot_ids: list[str]) -> None:
         _REACTIVATE_LOG.parent.mkdir(parents=True, exist_ok=True)
         with _REACTIVATE_LOG.open("a", encoding="utf-8") as fh:
             fh.write(
-                json.dumps({
-                    "ts": datetime.now(UTC).isoformat(),
-                    "action": action,
-                    "bot_ids": bot_ids,
-                }) + "\n",
+                json.dumps(
+                    {
+                        "ts": datetime.now(UTC).isoformat(),
+                        "action": action,
+                        "bot_ids": bot_ids,
+                    }
+                )
+                + "\n",
             )
     except OSError:
         pass
@@ -107,8 +112,7 @@ def reactivate(bot_ids: list[str]) -> int:
         print(f"reactivated: {', '.join(removed)}")
         print("(takes effect on next supervisor restart)")
     if not_found:
-        print(f"(not in sidecar — already active or never auto-deactivated): "
-              f"{', '.join(not_found)}")
+        print(f"(not in sidecar — already active or never auto-deactivated): {', '.join(not_found)}")
     return 0 if removed else 1
 
 
@@ -130,10 +134,8 @@ def clear_all() -> int:
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("bot_ids", nargs="*", help="bot_id(s) to reactivate")
-    p.add_argument("--list", action="store_true",
-                   help="show all currently auto-deactivated bots")
-    p.add_argument("--clear-all", action="store_true",
-                   help="reactivate every kaizen-deactivated bot")
+    p.add_argument("--list", action="store_true", help="show all currently auto-deactivated bots")
+    p.add_argument("--clear-all", action="store_true", help="reactivate every kaizen-deactivated bot")
     args = p.parse_args(argv)
 
     if args.list:

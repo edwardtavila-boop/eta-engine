@@ -13,6 +13,7 @@ Phase 2 (strategies):
 - B2: volume_profile_strategy v2 L2 overlay
 - B3: anchor_sweep_strategy v2 L2 overlay
 """
+
 from __future__ import annotations
 
 import json
@@ -42,16 +43,13 @@ if TYPE_CHECKING:
 
 def test_E_simulator_produces_expected_count() -> None:
     """30 min * 60 / 5 = 360 snaps for default cadence."""
-    snaps, _ = depth_simulator.simulate(
-        symbol="MNQ", duration_minutes=30,
-        snapshot_interval_seconds=5.0, seed=42)
+    snaps, _ = depth_simulator.simulate(symbol="MNQ", duration_minutes=30, snapshot_interval_seconds=5.0, seed=42)
     assert len(snaps) == 360
 
 
 def test_E_simulator_schema_matches_live_capture() -> None:
     """Every snap must have the keys the live capture produces."""
-    snaps, _ = depth_simulator.simulate(
-        symbol="MNQ", duration_minutes=5, seed=42)
+    snaps, _ = depth_simulator.simulate(symbol="MNQ", duration_minutes=5, seed=42)
     required_top = {"ts", "epoch_s", "symbol", "bids", "asks", "spread", "mid"}
     required_lvl = {"price", "size", "mm"}
     for s in snaps:
@@ -69,27 +67,22 @@ def test_E_simulator_seed_is_deterministic() -> None:
 
 
 def test_E_imbalanced_long_has_more_bid_qty_than_ask() -> None:
-    snaps, _ = depth_simulator.simulate(
-        symbol="MNQ", duration_minutes=10,
-        regime_mix="imbalanced_long", seed=42)
+    snaps, _ = depth_simulator.simulate(symbol="MNQ", duration_minutes=10, regime_mix="imbalanced_long", seed=42)
     bid_total = sum(sum(lv["size"] for lv in s["bids"]) for s in snaps)
     ask_total = sum(sum(lv["size"] for lv in s["asks"]) for s in snaps)
     assert bid_total > ask_total * 1.5  # at least 50% more bids
 
 
 def test_E_stressed_mix_has_wider_spreads() -> None:
-    calm, _ = depth_simulator.simulate(
-        symbol="MNQ", duration_minutes=10, regime_mix="calm", seed=1)
-    stressed, _ = depth_simulator.simulate(
-        symbol="MNQ", duration_minutes=10, regime_mix="stressed", seed=1)
+    calm, _ = depth_simulator.simulate(symbol="MNQ", duration_minutes=10, regime_mix="calm", seed=1)
+    stressed, _ = depth_simulator.simulate(symbol="MNQ", duration_minutes=10, regime_mix="stressed", seed=1)
     calm_mean = sum(s["spread"] for s in calm) / len(calm)
     stressed_mean = sum(s["spread"] for s in stressed) / len(stressed)
     assert stressed_mean > calm_mean
 
 
 def test_E_write_snapshots_creates_jsonl(tmp_path: Path) -> None:
-    snaps, _ = depth_simulator.simulate(
-        symbol="MNQ", duration_minutes=5, seed=42)
+    snaps, _ = depth_simulator.simulate(symbol="MNQ", duration_minutes=5, seed=42)
     path = depth_simulator.write_snapshots(snaps, "MNQ", output_dir=tmp_path)
     assert path.exists()
     assert path.suffix == ".jsonl"
@@ -131,34 +124,41 @@ def test_D_sharpe_ci_handles_zero_volatility() -> None:
 
 
 def test_D_deflated_sharpe_no_correction_when_n_trials_eq_1() -> None:
-    assert l2_backtest_harness.deflated_sharpe_ratio(1.5, n_trials=1,
-                                                       n_trades=100) == 1.5
+    assert l2_backtest_harness.deflated_sharpe_ratio(1.5, n_trials=1, n_trades=100) == 1.5
 
 
 def test_D_deflated_sharpe_corrects_downward_when_many_trials() -> None:
     # With 100 trials and 50 trades, observed sharpe should deflate
     observed = 2.0
-    deflated = l2_backtest_harness.deflated_sharpe_ratio(observed, n_trials=100,
-                                                            n_trades=50)
+    deflated = l2_backtest_harness.deflated_sharpe_ratio(observed, n_trials=100, n_trades=50)
     assert deflated < observed
     assert deflated > 0  # but not flipped negative for a 2.0 observed
 
 
-def test_D_config_search_log_writes_and_counts(tmp_path: Path,
-                                                  monkeypatch: pytest.MonkeyPatch) -> None:
+def test_D_config_search_log_writes_and_counts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     log_path = tmp_path / "config_search.jsonl"
     monkeypatch.setattr(l2_backtest_harness, "CONFIG_SEARCH_LOG", log_path)
     l2_backtest_harness.log_config_search(
-        strategy="book_imbalance", symbol="MNQ", days=7,
+        strategy="book_imbalance",
+        symbol="MNQ",
+        days=7,
         config={"entry_threshold": 1.5, "consecutive_snaps": 3},
-        n_trades=10, sharpe_proxy=0.5, sharpe_proxy_valid=False,
-        win_rate=0.6, total_pnl_dollars_net=100.0,
+        n_trades=10,
+        sharpe_proxy=0.5,
+        sharpe_proxy_valid=False,
+        win_rate=0.6,
+        total_pnl_dollars_net=100.0,
     )
     l2_backtest_harness.log_config_search(
-        strategy="book_imbalance", symbol="MNQ", days=7,
+        strategy="book_imbalance",
+        symbol="MNQ",
+        days=7,
         config={"entry_threshold": 1.75, "consecutive_snaps": 3},
-        n_trades=8, sharpe_proxy=0.3, sharpe_proxy_valid=False,
-        win_rate=0.55, total_pnl_dollars_net=50.0,
+        n_trades=8,
+        sharpe_proxy=0.3,
+        sharpe_proxy_valid=False,
+        win_rate=0.55,
+        total_pnl_dollars_net=50.0,
     )
     n_searched = l2_backtest_harness.count_prior_configs_searched("book_imbalance", "MNQ")
     assert n_searched == 2
@@ -187,15 +187,29 @@ def test_C1_footprint_fires_on_absorbed_buy_print() -> None:
     base = datetime(2026, 5, 11, 14, 30, 0, tzinfo=UTC)
     rng = [3, 4, 5, 6, 7, 4, 5, 6, 8, 4, 5, 6, 7, 5, 4, 5, 6, 5, 7, 4]
     for i, s in enumerate(rng):
-        fp.record_print(state, price=100.0, size=float(s), side="BUY",
-                          ts=base + timedelta(seconds=i),
-                          mid_before=100.0, mid_after=100.05,
-                          opposite_qty_before=20, opposite_qty_after=18)
+        fp.record_print(
+            state,
+            price=100.0,
+            size=float(s),
+            side="BUY",
+            ts=base + timedelta(seconds=i),
+            mid_before=100.0,
+            mid_after=100.05,
+            opposite_qty_before=20,
+            opposite_qty_after=18,
+        )
     # Large absorbed buy print
-    fp.record_print(state, price=100.0, size=50.0, side="BUY",
-                      ts=base + timedelta(seconds=25),
-                      mid_before=100.0, mid_after=100.05,
-                      opposite_qty_before=100, opposite_qty_after=95)
+    fp.record_print(
+        state,
+        price=100.0,
+        size=50.0,
+        side="BUY",
+        ts=base + timedelta(seconds=25),
+        mid_before=100.0,
+        mid_after=100.05,
+        opposite_qty_before=100,
+        opposite_qty_after=95,
+    )
     sig = fp.evaluate_footprint(state, cfg, atr=2.0, symbol="MNQ")
     assert sig is not None
     assert sig.side == "SHORT"
@@ -207,41 +221,75 @@ def test_C1_footprint_no_signal_when_opp_qty_drops_a_lot() -> None:
     state = fp.FootprintAbsorptionState()
     base = datetime(2026, 5, 11, 14, 30, 0, tzinfo=UTC)
     for i in range(20):
-        fp.record_print(state, price=100.0, size=5.0, side="BUY",
-                          ts=base + timedelta(seconds=i),
-                          mid_before=100.0, mid_after=100.05,
-                          opposite_qty_before=20, opposite_qty_after=18)
+        fp.record_print(
+            state,
+            price=100.0,
+            size=5.0,
+            side="BUY",
+            ts=base + timedelta(seconds=i),
+            mid_before=100.0,
+            mid_after=100.05,
+            opposite_qty_before=20,
+            opposite_qty_after=18,
+        )
     # Large print but bid side DROPS a lot — not absorbed
-    fp.record_print(state, price=100.0, size=50.0, side="BUY",
-                      ts=base + timedelta(seconds=25),
-                      mid_before=100.0, mid_after=100.5,  # also price moved
-                      opposite_qty_before=100, opposite_qty_after=30)
+    fp.record_print(
+        state,
+        price=100.0,
+        size=50.0,
+        side="BUY",
+        ts=base + timedelta(seconds=25),
+        mid_before=100.0,
+        mid_after=100.5,  # also price moved
+        opposite_qty_before=100,
+        opposite_qty_after=30,
+    )
     sig = fp.evaluate_footprint(state, cfg, atr=2.0, symbol="MNQ")
     assert sig is None
 
 
 def test_C1_footprint_respects_cooldown() -> None:
-    cfg = fp.FootprintAbsorptionConfig(prints_size_z_min=1.0,
-                                         cooldown_seconds=120.0)
+    cfg = fp.FootprintAbsorptionConfig(prints_size_z_min=1.0, cooldown_seconds=120.0)
     state = fp.FootprintAbsorptionState()
     base = datetime(2026, 5, 11, 14, 30, 0, tzinfo=UTC)
     rng = [3, 4, 5, 6, 7, 4, 5, 6, 8, 4, 5, 6, 7, 5, 4, 5, 6, 5, 7, 4]
     for i, s in enumerate(rng):
-        fp.record_print(state, price=100.0, size=float(s), side="BUY",
-                          ts=base + timedelta(seconds=i),
-                          mid_before=100.0, mid_after=100.05,
-                          opposite_qty_before=20, opposite_qty_after=18)
-    fp.record_print(state, price=100.0, size=50.0, side="BUY",
-                      ts=base + timedelta(seconds=25),
-                      mid_before=100.0, mid_after=100.05,
-                      opposite_qty_before=100, opposite_qty_after=95)
+        fp.record_print(
+            state,
+            price=100.0,
+            size=float(s),
+            side="BUY",
+            ts=base + timedelta(seconds=i),
+            mid_before=100.0,
+            mid_after=100.05,
+            opposite_qty_before=20,
+            opposite_qty_after=18,
+        )
+    fp.record_print(
+        state,
+        price=100.0,
+        size=50.0,
+        side="BUY",
+        ts=base + timedelta(seconds=25),
+        mid_before=100.0,
+        mid_after=100.05,
+        opposite_qty_before=100,
+        opposite_qty_after=95,
+    )
     sig1 = fp.evaluate_footprint(state, cfg, atr=2.0, symbol="MNQ")
     assert sig1 is not None
     # Immediate second large print — should be blocked by cooldown
-    fp.record_print(state, price=100.0, size=50.0, side="BUY",
-                      ts=base + timedelta(seconds=30),
-                      mid_before=100.0, mid_after=100.05,
-                      opposite_qty_before=100, opposite_qty_after=95)
+    fp.record_print(
+        state,
+        price=100.0,
+        size=50.0,
+        side="BUY",
+        ts=base + timedelta(seconds=30),
+        mid_before=100.0,
+        mid_after=100.05,
+        opposite_qty_before=100,
+        opposite_qty_after=95,
+    )
     sig2 = fp.evaluate_footprint(state, cfg, atr=2.0, symbol="MNQ")
     assert sig2 is None
 
@@ -251,8 +299,7 @@ def test_C1_footprint_respects_cooldown() -> None:
 # ────────────────────────────────────────────────────────────────────
 
 
-def _bar(*, ts: datetime, close: float, volume_buy: float, volume_sell: float,
-         open_: float | None = None) -> dict:
+def _bar(*, ts: datetime, close: float, volume_buy: float, volume_sell: float, open_: float | None = None) -> dict:
     return {
         "timestamp_utc": ts.isoformat(),
         "epoch_s": ts.timestamp(),
@@ -269,37 +316,46 @@ def _bar(*, ts: datetime, close: float, volume_buy: float, volume_sell: float,
 
 def test_C2_aggressor_flow_fires_long_on_sustained_buying() -> None:
     cfg = agg.AggressorFlowConfig(
-        window_bars=5, entry_threshold=0.30,
-        consecutive_bars=2, cooldown_seconds=0.0,
+        window_bars=5,
+        entry_threshold=0.30,
+        consecutive_bars=2,
+        cooldown_seconds=0.0,
         require_close_confirm=True,
     )
     state = agg.AggressorFlowState()
     base = datetime(2026, 5, 11, 14, 30, 0, tzinfo=UTC)
     # 5 bars with heavy buy aggressor (buy 80 / sell 20 = ratio 0.60)
     for i in range(5):
-        b = _bar(ts=base + timedelta(minutes=5 * i),
-                 close=100.0 + i * 0.5, open_=100.0 + i * 0.5 - 0.3,
-                 volume_buy=80, volume_sell=20)
+        b = _bar(
+            ts=base + timedelta(minutes=5 * i),
+            close=100.0 + i * 0.5,
+            open_=100.0 + i * 0.5 - 0.3,
+            volume_buy=80,
+            volume_sell=20,
+        )
         agg.evaluate_bar(b, cfg, state, atr=2.0, symbol="MNQ")
     # Next bar — should fire LONG (consecutive_bars=2 met)
-    b = _bar(ts=base + timedelta(minutes=30),
-             close=103.0, open_=102.5, volume_buy=80, volume_sell=20)
+    b = _bar(ts=base + timedelta(minutes=30), close=103.0, open_=102.5, volume_buy=80, volume_sell=20)
     sig = agg.evaluate_bar(b, cfg, state, atr=2.0, symbol="MNQ")
     assert sig is not None
     assert sig.side == "LONG"
 
 
 def test_C2_aggressor_flow_fires_short_on_sustained_selling() -> None:
-    cfg = agg.AggressorFlowConfig(window_bars=5, entry_threshold=0.30,
-                                     consecutive_bars=1, cooldown_seconds=0.0,
-                                     require_close_confirm=True)
+    cfg = agg.AggressorFlowConfig(
+        window_bars=5, entry_threshold=0.30, consecutive_bars=1, cooldown_seconds=0.0, require_close_confirm=True
+    )
     state = agg.AggressorFlowState()
     base = datetime(2026, 5, 11, 14, 30, 0, tzinfo=UTC)
     # Build window with selling pressure (sell 80 / buy 20 = ratio -0.60)
     for i in range(6):
-        b = _bar(ts=base + timedelta(minutes=5 * i),
-                 close=100.0 - i * 0.5, open_=100.0 - i * 0.5 + 0.3,
-                 volume_buy=20, volume_sell=80)
+        b = _bar(
+            ts=base + timedelta(minutes=5 * i),
+            close=100.0 - i * 0.5,
+            open_=100.0 - i * 0.5 + 0.3,
+            volume_buy=20,
+            volume_sell=80,
+        )
         sig = agg.evaluate_bar(b, cfg, state, atr=2.0, symbol="MNQ")
     assert sig is not None
     assert sig.side == "SHORT"
@@ -317,8 +373,7 @@ def test_C2_compute_imbalance_ratio_zero_on_empty() -> None:
 # ────────────────────────────────────────────────────────────────────
 
 
-def _snap(bid_price: float, bid_qty: int, ask_price: float, ask_qty: int,
-           *, ts: datetime | None = None) -> dict:
+def _snap(bid_price: float, bid_qty: int, ask_price: float, ask_qty: int, *, ts: datetime | None = None) -> dict:
     ts_dt = ts or datetime.now(UTC)
     return {
         "ts": ts_dt.isoformat(),
@@ -363,8 +418,7 @@ def test_C3_microprice_fires_long_on_upward_drift() -> None:
     # build again.  Track which one fired.
     signals: list[mp.MicropriceSignal] = []
     for i in range(5):
-        snap = _snap(100.0, 100, 100.5, 5,
-                      ts=base + timedelta(seconds=5 * i))
+        snap = _snap(100.0, 100, 100.5, 5, ts=base + timedelta(seconds=5 * i))
         sig = mp.evaluate_snapshot(snap, cfg, state, atr=2.0, symbol="MNQ")
         if sig is not None:
             signals.append(sig)
@@ -374,8 +428,7 @@ def test_C3_microprice_fires_long_on_upward_drift() -> None:
 
 
 def test_C3_microprice_no_signal_without_trade_price() -> None:
-    cfg = mp.MicropriceConfig(drift_threshold_ticks=1.0, consecutive_snaps=1,
-                                cooldown_seconds=0.0)
+    cfg = mp.MicropriceConfig(drift_threshold_ticks=1.0, consecutive_snaps=1, cooldown_seconds=0.0)
     state = mp.MicropriceState()
     # No update_trade_price call → state.last_trade_price is None
     sig = mp.evaluate_snapshot(_snap(100.0, 100, 100.5, 5), cfg, state)
@@ -387,21 +440,24 @@ def test_C3_microprice_no_signal_without_trade_price() -> None:
 # ────────────────────────────────────────────────────────────────────
 
 
-def test_E2E_simulator_into_harness_produces_signals(tmp_path: Path,
-                                                          monkeypatch: pytest.MonkeyPatch) -> None:
+def test_E2E_simulator_into_harness_produces_signals(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Imbalanced regime + book_imbalance strategy = signals fire."""
     monkeypatch.setattr(l2_backtest_harness, "DEPTH_DIR", tmp_path)
     today = datetime.now(UTC).replace(microsecond=0, second=0)
     snaps, _ = depth_simulator.simulate(
-        symbol="MNQ", duration_minutes=30,
-        regime_mix="imbalanced_long", seed=42, start_dt=today)
-    depth_simulator.write_snapshots(snaps, "MNQ", output_dir=tmp_path,
-                                      date_str=today.strftime("%Y%m%d"))
+        symbol="MNQ", duration_minutes=30, regime_mix="imbalanced_long", seed=42, start_dt=today
+    )
+    depth_simulator.write_snapshots(snaps, "MNQ", output_dir=tmp_path, date_str=today.strftime("%Y%m%d"))
     result = l2_backtest_harness.run_book_imbalance(
-        "MNQ", days=1,
-        entry_threshold=1.5, consecutive_snaps=3,
-        n_levels=3, atr_stop_mult=1.0, rr_target=2.0,
-        walk_forward=False, log_config_search_flag=False,
+        "MNQ",
+        days=1,
+        entry_threshold=1.5,
+        consecutive_snaps=3,
+        n_levels=3,
+        atr_stop_mult=1.0,
+        rr_target=2.0,
+        walk_forward=False,
+        log_config_search_flag=False,
     )
     assert result.n_snapshots == 360
     # Should fire at least 1 signal in imbalanced regime

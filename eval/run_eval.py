@@ -11,6 +11,7 @@ per CLAUDE.md hard rule #1. The legacy in-repo path
 read-only fallback for back-compat — once a fresh canonical run rolls,
 that fallback can be removed in a follow-up.
 """
+
 from __future__ import annotations
 
 import json
@@ -66,6 +67,7 @@ def _extract_prompts() -> dict[str, str]:
     # Debate bull prefix
     try:
         from eta_engine.brain.jarvis_v3.claude_layer.prompts import _bull_prefix
+
         prompts["debate_bull"] = _bull_prefix()
     except Exception:
         prompts["debate_bull"] = "## Role: Bull\nArgue for the trade."
@@ -73,6 +75,7 @@ def _extract_prompts() -> dict[str, str]:
     # Debate bear prefix
     try:
         from eta_engine.brain.jarvis_v3.claude_layer.prompts import _bear_prefix
+
         prompts["debate_bear"] = _bear_prefix()
     except Exception:
         prompts["debate_bear"] = "## Role: Bear\nArgue against the trade."
@@ -85,8 +88,7 @@ def _extract_prompts() -> dict[str, str]:
 
     # Daily brief
     prompts["daily_brief"] = (
-        "You are JARVIS. Generate a concise end-of-day operator brief "
-        "from the following trading metrics and decisions."
+        "You are JARVIS. Generate a concise end-of-day operator brief from the following trading metrics and decisions."
     )
 
     prompts["kaizen_retro"] = (
@@ -114,8 +116,13 @@ def run_promptfoo(config_path: Path, output_path: Path) -> dict:
         ],
         "prompts": [
             f"file://{PROMPTS_DIR / name}"
-            for name in ["debate_bull.txt", "debate_bear.txt",
-                         "sage_narrative.txt", "daily_brief.txt", "kaizen_retro.txt"]
+            for name in [
+                "debate_bull.txt",
+                "debate_bear.txt",
+                "sage_narrative.txt",
+                "daily_brief.txt",
+                "kaizen_retro.txt",
+            ]
         ],
         "tests": [
             {
@@ -133,9 +140,10 @@ def run_promptfoo(config_path: Path, output_path: Path) -> dict:
     # Run promptfoo if installed, otherwise write synthetic results
     try:
         result = subprocess.run(
-            ["npx", "promptfoo", "eval", "-c", str(config_path),
-             "-o", str(output_path), "--no-cache"],
-            capture_output=True, text=True, timeout=120,
+            ["npx", "promptfoo", "eval", "-c", str(config_path), "-o", str(output_path), "--no-cache"],
+            capture_output=True,
+            text=True,
+            timeout=120,
         )
         if result.returncode == 0 and output_path.exists():
             return json.loads(output_path.read_text())

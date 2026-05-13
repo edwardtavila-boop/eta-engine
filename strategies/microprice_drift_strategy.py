@@ -42,6 +42,7 @@ Limitations
 - Strategy state machine needs BOTH depth + ticks; degrades to
   no-op when one is missing.
 """
+
 from __future__ import annotations
 
 # ruff: noqa: ANN401
@@ -54,8 +55,9 @@ from typing import Any
 @dataclass
 class MicropriceConfig:
     """Tuning surface."""
+
     drift_threshold_ticks: float = 2.0  # min microprice-vs-trade divergence
-    consecutive_snaps: int = 3          # min consecutive snaps above threshold
+    consecutive_snaps: int = 3  # min consecutive snaps above threshold
     atr_stop_mult: float = 1.5
     rr_target: float = 2.0
     min_stop_ticks: int = 4
@@ -155,17 +157,15 @@ def _snapshot_dt(snapshot: dict) -> datetime | None:
     return None
 
 
-def update_trade_price(state: MicropriceState, price: float,
-                       ts: datetime | None = None) -> None:
+def update_trade_price(state: MicropriceState, price: float, ts: datetime | None = None) -> None:
     """Caller wires this from the tick stream — each new trade print."""
     _ = ts  # accepted for future use (e.g., trade-price latency)
     state.last_trade_price = price
 
 
-def evaluate_snapshot(snapshot: dict, config: MicropriceConfig,
-                       state: MicropriceState,
-                       *, atr: float = 1.0,
-                       symbol: str = "MNQ") -> MicropriceSignal | None:
+def evaluate_snapshot(
+    snapshot: dict, config: MicropriceConfig, state: MicropriceState, *, atr: float = 1.0, symbol: str = "MNQ"
+) -> MicropriceSignal | None:
     """Process one depth snapshot.  Updates state.  Returns signal or None."""
     snap_dt = _snapshot_dt(snapshot)
     today = (snap_dt or datetime.now(UTC)).strftime("%Y%m%d")
@@ -231,10 +231,19 @@ def evaluate_snapshot(snapshot: dict, config: MicropriceConfig,
             state.consecutive_long_count = 0
             state.last_signal_dt = snap_dt or datetime.now(UTC)
             state.trades_today += 1
-            return _emit(side="LONG", entry=entry, stop=stop, target=target,
-                          micro=micro, trade_price=state.last_trade_price,
-                          drift_ticks=drift_ticks, snapshot=snapshot,
-                          symbol=symbol, state=state, config=config)
+            return _emit(
+                side="LONG",
+                entry=entry,
+                stop=stop,
+                target=target,
+                micro=micro,
+                trade_price=state.last_trade_price,
+                drift_ticks=drift_ticks,
+                snapshot=snapshot,
+                symbol=symbol,
+                state=state,
+                config=config,
+            )
     elif drift_ticks <= -threshold:
         state.consecutive_short_count += 1
         state.consecutive_long_count = 0
@@ -245,20 +254,39 @@ def evaluate_snapshot(snapshot: dict, config: MicropriceConfig,
             state.consecutive_short_count = 0
             state.last_signal_dt = snap_dt or datetime.now(UTC)
             state.trades_today += 1
-            return _emit(side="SHORT", entry=entry, stop=stop, target=target,
-                          micro=micro, trade_price=state.last_trade_price,
-                          drift_ticks=drift_ticks, snapshot=snapshot,
-                          symbol=symbol, state=state, config=config)
+            return _emit(
+                side="SHORT",
+                entry=entry,
+                stop=stop,
+                target=target,
+                micro=micro,
+                trade_price=state.last_trade_price,
+                drift_ticks=drift_ticks,
+                snapshot=snapshot,
+                symbol=symbol,
+                state=state,
+                config=config,
+            )
     else:
         state.consecutive_long_count = 0
         state.consecutive_short_count = 0
     return None
 
 
-def _emit(*, side: str, entry: float, stop: float, target: float,
-          micro: float, trade_price: float, drift_ticks: float,
-          snapshot: dict, symbol: str,
-          state: MicropriceState, config: MicropriceConfig) -> MicropriceSignal:
+def _emit(
+    *,
+    side: str,
+    entry: float,
+    stop: float,
+    target: float,
+    micro: float,
+    trade_price: float,
+    drift_ticks: float,
+    snapshot: dict,
+    symbol: str,
+    state: MicropriceState,
+    config: MicropriceConfig,
+) -> MicropriceSignal:
     snapshot_ts = str(snapshot.get("ts", ""))
     signal_id = f"{symbol}-MICRO-{side}-{snapshot_ts}"
     state.emitted_signal_ids.add(signal_id)
@@ -268,9 +296,11 @@ def _emit(*, side: str, entry: float, stop: float, target: float,
         stop=round(stop, 4),
         target=round(target, 4),
         confidence=round(min(1.0, abs(drift_ticks) / 10.0), 2),
-        rationale=(f"microprice drift={drift_ticks:+.2f} ticks "
-                   f"(micro={micro:.4f}, trade={trade_price:.4f}) "
-                   f"for {config.consecutive_snaps} snaps"),
+        rationale=(
+            f"microprice drift={drift_ticks:+.2f} ticks "
+            f"(micro={micro:.4f}, trade={trade_price:.4f}) "
+            f"for {config.consecutive_snaps} snaps"
+        ),
         snapshot_ts=snapshot_ts,
         signal_id=signal_id,
         qty_contracts=1,
@@ -281,8 +311,7 @@ def _emit(*, side: str, entry: float, stop: float, target: float,
     )
 
 
-def make_microprice_strategy(config: MicropriceConfig | None = None,
-                                *, symbol: str = "MNQ") -> Any:
+def make_microprice_strategy(config: MicropriceConfig | None = None, *, symbol: str = "MNQ") -> Any:
     cfg = config or MicropriceConfig()
     state = MicropriceState()
 
@@ -296,7 +325,6 @@ def make_microprice_strategy(config: MicropriceConfig | None = None,
             update_trade_price(self.state, price, ts)
 
         def evaluate(self, snapshot: dict, atr: float = 1.0) -> MicropriceSignal | None:
-            return evaluate_snapshot(snapshot, self.cfg, self.state,
-                                      atr=atr, symbol=self.symbol)
+            return evaluate_snapshot(snapshot, self.cfg, self.state, atr=atr, symbol=self.symbol)
 
     return _MicropriceStrategy()

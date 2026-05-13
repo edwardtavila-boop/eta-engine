@@ -1,4 +1,5 @@
 """Heartbeat carries last 3 trace lines so operator sees JARVIS thinking."""
+
 from __future__ import annotations
 
 import json
@@ -38,20 +39,38 @@ def test_heartbeat_includes_trace_tail_when_trace_file_has_records(tmp_path):
     _write_heartbeat(hb_path)
     trace_file = tmp_path / "jarvis_trace.jsonl"
     trace_file.write_text(
-        "\n".join([
-            json.dumps({
-                "consult_id": "a", "bot_id": "bot1",
-                "verdict": {}, "ts": "t1", "final_size": 1.0,
-            }),
-            json.dumps({
-                "consult_id": "b", "bot_id": "bot2",
-                "verdict": {}, "ts": "t2", "final_size": 0.5,
-            }),
-            json.dumps({
-                "consult_id": "c", "bot_id": "bot3",
-                "verdict": {}, "ts": "t3", "final_size": 0.0,
-            }),
-        ]) + "\n",
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "consult_id": "a",
+                        "bot_id": "bot1",
+                        "verdict": {},
+                        "ts": "t1",
+                        "final_size": 1.0,
+                    }
+                ),
+                json.dumps(
+                    {
+                        "consult_id": "b",
+                        "bot_id": "bot2",
+                        "verdict": {},
+                        "ts": "t2",
+                        "final_size": 0.5,
+                    }
+                ),
+                json.dumps(
+                    {
+                        "consult_id": "c",
+                        "bot_id": "bot3",
+                        "verdict": {},
+                        "ts": "t3",
+                        "final_size": 0.0,
+                    }
+                ),
+            ]
+        )
+        + "\n",
         encoding="utf-8",
     )
     with patch(

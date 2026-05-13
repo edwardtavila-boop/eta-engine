@@ -40,6 +40,7 @@ Use case (rare-state imagination):
         state=42, action="approve_full",
     )
 """
+
 from __future__ import annotations
 
 import logging
@@ -114,8 +115,8 @@ class TensorWorldModel:
     rank: int = 3
     state_dim: int = 0
     action_dim: int = 0
-    factors_s: list[list[float]] = field(default_factory=list)   # state_dim x rank
-    factors_a: list[list[float]] = field(default_factory=list)   # action_dim x rank
+    factors_s: list[list[float]] = field(default_factory=list)  # state_dim x rank
+    factors_a: list[list[float]] = field(default_factory=list)  # action_dim x rank
     factors_sp: list[list[float]] = field(default_factory=list)  # state_dim x rank
     core: list[list[list[float]]] = field(default_factory=list)  # rank x rank x rank
     fit_loss: float = 0.0
@@ -169,18 +170,9 @@ class TensorWorldModel:
 
         # 2. Initialize factor matrices randomly + normalize
         r = min(self.rank, self.state_dim, self.action_dim)
-        self.factors_s = _normalize_rows([
-            [rng.gauss(0.0, 1.0) for _ in range(r)]
-            for _ in range(self.state_dim)
-        ])
-        self.factors_a = _normalize_rows([
-            [rng.gauss(0.0, 1.0) for _ in range(r)]
-            for _ in range(self.action_dim)
-        ])
-        self.factors_sp = _normalize_rows([
-            [rng.gauss(0.0, 1.0) for _ in range(r)]
-            for _ in range(self.state_dim)
-        ])
+        self.factors_s = _normalize_rows([[rng.gauss(0.0, 1.0) for _ in range(r)] for _ in range(self.state_dim)])
+        self.factors_a = _normalize_rows([[rng.gauss(0.0, 1.0) for _ in range(r)] for _ in range(self.action_dim)])
+        self.factors_sp = _normalize_rows([[rng.gauss(0.0, 1.0) for _ in range(r)] for _ in range(self.state_dim)])
         self.core = _zeros((r, r, r))
 
         # 3. ALS iterations
@@ -215,12 +207,7 @@ class TensorWorldModel:
                     for p in range(r):
                         for q in range(r):
                             for w in range(r):
-                                G[p][q][w] += (
-                                    self.factors_s[s][p]
-                                    * self.factors_a[a][q]
-                                    * self.factors_sp[sp][w]
-                                    * t
-                                )
+                                G[p][q][w] += self.factors_s[s][p] * self.factors_a[a][q] * self.factors_sp[sp][w] * t
         self.core = G
 
     def _update_factor_s(self, T: list) -> None:  # noqa: N803
@@ -239,12 +226,7 @@ class TensorWorldModel:
                             continue
                         for q in range(r):
                             for w in range(r):
-                                acc += (
-                                    self.core[p][q][w]
-                                    * self.factors_a[a][q]
-                                    * self.factors_sp[sp][w]
-                                    * t
-                                )
+                                acc += self.core[p][q][w] * self.factors_a[a][q] * self.factors_sp[sp][w] * t
                 new_factors_s[s][p] = acc
         self.factors_s = _normalize_rows(new_factors_s)
 
@@ -263,12 +245,7 @@ class TensorWorldModel:
                             continue
                         for p in range(r):
                             for w in range(r):
-                                acc += (
-                                    self.core[p][q][w]
-                                    * self.factors_s[s][p]
-                                    * self.factors_sp[sp][w]
-                                    * t
-                                )
+                                acc += self.core[p][q][w] * self.factors_s[s][p] * self.factors_sp[sp][w] * t
                 new_factors_a[a][q] = acc
         self.factors_a = _normalize_rows(new_factors_a)
 
@@ -287,12 +264,7 @@ class TensorWorldModel:
                             continue
                         for p in range(r):
                             for q in range(r):
-                                acc += (
-                                    self.core[p][q][w]
-                                    * self.factors_s[s][p]
-                                    * self.factors_a[a][q]
-                                    * t
-                                )
+                                acc += self.core[p][q][w] * self.factors_s[s][p] * self.factors_a[a][q] * t
                 new_factors_sp[sp][w] = acc
         self.factors_sp = _normalize_rows(new_factors_sp)
 
@@ -316,16 +288,14 @@ class TensorWorldModel:
         for p in range(r):
             for q in range(r):
                 for w in range(r):
-                    v += (
-                        self.core[p][q][w]
-                        * self.factors_s[s][p]
-                        * self.factors_a[a][q]
-                        * self.factors_sp[sp][w]
-                    )
+                    v += self.core[p][q][w] * self.factors_s[s][p] * self.factors_a[a][q] * self.factors_sp[sp][w]
         return v
 
     def predict_next_distribution(
-        self, *, state: int, action: int,
+        self,
+        *,
+        state: int,
+        action: int,
     ) -> dict[int, float]:
         """Return the predicted P(s' | s, a) distribution (smoothed
         via the rank-r reconstruction), normalized to sum to 1.

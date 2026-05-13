@@ -24,6 +24,7 @@ Deterministic by default (no LLM). The argument-construction logic
 is rule-based, but the structure is correct so an LLM-backed role
 is a drop-in upgrade.
 """
+
 from __future__ import annotations
 
 import logging
@@ -77,8 +78,11 @@ class IterativeVerdict:
             "proposal_id": self.proposal_id,
             "round_1_arguments": [
                 {
-                    "role": a.role.value, "stance": a.stance, "score": a.score,
-                    "reasoning": a.reasoning, "concerns": a.concerns,
+                    "role": a.role.value,
+                    "stance": a.stance,
+                    "score": a.score,
+                    "reasoning": a.reasoning,
+                    "concerns": a.concerns,
                 }
                 for a in self.round_1_arguments
             ],
@@ -93,8 +97,11 @@ class IterativeVerdict:
             ],
             "round_3_final_arguments": [
                 {
-                    "role": a.role.value, "stance": a.stance, "score": a.score,
-                    "reasoning": a.reasoning, "concerns": a.concerns,
+                    "role": a.role.value,
+                    "stance": a.stance,
+                    "score": a.score,
+                    "reasoning": a.reasoning,
+                    "concerns": a.concerns,
                 }
                 for a in self.round_3_final_arguments
             ],
@@ -102,8 +109,7 @@ class IterativeVerdict:
             "round_3_consensus": self.round_3_consensus,
             "final_action": self.final_action.value,
             "devils_advocate_role": (
-                self.devils_advocate_role.value
-                if self.devils_advocate_role is not None else None
+                self.devils_advocate_role.value if self.devils_advocate_role is not None else None
             ),
             "reasoning": self.reasoning,
         }
@@ -161,12 +167,14 @@ def _build_rebuttals(
             refs.append(Role.AUDITOR)
             notes.append("auditor reports analog support; softened opposition")
 
-        rebuttals.append(Rebuttal(
-            role=arg.role,
-            references=refs,
-            score_delta=round(delta, 3),
-            reasoning="; ".join(notes) if notes else "no rebuttal",
-        ))
+        rebuttals.append(
+            Rebuttal(
+                role=arg.role,
+                references=refs,
+                score_delta=round(delta, 3),
+                reasoning="; ".join(notes) if notes else "no rebuttal",
+            )
+        )
     return rebuttals
 
 
@@ -190,13 +198,15 @@ def _apply_rebuttals(
         notes = arg.reasoning
         if delta_by_role.get(arg.role, 0.0) != 0.0:
             notes += f" (post-debate: {delta_by_role[arg.role]:+.2f})"
-        out.append(Argument(
-            role=arg.role,
-            stance=stance,
-            score=round(new_score, 3),
-            reasoning=notes,
-            concerns=list(arg.concerns),
-        ))
+        out.append(
+            Argument(
+                role=arg.role,
+                stance=stance,
+                score=round(new_score, 3),
+                reasoning=notes,
+                concerns=list(arg.concerns),
+            )
+        )
     return out
 
 
@@ -224,18 +234,16 @@ def _inject_devils_advocate(
     advocate_role = target.role
     for a in arguments:
         if a.role == advocate_role:
-            new_stance = (
-                "oppose" if a.stance == "support"
-                else "support" if a.stance == "oppose"
-                else "oppose"
+            new_stance = "oppose" if a.stance == "support" else "support" if a.stance == "oppose" else "oppose"
+            flipped.append(
+                Argument(
+                    role=a.role,
+                    stance=new_stance,
+                    score=-a.score if a.score != 0 else -0.20,
+                    reasoning=f"DEVIL'S ADVOCATE: {a.reasoning}",
+                    concerns=list(a.concerns),
+                )
             )
-            flipped.append(Argument(
-                role=a.role,
-                stance=new_stance,
-                score=-a.score if a.score != 0 else -0.20,
-                reasoning=f"DEVIL'S ADVOCATE: {a.reasoning}",
-                concerns=list(a.concerns),
-            ))
         else:
             flipped.append(a)
     return flipped, advocate_role
@@ -287,7 +295,9 @@ def deliberate_iterative(
 
     # Devil's advocate (optional)
     perturbed, devils_role = _inject_devils_advocate(
-        round_1_arguments, rng=rng, probability=devils_advocate_probability,
+        round_1_arguments,
+        rng=rng,
+        probability=devils_advocate_probability,
     )
 
     # ROUND 2: rebuttals

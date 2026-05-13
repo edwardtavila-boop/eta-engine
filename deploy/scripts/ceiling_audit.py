@@ -294,10 +294,7 @@ if verdict_path.exists():
             len(non_denied_verdicts) > 0 and len(denied_verdicts) < len(non_denied_verdicts) * 2,
         )
 
-        confidences = [
-            float(verdict.get("confidence", 0) or 0)
-            for verdict in non_denied_verdicts
-        ]
+        confidences = [float(verdict.get("confidence", 0) or 0) for verdict in non_denied_verdicts]
         avg_confidence = sum(confidences) / len(confidences) if confidences else 0
         say(f"Avg confidence:{avg_confidence:.2f}", avg_confidence > 0.4)
 

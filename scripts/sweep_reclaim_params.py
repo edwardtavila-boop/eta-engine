@@ -47,7 +47,7 @@ def main() -> int:
 
         for wp in params["min_wick_pct"]:
             for vz in params["min_volume_z"]:
-                for rw in params["reclaim_window"]:
+                for _rw in params["reclaim_window"]:
                     for atr in params["atr_stop_mult"]:
                         # Update registry extras temporarily via env override
                         # Simpler: just run a custom paper_sim with these params
@@ -69,7 +69,7 @@ def main() -> int:
         for i, combo in enumerate(combos):
             # Write config to registry cache bypass
             label = f"wp{combo['min_wick_pct']}_vz{combo['min_volume_z']}_rw{combo['reclaim_window']}_atr{combo['atr_stop_mult']}"
-            print(f"  [{i+1}/{len(combos)}] {label}...", end=" ", flush=True)
+            print(f"  [{i + 1}/{len(combos)}] {label}...", end=" ", flush=True)
 
             # We need to update the bridge's cache and registry.
             # Simplest approach: directly modify the registry entry extras
@@ -99,6 +99,7 @@ def main() -> int:
 
                 if proc.returncode == 0 and proc.stdout.strip():
                     import json
+
                     data = json.loads(proc.stdout)
                     pnl = data.get("total_pnl", 0)
                     trades = data.get("trades", 0)
@@ -114,18 +115,22 @@ def main() -> int:
             except Exception as e:
                 print(f"ERROR: {e}")
 
-        print(f"\n  Best: {best_config.get('label', 'none')} — PnL=${best_config.get('pnl', 0):+.1f}, {best_config.get('trades', 0)}T, WR={best_config.get('wr', 0):.1f}%")
+        print(
+            f"\n  Best: {best_config.get('label', 'none')} — PnL=${best_config.get('pnl', 0):+.1f}, {best_config.get('trades', 0)}T, WR={best_config.get('wr', 0):.1f}%"
+        )
 
     # Summary
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print("SWEEP RECLAIM PARAM SWEEP — SUMMARY")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
     for symbol, res in sorted(results.items()):
         if res:
             best = max(res, key=lambda r: r["pnl"])
-            print(f"  {symbol}: best={best['label']} (wp={best['min_wick_pct']}, vz={best['min_volume_z']}, "
-                  f"rw={best['reclaim_window']}, atr={best['atr_stop_mult']}) "
-                  f"PnL=${best['pnl']:+.1f}, {best['trades']}T, WR={best['wr']:.1f}%")
+            print(
+                f"  {symbol}: best={best['label']} (wp={best['min_wick_pct']}, vz={best['min_volume_z']}, "
+                f"rw={best['reclaim_window']}, atr={best['atr_stop_mult']}) "
+                f"PnL=${best['pnl']:+.1f}, {best['trades']}T, WR={best['wr']:.1f}%"
+            )
 
     return 0
 

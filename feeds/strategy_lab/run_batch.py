@@ -4,6 +4,7 @@ Runs a hardcoded list of MNQ + BTC EMA-cross specs through the
 ``WalkForwardEngine`` and writes one report per spec under
 ``reports/lab_reports/``. Quick way to smoke-test the lab end-to-end.
 """
+
 from __future__ import annotations
 
 import sys
@@ -18,16 +19,28 @@ from eta_engine.feeds.strategy_lab.engine import (  # noqa: E402  (sys.path side
 
 SPECS: list[dict] = [
     {
-        "id": "ema_cross_v1", "symbol": "MNQ", "entry": "ema_cross",
-        "atr_period": 14, "stop_loss": "atr*1.5", "take_profit": "atr*3.0",
+        "id": "ema_cross_v1",
+        "symbol": "MNQ",
+        "entry": "ema_cross",
+        "atr_period": 14,
+        "stop_loss": "atr*1.5",
+        "take_profit": "atr*3.0",
     },
     {
-        "id": "ema_cross_v2", "symbol": "MNQ", "entry": "ema_cross",
-        "atr_period": 21, "stop_loss": "atr*2.0", "take_profit": "atr*4.0",
+        "id": "ema_cross_v2",
+        "symbol": "MNQ",
+        "entry": "ema_cross",
+        "atr_period": 21,
+        "stop_loss": "atr*2.0",
+        "take_profit": "atr*4.0",
     },
     {
-        "id": "ema_cross_v3", "symbol": "BTC", "entry": "ema_cross",
-        "atr_period": 14, "stop_loss": "atr*1.5", "take_profit": "atr*3.0",
+        "id": "ema_cross_v3",
+        "symbol": "BTC",
+        "entry": "ema_cross",
+        "atr_period": 14,
+        "stop_loss": "atr*1.5",
+        "take_profit": "atr*3.0",
     },
 ]
 
@@ -41,16 +54,17 @@ def main() -> None:
     for spec in SPECS:
         result = engine.run(spec, symbol=spec["symbol"])
         save_lab_report(result, OUT_DIR)
-        results.append({
-            "id": spec["id"],
-            "passed": result.passed,
-            "trades": result.total_trades,
-            "sharpe": result.sharpe,
-        })
+        results.append(
+            {
+                "id": spec["id"],
+                "passed": result.passed,
+                "trades": result.total_trades,
+                "sharpe": result.sharpe,
+            }
+        )
         verdict = "PASS" if result.passed else "FAIL"
         print(
-            f"{spec['id']}: {verdict} "
-            f"({result.total_trades}t, Sharpe={result.sharpe})",
+            f"{spec['id']}: {verdict} ({result.total_trades}t, Sharpe={result.sharpe})",
         )
 
     passed = sum(1 for r in results if r["passed"])

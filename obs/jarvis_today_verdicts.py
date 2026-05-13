@@ -16,6 +16,7 @@ Exposed as a stand-alone function ``aggregate_today()`` that the
 Decoupled from the FastAPI layer so it's also unit-testable without
 spinning up the dashboard.
 """
+
 from __future__ import annotations
 
 import json
@@ -154,22 +155,13 @@ def aggregate_today(
         "by_subsystem": {k: dict(v) for k, v in by_subsystem.items()},
         "top_denial_reasons": denial_reasons.most_common(10),
         "avg_conditional_cap": round(avg_cap, 4),
-        "hourly_timeline": [
-            {"hr": str(h).zfill(2), **dict(hourly[h])}
-            for h in sorted(hourly.keys())
-        ],
+        "hourly_timeline": [{"hr": str(h).zfill(2), **dict(hourly[h])} for h in sorted(hourly.keys())],
         "policy_versions_seen": sorted(policy_versions_seen),
         "sage": {
             "n_loosened": sage_loosened,
             "n_tightened": sage_tightened,
             "n_deferred": sage_deferred,
-            "avg_conviction": (
-                round(sum(sage_convictions) / len(sage_convictions), 4)
-                if sage_convictions else 0.0
-            ),
-            "avg_alignment": (
-                round(sum(sage_alignments) / len(sage_alignments), 4)
-                if sage_alignments else 0.5
-            ),
+            "avg_conviction": (round(sum(sage_convictions) / len(sage_convictions), 4) if sage_convictions else 0.0),
+            "avg_alignment": (round(sum(sage_alignments) / len(sage_alignments), 4) if sage_alignments else 0.5),
         },
     }

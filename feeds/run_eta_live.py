@@ -752,6 +752,7 @@ class ApexRuntime:
         # safety/fleet_bootstrap.py for the contract.
         try:
             from eta_engine.safety.fleet_bootstrap import bootstrap_fleet_risk
+
             fleet_bots = [bot for _b, bot in bots_instantiated]
             bootstrap_fleet_risk(fleet_bots)
             self._log(

@@ -40,6 +40,7 @@ Run
     python -m eta_engine.scripts.l2_contract_roll
     python -m eta_engine.scripts.l2_contract_roll --symbol GC
 """
+
 from __future__ import annotations
 
 # ruff: noqa: PLR2004
@@ -66,28 +67,28 @@ ROLL_LOG = LOG_DIR / "l2_contract_roll.jsonl"
 # day for monthly.  Operator must verify against CME contract specs.
 EXPIRY_CYCLE: dict[str, str] = {
     "MNQ": "quarterly_3rd_friday",
-    "NQ":  "quarterly_3rd_friday",
+    "NQ": "quarterly_3rd_friday",
     "MES": "quarterly_3rd_friday",
-    "ES":  "quarterly_3rd_friday",
+    "ES": "quarterly_3rd_friday",
     "M2K": "quarterly_3rd_friday",
     "RTY": "quarterly_3rd_friday",
     "MYM": "quarterly_3rd_friday",
-    "YM":  "quarterly_3rd_friday",
-    "ZN":  "quarterly_3rd_friday",
-    "ZB":  "quarterly_3rd_friday",
-    "6E":  "quarterly_3rd_friday",
+    "YM": "quarterly_3rd_friday",
+    "ZN": "quarterly_3rd_friday",
+    "ZB": "quarterly_3rd_friday",
+    "6E": "quarterly_3rd_friday",
     "M6E": "quarterly_3rd_friday",
-    "6B":  "quarterly_3rd_friday",
+    "6B": "quarterly_3rd_friday",
     "M6B": "quarterly_3rd_friday",
     # Monthly commodity rolls — use last-business-day proxy
-    "GC":  "monthly_last_business_day",
+    "GC": "monthly_last_business_day",
     "MGC": "monthly_last_business_day",
-    "SI":  "monthly_last_business_day",
+    "SI": "monthly_last_business_day",
     "SIL": "monthly_last_business_day",
-    "HG":  "monthly_last_business_day",
-    "CL":  "monthly_last_business_day",
+    "HG": "monthly_last_business_day",
+    "CL": "monthly_last_business_day",
     "MCL": "monthly_last_business_day",
-    "NG":  "monthly_last_business_day",
+    "NG": "monthly_last_business_day",
     # Crypto futures — monthly
     "BTC": "monthly_last_business_day",
     "MBT": "monthly_last_business_day",
@@ -100,8 +101,8 @@ class RollVerdict:
     symbol: str
     next_expiry: str  # YYYY-MM-DD
     days_until_expiry: int
-    zone: str         # NORMAL | ROLL | URGENT
-    blocked: bool     # True when zone == URGENT
+    zone: str  # NORMAL | ROLL | URGENT
+    blocked: bool  # True when zone == URGENT
     reason: str
     notes: list[str] = field(default_factory=list)
 
@@ -113,8 +114,7 @@ def _quarterly_3rd_friday(year: int, today: date) -> date:
         for month in quarter_months:
             cal = calendar.monthcalendar(q_year, month)
             # Pick the 3rd Friday: filter Friday entries
-            fridays = [week[calendar.FRIDAY]
-                        for week in cal if week[calendar.FRIDAY] != 0]
+            fridays = [week[calendar.FRIDAY] for week in cal if week[calendar.FRIDAY] != 0]
             if len(fridays) >= 3:
                 d = date(q_year, month, fridays[2])
                 if d > today:
@@ -157,8 +157,11 @@ def assess_roll_zone(symbol: str, *, today: date | None = None) -> RollVerdict:
     expiry = compute_next_expiry(symbol, today=today)
     if expiry is None:
         return RollVerdict(
-            symbol=symbol, next_expiry="?", days_until_expiry=-1,
-            zone="UNKNOWN", blocked=False,
+            symbol=symbol,
+            next_expiry="?",
+            days_until_expiry=-1,
+            zone="UNKNOWN",
+            blocked=False,
             reason=f"no expiry cycle defined for {symbol}",
             notes=[f"add {symbol} to EXPIRY_CYCLE in l2_contract_roll.py"],
         )
@@ -176,14 +179,16 @@ def assess_roll_zone(symbol: str, *, today: date | None = None) -> RollVerdict:
         blocked = False
         reason = f"{days} days to expiry; trade normally"
     return RollVerdict(
-        symbol=symbol, next_expiry=expiry.isoformat(),
-        days_until_expiry=days, zone=zone, blocked=blocked,
+        symbol=symbol,
+        next_expiry=expiry.isoformat(),
+        days_until_expiry=days,
+        zone=zone,
+        blocked=blocked,
         reason=reason,
     )
 
 
-def assess_all_symbols(symbols: list[str] | None = None,
-                         *, today: date | None = None) -> dict[str, RollVerdict]:
+def assess_all_symbols(symbols: list[str] | None = None, *, today: date | None = None) -> dict[str, RollVerdict]:
     if symbols is None:
         symbols = sorted(EXPIRY_CYCLE.keys())
     return {s: assess_roll_zone(s, today=today) for s in symbols}
@@ -191,8 +196,7 @@ def assess_all_symbols(symbols: list[str] | None = None,
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--symbol", default=None,
-                    help="Single symbol; default = all known symbols")
+    ap.add_argument("--symbol", default=None, help="Single symbol; default = all known symbols")
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
 
@@ -201,15 +205,12 @@ def main() -> int:
     try:
         with ROLL_LOG.open("a", encoding="utf-8") as f:
             for _sym, v in verdicts.items():
-                f.write(json.dumps({"ts": datetime.now(UTC).isoformat(),
-                                     **asdict(v)},
-                                    separators=(",", ":")) + "\n")
+                f.write(json.dumps({"ts": datetime.now(UTC).isoformat(), **asdict(v)}, separators=(",", ":")) + "\n")
     except OSError as e:
         print(f"WARN: roll log write failed: {e}", file=sys.stderr)
 
     if args.json:
-        print(json.dumps({s: asdict(v) for s, v in verdicts.items()},
-                           indent=2))
+        print(json.dumps({s: asdict(v) for s, v in verdicts.items()}, indent=2))
         return 1 if any(v.blocked for v in verdicts.values()) else 0
 
     print()
@@ -217,10 +218,9 @@ def main() -> int:
     print("L2 CONTRACT ROLL CALENDAR")
     print("=" * 78)
     print(f"  {'Symbol':<8s} {'Next expiry':<12s} {'Days':<6s} {'Zone':<8s} Reason")
-    print(f"  {'-'*8:<8s} {'-'*12:<12s} {'-'*6:<6s} {'-'*8:<8s} {'-'*45}")
+    print(f"  {'-' * 8:<8s} {'-' * 12:<12s} {'-' * 6:<6s} {'-' * 8:<8s} {'-' * 45}")
     for s, v in sorted(verdicts.items()):
-        print(f"  {s:<8s} {v.next_expiry:<12s} {v.days_until_expiry:<6d} "
-              f"{v.zone:<8s} {v.reason}")
+        print(f"  {s:<8s} {v.next_expiry:<12s} {v.days_until_expiry:<6d} {v.zone:<8s} {v.reason}")
     print()
     return 1 if any(v.blocked for v in verdicts.values()) else 0
 

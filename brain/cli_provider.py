@@ -45,6 +45,7 @@ class CLIResponse:
 # Configuration
 # ---------------------------------------------------------------------------
 
+
 def _find_npx() -> str:
     return shutil.which("npx") or "npx"
 
@@ -62,6 +63,7 @@ def _resolve_cli(env_key: str, fallback_binary: str, npx_package: str) -> list[s
     """
     # Lazy-load .env so ETA_CLAUDE_CLI / ETA_CODEX_CLI are visible.
     from eta_engine.brain.llm_provider import _ensure_dotenv  # noqa: PLC0415
+
     _ensure_dotenv()
 
     explicit = os.environ.get(env_key, "").strip()
@@ -120,6 +122,7 @@ def _subprocess_env() -> dict[str, str]:
 # Claude (Anthropic) — subscription-based CLI
 # ---------------------------------------------------------------------------
 
+
 def call_claude(
     *,
     system_prompt: str = "",
@@ -143,11 +146,15 @@ def call_claude(
 
     cmd: list[str] = [
         *base_cmd,
-        "-p", user_message,
+        "-p",
+        user_message,
         "--print",
-        "--output-format", "text",
-        "--model", model,
-        "--max-budget-usd", str(max_budget_usd),
+        "--output-format",
+        "text",
+        "--model",
+        model,
+        "--max-budget-usd",
+        str(max_budget_usd),
         "--no-session-persistence",
     ]
 
@@ -172,17 +179,27 @@ def call_claude(
         elapsed = (time.time() - started) * 1000
         logger.error("Claude CLI timed out after %ds", timeout)
         return CLIResponse(
-            text="", provider="claude", model=model,
-            input_tokens=0, output_tokens=0, cost_usd=0.0,
-            elapsed_ms=elapsed, exit_code=-1,
+            text="",
+            provider="claude",
+            model=model,
+            input_tokens=0,
+            output_tokens=0,
+            cost_usd=0.0,
+            elapsed_ms=elapsed,
+            exit_code=-1,
         )
     except FileNotFoundError:
         elapsed = (time.time() - started) * 1000
         logger.error("Claude CLI not found: %s", " ".join(base_cmd))
         return CLIResponse(
-            text="", provider="claude", model=model,
-            input_tokens=0, output_tokens=0, cost_usd=0.0,
-            elapsed_ms=elapsed, exit_code=-2,
+            text="",
+            provider="claude",
+            model=model,
+            input_tokens=0,
+            output_tokens=0,
+            cost_usd=0.0,
+            elapsed_ms=elapsed,
+            exit_code=-2,
         )
 
     elapsed = (time.time() - started) * 1000
@@ -193,19 +210,24 @@ def call_claude(
     if result.returncode != 0 and not output:
         output = f"[claude error exit={result.returncode}] {result.stderr[:500]}"
     elif result.returncode != 0:
-        logger.warning("claude exit=%d, output=%s, stderr=%s",
-                       result.returncode, output[:200], result.stderr[:200])
+        logger.warning("claude exit=%d, output=%s, stderr=%s", result.returncode, output[:200], result.stderr[:200])
 
     return CLIResponse(
-        text=output, provider="claude", model=model,
-        input_tokens=0, output_tokens=0, cost_usd=0.0,
-        elapsed_ms=elapsed, exit_code=result.returncode,
+        text=output,
+        provider="claude",
+        model=model,
+        input_tokens=0,
+        output_tokens=0,
+        cost_usd=0.0,
+        elapsed_ms=elapsed,
+        exit_code=result.returncode,
     )
 
 
 # ---------------------------------------------------------------------------
 # Codex (OpenAI) — subscription-based CLI
 # ---------------------------------------------------------------------------
+
 
 def call_codex(
     *,
@@ -233,8 +255,10 @@ def call_codex(
         "--full-auto",
         "--ephemeral",
         "--skip-git-repo-check",
-        "-C", wd,
-        "-m", model,
+        "-C",
+        wd,
+        "-m",
+        model,
     ]
 
     prompt = user_message
@@ -250,8 +274,7 @@ def call_codex(
     else:
         cmd.append(prompt)
 
-    logger.debug("codex cmd: %s exec ... (stdin=%s, prompt_len=%d)",
-                 base_cmd[0], use_stdin, len(prompt))
+    logger.debug("codex cmd: %s exec ... (stdin=%s, prompt_len=%d)", base_cmd[0], use_stdin, len(prompt))
 
     try:
         # When the prompt is positional, explicitly close stdin (DEVNULL) so
@@ -273,17 +296,27 @@ def call_codex(
         elapsed = (time.time() - started) * 1000
         logger.error("Codex CLI timed out after %ds", timeout)
         return CLIResponse(
-            text="", provider="codex", model=model,
-            input_tokens=0, output_tokens=0, cost_usd=0.0,
-            elapsed_ms=elapsed, exit_code=-1,
+            text="",
+            provider="codex",
+            model=model,
+            input_tokens=0,
+            output_tokens=0,
+            cost_usd=0.0,
+            elapsed_ms=elapsed,
+            exit_code=-1,
         )
     except FileNotFoundError:
         elapsed = (time.time() - started) * 1000
         logger.error("Codex CLI not found: %s", " ".join(base_cmd))
         return CLIResponse(
-            text="", provider="codex", model=model,
-            input_tokens=0, output_tokens=0, cost_usd=0.0,
-            elapsed_ms=elapsed, exit_code=-2,
+            text="",
+            provider="codex",
+            model=model,
+            input_tokens=0,
+            output_tokens=0,
+            cost_usd=0.0,
+            elapsed_ms=elapsed,
+            exit_code=-2,
         )
 
     elapsed = (time.time() - started) * 1000
@@ -296,9 +329,14 @@ def call_codex(
         output = f"[codex error exit={result.returncode}] {result.stderr[:2000]}"
 
     return CLIResponse(
-        text=output, provider="codex", model=model,
-        input_tokens=0, output_tokens=0, cost_usd=0.0,
-        elapsed_ms=elapsed, exit_code=result.returncode,
+        text=output,
+        provider="codex",
+        model=model,
+        input_tokens=0,
+        output_tokens=0,
+        cost_usd=0.0,
+        elapsed_ms=elapsed,
+        exit_code=result.returncode,
     )
 
 
@@ -332,7 +370,9 @@ def _check_cli_available(cmd_list: list[str], label: str) -> bool:
     try:
         result = subprocess.run(
             cmd,
-            capture_output=True, text=True, timeout=15,
+            capture_output=True,
+            text=True,
+            timeout=15,
             env=_subprocess_env(),
         )
         ok = result.returncode == 0
@@ -371,4 +411,3 @@ def cli_provider_status() -> dict[str, Any]:
         "codex_command": " ".join(_codex_command()),
         "timeout_sec": DEFAULT_TIMEOUT_SEC,
     }
-

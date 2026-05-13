@@ -29,6 +29,7 @@ State design (trimmed for sample efficiency)
 
 Total state dim: ~17 floats (compact enough for fast PPO convergence).
 """
+
 from __future__ import annotations
 
 import logging
@@ -55,8 +56,8 @@ class TradeStep:
 
 # Action space (mirrors JARVIS Verdict + size cap)
 class RLAction:
-    APPROVED_FULL = 0     # APPROVED, no cap
-    APPROVED_HALF = 1     # CONDITIONAL with cap=0.5
+    APPROVED_FULL = 0  # APPROVED, no cap
+    APPROVED_HALF = 1  # CONDITIONAL with cap=0.5
     APPROVED_QUARTER = 2  # CONDITIONAL with cap=0.25
     DEFERRED = 3
     DENIED = 4
@@ -72,7 +73,7 @@ class EtaTradingEnvSpec:
     drawdown_penalty_coef: float = 0.5
     starting_equity: float = 10_000.0
     risk_per_trade: float = 100.0  # 1% of starting equity
-    max_steps: int = 500           # episodes capped
+    max_steps: int = 500  # episodes capped
     seed: int = 42
 
 
@@ -117,11 +118,9 @@ class EtaTradingEnv:
         self._r_history.append(ground_truth_r)
 
         self._step_count += 1
-        done = (self._step_count >= self.spec.max_steps
-                or self._equity <= 0.5 * self.spec.starting_equity)  # blow-up
+        done = self._step_count >= self.spec.max_steps or self._equity <= 0.5 * self.spec.starting_equity  # blow-up
         next_state = self._observe(self._step_count)
-        info = {"equity": self._equity, "peak": self._peak_equity,
-                "ground_truth_r": ground_truth_r, **terminal_info}
+        info = {"equity": self._equity, "peak": self._peak_equity, "ground_truth_r": ground_truth_r, **terminal_info}
         return next_state, reward, done, info
 
     # ---------- internals ----------
@@ -132,10 +131,7 @@ class EtaTradingEnv:
         # SCAFFOLD: real impl would query the SQLite burn-in journal.
         # For now, return synthetic samples with realized_r drawn from
         # a +0.3 expectation distribution.
-        return [
-            {"realized_r": self._rng.gauss(0.3, 1.2)}
-            for _ in range(self.spec.max_steps)
-        ]
+        return [{"realized_r": self._rng.gauss(0.3, 1.2)} for _ in range(self.spec.max_steps)]
 
     def _observe(self, step_idx: int) -> list[float]:
         """Trimmed observation vector (~17 floats)."""

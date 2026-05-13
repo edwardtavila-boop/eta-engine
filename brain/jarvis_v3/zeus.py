@@ -42,6 +42,7 @@ Public interface
 Storage: in-process cache only. Persistent cache wouldn't help — the
 snapshot's value is its freshness.
 """
+
 from __future__ import annotations
 
 import json
@@ -73,8 +74,8 @@ class ZeusSnapshot:
     overrides: dict[str, Any]
     regime: dict[str, Any]
     recent_consults: list[dict[str, Any]]
-    kelly_recs: list[dict[str, Any]]      # top-5 only
-    attribution_top: dict[str, Any]       # {top_winners, top_losers}
+    kelly_recs: list[dict[str, Any]]  # top-5 only
+    attribution_top: dict[str, Any]  # {top_winners, top_losers}
     sentiment: dict[str, Any]
     wiring_audit: dict[str, Any]
     upcoming_events: list[dict[str, Any]]
@@ -141,6 +142,7 @@ def _fetch_fleet_status() -> dict[str, Any]:
 
 def _fetch_topology_summary() -> dict[str, Any]:
     from eta_engine.brain.jarvis_v3 import risk_topology
+
     g = risk_topology.build_topology()
     # Compress to summary (the full graph is ~100KB+; not needed in snapshot)
     return {
@@ -152,21 +154,25 @@ def _fetch_topology_summary() -> dict[str, Any]:
 
 def _fetch_overrides() -> dict[str, Any]:
     from eta_engine.brain.jarvis_v3 import hermes_overrides
+
     return hermes_overrides.active_overrides_summary()
 
 
 def _fetch_regime() -> dict[str, Any]:
     from eta_engine.brain.jarvis_v3 import regime_classifier
+
     return regime_classifier.current_regime().to_dict()
 
 
 def _fetch_recent_consults(n: int) -> list[dict[str, Any]]:
     from eta_engine.brain.jarvis_v3 import trace_emitter
+
     return trace_emitter.tail(n=n) or []
 
 
 def _fetch_kelly_top5() -> list[dict[str, Any]]:
     from eta_engine.brain.jarvis_v3 import kelly_optimizer
+
     recs = kelly_optimizer.recommend_sizing(
         lookback_days=DEFAULT_KELLY_LOOKBACK_DAYS,
     )
@@ -185,19 +191,29 @@ def _fetch_kelly_top5() -> list[dict[str, Any]]:
 
 def _fetch_attribution_top() -> dict[str, Any]:
     from eta_engine.brain.jarvis_v3 import attribution_cube
+
     cube = attribution_cube.query(
-        slice_by=["bot"], filter={"since_days_ago": 7},
+        slice_by=["bot"],
+        filter={"since_days_ago": 7},
     ).to_dict()
     rows = cube.get("rows") or []
     return {
         "top_winners": [
-            {"bot_id": r["key"].get("bot"), "total_r": r["total_r"],
-             "n_trades": r["n_trades"], "win_rate": r["win_rate"]}
+            {
+                "bot_id": r["key"].get("bot"),
+                "total_r": r["total_r"],
+                "n_trades": r["n_trades"],
+                "win_rate": r["win_rate"],
+            }
             for r in rows[:5]
         ],
         "top_losers": [
-            {"bot_id": r["key"].get("bot"), "total_r": r["total_r"],
-             "n_trades": r["n_trades"], "win_rate": r["win_rate"]}
+            {
+                "bot_id": r["key"].get("bot"),
+                "total_r": r["total_r"],
+                "n_trades": r["n_trades"],
+                "win_rate": r["win_rate"],
+            }
             for r in rows[-5:][::-1]  # tail reversed
         ],
         "n_total_bots_with_trades": len(rows),
@@ -206,6 +222,7 @@ def _fetch_attribution_top() -> dict[str, Any]:
 
 def _fetch_sentiment() -> dict[str, Any]:
     from eta_engine.brain.jarvis_v3 import sentiment_overlay
+
     out = {}
     for asset in ("BTC", "ETH"):
         s = sentiment_overlay.current_sentiment(asset)
@@ -215,11 +232,9 @@ def _fetch_sentiment() -> dict[str, Any]:
 
 def _fetch_wiring_audit() -> dict[str, Any]:
     from eta_engine.scripts import jarvis_wiring_audit
+
     statuses = jarvis_wiring_audit.audit() or []
-    dark = [
-        s for s in statuses
-        if getattr(s, "expected_to_fire", False) and getattr(s, "dark_for_days", 0) >= 7
-    ]
+    dark = [s for s in statuses if getattr(s, "expected_to_fire", False) and getattr(s, "dark_for_days", 0) >= 7]
     return {
         "n_dark": len(dark),
         "dark_modules": [getattr(s, "module", "") for s in dark],
@@ -229,19 +244,23 @@ def _fetch_wiring_audit() -> dict[str, Any]:
 
 def _fetch_upcoming_events(horizon_min: int = 60) -> list[dict[str, Any]]:
     from eta_engine.data import event_calendar
+
     out = []
     for ev in event_calendar.upcoming(datetime.now(UTC), horizon_min=horizon_min) or []:
-        out.append({
-            "ts_utc": getattr(ev, "ts_utc", ""),
-            "kind": getattr(ev, "kind", ""),
-            "symbol": getattr(ev, "symbol", None),
-            "severity": int(getattr(ev, "severity", 1)),
-        })
+        out.append(
+            {
+                "ts_utc": getattr(ev, "ts_utc", ""),
+                "kind": getattr(ev, "kind", ""),
+                "symbol": getattr(ev, "symbol", None),
+                "severity": int(getattr(ev, "severity", 1)),
+            }
+        )
     return out
 
 
 def _fetch_bots_online() -> list[dict[str, Any]]:
     from eta_engine.brain.jarvis_v3 import agent_registry
+
     return agent_registry.list_agents(only_alive=True)
 
 
@@ -275,7 +294,8 @@ def _build_snapshot(trace_n: int = DEFAULT_TRACE_TAIL_N) -> ZeusSnapshot:
 
 
 def snapshot(
-    force_refresh: bool = False, trace_n: int = DEFAULT_TRACE_TAIL_N,
+    force_refresh: bool = False,
+    trace_n: int = DEFAULT_TRACE_TAIL_N,
 ) -> ZeusSnapshot:
     """Return the unified brain snapshot.
 
@@ -286,9 +306,7 @@ def snapshot(
     try:
         with _cache_lock:
             age = _cache_age()
-            if (not force_refresh
-                and _cache_snapshot is not None
-                and age < CACHE_TTL_SECONDS):
+            if not force_refresh and _cache_snapshot is not None and age < CACHE_TTL_SECONDS:
                 # Return a copy with the age field updated
                 d = _cache_snapshot.to_dict()
                 d["cache_age_s"] = round(age, 2)

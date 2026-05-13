@@ -19,6 +19,7 @@ Features per snapshot:
   * btc_dominance_pct  -- BTC dominance for crypto-wide regime
   * realized_vol_30d   -- annualized realized volatility
 """
+
 from __future__ import annotations
 
 import json
@@ -37,17 +38,19 @@ ONCHAIN_DIR = ROOT / "state" / "onchain"
 class OnchainSnapshot:
     symbol: str
     ts: datetime
-    funding_rate_8h: float | None       # decimal (0.0001 = 1bp / 8h)
+    funding_rate_8h: float | None  # decimal (0.0001 = 1bp / 8h)
     open_interest_usd: float | None
     net_exchange_flow_usd: float | None  # +inflow / -outflow (24h)
     whale_tx_count_24h: int | None
     btc_dominance_pct: float | None
-    realized_vol_30d: float | None      # annualized
+    realized_vol_30d: float | None  # annualized
     is_stale: bool = False
 
 
 def current_snapshot(
-    symbol: str, *, max_age_min: float = 30.0,
+    symbol: str,
+    *,
+    max_age_min: float = 30.0,
 ) -> OnchainSnapshot | None:
     """Most recent on-chain snapshot for symbol; None if missing/stale."""
     path = ONCHAIN_DIR / f"{symbol.upper()}.json"
@@ -84,7 +87,9 @@ def current_snapshot(
 
 
 def confluence_signal(
-    snap: OnchainSnapshot | None, *, direction: str,
+    snap: OnchainSnapshot | None,
+    *,
+    direction: str,
 ) -> dict[str, float]:
     """Per-feature contribution to confluence in [-1.0, +1.0].
 
@@ -129,14 +134,20 @@ def write_snapshot(snap: OnchainSnapshot) -> Path:
     """Persist a snapshot. Used by the agent-layer worker."""
     ONCHAIN_DIR.mkdir(parents=True, exist_ok=True)
     path = ONCHAIN_DIR / f"{snap.symbol}.json"
-    path.write_text(json.dumps({
-        "symbol": snap.symbol,
-        "ts": snap.ts.isoformat(),
-        "funding_rate_8h": snap.funding_rate_8h,
-        "open_interest_usd": snap.open_interest_usd,
-        "net_exchange_flow_usd": snap.net_exchange_flow_usd,
-        "whale_tx_count_24h": snap.whale_tx_count_24h,
-        "btc_dominance_pct": snap.btc_dominance_pct,
-        "realized_vol_30d": snap.realized_vol_30d,
-    }, indent=2), encoding="utf-8")
+    path.write_text(
+        json.dumps(
+            {
+                "symbol": snap.symbol,
+                "ts": snap.ts.isoformat(),
+                "funding_rate_8h": snap.funding_rate_8h,
+                "open_interest_usd": snap.open_interest_usd,
+                "net_exchange_flow_usd": snap.net_exchange_flow_usd,
+                "whale_tx_count_24h": snap.whale_tx_count_24h,
+                "btc_dominance_pct": snap.btc_dominance_pct,
+                "realized_vol_30d": snap.realized_vol_30d,
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
     return path

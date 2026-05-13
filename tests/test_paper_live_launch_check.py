@@ -78,8 +78,7 @@ def test_research_candidate_surfaces_registry_evidence(monkeypatch) -> None:
 
     assert result["status"] == "WARN"
     assert result["warnings"] == [
-        "research_candidate (strict gate failed; OOS -2.958; "
-        "DSR pass 13.2%; evidence full_history.md)",
+        "research_candidate (strict gate failed; OOS -2.958; DSR pass 13.2%; evidence full_history.md)",
     ]
     assert result["evidence"]["baseline_present"] is True
     assert result["evidence"]["scope"] == "latest_20k_bar_research_candidate"
@@ -272,16 +271,22 @@ def test_supervisor_pinned_scope_includes_research_candidates() -> None:
         extras={"promotion_status": "research_candidate"},
     )
 
-    assert mod._assignment_in_scope(
-        research,
-        "supervisor_pinned",
-        frozenset({"mym_sweep_reclaim"}),
-    ) is True
-    assert mod._assignment_in_scope(
-        research,
-        "supervisor_pinned",
-        frozenset({"volume_profile_mnq"}),
-    ) is False
+    assert (
+        mod._assignment_in_scope(
+            research,
+            "supervisor_pinned",
+            frozenset({"mym_sweep_reclaim"}),
+        )
+        is True
+    )
+    assert (
+        mod._assignment_in_scope(
+            research,
+            "supervisor_pinned",
+            frozenset({"volume_profile_mnq"}),
+        )
+        is False
+    )
 
 
 def test_supervisor_pinned_bot_parser_reads_runner_pin(tmp_path: Path) -> None:
@@ -291,11 +296,13 @@ def test_supervisor_pinned_bot_parser_reads_runner_pin(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    assert mod._supervisor_pinned_bot_ids(runner) == frozenset({
-        "volume_profile_mnq",
-        "mym_sweep_reclaim",
-        "mcl_sweep_reclaim",
-    })
+    assert mod._supervisor_pinned_bot_ids(runner) == frozenset(
+        {
+            "volume_profile_mnq",
+            "mym_sweep_reclaim",
+            "mcl_sweep_reclaim",
+        }
+    )
 
 
 def test_build_payload_summarizes_status_counts() -> None:
@@ -472,14 +479,11 @@ def test_critical_requirement_evidence_includes_resolution_metadata(tmp_path: Pa
     findings = _ORIGINAL_CHECK_CRITICAL_DATA_REQUIREMENTS(
         "volume_profile_mnq",
         primary_symbol="MNQ1",
-        primary_timeframe="5m",   # primary excluded from evidence
+        primary_timeframe="5m",  # primary excluded from evidence
         library=DataLibrary(roots=[history]),
     )
 
-    evidence_by_key = {
-        item["dataset_key"]: item["resolution"]
-        for item in findings["evidence"]
-    }
+    evidence_by_key = {item["dataset_key"]: item["resolution"] for item in findings["evidence"]}
     # Non-primary critical feeds get evidence + direct-mode resolution.
     assert evidence_by_key["MNQ1/D/history"]["mode"] == "direct"
     assert evidence_by_key["MNQ1/1h/history"]["mode"] == "direct"

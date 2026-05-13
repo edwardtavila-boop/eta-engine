@@ -80,23 +80,28 @@ def _build_daily_verdicts(symbol: str = "BTC") -> Any:  # noqa: ANN401
     sage_dicts = [_bar_to_sage_dict(b) for b in daily_bars]
     for i in range(25, len(sage_dicts) + 1):
         ctx = MarketContext(
-            bars=sage_dicts[:i][-200:], side="long",
+            bars=sage_dicts[:i][-200:],
+            side="long",
             entry_price=float(sage_dicts[i - 1]["close"]),
-            symbol=symbol, instrument_class="crypto",
+            symbol=symbol,
+            instrument_class="crypto",
         )
         try:
             r = consult_sage(
-                ctx, parallel=False, use_cache=True, apply_edge_weights=False,
+                ctx,
+                parallel=False,
+                use_cache=True,
+                apply_edge_weights=False,
             )
         except Exception as e:  # noqa: BLE001
             print(f"  WARN: sage failed at i={i}: {e!r}")
             continue
         bias = r.composite_bias.value
-        composite = (
-            1.0 if bias == "long" else (-1.0 if bias == "short" else 0.0)
-        )
+        composite = 1.0 if bias == "long" else (-1.0 if bias == "short" else 0.0)
         verdicts[daily_bars[i - 1].timestamp.date()] = SageDailyVerdict(
-            direction=bias, conviction=r.conviction, composite=composite,
+            direction=bias,
+            conviction=r.conviction,
+            composite=composite,
         )
     print(f"[sage-daily] computed {len(verdicts)} daily verdicts")
 
@@ -155,16 +160,20 @@ def _build_factory(  # noqa: PLR0913
     )
     base_cfg = CryptoMacroConfluenceConfig(
         base=CryptoRegimeTrendConfig(
-            regime_ema=100, pullback_ema=21,
+            regime_ema=100,
+            pullback_ema=21,
             pullback_tolerance_pct=3.0,
-            atr_stop_mult=2.0, rr_target=3.0,
+            atr_stop_mult=2.0,
+            rr_target=3.0,
         ),
         filters=macro_cfg,
     )
 
     def _factory():  # noqa: ANN202
         sage_cfg = SageDailyGatedConfig(
-            base=base_cfg, min_daily_conviction=0.50, strict_mode=False,
+            base=base_cfg,
+            min_daily_conviction=0.50,
+            strict_mode=False,
         )
         sage = SageDailyGatedStrategy(sage_cfg)
         sage.attach_etf_flow_provider(EtfFlowProvider(etf_path))
@@ -197,7 +206,11 @@ def _build_factory(  # noqa: PLR0913
 
 
 def _run_one(
-    label: str, factory: Any, bars: list, backtest_cfg: Any, wf: Any,  # noqa: ANN401
+    label: str,
+    factory: Any,
+    bars: list,
+    backtest_cfg: Any,
+    wf: Any,  # noqa: ANN401
 ) -> Any:  # noqa: ANN401
     from eta_engine.backtest import WalkForwardEngine
     from eta_engine.features.pipeline import FeaturePipeline
@@ -219,11 +232,9 @@ def _print_summary(label: str, res: Any) -> None:  # noqa: ANN401
     print("=" * 82)
     print(f"Windows:                     {len(res.windows)}")
     print(f"Aggregate OOS Sharpe:        {res.aggregate_oos_sharpe:>8.4f}")
-    print(f"Positive OOS windows:        {n_pos}/{len(res.windows)}"
-          f" ({n_pos / max(len(res.windows), 1) * 100:.1f}%)")
+    print(f"Positive OOS windows:        {n_pos}/{len(res.windows)} ({n_pos / max(len(res.windows), 1) * 100:.1f}%)")
     print(f"OOS degradation avg:         {res.oos_degradation_avg:>8.4f}")
-    print(f"Per-fold DSR pass fraction:  "
-          f"{res.fold_dsr_pass_fraction * 100:>7.2f}%")
+    print(f"Per-fold DSR pass fraction:  {res.fold_dsr_pass_fraction * 100:>7.2f}%")
     print(f"Gate: {'PASS' if res.pass_gate else 'FAIL'}")
     print("=" * 82)
 
@@ -235,19 +246,19 @@ def main() -> int:
     parser.add_argument("--window-days", type=int, default=90)
     parser.add_argument("--step-days", type=int, default=30)
     parser.add_argument(
-        "--etf-path", type=Path,
+        "--etf-path",
+        type=Path,
         default=MNQ_HISTORY_ROOT / "BTC_ETF_FLOWS.csv",
     )
     parser.add_argument(
-        "--funding-path", type=Path,
+        "--funding-path",
+        type=Path,
         default=CRYPTO_HISTORY_ROOT / "BTCFUND_8h.csv",
     )
     parser.add_argument(
-        "--variants", default="baseline,funding,kelly,full",
-        help=(
-            "Comma-separated variant list. Available: "
-            "baseline, funding, kelly, full"
-        ),
+        "--variants",
+        default="baseline,funding,kelly,full",
+        help=("Comma-separated variant list. Available: baseline, funding, kelly, full"),
     )
     args = parser.parse_args()
 
@@ -271,22 +282,27 @@ def main() -> int:
         print(f"ABORT: ETF flow file missing: {args.etf_path}")
         return 1
     if not args.funding_path.exists():
-        print(f"WARN: funding file missing: {args.funding_path} "
-              f"(funding-variant runs will be no-ops)")
+        print(f"WARN: funding file missing: {args.funding_path} (funding-variant runs will be no-ops)")
 
     provider = _build_daily_verdicts(args.symbol)
 
     backtest_cfg = BacktestConfig(
-        start_date=bars[0].timestamp, end_date=bars[-1].timestamp,
-        symbol=ds.symbol, initial_equity=10_000.0,
-        risk_per_trade_pct=0.01, confluence_threshold=0.0,
+        start_date=bars[0].timestamp,
+        end_date=bars[-1].timestamp,
+        symbol=ds.symbol,
+        initial_equity=10_000.0,
+        risk_per_trade_pct=0.01,
+        confluence_threshold=0.0,
         max_trades_per_day=10,
     )
     wf = WalkForwardConfig(
-        window_days=args.window_days, step_days=args.step_days,
-        anchored=True, oos_fraction=0.3,
+        window_days=args.window_days,
+        step_days=args.step_days,
+        anchored=True,
+        oos_fraction=0.3,
         min_trades_per_window=3,
-        strict_fold_dsr_gate=True, fold_dsr_min_pass_fraction=0.5,
+        strict_fold_dsr_gate=True,
+        fold_dsr_min_pass_fraction=0.5,
     )
 
     print(f"\n[wf] window={args.window_days}d step={args.step_days}d")
@@ -327,8 +343,7 @@ def main() -> int:
         print("\n\nVARIANT MATRIX SUMMARY")
         print("=" * 82)
         cols = ["variant", "OOS Sharpe", "+OOS folds", "deg_avg", "DSR%", "gate"]
-        print(f"{cols[0]:<12}{cols[1]:>14}{cols[2]:>14}{cols[3]:>10}"
-              f"{cols[4]:>10}{cols[5]:>10}")
+        print(f"{cols[0]:<12}{cols[1]:>14}{cols[2]:>14}{cols[3]:>10}{cols[4]:>10}{cols[5]:>10}")
         print("-" * 82)
         for variant, res in results.items():
             n_pos = sum(1 for w in res.windows if w.get("oos_sharpe", 0) > 0)

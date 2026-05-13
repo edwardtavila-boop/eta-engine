@@ -131,9 +131,7 @@ def regime_aware_qubo(
     n = len(expected_returns)
     labels = asset_labels or [f"asset{i}" for i in range(n)]
 
-    mod_map: dict[int, RegimeModifier] = {
-        m.asset_index: m for m in modifiers if 0 <= m.asset_index < n
-    }
+    mod_map: dict[int, RegimeModifier] = {m.asset_index: m for m in modifiers if 0 <= m.asset_index < n}
 
     Q: dict[int, dict[int, float]] = {}
     for i in range(n):
@@ -199,7 +197,7 @@ def multi_horizon_qubo(
     labels: list[str] = []
     orig_labels = asset_labels or [f"a{i}" for i in range(n_assets)]
 
-    for h_idx, h in enumerate(horizons):
+    for _h_idx, h in enumerate(horizons):
         for i in range(n_assets):
             labels.append(f"{h.name}/{orig_labels[i]}")
 
@@ -285,7 +283,7 @@ def hedging_basket_qubo(
     n_hedge = len(candidates)
     total_vars = n_hedge
 
-    pos_labels = position_labels or [f"pos{i}" for i in range(n_pos)]
+    position_labels or [f"pos{i}" for i in range(n_pos)]
     hed_labels = hedge_labels or [f"hedge{i}" for i in range(n_hedge)]
 
     # Precompute total position beta: sum of position sizes (proxy)
@@ -348,7 +346,7 @@ def parallel_tempering_solve(
     start_time = time.monotonic()
 
     if temperatures is None:
-        temps = [10.0 * (2.0 ** i) for i in range(n_replicas)]
+        temps = [10.0 * (2.0**i) for i in range(n_replicas)]
     else:
         temps = list(temperatures)
         n_replicas = len(temps)

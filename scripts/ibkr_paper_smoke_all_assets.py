@@ -43,9 +43,20 @@ logger = logging.getLogger(__name__)
 # IBKR paper does not support PAXOS crypto, so those symbols would
 # always FAIL on a paper smoke and pollute the report.
 DEFAULT_SMOKE_SYMBOLS: tuple[str, ...] = (
-    "MNQ", "NQ", "ES", "MES", "RTY", "M2K", "MYM",
-    "GC", "MGC", "CL", "MCL", "NG",
-    "6E", "M6E",
+    "MNQ",
+    "NQ",
+    "ES",
+    "MES",
+    "RTY",
+    "M2K",
+    "MYM",
+    "GC",
+    "MGC",
+    "CL",
+    "MCL",
+    "NG",
+    "6E",
+    "M6E",
 )
 
 
@@ -119,7 +130,8 @@ async def probe_symbol(ib: Any, symbol: str) -> SymbolResult:  # noqa: ANN401 â€
     started = datetime.now(UTC)
     if sym not in FUTURES_MAP and sym not in CRYPTO_MAP:
         return SymbolResult(
-            symbol=sym, status="FAIL",
+            symbol=sym,
+            status="FAIL",
             error=f"symbol {sym!r} not in FUTURES_MAP or CRYPTO_MAP",
             elapsed_ms=(datetime.now(UTC) - started).total_seconds() * 1000.0,
         )
@@ -127,12 +139,16 @@ async def probe_symbol(ib: Any, symbol: str) -> SymbolResult:  # noqa: ANN401 â€
         contract = await _make_contract(sym, ib=ib)
     except Exception as exc:  # noqa: BLE001 â€” surface diagnostic
         return SymbolResult(
-            symbol=sym, status="FAIL", error=f"_make_contract: {exc}",
+            symbol=sym,
+            status="FAIL",
+            error=f"_make_contract: {exc}",
             elapsed_ms=(datetime.now(UTC) - started).total_seconds() * 1000.0,
         )
     if contract is None:
         return SymbolResult(
-            symbol=sym, status="FAIL", error="_make_contract returned None",
+            symbol=sym,
+            status="FAIL",
+            error="_make_contract returned None",
             elapsed_ms=(datetime.now(UTC) - started).total_seconds() * 1000.0,
         )
 
@@ -142,12 +158,15 @@ async def probe_symbol(ib: Any, symbol: str) -> SymbolResult:  # noqa: ANN401 â€
         qualified = await ib.qualifyContractsAsync(contract)
     except Exception as exc:  # noqa: BLE001
         return SymbolResult(
-            symbol=sym, status="FAIL", error=f"qualifyContractsAsync: {exc}",
+            symbol=sym,
+            status="FAIL",
+            error=f"qualifyContractsAsync: {exc}",
             elapsed_ms=(datetime.now(UTC) - started).total_seconds() * 1000.0,
         )
     if not qualified:
         return SymbolResult(
-            symbol=sym, status="FAIL",
+            symbol=sym,
+            status="FAIL",
             error="qualifyContractsAsync returned empty list",
             elapsed_ms=(datetime.now(UTC) - started).total_seconds() * 1000.0,
         )
@@ -197,7 +216,10 @@ async def run_smoke(
         await ib.connectAsync(host=host, port=port, clientId=client_id, timeout=8.0)
         logger.info(
             "Connected to IB Gateway %s:%d clientId=%d (managedAccounts=%s)",
-            host, port, client_id, list(ib.managedAccounts()),
+            host,
+            port,
+            client_id,
+            list(ib.managedAccounts()),
         )
         for sym in symbols:
             result = await probe_symbol(ib, sym)
@@ -206,9 +228,13 @@ async def run_smoke(
             logger.log(
                 level,
                 "%-6s %s exchange=%s month=%s conid=%s mult=%s elapsed=%.1fms %s",
-                result.symbol, result.status, result.exchange or "-",
-                result.contract_month or "-", result.conid or "-",
-                result.multiplier or "-", result.elapsed_ms,
+                result.symbol,
+                result.status,
+                result.exchange or "-",
+                result.contract_month or "-",
+                result.conid or "-",
+                result.multiplier or "-",
+                result.elapsed_ms,
                 f"err={result.error}" if result.error else "",
             )
     finally:
@@ -235,25 +261,32 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Comma-separated symbol list (default: full universe).",
     )
     parser.add_argument(
-        "--host", default="127.0.0.1",
+        "--host",
+        default="127.0.0.1",
         help="IB Gateway host (default: 127.0.0.1).",
     )
     parser.add_argument(
-        "--port", type=int, default=4002,
+        "--port",
+        type=int,
+        default=4002,
         help="IB Gateway port (default: 4002 for paper).",
     )
     parser.add_argument(
-        "--client-id", type=int, default=None,
+        "--client-id",
+        type=int,
+        default=None,
         help="IB clientId. Default: random 700-799 (env: ETA_IBKR_SMOKE_CLIENT_ID).",
     )
     parser.add_argument(
-        "--json", action="store_true",
+        "--json",
+        action="store_true",
         help="Emit a JSON report to stdout instead of human-readable lines.",
     )
     parser.add_argument(
-        "--place", action="store_true",
+        "--place",
+        action="store_true",
         help="(Reserved) Also place + cancel a tiny test bracket per symbol. "
-             "Not implemented yet â€” current smoke is contract-resolution only.",
+        "Not implemented yet â€” current smoke is contract-resolution only.",
     )
     return parser.parse_args(argv)
 
@@ -275,15 +308,21 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     try:
-        report = asyncio.run(run_smoke(
-            symbols, host=args.host, port=args.port, client_id=args.client_id,
-        ))
+        report = asyncio.run(
+            run_smoke(
+                symbols,
+                host=args.host,
+                port=args.port,
+                client_id=args.client_id,
+            )
+        )
     except Exception as exc:  # noqa: BLE001 â€” top-level CLI handler
         logger.exception("smoke run aborted: %s", exc)
         return 3
 
     if args.json:
         import json
+
         sys.stdout.write(json.dumps(report.to_dict(), indent=2) + "\n")
     else:
         sys.stdout.write(

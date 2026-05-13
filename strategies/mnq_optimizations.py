@@ -95,10 +95,7 @@ def classify_regime_v2(
     if atr_ratio >= panic_atr_ratio:
         return "panic"
 
-    drift = (
-        (short[-1].close - short[0].close) / short[0].close
-        if short[0].close > 0.0 else 0.0
-    )
+    drift = (short[-1].close - short[0].close) / short[0].close if short[0].close > 0.0 else 0.0
 
     vol_prefix = "high_vol" if atr_ratio >= high_vol_atr_ratio else "low_vol"
     if drift > drift_threshold:
@@ -197,11 +194,7 @@ def correlated_with_es(
 
 
 def _bar_returns(bars: list[BarData]) -> list[float]:
-    return [
-        (b2.close - b1.close) / b1.close
-        for b1, b2 in zip(bars[:-1], bars[1:], strict=False)
-        if b1.close > 0.0
-    ]
+    return [(b2.close - b1.close) / b1.close for b1, b2 in zip(bars[:-1], bars[1:], strict=False) if b1.close > 0.0]
 
 
 def _pearson(a: list[float], b: list[float]) -> float:

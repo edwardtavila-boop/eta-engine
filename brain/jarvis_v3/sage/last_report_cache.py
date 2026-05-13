@@ -33,6 +33,7 @@ Usage
         # iterate per_school -> tracker.observe(...)
         ...
 """
+
 from __future__ import annotations
 
 import threading

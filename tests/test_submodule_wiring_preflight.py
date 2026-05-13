@@ -6,11 +6,13 @@ from scripts import submodule_wiring_preflight
 
 
 def test_parse_submodule_status_prefixes() -> None:
-    status = submodule_wiring_preflight.parse_submodule_status_lines([
-        " 15e701e12bdd09995847d279861b3c12b0ba06f2 eta_engine (main)",
-        "+19768b0cc158bdc920fdb44e42e0e23931282b8e firm (feature)",
-        "-1c3a2ef93a2d25561a4ec3e022cdbe1176ce590a mnq_backtest",
-    ])
+    status = submodule_wiring_preflight.parse_submodule_status_lines(
+        [
+            " 15e701e12bdd09995847d279861b3c12b0ba06f2 eta_engine (main)",
+            "+19768b0cc158bdc920fdb44e42e0e23931282b8e firm (feature)",
+            "-1c3a2ef93a2d25561a4ec3e022cdbe1176ce590a mnq_backtest",
+        ]
+    )
 
     assert status["eta_engine"].gitlink == "aligned"
     assert status["firm"].gitlink == "diverged"

@@ -19,6 +19,7 @@ this DEFERS entry. Rationale: when you're 80% of the way to ruin, sizing
 down isn't enough; you need to wait for confirmation that the drawdown
 isn't deepening before adding fresh risk.
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -57,16 +58,18 @@ def evaluate_v21(req: ActionRequest, ctx: JarvisContext) -> ActionResponse:
         return resp
     if not _binding_is_drawdown(resp, ctx):
         return resp
-    return resp.model_copy(update={
-        "verdict": Verdict.DEFERRED,
-        "size_cap_mult": 0.0,
-        "reason_code": "v21_dd_proximity_defer",
-        "reason": (
-            f"v21: drawdown binding ({resp.binding_constraint}) -- "
-            f"deferring entry until DD pressure releases (was {resp.verdict.value})"
-        ),
-        "conditions": [*resp.conditions, "v21_dd_proximity_defer"],
-    })
+    return resp.model_copy(
+        update={
+            "verdict": Verdict.DEFERRED,
+            "size_cap_mult": 0.0,
+            "reason_code": "v21_dd_proximity_defer",
+            "reason": (
+                f"v21: drawdown binding ({resp.binding_constraint}) -- "
+                f"deferring entry until DD pressure releases (was {resp.verdict.value})"
+            ),
+            "conditions": [*resp.conditions, "v21_dd_proximity_defer"],
+        }
+    )
 
 
 register_candidate(

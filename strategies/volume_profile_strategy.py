@@ -87,7 +87,6 @@ class VolumeProfileStrategyConfig:
 
 
 class VolumeProfileStrategy:
-
     def __init__(self, config: VolumeProfileStrategyConfig | None = None) -> None:
         self.cfg = config or VolumeProfileStrategyConfig()
         self._price_vol: dict[float, float] = {}
@@ -150,9 +149,13 @@ class VolumeProfileStrategy:
         lvns = sorted([p for p, v in self._price_vol.items() if v <= lvn_threshold])
 
         return {
-            "poc": poc_price, "vah": vah, "val": val,
-            "total_volume": total, "poc_volume": poc_volume,
-            "hvns": hvns, "lvns": lvns,
+            "poc": poc_price,
+            "vah": vah,
+            "val": val,
+            "total_volume": total,
+            "poc_volume": poc_volume,
+            "hvns": hvns,
+            "lvns": lvns,
         }
 
     def _is_rejection(self, bar: BarData, side: str) -> bool:
@@ -183,7 +186,7 @@ class VolumeProfileStrategy:
         vols = list(self._volume_window)
         mean = sum(vols) / len(vols)
         var = sum((v - mean) ** 2 for v in vols) / len(vols)
-        std = var ** 0.5
+        std = var**0.5
         if std <= 0.0:
             return 0.0
         return (bar.volume - mean) / std
@@ -205,8 +208,11 @@ class VolumeProfileStrategy:
                 self._price_vol[bp] = self._price_vol.get(bp, 0.0) + bv
 
     def maybe_enter(
-        self, bar: BarData, hist: list[BarData],
-        equity: float, config: BacktestConfig,
+        self,
+        bar: BarData,
+        hist: list[BarData],
+        equity: float,
+        config: BacktestConfig,
     ) -> _Open | None:
         bar_date = bar.timestamp.date()
         if self._last_day != bar_date:
@@ -243,7 +249,10 @@ class VolumeProfileStrategy:
             self._volume_window.append(bar.volume)
 
     def _evaluate_entry(
-        self, bar: BarData, hist: list[BarData], equity: float,
+        self,
+        bar: BarData,
+        hist: list[BarData],
+        equity: float,
     ) -> _Open | None:
         profile = self._compute_profile()
         if not profile or profile["total_volume"] <= 0:
@@ -259,7 +268,7 @@ class VolumeProfileStrategy:
 
         va_spread = vah - val
 
-        atr_window = hist[-self.cfg.atr_period:] if hist else []
+        atr_window = hist[-self.cfg.atr_period :] if hist else []
         if len(atr_window) < 2:
             return None
         atr = sum(b.high - b.low for b in atr_window) / len(atr_window)
@@ -327,11 +336,7 @@ class VolumeProfileStrategy:
             # volume_profile_mnq elite-gate (50% bug rate).
             max_rr = 2.0 * self.cfg.rr_target
             max_reward = max_rr * stop_dist_actual
-            target = (
-                min(poc, entry + max_reward)
-                if poc > entry
-                else entry + self.cfg.rr_target * stop_dist_actual
-            )
+            target = min(poc, entry + max_reward) if poc > entry else entry + self.cfg.rr_target * stop_dist_actual
         else:
             structural_stop = vah + atr * 0.5
             atr_stop = entry + stop_dist
@@ -345,11 +350,7 @@ class VolumeProfileStrategy:
                 return None
             max_rr = 2.0 * self.cfg.rr_target
             max_reward = max_rr * stop_dist_actual
-            target = (
-                max(poc, entry - max_reward)
-                if poc < entry
-                else entry - self.cfg.rr_target * stop_dist_actual
-            )
+            target = max(poc, entry - max_reward) if poc < entry else entry - self.cfg.rr_target * stop_dist_actual
 
         # ── Phase 3 v2: L2 overlay confirmation ────────────────────
         # Confirm POC pull with L2 imbalance.  When captures aren't
@@ -357,6 +358,7 @@ class VolumeProfileStrategy:
         if self.cfg.enable_l2_overlay:
             try:
                 from eta_engine.strategies.l2_overlay import confirm_poc_pull_with_l2
+
                 l2_side = "LONG" if side == "BUY" else "SHORT"
                 gate = confirm_poc_pull_with_l2(
                     symbol=self.cfg.l2_symbol,
@@ -377,9 +379,15 @@ class VolumeProfileStrategy:
         self._trades_today += 1
         self._n_fired += 1
         return _Open(
-            entry_bar=bar, side=side, qty=qty, entry_price=entry,
-            stop=stop, target=target, risk_usd=risk_usd,
-            confluence=8.0, leverage=1.0,
+            entry_bar=bar,
+            side=side,
+            qty=qty,
+            entry_price=entry,
+            stop=stop,
+            target=target,
+            risk_usd=risk_usd,
+            confluence=8.0,
+            leverage=1.0,
             regime=f"vp_{side.lower()}_poc{poc:.1f}",
         )
 
@@ -391,31 +399,47 @@ def mnq_volume_profile_preset() -> VolumeProfileStrategyConfig:
     bleed on 50 trades), warmup_bars 1000→500 (faster profile building),
     rr_target 1.5→2.0 (auction-revert needs wider targets)."""
     return VolumeProfileStrategyConfig(
-        profile_lookback=1000, bucket_size=2.0,
-        min_va_spread_atr_mult=2.0, min_extreme_distance_atr_mult=1.5,
+        profile_lookback=1000,
+        bucket_size=2.0,
+        min_va_spread_atr_mult=2.0,
+        min_extreme_distance_atr_mult=1.5,
         min_poc_distance_atr_mult=2.0,
         max_qty_equity_pct=0.005,
         freeze_profile_after_warmup=False,
-        require_rejection=True, min_rejection_wick_pct=0.25,
-        volume_z_lookback=20, min_volume_z=0.3,
-        atr_period=14, atr_stop_mult=1.0, rr_target=2.0,
-        risk_per_trade_pct=0.005, min_bars_between_trades=24,
-        max_trades_per_day=2, warmup_bars=500,
+        require_rejection=True,
+        min_rejection_wick_pct=0.25,
+        volume_z_lookback=20,
+        min_volume_z=0.3,
+        atr_period=14,
+        atr_stop_mult=1.0,
+        rr_target=2.0,
+        risk_per_trade_pct=0.005,
+        min_bars_between_trades=24,
+        max_trades_per_day=2,
+        warmup_bars=500,
     )
 
 
 def nq_volume_profile_preset() -> VolumeProfileStrategyConfig:
     return VolumeProfileStrategyConfig(
-        profile_lookback=1000, bucket_size=10.0,
-        min_va_spread_atr_mult=2.0, min_extreme_distance_atr_mult=1.5,
+        profile_lookback=1000,
+        bucket_size=10.0,
+        min_va_spread_atr_mult=2.0,
+        min_extreme_distance_atr_mult=1.5,
         min_poc_distance_atr_mult=2.0,
         max_qty_equity_pct=0.005,
         freeze_profile_after_warmup=True,
-        require_rejection=True, min_rejection_wick_pct=0.25,
-        volume_z_lookback=20, min_volume_z=0.3,
-        atr_period=14, atr_stop_mult=1.0, rr_target=1.5,
-        risk_per_trade_pct=0.005, min_bars_between_trades=24,
-        max_trades_per_day=2, warmup_bars=1000,
+        require_rejection=True,
+        min_rejection_wick_pct=0.25,
+        volume_z_lookback=20,
+        min_volume_z=0.3,
+        atr_period=14,
+        atr_stop_mult=1.0,
+        rr_target=1.5,
+        risk_per_trade_pct=0.005,
+        min_bars_between_trades=24,
+        max_trades_per_day=2,
+        warmup_bars=1000,
     )
 
 
@@ -424,36 +448,53 @@ def btc_volume_profile_preset() -> VolumeProfileStrategyConfig:
     (stale POC/VAH/VAL was the root cause), warmup_bars 500→300,
     rr_target 2.0→3.0 (BTC trend moves need wider profit targets)."""
     return VolumeProfileStrategyConfig(
-        profile_lookback=500, bucket_size=50.0,
-        min_va_spread_atr_mult=2.0, min_extreme_distance_atr_mult=1.5,
+        profile_lookback=500,
+        bucket_size=50.0,
+        min_va_spread_atr_mult=2.0,
+        min_extreme_distance_atr_mult=1.5,
         min_poc_distance_atr_mult=2.0,
         max_qty_equity_pct=0.005,
         freeze_profile_after_warmup=False,
-        require_rejection=True, min_rejection_wick_pct=0.20,
-        volume_z_lookback=24, min_volume_z=0.2,
-        atr_period=14, atr_stop_mult=1.5, rr_target=3.0,
-        risk_per_trade_pct=0.005, min_bars_between_trades=24,
-        max_trades_per_day=2, warmup_bars=300,
+        require_rejection=True,
+        min_rejection_wick_pct=0.20,
+        volume_z_lookback=24,
+        min_volume_z=0.2,
+        atr_period=14,
+        atr_stop_mult=1.5,
+        rr_target=3.0,
+        risk_per_trade_pct=0.005,
+        min_bars_between_trades=24,
+        max_trades_per_day=2,
+        warmup_bars=300,
     )
 
 
 def eth_volume_profile_preset() -> VolumeProfileStrategyConfig:
     return VolumeProfileStrategyConfig(
-        profile_lookback=500, bucket_size=5.0,
-        min_va_spread_atr_mult=2.0, min_extreme_distance_atr_mult=1.5,
+        profile_lookback=500,
+        bucket_size=5.0,
+        min_va_spread_atr_mult=2.0,
+        min_extreme_distance_atr_mult=1.5,
         min_poc_distance_atr_mult=2.0,
         max_qty_equity_pct=0.005,
         freeze_profile_after_warmup=True,
-        require_rejection=True, min_rejection_wick_pct=0.25,
-        volume_z_lookback=20, min_volume_z=0.3,
-        atr_period=14, atr_stop_mult=1.0, rr_target=1.5,
-        risk_per_trade_pct=0.005, min_bars_between_trades=24,
-        max_trades_per_day=2, warmup_bars=1000,
+        require_rejection=True,
+        min_rejection_wick_pct=0.25,
+        volume_z_lookback=20,
+        min_volume_z=0.3,
+        atr_period=14,
+        atr_stop_mult=1.0,
+        rr_target=1.5,
+        risk_per_trade_pct=0.005,
+        min_bars_between_trades=24,
+        max_trades_per_day=2,
+        warmup_bars=1000,
     )
 
 
 def build_vp_confluence_provider(
-    lookback: int = 200, bucket_size: float = 2.0,
+    lookback: int = 200,
+    bucket_size: float = 2.0,
 ) -> object:
     """Build a callable that provides volume-profile confluence signals.
 
@@ -461,6 +502,7 @@ def build_vp_confluence_provider(
     Result is a bonus score 0.0-1.0 for how strongly volume profile
     levels support the trade direction.
     """
+
     def _vp_confluence(bar: object, hist: list, side: str) -> float:
         if len(hist) < lookback:
             return 0.0

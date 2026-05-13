@@ -118,7 +118,6 @@ class VWAPReversionConfig:
 
 
 class VWAPReversionStrategy:
-
     def __init__(self, config: VWAPReversionConfig | None = None) -> None:
         self.cfg = config or VWAPReversionConfig()
         self._vwap_pv: float = 0.0
@@ -167,11 +166,11 @@ class VWAPReversionStrategy:
         vol = max(bar.volume, 1.0)
         self._vwap_pv += typical * vol
         self._vwap_v += vol
-        self._vwap_sq_pv += (typical ** 2) * vol
+        self._vwap_sq_pv += (typical**2) * vol
         if self._vwap_v > 0:
             self._current_vwap = self._vwap_pv / self._vwap_v
             mean_sq = self._vwap_sq_pv / self._vwap_v
-            variance = mean_sq - self._current_vwap ** 2
+            variance = mean_sq - self._current_vwap**2
             self._current_vwap_std = max(variance, 0.0) ** 0.5
 
     def _volume_z_score(self, bar: BarData) -> float:
@@ -180,7 +179,7 @@ class VWAPReversionStrategy:
         vols = list(self._volume_window)
         mean = sum(vols) / len(vols)
         var = sum((v - mean) ** 2 for v in vols) / len(vols)
-        std = var ** 0.5
+        std = var**0.5
         if std <= 0.0:
             return 0.0
         return (bar.volume - mean) / std
@@ -193,6 +192,7 @@ class VWAPReversionStrategy:
         ts = bar.timestamp
         try:
             from zoneinfo import ZoneInfo
+
             tz = ZoneInfo(self.cfg.session_tz)
             local_ts = ts.astimezone(tz) if ts.tzinfo is not None else ts
             t = local_ts.time()
@@ -203,8 +203,11 @@ class VWAPReversionStrategy:
         return self.cfg.session_start <= t <= self.cfg.session_end
 
     def maybe_enter(
-        self, bar: BarData, hist: list[BarData],
-        equity: float, config: BacktestConfig,
+        self,
+        bar: BarData,
+        hist: list[BarData],
+        equity: float,
+        config: BacktestConfig,
     ) -> _Open | None:
         bar_date = bar.timestamp.date()
         day_key = bar_date
@@ -266,13 +269,13 @@ class VWAPReversionStrategy:
         if side is None:
             return None
 
-        if (
-            self.cfg.enable_adx_filter
-            and len(self._highs) >= self.cfg.adx_period * 2 + 1
-        ):
+        if self.cfg.enable_adx_filter and len(self._highs) >= self.cfg.adx_period * 2 + 1:
             from eta_engine.strategies.technical_edges import compute_adx
+
             adx_result = compute_adx(
-                list(self._highs), list(self._lows), list(self._closes),
+                list(self._highs),
+                list(self._lows),
+                list(self._closes),
                 self.cfg.adx_period,
             )
             if adx_result is not None and adx_result.adx > self.cfg.adx_max:
@@ -284,7 +287,7 @@ class VWAPReversionStrategy:
             self._n_vol_reject += 1
             return None
 
-        atr_window = hist[-self.cfg.atr_period:] if hist else []
+        atr_window = hist[-self.cfg.atr_period :] if hist else []
         if len(atr_window) < 2:
             return None
         atr = sum(b.high - b.low for b in atr_window) / len(atr_window)
@@ -342,9 +345,15 @@ class VWAPReversionStrategy:
         self._trades_today += 1
         self._n_fired += 1
         return _Open(
-            entry_bar=bar, side=side, qty=qty, entry_price=entry,
-            stop=stop, target=target, risk_usd=risk_usd,
-            confluence=7.0, leverage=1.0,
+            entry_bar=bar,
+            side=side,
+            qty=qty,
+            entry_price=entry,
+            stop=stop,
+            target=target,
+            risk_usd=risk_usd,
+            confluence=7.0,
+            leverage=1.0,
             regime=(
                 f"vwap_mr_{side.lower()}_dev"
                 f"{abs(bar.close - self._current_vwap) / max(self._current_vwap_std, 1e-9):.1f}s"
@@ -355,30 +364,45 @@ class VWAPReversionStrategy:
 def mnq_vwap_mr_preset() -> VWAPReversionConfig:
     return VWAPReversionConfig(
         vwap_std_band=2.0,
-        volume_z_lookback=20, min_volume_z=0.3,
-        atr_period=14, atr_stop_mult=1.0, rr_target=1.5,
-        risk_per_trade_pct=0.005, min_bars_between_trades=12,
-        max_trades_per_day=3, warmup_bars=50,
+        volume_z_lookback=20,
+        min_volume_z=0.3,
+        atr_period=14,
+        atr_stop_mult=1.0,
+        rr_target=1.5,
+        risk_per_trade_pct=0.005,
+        min_bars_between_trades=12,
+        max_trades_per_day=3,
+        warmup_bars=50,
     )
 
 
 def nq_vwap_mr_preset() -> VWAPReversionConfig:
     return VWAPReversionConfig(
         vwap_std_band=2.0,
-        volume_z_lookback=20, min_volume_z=0.3,
-        atr_period=14, atr_stop_mult=1.0, rr_target=1.5,
-        risk_per_trade_pct=0.005, min_bars_between_trades=12,
-        max_trades_per_day=3, warmup_bars=50,
+        volume_z_lookback=20,
+        min_volume_z=0.3,
+        atr_period=14,
+        atr_stop_mult=1.0,
+        rr_target=1.5,
+        risk_per_trade_pct=0.005,
+        min_bars_between_trades=12,
+        max_trades_per_day=3,
+        warmup_bars=50,
     )
 
 
 def btc_vwap_mr_preset() -> VWAPReversionConfig:
     return VWAPReversionConfig(
         vwap_std_band=2.0,
-        volume_z_lookback=24, min_volume_z=0.2,
-        atr_period=14, atr_stop_mult=1.5, rr_target=2.0,
-        risk_per_trade_pct=0.005, min_bars_between_trades=12,
-        max_trades_per_day=2, warmup_bars=72,
+        volume_z_lookback=24,
+        min_volume_z=0.2,
+        atr_period=14,
+        atr_stop_mult=1.5,
+        rr_target=2.0,
+        risk_per_trade_pct=0.005,
+        min_bars_between_trades=12,
+        max_trades_per_day=2,
+        warmup_bars=72,
         # 24/7 — crypto markets have no session.  Operator may opt in
         # to a window (e.g., London/NY overlap) but the default is
         # PERMISSIVE so the strategy fires across all hours.
@@ -388,9 +412,14 @@ def btc_vwap_mr_preset() -> VWAPReversionConfig:
 def eth_vwap_mr_preset() -> VWAPReversionConfig:
     return VWAPReversionConfig(
         vwap_std_band=2.5,
-        volume_z_lookback=24, min_volume_z=0.2,
-        atr_period=14, atr_stop_mult=1.8, rr_target=2.0,
-        risk_per_trade_pct=0.005, min_bars_between_trades=12,
-        max_trades_per_day=2, warmup_bars=72,
+        volume_z_lookback=24,
+        min_volume_z=0.2,
+        atr_period=14,
+        atr_stop_mult=1.8,
+        rr_target=2.0,
+        risk_per_trade_pct=0.005,
+        min_bars_between_trades=12,
+        max_trades_per_day=2,
+        warmup_bars=72,
         # 24/7 — see btc_vwap_mr_preset comment.
     )

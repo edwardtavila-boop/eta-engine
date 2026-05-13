@@ -17,6 +17,7 @@ Tests freeze ``datetime.now(UTC)`` indirectly by passing an explicit
 require IB connectivity and aren't exercised here; we test the helper
 plus the session-table coverage instead.
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -66,6 +67,7 @@ def test_market_order_outside_rth_converts_to_marketable_limit() -> None:
     # Replicate the conversion math used inside place_order so this
     # test pins the expected limit price without touching IB.
     from eta_engine.feeds.instrument_specs import get_spec
+
     ref = 21000.0
     tick = float(get_spec("MNQ").tick_size)  # 0.25
     buffer_ticks = 3
@@ -93,6 +95,7 @@ def test_market_order_outside_rth_rejects_when_no_ref_price() -> None:
     # by reading the constant text from the source as a regression
     # anchor.
     import eta_engine.venues.ibkr_live as ibkr_live_module
+
     src = ibkr_live_module.__file__
     with open(src, encoding="utf-8") as fh:
         body = fh.read()
@@ -182,12 +185,24 @@ def test_session_table_covers_all_required_asset_classes() -> None:
     """Belt-and-suspenders: every asset class the microstructure review
     flagged must have an entry in the session table."""
     required_roots = {
-        "MNQ", "NQ", "ES", "MES", "RTY", "M2K", "MYM",  # CME/CBOT equity index
-        "MBT", "MET",                              # CME crypto micros
-        "CL", "MCL", "NG",                         # NYMEX energy
-        "GC", "MGC",                               # COMEX metals
-        "EUR", "M6E",                              # CME FX (EUR = 6E)
-        "ZN", "ZB",                                # CBOT rates
+        "MNQ",
+        "NQ",
+        "ES",
+        "MES",
+        "RTY",
+        "M2K",
+        "MYM",  # CME/CBOT equity index
+        "MBT",
+        "MET",  # CME crypto micros
+        "CL",
+        "MCL",
+        "NG",  # NYMEX energy
+        "GC",
+        "MGC",  # COMEX metals
+        "EUR",
+        "M6E",  # CME FX (EUR = 6E)
+        "ZN",
+        "ZB",  # CBOT rates
     }
     missing = required_roots - set(_ASSET_PRIMARY_SESSION_ET.keys())
     assert not missing, f"session table missing roots: {missing}"

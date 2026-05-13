@@ -59,6 +59,7 @@ Run
     python -m eta_engine.scripts.capture_depth_snapshots \\
         --symbols MNQ NQ --depth-rows 10 --snapshot-interval-ms 500
 """
+
 from __future__ import annotations
 
 # ruff: noqa: ANN401, SIM105, BLE001
@@ -90,27 +91,34 @@ _DEFAULT_CLIENT_ID: int = 32
 _CONNECT_TIMEOUT_S: float = 20.0
 
 _DEFAULT_SYMBOLS: tuple[str, ...] = (
-    "MNQ", "NQ", "M2K", "6E", "MCL", "MYM", "NG", "MBT",
+    "MNQ",
+    "NQ",
+    "M2K",
+    "6E",
+    "MCL",
+    "MYM",
+    "NG",
+    "MBT",
 )
 
 _FUTURES_MAP: dict[str, tuple[str, str, str]] = {
-    "MNQ":  ("MNQ", "CME",   "USD"),
-    "NQ":   ("NQ",  "CME",   "USD"),
-    "ES":   ("ES",  "CME",   "USD"),
-    "MES":  ("MES", "CME",   "USD"),
-    "RTY":  ("RTY", "CME",   "USD"),
-    "M2K":  ("M2K", "CME",   "USD"),
-    "MBT":  ("MBT", "CME",   "USD"),
-    "MET":  ("MET", "CME",   "USD"),
-    "NG":   ("NG",  "NYMEX", "USD"),
-    "CL":   ("CL",  "NYMEX", "USD"),
-    "MCL":  ("MCL", "NYMEX", "USD"),
-    "GC":   ("GC",  "COMEX", "USD"),
-    "MGC":  ("MGC", "COMEX", "USD"),
-    "ZN":   ("ZN",  "CBOT",  "USD"),
-    "6E":   ("EUR", "CME",   "USD"),
-    "YM":   ("YM",  "CBOT",  "USD"),
-    "MYM":  ("MYM", "CBOT",  "USD"),
+    "MNQ": ("MNQ", "CME", "USD"),
+    "NQ": ("NQ", "CME", "USD"),
+    "ES": ("ES", "CME", "USD"),
+    "MES": ("MES", "CME", "USD"),
+    "RTY": ("RTY", "CME", "USD"),
+    "M2K": ("M2K", "CME", "USD"),
+    "MBT": ("MBT", "CME", "USD"),
+    "MET": ("MET", "CME", "USD"),
+    "NG": ("NG", "NYMEX", "USD"),
+    "CL": ("CL", "NYMEX", "USD"),
+    "MCL": ("MCL", "NYMEX", "USD"),
+    "GC": ("GC", "COMEX", "USD"),
+    "MGC": ("MGC", "COMEX", "USD"),
+    "ZN": ("ZN", "CBOT", "USD"),
+    "6E": ("EUR", "CME", "USD"),
+    "YM": ("YM", "CBOT", "USD"),
+    "MYM": ("MYM", "CBOT", "USD"),
 }
 
 DEPTH_ROOT = Path(os.environ.get("ETA_DEPTH_ROOT", str(ROOT.parent / "mnq_data" / "depth")))
@@ -168,9 +176,14 @@ class DepthSnapshotCapture:
     """Manage IBKR market-depth subscriptions + periodic snapshots."""
 
     def __init__(
-        self, *,
-        symbols: list[str], host: str, port: int, client_id: int,
-        depth_rows: int, snapshot_interval_ms: int,
+        self,
+        *,
+        symbols: list[str],
+        host: str,
+        port: int,
+        client_id: int,
+        depth_rows: int,
+        snapshot_interval_ms: int,
     ) -> None:
         self.symbols = symbols
         self.host = host
@@ -178,9 +191,7 @@ class DepthSnapshotCapture:
         self.client_id = client_id
         self.depth_rows = depth_rows
         self.snapshot_interval_s = snapshot_interval_ms / 1000.0
-        self.writers: dict[str, DepthWriter] = {
-            s: DepthWriter(s, DEPTH_ROOT) for s in symbols
-        }
+        self.writers: dict[str, DepthWriter] = {s: DepthWriter(s, DEPTH_ROOT) for s in symbols}
         self._tickers: dict[str, Any] = {}
         self._last_update_ts: dict[str, float] = {}
         self._snapshot_count: dict[str, int] = {}
@@ -193,14 +204,19 @@ class DepthSnapshotCapture:
 
         ib = IB()
         ib.connect(
-            self.host, self.port, clientId=self.client_id,
+            self.host,
+            self.port,
+            clientId=self.client_id,
             timeout=_CONNECT_TIMEOUT_S,
         )
         ib.reqMarketDataType(1)  # realtime
         self._ib = ib
         log.info(
             "connected ib_insync host=%s port=%s clientId=%s depth_rows=%d cadence_ms=%d",
-            self.host, self.port, self.client_id, self.depth_rows,
+            self.host,
+            self.port,
+            self.client_id,
+            self.depth_rows,
             int(self.snapshot_interval_s * 1000),
         )
 
@@ -236,15 +252,16 @@ class DepthSnapshotCapture:
                 continue
             try:
                 ticker = self._ib.reqMktDepth(
-                    contract, numRows=self.depth_rows, isSmartDepth=False,
+                    contract,
+                    numRows=self.depth_rows,
+                    isSmartDepth=False,
                 )
             except Exception:
                 log.exception("reqMktDepth failed for %s; skipping", sym)
                 continue
             self._tickers[sym] = ticker
             ticker.updateEvent += lambda t, s=sym: self._on_book_update(s, t)
-            log.info("subscribed %s -> %s.%s (depth=%d)",
-                     sym, contract.exchange, contract.localSymbol, self.depth_rows)
+            log.info("subscribed %s -> %s.%s (depth=%d)", sym, contract.exchange, contract.localSymbol, self.depth_rows)
 
     def _on_book_update(self, sym: str, _ticker: Any) -> None:
         self._last_update_ts[sym] = time.monotonic()
@@ -256,18 +273,22 @@ class DepthSnapshotCapture:
         ts = datetime.now(tz=UTC)
         bids = []
         for lvl in (getattr(ticker, "domBids", None) or [])[: self.depth_rows]:
-            bids.append({
-                "price": float(lvl.price),
-                "size": int(lvl.size),
-                "mm": getattr(lvl, "marketMaker", "") or "",
-            })
+            bids.append(
+                {
+                    "price": float(lvl.price),
+                    "size": int(lvl.size),
+                    "mm": getattr(lvl, "marketMaker", "") or "",
+                }
+            )
         asks = []
         for lvl in (getattr(ticker, "domAsks", None) or [])[: self.depth_rows]:
-            asks.append({
-                "price": float(lvl.price),
-                "size": int(lvl.size),
-                "mm": getattr(lvl, "marketMaker", "") or "",
-            })
+            asks.append(
+                {
+                    "price": float(lvl.price),
+                    "size": int(lvl.size),
+                    "mm": getattr(lvl, "marketMaker", "") or "",
+                }
+            )
         spread = None
         mid = None
         if bids and asks:
@@ -295,16 +316,18 @@ class DepthSnapshotCapture:
                 "possible missing exchange Depth subscription. Check IBKR "
                 "Account Mgmt -> Market Data Subscriptions for the relevant "
                 "exchange's 'Depth of Book' product.",
-                sym, bid_n, ask_n,
+                sym,
+                bid_n,
+                ask_n,
             )
             self._stuck_flagged.add(sym)
         # Book-stuck check: no updates in N seconds
         last = self._last_update_ts.get(sym)
         if last is not None and (time.monotonic() - last) > _BOOK_STUCK_THRESHOLD_S:
             log.warning(
-                "%s book has not updated in %.1fs -- feed may be stuck "
-                "or session closed.",
-                sym, time.monotonic() - last,
+                "%s book has not updated in %.1fs -- feed may be stuck or session closed.",
+                sym,
+                time.monotonic() - last,
             )
             self._stuck_flagged.add(sym)
 
@@ -345,7 +368,9 @@ def _setup_logging(level: str) -> None:
 def _run_capture(args: argparse.Namespace) -> int:
     capture = DepthSnapshotCapture(
         symbols=list(args.symbols),
-        host=args.host, port=args.port, client_id=args.client_id,
+        host=args.host,
+        port=args.port,
+        client_id=args.client_id,
         depth_rows=args.depth_rows,
         snapshot_interval_ms=args.snapshot_interval_ms,
     )
@@ -374,18 +399,17 @@ def _run_capture(args: argparse.Namespace) -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--symbols", nargs="+", default=list(_DEFAULT_SYMBOLS),
+        "--symbols",
+        nargs="+",
+        default=list(_DEFAULT_SYMBOLS),
         help=f"futures roots to subscribe (default: {' '.join(_DEFAULT_SYMBOLS)})",
     )
     parser.add_argument("--host", default=_DEFAULT_HOST)
     parser.add_argument("--port", type=int, default=_DEFAULT_PORT)
     parser.add_argument("--client-id", type=int, default=_DEFAULT_CLIENT_ID)
-    parser.add_argument("--depth-rows", type=int, default=5,
-                        help="depth-of-book rows per side (default 5)")
-    parser.add_argument("--snapshot-interval-ms", type=int, default=1000,
-                        help="ms between snapshots (default 1000)")
-    parser.add_argument("--log-level", default="INFO",
-                        choices=["DEBUG", "INFO", "WARNING", "ERROR"])
+    parser.add_argument("--depth-rows", type=int, default=5, help="depth-of-book rows per side (default 5)")
+    parser.add_argument("--snapshot-interval-ms", type=int, default=1000, help="ms between snapshots (default 1000)")
+    parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
     args = parser.parse_args(argv)
     _setup_logging(args.log_level)
     return _run_capture(args)

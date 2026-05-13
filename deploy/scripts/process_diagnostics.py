@@ -102,11 +102,7 @@ def effective_python_processes(rows: Iterable[ProcessRow]) -> list[ProcessRow]:
                 ignored_parent_pids.add(pid)
                 break
 
-    return [
-        row
-        for row in python_rows
-        if _int_field(row, "ProcessId", "process_id", "pid") not in ignored_parent_pids
-    ]
+    return [row for row in python_rows if _int_field(row, "ProcessId", "process_id", "pid") not in ignored_parent_pids]
 
 
 def duplicate_python_daemons(rows: Iterable[ProcessRow], task_names: Sequence[str]) -> list[str]:

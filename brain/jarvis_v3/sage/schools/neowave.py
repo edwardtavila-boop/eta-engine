@@ -5,6 +5,7 @@ relabeling. Without that, this school adds a 'structural certainty'
 modifier on top of the Elliott school: when the impulse momentum is
 clean (low pullback noise), upgrade conviction; when it's noisy, downgrade.
 """
+
 from __future__ import annotations
 
 from eta_engine.brain.jarvis_v3.sage.base import (
@@ -30,7 +31,9 @@ class NEoWaveSchool(SchoolBase):
         n = ctx.n_bars
         if n < 30:
             return SchoolVerdict(
-                school=self.NAME, bias=Bias.NEUTRAL, conviction=0.0,
+                school=self.NAME,
+                bias=Bias.NEUTRAL,
+                conviction=0.0,
                 aligned_with_entry=False,
                 rationale=f"insufficient bars ({n} < 30)",
             )
@@ -40,8 +43,11 @@ class NEoWaveSchool(SchoolBase):
         path_sum = sum(abs(closes[i] - closes[i - 1]) for i in range(n - 19, n))
         if path_sum <= 0:
             return SchoolVerdict(
-                school=self.NAME, bias=Bias.NEUTRAL, conviction=0.0,
-                aligned_with_entry=False, rationale="zero path",
+                school=self.NAME,
+                bias=Bias.NEUTRAL,
+                conviction=0.0,
+                aligned_with_entry=False,
+                rationale="zero path",
             )
         cleanness = net_move / path_sum  # 1.0 = perfect straight line, 0.0 = pure chop
         last_dir = 1 if closes[-1] > closes[-20] else -1

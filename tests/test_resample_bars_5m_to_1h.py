@@ -13,6 +13,7 @@ The first iteration of the script had a tz-aware DatetimeIndex bug that
 silently produced a "time" column of all-zeros (epoch 1970-01-01) -- the
 test below for ``time-roundtrip`` catches exactly that regression.
 """
+
 from __future__ import annotations
 
 import csv
@@ -89,9 +90,7 @@ def test_resample_time_column_is_unix_epoch_seconds(tmp_path: Path, monkeypatch:
 
     # Every output time must be a positive epoch in the 21st century, NOT
     # zero / 1970. The previous bug produced all-zero timestamps.
-    assert (out["time"] > 1_500_000_000).all(), (
-        f"time column produced sub-2017 timestamps: {out['time'].tolist()[:3]}"
-    )
+    assert (out["time"] > 1_500_000_000).all(), f"time column produced sub-2017 timestamps: {out['time'].tolist()[:3]}"
     assert (out["time"] < 1_900_000_000).all()
     # First output bar: right-edge of the hour containing the first bar.
     # First 5m bar at 22:05 UTC -> first hour right-edge is 23:00 UTC.

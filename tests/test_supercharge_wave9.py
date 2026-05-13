@@ -8,6 +8,7 @@ Covers:
   * Cloud adapter (with classical_sa fallback)
   * QuantumOptimizerAgent (firm-board pluggable)
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -16,12 +17,12 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-
 # ─── QUBO solver ──────────────────────────────────────────────────
 
 
 def test_qubo_problem_evaluate_diagonal_only() -> None:
     from eta_engine.brain.jarvis_v3.quantum.qubo_solver import QuboProblem
+
     p = QuboProblem.from_matrix([[2.0, 0.0], [0.0, -1.0]])
     # x = [1, 0] -> 2*1 + 0 = 2
     assert p.evaluate([1, 0]) == 2.0
@@ -31,6 +32,7 @@ def test_qubo_problem_evaluate_diagonal_only() -> None:
 
 def test_qubo_problem_evaluate_with_off_diagonal() -> None:
     from eta_engine.brain.jarvis_v3.quantum.qubo_solver import QuboProblem
+
     # Q = [[0, -2], [-2, 0]]; x^T Q x = -4*x0*x1
     p = QuboProblem.from_matrix([[0.0, -2.0], [-2.0, 0.0]])
     assert p.evaluate([1, 1]) == -4.0
@@ -42,6 +44,7 @@ def test_simulated_annealing_finds_good_solution_on_easy_problem() -> None:
         QuboProblem,
         simulated_annealing_solve,
     )
+
     # Minimum is x = [1, 1] with energy -4
     p = QuboProblem.from_matrix(
         [[-1.0, -1.0], [-1.0, -1.0]],
@@ -60,6 +63,7 @@ def test_simulated_annealing_returns_best_seen_not_final() -> None:
         QuboProblem,
         simulated_annealing_solve,
     )
+
     p = QuboProblem.from_matrix([[-5.0, 0.0], [0.0, -3.0]])
     result = simulated_annealing_solve(p, n_iterations=500, seed=1)
     # Optimum is [1, 1] with energy -8
@@ -71,6 +75,7 @@ def test_portfolio_allocation_qubo_picks_high_return_low_risk() -> None:
         portfolio_allocation_qubo,
         simulated_annealing_solve,
     )
+
     # Asset 0: high return, low variance -> should be picked
     # Asset 1: low return, high variance -> should be skipped
     p = portfolio_allocation_qubo(
@@ -88,6 +93,7 @@ def test_portfolio_allocation_qubo_respects_cardinality() -> None:
         portfolio_allocation_qubo,
         simulated_annealing_solve,
     )
+
     p = portfolio_allocation_qubo(
         expected_returns=[1.0, 1.0, 1.0, 1.0],
         covariance=[
@@ -111,6 +117,7 @@ def test_sizing_basket_qubo_picks_highest_score_signals() -> None:
         simulated_annealing_solve,
         sizing_basket_qubo,
     )
+
     p = sizing_basket_qubo(
         expected_r=[3.0, 0.5, 2.5, 0.3],
         pairwise_correlation=[
@@ -135,6 +142,7 @@ def test_sizing_basket_qubo_correlation_penalty_diversifies() -> None:
         simulated_annealing_solve,
         sizing_basket_qubo,
     )
+
     # s0 and s1 are perfectly correlated; s2 is uncorrelated
     p = sizing_basket_qubo(
         expected_r=[2.0, 2.0, 1.5],
@@ -161,6 +169,7 @@ def test_select_top_signal_combination_handles_empty() -> None:
     from eta_engine.brain.jarvis_v3.quantum.tensor_network import (
         select_top_signal_combination,
     )
+
     out = select_top_signal_combination([], k=3)
     assert out.selected == []
     assert out.objective == 0.0
@@ -171,6 +180,7 @@ def test_select_top_signal_combination_returns_all_when_k_exceeds_n() -> None:
         SignalScore,
         select_top_signal_combination,
     )
+
     cands = [
         SignalScore(name="a", score=0.5, features=[1, 0]),
         SignalScore(name="b", score=0.4, features=[0, 1]),
@@ -184,6 +194,7 @@ def test_select_top_signal_combination_diversifies_picks() -> None:
         SignalScore,
         select_top_signal_combination,
     )
+
     # 4 candidates: 2 nearly identical (high overlap) vs 2 orthogonal
     cands = [
         SignalScore(name="dup_a", score=0.8, features=[1, 1, 0, 0]),
@@ -204,6 +215,7 @@ def test_signal_correlation_matrix_is_symmetric_with_unit_diagonal() -> None:
         SignalScore,
         signal_correlation_matrix,
     )
+
     cands = [
         SignalScore(name="a", score=0, features=[1, 0, 0]),
         SignalScore(name="b", score=0, features=[0, 1, 0]),
@@ -233,6 +245,7 @@ def test_cloud_adapter_falls_back_to_classical_when_cloud_disabled(
         _ResultCache,
     )
     from eta_engine.brain.jarvis_v3.quantum.qubo_solver import QuboProblem
+
     adapter = QuantumCloudAdapter(
         cfg=CloudConfig(enable_cloud=False),
         jobs_log_path=tmp_path / "jobs.jsonl",
@@ -252,6 +265,7 @@ def test_cloud_adapter_caches_repeat_calls(tmp_path: Path) -> None:
         _ResultCache,
     )
     from eta_engine.brain.jarvis_v3.quantum.qubo_solver import QuboProblem
+
     adapter = QuantumCloudAdapter(
         cfg=CloudConfig(enable_cloud=False),
         jobs_log_path=tmp_path / "jobs.jsonl",
@@ -301,6 +315,7 @@ def test_cloud_adapter_appends_to_jobs_log(tmp_path: Path) -> None:
         _ResultCache,
     )
     from eta_engine.brain.jarvis_v3.quantum.qubo_solver import QuboProblem
+
     log = tmp_path / "jobs.jsonl"
     adapter = QuantumCloudAdapter(
         cfg=CloudConfig(enable_cloud=False),
@@ -319,6 +334,7 @@ def test_cloud_adapter_available_backends_always_includes_classical() -> None:
         QuantumBackend,
         QuantumCloudAdapter,
     )
+
     adapter = QuantumCloudAdapter()
     backs = adapter.available_backends()
     assert QuantumBackend.CLASSICAL_SA in backs
@@ -338,6 +354,7 @@ def test_quantum_agent_allocate_portfolio_returns_recommendation(
         CloudConfig,
         _ResultCache,
     )
+
     agent = QuantumOptimizerAgent(
         adapter=QuantumCloudAdapter(
             cfg=CloudConfig(enable_cloud=False),
@@ -367,6 +384,7 @@ def test_quantum_agent_select_signal_basket_qubo_path(tmp_path: Path) -> None:
         CloudConfig,
         _ResultCache,
     )
+
     agent = QuantumOptimizerAgent(
         adapter=QuantumCloudAdapter(
             cfg=CloudConfig(enable_cloud=False),
@@ -381,8 +399,10 @@ def test_quantum_agent_select_signal_basket_qubo_path(tmp_path: Path) -> None:
         SignalScore(name="liquidity", score=0.5, features=[0, 0, 1]),
     ]
     rec = agent.select_signal_basket(
-        candidates=cands, max_picks=2,
-        correlation_penalty=0.5, use_qubo=True,
+        candidates=cands,
+        max_picks=2,
+        correlation_penalty=0.5,
+        use_qubo=True,
     )
     assert rec.kind.value == "SIZING_BASKET"
     assert len(rec.selected_labels) == 2
@@ -393,6 +413,7 @@ def test_quantum_agent_select_signal_basket_greedy_path() -> None:
         QuantumOptimizerAgent,
         SignalScore,
     )
+
     agent = QuantumOptimizerAgent()
     cands = [
         SignalScore(name="a", score=0.9, features=[1, 0]),
@@ -400,7 +421,9 @@ def test_quantum_agent_select_signal_basket_greedy_path() -> None:
         SignalScore(name="c", score=0.7, features=[1, 1]),
     ]
     rec = agent.select_signal_basket(
-        candidates=cands, max_picks=2, use_qubo=False,
+        candidates=cands,
+        max_picks=2,
+        use_qubo=False,
     )
     assert rec.backend_used == "tensor_network_greedy"
     assert len(rec.selected_labels) == 2
@@ -417,6 +440,7 @@ def test_quantum_agent_sequence_orders_picks_low_impact(
         CloudConfig,
         _ResultCache,
     )
+
     agent = QuantumOptimizerAgent(
         adapter=QuantumCloudAdapter(
             cfg=CloudConfig(enable_cloud=False),

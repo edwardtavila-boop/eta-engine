@@ -18,6 +18,7 @@ backfilled to ``password_hash`` after a successful login.
 Both files are read/written via portalocker (cross-platform fcntl/msvcrt)
 so concurrent processes don't corrupt them.
 """
+
 from __future__ import annotations
 
 import base64
@@ -54,8 +55,7 @@ def _read_locked(path: Path) -> dict[str, Any]:
     if not path.exists():
         return {}
     try:
-        with portalocker.Lock(str(path), mode="r", timeout=2,
-                               flags=portalocker.LOCK_SH) as fh:
+        with portalocker.Lock(str(path), mode="r", timeout=2, flags=portalocker.LOCK_SH) as fh:
             return json.loads(fh.read() or "{}")
     except (portalocker.LockException, json.JSONDecodeError, OSError):
         return {}
@@ -64,8 +64,7 @@ def _read_locked(path: Path) -> dict[str, Any]:
 def _write_locked(path: Path, data: dict[str, Any]) -> None:
     """Write JSON with an exclusive file lock."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    with portalocker.Lock(str(path), mode="w", timeout=2,
-                           flags=portalocker.LOCK_EX) as fh:
+    with portalocker.Lock(str(path), mode="w", timeout=2, flags=portalocker.LOCK_EX) as fh:
         fh.write(json.dumps(data, indent=2))
 
 

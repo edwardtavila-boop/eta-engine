@@ -29,6 +29,7 @@ Public interface
 
 NEVER raises.
 """
+
 from __future__ import annotations
 
 import logging
@@ -44,10 +45,11 @@ EXPECTED_HOOKS = ("current_regime", "apply_pack", "list_packs")
 @dataclass(frozen=True)
 class OverridePack:
     """A pre-defined override bundle indexed by name."""
+
     name: str
     regime_match: str
     rationale: str
-    size_modifiers: dict[str, float]   # {bot_id_pattern: multiplier}
+    size_modifiers: dict[str, float]  # {bot_id_pattern: multiplier}
     school_weights: dict[str, dict[str, float]]  # {asset: {school: weight}}
 
 
@@ -90,8 +92,7 @@ BUILTIN_PACKS: dict[str, OverridePack] = {
         name="range",
         regime_match="RANGE",
         rationale=(
-            "Choppy range. Mean-revert wins, momentum gets chopped up. "
-            "Boost mean_revert, trim momentum to 0.6×."
+            "Choppy range. Mean-revert wins, momentum gets chopped up. Boost mean_revert, trim momentum to 0.6×."
         ),
         size_modifiers={},
         school_weights={
@@ -103,10 +104,7 @@ BUILTIN_PACKS: dict[str, OverridePack] = {
     "chaos": OverridePack(
         name="chaos",
         regime_match="CHAOS",
-        rationale=(
-            "Whipsaw / news-driven chop. No school has edge. Trim everything "
-            "to 0.4× and let the storm pass."
-        ),
+        rationale=("Whipsaw / news-driven chop. No school has edge. Trim everything to 0.4× and let the storm pass."),
         size_modifiers={"*": 0.4},
         school_weights={},
     ),
@@ -145,10 +143,10 @@ BUILTIN_PACKS: dict[str, OverridePack] = {
 class RegimeReport:
     # "CALM_TREND" | "VOL_TREND" | "RANGE" | "CHAOS" | "EUPHORIA" | "CAPITULATION" | "UNKNOWN"
     regime: str
-    confidence: float          # 0..1
+    confidence: float  # 0..1
     rationale: str
     recommended_pack: str | None
-    features: dict[str, Any]   # the input signals the classifier saw
+    features: dict[str, Any]  # the input signals the classifier saw
     asof: str
 
     def to_dict(self) -> dict[str, Any]:
@@ -158,6 +156,7 @@ class RegimeReport:
 def _safe_sentiment(asset: str) -> dict[str, Any] | None:
     try:
         from eta_engine.brain.jarvis_v3 import sentiment_overlay
+
         return sentiment_overlay.current_sentiment(asset)
     except Exception as exc:  # noqa: BLE001
         logger.warning("regime_classifier: sentiment fetch failed: %s", exc)
@@ -170,6 +169,7 @@ def _safe_fleet_drawdown() -> float | None:
     """
     try:
         from eta_engine.brain.jarvis_v3 import trace_emitter
+
         records = trace_emitter.tail(n=20) or []
         for rec in reversed(records):
             pi = rec.get("portfolio_inputs") or {}
@@ -217,12 +217,7 @@ def current_regime() -> RegimeReport:
     dd = features["fleet_drawdown_today_r"]
 
     # 1. EUPHORIA
-    if (
-        isinstance(fg, (int, float))
-        and isinstance(vol_z, (int, float))
-        and float(fg) >= 0.85
-        and float(vol_z) >= 1.5
-    ):
+    if isinstance(fg, (int, float)) and isinstance(vol_z, (int, float)) and float(fg) >= 0.85 and float(vol_z) >= 1.5:
         return RegimeReport(
             regime="EUPHORIA",
             confidence=0.85,
@@ -233,12 +228,7 @@ def current_regime() -> RegimeReport:
         )
 
     # 2. CAPITULATION
-    if (
-        isinstance(fg, (int, float))
-        and float(fg) <= 0.15
-        and isinstance(flags, dict)
-        and flags.get("capitulation")
-    ):
+    if isinstance(fg, (int, float)) and float(fg) <= 0.15 and isinstance(flags, dict) and flags.get("capitulation"):
         return RegimeReport(
             regime="CAPITULATION",
             confidence=0.80,
@@ -351,7 +341,8 @@ def apply_pack(
                 continue
             for bid in bot_ids:
                 r = hermes_overrides.apply_size_modifier(
-                    bot_id=bid, modifier=float(mod),
+                    bot_id=bid,
+                    modifier=float(mod),
                     reason=f"pack:{name} — {pack.rationale[:60]}",
                     ttl_minutes=ttl_minutes,
                 )
@@ -360,7 +351,8 @@ def apply_pack(
                     errors.append(f"size_modifier({bid}): {r.get('status')}")
         else:
             r = hermes_overrides.apply_size_modifier(
-                bot_id=pattern, modifier=float(mod),
+                bot_id=pattern,
+                modifier=float(mod),
                 reason=f"pack:{name} — {pack.rationale[:60]}",
                 ttl_minutes=ttl_minutes,
             )
@@ -370,7 +362,9 @@ def apply_pack(
     for asset, schools in pack.school_weights.items():
         for school, weight in schools.items():
             r = hermes_overrides.apply_school_weight(
-                asset=asset, school=school, weight=float(weight),
+                asset=asset,
+                school=school,
+                weight=float(weight),
                 reason=f"pack:{name} — {pack.rationale[:60]}",
                 ttl_minutes=ttl_minutes,
             )

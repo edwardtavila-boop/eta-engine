@@ -82,14 +82,16 @@ def _fetch_via_yfinance(symbol: str, timeframe: str, period: str) -> list[dict[s
     rows: list[dict[str, Any]] = []
     for ts, r in df.iterrows():
         ts_utc = ts.tz_convert(UTC) if ts.tzinfo else ts.tz_localize(UTC)
-        rows.append({
-            "time": int(ts_utc.timestamp()),
-            "open": float(r["Open"]),
-            "high": float(r["High"]),
-            "low": float(r["Low"]),
-            "close": float(r["Close"]),
-            "volume": float(r.get("Volume", 0.0)),
-        })
+        rows.append(
+            {
+                "time": int(ts_utc.timestamp()),
+                "open": float(r["Open"]),
+                "high": float(r["High"]),
+                "low": float(r["Low"]),
+                "close": float(r["Close"]),
+                "volume": float(r.get("Volume", 0.0)),
+            }
+        )
     return rows
 
 
@@ -102,14 +104,16 @@ def _read_existing(path: Path) -> list[dict[str, Any]]:
             reader = csv.DictReader(fh)
             for row in reader:
                 try:
-                    existing.append({
-                        "time": int(float(row["time"])),
-                        "open": float(row["open"]),
-                        "high": float(row["high"]),
-                        "low": float(row["low"]),
-                        "close": float(row["close"]),
-                        "volume": float(row.get("volume", 0.0) or 0.0),
-                    })
+                    existing.append(
+                        {
+                            "time": int(float(row["time"])),
+                            "open": float(row["open"]),
+                            "high": float(row["high"]),
+                            "low": float(row["low"]),
+                            "close": float(row["close"]),
+                            "volume": float(row.get("volume", 0.0) or 0.0),
+                        }
+                    )
                 except (KeyError, TypeError, ValueError):
                     continue
     except OSError:
@@ -134,14 +138,16 @@ def _write_csv(path: Path, rows: list[dict[str, Any]]) -> int:
         writer = csv.writer(fh)
         writer.writerow(["time", "open", "high", "low", "close", "volume"])
         for row in rows:
-            writer.writerow([
-                int(row["time"]),
-                row["open"],
-                row["high"],
-                row["low"],
-                row["close"],
-                row["volume"],
-            ])
+            writer.writerow(
+                [
+                    int(row["time"]),
+                    row["open"],
+                    row["high"],
+                    row["low"],
+                    row["close"],
+                    row["volume"],
+                ]
+            )
     return len(rows)
 
 

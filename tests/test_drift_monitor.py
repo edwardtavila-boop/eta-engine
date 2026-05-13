@@ -66,7 +66,11 @@ def test_baseline_from_trades_computes_stats() -> None:
 
 def test_insufficient_sample_returns_green_with_reason() -> None:
     bl = BaselineSnapshot(
-        strategy_id="s", n_trades=100, win_rate=0.55, avg_r=0.3, r_stddev=1.2,
+        strategy_id="s",
+        n_trades=100,
+        win_rate=0.55,
+        avg_r=0.3,
+        r_stddev=1.2,
     )
     a = assess_drift(strategy_id="s", recent=[_trade(1.5)] * 5, baseline=bl, min_trades=20)
     assert a.severity == "green"
@@ -80,7 +84,11 @@ def test_insufficient_sample_returns_green_with_reason() -> None:
 
 def test_stable_performance_returns_green() -> None:
     bl = BaselineSnapshot(
-        strategy_id="s", n_trades=100, win_rate=0.55, avg_r=0.3, r_stddev=1.2,
+        strategy_id="s",
+        n_trades=100,
+        win_rate=0.55,
+        avg_r=0.3,
+        r_stddev=1.2,
     )
     # 30 trades, ~55% wins, ~+0.3 avg R
     recent = [_trade(1.5)] * 17 + [_trade(-1.2)] * 13
@@ -96,7 +104,11 @@ def test_stable_performance_returns_green() -> None:
 
 def test_win_rate_collapse_triggers_red() -> None:
     bl = BaselineSnapshot(
-        strategy_id="s", n_trades=200, win_rate=0.60, avg_r=0.4, r_stddev=1.0,
+        strategy_id="s",
+        n_trades=200,
+        win_rate=0.60,
+        avg_r=0.4,
+        r_stddev=1.0,
     )
     # 30 recent trades, only 5 wins (16.7%) — way below 60% baseline
     recent = [_trade(1.5)] * 5 + [_trade(-1.0)] * 25
@@ -113,7 +125,11 @@ def test_win_rate_collapse_triggers_red() -> None:
 
 def test_mild_win_rate_dip_triggers_amber() -> None:
     bl = BaselineSnapshot(
-        strategy_id="s", n_trades=500, win_rate=0.60, avg_r=0.4, r_stddev=1.0,
+        strategy_id="s",
+        n_trades=500,
+        win_rate=0.60,
+        avg_r=0.4,
+        r_stddev=1.0,
     )
     # 50 trades, 21 wins (42%) — about 2.6σ low against baseline of 60%.
     # SE = sqrt(0.6*0.4/50) ≈ 0.0693; (0.42 - 0.6)/0.0693 ≈ -2.60.
@@ -130,7 +146,11 @@ def test_mild_win_rate_dip_triggers_amber() -> None:
 
 def test_avg_r_collapse_triggers_red() -> None:
     bl = BaselineSnapshot(
-        strategy_id="s", n_trades=200, win_rate=0.5, avg_r=0.5, r_stddev=1.0,
+        strategy_id="s",
+        n_trades=200,
+        win_rate=0.5,
+        avg_r=0.5,
+        r_stddev=1.0,
     )
     # 30 trades with wins still ~50% but R per trade now strongly negative
     recent = [_trade(0.5)] * 15 + [_trade(-2.0)] * 15
@@ -146,7 +166,11 @@ def test_avg_r_collapse_triggers_red() -> None:
 
 def test_both_metrics_drop_both_reasons_surface() -> None:
     bl = BaselineSnapshot(
-        strategy_id="s", n_trades=200, win_rate=0.6, avg_r=0.5, r_stddev=1.0,
+        strategy_id="s",
+        n_trades=200,
+        win_rate=0.6,
+        avg_r=0.5,
+        r_stddev=1.0,
     )
     recent = [_trade(0.3)] * 5 + [_trade(-2.5)] * 25
     a = assess_drift(strategy_id="s", recent=recent, baseline=bl)
@@ -162,7 +186,11 @@ def test_both_metrics_drop_both_reasons_surface() -> None:
 
 def test_degenerate_baseline_does_not_crash() -> None:
     bl = BaselineSnapshot(
-        strategy_id="s", n_trades=10, win_rate=1.0, avg_r=1.0, r_stddev=0.0,
+        strategy_id="s",
+        n_trades=10,
+        win_rate=1.0,
+        avg_r=1.0,
+        r_stddev=0.0,
     )
     recent = [_trade(0.0)] * 25
     a = assess_drift(strategy_id="s", recent=recent, baseline=bl)
@@ -178,14 +206,16 @@ def test_degenerate_baseline_does_not_crash() -> None:
 
 def test_aggressive_thresholds_flag_what_default_misses() -> None:
     bl = BaselineSnapshot(
-        strategy_id="s", n_trades=500, win_rate=0.55, avg_r=0.3, r_stddev=1.0,
+        strategy_id="s",
+        n_trades=500,
+        win_rate=0.55,
+        avg_r=0.3,
+        r_stddev=1.0,
     )
     recent = [_trade(1.0)] * 13 + [_trade(-1.2)] * 12  # ~52% WR
     default = assess_drift(strategy_id="s", recent=recent, baseline=bl)
     assert default.severity == "green"
-    aggressive = assess_drift(
-        strategy_id="s", recent=recent, baseline=bl, amber_z=0.2, red_z=0.5
-    )
+    aggressive = assess_drift(strategy_id="s", recent=recent, baseline=bl, amber_z=0.2, red_z=0.5)
     # With z thresholds collapsed near zero, even small deltas trigger.
     assert aggressive.severity in ("amber", "red")
 
@@ -197,7 +227,11 @@ def test_aggressive_thresholds_flag_what_default_misses() -> None:
 
 def test_assessment_is_pydantic_serializable() -> None:
     bl = BaselineSnapshot(
-        strategy_id="s", n_trades=100, win_rate=0.55, avg_r=0.3, r_stddev=1.0,
+        strategy_id="s",
+        n_trades=100,
+        win_rate=0.55,
+        avg_r=0.3,
+        r_stddev=1.0,
     )
     recent = [_trade(1.5)] * 16 + [_trade(-1.0)] * 14
     a = assess_drift(strategy_id="s", recent=recent, baseline=bl)
@@ -217,8 +251,10 @@ def test_assessment_is_pydantic_serializable() -> None:
 
 def test_fleet_correlation_insufficient_sample_returns_green() -> None:
     a = assess_fleet_correlation(
-        bot_a="btc_hybrid", recent_a=[_trade(1.0)] * 5,
-        bot_b="eth_perp", recent_b=[_trade(1.0)] * 5,
+        bot_a="btc_hybrid",
+        recent_a=[_trade(1.0)] * 5,
+        bot_b="eth_perp",
+        recent_b=[_trade(1.0)] * 5,
     )
     assert a.severity == "green"
     assert a.recommended_action == "independent"
@@ -232,8 +268,10 @@ def test_fleet_correlation_perfectly_correlated_pair_red() -> None:
     trades_a = [_trade(r) for r in rs]
     trades_b = [_trade(r) for r in rs]
     a = assess_fleet_correlation(
-        bot_a="btc_hybrid", recent_a=trades_a,
-        bot_b="eth_perp", recent_b=trades_b,
+        bot_a="btc_hybrid",
+        recent_a=trades_a,
+        bot_b="eth_perp",
+        recent_b=trades_b,
     )
     assert a.severity == "red"
     assert a.recommended_action == "merge_for_risk"
@@ -247,8 +285,10 @@ def test_fleet_correlation_anti_correlated_pair_green() -> None:
     rs_a = [1.5, -1.0, 0.7, -0.4, 1.2, 0.9, -0.6, 1.1, -0.3, 0.8, 1.0, -0.7]
     rs_b = [-r for r in rs_a]
     a = assess_fleet_correlation(
-        bot_a="btc_hybrid", recent_a=[_trade(r) for r in rs_a],
-        bot_b="eth_perp", recent_b=[_trade(r) for r in rs_b],
+        bot_a="btc_hybrid",
+        recent_a=[_trade(r) for r in rs_a],
+        bot_b="eth_perp",
+        recent_b=[_trade(r) for r in rs_b],
     )
     assert a.severity == "green"
     assert a.recommended_action == "independent"
@@ -262,8 +302,10 @@ def test_fleet_correlation_amber_band_recommends_halve() -> None:
     noise = [0.1, -0.2, 0.3, -0.1, 0.05, -0.4, 0.6, -0.3, 0.2, -0.05, 0.4, -0.6]
     ys = [0.6 * xs[i] + 0.8 * noise[i] for i in range(len(xs))]
     a = assess_fleet_correlation(
-        bot_a="btc_hybrid", recent_a=[_trade(r) for r in xs],
-        bot_b="eth_perp", recent_b=[_trade(r) for r in ys],
+        bot_a="btc_hybrid",
+        recent_a=[_trade(r) for r in xs],
+        bot_b="eth_perp",
+        recent_b=[_trade(r) for r in ys],
     )
     # Tolerate either amber or red depending on exact rho given small N
     assert a.severity in {"amber", "red"}
@@ -276,8 +318,10 @@ def test_fleet_correlation_uses_min_lengths_when_unequal() -> None:
     trades_a = [_trade(r) for r in rs]
     trades_b = [_trade(r) for r in rs[2:]]  # 10 trades vs 12
     a = assess_fleet_correlation(
-        bot_a="btc_hybrid", recent_a=trades_a,
-        bot_b="eth_perp", recent_b=trades_b,
+        bot_a="btc_hybrid",
+        recent_a=trades_a,
+        bot_b="eth_perp",
+        recent_b=trades_b,
         min_paired=8,
     )
     assert a.n_paired == 10  # min of the two

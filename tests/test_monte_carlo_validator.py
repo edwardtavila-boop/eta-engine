@@ -14,15 +14,10 @@ from eta_engine.scripts import monte_carlo_validator as mod
 
 def _write_close(path: Path, *, bot_id: str, realized_r: float, ts: str) -> None:
     with path.open("a", encoding="utf-8") as fh:
-        fh.write(
-            json.dumps({"bot_id": bot_id, "realized_r": realized_r, "ts": ts})
-            + "\n"
-        )
+        fh.write(json.dumps({"bot_id": bot_id, "realized_r": realized_r, "ts": ts}) + "\n")
 
 
-def test_load_closes_uses_patched_canonical_trade_file(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_load_closes_uses_patched_canonical_trade_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     trade_file = tmp_path / "trade_closes.jsonl"
     _write_close(
         trade_file,
@@ -47,9 +42,7 @@ def test_load_closes_uses_patched_canonical_trade_file(
     assert closes == {"robust_bot": [1.25]}
 
 
-def test_analyze_classifies_robust_dead_and_insufficient(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_analyze_classifies_robust_dead_and_insufficient(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     trade_file = tmp_path / "trade_closes.jsonl"
     for _ in range(40):
         _write_close(

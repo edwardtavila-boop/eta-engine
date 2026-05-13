@@ -20,6 +20,7 @@ Usage at the order-routing layer::
 Daily roll-up via ``daily_summary()``. Operator inspects + alerts when
 realized slippage exceeds backtest assumption.
 """
+
 from __future__ import annotations
 
 import json
@@ -43,8 +44,8 @@ class SlippageEvent:
     side: str
     expected_price: float
     realized_price: float
-    slippage_abs: float       # signed: positive = paid more (worse for buyer)
-    slippage_bps: float        # in basis points of expected_price
+    slippage_abs: float  # signed: positive = paid more (worse for buyer)
+    slippage_bps: float  # in basis points of expected_price
     submit_ts: float
     fill_ts: float
     latency_ms: float
@@ -68,8 +69,12 @@ def _save_pending(d: dict) -> None:
 
 
 def record_expected(
-    *, order_id: str, symbol: str, side: str,
-    expected_price: float, ts: float,
+    *,
+    order_id: str,
+    symbol: str,
+    side: str,
+    expected_price: float,
+    ts: float,
 ) -> None:
     """Stash the expected fill price + submit timestamp. Resolved when
     record_realized() fires for the same order_id."""
@@ -85,7 +90,10 @@ def record_expected(
 
 
 def record_realized(
-    *, order_id: str, realized_price: float, ts: float,
+    *,
+    order_id: str,
+    realized_price: float,
+    ts: float,
 ) -> SlippageEvent | None:
     """Resolve the slippage diff. Returns the event if the matching
     expected was found; None otherwise (out-of-order or unknown order).
@@ -101,10 +109,7 @@ def record_realized(
         side = match["side"]
         # Slippage convention: positive = worse for the trader.
         # BUY: realized > expected = bad. SELL: realized < expected = bad.
-        slippage_abs = (
-            realized_price - expected if side.lower() == "buy"
-            else expected - realized_price
-        )
+        slippage_abs = realized_price - expected if side.lower() == "buy" else expected - realized_price
         slippage_bps = (slippage_abs / expected * 10_000) if expected else 0.0
         submit_ts = float(match["submit_ts"])
         latency_ms = max(0.0, (float(ts) - submit_ts) * 1000.0)
@@ -155,9 +160,14 @@ def daily_summary(*, since_hours: float = 24.0) -> dict:
             pass
 
     if not events:
-        return {"n": 0, "since_hours": since_hours,
-                "mean_slippage_bps": 0.0, "p95_slippage_bps": 0.0,
-                "mean_latency_ms": 0.0, "p95_latency_ms": 0.0}
+        return {
+            "n": 0,
+            "since_hours": since_hours,
+            "mean_slippage_bps": 0.0,
+            "p95_slippage_bps": 0.0,
+            "mean_latency_ms": 0.0,
+            "p95_latency_ms": 0.0,
+        }
 
     bps = [e.get("slippage_bps", 0.0) for e in events]
     latencies = [e.get("latency_ms", 0.0) for e in events]
@@ -171,8 +181,8 @@ def daily_summary(*, since_hours: float = 24.0) -> dict:
         "p95_slippage_bps": round(bps_sorted[p95_idx], 2),
         "max_slippage_bps": round(max(bps), 2),
         "mean_latency_ms": round(sum(latencies) / len(latencies), 1),
-        "p95_latency_ms":  round(lat_sorted[p95_idx], 1),
-        "max_latency_ms":  round(max(latencies), 1),
+        "p95_latency_ms": round(lat_sorted[p95_idx], 1),
+        "max_latency_ms": round(max(latencies), 1),
         "by_symbol": _group_by_symbol(events),
     }
 

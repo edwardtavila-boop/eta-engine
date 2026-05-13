@@ -53,7 +53,6 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-
 # ---------------------------------------------------------------------------
 # Conventional roots
 # ---------------------------------------------------------------------------
@@ -94,9 +93,7 @@ _HISTORY_RE = re.compile(
     r"^(?=.*[A-Z])(?P<symbol>[A-Z0-9][A-Z0-9_]*)_(?P<tf>\d+(?:s|m|h)|D|W)\.csv$"
 )
 
-_ETF_FLOW_RE = re.compile(
-    r"^(?P<symbol>[A-Z]+)_ETF_FLOWS\.CSV$"
-)
+_ETF_FLOW_RE = re.compile(r"^(?P<symbol>[A-Z]+)_ETF_FLOWS\.CSV$")
 
 _SPECIAL_HISTORY_FILES: dict[str, tuple[str, str, str]] = {
     # BTC long-term-holder proxy is our canonical on-chain stand-in until a
@@ -111,12 +108,8 @@ _SPECIAL_HISTORY_FILES: dict[str, tuple[str, str, str]] = {
 # OR: mnq_<TF>.csv where TF in {1s, 1m, 5m}
 # Examples: mnq_es1_5.csv -> ES1 / 5m; mnq_5m.csv -> MNQ / 5m;
 #           mnq_tick_1.csv -> TICK / 1m; mnq_vix_5.csv -> VIX / 5m.
-_MAIN_TICKER_RE = re.compile(
-    r"^mnq_(?P<ticker>[a-z]+\d?)_(?P<min>\d+)\.csv$"
-)
-_MAIN_BASE_RE = re.compile(
-    r"^mnq_(?P<tf>\d+(?:s|m|h))\.csv$"
-)
+_MAIN_TICKER_RE = re.compile(r"^mnq_(?P<ticker>[a-z]+\d?)_(?P<min>\d+)\.csv$")
+_MAIN_BASE_RE = re.compile(r"^mnq_(?P<tf>\d+(?:s|m|h))\.csv$")
 
 # Map main-shape minute digits to timeframe labels.
 _MAIN_MIN_TO_TF = {"1": "1m", "5": "5m"}
@@ -365,10 +358,7 @@ class DataLibrary:
                     high = float(row["high"])
                     low = float(row["low"])
                     close = float(row["close"])
-                    if (
-                        require_positive_prices
-                        and min(open_, high, low, close) <= 0.0
-                    ):
+                    if require_positive_prices and min(open_, high, low, close) <= 0.0:
                         continue
                     bars.append(
                         BarData(
@@ -435,9 +425,21 @@ class DataLibrary:
 # ---------------------------------------------------------------------------
 
 _TF_ORDER = {
-    "1s": 0, "5s": 1, "10s": 2, "30s": 3,
-    "1m": 4, "5m": 5, "15m": 6, "30m": 7,
-    "1h": 8, "2h": 9, "4h": 10, "1d": 11, "D": 11, "1w": 12, "W": 12,
+    "1s": 0,
+    "5s": 1,
+    "10s": 2,
+    "30s": 3,
+    "1m": 4,
+    "5m": 5,
+    "15m": 6,
+    "30m": 7,
+    "1h": 8,
+    "2h": 9,
+    "4h": 10,
+    "1d": 11,
+    "D": 11,
+    "1w": 12,
+    "W": 12,
 }
 
 

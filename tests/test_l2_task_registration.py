@@ -1,14 +1,10 @@
 """Static checks for the VPS L2 scheduled-task registrar."""
+
 from __future__ import annotations
 
 from pathlib import Path
 
-SCRIPT = (
-    Path(__file__).resolve().parents[1]
-    / "deploy"
-    / "scripts"
-    / "register_l2_cron_tasks.ps1"
-)
+SCRIPT = Path(__file__).resolve().parents[1] / "deploy" / "scripts" / "register_l2_cron_tasks.ps1"
 
 
 def test_l2_cron_registrar_uses_runtime_overrides() -> None:

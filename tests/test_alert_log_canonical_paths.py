@@ -196,9 +196,7 @@ def test_vps_failover_archives_workspace_paths_relative_to_workspace() -> None:
     assert vps_failover_drill._archive_name(workspace_log) == "logs/eta_engine/alerts_log.jsonl"
 
 
-def test_vps_failover_missing_env_reports_template_and_active_brokers(
-    monkeypatch, tmp_path: Path
-) -> None:
+def test_vps_failover_missing_env_reports_template_and_active_brokers(monkeypatch, tmp_path: Path) -> None:
     (tmp_path / ".env.example").write_text("IBKR_ACCOUNT_ID=\n", encoding="utf-8")
     monkeypatch.setattr(vps_failover_drill, "ROOT", tmp_path)
 
@@ -207,9 +205,7 @@ def test_vps_failover_missing_env_reports_template_and_active_brokers(
     assert result.severity == "amber"
     assert result.details["template"].replace("\\", "/").endswith(".env.example")
     assert result.details["template_exists"] is True
-    assert result.details["copy_commands"][0].startswith(
-        "python -m eta_engine.scripts.operator_env_bootstrap --create"
-    )
+    assert result.details["copy_commands"][0].startswith("python -m eta_engine.scripts.operator_env_bootstrap --create")
     assert result.details["copy_commands"][1].startswith("Copy-Item")
     assert result.details["copy_commands"][-2] == "cp .env.example .env && chmod 600 .env"
     assert result.details["active_brokers"] == ["IBKR", "Tastytrade"]
@@ -219,9 +215,7 @@ def test_vps_failover_missing_env_reports_template_and_active_brokers(
     assert "TASTY_SESSION_TOKEN" in result.details["recommended_groups"]["tastytrade_fallback"]
 
 
-def test_vps_failover_existing_env_with_empty_required_keys_stays_amber(
-    monkeypatch, tmp_path: Path
-) -> None:
+def test_vps_failover_existing_env_with_empty_required_keys_stays_amber(monkeypatch, tmp_path: Path) -> None:
     (tmp_path / ".env.example").write_text("ETA_MODE=\n", encoding="utf-8")
     (tmp_path / ".env").write_text(
         "\n".join(
@@ -271,9 +265,7 @@ def test_vps_failover_inline_comments_do_not_count_as_populated_env_values(tmp_p
     assert state["POPULATED"] is True
 
 
-def test_vps_failover_required_env_keys_populated_without_tastytrade_is_green(
-    monkeypatch, tmp_path: Path
-) -> None:
+def test_vps_failover_required_env_keys_populated_without_tastytrade_is_green(monkeypatch, tmp_path: Path) -> None:
     (tmp_path / ".env.example").write_text("ETA_MODE=\n", encoding="utf-8")
     (tmp_path / ".env").write_text(
         "\n".join(
@@ -302,9 +294,7 @@ def test_vps_failover_required_env_keys_populated_without_tastytrade_is_green(
     assert "DU123" not in json.dumps(result.details)
 
 
-def test_vps_failover_env_template_completeness_passes_for_full_template(
-    monkeypatch, tmp_path: Path
-) -> None:
+def test_vps_failover_env_template_completeness_passes_for_full_template(monkeypatch, tmp_path: Path) -> None:
     (tmp_path / ".env.example").write_text(
         "\n".join(f"{token}=" for token in vps_failover_drill._ENV_TEMPLATE_REQUIRED_TOKENS),
         encoding="utf-8",
@@ -316,9 +306,7 @@ def test_vps_failover_env_template_completeness_passes_for_full_template(
     assert result.severity == "green"
 
 
-def test_vps_failover_env_template_completeness_fails_when_key_missing(
-    monkeypatch, tmp_path: Path
-) -> None:
+def test_vps_failover_env_template_completeness_fails_when_key_missing(monkeypatch, tmp_path: Path) -> None:
     (tmp_path / ".env.example").write_text("ETA_MODE=PAPER\n", encoding="utf-8")
     monkeypatch.setattr(vps_failover_drill, "ROOT", tmp_path)
 
@@ -439,10 +427,7 @@ def test_vps_failover_idempotent_resume_uses_live_order_evidence(monkeypatch, tm
     router = tmp_path / "live_supervisor.py"
     preflight = tmp_path / "live_tiny_preflight_dryrun.py"
     router.write_text(
-        "hashlib.sha256\n"
-        "def _ensure_client_order_id(): pass\n"
-        "client_order_id = 'coid'\n"
-        "idempotent_order_id = True\n",
+        "hashlib.sha256\ndef _ensure_client_order_id(): pass\nclient_order_id = 'coid'\nidempotent_order_id = True\n",
         encoding="utf-8",
     )
     preflight.write_text(
@@ -479,9 +464,7 @@ def test_vps_failover_idempotent_resume_uses_live_order_evidence(monkeypatch, tm
     ]
 
 
-def test_vps_failover_idempotent_resume_stays_amber_when_evidence_is_incomplete(
-    monkeypatch, tmp_path: Path
-) -> None:
+def test_vps_failover_idempotent_resume_stays_amber_when_evidence_is_incomplete(monkeypatch, tmp_path: Path) -> None:
     router = tmp_path / "live_supervisor.py"
     router.write_text("client_order_id = 'coid'\n", encoding="utf-8")
     missing_preflight = tmp_path / "live_tiny_preflight_dryrun.py"

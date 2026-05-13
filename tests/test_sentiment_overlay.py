@@ -1,4 +1,5 @@
 """Tests for sentiment_overlay — T16 external-signal cache."""
+
 from __future__ import annotations
 
 import os
@@ -53,7 +54,9 @@ def test_current_sentiment_case_insensitive_asset_lookup(tmp_path: Path) -> None
     from eta_engine.brain.jarvis_v3 import sentiment_overlay
 
     sentiment_overlay.write_sentiment_snapshot(
-        "BTC", {"fear_greed": 0.7}, cache_dir=tmp_path,
+        "BTC",
+        {"fear_greed": 0.7},
+        cache_dir=tmp_path,
     )
     out_lower = sentiment_overlay.current_sentiment("btc", cache_dir=tmp_path)
     out_upper = sentiment_overlay.current_sentiment("BTC", cache_dir=tmp_path)
@@ -68,7 +71,9 @@ def test_history_appends_each_write(tmp_path: Path) -> None:
 
     for i in range(5):
         sentiment_overlay.write_sentiment_snapshot(
-            "BTC", {"fear_greed": 0.5 + i * 0.05}, cache_dir=tmp_path,
+            "BTC",
+            {"fear_greed": 0.5 + i * 0.05},
+            cache_dir=tmp_path,
         )
     history = sentiment_overlay.sentiment_history("BTC", n=10, cache_dir=tmp_path)
     assert len(history) == 5
@@ -89,7 +94,9 @@ def test_history_respects_limit(tmp_path: Path) -> None:
 
     for i in range(10):
         sentiment_overlay.write_sentiment_snapshot(
-            "BTC", {"fear_greed": 0.1 * i}, cache_dir=tmp_path,
+            "BTC",
+            {"fear_greed": 0.1 * i},
+            cache_dir=tmp_path,
         )
     history = sentiment_overlay.sentiment_history("BTC", n=2, cache_dir=tmp_path)
     assert len(history) == 2
@@ -100,7 +107,9 @@ def test_write_handles_unknown_asset_gracefully(tmp_path: Path) -> None:
     from eta_engine.brain.jarvis_v3 import sentiment_overlay
 
     ok = sentiment_overlay.write_sentiment_snapshot(
-        "DOGE", {"fear_greed": 0.6}, cache_dir=tmp_path,
+        "DOGE",
+        {"fear_greed": 0.6},
+        cache_dir=tmp_path,
     )
     assert ok
     # File written using lowercase fallback
@@ -138,7 +147,9 @@ def test_atomic_write_no_partial_state_on_failure(tmp_path: Path, monkeypatch) -
 
     monkeypatch.setattr(os, "replace", kaboom)
     ok = sentiment_overlay.write_sentiment_snapshot(
-        "BTC", {"fear_greed": 0.5}, cache_dir=tmp_path,
+        "BTC",
+        {"fear_greed": 0.5},
+        cache_dir=tmp_path,
     )
     assert ok is False
     # The temp file should not be left behind in tmp_path

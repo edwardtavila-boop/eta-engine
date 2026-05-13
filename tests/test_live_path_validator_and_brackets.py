@@ -8,6 +8,7 @@ Locks in:
 5. MnqLiveSupervisor.reconcile_with_broker seeds local state from broker
 6. reconcile_with_broker detects divergence on subsequent calls
 """
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock
@@ -21,8 +22,7 @@ import pytest
 # Skipping them here while keeping the file as a regression skeleton —
 # next session should rebuild the mocks against the real venue flow.
 _VENUE_MOCK_SKIP = pytest.mark.skip(
-    reason="venue mocks don't match current place_order pre-gates; "
-           "rebuild against contract/idempotency flow",
+    reason="venue mocks don't match current place_order pre-gates; rebuild against contract/idempotency flow",
 )
 
 # ── OrderRequest schema ───────────────────────────────────────────
@@ -30,9 +30,14 @@ _VENUE_MOCK_SKIP = pytest.mark.skip(
 
 def test_order_request_carries_bracket_fields():
     from eta_engine.venues.base import OrderRequest, Side
+
     req = OrderRequest(
-        symbol="MNQ1", side=Side.BUY, qty=2.0,
-        stop_price=27000.0, target_price=27050.0, bot_id="vp_mnq",
+        symbol="MNQ1",
+        side=Side.BUY,
+        qty=2.0,
+        stop_price=27000.0,
+        target_price=27050.0,
+        bot_id="vp_mnq",
     )
     assert req.qty == 2.0
     assert req.stop_price == 27000.0
@@ -42,6 +47,7 @@ def test_order_request_carries_bracket_fields():
 
 def test_order_request_bracket_fields_optional():
     from eta_engine.venues.base import OrderRequest, Side
+
     req = OrderRequest(symbol="MNQ1", side=Side.BUY, qty=1.0)
     assert req.stop_price is None
     assert req.target_price is None
@@ -52,8 +58,19 @@ def test_live_ibkr_futures_map_covers_router_roots():
     from eta_engine.venues.ibkr_live import FUTURES_MAP
 
     symbols = (
-        "MNQ", "NQ", "ES", "MES", "RTY", "M2K",
-        "NG", "CL", "MCL", "GC", "MGC", "6E", "M6E",
+        "MNQ",
+        "NQ",
+        "ES",
+        "MES",
+        "RTY",
+        "M2K",
+        "NG",
+        "CL",
+        "MCL",
+        "GC",
+        "MGC",
+        "6E",
+        "M6E",
     )
     for symbol in symbols:
         assert symbol in FUTURES_MAP
@@ -149,12 +166,18 @@ def test_ibkr_submission_reject_reason_flags_unconfirmed_submit():
 def test_ibkr_submission_reject_reason_accepts_confirmed_or_perm_id():
     from eta_engine.venues.ibkr_live import _ibkr_submission_reject_reason
 
-    assert _ibkr_submission_reject_reason(
-        [{"order_id": 1, "perm_id": 0, "status": "Submitted"}],
-    ) == ""
-    assert _ibkr_submission_reject_reason(
-        [{"order_id": 1, "perm_id": 12345, "status": "PendingSubmit"}],
-    ) == ""
+    assert (
+        _ibkr_submission_reject_reason(
+            [{"order_id": 1, "perm_id": 0, "status": "Submitted"}],
+        )
+        == ""
+    )
+    assert (
+        _ibkr_submission_reject_reason(
+            [{"order_id": 1, "perm_id": 12345, "status": "PendingSubmit"}],
+        )
+        == ""
+    )
 
 
 # ── Bracket-or-reject in venue ────────────────────────────────────
@@ -208,6 +231,7 @@ async def test_ibkr_order_contract_qualification_fails_closed():
 async def test_venue_rejects_naked_entry():
     """Entry order without stop_price + target_price MUST be rejected."""
     import os
+
     os.environ["ETA_LIVE_TRADING_ENABLED"] = "1"
     os.environ["ETA_FLEET_RISK_LIMIT"] = "100000"
     os.environ["ETA_POSITION_CAP"] = "5"
@@ -219,13 +243,18 @@ async def test_venue_rejects_naked_entry():
     # Stub the connect path so the test doesn't reach for real TWS
     venue._ensure_connected = AsyncMock(return_value=True)
     venue._ib = MagicMock()
-    venue._ib.placeOrder = MagicMock(side_effect=AssertionError(
-        "naked entry should never reach placeOrder",
-    ))
+    venue._ib.placeOrder = MagicMock(
+        side_effect=AssertionError(
+            "naked entry should never reach placeOrder",
+        )
+    )
 
     req = OrderRequest(
-        symbol="MNQ1", side=Side.BUY, qty=1.0,
-        stop_price=None, target_price=None,  # no bracket — must be rejected
+        symbol="MNQ1",
+        side=Side.BUY,
+        qty=1.0,
+        stop_price=None,
+        target_price=None,  # no bracket — must be rejected
         reduce_only=False,
     )
     result = await venue.place_order(req)
@@ -258,6 +287,7 @@ async def test_venue_connection_failure_records_retryable_idempotency(
     monkeypatch.setenv("ETA_IDEMPOTENCY_STORE", str(tmp_path / "idem.jsonl"))
 
     from eta_engine.safety import idempotency
+
     idempotency.reset_store_for_test()
     reload(idempotency)
 
@@ -294,6 +324,7 @@ async def test_venue_connection_failure_records_retryable_idempotency(
 async def test_venue_accepts_bracket_entry():
     """Entry with full bracket should construct a 3-leg OCO via bracketOrder."""
     import os
+
     os.environ["ETA_LIVE_TRADING_ENABLED"] = "1"
     os.environ["ETA_FLEET_RISK_LIMIT"] = "100000"
     os.environ["ETA_POSITION_CAP"] = "5"
@@ -312,15 +343,22 @@ async def test_venue_accepts_bracket_entry():
     sl_trade.order.orderId = 1002
     tp_trade = MagicMock()
     tp_trade.order.orderId = 1003
-    venue._ib.bracketOrder = MagicMock(return_value=[
-        MagicMock(), MagicMock(), MagicMock(),
-    ])
+    venue._ib.bracketOrder = MagicMock(
+        return_value=[
+            MagicMock(),
+            MagicMock(),
+            MagicMock(),
+        ]
+    )
     place_results = [parent_trade, tp_trade, sl_trade]
     venue._ib.placeOrder = MagicMock(side_effect=place_results)
 
     req = OrderRequest(
-        symbol="MNQ1", side=Side.BUY, qty=2.0,
-        stop_price=26900.0, target_price=27100.0,
+        symbol="MNQ1",
+        side=Side.BUY,
+        qty=2.0,
+        stop_price=26900.0,
+        target_price=27100.0,
         reduce_only=False,
     )
     result = await venue.place_order(req)
@@ -336,6 +374,7 @@ async def test_venue_reduce_only_exit_skips_bracket():
     """Reduce-only exits (closes) bypass the bracket requirement —
     they fire a single market order."""
     import os
+
     os.environ["ETA_LIVE_TRADING_ENABLED"] = "1"
     os.environ["ETA_FLEET_RISK_LIMIT"] = "100000"
     os.environ["ETA_POSITION_CAP"] = "5"
@@ -351,9 +390,12 @@ async def test_venue_reduce_only_exit_skips_bracket():
     venue._ib.placeOrder = MagicMock(return_value=exit_trade)
 
     req = OrderRequest(
-        symbol="MNQ1", side=Side.SELL, qty=1.0,
+        symbol="MNQ1",
+        side=Side.SELL,
+        qty=1.0,
         reduce_only=True,
-        stop_price=None, target_price=None,  # exits don't need a bracket
+        stop_price=None,
+        target_price=None,  # exits don't need a bracket
     )
     result = await venue.place_order(req)
     assert result.status.value == "OPEN", result.raw
@@ -373,6 +415,7 @@ async def test_venue_crypto_entry_places_post_fill_bracket():
     fillEvent callbacks. PAXOS rejects bracketOrder, so we manage
     the bracket ourselves."""
     import os
+
     os.environ["ETA_LIVE_TRADING_ENABLED"] = "1"
     os.environ["ETA_FLEET_RISK_LIMIT"] = "100000"
     os.environ["ETA_POSITION_CAP"] = "5"
@@ -401,7 +444,8 @@ async def test_venue_crypto_entry_places_post_fill_bracket():
     stop_trade.filledEvent = MagicMock()
     stop_trade.filledEvent.__iadd__ = MagicMock(
         side_effect=lambda cb: (
-            stop_callbacks.append(cb), stop_trade.filledEvent,
+            stop_callbacks.append(cb),
+            stop_trade.filledEvent,
         )[1],
     )
 
@@ -412,15 +456,19 @@ async def test_venue_crypto_entry_places_post_fill_bracket():
     target_trade.filledEvent = MagicMock()
     target_trade.filledEvent.__iadd__ = MagicMock(
         side_effect=lambda cb: (
-            target_callbacks.append(cb), target_trade.filledEvent,
+            target_callbacks.append(cb),
+            target_trade.filledEvent,
         )[1],
     )
 
     venue._ib.placeOrder = MagicMock(side_effect=[entry_trade, stop_trade, target_trade])
 
     req = OrderRequest(
-        symbol="BTC", side=Side.BUY, qty=0.01,
-        stop_price=93575.0, target_price=96900.0,
+        symbol="BTC",
+        side=Side.BUY,
+        qty=0.01,
+        stop_price=93575.0,
+        target_price=96900.0,
         reduce_only=False,
     )
     result = await venue.place_order(req)
@@ -445,6 +493,7 @@ async def test_venue_crypto_oco_callback_cancels_sibling():
     """When the stop fills, the target must auto-cancel — the OCO
     semantics that PAXOS doesn't give us natively."""
     import os
+
     os.environ["ETA_LIVE_TRADING_ENABLED"] = "1"
     os.environ["ETA_FLEET_RISK_LIMIT"] = "100000"
     os.environ["ETA_POSITION_CAP"] = "5"
@@ -472,7 +521,8 @@ async def test_venue_crypto_oco_callback_cancels_sibling():
     stop_trade.filledEvent = MagicMock()
     stop_trade.filledEvent.__iadd__ = MagicMock(
         side_effect=lambda cb: (
-            stop_callbacks.append(cb), stop_trade.filledEvent,
+            stop_callbacks.append(cb),
+            stop_trade.filledEvent,
         )[1],
     )
 
@@ -482,7 +532,8 @@ async def test_venue_crypto_oco_callback_cancels_sibling():
     target_trade.filledEvent = MagicMock()
     target_trade.filledEvent.__iadd__ = MagicMock(
         side_effect=lambda cb: (
-            target_callbacks.append(cb), target_trade.filledEvent,
+            target_callbacks.append(cb),
+            target_trade.filledEvent,
         )[1],
     )
 
@@ -490,8 +541,11 @@ async def test_venue_crypto_oco_callback_cancels_sibling():
     venue._ib.cancelOrder = MagicMock()
 
     req = OrderRequest(
-        symbol="ETH", side=Side.BUY, qty=0.25,
-        stop_price=3447.5, target_price=3570.0,
+        symbol="ETH",
+        side=Side.BUY,
+        qty=0.25,
+        stop_price=3447.5,
+        target_price=3570.0,
         reduce_only=False,
     )
     await venue.place_order(req)
@@ -534,9 +588,11 @@ async def test_supervisor_reconcile_seeds_local_from_broker():
     # Build a fake bot with empty local state and a router whose venue
     # returns a 2-contract MNQ position
     fake_venue = MagicMock()
-    fake_venue.get_positions = AsyncMock(return_value=[
-        {"symbol": "MNQ1", "position": 2.0},
-    ])
+    fake_venue.get_positions = AsyncMock(
+        return_value=[
+            {"symbol": "MNQ1", "position": 2.0},
+        ]
+    )
     fake_router = MagicMock()
     fake_router._venue = fake_venue
     fake_bot = MagicMock()
@@ -547,11 +603,13 @@ async def test_supervisor_reconcile_seeds_local_from_broker():
 
     # Build supervisor with stubbed bot — only test reconcile method directly
     from eta_engine.feeds.mnq_live_supervisor import MnqLiveSupervisor
+
     sup = MnqLiveSupervisor.__new__(MnqLiveSupervisor)
     sup.bot = fake_bot
     sup.state = MagicMock()
     sup.state.last_event = ""
     from datetime import UTC, datetime
+
     sup.clock = lambda: datetime.now(UTC)
 
     result = await sup.reconcile_with_broker(initial=True)
@@ -570,9 +628,11 @@ async def test_supervisor_reconcile_detects_divergence():
     from eta_engine.bots.base_bot import BotState, Position
 
     fake_venue = MagicMock()
-    fake_venue.get_positions = AsyncMock(return_value=[
-        {"symbol": "MNQ1", "position": 1.0},  # broker says 1
-    ])
+    fake_venue.get_positions = AsyncMock(
+        return_value=[
+            {"symbol": "MNQ1", "position": 1.0},  # broker says 1
+        ]
+    )
     fake_router = MagicMock()
     fake_router._venue = fake_venue
     fake_bot = MagicMock()
@@ -587,11 +647,13 @@ async def test_supervisor_reconcile_detects_divergence():
     fake_bot.circuit_breaker = None
 
     from eta_engine.feeds.mnq_live_supervisor import MnqLiveSupervisor
+
     sup = MnqLiveSupervisor.__new__(MnqLiveSupervisor)
     sup.bot = fake_bot
     sup.state = MagicMock()
     sup.state.last_event = ""
     from datetime import UTC, datetime
+
     sup.clock = lambda: datetime.now(UTC)
 
     result = await sup.reconcile_with_broker(initial=False)
@@ -606,6 +668,7 @@ async def test_supervisor_reconcile_no_venue_returns_skip():
     fake_bot._router = None
 
     from eta_engine.feeds.mnq_live_supervisor import MnqLiveSupervisor
+
     sup = MnqLiveSupervisor.__new__(MnqLiveSupervisor)
     sup.bot = fake_bot
     sup.state = MagicMock()

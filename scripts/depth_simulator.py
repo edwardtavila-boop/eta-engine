@@ -65,6 +65,7 @@ Determinism
 random and subsequent runs differ — useful for monte-carlo
 robustness testing.
 """
+
 from __future__ import annotations
 
 # ruff: noqa: PLR2004
@@ -90,11 +91,12 @@ DEFAULT_OUTPUT_DIR = ROOT.parent / "mnq_data" / "depth"
 @dataclass
 class _RegimeProfile:
     """Tuning surface for one regime."""
+
     name: str
-    spread_mean: float           # mean spread in price points
-    spread_std: float            # std of spread
-    qty_mean: int                # mean qty per book level
-    qty_std: int                 # std of qty per level
+    spread_mean: float  # mean spread in price points
+    spread_std: float  # std of spread
+    qty_mean: int  # mean qty per book level
+    qty_std: int  # std of qty per level
     imbalance_bias: float = 0.0  # >0 = more bid qty, <0 = more ask qty
     sweep_probability: float = 0.0  # per-snap chance of a sweep through a level
     duration_seconds_mean: int = 60  # mean dwell time in this regime
@@ -104,42 +106,55 @@ class _RegimeProfile:
 # Numbers calibrated from real data observations: tight spread = 1 tick
 # (0.25), normal book qty = 5-30 contracts, sweeps remove 50-200 qty.
 _PROFILES = {
-    "NORMAL":   _RegimeProfile("NORMAL",   spread_mean=0.25,  spread_std=0.05,
-                                qty_mean=15,  qty_std=8,  duration_seconds_mean=120),
-    "WIDE":     _RegimeProfile("WIDE",     spread_mean=0.75,  spread_std=0.25,
-                                qty_mean=8,   qty_std=4,  duration_seconds_mean=45),
-    "PAUSE":    _RegimeProfile("PAUSE",    spread_mean=2.0,   spread_std=0.5,
-                                qty_mean=3,   qty_std=2,  duration_seconds_mean=30),
-    "IMBALANCE_LONG":  _RegimeProfile("IMBALANCE_LONG",
-                                spread_mean=0.30,  spread_std=0.05,
-                                qty_mean=15,  qty_std=6,
-                                imbalance_bias=2.0,  # ~3:1 bid:ask
-                                duration_seconds_mean=90),
-    "IMBALANCE_SHORT": _RegimeProfile("IMBALANCE_SHORT",
-                                spread_mean=0.30,  spread_std=0.05,
-                                qty_mean=15,  qty_std=6,
-                                imbalance_bias=-2.0,  # ~3:1 ask:bid
-                                duration_seconds_mean=90),
-    "SWEEP_PRONE":  _RegimeProfile("SWEEP_PRONE",
-                                spread_mean=0.40,  spread_std=0.10,
-                                qty_mean=12,  qty_std=5,
-                                sweep_probability=0.05,
-                                duration_seconds_mean=60),
+    "NORMAL": _RegimeProfile(
+        "NORMAL", spread_mean=0.25, spread_std=0.05, qty_mean=15, qty_std=8, duration_seconds_mean=120
+    ),
+    "WIDE": _RegimeProfile("WIDE", spread_mean=0.75, spread_std=0.25, qty_mean=8, qty_std=4, duration_seconds_mean=45),
+    "PAUSE": _RegimeProfile("PAUSE", spread_mean=2.0, spread_std=0.5, qty_mean=3, qty_std=2, duration_seconds_mean=30),
+    "IMBALANCE_LONG": _RegimeProfile(
+        "IMBALANCE_LONG",
+        spread_mean=0.30,
+        spread_std=0.05,
+        qty_mean=15,
+        qty_std=6,
+        imbalance_bias=2.0,  # ~3:1 bid:ask
+        duration_seconds_mean=90,
+    ),
+    "IMBALANCE_SHORT": _RegimeProfile(
+        "IMBALANCE_SHORT",
+        spread_mean=0.30,
+        spread_std=0.05,
+        qty_mean=15,
+        qty_std=6,
+        imbalance_bias=-2.0,  # ~3:1 ask:bid
+        duration_seconds_mean=90,
+    ),
+    "SWEEP_PRONE": _RegimeProfile(
+        "SWEEP_PRONE",
+        spread_mean=0.40,
+        spread_std=0.10,
+        qty_mean=12,
+        qty_std=5,
+        sweep_probability=0.05,
+        duration_seconds_mean=60,
+    ),
 }
 
 
 # Pre-configured regime mixes (probability weights per regime)
 _REGIME_MIXES: dict[str, dict[str, float]] = {
-    "calm":     {"NORMAL": 0.85, "WIDE": 0.10, "PAUSE": 0.05},
-    "normal":   {"NORMAL": 0.65, "WIDE": 0.15, "IMBALANCE_LONG": 0.08,
-                  "IMBALANCE_SHORT": 0.08, "SWEEP_PRONE": 0.04},
-    "stressed": {"NORMAL": 0.30, "WIDE": 0.25, "PAUSE": 0.15,
-                  "IMBALANCE_LONG": 0.10, "IMBALANCE_SHORT": 0.10,
-                  "SWEEP_PRONE": 0.10},
-    "imbalanced_long":  {"NORMAL": 0.30, "IMBALANCE_LONG": 0.55,
-                         "WIDE": 0.10, "SWEEP_PRONE": 0.05},
-    "imbalanced_short": {"NORMAL": 0.30, "IMBALANCE_SHORT": 0.55,
-                         "WIDE": 0.10, "SWEEP_PRONE": 0.05},
+    "calm": {"NORMAL": 0.85, "WIDE": 0.10, "PAUSE": 0.05},
+    "normal": {"NORMAL": 0.65, "WIDE": 0.15, "IMBALANCE_LONG": 0.08, "IMBALANCE_SHORT": 0.08, "SWEEP_PRONE": 0.04},
+    "stressed": {
+        "NORMAL": 0.30,
+        "WIDE": 0.25,
+        "PAUSE": 0.15,
+        "IMBALANCE_LONG": 0.10,
+        "IMBALANCE_SHORT": 0.10,
+        "SWEEP_PRONE": 0.10,
+    },
+    "imbalanced_long": {"NORMAL": 0.30, "IMBALANCE_LONG": 0.55, "WIDE": 0.10, "SWEEP_PRONE": 0.05},
+    "imbalanced_short": {"NORMAL": 0.30, "IMBALANCE_SHORT": 0.55, "WIDE": 0.10, "SWEEP_PRONE": 0.05},
 }
 
 
@@ -149,6 +164,7 @@ _REGIME_MIXES: dict[str, dict[str, float]] = {
 @dataclass
 class _SimState:
     """Mutable state carried across snapshot generation."""
+
     mid: float
     rng: random.Random
     current_regime: _RegimeProfile
@@ -214,18 +230,19 @@ def _maybe_apply_sweep(state: _SimState, snapshot: dict) -> bool:
         new_mid = state.mid + wick_depth
         for lvl in snapshot["asks"][:2]:
             lvl["size"] = max(1, int(lvl["size"] * 0.3))
-    state.sweep_history.append({
-        "ts": snapshot["ts"],
-        "direction": direction,
-        "wick_depth": round(wick_depth, 4),
-    })
+    state.sweep_history.append(
+        {
+            "ts": snapshot["ts"],
+            "direction": direction,
+            "wick_depth": round(wick_depth, 4),
+        }
+    )
     snapshot["mid"] = round(new_mid, 4)
     state.pending_sweep = True
     return True
 
 
-def _generate_snapshot(state: _SimState, ts: datetime, symbol: str,
-                        n_levels: int = 5) -> dict:
+def _generate_snapshot(state: _SimState, ts: datetime, symbol: str, n_levels: int = 5) -> dict:
     """Generate one snapshot from current state."""
     profile = state.current_regime
     spread = max(0.25, state.rng.gauss(profile.spread_mean, profile.spread_std))
@@ -259,12 +276,15 @@ def _generate_snapshot(state: _SimState, ts: datetime, symbol: str,
     return snapshot
 
 
-def simulate(symbol: str = "MNQ", duration_minutes: int = 60,
-              snapshot_interval_seconds: float = 5.0,
-              start_mid: float = 100.0,
-              regime_mix: str = "normal",
-              seed: int | None = None,
-              start_dt: datetime | None = None) -> tuple[list[dict], list[dict]]:
+def simulate(
+    symbol: str = "MNQ",
+    duration_minutes: int = 60,
+    snapshot_interval_seconds: float = 5.0,
+    start_mid: float = 100.0,
+    regime_mix: str = "normal",
+    seed: int | None = None,
+    start_dt: datetime | None = None,
+) -> tuple[list[dict], list[dict]]:
     """Generate a list of synthetic depth snapshots.
 
     Returns (snapshots, regime_log) where regime_log records each
@@ -280,8 +300,7 @@ def simulate(symbol: str = "MNQ", duration_minutes: int = 60,
         start_dt: override start time (default = now)
     """
     if regime_mix not in _REGIME_MIXES:
-        raise ValueError(f"unknown regime_mix: {regime_mix} "
-                          f"(choose from {list(_REGIME_MIXES)})")
+        raise ValueError(f"unknown regime_mix: {regime_mix} (choose from {list(_REGIME_MIXES)})")
     rng = random.Random(seed)
     start_dt = start_dt or datetime.now(UTC)
     n_snaps = int(duration_minutes * 60 / snapshot_interval_seconds)
@@ -289,7 +308,8 @@ def simulate(symbol: str = "MNQ", duration_minutes: int = 60,
     # Pick initial regime
     initial = _pick_regime(rng, _REGIME_MIXES[regime_mix])
     state = _SimState(
-        mid=start_mid, rng=rng,
+        mid=start_mid,
+        rng=rng,
         current_regime=initial,
         regime_started_at=start_dt,
         regime_dwell_seconds=int(rng.expovariate(1.0 / max(initial.duration_seconds_mean, 1))),
@@ -306,8 +326,7 @@ def simulate(symbol: str = "MNQ", duration_minutes: int = 60,
             new_regime = _pick_regime(rng, _REGIME_MIXES[regime_mix])
             state.current_regime = new_regime
             state.regime_started_at = ts
-            state.regime_dwell_seconds = int(rng.expovariate(
-                1.0 / max(new_regime.duration_seconds_mean, 1)))
+            state.regime_dwell_seconds = int(rng.expovariate(1.0 / max(new_regime.duration_seconds_mean, 1)))
             regime_log.append({"ts": ts.isoformat(), "regime": new_regime.name})
 
         snap = _generate_snapshot(state, ts, symbol)
@@ -315,16 +334,16 @@ def simulate(symbol: str = "MNQ", duration_minutes: int = 60,
 
     # Append sweep events to regime log for analysis
     for sweep in state.sweep_history:
-        regime_log.append({"ts": sweep["ts"], "regime": "SWEEP",
-                            "direction": sweep["direction"],
-                            "wick_depth": sweep["wick_depth"]})
+        regime_log.append(
+            {"ts": sweep["ts"], "regime": "SWEEP", "direction": sweep["direction"], "wick_depth": sweep["wick_depth"]}
+        )
 
     return snapshots, regime_log
 
 
-def write_snapshots(snapshots: list[dict], symbol: str,
-                     date_str: str | None = None,
-                     output_dir: Path = DEFAULT_OUTPUT_DIR) -> Path:
+def write_snapshots(
+    snapshots: list[dict], symbol: str, date_str: str | None = None, output_dir: Path = DEFAULT_OUTPUT_DIR
+) -> Path:
     """Write snapshots to <output_dir>/<symbol>_<YYYYMMDD>.jsonl
     (matches capture_depth_snapshots.py convention).  Returns the path."""
     if date_str is None and snapshots:
@@ -350,15 +369,11 @@ def main() -> int:
     ap.add_argument("--symbol", default="MNQ")
     ap.add_argument("--duration-minutes", type=int, default=60)
     ap.add_argument("--snapshot-interval-seconds", type=float, default=5.0)
-    ap.add_argument("--start-mid", type=float, default=29270.0,
-                    help="Initial mid price (default 29270 ~ MNQ today)")
-    ap.add_argument("--regime-mix", default="normal",
-                    choices=list(_REGIME_MIXES.keys()))
-    ap.add_argument("--seed", type=int, default=None,
-                    help="PRNG seed for reproducibility (default: random)")
+    ap.add_argument("--start-mid", type=float, default=29270.0, help="Initial mid price (default 29270 ~ MNQ today)")
+    ap.add_argument("--regime-mix", default="normal", choices=list(_REGIME_MIXES.keys()))
+    ap.add_argument("--seed", type=int, default=None, help="PRNG seed for reproducibility (default: random)")
     ap.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
-    ap.add_argument("--regime-log", action="store_true",
-                    help="Print regime transition log")
+    ap.add_argument("--regime-log", action="store_true", help="Print regime transition log")
     args = ap.parse_args()
 
     snapshots, regime_log = simulate(

@@ -64,8 +64,7 @@ if TYPE_CHECKING:
             hist: list[BarData],
             equity: float,
             config: BacktestConfig,
-        ) -> _Open | None:
-            ...
+        ) -> _Open | None: ...
 
 
 @dataclass(frozen=True)
@@ -159,9 +158,7 @@ class AdaptiveKellySizingStrategy:
     def kelly_stats(self) -> dict[str, int | float]:
         """Visibility for walk-forward post-mortems."""
         n = len(self._trade_R_history)
-        mean_r = (
-            sum(self._trade_R_history) / n if n else 0.0
-        )
+        mean_r = sum(self._trade_R_history) / n if n else 0.0
         return {
             "trade_history_len": n,
             "mean_R": mean_r,
@@ -198,7 +195,7 @@ class AdaptiveKellySizingStrategy:
         """Return a [0.5, 1.0] multiplier based on current vs mean ATR."""
         if not self.cfg.vol_damping_enabled:
             return 1.0
-        recent = hist[-self.cfg.vol_damping_atr_period:] if hist else []
+        recent = hist[-self.cfg.vol_damping_atr_period :] if hist else []
         if len(recent) < 2:
             return 1.0
         atr = sum(b.high - b.low for b in recent) / len(recent)
@@ -231,10 +228,7 @@ class AdaptiveKellySizingStrategy:
         self._equity_estimate = equity
 
         # Compute streak-based multiplier
-        streak_mean_r = (
-            sum(self._trade_R_history) / len(self._trade_R_history)
-            if self._trade_R_history else 0.0
-        )
+        streak_mean_r = sum(self._trade_R_history) / len(self._trade_R_history) if self._trade_R_history else 0.0
         streak_mult = self.cfg.base_multiplier + self.cfg.streak_gain * streak_mean_r
         streak_mult = max(
             self.cfg.min_size_multiplier,
@@ -268,10 +262,7 @@ class AdaptiveKellySizingStrategy:
             opened,
             qty=scaled_qty,
             risk_usd=scaled_risk,
-            regime=(
-                f"{opened.regime}_kelly_streakR{streak_mean_r:+.2f}"
-                f"_mult{final_mult:.2f}"
-            ),
+            regime=(f"{opened.regime}_kelly_streakR{streak_mean_r:+.2f}_mult{final_mult:.2f}"),
         )
         self._last_open = scaled
         self._equity_at_last_open = equity

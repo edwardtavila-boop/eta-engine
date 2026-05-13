@@ -4,6 +4,7 @@ Compute key retracement levels (23.6, 38.2, 50, 61.8, 78.6) of the most
 recent swing leg. If price is currently AT a high-conviction level (61.8
 or 78.6) the school flags a continuation/reversal opportunity.
 """
+
 from __future__ import annotations
 
 from eta_engine.brain.jarvis_v3.sage.base import (
@@ -30,7 +31,9 @@ class FibonacciSchool(SchoolBase):
         n = ctx.n_bars
         if n < 30:
             return SchoolVerdict(
-                school=self.NAME, bias=Bias.NEUTRAL, conviction=0.0,
+                school=self.NAME,
+                bias=Bias.NEUTRAL,
+                conviction=0.0,
                 aligned_with_entry=False,
                 rationale=f"insufficient bars ({n} < 30) for swing detection",
             )
@@ -45,7 +48,9 @@ class FibonacciSchool(SchoolBase):
         leg = swing_high - swing_low
         if leg <= 0:
             return SchoolVerdict(
-                school=self.NAME, bias=Bias.NEUTRAL, conviction=0.0,
+                school=self.NAME,
+                bias=Bias.NEUTRAL,
+                conviction=0.0,
                 aligned_with_entry=False,
                 rationale="degenerate swing leg",
             )
@@ -68,9 +73,11 @@ class FibonacciSchool(SchoolBase):
 
         if not at_level:
             return SchoolVerdict(
-                school=self.NAME, bias=Bias.NEUTRAL, conviction=0.10,
+                school=self.NAME,
+                bias=Bias.NEUTRAL,
+                conviction=0.10,
                 aligned_with_entry=False,
-                rationale=f"retracement {retrace_pct*100:.1f}% not near a key level",
+                rationale=f"retracement {retrace_pct * 100:.1f}% not near a key level",
                 signals={
                     "retrace_pct": retrace_pct,
                     "closest_level": closest_level,
@@ -81,15 +88,18 @@ class FibonacciSchool(SchoolBase):
         # At a Fib level. Bias = continuation of the prior leg.
         if leg_up:
             bias = Bias.LONG
-            rationale = f"price at {closest_level*100:.1f}% retracement of up leg -- continuation favored"
+            rationale = f"price at {closest_level * 100:.1f}% retracement of up leg -- continuation favored"
         else:
             bias = Bias.SHORT
-            rationale = f"price at {closest_level*100:.1f}% retracement of down leg -- continuation favored"
+            rationale = f"price at {closest_level * 100:.1f}% retracement of down leg -- continuation favored"
 
         # Deep retracements (61.8, 78.6) get higher conviction
         conviction = {
-            0.236: 0.35, 0.382: 0.45, 0.500: 0.55,
-            0.618: 0.75, 0.786: 0.65,
+            0.236: 0.35,
+            0.382: 0.45,
+            0.500: 0.55,
+            0.618: 0.75,
+            0.786: 0.65,
         }[closest_level]
 
         entry_bias = Bias.LONG if ctx.side.lower() == "long" else Bias.SHORT

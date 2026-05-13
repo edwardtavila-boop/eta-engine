@@ -20,12 +20,8 @@ def test_workspace_roots_point_inside_canonical_repo() -> None:
     assert workspace_roots.CRYPTO_MACRO_ROOT == ROOT / "data" / "crypto" / "macro"
     assert workspace_roots.ETA_RUNTIME_STATE_DIR == ROOT / "var" / "eta_engine" / "state"
     assert workspace_roots.ETA_RUNTIME_LOG_DIR == ROOT / "logs" / "eta_engine"
-    assert workspace_roots.ETA_RESEARCH_GRID_RUNTIME_DIR == (
-        ROOT / "var" / "eta_engine" / "state" / "research_grid"
-    )
-    assert workspace_roots.ETA_LIVE_DATA_RUNTIME_DIR == (
-        ROOT / "var" / "eta_engine" / "state" / "live_data"
-    )
+    assert workspace_roots.ETA_RESEARCH_GRID_RUNTIME_DIR == (ROOT / "var" / "eta_engine" / "state" / "research_grid")
+    assert workspace_roots.ETA_LIVE_DATA_RUNTIME_DIR == (ROOT / "var" / "eta_engine" / "state" / "live_data")
     assert workspace_roots.ETA_TRADINGVIEW_AUTH_STATE_PATH == (
         ROOT / "var" / "eta_engine" / "state" / "tradingview_auth.json"
     )
@@ -80,30 +76,16 @@ def test_workspace_roots_point_inside_canonical_repo() -> None:
     assert workspace_roots.ETA_JARVIS_DRIFT_JOURNAL_PATH == (
         ROOT / "var" / "eta_engine" / "state" / "jarvis_drift.jsonl"
     )
-    assert workspace_roots.ETA_SHARED_BREAKER_STATE_PATH == (
-        ROOT / "var" / "eta_engine" / "state" / "breaker.json"
-    )
-    assert workspace_roots.ETA_DEADMAN_SENTINEL_PATH == (
-        ROOT / "var" / "eta_engine" / "state" / "operator.sentinel"
-    )
+    assert workspace_roots.ETA_SHARED_BREAKER_STATE_PATH == (ROOT / "var" / "eta_engine" / "state" / "breaker.json")
+    assert workspace_roots.ETA_DEADMAN_SENTINEL_PATH == (ROOT / "var" / "eta_engine" / "state" / "operator.sentinel")
     assert workspace_roots.ETA_DEADMAN_JOURNAL_PATH == (
         ROOT / "var" / "eta_engine" / "state" / "operator_activity.jsonl"
     )
-    assert workspace_roots.ETA_PROMOTION_STATE_PATH == (
-        ROOT / "var" / "eta_engine" / "state" / "promotion.json"
-    )
-    assert workspace_roots.ETA_PROMOTION_JOURNAL_PATH == (
-        ROOT / "var" / "eta_engine" / "state" / "promotion.jsonl"
-    )
-    assert workspace_roots.ETA_AVENGERS_JOURNAL_PATH == (
-        ROOT / "var" / "eta_engine" / "state" / "avengers.jsonl"
-    )
-    assert workspace_roots.ETA_CALIBRATION_JOURNAL_PATH == (
-        ROOT / "var" / "eta_engine" / "state" / "calibration.jsonl"
-    )
-    assert workspace_roots.ETA_AVENGER_DAEMON_PID_DIR == (
-        ROOT / "var" / "eta_engine" / "state" / "avenger_daemons"
-    )
+    assert workspace_roots.ETA_PROMOTION_STATE_PATH == (ROOT / "var" / "eta_engine" / "state" / "promotion.json")
+    assert workspace_roots.ETA_PROMOTION_JOURNAL_PATH == (ROOT / "var" / "eta_engine" / "state" / "promotion.jsonl")
+    assert workspace_roots.ETA_AVENGERS_JOURNAL_PATH == (ROOT / "var" / "eta_engine" / "state" / "avengers.jsonl")
+    assert workspace_roots.ETA_CALIBRATION_JOURNAL_PATH == (ROOT / "var" / "eta_engine" / "state" / "calibration.jsonl")
+    assert workspace_roots.ETA_AVENGER_DAEMON_PID_DIR == (ROOT / "var" / "eta_engine" / "state" / "avenger_daemons")
     # B-class state writers migrated 2026-05-04 (LEGACY_PATH_AUDIT.md
     # category B). Each writer's canonical target is the workspace var/
     # tree; the legacy in-repo path is captured here so the read-fallback
@@ -121,12 +103,8 @@ def test_workspace_roots_point_inside_canonical_repo() -> None:
     assert workspace_roots.ETA_LEGACY_TRAILING_DD_TRACKER_PATH == (
         ROOT / "eta_engine" / "state" / "trailing_dd_tracker.json"
     )
-    assert workspace_roots.ETA_FM_HEALTH_SNAPSHOT_PATH == (
-        ROOT / "var" / "eta_engine" / "state" / "fm_health.json"
-    )
-    assert workspace_roots.ETA_LEGACY_FM_HEALTH_SNAPSHOT_PATH == (
-        ROOT / "eta_engine" / "state" / "fm_health.json"
-    )
+    assert workspace_roots.ETA_FM_HEALTH_SNAPSHOT_PATH == (ROOT / "var" / "eta_engine" / "state" / "fm_health.json")
+    assert workspace_roots.ETA_LEGACY_FM_HEALTH_SNAPSHOT_PATH == (ROOT / "eta_engine" / "state" / "fm_health.json")
     assert workspace_roots.ETA_JARVIS_VERDICTS_PATH == (
         ROOT / "var" / "eta_engine" / "state" / "jarvis_intel" / "verdicts.jsonl"
     )
@@ -279,9 +257,7 @@ def test_runtime_helpers_drop_localappdata_eta_state_paths() -> None:
         assert "LOCALAPPDATA" not in text
         assert r"AppData\Local\eta_engine" not in text
 
-    assert "workspace_roots.ETA_RUNTIME_STATE_DIR" in _read(
-        "eta_engine/deploy/scripts/live_claude_smoke.py"
-    )
+    assert "workspace_roots.ETA_RUNTIME_STATE_DIR" in _read("eta_engine/deploy/scripts/live_claude_smoke.py")
     assert "ETA_RUNTIME_ALERTS_LOG_PATH" in _read("eta_engine/scripts/alerts_log_smoke.py")
     assert "ETA_DRIFT_WATCHDOG_LOG_PATH" in _read("eta_engine/scripts/drift_watchdog_smoke.py")
     assert "ETA_RUNTIME_LOG_PATH" in _read("eta_engine/scripts/runtime_log_smoke.py")
@@ -290,60 +266,30 @@ def test_runtime_helpers_drop_localappdata_eta_state_paths() -> None:
     assert 'Path.home() / ".local" / "state" / "eta_engine"' not in _read(
         "eta_engine/deploy/scripts/avengers_daemon.py"
     )
-    assert 'Path.home() / ".local" / "log" / "eta_engine"' not in _read(
-        "eta_engine/deploy/scripts/avengers_daemon.py"
-    )
+    assert 'Path.home() / ".local" / "log" / "eta_engine"' not in _read("eta_engine/deploy/scripts/avengers_daemon.py")
     assert "vps_failover_drill.collect_checks" in _read("eta_engine/scripts/vps_failover_summary.py")
-    assert "workspace_roots.ETA_RESEARCH_GRID_RUNTIME_DIR" in _read(
-        "eta_engine/scripts/run_research_grid.py"
-    )
+    assert "workspace_roots.ETA_RESEARCH_GRID_RUNTIME_DIR" in _read("eta_engine/scripts/run_research_grid.py")
     assert "ETA_LIVE_DATA_RUNTIME_DIR" in _read("eta_engine/scripts/dual_data_collector.py")
     assert 'ROOT / "docs" / "live_data"' not in _read("eta_engine/scripts/dual_data_collector.py")
-    assert "ETA_RUNTIME_DECISION_JOURNAL_PATH" in _read(
-        "eta_engine/scripts/announce_data_library.py"
-    )
+    assert "ETA_RUNTIME_DECISION_JOURNAL_PATH" in _read("eta_engine/scripts/announce_data_library.py")
     assert "ETA_RUNTIME_DECISION_JOURNAL_PATH" in _read("eta_engine/scripts/drift_check.py")
-    assert "ETA_RUNTIME_DECISION_JOURNAL_PATH" in _read(
-        "eta_engine/scripts/monte_carlo_stress.py"
-    )
-    assert "eta_engine\\docs\\decision_journal.jsonl" not in _read(
-        "eta_engine/scripts/runtime_readiness_check.ps1"
-    )
-    assert "ETA_RUNTIME_DECISION_JOURNAL_PATH" in _read(
-        "eta_engine/brain/jarvis_v3/health_check.py"
-    )
-    assert "workspace_roots.ETA_OPERATOR_QUEUE_SNAPSHOT_PATH" in _read(
-        "eta_engine/scripts/operator_queue_snapshot.py"
-    )
+    assert "ETA_RUNTIME_DECISION_JOURNAL_PATH" in _read("eta_engine/scripts/monte_carlo_stress.py")
+    assert "eta_engine\\docs\\decision_journal.jsonl" not in _read("eta_engine/scripts/runtime_readiness_check.ps1")
+    assert "ETA_RUNTIME_DECISION_JOURNAL_PATH" in _read("eta_engine/brain/jarvis_v3/health_check.py")
+    assert "workspace_roots.ETA_OPERATOR_QUEUE_SNAPSHOT_PATH" in _read("eta_engine/scripts/operator_queue_snapshot.py")
     assert "workspace_roots.ETA_OPERATOR_QUEUE_PREVIOUS_SNAPSHOT_PATH" in _read(
         "eta_engine/scripts/operator_queue_snapshot.py"
     )
-    assert "workspace_roots.ETA_IBC_CUTOVER_READINESS_PATH" in _read(
-        "eta_engine/scripts/ibc_cutover_readiness.py"
-    )
-    assert "workspace_roots.ETA_OPERATOR_QUEUE_SNAPSHOT_PATH" in _read(
-        "eta_engine/scripts/operator_queue_heartbeat.py"
-    )
-    assert "workspace_roots.ETA_RUNTIME_STATE_DIR" in _read(
-        "eta_engine/obs/heartbeat_writer.py"
-    )
-    assert "workspace_roots.ETA_RUNTIME_STATE_DIR" in _read(
-        "eta_engine/obs/daemon_recovery_watchdog.py"
-    )
-    assert "workspace_roots.ETA_JARVIS_DRIFT_JOURNAL_PATH" in _read(
-        "eta_engine/brain/avengers/drift_detector.py"
-    )
-    assert "workspace_roots.ETA_SHARED_BREAKER_STATE_PATH" in _read(
-        "eta_engine/brain/avengers/shared_breaker.py"
-    )
+    assert "workspace_roots.ETA_IBC_CUTOVER_READINESS_PATH" in _read("eta_engine/scripts/ibc_cutover_readiness.py")
+    assert "workspace_roots.ETA_OPERATOR_QUEUE_SNAPSHOT_PATH" in _read("eta_engine/scripts/operator_queue_heartbeat.py")
+    assert "workspace_roots.ETA_RUNTIME_STATE_DIR" in _read("eta_engine/obs/heartbeat_writer.py")
+    assert "workspace_roots.ETA_RUNTIME_STATE_DIR" in _read("eta_engine/obs/daemon_recovery_watchdog.py")
+    assert "workspace_roots.ETA_JARVIS_DRIFT_JOURNAL_PATH" in _read("eta_engine/brain/avengers/drift_detector.py")
+    assert "workspace_roots.ETA_SHARED_BREAKER_STATE_PATH" in _read("eta_engine/brain/avengers/shared_breaker.py")
     assert "workspace_roots.ETA_DEADMAN_SENTINEL_PATH" in _read("eta_engine/brain/avengers/deadman.py")
-    assert "workspace_roots.ETA_PROMOTION_STATE_PATH" in _read(
-        "eta_engine/brain/avengers/promotion.py"
-    )
+    assert "workspace_roots.ETA_PROMOTION_STATE_PATH" in _read("eta_engine/brain/avengers/promotion.py")
     assert "workspace_roots.ETA_AVENGERS_JOURNAL_PATH" in _read("eta_engine/brain/avengers/base.py")
-    assert "workspace_roots.ETA_CALIBRATION_JOURNAL_PATH" in _read(
-        "eta_engine/brain/avengers/calibration_loop.py"
-    )
+    assert "workspace_roots.ETA_CALIBRATION_JOURNAL_PATH" in _read("eta_engine/brain/avengers/calibration_loop.py")
     assert "calibration_journal_read_path" in _read("eta_engine/brain/avengers/calibration_loop.py")
     assert "avengers_journal_read_path" in _read("eta_engine/brain/avengers/precedent_cache.py")
     assert "avengers_journal_read_path" in _read("eta_engine/brain/avengers/cost_forecast.py")
@@ -354,9 +300,7 @@ def test_runtime_helpers_drop_localappdata_eta_state_paths() -> None:
     assert "workspace_roots.ETA_AVENGER_METRICS_PATH" in _read("eta_engine/brain/avengers/daemon.py")
     assert 'Path.home() / ".jarvis"' not in _read("eta_engine/brain/avengers/daemon.py")
     assert "~/.jarvis/metrics.prom" not in _read("eta_engine/brain/avengers/daemon.py")
-    assert '$env:ETA_STATE_DIR = $stateDir' in _read(
-        "eta_engine/deploy/scripts/run_dashboard_8421.ps1"
-    )
+    assert "$env:ETA_STATE_DIR = $stateDir" in _read("eta_engine/deploy/scripts/run_dashboard_8421.ps1")
 
 
 def test_legacy_docs_decision_journal_is_ignored_runtime_state() -> None:
@@ -408,12 +352,8 @@ def test_tradingview_runtime_defaults_use_workspace_paths() -> None:
         assert "~/eta_data/tradingview" not in text
         assert "%h/eta_data/tradingview" not in text
 
-    assert "workspace_roots.ETA_TRADINGVIEW_AUTH_STATE_PATH" in _read(
-        "eta_engine/data/tradingview/auth.py"
-    )
-    assert "workspace_roots.ETA_TRADINGVIEW_DATA_ROOT" in _read(
-        "eta_engine/data/tradingview/journal.py"
-    )
+    assert "workspace_roots.ETA_TRADINGVIEW_AUTH_STATE_PATH" in _read("eta_engine/data/tradingview/auth.py")
+    assert "workspace_roots.ETA_TRADINGVIEW_DATA_ROOT" in _read("eta_engine/data/tradingview/journal.py")
     assert "../var/eta_engine/state/tradingview_auth.json" in _read(
         "eta_engine/deploy/systemd/eta-tradingview-capture.service"
     )
@@ -495,9 +435,9 @@ def test_b_class_state_writers_use_canonical_var_state_path() -> None:
     # B1: dashboard_api.py default state dir is now canonical, with the
     # legacy in-repo path kept only as a labelled fallback.
     dashboard_api = _read("eta_engine/deploy/scripts/dashboard_api.py")
-    assert "_DEFAULT_STATE = _WORKSPACE_ROOT / \"var\" / \"eta_engine\" / \"state\"" in dashboard_api
-    assert "_LEGACY_STATE  = _REPO_ROOT / \"state\"" in dashboard_api
-    assert "_DEFAULT_LOG   = _WORKSPACE_ROOT / \"logs\" / \"eta_engine\"" in dashboard_api
+    assert '_DEFAULT_STATE = _WORKSPACE_ROOT / "var" / "eta_engine" / "state"' in dashboard_api
+    assert '_LEGACY_STATE  = _REPO_ROOT / "state"' in dashboard_api
+    assert '_DEFAULT_LOG   = _WORKSPACE_ROOT / "logs" / "eta_engine"' in dashboard_api
     # The AppData-Local fallback was a separate hard-rule violation;
     # ensure the policy_diff endpoint no longer falls back to it.
     assert "AppData/Local/eta_engine" not in dashboard_api
@@ -534,13 +474,10 @@ def test_b_class_kill_switch_latch_default_resolves_to_canonical_workspace() -> 
     feeds_text = _read("eta_engine/feeds/run_eta_live.py")
     for text in (scripts_text, feeds_text):
         # New canonical default: WORKSPACE_ROOT/var/eta_engine/state/kill_switch_latch.json
-        assert (
-            "WORKSPACE_ROOT / \"var\" / \"eta_engine\" / \"state\" / "
-            "\"kill_switch_latch.json\""
-        ) in text
+        assert ('WORKSPACE_ROOT / "var" / "eta_engine" / "state" / "kill_switch_latch.json"') in text
         # The legacy default path (ROOT / "state" / "kill_switch_latch.json")
         # must no longer appear as a write target.
-        assert "ROOT / \"state\" / \"kill_switch_latch.json\"" not in text
+        assert 'ROOT / "state" / "kill_switch_latch.json"' not in text
         # The runtime should consult the legacy path only via the
         # read-fallback helper, not as a direct constant.
         assert "default_legacy_path()" in text

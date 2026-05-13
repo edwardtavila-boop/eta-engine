@@ -97,6 +97,7 @@ def default_path() -> Path:
         return Path(override)
     # Local import keeps core/ free of script-package import cycles.
     from eta_engine.scripts import workspace_roots
+
     return workspace_roots.ETA_TRAILING_DD_TRACKER_PATH
 
 
@@ -108,6 +109,7 @@ def default_legacy_path() -> Path:
     last persisted at the legacy location. NEVER used as a write target.
     """
     from eta_engine.scripts import workspace_roots
+
     return workspace_roots.ETA_LEGACY_TRAILING_DD_TRACKER_PATH
 
 

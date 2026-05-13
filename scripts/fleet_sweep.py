@@ -1,4 +1,5 @@
 """Fleet sweep -- validate all bots from paper soak ledger only (no subprocess fallback)."""
+
 import json
 import math
 import statistics
@@ -17,10 +18,11 @@ def read_registry_map() -> dict[str, dict[str, str]]:
     content = REGISTRY_PATH.read_text(encoding="utf-8")
     # Simple parser: find per-bot entries
     import re
+
     # Match patterns like: "btc_optimized": BotAssignment(symbol="BTC", ...
     for m in re.finditer(
         r'"(\w+)"\s*:\s*BotAssignment\(\s*symbol\s*=\s*"(\w+)"[^)]*timeframe\s*=\s*"(\w+)"[^)]*strategy_kind\s*=\s*"([^"]+)"',
-        content
+        content,
     ):
         reg_map[m.group(1)] = {
             "symbol": m.group(2),
@@ -45,13 +47,13 @@ def compute_sortino(returns: list[float], rf: float = 0.0) -> float:
     if len(returns) < 2:
         return 0.0
     mean = statistics.mean(returns)
-    neg = [r - rf/252 for r in returns if r < rf/252]
+    neg = [r - rf / 252 for r in returns if r < rf / 252]
     if not neg:
         return mean * 20 if mean > 0 else 0.0
-    downside = math.sqrt(sum(x*x for x in neg) / len(returns))
+    downside = math.sqrt(sum(x * x for x in neg) / len(returns))
     if downside < 1e-9:
         return 0.0
-    return (mean - rf/252) / downside
+    return (mean - rf / 252) / downside
 
 
 def compute_profit_factor(pnls: list[float]) -> float:
@@ -66,6 +68,7 @@ def monte_carlo(returns: list[float], n_bootstraps: int = 500) -> dict[str, obje
     if len(returns) < 5:
         return {"p05": 0, "p50": 0, "p95": 0, "p_neg": 0, "verdict": "INSUFFIC"}
     import random
+
     actual_total = sum(returns)
     final_vals = []
     for _ in range(n_bootstraps):
@@ -140,18 +143,29 @@ def main() -> int:
         elif total_pnl < 0:
             flag = " -"
 
-        results.append({
-            "bot_id": bot_id, "symbol": symbol, "strategy": strategy,
-            "total_pnl": total_pnl, "wr": wr, "sharpe": sharpe,
-            "sortino": sortino, "pf": pf, "mc": mc,
-            "n_sessions": n_sessions, "n_trades": n_trades,
-            "flag": flag,
-        })
+        results.append(
+            {
+                "bot_id": bot_id,
+                "symbol": symbol,
+                "strategy": strategy,
+                "total_pnl": total_pnl,
+                "wr": wr,
+                "sharpe": sharpe,
+                "sortino": sortino,
+                "pf": pf,
+                "mc": mc,
+                "n_sessions": n_sessions,
+                "n_trades": n_trades,
+                "flag": flag,
+            }
+        )
 
-        print(f"  {bot_id:<28} {symbol:<6} {strategy[:20]:<20}"
-              f" PnL={total_pnl:+8.2f} WR={wr:5.1f}%"
-              f" Sharpe={sharpe:+6.2f} PF={pf:6.2f}"
-              f" MC={mc['verdict']:<8} {n_sessions}sess {n_trades}trades{flag}")
+        print(
+            f"  {bot_id:<28} {symbol:<6} {strategy[:20]:<20}"
+            f" PnL={total_pnl:+8.2f} WR={wr:5.1f}%"
+            f" Sharpe={sharpe:+6.2f} PF={pf:6.2f}"
+            f" MC={mc['verdict']:<8} {n_sessions}sess {n_trades}trades{flag}"
+        )
 
     elapsed = time.time() - t0
 
@@ -179,12 +193,13 @@ def main() -> int:
         worst = sorted(losers, key=lambda x: x["total_pnl"])[:5]
         worst_strs = []
         for r in worst:
-            worst_strs.append(f'{r["bot_id"]}(${r["total_pnl"]:+.0f})')
+            worst_strs.append(f"{r['bot_id']}(${r['total_pnl']:+.0f})")
         print(f"  Worst losers:     {', '.join(worst_strs)}")
 
     # Auto-generate capital allocation config
     try:
         from eta_engine.feeds.capital_allocator import compute_allocations, save_allocation
+
         alloc = compute_allocations(LEDGER_PATH)
         save_allocation(alloc)
         active_bots = sum(1 for b in alloc.bots.values() if b.status == "active")

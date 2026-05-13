@@ -83,16 +83,18 @@ def test_empirical_count_from_trace(tmp_path: Path) -> None:
     # Write 10 records — all mention portfolio_brain inside `portfolio`.
     records = []
     for i in range(10):
-        records.append({
-            "ts": datetime.now(UTC).isoformat(),
-            "bot_id": f"bot_{i}",
-            "consult_id": f"cid_{i}",
-            "portfolio": {"source": "portfolio_brain", "size_modifier": 1.0},
-            "schools": {},
-            "clashes": [],
-            "hot_learn": {},
-            "context": {},
-        })
+        records.append(
+            {
+                "ts": datetime.now(UTC).isoformat(),
+                "bot_id": f"bot_{i}",
+                "consult_id": f"cid_{i}",
+                "portfolio": {"source": "portfolio_brain", "size_modifier": 1.0},
+                "schools": {},
+                "clashes": [],
+                "hot_learn": {},
+                "context": {},
+            }
+        )
     _write_trace_records(trace_path, records)
 
     statuses = jwa.audit(trace_path=trace_path)

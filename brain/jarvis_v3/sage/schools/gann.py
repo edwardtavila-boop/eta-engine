@@ -4,6 +4,7 @@ Heuristic: compute the 1x1 angle (1 unit price per 1 unit time) from
 the swing low; flag whether price is above/below the projected line.
 Plus a square-of-nine quick proximity check (price near a key cardinal).
 """
+
 from __future__ import annotations
 
 from math import sqrt
@@ -31,7 +32,9 @@ class GannSchool(SchoolBase):
         n = ctx.n_bars
         if n < 30:
             return SchoolVerdict(
-                school=self.NAME, bias=Bias.NEUTRAL, conviction=0.0,
+                school=self.NAME,
+                bias=Bias.NEUTRAL,
+                conviction=0.0,
                 aligned_with_entry=False,
                 rationale=f"insufficient bars ({n} < 30)",
             )
@@ -54,7 +57,7 @@ class GannSchool(SchoolBase):
         # Square of nine: nearest cardinal price (sqrt-based grid)
         sqrt_close = sqrt(max(last_close, 1e-9))
         nearest_cardinal_sqrt = round(sqrt_close)
-        cardinal_price = nearest_cardinal_sqrt ** 2
+        cardinal_price = nearest_cardinal_sqrt**2
         cardinal_dist_pct = abs(last_close - cardinal_price) / max(cardinal_price, 1e-9)
         at_cardinal = cardinal_dist_pct < 0.002  # within 20 bps
 

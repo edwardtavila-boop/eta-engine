@@ -2,6 +2,7 @@
 
 Replaces Alfred. Same lane, same tier, DeepSeek identity.
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, ClassVar

@@ -198,6 +198,7 @@ def current_weights(asset: str) -> dict[str, float]:
     # Operator overlay (Track 2). Read MUST NOT break the consult.
     try:
         from eta_engine.brain.jarvis_v3 import hermes_overrides
+
         overlay = hermes_overrides.get_school_weights(asset)
     except Exception:  # noqa: BLE001
         overlay = {}
@@ -245,15 +246,15 @@ def decay_overnight() -> None:
     target_by_asset: dict[str, dict[str, float]] = {}
     try:
         from eta_engine.brain.jarvis_v3 import hermes_client
+
         for asset in state.weight_mods:
             recall = hermes_client.memory_recall(
-                key=f"hot_weights_{asset}", timeout_s=1.0,
+                key=f"hot_weights_{asset}",
+                timeout_s=1.0,
             )
             if recall.ok and isinstance(recall.data, dict):
                 target_by_asset[asset] = {
-                    str(k): float(v)
-                    for k, v in recall.data.items()
-                    if isinstance(v, (int, float))
+                    str(k): float(v) for k, v in recall.data.items() if isinstance(v, (int, float))
                 }
     except Exception:  # noqa: BLE001 — Hermes-down → fall through to 1.0 target
         target_by_asset = {}
@@ -274,6 +275,7 @@ def decay_overnight() -> None:
     # Site C — persist today's snapshot for tomorrow's recall (best-effort)
     try:
         from eta_engine.brain.jarvis_v3 import hermes_client
+
         for asset, schools in state.weight_mods.items():
             hermes_client.memory_persist(
                 key=f"hot_weights_{asset}",

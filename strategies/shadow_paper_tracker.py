@@ -102,13 +102,9 @@ class ShadowPaperTracker:
         if window_size <= 0:
             raise ValueError(f"window_size must be positive, got {window_size}")
         if reinstate_windows <= 0:
-            raise ValueError(
-                f"reinstate_windows must be positive, got {reinstate_windows}"
-            )
+            raise ValueError(f"reinstate_windows must be positive, got {reinstate_windows}")
         if not 0.0 <= win_rate_floor <= 1.0:
-            raise ValueError(
-                f"win_rate_floor must be in [0,1], got {win_rate_floor}"
-            )
+            raise ValueError(f"win_rate_floor must be in [0,1], got {win_rate_floor}")
         self.window_size = window_size
         self.reinstate_windows = reinstate_windows
         self.win_rate_floor = win_rate_floor
@@ -141,9 +137,7 @@ class ShadowPaperTracker:
         """Clear the bucket so the next streak starts from empty."""
         self._buckets[(strategy, regime)].clear()
 
-    def recent_window_stats(
-        self, strategy: str, regime: str
-    ) -> list[WindowStat]:
+    def recent_window_stats(self, strategy: str, regime: str) -> list[WindowStat]:
         """Most recent up-to-``reinstate_windows`` closed windows."""
         return self._buckets[(strategy, regime)].recent(self.reinstate_windows)
 

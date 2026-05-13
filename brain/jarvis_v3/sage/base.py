@@ -3,6 +3,7 @@
 The MarketContext is the input every school sees. The SchoolVerdict is
 each school's atomic output. The SageReport aggregates verdicts.
 """
+
 from __future__ import annotations
 
 import abc
@@ -42,18 +43,18 @@ class MarketContext:
     entry_price: float = 0.0
     symbol: str = ""
     bars_by_tf: dict[str, list[dict[str, Any]]] | None = None
-    order_book_imbalance: float | None = None     # -1.0 to +1.0
+    order_book_imbalance: float | None = None  # -1.0 to +1.0
     cumulative_delta: float | None = None
     realized_vol: float | None = None
     session_phase: str | None = None
     account_equity_usd: float | None = None
-    risk_per_trade_pct: float | None = None       # for risk school
-    stop_distance_pct: float | None = None        # for risk school
+    risk_per_trade_pct: float | None = None  # for risk school
+    stop_distance_pct: float | None = None  # for risk school
     detected_regime: str | None = None  # one of {trending, ranging, volatile, quiet}
     instrument_class: str | None = None  # one of {equity, crypto, futures, fx, options}
-    onchain: dict[str, Any] | None = None     # for OnChainSchool (BTC/ETH metrics)
-    funding: dict[str, Any] | None = None     # for FundingBasisSchool (perp funding + basis)
-    options: dict[str, Any] | None = None     # for OptionsGreeksSchool (IV / skew / GEX)
+    onchain: dict[str, Any] | None = None  # for OnChainSchool (BTC/ETH metrics)
+    funding: dict[str, Any] | None = None  # for FundingBasisSchool (perp funding + basis)
+    options: dict[str, Any] | None = None  # for OptionsGreeksSchool (IV / skew / GEX)
     peer_returns: dict[str, list[float]] | None = None  # for CrossAssetCorrelationSchool
     _cached: dict[str, Any] = field(default_factory=dict, repr=False, compare=False)
 
@@ -167,7 +168,7 @@ class SageReport:
 
     per_school: dict[str, SchoolVerdict]
     composite_bias: Bias
-    conviction: float                     # 0..1
+    conviction: float  # 0..1
     schools_consulted: int
     schools_aligned_with_entry: int
     schools_disagreeing_with_entry: int
@@ -233,17 +234,9 @@ class SchoolBase(abc.ABC):
         in the set. Schools with empty INSTRUMENTS+REGIMES apply
         universally (back-compat with the original 14 schools).
         """
-        if (
-            self.INSTRUMENTS
-            and ctx.instrument_class is not None
-            and ctx.instrument_class not in self.INSTRUMENTS
-        ):
+        if self.INSTRUMENTS and ctx.instrument_class is not None and ctx.instrument_class not in self.INSTRUMENTS:
             return False
-        return not (
-            self.REGIMES
-            and ctx.detected_regime is not None
-            and ctx.detected_regime not in self.REGIMES
-        )
+        return not (self.REGIMES and ctx.detected_regime is not None and ctx.detected_regime not in self.REGIMES)
 
     @abc.abstractmethod
     def analyze(self, ctx: MarketContext) -> SchoolVerdict:

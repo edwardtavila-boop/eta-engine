@@ -57,8 +57,7 @@ if TYPE_CHECKING:
             hist: list[BarData],
             equity: float,
             config: BacktestConfig,
-        ) -> _Open | None:
-            ...
+        ) -> _Open | None: ...
 
 
 @dataclass(frozen=True)

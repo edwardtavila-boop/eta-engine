@@ -11,6 +11,7 @@ Pure-stdlib computations over BBO 1-min bars (already captured by the
 Bots can use these as confluence/filters (e.g. v17 already approves
 the entry; only fire if cumulative_delta agrees with the direction).
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -31,9 +32,11 @@ class FlowBar:
     close: float
     buy_volume: float
     sell_volume: float
+
     @property
     def delta(self) -> float:
         return self.buy_volume - self.sell_volume
+
     @property
     def total_volume(self) -> float:
         return self.buy_volume + self.sell_volume
@@ -76,10 +79,7 @@ def compute_flow_series(bars: Sequence[FlowBar]) -> FlowSeries:
         is_new_high = b.high > last_high
         is_new_low = b.low < last_low
         diverge = False
-        if i > 0 and (
-            (is_new_high and running < last_cd_at_high)
-            or (is_new_low and running > last_cd_at_low)
-        ):
+        if i > 0 and ((is_new_high and running < last_cd_at_high) or (is_new_low and running > last_cd_at_low)):
             diverge = True
         if is_new_high:
             last_high = b.high
@@ -106,7 +106,10 @@ def average_absorption(series: FlowSeries, *, lookback_bars: int = 20) -> float:
 
 
 def cumulative_delta_alignment(
-    series: FlowSeries, *, direction: str, lookback_bars: int = 10,
+    series: FlowSeries,
+    *,
+    direction: str,
+    lookback_bars: int = 10,
 ) -> float:
     """Return alignment score in [-1.0, +1.0].
 
@@ -121,5 +124,5 @@ def cumulative_delta_alignment(
     is_long = direction.lower() in ("long", "buy", "bull")
     sign = 1.0 if (slope > 0) == is_long else -1.0
     # Normalize by total absolute movement so the score is bounded
-    total = sum(abs(sample[i] - sample[i-1]) for i in range(1, len(sample))) or 1.0
+    total = sum(abs(sample[i] - sample[i - 1]) for i in range(1, len(sample))) or 1.0
     return round(sign * min(1.0, abs(slope) / total), 3)

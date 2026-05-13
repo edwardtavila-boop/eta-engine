@@ -1,4 +1,5 @@
 """Tests for risk_topology — T17 fleet-graph builder."""
+
 from __future__ import annotations
 
 import json
@@ -21,17 +22,19 @@ def test_build_topology_from_actions_list(tmp_path: Path) -> None:
     from eta_engine.brain.jarvis_v3 import risk_topology
 
     kaizen = tmp_path / "kaizen_latest.json"
-    kaizen.write_text(json.dumps({
-        "asof": "2026-05-12T15:00:00Z",
-        "actions": [
-            {"bot_id": "atr_breakout_mnq", "tier": "ELITE", "score": 1.8,
-             "asset_class": "MNQ"},
-            {"bot_id": "vp_mnq", "tier": "PRODUCER", "score": 0.9,
-             "asset_class": "MNQ"},
-            {"bot_id": "btc_mom", "tier": "DECAY", "score": -0.3,
-             "asset_class": "BTC"},
-        ],
-    }), encoding="utf-8")
+    kaizen.write_text(
+        json.dumps(
+            {
+                "asof": "2026-05-12T15:00:00Z",
+                "actions": [
+                    {"bot_id": "atr_breakout_mnq", "tier": "ELITE", "score": 1.8, "asset_class": "MNQ"},
+                    {"bot_id": "vp_mnq", "tier": "PRODUCER", "score": 0.9, "asset_class": "MNQ"},
+                    {"bot_id": "btc_mom", "tier": "DECAY", "score": -0.3, "asset_class": "BTC"},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
 
     out = risk_topology.build_topology(kaizen_path=kaizen)
     assert out["n_nodes"] == 3
@@ -45,21 +48,23 @@ def test_correlation_edges_link_same_asset_bots(tmp_path: Path) -> None:
     from eta_engine.brain.jarvis_v3 import risk_topology
 
     kaizen = tmp_path / "kaizen_latest.json"
-    kaizen.write_text(json.dumps({
-        "asof": "2026-05-12T15:00:00Z",
-        "actions": [
-            {"bot_id": "mnq_a", "tier": "ELITE", "asset_class": "MNQ"},
-            {"bot_id": "mnq_b", "tier": "PRODUCER", "asset_class": "MNQ"},
-            {"bot_id": "btc_a", "tier": "ELITE", "asset_class": "BTC"},
-        ],
-    }), encoding="utf-8")
+    kaizen.write_text(
+        json.dumps(
+            {
+                "asof": "2026-05-12T15:00:00Z",
+                "actions": [
+                    {"bot_id": "mnq_a", "tier": "ELITE", "asset_class": "MNQ"},
+                    {"bot_id": "mnq_b", "tier": "PRODUCER", "asset_class": "MNQ"},
+                    {"bot_id": "btc_a", "tier": "ELITE", "asset_class": "BTC"},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
 
     out = risk_topology.build_topology(kaizen_path=kaizen)
     # mnq_a ↔ mnq_b should be linked, mnq_a ↔ btc_a should not (different groups)
-    mnq_link = [
-        e for e in out["links"]
-        if {e["source"], e["target"]} == {"mnq_a", "mnq_b"}
-    ]
+    mnq_link = [e for e in out["links"] if {e["source"], e["target"]} == {"mnq_a", "mnq_b"}]
     assert len(mnq_link) == 1
     assert mnq_link[0]["kind"] == "same_asset"
 
@@ -69,19 +74,21 @@ def test_correlation_edges_link_same_group_bots(tmp_path: Path) -> None:
     from eta_engine.brain.jarvis_v3 import risk_topology
 
     kaizen = tmp_path / "kaizen_latest.json"
-    kaizen.write_text(json.dumps({
-        "asof": "2026-05-12T15:00:00Z",
-        "actions": [
-            {"bot_id": "btc_a", "tier": "ELITE", "asset_class": "BTC"},
-            {"bot_id": "eth_a", "tier": "PRODUCER", "asset_class": "ETH"},
-        ],
-    }), encoding="utf-8")
+    kaizen.write_text(
+        json.dumps(
+            {
+                "asof": "2026-05-12T15:00:00Z",
+                "actions": [
+                    {"bot_id": "btc_a", "tier": "ELITE", "asset_class": "BTC"},
+                    {"bot_id": "eth_a", "tier": "PRODUCER", "asset_class": "ETH"},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
 
     out = risk_topology.build_topology(kaizen_path=kaizen)
-    btc_eth = [
-        e for e in out["links"]
-        if {e["source"], e["target"]} == {"btc_a", "eth_a"}
-    ]
+    btc_eth = [e for e in out["links"] if {e["source"], e["target"]} == {"btc_a", "eth_a"}]
     assert len(btc_eth) == 1
     assert btc_eth[0]["kind"] == "same_group"
     assert btc_eth[0]["weight"] == 0.3
@@ -92,16 +99,21 @@ def test_node_color_tier_palette(tmp_path: Path) -> None:
     from eta_engine.brain.jarvis_v3 import risk_topology
 
     kaizen = tmp_path / "kaizen_latest.json"
-    kaizen.write_text(json.dumps({
-        "asof": "2026-05-12T15:00:00Z",
-        "actions": [
-            {"bot_id": "a", "tier": "ELITE", "asset_class": "MNQ"},
-            {"bot_id": "b", "tier": "PRODUCER", "asset_class": "MNQ"},
-            {"bot_id": "c", "tier": "DECAY", "asset_class": "MNQ"},
-            {"bot_id": "d", "tier": "MARGINAL", "asset_class": "MNQ"},
-            {"bot_id": "e", "tier": "INSUFFICIENT", "asset_class": "MNQ"},
-        ],
-    }), encoding="utf-8")
+    kaizen.write_text(
+        json.dumps(
+            {
+                "asof": "2026-05-12T15:00:00Z",
+                "actions": [
+                    {"bot_id": "a", "tier": "ELITE", "asset_class": "MNQ"},
+                    {"bot_id": "b", "tier": "PRODUCER", "asset_class": "MNQ"},
+                    {"bot_id": "c", "tier": "DECAY", "asset_class": "MNQ"},
+                    {"bot_id": "d", "tier": "MARGINAL", "asset_class": "MNQ"},
+                    {"bot_id": "e", "tier": "INSUFFICIENT", "asset_class": "MNQ"},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
 
     out = risk_topology.build_topology(kaizen_path=kaizen)
     colors = {n["id"]: n["color"] for n in out["nodes"]}
@@ -118,18 +130,22 @@ def test_build_topology_deduplicates_bots(tmp_path: Path) -> None:
     from eta_engine.brain.jarvis_v3 import risk_topology
 
     kaizen = tmp_path / "kaizen_latest.json"
-    kaizen.write_text(json.dumps({
-        "asof": "2026-05-12T15:00:00Z",
-        "actions": [
-            {"bot_id": "atr_breakout_mnq", "tier": "ELITE", "asset_class": "MNQ"},
-        ],
-        "elite_summary": {
-            "top5_elite": [
-                {"bot_id": "atr_breakout_mnq", "tier": "ELITE",
-                 "asset_class": "MNQ", "score": 1.8},
-            ],
-        },
-    }), encoding="utf-8")
+    kaizen.write_text(
+        json.dumps(
+            {
+                "asof": "2026-05-12T15:00:00Z",
+                "actions": [
+                    {"bot_id": "atr_breakout_mnq", "tier": "ELITE", "asset_class": "MNQ"},
+                ],
+                "elite_summary": {
+                    "top5_elite": [
+                        {"bot_id": "atr_breakout_mnq", "tier": "ELITE", "asset_class": "MNQ", "score": 1.8},
+                    ],
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
 
     out = risk_topology.build_topology(kaizen_path=kaizen)
     assert out["n_nodes"] == 1
@@ -141,13 +157,18 @@ def test_build_topology_node_link_format_compatibility(tmp_path: Path) -> None:
     from eta_engine.brain.jarvis_v3 import risk_topology
 
     kaizen = tmp_path / "kaizen_latest.json"
-    kaizen.write_text(json.dumps({
-        "asof": "2026-05-12T15:00:00Z",
-        "actions": [
-            {"bot_id": "a", "tier": "ELITE", "asset_class": "MNQ", "score": 1.0},
-            {"bot_id": "b", "tier": "PRODUCER", "asset_class": "MNQ", "score": 0.5},
-        ],
-    }), encoding="utf-8")
+    kaizen.write_text(
+        json.dumps(
+            {
+                "asof": "2026-05-12T15:00:00Z",
+                "actions": [
+                    {"bot_id": "a", "tier": "ELITE", "asset_class": "MNQ", "score": 1.0},
+                    {"bot_id": "b", "tier": "PRODUCER", "asset_class": "MNQ", "score": 0.5},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
 
     out = risk_topology.build_topology(kaizen_path=kaizen)
     assert "nodes" in out

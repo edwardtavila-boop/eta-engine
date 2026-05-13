@@ -29,6 +29,7 @@ Run
     # Show alerts from the last N hours (default 24):
     python -m eta_engine.scripts.health_dashboard --alert-hours 48
 """
+
 from __future__ import annotations
 
 import argparse
@@ -43,14 +44,14 @@ sys.path.insert(0, str(ROOT.parent))
 LOG_DIR = ROOT.parent / "logs" / "eta_engine"
 
 SOURCES = {
-    "supercharge_runs":     LOG_DIR / "supercharge_runs.jsonl",
-    "verdict_cache":        LOG_DIR / "verdict_cache.json",
-    "jarvis_recs":          LOG_DIR / "jarvis_recommendations.jsonl",
-    "ibkr_sub_status":      LOG_DIR / "ibkr_subscription_status.jsonl",
-    "capture_health":       LOG_DIR / "capture_health.jsonl",
-    "disk_space":           LOG_DIR / "disk_space.jsonl",
-    "capture_rotation":     LOG_DIR / "capture_rotation.jsonl",
-    "alerts":               LOG_DIR / "alerts_log.jsonl",
+    "supercharge_runs": LOG_DIR / "supercharge_runs.jsonl",
+    "verdict_cache": LOG_DIR / "verdict_cache.json",
+    "jarvis_recs": LOG_DIR / "jarvis_recommendations.jsonl",
+    "ibkr_sub_status": LOG_DIR / "ibkr_subscription_status.jsonl",
+    "capture_health": LOG_DIR / "capture_health.jsonl",
+    "disk_space": LOG_DIR / "disk_space.jsonl",
+    "capture_rotation": LOG_DIR / "capture_rotation.jsonl",
+    "alerts": LOG_DIR / "alerts_log.jsonl",
 }
 
 
@@ -150,12 +151,24 @@ def _read_recent_alerts(path: Path, hours: int) -> list[dict]:
 
 def _verdict_emoji(level: str) -> str:
     level = str(level).upper()
-    return {"GREEN": "[OK]", "PASS": "[OK]", "FRESH": "[OK]", "IDLE": "[OK]",
-            "YELLOW": "[??]", "WARN": "[??]", "WARNING": "[??]",
-            "INFO": "[OK]",
-            "RED": "[!!]", "FAIL": "[!!]", "STALE": "[!!]", "BLOCKED": "[!!]",
-            "CRITICAL": "[XX]", "ERROR": "[XX]",
-            "MISSING": "[--]", "NEVER_RUN": "[--]"}.get(level, "[?]")
+    return {
+        "GREEN": "[OK]",
+        "PASS": "[OK]",
+        "FRESH": "[OK]",
+        "IDLE": "[OK]",
+        "YELLOW": "[??]",
+        "WARN": "[??]",
+        "WARNING": "[??]",
+        "INFO": "[OK]",
+        "RED": "[!!]",
+        "FAIL": "[!!]",
+        "STALE": "[!!]",
+        "BLOCKED": "[!!]",
+        "CRITICAL": "[XX]",
+        "ERROR": "[XX]",
+        "MISSING": "[--]",
+        "NEVER_RUN": "[--]",
+    }.get(level, "[?]")
 
 
 def _row(label: str, status: str, age: str, detail: str) -> str:
@@ -187,10 +200,7 @@ def _alert_message(alert: dict) -> str:
         body_text = str(body).strip()
         title_text = str(title).strip()
         source_text = str(alert.get("source") or "").strip().lower()
-        if (
-            source_text == "broker-session-monitor"
-            and body_text.lower() in {"creds", "creds missing", "missing creds"}
-        ):
+        if source_text == "broker-session-monitor" and body_text.lower() in {"creds", "creds missing", "missing creds"}:
             return f"{title_text}: credentials missing"
         if body_text.lower() in {"x", "n/a", "na", "none", "-"}:
             return title_text
@@ -213,10 +223,7 @@ def _alert_message(alert: dict) -> str:
             reason = verdict.get("reason")
             if action and reason:
                 reason_text = str(reason)
-                if (
-                    alert.get("event") == "circuit_trip"
-                    and reason_text.startswith("apex 30% consistency VIOLATION")
-                ):
+                if alert.get("event") == "circuit_trip" and reason_text.startswith("apex 30% consistency VIOLATION"):
                     return f"{action}: apex 30% consistency VIOLATION"
                 return f"{action}: {reason}"
             if reason:
@@ -273,9 +280,7 @@ def _recent_alert_groups(alerts: list[dict], *, limit: int = 10) -> list[dict]:
         )
     ]
     actionable = [
-        group
-        for group in sorted_groups
-        if str(group["level"]).upper() not in {"INFO", "GREEN", "PASS", "FRESH"}
+        group for group in sorted_groups if str(group["level"]).upper() not in {"INFO", "GREEN", "PASS", "FRESH"}
     ]
     return (actionable or sorted_groups)[-limit:]
 
@@ -295,8 +300,9 @@ def build_dashboard(*, alert_hours: int = 24) -> dict:
             "n_bots": p2.get("n_bots", 0),
             "n_verdicts": p2.get("n_verdicts", 0),
             "n_skipped_cached": p2.get("n_skipped_cached", 0),
-            "sage_agree": len(p3.get("agreements", [])) if isinstance(p3.get("agreements"), list)
-                            else p3.get("n_agreements", 0),
+            "sage_agree": len(p3.get("agreements", []))
+            if isinstance(p3.get("agreements"), list)
+            else p3.get("n_agreements", 0),
         }
     else:
         out["sections"]["supercharge"] = {"status": "NEVER_RUN", "ts": None}
@@ -315,10 +321,16 @@ def build_dashboard(*, alert_hours: int = 24) -> dict:
             "setup_status": sub.get("setup_status"),
             "setup_error_code": sub.get("setup_error_code"),
             "operator_action": sub.get("operator_action"),
-            "results": [{"exchange": r.get("exchange", "?"), "verdict": r.get("verdict")}
-                        for r in sub.get("results", []) if isinstance(r, dict)],
-            "depth_results": [{"exchange": r.get("exchange", "?"), "verdict": r.get("verdict")}
-                              for r in sub.get("depth_results", []) if isinstance(r, dict)],
+            "results": [
+                {"exchange": r.get("exchange", "?"), "verdict": r.get("verdict")}
+                for r in sub.get("results", [])
+                if isinstance(r, dict)
+            ],
+            "depth_results": [
+                {"exchange": r.get("exchange", "?"), "verdict": r.get("verdict")}
+                for r in sub.get("depth_results", [])
+                if isinstance(r, dict)
+            ],
         }
     else:
         out["sections"]["ibkr_subscriptions"] = {"status": "NEVER_RUN", "ts": None}
@@ -331,10 +343,7 @@ def build_dashboard(*, alert_hours: int = 24) -> dict:
         ibkr_sub = out["sections"].get("ibkr_subscriptions", {})
         blocked_by: str | None = None
         blocked_reason: str | None = None
-        if (
-            ibkr_sub.get("status") == "BLOCKED"
-            and str(cap_status).upper() in {"RED", "FAIL", "STALE"}
-        ):
+        if ibkr_sub.get("status") == "BLOCKED" and str(cap_status).upper() in {"RED", "FAIL", "STALE"}:
             blocked_by = "ibkr_subscriptions"
             blocked_reason = ibkr_sub.get("operator_action") or ibkr_sub.get("setup_error_code")
             cap_status = "BLOCKED"
@@ -379,10 +388,12 @@ def build_dashboard(*, alert_hours: int = 24) -> dict:
         # work.  In DRY-RUN mode, the new n_would_compress /
         # n_would_cold_archived fields count pending work (was missing
         # entirely in v1 of this digest).
-        pending = (ticks.get("n_would_compress", 0)
-                    + ticks.get("n_would_cold_archived", 0)
-                    + depth.get("n_would_compress", 0)
-                    + depth.get("n_would_cold_archived", 0))
+        pending = (
+            ticks.get("n_would_compress", 0)
+            + ticks.get("n_would_cold_archived", 0)
+            + depth.get("n_would_compress", 0)
+            + depth.get("n_would_cold_archived", 0)
+        )
         notes = []
         for label, rec in (("ticks", ticks), ("depth", depth)):
             note = rec.get("note") if isinstance(rec, dict) else None
@@ -394,10 +405,7 @@ def build_dashboard(*, alert_hours: int = 24) -> dict:
         missing_capture_dirs = any("dir missing" in note for note in notes)
         if applied:
             status = "GREEN"
-        elif (
-            missing_capture_dirs
-            and capture_section.get("status") == "BLOCKED"
-        ):
+        elif missing_capture_dirs and capture_section.get("status") == "BLOCKED":
             status = "BLOCKED"
             blocked_by = "capture_health"
             blocked_reason = "clear upstream capture health first"
@@ -442,11 +450,11 @@ def build_dashboard(*, alert_hours: int = 24) -> dict:
                 lines = [ln for ln in f if ln.strip()][-5:]
             recs = [json.loads(ln) for ln in lines]
             out["sections"]["jarvis_recent"] = {
-                "status": "GREEN", "n_recent": len(recs),
-                "recent": [{"bot": r.get("bot_id"),
-                            "size_cap": r.get("size_cap_mult"),
-                            "ts": r.get("ts")}
-                           for r in recs],
+                "status": "GREEN",
+                "n_recent": len(recs),
+                "recent": [
+                    {"bot": r.get("bot_id"), "size_cap": r.get("size_cap_mult"), "ts": r.get("ts")} for r in recs
+                ],
             }
         except (OSError, json.JSONDecodeError):
             out["sections"]["jarvis_recent"] = {"status": "PARSE_ERROR"}
@@ -481,11 +489,24 @@ def build_dashboard(*, alert_hours: int = 24) -> dict:
     out["recent_alerts_count"] = len(alerts)
 
     # Overall verdict (worst across sections)
-    rank = {"GREEN": 0, "PASS": 0, "FRESH": 0, "DRY-RUN": 0, "IDLE": 0,
-            "YELLOW": 1, "WARN": 1,
-            "RED": 2, "FAIL": 2, "STALE": 2, "BLOCKED": 2,
-            "CRITICAL": 3, "ERROR": 3,
-            "MISSING": 1, "NEVER_RUN": 1, "PARSE_ERROR": 2}
+    rank = {
+        "GREEN": 0,
+        "PASS": 0,
+        "FRESH": 0,
+        "DRY-RUN": 0,
+        "IDLE": 0,
+        "YELLOW": 1,
+        "WARN": 1,
+        "RED": 2,
+        "FAIL": 2,
+        "STALE": 2,
+        "BLOCKED": 2,
+        "CRITICAL": 3,
+        "ERROR": 3,
+        "MISSING": 1,
+        "NEVER_RUN": 1,
+        "PARSE_ERROR": 2,
+    }
     worst_rank = -1
     worst_label = "GREEN"
     for sec in out["sections"].values():
@@ -505,48 +526,44 @@ def render_text(d: dict, *, alert_hours: int = 24) -> str:
     lines.append(f"  OVERALL: {_verdict_emoji(d['overall'])} {d['overall']}")
     lines.append("")
     s = d["sections"]
-    lines.append(_row("supercharge orchestrator",
-                       s["supercharge"].get("status", "?"),
-                       _age_str(s["supercharge"].get("ts")),
-                       f"tier={s['supercharge'].get('tier', '?')} "
-                       f"verdicts={s['supercharge'].get('n_verdicts', 0)}/{s['supercharge'].get('n_bots', 0)} "
-                       f"sage_agree={s['supercharge'].get('sage_agree', 0)}"))
+    lines.append(
+        _row(
+            "supercharge orchestrator",
+            s["supercharge"].get("status", "?"),
+            _age_str(s["supercharge"].get("ts")),
+            f"tier={s['supercharge'].get('tier', '?')} "
+            f"verdicts={s['supercharge'].get('n_verdicts', 0)}/{s['supercharge'].get('n_bots', 0)} "
+            f"sage_agree={s['supercharge'].get('sage_agree', 0)}",
+        )
+    )
     ibkr_sub = s["ibkr_subscriptions"]
     ibkr_detail = ibkr_sub.get("operator_action")
     if not ibkr_detail:
-        tick_detail = ", ".join(f"{r['exchange']}:{r.get('verdict', '?')}"
-                                for r in ibkr_sub.get("results", []))
-        depth_detail = ", ".join(f"{r['exchange']} depth:{r.get('verdict', '?')}"
-                                 for r in ibkr_sub.get("depth_results", []))
+        tick_detail = ", ".join(f"{r['exchange']}:{r.get('verdict', '?')}" for r in ibkr_sub.get("results", []))
+        depth_detail = ", ".join(
+            f"{r['exchange']} depth:{r.get('verdict', '?')}" for r in ibkr_sub.get("depth_results", [])
+        )
         ibkr_detail = " | ".join(part for part in (tick_detail, depth_detail) if part) or "n/a"
-    lines.append(_row("ibkr subscriptions",
-                       ibkr_sub.get("status", "?"),
-                       _age_str(ibkr_sub.get("ts")),
-                       ibkr_detail))
+    lines.append(_row("ibkr subscriptions", ibkr_sub.get("status", "?"), _age_str(ibkr_sub.get("ts")), ibkr_detail))
     cap_health = s["capture_health"]
-    cap_detail = (
-        f"{cap_health.get('n_symbols', 0)} symbols, "
-        f"{len(cap_health.get('issues', []))} issues"
-    )
+    cap_detail = f"{cap_health.get('n_symbols', 0)} symbols, {len(cap_health.get('issues', []))} issues"
     if cap_health.get("blocked_by"):
         cap_detail = (
             f"blocked by {cap_health.get('blocked_by')}; "
             f"{len(cap_health.get('issues', []))} downstream issue(s); "
             f"{cap_health.get('blocked_reason') or 'clear upstream readiness first'}"
         )
-    lines.append(_row("capture health",
-                       cap_health.get("status", "?"),
-                       _age_str(cap_health.get("ts")),
-                       cap_detail))
-    lines.append(_row("disk space",
-                       s["disk_space"].get("status", "?"),
-                       _age_str(s["disk_space"].get("ts")),
-                       s["disk_space"].get("summary", "n/a")))
-    rotation = s["capture_rotation"]
-    rotation_detail = (
-        f"compressed={rotation.get('n_compressed', 0)} "
-        f"cold={rotation.get('n_cold_archived', 0)}"
+    lines.append(_row("capture health", cap_health.get("status", "?"), _age_str(cap_health.get("ts")), cap_detail))
+    lines.append(
+        _row(
+            "disk space",
+            s["disk_space"].get("status", "?"),
+            _age_str(s["disk_space"].get("ts")),
+            s["disk_space"].get("summary", "n/a"),
+        )
     )
+    rotation = s["capture_rotation"]
+    rotation_detail = f"compressed={rotation.get('n_compressed', 0)} cold={rotation.get('n_cold_archived', 0)}"
     if rotation.get("n_pending", 0):
         rotation_detail += f" pending={rotation.get('n_pending', 0)}"
     if rotation.get("notes"):
@@ -555,24 +572,22 @@ def render_text(d: dict, *, alert_hours: int = 24) -> str:
         rotation_detail += f"; blocked by {rotation.get('blocked_by')}"
         if rotation.get("blocked_reason"):
             rotation_detail += f"; {rotation.get('blocked_reason')}"
-    lines.append(_row("capture rotation",
-                       rotation.get("status", "?"),
-                       _age_str(rotation.get("ts")),
-                       rotation_detail))
+    lines.append(_row("capture rotation", rotation.get("status", "?"), _age_str(rotation.get("ts")), rotation_detail))
     fv = s["fleet_verdicts"]
-    lines.append(_row("fleet verdicts",
-                       fv.get("status", "?"),
-                       "—",
-                       f"GREEN={fv.get('n_green', 0)} YELLOW={fv.get('n_yellow', 0)} "
-                       f"RED={fv.get('n_red', 0)} (total {fv.get('n_total', 0)})"))
+    lines.append(
+        _row(
+            "fleet verdicts",
+            fv.get("status", "?"),
+            "—",
+            f"GREEN={fv.get('n_green', 0)} YELLOW={fv.get('n_yellow', 0)} "
+            f"RED={fv.get('n_red', 0)} (total {fv.get('n_total', 0)})",
+        )
+    )
     jr = s["jarvis_recent"]
     jarvis_detail = f"recent={jr.get('n_recent', 0)}"
     if jr.get("reason"):
         jarvis_detail += f"; {jr.get('reason')}"
-    lines.append(_row("jarvis arbitration",
-                       jr.get("status", "?"),
-                       _age_str(jr.get("ts")),
-                       jarvis_detail))
+    lines.append(_row("jarvis arbitration", jr.get("status", "?"), _age_str(jr.get("ts")), jarvis_detail))
     lines.append("")
     lines.append(f"-- recent alerts (last {alert_hours}h, {d['recent_alerts_count']} total) --")
     if not d["recent_alerts"]:
@@ -592,8 +607,7 @@ def render_text(d: dict, *, alert_hours: int = 24) -> str:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--json", action="store_true", help="Machine-readable JSON output")
-    ap.add_argument("--alert-hours", type=int, default=24,
-                    help="Show alerts from the last N hours (default 24)")
+    ap.add_argument("--alert-hours", type=int, default=24, help="Show alerts from the last N hours (default 24)")
     args = ap.parse_args()
 
     d = build_dashboard(alert_hours=args.alert_hours)
@@ -603,10 +617,24 @@ def main() -> int:
         print(render_text(d, alert_hours=args.alert_hours))
 
     # Exit-code mapping for cron / shell:
-    return {"GREEN": 0, "PASS": 0, "FRESH": 0, "DRY-RUN": 0, "IDLE": 0,
-            "YELLOW": 1, "WARN": 1, "MISSING": 1, "NEVER_RUN": 1,
-            "RED": 2, "FAIL": 2, "STALE": 2, "BLOCKED": 2, "PARSE_ERROR": 2,
-            "CRITICAL": 3, "ERROR": 3}.get(d["overall"], 1)
+    return {
+        "GREEN": 0,
+        "PASS": 0,
+        "FRESH": 0,
+        "DRY-RUN": 0,
+        "IDLE": 0,
+        "YELLOW": 1,
+        "WARN": 1,
+        "MISSING": 1,
+        "NEVER_RUN": 1,
+        "RED": 2,
+        "FAIL": 2,
+        "STALE": 2,
+        "BLOCKED": 2,
+        "PARSE_ERROR": 2,
+        "CRITICAL": 3,
+        "ERROR": 3,
+    }.get(d["overall"], 1)
 
 
 if __name__ == "__main__":

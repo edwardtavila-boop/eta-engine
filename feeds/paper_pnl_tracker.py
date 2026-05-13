@@ -13,6 +13,7 @@ Usage
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import sys
 from dataclasses import dataclass
@@ -24,10 +25,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT.parent))
 
 if hasattr(sys.stdout, "reconfigure"):
-    try:
+    with contextlib.suppress(AttributeError, OSError):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    except (AttributeError, OSError):
-        pass
 
 from eta_engine.scripts import workspace_roots  # noqa: E402
 
@@ -97,13 +96,20 @@ def compute_bot_pnl(events: list[dict[str, Any]], bot_filter: str | None = None)
         wr = (rec["wins"] / rec["trades"]) * 100 if rec["trades"] > 0 else 0.0
         pf = rec["profit"] / rec["loss"] if rec["loss"] > 0 else float("inf")
         avg_r = rec["r_sum"] / rec["trades"] if rec["trades"] > 0 else 0.0
-        results.append(BotPnl(
-            bot_id=bot_id, total_trades=rec["trades"],
-            winning_trades=rec["wins"], losing_trades=rec["losses"],
-            win_rate_pct=round(wr, 1), net_pnl_usd=round(rec["pnl"], 2),
-            gross_profit=round(rec["profit"], 2), gross_loss=round(rec["loss"], 2),
-            profit_factor=round(pf, 3), avg_r_per_trade=round(avg_r, 4),
-        ))
+        results.append(
+            BotPnl(
+                bot_id=bot_id,
+                total_trades=rec["trades"],
+                winning_trades=rec["wins"],
+                losing_trades=rec["losses"],
+                win_rate_pct=round(wr, 1),
+                net_pnl_usd=round(rec["pnl"], 2),
+                gross_profit=round(rec["profit"], 2),
+                gross_loss=round(rec["loss"], 2),
+                profit_factor=round(pf, 3),
+                avg_r_per_trade=round(avg_r, 4),
+            )
+        )
     return results
 
 
@@ -120,16 +126,27 @@ def main(argv: list[str] | None = None) -> int:
     if args.json:
         fleet_total = sum(b.net_pnl_usd for b in pnls)
         fleet_trades = sum(b.total_trades for b in pnls)
-        print(json.dumps({
-            "fleet_pnl": round(fleet_total, 2),
-            "fleet_trades": fleet_trades,
-            "bots": [{
-                "bot_id": b.bot_id, "trades": b.total_trades,
-                "win_rate": b.win_rate_pct, "pnl": b.net_pnl_usd,
-                "profit_factor": b.profit_factor, "avg_r": b.avg_r_per_trade,
-            } for b in pnls],
-            "generated": datetime.now(tz=UTC).isoformat(),
-        }, indent=2))
+        print(
+            json.dumps(
+                {
+                    "fleet_pnl": round(fleet_total, 2),
+                    "fleet_trades": fleet_trades,
+                    "bots": [
+                        {
+                            "bot_id": b.bot_id,
+                            "trades": b.total_trades,
+                            "win_rate": b.win_rate_pct,
+                            "pnl": b.net_pnl_usd,
+                            "profit_factor": b.profit_factor,
+                            "avg_r": b.avg_r_per_trade,
+                        }
+                        for b in pnls
+                    ],
+                    "generated": datetime.now(tz=UTC).isoformat(),
+                },
+                indent=2,
+            )
+        )
     else:
         if not pnls:
             print("No paper trades recorded yet. Start a paper-trade session to populate the journal.")
@@ -140,8 +157,10 @@ def main(argv: list[str] | None = None) -> int:
         print(f"\n{'Bot':<24} {'Trades':>6} {'Win%':>7} {'PnL':>10} {'PF':>8} {'Avg R':>8}")
         print("-" * 70)
         for b in pnls:
-            print(f"{b.bot_id:<24} {b.total_trades:>6} {b.win_rate_pct:>6.1f}% "
-                  f"{b.net_pnl_usd:>+10.2f} {b.profit_factor:>8.3f} {b.avg_r_per_trade:>+8.4f}")
+            print(
+                f"{b.bot_id:<24} {b.total_trades:>6} {b.win_rate_pct:>6.1f}% "
+                f"{b.net_pnl_usd:>+10.2f} {b.profit_factor:>8.3f} {b.avg_r_per_trade:>+8.4f}"
+            )
     return 0
 
 

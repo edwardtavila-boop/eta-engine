@@ -17,14 +17,17 @@ from eta_engine.strategies.mtf_scalp_strategy import (
 )
 
 
-def _bar(idx_min: int, close: float = 100.0,
-         high_off: float = 0.5, low_off: float = 0.5) -> BarData:
+def _bar(idx_min: int, close: float = 100.0, high_off: float = 0.5, low_off: float = 0.5) -> BarData:
     """1-minute bar starting Jan 1 2026 09:30 ET (= 14:30 UTC)."""
     ts = datetime(2026, 1, 1, 14, 30, tzinfo=UTC) + timedelta(minutes=idx_min)
     return BarData(
-        timestamp=ts, symbol="MNQ", open=close,
-        high=close + high_off, low=close - low_off,
-        close=close, volume=1000.0,
+        timestamp=ts,
+        symbol="MNQ",
+        open=close,
+        high=close + high_off,
+        low=close - low_off,
+        close=close,
+        volume=1000.0,
     )
 
 
@@ -32,8 +35,10 @@ def _cfg() -> BacktestConfig:
     return BacktestConfig(
         start_date=datetime(2026, 1, 1, tzinfo=UTC),
         end_date=datetime(2026, 12, 31, tzinfo=UTC),
-        symbol="MNQ", initial_equity=10_000.0,
-        risk_per_trade_pct=0.005, confluence_threshold=0.0,
+        symbol="MNQ",
+        initial_equity=10_000.0,
+        risk_per_trade_pct=0.005,
+        confluence_threshold=0.0,
         max_trades_per_day=10,
     )
 
@@ -45,11 +50,13 @@ def _cfg() -> BacktestConfig:
 
 def test_warmup_blocks_entries() -> None:
     """During warmup, no entries fire."""
-    s = MtfScalpStrategy(MtfScalpConfig(
-        warmup_bars=100,
-        htf_ema_period=10,
-        htf_atr_period=5,
-    ))
+    s = MtfScalpStrategy(
+        MtfScalpConfig(
+            warmup_bars=100,
+            htf_ema_period=10,
+            htf_atr_period=5,
+        )
+    )
     cfg = _cfg()
     hist: list[BarData] = []
     fired = 0
@@ -66,10 +73,15 @@ def test_session_window_blocks_off_hours() -> None:
 
     Need to populate HTF state first (htf_ema=5 → 75 1m bars).
     """
-    s = MtfScalpStrategy(MtfScalpConfig(
-        warmup_bars=10, htf_ema_period=5, htf_atr_period=3,
-        rth_open_local=time(9, 30), rth_close_local=time(15, 55),
-    ))
+    s = MtfScalpStrategy(
+        MtfScalpConfig(
+            warmup_bars=10,
+            htf_ema_period=5,
+            htf_atr_period=3,
+            rth_open_local=time(9, 30),
+            rth_close_local=time(15, 55),
+        )
+    )
     cfg = _cfg()
     hist: list[BarData] = []
     # Advance state through 90 RTH bars to populate HTF EMA
@@ -80,7 +92,11 @@ def test_session_window_blocks_off_hours() -> None:
     # Now feed a pre-market bar — should be blocked by session gate
     pre_market_bar = BarData(
         timestamp=datetime(2026, 1, 1, 11, 0, tzinfo=UTC),
-        symbol="MNQ", open=100.0, high=101.0, low=99.0, close=100.0,
+        symbol="MNQ",
+        open=100.0,
+        high=101.0,
+        low=99.0,
+        close=100.0,
         volume=1000.0,
     )
     out = s.maybe_enter(pre_market_bar, hist, 10_000.0, cfg)
@@ -90,12 +106,19 @@ def test_session_window_blocks_off_hours() -> None:
 
 def test_uptrend_with_break_fires_long() -> None:
     """Steady uptrend + 1m close > recent high → BUY."""
-    s = MtfScalpStrategy(MtfScalpConfig(
-        warmup_bars=20, htf_ema_period=3, htf_atr_period=2,
-        ltf_recent_high_lookback=5, ltf_atr_period=5,
-        min_bars_between_trades=0, max_trades_per_day=999,
-        htf_atr_pct_min=0.001, htf_atr_pct_max=10.0,  # very loose
-    ))
+    s = MtfScalpStrategy(
+        MtfScalpConfig(
+            warmup_bars=20,
+            htf_ema_period=3,
+            htf_atr_period=2,
+            ltf_recent_high_lookback=5,
+            ltf_atr_period=5,
+            min_bars_between_trades=0,
+            max_trades_per_day=999,
+            htf_atr_pct_min=0.001,
+            htf_atr_pct_max=10.0,  # very loose
+        )
+    )
     cfg = _cfg()
     hist: list[BarData] = []
     out = None
@@ -105,8 +128,12 @@ def test_uptrend_with_break_fires_long() -> None:
         # Make the bar a green close > open
         b = BarData(
             timestamp=datetime(2026, 1, 1, 14, 30, tzinfo=UTC) + timedelta(minutes=i),
-            symbol="MNQ", open=c - 0.1, high=c + 0.5, low=c - 0.3,
-            close=c, volume=1000.0,
+            symbol="MNQ",
+            open=c - 0.1,
+            high=c + 0.5,
+            low=c - 0.3,
+            close=c,
+            volume=1000.0,
         )
         hist.append(b)
         candidate = s.maybe_enter(b, hist, 10_000.0, cfg)
@@ -121,12 +148,19 @@ def test_uptrend_with_break_fires_long() -> None:
 def test_volatility_regime_blocks() -> None:
     """ATR-pct outside [min, max] band → blocked."""
     # Use VERY tight band that no real bar will satisfy
-    s = MtfScalpStrategy(MtfScalpConfig(
-        warmup_bars=20, htf_ema_period=5, htf_atr_period=3,
-        ltf_recent_high_lookback=5, ltf_atr_period=5,
-        min_bars_between_trades=0, max_trades_per_day=999,
-        htf_atr_pct_min=10.0, htf_atr_pct_max=20.0,  # impossible band
-    ))
+    s = MtfScalpStrategy(
+        MtfScalpConfig(
+            warmup_bars=20,
+            htf_ema_period=5,
+            htf_atr_period=3,
+            ltf_recent_high_lookback=5,
+            ltf_atr_period=5,
+            min_bars_between_trades=0,
+            max_trades_per_day=999,
+            htf_atr_pct_min=10.0,
+            htf_atr_pct_max=20.0,  # impossible band
+        )
+    )
     cfg = _cfg()
     hist: list[BarData] = []
     fired = 0
@@ -157,10 +191,14 @@ def test_stats_track_invocations() -> None:
 
 def test_htf_aggregation_synthesizes_15m_bars() -> None:
     """Every 15 1m bars should advance the HTF state once."""
-    s = MtfScalpStrategy(MtfScalpConfig(
-        warmup_bars=10, htf_bars_per_aggregate=15,
-        htf_ema_period=5, htf_atr_period=3,
-    ))
+    s = MtfScalpStrategy(
+        MtfScalpConfig(
+            warmup_bars=10,
+            htf_bars_per_aggregate=15,
+            htf_ema_period=5,
+            htf_atr_period=3,
+        )
+    )
     cfg = _cfg()
     hist: list[BarData] = []
     htf_updates_before = 0
@@ -176,13 +214,21 @@ def test_htf_aggregation_synthesizes_15m_bars() -> None:
 
 def test_directional_only_long_disabled() -> None:
     """When allow_long=False, no BUY entries fire even on uptrends."""
-    s = MtfScalpStrategy(MtfScalpConfig(
-        warmup_bars=20, htf_ema_period=5, htf_atr_period=3,
-        ltf_recent_high_lookback=5, ltf_atr_period=5,
-        min_bars_between_trades=0, max_trades_per_day=999,
-        htf_atr_pct_min=0.001, htf_atr_pct_max=10.0,
-        allow_long=False, allow_short=True,
-    ))
+    s = MtfScalpStrategy(
+        MtfScalpConfig(
+            warmup_bars=20,
+            htf_ema_period=5,
+            htf_atr_period=3,
+            ltf_recent_high_lookback=5,
+            ltf_atr_period=5,
+            min_bars_between_trades=0,
+            max_trades_per_day=999,
+            htf_atr_pct_min=0.001,
+            htf_atr_pct_max=10.0,
+            allow_long=False,
+            allow_short=True,
+        )
+    )
     cfg = _cfg()
     hist: list[BarData] = []
     fired_long = 0
@@ -190,8 +236,12 @@ def test_directional_only_long_disabled() -> None:
         c = 100.0 + i * 0.5
         b = BarData(
             timestamp=datetime(2026, 1, 1, 14, 30, tzinfo=UTC) + timedelta(minutes=i),
-            symbol="MNQ", open=c - 0.1, high=c + 0.5, low=c - 0.3,
-            close=c, volume=1000.0,
+            symbol="MNQ",
+            open=c - 0.1,
+            high=c + 0.5,
+            low=c - 0.3,
+            close=c,
+            volume=1000.0,
         )
         hist.append(b)
         out = s.maybe_enter(b, hist, 10_000.0, cfg)

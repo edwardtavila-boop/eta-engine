@@ -81,24 +81,32 @@ def _build_config(raw: dict[str, Any]) -> TradingViewConfig:
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description="EVOLUTIONARY TRADING ALGO TradingView capture daemon")
     p.add_argument(
-        "--config", type=Path, default=Path("configs/tradingview.yaml"),
+        "--config",
+        type=Path,
+        default=Path("configs/tradingview.yaml"),
         help="path to tradingview.yaml",
     )
     p.add_argument(
-        "--auth-state", type=Path, default=None,
-        help="path to Playwright storage_state JSON (default: "
-             "var/eta_engine/state/tradingview_auth.json)",
+        "--auth-state",
+        type=Path,
+        default=None,
+        help="path to Playwright storage_state JSON (default: var/eta_engine/state/tradingview_auth.json)",
     )
     p.add_argument(
-        "--data-root", type=Path, default=None,
+        "--data-root",
+        type=Path,
+        default=None,
         help="output directory (default var/eta_engine/state/live_data/tradingview)",
     )
     p.add_argument(
-        "--max-runtime-seconds", type=int, default=0,
+        "--max-runtime-seconds",
+        type=int,
+        default=0,
         help="max wall-clock seconds; 0 = run forever (until signal)",
     )
     p.add_argument(
-        "--log-level", default="INFO",
+        "--log-level",
+        default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
     )
     args = p.parse_args(argv)
@@ -122,8 +130,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if not TradingViewClient.is_available():
         sys.stderr.write(
-            "playwright not installed; run "
-            "`pip install playwright && playwright install chromium`\n",
+            "playwright not installed; run `pip install playwright && playwright install chromium`\n",
         )
         return 2
 
@@ -159,10 +166,12 @@ def main(argv: list[str] | None = None) -> int:
             run_task = asyncio.create_task(client.run())
             watchdog: asyncio.Task[None] | None = None
             if args.max_runtime_seconds > 0:
+
                 async def _runtime_cap() -> None:
                     await asyncio.sleep(args.max_runtime_seconds)
                     client.request_stop()
                     stop_event.set()
+
                 watchdog = asyncio.create_task(_runtime_cap())
             await stop_event.wait()
             run_task.cancel()

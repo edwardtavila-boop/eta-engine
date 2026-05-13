@@ -32,6 +32,7 @@ keyed off realized R-multiples. Default behavior is fail-safe: the
 learner can shrink size on cold buckets, but will not expand above
 the upstream JARVIS cap unless the caller opts in.
 """
+
 from __future__ import annotations
 
 import json

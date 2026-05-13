@@ -26,7 +26,7 @@ def test_just_connected_with_recent_pong_is_healthy() -> None:
     e = EndpointHealth(name="bybit", url="wss://ex/1")
     e.observe_connected(now=0.0)
     e.observe_ping_sent(now=1.0)
-    e.observe_pong(now=1.05)        # 50 ms RTT
+    e.observe_pong(now=1.05)  # 50 ms RTT
     e.observe_frame(now=1.05)
     assert e.status(now=0.10) == EndpointStatus.HEALTHY
 
@@ -35,7 +35,7 @@ def test_high_rtt_marks_degraded() -> None:
     e = EndpointHealth(name="ex", url="x", rtt_warn_ms=100, rtt_unreachable_ms=2000)
     e.observe_connected(now=0.0)
     e.observe_ping_sent(now=1.0)
-    e.observe_pong(now=1.30)        # 300 ms RTT > 100
+    e.observe_pong(now=1.30)  # 300 ms RTT > 100
     e.observe_frame(now=1.30)
     assert e.status(now=0.5) == EndpointStatus.DEGRADED
 
@@ -44,7 +44,7 @@ def test_extreme_rtt_marks_unreachable() -> None:
     e = EndpointHealth(name="ex", url="x", rtt_warn_ms=100, rtt_unreachable_ms=1000)
     e.observe_connected(now=0.0)
     e.observe_ping_sent(now=1.0)
-    e.observe_pong(now=3.5)         # 2500 ms RTT
+    e.observe_pong(now=3.5)  # 2500 ms RTT
     e.observe_frame(now=3.5)
     assert e.status(now=3.0) == EndpointStatus.UNREACHABLE
 
@@ -61,7 +61,10 @@ def test_stale_frame_marks_stale() -> None:
 
 def test_no_recent_ping_marks_unreachable() -> None:
     e = EndpointHealth(
-        name="ex", url="x", unreachable_after_seconds=30, stale_after_seconds=5,
+        name="ex",
+        url="x",
+        unreachable_after_seconds=30,
+        stale_after_seconds=5,
     )
     e.observe_connected(now=0.0)
     e.observe_ping_sent(now=1.0)
@@ -132,7 +135,7 @@ def test_monitor_returns_none_when_all_degraded() -> None:
     bad = EndpointHealth(name="bad", url="x", rtt_warn_ms=10, rtt_unreachable_ms=20)
     bad.observe_connected(now=0.0)
     bad.observe_ping_sent(now=1.0)
-    bad.observe_pong(now=1.5)        # 500 ms > 20 ms unreachable threshold
+    bad.observe_pong(now=1.5)  # 500 ms > 20 ms unreachable threshold
     bad.observe_frame(now=1.5)
     m.register(bad)
     assert m.preferred(now=1.0) is None
@@ -144,7 +147,7 @@ def test_monitor_degraded_lists_non_healthy() -> None:
     bad = EndpointHealth(name="b", url="x", rtt_warn_ms=10, rtt_unreachable_ms=20)
     bad.observe_connected(now=0.0)
     bad.observe_ping_sent(now=1.0)
-    bad.observe_pong(now=1.05)       # 50 ms > 10 ms warn threshold
+    bad.observe_pong(now=1.05)  # 50 ms > 10 ms warn threshold
     bad.observe_frame(now=1.05)
     m.register(bad)
     deg = m.degraded(now=1.0)
@@ -174,7 +177,7 @@ def test_monitor_snapshot_empty_is_unhealthy() -> None:
 
 def test_router_starts_on_primary() -> None:
     primary = _healthy("p", rtt_ms=20.0)
-    backup  = _healthy("b", rtt_ms=80.0)
+    backup = _healthy("b", rtt_ms=80.0)
     r = PrimaryBackupRouter(primary, backup)
     assert r.active().name == "p"
     assert r.poll(now=10.0) is None
@@ -182,7 +185,7 @@ def test_router_starts_on_primary() -> None:
 
 def test_router_swaps_to_backup_on_primary_degraded() -> None:
     primary = _healthy("p", rtt_ms=20.0)
-    backup  = _healthy("b", rtt_ms=80.0)
+    backup = _healthy("b", rtt_ms=80.0)
     r = PrimaryBackupRouter(primary, backup)
     primary.observe_disconnected()
     ev = r.poll(now=10.0)
@@ -193,10 +196,10 @@ def test_router_swaps_to_backup_on_primary_degraded() -> None:
 
 def test_router_does_not_flap_back_until_grace_window() -> None:
     primary = _healthy("p", rtt_ms=20.0)
-    backup  = _healthy("b", rtt_ms=80.0)
+    backup = _healthy("b", rtt_ms=80.0)
     r = PrimaryBackupRouter(primary, backup, recovery_grace_seconds=30.0)
     primary.observe_disconnected()
-    r.poll(now=10.0)            # swap to backup
+    r.poll(now=10.0)  # swap to backup
     primary.observe_connected(now=20.0)
     primary.observe_ping_sent(now=20.0)
     primary.observe_pong(now=20.05)
@@ -222,21 +225,21 @@ def test_router_does_not_flap_back_until_grace_window() -> None:
 
 def test_router_resets_recovery_clock_when_primary_re_breaks() -> None:
     primary = _healthy("p", rtt_ms=20.0)
-    backup  = _healthy("b", rtt_ms=80.0)
+    backup = _healthy("b", rtt_ms=80.0)
     r = PrimaryBackupRouter(primary, backup, recovery_grace_seconds=10.0)
     primary.observe_disconnected()
-    r.poll(now=0.0)             # swap to backup
+    r.poll(now=0.0)  # swap to backup
 
     # Primary recovers...
     primary.observe_connected(now=5.0)
     primary.observe_ping_sent(now=5.0)
     primary.observe_pong(now=5.05)
     primary.observe_frame(now=5.05)
-    r.poll(now=5.1)             # grace clock starts
+    r.poll(now=5.1)  # grace clock starts
 
     # ...then re-breaks before grace expires.
     primary.observe_disconnected()
-    r.poll(now=8.0)             # clock should reset
+    r.poll(now=8.0)  # clock should reset
 
     # Primary re-recovers; grace-clock starts FRESH from the new
     # recovery moment.
@@ -244,7 +247,7 @@ def test_router_resets_recovery_clock_when_primary_re_breaks() -> None:
     primary.observe_ping_sent(now=20.0)
     primary.observe_pong(now=20.05)
     primary.observe_frame(now=20.05)
-    r.poll(now=20.1)            # new clock starts
+    r.poll(now=20.1)  # new clock starts
 
     # Just past *new* grace window from t=20:
     primary.observe_ping_sent(now=31.0)

@@ -40,6 +40,7 @@ Run
     python -m eta_engine.scripts.l2_heartbeat
     python -m eta_engine.scripts.l2_heartbeat --json
 """
+
 from __future__ import annotations
 
 # ruff: noqa: PLR2004
@@ -59,8 +60,9 @@ HEARTBEAT_LOG = LOG_DIR / "l2_heartbeat.jsonl"
 @dataclass
 class HeartbeatProbe:
     """One daemon's expected heartbeat configuration."""
+
     name: str
-    log_paths: list[Path]      # any one being fresh = alive
+    log_paths: list[Path]  # any one being fresh = alive
     expected_interval_seconds: float
     description: str = ""
 
@@ -124,8 +126,7 @@ def _default_probes() -> list[HeartbeatProbe]:
     ]
 
 
-def _file_mtime_age_seconds(path: Path,
-                              *, now: datetime | None = None) -> float | None:
+def _file_mtime_age_seconds(path: Path, *, now: datetime | None = None) -> float | None:
     """Return age in seconds of the file's last modification.  None
     when the file doesn't exist."""
     if not path.exists():
@@ -138,8 +139,7 @@ def _file_mtime_age_seconds(path: Path,
     return now.timestamp() - mtime
 
 
-def check_probe(probe: HeartbeatProbe,
-                 *, now: datetime | None = None) -> HeartbeatStatus:
+def check_probe(probe: HeartbeatProbe, *, now: datetime | None = None) -> HeartbeatStatus:
     """Check a single probe.  Returns alive=True if ANY of its log_paths
     has been written within the grace window."""
     now = now or datetime.now(UTC)
@@ -150,10 +150,10 @@ def check_probe(probe: HeartbeatProbe,
         if age is not None:
             ages.append(age)
     if not ages:
-        notes.append("none of the log paths exist yet — daemon may "
-                       "have never run, or path is wrong")
+        notes.append("none of the log paths exist yet — daemon may have never run, or path is wrong")
         return HeartbeatStatus(
-            name=probe.name, alive=False,
+            name=probe.name,
+            alive=False,
             last_signal_age_seconds=None,
             expected_interval_seconds=probe.expected_interval_seconds,
             notes=notes,
@@ -162,18 +162,17 @@ def check_probe(probe: HeartbeatProbe,
     grace_seconds = probe.expected_interval_seconds * 1.5
     alive = youngest <= grace_seconds
     if not alive:
-        notes.append(f"oldest write {round(youngest / 60, 1)} min ago "
-                       f"exceeds grace {round(grace_seconds / 60, 1)} min")
+        notes.append(f"oldest write {round(youngest / 60, 1)} min ago exceeds grace {round(grace_seconds / 60, 1)} min")
     return HeartbeatStatus(
-        name=probe.name, alive=alive,
+        name=probe.name,
+        alive=alive,
         last_signal_age_seconds=round(youngest, 1),
         expected_interval_seconds=probe.expected_interval_seconds,
         notes=notes,
     )
 
 
-def check_all(*, probes: list[HeartbeatProbe] | None = None,
-               now: datetime | None = None) -> list[HeartbeatStatus]:
+def check_all(*, probes: list[HeartbeatProbe] | None = None, now: datetime | None = None) -> list[HeartbeatStatus]:
     if probes is None:
         probes = _default_probes()
     return [check_probe(p, now=now) for p in probes]
@@ -188,9 +187,7 @@ def main() -> int:
     try:
         with HEARTBEAT_LOG.open("a", encoding="utf-8") as f:
             for s in statuses:
-                f.write(json.dumps({"ts": datetime.now(UTC).isoformat(),
-                                     **asdict(s)},
-                                    separators=(",", ":")) + "\n")
+                f.write(json.dumps({"ts": datetime.now(UTC).isoformat(), **asdict(s)}, separators=(",", ":")) + "\n")
     except OSError as e:
         print(f"WARN: heartbeat log write failed: {e}", file=sys.stderr)
 
@@ -203,13 +200,11 @@ def main() -> int:
     print(f"L2 HEARTBEAT  ({datetime.now(UTC).isoformat()})")
     print("=" * 78)
     print(f"  {'Daemon':<30s} {'Alive':<6s} {'Last signal':<12s} {'Expected':<10s}")
-    print(f"  {'-'*30:<30s} {'-'*6:<6s} {'-'*12:<12s} {'-'*10}")
+    print(f"  {'-' * 30:<30s} {'-' * 6:<6s} {'-' * 12:<12s} {'-' * 10}")
     for s in statuses:
-        age = (f"{s.last_signal_age_seconds:.0f}s"
-                if s.last_signal_age_seconds is not None else "n/a")
+        age = f"{s.last_signal_age_seconds:.0f}s" if s.last_signal_age_seconds is not None else "n/a"
         alive_str = "[OK]" if s.alive else "[!!]"
-        print(f"  {s.name:<30s} {alive_str:<6s} {age:<12s} "
-              f"{int(s.expected_interval_seconds)}s")
+        print(f"  {s.name:<30s} {alive_str:<6s} {age:<12s} {int(s.expected_interval_seconds)}s")
         for n in s.notes:
             print(f"      - {n}")
     n_dead = sum(1 for s in statuses if not s.alive)

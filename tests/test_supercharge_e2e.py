@@ -21,6 +21,7 @@ Verifies no integration bugs across the boundaries.  Doesn't assert
 on edge values — those are unit-test concerns; this test is about
 plumbing.
 """
+
 # ruff: noqa: N802, PLR2004
 from __future__ import annotations
 
@@ -42,8 +43,7 @@ if TYPE_CHECKING:
     import pytest
 
 
-def test_e2e_full_pipeline(tmp_path: Path,
-                              monkeypatch: pytest.MonkeyPatch) -> None:
+def test_e2e_full_pipeline(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """One test exercising the entire L2 chain end-to-end.
 
     Generates synthetic depth → backtests → sweeps → simulates paper
@@ -70,39 +70,38 @@ def test_e2e_full_pipeline(tmp_path: Path,
     # ── 2. Generate synthetic depth ──
     today = datetime.now(UTC).replace(microsecond=0, second=0)
     snaps, _ = depth_simulator.simulate(
-        symbol="MNQ", duration_minutes=60,
-        regime_mix="imbalanced_long", seed=42, start_dt=today)
-    depth_simulator.write_snapshots(snaps, "MNQ",
-                                       output_dir=tmp_path / "depth",
-                                       date_str=today.strftime("%Y%m%d"))
+        symbol="MNQ", duration_minutes=60, regime_mix="imbalanced_long", seed=42, start_dt=today
+    )
+    depth_simulator.write_snapshots(snaps, "MNQ", output_dir=tmp_path / "depth", date_str=today.strftime("%Y%m%d"))
 
     # ── 3. Run harness on all three depth-consuming strategies ──
     book_result = l2_backtest_harness.run_book_imbalance(
-        "MNQ", days=1,
-        entry_threshold=1.5, consecutive_snaps=3,
-        n_levels=3, atr_stop_mult=1.0, rr_target=2.0,
-        walk_forward=False, log_config_search_flag=False)
+        "MNQ",
+        days=1,
+        entry_threshold=1.5,
+        consecutive_snaps=3,
+        n_levels=3,
+        atr_stop_mult=1.0,
+        rr_target=2.0,
+        walk_forward=False,
+        log_config_search_flag=False,
+    )
     assert book_result.strategy == "book_imbalance"
     assert book_result.n_snapshots == 720  # 60min × 60/5
 
     micro_result = l2_backtest_harness.run_microprice_drift(
-        "MNQ", days=1,
-        drift_threshold_ticks=2.0, consecutive_snaps=3,
-        walk_forward=False, log_config_search_flag=False)
+        "MNQ", days=1, drift_threshold_ticks=2.0, consecutive_snaps=3, walk_forward=False, log_config_search_flag=False
+    )
     assert micro_result.strategy == "microprice_drift"
 
     # aggressor_flow needs L1 bars; with no bars it produces 0 trades
-    agg_result = l2_backtest_harness.run_aggressor_flow(
-        "MNQ", days=1, log_config_search_flag=False)
+    agg_result = l2_backtest_harness.run_aggressor_flow("MNQ", days=1, log_config_search_flag=False)
     assert agg_result.strategy == "aggressor_flow"
 
     # ── 4. Sweep harness ──
     sweep_summary = sweep.run_sweep(
-        "MNQ", days=1,
-        entry_thresholds=[1.5, 2.0],
-        consecutive_snaps=[2, 3],
-        atr_stop_mults=[1.0],
-        rr_targets=[2.0])
+        "MNQ", days=1, entry_thresholds=[1.5, 2.0], consecutive_snaps=[2, 3], atr_stop_mults=[1.0], rr_targets=[2.0]
+    )
     assert sweep_summary.n_configs_tried == 4
 
     # ── 5. Simulate paper-soak: emit signals + fills with 60% win rate ──
@@ -173,14 +172,11 @@ def test_e2e_runbook_files_exist_and_have_required_sections() -> None:
     memo_text = memo.read_text(encoding="utf-8")
     postmortem_text = postmortem.read_text(encoding="utf-8")
     # Runbook must have stages 0-6
-    for stage in ("Stage 0", "Stage 1", "Stage 2", "Stage 3",
-                   "Stage 4", "Stage 5", "Stage 6"):
+    for stage in ("Stage 0", "Stage 1", "Stage 2", "Stage 3", "Stage 4", "Stage 5", "Stage 6"):
         assert stage in runbook_text, f"runbook missing {stage}"
     # Memo must have Quant spec + Red Team dissent + PM decision
-    for section in ("Quant spec", "Red Team dissent", "PM decision",
-                     "Falsification criteria"):
+    for section in ("Quant spec", "Red Team dissent", "PM decision", "Falsification criteria"):
         assert section in memo_text, f"memo missing {section}"
     # Post-mortem must reference falsification + autopsies
-    for section in ("Final metrics", "Red Team dissent retrospective",
-                     "Single-trade autopsies", "Lessons captured"):
+    for section in ("Final metrics", "Red Team dissent retrospective", "Single-trade autopsies", "Lessons captured"):
         assert section in postmortem_text, f"post-mortem missing {section}"

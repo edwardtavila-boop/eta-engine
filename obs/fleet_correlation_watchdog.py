@@ -106,8 +106,10 @@ def assess_pair(
     trades_a = trades_from_journal(journal, strategy_id=sid_a, last_n=last_n)
     trades_b = trades_from_journal(journal, strategy_id=sid_b, last_n=last_n)
     return assess_fleet_correlation(
-        bot_a=bot_a, recent_a=trades_a,
-        bot_b=bot_b, recent_b=trades_b,
+        bot_a=bot_a,
+        recent_a=trades_a,
+        bot_b=bot_b,
+        recent_b=trades_b,
         min_paired=min_paired,
         amber_rho=amber_rho,
         red_rho=red_rho,
@@ -133,16 +135,16 @@ def run_once(
     for bot_a, bot_b in _partner_pairs():
         assessment = assess_pair(
             journal=journal,
-            bot_a=bot_a, bot_b=bot_b,
-            last_n=last_n, min_paired=min_paired,
-            amber_rho=amber_rho, red_rho=red_rho,
+            bot_a=bot_a,
+            bot_b=bot_b,
+            last_n=last_n,
+            min_paired=min_paired,
+            amber_rho=amber_rho,
+            red_rho=red_rho,
         )
         out.append(assessment)
         if write_event:
-            outcome = (
-                Outcome.NOTED if assessment.severity == "green"
-                else Outcome.BLOCKED
-            )
+            outcome = Outcome.NOTED if assessment.severity == "green" else Outcome.BLOCKED
             rationale = "; ".join(assessment.reasons) or "no correlation flag"
             journal.append(
                 JournalEvent(

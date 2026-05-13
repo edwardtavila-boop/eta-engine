@@ -129,7 +129,8 @@ def extract_gate_flags(extras: dict[str, Any] | None) -> dict[str, Any]:
 
 
 def extract_daily_loss_limit_pct(
-    extras: dict[str, Any] | None, default: float = 2.5,
+    extras: dict[str, Any] | None,
+    default: float = 2.5,
 ) -> float:
     """Pull ``daily_loss_limit_pct`` from registry extras with a safe default.
 
@@ -202,8 +203,12 @@ def build_session_gate(
 
     log.debug(
         "session_gate built: symbol=%s is_crypto=%s tz=%s rth=%s-%s eod=%s",
-        symbol, is_crypto, cfg.timezone_name,
-        cfg.rth_start_local, cfg.rth_end_local, cfg.eod_cutoff_local,
+        symbol,
+        is_crypto,
+        cfg.timezone_name,
+        cfg.rth_start_local,
+        cfg.rth_end_local,
+        cfg.eod_cutoff_local,
     )
     return SessionGate(config=cfg, calendar=calendar)
 
@@ -273,7 +278,8 @@ def update_daily_loss_anchor(
     if state.halted_until_session_date and state.halted_until_session_date != new_date:
         log.info(
             "daily_loss halt cleared at session rollover: prior=%s new=%s",
-            state.halted_until_session_date, new_date,
+            state.halted_until_session_date,
+            new_date,
         )
         state.halted_until_session_date = ""
     state.last_daily_loss_pct = 0.0
@@ -318,7 +324,9 @@ def enforce_daily_loss_cap(
         if not state.halted_until_session_date:
             log.warning(
                 "daily_loss_cap breached: loss=%.3f%% limit=%.3f%% (session=%s)",
-                loss_pct, daily_loss_limit_pct, state.daily_session_date,
+                loss_pct,
+                daily_loss_limit_pct,
+                state.daily_session_date,
             )
         state.halted_until_session_date = state.daily_session_date
         return True, loss_pct

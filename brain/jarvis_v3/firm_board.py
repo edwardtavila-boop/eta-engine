@@ -44,6 +44,7 @@ Use case (advisory mode at first, gating mode later):
         # Roles disagree sharply -- defer or shrink size
         ...
 """
+
 from __future__ import annotations
 
 import logging
@@ -78,12 +79,12 @@ class Proposal:
     """Structured input to the firm board."""
 
     signal_id: str
-    direction: str               # "long" or "short"
+    direction: str  # "long" or "short"
     regime: str
     session: str
     stress: float
-    sentiment: float = 0.0       # in [-1, +1]
-    sage_score: float = 0.0      # in [-1, +1]
+    sentiment: float = 0.0  # in [-1, +1]
+    sage_score: float = 0.0  # in [-1, +1]
     slippage_bps_estimate: float = 0.0
     extra: dict = field(default_factory=dict)
 
@@ -93,8 +94,8 @@ class Argument:
     """One role's contribution: stance + score + reasoning."""
 
     role: Role
-    stance: str                  # "support", "neutral", "oppose"
-    score: float                 # in [-1, +1]
+    stance: str  # "support", "neutral", "oppose"
+    score: float  # in [-1, +1]
     reasoning: str
     concerns: list[str] = field(default_factory=list)
 
@@ -104,7 +105,7 @@ class BoardVerdict:
     ts: str
     proposal_id: str
     arguments: list[Argument]
-    consensus: float             # in [0, 1]; 1.0 = full agreement
+    consensus: float  # in [0, 1]; 1.0 = full agreement
     final_action: FinalAction
     reasoning: str
 
@@ -136,17 +137,23 @@ def _researcher(p: Proposal) -> Argument:
     aligned = p.sentiment * (1.0 if p.direction == "long" else -1.0)
     if aligned > 0.3:
         return Argument(
-            role=Role.RESEARCHER, stance="support", score=aligned,
+            role=Role.RESEARCHER,
+            stance="support",
+            score=aligned,
             reasoning=f"Sentiment {p.sentiment:+.2f} aligns with {p.direction} bias",
         )
     if aligned < -0.3:
         return Argument(
-            role=Role.RESEARCHER, stance="oppose", score=aligned,
+            role=Role.RESEARCHER,
+            stance="oppose",
+            score=aligned,
             reasoning=f"Sentiment {p.sentiment:+.2f} contradicts {p.direction} bias",
             concerns=[f"sentiment misaligned ({aligned:+.2f})"],
         )
     return Argument(
-        role=Role.RESEARCHER, stance="neutral", score=aligned,
+        role=Role.RESEARCHER,
+        stance="neutral",
+        score=aligned,
         reasoning=f"Sentiment near zero ({p.sentiment:+.2f}); inconclusive",
     )
 
@@ -172,26 +179,33 @@ def _strategist(p: Proposal) -> Argument:
                 detail += f", n={sage_consulted}"
             detail += ")"
         return Argument(
-            role=Role.STRATEGIST, stance="support", score=p.sage_score,
+            role=Role.STRATEGIST,
+            stance="support",
+            score=p.sage_score,
             reasoning=f"{detail} (theory aligned)",
         )
     if p.sage_score <= 0.15 and sage_align is not None and sage_align <= 0.35:
         return Argument(
-            role=Role.STRATEGIST, stance="oppose", score=p.sage_score,
+            role=Role.STRATEGIST,
+            stance="oppose",
+            score=p.sage_score,
             reasoning=(
-                f"Sage strongly disagrees (score={p.sage_score:+.2f}, "
-                f"align={sage_align:.2f}, bias={sage_bias})"
+                f"Sage strongly disagrees (score={p.sage_score:+.2f}, align={sage_align:.2f}, bias={sage_bias})"
             ),
             concerns=["multi-school theory frameworks disagree with this entry"],
         )
     if p.sage_score < 0.0:
         return Argument(
-            role=Role.STRATEGIST, stance="oppose", score=p.sage_score,
+            role=Role.STRATEGIST,
+            stance="oppose",
+            score=p.sage_score,
             reasoning=f"Sage signals divergence ({p.sage_score:+.2f})",
             concerns=["theory frameworks disagree with this entry"],
         )
     return Argument(
-        role=Role.STRATEGIST, stance="neutral", score=p.sage_score,
+        role=Role.STRATEGIST,
+        stance="neutral",
+        score=p.sage_score,
         reasoning=f"Sage score {p.sage_score:+.2f}; weak theory support",
     )
 
@@ -211,18 +225,24 @@ def _risk_committee(p: Proposal) -> Argument:
         score -= 0.2
     if score < -0.4:
         return Argument(
-            role=Role.RISK_COMMITTEE, stance="oppose", score=score,
+            role=Role.RISK_COMMITTEE,
+            stance="oppose",
+            score=score,
             reasoning="Risk committee opposes: " + "; ".join(concerns),
             concerns=concerns,
         )
     if score < -0.1:
         return Argument(
-            role=Role.RISK_COMMITTEE, stance="neutral", score=score,
+            role=Role.RISK_COMMITTEE,
+            stance="neutral",
+            score=score,
             reasoning="Risk committee cautious: " + "; ".join(concerns),
             concerns=concerns,
         )
     return Argument(
-        role=Role.RISK_COMMITTEE, stance="support", score=0.1,
+        role=Role.RISK_COMMITTEE,
+        stance="support",
+        score=0.1,
         reasoning="No risk concerns at proposed size",
     )
 
@@ -231,19 +251,23 @@ def _executor(p: Proposal) -> Argument:
     """Microstructure focus: slippage + session quality."""
     if p.slippage_bps_estimate > 12:
         return Argument(
-            role=Role.EXECUTOR, stance="oppose",
+            role=Role.EXECUTOR,
+            stance="oppose",
             score=-0.4,
-            reasoning=f"Estimated slippage {p.slippage_bps_estimate:.1f} bps "
-                      "is too high; consider TWAP",
+            reasoning=f"Estimated slippage {p.slippage_bps_estimate:.1f} bps is too high; consider TWAP",
             concerns=["slippage > 12 bps"],
         )
     if p.slippage_bps_estimate < 3 and p.session.lower() == "rth":
         return Argument(
-            role=Role.EXECUTOR, stance="support", score=0.3,
+            role=Role.EXECUTOR,
+            stance="support",
+            score=0.3,
             reasoning="Liquid session, low estimated slippage",
         )
     return Argument(
-        role=Role.EXECUTOR, stance="neutral", score=0.0,
+        role=Role.EXECUTOR,
+        stance="neutral",
+        score=0.0,
         reasoning="Acceptable execution conditions",
     )
 
@@ -253,37 +277,47 @@ def _auditor(p: Proposal, memory: HierarchicalMemory | None) -> Argument:
     and reports their average R."""
     if memory is None:
         return Argument(
-            role=Role.AUDITOR, stance="neutral", score=0.0,
+            role=Role.AUDITOR,
+            stance="neutral",
+            score=0.0,
             reasoning="No memory available for analog lookup",
         )
     similar = memory.recall_similar(
-        regime=p.regime, session=p.session, stress=p.stress,
-        direction=p.direction, k=10,
+        regime=p.regime,
+        session=p.session,
+        stress=p.stress,
+        direction=p.direction,
+        k=10,
     )
     if not similar:
         return Argument(
-            role=Role.AUDITOR, stance="neutral", score=0.0,
+            role=Role.AUDITOR,
+            stance="neutral",
+            score=0.0,
             reasoning="No analogous historical episodes found",
         )
     avg_r = sum(e.realized_r for e in similar) / len(similar)
     win_rate = sum(1 for e in similar if e.realized_r > 0) / len(similar)
     if avg_r > 0.5:
         return Argument(
-            role=Role.AUDITOR, stance="support", score=min(1.0, avg_r / 2.0),
-            reasoning=f"{len(similar)} analogs avg {avg_r:+.2f}R, "
-                      f"wr={win_rate:.0%}",
+            role=Role.AUDITOR,
+            stance="support",
+            score=min(1.0, avg_r / 2.0),
+            reasoning=f"{len(similar)} analogs avg {avg_r:+.2f}R, wr={win_rate:.0%}",
         )
     if avg_r < -0.3:
         return Argument(
-            role=Role.AUDITOR, stance="oppose", score=max(-1.0, avg_r / 2.0),
-            reasoning=f"{len(similar)} analogs avg {avg_r:+.2f}R, "
-                      f"wr={win_rate:.0%}",
+            role=Role.AUDITOR,
+            stance="oppose",
+            score=max(-1.0, avg_r / 2.0),
+            reasoning=f"{len(similar)} analogs avg {avg_r:+.2f}R, wr={win_rate:.0%}",
             concerns=[f"historical analogs underperformed (avg {avg_r:+.2f}R)"],
         )
     return Argument(
-        role=Role.AUDITOR, stance="neutral", score=avg_r / 2.0,
-        reasoning=f"{len(similar)} analogs avg {avg_r:+.2f}R, "
-                  f"wr={win_rate:.0%} (mixed)",
+        role=Role.AUDITOR,
+        stance="neutral",
+        score=avg_r / 2.0,
+        reasoning=f"{len(similar)} analogs avg {avg_r:+.2f}R, wr={win_rate:.0%} (mixed)",
     )
 
 
@@ -307,9 +341,7 @@ def _final_action(arguments: list[Argument]) -> tuple[FinalAction, str]:
 
     # Risk committee veto
     if risk_arg and risk_arg.stance == "oppose":
-        return FinalAction.DENY, (
-            f"Risk committee veto: {risk_arg.reasoning}"
-        )
+        return FinalAction.DENY, (f"Risk committee veto: {risk_arg.reasoning}")
 
     # Score-based scaling
     if avg_score > 0.4:

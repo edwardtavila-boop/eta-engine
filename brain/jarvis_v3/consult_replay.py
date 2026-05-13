@@ -32,6 +32,7 @@ Public interface
 NEVER raises. All failure paths return a ReplayResult with the
 ``error`` field set.
 """
+
 from __future__ import annotations
 
 import logging
@@ -46,13 +47,13 @@ EXPECTED_HOOKS = ("replay", "counterfactual")
 @dataclass(frozen=True)
 class ReplayResult:
     consult_id: str
-    base_verdict: str             # what the surrogate cascade reproduces from the trace
+    base_verdict: str  # what the surrogate cascade reproduces from the trace
     base_final_score: float
-    replay_verdict: str           # what the surrogate cascade outputs with overrides
+    replay_verdict: str  # what the surrogate cascade outputs with overrides
     replay_final_score: float
-    matched_base: bool            # True iff no overrides AND verdict reproduces
+    matched_base: bool  # True iff no overrides AND verdict reproduces
     overrides_applied: dict[str, Any]
-    diff: dict[str, Any]          # field-by-field delta
+    diff: dict[str, Any]  # field-by-field delta
     error: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
@@ -76,6 +77,7 @@ def _empty_result(consult_id: str, error: str) -> ReplayResult:
 def _find_record(consult_id: str, lookback: int = 5000) -> dict[str, Any] | None:
     try:
         from eta_engine.brain.jarvis_v3 import trace_emitter
+
         records = trace_emitter.tail(n=lookback) or []
         for rec in records:
             if isinstance(rec, dict) and rec.get("consult_id") == consult_id:
@@ -133,7 +135,9 @@ def _surrogate_consolidate(
 
 
 def _apply_size_override(
-    verdict: str, final_score: float, overrides: dict[str, Any] | None,
+    verdict: str,
+    final_score: float,
+    overrides: dict[str, Any] | None,
 ) -> tuple[str, float]:
     """size_modifier override of 0 blocks the verdict; other values pass through."""
     if not isinstance(overrides, dict):
@@ -172,6 +176,7 @@ def replay(
 
     try:
         from eta_engine.brain.jarvis_v3 import trace_emitter
+
         if not trace_emitter.is_v2_record(rec):
             return _empty_result(consult_id, "pre_v2_record_no_replay_data")
         replay_inputs = trace_emitter.extract_replay_inputs(rec)
@@ -187,31 +192,28 @@ def replay(
 
     base_scores = _extract_scores(base_school_inputs)
     base_final_raw, base_verdict_raw = _surrogate_consolidate(
-        base_scores, base_hot_weights,
+        base_scores,
+        base_hot_weights,
     )
     base_verdict, base_final = _apply_size_override(
-        base_verdict_raw, base_final_raw, base_overrides,
+        base_verdict_raw,
+        base_final_raw,
+        base_overrides,
     )
 
-    replay_school_inputs = (
-        override_school_inputs if override_school_inputs is not None
-        else base_school_inputs
-    )
-    replay_hot_weights = (
-        override_hot_weights if override_hot_weights is not None
-        else base_hot_weights
-    )
-    replay_overrides = (
-        override_overrides if override_overrides is not None
-        else base_overrides
-    )
+    replay_school_inputs = override_school_inputs if override_school_inputs is not None else base_school_inputs
+    replay_hot_weights = override_hot_weights if override_hot_weights is not None else base_hot_weights
+    replay_overrides = override_overrides if override_overrides is not None else base_overrides
 
     replay_scores = _extract_scores(replay_school_inputs)
     replay_final_raw, replay_verdict_raw = _surrogate_consolidate(
-        replay_scores, replay_hot_weights,
+        replay_scores,
+        replay_hot_weights,
     )
     replay_verdict, replay_final = _apply_size_override(
-        replay_verdict_raw, replay_final_raw, replay_overrides,
+        replay_verdict_raw,
+        replay_final_raw,
+        replay_overrides,
     )
 
     overrides_applied = {
@@ -220,9 +222,7 @@ def replay(
         "overrides_changed": override_overrides is not None,
     }
     matched_base = (
-        not any(overrides_applied.values())
-        and base_verdict == replay_verdict
-        and abs(base_final - replay_final) < 1e-6
+        not any(overrides_applied.values()) and base_verdict == replay_verdict and abs(base_final - replay_final) < 1e-6
     )
     diff = {
         "verdict": [base_verdict, replay_verdict],
@@ -273,6 +273,7 @@ def counterfactual(
         if rec is not None:
             try:
                 from eta_engine.brain.jarvis_v3 import trace_emitter
+
                 ri = trace_emitter.extract_replay_inputs(rec)
                 if ri is not None:
                     hot_weights_arg = dict(ri.get("hot_weights_snapshot") or {})

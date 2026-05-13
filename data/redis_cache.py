@@ -74,7 +74,7 @@ def _default_url() -> str:
 @dataclass(frozen=True)
 class _Entry:
     expires_at: float
-    payload:    Any  # noqa: ANN401 -- cache values are caller-defined
+    payload: Any  # noqa: ANN401 -- cache values are caller-defined
 
 
 class InProcessLRUCache:
@@ -141,6 +141,7 @@ class RedisJsonlCache:
         self._redis_available = False
         try:
             import redis  # type: ignore[import-not-found]
+
             r = redis.Redis.from_url(self._url, socket_timeout=0.5)
             if r.ping():
                 self._redis = r

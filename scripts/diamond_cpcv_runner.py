@@ -44,6 +44,7 @@ Run
 
     python -m eta_engine.scripts.diamond_cpcv_runner
 """
+
 from __future__ import annotations
 
 # ruff: noqa: PLR2004
@@ -136,8 +137,7 @@ def _assess_bot(bot_id: str) -> DiamondCPCVReport:
     if rep.n_trades < MIN_SAMPLES_FOR_CPCV:
         rep.verdict = "NOT_CPCV_READY"
         rep.justification = (
-            f"n={rep.n_trades} < {MIN_SAMPLES_FOR_CPCV} (need more "
-            "trade history before CPCV is meaningful)"
+            f"n={rep.n_trades} < {MIN_SAMPLES_FOR_CPCV} (need more trade history before CPCV is meaningful)"
         )
         return rep
     # Sample-level sharpe for context
@@ -161,8 +161,7 @@ def _assess_bot(bot_id: str) -> DiamondCPCVReport:
     if cpcv_report.n_splits == 0:
         rep.verdict = "NOT_CPCV_READY"
         rep.justification = (
-            "CPCV returned 0 splits — sample too small for "
-            f"{DEFAULT_N_FOLDS} folds × {DEFAULT_K_TEST} test"
+            f"CPCV returned 0 splits — sample too small for {DEFAULT_N_FOLDS} folds × {DEFAULT_K_TEST} test"
         )
         return rep
 
@@ -181,7 +180,7 @@ def _assess_bot(bot_id: str) -> DiamondCPCVReport:
         rep.verdict = "ROBUST"
         rep.justification = (
             f"CPCV {rep.n_splits} splits: mean test sharpe = "
-            f"{mean:+.3f} (stddev {std:.3f}); ~{rep.share_of_splits_positive*100:.0f}% "
+            f"{mean:+.3f} (stddev {std:.3f}); ~{rep.share_of_splits_positive * 100:.0f}% "
             "of splits positive → edge generalizes out-of-sample"
         )
     elif mean > 0:
@@ -189,14 +188,13 @@ def _assess_bot(bot_id: str) -> DiamondCPCVReport:
         rep.justification = (
             f"CPCV {rep.n_splits} splits: mean test sharpe = "
             f"{mean:+.3f} but high stddev {std:.3f} "
-            f"(~{rep.share_of_splits_positive*100:.0f}% splits positive) → "
+            f"(~{rep.share_of_splits_positive * 100:.0f}% splits positive) → "
             "edge sensitive to fold choice"
         )
     else:
         rep.verdict = "FRAGILE"
         rep.justification = (
-            f"CPCV {rep.n_splits} splits: mean test sharpe = "
-            f"{mean:+.3f} <= 0 — edge does NOT generalize out-of-sample"
+            f"CPCV {rep.n_splits} splits: mean test sharpe = {mean:+.3f} <= 0 — edge does NOT generalize out-of-sample"
         )
     return rep
 
@@ -211,7 +209,7 @@ def _phi(x: float) -> float:
     a5 = 1.061405429
     p = 0.3275911
     sign = 1.0 if x >= 0 else -1.0
-    x = abs(x) / (2.0 ** 0.5)
+    x = abs(x) / (2.0**0.5)
     t = 1.0 / (1.0 + p * x)
     y = 1.0 - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * (
         (-x * x).__class__.__call__ if False else float(__import__("math").exp(-x * x))
@@ -234,8 +232,7 @@ def run() -> dict:
     }
     try:
         OUT_LATEST.parent.mkdir(parents=True, exist_ok=True)
-        OUT_LATEST.write_text(
-            json.dumps(summary, indent=2, default=str), encoding="utf-8")
+        OUT_LATEST.write_text(json.dumps(summary, indent=2, default=str), encoding="utf-8")
     except OSError as exc:
         print(f"WARN: write_latest failed: {exc}", file=sys.stderr)
     return summary
@@ -244,12 +241,10 @@ def run() -> dict:
 def _print(summary: dict) -> None:
     print("=" * 110)
     print(
-        f" DIAMOND CPCV — {summary['ts']}  "
-        f"(n_folds={summary['n_folds']}, k_test={summary['k_test']})",
+        f" DIAMOND CPCV — {summary['ts']}  (n_folds={summary['n_folds']}, k_test={summary['k_test']})",
     )
     print("=" * 110)
-    print(" Verdict roll-up: " + ", ".join(
-        f"{k}={v}" for k, v in summary["verdict_counts"].items()))
+    print(" Verdict roll-up: " + ", ".join(f"{k}={v}" for k, v in summary["verdict_counts"].items()))
     print()
     print(
         f" {'bot':28s} {'verdict':16s} {'n':>5s} {'mean':>7s} {'std':>7s} "
@@ -267,7 +262,7 @@ def _print(summary: dict) -> None:
         s_s = f"{s:.3f}" if s is not None else "n/a"
         lo_s = f"{lo:+.2f}" if lo is not None else "n/a"
         hi_s = f"{hi:+.2f}" if hi is not None else "n/a"
-        sp_s = f"{sp*100:.0f}%" if sp is not None else "n/a"
+        sp_s = f"{sp * 100:.0f}%" if sp is not None else "n/a"
         print(
             f" {r['bot_id']:28s} {r['verdict']:16s} {n:>5d} {m_s:>7s} "
             f"{s_s:>7s} {lo_s:>7s} {hi_s:>7s} {sp_s:>5s}  {r['justification'][:60]}",

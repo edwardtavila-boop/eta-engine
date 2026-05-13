@@ -45,8 +45,13 @@ def _bar(
     o = open_ if open_ is not None else (high + low) / 2
     c = close if close is not None else (high + low) / 2
     return BarData(
-        timestamp=utc_dt, symbol="MET", open=o, high=high, low=low,
-        close=c, volume=volume,
+        timestamp=utc_dt,
+        symbol="MET",
+        open=o,
+        high=high,
+        low=low,
+        close=c,
+        volume=volume,
     )
 
 
@@ -54,8 +59,10 @@ def _config() -> BacktestConfig:
     return BacktestConfig(
         start_date=datetime(2026, 1, 1, tzinfo=UTC),
         end_date=datetime(2026, 12, 31, tzinfo=UTC),
-        symbol="MET", initial_equity=10_000.0,
-        risk_per_trade_pct=0.005, confluence_threshold=0.0,
+        symbol="MET",
+        initial_equity=10_000.0,
+        risk_per_trade_pct=0.005,
+        confluence_threshold=0.0,
         max_trades_per_day=10,
     )
 
@@ -123,10 +130,7 @@ def test_no_breakout_inside_range() -> None:
     # Build range with 1 bar at 08:30-08:35: high=2500, low=2480
     s.maybe_enter(_bar(8, 30, high=2_500.0, low=2_480.0), [], 10_000.0, cfg)
     # ATR history
-    hist = [
-        _bar(7, m, high=2_500.0, low=2_480.0)
-        for m in range(0, 25, 5)
-    ]
+    hist = [_bar(7, m, high=2_500.0, low=2_480.0) for m in range(0, 25, 5)]
     # Bar fully inside range
     bar = _bar(8, 35, high=2_495.0, low=2_485.0, close=2_490.0)
     assert s.maybe_enter(bar, hist, 10_000.0, cfg) is None
@@ -143,10 +147,7 @@ def test_long_breakout_fires_buy() -> None:
     cfg = _config()
     # Build range
     s.maybe_enter(_bar(8, 30, high=2_500.0, low=2_480.0), [], 10_000.0, cfg)
-    hist = [
-        _bar(7, m, high=2_500.0, low=2_480.0)
-        for m in range(0, 25, 5)
-    ]
+    hist = [_bar(7, m, high=2_500.0, low=2_480.0) for m in range(0, 25, 5)]
     # Breakout bar at 08:35: high=2510 > 2500
     bar = _bar(8, 35, high=2_510.0, low=2_500.0, close=2_508.0)
     out = s.maybe_enter(bar, hist, 10_000.0, cfg)
@@ -165,10 +166,7 @@ def test_short_breakout_fires_sell() -> None:
     s = _strategy(range_minutes=5)
     cfg = _config()
     s.maybe_enter(_bar(8, 30, high=2_500.0, low=2_480.0), [], 10_000.0, cfg)
-    hist = [
-        _bar(7, m, high=2_500.0, low=2_480.0)
-        for m in range(0, 25, 5)
-    ]
+    hist = [_bar(7, m, high=2_500.0, low=2_480.0) for m in range(0, 25, 5)]
     bar = _bar(8, 35, high=2_482.0, low=2_470.0, close=2_472.0)
     out = s.maybe_enter(bar, hist, 10_000.0, cfg)
     assert out is not None
@@ -182,17 +180,18 @@ def test_only_one_trade_per_day() -> None:
     s = _strategy(range_minutes=5, max_trades_per_day=1)
     cfg = _config()
     s.maybe_enter(_bar(8, 30, high=2_500.0, low=2_480.0), [], 10_000.0, cfg)
-    hist = [
-        _bar(7, m, high=2_500.0, low=2_480.0)
-        for m in range(0, 25, 5)
-    ]
+    hist = [_bar(7, m, high=2_500.0, low=2_480.0) for m in range(0, 25, 5)]
     out1 = s.maybe_enter(
         _bar(8, 35, high=2_510.0, low=2_500.0, close=2_508.0),
-        hist, 10_000.0, cfg,
+        hist,
+        10_000.0,
+        cfg,
     )
     out2 = s.maybe_enter(
         _bar(8, 40, high=2_515.0, low=2_508.0, close=2_512.0),
-        hist, 10_000.0, cfg,
+        hist,
+        10_000.0,
+        cfg,
     )
     assert out1 is not None
     assert out2 is None
@@ -203,10 +202,7 @@ def test_no_entry_after_max_entry_local() -> None:
     s = _strategy(range_minutes=5, max_entry_local=time(11, 0))
     cfg = _config()
     s.maybe_enter(_bar(8, 30, high=2_500.0, low=2_480.0), [], 10_000.0, cfg)
-    hist = [
-        _bar(7, m, high=2_500.0, low=2_480.0)
-        for m in range(0, 25, 5)
-    ]
+    hist = [_bar(7, m, high=2_500.0, low=2_480.0) for m in range(0, 25, 5)]
     # 11:00 CT — exactly the cutoff, blocked
     bar = _bar(11, 0, high=2_510.0, low=2_500.0, close=2_508.0)
     assert s.maybe_enter(bar, hist, 10_000.0, cfg) is None
@@ -218,20 +214,25 @@ def test_state_resets_next_day() -> None:
     cfg = _config()
     # Day 15 — fire trade
     s.maybe_enter(
-        _bar(8, 30, high=2_500.0, low=2_480.0, day=15), [], 10_000.0, cfg,
+        _bar(8, 30, high=2_500.0, low=2_480.0, day=15),
+        [],
+        10_000.0,
+        cfg,
     )
-    hist = [
-        _bar(7, m, high=2_500.0, low=2_480.0, day=15)
-        for m in range(0, 25, 5)
-    ]
+    hist = [_bar(7, m, high=2_500.0, low=2_480.0, day=15) for m in range(0, 25, 5)]
     out = s.maybe_enter(
         _bar(8, 35, high=2_510.0, low=2_500.0, close=2_508.0, day=15),
-        hist, 10_000.0, cfg,
+        hist,
+        10_000.0,
+        cfg,
     )
     assert out is not None
     # Day 16 — fresh range; range bar yields no signal
     out_next = s.maybe_enter(
-        _bar(8, 30, high=2_550.0, low=2_530.0, day=16), hist, 10_000.0, cfg,
+        _bar(8, 30, high=2_550.0, low=2_530.0, day=16),
+        hist,
+        10_000.0,
+        cfg,
     )
     assert out_next is None
 
@@ -242,10 +243,7 @@ def test_min_range_blocks_narrow_open() -> None:
     cfg = _config()
     # Range width = 5
     s.maybe_enter(_bar(8, 30, high=2_485.0, low=2_480.0), [], 10_000.0, cfg)
-    hist = [
-        _bar(7, m, high=2_485.0, low=2_480.0)
-        for m in range(0, 25, 5)
-    ]
+    hist = [_bar(7, m, high=2_485.0, low=2_480.0) for m in range(0, 25, 5)]
     bar = _bar(8, 35, high=2_490.0, low=2_485.0, close=2_488.0)
     assert s.maybe_enter(bar, hist, 10_000.0, cfg) is None
 
@@ -256,10 +254,7 @@ def test_position_size_scales_with_equity() -> None:
     cfg = _config()
     s.maybe_enter(_bar(8, 30, high=2_500.0, low=2_480.0), [], 10_000.0, cfg)
     # ATR ≈ 20
-    hist = [
-        _bar(7, m, high=2_500.0, low=2_480.0)
-        for m in range(0, 25, 5)
-    ]
+    hist = [_bar(7, m, high=2_500.0, low=2_480.0) for m in range(0, 25, 5)]
     bar = _bar(8, 35, high=2_510.0, low=2_500.0, close=2_508.0)
     out = s.maybe_enter(bar, hist, 10_000.0, cfg)
     assert out is not None
@@ -270,4 +265,3 @@ def test_position_size_scales_with_equity() -> None:
     # _MAX_QTY_PER_ORDER["MET"]=3 cap — the strategy emits 25 here and the
     # supervisor enforces the position cap before the order goes to IBKR).
     assert out.qty == pytest.approx(25.0, rel=0.01)
-

@@ -48,7 +48,8 @@ def _udp_listener(path: Path) -> tuple[socket.socket, list[bytes]]:
 
 @_requires_unix_sockets
 def test_sd_notify_writes_to_socket(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     sock_path = tmp_path / "notify.sock"
     s, _ = _udp_listener(sock_path)
@@ -160,7 +161,8 @@ async def test_pinger_no_op_when_no_interval(monkeypatch: pytest.MonkeyPatch) ->
 @_requires_unix_sockets
 @pytest.mark.asyncio
 async def test_pinger_sends_immediate_then_periodic(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     sock_path = tmp_path / "n.sock"
     s, _ = _udp_listener(sock_path)

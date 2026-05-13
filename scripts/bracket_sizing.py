@@ -24,6 +24,7 @@ Env knobs for live capital management:
   ETA_BRACKET_FALLBACK_STOP_PCT        default 0.015  (used if no ATR)
   ETA_BRACKET_FALLBACK_TARGET_PCT      default 0.020
 """
+
 from __future__ import annotations
 
 import logging
@@ -38,17 +39,37 @@ logger = logging.getLogger(__name__)
 
 _CRYPTO_ROOTS = {"BTC", "ETH", "SOL", "AVAX", "LINK", "DOGE", "MBT", "MET"}
 _FUTURES_ROOTS = {
-    "MNQ", "NQ", "ES", "MES", "NG", "CL", "GC", "ZN", "ZB",
-    "6E", "M6E", "MGC", "MCL", "RTY", "M2K",
+    "MNQ",
+    "NQ",
+    "ES",
+    "MES",
+    "NG",
+    "CL",
+    "GC",
+    "ZN",
+    "ZB",
+    "6E",
+    "M6E",
+    "MGC",
+    "MCL",
+    "RTY",
+    "M2K",
     # Equity-index Dow (added 2026-05-07): YM and MYM were missing from
     # the set, which silently fell through to the "other" asset class
     # at $100 default budget instead of $500/$10000 futures budget.
     # YM bots were thus capped at $100 cap which kills every entry.
-    "YM", "MYM",
+    "YM",
+    "MYM",
     # Rates micros (added 2026-05-07 as part of futures-roots audit):
-    "ZF", "ZT",
+    "ZF",
+    "ZT",
     # Currency micros (M6E already there, M6B/M6A also exist):
-    "M6B", "M6A", "6B", "6A", "6J", "M6J",
+    "M6B",
+    "M6A",
+    "6B",
+    "6A",
+    "6J",
+    "M6J",
 }
 
 
@@ -124,11 +145,13 @@ def compute_bracket(
     """
     period = int(os.getenv("ETA_BRACKET_ATR_PERIOD", "14"))
     stop_mult = (
-        float(stop_mult_override) if stop_mult_override is not None
+        float(stop_mult_override)
+        if stop_mult_override is not None
         else float(os.getenv("ETA_BRACKET_ATR_STOP_MULT", "2.0"))
     )
     target_mult = (
-        float(target_mult_override) if target_mult_override is not None
+        float(target_mult_override)
+        if target_mult_override is not None
         else float(os.getenv("ETA_BRACKET_ATR_TARGET_MULT", "3.0"))
     )
     fallback_stop_pct = float(os.getenv("ETA_BRACKET_FALLBACK_STOP_PCT", "0.015"))
@@ -189,7 +212,7 @@ def _round_decimals_for(price: float) -> int:
         return 5  # FX, NG sometimes
     if price < 100:
         return 4  # HG, ZN sometimes
-    return 2      # crypto, equity-index, gold, etc.
+    return 2  # crypto, equity-index, gold, etc.
 
 
 # ─── Per-class capital budgets ──────────────────────────────────
@@ -216,6 +239,7 @@ def _budget_per_bot_usd(symbol: str, *, bot_id: str | None = None) -> float:
     if bot_id:
         try:
             from eta_engine.strategies.per_bot_registry import ASSIGNMENTS
+
             for a in ASSIGNMENTS:
                 if a.bot_id == bot_id:
                     override = (a.extras or {}).get("per_bot_budget_usd")
@@ -225,15 +249,15 @@ def _budget_per_bot_usd(symbol: str, *, bot_id: str | None = None) -> float:
                             if parsed > 0:
                                 return parsed
                             logger.warning(
-                                "bot %s has non-positive per_bot_budget_usd=%r; "
-                                "falling back to asset-class default",
-                                bot_id, override,
+                                "bot %s has non-positive per_bot_budget_usd=%r; falling back to asset-class default",
+                                bot_id,
+                                override,
                             )
                         except (TypeError, ValueError):
                             logger.warning(
-                                "bot %s has malformed per_bot_budget_usd=%r; "
-                                "falling back to asset-class default",
-                                bot_id, override,
+                                "bot %s has malformed per_bot_budget_usd=%r; falling back to asset-class default",
+                                bot_id,
+                                override,
                             )
                     break
         except Exception:  # noqa: BLE001 -- never let registry lookup fail sizing
@@ -322,6 +346,7 @@ def _point_value(symbol: str) -> float:
     """
     try:
         from eta_engine.feeds.instrument_specs import effective_point_value
+
         return effective_point_value(symbol, route="auto")
     except Exception:  # noqa: BLE001 -- conservative fallback
         return 1.0
@@ -413,11 +438,7 @@ def cap_qty_to_budget(
         # contract per request to keep the fleet trading. Live mode
         # auto-disables this via _paper_floor_enabled() so a fleet-cap
         # clamp can't accidentally over-trade on a live account.
-        if (
-            not _is_crypto(symbol)
-            and abs(requested_qty) >= 1.0
-            and _paper_floor_enabled()
-        ):
+        if not _is_crypto(symbol) and abs(requested_qty) >= 1.0 and _paper_floor_enabled():
             return 1.0, "paper_futures_floor"
         return 0.0, "fleet_exhausted"
 
@@ -449,12 +470,7 @@ def cap_qty_to_budget(
     # AND we are in paper mode. ``_paper_floor_enabled()`` short-circuits
     # to False on live money so the cap stays hard there -- no silent
     # 50x over-risk if a live deploy forgets to flip an env var.
-    if (
-        not _is_crypto(symbol)
-        and abs(requested_qty) >= 1.0
-        and capped_qty < 1.0
-        and _paper_floor_enabled()
-    ):
+    if not _is_crypto(symbol) and abs(requested_qty) >= 1.0 and capped_qty < 1.0 and _paper_floor_enabled():
         return 1.0, "paper_futures_floor"
 
     return capped_qty, reason

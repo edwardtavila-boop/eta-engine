@@ -74,9 +74,7 @@ def _manual_oco_step(check: dict[str, Any]) -> dict[str, Any]:
     venue = str(position.get("venue") or "ibkr").strip().lower()
     position_summary = _as_dict(evidence.get("position_summary"))
     unprotected_symbols = [
-        str(item).strip().upper()
-        for item in _as_list(position_summary.get("unprotected_symbols"))
-        if str(item).strip()
+        str(item).strip().upper() for item in _as_list(position_summary.get("unprotected_symbols")) if str(item).strip()
     ]
     if symbol and symbol not in unprotected_symbols:
         unprotected_symbols.insert(0, symbol)

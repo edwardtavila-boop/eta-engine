@@ -204,15 +204,25 @@ class WalkForwardEngine:
             is_cb = getattr(is_strategy, "on_trade_close", None) if is_strategy else None
             oos_cb = getattr(oos_strategy, "on_trade_close", None) if oos_strategy else None
             is_res = BacktestEngine(
-                pipeline, is_cfg, ctx_builder=ctx_builder, strategy_id=f"wf-{i}-IS",
-                scorer=scorer, block_regimes=block_regimes,
-                require_ctx_true=require_ctx_true, strategy=is_strategy,
+                pipeline,
+                is_cfg,
+                ctx_builder=ctx_builder,
+                strategy_id=f"wf-{i}-IS",
+                scorer=scorer,
+                block_regimes=block_regimes,
+                require_ctx_true=require_ctx_true,
+                strategy=is_strategy,
                 on_trade_close=is_cb,
             ).run(is_bars)
             oos_res = BacktestEngine(
-                pipeline, oos_cfg, ctx_builder=ctx_builder, strategy_id=f"wf-{i}-OOS",
-                scorer=scorer, block_regimes=block_regimes,
-                require_ctx_true=require_ctx_true, strategy=oos_strategy,
+                pipeline,
+                oos_cfg,
+                ctx_builder=ctx_builder,
+                strategy_id=f"wf-{i}-OOS",
+                scorer=scorer,
+                block_regimes=block_regimes,
+                require_ctx_true=require_ctx_true,
+                strategy=oos_strategy,
                 on_trade_close=oos_cb,
             ).run(oos_bars)
             oos_skew, oos_kurt = _fold_moments_from_trades(oos_res.trades)
@@ -363,10 +373,7 @@ class WalkForwardEngine:
             # one fold dominating). Folds with no losing trades have
             # PF set to a large sentinel (BacktestResult convention),
             # so we cap to 10.0 for the median.
-            pfs = [
-                min(float(w.get("oos_profit_factor", 0.0) or 0.0), 10.0)
-                for w in wins
-            ]
+            pfs = [min(float(w.get("oos_profit_factor", 0.0) or 0.0), 10.0) for w in wins]
             pfs.sort()
             agg_pf = pfs[len(pfs) // 2] if pfs else 0.0
             # Worst-fold drawdown across all OOS windows.
@@ -392,16 +399,8 @@ class WalkForwardEngine:
             # the per-fold DSR + per-window-avg-deg shape to work.
             n_pos_folds = sum(1 for w in wins if w.get("oos_sharpe", 0.0) > 0.0)
             pos_frac = n_pos_folds / n_folds if n_folds else 0.0
-            long_haul_legacy = (
-                dsr > 0.5
-                and agg_deg < 0.35
-                and all_met
-                and is_positive
-            )
-            gate = (
-                long_haul_legacy
-                and pos_frac >= cfg.long_haul_min_pos_fraction
-            )
+            long_haul_legacy = dsr > 0.5 and agg_deg < 0.35 and all_met and is_positive
+            gate = long_haul_legacy and pos_frac >= cfg.long_haul_min_pos_fraction
         elif cfg.strict_fold_dsr_gate:
             gate = legacy_gate and fold_median > 0.5 and fold_pass_frac >= cfg.fold_dsr_min_pass_fraction
         else:

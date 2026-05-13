@@ -7,6 +7,7 @@ Covers:
   * drift_alarm threshold logic (gap, sample-size gate, missing target)
   * fail-soft behavior on Alpaca errors (no exception escapes the helper)
 """
+
 from __future__ import annotations
 
 import importlib
@@ -30,6 +31,7 @@ def dash():
 # ---------------------------------------------------------------------------
 # 1. client_order_id → bot_id extraction
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.parametrize(
     ("coid", "expected"),
@@ -59,6 +61,7 @@ def test_extract_bot_id_handles_invalid_chars(dash):
 # ---------------------------------------------------------------------------
 # 2. paper_soak_result parsing
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.parametrize(
     ("text", "expected"),
@@ -95,6 +98,7 @@ def test_registry_backtest_wr_targets_returns_dict(dash):
 # 3. drift_alarm threshold logic
 # ---------------------------------------------------------------------------
 
+
 def _build_filled_order(coid: str, side: str, qty: float, price: float) -> dict:
     return {
         "client_order_id": coid,
@@ -111,11 +115,16 @@ def test_drift_alarm_triggers_when_gap_exceeds_threshold(dash):
     orders = []
     # 5 round-trip pairs for vwap_mr_btc — 1 win, 4 losses → live_wr=20%.
     pairs = [
-        ("buy", 1.0, 100.0), ("sell", 1.0, 50.0),   # loss
-        ("buy", 1.0, 100.0), ("sell", 1.0, 60.0),   # loss
-        ("buy", 1.0, 100.0), ("sell", 1.0, 70.0),   # loss
-        ("buy", 1.0, 100.0), ("sell", 1.0, 80.0),   # loss
-        ("buy", 1.0, 100.0), ("sell", 1.0, 150.0),  # win
+        ("buy", 1.0, 100.0),
+        ("sell", 1.0, 50.0),  # loss
+        ("buy", 1.0, 100.0),
+        ("sell", 1.0, 60.0),  # loss
+        ("buy", 1.0, 100.0),
+        ("sell", 1.0, 70.0),  # loss
+        ("buy", 1.0, 100.0),
+        ("sell", 1.0, 80.0),  # loss
+        ("buy", 1.0, 100.0),
+        ("sell", 1.0, 150.0),  # win
     ]
     for side, qty, price in pairs:
         orders.append(_build_filled_order("vwap_mr_btc_deadbeef", side, qty, price))
@@ -133,12 +142,17 @@ def test_drift_alarm_triggers_when_gap_exceeds_threshold(dash):
     fake_cfg.base_url = "https://example.test"
     fake_cfg.missing_requirements = MagicMock(return_value=[])
 
-    with patch(
-        "eta_engine.deploy.scripts.dashboard_api._registry_backtest_wr_targets",
-        return_value={"vwap_mr_btc": 0.857},
-    ), patch(
-        "eta_engine.venues.alpaca.AlpacaConfig.from_env", return_value=fake_cfg,
-    ), patch("httpx.Client", return_value=fake_client):
+    with (
+        patch(
+            "eta_engine.deploy.scripts.dashboard_api._registry_backtest_wr_targets",
+            return_value={"vwap_mr_btc": 0.857},
+        ),
+        patch(
+            "eta_engine.venues.alpaca.AlpacaConfig.from_env",
+            return_value=fake_cfg,
+        ),
+        patch("httpx.Client", return_value=fake_client),
+    ):
         snap = dash._alpaca_per_bot_pnl_snapshot(today_start_iso="2026-05-06T00:00:00Z")
 
     assert snap["ready"] is True
@@ -156,7 +170,8 @@ def test_drift_alarm_triggers_when_gap_exceeds_threshold(dash):
 def test_drift_alarm_suppressed_when_below_min_fills(dash):
     """Same gap but only 2 fills → drift_alarm stays false."""
     pairs = [
-        ("buy", 1.0, 100.0), ("sell", 1.0, 50.0),
+        ("buy", 1.0, 100.0),
+        ("sell", 1.0, 50.0),
     ]
     orders = [_build_filled_order("vwap_mr_btc_aabbccdd", s, q, p) for s, q, p in pairs]
     fake_resp = MagicMock(status_code=200, json=MagicMock(return_value=orders))
@@ -171,12 +186,17 @@ def test_drift_alarm_suppressed_when_below_min_fills(dash):
     fake_cfg.base_url = "https://example.test"
     fake_cfg.missing_requirements = MagicMock(return_value=[])
 
-    with patch(
-        "eta_engine.deploy.scripts.dashboard_api._registry_backtest_wr_targets",
-        return_value={"vwap_mr_btc": 0.857},
-    ), patch(
-        "eta_engine.venues.alpaca.AlpacaConfig.from_env", return_value=fake_cfg,
-    ), patch("httpx.Client", return_value=fake_client):
+    with (
+        patch(
+            "eta_engine.deploy.scripts.dashboard_api._registry_backtest_wr_targets",
+            return_value={"vwap_mr_btc": 0.857},
+        ),
+        patch(
+            "eta_engine.venues.alpaca.AlpacaConfig.from_env",
+            return_value=fake_cfg,
+        ),
+        patch("httpx.Client", return_value=fake_client),
+    ):
         snap = dash._alpaca_per_bot_pnl_snapshot(today_start_iso="2026-05-06T00:00:00Z")
 
     bot = snap["per_bot"]["vwap_mr_btc"]
@@ -189,11 +209,16 @@ def test_drift_alarm_suppressed_when_below_min_fills(dash):
 def test_drift_alarm_off_when_target_missing(dash):
     """No backtest_wr_target → drift_alarm stays false."""
     pairs = [
-        ("buy", 1.0, 100.0), ("sell", 1.0, 50.0),
-        ("buy", 1.0, 100.0), ("sell", 1.0, 50.0),
-        ("buy", 1.0, 100.0), ("sell", 1.0, 50.0),
-        ("buy", 1.0, 100.0), ("sell", 1.0, 50.0),
-        ("buy", 1.0, 100.0), ("sell", 1.0, 50.0),
+        ("buy", 1.0, 100.0),
+        ("sell", 1.0, 50.0),
+        ("buy", 1.0, 100.0),
+        ("sell", 1.0, 50.0),
+        ("buy", 1.0, 100.0),
+        ("sell", 1.0, 50.0),
+        ("buy", 1.0, 100.0),
+        ("sell", 1.0, 50.0),
+        ("buy", 1.0, 100.0),
+        ("sell", 1.0, 50.0),
     ]
     orders = [_build_filled_order("unknown_bot_x12y34z9", s, q, p) for s, q, p in pairs]
     fake_resp = MagicMock(status_code=200, json=MagicMock(return_value=orders))
@@ -208,12 +233,17 @@ def test_drift_alarm_off_when_target_missing(dash):
     fake_cfg.base_url = "https://example.test"
     fake_cfg.missing_requirements = MagicMock(return_value=[])
 
-    with patch(
-        "eta_engine.deploy.scripts.dashboard_api._registry_backtest_wr_targets",
-        return_value={},  # no targets at all
-    ), patch(
-        "eta_engine.venues.alpaca.AlpacaConfig.from_env", return_value=fake_cfg,
-    ), patch("httpx.Client", return_value=fake_client):
+    with (
+        patch(
+            "eta_engine.deploy.scripts.dashboard_api._registry_backtest_wr_targets",
+            return_value={},  # no targets at all
+        ),
+        patch(
+            "eta_engine.venues.alpaca.AlpacaConfig.from_env",
+            return_value=fake_cfg,
+        ),
+        patch("httpx.Client", return_value=fake_client),
+    ):
         snap = dash._alpaca_per_bot_pnl_snapshot(today_start_iso="2026-05-06T00:00:00Z")
 
     # Bot key is the longest valid prefix the regex strips back to.
@@ -225,6 +255,7 @@ def test_drift_alarm_off_when_target_missing(dash):
 # ---------------------------------------------------------------------------
 # 4. Cache TTL behavior
 # ---------------------------------------------------------------------------
+
 
 def test_cache_serves_within_ttl_window(dash):
     """Two consecutive calls inside the TTL window must hit the cache."""
@@ -311,13 +342,15 @@ def test_cache_thread_safe_under_concurrent_callers(dash):
 # 5. Fail-soft behavior
 # ---------------------------------------------------------------------------
 
+
 def test_helper_failsoft_when_alpaca_config_missing(dash):
     """Missing config returns a snapshot with error key, no exception."""
     fake_cfg = MagicMock()
     fake_cfg.missing_requirements = MagicMock(return_value=["api_key_id"])
 
     with patch(
-        "eta_engine.venues.alpaca.AlpacaConfig.from_env", return_value=fake_cfg,
+        "eta_engine.venues.alpaca.AlpacaConfig.from_env",
+        return_value=fake_cfg,
     ):
         snap = dash._alpaca_per_bot_pnl_snapshot(today_start_iso="2026-05-06T00:00:00Z")
 
@@ -328,6 +361,7 @@ def test_helper_failsoft_when_alpaca_config_missing(dash):
 
 def test_cached_wrapper_swallows_unexpected_exceptions(dash):
     """A blow-up inside the inner snapshot must not propagate."""
+
     def boom(*, today_start_iso):
         raise RuntimeError("simulated alpaca melt")
 

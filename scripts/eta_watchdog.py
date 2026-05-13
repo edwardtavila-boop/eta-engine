@@ -77,23 +77,17 @@ DEFAULT_TASK_NAME = os.getenv(
     # created as ``ETA-Jarvis-Strategy-Supervisor`` (hyphenated). The
     # earlier non-hyphenated default silently broke watchdog relaunches
     # with ``ERROR: The system cannot find the file specified.``.
-    "ETA_WATCHDOG_TASK_NAME", "ETA-Jarvis-Strategy-Supervisor",
+    "ETA_WATCHDOG_TASK_NAME",
+    "ETA-Jarvis-Strategy-Supervisor",
 )
 DEFAULT_PROCESS_SUBSTRING = os.getenv(
-    "ETA_WATCHDOG_PROCESS_NAME", "jarvis_strategy_supervisor.py",
+    "ETA_WATCHDOG_PROCESS_NAME",
+    "jarvis_strategy_supervisor.py",
 )
-DEFAULT_HEARTBEAT_PATH = (
-    workspace_roots.ETA_JARVIS_SUPERVISOR_HEARTBEAT_PATH
-)
-DEFAULT_KEEPALIVE_PATH = (
-    workspace_roots.ETA_JARVIS_SUPERVISOR_KEEPALIVE_PATH
-)
-DEFAULT_WATCHDOG_HEARTBEAT_PATH = (
-    workspace_roots.ETA_RUNTIME_STATE_DIR / "watchdog_heartbeat.json"
-)
-DEFAULT_DISABLED_FLAG_PATH = (
-    workspace_roots.ETA_RUNTIME_STATE_DIR / "supervisor_disabled.txt"
-)
+DEFAULT_HEARTBEAT_PATH = workspace_roots.ETA_JARVIS_SUPERVISOR_HEARTBEAT_PATH
+DEFAULT_KEEPALIVE_PATH = workspace_roots.ETA_JARVIS_SUPERVISOR_KEEPALIVE_PATH
+DEFAULT_WATCHDOG_HEARTBEAT_PATH = workspace_roots.ETA_RUNTIME_STATE_DIR / "watchdog_heartbeat.json"
+DEFAULT_DISABLED_FLAG_PATH = workspace_roots.ETA_RUNTIME_STATE_DIR / "supervisor_disabled.txt"
 
 
 @dataclass(slots=True)
@@ -147,12 +141,7 @@ def _read_heartbeat_age_s(path: Path) -> float | None:
         payload = json.loads(raw)
         ts_raw = ""
         if isinstance(payload, dict):
-            ts_raw = (
-                payload.get("ts")
-                or payload.get("keepalive_ts")
-                or payload.get("set_at_utc")
-                or ""
-            )
+            ts_raw = payload.get("ts") or payload.get("keepalive_ts") or payload.get("set_at_utc") or ""
         if isinstance(ts_raw, str) and ts_raw:
             # Python 3.11+ accepts most ISO-8601 formats including "Z".
             ts = datetime.fromisoformat(ts_raw.replace("Z", "+00:00"))
@@ -222,8 +211,7 @@ def _find_supervisor_pids(substring: str) -> list[int]:
         if pids:
             return pids
         logger.warning(
-            "psutil unavailable and PowerShell process fallback found no matching "
-            "processes for %r.",
+            "psutil unavailable and PowerShell process fallback found no matching processes for %r.",
             substring,
         )
         return pids
@@ -356,11 +344,7 @@ def watchdog_tick(
     # fall back to main heartbeat. Either being fresh proves the
     # process is doing some work.
     main_age = _read_heartbeat_age_s(heartbeat_path)
-    keep_age = (
-        _read_heartbeat_age_s(keepalive_path)
-        if keepalive_path is not None
-        else None
-    )
+    keep_age = _read_heartbeat_age_s(keepalive_path) if keepalive_path is not None else None
     if main_age is None and keep_age is None:
         age = None
     elif main_age is None:
@@ -397,9 +381,7 @@ def watchdog_tick(
     if not stale:
         decision.action = "noop"
         decision.reason = (
-            "fresh_heartbeat_and_process_running"
-            if process_alive
-            else "fresh_heartbeat_process_unobserved"
+            "fresh_heartbeat_and_process_running" if process_alive else "fresh_heartbeat_process_unobserved"
         )
         _record(component, decision)
         _write_watchdog_heartbeat(watchdog_heartbeat_path, decision)
@@ -413,9 +395,7 @@ def watchdog_tick(
         killed = kill(pids)
         ok, reason = relaunch(task_name=task_name, wrapper_cmd=wrapper_cmd)
         decision.action = "killed_and_relaunched" if ok else "kill_then_relaunch_failed"
-        decision.reason = (
-            f"killed_pids={killed} relaunch_ok={ok} relaunch_reason={reason}"
-        )
+        decision.reason = f"killed_pids={killed} relaunch_ok={ok} relaunch_reason={reason}"
     else:
         ok, reason = relaunch(task_name=task_name, wrapper_cmd=wrapper_cmd)
         decision.action = "relaunched" if ok else "relaunch_failed"
@@ -498,11 +478,7 @@ def main(argv: list[str] | None = None) -> int:
         try:
             heartbeat_path = _br_module.DEFAULT_STATE_ROOT / "broker_router_heartbeat.json"
         except AttributeError:
-            heartbeat_path = (
-                workspace_roots.ETA_RUNTIME_STATE_DIR
-                / "router"
-                / "broker_router_heartbeat.json"
-            )
+            heartbeat_path = workspace_roots.ETA_RUNTIME_STATE_DIR / "router" / "broker_router_heartbeat.json"
         kwargs = {
             "component": "broker_router",
             "heartbeat_path": heartbeat_path,
@@ -520,8 +496,7 @@ def main(argv: list[str] | None = None) -> int:
                 "ETA-Broker-Router",
             ),
             "watchdog_heartbeat_path": (
-                workspace_roots.ETA_RUNTIME_STATE_DIR
-                / "broker_router_watchdog_heartbeat.json"
+                workspace_roots.ETA_RUNTIME_STATE_DIR / "broker_router_watchdog_heartbeat.json"
             ),
         }
     else:
@@ -531,7 +506,8 @@ def main(argv: list[str] | None = None) -> int:
         decision = watchdog_tick(**kwargs)
         logger.info(
             "watchdog tick: action=%s heartbeat_age_s=%s",
-            decision.action, decision.heartbeat_age_s,
+            decision.action,
+            decision.heartbeat_age_s,
         )
         return 0
 
@@ -540,7 +516,8 @@ def main(argv: list[str] | None = None) -> int:
             decision = watchdog_tick(**kwargs)
             logger.info(
                 "watchdog tick: action=%s heartbeat_age_s=%s",
-                decision.action, decision.heartbeat_age_s,
+                decision.action,
+                decision.heartbeat_age_s,
             )
         except Exception as exc:  # noqa: BLE001
             logger.exception("watchdog tick raised: %s", exc)

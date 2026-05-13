@@ -1,4 +1,5 @@
 """Tests for cost_tracker — LLM spend telemetry."""
+
 from __future__ import annotations
 
 import json
@@ -39,7 +40,8 @@ def test_estimate_spend_empty_when_no_audit_log(tmp_path: Path) -> None:
     from eta_engine.brain.jarvis_v3 import cost_tracker
 
     summary = cost_tracker.estimate_spend(
-        since_days_ago=7, audit_path=tmp_path / "missing.jsonl",
+        since_days_ago=7,
+        audit_path=tmp_path / "missing.jsonl",
     )
     assert summary.total_usd == 0.0
     assert summary.n_calls == 0
@@ -50,11 +52,14 @@ def test_estimate_spend_aggregates_by_tool(tmp_path: Path) -> None:
     from eta_engine.brain.jarvis_v3 import cost_tracker
 
     log = tmp_path / "audit.jsonl"
-    _write_audit(log, [
-        {"ts": _ts(0, 1), "tool": "jarvis_fleet_status"},
-        {"ts": _ts(0, 2), "tool": "jarvis_fleet_status"},
-        {"ts": _ts(0, 3), "tool": "jarvis_set_size_modifier"},
-    ])
+    _write_audit(
+        log,
+        [
+            {"ts": _ts(0, 1), "tool": "jarvis_fleet_status"},
+            {"ts": _ts(0, 2), "tool": "jarvis_fleet_status"},
+            {"ts": _ts(0, 3), "tool": "jarvis_set_size_modifier"},
+        ],
+    )
     summary = cost_tracker.estimate_spend(since_days_ago=7, audit_path=log)
     assert summary.n_calls == 3
     assert summary.by_tool["jarvis_fleet_status"]["n"] == 2
@@ -67,12 +72,15 @@ def test_estimate_spend_filters_window(tmp_path: Path) -> None:
     from eta_engine.brain.jarvis_v3 import cost_tracker
 
     log = tmp_path / "audit.jsonl"
-    _write_audit(log, [
-        {"ts": _ts(0, 1), "tool": "recent"},
-        {"ts": _ts(0, 2), "tool": "recent"},
-        {"ts": _ts(10, 0), "tool": "old"},     # outside 7-day window
-        {"ts": _ts(30, 0), "tool": "ancient"},  # outside
-    ])
+    _write_audit(
+        log,
+        [
+            {"ts": _ts(0, 1), "tool": "recent"},
+            {"ts": _ts(0, 2), "tool": "recent"},
+            {"ts": _ts(10, 0), "tool": "old"},  # outside 7-day window
+            {"ts": _ts(30, 0), "tool": "ancient"},  # outside
+        ],
+    )
     summary = cost_tracker.estimate_spend(since_days_ago=7, audit_path=log)
     assert summary.n_calls == 2
     assert "old" not in summary.by_tool
@@ -83,11 +91,14 @@ def test_estimate_spend_groups_by_day(tmp_path: Path) -> None:
     from eta_engine.brain.jarvis_v3 import cost_tracker
 
     log = tmp_path / "audit.jsonl"
-    _write_audit(log, [
-        {"ts": _ts(0, 0), "tool": "a"},
-        {"ts": _ts(0, 1), "tool": "a"},
-        {"ts": _ts(1, 0), "tool": "b"},
-    ])
+    _write_audit(
+        log,
+        [
+            {"ts": _ts(0, 0), "tool": "a"},
+            {"ts": _ts(0, 1), "tool": "a"},
+            {"ts": _ts(1, 0), "tool": "b"},
+        ],
+    )
     summary = cost_tracker.estimate_spend(since_days_ago=7, audit_path=log)
     days = list(summary.by_day.keys())
     # At least 2 distinct days appear
@@ -101,11 +112,14 @@ def test_today_spend_returns_today_only(tmp_path: Path) -> None:
     from eta_engine.brain.jarvis_v3 import cost_tracker
 
     log = tmp_path / "audit.jsonl"
-    _write_audit(log, [
-        {"ts": _ts(0, 1), "tool": "today_call"},
-        {"ts": _ts(0, 2), "tool": "today_call"},
-        {"ts": _ts(5, 0), "tool": "old_call"},
-    ])
+    _write_audit(
+        log,
+        [
+            {"ts": _ts(0, 1), "tool": "today_call"},
+            {"ts": _ts(0, 2), "tool": "today_call"},
+            {"ts": _ts(5, 0), "tool": "old_call"},
+        ],
+    )
     result = cost_tracker.today_spend(audit_path=log)
     assert result["n_calls"] >= 2  # depends on whether we crossed midnight
     assert result["total_usd"] > 0
@@ -160,9 +174,7 @@ def test_estimate_spend_never_raises_on_corrupt_audit(tmp_path: Path) -> None:
 
     log = tmp_path / "audit.jsonl"
     log.write_text(
-        "not json\n"
-        + json.dumps({"ts": _ts(0, 1), "tool": "ok"}) + "\n"
-        + "more garbage\n",
+        "not json\n" + json.dumps({"ts": _ts(0, 1), "tool": "ok"}) + "\n" + "more garbage\n",
         encoding="utf-8",
     )
     summary = cost_tracker.estimate_spend(since_days_ago=7, audit_path=log)

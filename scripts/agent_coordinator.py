@@ -57,9 +57,7 @@ import yaml
 # --------------------------------------------------------------------------
 
 WORKSPACE_ROOT = Path("C:/EvolutionaryTradingAlgo")
-DEFAULT_STATE_ROOT = (
-    WORKSPACE_ROOT / "var" / "eta_engine" / "state" / "agent_coordination"
-)
+DEFAULT_STATE_ROOT = WORKSPACE_ROOT / "var" / "eta_engine" / "state" / "agent_coordination"
 KNOWN_AGENTS: tuple[str, ...] = ("claude", "codex", "deepseek", "autopilot")
 DEFAULT_HEARTBEAT_STALE_MIN = 30
 
@@ -181,9 +179,7 @@ class AgentCoordinator:
     name and it'll get its own in_progress/<name>/ subdir on first claim.
     """
 
-    def __init__(
-        self, agent_id: str, state_root: Path | None = None
-    ) -> None:
+    def __init__(self, agent_id: str, state_root: Path | None = None) -> None:
         if not agent_id or "/" in agent_id or "\\" in agent_id:
             raise ValueError(f"invalid agent_id: {agent_id!r}")
         self.agent_id = agent_id
@@ -226,9 +222,7 @@ class AgentCoordinator:
 
     # ----- discovery ------------------------------------------------------
 
-    def list_pending(
-        self, *, preferred_agent: str | None = None
-    ) -> list[dict[str, Any]]:
+    def list_pending(self, *, preferred_agent: str | None = None) -> list[dict[str, Any]]:
         """Return pending tasks the caller is eligible to claim.
 
         ``preferred_agent`` filter: if a task has ``preferred_agent: codex``
@@ -284,9 +278,7 @@ class AgentCoordinator:
                 os.O_CREAT | os.O_EXCL | os.O_WRONLY,
             )
         except FileExistsError as e:
-            raise ClaimError(
-                f"task {task_id} is already locked by another claimer"
-            ) from e
+            raise ClaimError(f"task {task_id} is already locked by another claimer") from e
         try:
             os.write(
                 fd,
@@ -299,9 +291,7 @@ class AgentCoordinator:
             # Re-check src under the lock — another agent could have
             # completed/blocked the task between our exists() and here.
             if not src.exists():
-                raise TaskNotFoundError(
-                    f"task {task_id} disappeared during claim"
-                )
+                raise TaskNotFoundError(f"task {task_id} disappeared during claim")
             task = _read_yaml(src)
             pref = str(task.get("preferred_agent", "any")).lower()
             if not force_preferred and pref not in ("any", self.agent_id):
@@ -349,9 +339,7 @@ class AgentCoordinator:
         """Move ``in_progress/<agent>/<id>.yaml`` -> ``completed/<id>.yaml``."""
         src = self.paths.in_progress / self.agent_id / f"{task_id}.yaml"
         if not src.exists():
-            raise TaskNotFoundError(
-                f"agent {self.agent_id} has no in-progress {task_id}"
-            )
+            raise TaskNotFoundError(f"agent {self.agent_id} has no in-progress {task_id}")
         task = _read_yaml(src)
         task["status"] = TaskStatus.COMPLETED.value
         task["completed_at"] = _utc_now_iso()
@@ -370,17 +358,13 @@ class AgentCoordinator:
         dst = self.paths.completed / f"{task_id}.yaml"
         _write_yaml(dst, task)
         src.unlink()
-        self.journal(
-            "complete", task_id, detail=f"by {self.agent_id} summary={summary!r}"
-        )
+        self.journal("complete", task_id, detail=f"by {self.agent_id} summary={summary!r}")
 
     def block(self, task_id: str, *, reason: str) -> None:
         """Move task to ``blocked/`` with reason. Operator must clear."""
         src = self.paths.in_progress / self.agent_id / f"{task_id}.yaml"
         if not src.exists():
-            raise TaskNotFoundError(
-                f"agent {self.agent_id} has no in-progress {task_id}"
-            )
+            raise TaskNotFoundError(f"agent {self.agent_id} has no in-progress {task_id}")
         task = _read_yaml(src)
         task["status"] = TaskStatus.BLOCKED.value
         task["blocked_at"] = _utc_now_iso()
@@ -399,9 +383,7 @@ class AgentCoordinator:
         dst = self.paths.blocked / f"{task_id}.yaml"
         _write_yaml(dst, task)
         src.unlink()
-        self.journal(
-            "block", task_id, detail=f"by {self.agent_id} reason={reason!r}"
-        )
+        self.journal("block", task_id, detail=f"by {self.agent_id} reason={reason!r}")
 
     # ----- journal --------------------------------------------------------
 
@@ -426,9 +408,7 @@ class AgentCoordinator:
 
     # ----- reclaim --------------------------------------------------------
 
-    def reclaim_stale(
-        self, *, max_age_min: int | None = None
-    ) -> list[str]:
+    def reclaim_stale(self, *, max_age_min: int | None = None) -> list[str]:
         """Return tasks held by agents whose heartbeats are too old.
 
         For each agent under ``in_progress/<agent>/``, check
@@ -442,11 +422,7 @@ class AgentCoordinator:
 
         Returns the list of reclaimed task ids.
         """
-        threshold = (
-            timedelta(minutes=max_age_min)
-            if max_age_min is not None
-            else _heartbeat_stale_threshold()
-        )
+        threshold = timedelta(minutes=max_age_min) if max_age_min is not None else _heartbeat_stale_threshold()
         now = datetime.now(UTC)
         reclaimed: list[str] = []
 
@@ -459,9 +435,7 @@ class AgentCoordinator:
             if hb_path.exists():
                 try:
                     hb = json.loads(hb_path.read_text(encoding="utf-8"))
-                    ts = datetime.strptime(
-                        hb["ts"], "%Y-%m-%dT%H:%M:%SZ"
-                    ).replace(tzinfo=UTC)
+                    ts = datetime.strptime(hb["ts"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
                     stale = (now - ts) > threshold
                 except (json.JSONDecodeError, KeyError, ValueError):
                     stale = True
@@ -479,10 +453,7 @@ class AgentCoordinator:
                     {
                         "ts": _utc_now_iso(),
                         "agent": "coordinator",
-                        "note": (
-                            f"reclaimed from stale agent {agent} "
-                            f"(heartbeat older than {threshold})"
-                        ),
+                        "note": (f"reclaimed from stale agent {agent} (heartbeat older than {threshold})"),
                     }
                 )
                 task["notes"] = notes
@@ -500,9 +471,7 @@ class AgentCoordinator:
         # holds a lock only between os.open() and os.replace() — milliseconds.
         for lock in self.paths.locks.glob("*.lock"):
             try:
-                age = now - datetime.fromtimestamp(
-                    lock.stat().st_mtime, tz=UTC
-                )
+                age = now - datetime.fromtimestamp(lock.stat().st_mtime, tz=UTC)
             except OSError:
                 continue
             if age > threshold:

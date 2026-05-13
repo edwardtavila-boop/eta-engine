@@ -50,12 +50,8 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_MODULE_DIR: Path = REPO_ROOT / "eta_engine" / "brain" / "jarvis_v3"
 DEFAULT_PACKAGE: str = "eta_engine.brain.jarvis_v3"
 
-DEFAULT_TRACE_PATH: Path = (
-    REPO_ROOT / "var" / "eta_engine" / "state" / "jarvis_trace.jsonl"
-)
-AUDIT_OUTPUT_PATH: Path = (
-    REPO_ROOT / "var" / "eta_engine" / "state" / "jarvis_wiring_audit.json"
-)
+DEFAULT_TRACE_PATH: Path = REPO_ROOT / "var" / "eta_engine" / "state" / "jarvis_trace.jsonl"
+AUDIT_OUTPUT_PATH: Path = REPO_ROOT / "var" / "eta_engine" / "state" / "jarvis_wiring_audit.json"
 
 # Trace fields scanned for module-name substring matches.
 TRACE_FIELDS: tuple[str, ...] = ("schools", "clashes", "portfolio", "hot_learn", "context")
@@ -246,10 +242,7 @@ def audit(
         # The caller pointed us at a non-default location (typically a tmp_path
         # in a test); drop stale package + sub-module bindings so the import
         # resolves against the current sys.path entries.
-        for cached_name in [
-            n for n in list(sys.modules)
-            if n == package_name or n.startswith(f"{package_name}.")
-        ]:
+        for cached_name in [n for n in list(sys.modules) if n == package_name or n.startswith(f"{package_name}.")]:
             del sys.modules[cached_name]
 
     modules = _discover_modules(module_dir)
@@ -335,11 +328,7 @@ def to_markdown(statuses: list[ModuleStatus]) -> str:
 def to_json(statuses: list[ModuleStatus]) -> dict:
     """Render the audit as a JSON-serialisable dict."""
     ordered = _sort_for_report(statuses)
-    n_dark = sum(
-        1
-        for s in ordered
-        if s.expected_to_fire and s.dark_for_days >= TRACE_LOOKBACK_DAYS
-    )
+    n_dark = sum(1 for s in ordered if s.expected_to_fire and s.dark_for_days >= TRACE_LOOKBACK_DAYS)
     n_total_expected = sum(1 for s in ordered if s.expected_to_fire)
     return {
         "generated_at": datetime.now(UTC).isoformat(),

@@ -60,7 +60,10 @@ def _read_jsonl(p: Path) -> list[dict]:
 
 
 def _compute_instrument_stats(
-    *, n_days_back: float, log_path: Path, instrument_filter: list[str] | None = None,
+    *,
+    n_days_back: float,
+    log_path: Path,
+    instrument_filter: list[str] | None = None,
 ) -> dict[str, dict[str, list[float]]]:
     """Group realized R per instrument and per bot. Returns
     {instrument: {bot_id: [r1, r2, ...]}} supporting multi-instrument fleets."""
@@ -137,6 +140,7 @@ def _regime_from_trades(trades: list[dict]) -> str:
     if not regimes:
         return "unknown"
     from collections import Counter
+
     return Counter(regimes).most_common(1)[0][0]
 
 
@@ -177,7 +181,8 @@ def main(argv: list[str] | None = None) -> int:
         logger.info("Processing %s...", instrument)
 
         series_per_bot = _compute_instrument_stats(
-            n_days_back=args.n_days_back, log_path=args.trade_log,
+            n_days_back=args.n_days_back,
+            log_path=args.trade_log,
             instrument_filter=[instrument],
         )
         if instrument not in series_per_bot:
@@ -192,7 +197,7 @@ def main(argv: list[str] | None = None) -> int:
 
         # Collect all trades for this instrument to compute regime
         all_trades = []
-        for bot_id, returns in bot_series.items():
+        for _bot_id, returns in bot_series.items():
             all_trades.extend([{"regime": _regime_from_trades(returns)}] * len(returns))
 
         bot_ids = sorted(bot_series.keys())
@@ -219,10 +224,14 @@ def main(argv: list[str] | None = None) -> int:
             if not should:
                 logger.info("%s: SKIPPED — %s", instrument, reason)
                 total_skipped += 1
-                all_results.append({
-                    "instrument": instrument, "status": "skipped",
-                    "reason": reason, "n_symbols": len(bot_ids),
-                })
+                all_results.append(
+                    {
+                        "instrument": instrument,
+                        "status": "skipped",
+                        "reason": reason,
+                        "n_symbols": len(bot_ids),
+                    }
+                )
                 _save_last_regime(args.state_dir, instrument, current_regime)
                 continue
 
@@ -274,9 +283,15 @@ def main(argv: list[str] | None = None) -> int:
         }
         all_results.append(result)
         _save_last_regime(args.state_dir, instrument, _regime_from_trades(all_trades))
-        logger.info("%s: selected %d/%d %s (backend=%s, cost=$%.4f)",
-                    instrument, len(rec.selected_labels), len(bot_ids),
-                    rec.selected_labels, rec.backend_used, cost)
+        logger.info(
+            "%s: selected %d/%d %s (backend=%s, cost=$%.4f)",
+            instrument,
+            len(rec.selected_labels),
+            len(bot_ids),
+            rec.selected_labels,
+            rec.backend_used,
+            cost,
+        )
 
     # ── Persist combined results ──
     elapsed_s = time.perf_counter() - t0
@@ -318,6 +333,7 @@ def main(argv: list[str] | None = None) -> int:
 def _notify_hermes(payload: dict, invocations: int, cost: float, skipped: int) -> None:
     try:
         from hermes_jarvis_telegram.hermes_bridge import get_bridge
+
         bridge = get_bridge()
         results = payload.get("results", [])
         selected_all = []

@@ -51,6 +51,7 @@ Why these names exactly
 Operator can wire these in any order — they don't depend on each
 other, and each is independently testable.
 """
+
 from __future__ import annotations
 
 # ruff: noqa: ANN001, ANN401, BLE001
@@ -79,21 +80,23 @@ def pre_trade_check(bot: Any, rec: Any) -> bool:
     """
     try:
         from eta_engine.strategies.trading_gate import check_pre_trade_gate
+
         symbol = getattr(rec, "symbol", None) or getattr(bot, "symbol", None)
         decision = check_pre_trade_gate(symbol)
         if decision.blocked:
             logger.warning(
-                "l2_supervisor_hooks BLOCK %s: %s "
-                "(disk=%s, capture=%s, disk_age=%s, capture_age=%s)",
-                getattr(bot, "bot_id", "?"), decision.reason,
-                decision.disk_verdict, decision.capture_verdict,
-                decision.disk_age_seconds, decision.capture_age_seconds,
+                "l2_supervisor_hooks BLOCK %s: %s (disk=%s, capture=%s, disk_age=%s, capture_age=%s)",
+                getattr(bot, "bot_id", "?"),
+                decision.reason,
+                decision.disk_verdict,
+                decision.capture_verdict,
+                decision.disk_age_seconds,
+                decision.capture_age_seconds,
             )
             return False
         return True
     except Exception as e:
-        print(f"l2_supervisor_hooks WARN pre_trade_check exception: {e}",
-              file=sys.stderr)
+        print(f"l2_supervisor_hooks WARN pre_trade_check exception: {e}", file=sys.stderr)
         return True  # fail-OPEN on hook failure (don't break trading)
 
 
@@ -108,15 +111,13 @@ def record_signal(bot: Any, rec: Any, place_order_result: Any | None = None) -> 
     """
     try:
         from eta_engine.scripts.l2_observability import emit_signal
+
         # Pull bracket prices.  The supervisor stores them on `rec` as
         # part of the OrderRequest construction.  Fall back to 0 if
         # missing rather than refuse to log.
-        intended_stop = float(getattr(rec, "stop_price", 0)
-                                or getattr(rec, "stop", 0) or 0)
-        intended_target = float(getattr(rec, "target_price", 0)
-                                  or getattr(rec, "target", 0) or 0)
-        entry_price = float(getattr(rec, "entry_price", 0)
-                              or getattr(rec, "price", 0) or 0)
+        intended_stop = float(getattr(rec, "stop_price", 0) or getattr(rec, "stop", 0) or 0)
+        intended_target = float(getattr(rec, "target_price", 0) or getattr(rec, "target", 0) or 0)
+        entry_price = float(getattr(rec, "entry_price", 0) or getattr(rec, "price", 0) or 0)
         signal_id = getattr(rec, "signal_id", "") or getattr(rec, "client_order_id", "")
         if not signal_id:
             logger.debug("record_signal skipped: no signal_id on rec")
@@ -135,19 +136,21 @@ def record_signal(bot: Any, rec: Any, place_order_result: Any | None = None) -> 
             rationale=str(getattr(rec, "rationale", ""))[:200],
         )
     except Exception as e:
-        print(f"l2_supervisor_hooks WARN record_signal exception: {e}",
-              file=sys.stderr)
+        print(f"l2_supervisor_hooks WARN record_signal exception: {e}", file=sys.stderr)
 
 
-def record_fill(signal_id: str, *,
-                broker_exec_id: str,
-                exit_reason: str,
-                side: str,
-                actual_fill_price: float,
-                qty_filled: int,
-                commission_usd: float = 0.0,
-                intended_price: float | None = None,
-                tick_size: float = 0.25) -> None:
+def record_fill(
+    signal_id: str,
+    *,
+    broker_exec_id: str,
+    exit_reason: str,
+    side: str,
+    actual_fill_price: float,
+    qty_filled: int,
+    commission_usd: float = 0.0,
+    intended_price: float | None = None,
+    tick_size: float = 0.25,
+) -> None:
     """Append a fill record to broker_fills.jsonl.
 
     Called from the broker's executionEvent handler (or equivalent
@@ -159,6 +162,7 @@ def record_fill(signal_id: str, *,
     """
     try:
         from eta_engine.scripts.l2_observability import emit_fill
+
         slip_ticks: float | None = None
         if intended_price is not None:
             raw = float(actual_fill_price) - float(intended_price)
@@ -175,8 +179,7 @@ def record_fill(signal_id: str, *,
             slip_ticks_vs_intended=slip_ticks,
         )
     except Exception as e:
-        print(f"l2_supervisor_hooks WARN record_fill exception: {e}",
-              file=sys.stderr)
+        print(f"l2_supervisor_hooks WARN record_fill exception: {e}", file=sys.stderr)
 
 
 # ── Bulk-write convenience for testing or back-fill ───────────────
@@ -205,6 +208,5 @@ def record_bulk_fills(fills: list[dict]) -> int:
             )
             n += 1
         except (KeyError, TypeError) as e:
-            print(f"l2_supervisor_hooks WARN bad fill record: {e}",
-                  file=sys.stderr)
+            print(f"l2_supervisor_hooks WARN bad fill record: {e}", file=sys.stderr)
     return n

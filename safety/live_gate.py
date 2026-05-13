@@ -59,10 +59,7 @@ def assert_live_allowed() -> None:
             reason="firm_halted",
         )
     if _is_truthy_env("ETA_LIVE_TRADING_DISABLED"):
-        reason = (
-            os.environ.get("ETA_LIVE_KILL_REASON")
-            or "live trading explicitly disabled"
-        )
+        reason = os.environ.get("ETA_LIVE_KILL_REASON") or "live trading explicitly disabled"
         raise LiveTradingDisabledError(
             f"live order blocked: ETA_LIVE_TRADING_DISABLED=true ({reason})",
             reason="live_disabled",

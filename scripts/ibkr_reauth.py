@@ -5,6 +5,7 @@ and keeps the gateway authenticated. No browser MFA required for paper accounts.
 
 Run as a scheduled task every 30 minutes to refresh before the 24h expiry.
 """
+
 from __future__ import annotations
 
 import json
@@ -24,12 +25,14 @@ IBKR_PROXY_HOST = os.environ.get("IBKR_PROXY_HOST", "https://ndcdyn.interactiveb
 IBKR_ACCOUNT_FILE = os.environ.get("IBKR_ACCOUNT_ID_FILE", "")
 IBKR_SYMBOL_CONID_FILE = os.environ.get("IBKR_SYMBOL_CONID_MAP_FILE", "")
 CREDS_FILE = os.environ.get("IBKR_CREDS_FILE", str(Path(__file__).parent / ".ibkr_creds.json"))
-STATE_FILE = Path(os.environ.get("IBKR_REAUTH_STATE", str(REPO_ROOT / "var" / "eta_engine" / "state" / "ibkr_reauth.json")))
+STATE_FILE = Path(
+    os.environ.get("IBKR_REAUTH_STATE", str(REPO_ROOT / "var" / "eta_engine" / "state" / "ibkr_reauth.json"))
+)
 
 
 def _read_creds() -> dict[str, str]:
     """Read IBKR credentials from env or file.
-    
+
     Prefers env vars IBKR_USERNAME and IBKR_PASSWORD for security.
     Falls back to creds file for headless operation.
     """
@@ -55,7 +58,7 @@ def _load_state() -> dict[str, Any]:
 
 def reauth_gateway() -> dict[str, Any]:
     """Re-authenticate the IBKR Client Portal Gateway.
-    
+
     Uses the IBKR SSO flow to get a session token, then submits
     it to the local gateway. Returns status dict.
     """
@@ -83,22 +86,26 @@ def reauth_gateway() -> dict[str, Any]:
             status = json.loads(resp.read().decode())
 
         if status.get("authenticated"):
-            _save_state({
-                **state,
-                "reauth_count": state.get("reauth_count", 0),
-                "last_status": "already_authenticated",
-                "last_check": __import__("datetime").datetime.now().isoformat(),
-            })
+            _save_state(
+                {
+                    **state,
+                    "reauth_count": state.get("reauth_count", 0),
+                    "last_status": "already_authenticated",
+                    "last_check": __import__("datetime").datetime.now().isoformat(),
+                }
+            )
             return {"status": "ok", "message": "already authenticated"}
 
         # Step 2: Post to IBKR SSO login
-        login_data = urllib.parse.urlencode({
-            "username": creds["username"],
-            "password": creds["password"],
-            "locale": "en",
-            "mac": "",
-            "machineName": "",
-        }).encode()
+        login_data = urllib.parse.urlencode(
+            {
+                "username": creds["username"],
+                "password": creds["password"],
+                "locale": "en",
+                "mac": "",
+                "machineName": "",
+            }
+        ).encode()
 
         req = urllib.request.Request(
             f"{IBKR_PROXY_HOST}/sso/Login",
@@ -118,6 +125,7 @@ def reauth_gateway() -> dict[str, Any]:
         if not sso_token:
             # Token might be in the response body
             import re
+
             match = re.search(r'sso_token=([^&"\']+)', body)
             if match:
                 sso_token = match.group(1)
@@ -133,7 +141,7 @@ def reauth_gateway() -> dict[str, Any]:
             method="POST",
         )
         with urllib.request.urlopen(req, context=ssl_ctx, timeout=30) as resp:
-            validate_result = json.loads(resp.read().decode())
+            json.loads(resp.read().decode())
 
         # Step 5: Verify auth
         req = urllib.request.Request(
@@ -145,14 +153,16 @@ def reauth_gateway() -> dict[str, Any]:
 
         authenticated = final_status.get("authenticated", False)
         new_count = state.get("reauth_count", 0) + (1 if authenticated else 0)
-        _save_state({
-            **state,
-            "reauth_count": new_count,
-            "last_status": "authenticated" if authenticated else "failed",
-            "auth_detail": final_status,
-            "last_check": __import__("datetime").datetime.now().isoformat(),
-            "last_error": "" if authenticated else "SSO validate did not produce authenticated session",
-        })
+        _save_state(
+            {
+                **state,
+                "reauth_count": new_count,
+                "last_status": "authenticated" if authenticated else "failed",
+                "auth_detail": final_status,
+                "last_check": __import__("datetime").datetime.now().isoformat(),
+                "last_error": "" if authenticated else "SSO validate did not produce authenticated session",
+            }
+        )
 
         if authenticated:
             logger.info("IBKR reauth SUCCESS. Account: %s", final_status.get("MAC", ""))
@@ -164,13 +174,25 @@ def reauth_gateway() -> dict[str, Any]:
     except urllib.error.HTTPError as e:
         err_body = e.read().decode()[:500] if e.fp else str(e)
         logger.error("IBKR reauth HTTP error: %s %s", e.code, err_body)
-        _save_state({**state, "last_status": "http_error", "last_error": f"{e.code}: {err_body}",
-                     "last_check": __import__("datetime").datetime.now().isoformat()})
+        _save_state(
+            {
+                **state,
+                "last_status": "http_error",
+                "last_error": f"{e.code}: {err_body}",
+                "last_check": __import__("datetime").datetime.now().isoformat(),
+            }
+        )
         return {"status": "error", "message": f"HTTP {e.code}", "detail": err_body}
     except Exception as e:
         logger.error("IBKR reauth error: %s", e)
-        _save_state({**state, "last_status": "error", "last_error": str(e),
-                     "last_check": __import__("datetime").datetime.now().isoformat()})
+        _save_state(
+            {
+                **state,
+                "last_status": "error",
+                "last_error": str(e),
+                "last_check": __import__("datetime").datetime.now().isoformat(),
+            }
+        )
         return {"status": "error", "message": str(e)}
 
 

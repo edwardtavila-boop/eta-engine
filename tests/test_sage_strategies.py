@@ -35,16 +35,30 @@ from eta_engine.strategies.sage_gated_orb_strategy import (
 _NY = ZoneInfo("America/New_York")
 
 
-def _bar(idx: int, *, h: float, low: float, c: float | None = None,
-         o: float | None = None, v: float = 1000.0,
-         tf_minutes: int = 5, day: int = 15) -> BarData:
+def _bar(
+    idx: int,
+    *,
+    h: float,
+    low: float,
+    c: float | None = None,
+    o: float | None = None,
+    v: float = 1000.0,
+    tf_minutes: int = 5,
+    day: int = 15,
+) -> BarData:
     """Synthetic bar at 2026-01-DD 09:30 NY + idx*tf_minutes."""
     base = datetime(2026, 1, day, 9, 30, tzinfo=_NY)
     ts = (base + timedelta(minutes=idx * tf_minutes)).astimezone(UTC)
     o = o if o is not None else (h + low) / 2
     c = c if c is not None else (h + low) / 2
     return BarData(
-        timestamp=ts, symbol="MNQ", open=o, high=h, low=low, close=c, volume=v,
+        timestamp=ts,
+        symbol="MNQ",
+        open=o,
+        high=h,
+        low=low,
+        close=c,
+        volume=v,
     )
 
 
@@ -52,15 +66,21 @@ def _config() -> BacktestConfig:
     return BacktestConfig(
         start_date=datetime(2026, 1, 1, tzinfo=UTC),
         end_date=datetime(2026, 1, 31, tzinfo=UTC),
-        symbol="MNQ", initial_equity=10_000.0,
-        risk_per_trade_pct=0.01, confluence_threshold=0.0,
+        symbol="MNQ",
+        initial_equity=10_000.0,
+        risk_per_trade_pct=0.01,
+        confluence_threshold=0.0,
         max_trades_per_day=10,
     )
 
 
 def _fake_report(
-    bias: Bias, conviction: float, alignment: float, n_aligned: int = 12,
-    n_disagree: int = 4, n_neutral: int = 6,
+    bias: Bias,
+    conviction: float,
+    alignment: float,
+    n_aligned: int = 12,
+    n_disagree: int = 4,
+    n_neutral: int = 6,
 ) -> SageReport:
     """Build a SageReport with the given composite + counters.
 
@@ -70,7 +90,9 @@ def _fake_report(
     # Need at least one verdict for consensus_pct to land non-zero;
     # synthesize one matching the composite so consensus_pct = 1.0.
     v = SchoolVerdict(
-        school="fake", bias=bias, conviction=conviction,
+        school="fake",
+        bias=bias,
+        conviction=conviction,
         aligned_with_entry=(bias != Bias.NEUTRAL),
         rationale="test fixture",
     )
@@ -104,6 +126,7 @@ def _sage_module_paths() -> tuple[str, str]:
 @pytest.fixture
 def fake_sage(monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-untyped-def]
     """Install a controllable sage stub. Tests assign .next_report."""
+
     class _FakeSage:
         next_report: SageReport | None = None
         call_count: int = 0
@@ -134,8 +157,11 @@ def fake_sage(monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-untyped-def]
 
 def _consensus(**overrides) -> SageConsensusStrategy:  # type: ignore[no-untyped-def]
     base = {
-        "warmup_bars": 5, "min_bars_between_trades": 0,
-        "atr_period": 5, "min_conviction": 0.5, "min_consensus": 0.0,
+        "warmup_bars": 5,
+        "min_bars_between_trades": 0,
+        "atr_period": 5,
+        "min_conviction": 0.5,
+        "min_consensus": 0.0,
         "min_alignment": 0.5,
     }
     base.update(overrides)
@@ -168,8 +194,12 @@ def test_consensus_long_fires_on_strong_long_report(fake_sage) -> None:
     s = _consensus()
     hist = _drive_warmup(s, n=30)
     fake_sage.next_report = _fake_report(
-        Bias.LONG, conviction=0.80, alignment=1.0,
-        n_aligned=15, n_disagree=2, n_neutral=5,
+        Bias.LONG,
+        conviction=0.80,
+        alignment=1.0,
+        n_aligned=15,
+        n_disagree=2,
+        n_neutral=5,
     )
     bar = _bar(31, h=110, low=100, c=108)
     hist.append(bar)
@@ -186,8 +216,12 @@ def test_consensus_short_fires_on_strong_short_report(fake_sage) -> None:
     # we need n_disagree > n_aligned (alignment_score < min_alignment
     # FOR LONG, but the strategy converts: real_alignment = 1 - score).
     fake_sage.next_report = _fake_report(
-        Bias.SHORT, conviction=0.80, alignment=0.0,
-        n_aligned=2, n_disagree=15, n_neutral=5,
+        Bias.SHORT,
+        conviction=0.80,
+        alignment=0.0,
+        n_aligned=2,
+        n_disagree=15,
+        n_neutral=5,
     )
     bar = _bar(31, h=110, low=100, c=102)
     hist.append(bar)
@@ -201,7 +235,9 @@ def test_consensus_blocks_on_low_conviction(fake_sage) -> None:
     s = _consensus(min_conviction=0.7)
     hist = _drive_warmup(s, n=30)
     fake_sage.next_report = _fake_report(
-        Bias.LONG, conviction=0.4, alignment=1.0,
+        Bias.LONG,
+        conviction=0.4,
+        alignment=1.0,
     )
     bar = _bar(31, h=110, low=100, c=108)
     hist.append(bar)
@@ -222,8 +258,12 @@ def test_consensus_blocks_when_alignment_too_low(fake_sage) -> None:
     s = _consensus(min_alignment=0.8)
     hist = _drive_warmup(s, n=30)
     fake_sage.next_report = _fake_report(
-        Bias.LONG, conviction=0.99, alignment=0.51,
-        n_aligned=10, n_disagree=9, n_neutral=3,
+        Bias.LONG,
+        conviction=0.99,
+        alignment=0.51,
+        n_aligned=10,
+        n_disagree=9,
+        n_neutral=3,
     )
     bar = _bar(31, h=110, low=100, c=108)
     hist.append(bar)
@@ -244,8 +284,12 @@ def test_consensus_min_bars_between_trades_latch(fake_sage) -> None:
     s = _consensus(min_bars_between_trades=5)
     hist = _drive_warmup(s, n=30)
     fake_sage.next_report = _fake_report(
-        Bias.LONG, conviction=0.99, alignment=1.0,
-        n_aligned=15, n_disagree=2, n_neutral=5,
+        Bias.LONG,
+        conviction=0.99,
+        alignment=1.0,
+        n_aligned=15,
+        n_disagree=2,
+        n_neutral=5,
     )
     bar1 = _bar(31, h=110, low=100, c=108)
     hist.append(bar1)
@@ -263,13 +307,17 @@ def test_consensus_min_bars_between_trades_latch(fake_sage) -> None:
 
 
 def _gated_orb(
-    *, overlay_enabled: bool = True, **sage_overrides,  # type: ignore[no-untyped-def]
+    *,
+    overlay_enabled: bool = True,
+    **sage_overrides,  # type: ignore[no-untyped-def]
 ) -> SageGatedORBStrategy:
     sage_base = {"min_conviction": 0.5, "min_alignment": 0.5}
     sage_base.update(sage_overrides)
     cfg = SageGatedORBConfig(
         orb=ORBConfig(
-            ema_bias_period=0, volume_mult=0.0, atr_period=5,
+            ema_bias_period=0,
+            volume_mult=0.0,
+            atr_period=5,
             range_minutes=15,
             # See test_orb_strategy._fixture_strategy: ORB default flipped
             # to require_retest=True; these gated tests exercise the
@@ -282,22 +330,39 @@ def _gated_orb(
     return SageGatedORBStrategy(cfg)
 
 
-def _ny_bar(local_h: int, local_m: int, *, high: float, low: float,
-            close: float | None = None, open_: float | None = None,
-            volume: float = 1000.0, day: int = 15) -> BarData:
+def _ny_bar(
+    local_h: int,
+    local_m: int,
+    *,
+    high: float,
+    low: float,
+    close: float | None = None,
+    open_: float | None = None,
+    volume: float = 1000.0,
+    day: int = 15,
+) -> BarData:
     """ORB bar at NY local time."""
     local_dt = datetime(2026, 1, day, local_h, local_m, tzinfo=_NY)
     utc_dt = local_dt.astimezone(UTC)
     o = open_ if open_ is not None else (high + low) / 2
     c = close if close is not None else (high + low) / 2
     return BarData(
-        timestamp=utc_dt, symbol="MNQ", open=o, high=high, low=low,
-        close=c, volume=volume,
+        timestamp=utc_dt,
+        symbol="MNQ",
+        open=o,
+        high=high,
+        low=low,
+        close=c,
+        volume=volume,
     )
 
 
 def _drive_orb_range(
-    s: SageGatedORBStrategy, *, hi: float, lo: float, day: int = 15,
+    s: SageGatedORBStrategy,
+    *,
+    hi: float,
+    lo: float,
+    day: int = 15,
 ) -> list[BarData]:
     """Run the 9:30/9:35/9:40 range bars through, return ATR-rich hist.
 
@@ -336,8 +401,12 @@ def test_gated_orb_blocks_when_sage_disagrees(fake_sage) -> None:
     cfg = _config()
     hist = _drive_orb_range(s, hi=120, lo=100)
     fake_sage.next_report = _fake_report(
-        Bias.SHORT, conviction=0.9, alignment=0.0,
-        n_aligned=2, n_disagree=15, n_neutral=5,
+        Bias.SHORT,
+        conviction=0.9,
+        alignment=0.0,
+        n_aligned=2,
+        n_disagree=15,
+        n_neutral=5,
     )
     bar = _ny_bar(9, 45, high=125, low=120, close=124)
     out = s.maybe_enter(bar, hist, 10_000.0, cfg)
@@ -349,8 +418,12 @@ def test_gated_orb_passes_when_sage_agrees(fake_sage) -> None:
     cfg = _config()
     hist = _drive_orb_range(s, hi=120, lo=100)
     fake_sage.next_report = _fake_report(
-        Bias.LONG, conviction=0.9, alignment=1.0,
-        n_aligned=15, n_disagree=2, n_neutral=5,
+        Bias.LONG,
+        conviction=0.9,
+        alignment=1.0,
+        n_aligned=15,
+        n_disagree=2,
+        n_neutral=5,
     )
     bar = _ny_bar(9, 45, high=125, low=120, close=124)
     out = s.maybe_enter(bar, hist, 10_000.0, cfg)
@@ -379,16 +452,24 @@ def test_gated_orb_resets_day_state_on_veto(fake_sage) -> None:
     hist = _drive_orb_range(s, hi=120, lo=100)
     # First fire: sage vetoes
     fake_sage.next_report = _fake_report(
-        Bias.SHORT, conviction=0.9, alignment=0.0,
-        n_aligned=2, n_disagree=15, n_neutral=5,
+        Bias.SHORT,
+        conviction=0.9,
+        alignment=0.0,
+        n_aligned=2,
+        n_disagree=15,
+        n_neutral=5,
     )
     bar1 = _ny_bar(9, 45, high=125, low=120, close=124)
     out1 = s.maybe_enter(bar1, hist, 10_000.0, cfg)
     assert out1 is None
     # Second fire (later in the day): sage now agrees → should fire
     fake_sage.next_report = _fake_report(
-        Bias.LONG, conviction=0.9, alignment=1.0,
-        n_aligned=15, n_disagree=2, n_neutral=5,
+        Bias.LONG,
+        conviction=0.9,
+        alignment=1.0,
+        n_aligned=15,
+        n_disagree=2,
+        n_neutral=5,
     )
     bar2 = _ny_bar(10, 0, high=126, low=121, close=125)
     out2 = s.maybe_enter(bar2, hist, 10_000.0, cfg)
@@ -401,8 +482,12 @@ def test_gated_orb_blocks_when_conviction_too_low(fake_sage) -> None:
     cfg = _config()
     hist = _drive_orb_range(s, hi=120, lo=100)
     fake_sage.next_report = _fake_report(
-        Bias.LONG, conviction=0.4, alignment=1.0,
-        n_aligned=15, n_disagree=2, n_neutral=5,
+        Bias.LONG,
+        conviction=0.4,
+        alignment=1.0,
+        n_aligned=15,
+        n_disagree=2,
+        n_neutral=5,
     )
     bar = _ny_bar(9, 45, high=125, low=120, close=124)
     assert s.maybe_enter(bar, hist, 10_000.0, cfg) is None

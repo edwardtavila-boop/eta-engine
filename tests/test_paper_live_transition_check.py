@@ -71,9 +71,7 @@ def _queue(
         "first_next_action": "install gateway" if first_op == "OP-19" else "review warnings",
         "launch_blocked_count": launch_count,
         "first_launch_blocker_op_id": launch_op,
-        "first_launch_next_action": (
-            "install gateway" if launch_op == "OP-19" else "launch is clear"
-        ),
+        "first_launch_next_action": ("install gateway" if launch_op == "OP-19" else "launch is clear"),
         "bot_strategy_paper_ready": paper_ready,
         "operator_queue": operator_queue,
     }
@@ -130,9 +128,7 @@ def test_transition_check_prioritizes_visible_gateway_login_hold(monkeypatch) ->
     result = mod.build_transition_check()
     op19_gate = next(gate for gate in result["gates"] if gate["name"] == "op19_gateway_runtime")
 
-    assert result["operator_queue_first_launch_next_action"].startswith(
-        "Complete the visible IBKR Gateway login/2FA"
-    )
+    assert result["operator_queue_first_launch_next_action"].startswith("Complete the visible IBKR Gateway login/2FA")
     assert op19_gate["next_action"] == result["operator_queue_first_launch_next_action"]
     assert "tws_watchdog" in op19_gate["next_action"]
 

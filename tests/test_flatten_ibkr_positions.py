@@ -65,8 +65,7 @@ def test_filter_local_symbol_match_front_month() -> None:
     contract = SimpleNamespace(symbol="MNQ", localSymbol="MNQM6")
     assert _position_matches_filter(contract, None, {"MNQM6"}) is True
     contract_next_month = SimpleNamespace(symbol="MNQ", localSymbol="MNQU6")
-    assert _position_matches_filter(
-        contract_next_month, None, {"MNQM6"}) is False
+    assert _position_matches_filter(contract_next_month, None, {"MNQM6"}) is False
 
 
 def test_filter_case_insensitive() -> None:

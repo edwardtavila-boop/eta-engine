@@ -1,4 +1,5 @@
 """Tests for kelly_optimizer — T13 fractional-Kelly sizing recommendations."""
+
 from __future__ import annotations
 
 import json
@@ -14,6 +15,7 @@ def _write_trades(path: Path, trades: list[dict]) -> None:
 
 def _recent_iso(days_ago: int = 0) -> str:
     from datetime import UTC, datetime, timedelta
+
     return (datetime.now(UTC) - timedelta(days=days_ago)).isoformat()
 
 
@@ -31,10 +33,13 @@ def test_recommend_flags_insufficient_data(tmp_path: Path) -> None:
     from eta_engine.brain.jarvis_v3 import kelly_optimizer
 
     path = tmp_path / "tc.jsonl"
-    _write_trades(path, [
-        {"bot_id": "low_data", "r": 1.0, "ts": _recent_iso(1)},
-        {"bot_id": "low_data", "r": -0.5, "ts": _recent_iso(2)},
-    ])
+    _write_trades(
+        path,
+        [
+            {"bot_id": "low_data", "r": 1.0, "ts": _recent_iso(1)},
+            {"bot_id": "low_data", "r": -0.5, "ts": _recent_iso(2)},
+        ],
+    )
     recs = kelly_optimizer.recommend_sizing(trade_closes_path=path)
     assert len(recs) == 1
     assert recs[0]["bot_id"] == "low_data"
@@ -72,8 +77,7 @@ def test_recommend_clamps_negative_expectancy_to_zero(tmp_path: Path) -> None:
     from eta_engine.brain.jarvis_v3 import kelly_optimizer
 
     path = tmp_path / "tc.jsonl"
-    trades = [{"bot_id": "loser", "r": -0.5, "ts": _recent_iso(i)}
-              for i in range(25)]
+    trades = [{"bot_id": "loser", "r": -0.5, "ts": _recent_iso(i)} for i in range(25)]
     _write_trades(path, trades)
 
     recs = kelly_optimizer.recommend_sizing(trade_closes_path=path)
@@ -98,7 +102,8 @@ def test_recommend_lookback_window_filters_old_trades(tmp_path: Path) -> None:
     _write_trades(path, trades)
 
     recs = kelly_optimizer.recommend_sizing(
-        lookback_days=30, trade_closes_path=path,
+        lookback_days=30,
+        trade_closes_path=path,
     )
     # Only 5 trades within window → insufficient_data
     assert recs[0]["insufficient_data"] is True
@@ -180,10 +185,12 @@ def test_recommend_respects_kelly_fraction_arg(tmp_path: Path) -> None:
     _write_trades(path, trades)
 
     quarter = kelly_optimizer.recommend_sizing(
-        kelly_fraction=0.25, trade_closes_path=path,
+        kelly_fraction=0.25,
+        trade_closes_path=path,
     )
     half = kelly_optimizer.recommend_sizing(
-        kelly_fraction=0.5, trade_closes_path=path,
+        kelly_fraction=0.5,
+        trade_closes_path=path,
     )
     # f_target scales linearly with kelly_fraction
     assert abs(half[0]["f_target"] - 2 * quarter[0]["f_target"]) < 0.001
@@ -194,9 +201,7 @@ def test_recommend_handles_bad_args(tmp_path: Path) -> None:
     from eta_engine.brain.jarvis_v3 import kelly_optimizer
 
     path = tmp_path / "tc.jsonl"
-    _write_trades(path, [
-        {"bot_id": "x", "r": 0.2, "ts": _recent_iso(i)} for i in range(25)
-    ])
+    _write_trades(path, [{"bot_id": "x", "r": 0.2, "ts": _recent_iso(i)} for i in range(25)])
 
     # Bad args → no crash, returns recommendations
     recs = kelly_optimizer.recommend_sizing(
@@ -244,10 +249,7 @@ def test_recommend_legacy_r_alias_still_works(tmp_path: Path) -> None:
     from eta_engine.brain.jarvis_v3 import kelly_optimizer
 
     path = tmp_path / "tc.jsonl"
-    trades = [
-        {"bot_id": "legacy_bot", "r": 0.3, "ts": _recent_iso(i)}
-        for i in range(25)
-    ]
+    trades = [{"bot_id": "legacy_bot", "r": 0.3, "ts": _recent_iso(i)} for i in range(25)]
     _write_trades(path, trades)
 
     recs = kelly_optimizer.recommend_sizing(trade_closes_path=path)
@@ -265,10 +267,7 @@ def test_recommend_realized_r_overrides_legacy_when_both_present(
     from eta_engine.brain.jarvis_v3 import kelly_optimizer
 
     path = tmp_path / "tc.jsonl"
-    trades = [
-        {"bot_id": "dual", "realized_r": 0.5, "r": -99.0, "ts": _recent_iso(i)}
-        for i in range(25)
-    ]
+    trades = [{"bot_id": "dual", "realized_r": 0.5, "r": -99.0, "ts": _recent_iso(i)} for i in range(25)]
     _write_trades(path, trades)
 
     recs = kelly_optimizer.recommend_sizing(trade_closes_path=path)
@@ -276,7 +275,8 @@ def test_recommend_realized_r_overrides_legacy_when_both_present(
 
 
 def test_read_trade_closes_unions_canonical_and_legacy(
-    tmp_path: Path, monkeypatch: object,
+    tmp_path: Path,
+    monkeypatch: object,
 ) -> None:
     """Regression: when called with no override path, the reader must
     consult BOTH ``DEFAULT_TRADE_CLOSES_PATH`` (canonical) and
@@ -293,16 +293,17 @@ def test_read_trade_closes_unions_canonical_and_legacy(
     canonical = tmp_path / "canonical.jsonl"
     legacy = tmp_path / "legacy.jsonl"
     # 10 canonical rows + 15 legacy rows = 25 total, exceeds MIN_OBS
-    _write_trades(canonical, [
-        {"bot_id": "merged_bot", "signal_id": f"can_{i}",
-         "realized_r": 0.4, "ts": _recent_iso(i)}
-        for i in range(10)
-    ])
-    _write_trades(legacy, [
-        {"bot_id": "merged_bot", "signal_id": f"leg_{i}",
-         "realized_r": -0.2, "ts": _recent_iso(i + 20)}
-        for i in range(15)
-    ])
+    _write_trades(
+        canonical,
+        [{"bot_id": "merged_bot", "signal_id": f"can_{i}", "realized_r": 0.4, "ts": _recent_iso(i)} for i in range(10)],
+    )
+    _write_trades(
+        legacy,
+        [
+            {"bot_id": "merged_bot", "signal_id": f"leg_{i}", "realized_r": -0.2, "ts": _recent_iso(i + 20)}
+            for i in range(15)
+        ],
+    )
     monkeypatch.setattr(ko, "DEFAULT_TRADE_CLOSES_PATH", canonical)  # type: ignore[attr-defined]
     monkeypatch.setattr(ko, "_LEGACY_TRADE_CLOSES_PATH", legacy)  # type: ignore[attr-defined]
 
@@ -318,7 +319,8 @@ def test_read_trade_closes_unions_canonical_and_legacy(
 
 
 def test_read_trade_closes_dedupes_dual_source(
-    tmp_path: Path, monkeypatch: object,
+    tmp_path: Path,
+    monkeypatch: object,
 ) -> None:
     """Records present in BOTH sources (same signal_id, bot_id, ts,
     realized_r) must be deduped — counted once, not twice."""
@@ -328,9 +330,7 @@ def test_read_trade_closes_dedupes_dual_source(
     legacy = tmp_path / "legacy.jsonl"
     # 25 trades, identical content in both files
     shared = [
-        {"bot_id": "dedup_bot", "signal_id": f"shared_{i}",
-         "realized_r": 0.3, "ts": _recent_iso(i)}
-        for i in range(25)
+        {"bot_id": "dedup_bot", "signal_id": f"shared_{i}", "realized_r": 0.3, "ts": _recent_iso(i)} for i in range(25)
     ]
     _write_trades(canonical, shared)
     _write_trades(legacy, shared)
@@ -341,8 +341,7 @@ def test_read_trade_closes_dedupes_dual_source(
     assert len(recs) == 1
     # Dedupe = 25 not 50
     assert recs[0]["n_trades"] == 25, (
-        "duplicate rows across canonical + legacy must dedupe to one count, "
-        f"got {recs[0]['n_trades']}"
+        f"duplicate rows across canonical + legacy must dedupe to one count, got {recs[0]['n_trades']}"
     )
 
 
@@ -354,13 +353,9 @@ def test_read_trade_closes_override_is_single_source(tmp_path: Path) -> None:
     from eta_engine.brain.jarvis_v3 import kelly_optimizer
 
     override = tmp_path / "only_this.jsonl"
-    _write_trades(override, [
-        {"bot_id": "iso", "realized_r": 0.5, "ts": _recent_iso(i)}
-        for i in range(25)
-    ])
+    _write_trades(override, [{"bot_id": "iso", "realized_r": 0.5, "ts": _recent_iso(i)} for i in range(25)])
 
     recs = kelly_optimizer.recommend_sizing(trade_closes_path=override)
     assert len(recs) == 1
     assert recs[0]["bot_id"] == "iso"
     assert recs[0]["n_trades"] == 25
-

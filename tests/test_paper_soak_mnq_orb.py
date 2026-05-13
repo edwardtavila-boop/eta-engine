@@ -148,7 +148,8 @@ def test_ibkr_preflight_returns_well_formed_tuple() -> None:
 
 
 def test_ibkr_preflight_fails_closed_without_account_id(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: object,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: object,
 ) -> None:
     """When no IBKR creds are reachable, preflight must fail closed.
 
@@ -195,21 +196,35 @@ def test_build_plan_zero_sessions_exits_3() -> None:
 
 def test_soak_plan_to_dict_roundtrip_keys() -> None:
     p = SoakPlan(
-        bot_id="mnq_futures", strategy_id="mnq_orb_v2",
-        symbol="MNQ1", timeframe="5m",
-        start_date=date(2026, 4, 27), end_date=date(2026, 5, 8),
+        bot_id="mnq_futures",
+        strategy_id="mnq_orb_v2",
+        symbol="MNQ1",
+        timeframe="5m",
+        start_date=date(2026, 4, 27),
+        end_date=date(2026, 5, 8),
         rth_session_dates=[date(2026, 4, 27)],
-        venue="ibkr_paper", account_id_redacted="DUH***1234",
-        expected_trades_lower=5, expected_trades_upper=10,
+        venue="ibkr_paper",
+        account_id_redacted="DUH***1234",
+        expected_trades_lower=5,
+        expected_trades_upper=10,
         pinned_baseline={"n_trades": 41, "win_rate": 0.488},
     )
     d = p.to_dict()
     for k in (
-        "bot_id", "strategy_id", "symbol", "timeframe",
-        "start_date", "end_date", "rth_session_dates",
-        "n_sessions", "venue", "account_id_redacted",
-        "expected_trades_lower", "expected_trades_upper",
-        "pinned_baseline", "emitted_at_utc",
+        "bot_id",
+        "strategy_id",
+        "symbol",
+        "timeframe",
+        "start_date",
+        "end_date",
+        "rth_session_dates",
+        "n_sessions",
+        "venue",
+        "account_id_redacted",
+        "expected_trades_lower",
+        "expected_trades_upper",
+        "pinned_baseline",
+        "emitted_at_utc",
     ):
         assert k in d
     assert d["n_sessions"] == 1

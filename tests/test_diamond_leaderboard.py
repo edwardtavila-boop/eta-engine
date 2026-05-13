@@ -1,4 +1,5 @@
 """Tests for diamond_leaderboard — wave-15 PROP_READY competition."""
+
 # ruff: noqa: N802, PLR2004, SLF001
 from __future__ import annotations
 
@@ -56,9 +57,15 @@ def test_temporal_multiplier_caps_at_five_days() -> None:
 # ────────────────────────────────────────────────────────────────────
 
 
-def _entry(bot_id: str, n: int, avg_r: float, composite: float,
-           usd_cls: str = "HEALTHY", r_cls: str = "HEALTHY",
-           sizing_verdict: str = "SIZING_OK") -> object:
+def _entry(
+    bot_id: str,
+    n: int,
+    avg_r: float,
+    composite: float,
+    usd_cls: str = "HEALTHY",
+    r_cls: str = "HEALTHY",
+    sizing_verdict: str = "SIZING_OK",
+) -> object:
     """Build a leaderboard entry for testing _evaluate_prop_ready."""
     from eta_engine.scripts import diamond_leaderboard as lb
 
@@ -105,8 +112,7 @@ def test_low_n_disqualifies_from_prop_ready() -> None:
     lb._evaluate_prop_ready(entries)
     by_id = {e.bot_id: e for e in entries}
     assert not by_id["tiny_but_strong"].prop_ready
-    assert any("n_trades<100" in d for d in
-               by_id["tiny_but_strong"].prop_ready_disqualified_for)
+    assert any("n_trades<100" in d for d in by_id["tiny_but_strong"].prop_ready_disqualified_for)
     # The normal (lower-ranked but eligible) bot DOES get PROP_READY
     assert by_id["normal"].prop_ready
 
@@ -122,8 +128,7 @@ def test_low_avg_r_disqualifies_from_prop_ready() -> None:
     lb._evaluate_prop_ready(entries)
     by_id = {e.bot_id: e for e in entries}
     assert not by_id["noise_bot"].prop_ready
-    assert any("avg_r<" in d for d in
-               by_id["noise_bot"].prop_ready_disqualified_for)
+    assert any("avg_r<" in d for d in by_id["noise_bot"].prop_ready_disqualified_for)
     assert by_id["real_edge"].prop_ready
 
 
@@ -131,10 +136,8 @@ def test_watchdog_critical_disqualifies_either_basis() -> None:
     from eta_engine.scripts import diamond_leaderboard as lb
 
     entries = [
-        _entry("usd_critical", n=200, avg_r=0.5, composite=10.0,
-                usd_cls="CRITICAL"),
-        _entry("r_critical", n=200, avg_r=0.5, composite=9.0,
-                r_cls="CRITICAL"),
+        _entry("usd_critical", n=200, avg_r=0.5, composite=10.0, usd_cls="CRITICAL"),
+        _entry("r_critical", n=200, avg_r=0.5, composite=9.0, r_cls="CRITICAL"),
         _entry("clean", n=200, avg_r=0.3, composite=5.0),
     ]
     lb._evaluate_prop_ready(entries)
@@ -148,15 +151,13 @@ def test_sizing_breached_disqualifies() -> None:
     from eta_engine.scripts import diamond_leaderboard as lb
 
     entries = [
-        _entry("breached", n=200, avg_r=0.5, composite=10.0,
-                sizing_verdict="SIZING_BREACHED"),
+        _entry("breached", n=200, avg_r=0.5, composite=10.0, sizing_verdict="SIZING_BREACHED"),
         _entry("clean_eur_range", n=200, avg_r=0.3, composite=5.0),
     ]
     lb._evaluate_prop_ready(entries)
     by_id = {e.bot_id: e for e in entries}
     assert not by_id["breached"].prop_ready
-    assert any("sizing BREACHED" in d for d in
-               by_id["breached"].prop_ready_disqualified_for)
+    assert any("sizing BREACHED" in d for d in by_id["breached"].prop_ready_disqualified_for)
     assert by_id["clean_eur_range"].prop_ready
 
 
@@ -176,17 +177,14 @@ def test_spot_bot_disqualified_from_prop_ready_wave16() -> None:
 
     entries = [
         _entry("volume_profile_btc", n=339, avg_r=0.36, composite=10.0),  # spot
-        _entry("met_sweep_reclaim", n=200, avg_r=0.6, composite=8.0),     # CME crypto futures
-        _entry("eur_sweep_reclaim", n=200, avg_r=0.4, composite=6.0),     # CME currency futures
+        _entry("met_sweep_reclaim", n=200, avg_r=0.6, composite=8.0),  # CME crypto futures
+        _entry("eur_sweep_reclaim", n=200, avg_r=0.4, composite=6.0),  # CME currency futures
     ]
     lb._evaluate_prop_ready(entries)
     by_id = {e.bot_id: e for e in entries}
     # volume_profile_btc has highest composite but is DQ'd as Alpaca spot
     assert not by_id["volume_profile_btc"].prop_ready
-    assert any(
-        "not IBKR-futures eligible" in d
-        for d in by_id["volume_profile_btc"].prop_ready_disqualified_for
-    )
+    assert any("not IBKR-futures eligible" in d for d in by_id["volume_profile_btc"].prop_ready_disqualified_for)
     # The two IBKR-futures bots get PROP_READY
     assert by_id["met_sweep_reclaim"].prop_ready
     assert by_id["eur_sweep_reclaim"].prop_ready
@@ -197,12 +195,12 @@ def test_ibkr_futures_eligible_helper() -> None:
     from eta_engine.feeds.capital_allocator import is_ibkr_futures_eligible
 
     # IBKR futures
-    assert is_ibkr_futures_eligible("met_sweep_reclaim")    # CME micro ether
-    assert is_ibkr_futures_eligible("mbt_sweep_reclaim")    # CME micro bitcoin
-    assert is_ibkr_futures_eligible("m2k_sweep_reclaim")    # CME micro russell
-    assert is_ibkr_futures_eligible("eur_sweep_reclaim")    # CME 6E
-    assert is_ibkr_futures_eligible("ng_sweep_reclaim")     # CME NG
-    assert is_ibkr_futures_eligible("mnq_futures_sage")     # CME micro NQ
+    assert is_ibkr_futures_eligible("met_sweep_reclaim")  # CME micro ether
+    assert is_ibkr_futures_eligible("mbt_sweep_reclaim")  # CME micro bitcoin
+    assert is_ibkr_futures_eligible("m2k_sweep_reclaim")  # CME micro russell
+    assert is_ibkr_futures_eligible("eur_sweep_reclaim")  # CME 6E
+    assert is_ibkr_futures_eligible("ng_sweep_reclaim")  # CME NG
+    assert is_ibkr_futures_eligible("mnq_futures_sage")  # CME micro NQ
     # Alpaca spot — NOT eligible
     assert not is_ibkr_futures_eligible("volume_profile_btc")
     assert not is_ibkr_futures_eligible("vwap_mr_btc")
@@ -218,7 +216,7 @@ def test_no_eligible_means_no_prop_ready() -> None:
     entries = [
         _entry("low_n_1", n=10, avg_r=0.5, composite=10.0),
         _entry("low_n_2", n=10, avg_r=0.4, composite=8.0),
-        _entry("noise",   n=2000, avg_r=0.01, composite=4.0),
+        _entry("noise", n=2000, avg_r=0.01, composite=4.0),
     ]
     lb._evaluate_prop_ready(entries)
     assert not any(e.prop_ready for e in entries)
@@ -254,7 +252,8 @@ def test_negative_edge_produces_negative_composite() -> None:
         sizing={"verdict": "SIZING_OK", "n_trades_with_pnl": 100, "cum_r": -5.0},
         watchdog={"classification_usd": "HEALTHY", "classification_r": "HEALTHY"},
         direction={
-            "n_long": 50, "n_short": 50,
+            "n_long": 50,
+            "n_short": 50,
             "long": {"avg_r": -0.05, "win_rate_pct": 30.0},
             "short": {"avg_r": -0.05, "win_rate_pct": 30.0},
             "verdict": "BIDIRECTIONAL_LOSS",
@@ -275,7 +274,8 @@ def test_run_writes_json_receipt(tmp_path: Path, monkeypatch: object) -> None:
     from eta_engine.scripts import diamond_leaderboard as lb
 
     monkeypatch.setattr(
-        lb, "_gather_signals",
+        lb,
+        "_gather_signals",
         lambda: ({}, {}, {}, {}),  # no signal data → all bots score 0
     )
     out_path = tmp_path / "out.json"

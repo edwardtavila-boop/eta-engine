@@ -109,8 +109,8 @@ class MBTZFadeConfig:
     """
 
     # Proxy / z-score window
-    proxy_lookback: int = 24       # 24 5m bars = 2h rolling window
-    entry_z: float = 2.5            # EDA: net edge collapses below 2.5
+    proxy_lookback: int = 24  # 24 5m bars = 2h rolling window
+    entry_z: float = 2.5  # EDA: net edge collapses below 2.5
     # Exit z is informational; the engine's exit is stop/target driven.
     exit_z: float = 0.0
 
@@ -124,8 +124,8 @@ class MBTZFadeConfig:
 
     # Risk / sizing
     atr_period: int = 14
-    atr_stop_mult: float = 1.0      # 1.0x ATR stop
-    rr_target: float = 1.5          # EDA: ~20-min reversion -> tight target
+    atr_stop_mult: float = 1.0  # 1.0x ATR stop
+    rr_target: float = 1.5  # EDA: ~20-min reversion -> tight target
     risk_per_trade_pct: float = 0.005
 
     # Time-stop -- engine has no maybe_exit hook today; the value is
@@ -134,7 +134,7 @@ class MBTZFadeConfig:
 
     # Hygiene
     min_bars_between_trades: int = 12
-    max_trades_per_day: int = 3      # bumped from legacy 2 -- EDA showed
+    max_trades_per_day: int = 3  # bumped from legacy 2 -- EDA showed
     # 150 fires on z>=+2.5 over 49 sessions = ~3 per session ceiling.
     warmup_bars: int = 50
 
@@ -234,7 +234,7 @@ class MBTZFadeStrategy:
         vals = list(self._proxy_window)
         mean = sum(vals) / len(vals)
         var = sum((v - mean) ** 2 for v in vals) / len(vals)
-        std = var ** 0.5
+        std = var**0.5
         if std <= 0.0:
             return 0.0
         return (value - mean) / std
@@ -254,7 +254,7 @@ class MBTZFadeStrategy:
         # so the synthetic close uses the most recent N bars.
         window: list[float] = []
         if hist:
-            for b in hist[-(n - 1):]:
+            for b in hist[-(n - 1) :]:
                 window.append(b.close)
         window.append(bar.close)
         if not window:
@@ -357,8 +357,7 @@ class MBTZFadeStrategy:
             return None
         if (
             self._last_entry_idx is not None
-            and (self._bars_seen - self._last_entry_idx)
-            < self.cfg.min_bars_between_trades
+            and (self._bars_seen - self._last_entry_idx) < self.cfg.min_bars_between_trades
         ):
             return None
         if not self._in_session(bar):
@@ -386,7 +385,7 @@ class MBTZFadeStrategy:
             return None
 
         # Risk sizing
-        atr_window = hist[-self.cfg.atr_period:] if hist else []
+        atr_window = hist[-self.cfg.atr_period :] if hist else []
         if len(atr_window) < 2:
             return None
         atr = sum(b.high - b.low for b in atr_window) / len(atr_window)
@@ -436,9 +435,15 @@ class MBTZFadeStrategy:
         self._trades_today += 1
         self._n_fired += 1
         return _Open(
-            entry_bar=bar, side=side, qty=qty, entry_price=entry,
-            stop=stop, target=target, risk_usd=risk_usd,
-            confluence=8.0, leverage=1.0,
+            entry_bar=bar,
+            side=side,
+            qty=qty,
+            entry_price=entry,
+            stop=stop,
+            target=target,
+            risk_usd=risk_usd,
+            confluence=8.0,
+            leverage=1.0,
             regime=f"mbt_zfade_{side.lower()}_z{z:.2f}",
         )
 

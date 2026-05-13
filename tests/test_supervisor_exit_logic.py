@@ -19,6 +19,7 @@ All three behaviors are env-flagged so they can be disabled if they
 misbehave; the tests cover both the on (default) and off paths where
 applicable.
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
@@ -64,8 +65,11 @@ def _make_bot(bot_id: str = "alpha", symbol: str = "MNQ"):
     from eta_engine.scripts.jarvis_strategy_supervisor import BotInstance
 
     bot = BotInstance(
-        bot_id=bot_id, symbol=symbol, strategy_kind="futures",
-        direction="long", cash=5_000.0,
+        bot_id=bot_id,
+        symbol=symbol,
+        strategy_kind="futures",
+        direction="long",
+        cash=5_000.0,
     )
     bot.open_position = {
         "side": "BUY",
@@ -120,12 +124,13 @@ def test_trailing_stop_activates_at_1R(
 
     # And it must never lower the stop on subsequent unfavorable ticks.
     bar_pullback = {
-        "open": 18_010.0, "high": 18_005.0, "low": 17_995.0, "close": 18_001.0,
+        "open": 18_010.0,
+        "high": 18_005.0,
+        "low": 17_995.0,
+        "close": 18_001.0,
     }
     sup._maybe_apply_trailing_stop(bot, pos, bar_pullback)
-    assert pos["bracket_stop"] == pytest.approx(18_000.0), (
-        "stop must not move adversely after activation"
-    )
+    assert pos["bracket_stop"] == pytest.approx(18_000.0), "stop must not move adversely after activation"
 
 
 def test_trailing_stop_disabled_via_env(
@@ -218,11 +223,13 @@ def test_partial_profit_closes_half(
     from eta_engine.scripts.jarvis_strategy_supervisor import FillRecord
 
     def _fake_submit_exit(*, bot, bar):  # noqa: ANN001 — match real signature
-        captured_calls.append({
-            "bot_id": bot.bot_id,
-            "qty": bot.open_position["qty"],
-            "exit_reason": bot.open_position.get("exit_reason"),
-        })
+        captured_calls.append(
+            {
+                "bot_id": bot.bot_id,
+                "qty": bot.open_position["qty"],
+                "exit_reason": bot.open_position.get("exit_reason"),
+            }
+        )
         rec = FillRecord(
             bot_id=bot.bot_id,
             signal_id="partial-exit-001",
@@ -254,12 +261,9 @@ def test_partial_profit_closes_half(
     sup._maybe_take_partial_profit(bot, bot.open_position, bar)
 
     # Exactly one submit_exit call, sized to half the original qty.
-    assert len(captured_calls) == 1, (
-        f"expected 1 partial-exit call, got {len(captured_calls)}"
-    )
+    assert len(captured_calls) == 1, f"expected 1 partial-exit call, got {len(captured_calls)}"
     assert captured_calls[0]["qty"] == pytest.approx(initial_qty * 0.5), (
-        f"partial close qty should be 50% of {initial_qty}; "
-        f"got {captured_calls[0]['qty']}"
+        f"partial close qty should be 50% of {initial_qty}; got {captured_calls[0]['qty']}"
     )
     assert captured_calls[0]["exit_reason"] == "paper_partial_profit"
 
@@ -276,9 +280,7 @@ def test_partial_profit_closes_half(
     # gates the helper's dedup. Without this, every tick at +1R would
     # close another 50%.
     sup._maybe_take_partial_profit(bot, bot.open_position, bar)
-    assert len(captured_calls) == 1, (
-        "second tick at same R must not re-fire partial profit"
-    )
+    assert len(captured_calls) == 1, "second tick at same R must not re-fire partial profit"
 
 
 def test_partial_profit_disabled_via_env(
@@ -332,16 +334,25 @@ def test_signal_aggregation_dedups_same_bar(
     from eta_engine.scripts.jarvis_strategy_supervisor import BotInstance
 
     bot_a = BotInstance(
-        bot_id="alpha_a", symbol="MNQ", strategy_kind="futures",
-        direction="long", cash=5_000.0,
+        bot_id="alpha_a",
+        symbol="MNQ",
+        strategy_kind="futures",
+        direction="long",
+        cash=5_000.0,
     )
     bot_b = BotInstance(
-        bot_id="alpha_b", symbol="MNQ", strategy_kind="futures",
-        direction="long", cash=5_000.0,
+        bot_id="alpha_b",
+        symbol="MNQ",
+        strategy_kind="futures",
+        direction="long",
+        cash=5_000.0,
     )
     bot_c = BotInstance(
-        bot_id="alpha_c", symbol="MNQ", strategy_kind="futures",
-        direction="long", cash=5_000.0,
+        bot_id="alpha_c",
+        symbol="MNQ",
+        strategy_kind="futures",
+        direction="long",
+        cash=5_000.0,
     )
     bar = {"open": 18_000.0, "high": 18_010.0, "low": 17_995.0, "close": 18_005.0}
 
@@ -353,25 +364,21 @@ def test_signal_aggregation_dedups_same_bar(
     reason_b = sup._check_signal_aggregation(bot=bot_b, side="BUY", bar=bar)
     reason_c = sup._check_signal_aggregation(bot=bot_c, side="BUY", bar=bar)
 
-    assert reason_b == "consolidated_with_alpha_a", (
-        f"bot_b should consolidate against alpha_a, got {reason_b!r}"
-    )
-    assert reason_c == "consolidated_with_alpha_a", (
-        f"bot_c should consolidate against alpha_a, got {reason_c!r}"
-    )
+    assert reason_b == "consolidated_with_alpha_a", f"bot_b should consolidate against alpha_a, got {reason_b!r}"
+    assert reason_c == "consolidated_with_alpha_a", f"bot_c should consolidate against alpha_a, got {reason_c!r}"
 
     # OPPOSITE direction on the SAME symbol must NOT consolidate (a SELL
     # is a different decision than the BUY that just fired).
     reason_d = sup._check_signal_aggregation(bot=bot_b, side="SELL", bar=bar)
-    assert reason_d is None, (
-        "same-symbol opposite-direction entry must not consolidate; "
-        "got {reason_d!r}"
-    )
+    assert reason_d is None, "same-symbol opposite-direction entry must not consolidate; got {reason_d!r}"
 
     # Different symbol must NOT consolidate either.
     bot_e = BotInstance(
-        bot_id="eth_strat", symbol="ETH", strategy_kind="crypto",
-        direction="long", cash=5_000.0,
+        bot_id="eth_strat",
+        symbol="ETH",
+        strategy_kind="crypto",
+        direction="long",
+        cash=5_000.0,
     )
     reason_e = sup._check_signal_aggregation(bot=bot_e, side="BUY", bar=bar)
     assert reason_e is None, "different symbol must not consolidate"
@@ -388,12 +395,18 @@ def test_signal_aggregation_disabled_via_env(
     from eta_engine.scripts.jarvis_strategy_supervisor import BotInstance
 
     bot_a = BotInstance(
-        bot_id="alpha_a", symbol="MNQ", strategy_kind="futures",
-        direction="long", cash=5_000.0,
+        bot_id="alpha_a",
+        symbol="MNQ",
+        strategy_kind="futures",
+        direction="long",
+        cash=5_000.0,
     )
     bot_b = BotInstance(
-        bot_id="alpha_b", symbol="MNQ", strategy_kind="futures",
-        direction="long", cash=5_000.0,
+        bot_id="alpha_b",
+        symbol="MNQ",
+        strategy_kind="futures",
+        direction="long",
+        cash=5_000.0,
     )
     bar = {"close": 18_000.0}
 
@@ -418,12 +431,18 @@ def test_signal_aggregation_window_expiry(
     from eta_engine.scripts.jarvis_strategy_supervisor import BotInstance
 
     bot_a = BotInstance(
-        bot_id="alpha_a", symbol="MNQ", strategy_kind="futures",
-        direction="long", cash=5_000.0,
+        bot_id="alpha_a",
+        symbol="MNQ",
+        strategy_kind="futures",
+        direction="long",
+        cash=5_000.0,
     )
     bot_b = BotInstance(
-        bot_id="alpha_b", symbol="MNQ", strategy_kind="futures",
-        direction="long", cash=5_000.0,
+        bot_id="alpha_b",
+        symbol="MNQ",
+        strategy_kind="futures",
+        direction="long",
+        cash=5_000.0,
     )
     bar = {"close": 18_000.0}
 
@@ -434,6 +453,4 @@ def test_signal_aggregation_window_expiry(
     sup._aggregation_cache[cache_key]["fired_at"] -= 999.0
 
     reason = sup._check_signal_aggregation(bot=bot_b, side="BUY", bar=bar)
-    assert reason is None, (
-        f"sibling outside window must be allowed, got {reason!r}"
-    )
+    assert reason is None, f"sibling outside window must be allowed, got {reason!r}"

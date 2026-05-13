@@ -183,9 +183,9 @@ def resolve_fleet_cap(root: str) -> float:
             return abs(float(raw))
         except ValueError:
             logger.warning(
-                "ETA_FLEET_POSITION_CAP_%s=%r is not a number; "
-                "falling through to defaults",
-                root_u, raw,
+                "ETA_FLEET_POSITION_CAP_%s=%r is not a number; falling through to defaults",
+                root_u,
+                raw,
             )
     if root_u in DEFAULT_ROOT_CAPS:
         return DEFAULT_ROOT_CAPS[root_u]
@@ -219,8 +219,7 @@ def resolve_prop_sleeve_cap(sleeve: str) -> float:
             return abs(float(raw))
         except ValueError:
             logger.warning(
-                "ETA_PROP_SLEEVE_CAP_%s_MNQ_EQUIV=%r is not a number; "
-                "falling through to defaults",
+                "ETA_PROP_SLEEVE_CAP_%s_MNQ_EQUIV=%r is not a number; falling through to defaults",
                 sleeve_u,
                 raw,
             )
@@ -284,11 +283,16 @@ class CrossBotPositionTracker:
         proposed = current + signed
         if abs(proposed) > cap + 1e-9:
             msg = (
-                "fleet position cap exceeded: root=" + root
-                + " current_net=" + format(current, "+g")
-                + " requested_delta=" + format(signed, "+g")
-                + " proposed_total=" + format(proposed, "+g")
-                + " cap=" + format(cap, "g")
+                "fleet position cap exceeded: root="
+                + root
+                + " current_net="
+                + format(current, "+g")
+                + " requested_delta="
+                + format(signed, "+g")
+                + " proposed_total="
+                + format(proposed, "+g")
+                + " cap="
+                + format(cap, "g")
             )
             raise FleetPositionCapExceeded(
                 msg,
@@ -332,12 +336,18 @@ class CrossBotPositionTracker:
         proposed = current + requested_equiv
         if abs(proposed) > cap + 1e-9:
             msg = (
-                "prop sleeve cap exceeded: sleeve=" + sleeve
-                + " root=" + root
-                + " current_equiv=" + format(current, "+g")
-                + " requested_equiv=" + format(requested_equiv, "+g")
-                + " proposed_equiv=" + format(proposed, "+g")
-                + " cap=" + format(cap, "g")
+                "prop sleeve cap exceeded: sleeve="
+                + sleeve
+                + " root="
+                + root
+                + " current_equiv="
+                + format(current, "+g")
+                + " requested_equiv="
+                + format(requested_equiv, "+g")
+                + " proposed_equiv="
+                + format(proposed, "+g")
+                + " cap="
+                + format(cap, "g")
             )
             raise PropSleeveCapExceeded(
                 msg,
@@ -397,9 +407,9 @@ class CrossBotPositionTracker:
             data = json.loads(self.state_path.read_text(encoding="utf-8"))
         except (OSError, ValueError) as exc:
             logger.warning(
-                "cross_bot_position_tracker: failed to load %s: %s - "
-                "starting from zero (broker reconcile will fix)",
-                self.state_path, exc,
+                "cross_bot_position_tracker: failed to load %s: %s - starting from zero (broker reconcile will fix)",
+                self.state_path,
+                exc,
             )
             return 0
         if not isinstance(data, dict):
@@ -441,7 +451,8 @@ class CrossBotPositionTracker:
         except OSError as exc:
             logger.warning(
                 "cross_bot_position_tracker: failed to persist %s: %s",
-                self.state_path, exc,
+                self.state_path,
+                exc,
             )
 
 

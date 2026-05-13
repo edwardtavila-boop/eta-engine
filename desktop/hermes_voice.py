@@ -58,6 +58,7 @@ Whisper-tiny (CPU) is ~free; Hermes round-trips at DeepSeek-V4-Pro
 prices (~$0.05 per voice query). Operator can use whisper-base for
 better accuracy at ~3× CPU cost.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -128,12 +129,14 @@ def chat_once(cfg: VoiceConfig, text: str) -> str:
     """
     if not text.strip():
         return "I didn't catch that."
-    body = json.dumps({
-        "model": cfg.model,
-        "messages": [{"role": "user", "content": text.strip()}],
-        "max_tokens": 512,
-        "stream": False,
-    }).encode("utf-8")
+    body = json.dumps(
+        {
+            "model": cfg.model,
+            "messages": [{"role": "user", "content": text.strip()}],
+            "max_tokens": 512,
+            "stream": False,
+        }
+    ).encode("utf-8")
     req = urllib.request.Request(
         f"{cfg.api_url}/v1/chat/completions",
         data=body,
@@ -172,6 +175,7 @@ def speak(text: str) -> None:
     if piper_voice and Path(piper_voice).exists():
         try:
             import subprocess  # local: only spawn when actually using piper
+
             subprocess.run(
                 ["piper", "--model", piper_voice, "--output_raw"],
                 input=text.encode("utf-8"),
@@ -186,6 +190,7 @@ def speak(text: str) -> None:
     # Windows SAPI fallback (no install required)
     try:
         import comtypes.client  # type: ignore[import-not-found]
+
         voice = comtypes.client.CreateObject("SAPI.SpVoice")
         voice.Speak(text)
         return
@@ -210,15 +215,13 @@ def _try_import_audio_stack() -> tuple[object, object, object]:
         import sounddevice as sd
     except ImportError as exc:
         raise ImportError(
-            "hermes_voice requires `sounddevice` and `numpy`. "
-            "Install with: pip install sounddevice numpy",
+            "hermes_voice requires `sounddevice` and `numpy`. Install with: pip install sounddevice numpy",
         ) from exc
     try:
         import whisper  # type: ignore[import-not-found]
     except ImportError as exc:
         raise ImportError(
-            "hermes_voice requires openai-whisper for local STT. "
-            "Install with: pip install openai-whisper",
+            "hermes_voice requires openai-whisper for local STT. Install with: pip install openai-whisper",
         ) from exc
     return sd, np, whisper
 
@@ -235,15 +238,19 @@ def _record_until_silence(sd_mod: object, np_mod: object, cfg: VoiceConfig) -> b
     silence_run = 0
 
     with sd_mod.InputStream(
-        samplerate=SAMPLE_RATE, channels=1, dtype="int16",
+        samplerate=SAMPLE_RATE,
+        channels=1,
+        dtype="int16",
     ) as stream:
         for _ in range(max_chunks):
             chunk, _overflow = stream.read(chunk_size)
             audio_chunks.append(chunk)
             # Simple energy-based VAD
-            rms = float(np_mod.sqrt(
-                np_mod.mean(np_mod.square(chunk.astype("float32"))),
-            ))
+            rms = float(
+                np_mod.sqrt(
+                    np_mod.mean(np_mod.square(chunk.astype("float32"))),
+                )
+            )
             normalized = rms / 32768.0
             if normalized < cfg.vad_threshold:
                 silence_run += 1
@@ -319,9 +326,11 @@ def vad_loop(cfg: VoiceConfig) -> None:
 def _setup_logging(log_path: Path) -> None:
     log_path.parent.mkdir(parents=True, exist_ok=True)
     handler = logging.FileHandler(log_path, encoding="utf-8")
-    handler.setFormatter(logging.Formatter(
-        "%(asctime)s %(levelname)s %(name)s %(message)s",
-    ))
+    handler.setFormatter(
+        logging.Formatter(
+            "%(asctime)s %(levelname)s %(name)s %(message)s",
+        )
+    )
     root = logging.getLogger()
     root.setLevel(logging.INFO)
     root.addHandler(handler)
@@ -330,8 +339,7 @@ def _setup_logging(log_path: Path) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument("--once", help="Single-shot: send this text to Hermes and exit",
-                        default=None)
+    parser.add_argument("--once", help="Single-shot: send this text to Hermes and exit", default=None)
     args = parser.parse_args(argv)
 
     cfg = VoiceConfig.from_env()

@@ -44,6 +44,7 @@ Writes
 ------
 - logs/eta_engine/l2_calibration.jsonl  (one digest per invocation)
 """
+
 from __future__ import annotations
 
 # ruff: noqa: PLR2004
@@ -65,13 +66,13 @@ CALIBRATION_LOG = LOG_DIR / "l2_calibration.jsonl"
 
 @dataclass
 class CalibrationBucket:
-    bucket_label: str       # e.g. "0.5-0.6"
+    bucket_label: str  # e.g. "0.5-0.6"
     lo: float
     hi: float
     n: int
     n_wins: int
     realized_win_rate: float | None
-    expected_mid: float     # bucket midpoint (the implied prediction)
+    expected_mid: float  # bucket midpoint (the implied prediction)
     deviation: float | None  # realized - expected
 
 
@@ -86,8 +87,7 @@ class CalibrationReport:
     warnings: list[str] = field(default_factory=list)
 
 
-def _read_jsonl(path: Path, *, since_days: int = 90,
-                 strategy_id: str | None = None) -> list[dict]:
+def _read_jsonl(path: Path, *, since_days: int = 90, strategy_id: str | None = None) -> list[dict]:
     if not path.exists():
         return []
     cutoff = datetime.now(UTC) - timedelta(days=since_days)
@@ -154,11 +154,13 @@ def _build_outcomes(signals: list[dict], fills: list[dict]) -> list[dict]:
             outcome = 0
         else:
             continue
-        outcomes.append({
-            "signal_id": sid,
-            "confidence": float(sig.get("confidence", 0.0)),
-            "outcome": outcome,
-        })
+        outcomes.append(
+            {
+                "signal_id": sid,
+                "confidence": float(sig.get("confidence", 0.0)),
+                "outcome": outcome,
+            }
+        )
     return outcomes
 
 
@@ -180,30 +182,33 @@ def build_buckets(outcomes: list[dict]) -> list[CalibrationBucket]:
         lo = i * width
         hi = (i + 1) * width
         # Last bucket includes 1.0
-        in_bucket = [o for o in outcomes
-                      if (lo <= o["confidence"] < hi or
-                          (i == n_buckets - 1 and o["confidence"] == 1.0))]
+        in_bucket = [
+            o for o in outcomes if (lo <= o["confidence"] < hi or (i == n_buckets - 1 and o["confidence"] == 1.0))
+        ]
         n = len(in_bucket)
         n_wins = sum(o["outcome"] for o in in_bucket)
         rwr = n_wins / n if n > 0 else None
         mid = (lo + hi) / 2
         dev = (rwr - mid) if rwr is not None else None
-        buckets.append(CalibrationBucket(
-            bucket_label=f"{lo:.1f}-{hi:.1f}",
-            lo=round(lo, 2), hi=round(hi, 2),
-            n=n, n_wins=n_wins,
-            realized_win_rate=round(rwr, 3) if rwr is not None else None,
-            expected_mid=round(mid, 2),
-            deviation=round(dev, 3) if dev is not None else None,
-        ))
+        buckets.append(
+            CalibrationBucket(
+                bucket_label=f"{lo:.1f}-{hi:.1f}",
+                lo=round(lo, 2),
+                hi=round(hi, 2),
+                n=n,
+                n_wins=n_wins,
+                realized_win_rate=round(rwr, 3) if rwr is not None else None,
+                expected_mid=round(mid, 2),
+                deviation=round(dev, 3) if dev is not None else None,
+            )
+        )
     return buckets
 
 
-def run_calibration(strategy_id: str | None = None,
-                     *, since_days: int = 90,
-                     falsification_threshold: float = 0.30) -> CalibrationReport:
-    signals = _read_jsonl(SIGNAL_LOG, since_days=since_days,
-                            strategy_id=strategy_id)
+def run_calibration(
+    strategy_id: str | None = None, *, since_days: int = 90, falsification_threshold: float = 0.30
+) -> CalibrationReport:
+    signals = _read_jsonl(SIGNAL_LOG, since_days=since_days, strategy_id=strategy_id)
     fills = _read_jsonl(BROKER_FILL_LOG, since_days=since_days)
     outcomes = _build_outcomes(signals, fills)
     brier = compute_brier_score(outcomes)
@@ -211,10 +216,9 @@ def run_calibration(strategy_id: str | None = None,
     warnings: list[str] = []
     if len(outcomes) < 100:
         warnings.append(
-            f"Only {len(outcomes)} matched outcomes — Brier-based "
-            "falsification criterion requires n >= 100.")
-    triggered = (brier is not None and brier > falsification_threshold
-                  and len(outcomes) >= 100)
+            f"Only {len(outcomes)} matched outcomes — Brier-based falsification criterion requires n >= 100."
+        )
+    triggered = brier is not None and brier > falsification_threshold and len(outcomes) >= 100
     return CalibrationReport(
         strategy_id=strategy_id,
         n_observations=len(outcomes),
@@ -228,11 +232,9 @@ def run_calibration(strategy_id: str | None = None,
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--strategy", default=None,
-                    help="Filter to one strategy_id (default: all)")
+    ap.add_argument("--strategy", default=None, help="Filter to one strategy_id (default: all)")
     ap.add_argument("--days", type=int, default=90)
-    ap.add_argument("--threshold", type=float, default=0.30,
-                    help="Falsification Brier threshold (default 0.30)")
+    ap.add_argument("--threshold", type=float, default=0.30, help="Falsification Brier threshold (default 0.30)")
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
 
@@ -266,19 +268,18 @@ def main() -> int:
     print(f"  strategy_id     : {report.strategy_id or '<all>'}")
     print(f"  n_observations  : {report.n_observations}")
     print(f"  brier_score     : {report.brier_score}")
-    print(f"  falsification   : {'TRIGGERED' if report.falsification_triggered else 'ok'}"
-          f"  (threshold > {report.falsification_threshold})")
+    print(
+        f"  falsification   : {'TRIGGERED' if report.falsification_triggered else 'ok'}"
+        f"  (threshold > {report.falsification_threshold})"
+    )
     print()
     if report.buckets:
-        print(f"  {'Bucket':<10s} {'n':<6s} {'wins':<6s} "
-              f"{'realized':<10s} {'expected':<10s} {'deviation':<10s}")
-        print(f"  {'-'*10:<10s} {'-'*6:<6s} {'-'*6:<6s} "
-              f"{'-'*10:<10s} {'-'*10:<10s} {'-'*10:<10s}")
+        print(f"  {'Bucket':<10s} {'n':<6s} {'wins':<6s} {'realized':<10s} {'expected':<10s} {'deviation':<10s}")
+        print(f"  {'-' * 10:<10s} {'-' * 6:<6s} {'-' * 6:<6s} {'-' * 10:<10s} {'-' * 10:<10s} {'-' * 10:<10s}")
         for b in report.buckets:
             rwr = f"{b.realized_win_rate:.3f}" if b.realized_win_rate is not None else "n/a"
             dev = f"{b.deviation:+.3f}" if b.deviation is not None else "n/a"
-            print(f"  {b.bucket_label:<10s} {b.n:<6d} {b.n_wins:<6d} "
-                  f"{rwr:<10s} {b.expected_mid:<10.2f} {dev:<10s}")
+            print(f"  {b.bucket_label:<10s} {b.n:<6d} {b.n_wins:<6d} {rwr:<10s} {b.expected_mid:<10.2f} {dev:<10s}")
     if report.warnings:
         print()
         print("  WARNINGS:")

@@ -8,15 +8,9 @@ from eta_engine.brain.model_policy import TaskCategory
 def test_fleet_routes_categories_to_locked_personas(tmp_path) -> None:
     fleet = Fleet(executor=DryRunExecutor(), journal_path=tmp_path / "avengers.jsonl")
 
-    batman = fleet.dispatch(
-        make_envelope(category=TaskCategory.RED_TEAM_SCORING, goal="red-team promotion candidate")
-    )
-    alfred = fleet.dispatch(
-        make_envelope(category=TaskCategory.TEST_RUN, goal="write a focused pytest")
-    )
-    robin = fleet.dispatch(
-        make_envelope(category=TaskCategory.LOG_PARSING, goal="summarize logs")
-    )
+    batman = fleet.dispatch(make_envelope(category=TaskCategory.RED_TEAM_SCORING, goal="red-team promotion candidate"))
+    alfred = fleet.dispatch(make_envelope(category=TaskCategory.TEST_RUN, goal="write a focused pytest"))
+    robin = fleet.dispatch(make_envelope(category=TaskCategory.LOG_PARSING, goal="summarize logs"))
 
     assert batman.persona_id is PersonaId.BATMAN
     assert alfred.persona_id is PersonaId.ALFRED
@@ -27,9 +21,7 @@ def test_fleet_routes_categories_to_locked_personas(tmp_path) -> None:
 def test_fleet_metrics_roll_up_calls_failures_and_cost(tmp_path) -> None:
     fleet = Fleet(executor=DryRunExecutor(), journal_path=tmp_path / "avengers.jsonl")
 
-    result = fleet.dispatch(
-        make_envelope(category=TaskCategory.FORMATTING, goal="fix imports")
-    )
+    result = fleet.dispatch(make_envelope(category=TaskCategory.FORMATTING, goal="fix imports"))
     metrics = fleet.metrics()
 
     assert result.persona_id is PersonaId.ROBIN

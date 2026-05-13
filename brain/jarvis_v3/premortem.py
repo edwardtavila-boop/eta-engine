@@ -31,6 +31,7 @@ Use case (called inside the orchestrator before final approval):
 
 Pure stdlib. Uses world_model rollouts + memory analog lookups.
 """
+
 from __future__ import annotations
 
 import logging
@@ -48,11 +49,11 @@ logger = logging.getLogger(__name__)
 class FailureMode:
     """One enumerated way the trade could lose."""
 
-    label: str                       # e.g. "regime shift to bearish_high_vol"
-    probability: float                # in [0, 1]
-    expected_loss_r: float            # signed R if this mode triggers
-    trigger_description: str          # operator-readable condition
-    source: str                       # which layer surfaced this
+    label: str  # e.g. "regime shift to bearish_high_vol"
+    probability: float  # in [0, 1]
+    expected_loss_r: float  # signed R if this mode triggers
+    trigger_description: str  # operator-readable condition
+    source: str  # which layer surfaced this
 
 
 @dataclass
@@ -62,7 +63,7 @@ class PreMortemReport:
     proposal_signal_id: str
     direction: str
     failure_modes: list[FailureMode] = field(default_factory=list)
-    kill_prob: float = 0.0            # in [0, 1]
+    kill_prob: float = 0.0  # in [0, 1]
     expected_loss_if_killed_r: float = 0.0
     note: str = ""
 
@@ -109,6 +110,7 @@ def _regime_shift_failures(
             TransitionTable,
             encode_state,
         )
+
         cur_state = encode_state(
             regime=proposal.regime,
             session=proposal.session,
@@ -127,7 +129,9 @@ def _regime_shift_failures(
             if ep.direction != proposal.direction:
                 continue
             s = encode_state(
-                regime=ep.regime, session=ep.session, stress=ep.stress,
+                regime=ep.regime,
+                session=ep.session,
+                stress=ep.stress,
             )
             state_r.setdefault(s, []).append(ep.realized_r)
     except Exception as exc:  # noqa: BLE001
@@ -146,16 +150,16 @@ def _regime_shift_failures(
         if avg >= 0:
             continue  # not a failure mode -- this state historically wins
         from eta_engine.brain.jarvis_v3.world_model import describe_state
-        out.append(FailureMode(
-            label=f"regime shift to {describe_state(next_s)}",
-            probability=round(prob, 3),
-            expected_loss_r=round(avg, 3),
-            trigger_description=(
-                f"if (regime, session, stress) transitions out of "
-                f"{describe_state(cur_state)}"
-            ),
-            source="world_model.transition_tensor",
-        ))
+
+        out.append(
+            FailureMode(
+                label=f"regime shift to {describe_state(next_s)}",
+                probability=round(prob, 3),
+                expected_loss_r=round(avg, 3),
+                trigger_description=(f"if (regime, session, stress) transitions out of {describe_state(cur_state)}"),
+                source="world_model.transition_tensor",
+            )
+        )
     return out
 
 
@@ -176,9 +180,7 @@ def _analog_loser_failures(
         direction=proposal.direction,
         k=10,
     )
-    losers = [
-        e for e in similar if e.realized_r <= severe_loss_threshold
-    ]
+    losers = [e for e in similar if e.realized_r <= severe_loss_threshold]
     if not losers:
         return []
     # Group by narrative theme (first 50 chars) so dupes don't bloat
@@ -191,19 +193,17 @@ def _analog_loser_failures(
             continue
         seen.add(key)
         # Probability proxy: this category appeared X out of N analogs
-        n_matching = sum(
-            1 for e in losers if (e.narrative[:50] if e.narrative else e.signal_id) == key
-        )
+        n_matching = sum(1 for e in losers if (e.narrative[:50] if e.narrative else e.signal_id) == key)
         prob = n_matching / max(n_total, 1)
-        out.append(FailureMode(
-            label=f"analog loss: {key[:60]}",
-            probability=round(prob, 3),
-            expected_loss_r=round(ep.realized_r, 3),
-            trigger_description=(
-                f"if setup mirrors past loser ({ep.signal_id})"
-            ),
-            source="memory_rag.analog_loser",
-        ))
+        out.append(
+            FailureMode(
+                label=f"analog loss: {key[:60]}",
+                probability=round(prob, 3),
+                expected_loss_r=round(ep.realized_r, 3),
+                trigger_description=(f"if setup mirrors past loser ({ep.signal_id})"),
+                source="memory_rag.analog_loser",
+            )
+        )
     return out
 
 
@@ -212,16 +212,17 @@ def _stress_spike_failure(proposal: Proposal) -> list[FailureMode]:
     the dominant kill mode."""
     if proposal.stress < 0.5:
         return []
-    return [FailureMode(
-        label="stress spike beyond regime tolerance",
-        probability=round(min(1.0, (proposal.stress - 0.4) * 1.2), 3),
-        expected_loss_r=-1.0,
-        trigger_description=(
-            f"if stress rises above {min(1.0, proposal.stress + 0.15):.2f} "
-            f"(currently {proposal.stress:.2f})"
-        ),
-        source="heuristic.stress_threshold",
-    )]
+    return [
+        FailureMode(
+            label="stress spike beyond regime tolerance",
+            probability=round(min(1.0, (proposal.stress - 0.4) * 1.2), 3),
+            expected_loss_r=-1.0,
+            trigger_description=(
+                f"if stress rises above {min(1.0, proposal.stress + 0.15):.2f} (currently {proposal.stress:.2f})"
+            ),
+            source="heuristic.stress_threshold",
+        )
+    ]
 
 
 def _adverse_news_window(proposal: Proposal) -> list[FailureMode]:
@@ -231,15 +232,15 @@ def _adverse_news_window(proposal: Proposal) -> list[FailureMode]:
     if proposal.direction != "long" or proposal.sentiment >= 0:
         return []
     p = min(1.0, abs(proposal.sentiment) * 0.5)
-    return [FailureMode(
-        label="adverse-news-window into long",
-        probability=round(p, 3),
-        expected_loss_r=-0.8,
-        trigger_description=(
-            "if sentiment slides further negative within the next 1h"
-        ),
-        source="heuristic.sentiment_news",
-    )]
+    return [
+        FailureMode(
+            label="adverse-news-window into long",
+            probability=round(p, 3),
+            expected_loss_r=-0.8,
+            trigger_description=("if sentiment slides further negative within the next 1h"),
+            source="heuristic.sentiment_news",
+        )
+    ]
 
 
 # ─── Aggregation ─────────────────────────────────────────────────
@@ -276,10 +277,7 @@ def run_premortem(
     # Expected loss if killed -- weighted average across modes
     if modes:
         weight_sum = sum(m.probability for m in modes)
-        exp_loss = (
-            sum(m.probability * m.expected_loss_r for m in modes) / weight_sum
-            if weight_sum > 0 else 0.0
-        )
+        exp_loss = sum(m.probability * m.expected_loss_r for m in modes) / weight_sum if weight_sum > 0 else 0.0
     else:
         exp_loss = 0.0
 

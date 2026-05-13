@@ -18,6 +18,7 @@ Status JSON format:
       "details": {...}
     }
 """
+
 from __future__ import annotations
 
 import argparse
@@ -40,9 +41,7 @@ from eta_engine.scripts import ibgateway_reauth_controller
 logger = logging.getLogger(__name__)
 
 
-_STATUS_PATH = Path(
-    r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\tws_watchdog.json"
-)
+_STATUS_PATH = Path(r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\tws_watchdog.json")
 _DEFAULT_CRASH_LOG_DIR = Path(r"C:\Jts\ibgateway\1046")
 _DEFAULT_WATCHDOG_CLIENT_IDS = (9011, 9012, 9013, 9014)
 _GATEWAY_PROCESS_NAMES = ("ibgateway.exe", "ibgateway1.exe")
@@ -229,23 +228,10 @@ def _snapshot_from_ib(ib: object, *, execution_limit: int = 50) -> dict:
     executions.sort(key=lambda row: str(row.get("ts") or ""))
     if execution_limit > 0:
         executions = executions[-execution_limit:]
-    accounts = sorted(
-        {
-            str(row.get("account"))
-            for row in [*positions, *portfolio, *executions]
-            if row.get("account")
-        }
-    )
-    open_positions = [
-        row for row in positions
-        if abs(float(row.get("position") or 0.0)) > 0
-    ]
+    accounts = sorted({str(row.get("account")) for row in [*positions, *portfolio, *executions] if row.get("account")})
+    open_positions = [row for row in positions if abs(float(row.get("position") or 0.0)) > 0]
     last_execution = executions[-1] if executions else {}
-    realized_values = [
-        float(row["realized_pnl"])
-        for row in executions
-        if row.get("realized_pnl") is not None
-    ]
+    realized_values = [float(row["realized_pnl"]) for row in executions if row.get("realized_pnl") is not None]
     return {
         "generated_at_utc": datetime.now(UTC).isoformat(),
         "accounts": accounts,
@@ -288,6 +274,7 @@ def _check_ib_handshake(
         try:
             _ensure_asyncio_event_loop()
             from ib_insync import IB
+
             ib = IB()
             try:
                 ib.connect(
@@ -302,11 +289,7 @@ def _check_ib_handshake(
                     if capture_account_snapshot:
                         with contextlib.suppress(Exception):
                             _LAST_ACCOUNT_SNAPSHOT = _snapshot_from_ib(ib)
-                    summary = (
-                        _LAST_ACCOUNT_SNAPSHOT.get("summary")
-                        if isinstance(_LAST_ACCOUNT_SNAPSHOT, dict)
-                        else {}
-                    )
+                    summary = _LAST_ACCOUNT_SNAPSHOT.get("summary") if isinstance(_LAST_ACCOUNT_SNAPSHOT, dict) else {}
                     activity_detail = ""
                     if isinstance(summary, dict):
                         activity_detail = (
@@ -314,8 +297,7 @@ def _check_ib_handshake(
                             f"; executions={summary.get('executions_count', 0)}"
                         )
                     return True, (
-                        f"serverVersion={server_version}; clientId={client_id}; "
-                        f"attempt={attempt}{activity_detail}"
+                        f"serverVersion={server_version}; clientId={client_id}; attempt={attempt}{activity_detail}"
                     )
                 details.append(f"attempt {attempt} clientId={client_id}: not connected")
             finally:
@@ -331,10 +313,7 @@ def _check_ib_handshake(
 def _latest_gateway_crash(crash_log_dir: Path) -> dict | None:
     """Summarize the newest IB Gateway JVM crash log, if one exists."""
     try:
-        candidates = [
-            path for path in crash_log_dir.glob("hs_err_pid*.log")
-            if path.is_file()
-        ]
+        candidates = [path for path in crash_log_dir.glob("hs_err_pid*.log") if path.is_file()]
     except OSError:
         return None
     if not candidates:
@@ -502,8 +481,12 @@ def _recovery_lane_snapshot(*, healthy: bool) -> dict:
         restart_task=ibgateway_reauth_controller.RESTART_TASK_NAME,
     )
     lane["action_owner"] = lane["controller_task"]
-    lane["operator_action"] = "" if healthy else (
-        f"Inspect {lane['state_path']} or start {lane['controller_task']} after clearing any IBKR login or 2FA prompt."
+    lane["operator_action"] = (
+        ""
+        if healthy
+        else (
+            f"Inspect {lane['state_path']} or start {lane['controller_task']} after clearing any IBKR login or 2FA prompt."
+        )
     )
     return lane
 
@@ -512,7 +495,9 @@ def main(argv: list[str] | None = None) -> int:
     global _LAST_ACCOUNT_SNAPSHOT
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument(
-        "--alert-after", type=int, default=2,
+        "--alert-after",
+        type=int,
+        default=2,
         help="Consecutive failures before emitting a v3 alert (default 2 = 10 min at 5-min cadence).",
     )
     p.add_argument("--host", default="127.0.0.1")
@@ -575,7 +560,10 @@ def main(argv: list[str] | None = None) -> int:
         consecutive_failures = prior_failures + 1
         logger.warning(
             "TWS UNHEALTHY socket=%s handshake=%s (%s) - fail #%d",
-            socket_ok, handshake_ok, handshake_detail, consecutive_failures,
+            socket_ok,
+            handshake_ok,
+            handshake_detail,
+            consecutive_failures,
         )
 
     status = {
@@ -607,6 +595,7 @@ def main(argv: list[str] | None = None) -> int:
     if not healthy and consecutive_failures == args.alert_after:
         try:
             from eta_engine.brain.jarvis_v3.policies._v3_events import emit_event
+
             emit_event(
                 layer="ops",
                 event="tws_gateway_unhealthy",
@@ -629,6 +618,7 @@ def main(argv: list[str] | None = None) -> int:
         # Recovery edge - let the operator know the gateway came back.
         try:
             from eta_engine.brain.jarvis_v3.policies._v3_events import emit_event
+
             emit_event(
                 layer="ops",
                 event="tws_gateway_recovered",

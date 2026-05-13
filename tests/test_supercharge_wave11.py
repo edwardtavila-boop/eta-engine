@@ -5,6 +5,7 @@ Wave-11 finishes the supercharge by:
   * Adding Tucker-decomposition tensor-network world model
   * Building JarvisOrchestrator that consults every layer
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -18,6 +19,7 @@ if TYPE_CHECKING:
 
 def test_qaoa_backend_available_does_not_raise() -> None:
     from eta_engine.brain.jarvis_v3.quantum.qaoa_backend import available
+
     # Returns bool either way; we don't have qiskit installed in CI
     assert isinstance(available(), bool)
 
@@ -25,6 +27,7 @@ def test_qaoa_backend_available_does_not_raise() -> None:
 def test_qubo_to_ising_converts_diagonal_only() -> None:
     from eta_engine.brain.jarvis_v3.quantum.qaoa_backend import qubo_to_ising
     from eta_engine.brain.jarvis_v3.quantum.qubo_solver import QuboProblem
+
     p = QuboProblem.from_matrix([[2.0, 0.0], [0.0, -1.0]])
     J, offset = qubo_to_ising(p)  # noqa: N806 -- standard Ising notation
     # x_0 -> coef 2:  J[0][0] += -2/2 = -1; offset += 2/2 = 1
@@ -42,6 +45,7 @@ def test_solve_with_qaoa_raises_if_qiskit_missing() -> None:
         solve_with_qaoa,
     )
     from eta_engine.brain.jarvis_v3.quantum.qubo_solver import QuboProblem
+
     if available():
         pytest.skip("qiskit installed; skip the missing-import test")
     p = QuboProblem.from_matrix([[1.0, 0.0], [0.0, 1.0]])
@@ -70,6 +74,7 @@ def test_qaoa_recovery_finds_nonzero_optimum_without_best_measurement() -> None:
 
 def test_dwave_backend_available_returns_bool() -> None:
     from eta_engine.brain.jarvis_v3.quantum.dwave_backend import available
+
     assert isinstance(available(), bool)
 
 
@@ -81,6 +86,7 @@ def test_solve_with_dwave_raises_if_dimod_missing() -> None:
         solve_with_dwave,
     )
     from eta_engine.brain.jarvis_v3.quantum.qubo_solver import QuboProblem
+
     if available():
         pytest.skip("dimod installed; skip the missing-import test")
     p = QuboProblem.from_matrix([[1.0, 0.0], [0.0, 1.0]])
@@ -101,6 +107,7 @@ def test_cloud_adapter_dispatches_to_qiskit_falls_back_when_missing(
         _ResultCache,
     )
     from eta_engine.brain.jarvis_v3.quantum.qubo_solver import QuboProblem
+
     adapter = QuantumCloudAdapter(
         cfg=CloudConfig(
             enable_cloud=True,
@@ -114,6 +121,7 @@ def test_cloud_adapter_dispatches_to_qiskit_falls_back_when_missing(
     result, record = adapter.solve(p, n_iterations=200, force_backend=QuantumBackend.QISKIT)
     # When qiskit is not installed, expect fell_back_to_classical=True
     from eta_engine.brain.jarvis_v3.quantum.qaoa_backend import available
+
     if not available():
         assert record.fell_back_to_classical is True
 
@@ -129,6 +137,7 @@ def test_cloud_adapter_dispatches_to_dwave_falls_back_when_missing(
     )
     from eta_engine.brain.jarvis_v3.quantum.dwave_backend import available
     from eta_engine.brain.jarvis_v3.quantum.qubo_solver import QuboProblem
+
     adapter = QuantumCloudAdapter(
         cfg=CloudConfig(
             enable_cloud=True,
@@ -210,10 +219,7 @@ def test_cloud_adapter_cross_check_updates_log_and_cache(tmp_path: Path, monkeyp
     assert result2.energy == -2.0
     assert record2.backend == QuantumBackend.CLASSICAL_SA.value
 
-    logged = [
-        json.loads(line)
-        for line in (tmp_path / "jobs.jsonl").read_text(encoding="utf-8").splitlines()
-    ]
+    logged = [json.loads(line) for line in (tmp_path / "jobs.jsonl").read_text(encoding="utf-8").splitlines()]
     assert "cross-check" in logged[0]["note"]
 
 
@@ -276,6 +282,7 @@ def test_tensor_world_model_fits_simple_transition() -> None:
     from eta_engine.brain.jarvis_v3.quantum.tensor_world_model import (
         TensorWorldModel,
     )
+
     # State 0 with action 0 always -> state 1; state 1 with action 0 -> state 0
     transitions = {
         0: {0: {1: 10}},
@@ -291,6 +298,7 @@ def test_tensor_world_model_predict_normalizes_to_unity() -> None:
     from eta_engine.brain.jarvis_v3.quantum.tensor_world_model import (
         TensorWorldModel,
     )
+
     transitions = {
         0: {0: {1: 5, 2: 5}},
         1: {0: {2: 10}},
@@ -307,6 +315,7 @@ def test_tensor_world_model_unknown_state_returns_empty() -> None:
     from eta_engine.brain.jarvis_v3.quantum.tensor_world_model import (
         TensorWorldModel,
     )
+
     transitions = {0: {0: {1: 5}}}
     twm = TensorWorldModel(rank=2)
     twm.fit(transitions, n_iters=5)
@@ -318,6 +327,7 @@ def test_tensor_world_model_latent_distance_zero_for_same_state() -> None:
     from eta_engine.brain.jarvis_v3.quantum.tensor_world_model import (
         TensorWorldModel,
     )
+
     transitions = {0: {0: {1: 5}}, 1: {0: {0: 5}}}
     twm = TensorWorldModel(rank=2)
     twm.fit(transitions, n_iters=5)
@@ -331,6 +341,7 @@ def test_orchestrator_returns_decision_packet(tmp_path: Path) -> None:
     from eta_engine.brain.jarvis_v3.firm_board import Proposal
     from eta_engine.brain.jarvis_v3.memory_hierarchy import HierarchicalMemory
     from eta_engine.brain.jarvis_v3.orchestrator import JarvisOrchestrator
+
     mem = HierarchicalMemory(
         episodic_path=tmp_path / "ep.jsonl",
         semantic_path=tmp_path / "sem.json",
@@ -338,8 +349,13 @@ def test_orchestrator_returns_decision_packet(tmp_path: Path) -> None:
     )
     orch = JarvisOrchestrator(memory=mem, use_iterative_debate=False)
     p = Proposal(
-        signal_id="orch1", direction="long", regime="bullish_low_vol",
-        session="rth", stress=0.3, sentiment=0.4, sage_score=0.5,
+        signal_id="orch1",
+        direction="long",
+        regime="bullish_low_vol",
+        session="rth",
+        stress=0.3,
+        sentiment=0.4,
+        sage_score=0.5,
         slippage_bps_estimate=2.0,
     )
     packet = orch.deliberate(proposal=p, current_narrative="EMA stack aligned")
@@ -355,6 +371,7 @@ def test_orchestrator_audit_record_serializable(tmp_path: Path) -> None:
     from eta_engine.brain.jarvis_v3.firm_board import Proposal
     from eta_engine.brain.jarvis_v3.memory_hierarchy import HierarchicalMemory
     from eta_engine.brain.jarvis_v3.orchestrator import JarvisOrchestrator
+
     mem = HierarchicalMemory(
         episodic_path=tmp_path / "ep.jsonl",
         semantic_path=tmp_path / "sem.json",
@@ -362,8 +379,13 @@ def test_orchestrator_audit_record_serializable(tmp_path: Path) -> None:
     )
     orch = JarvisOrchestrator(memory=mem)
     p = Proposal(
-        signal_id="orch2", direction="short", regime="bearish_low_vol",
-        session="rth", stress=0.4, sentiment=-0.3, sage_score=0.4,
+        signal_id="orch2",
+        direction="short",
+        regime="bearish_low_vol",
+        session="rth",
+        stress=0.4,
+        sentiment=-0.3,
+        sage_score=0.4,
     )
     packet = orch.deliberate(proposal=p, current_narrative="bearish reversal")
     rec = packet.to_audit_record()
@@ -381,6 +403,7 @@ def test_orchestrator_high_stress_yields_deny_or_defer(tmp_path: Path) -> None:
     from eta_engine.brain.jarvis_v3.firm_board import Proposal
     from eta_engine.brain.jarvis_v3.memory_hierarchy import HierarchicalMemory
     from eta_engine.brain.jarvis_v3.orchestrator import JarvisOrchestrator
+
     mem = HierarchicalMemory(
         episodic_path=tmp_path / "ep.jsonl",
         semantic_path=tmp_path / "sem.json",
@@ -388,8 +411,13 @@ def test_orchestrator_high_stress_yields_deny_or_defer(tmp_path: Path) -> None:
     )
     orch = JarvisOrchestrator(memory=mem)
     p = Proposal(
-        signal_id="orch3", direction="long", regime="bearish_high_vol",
-        session="overnight", stress=0.85, sentiment=0.0, sage_score=0.1,
+        signal_id="orch3",
+        direction="long",
+        regime="bearish_high_vol",
+        session="overnight",
+        stress=0.85,
+        sentiment=0.0,
+        sage_score=0.1,
         slippage_bps_estimate=15.0,  # high impact
     )
     packet = orch.deliberate(proposal=p)
@@ -401,6 +429,7 @@ def test_orchestrator_quantum_layer_runs_when_enabled(tmp_path: Path) -> None:
     from eta_engine.brain.jarvis_v3.firm_board import Proposal
     from eta_engine.brain.jarvis_v3.memory_hierarchy import HierarchicalMemory
     from eta_engine.brain.jarvis_v3.orchestrator import JarvisOrchestrator
+
     mem = HierarchicalMemory(
         episodic_path=tmp_path / "ep.jsonl",
         semantic_path=tmp_path / "sem.json",
@@ -408,8 +437,13 @@ def test_orchestrator_quantum_layer_runs_when_enabled(tmp_path: Path) -> None:
     )
     orch = JarvisOrchestrator(memory=mem, consult_quantum=True)
     p = Proposal(
-        signal_id="orch4", direction="long", regime="neutral", session="rth",
-        stress=0.4, sentiment=0.3, sage_score=0.4,
+        signal_id="orch4",
+        direction="long",
+        regime="neutral",
+        session="rth",
+        stress=0.4,
+        sentiment=0.3,
+        sage_score=0.4,
     )
     packet = orch.deliberate(proposal=p, current_narrative="neutral entry")
     assert packet.quantum_used is True
@@ -421,6 +455,7 @@ def test_orchestrator_iterative_debate_is_replayable(tmp_path: Path) -> None:
     from eta_engine.brain.jarvis_v3.firm_board import Proposal
     from eta_engine.brain.jarvis_v3.memory_hierarchy import HierarchicalMemory
     from eta_engine.brain.jarvis_v3.orchestrator import JarvisOrchestrator
+
     mem = HierarchicalMemory(
         episodic_path=tmp_path / "ep.jsonl",
         semantic_path=tmp_path / "sem.json",

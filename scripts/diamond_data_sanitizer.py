@@ -174,19 +174,14 @@ def _quarantine_record(rec: dict) -> dict:
         if r_abs > QUARANTINE_R_THRESHOLD and not extra.get("quarantined_r"):
             extra["quarantined_original_realized_r"] = realized_r
             extra["quarantined_r"] = True
-            extra["quarantined_at"] = (
-                extra.get("quarantined_at") or datetime.now(UTC).isoformat()
-            )
+            extra["quarantined_at"] = extra.get("quarantined_at") or datetime.now(UTC).isoformat()
             existing_reason = extra.get("quarantined_reason", "")
             r_reason = (
                 f"|realized_r| {r_abs:.1f} > {QUARANTINE_R_THRESHOLD} "
                 "— implausible R-magnitude (likely stop-distance "
                 "divide-by-near-zero in the R-writer)"
             )
-            extra["quarantined_reason"] = (
-                f"{existing_reason}; {r_reason}" if existing_reason
-                else r_reason
-            )
+            extra["quarantined_reason"] = f"{existing_reason}; {r_reason}" if existing_reason else r_reason
             rec["realized_r"] = 0.0
             rec["_sanitizer_quarantined"] = True
 
@@ -204,18 +199,13 @@ def _quarantine_record(rec: dict) -> dict:
     if pnl_f / qty > QUARANTINE_USD_THRESHOLD:
         extra["quarantined_original_realized_pnl"] = pnl
         extra["quarantined_usd"] = True
-        extra["quarantined_at"] = (
-            extra.get("quarantined_at") or datetime.now(UTC).isoformat()
-        )
+        extra["quarantined_at"] = extra.get("quarantined_at") or datetime.now(UTC).isoformat()
         existing_reason = extra.get("quarantined_reason", "")
         usd_reason = (
             f"per-trade USD magnitude > ${QUARANTINE_USD_THRESHOLD:.0f} — "
             "implausible for paper futures (likely upstream feed scale bug)"
         )
-        extra["quarantined_reason"] = (
-            f"{existing_reason}; {usd_reason}" if existing_reason
-            else usd_reason
-        )
+        extra["quarantined_reason"] = f"{existing_reason}; {usd_reason}" if existing_reason else usd_reason
         extra["realized_pnl"] = 0.0
         rec["_sanitizer_quarantined"] = True
     return rec

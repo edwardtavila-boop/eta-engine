@@ -29,6 +29,7 @@ Run
     python -m eta_engine.scripts.disk_space_monitor
     python -m eta_engine.scripts.disk_space_monitor --json
 """
+
 from __future__ import annotations
 
 import argparse
@@ -48,12 +49,12 @@ DEPTH_DIR = ROOT.parent / "mnq_data" / "depth"
 HISTORY_LOG = LOG_DIR / "disk_space.jsonl"
 ALERT_LOG = LOG_DIR / "alerts_log.jsonl"
 
-GB = 1024 ** 3
+GB = 1024**3
 THRESHOLDS = {
     # free_gb_floor → verdict (worst-first ordering)
-    2.0:  "CRITICAL",   # ≤2 GB — capture will fail any moment
-    10.0: "RED",        # ≤10 GB — ~2 days of capture left
-    30.0: "YELLOW",     # ≤30 GB — ~6 days runway, plan rotation
+    2.0: "CRITICAL",  # ≤2 GB — capture will fail any moment
+    10.0: "RED",  # ≤10 GB — ~2 days of capture left
+    30.0: "YELLOW",  # ≤30 GB — ~6 days runway, plan rotation
 }
 
 
@@ -73,8 +74,7 @@ def _stat_one(label: str, path: Path) -> dict:
     try:
         usage = shutil.disk_usage(target)
     except OSError as e:
-        return {"label": label, "path": str(path), "error": str(e),
-                "verdict": "ERROR"}
+        return {"label": label, "path": str(path), "error": str(e), "verdict": "ERROR"}
     free_gb = usage.free / GB
     used_gb = usage.used / GB
     total_gb = usage.total / GB
@@ -105,20 +105,18 @@ def _emit_alert(level: str, message: str, payload: dict) -> None:
         # swallow was the original behaviour and meant disk-full
         # incidents went un-recorded when the alert log itself
         # couldn't be written.
-        print(f"disk_space_monitor WARN: could not append alert to "
-              f"{ALERT_LOG}: {e}", file=sys.stderr)
+        print(f"disk_space_monitor WARN: could not append alert to {ALERT_LOG}: {e}", file=sys.stderr)
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--json", action="store_true",
-                    help="JSON output (machine-readable)")
+    ap.add_argument("--json", action="store_true", help="JSON output (machine-readable)")
     args = ap.parse_args()
 
     checks = [
         _stat_one("ticks", TICKS_DIR),
         _stat_one("depth", DEPTH_DIR),
-        _stat_one("logs",  LOG_DIR),
+        _stat_one("logs", LOG_DIR),
     ]
 
     # Rolling worst verdict across all monitored partitions
@@ -136,14 +134,12 @@ def main() -> int:
         with HISTORY_LOG.open("a", encoding="utf-8") as f:
             f.write(json.dumps(digest, separators=(",", ":")) + "\n")
     except OSError as e:
-        print(f"disk_space_monitor WARN: could not append digest to "
-              f"{HISTORY_LOG}: {e}", file=sys.stderr)
+        print(f"disk_space_monitor WARN: could not append digest to {HISTORY_LOG}: {e}", file=sys.stderr)
 
     if overall != "GREEN":
         _emit_alert(
             overall,
-            f"disk space {overall}: worst partition {worst.get('path')} "
-            f"has {worst.get('free_gb')} GB free",
+            f"disk space {overall}: worst partition {worst.get('path')} has {worst.get('free_gb')} GB free",
             digest,
         )
 

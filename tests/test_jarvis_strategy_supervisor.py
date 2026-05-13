@@ -1,4 +1,5 @@
 """Tests for the JARVIS strategy supervisor."""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -12,6 +13,7 @@ if TYPE_CHECKING:
 
 def test_mock_feed_returns_well_formed_bar() -> None:
     from eta_engine.scripts.jarvis_strategy_supervisor import MockDataFeed
+
     feed = MockDataFeed(seed=42)
     bar = feed.get_bar("BTC")
     assert "open" in bar
@@ -26,6 +28,7 @@ def test_mock_feed_returns_well_formed_bar() -> None:
 
 def test_mock_feed_walks_over_time() -> None:
     from eta_engine.scripts.jarvis_strategy_supervisor import MockDataFeed
+
     feed = MockDataFeed(seed=42)
     closes = [feed.get_bar("ETH")["close"] for _ in range(10)]
     # Random walk should produce variation
@@ -34,6 +37,7 @@ def test_mock_feed_walks_over_time() -> None:
 
 def test_mock_feed_handles_unknown_symbol() -> None:
     from eta_engine.scripts.jarvis_strategy_supervisor import MockDataFeed
+
     feed = MockDataFeed(seed=1)
     bar = feed.get_bar("NEWCOIN")
     assert bar["close"] > 0
@@ -136,16 +140,24 @@ def test_router_submit_entry_paper_sim(tmp_path: Path) -> None:
         ExecutionRouter,
         SupervisorConfig,
     )
+
     cfg = SupervisorConfig()
     cfg.mode = "paper_sim"
     router = ExecutionRouter(cfg=cfg, bf_dir=tmp_path)
     bot = BotInstance(
-        bot_id="test", symbol="BTC", strategy_kind="x",
-        direction="long", cash=5000.0,
+        bot_id="test",
+        symbol="BTC",
+        strategy_kind="x",
+        direction="long",
+        cash=5000.0,
     )
     bar = {"close": 100.0, "high": 101.0, "low": 99.0, "open": 99.5}
     rec = router.submit_entry(
-        bot=bot, signal_id="sig1", side="BUY", bar=bar, size_mult=1.0,
+        bot=bot,
+        signal_id="sig1",
+        side="BUY",
+        bar=bar,
+        size_mult=1.0,
     )
     assert rec is not None
     assert rec.side == "BUY"
@@ -162,17 +174,25 @@ def test_router_submit_exit_computes_pnl(tmp_path: Path) -> None:
         ExecutionRouter,
         SupervisorConfig,
     )
+
     cfg = SupervisorConfig()
     cfg.mode = "paper_sim"
     router = ExecutionRouter(cfg=cfg, bf_dir=tmp_path)
     bot = BotInstance(
-        bot_id="test", symbol="ETH", strategy_kind="x",
-        direction="long", cash=5000.0,
+        bot_id="test",
+        symbol="ETH",
+        strategy_kind="x",
+        direction="long",
+        cash=5000.0,
     )
     # Enter
     enter_bar = {"close": 100.0, "high": 101.0, "low": 99.0, "open": 99.5}
     router.submit_entry(
-        bot=bot, signal_id="sig2", side="BUY", bar=enter_bar, size_mult=1.0,
+        bot=bot,
+        signal_id="sig2",
+        side="BUY",
+        bar=enter_bar,
+        size_mult=1.0,
     )
     # Exit at higher price (winning trade)
     exit_bar = {"close": 105.0, "high": 105.5, "low": 104.0, "open": 104.5}
@@ -180,7 +200,7 @@ def test_router_submit_exit_computes_pnl(tmp_path: Path) -> None:
     assert rec is not None
     assert rec.side == "SELL"
     assert rec.realized_r is not None
-    assert rec.realized_r > 0          # winning trade
+    assert rec.realized_r > 0  # winning trade
     assert bot.realized_pnl > 0
     assert bot.open_position is None
     assert bot.n_exits == 1
@@ -400,16 +420,24 @@ def test_router_paper_live_direct_route_skips_pending_by_default(tmp_path: Path)
         ExecutionRouter,
         SupervisorConfig,
     )
+
     cfg = SupervisorConfig()
     cfg.mode = "paper_live"
     router = ExecutionRouter(cfg=cfg, bf_dir=tmp_path)
     bot = BotInstance(
-        bot_id="paperlive", symbol="BTC", strategy_kind="x",
-        direction="long", cash=5000.0,
+        bot_id="paperlive",
+        symbol="BTC",
+        strategy_kind="x",
+        direction="long",
+        cash=5000.0,
     )
     bar = {"close": 100.0}
     router.submit_entry(
-        bot=bot, signal_id="s1", side="BUY", bar=bar, size_mult=1.0,
+        bot=bot,
+        signal_id="s1",
+        side="BUY",
+        bar=bar,
+        size_mult=1.0,
     )
     pending = tmp_path / "paperlive.pending_order.json"
     assert not pending.exists()
@@ -421,24 +449,33 @@ def test_router_paper_live_broker_router_route_writes_pending(tmp_path: Path) ->
         ExecutionRouter,
         SupervisorConfig,
     )
+
     cfg = SupervisorConfig()
     cfg.mode = "paper_live"
     cfg.paper_live_order_route = "broker_router"
     router = ExecutionRouter(cfg=cfg, bf_dir=tmp_path)
     bot = BotInstance(
-        bot_id="paperlive", symbol="BTC", strategy_kind="x",
-        direction="long", cash=5000.0,
+        bot_id="paperlive",
+        symbol="BTC",
+        strategy_kind="x",
+        direction="long",
+        cash=5000.0,
     )
     bar = {"close": 100.0}
     router.submit_entry(
-        bot=bot, signal_id="s1", side="BUY", bar=bar, size_mult=1.0,
+        bot=bot,
+        signal_id="s1",
+        side="BUY",
+        bar=bar,
+        size_mult=1.0,
     )
     pending = tmp_path / "paperlive.pending_order.json"
     assert pending.exists()
 
 
 def test_router_paper_live_broker_router_bypasses_allowed_symbols(
-    tmp_path: Path, monkeypatch,
+    tmp_path: Path,
+    monkeypatch,
 ) -> None:
     """ETA_PAPER_LIVE_ALLOWED_SYMBOLS is now a direct_ibkr-only gate.
 
@@ -461,12 +498,19 @@ def test_router_paper_live_broker_router_bypasses_allowed_symbols(
     cfg.paper_live_order_route = "broker_router"
     router = ExecutionRouter(cfg=cfg, bf_dir=tmp_path)
     bot = BotInstance(
-        bot_id="crypto_live_paused", symbol="BTC", strategy_kind="x",
-        direction="long", cash=5000.0,
+        bot_id="crypto_live_paused",
+        symbol="BTC",
+        strategy_kind="x",
+        direction="long",
+        cash=5000.0,
     )
 
     rec = router.submit_entry(
-        bot=bot, signal_id="s1", side="BUY", bar={"close": 100.0}, size_mult=1.0,
+        bot=bot,
+        signal_id="s1",
+        side="BUY",
+        bar={"close": 100.0},
+        size_mult=1.0,
     )
 
     # broker_router route writes the pending_order JSON regardless of
@@ -476,7 +520,8 @@ def test_router_paper_live_broker_router_bypasses_allowed_symbols(
 
 
 def test_router_paper_live_direct_ibkr_still_honors_allowed_symbols(
-    tmp_path: Path, monkeypatch,
+    tmp_path: Path,
+    monkeypatch,
 ) -> None:
     """The allowlist remains a hard gate on the direct_ibkr path."""
     from eta_engine.scripts.jarvis_strategy_supervisor import (
@@ -491,12 +536,19 @@ def test_router_paper_live_direct_ibkr_still_honors_allowed_symbols(
     cfg.paper_live_order_route = "direct_ibkr"
     router = ExecutionRouter(cfg=cfg, bf_dir=tmp_path)
     bot = BotInstance(
-        bot_id="crypto_live_paused", symbol="BTC", strategy_kind="x",
-        direction="long", cash=5000.0,
+        bot_id="crypto_live_paused",
+        symbol="BTC",
+        strategy_kind="x",
+        direction="long",
+        cash=5000.0,
     )
 
     rec = router.submit_entry(
-        bot=bot, signal_id="s1", side="BUY", bar={"close": 100.0}, size_mult=1.0,
+        bot=bot,
+        signal_id="s1",
+        side="BUY",
+        bar={"close": 100.0},
+        size_mult=1.0,
     )
 
     assert rec is None
@@ -504,13 +556,15 @@ def test_router_paper_live_direct_ibkr_still_honors_allowed_symbols(
 
 
 def test_router_paper_live_order_entry_hold_blocks_before_position(
-    tmp_path: Path, monkeypatch,
+    tmp_path: Path,
+    monkeypatch,
 ) -> None:
     from eta_engine.scripts.jarvis_strategy_supervisor import (
         BotInstance,
         ExecutionRouter,
         SupervisorConfig,
     )
+
     hold_path = tmp_path / "order_entry_hold.json"
     hold_path.write_text(
         '{"active": true, "reason": "manual_flatten"}',
@@ -521,13 +575,19 @@ def test_router_paper_live_order_entry_hold_blocks_before_position(
     cfg.mode = "paper_live"
     router = ExecutionRouter(cfg=cfg, bf_dir=tmp_path)
     bot = BotInstance(
-        bot_id="held", symbol="BTC", strategy_kind="x",
-        direction="long", cash=5000.0,
+        bot_id="held",
+        symbol="BTC",
+        strategy_kind="x",
+        direction="long",
+        cash=5000.0,
     )
 
     rec = router.submit_entry(
-        bot=bot, signal_id="s-held", side="BUY",
-        bar={"close": 100.0}, size_mult=1.0,
+        bot=bot,
+        signal_id="s-held",
+        side="BUY",
+        bar={"close": 100.0},
+        size_mult=1.0,
     )
 
     assert rec is None
@@ -537,7 +597,8 @@ def test_router_paper_live_order_entry_hold_blocks_before_position(
 
 
 def test_router_paper_live_direct_reject_rolls_back_position(
-    tmp_path: Path, monkeypatch,
+    tmp_path: Path,
+    monkeypatch,
 ) -> None:
     from eta_engine.scripts import jarvis_strategy_supervisor as supervisor
     from eta_engine.scripts.jarvis_strategy_supervisor import (
@@ -588,7 +649,8 @@ def test_router_paper_live_direct_reject_rolls_back_position(
 
 
 def test_router_paper_live_direct_order_carries_reference_price(
-    tmp_path: Path, monkeypatch,
+    tmp_path: Path,
+    monkeypatch,
 ) -> None:
     from eta_engine.scripts import jarvis_strategy_supervisor as supervisor
     from eta_engine.scripts.jarvis_strategy_supervisor import (
@@ -652,7 +714,8 @@ def test_router_paper_live_direct_order_carries_reference_price(
 
 
 def test_router_paper_live_filled_entry_records_l2_fill(
-    tmp_path: Path, monkeypatch,
+    tmp_path: Path,
+    monkeypatch,
 ) -> None:
     from eta_engine.scripts import jarvis_strategy_supervisor as supervisor
     from eta_engine.scripts.jarvis_strategy_supervisor import (
@@ -735,7 +798,8 @@ def test_router_paper_live_filled_entry_records_l2_fill(
 
 
 def test_router_paper_live_futures_floor_reaches_broker_with_small_cash(
-    tmp_path: Path, monkeypatch,
+    tmp_path: Path,
+    monkeypatch,
 ) -> None:
     from eta_engine.scripts import jarvis_strategy_supervisor as supervisor
     from eta_engine.scripts.jarvis_strategy_supervisor import (
@@ -816,17 +880,25 @@ def test_write_pending_order_includes_brackets_when_available(
         ExecutionRouter,
         SupervisorConfig,
     )
+
     cfg = SupervisorConfig()
     cfg.mode = "paper_live"
     cfg.paper_live_order_route = "broker_router"
     router = ExecutionRouter(cfg=cfg, bf_dir=tmp_path)
     bot = BotInstance(
-        bot_id="bracket_bot", symbol="BTC", strategy_kind="x",
-        direction="long", cash=5000.0,
+        bot_id="bracket_bot",
+        symbol="BTC",
+        strategy_kind="x",
+        direction="long",
+        cash=5000.0,
     )
     bar = {"close": 100.0, "high": 101.0, "low": 99.0, "open": 99.5}
     router.submit_entry(
-        bot=bot, signal_id="bracket-1", side="BUY", bar=bar, size_mult=1.0,
+        bot=bot,
+        signal_id="bracket-1",
+        side="BUY",
+        bar=bar,
+        size_mult=1.0,
     )
     pending = tmp_path / "bracket_bot.pending_order.json"
     assert pending.exists()
@@ -849,17 +921,23 @@ def test_router_live_blocked_without_env(tmp_path: Path) -> None:
         ExecutionRouter,
         SupervisorConfig,
     )
+
     cfg = SupervisorConfig()
     cfg.mode = "live"
     cfg.live_money_enabled = False
     router = ExecutionRouter(cfg=cfg, bf_dir=tmp_path)
     bot = BotInstance(
-        bot_id="livelock", symbol="BTC", strategy_kind="x",
+        bot_id="livelock",
+        symbol="BTC",
+        strategy_kind="x",
         direction="long",
     )
     rec = router.submit_entry(
-        bot=bot, signal_id="s1", side="BUY",
-        bar={"close": 100.0}, size_mult=1.0,
+        bot=bot,
+        signal_id="s1",
+        side="BUY",
+        bar={"close": 100.0},
+        size_mult=1.0,
     )
     assert rec is None
     assert bot.open_position is None
@@ -872,9 +950,13 @@ def test_bot_instance_serializable() -> None:
     import json
 
     from eta_engine.scripts.jarvis_strategy_supervisor import BotInstance
+
     bot = BotInstance(
-        bot_id="x", symbol="MNQ", strategy_kind="orb",
-        direction="long", cash=5000.0,
+        bot_id="x",
+        symbol="MNQ",
+        strategy_kind="orb",
+        direction="long",
+        cash=5000.0,
     )
     # Round-trip via to_state
     s = json.dumps(bot.to_state(), default=str)
@@ -889,10 +971,15 @@ def test_config_defaults_safe() -> None:
     import os
 
     from eta_engine.scripts.jarvis_strategy_supervisor import SupervisorConfig
+
     # Remove env vars that affect defaults
-    for k in ("ETA_SUPERVISOR_BOTS", "ETA_SUPERVISOR_FEED",
-              "ETA_SUPERVISOR_MODE", "ETA_SUPERVISOR_STATE_DIR",
-              "ETA_LIVE_MONEY"):
+    for k in (
+        "ETA_SUPERVISOR_BOTS",
+        "ETA_SUPERVISOR_FEED",
+        "ETA_SUPERVISOR_MODE",
+        "ETA_SUPERVISOR_STATE_DIR",
+        "ETA_LIVE_MONEY",
+    ):
         os.environ.pop(k, None)
     cfg = SupervisorConfig()
     assert cfg.mode == "paper_sim"
@@ -914,11 +1001,7 @@ def test_config_mock_feed_uses_isolated_default_state_dir(monkeypatch) -> None:
 
     cfg = SupervisorConfig()
 
-    assert cfg.state_dir == (
-        supervisor.workspace_roots.ETA_RUNTIME_STATE_DIR
-        / "jarvis_intel"
-        / "supervisor_mock"
-    )
+    assert cfg.state_dir == (supervisor.workspace_roots.ETA_RUNTIME_STATE_DIR / "jarvis_intel" / "supervisor_mock")
 
 
 def test_config_explicit_state_dir_overrides_mock_isolation(
@@ -954,6 +1037,7 @@ def test_supervisor_loads_bots_and_bootstraps_jarvis(tmp_path: Path, monkeypatch
         JarvisStrategySupervisor,
         SupervisorConfig,
     )
+
     cfg = SupervisorConfig()
     cfg.tick_s = 0.05
     cfg.state_dir = tmp_path / "state"
@@ -969,6 +1053,7 @@ def test_supervisor_one_tick_doesnt_crash_when_no_bots(tmp_path: Path) -> None:
         JarvisStrategySupervisor,
         SupervisorConfig,
     )
+
     cfg = SupervisorConfig()
     cfg.state_dir = tmp_path / "state"
     sup = JarvisStrategySupervisor(cfg=cfg)
@@ -1025,13 +1110,19 @@ def test_supervisor_writes_heartbeat_with_bots(tmp_path: Path) -> None:
         JarvisStrategySupervisor,
         SupervisorConfig,
     )
+
     cfg = SupervisorConfig()
     cfg.state_dir = tmp_path / "state"
     sup = JarvisStrategySupervisor(cfg=cfg)
-    sup.bots.append(BotInstance(
-        bot_id="hb-test", symbol="BTC", strategy_kind="x",
-        direction="long", cash=5000.0,
-    ))
+    sup.bots.append(
+        BotInstance(
+            bot_id="hb-test",
+            symbol="BTC",
+            strategy_kind="x",
+            direction="long",
+            cash=5000.0,
+        )
+    )
     sup._write_heartbeat(42)
     hb_file = cfg.state_dir / "heartbeat.json"
     assert hb_file.exists()
@@ -1257,16 +1348,22 @@ def test_supervisor_heartbeat_per_bot_mode_inherits_cfg_mode(tmp_path: Path) -> 
         JarvisStrategySupervisor,
         SupervisorConfig,
     )
+
     cfg = SupervisorConfig()
     cfg.state_dir = tmp_path / "state"
     cfg.mode = "paper_live"
     sup = JarvisStrategySupervisor(cfg=cfg)
     # Three bots, simulating the multi-bot fleet.
     for bot_id in ("alpha", "beta", "gamma"):
-        sup.bots.append(BotInstance(
-            bot_id=bot_id, symbol="BTC", strategy_kind="x",
-            direction="long", cash=5000.0,
-        ))
+        sup.bots.append(
+            BotInstance(
+                bot_id=bot_id,
+                symbol="BTC",
+                strategy_kind="x",
+                direction="long",
+                cash=5000.0,
+            )
+        )
     sup._write_heartbeat(1)
     payload = json.loads(
         (cfg.state_dir / "heartbeat.json").read_text(encoding="utf-8"),
@@ -1277,8 +1374,7 @@ def test_supervisor_heartbeat_per_bot_mode_inherits_cfg_mode(tmp_path: Path) -> 
     assert len(payload["bots"]) == 3
     for bot in payload["bots"]:
         assert bot["mode"] == "paper_live", (
-            f"bot {bot['bot_id']} reports mode={bot.get('mode')!r}, "
-            "expected paper_live (cfg.mode inheritance broken)"
+            f"bot {bot['bot_id']} reports mode={bot.get('mode')!r}, expected paper_live (cfg.mode inheritance broken)"
         )
 
 
@@ -1298,13 +1394,19 @@ def test_supervisor_builds_synthetic_ctx(tmp_path: Path) -> None:
         JarvisStrategySupervisor,
         SupervisorConfig,
     )
+
     cfg = SupervisorConfig()
     cfg.state_dir = tmp_path / "state"
     sup = JarvisStrategySupervisor(cfg=cfg)
-    sup.bots.append(BotInstance(
-        bot_id="ctx-test", symbol="BTC", strategy_kind="x",
-        direction="long", cash=5000.0,
-    ))
+    sup.bots.append(
+        BotInstance(
+            bot_id="ctx-test",
+            symbol="BTC",
+            strategy_kind="x",
+            direction="long",
+            cash=5000.0,
+        )
+    )
     ctx = sup._build_synthetic_ctx(sup.bots[0])
     # The shape we actually need to verify: a non-None pydantic
     # JarvisContext that JarvisAdmin can consume.
@@ -1324,11 +1426,15 @@ def test_supervisor_builds_synthetic_ctx(tmp_path: Path) -> None:
         SubsystemId,
         make_action_request,
     )
+
     admin = JarvisAdmin()
     req = make_action_request(
         subsystem=SubsystemId.BOT_MNQ,
         action=ActionType.ORDER_PLACE,
-        rationale="ctx smoke", side="buy", qty=1.0, symbol="BTC",
+        rationale="ctx smoke",
+        side="buy",
+        qty=1.0,
+        symbol="BTC",
     )
     # Should NOT raise "JarvisAdmin needs either an engine or an
     # explicit ctx" -- the whole point of the synthetic ctx
@@ -1359,6 +1465,7 @@ def test_live_ibkr_loop_helper_returns_same_loop_across_calls() -> None:
     raised "Future attached to a different loop" on Windows.
     """
     from eta_engine.scripts import jarvis_strategy_supervisor as mod
+
     _reset_live_ibkr(mod)
     try:
         loop_a = mod._get_or_create_live_ibkr_loop()
@@ -1376,11 +1483,14 @@ def test_run_on_live_ibkr_loop_executes_coroutine() -> None:
     import asyncio
 
     from eta_engine.scripts import jarvis_strategy_supervisor as mod
+
     _reset_live_ibkr(mod)
     try:
+
         async def _echo(x):
             await asyncio.sleep(0)
             return x * 2
+
         result = mod._run_on_live_ibkr_loop(_echo(21), timeout=5.0)
         assert result == 42
     finally:
@@ -1392,6 +1502,7 @@ def test_run_on_live_ibkr_loop_runs_in_dedicated_thread() -> None:
     import threading
 
     from eta_engine.scripts import jarvis_strategy_supervisor as mod
+
     _reset_live_ibkr(mod)
     try:
         caller_tid = threading.get_ident()

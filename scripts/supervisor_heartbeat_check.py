@@ -317,12 +317,8 @@ def build_supervisor_heartbeat_report(
         elif fresh_legacy:
             status = "wrong_write_path"
             diagnosis = f"canonical_missing_{fresh_legacy[0].label}_fresh"
-            warnings.append(
-                "Supervisor appears alive, but it is writing to a non-canonical heartbeat path."
-            )
-            action_items.append(
-                "Restart ETA-Jarvis-Strategy-Supervisor with the canonical var/eta_engine/state path."
-            )
+            warnings.append("Supervisor appears alive, but it is writing to a non-canonical heartbeat path.")
+            action_items.append("Restart ETA-Jarvis-Strategy-Supervisor with the canonical var/eta_engine/state path.")
         else:
             status = "missing"
             diagnosis = "canonical_heartbeat_missing"
@@ -331,9 +327,7 @@ def build_supervisor_heartbeat_report(
         if main_loop_stuck:
             status = "main_loop_stuck"
             diagnosis = "main_heartbeat_unreadable_keepalive_fresh"
-            warnings.append(
-                "Supervisor process is alive (keep-alive is fresh) but the main heartbeat is unreadable."
-            )
+            warnings.append("Supervisor process is alive (keep-alive is fresh) but the main heartbeat is unreadable.")
             action_items.append("Inspect and repair the canonical heartbeat JSON payload; supervisor process is alive.")
         else:
             status = "invalid"
@@ -358,9 +352,7 @@ def build_supervisor_heartbeat_report(
             warnings.append(
                 "Supervisor appears alive, but the canonical heartbeat is stale while a non-canonical path is fresh."
             )
-            action_items.append(
-                "Restart ETA-Jarvis-Strategy-Supervisor with the canonical var/eta_engine/state path."
-            )
+            action_items.append("Restart ETA-Jarvis-Strategy-Supervisor with the canonical var/eta_engine/state path.")
         else:
             status = "stale"
             diagnosis = "canonical_heartbeat_stale"
@@ -452,7 +444,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--write-report", action="store_true", help="Write latest report under canonical state/health.")
     parser.add_argument("--threshold-min", type=float, default=DEFAULT_STALE_THRESHOLD_MINUTES)
     parser.add_argument(
-        "--keepalive-stale-s", type=float, default=DEFAULT_KEEPALIVE_STALE_SECONDS,
+        "--keepalive-stale-s",
+        type=float,
+        default=DEFAULT_KEEPALIVE_STALE_SECONDS,
         help="Seconds after which the keep-alive stamp is considered stale (default 60s).",
     )
     parser.add_argument("--state-root", type=Path, default=ETA_RUNTIME_STATE_DIR)

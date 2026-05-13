@@ -139,8 +139,7 @@ class CryptoMeanRevStrategy:
             return None
         if (
             self._last_entry_idx is not None
-            and (self._bars_seen - self._last_entry_idx)
-            < self.cfg.min_bars_between_trades
+            and (self._bars_seen - self._last_entry_idx) < self.cfg.min_bars_between_trades
         ):
             return None
 
@@ -148,7 +147,7 @@ class CryptoMeanRevStrategy:
         n = len(self._closes)
         mean = sum(self._closes) / n
         var = sum((c - mean) ** 2 for c in self._closes) / n
-        std = var ** 0.5
+        std = var**0.5
         upper = mean + self.cfg.bb_stddev_mult * std
         lower = mean - self.cfg.bb_stddev_mult * std
 
@@ -172,7 +171,7 @@ class CryptoMeanRevStrategy:
             return None
 
         # ── ATR sizing ──
-        atr_window = hist[-self.cfg.atr_period:] if hist else []
+        atr_window = hist[-self.cfg.atr_period :] if hist else []
         if len(atr_window) < 2:
             return None
         atr = sum(b.high - b.low for b in atr_window) / len(atr_window)
@@ -197,9 +196,15 @@ class CryptoMeanRevStrategy:
         from eta_engine.backtest.engine import _Open
 
         opened = _Open(
-            entry_bar=bar, side=side, qty=qty, entry_price=entry_price,
-            stop=stop, target=target, risk_usd=risk_usd,
-            confluence=10.0, leverage=1.0,
+            entry_bar=bar,
+            side=side,
+            qty=qty,
+            entry_price=entry_price,
+            stop=stop,
+            target=target,
+            risk_usd=risk_usd,
+            confluence=10.0,
+            leverage=1.0,
             regime="crypto_meanrev",
         )
         self._last_entry_idx = self._bars_seen

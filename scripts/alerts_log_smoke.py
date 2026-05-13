@@ -41,7 +41,9 @@ def build_smoke_record(*, source: str = "alerts_log_smoke") -> dict[str, Any]:
     }
 
 
-def append_alerts_smoke(log_path: Path = ETA_RUNTIME_ALERTS_LOG_PATH, *, source: str = "alerts_log_smoke") -> dict[str, Any]:
+def append_alerts_smoke(
+    log_path: Path = ETA_RUNTIME_ALERTS_LOG_PATH, *, source: str = "alerts_log_smoke"
+) -> dict[str, Any]:
     """Append one smoke row to ``log_path`` and return operator evidence."""
     record = build_smoke_record(source=source)
     log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -70,10 +72,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.json:
         print(json.dumps(evidence, indent=2, sort_keys=True))
     else:
-        print(
-            "[alerts_log_smoke] appended alerts_smoke to "
-            f"{evidence['path']} ({evidence['bytes']} bytes)"
-        )
+        print(f"[alerts_log_smoke] appended alerts_smoke to {evidence['path']} ({evidence['bytes']} bytes)")
     return 0
 
 

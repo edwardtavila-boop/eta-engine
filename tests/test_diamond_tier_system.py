@@ -1,4 +1,5 @@
 """Tests for the wave-18 tier system + PROP_READY capital routing."""
+
 # ruff: noqa: N802, PLR2004
 from __future__ import annotations
 
@@ -45,9 +46,7 @@ def test_get_bot_tier_candidate_default() -> None:
     """Unknown / non-diamond bot defaults to TIER_CANDIDATE."""
     from eta_engine.feeds.capital_allocator import TIER_CANDIDATE, get_bot_tier
 
-    assert (
-        get_bot_tier("unknown_bot", prop_ready=frozenset()) == TIER_CANDIDATE
-    )
+    assert get_bot_tier("unknown_bot", prop_ready=frozenset()) == TIER_CANDIDATE
 
 
 def test_load_prop_ready_bots_returns_empty_on_missing(tmp_path: Path) -> None:
@@ -73,16 +72,24 @@ def test_load_prop_ready_bots_parses_receipt(tmp_path: Path) -> None:
     from eta_engine.feeds.capital_allocator import load_prop_ready_bots
 
     receipt = tmp_path / "leaderboard.json"
-    receipt.write_text(json.dumps({
-        "ts": "2026-05-12T23:00:00Z",
-        "prop_ready_bots": ["m2k_sweep_reclaim", "met_sweep_reclaim",
-                            "mes_sweep_reclaim_v2"],
-        "leaderboard": [],
-    }), encoding="utf-8")
+    receipt.write_text(
+        json.dumps(
+            {
+                "ts": "2026-05-12T23:00:00Z",
+                "prop_ready_bots": ["m2k_sweep_reclaim", "met_sweep_reclaim", "mes_sweep_reclaim_v2"],
+                "leaderboard": [],
+            }
+        ),
+        encoding="utf-8",
+    )
     result = load_prop_ready_bots(receipt)
-    assert result == frozenset({
-        "m2k_sweep_reclaim", "met_sweep_reclaim", "mes_sweep_reclaim_v2",
-    })
+    assert result == frozenset(
+        {
+            "m2k_sweep_reclaim",
+            "met_sweep_reclaim",
+            "mes_sweep_reclaim_v2",
+        }
+    )
 
 
 def test_load_prop_ready_bots_handles_missing_field(tmp_path: Path) -> None:
@@ -97,12 +104,18 @@ def test_load_prop_ready_bots_handles_missing_field(tmp_path: Path) -> None:
 def test_bot_allocation_tier_field_default() -> None:
     """BotAllocation must have a tier field defaulting to TIER_CANDIDATE
     so existing callers don't break + tier metadata flows downstream."""
-    from eta_engine.feeds.capital_allocator import BotAllocation, TIER_CANDIDATE
+    from eta_engine.feeds.capital_allocator import TIER_CANDIDATE, BotAllocation
 
     ba = BotAllocation(
-        bot_id="x", symbol="X", pool="futures",
-        weight=0.1, capital=1000.0,
-        pnl_total=100.0, win_rate=0.6, sessions=5, status="active",
+        bot_id="x",
+        symbol="X",
+        pool="futures",
+        weight=0.1,
+        capital=1000.0,
+        pnl_total=100.0,
+        win_rate=0.6,
+        sessions=5,
+        status="active",
     )
     assert ba.tier == TIER_CANDIDATE
 

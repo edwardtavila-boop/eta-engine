@@ -24,7 +24,7 @@ def main() -> None:
                 "python_files": 107,
             },
             "the_firm_eta_engine": {
-                "path": "OneDrive/The_Firm/eta_engine/",
+                "path": "OneDrive/The_Firm/eta_engine/",  # HISTORICAL-PATH-OK
                 "role": "v3 framework (eta_v3_framework/ + firm/ + specs/ + Dockerfile + uv.lock)",
                 "layout": "src/-based with separate test tree",
                 "tests": "distinct suite (not counted here)",

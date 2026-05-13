@@ -53,9 +53,10 @@ def test_vps_action_to_shell_maps_supported_actions() -> None:
     assert vps_action_to_shell(
         VPSActionRequest(action=VPSActionType.TAIL_LOG, service="mnq-bot.service", rationale="inspect")
     ) == ["journalctl", "-u", "mnq-bot.service", "-n", "200", "--no-pager"]
-    assert vps_action_to_shell(
-        VPSActionRequest(action=VPSActionType.KILL_PID, pid=1234, rationale="runaway")
-    ) == ["kill", "1234"]
+    assert vps_action_to_shell(VPSActionRequest(action=VPSActionType.KILL_PID, pid=1234, rationale="runaway")) == [
+        "kill",
+        "1234",
+    ]
 
 
 def test_vps_action_to_shell_rejects_incomplete_request() -> None:

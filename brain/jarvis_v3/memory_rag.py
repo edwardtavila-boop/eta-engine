@@ -40,6 +40,7 @@ Use case (hot path: pre-trade context augmentation):
     print(context.summary)
     print(context.cautions)   # any analog episodes that lost
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -64,13 +65,56 @@ logger = logging.getLogger(__name__)
 
 _EMBED_DIM = 8192
 _TOKEN_RE = re.compile(r"[a-z][a-z0-9_]+")
-_STOP_WORDS = frozenset({
-    "the", "a", "an", "and", "or", "but", "of", "in", "on", "at",
-    "to", "for", "with", "by", "as", "is", "was", "be", "been", "being",
-    "this", "that", "these", "those", "it", "its", "from", "into", "if",
-    "when", "than", "then", "there", "are", "we", "you", "i", "he", "she",
-    "they", "his", "her", "their", "our", "your", "my",
-})
+_STOP_WORDS = frozenset(
+    {
+        "the",
+        "a",
+        "an",
+        "and",
+        "or",
+        "but",
+        "of",
+        "in",
+        "on",
+        "at",
+        "to",
+        "for",
+        "with",
+        "by",
+        "as",
+        "is",
+        "was",
+        "be",
+        "been",
+        "being",
+        "this",
+        "that",
+        "these",
+        "those",
+        "it",
+        "its",
+        "from",
+        "into",
+        "if",
+        "when",
+        "than",
+        "then",
+        "there",
+        "are",
+        "we",
+        "you",
+        "i",
+        "he",
+        "she",
+        "they",
+        "his",
+        "her",
+        "their",
+        "our",
+        "your",
+        "my",
+    }
+)
 
 
 def _tokenize(text: str) -> list[str]:
@@ -142,12 +186,18 @@ def retrieve_similar(
     The two are linearly combined; default weights favor the narrative
     text, with structure as a tiebreaker."""
     from eta_engine.brain.jarvis_v3.memory_hierarchy import Episode
+
     if not memory._episodes:
         return []
     q_emb = hash_embed(query_text)
     probe = Episode(
-        ts="", signal_id="probe", regime=regime, session=session,
-        stress=stress, direction=direction, realized_r=0.0,
+        ts="",
+        signal_id="probe",
+        regime=regime,
+        session=session,
+        stress=stress,
+        direction=direction,
+        realized_r=0.0,
     )
     probe_struct = probe.feature_vector()
 
@@ -208,10 +258,7 @@ def summarize_episodes(
             f"win-rate {win_rate:.0%}; common phrases: "
             f"{', '.join(top_phrases)}."
         )
-    return (
-        f"{len(episodes)} analog episodes: avg {avg_r:+.2f}R, "
-        f"win-rate {win_rate:.0%}; no narrative content."
-    )
+    return f"{len(episodes)} analog episodes: avg {avg_r:+.2f}R, win-rate {win_rate:.0%}; no narrative content."
 
 
 # ─── RAG enrichment (the public entry point) ──────────────────────
@@ -253,8 +300,12 @@ def rag_enrich_decision_context(
     """
     retrieved = retrieve_similar(
         query_text=current_narrative,
-        regime=regime, session=session, stress=stress, direction=direction,
-        memory=memory, k=k,
+        regime=regime,
+        session=session,
+        stress=stress,
+        direction=direction,
+        memory=memory,
+        k=k,
     )
     if not retrieved:
         return EnrichedContext(
@@ -270,13 +321,11 @@ def rag_enrich_decision_context(
     boosts: list[str] = []
     if avg_r <= caution_threshold_r:
         cautions.append(
-            f"top-{len(eps)} analogs averaged {avg_r:+.2f}R "
-            f"(below {caution_threshold_r:+.2f}R caution threshold)",
+            f"top-{len(eps)} analogs averaged {avg_r:+.2f}R (below {caution_threshold_r:+.2f}R caution threshold)",
         )
     if avg_r >= boost_threshold_r:
         boosts.append(
-            f"top-{len(eps)} analogs averaged {avg_r:+.2f}R "
-            f"(above {boost_threshold_r:+.2f}R boost threshold)",
+            f"top-{len(eps)} analogs averaged {avg_r:+.2f}R (above {boost_threshold_r:+.2f}R boost threshold)",
         )
     # Per-episode flags for the worst losers
     for r in retrieved:
@@ -284,7 +333,7 @@ def rag_enrich_decision_context(
             cautions.append(
                 f"analog (rank {r.rank}, score {r.score:.2f}) "
                 f"lost {r.episode.realized_r:+.2f}R: "
-                f"\"{r.episode.narrative[:60]}\"",
+                f'"{r.episode.narrative[:60]}"',
             )
 
     return EnrichedContext(
@@ -320,10 +369,7 @@ def evict_redundant_episodes(
     embeds = [hash_embed(e.narrative) for e in memory._episodes]
     redundancy: list[float] = []
     for i in range(n):
-        s = sum(
-            cosine_sparse(embeds[i], embeds[j])
-            for j in range(n) if j != i
-        )
+        s = sum(cosine_sparse(embeds[i], embeds[j]) for j in range(n) if j != i)
         redundancy.append(s)
 
     # Drop the most-redundant first

@@ -77,27 +77,30 @@ def _build_daily_verdicts(symbol: str = "BTC") -> Any:  # noqa: ANN401
     daily_bars = default_library().load_bars(ds, require_positive_prices=True)
     if not daily_bars:
         raise SystemExit(f"ABORT: no tradable positive-price daily bars for {symbol}.")
-    print(
-        f"[sage-daily] consulting sage on {len(daily_bars)} {symbol} "
-        f"daily bars"
-    )
+    print(f"[sage-daily] consulting sage on {len(daily_bars)} {symbol} daily bars")
     verdicts: dict = {}
     sage_dicts = [_bar_to_sage_dict(b) for b in daily_bars]
     for i in range(25, len(sage_dicts) + 1):
         ctx = MarketContext(
-            bars=sage_dicts[:i][-200:], side="long",
+            bars=sage_dicts[:i][-200:],
+            side="long",
             entry_price=float(sage_dicts[i - 1]["close"]),
-            symbol=symbol, instrument_class="crypto",
+            symbol=symbol,
+            instrument_class="crypto",
         )
         try:
             r = consult_sage(
-                ctx, parallel=False, use_cache=True, apply_edge_weights=False,
+                ctx,
+                parallel=False,
+                use_cache=True,
+                apply_edge_weights=False,
             )
         except Exception:  # noqa: BLE001
             continue
         bias = r.composite_bias.value
         verdicts[daily_bars[i - 1].timestamp.date()] = SageDailyVerdict(
-            direction=bias, conviction=r.conviction,
+            direction=bias,
+            conviction=r.conviction,
             composite=(1.0 if bias == "long" else (-1.0 if bias == "short" else 0.0)),
         )
     print(f"[sage-daily] computed {len(verdicts)} daily verdicts")
@@ -118,7 +121,9 @@ def _build_daily_verdicts(symbol: str = "BTC") -> Any:  # noqa: ANN401
 
 
 def _build_factory(
-    *, threshold: float, funding_path: Path,
+    *,
+    threshold: float,
+    funding_path: Path,
     sage_provider: Any = None,  # noqa: ANN401
     require_directional_confirmation: bool = False,
 ) -> Any:  # noqa: ANN401
@@ -158,7 +163,11 @@ def _build_factory(
 
 
 def _run_one(
-    label: str, factory: Any, bars: list, backtest_cfg: Any, wf: Any,  # noqa: ANN401
+    label: str,
+    factory: Any,
+    bars: list,
+    backtest_cfg: Any,
+    wf: Any,  # noqa: ANN401
 ) -> Any:  # noqa: ANN401
     from eta_engine.backtest import WalkForwardEngine
     from eta_engine.features.pipeline import FeaturePipeline
@@ -183,11 +192,9 @@ def _print_summary(label: str, res: Any) -> None:  # noqa: ANN401
     print(f"Windows:                     {n_total}")
     print(f"Total OOS trades:            {n_oos_trades}")
     print(f"Aggregate OOS Sharpe:        {res.aggregate_oos_sharpe:>8.4f}")
-    print(f"Positive OOS windows:        {n_pos}/{n_total}"
-          f" ({n_pos / max(n_total, 1) * 100:.1f}%)")
+    print(f"Positive OOS windows:        {n_pos}/{n_total} ({n_pos / max(n_total, 1) * 100:.1f}%)")
     print(f"OOS degradation avg:         {res.oos_degradation_avg:>8.4f}")
-    print(f"Per-fold DSR pass fraction:  "
-          f"{res.fold_dsr_pass_fraction * 100:>7.2f}%")
+    print(f"Per-fold DSR pass fraction:  {res.fold_dsr_pass_fraction * 100:>7.2f}%")
     print(f"Gate: {'PASS' if res.pass_gate else 'FAIL'}")
     print("=" * 82)
 
@@ -199,15 +206,18 @@ def main() -> int:
     parser.add_argument("--window-days", type=int, default=90)
     parser.add_argument("--step-days", type=int, default=30)
     parser.add_argument(
-        "--funding-path", type=Path,
+        "--funding-path",
+        type=Path,
         default=CRYPTO_HISTORY_ROOT / "BTCFUND_8h.csv",
     )
     parser.add_argument(
-        "--threshold-sweep", default="0.0005,0.00075,0.001",
+        "--threshold-sweep",
+        default="0.0005,0.00075,0.001",
         help="Comma-separated entry thresholds (per 8h, decimal).",
     )
     parser.add_argument(
-        "--with-sage", action="store_true",
+        "--with-sage",
+        action="store_true",
         help="Add a 5th run with require_directional_confirmation=True",
     )
     args = parser.parse_args()
@@ -233,16 +243,22 @@ def main() -> int:
         return 1
 
     backtest_cfg = BacktestConfig(
-        start_date=bars[0].timestamp, end_date=bars[-1].timestamp,
-        symbol=ds.symbol, initial_equity=10_000.0,
-        risk_per_trade_pct=0.01, confluence_threshold=0.0,
+        start_date=bars[0].timestamp,
+        end_date=bars[-1].timestamp,
+        symbol=ds.symbol,
+        initial_equity=10_000.0,
+        risk_per_trade_pct=0.01,
+        confluence_threshold=0.0,
         max_trades_per_day=10,
     )
     wf = WalkForwardConfig(
-        window_days=args.window_days, step_days=args.step_days,
-        anchored=True, oos_fraction=0.3,
+        window_days=args.window_days,
+        step_days=args.step_days,
+        anchored=True,
+        oos_fraction=0.3,
         min_trades_per_window=3,
-        strict_fold_dsr_gate=True, fold_dsr_min_pass_fraction=0.5,
+        strict_fold_dsr_gate=True,
+        fold_dsr_min_pass_fraction=0.5,
     )
 
     print(f"\n[wf] window={args.window_days}d step={args.step_days}d")
@@ -255,8 +271,10 @@ def main() -> int:
     for thr in thresholds:
         label = f"threshold={thr * 1e4:+.1f}bps (no sage)"
         factory = _build_factory(
-            threshold=thr, funding_path=args.funding_path,
-            sage_provider=None, require_directional_confirmation=False,
+            threshold=thr,
+            funding_path=args.funding_path,
+            sage_provider=None,
+            require_directional_confirmation=False,
         )
         res = _run_one(label, factory, bars, backtest_cfg, wf)
         _print_summary(label, res)
@@ -266,8 +284,10 @@ def main() -> int:
         thr = thresholds[len(thresholds) // 2]  # median
         label = f"threshold={thr * 1e4:+.1f}bps + sage_confirmed"
         factory = _build_factory(
-            threshold=thr, funding_path=args.funding_path,
-            sage_provider=sage_provider, require_directional_confirmation=True,
+            threshold=thr,
+            funding_path=args.funding_path,
+            sage_provider=sage_provider,
+            require_directional_confirmation=True,
         )
         res = _run_one(label, factory, bars, backtest_cfg, wf)
         _print_summary(label, res)
@@ -277,8 +297,7 @@ def main() -> int:
         print("\n\nFUNDING-DIVERGENCE THRESHOLD SWEEP SUMMARY")
         print("=" * 82)
         cols = ["variant", "OOS Sharpe", "+OOS folds", "OOS trades", "deg_avg", "gate"]
-        print(f"{cols[0]:<22}{cols[1]:>13}{cols[2]:>13}"
-              f"{cols[3]:>12}{cols[4]:>10}{cols[5]:>10}")
+        print(f"{cols[0]:<22}{cols[1]:>13}{cols[2]:>13}{cols[3]:>12}{cols[4]:>10}{cols[5]:>10}")
         print("-" * 82)
         for variant, res in results.items():
             n_pos = sum(1 for w in res.windows if w.get("oos_sharpe", 0) > 0)

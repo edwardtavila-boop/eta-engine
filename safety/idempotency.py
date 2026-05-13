@@ -105,7 +105,7 @@ _STORE: dict[str, IdempotencyRecord] = {}
 # 2026-05 JVM-OOM era saw 170+ orders pinned by stale REJECTED rows)
 # but conservative enough not to dedup legitimate intentional retries.
 
-_DEFAULT_TTL_S: float = 3600.0          # 1 hour for FILLED / OPEN / submitted
+_DEFAULT_TTL_S: float = 3600.0  # 1 hour for FILLED / OPEN / submitted
 _DEFAULT_REJECTED_TTL_S: float = 300.0  # 5 minutes for REJECTED
 
 
@@ -165,9 +165,7 @@ def _is_expired(rec: IdempotencyRecord, *, now: float | None = None) -> bool:
 # or legacy paths.
 
 # default-on persistence; set ETA_IDEMPOTENCY_STORE=disabled to opt out
-_DEFAULT_PERSIST_PATH: _Path = _Path(
-    "C:/EvolutionaryTradingAlgo/var/eta_engine/state/idempotency.jsonl"
-)
+_DEFAULT_PERSIST_PATH: _Path = _Path("C:/EvolutionaryTradingAlgo/var/eta_engine/state/idempotency.jsonl")
 
 
 def _persist_path() -> _Path | None:
@@ -343,9 +341,7 @@ def check_or_register(
     failure cannot poison a legitimate retry forever.
     """
     if not client_order_id:
-        raise IdempotencyError(
-            "client_order_id must be non-empty", reason="invalid_id"
-        )
+        raise IdempotencyError("client_order_id must be non-empty", reason="invalid_id")
     with _LOCK:
         existing = _STORE.get(client_order_id)
         # TTL-based eviction must happen BEFORE the retryable_failed
@@ -419,9 +415,7 @@ def record_result(
     the longer FILLED TTL from this point forward.
     """
     if not client_order_id:
-        raise IdempotencyError(
-            "client_order_id must be non-empty", reason="invalid_id"
-        )
+        raise IdempotencyError("client_order_id must be non-empty", reason="invalid_id")
     with _LOCK:
         existing = _STORE.get(client_order_id)
         if existing is None:
@@ -585,13 +579,12 @@ def _main(argv: list[str] | None = None) -> int:
         "--clear",
         action="store_true",
         help="Filter the JSONL store: drop expired entries and "
-             "rejected entries (or only rejected with --rejected-only).",
+        "rejected entries (or only rejected with --rejected-only).",
     )
     parser.add_argument(
         "--rejected-only",
         action="store_true",
-        help="With --clear: drop only REJECTED entries; keep "
-             "expired non-rejected rows in place.",
+        help="With --clear: drop only REJECTED entries; keep expired non-rejected rows in place.",
     )
     args = parser.parse_args(argv)
     if not args.clear:

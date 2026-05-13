@@ -33,6 +33,7 @@ STRATEGY KIND IMPLEMENTATIONS
 * confluence_scorecard — multi-factor 2-of-4 score gate
 * vwap_mr             — 2σ VWAP-band mean reversion (RTH-aware)
 """
+
 from __future__ import annotations
 
 import json
@@ -53,13 +54,13 @@ log = logging.getLogger("strategy_lab")
 # ─── Canonical roots ──────────────────────────────────────────────
 
 _WS = Path(os.environ.get("ETA_WORKSPACE", r"C:\EvolutionaryTradingAlgo"))
-MNQ_HISTORY_ROOT       = _WS / "mnq_data" / "history"
+MNQ_HISTORY_ROOT = _WS / "mnq_data" / "history"
 # Coinbase recurring-refresh mirror (1m/5m/1h/D up to 12mo via merge fetcher)
-CRYPTO_HISTORY_ROOT    = _WS / "data" / "crypto" / "ibkr" / "history"
+CRYPTO_HISTORY_ROOT = _WS / "data" / "crypto" / "ibkr" / "history"
 # yfinance long-history mirror (BTC/ETH 731-day daily — 2026-05-04)
 CRYPTO_HISTORY_ROOT_YF = _WS / "data" / "crypto" / "history"
-REGIME_STATE_PATH      = _WS / "var" / "eta_engine" / "state" / "regime_state.json"
-LAB_REPORTS_ROOT       = _WS / "reports" / "lab_reports"
+REGIME_STATE_PATH = _WS / "var" / "eta_engine" / "state" / "regime_state.json"
+LAB_REPORTS_ROOT = _WS / "reports" / "lab_reports"
 
 CRYPTO_SYMBOLS = {"BTC", "ETH", "SOL", "XRP", "AVAX", "LINK", "DOGE", "ADA", "DOT"}
 
@@ -90,6 +91,7 @@ COUNTER_TREND_SUB_KINDS = {"rsi_mean_reversion", "vwap_mr"}
 def _normalize_sub_strategy_kind(raw: object) -> str:
     sub_kind = str(raw or "").strip()
     return SUB_STRATEGY_KIND_ALIASES.get(sub_kind, sub_kind)
+
 
 # Map asset-class → canonical bar filename pattern
 def _resolve_bar_path(symbol: str, timeframe: str) -> Path | None:
@@ -179,7 +181,10 @@ def _load_ohlcv(path: Path) -> dict[str, np.ndarray] | None:
     """Load full OHLCV from canonical CSV. Returns dict of arrays or None."""
     try:
         data = np.genfromtxt(
-            path, delimiter=",", skip_header=1, dtype=float,
+            path,
+            delimiter=",",
+            skip_header=1,
+            dtype=float,
             usecols=(0, 1, 2, 3, 4, 5),
         )
     except (OSError, ValueError):
@@ -187,11 +192,11 @@ def _load_ohlcv(path: Path) -> dict[str, np.ndarray] | None:
     if data.size == 0 or len(data.shape) < 2:
         return None
     return {
-        "time":   data[:, 0],
-        "open":   data[:, 1],
-        "high":   data[:, 2],
-        "low":    data[:, 3],
-        "close":  data[:, 4],
+        "time": data[:, 0],
+        "open": data[:, 1],
+        "high": data[:, 2],
+        "low": data[:, 3],
+        "close": data[:, 4],
         "volume": data[:, 5],
     }
 
@@ -201,11 +206,13 @@ def _load_ohlcv(path: Path) -> dict[str, np.ndarray] | None:
 
 
 def _atr(high: np.ndarray, low: np.ndarray, close: np.ndarray, period: int = 14) -> np.ndarray:
-    tr = np.maximum.reduce([
-        high[1:] - low[1:],
-        np.abs(high[1:] - close[:-1]),
-        np.abs(low[1:] - close[:-1]),
-    ])
+    tr = np.maximum.reduce(
+        [
+            high[1:] - low[1:],
+            np.abs(high[1:] - close[:-1]),
+            np.abs(low[1:] - close[:-1]),
+        ]
+    )
     atr = np.zeros_like(close)
     atr[period:] = np.convolve(tr, np.ones(period) / period, mode="valid")[: len(atr) - period]
     return atr
@@ -261,7 +268,7 @@ def signals_ema_cross(bars: dict[str, np.ndarray], spec: dict[str, Any]) -> list
 def signals_sweep_reclaim(bars: dict[str, np.ndarray], spec: dict[str, Any]) -> list[tuple[int, str, float, float]]:
     """Sweep: high/low pierces prior N-bar extreme then reclaims the level."""
     high = bars["high"]
-    low  = bars["low"]
+    low = bars["low"]
     close = bars["close"]
     open_ = bars["open"]
     lookback = int(spec.get("lookback", 24))
@@ -284,7 +291,8 @@ def signals_sweep_reclaim(bars: dict[str, np.ndarray], spec: dict[str, Any]) -> 
 
 
 def signals_compression_breakout(
-    bars: dict[str, np.ndarray], spec: dict[str, Any],
+    bars: dict[str, np.ndarray],
+    spec: dict[str, Any],
 ) -> list[tuple[int, str, float, float]]:
     """Bollinger band narrowing + ATR-z low → directional breakout.
 
@@ -319,7 +327,8 @@ def signals_compression_breakout(
 
 
 def signals_confluence_scorecard(
-    bars: dict[str, np.ndarray], spec: dict[str, Any],
+    bars: dict[str, np.ndarray],
+    spec: dict[str, Any],
 ) -> list[tuple[int, str, float, float]]:
     """2-of-5 confluence (tunable): trend, slow alignment, vol z, momentum, follow-through.
 
@@ -367,7 +376,7 @@ def signals_confluence_scorecard(
     close = bars["close"]
     volume = bars["volume"]
     fast = _ema(close, int(spec.get("ema_fast", 9)))
-    mid  = _ema(close, int(spec.get("ema_mid", 21)))
+    mid = _ema(close, int(spec.get("ema_mid", 21)))
     slow = _ema(close, int(spec.get("ema_slow", 50)))
     min_score = int(spec.get("min_score", 2))
     stop_atr = float(spec.get("stop_atr", 1.5))
@@ -402,8 +411,7 @@ def signals_confluence_scorecard(
     return out
 
 
-def scorecard_score_at(bars: dict[str, np.ndarray], spec: dict[str, Any],
-                        i: int, side: str) -> int:
+def scorecard_score_at(bars: dict[str, np.ndarray], spec: dict[str, Any], i: int, side: str) -> int:
     """Return the confluence_scorecard score (0-5) at bar `i` for `side` direction.
 
     Used by fleet_sweep's composite-filter dispatch: bots with
@@ -418,7 +426,7 @@ def scorecard_score_at(bars: dict[str, np.ndarray], spec: dict[str, Any],
     if i < 6:
         return 0
     fast = _ema(close, int(spec.get("ema_fast", 9)))
-    mid  = _ema(close, int(spec.get("ema_mid", 21)))
+    mid = _ema(close, int(spec.get("ema_mid", 21)))
     slow = _ema(close, int(spec.get("ema_slow", 50)))
     vol_lookback = 20
     if i < max(int(spec.get("ema_mid", 21)) + 1, vol_lookback + 1):
@@ -481,7 +489,7 @@ def signals_orb_sage_gated(bars: dict[str, np.ndarray], spec: dict[str, Any]) ->
     close = bars["close"]
     high = bars["high"]
     low = bars["low"]
-    range_bars = int(spec.get("range_bars", 12))   # 12 5m bars = first hour of RTH
+    range_bars = int(spec.get("range_bars", 12))  # 12 5m bars = first hour of RTH
     trend_window = int(spec.get("trend_window", 200))  # daily-trend proxy
     stop_atr = float(spec.get("stop_atr", 1.5))
     target_atr = float(spec.get("target_atr", 3.0))
@@ -493,7 +501,7 @@ def signals_orb_sage_gated(bars: dict[str, np.ndarray], spec: dict[str, Any]) ->
         # Use trailing range_bars window as "opening range"
         rng_high = high[i - range_bars : i].max()
         rng_low = low[i - range_bars : i].min()
-        sage_up = close[i] > sma_long[i]   # daily trend allows long
+        sage_up = close[i] > sma_long[i]  # daily trend allows long
         sage_dn = close[i] < sma_long[i]
         if sage_up and close[i] > rng_high and close[i - 1] <= rng_high:
             out.append((i, "long", stop_atr, target_atr))
@@ -605,7 +613,8 @@ def signals_confluence(bars: dict[str, np.ndarray], spec: dict[str, Any]) -> lis
 
 
 def signals_rsi_mean_reversion(
-    bars: dict[str, np.ndarray], spec: dict[str, Any],
+    bars: dict[str, np.ndarray],
+    spec: dict[str, Any],
 ) -> list[tuple[int, str, float, float]]:
     """Counter-trend RSI mean-reversion at BB extremes.
 
@@ -638,22 +647,13 @@ def signals_rsi_mean_reversion(
         upper = mu + bb_std_mult * sigma
         lower = mu - bb_std_mult * sigma
         if rsi[i] < oversold and close[i] <= lower:
-            if (
-                require_rejection
-                and close[i] >= low[i] + 0.25 * (high[i] - low[i])
-            ) or not require_rejection:
+            if (require_rejection and close[i] >= low[i] + 0.25 * (high[i] - low[i])) or not require_rejection:
                 # Bar closed in upper 75% of its range → rejection of low
                 out.append((i, "long", stop_atr, target_atr))
         elif (
             rsi[i] > overbought
             and close[i] >= upper
-            and (
-                (
-                    require_rejection
-                    and close[i] <= high[i] - 0.25 * (high[i] - low[i])
-                )
-                or not require_rejection
-            )
+            and ((require_rejection and close[i] <= high[i] - 0.25 * (high[i] - low[i])) or not require_rejection)
         ):
             out.append((i, "short", stop_atr, target_atr))
     return out
@@ -685,8 +685,7 @@ def signals_volume_profile(bars: dict[str, np.ndarray], spec: dict[str, Any]) ->
         bin_edges = np.linspace(window_lo, window_hi, n_bins + 1)
         bin_centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
         # Bin volume by close-price bucket — coarse but cheap
-        idx = np.clip(np.searchsorted(bin_edges, close[i - lookback : i]) - 1,
-                      0, n_bins - 1)
+        idx = np.clip(np.searchsorted(bin_edges, close[i - lookback : i]) - 1, 0, n_bins - 1)
         vol_by_bin = np.zeros(n_bins)
         for j, w in zip(idx, volume[i - lookback : i], strict=False):
             vol_by_bin[j] += w
@@ -709,7 +708,8 @@ def signals_volume_profile(bars: dict[str, np.ndarray], spec: dict[str, Any]) ->
 
 
 def signals_cross_asset_divergence(
-    bars: dict[str, np.ndarray], spec: dict[str, Any],
+    bars: dict[str, np.ndarray],
+    spec: dict[str, Any],
 ) -> list[tuple[int, str, float, float]]:
     """Mean-reversion on cross-asset divergence.
 
@@ -847,7 +847,8 @@ def signals_dxy_gold_inverse(bars: dict[str, np.ndarray], spec: dict[str, Any]) 
 
 
 def signals_treasury_safe_haven(
-    bars: dict[str, np.ndarray], spec: dict[str, Any],
+    bars: dict[str, np.ndarray],
+    spec: dict[str, Any],
 ) -> list[tuple[int, str, float, float]]:
     """Treasury futures (ZN/ZB) flight-to-safety on VIX spikes.
 
@@ -970,7 +971,8 @@ def signals_es_vix_inverse(bars: dict[str, np.ndarray], spec: dict[str, Any]) ->
 
 
 def signals_commodity_ratio_mr(
-    bars: dict[str, np.ndarray], spec: dict[str, Any],
+    bars: dict[str, np.ndarray],
+    spec: dict[str, Any],
 ) -> list[tuple[int, str, float, float]]:
     """Cross-commodity ratio mean-reversion (CL/GC, GC/SI, etc.).
 
@@ -1044,7 +1046,8 @@ def signals_commodity_ratio_mr(
 
 
 def signals_overnight_gap_fade(
-    bars: dict[str, np.ndarray], spec: dict[str, Any],
+    bars: dict[str, np.ndarray],
+    spec: dict[str, Any],
 ) -> list[tuple[int, str, float, float]]:
     """Fade large overnight gaps in index futures (NQ/ES/MNQ).
 
@@ -1149,7 +1152,8 @@ def signals_index_lead_lag(bars: dict[str, np.ndarray], spec: dict[str, Any]) ->
 
 
 def signals_commodity_session_breakout(
-    bars: dict[str, np.ndarray], spec: dict[str, Any],
+    bars: dict[str, np.ndarray],
+    spec: dict[str, Any],
 ) -> list[tuple[int, str, float, float]]:
     """Volatility-compressed session breakout for commodities (GC/CL/NG).
 
@@ -1191,7 +1195,7 @@ def signals_commodity_session_breakout(
             continue
         # Multi-bar momentum confirmation
         higher_closes = all(close[i - k] > close[i - k - 1] for k in range(momentum_bars))
-        lower_closes  = all(close[i - k] < close[i - k - 1] for k in range(momentum_bars))
+        lower_closes = all(close[i - k] < close[i - k - 1] for k in range(momentum_bars))
         if higher_closes:
             out.append((i, "long", stop_atr, target_atr))
         elif lower_closes:
@@ -1216,7 +1220,8 @@ def signals_commodity_session_breakout(
 
 
 def _bars_to_bar_data_list(
-    bars: dict[str, np.ndarray], spec: dict[str, Any],
+    bars: dict[str, np.ndarray],
+    spec: dict[str, Any],
 ) -> list[object]:
     """Materialize numpy bar dict into a list of BarData for stateful
     strategies. Lazy import so this module stays importable without
@@ -1236,11 +1241,17 @@ def _bars_to_bar_data_list(
     for i in range(len(c)):
         # Bar files store unix epoch seconds (UTC) in the "time" column.
         ts = _dt.fromtimestamp(float(times[i]), tz=UTC)
-        out.append(BarData(
-            timestamp=ts, symbol=symbol,
-            open=float(o[i]), high=float(h[i]), low=float(lo[i]),
-            close=float(c[i]), volume=float(v[i]),
-        ))
+        out.append(
+            BarData(
+                timestamp=ts,
+                symbol=symbol,
+                open=float(o[i]),
+                high=float(h[i]),
+                low=float(lo[i]),
+                close=float(c[i]),
+                volume=float(v[i]),
+            )
+        )
     return out
 
 
@@ -1303,7 +1314,8 @@ def _replay_class_strategy(
 
 
 def signals_mbt_funding_basis(
-    bars: dict[str, np.ndarray], spec: dict[str, Any],
+    bars: dict[str, np.ndarray],
+    spec: dict[str, Any],
 ) -> list[tuple[int, str, float, float]]:
     """Adapter for `MBTFundingBasisStrategy` — basis-premium fade on MBT.
 
@@ -1322,24 +1334,37 @@ def signals_mbt_funding_basis(
     base = mbt_funding_basis_preset()
     overrides: dict[str, Any] = {}
     for key in (
-        "basis_lookback", "entry_z", "exit_z", "momentum_lookback",
-        "require_lower_highs", "atr_period", "atr_stop_mult", "rr_target",
-        "risk_per_trade_pct", "min_bars_between_trades",
-        "max_trades_per_day", "warmup_bars", "allow_long", "allow_short",
+        "basis_lookback",
+        "entry_z",
+        "exit_z",
+        "momentum_lookback",
+        "require_lower_highs",
+        "atr_period",
+        "atr_stop_mult",
+        "rr_target",
+        "risk_per_trade_pct",
+        "min_bars_between_trades",
+        "max_trades_per_day",
+        "warmup_bars",
+        "allow_long",
+        "allow_short",
     ):
         if key in spec:
             overrides[key] = spec[key]
     cfg = MBTFundingBasisConfig(**{**base.__dict__, **overrides})
     strategy = MBTFundingBasisStrategy(cfg)
     return _replay_class_strategy(
-        strategy, bars, spec,
+        strategy,
+        bars,
+        spec,
         atr_stop_mult=float(spec.get("stop_atr", cfg.atr_stop_mult)),
         rr_target=float(spec.get("target_atr_rr", cfg.rr_target)),
     )
 
 
 def signals_mbt_overnight_gap(
-    bars: dict[str, np.ndarray], spec: dict[str, Any],
+    bars: dict[str, np.ndarray],
+    spec: dict[str, Any],
 ) -> list[tuple[int, str, float, float]]:
     """Adapter for `MBTOvernightGapStrategy` — Asia-overnight gap fade
     on MBT at the CME RTH open.
@@ -1359,24 +1384,35 @@ def signals_mbt_overnight_gap(
     base = mbt_overnight_gap_preset()
     overrides: dict[str, Any] = {}
     for key in (
-        "min_gap_atr_mult", "max_gap_atr_mult", "entry_window_bars",
-        "atr_period", "atr_stop_mult", "rr_target", "risk_per_trade_pct",
-        "min_session_gap_hours", "max_trades_per_day", "warmup_bars",
-        "allow_long", "allow_short",
+        "min_gap_atr_mult",
+        "max_gap_atr_mult",
+        "entry_window_bars",
+        "atr_period",
+        "atr_stop_mult",
+        "rr_target",
+        "risk_per_trade_pct",
+        "min_session_gap_hours",
+        "max_trades_per_day",
+        "warmup_bars",
+        "allow_long",
+        "allow_short",
     ):
         if key in spec:
             overrides[key] = spec[key]
     cfg = MBTOvernightGapConfig(**{**base.__dict__, **overrides})
     strategy = MBTOvernightGapStrategy(cfg)
     return _replay_class_strategy(
-        strategy, bars, spec,
+        strategy,
+        bars,
+        spec,
         atr_stop_mult=float(spec.get("stop_atr", cfg.atr_stop_mult)),
         rr_target=float(spec.get("target_atr_rr", cfg.rr_target)),
     )
 
 
 def signals_met_rth_orb(
-    bars: dict[str, np.ndarray], spec: dict[str, Any],
+    bars: dict[str, np.ndarray],
+    spec: dict[str, Any],
 ) -> list[tuple[int, str, float, float]]:
     """Adapter for `METRTHORBStrategy` — 5-minute opening-range
     breakout on MET (CME Micro Ether) RTH.
@@ -1395,23 +1431,33 @@ def signals_met_rth_orb(
     base = met_rth_orb_preset()
     overrides: dict[str, Any] = {}
     for key in (
-        "range_minutes", "min_range_pts", "ema_bias_period", "volume_mult",
-        "volume_lookback", "atr_period", "atr_stop_mult", "rr_target",
-        "risk_per_trade_pct", "max_trades_per_day",
+        "range_minutes",
+        "min_range_pts",
+        "ema_bias_period",
+        "volume_mult",
+        "volume_lookback",
+        "atr_period",
+        "atr_stop_mult",
+        "rr_target",
+        "risk_per_trade_pct",
+        "max_trades_per_day",
     ):
         if key in spec:
             overrides[key] = spec[key]
     cfg = METRTHORBConfig(**{**base.__dict__, **overrides})
     strategy = METRTHORBStrategy(cfg)
     return _replay_class_strategy(
-        strategy, bars, spec,
+        strategy,
+        bars,
+        spec,
         atr_stop_mult=float(spec.get("stop_atr", cfg.atr_stop_mult)),
         rr_target=float(spec.get("target_atr_rr", cfg.rr_target)),
     )
 
 
 def signals_anchor_sweep(
-    bars: dict[str, np.ndarray], spec: dict[str, Any],
+    bars: dict[str, np.ndarray],
+    spec: dict[str, Any],
 ) -> list[tuple[int, str, float, float]]:
     """Adapter for `AnchorSweepStrategy` — named-anchor variant of
     sweep_reclaim for US index futures (MNQ/NQ/ES/RTY/M2K).
@@ -1438,23 +1484,32 @@ def signals_anchor_sweep(
     base = nq_anchor_sweep_preset() if sym.startswith("NQ") else mnq_anchor_sweep_preset()
     overrides: dict[str, Any] = {}
     for key in (
-        "lookback", "reclaim_window", "min_wick_pct", "min_volume_z",
-        "rr_target", "atr_stop_mult", "max_trades_per_day",
-        "min_bars_between_trades", "warmup_bars",
+        "lookback",
+        "reclaim_window",
+        "min_wick_pct",
+        "min_volume_z",
+        "rr_target",
+        "atr_stop_mult",
+        "max_trades_per_day",
+        "min_bars_between_trades",
+        "warmup_bars",
     ):
         if key in spec:
             overrides[key] = spec[key]
     cfg = AnchorSweepConfig(**{**base.__dict__, **overrides})
     strategy = AnchorSweepStrategy(cfg)
     return _replay_class_strategy(
-        strategy, bars, spec,
+        strategy,
+        bars,
+        spec,
         atr_stop_mult=float(spec.get("stop_atr", cfg.atr_stop_mult)),
         rr_target=float(spec.get("target_atr_rr", cfg.rr_target)),
     )
 
 
 def signals_mbt_zfade(
-    bars: dict[str, np.ndarray], spec: dict[str, Any],
+    bars: dict[str, np.ndarray],
+    spec: dict[str, Any],
 ) -> list[tuple[int, str, float, float]]:
     """Adapter for `MBTZFadeStrategy` — z-score momentum-fade on MBT
     with HTF (1h) trend-opposition filter. Honest rename of the legacy
@@ -1476,27 +1531,39 @@ def signals_mbt_zfade(
     base = mbt_zfade_preset()
     overrides: dict[str, Any] = {}
     for key in (
-        "proxy_lookback", "entry_z", "exit_z",
-        "htf_trend_lookback_5m_bars", "htf_ema_period",
+        "proxy_lookback",
+        "entry_z",
+        "exit_z",
+        "htf_trend_lookback_5m_bars",
+        "htf_ema_period",
         "require_htf_opposition",
-        "atr_period", "atr_stop_mult", "rr_target",
-        "risk_per_trade_pct", "time_stop_bars",
-        "min_bars_between_trades", "max_trades_per_day",
-        "warmup_bars", "allow_long", "allow_short",
+        "atr_period",
+        "atr_stop_mult",
+        "rr_target",
+        "risk_per_trade_pct",
+        "time_stop_bars",
+        "min_bars_between_trades",
+        "max_trades_per_day",
+        "warmup_bars",
+        "allow_long",
+        "allow_short",
     ):
         if key in spec:
             overrides[key] = spec[key]
     cfg = MBTZFadeConfig(**{**base.__dict__, **overrides})
     strategy = MBTZFadeStrategy(cfg)
     return _replay_class_strategy(
-        strategy, bars, spec,
+        strategy,
+        bars,
+        spec,
         atr_stop_mult=float(spec.get("stop_atr", cfg.atr_stop_mult)),
         rr_target=float(spec.get("target_atr_rr", cfg.rr_target)),
     )
 
 
 def signals_mbt_rth_orb(
-    bars: dict[str, np.ndarray], spec: dict[str, Any],
+    bars: dict[str, np.ndarray],
+    spec: dict[str, Any],
 ) -> list[tuple[int, str, float, float]]:
     """Adapter for `MBTRTHORBStrategy` — 5-minute opening-range
     breakout on MBT (CME Micro Bitcoin) RTH. Migrated from
@@ -1518,68 +1585,84 @@ def signals_mbt_rth_orb(
     base = mbt_rth_orb_preset()
     overrides: dict[str, Any] = {}
     for key in (
-        "range_minutes", "min_range_pts", "ema_bias_period", "volume_mult",
-        "volume_lookback", "atr_period", "atr_stop_mult", "rr_target",
-        "risk_per_trade_pct", "max_trades_per_day",
+        "range_minutes",
+        "min_range_pts",
+        "ema_bias_period",
+        "volume_mult",
+        "volume_lookback",
+        "atr_period",
+        "atr_stop_mult",
+        "rr_target",
+        "risk_per_trade_pct",
+        "max_trades_per_day",
     ):
         if key in spec:
             overrides[key] = spec[key]
     cfg = MBTRTHORBConfig(**{**base.__dict__, **overrides})
     strategy = MBTRTHORBStrategy(cfg)
     return _replay_class_strategy(
-        strategy, bars, spec,
+        strategy,
+        bars,
+        spec,
         atr_stop_mult=float(spec.get("stop_atr", cfg.atr_stop_mult)),
         rr_target=float(spec.get("target_atr_rr", cfg.rr_target)),
     )
 
 
 SIGNAL_GENERATORS: dict[str, Callable] = {
-    "ema_cross":            signals_ema_cross,
-    "sweep_reclaim":        signals_sweep_reclaim,
+    "ema_cross": signals_ema_cross,
+    "sweep_reclaim": signals_sweep_reclaim,
     "compression_breakout": signals_compression_breakout,
     "confluence_scorecard": signals_confluence_scorecard,
-    "vwap_mr":              signals_vwap_mr,
+    "vwap_mr": signals_vwap_mr,
     # v2.1 additions for full production strategy_kind coverage (2026-05-04)
-    "orb_sage_gated":       signals_orb_sage_gated,
-    "sage_daily_gated":     signals_sage_daily_gated,
-    "ensemble_voting":      signals_ensemble_voting,
-    "mtf_scalp":            signals_mtf_scalp,
-    "confluence":           signals_confluence,
+    "orb_sage_gated": signals_orb_sage_gated,
+    "sage_daily_gated": signals_sage_daily_gated,
+    "ensemble_voting": signals_ensemble_voting,
+    "mtf_scalp": signals_mtf_scalp,
+    "confluence": signals_confluence,
     # v2.3 additions to break MNQ confluence-cluster degeneracy (2026-05-04)
-    "rsi_mean_reversion":   signals_rsi_mean_reversion,
-    "volume_profile":       signals_volume_profile,
+    "rsi_mean_reversion": signals_rsi_mean_reversion,
+    "volume_profile": signals_volume_profile,
     "cross_asset_divergence": signals_cross_asset_divergence,
     # v2.6 asset-class-tailored generators (2026-05-04)
-    "dxy_gold_inverse":          signals_dxy_gold_inverse,
-    "index_lead_lag":            signals_index_lead_lag,
+    "dxy_gold_inverse": signals_dxy_gold_inverse,
+    "index_lead_lag": signals_index_lead_lag,
     "commodity_session_breakout": signals_commodity_session_breakout,
     # v2.7 macro-driver generators (2026-05-04 round 10)
-    "treasury_safe_haven":       signals_treasury_safe_haven,
-    "es_vix_inverse":            signals_es_vix_inverse,
+    "treasury_safe_haven": signals_treasury_safe_haven,
+    "es_vix_inverse": signals_es_vix_inverse,
     # v2.8 cross-commodity + session-anchored generators (2026-05-04 round 11)
-    "commodity_ratio_mr":        signals_commodity_ratio_mr,
-    "overnight_gap_fade":        signals_overnight_gap_fade,
+    "commodity_ratio_mr": signals_commodity_ratio_mr,
+    "overnight_gap_fade": signals_overnight_gap_fade,
     # v2.9 stateful-class adapters for MBT / MET (2026-05-07 commit ddac736)
-    "mbt_funding_basis":         signals_mbt_funding_basis,
-    "mbt_overnight_gap":         signals_mbt_overnight_gap,
-    "met_rth_orb":               signals_met_rth_orb,
+    "mbt_funding_basis": signals_mbt_funding_basis,
+    "mbt_overnight_gap": signals_mbt_overnight_gap,
+    "met_rth_orb": signals_met_rth_orb,
     # v2.10 MBT RTH ORB — migrated from met_rth_orb after EDA showed
     # MET friction-to-stop ratio of 663% is uneconomic (2026-05-07).
-    "mbt_rth_orb":               signals_mbt_rth_orb,
+    "mbt_rth_orb": signals_mbt_rth_orb,
     # v2.11 MBT z-fade — honest rename of mbt_funding_basis with HTF
     # trend filter + EDA-derived thresholds (z>=2.5, RR=1.5).
-    "mbt_zfade":                 signals_mbt_zfade,
+    "mbt_zfade": signals_mbt_zfade,
     # v2.12 anchor_sweep — closes the gap that left mnq_anchor_sweep
     # running live with no lab evaluation surface (2026-05-07 fleet audit).
-    "anchor_sweep":              signals_anchor_sweep,
+    "anchor_sweep": signals_anchor_sweep,
 }
 
 
 # ─── Trade simulator ──────────────────────────────────────────────
 
 
-def _simulate_trade(entry_price: float, future_high: np.ndarray, future_low: np.ndarray,
-                    future_close: np.ndarray, side: str, stop: float, target: float) -> tuple[float, int]:
+def _simulate_trade(
+    entry_price: float,
+    future_high: np.ndarray,
+    future_low: np.ndarray,
+    future_close: np.ndarray,
+    side: str,
+    stop: float,
+    target: float,
+) -> tuple[float, int]:
     """Walk forward bar-by-bar; first to hit wins. Returns (pnl_R, bars_held)."""
     risk = abs(entry_price - stop)
     if risk <= 0:
@@ -1623,10 +1706,9 @@ class WalkForwardEngine:
     def __init__(self, bar_dir: Path | None = None) -> None:
         self.bar_dir = Path(bar_dir) if bar_dir else MNQ_HISTORY_ROOT
 
-    def run(self, spec: dict[str, Any], symbol: str | None = None,
-            timeframe: str | None = None) -> LabResult:
+    def run(self, spec: dict[str, Any], symbol: str | None = None, timeframe: str | None = None) -> LabResult:
         sym = (symbol or spec.get("symbol") or "MNQ1").upper()
-        tf  = timeframe or spec.get("timeframe") or "1h"
+        tf = timeframe or spec.get("timeframe") or "1h"
         kind = (spec.get("strategy_kind") or spec.get("entry") or "ema_cross").lower()
         if kind not in SIGNAL_GENERATORS:
             return self._empty(spec, f"unknown strategy_kind={kind}")
@@ -1656,10 +1738,7 @@ class WalkForwardEngine:
             raw_sigs = SIGNAL_GENERATORS[gen_kind](test_bars, spec)
             if composite_sub:
                 # Filter each sub-strategy signal by scorecard score >= min
-                sigs = [
-                    s for s in raw_sigs
-                    if scorecard_score_at(test_bars, spec, s[0], s[1]) >= composite_min
-                ]
+                sigs = [s for s in raw_sigs if scorecard_score_at(test_bars, spec, s[0], s[1]) >= composite_min]
             else:
                 sigs = raw_sigs
             for entry_local_idx, side, stop_mult, target_mult in sigs:
@@ -1722,6 +1801,7 @@ class WalkForwardEngine:
         # multi_test_count via spec["multi_test_count"]; otherwise we
         # use the count of active strategies in the registry.
         from eta_engine.feeds.strategy_lab.rigor import compute_rigor
+
         rigor_n = spec.get("multi_test_count")
         rigor_block = int(spec.get("bootstrap_block_size", 5))
         rigor_reps = int(spec.get("bootstrap_n_resamples", 5000))
@@ -1745,12 +1825,17 @@ class WalkForwardEngine:
         return LabResult(
             strategy_id=str(spec.get("id") or spec.get("strategy_id") or "candidate"),
             bot_id=str(spec.get("bot_id") or ""),
-            symbol=sym, timeframe=tf, strategy_kind=kind,
+            symbol=sym,
+            timeframe=tf,
+            strategy_kind=kind,
             total_trades=len(arr),
-            win_rate=round(win_rate, 3), expectancy=round(expectancy, 3),
-            sharpe=round(sharpe, 3), max_drawdown=round(dd, 3),
+            win_rate=round(win_rate, 3),
+            expectancy=round(expectancy, 3),
+            sharpe=round(sharpe, 3),
+            max_drawdown=round(dd, 3),
             profit_factor=round(profit_factor, 3),
-            avg_win=round(avg_win, 3), avg_loss=round(avg_loss, 3),
+            avg_win=round(avg_win, 3),
+            avg_loss=round(avg_loss, 3),
             parameter_heatmap=heatmap,
             regime_conditional_pnl=regime_pnl,
             walk_forward_windows=len(windows),
@@ -1818,9 +1903,9 @@ class WalkForwardEngine:
                 target = entry + la * tm if side == "long" else entry - la * tm
                 pnl_r, _ = _simulate_trade(
                     entry,
-                    bars["high"][idx + 1:],
-                    bars["low"][idx + 1:],
-                    bars["close"][idx + 1:],
+                    bars["high"][idx + 1 :],
+                    bars["low"][idx + 1 :],
+                    bars["close"][idx + 1 :],
                     side,
                     stop,
                     target,
@@ -1899,26 +1984,56 @@ def fleet_sweep(out_dir: Path | None = None) -> dict[str, Any]:
         # Flatten + alias so each bot's actual parameters reach the engine
         # — without this, every confluence_scorecard bot ran with the same
         # defaults and produced identical Sharpe (Tier-3 cluster degeneracy).
-        spec_keys = ("stop_atr", "target_atr", "ema_fast", "ema_mid", "ema_slow",
-                     "lookback", "min_wick_pct", "min_score", "sigma_mult",
-                     "bb_period", "bb_compression_pct", "range_bars",
-                     "trend_window",
-                     # cross_asset / counter-trend / vp params
-                     "z_threshold", "partner_symbol", "partner_timeframe",
-                     "rsi_period", "oversold_threshold", "overbought_threshold",
-                     "bb_window", "bb_std_mult", "require_rejection",
-                     "vp_lookback", "vp_bins", "vp_proximity_pct",
-                     # round-10/11 macro-driver params
-                     "dxy_break_lookback", "gold_trend_window",
-                     "vix_spike_lookback", "vix_spike_pct", "vix_collapse_pct",
-                     "treasury_mean_window",
-                     "vix_lookback", "vix_extreme_pct",
-                     "ratio_window",
-                     "gap_atr_mult", "atr_window", "reversal_lookback",
-                     "lead_lookback", "lead_break_pct", "follower_lag_pct",
-                     "atr_pct_threshold", "momentum_bars")
+        spec_keys = (
+            "stop_atr",
+            "target_atr",
+            "ema_fast",
+            "ema_mid",
+            "ema_slow",
+            "lookback",
+            "min_wick_pct",
+            "min_score",
+            "sigma_mult",
+            "bb_period",
+            "bb_compression_pct",
+            "range_bars",
+            "trend_window",
+            # cross_asset / counter-trend / vp params
+            "z_threshold",
+            "partner_symbol",
+            "partner_timeframe",
+            "rsi_period",
+            "oversold_threshold",
+            "overbought_threshold",
+            "bb_window",
+            "bb_std_mult",
+            "require_rejection",
+            "vp_lookback",
+            "vp_bins",
+            "vp_proximity_pct",
+            # round-10/11 macro-driver params
+            "dxy_break_lookback",
+            "gold_trend_window",
+            "vix_spike_lookback",
+            "vix_spike_pct",
+            "vix_collapse_pct",
+            "treasury_mean_window",
+            "vix_lookback",
+            "vix_extreme_pct",
+            "ratio_window",
+            "gap_atr_mult",
+            "atr_window",
+            "reversal_lookback",
+            "lead_lookback",
+            "lead_break_pct",
+            "follower_lag_pct",
+            "atr_pct_threshold",
+            "momentum_bars",
+        )
         aliases = {
-            "fast_ema": "ema_fast", "mid_ema": "ema_mid", "slow_ema": "ema_slow",
+            "fast_ema": "ema_fast",
+            "mid_ema": "ema_mid",
+            "slow_ema": "ema_slow",
             "ema_bias_period": "ema_slow",
             "atr_stop_mult": "stop_atr",
             "rr_target": "target_atr",  # interpreted as R-multiple target
@@ -1929,6 +2044,7 @@ def fleet_sweep(out_dir: Path | None = None) -> dict[str, Any]:
             "reference_asset": "partner_symbol",
         }
         if isinstance(a.extras, Mapping):
+
             def _ingest(
                 src: Mapping[str, Any],
                 *,
@@ -1940,10 +2056,16 @@ def fleet_sweep(out_dir: Path | None = None) -> dict[str, Any]:
                     canonical = key_aliases.get(k, k)
                     if canonical in allowed_keys and canonical not in target_spec:
                         target_spec[canonical] = v
+
             _ingest(a.extras)
-            for nested_key in ("scorecard_config", "crypto_orb_config",
-                               "sweep_config", "compression_config",
-                               "vwap_config", "orb_config"):
+            for nested_key in (
+                "scorecard_config",
+                "crypto_orb_config",
+                "sweep_config",
+                "compression_config",
+                "vwap_config",
+                "orb_config",
+            ):
                 inner = a.extras.get(nested_key)
                 if isinstance(inner, Mapping):
                     _ingest(inner)
@@ -1960,24 +2082,24 @@ def fleet_sweep(out_dir: Path | None = None) -> dict[str, Any]:
             # actual logic rather than the generic scorecard. Aliases match
             # the registry's naming conventions.
             sub_kind_aliases = {
-                "vwap_mean_reversion":    "vwap_mr",
-                "vwap_reversion":         "vwap_mr",
-                "vwap_mr":                "vwap_mr",
-                "sweep_reclaim":          "sweep_reclaim",
-                "compression_breakout":   "compression_breakout",
-                "ema_cross":              "ema_cross",
-                "orb_sage_gated":         "orb_sage_gated",
-                "sage_daily_gated":       "sage_daily_gated",
-                "ensemble_voting":        "ensemble_voting",
-                "mtf_scalp":              "mtf_scalp",
+                "vwap_mean_reversion": "vwap_mr",
+                "vwap_reversion": "vwap_mr",
+                "vwap_mr": "vwap_mr",
+                "sweep_reclaim": "sweep_reclaim",
+                "compression_breakout": "compression_breakout",
+                "ema_cross": "ema_cross",
+                "orb_sage_gated": "orb_sage_gated",
+                "sage_daily_gated": "sage_daily_gated",
+                "ensemble_voting": "ensemble_voting",
+                "mtf_scalp": "mtf_scalp",
                 # v2.3 (2026-05-04) — break MNQ cluster degeneracy
-                "rsi_mean_reversion":     "rsi_mean_reversion",
-                "rsi_mr":                 "rsi_mean_reversion",
-                "volume_profile":         "volume_profile",
-                "vp":                     "volume_profile",
+                "rsi_mean_reversion": "rsi_mean_reversion",
+                "rsi_mr": "rsi_mean_reversion",
+                "volume_profile": "volume_profile",
+                "vp": "volume_profile",
                 "cross_asset_divergence": "cross_asset_divergence",
-                "cross_asset":            "cross_asset_divergence",
-                "divergence":             "cross_asset_divergence",
+                "cross_asset": "cross_asset_divergence",
+                "divergence": "cross_asset_divergence",
             }
             sub_kind = str(a.extras.get("sub_strategy_kind") or "").strip()
             mapped = sub_kind_aliases.get(sub_kind)
@@ -2022,10 +2144,16 @@ def fleet_sweep(out_dir: Path | None = None) -> dict[str, Any]:
     }
     for r in results:
         kk = r.strategy_kind or "unknown"
-        summary["by_kind"].setdefault(kk, []).append({
-            "bot": r.bot_id, "wr": r.win_rate, "sharpe": r.sharpe,
-            "expectancy": r.expectancy, "n": r.total_trades, "passed": r.passed,
-        })
+        summary["by_kind"].setdefault(kk, []).append(
+            {
+                "bot": r.bot_id,
+                "wr": r.win_rate,
+                "sharpe": r.sharpe,
+                "expectancy": r.expectancy,
+                "n": r.total_trades,
+                "passed": r.passed,
+            }
+        )
     sweep_path = (out_dir or LAB_REPORTS_ROOT) / "_fleet_sweep.json"
     sweep_path.parent.mkdir(parents=True, exist_ok=True)
     sweep_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")

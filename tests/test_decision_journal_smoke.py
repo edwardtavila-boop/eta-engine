@@ -17,9 +17,7 @@ def test_append_decision_journal_smoke_writes_canonical_jsonl_shape(tmp_path: Pa
         source="pytest",
     )
 
-    assert evidence["path"].replace("\\", "/").endswith(
-        "var/eta_engine/state/decision_journal.jsonl"
-    )
+    assert evidence["path"].replace("\\", "/").endswith("var/eta_engine/state/decision_journal.jsonl")
     assert evidence["bytes"] > 0
     lines = [line for line in journal_path.read_text(encoding="utf-8").splitlines() if line.strip()]
     assert len(lines) == 1

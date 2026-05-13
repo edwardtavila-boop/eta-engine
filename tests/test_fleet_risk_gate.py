@@ -135,8 +135,13 @@ def test_status_payload_shape() -> None:
     g.record_pnl("eth_perp", 50.0)
     s = g.status()
     assert set(s.keys()) >= {
-        "today_utc", "net_pnl_usd", "limit_usd", "tripped",
-        "per_bot_pnl_usd", "disabled", "fleet_starting_equity_usd",
+        "today_utc",
+        "net_pnl_usd",
+        "limit_usd",
+        "tripped",
+        "per_bot_pnl_usd",
+        "disabled",
+        "fleet_starting_equity_usd",
     }
     assert s["fleet_starting_equity_usd"] == pytest.approx(50_000.0)
     assert s["tripped"] is False  # -50 net < -1750 limit
@@ -178,6 +183,7 @@ def test_register_and_get_singleton_round_trip() -> None:
         get_fleet_risk_gate,
         register_fleet_risk_gate,
     )
+
     g = _gate()
     register_fleet_risk_gate(g)
     try:
@@ -192,6 +198,7 @@ def test_assert_fleet_within_budget_noop_when_unregistered() -> None:
         assert_fleet_within_budget,
         register_fleet_risk_gate,
     )
+
     register_fleet_risk_gate(None)
     # Should not raise; this is the paper / unit-test default path
     assert_fleet_within_budget(bot_id="any")
@@ -203,6 +210,7 @@ def test_assert_fleet_within_budget_raises_when_tripped() -> None:
         assert_fleet_within_budget,
         register_fleet_risk_gate,
     )
+
     g = _gate(equity=100_000.0)
     g.record_pnl("btc_hybrid", -5_000.0)  # past the -3500 limit
     register_fleet_risk_gate(g)
@@ -219,6 +227,7 @@ def test_assert_fleet_within_budget_silent_under_budget() -> None:
         assert_fleet_within_budget,
         register_fleet_risk_gate,
     )
+
     g = _gate(equity=100_000.0)
     g.record_pnl("btc_hybrid", -1_000.0)
     register_fleet_risk_gate(g)
@@ -243,10 +252,7 @@ def test_thread_safety_smoke() -> None:
         for _ in range(iterations):
             g.record_pnl(bot_id, pnl_per_thread)
 
-    threads = [
-        threading.Thread(target=hammer, args=(f"bot_{i}",))
-        for i in range(n_threads)
-    ]
+    threads = [threading.Thread(target=hammer, args=(f"bot_{i}",)) for i in range(n_threads)]
     for t in threads:
         t.start()
     for t in threads:

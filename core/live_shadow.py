@@ -83,9 +83,7 @@ class ShadowFill:
     session: str = "RTH"
 
 
-def _walk_book(
-    levels: tuple[BookLevel, ...], size: float
-) -> tuple[float, float, int, float]:
+def _walk_book(levels: tuple[BookLevel, ...], size: float) -> tuple[float, float, int, float]:
     """Greedy VWAP walk.
 
     Returns (size_filled, vwap, levels_consumed, remaining).
@@ -117,11 +115,7 @@ def simulate_fill(order: ShadowOrder, book: BookSnapshot) -> ShadowFill:
     produce a non-ok fill with reason ``book_exhausted`` whose
     ``size_filled`` equals the available liquidity on the taker side.
     """
-    if (
-        order.size <= 0.0
-        or order.requested_px <= 0.0
-        or book.mid <= 0.0
-    ):
+    if order.size <= 0.0 or order.requested_px <= 0.0 or book.mid <= 0.0:
         return ShadowFill(
             ok=False,
             size_filled=0.0,

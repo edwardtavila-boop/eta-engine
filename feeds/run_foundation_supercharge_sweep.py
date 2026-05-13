@@ -54,9 +54,7 @@ sys.path.insert(0, str(ROOT.parent))
 
 DEFAULT_ASSETS = ("BTC", "ETH", "SOL", "MNQ1", "NQ1")
 DEFAULT_STRATEGIES = ("compression", "sweep")
-DEFAULT_OUT_JSON = (
-    ROOT / "docs" / "research_log" / "foundation_supercharge_sweep_results.json"
-)
+DEFAULT_OUT_JSON = ROOT / "docs" / "research_log" / "foundation_supercharge_sweep_results.json"
 
 
 def _slug(parts: list[str]) -> str:
@@ -74,12 +72,7 @@ def _resolve_out_json(
         return DEFAULT_OUT_JSON
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     scope = f"{_slug(assets)}_{_slug(strategies)}"
-    return (
-        ROOT
-        / "docs"
-        / "research_log"
-        / f"foundation_supercharge_sweep_results_{scope}_{stamp}.json"
-    )
+    return ROOT / "docs" / "research_log" / f"foundation_supercharge_sweep_results_{scope}_{stamp}.json"
 
 
 # ---------------------------------------------------------------------------
@@ -107,33 +100,43 @@ def _compression_tight_grid() -> list[dict]:
     """
     return [
         {
-            "bb_width_max_percentile": 0.30, "rr_target": 2.5,
+            "bb_width_max_percentile": 0.30,
+            "rr_target": 2.5,
             "atr_stop_mult_factor": 1.0,
-            "min_volume_z": 1.0, "min_close_location": 0.80,
+            "min_volume_z": 1.0,
+            "min_close_location": 0.80,
             "min_bars_between_trades": 24,
         },
         {
-            "bb_width_max_percentile": 0.20, "rr_target": 2.5,
+            "bb_width_max_percentile": 0.20,
+            "rr_target": 2.5,
             "atr_stop_mult_factor": 1.0,
-            "min_volume_z": 0.5, "min_close_location": 0.70,
+            "min_volume_z": 0.5,
+            "min_close_location": 0.70,
             "min_bars_between_trades": 12,
         },
         {
-            "bb_width_max_percentile": 0.30, "rr_target": 3.0,
+            "bb_width_max_percentile": 0.30,
+            "rr_target": 3.0,
             "atr_stop_mult_factor": 1.0,
-            "min_volume_z": 0.5, "min_close_location": 0.70,
+            "min_volume_z": 0.5,
+            "min_close_location": 0.70,
             "min_bars_between_trades": 12,
         },
         {
-            "bb_width_max_percentile": 0.30, "rr_target": 2.5,
+            "bb_width_max_percentile": 0.30,
+            "rr_target": 2.5,
             "atr_stop_mult_factor": 1.0,
-            "min_volume_z": 0.8, "min_close_location": 0.80,
+            "min_volume_z": 0.8,
+            "min_close_location": 0.80,
             "min_bars_between_trades": 24,
         },
         {
-            "bb_width_max_percentile": 0.20, "rr_target": 3.0,
-            "atr_stop_mult_factor": 1.2,   # wider stop for more durability
-            "min_volume_z": 1.0, "min_close_location": 0.75,
+            "bb_width_max_percentile": 0.20,
+            "rr_target": 3.0,
+            "atr_stop_mult_factor": 1.2,  # wider stop for more durability
+            "min_volume_z": 1.0,
+            "min_close_location": 0.75,
             "min_bars_between_trades": 24,
         },
     ]
@@ -167,8 +170,10 @@ def _build_compression_factory(symbol: str, params: dict) -> Any:  # noqa: ANN40
     )
 
     preset_map = {
-        "BTC": btc_compression_preset, "ETH": eth_compression_preset,
-        "SOL": sol_compression_preset, "MNQ1": mnq_compression_preset,
+        "BTC": btc_compression_preset,
+        "ETH": eth_compression_preset,
+        "SOL": sol_compression_preset,
+        "MNQ1": mnq_compression_preset,
         "NQ1": nq_compression_preset,
     }
     factory = preset_map.get(symbol)
@@ -181,8 +186,7 @@ def _build_compression_factory(symbol: str, params: dict) -> Any:  # noqa: ANN40
         "atr_stop_mult": base_cfg.atr_stop_mult * params["atr_stop_mult_factor"],
     }
     # Optional tight-grid knobs
-    for k in ("min_volume_z", "min_close_location",
-              "min_bars_between_trades"):
+    for k in ("min_volume_z", "min_close_location", "min_bars_between_trades"):
         if k in params:
             overrides[k] = params[k]
     cfg = replace(base_cfg, **overrides)
@@ -202,8 +206,10 @@ def _build_sweep_factory(symbol: str, params: dict) -> Any:  # noqa: ANN401
     )
 
     preset_map = {
-        "BTC": btc_daily_sweep_preset, "ETH": eth_daily_sweep_preset,
-        "SOL": sol_daily_sweep_preset, "MNQ1": mnq_intraday_sweep_preset,
+        "BTC": btc_daily_sweep_preset,
+        "ETH": eth_daily_sweep_preset,
+        "SOL": sol_daily_sweep_preset,
+        "MNQ1": mnq_intraday_sweep_preset,
         "NQ1": nq_intraday_sweep_preset,
     }
     factory = preset_map.get(symbol)
@@ -224,8 +230,14 @@ def _build_sweep_factory(symbol: str, params: dict) -> Any:  # noqa: ANN401
 # ---------------------------------------------------------------------------
 
 
-def _run_wf(symbol: str, timeframe: str, factory: Any, *,  # noqa: ANN401
-            window_days: int, step_days: int) -> dict:
+def _run_wf(
+    symbol: str,
+    timeframe: str,
+    factory: Any,
+    *,  # noqa: ANN401
+    window_days: int,
+    step_days: int,
+) -> dict:
     from eta_engine.backtest import (
         BacktestConfig,
         WalkForwardConfig,
@@ -242,22 +254,31 @@ def _run_wf(symbol: str, timeframe: str, factory: Any, *,  # noqa: ANN401
         return {"err": f"no tradable positive-price bars for {symbol}/{timeframe}"}
 
     backtest_cfg = BacktestConfig(
-        start_date=bars[0].timestamp, end_date=bars[-1].timestamp,
-        symbol=ds.symbol, initial_equity=10_000.0,
-        risk_per_trade_pct=0.005, confluence_threshold=0.0,
+        start_date=bars[0].timestamp,
+        end_date=bars[-1].timestamp,
+        symbol=ds.symbol,
+        initial_equity=10_000.0,
+        risk_per_trade_pct=0.005,
+        confluence_threshold=0.0,
         max_trades_per_day=10,
     )
     wf = WalkForwardConfig(
-        window_days=window_days, step_days=step_days,
-        anchored=True, oos_fraction=0.3,
+        window_days=window_days,
+        step_days=step_days,
+        anchored=True,
+        oos_fraction=0.3,
         min_trades_per_window=3,
-        strict_fold_dsr_gate=True, fold_dsr_min_pass_fraction=0.5,
+        strict_fold_dsr_gate=True,
+        fold_dsr_min_pass_fraction=0.5,
     )
 
     res = WalkForwardEngine().run(
-        bars=bars, pipeline=FeaturePipeline.default(),
-        config=wf, base_backtest_config=backtest_cfg,
-        ctx_builder=lambda b, h: {}, strategy_factory=factory,
+        bars=bars,
+        pipeline=FeaturePipeline.default(),
+        config=wf,
+        base_backtest_config=backtest_cfg,
+        ctx_builder=lambda b, h: {},
+        strategy_factory=factory,
     )
 
     n_pos = sum(1 for w in res.windows if w.get("oos_sharpe", 0) > 0)
@@ -285,8 +306,11 @@ def _run_wf(symbol: str, timeframe: str, factory: Any, *,  # noqa: ANN401
 
 
 _TIMEFRAME_BY_ASSET = {
-    "BTC": "1h", "ETH": "1h", "SOL": "1h",
-    "MNQ1": "5m", "NQ1": "5m",
+    "BTC": "1h",
+    "ETH": "1h",
+    "SOL": "1h",
+    "MNQ1": "5m",
+    "NQ1": "5m",
 }
 
 _WF_CFG_BY_ASSET_TF = {
@@ -300,8 +324,10 @@ _WF_CFG_BY_ASSET_TF = {
 
 def _print_cell_table(asset: str, strategy: str, results: list[dict]) -> None:
     print(f"\n=== {asset} × {strategy} ===")
-    print(f"{'#':>2}  {'IS_Sh':>7}  {'OOS_Sh':>7}  {'IS_tr':>5}  {'OOS_tr':>6}"
-          f"  {'+OOS%':>5}  {'DSR%':>5}  {'comp':>6}  {'gate':>5}  params")
+    print(
+        f"{'#':>2}  {'IS_Sh':>7}  {'OOS_Sh':>7}  {'IS_tr':>5}  {'OOS_tr':>6}"
+        f"  {'+OOS%':>5}  {'DSR%':>5}  {'comp':>6}  {'gate':>5}  params"
+    )
     for i, r in enumerate(results):
         if "err" in r:
             print(f"{i:>2}  ERR: {r['err']}")
@@ -320,15 +346,18 @@ def _print_cell_table(asset: str, strategy: str, results: list[dict]) -> None:
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument(
-        "--assets", default="BTC,ETH,SOL,MNQ1,NQ1",
+        "--assets",
+        default="BTC,ETH,SOL,MNQ1,NQ1",
         help="Comma-separated asset symbols",
     )
     p.add_argument(
-        "--strategies", default="compression,sweep",
+        "--strategies",
+        default="compression,sweep",
         help="Comma-separated: compression, sweep",
     )
     p.add_argument(
-        "--out-json", type=Path,
+        "--out-json",
+        type=Path,
         default=None,
         help=(
             "Output JSON path. Defaults to the canonical aggregate artifact "
@@ -379,8 +408,11 @@ def main() -> int:
                     continue
                 try:
                     res = _run_wf(
-                        asset, timeframe, factory,
-                        window_days=window_days, step_days=step_days,
+                        asset,
+                        timeframe,
+                        factory,
+                        window_days=window_days,
+                        step_days=step_days,
                     )
                     res["params"] = params
                     cell_results.append(res)
@@ -391,8 +423,7 @@ def main() -> int:
 
     # Best-per-cell summary
     print("\n\n=== BEST CONFIG PER CELL (by composite_score, gate=PASS only) ===")
-    print(f"{'Cell':<20}  {'IS_Sh':>7}  {'OOS_Sh':>7}  {'OOS_tr':>6}"
-          f"  {'comp':>6}  params")
+    print(f"{'Cell':<20}  {'IS_Sh':>7}  {'OOS_Sh':>7}  {'OOS_tr':>6}  {'comp':>6}  params")
     for cell_key, results in all_results.items():
         passing = [r for r in results if r.get("gate_pass")]
         if not passing:

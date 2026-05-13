@@ -14,6 +14,7 @@ Usage::
         --bars-source state/bars/         \\
         --output state/sage/backtest.json
 """
+
 from __future__ import annotations
 
 import argparse
@@ -50,6 +51,7 @@ def replay_one_trade(
     # Optionally feed the EdgeTracker so weights learn from each trade
     try:
         from eta_engine.brain.jarvis_v3.sage.edge_tracker import default_tracker
+
         tracker = default_tracker()
         for school_name, verdict in report.per_school.items():
             tracker.observe(
@@ -100,10 +102,14 @@ def replay_trades_iter(
             continue
         if not bars or len(bars) < 30:
             continue
-        jobs.append({
-            "bars": bars, "side": t["side"],
-            "realized_r": float(t["realized_r"]), "symbol": t["symbol"],
-        })
+        jobs.append(
+            {
+                "bars": bars,
+                "side": t["side"],
+                "realized_r": float(t["realized_r"]),
+                "symbol": t["symbol"],
+            }
+        )
 
     if not jobs:
         return out
@@ -134,11 +140,7 @@ def _replay_job(j: dict[str, Any]) -> dict[str, Any]:
 def _read_json_or_jsonl(path: Path) -> list[dict[str, Any]]:
     if path.suffix.lower() == ".json":
         data = json.loads(path.read_text(encoding="utf-8"))
-        rows = (
-            data.get("trades") or data.get("rows") or data.get("data") or []
-            if isinstance(data, dict)
-            else data
-        )
+        rows = data.get("trades") or data.get("rows") or data.get("data") or [] if isinstance(data, dict) else data
         return [row for row in rows if isinstance(row, dict)]
     rows: list[dict[str, Any]] = []
     for line in path.read_text(encoding="utf-8").splitlines():
@@ -253,23 +255,24 @@ def build_file_bars_lookup(
         # Bisect for O(log n) windowing instead of O(n) linear filter
         timestamps = [_bar_ts(b) for b in cache[key]]
         idx = bisect.bisect_right(timestamps, str(entry_ts))
-        return cache[key][max(0, idx - window_bars):idx]
+        return cache[key][max(0, idx - window_bars) : idx]
 
     return _lookup
 
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(description=__doc__,
-                                formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--journal", type=Path, required=False, default=None,
-                   help="Decision journal SQLite file (or JSONL)")
-    p.add_argument("--bars-source", type=Path, required=False, default=None,
-                   help="Directory containing SYMBOL.jsonl/json bar files")
-    p.add_argument("--output", type=Path,
-                   default=Path("state/sage/backtest.json"))
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--journal", type=Path, required=False, default=None, help="Decision journal SQLite file (or JSONL)")
+    p.add_argument(
+        "--bars-source",
+        type=Path,
+        required=False,
+        default=None,
+        help="Directory containing SYMBOL.jsonl/json bar files",
+    )
+    p.add_argument("--output", type=Path, default=Path("state/sage/backtest.json"))
     p.add_argument("--window-bars", type=int, default=120)
-    p.add_argument("--parallel", action="store_true",
-                   help="Replay trades with ThreadPoolExecutor")
+    p.add_argument("--parallel", action="store_true", help="Replay trades with ThreadPoolExecutor")
     p.add_argument("-v", "--verbose", action="store_true")
     args = p.parse_args(argv)
 
@@ -284,13 +287,19 @@ def main(argv: list[str] | None = None) -> int:
             args.journal,
         )
         args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(json.dumps({
-            "ts": datetime.now(UTC).isoformat(),
-            "status": "no_journal",
-            "n_trades": 0,
-            "n_replayed": 0,
-            "summary": {},
-        }, indent=2), encoding="utf-8")
+        args.output.write_text(
+            json.dumps(
+                {
+                    "ts": datetime.now(UTC).isoformat(),
+                    "status": "no_journal",
+                    "n_trades": 0,
+                    "n_replayed": 0,
+                    "summary": {},
+                },
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
         return 0
 
     trades = load_closed_trades(args.journal)
@@ -300,14 +309,8 @@ def main(argv: list[str] | None = None) -> int:
         else None
     )
     replayed = replay_trades_iter(trades, bars_lookup=bars_lookup, parallel=args.parallel)
-    avg_r = (
-        sum(float(row["realized_r"]) for row in replayed) / len(replayed)
-        if replayed else 0.0
-    )
-    avg_alignment = (
-        sum(float(row["alignment_score"]) for row in replayed) / len(replayed)
-        if replayed else 0.0
-    )
+    avg_r = sum(float(row["realized_r"]) for row in replayed) / len(replayed) if replayed else 0.0
+    avg_alignment = sum(float(row["alignment_score"]) for row in replayed) / len(replayed) if replayed else 0.0
     payload = {
         "ts": datetime.now(UTC).isoformat(),
         "status": "ok" if replayed else "no_replayable_trades",
@@ -325,6 +328,7 @@ def main(argv: list[str] | None = None) -> int:
     # MLflow experiment tracking
     try:
         from eta_engine.brain.jarvis_v3.sage.mlflow_tracker import track_backtest
+
         with track_backtest(
             name=f"sage_backtest_{datetime.now(UTC).strftime('%Y%m%d_%H%M')}",
             params={
@@ -334,10 +338,12 @@ def main(argv: list[str] | None = None) -> int:
                 "parallel": args.parallel,
             },
         ) as run:
-            run.log_metrics({
-                "avg_realized_r": round(avg_r, 4),
-                "avg_alignment_score": round(avg_alignment, 4),
-            })
+            run.log_metrics(
+                {
+                    "avg_realized_r": round(avg_r, 4),
+                    "avg_alignment_score": round(avg_alignment, 4),
+                }
+            )
             run.log_artifact(args.output)
     except Exception:  # noqa: BLE001
         pass

@@ -53,6 +53,7 @@ Run
     python -m eta_engine.scripts.diamond_ops_dashboard
     python -m eta_engine.scripts.diamond_ops_dashboard --json
 """
+
 from __future__ import annotations
 
 # ruff: noqa: PLR2004
@@ -67,10 +68,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKSPACE_ROOT = ROOT.parent
-OUT_LATEST = (
-    WORKSPACE_ROOT / "var" / "eta_engine" / "state"
-    / "diamond_ops_dashboard_latest.json"
-)
+OUT_LATEST = WORKSPACE_ROOT / "var" / "eta_engine" / "state" / "diamond_ops_dashboard_latest.json"
 
 
 @dataclass
@@ -107,7 +105,8 @@ def _safe_run(audit_name: str, fn: Any, **kwargs: Any) -> dict[str, Any]:  # noq
         return fn(**kwargs)
     except Exception as exc:  # noqa: BLE001
         print(
-            f"WARN: {audit_name} failed: {exc}", file=sys.stderr,
+            f"WARN: {audit_name} failed: {exc}",
+            file=sys.stderr,
         )
         return {}
 
@@ -118,6 +117,7 @@ def _run_promotion_gate() -> dict[str, dict[str, Any]]:
     can join verdicts onto the dashboard rows."""
     sys.path.insert(0, str(WORKSPACE_ROOT))
     from eta_engine.scripts import diamond_promotion_gate as gate  # noqa: PLC0415
+
     summary = _safe_run("promotion_gate", gate.run, include_existing=True)
     return {c["bot_id"]: c for c in summary.get("candidates", [])}
 
@@ -125,6 +125,7 @@ def _run_promotion_gate() -> dict[str, dict[str, Any]]:
 def _run_sizing_audit() -> dict[str, dict[str, Any]]:
     sys.path.insert(0, str(WORKSPACE_ROOT))
     from eta_engine.scripts import diamond_sizing_audit as sa  # noqa: PLC0415
+
     summary = _safe_run("sizing_audit", sa.run)
     return {s["bot_id"]: s for s in summary.get("statuses", [])}
 
@@ -132,6 +133,7 @@ def _run_sizing_audit() -> dict[str, dict[str, Any]]:
 def _run_watchdog() -> dict[str, dict[str, Any]]:
     sys.path.insert(0, str(WORKSPACE_ROOT))
     from eta_engine.scripts import diamond_falsification_watchdog as wd  # noqa: PLC0415
+
     report = _safe_run("watchdog", wd.run_watchdog)
     return {s["bot_id"]: s for s in report.get("statuses", [])}
 
@@ -139,6 +141,7 @@ def _run_watchdog() -> dict[str, dict[str, Any]]:
 def _run_direction_stratify() -> dict[str, dict[str, Any]]:
     sys.path.insert(0, str(WORKSPACE_ROOT))
     from eta_engine.scripts import diamond_direction_stratify as ds  # noqa: PLC0415
+
     summary = _safe_run("direction_stratify", ds.run)
     return {s["bot_id"]: s for s in summary.get("statuses", [])}
 
@@ -146,6 +149,7 @@ def _run_direction_stratify() -> dict[str, dict[str, Any]]:
 def _run_feed_sanity() -> dict[str, dict[str, Any]]:
     sys.path.insert(0, str(WORKSPACE_ROOT))
     from eta_engine.scripts import diamond_feed_sanity_audit as fs  # noqa: PLC0415
+
     summary = _safe_run("feed_sanity", fs.run)
     return {s["bot_id"]: s for s in summary.get("scorecards", [])}
 
@@ -207,10 +211,7 @@ def _synthesize(
     sz = syn.sizing_verdict or "INSUFFICIENT_DATA"
     fs = syn.feed_sanity_verdict or "INSUFFICIENT_DATA"
 
-    if fs == "FLAGGED" and any(
-        "STUCK_PRICE" in f or "ZERO_PNL_ACTIVITY" in f
-        for f in syn.feed_sanity_flags
-    ):
+    if fs == "FLAGGED" and any("STUCK_PRICE" in f or "ZERO_PNL_ACTIVITY" in f for f in syn.feed_sanity_flags):
         # Wave-17: feed-sanity FLAGGED with stuck-price or zero-PnL is a
         # data-quality emergency — the bot's USD verdicts can't be trusted
         # at all until the feed is fixed.
@@ -234,28 +235,24 @@ def _synthesize(
                 )
             elif r == "CRITICAL":
                 actions.append(
-                    "watchdog CRITICAL on R basis → strategy edge has "
-                    "decayed; consider operator retire decision",
+                    "watchdog CRITICAL on R basis → strategy edge has decayed; consider operator retire decision",
                 )
             else:
                 actions.append("watchdog CRITICAL — operator review needed")
         if sz == "SIZING_BREACHED":
             actions.append(
-                "sizing BREACHED — single stopout breaches USD floor; "
-                "halve risk_per_trade_pct in the preset",
+                "sizing BREACHED — single stopout breaches USD floor; halve risk_per_trade_pct in the preset",
             )
         syn.recommended_action = " | ".join(actions)
     elif sz == "SIZING_FRAGILE" or cls == "WARN":
         syn.priority = "P1_REVIEW"
         if sz == "SIZING_FRAGILE":
             syn.recommended_action = (
-                "sizing FRAGILE (1-2 stopouts to breach floor) — "
-                "consider tightening risk_per_trade_pct in next cycle"
+                "sizing FRAGILE (1-2 stopouts to breach floor) — consider tightening risk_per_trade_pct in next cycle"
             )
         else:
             syn.recommended_action = (
-                "watchdog WARN (under 20% buffer to floor) — "
-                "monitor closely; review if WARN persists 3+ days"
+                "watchdog WARN (under 20% buffer to floor) — monitor closely; review if WARN persists 3+ days"
             )
     elif sz == "SIZING_TIGHT" or cls == "WATCH":
         syn.priority = "P2_MONITOR"
@@ -265,34 +262,34 @@ def _synthesize(
         if cls == "WATCH":
             bits.append("watchdog WATCH (under 50% buffer)")
         if syn.direction_verdict in (
-            "LONG_DOMINANT", "SHORT_DOMINANT",
-            "LONG_ONLY_EDGE", "SHORT_ONLY_EDGE",
+            "LONG_DOMINANT",
+            "SHORT_DOMINANT",
+            "LONG_ONLY_EDGE",
+            "SHORT_ONLY_EDGE",
         ):
             bits.append(
                 f"direction asymmetry: {syn.direction_verdict}",
             )
         syn.recommended_action = " | ".join(bits)
     elif syn.direction_verdict in (
-        "LONG_DOMINANT", "SHORT_DOMINANT",
+        "LONG_DOMINANT",
+        "SHORT_DOMINANT",
     ):
         syn.priority = "P2_MONITOR"
         syn.recommended_action = (
-            f"direction {syn.direction_verdict} — consider sizing the "
-            "stronger side higher when n>=100 per side"
+            f"direction {syn.direction_verdict} — consider sizing the stronger side higher when n>=100 per side"
         )
     elif syn.direction_verdict in (
-        "LONG_ONLY_EDGE", "SHORT_ONLY_EDGE",
+        "LONG_ONLY_EDGE",
+        "SHORT_ONLY_EDGE",
     ):
         syn.priority = "P1_REVIEW"
         syn.recommended_action = (
-            f"direction {syn.direction_verdict} — weak side is net "
-            "negative; consider filtering it once n>=100 per side"
+            f"direction {syn.direction_verdict} — weak side is net negative; consider filtering it once n>=100 per side"
         )
     elif cls == "INCONCLUSIVE" and sz == "INSUFFICIENT_DATA":
         syn.priority = "P4_INSUFFICIENT_DATA"
-        syn.recommended_action = (
-            "let trades accumulate; insufficient data for any verdict"
-        )
+        syn.recommended_action = "let trades accumulate; insufficient data for any verdict"
     else:
         syn.priority = "P3_OK"
         syn.recommended_action = "all green; no action"
@@ -351,7 +348,8 @@ def run() -> dict[str, Any]:
     try:
         OUT_LATEST.parent.mkdir(parents=True, exist_ok=True)
         OUT_LATEST.write_text(
-            json.dumps(summary, indent=2, default=str), encoding="utf-8",
+            json.dumps(summary, indent=2, default=str),
+            encoding="utf-8",
         )
     except OSError as exc:
         print(f"WARN: write_latest failed: {exc}", file=sys.stderr)
@@ -362,9 +360,7 @@ def _print(summary: dict[str, Any]) -> None:
     print("=" * 130)
     print(
         f" DIAMOND OPS DASHBOARD  ({summary['ts']})  "
-        + ", ".join(
-            f"{k}={v}" for k, v in summary["priority_counts"].items()
-        ),
+        + ", ".join(f"{k}={v}" for k, v in summary["priority_counts"].items()),
     )
     print("=" * 130)
     print(
@@ -376,9 +372,7 @@ def _print(summary: dict[str, Any]) -> None:
         cum_r = s.get("cum_r")
         cum_usd = s.get("cum_usd")
         cum_r_s = f"{cum_r:>+8.2f}" if cum_r is not None else f"{'—':>8s}"
-        cum_usd_s = (
-            f"{cum_usd:>+10.0f}" if cum_usd is not None else f"{'—':>10s}"
-        )
+        cum_usd_s = f"{cum_usd:>+10.0f}" if cum_usd is not None else f"{'—':>10s}"
         promo = (s.get("promotion_verdict") or "—")[:18]
         sizing = (s.get("sizing_verdict") or "—")[:18]
         watch = (s.get("watchdog_classification") or "—")[:10]

@@ -17,6 +17,7 @@ Covers the three P0 audit items:
    when broker qty < supervisor qty (partial-fill drift), and log a
    WARNING describing the divergence.
 """
+
 from __future__ import annotations
 
 import inspect
@@ -54,7 +55,8 @@ def _close_coro(value) -> None:  # noqa: ANN001
 
 
 def test_open_position_not_set_when_broker_rejects(
-    tmp_path: Path, monkeypatch,
+    tmp_path: Path,
+    monkeypatch,
 ) -> None:
     """REJECTED broker status → bot.open_position must be None and the
     reject counter must be 1."""
@@ -107,14 +109,13 @@ def test_open_position_not_set_when_broker_rejects(
     )
 
     assert rec is None
-    assert bot.open_position is None, (
-        "PHANTOM POSITION: bot.open_position retained after broker REJECT"
-    )
+    assert bot.open_position is None, "PHANTOM POSITION: bot.open_position retained after broker REJECT"
     assert bot.consecutive_broker_rejects == 1
 
 
 def test_open_position_cleared_when_broker_raises(
-    tmp_path: Path, monkeypatch,
+    tmp_path: Path,
+    monkeypatch,
 ) -> None:
     """Broker call raising must roll back the optimistically-set position
     and increment the reject counter."""
@@ -155,14 +156,13 @@ def test_open_position_cleared_when_broker_raises(
     )
 
     assert rec is None
-    assert bot.open_position is None, (
-        "PHANTOM POSITION: bot.open_position retained after broker exception"
-    )
+    assert bot.open_position is None, "PHANTOM POSITION: bot.open_position retained after broker exception"
     assert bot.consecutive_broker_rejects == 1
 
 
 def test_consecutive_broker_rejects_counter_increments_and_resets(
-    tmp_path: Path, monkeypatch,
+    tmp_path: Path,
+    monkeypatch,
 ) -> None:
     """Multiple rejects in a row increment; a success resets to 0."""
     from eta_engine.scripts import jarvis_strategy_supervisor as supervisor
@@ -202,17 +202,26 @@ def test_consecutive_broker_rejects_counter_increments_and_resets(
         return reject_result
 
     monkeypatch.setattr(
-        supervisor, "_run_on_live_ibkr_loop",
+        supervisor,
+        "_run_on_live_ibkr_loop",
         _reject_counter,
     )
 
     bar = {"close": 28250.0, "high": 28260.0, "low": 28240.0, "open": 28245.0}
     router.submit_entry(
-        bot=bot, signal_id="sig-r1", side="BUY", bar=bar, size_mult=1.0,
+        bot=bot,
+        signal_id="sig-r1",
+        side="BUY",
+        bar=bar,
+        size_mult=1.0,
     )
     assert bot.consecutive_broker_rejects == 1
     router.submit_entry(
-        bot=bot, signal_id="sig-r2", side="BUY", bar=bar, size_mult=1.0,
+        bot=bot,
+        signal_id="sig-r2",
+        side="BUY",
+        bar=bar,
+        size_mult=1.0,
     )
     assert bot.consecutive_broker_rejects == 2
 
@@ -228,11 +237,16 @@ def test_consecutive_broker_rejects_counter_increments_and_resets(
         return open_result
 
     monkeypatch.setattr(
-        supervisor, "_run_on_live_ibkr_loop",
+        supervisor,
+        "_run_on_live_ibkr_loop",
         _open_counter,
     )
     rec = router.submit_entry(
-        bot=bot, signal_id="sig-ok", side="BUY", bar=bar, size_mult=1.0,
+        bot=bot,
+        signal_id="sig-ok",
+        side="BUY",
+        bar=bar,
+        size_mult=1.0,
     )
     assert rec is not None
     assert bot.open_position is not None
@@ -245,7 +259,8 @@ def test_consecutive_broker_rejects_counter_increments_and_resets(
 
 
 def test_propagate_close_receives_correct_entry_price(
-    tmp_path: Path, monkeypatch,
+    tmp_path: Path,
+    monkeypatch,
 ) -> None:
     """edge_tracker.observe must see the ORIGINAL entry_price/entry_side
     snapshotted before submit_exit cleared bot.open_position. Previously
@@ -280,9 +295,7 @@ def test_propagate_close_receives_correct_entry_price(
     base = 28_000.0
     bot.sage_bars = deque(
         [
-            {"open": base + i, "high": base + i + 5,
-             "low": base + i - 5, "close": base + i + 1,
-             "volume": 1_000}
+            {"open": base + i, "high": base + i + 5, "low": base + i - 5, "close": base + i + 1, "volume": 1_000}
             for i in range(20)
         ],
         maxlen=200,
@@ -290,9 +303,10 @@ def test_propagate_close_receives_correct_entry_price(
     # Open a paper position; exit at a clearly different price so we
     # can detect a fallback to rec.fill_price.
     router.submit_entry(
-        bot=bot, signal_id="sig-prop", side="BUY",
-        bar={"close": 28_100.0, "high": 28_120.0,
-             "low": 28_080.0, "open": 28_090.0},
+        bot=bot,
+        signal_id="sig-prop",
+        side="BUY",
+        bar={"close": 28_100.0, "high": 28_120.0, "low": 28_080.0, "open": 28_090.0},
         size_mult=1.0,
     )
     assert bot.open_position is not None
@@ -305,6 +319,7 @@ def test_propagate_close_receives_correct_entry_price(
     def _fake_consult_sage(ctx, **_kw):  # noqa: ANN001
         captured["entry_price"] = ctx.entry_price
         captured["entry_side"] = ctx.side
+
         # Return a no-op report so observe() runs.
         class _Bias:
             value = "neutral"
@@ -318,13 +333,13 @@ def test_propagate_close_receives_correct_entry_price(
         return _R()
 
     monkeypatch.setattr(
-        "eta_engine.brain.jarvis_v3.sage.consult_sage", _fake_consult_sage,
+        "eta_engine.brain.jarvis_v3.sage.consult_sage",
+        _fake_consult_sage,
     )
 
     rec = router.submit_exit(
         bot=bot,
-        bar={"close": 29_000.0, "high": 29_010.0,
-             "low": 28_990.0, "open": 28_995.0},
+        bar={"close": 29_000.0, "high": 29_010.0, "low": 28_990.0, "open": 28_995.0},
     )
     assert rec is not None
     # bot.open_position is now None — that's the whole point of the fix.
@@ -342,8 +357,7 @@ def test_propagate_close_receives_correct_entry_price(
     # instead of ~28100 (the original entry).
     assert "entry_price" in captured, "consult_sage was never called"
     assert abs(captured["entry_price"] - expected_entry_price) < 1.0, (
-        f"entry_price fallback hit: got {captured['entry_price']!r}, "
-        f"expected {expected_entry_price!r}"
+        f"entry_price fallback hit: got {captured['entry_price']!r}, expected {expected_entry_price!r}"
     )
     expected_dir = "long" if expected_entry_side == "BUY" else "short"
     assert captured["entry_side"] == expected_dir
@@ -355,7 +369,8 @@ def test_propagate_close_receives_correct_entry_price(
 
 
 def test_submit_exit_uses_broker_qty_when_smaller_than_supervisor(
-    tmp_path: Path, monkeypatch,
+    tmp_path: Path,
+    monkeypatch,
 ) -> None:
     """If broker reports a smaller qty than supervisor's belief, submit_exit
     must size against the broker's number to avoid shipping an oversized
@@ -389,23 +404,23 @@ def test_submit_exit_uses_broker_qty_when_smaller_than_supervisor(
     # Stub the broker-qty helper to return 0.5 (broker holds half what
     # the supervisor thinks).
     monkeypatch.setattr(
-        ExecutionRouter, "_get_broker_position_qty",
+        ExecutionRouter,
+        "_get_broker_position_qty",
         lambda self, b: 0.5,
     )
 
     rec = router.submit_exit(
         bot=bot,
-        bar={"close": 96_000.0, "high": 96_010.0,
-             "low": 95_990.0, "open": 95_995.0},
+        bar={"close": 96_000.0, "high": 96_010.0, "low": 95_990.0, "open": 95_995.0},
     )
     assert rec is not None
-    assert rec.qty == 0.5, (
-        f"submit_exit shipped {rec.qty!r}; should have used broker's 0.5"
-    )
+    assert rec.qty == 0.5, f"submit_exit shipped {rec.qty!r}; should have used broker's 0.5"
 
 
 def test_submit_exit_logs_warning_on_qty_divergence(
-    tmp_path: Path, monkeypatch, caplog,
+    tmp_path: Path,
+    monkeypatch,
+    caplog,
 ) -> None:
     """Divergence between broker qty and supervisor qty must be logged at
     WARNING with both numbers visible to the operator."""
@@ -436,15 +451,15 @@ def test_submit_exit_logs_warning_on_qty_divergence(
     }
 
     monkeypatch.setattr(
-        ExecutionRouter, "_get_broker_position_qty",
+        ExecutionRouter,
+        "_get_broker_position_qty",
         lambda self, b: 0.25,
     )
 
     with caplog.at_level(logging.WARNING):
         router.submit_exit(
             bot=bot,
-            bar={"close": 96_000.0, "high": 96_010.0,
-                 "low": 95_990.0, "open": 95_995.0},
+            bar={"close": 96_000.0, "high": 96_010.0, "low": 95_990.0, "open": 95_995.0},
         )
 
     # Look for both numbers in any WARNING-level record.

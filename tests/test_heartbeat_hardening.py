@@ -18,6 +18,7 @@ These tests exercise the new behaviour:
 * ``build_supervisor_heartbeat_report`` reports ``main_loop_stuck``
   when the keep-alive is fresh but the canonical heartbeat is stale.
 """
+
 from __future__ import annotations
 
 import json
@@ -56,8 +57,11 @@ def test_write_heartbeat_swallows_bot_to_state_failure(
             raise RuntimeError("synthetic to_state failure")
 
     bad_bot = _BadBot(
-        bot_id="bad-bot", symbol="BTC", strategy_kind="x",
-        direction="long", cash=5000.0,
+        bot_id="bad-bot",
+        symbol="BTC",
+        strategy_kind="x",
+        direction="long",
+        cash=5000.0,
     )
     sup.bots.append(bad_bot)
 
@@ -70,11 +74,7 @@ def test_write_heartbeat_swallows_bot_to_state_failure(
     # Sidecar JSONL was written next to the heartbeat file.
     sidecar = cfg.state_dir / "heartbeat_write_errors.jsonl"
     assert sidecar.exists()
-    lines = [
-        json.loads(line)
-        for line in sidecar.read_text(encoding="utf-8").splitlines()
-        if line.strip()
-    ]
+    lines = [json.loads(line) for line in sidecar.read_text(encoding="utf-8").splitlines() if line.strip()]
     assert len(lines) == 1
     rec = lines[0]
     assert rec["exc_type"] == "RuntimeError"
@@ -84,11 +84,7 @@ def test_write_heartbeat_swallows_bot_to_state_failure(
 
     # A second failed tick appends — never overwrites.
     sup._write_heartbeat(tick_count=2)
-    lines2 = [
-        json.loads(line)
-        for line in sidecar.read_text(encoding="utf-8").splitlines()
-        if line.strip()
-    ]
+    lines2 = [json.loads(line) for line in sidecar.read_text(encoding="utf-8").splitlines() if line.strip()]
     assert len(lines2) == 2
     assert lines2[1]["tick_count"] == 2
     assert sup._heartbeat_write_errors == 2
@@ -112,10 +108,15 @@ def test_write_heartbeat_propagates_keyboard_interrupt(
         def to_state(self, *, mode: str | None = None) -> dict:
             raise KeyboardInterrupt
 
-    sup.bots.append(_InterruptBot(
-        bot_id="ki", symbol="BTC", strategy_kind="x",
-        direction="long", cash=5000.0,
-    ))
+    sup.bots.append(
+        _InterruptBot(
+            bot_id="ki",
+            symbol="BTC",
+            strategy_kind="x",
+            direction="long",
+            cash=5000.0,
+        )
+    )
 
     raised = False
     try:
@@ -181,7 +182,8 @@ def test_keepalive_timer_writes_when_main_loop_blocks(
         blocked = threading.Event()
         threading.Thread(
             target=lambda: blocked.wait(0.5),
-            daemon=True, name="fake-blocked-main",
+            daemon=True,
+            name="fake-blocked-main",
         ).start()
         time.sleep(0.5)
 
@@ -190,8 +192,7 @@ def test_keepalive_timer_writes_when_main_loop_blocks(
         new_payload = json.loads(keepalive.path.read_text(encoding="utf-8"))
         new_ts = new_payload["keepalive_ts"]
         assert new_ts != first_ts, (
-            f"keepalive ts did not advance while main loop was blocked "
-            f"(first={first_ts}, new={new_ts})"
+            f"keepalive ts did not advance while main loop was blocked (first={first_ts}, new={new_ts})"
         )
         # And it really is a later timestamp.
         first_dt = datetime.fromisoformat(first_ts)
@@ -243,7 +244,10 @@ def test_keepalive_thread_is_daemon(tmp_path: Path) -> None:
 
 
 def _write_main_heartbeat(
-    path: Path, ts: datetime, *, tick_count: int = 7,
+    path: Path,
+    ts: datetime,
+    *,
+    tick_count: int = 7,
 ) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
@@ -379,12 +383,8 @@ def test_both_stale_emits_boot_refusal_warning(tmp_path: Path) -> None:
     )
 
     assert report["status"] == "stale"
-    assert any(
-        "kill_switch_latch.json" in w for w in report["warnings"]
-    )
-    assert any(
-        "Boot-refusal pattern" in w for w in report["warnings"]
-    )
+    assert any("kill_switch_latch.json" in w for w in report["warnings"])
+    assert any("Boot-refusal pattern" in w for w in report["warnings"])
 
 
 def test_fresh_main_and_keepalive_remains_healthy(tmp_path: Path) -> None:
@@ -426,5 +426,6 @@ def test_keepalive_path_is_under_canonical_state_dir() -> None:
         ETA_JARVIS_SUPERVISOR_KEEPALIVE_PATH,
         ETA_RUNTIME_STATE_DIR,
     )
+
     assert ETA_RUNTIME_STATE_DIR in ETA_JARVIS_SUPERVISOR_KEEPALIVE_PATH.parents
     assert ETA_JARVIS_SUPERVISOR_KEEPALIVE_PATH.name == "heartbeat_keepalive.json"

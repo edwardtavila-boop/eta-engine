@@ -7,6 +7,7 @@ random draw. Low p-value (< 0.10) = signal is unlikely to be noise.
 This school doesn't have a directional bias by itself -- it returns
 LONG/SHORT in the direction of the last move with conviction = 1 - p_value.
 """
+
 from __future__ import annotations
 
 import random
@@ -36,7 +37,9 @@ class StatSignificanceSchool(SchoolBase):
     def analyze(self, ctx: MarketContext) -> SchoolVerdict:
         if ctx.n_bars < self.LOOKBACK + 1:
             return SchoolVerdict(
-                school=self.NAME, bias=Bias.NEUTRAL, conviction=0.0,
+                school=self.NAME,
+                bias=Bias.NEUTRAL,
+                conviction=0.0,
                 aligned_with_entry=False,
                 rationale=f"insufficient bars ({ctx.n_bars} < {self.LOOKBACK + 1})",
             )
@@ -54,14 +57,14 @@ class StatSignificanceSchool(SchoolBase):
         sample_pool = rets[:-1]
         if len(sample_pool) < 5:
             return SchoolVerdict(
-                school=self.NAME, bias=Bias.NEUTRAL, conviction=0.0,
-                aligned_with_entry=False, rationale="not enough samples",
+                school=self.NAME,
+                bias=Bias.NEUTRAL,
+                conviction=0.0,
+                aligned_with_entry=False,
+                rationale="not enough samples",
             )
 
-        more_extreme = sum(
-            1 for _ in range(self.BOOTSTRAP_N)
-            if abs(rng.choice(sample_pool)) >= abs(last_ret)
-        )
+        more_extreme = sum(1 for _ in range(self.BOOTSTRAP_N) if abs(rng.choice(sample_pool)) >= abs(last_ret))
         p_value = more_extreme / self.BOOTSTRAP_N
 
         if last_ret > 0:
@@ -78,10 +81,7 @@ class StatSignificanceSchool(SchoolBase):
         if abs(last_ret) < 0.0005:  # 5 bps
             conviction *= 0.3
 
-        rationale = (
-            f"last_ret={last_ret*100:.3f}% with bootstrap p={p_value:.3f} "
-            f"({self.BOOTSTRAP_N} samples)"
-        )
+        rationale = f"last_ret={last_ret * 100:.3f}% with bootstrap p={p_value:.3f} ({self.BOOTSTRAP_N} samples)"
 
         entry_bias = Bias.LONG if ctx.side.lower() == "long" else Bias.SHORT
         return SchoolVerdict(

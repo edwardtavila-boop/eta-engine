@@ -21,6 +21,7 @@ Bot integration::
         elif snap.composite < 0 and signal.direction == "long":
             confidence_penalty = -0.5
 """
+
 from __future__ import annotations
 
 import json
@@ -41,10 +42,10 @@ class SentimentSnapshot:
 
     symbol: str
     ts: datetime
-    composite: float            # weighted -1..+1 (negative bearish)
-    news_score: float           # -1..+1 (BigData / news-NLP)
-    social_score: float         # -1..+1 (LunarCrush / X)
-    volume_z: float             # social mention z-score (3+ = surge)
+    composite: float  # weighted -1..+1 (negative bearish)
+    news_score: float  # -1..+1 (BigData / news-NLP)
+    social_score: float  # -1..+1 (LunarCrush / X)
+    volume_z: float  # social mention z-score (3+ = surge)
     n_news_articles: int
     n_social_mentions: int
     is_stale: bool = False
@@ -94,16 +95,22 @@ def write_snapshot(snap: SentimentSnapshot) -> Path:
     queries LunarCrush + BigData every N minutes."""
     SENTIMENT_DIR.mkdir(parents=True, exist_ok=True)
     path = SENTIMENT_DIR / f"{snap.symbol}.json"
-    path.write_text(json.dumps({
-        "symbol": snap.symbol,
-        "ts": snap.ts.isoformat(),
-        "composite": snap.composite,
-        "news_score": snap.news_score,
-        "social_score": snap.social_score,
-        "volume_z": snap.volume_z,
-        "n_news_articles": snap.n_news_articles,
-        "n_social_mentions": snap.n_social_mentions,
-    }, indent=2), encoding="utf-8")
+    path.write_text(
+        json.dumps(
+            {
+                "symbol": snap.symbol,
+                "ts": snap.ts.isoformat(),
+                "composite": snap.composite,
+                "news_score": snap.news_score,
+                "social_score": snap.social_score,
+                "volume_z": snap.volume_z,
+                "n_news_articles": snap.n_news_articles,
+                "n_social_mentions": snap.n_social_mentions,
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
     return path
 
 

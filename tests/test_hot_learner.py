@@ -1,4 +1,5 @@
 """Tests for jarvis_v3.hot_learner — within-session per-school weight adaptation (Stream 3)."""
+
 from __future__ import annotations
 
 import json

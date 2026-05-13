@@ -39,7 +39,9 @@ def main(argv: list[str] | None = None) -> int:
         description="Generate a TradingView auth-state JSON for the capture daemon",
     )
     p.add_argument(
-        "--out", type=Path, default=None,
+        "--out",
+        type=Path,
+        default=None,
         help="output path (default var/eta_engine/state/tradingview_auth.json)",
     )
     p.add_argument(
@@ -47,7 +49,8 @@ def main(argv: list[str] | None = None) -> int:
         default="https://www.tradingview.com/#signin",
     )
     p.add_argument(
-        "--log-level", default="INFO",
+        "--log-level",
+        default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
     )
     args = p.parse_args(argv)
@@ -61,8 +64,7 @@ def main(argv: list[str] | None = None) -> int:
         from playwright.async_api import async_playwright
     except ImportError:
         sys.stderr.write(
-            "playwright not installed; run "
-            "`pip install playwright && playwright install chromium`\n",
+            "playwright not installed; run `pip install playwright && playwright install chromium`\n",
         )
         return 2
 

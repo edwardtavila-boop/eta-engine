@@ -8,6 +8,7 @@ Covers:
   * run_once: dispatcher failure ⇒ bot is NOT marked as alerted in state
   * select_bots_to_alert ignores bots without drift_alarm=true
 """
+
 from __future__ import annotations
 
 import json

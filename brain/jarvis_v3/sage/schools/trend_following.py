@@ -4,6 +4,7 @@ Heuristic: compute fast (20) and slow (50) EMAs over closes; bias is
 LONG when fast > slow AND fast slope > 0; SHORT when fast < slow AND
 fast slope < 0; else NEUTRAL. ADX-equivalent = absolute slope * 100.
 """
+
 from __future__ import annotations
 
 from eta_engine.brain.jarvis_v3.sage.base import (
@@ -44,7 +45,9 @@ class TrendFollowingSchool(SchoolBase):
         n = ctx.n_bars
         if n < self.SLOW_PERIOD + self.SLOPE_LOOKBACK:
             return SchoolVerdict(
-                school=self.NAME, bias=Bias.NEUTRAL, conviction=0.0,
+                school=self.NAME,
+                bias=Bias.NEUTRAL,
+                conviction=0.0,
                 aligned_with_entry=False,
                 rationale=f"insufficient bars ({n} < {self.SLOW_PERIOD + self.SLOPE_LOOKBACK})",
             )
@@ -66,19 +69,19 @@ class TrendFollowingSchool(SchoolBase):
 
         if fast_above_slow and rising:
             bias = Bias.LONG
-            rationale = f"fast EMA above slow + rising (slope={slope*100:.2f}%)"
+            rationale = f"fast EMA above slow + rising (slope={slope * 100:.2f}%)"
             conv = min(0.85, 0.40 + adx_proxy * 0.5)
         elif (not fast_above_slow) and falling:
             bias = Bias.SHORT
-            rationale = f"fast EMA below slow + falling (slope={slope*100:.2f}%)"
+            rationale = f"fast EMA below slow + falling (slope={slope * 100:.2f}%)"
             conv = min(0.85, 0.40 + adx_proxy * 0.5)
         elif fast_above_slow:
             bias = Bias.LONG
-            rationale = f"EMA stack bullish but slope flat (slope={slope*100:.2f}%)"
+            rationale = f"EMA stack bullish but slope flat (slope={slope * 100:.2f}%)"
             conv = 0.30
         elif not fast_above_slow:
             bias = Bias.SHORT
-            rationale = f"EMA stack bearish but slope flat (slope={slope*100:.2f}%)"
+            rationale = f"EMA stack bearish but slope flat (slope={slope * 100:.2f}%)"
             conv = 0.30
         else:
             bias = Bias.NEUTRAL

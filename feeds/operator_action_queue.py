@@ -595,10 +595,7 @@ def _op16_strategy_research_candidates() -> OpItem:
                 "summary": summary,
                 "strategy_id": strategy_id,
                 "next_commands": [
-                    (
-                        "python -m eta_engine.scripts.paper_live_launch_check "
-                        f"--bots {bot_id} --json"
-                    ),
+                    (f"python -m eta_engine.scripts.paper_live_launch_check --bots {bot_id} --json"),
                 ],
                 "evidence": result.get("evidence", {}),
             }
@@ -695,9 +692,8 @@ def _op19_ibgateway_1046_runtime() -> OpItem:
     tws_healthy = tws.get("healthy") is True
     handshake_ok = (tws.get("details") or {}).get("handshake_ok") is True
     credential_status = reauth.get("credential_status") if isinstance(reauth.get("credential_status"), dict) else {}
-    missing_ibc_credentials = (
-        reauth.get("status") == "missing_ibc_credentials"
-        or (credential_status and credential_status.get("ready") is False and reauth.get("operator_action_required"))
+    missing_ibc_credentials = reauth.get("status") == "missing_ibc_credentials" or (
+        credential_status and credential_status.get("ready") is False and reauth.get("operator_action_required")
     )
 
     next_commands: list[str]
@@ -721,10 +717,7 @@ def _op19_ibgateway_1046_runtime() -> OpItem:
         signature = install.get("authenticode_status") or "unknown"
         sha = install.get("installer_sha256") or "missing"
         item.verdict = VERDICT_BLOCKED
-        item.detail = (
-            "IB Gateway 10.46 is not installed; "
-            f"installer Authenticode={signature}, sha256={sha}."
-        )
+        item.detail = f"IB Gateway 10.46 is not installed; installer Authenticode={signature}, sha256={sha}."
         next_commands = [
             (
                 "powershell.exe -NoProfile -ExecutionPolicy Bypass -File "
@@ -747,10 +740,7 @@ def _op19_ibgateway_1046_runtime() -> OpItem:
     else:
         status = reauth.get("status") or tws.get("status") or "not_ready"
         item.verdict = VERDICT_BLOCKED
-        item.detail = (
-            "IB Gateway 10.46 is present, but TWS API 4002 is not handshake-ready; "
-            f"status={status}."
-        )
+        item.detail = f"IB Gateway 10.46 is present, but TWS API 4002 is not handshake-ready; status={status}."
         next_commands = [
             "python -m eta_engine.scripts.tws_watchdog --host 127.0.0.1 --port 4002",
             "python -m eta_engine.scripts.ibgateway_reauth_controller --execute",

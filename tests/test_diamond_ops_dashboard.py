@@ -1,4 +1,5 @@
 """Tests for diamond_ops_dashboard — wave-13 unified status surface."""
+
 # ruff: noqa: N802, PLR2004, SLF001
 from __future__ import annotations
 
@@ -10,8 +11,7 @@ def _stub_promotion(verdict: str = "REJECT") -> dict:
     return {"bot_id": "test_bot", "verdict": verdict}
 
 
-def _stub_sizing(verdict: str = "SIZING_OK", cum_r: float = 1.0,
-                 cum_usd: float = 100.0, n: int = 25) -> dict:
+def _stub_sizing(verdict: str = "SIZING_OK", cum_r: float = 1.0, cum_usd: float = 100.0, n: int = 25) -> dict:
     return {
         "bot_id": "test_bot",
         "verdict": verdict,
@@ -21,9 +21,7 @@ def _stub_sizing(verdict: str = "SIZING_OK", cum_r: float = 1.0,
     }
 
 
-def _stub_watchdog(cls: str = "HEALTHY",
-                    cls_usd: str = "HEALTHY",
-                    cls_r: str = "HEALTHY") -> dict:
+def _stub_watchdog(cls: str = "HEALTHY", cls_usd: str = "HEALTHY", cls_r: str = "HEALTHY") -> dict:
     return {
         "bot_id": "test_bot",
         "classification": cls,
@@ -32,10 +30,9 @@ def _stub_watchdog(cls: str = "HEALTHY",
     }
 
 
-def _stub_direction(verdict: str = "SYMMETRIC",
-                     long_avg: float | None = 0.4,
-                     short_avg: float | None = 0.4,
-                     n_total: int = 25) -> dict:
+def _stub_direction(
+    verdict: str = "SYMMETRIC", long_avg: float | None = 0.4, short_avg: float | None = 0.4, n_total: int = 25
+) -> dict:
     out: dict = {
         "bot_id": "test_bot",
         "verdict": verdict,
@@ -56,7 +53,8 @@ def test_priority_P0_when_watchdog_CRITICAL() -> None:
     from eta_engine.scripts import diamond_ops_dashboard as dd
 
     syn = dd._synthesize(
-        "test_bot", enrolled=True,
+        "test_bot",
+        enrolled=True,
         promotion=_stub_promotion(),
         sizing=_stub_sizing(verdict="SIZING_OK"),
         watchdog=_stub_watchdog(cls="CRITICAL", cls_usd="CRITICAL", cls_r="HEALTHY"),
@@ -72,7 +70,8 @@ def test_priority_P0_when_sizing_BREACHED() -> None:
     from eta_engine.scripts import diamond_ops_dashboard as dd
 
     syn = dd._synthesize(
-        "test_bot", enrolled=True,
+        "test_bot",
+        enrolled=True,
         promotion=_stub_promotion(),
         sizing=_stub_sizing(verdict="SIZING_BREACHED"),
         watchdog=_stub_watchdog(cls="HEALTHY"),
@@ -89,7 +88,8 @@ def test_priority_P0_recommends_strategy_retire_when_R_critical() -> None:
     from eta_engine.scripts import diamond_ops_dashboard as dd
 
     syn = dd._synthesize(
-        "test_bot", enrolled=True,
+        "test_bot",
+        enrolled=True,
         promotion=_stub_promotion(),
         sizing=_stub_sizing(verdict="SIZING_OK"),
         watchdog=_stub_watchdog(cls="CRITICAL", cls_usd="CRITICAL", cls_r="CRITICAL"),
@@ -104,7 +104,8 @@ def test_priority_P1_when_watchdog_WARN() -> None:
     from eta_engine.scripts import diamond_ops_dashboard as dd
 
     syn = dd._synthesize(
-        "test_bot", enrolled=True,
+        "test_bot",
+        enrolled=True,
         promotion=_stub_promotion(),
         sizing=_stub_sizing(verdict="SIZING_OK"),
         watchdog=_stub_watchdog(cls="WARN"),
@@ -117,7 +118,8 @@ def test_priority_P1_when_sizing_FRAGILE() -> None:
     from eta_engine.scripts import diamond_ops_dashboard as dd
 
     syn = dd._synthesize(
-        "test_bot", enrolled=True,
+        "test_bot",
+        enrolled=True,
         promotion=_stub_promotion(),
         sizing=_stub_sizing(verdict="SIZING_FRAGILE"),
         watchdog=_stub_watchdog(cls="HEALTHY"),
@@ -133,7 +135,8 @@ def test_priority_P1_when_direction_LONG_ONLY_EDGE() -> None:
     from eta_engine.scripts import diamond_ops_dashboard as dd
 
     syn = dd._synthesize(
-        "test_bot", enrolled=True,
+        "test_bot",
+        enrolled=True,
         promotion=_stub_promotion(),
         sizing=_stub_sizing(verdict="SIZING_OK"),
         watchdog=_stub_watchdog(cls="HEALTHY"),
@@ -147,7 +150,8 @@ def test_priority_P2_when_watchdog_WATCH_or_sizing_TIGHT() -> None:
     from eta_engine.scripts import diamond_ops_dashboard as dd
 
     syn = dd._synthesize(
-        "test_bot", enrolled=True,
+        "test_bot",
+        enrolled=True,
         promotion=_stub_promotion(),
         sizing=_stub_sizing(verdict="SIZING_TIGHT"),
         watchdog=_stub_watchdog(cls="WATCH"),
@@ -161,7 +165,8 @@ def test_priority_P2_when_direction_LONG_DOMINANT() -> None:
     from eta_engine.scripts import diamond_ops_dashboard as dd
 
     syn = dd._synthesize(
-        "test_bot", enrolled=True,
+        "test_bot",
+        enrolled=True,
         promotion=_stub_promotion(),
         sizing=_stub_sizing(verdict="SIZING_OK"),
         watchdog=_stub_watchdog(cls="HEALTHY"),
@@ -175,7 +180,8 @@ def test_priority_P3_when_all_green() -> None:
     from eta_engine.scripts import diamond_ops_dashboard as dd
 
     syn = dd._synthesize(
-        "test_bot", enrolled=True,
+        "test_bot",
+        enrolled=True,
         promotion=_stub_promotion(verdict="PROMOTE"),
         sizing=_stub_sizing(verdict="SIZING_OK"),
         watchdog=_stub_watchdog(cls="HEALTHY"),
@@ -191,11 +197,11 @@ def test_priority_P4_when_insufficient_data_everywhere() -> None:
     from eta_engine.scripts import diamond_ops_dashboard as dd
 
     syn = dd._synthesize(
-        "test_bot", enrolled=True,
+        "test_bot",
+        enrolled=True,
         promotion=_stub_promotion(verdict="REJECT"),
         sizing=_stub_sizing(verdict="INSUFFICIENT_DATA"),
-        watchdog=_stub_watchdog(cls="INCONCLUSIVE",
-                                  cls_usd="INCONCLUSIVE", cls_r="INCONCLUSIVE"),
+        watchdog=_stub_watchdog(cls="INCONCLUSIVE", cls_usd="INCONCLUSIVE", cls_r="INCONCLUSIVE"),
         direction=_stub_direction(verdict="INSUFFICIENT_DATA"),
     )
     assert syn.priority == "P4_INSUFFICIENT_DATA"

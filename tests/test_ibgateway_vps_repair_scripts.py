@@ -51,7 +51,7 @@ def test_ibgateway_scripts_treat_ibc_renamed_executable_as_canonical_runtime() -
         assert "ibgateway.exe or ibgateway1.exe" in text
 
     assert "direct launcher is using ibgateway1.exe because IBC has renamed the canonical executable" in starter_text
-    assert 'executable_name = if ($exe) { Split-Path -Leaf $exe } else { $null }' in repair_text
+    assert "executable_name = if ($exe) { Split-Path -Leaf $exe } else { $null }" in repair_text
 
 
 def test_ibgateway_starter_does_not_force_restart_healthy_authenticated_gateway() -> None:
@@ -71,10 +71,10 @@ def test_ibgateway_starter_supports_ibc_managed_launch() -> None:
     assert r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\ibc_install.json" in text
     assert r"C:\EvolutionaryTradingAlgo\var\eta_engine\ibc\private\config.ini" in text
     assert r"C:\EvolutionaryTradingAlgo\eta_engine\secrets\ibkr_credentials.json" in text
-    assert 'Resolve-IbcInstallDir' in text
-    assert 'Resolve-IbcCredentials' in text
-    assert 'Write-IbcConfig' in text
-    assert 'StartIBC.bat' in text
+    assert "Resolve-IbcInstallDir" in text
+    assert "Resolve-IbcCredentials" in text
+    assert "Write-IbcConfig" in text
+    assert "StartIBC.bat" in text
     assert '"/Gateway"' in text
     assert '"/IbcPath:$ibcInstallDir"' in text
     assert '"/Config:$IbcConfigPath"' in text
@@ -151,21 +151,20 @@ def test_ibgateway_repair_can_switch_tasks_to_ibc_launcher() -> None:
     assert "Resolve-TaskUserForTask" in text
     assert "-TaskRunAsUser (Resolve-TaskUserForTask -TaskName $TaskName)" in text
     assert "-TaskRunAsPassword $TaskPassword" in text
-    assert 'if ($UseIbc) {' in text
+    assert "if ($UseIbc) {" in text
     assert '$baseArgs += " -UseIbc"' in text
     assert '$baseArgs += " -IbcPasswordFile `"$IbcPasswordFile`""' in text
     assert '$result.single_source.legacy_tasks."ETA-IBGateway" = Enable-TaskIfPresent -TaskName "ETA-IBGateway"' in text
     assert '$etaGatewayState -ne "Disabled"' in text
     assert (
-        '& $Starter -GatewayDir $GatewayDir -LoginProfile $LoginProfile '
-        '-ApiPort $ApiPort -UseIbc:$UseIbc -IbcPasswordFile $IbcPasswordFile -ForceRestart' in text
+        "& $Starter -GatewayDir $GatewayDir -LoginProfile $LoginProfile "
+        "-ApiPort $ApiPort -UseIbc:$UseIbc -IbcPasswordFile $IbcPasswordFile -ForceRestart" in text
     )
 
 
 def test_ibgateway_repair_scripts_do_not_reintroduce_legacy_workspace_paths() -> None:
     combined = "\n".join(
-        path.read_text(encoding="utf-8")
-        for path in (STARTER, REPAIR, INSTALL, IBC_INSTALL, IBC_CREDENTIALS)
+        path.read_text(encoding="utf-8") for path in (STARTER, REPAIR, INSTALL, IBC_INSTALL, IBC_CREDENTIALS)
     )
 
     assert "OneDrive" not in combined
@@ -192,7 +191,7 @@ def test_ibgateway_installer_helper_is_canonical_audited_and_guarded() -> None:
     assert "authenticode_status" in text
     assert "[switch]$Install" in text
     assert "[switch]$AllowUnsignedInstaller" in text
-    assert "if ($signature.Status -ne \"Valid\" -and -not $AllowUnsignedInstaller)" in text
+    assert 'if ($signature.Status -ne "Valid" -and -not $AllowUnsignedInstaller)' in text
     assert "IB Gateway 10.46 is not installed at C:\\Jts\\ibgateway\\1046" in text
     assert "Rerun with -Install -RepairAfterInstall" in text
     assert "-AllowUnsignedInstaller after confirming the official IBKR download source" in text
@@ -206,7 +205,7 @@ def test_ibc_installer_is_canonical_and_uses_official_github_release() -> None:
 
     assert "https://api.github.com/repos/IbcAlpha/IBC/releases/latest" in text
     assert "https://api.github.com/repos/IbcAlpha/IBC/releases/tags/" in text
-    assert 'IBCWin-*.zip' in text
+    assert "IBCWin-*.zip" in text
     assert r"C:\EvolutionaryTradingAlgo\var\eta_engine\downloads\ibc" in text
     assert r"C:\EvolutionaryTradingAlgo\var\eta_engine\tools\ibc" in text
     assert r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\ibc_install.json" in text

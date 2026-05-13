@@ -53,37 +53,45 @@ def _next_actions(
 ) -> list[dict[str, object]]:
     actions: list[dict[str, object]] = []
     if not env_exists:
-        actions.append({
-            "action": "create_env",
-            "blocking": True,
-            "command": "python -m eta_engine.scripts.operator_env_bootstrap --create --json",
-        })
+        actions.append(
+            {
+                "action": "create_env",
+                "blocking": True,
+                "command": "python -m eta_engine.scripts.operator_env_bootstrap --create --json",
+            }
+        )
     if required_pending:
-        actions.append({
-            "action": "fill_required_launch_keys",
-            "blocking": True,
-            "groups": required_pending,
-            "commands": ["notepad .env", "$EDITOR .env"],
-        })
+        actions.append(
+            {
+                "action": "fill_required_launch_keys",
+                "blocking": True,
+                "groups": required_pending,
+                "commands": ["notepad .env", "$EDITOR .env"],
+            }
+        )
     if recommended_pending:
-        actions.append({
-            "action": "fill_recommended_fallback_keys",
-            "blocking": False,
-            "groups": recommended_pending,
-            "commands": ["notepad .env", "$EDITOR .env"],
-        })
-    actions.extend([
-        {
-            "action": "recheck_env",
-            "blocking": bool(required_pending),
-            "command": "python -m eta_engine.scripts.operator_env_bootstrap --json",
-        },
-        {
-            "action": "refresh_operator_queue",
-            "blocking": False,
-            "command": "python -m eta_engine.scripts.operator_action_queue --json",
-        },
-    ])
+        actions.append(
+            {
+                "action": "fill_recommended_fallback_keys",
+                "blocking": False,
+                "groups": recommended_pending,
+                "commands": ["notepad .env", "$EDITOR .env"],
+            }
+        )
+    actions.extend(
+        [
+            {
+                "action": "recheck_env",
+                "blocking": bool(required_pending),
+                "command": "python -m eta_engine.scripts.operator_env_bootstrap --json",
+            },
+            {
+                "action": "refresh_operator_queue",
+                "blocking": False,
+                "command": "python -m eta_engine.scripts.operator_action_queue --json",
+            },
+        ]
+    )
     return actions
 
 

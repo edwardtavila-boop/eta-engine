@@ -22,6 +22,7 @@ Replay scores cap_tightened_count + outcome distribution. v19 promotes
 when its drift-window decisions outperform v17's by N R-multiples over
 a 30-day window (see scripts/score_policy_candidate.py).
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -71,12 +72,14 @@ def evaluate_v19(req: ActionRequest, ctx: JarvisContext) -> ActionResponse:
         return resp
     # If we tighten APPROVED into a sub-1.0 cap, that's now CONDITIONAL.
     new_verdict = Verdict.CONDITIONAL if new_cap < 1.0 else resp.verdict
-    return resp.model_copy(update={
-        "size_cap_mult": new_cap,
-        "verdict": new_verdict,
-        "reason": f"{resp.reason} [v19 drift-aware {current_cap:.2f}->{new_cap:.2f}]",
-        "conditions": [*resp.conditions, f"v19_drift_tightened_to_{new_cap:.2f}"],
-    })
+    return resp.model_copy(
+        update={
+            "size_cap_mult": new_cap,
+            "verdict": new_verdict,
+            "reason": f"{resp.reason} [v19 drift-aware {current_cap:.2f}->{new_cap:.2f}]",
+            "conditions": [*resp.conditions, f"v19_drift_tightened_to_{new_cap:.2f}"],
+        }
+    )
 
 
 register_candidate(

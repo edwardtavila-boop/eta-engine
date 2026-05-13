@@ -1,4 +1,5 @@
 """Tests for regime_classifier — T8 rule-based regime detection + override packs."""
+
 from __future__ import annotations
 
 
@@ -19,11 +20,15 @@ def test_current_regime_euphoria(monkeypatch) -> None:
     """fear_greed >= 0.85 AND social_volume_z >= 1.5 → EUPHORIA."""
     from eta_engine.brain.jarvis_v3 import regime_classifier
 
-    monkeypatch.setattr(regime_classifier, "_safe_sentiment", lambda asset: {
-        "fear_greed": 0.90,
-        "social_volume_z": 2.0,
-        "topic_flags": {},
-    })
+    monkeypatch.setattr(
+        regime_classifier,
+        "_safe_sentiment",
+        lambda asset: {
+            "fear_greed": 0.90,
+            "social_volume_z": 2.0,
+            "topic_flags": {},
+        },
+    )
     monkeypatch.setattr(regime_classifier, "_safe_fleet_drawdown", lambda: None)
 
     rep = regime_classifier.current_regime()
@@ -35,10 +40,14 @@ def test_current_regime_capitulation(monkeypatch) -> None:
     """fear_greed <= 0.15 + capitulation flag → CAPITULATION."""
     from eta_engine.brain.jarvis_v3 import regime_classifier
 
-    monkeypatch.setattr(regime_classifier, "_safe_sentiment", lambda asset: {
-        "fear_greed": 0.10,
-        "topic_flags": {"capitulation": True},
-    })
+    monkeypatch.setattr(
+        regime_classifier,
+        "_safe_sentiment",
+        lambda asset: {
+            "fear_greed": 0.10,
+            "topic_flags": {"capitulation": True},
+        },
+    )
     monkeypatch.setattr(regime_classifier, "_safe_fleet_drawdown", lambda: None)
 
     rep = regime_classifier.current_regime()
@@ -73,9 +82,15 @@ def test_current_regime_calm_trend_default(monkeypatch) -> None:
     """Neutral signals → CALM_TREND (mild confidence)."""
     from eta_engine.brain.jarvis_v3 import regime_classifier
 
-    monkeypatch.setattr(regime_classifier, "_safe_sentiment", lambda asset: {
-        "fear_greed": 0.55, "social_volume_z": 0.3, "topic_flags": {},
-    })
+    monkeypatch.setattr(
+        regime_classifier,
+        "_safe_sentiment",
+        lambda asset: {
+            "fear_greed": 0.55,
+            "social_volume_z": 0.3,
+            "topic_flags": {},
+        },
+    )
     monkeypatch.setattr(regime_classifier, "_safe_fleet_drawdown", lambda: -0.2)
 
     rep = regime_classifier.current_regime()
@@ -103,7 +118,9 @@ def test_apply_pack_writes_school_weights(tmp_path, monkeypatch) -> None:
     from eta_engine.brain.jarvis_v3 import hermes_overrides, regime_classifier
 
     monkeypatch.setattr(
-        hermes_overrides, "DEFAULT_OVERRIDES_PATH", tmp_path / "ho.json",
+        hermes_overrides,
+        "DEFAULT_OVERRIDES_PATH",
+        tmp_path / "ho.json",
     )
     res = regime_classifier.apply_pack("calm_trend", ttl_minutes=60)
     assert res["status"] == "APPLIED"
@@ -118,7 +135,9 @@ def test_apply_pack_with_star_pattern_needs_bot_ids(tmp_path, monkeypatch) -> No
     from eta_engine.brain.jarvis_v3 import hermes_overrides, regime_classifier
 
     monkeypatch.setattr(
-        hermes_overrides, "DEFAULT_OVERRIDES_PATH", tmp_path / "ho.json",
+        hermes_overrides,
+        "DEFAULT_OVERRIDES_PATH",
+        tmp_path / "ho.json",
     )
     # vol_trend has size_modifiers = {"*": 0.7}
     res = regime_classifier.apply_pack("vol_trend", ttl_minutes=60)
@@ -132,10 +151,14 @@ def test_apply_pack_with_star_and_bot_ids(tmp_path, monkeypatch) -> None:
     from eta_engine.brain.jarvis_v3 import hermes_overrides, regime_classifier
 
     monkeypatch.setattr(
-        hermes_overrides, "DEFAULT_OVERRIDES_PATH", tmp_path / "ho.json",
+        hermes_overrides,
+        "DEFAULT_OVERRIDES_PATH",
+        tmp_path / "ho.json",
     )
     res = regime_classifier.apply_pack(
-        "vol_trend", ttl_minutes=60, bot_ids=["bot_a", "bot_b"],
+        "vol_trend",
+        ttl_minutes=60,
+        bot_ids=["bot_a", "bot_b"],
     )
     assert res["status"] in ("APPLIED", "PARTIAL")
     # Both bots got the 0.7 modifier
@@ -147,11 +170,15 @@ def test_current_regime_never_raises_on_bad_signals(monkeypatch) -> None:
     """Sentiment helper returning malformed dict → still returns a report."""
     from eta_engine.brain.jarvis_v3 import regime_classifier
 
-    monkeypatch.setattr(regime_classifier, "_safe_sentiment", lambda asset: {
-        "fear_greed": "not_a_number",  # malformed
-        "social_volume_z": None,
-        "topic_flags": "not_a_dict",
-    })
+    monkeypatch.setattr(
+        regime_classifier,
+        "_safe_sentiment",
+        lambda asset: {
+            "fear_greed": "not_a_number",  # malformed
+            "social_volume_z": None,
+            "topic_flags": "not_a_dict",
+        },
+    )
     monkeypatch.setattr(regime_classifier, "_safe_fleet_drawdown", lambda: None)
 
     rep = regime_classifier.current_regime()

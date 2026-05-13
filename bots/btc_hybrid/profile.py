@@ -23,11 +23,7 @@ from typing import Any
 
 from eta_engine.bots.btc_hybrid.bot import BtcHybridProfile
 
-DEFAULT_BTC_PROFILE_PATH: Path = (
-    Path(__file__).resolve().parent.parent.parent
-    / "configs"
-    / "btc_hybrid_profile.yaml"
-)
+DEFAULT_BTC_PROFILE_PATH: Path = Path(__file__).resolve().parent.parent.parent / "configs" / "btc_hybrid_profile.yaml"
 
 
 def _read_text(path: Path) -> str | None:
@@ -43,8 +39,7 @@ def _parse(text: str, suffix: str) -> dict[str, Any]:
             import yaml  # type: ignore[import-not-found]
         except ImportError as exc:
             raise RuntimeError(
-                "PyYAML is required to load YAML profiles; "
-                "install pyyaml or use a .json profile"
+                "PyYAML is required to load YAML profiles; install pyyaml or use a .json profile"
             ) from exc
         loaded = yaml.safe_load(text) or {}
     elif suffix == ".json":
@@ -52,9 +47,7 @@ def _parse(text: str, suffix: str) -> dict[str, Any]:
     else:
         raise ValueError(f"unsupported profile suffix: {suffix!r}")
     if not isinstance(loaded, dict):
-        raise ValueError(
-            f"profile must deserialize to a mapping, got {type(loaded).__name__}"
-        )
+        raise ValueError(f"profile must deserialize to a mapping, got {type(loaded).__name__}")
     return loaded
 
 

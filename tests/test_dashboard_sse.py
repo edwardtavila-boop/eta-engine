@@ -1,4 +1,5 @@
 """Tests for SSE tail-follow generator."""
+
 from __future__ import annotations
 
 import asyncio
@@ -22,8 +23,7 @@ async def test_tail_yields_new_lines(tmp_path: Path) -> None:
     received: list[str] = []
 
     async def collect() -> None:
-        async for event in tail_follow(audit, event_type="verdict",
-                                       poll_interval=0.05, max_iterations=10):
+        async for event in tail_follow(audit, event_type="verdict", poll_interval=0.05, max_iterations=10):
             received.append(event)
             if len(received) >= 2:
                 return
@@ -49,10 +49,9 @@ async def test_tail_handles_missing_file_gracefully(tmp_path: Path) -> None:
     from eta_engine.deploy.scripts.dashboard_sse import tail_follow
 
     received = []
-    async for event in tail_follow(tmp_path / "missing.jsonl",
-                                   event_type="verdict",
-                                   poll_interval=0.05,
-                                   max_iterations=3):
+    async for event in tail_follow(
+        tmp_path / "missing.jsonl", event_type="verdict", poll_interval=0.05, max_iterations=3
+    ):
         received.append(event)
     assert received == []
 
@@ -68,8 +67,7 @@ async def test_tail_skips_invalid_json(tmp_path: Path) -> None:
     received = []
 
     async def collect() -> None:
-        async for event in tail_follow(audit, event_type="verdict",
-                                       poll_interval=0.05, max_iterations=20):
+        async for event in tail_follow(audit, event_type="verdict", poll_interval=0.05, max_iterations=20):
             received.append(event)
             if len(received) >= 1:
                 return

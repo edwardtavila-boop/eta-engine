@@ -74,10 +74,18 @@ logger = logging.getLogger("eta_engine.broker_router_validate")
 #: a real adapter exists in ``eta_engine.venues``. Tradovate remains DORMANT:
 #: this validator may recognize its adapter slot, but active routing must keep
 #: it disabled unless the broker dormancy mandate is updated in code and docs.
-KNOWN_VENUES: frozenset[str] = frozenset({
-    "ibkr", "tastytrade", "tasty", "alpaca", "alp",
-    "bybit", "okx", "tradovate",
-})
+KNOWN_VENUES: frozenset[str] = frozenset(
+    {
+        "ibkr",
+        "tastytrade",
+        "tasty",
+        "alpaca",
+        "alp",
+        "bybit",
+        "okx",
+        "tradovate",
+    }
+)
 
 
 # ---------------------------------------------------------------------------
@@ -99,14 +107,8 @@ class CheckResult:
     def line(self) -> str:
         tag = "PASS" if self.ok else "FAIL"
         if self.ok:
-            return (
-                f"{tag}  bot={self.bot_id} symbol={self.symbol} "
-                f"venue={self.venue} mapped={self.mapped}"
-            )
-        return (
-            f"{tag}  bot={self.bot_id} symbol={self.symbol} "
-            f"venue={self.venue} reason={self.reason}"
-        )
+            return f"{tag}  bot={self.bot_id} symbol={self.symbol} venue={self.venue} mapped={self.mapped}"
+        return f"{tag}  bot={self.bot_id} symbol={self.symbol} venue={self.venue} reason={self.reason}"
 
 
 def _resolve_active_bots() -> list[tuple[str, str]]:
@@ -150,10 +152,12 @@ def check_routing_config(
     # dir doesn't have to exist for adapter lookup — the constructor
     # tries to mkdir, so use a path under the OS temp dir.
     import tempfile
+
     state_root = Path(tempfile.mkdtemp(prefix="eta_route_validate_"))
     pending_dir = state_root / "pending"
     pending_dir.mkdir(parents=True, exist_ok=True)
     from eta_engine.obs.decision_journal import default_journal
+
     router = BrokerRouter(
         pending_dir=pending_dir,
         state_root=state_root,
@@ -169,56 +173,90 @@ def check_routing_config(
         try:
             venue_name = cfg.venue_for(bot_id, symbol=symbol)
         except Exception as exc:  # noqa: BLE001 — operator-facing diagnostic
-            results.append(CheckResult(
-                bot_id=bot_id, symbol=symbol, venue="?", mapped="",
-                ok=False, reason=f"venue_for raised: {exc}",
-            ))
+            results.append(
+                CheckResult(
+                    bot_id=bot_id,
+                    symbol=symbol,
+                    venue="?",
+                    mapped="",
+                    ok=False,
+                    reason=f"venue_for raised: {exc}",
+                )
+            )
             continue
 
         # 2. Known venue?
         if venue_name not in KNOWN_VENUES:
-            results.append(CheckResult(
-                bot_id=bot_id, symbol=symbol, venue=venue_name, mapped="",
-                ok=False, reason=f"unknown venue {venue_name!r}",
-            ))
+            results.append(
+                CheckResult(
+                    bot_id=bot_id,
+                    symbol=symbol,
+                    venue=venue_name,
+                    mapped="",
+                    ok=False,
+                    reason=f"unknown venue {venue_name!r}",
+                )
+            )
             continue
 
         # 3. Symbol mapping.
         try:
             mapped = cfg.map_symbol(symbol, venue_name)
         except Exception as exc:  # noqa: BLE001
-            results.append(CheckResult(
-                bot_id=bot_id, symbol=symbol, venue=venue_name, mapped="",
-                ok=False, reason=f"map_symbol failed: {exc}",
-            ))
+            results.append(
+                CheckResult(
+                    bot_id=bot_id,
+                    symbol=symbol,
+                    venue=venue_name,
+                    mapped="",
+                    ok=False,
+                    reason=f"map_symbol failed: {exc}",
+                )
+            )
             continue
 
         # 4. Venue-adapter lookup (so the runtime can actually reach it).
         order_stub = PendingOrder(
-            ts="", signal_id="", side="BUY", qty=1.0, symbol=symbol,
-            limit_price=1.0, bot_id=bot_id,
+            ts="",
+            signal_id="",
+            side="BUY",
+            qty=1.0,
+            symbol=symbol,
+            limit_price=1.0,
+            bot_id=bot_id,
         )
         adapter = router._resolve_venue_adapter(venue_name, order_stub)
         if adapter is None:
-            results.append(CheckResult(
-                bot_id=bot_id, symbol=symbol, venue=venue_name, mapped=mapped,
-                ok=False, reason="venue adapter not registered on SmartRouter",
-            ))
+            results.append(
+                CheckResult(
+                    bot_id=bot_id,
+                    symbol=symbol,
+                    venue=venue_name,
+                    mapped=mapped,
+                    ok=False,
+                    reason="venue adapter not registered on SmartRouter",
+                )
+            )
             continue
 
         # 5. Credentials. NOT a hard fail — operator may be deferring
         # secrets — but log a clear WARN so the deploy step can decide.
         if not adapter.has_credentials():
             logger.warning(
-                "validator: bot=%s venue=%s lacks live credentials; "
-                "live routing will not work until secrets are wired",
-                bot_id, venue_name,
+                "validator: bot=%s venue=%s lacks live credentials; live routing will not work until secrets are wired",
+                bot_id,
+                venue_name,
             )
 
-        results.append(CheckResult(
-            bot_id=bot_id, symbol=symbol, venue=venue_name, mapped=mapped,
-            ok=True,
-        ))
+        results.append(
+            CheckResult(
+                bot_id=bot_id,
+                symbol=symbol,
+                venue=venue_name,
+                mapped=mapped,
+                ok=True,
+            )
+        )
     return results
 
 
@@ -228,11 +266,15 @@ def main(argv: list[str] | None = None) -> int:
         description="Validate eta_engine/configs/bot_broker_routing.yaml.",
     )
     parser.add_argument(
-        "--config", type=str, default=None,
+        "--config",
+        type=str,
+        default=None,
         help="Path to bot_broker_routing.yaml (default: env / project root).",
     )
     parser.add_argument(
-        "--log-level", type=str, default="WARNING",
+        "--log-level",
+        type=str,
+        default="WARNING",
         help="Python log level (default WARNING).",
     )
     args = parser.parse_args(argv)
@@ -261,8 +303,8 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 1
     print(
-        f"OK  {len(results)} active bot(s) resolved cleanly; "
-        f"routing yaml is safe.", flush=True,
+        f"OK  {len(results)} active bot(s) resolved cleanly; routing yaml is safe.",
+        flush=True,
     )
     return 0
 

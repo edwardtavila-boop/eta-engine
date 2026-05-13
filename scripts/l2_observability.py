@@ -48,6 +48,7 @@ Fill record:
 Both writers append-only, use the same date rotation pattern as the
 capture daemons.
 """
+
 from __future__ import annotations
 
 import json
@@ -63,14 +64,22 @@ SIGNAL_LOG = LOG_DIR / "l2_signal_log.jsonl"
 BROKER_FILL_LOG = LOG_DIR / "broker_fills.jsonl"
 
 
-def emit_signal(*, signal_id: str, strategy_id: str, bot_id: str,
-                symbol: str, side: str,
-                entry_price: float, intended_stop_price: float,
-                intended_target_price: float,
-                confidence: float, qty_contracts: int,
-                rationale: str = "",
-                ts: datetime | None = None,
-                _path: Path | None = None) -> dict:
+def emit_signal(
+    *,
+    signal_id: str,
+    strategy_id: str,
+    bot_id: str,
+    symbol: str,
+    side: str,
+    entry_price: float,
+    intended_stop_price: float,
+    intended_target_price: float,
+    confidence: float,
+    qty_contracts: int,
+    rationale: str = "",
+    ts: datetime | None = None,
+    _path: Path | None = None,
+) -> dict:
     """Append a signal-emission record to l2_signal_log.jsonl.
 
     Returns the record dict (useful for tests and chained logging).
@@ -98,18 +107,23 @@ def emit_signal(*, signal_id: str, strategy_id: str, bot_id: str,
             f.write(json.dumps(record, separators=(",", ":")) + "\n")
     except OSError as e:
         # Match the D6 hygiene pattern: surface to stderr, never swallow
-        print(f"l2_observability WARN: could not append signal to {path}: {e}",
-              file=sys.stderr)
+        print(f"l2_observability WARN: could not append signal to {path}: {e}", file=sys.stderr)
     return record
 
 
-def emit_fill(*, signal_id: str, broker_exec_id: str,
-              exit_reason: str, side: str,
-              actual_fill_price: float, qty_filled: int,
-              commission_usd: float = 0.0,
-              slip_ticks_vs_intended: float | None = None,
-              ts: datetime | None = None,
-              _path: Path | None = None) -> dict:
+def emit_fill(
+    *,
+    signal_id: str,
+    broker_exec_id: str,
+    exit_reason: str,
+    side: str,
+    actual_fill_price: float,
+    qty_filled: int,
+    commission_usd: float = 0.0,
+    slip_ticks_vs_intended: float | None = None,
+    ts: datetime | None = None,
+    _path: Path | None = None,
+) -> dict:
     """Append a fill record.  Live order router calls this on every
     broker execution event.
 
@@ -126,8 +140,9 @@ def emit_fill(*, signal_id: str, broker_exec_id: str,
         "actual_fill_price": round(float(actual_fill_price), 4),
         "qty_filled": int(qty_filled),
         "commission_usd": round(float(commission_usd), 4),
-        "slip_ticks_vs_intended": (round(float(slip_ticks_vs_intended), 2)
-                                     if slip_ticks_vs_intended is not None else None),
+        "slip_ticks_vs_intended": (
+            round(float(slip_ticks_vs_intended), 2) if slip_ticks_vs_intended is not None else None
+        ),
     }
     path = _path if _path is not None else BROKER_FILL_LOG
     try:
@@ -135,13 +150,11 @@ def emit_fill(*, signal_id: str, broker_exec_id: str,
         with path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(record, separators=(",", ":")) + "\n")
     except OSError as e:
-        print(f"l2_observability WARN: could not append fill to {path}: {e}",
-              file=sys.stderr)
+        print(f"l2_observability WARN: could not append fill to {path}: {e}", file=sys.stderr)
     return record
 
 
-def emit_signal_from_imbalance(signal: object, *, bot_id: str,
-                                _path: Path | None = None) -> dict:  # noqa: ANN001
+def emit_signal_from_imbalance(signal: object, *, bot_id: str, _path: Path | None = None) -> dict:  # noqa: ANN001
     """Convenience adapter for ImbalanceSignal -> signal log record.
     book_imbalance / footprint / aggressor_flow / microprice all emit
     objects with the same minimal shape (signal_id, side, entry_price,

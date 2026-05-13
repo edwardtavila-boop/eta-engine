@@ -17,6 +17,7 @@ Failure semantics: ``enrich()`` never raises. Any exception inside the
 data fetch, calendar load, or computation falls back to safe defaults
 (empty dicts, 0.0 agreement, neutral session string).
 """
+
 from __future__ import annotations
 
 import logging
@@ -162,11 +163,7 @@ def _build_multi_tf(symbol: str) -> dict[str, dict]:
 
 def _agreement(multi_tf: dict[str, dict]) -> float:
     """Mean ``trend_dir`` across TFs that returned data; 0.0 if none."""
-    trends = [
-        snap.get("trend_dir", 0)
-        for snap in multi_tf.values()
-        if isinstance(snap, dict) and "trend_dir" in snap
-    ]
+    trends = [snap.get("trend_dir", 0) for snap in multi_tf.values() if isinstance(snap, dict) and "trend_dir" in snap]
     if not trends:
         return 0.0
     return float(sum(trends)) / float(len(trends))
@@ -229,23 +226,21 @@ def enrich(
     # at most one network call regardless of how many events cluster.
     news_snippets: tuple[str, ...] = ()
     try:
-        high_sev_soon = [
-            e for e in evs
-            if int(getattr(e, "severity", 0) or 0) >= 3
-        ]
+        high_sev_soon = [e for e in evs if int(getattr(e, "severity", 0) or 0) >= 3]
         if high_sev_soon:
             from eta_engine.brain.jarvis_v3 import hermes_client
+
             ev = high_sev_soon[0]
             query = f"latest news {getattr(ev, 'kind', '')}".strip()
             if query:
                 hres = hermes_client.web_search(
-                    query=query, n=3, timeout_s=2.0,
+                    query=query,
+                    n=3,
+                    timeout_s=2.0,
                 )
                 if hres.ok and isinstance(hres.data, list):
                     news_snippets = tuple(
-                        str(s.get("snippet", ""))[:200]
-                        for s in hres.data
-                        if isinstance(s, dict) and s.get("snippet")
+                        str(s.get("snippet", ""))[:200] for s in hres.data if isinstance(s, dict) and s.get("snippet")
                     )
     except Exception as exc:  # noqa: BLE001 — never break enrich() over a network call
         logger.debug("hermes_web_search failed: %s", exc)

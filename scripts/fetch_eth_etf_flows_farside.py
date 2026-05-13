@@ -67,17 +67,15 @@ def fetch(out_path: Path, *, dry_run: bool = False) -> int:
         return len(rows)
     n = _write_csv(out_path, rows)
     last_dt, last_val = rows[-1]
-    print(
-        f"[eth-etf-flows] wrote {n} rows to {out_path}; "
-        f"last={last_dt.date()} ({last_val:+.1f} M USD)"
-    )
+    print(f"[eth-etf-flows] wrote {n} rows to {out_path}; last={last_dt.date()} ({last_val:+.1f} M USD)")
     return n
 
 
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument(
-        "--out", type=Path,
+        "--out",
+        type=Path,
         default=MNQ_HISTORY_ROOT / "ETH_ETF_FLOWS.csv",
     )
     p.add_argument("--dry-run", action="store_true")

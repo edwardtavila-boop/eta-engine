@@ -69,6 +69,7 @@ class BracketStyle(StrEnum):
     ``bracket_style_for(symbol)``. The supervisor uses this to decide
     whether to enable its tick-level exit watch for that bot.
     """
+
     SERVER_OCO = "server_oco"
     SUPERVISOR_LOCAL = "supervisor_local"
 
@@ -98,6 +99,7 @@ class ExecutionCapabilities(BaseModel):
       conversion (IBKR via ``_in_primary_session``). Crypto venues
       where the market is 24/7 should report ``False``.
     """
+
     bracket_style: BracketStyle
     min_cost_basis_usd: float = 0.0
     min_order_qty: float = 0.0

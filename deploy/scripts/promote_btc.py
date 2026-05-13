@@ -1,4 +1,5 @@
 """Promote BTC-related bots from research_candidate → production_candidate."""
+
 from pathlib import Path
 
 fpath = Path(r"C:\EvolutionaryTradingAlgo\eta_engine\strategies\per_bot_registry.py")
@@ -40,17 +41,17 @@ for i, line in enumerate(lines):
         btc_depth = 30  # search next 30 lines for extras
     elif btc_depth > 0:
         btc_depth -= 1
-        if 'extras={' in line and not in_btc_extras:
+        if "extras={" in line and not in_btc_extras:
             in_btc_extras = True
         if in_btc_extras:
             if '"promotion_status": "research_candidate"' in line:
                 lines[i] = line.replace("research_candidate", "production_candidate")
                 promoted += 1
-                print(f"  Line {i+1}: promotion_status -> production_candidate")
+                print(f"  Line {i + 1}: promotion_status -> production_candidate")
             if '"research_candidate": True' in line:
                 lines[i] = line.replace('"research_candidate": True', '"production_candidate": True')
                 promoted += 1
-                print(f"  Line {i+1}: research_candidate -> production_candidate")
+                print(f"  Line {i + 1}: research_candidate -> production_candidate")
 
 content = "\n".join(lines)
 fpath.write_text(content, encoding="utf-8")

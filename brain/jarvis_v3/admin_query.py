@@ -24,6 +24,7 @@ Public API
 
 All functions return plain dicts/lists for easy JSON-serialization.
 """
+
 from __future__ import annotations
 
 import json
@@ -108,10 +109,7 @@ def recent_verdicts(
 ) -> RecentVerdictsReport:
     """Aggregate JARVIS intelligence verdicts over the last n hours."""
     cutoff = datetime.now(UTC) - timedelta(hours=n_hours)
-    records = [
-        r for r in _read_jsonl(log_path)
-        if _within_window(r.get("ts"), cutoff)
-    ]
+    records = [r for r in _read_jsonl(log_path) if _within_window(r.get("ts"), cutoff)]
     if not records:
         return RecentVerdictsReport(window_hours=n_hours, n_total=0)
     by_verdict: Counter[str] = Counter()
@@ -145,10 +143,7 @@ def verdict_breakdown_by_action(
 ) -> dict[str, dict[str, int]]:
     """Pivot table: action -> verdict -> count."""
     cutoff = datetime.now(UTC) - timedelta(hours=n_hours)
-    records = [
-        r for r in _read_jsonl(log_path)
-        if _within_window(r.get("ts"), cutoff)
-    ]
+    records = [r for r in _read_jsonl(log_path) if _within_window(r.get("ts"), cutoff)]
     out: dict[str, dict[str, int]] = {}
     for r in records:
         action = str(r.get("action", "unknown"))
@@ -173,6 +168,7 @@ def regime_distribution(
         from eta_engine.brain.jarvis_v3.memory_hierarchy import (
             HierarchicalMemory,
         )
+
         memory = HierarchicalMemory()
     cutoff = datetime.now(UTC) - timedelta(hours=n_hours)
     counter: Counter[str] = Counter()
@@ -196,10 +192,7 @@ def disagreement_hotspots(
     label. Useful for routing operator attention to setups where
     JARVIS is uncertain."""
     cutoff = datetime.now(UTC) - timedelta(hours=n_hours)
-    records = [
-        r for r in _read_jsonl(log_path)
-        if _within_window(r.get("ts"), cutoff)
-    ]
+    records = [r for r in _read_jsonl(log_path) if _within_window(r.get("ts"), cutoff)]
     grouped: dict[tuple[str, str], list[float]] = {}
     for r in records:
         key = (
@@ -214,12 +207,14 @@ def disagreement_hotspots(
         if len(consensus_list) < min_count:
             continue
         avg = sum(consensus_list) / len(consensus_list)
-        out.append({
-            "subsystem": sub,
-            "action": act,
-            "avg_consensus": round(avg, 3),
-            "count": len(consensus_list),
-        })
+        out.append(
+            {
+                "subsystem": sub,
+                "action": act,
+                "avg_consensus": round(avg, 3),
+                "count": len(consensus_list),
+            }
+        )
     return sorted(out, key=lambda d: d["avg_consensus"])
 
 
@@ -239,6 +234,7 @@ def memory_regime_stats(
         from eta_engine.brain.jarvis_v3.memory_hierarchy import (
             HierarchicalMemory,
         )
+
         memory = HierarchicalMemory()
     grouped: dict[str, list[float]] = {}
     for ep in memory._episodes:
@@ -248,10 +244,14 @@ def memory_regime_stats(
         n = len(rs)
         wr = sum(1 for r in rs if r > 0) / max(n, 1)
         avg = sum(rs) / max(n, 1)
-        out.append(MemoryRegimeStats(
-            regime=regime, n_episodes=n,
-            win_rate=round(wr, 3), avg_r=round(avg, 4),
-        ))
+        out.append(
+            MemoryRegimeStats(
+                regime=regime,
+                n_episodes=n,
+                win_rate=round(wr, 3),
+                avg_r=round(avg, 4),
+            )
+        )
     return sorted(out, key=lambda s: s.n_episodes, reverse=True)
 
 
@@ -271,13 +271,19 @@ def top_analog_episodes(
         from eta_engine.brain.jarvis_v3.memory_hierarchy import (
             HierarchicalMemory,
         )
+
         memory = HierarchicalMemory()
     try:
         from eta_engine.brain.jarvis_v3.memory_rag import retrieve_similar
+
         retrieved = retrieve_similar(
             query_text=narrative,
-            regime=regime, session=session, stress=stress,
-            direction=direction, memory=memory, k=k,
+            regime=regime,
+            session=session,
+            stress=stress,
+            direction=direction,
+            memory=memory,
+            k=k,
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning("admin_query: rag retrieve failed (%s)", exc)
@@ -303,10 +309,7 @@ def trade_close_stats(
 ) -> dict:
     """Aggregate stats from the trade-close feedback log."""
     cutoff = datetime.now(UTC) - timedelta(hours=n_hours)
-    records = [
-        r for r in _read_jsonl(log_path)
-        if _within_window(r.get("ts"), cutoff)
-    ]
+    records = [r for r in _read_jsonl(log_path) if _within_window(r.get("ts"), cutoff)]
     if not records:
         return {"n": 0, "avg_r": 0.0, "win_rate": 0.0}
     rs = [float(r.get("realized_r", 0.0)) for r in records]

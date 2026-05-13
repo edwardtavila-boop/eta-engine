@@ -63,6 +63,7 @@ Run
     python -m eta_engine.scripts.diamond_leaderboard
     python -m eta_engine.scripts.diamond_leaderboard --json
 """
+
 from __future__ import annotations
 
 # ruff: noqa: PLR2004
@@ -77,10 +78,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKSPACE_ROOT = ROOT.parent
-OUT_LATEST = (
-    WORKSPACE_ROOT / "var" / "eta_engine" / "state"
-    / "diamond_leaderboard_latest.json"
-)
+OUT_LATEST = WORKSPACE_ROOT / "var" / "eta_engine" / "state" / "diamond_leaderboard_latest.json"
 
 #: How many top bots get the PROP_READY badge.
 TOP_PROP_READY_N = 3
@@ -152,22 +150,15 @@ def _gather_signals() -> tuple[
         diamond_sizing_audit as sa,
     )
 
-    sizing = {
-        s["bot_id"]: s
-        for s in _safe_run("sizing", sa.run).get("statuses", [])
-    }
-    watchdog = {
-        s["bot_id"]: s
-        for s in _safe_run("watchdog", wd.run_watchdog).get("statuses", [])
-    }
-    direction = {
-        s["bot_id"]: s
-        for s in _safe_run("direction", ds.run).get("statuses", [])
-    }
+    sizing = {s["bot_id"]: s for s in _safe_run("sizing", sa.run).get("statuses", [])}
+    watchdog = {s["bot_id"]: s for s in _safe_run("watchdog", wd.run_watchdog).get("statuses", [])}
+    direction = {s["bot_id"]: s for s in _safe_run("direction", ds.run).get("statuses", [])}
     promotion = {
         c["bot_id"]: c
         for c in _safe_run(
-            "promotion", pg.run, include_existing=True,
+            "promotion",
+            pg.run,
+            include_existing=True,
         ).get("candidates", [])
     }
     return sizing, watchdog, direction, promotion
@@ -195,23 +186,23 @@ def _dual_basis_multiplier(usd_cls: str | None, r_cls: str | None) -> float:
 
 def _sizing_multiplier(verdict: str | None) -> float:
     return {
-        "SIZING_OK":         1.0,
-        "SIZING_TIGHT":      0.85,
-        "SIZING_FRAGILE":    0.6,
-        "SIZING_BREACHED":   0.3,
+        "SIZING_OK": 1.0,
+        "SIZING_TIGHT": 0.85,
+        "SIZING_FRAGILE": 0.6,
+        "SIZING_BREACHED": 0.3,
         "INSUFFICIENT_DATA": 0.7,
     }.get(verdict or "INSUFFICIENT_DATA", 0.7)
 
 
 def _symmetry_bonus(verdict: str | None) -> float:
     return {
-        "SYMMETRIC":          1.00,
-        "LONG_DOMINANT":      0.92,
-        "SHORT_DOMINANT":     0.92,
-        "LONG_ONLY_EDGE":     0.75,
-        "SHORT_ONLY_EDGE":    0.75,
+        "SYMMETRIC": 1.00,
+        "LONG_DOMINANT": 0.92,
+        "SHORT_DOMINANT": 0.92,
+        "LONG_ONLY_EDGE": 0.75,
+        "SHORT_ONLY_EDGE": 0.75,
         "BIDIRECTIONAL_LOSS": 0.30,
-        "INSUFFICIENT_DATA":  0.85,
+        "INSUFFICIENT_DATA": 0.85,
     }.get(verdict or "INSUFFICIENT_DATA", 0.85)
 
 
@@ -247,14 +238,10 @@ def _build_entry(
         short_avg = short_d.get("avg_r") or 0.0
         if n_total > 0:
             e.n_trades = max(e.n_trades, n_total)
-            e.avg_r = (
-                (n_long * long_avg + n_short * short_avg) / n_total
-            )
+            e.avg_r = (n_long * long_avg + n_short * short_avg) / n_total
             long_wr = long_d.get("win_rate_pct") or 0.0
             short_wr = short_d.get("win_rate_pct") or 0.0
-            e.win_rate_pct = (
-                (n_long * long_wr + n_short * short_wr) / n_total
-            )
+            e.win_rate_pct = (n_long * long_wr + n_short * short_wr) / n_total
 
     # Edge score: avg_r × √n, capped at SQRT_N_CAP
     sqrt_n = min(math.sqrt(max(e.n_trades, 0)), SQRT_N_CAP)
@@ -390,13 +377,7 @@ def run() -> dict[str, Any]:
         # (which _build_entry left at default 1.0)
         sqrt_n = min(math.sqrt(max(e.n_trades, 0)), SQRT_N_CAP)
         e.edge_score = round(e.avg_r * sqrt_n, 4)
-        composite = (
-            abs(e.edge_score)
-            * e.dual_basis_mul
-            * e.sizing_mul
-            * e.symmetry_bonus
-            * e.temporal_mul
-        )
+        composite = abs(e.edge_score) * e.dual_basis_mul * e.sizing_mul * e.symmetry_bonus * e.temporal_mul
         if e.edge_score < 0:
             composite = -composite
         # Apply temporal scaling — if direction stratify n_long+n_short
@@ -432,7 +413,8 @@ def run() -> dict[str, Any]:
     try:
         OUT_LATEST.parent.mkdir(parents=True, exist_ok=True)
         OUT_LATEST.write_text(
-            json.dumps(summary, indent=2, default=str), encoding="utf-8",
+            json.dumps(summary, indent=2, default=str),
+            encoding="utf-8",
         )
     except OSError as exc:
         print(f"WARN: write_latest failed: {exc}", file=sys.stderr)
@@ -442,21 +424,18 @@ def run() -> dict[str, Any]:
 def _print(summary: dict[str, Any]) -> None:
     print("=" * 130)
     print(
-        f" DIAMOND LEADERBOARD  ({summary['ts']})  "
-        f"PROP_READY: {summary['n_prop_ready']}/{summary['top_prop_ready_n']}",
+        f" DIAMOND LEADERBOARD  ({summary['ts']})  PROP_READY: {summary['n_prop_ready']}/{summary['top_prop_ready_n']}",
     )
     print("=" * 130)
     if summary["prop_ready_bots"]:
         print(
-            "  >>> PROP_READY (earned right to real-capital trading): "
-            + ", ".join(summary["prop_ready_bots"]),
+            "  >>> PROP_READY (earned right to real-capital trading): " + ", ".join(summary["prop_ready_bots"]),
         )
     else:
         print("  >>> No bots currently qualify for PROP_READY.")
     print()
     print(
-        f" {'rank':>4s}  {'bot':25s}  {'n':>5s}  {'avg_R':>7s}  "
-        f"{'composite':>10s}  {'PROP':>5s}  rationale",
+        f" {'rank':>4s}  {'bot':25s}  {'n':>5s}  {'avg_R':>7s}  {'composite':>10s}  {'PROP':>5s}  rationale",
     )
     print("-" * 130)
     for e in summary["leaderboard"]:
@@ -472,8 +451,7 @@ def _print(summary: dict[str, Any]) -> None:
         )
         if e.get("prop_ready_disqualified_for"):
             print(
-                "                                               "
-                f"DQ: {'; '.join(e['prop_ready_disqualified_for'])}",
+                f"                                               DQ: {'; '.join(e['prop_ready_disqualified_for'])}",
             )
     print()
 

@@ -48,6 +48,7 @@ Public interface
 
 Storage: no writes; pure read-and-compute.
 """
+
 from __future__ import annotations
 
 import logging
@@ -113,7 +114,8 @@ def _verdict_from_score(score: float) -> str:
 
 
 def _compute_final_score(
-    scores: dict[str, float], weights: dict[str, float] | None,
+    scores: dict[str, float],
+    weights: dict[str, float] | None,
 ) -> float:
     """Weighted average of school scores; missing weight defaults to 1.0."""
     if not scores:
@@ -173,6 +175,7 @@ def _find_record(consult_id: str, lookback: int = 5000) -> dict[str, Any] | None
     """
     try:
         from eta_engine.brain.jarvis_v3 import trace_emitter
+
         records = trace_emitter.tail(n=lookback) or []
         for rec in records:
             if isinstance(rec, dict) and rec.get("consult_id") == consult_id:
@@ -230,6 +233,7 @@ def analyze(
 
     try:
         from eta_engine.brain.jarvis_v3 import trace_emitter
+
         if not trace_emitter.is_v2_record(rec):
             return _empty_report(consult_id, "pre_v2_record_no_causal_data")
         replay = trace_emitter.extract_replay_inputs(rec)
@@ -260,17 +264,19 @@ def analyze(
         new_verdict = _verdict_from_score(new_final)
         is_decisive = new_verdict != base_verdict
 
-        attributions.append(SchoolAttribution(
-            school=school,
-            base_score=base_score,
-            perturbed_score=perturbed[school],
-            base_verdict=base_verdict,
-            perturbed_verdict=new_verdict,
-            base_final=base_final,
-            perturbed_final=new_final,
-            marginal_final_delta=new_final - base_final,
-            is_decisive=is_decisive,
-        ))
+        attributions.append(
+            SchoolAttribution(
+                school=school,
+                base_score=base_score,
+                perturbed_score=perturbed[school],
+                base_verdict=base_verdict,
+                perturbed_verdict=new_verdict,
+                base_final=base_final,
+                perturbed_final=new_final,
+                marginal_final_delta=new_final - base_final,
+                is_decisive=is_decisive,
+            )
+        )
         if is_decisive:
             decisive.append(school)
 

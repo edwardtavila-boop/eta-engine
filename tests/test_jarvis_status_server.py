@@ -1,4 +1,5 @@
 """Tests for jarvis_status_server - the operator-facing contact point."""
+
 from __future__ import annotations
 
 import json
@@ -48,6 +49,7 @@ def _get_json(host: str, port: int, path: str) -> tuple[int, Any]:
 def test_root_returns_html(monkeypatch) -> None:
     """GET / returns operator-facing HTML."""
     from eta_engine.scripts import jarvis_status_server
+
     monkeypatch.setattr(jarvis_status_server, "_try_zeus_snapshot", lambda: {})
     monkeypatch.setattr(jarvis_status_server, "_try_tool_list", lambda: [])
 
@@ -71,8 +73,8 @@ def test_health_returns_ok_json() -> None:
 def test_contact_returns_addresses(monkeypatch) -> None:
     """GET /contact returns the full operator contact card."""
     from eta_engine.scripts import jarvis_status_server
-    monkeypatch.setattr(jarvis_status_server, "_try_tool_list",
-                        lambda: ["jarvis_fleet_status", "jarvis_zeus"])
+
+    monkeypatch.setattr(jarvis_status_server, "_try_tool_list", lambda: ["jarvis_fleet_status", "jarvis_zeus"])
 
     with _server() as (host, port):
         status, payload = _get_json(host, port, "/contact")
@@ -111,13 +113,13 @@ def test_tools_returns_categorized_list(monkeypatch) -> None:
     from eta_engine.scripts import jarvis_status_server
 
     tools = [
-        "jarvis_fleet_status",          # read
-        "jarvis_set_size_modifier",     # write
-        "jarvis_kill_switch",            # destructive
-        "jarvis_attribution_cube",       # analytics
-        "jarvis_register_agent",         # coordination
-        "jarvis_cost_today",             # telemetry
-        "jarvis_zeus",                   # unified
+        "jarvis_fleet_status",  # read
+        "jarvis_set_size_modifier",  # write
+        "jarvis_kill_switch",  # destructive
+        "jarvis_attribution_cube",  # analytics
+        "jarvis_register_agent",  # coordination
+        "jarvis_cost_today",  # telemetry
+        "jarvis_zeus",  # unified
     ]
     monkeypatch.setattr(jarvis_status_server, "_try_tool_list", lambda: tools)
 
@@ -138,8 +140,7 @@ def test_unknown_path_returns_404() -> None:
     """GET /this-route-does-not-exist returns 404."""
     with _server() as (host, port):
         try:
-            urllib.request.urlopen(f"http://{host}:{port}/no-such-route",
-                                   timeout=5)
+            urllib.request.urlopen(f"http://{host}:{port}/no-such-route", timeout=5)
         except urllib.error.HTTPError as exc:
             assert exc.code == 404
             return
@@ -191,10 +192,12 @@ def test_categorize_tools_handles_unknown_tools() -> None:
     """Tools not in any predefined set fall into the 'read' bucket."""
     from eta_engine.scripts import jarvis_status_server
 
-    cats = jarvis_status_server._categorize_tools([
-        "jarvis_brand_new_tool",  # unknown
-        "jarvis_zeus",             # unified
-    ])
+    cats = jarvis_status_server._categorize_tools(
+        [
+            "jarvis_brand_new_tool",  # unknown
+            "jarvis_zeus",  # unified
+        ]
+    )
     assert "jarvis_brand_new_tool" in cats["read"]
     assert "jarvis_zeus" in cats["unified"]
 
@@ -239,7 +242,8 @@ def test_serve_binds_to_specified_port(monkeypatch) -> None:
     try:
         time.sleep(0.05)
         with urllib.request.urlopen(
-            f"http://127.0.0.1:{port}/health", timeout=5,
+            f"http://127.0.0.1:{port}/health",
+            timeout=5,
         ) as resp:
             assert resp.status == 200
     finally:

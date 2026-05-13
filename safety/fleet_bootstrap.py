@@ -83,10 +83,7 @@ def bootstrap_fleet_risk(
         if not bot_list:
             equity = _sum_active_starting_equity()
         else:
-            equity = sum(
-                float(getattr(b.config, "starting_capital_usd", 0.0))
-                for b in bot_list
-            )
+            equity = sum(float(getattr(b.config, "starting_capital_usd", 0.0)) for b in bot_list)
     else:
         equity = _sum_active_starting_equity()
 
@@ -107,6 +104,7 @@ def bootstrap_fleet_risk(
             bot_id = getattr(bot.config, "name", None)
             if bot_id is not None and get_for_bot(bot_id) is None:
                 import logging
+
                 logging.getLogger(__name__).warning(
                     "bootstrap_fleet_risk: bot %r has no registry "
                     "entry; PnL will accumulate under that name "

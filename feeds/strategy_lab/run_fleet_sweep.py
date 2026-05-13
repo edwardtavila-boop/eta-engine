@@ -1,8 +1,9 @@
 """CLI: run a full-fleet walk-forward sweep.
 
-    python -m eta_engine.feeds.strategy_lab.run_fleet_sweep [--out PATH]
-    python eta_engine/feeds/strategy_lab/run_fleet_sweep.py
+python -m eta_engine.feeds.strategy_lab.run_fleet_sweep [--out PATH]
+python eta_engine/feeds/strategy_lab/run_fleet_sweep.py
 """
+
 from __future__ import annotations
 
 import argparse
@@ -16,7 +17,7 @@ _WORKSPACE = _HERE.parents[3]
 if str(_WORKSPACE) not in sys.path:
     sys.path.insert(0, str(_WORKSPACE))
 
-from eta_engine.feeds.strategy_lab.engine import fleet_sweep, LAB_REPORTS_ROOT
+from eta_engine.feeds.strategy_lab.engine import LAB_REPORTS_ROOT, fleet_sweep
 
 
 def main() -> int:

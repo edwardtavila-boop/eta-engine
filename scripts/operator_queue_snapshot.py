@@ -73,9 +73,8 @@ def compare_snapshots(
     bot_readiness_status_changed = current.get("bot_strategy_readiness_status") != previous.get(
         "bot_strategy_readiness_status"
     )
-    bot_blocked_data_delta = (
-        int(current.get("bot_strategy_blocked_data") or 0)
-        - int(previous.get("bot_strategy_blocked_data") or 0)
+    bot_blocked_data_delta = int(current.get("bot_strategy_blocked_data") or 0) - int(
+        previous.get("bot_strategy_blocked_data") or 0
     )
     if blocked_count_delta:
         changed_fields.append("blocked_count")
@@ -87,46 +86,24 @@ def compare_snapshots(
         changed_fields.append("launch_status")
     if first_blocker_changed:
         changed_fields.append("first_blocker_op_id")
-    if (
-        first_launch_blocker_changed
-        and (
-            "first_launch_blocker_op_id" in previous
-            and "first_launch_blocker_op_id" in current
-        )
+    if first_launch_blocker_changed and (
+        "first_launch_blocker_op_id" in previous and "first_launch_blocker_op_id" in current
     ):
         changed_fields.append("first_launch_blocker_op_id")
     if first_next_action_changed:
         changed_fields.append("first_next_action")
-    if (
-        first_launch_next_action_changed
-        and (
-            "first_launch_next_action" in previous
-            and "first_launch_next_action" in current
-        )
+    if first_launch_next_action_changed and (
+        "first_launch_next_action" in previous and "first_launch_next_action" in current
     ):
         changed_fields.append("first_launch_next_action")
-    if (
-        bot_readiness_status_changed
-        and (
-            "bot_strategy_readiness_status" in previous
-            or "bot_strategy_readiness_status" in current
-        )
+    if bot_readiness_status_changed and (
+        "bot_strategy_readiness_status" in previous or "bot_strategy_readiness_status" in current
     ):
         changed_fields.append("bot_strategy_readiness_status")
-    if (
-        bot_blocked_data_delta
-        and (
-            "bot_strategy_blocked_data" in previous
-            or "bot_strategy_blocked_data" in current
-        )
-    ):
+    if bot_blocked_data_delta and ("bot_strategy_blocked_data" in previous or "bot_strategy_blocked_data" in current):
         changed_fields.append("bot_strategy_blocked_data")
     changed = bool(changed_fields)
-    summary = (
-        "operator queue drift detected: " + ", ".join(changed_fields)
-        if changed
-        else "operator queue unchanged"
-    )
+    summary = "operator queue drift detected: " + ", ".join(changed_fields) if changed else "operator queue unchanged"
     return {
         "previous_present": True,
         "changed": changed,
@@ -306,11 +283,7 @@ def build_snapshot(*, limit: int = 5, refresh_readiness: bool = False) -> dict[s
     first_launch_next_action = (
         launch_next_actions[0]
         if isinstance(launch_next_actions, list) and launch_next_actions
-        else (
-            next_actions[0]
-            if launch_blocked > 0 and isinstance(next_actions, list) and next_actions
-            else None
-        )
+        else (next_actions[0] if launch_blocked > 0 and isinstance(next_actions, list) and next_actions else None)
     )
     bot_blocked_data, bot_paper_ready, bot_can_live_any = _readiness_summary(readiness)
     return {

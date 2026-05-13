@@ -10,6 +10,7 @@ Usage::
     python -m eta_engine.scripts.shadow_fleet_validator --tasks 50 \\
         --output var/shadow_validation.jsonl
 """
+
 from __future__ import annotations
 
 import json
@@ -96,20 +97,10 @@ def run_shadow_comparison(
                 task_id=task_id,
                 category=cat_name,
                 goal=goal,
-                single_provider=(
-                    single_result.persona_id.value if single_result.success else "FAILED"
-                ),
-                multi_provider=(
-                    multi_result.persona_id.value if multi_result.success else "FAILED"
-                ),
-                single_text=(
-                    single_result.artifact[:500] if single_result.success
-                    else single_result.reason
-                ),
-                multi_text=(
-                    multi_result.artifact[:500] if multi_result.success
-                    else multi_result.reason
-                ),
+                single_provider=(single_result.persona_id.value if single_result.success else "FAILED"),
+                multi_provider=(multi_result.persona_id.value if multi_result.success else "FAILED"),
+                single_text=(single_result.artifact[:500] if single_result.success else single_result.reason),
+                multi_text=(multi_result.artifact[:500] if multi_result.success else multi_result.reason),
                 single_ms=round(single_ms, 1),
                 multi_ms=round(multi_ms, 1),
                 multi_fallback=False,
@@ -119,9 +110,12 @@ def run_shadow_comparison(
 
             logger.info(
                 "shadow [%s] %s: single=%s(%.0fms) multi=%s(%.0fms)",
-                task_id, cat_name,
-                sr.single_provider, sr.single_ms,
-                sr.multi_provider, sr.multi_ms,
+                task_id,
+                cat_name,
+                sr.single_provider,
+                sr.single_ms,
+                sr.multi_provider,
+                sr.multi_ms,
             )
 
     if output_path:
@@ -176,7 +170,9 @@ if __name__ == "__main__":
     parser.add_argument("--tasks", type=int, default=6, help="Tasks per category")
     parser.add_argument("--output", type=str, default="var/shadow_validation.jsonl")
     parser.add_argument(
-        "--categories", type=str, nargs="*",
+        "--categories",
+        type=str,
+        nargs="*",
         help="Specific categories to test (default: 6 key categories)",
     )
     args = parser.parse_args()

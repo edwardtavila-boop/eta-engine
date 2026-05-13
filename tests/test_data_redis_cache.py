@@ -36,9 +36,9 @@ def test_lru_set_then_get_returns_value() -> None:
 def test_lru_expires_past_ttl() -> None:
     c = InProcessLRUCache()
     c.set("k", "v", ttl_seconds=1.0, now=100.0)
-    assert c.get("k", now=99.5) == "v"          # before expiry
-    assert c.get("k", now=101.5) is None        # past expiry
-    assert "k" not in c._d                      # eviction observed
+    assert c.get("k", now=99.5) == "v"  # before expiry
+    assert c.get("k", now=101.5) is None  # past expiry
+    assert "k" not in c._d  # eviction observed
 
 
 def test_lru_evicts_oldest_when_full() -> None:

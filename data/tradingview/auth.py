@@ -70,10 +70,7 @@ class AuthState:
         TradingView gates the chart and watchlist behind the ``sessionid``
         cookie set on the ``.tradingview.com`` domain.
         """
-        return any(
-            c.get("name") == "sessionid" and ".tradingview.com" in c.get("domain", "")
-            for c in self.cookies
-        )
+        return any(c.get("name") == "sessionid" and ".tradingview.com" in c.get("domain", "") for c in self.cookies)
 
 
 def load_auth_state(path: Path | str | None = None) -> AuthState:
@@ -90,9 +87,7 @@ def load_auth_state(path: Path | str | None = None) -> AuthState:
         st = p.stat()
         mode = stat.S_IMODE(st.st_mode)
         if mode & 0o077:
-            raise AuthStateError(
-                f"auth state {p} mode {oct(mode)} too open; chmod 600"
-            )
+            raise AuthStateError(f"auth state {p} mode {oct(mode)} too open; chmod 600")
 
     try:
         raw = p.read_text(encoding="utf-8")

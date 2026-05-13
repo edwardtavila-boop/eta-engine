@@ -8,6 +8,7 @@ confirms, treat it as a wave 3 of an impulsive sequence.
 The strict NEoWave-style counting is left for future iteration; this
 gives a usable signal without false-precision claims about wave 1/4/5.
 """
+
 from __future__ import annotations
 
 from eta_engine.brain.jarvis_v3.sage.base import (
@@ -34,41 +35,49 @@ class ElliottWaveSchool(SchoolBase):
         n = ctx.n_bars
         if n < 30:
             return SchoolVerdict(
-                school=self.NAME, bias=Bias.NEUTRAL, conviction=0.0,
+                school=self.NAME,
+                bias=Bias.NEUTRAL,
+                conviction=0.0,
                 aligned_with_entry=False,
                 rationale=f"insufficient bars ({n} < 30)",
             )
         closes = ctx.closes()
         last3_move = closes[-1] - closes[-4] if n >= 4 else 0
-        def _3bar_extremes():
+
+        def _3bar_extremes() -> tuple[float, float]:
             return (
                 max(closes[i] - closes[i - 3] for i in range(3, n) if i >= 3),
                 min(closes[i] - closes[i - 3] for i in range(3, n) if i >= 3),
             )
+
         max_3bar_up, max_3bar_dn = get_or_compute(ctx, "elliott_3bar_extremes", _3bar_extremes)
 
         # Wave-3 candidate = the latest 3-bar move equals (or close to) the
         # extreme run of the window
         if max_3bar_up > 0 and last3_move >= 0.85 * max_3bar_up:
             return SchoolVerdict(
-                school=self.NAME, bias=Bias.LONG, conviction=0.65,
+                school=self.NAME,
+                bias=Bias.LONG,
+                conviction=0.65,
                 aligned_with_entry=(ctx.side.lower() == "long"),
                 rationale="momentum run consistent with bullish wave 3",
                 signals={"last3_move": last3_move, "max_3bar_up": max_3bar_up},
             )
         if max_3bar_dn < 0 and last3_move <= 0.85 * max_3bar_dn:
             return SchoolVerdict(
-                school=self.NAME, bias=Bias.SHORT, conviction=0.65,
+                school=self.NAME,
+                bias=Bias.SHORT,
+                conviction=0.65,
                 aligned_with_entry=(ctx.side.lower() == "short"),
                 rationale="momentum run consistent with bearish wave 3",
                 signals={"last3_move": last3_move, "max_3bar_dn": max_3bar_dn},
             )
         # Choppy / correction phase
         return SchoolVerdict(
-            school=self.NAME, bias=Bias.NEUTRAL, conviction=0.20,
+            school=self.NAME,
+            bias=Bias.NEUTRAL,
+            conviction=0.20,
             aligned_with_entry=False,
             rationale="no impulsive run detected -- likely correction (wave 4 / A-B-C)",
-            signals={"last3_move": last3_move,
-                     "max_3bar_up": max_3bar_up,
-                     "max_3bar_dn": max_3bar_dn},
+            signals={"last3_move": last3_move, "max_3bar_up": max_3bar_up, "max_3bar_dn": max_3bar_dn},
         )

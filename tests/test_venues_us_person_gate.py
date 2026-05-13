@@ -32,11 +32,15 @@ def test_default_is_us_person_true() -> None:
     assert IS_US_PERSON is True or IS_US_PERSON is False  # exists
     # Loud explicit assertion: when env not set, default True.
     import os
+
     saved = os.environ.pop("ETA_IS_US_PERSON", None)
     try:
         # Re-evaluate the same expression the module uses:
         evaluated = os.environ.get("ETA_IS_US_PERSON", "true").lower() in (
-            "1", "true", "yes", "y",
+            "1",
+            "true",
+            "yes",
+            "y",
         )
         assert evaluated is True
     finally:
@@ -135,6 +139,7 @@ def test_cme_codes_recognized_as_futures() -> None:
     """The CME crypto codes MBT/MET/BTC/ETH/SOL/XRP are recognized as futures
     so the rest of the router routes them via IBKR."""
     from eta_engine.venues.router import _is_futures
+
     for code in ("MBT", "MET", "BTC", "ETH", "SOL", "XRP"):
         assert _is_futures(code), f"{code} should be classified as a CME future"
     # And with month codes (e.g. MBTH26 = March 2026)

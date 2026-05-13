@@ -16,6 +16,7 @@ Usage::
         # ... run backtest ...
         run.log_metrics({"avg_realized_r": 0.45, "avg_alignment": 0.72})
 """
+
 from __future__ import annotations
 
 import contextlib
@@ -23,7 +24,10 @@ import logging
 import os
 import time
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +37,7 @@ _DEFAULT_TRACKING_URI = (Path(__file__).resolve().parents[4] / "state" / "mlflow
 def _mlflow_available() -> bool:
     try:
         import mlflow  # noqa: F401
+
         return True
     except ImportError:
         return False
@@ -45,7 +50,7 @@ def track_backtest(
     params: dict[str, Any] | None = None,
     tracking_uri: str | None = None,
     experiment: str = "sage_backtests",
-):
+) -> Iterator[_FakeRun | _MlflowRun]:
     """Context manager that creates an MLflow run for a backtest.
 
     Logs params at entry, metrics on exit, and auto-closes the run.
@@ -89,12 +94,13 @@ def track_backtest(
 
 
 class _MlflowRun:
-    def __init__(self, run: Any) -> None:
+    def __init__(self, run: object) -> None:
         self._run = run
 
     def log_metrics(self, metrics: dict[str, float]) -> None:
         try:
             import mlflow
+
             for k, v in metrics.items():
                 mlflow.log_metric(k, v)
         except Exception:  # noqa: BLE001
@@ -103,6 +109,7 @@ class _MlflowRun:
     def log_artifact(self, path: str | Path) -> None:
         try:
             import mlflow
+
             mlflow.log_artifact(str(path))
         except Exception:  # noqa: BLE001
             pass
@@ -110,6 +117,7 @@ class _MlflowRun:
     def log_params(self, params: dict[str, Any]) -> None:
         try:
             import mlflow
+
             mlflow.log_params(params)
         except Exception:  # noqa: BLE001
             pass
@@ -118,7 +126,9 @@ class _MlflowRun:
 class _FakeRun:
     def log_metrics(self, metrics: dict[str, float]) -> None:
         pass
+
     def log_artifact(self, path: str | Path) -> None:
         pass
+
     def log_params(self, params: dict[str, Any]) -> None:
         pass

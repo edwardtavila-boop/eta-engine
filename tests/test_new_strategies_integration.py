@@ -1,4 +1,5 @@
 """Integration test: validates all new strategies through factory + bridge pipeline."""
+
 import sys
 
 sys.path.insert(0, r"C:\EvolutionaryTradingAlgo")
@@ -18,6 +19,7 @@ def test_all_new_strategies_import():
     from eta_engine.strategies.rsi_mean_reversion_strategy import RSIMeanReversionStrategy
     from eta_engine.strategies.volume_profile_strategy import VolumeProfileStrategy
     from eta_engine.strategies.vwap_reversion_strategy import VWAPReversionStrategy
+
     assert RSIMeanReversionStrategy is not None
     assert VWAPReversionStrategy is not None
     assert VolumeProfileStrategy is not None
@@ -29,11 +31,16 @@ def test_all_new_strategies_import():
 def test_all_new_bots_registered():
     """All new bot IDs registered in per_bot_registry."""
     new_ids = [
-        "rsi_mr_mnq", "rsi_mr_btc",
-        "vwap_mr_mnq", "vwap_mr_btc",
-        "volume_profile_mnq", "volume_profile_btc",
-        "gap_fill_mnq", "gap_fill_btc",
-        "cross_asset_mnq", "cross_asset_btc",
+        "rsi_mr_mnq",
+        "rsi_mr_btc",
+        "vwap_mr_mnq",
+        "vwap_mr_btc",
+        "volume_profile_mnq",
+        "volume_profile_btc",
+        "gap_fill_mnq",
+        "gap_fill_btc",
+        "cross_asset_mnq",
+        "cross_asset_btc",
         "funding_rate_btc",
     ]
     all_bots = set(bots())
@@ -49,8 +56,12 @@ def test_all_new_bots_registered():
 def test_factory_builds_all_kinds():
     """All 6 strategy kinds build through the factory."""
     kinds = [
-        "rsi_mean_reversion", "vwap_reversion", "volume_profile",
-        "gap_fill", "cross_asset_divergence", "funding_rate",
+        "rsi_mean_reversion",
+        "vwap_reversion",
+        "volume_profile",
+        "gap_fill",
+        "cross_asset_divergence",
+        "funding_rate",
     ]
     for kind in kinds:
         factory = _build_strategy_factory(kind, {"per_ticker_optimal": "mnq"})
@@ -89,7 +100,7 @@ def test_bridge_builds_active_bots():
     active = [
         # volume_profile: the strict-gate survivor pair.
         "volume_profile_mnq",  # STRICT GATE PASS sh_def +2.86
-        "volume_profile_nq",   # sh_def +2.08
+        "volume_profile_nq",  # sh_def +2.08
         # sweep_reclaim survivor (positive net + split-stable on corrected engine):
         "m2k_sweep_reclaim",
     ]
@@ -160,13 +171,27 @@ def test_presets_instantiate():
     )
 
     presets = [
-        mnq_rsi_mr_preset(), btc_rsi_mr_preset(), eth_rsi_mr_preset(), nq_rsi_mr_preset(),
-        mnq_vwap_mr_preset(), btc_vwap_mr_preset(), eth_vwap_mr_preset(), nq_vwap_mr_preset(),
-        mnq_volume_profile_preset(), btc_volume_profile_preset(),
-        eth_volume_profile_preset(), nq_volume_profile_preset(),
-        mnq_gap_fill_preset(), btc_gap_fill_preset(), eth_gap_fill_preset(), nq_gap_fill_preset(),
-        mnq_vs_es_divergence_preset(), btc_vs_eth_divergence_preset(), nq_vs_es_divergence_preset(),
-        btc_funding_rate_preset(), eth_funding_rate_preset(),
+        mnq_rsi_mr_preset(),
+        btc_rsi_mr_preset(),
+        eth_rsi_mr_preset(),
+        nq_rsi_mr_preset(),
+        mnq_vwap_mr_preset(),
+        btc_vwap_mr_preset(),
+        eth_vwap_mr_preset(),
+        nq_vwap_mr_preset(),
+        mnq_volume_profile_preset(),
+        btc_volume_profile_preset(),
+        eth_volume_profile_preset(),
+        nq_volume_profile_preset(),
+        mnq_gap_fill_preset(),
+        btc_gap_fill_preset(),
+        eth_gap_fill_preset(),
+        nq_gap_fill_preset(),
+        mnq_vs_es_divergence_preset(),
+        btc_vs_eth_divergence_preset(),
+        nq_vs_es_divergence_preset(),
+        btc_funding_rate_preset(),
+        eth_funding_rate_preset(),
     ]
     for cfg in presets:
         assert cfg is not None
@@ -178,10 +203,17 @@ def test_scorecard_wrapping():
     from eta_engine.strategies.rsi_mean_reversion_strategy import RSIMeanReversionStrategy, mnq_rsi_mr_preset
 
     sub = RSIMeanReversionStrategy(mnq_rsi_mr_preset())
-    sc = ConfluenceScorecardStrategy(sub, ConfluenceScorecardConfig(
-        min_score=2, a_plus_score=3, a_plus_size_mult=1.3,
-        fast_ema=9, mid_ema=21, slow_ema=50,
-    ))
+    sc = ConfluenceScorecardStrategy(
+        sub,
+        ConfluenceScorecardConfig(
+            min_score=2,
+            a_plus_score=3,
+            a_plus_size_mult=1.3,
+            fast_ema=9,
+            mid_ema=21,
+            slow_ema=50,
+        ),
+    )
     assert sc is not None
     assert hasattr(sc, "maybe_enter")
 
@@ -192,6 +224,7 @@ def test_providers_available():
         _build_cross_asset_ref_provider,
         _build_funding_rate_provider,
     )
+
     ref = _build_cross_asset_ref_provider("MNQ", "ES1", "5m")
     assert ref is not None
     assert callable(ref)
@@ -231,9 +264,7 @@ def test_sol_optimized_uses_sol_specific_sweep_preset() -> None:
     a = get_for_bot("sol_optimized")
     assert a is not None
     sub = a.extras["sub_strategy_extras"]
-    assert sub["sweep_preset"] == "sol", (
-        f"sol_optimized must pin sweep_preset='sol', got {sub['sweep_preset']!r}"
-    )
+    assert sub["sweep_preset"] == "sol", f"sol_optimized must pin sweep_preset='sol', got {sub['sweep_preset']!r}"
     assert a.extras["edge_config"] == "sol_crypto", (
         f"sol_optimized must use sol_crypto edge preset, got {a.extras['edge_config']!r}"
     )
@@ -250,8 +281,7 @@ def test_sol_optimized_uses_sol_specific_sweep_preset() -> None:
     # only set rr_target / atr_stop_mult / max_trades_per_day /
     # min_bars_between_trades, leaving everything else from the preset).
     assert strat.cfg.min_wick_pct == 0.20, (
-        f"SOL preset min_wick_pct lost in build; got {strat.cfg.min_wick_pct} "
-        "(BTC fallback would yield 0.30)"
+        f"SOL preset min_wick_pct lost in build; got {strat.cfg.min_wick_pct} (BTC fallback would yield 0.30)"
     )
 
 
@@ -299,6 +329,7 @@ def test_volume_profile_btc_wraps_with_edge_amplifier() -> None:
     import pytest
 
     from eta_engine.strategies.per_bot_registry import is_bot_active
+
     if not is_bot_active("volume_profile_btc"):
         pytest.skip("volume_profile_btc retired 2026-05-08 round-4 audit")
     from eta_engine.strategies.edge_layers import EdgeAmplifier, btc_crypto_preset
@@ -308,9 +339,7 @@ def test_volume_profile_btc_wraps_with_edge_amplifier() -> None:
 
     a = get_for_bot("volume_profile_btc")
     assert a is not None
-    assert a.extras.get("edge_enabled") is True, (
-        "volume_profile_btc missing edge_enabled — vol_sizing won't apply"
-    )
+    assert a.extras.get("edge_enabled") is True, "volume_profile_btc missing edge_enabled — vol_sizing won't apply"
     assert a.extras.get("edge_config") == "btc_crypto", (
         f"expected btc_crypto edge preset, got {a.extras.get('edge_config')!r}"
     )
@@ -332,8 +361,7 @@ def test_volume_profile_btc_wraps_with_edge_amplifier() -> None:
     callable_fn = _build_callable_for_assignment(a)
     assert callable_fn is not None
     cellnames = callable_fn.__code__.co_freevars
-    cellvals = {n: callable_fn.__closure__[i].cell_contents
-                for i, n in enumerate(cellnames)}
+    cellvals = {n: callable_fn.__closure__[i].cell_contents for i, n in enumerate(cellnames)}
     outer = cellvals.get("strategy") or cellvals.get("wrapped")
     assert outer is not None, f"no strategy in closure freevars: {cellnames}"
 
@@ -356,9 +384,7 @@ def test_volume_profile_btc_wraps_with_edge_amplifier() -> None:
             or getattr(cursor, "_strategy", None)
         )
 
-    assert found_amplifier is not None, (
-        f"EdgeAmplifier not found in wrap chain starting at {type(outer).__name__}"
-    )
+    assert found_amplifier is not None, f"EdgeAmplifier not found in wrap chain starting at {type(outer).__name__}"
     # btc_crypto preset has enable_vol_sizing=True — assert that
     # specifically since that's the audit's point.
     expected = btc_crypto_preset()

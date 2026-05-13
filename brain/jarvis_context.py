@@ -1196,6 +1196,7 @@ def _build_sage_summary() -> dict[str, Any] | None:
     state: dict[str, Any] = {}
     try:
         from eta_engine.brain.jarvis_v3.sage.edge_tracker import default_tracker
+
         tracker = default_tracker()
         state["edge_health"] = tracker.snapshot()
         mods = tracker.all_weight_modifiers()
@@ -1205,16 +1206,19 @@ def _build_sage_summary() -> dict[str, Any] | None:
         state["edge_health"] = {}
     try:
         from eta_engine.brain.jarvis_v3.policies.v22_sage_confluence import get_sage_thresholds
+
         state["v22_thresholds"] = get_sage_thresholds()
     except Exception:  # noqa: BLE001
         state["v22_thresholds"] = {}
     try:
         from eta_engine.brain.jarvis_v3.sage.last_report_cache import cache_size
+
         state["last_report_cache_size"] = cache_size()
     except Exception:  # noqa: BLE001
         pass
     try:
         from eta_engine.brain.jarvis_v3.sage.health import default_monitor
+
         monitor = default_monitor()
         state["school_health"] = monitor.check_health() if monitor else {}
     except Exception:  # noqa: BLE001

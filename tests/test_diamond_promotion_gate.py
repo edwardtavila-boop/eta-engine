@@ -1,4 +1,5 @@
 """Tests for the diamond promotion gate."""
+
 # ruff: noqa: N802, PLR2004
 from __future__ import annotations
 
@@ -11,8 +12,8 @@ def _ts(days_ago: int, hour: int = 14) -> str:
     """Return an ISO timestamp `days_ago` calendar days back at the given UTC
     hour. Used to scaffold per-day trade distributions in the gate tests."""
     return (
-        datetime.now(UTC) - timedelta(days=days_ago)
-    ).replace(hour=hour, minute=0, second=0, microsecond=0).isoformat()
+        (datetime.now(UTC) - timedelta(days=days_ago)).replace(hour=hour, minute=0, second=0, microsecond=0).isoformat()
+    )
 
 
 def _write_jsonl(path: Path, rows: list[dict]) -> None:
@@ -22,9 +23,9 @@ def _write_jsonl(path: Path, rows: list[dict]) -> None:
             fh.write(json.dumps(r) + "\n")
 
 
-def _run_with_data(canonical: list[dict], legacy: list[dict] | None,
-                   tmp_path: Path, monkeypatch: object,
-                   include_existing: bool = True) -> dict:
+def _run_with_data(
+    canonical: list[dict], legacy: list[dict] | None, tmp_path: Path, monkeypatch: object, include_existing: bool = True
+) -> dict:
     """Helper: write canonical+legacy jsonl files into tmp_path, point the
     gate at them, then invoke run().  Returns the summary dict."""
     from eta_engine.scripts import diamond_promotion_gate as gate
@@ -46,8 +47,7 @@ def _run_with_data(canonical: list[dict], legacy: list[dict] | None,
 # ────────────────────────────────────────────────────────────────────
 
 
-def test_passes_all_gates_returns_PROMOTE(tmp_path: Path,
-                                            monkeypatch: object) -> None:
+def test_passes_all_gates_returns_PROMOTE(tmp_path: Path, monkeypatch: object) -> None:
     """A bot with very strong stats across all gates must verdict PROMOTE.
 
     The fixture decouples R-sign from session/day so each session genuinely
@@ -57,6 +57,7 @@ def test_passes_all_gates_returns_PROMOTE(tmp_path: Path,
     sessions-positive count).
     """
     import random
+
     rng = random.Random(42)  # deterministic
     rows = []
     sessions = ("overnight", "morning", "afternoon", "close")
@@ -65,14 +66,16 @@ def test_passes_all_gates_returns_PROMOTE(tmp_path: Path,
         # = +0.55R, win rate = 70%
         is_win = rng.random() < 0.70
         r = 1.0 if is_win else -0.5
-        rows.append({
-            "bot_id": "strong_bot",
-            "signal_id": f"s{i}",
-            "realized_r": r,
-            # Spread across 16 days, decoupled from session via independent index
-            "ts": _ts(days_ago=rng.randint(0, 15)),
-            "session": sessions[rng.randint(0, 3)],
-        })
+        rows.append(
+            {
+                "bot_id": "strong_bot",
+                "signal_id": f"s{i}",
+                "realized_r": r,
+                # Spread across 16 days, decoupled from session via independent index
+                "ts": _ts(days_ago=rng.randint(0, 15)),
+                "session": sessions[rng.randint(0, 3)],
+            }
+        )
     summary = _run_with_data(rows, [], tmp_path, monkeypatch)
     cards = {c["bot_id"]: c for c in summary["candidates"]}
     assert "strong_bot" in cards
@@ -80,20 +83,23 @@ def test_passes_all_gates_returns_PROMOTE(tmp_path: Path,
 
 
 def test_passes_hard_but_fails_temporal_breadth_returns_NEEDS_MORE_DATA(
-    tmp_path: Path, monkeypatch: object,
+    tmp_path: Path,
+    monkeypatch: object,
 ) -> None:
     """H4 passes (5+ days) but S3 fails (<14 days): NEEDS_MORE_DATA."""
     rows = []
     sessions = ("overnight", "morning", "afternoon", "close")
     for i in range(200):
         r = 1.0 if i % 2 == 0 else -0.4
-        rows.append({
-            "bot_id": "fast_starter",
-            "signal_id": f"f{i}",
-            "realized_r": r,
-            "ts": _ts(days_ago=i % 6),  # 6 days only
-            "session": sessions[i % 4],
-        })
+        rows.append(
+            {
+                "bot_id": "fast_starter",
+                "signal_id": f"f{i}",
+                "realized_r": r,
+                "ts": _ts(days_ago=i % 6),  # 6 days only
+                "session": sessions[i % 4],
+            }
+        )
     summary = _run_with_data(rows, [], tmp_path, monkeypatch)
     cards = {c["bot_id"]: c for c in summary["candidates"]}
     assert cards["fast_starter"]["verdict"] == "NEEDS_MORE_DATA"
@@ -101,19 +107,22 @@ def test_passes_hard_but_fails_temporal_breadth_returns_NEEDS_MORE_DATA(
 
 
 def test_fails_hard_gate_returns_REJECT(
-    tmp_path: Path, monkeypatch: object,
+    tmp_path: Path,
+    monkeypatch: object,
 ) -> None:
     """H4 fails (<5 days) regardless of other strengths: REJECT."""
     rows = []
     for i in range(500):
         r = 1.0 if i % 2 == 0 else -0.4
-        rows.append({
-            "bot_id": "narrow_window",
-            "signal_id": f"n{i}",
-            "realized_r": r,
-            "ts": _ts(days_ago=i % 2),  # 2 days only
-            "session": "overnight" if i % 2 == 0 else "morning",
-        })
+        rows.append(
+            {
+                "bot_id": "narrow_window",
+                "signal_id": f"n{i}",
+                "realized_r": r,
+                "ts": _ts(days_ago=i % 2),  # 2 days only
+                "session": "overnight" if i % 2 == 0 else "morning",
+            }
+        )
     summary = _run_with_data(rows, [], tmp_path, monkeypatch)
     cards = {c["bot_id"]: c for c in summary["candidates"]}
     assert cards["narrow_window"]["verdict"] == "REJECT"
@@ -127,13 +136,15 @@ def test_low_avg_r_fails_H2(tmp_path: Path, monkeypatch: object) -> None:
     for i in range(1000):
         # avg +0.05R / 50% wr — large sample, small per-trade edge
         r = 0.5 if i % 2 == 0 else -0.4
-        rows.append({
-            "bot_id": "noise_bot",
-            "signal_id": f"x{i}",
-            "realized_r": r,
-            "ts": _ts(days_ago=i % 20),
-            "session": sessions[i % 4],
-        })
+        rows.append(
+            {
+                "bot_id": "noise_bot",
+                "signal_id": f"x{i}",
+                "realized_r": r,
+                "ts": _ts(days_ago=i % 20),
+                "session": sessions[i % 4],
+            }
+        )
     summary = _run_with_data(rows, [], tmp_path, monkeypatch)
     cards = {c["bot_id"]: c for c in summary["candidates"]}
     assert cards["noise_bot"]["verdict"] == "REJECT"
@@ -141,17 +152,16 @@ def test_low_avg_r_fails_H2(tmp_path: Path, monkeypatch: object) -> None:
 
 
 def test_under_min_consideration_sample_is_dropped(
-    tmp_path: Path, monkeypatch: object,
+    tmp_path: Path,
+    monkeypatch: object,
 ) -> None:
     """Bots with fewer than MIN_SAMPLE_FOR_CONSIDERATION trades (and not
     already diamonds) don't appear in the report at all."""
     rows = [
-        {"bot_id": "tiny_bot", "signal_id": f"t{i}",
-         "realized_r": 0.5, "ts": _ts(i % 5), "session": "overnight"}
+        {"bot_id": "tiny_bot", "signal_id": f"t{i}", "realized_r": 0.5, "ts": _ts(i % 5), "session": "overnight"}
         for i in range(10)  # n=10 < 50 threshold
     ]
-    summary = _run_with_data(rows, [], tmp_path, monkeypatch,
-                             include_existing=False)
+    summary = _run_with_data(rows, [], tmp_path, monkeypatch, include_existing=False)
     bot_ids = {c["bot_id"] for c in summary["candidates"]}
     assert "tiny_bot" not in bot_ids
 
@@ -162,12 +172,12 @@ def test_under_min_consideration_sample_is_dropped(
 
 
 def test_dual_source_dedupes_on_signal_id_match(
-    tmp_path: Path, monkeypatch: object,
+    tmp_path: Path,
+    monkeypatch: object,
 ) -> None:
     """When the same row appears in canonical AND legacy, it's counted once."""
     shared = [
-        {"bot_id": "dup_bot", "signal_id": f"s{i}",
-         "realized_r": 0.5, "ts": _ts(i % 5), "session": "overnight"}
+        {"bot_id": "dup_bot", "signal_id": f"s{i}", "realized_r": 0.5, "ts": _ts(i % 5), "session": "overnight"}
         for i in range(100)
     ]
     summary = _run_with_data(shared, shared, tmp_path, monkeypatch)
@@ -183,12 +193,10 @@ def test_dual_source_dedupes_on_signal_id_match(
 def test_internal_bot_ids_filtered(tmp_path: Path, monkeypatch: object) -> None:
     """t1 / propagate_bot are layer-propagation artifacts, never promoted."""
     rows = [
-        {"bot_id": "t1", "signal_id": f"x{i}",
-         "realized_r": 2.5, "ts": _ts(i % 8), "session": "overnight"}
+        {"bot_id": "t1", "signal_id": f"x{i}", "realized_r": 2.5, "ts": _ts(i % 8), "session": "overnight"}
         for i in range(300)
     ] + [
-        {"bot_id": "propagate_bot", "signal_id": f"p{i}",
-         "realized_r": 40.0, "ts": _ts(i % 8), "session": "morning"}
+        {"bot_id": "propagate_bot", "signal_id": f"p{i}", "realized_r": 40.0, "ts": _ts(i % 8), "session": "morning"}
         for i in range(200)
     ]
     summary = _run_with_data(rows, [], tmp_path, monkeypatch)
@@ -208,10 +216,12 @@ def test_writes_json_receipt(tmp_path: Path, monkeypatch: object) -> None:
 
     can_path = tmp_path / "canonical.jsonl"
     leg_path = tmp_path / "legacy.jsonl"
-    _write_jsonl(can_path, [
-        {"bot_id": "any_bot", "signal_id": "s0", "realized_r": 0.3,
-         "ts": _ts(0), "session": "overnight"},
-    ])
+    _write_jsonl(
+        can_path,
+        [
+            {"bot_id": "any_bot", "signal_id": "s0", "realized_r": 0.3, "ts": _ts(0), "session": "overnight"},
+        ],
+    )
     _write_jsonl(leg_path, [])
     monkeypatch.setattr(gate, "TRADE_CLOSES_CANONICAL", can_path)  # type: ignore[attr-defined]
     monkeypatch.setattr(gate, "TRADE_CLOSES_LEGACY", leg_path)  # type: ignore[attr-defined]

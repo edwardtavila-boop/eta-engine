@@ -4,6 +4,7 @@ Uses MarketContext.cumulative_delta and order_book_imbalance when
 provided. Without that telemetry, falls back to a low-conviction NEUTRAL
 verdict (so the school doesn't push composite without real data).
 """
+
 from __future__ import annotations
 
 from eta_engine.brain.jarvis_v3.sage.base import (
@@ -31,7 +32,9 @@ class OrderFlowSchool(SchoolBase):
 
         if delta is None and imb is None:
             return SchoolVerdict(
-                school=self.NAME, bias=Bias.NEUTRAL, conviction=0.0,
+                school=self.NAME,
+                bias=Bias.NEUTRAL,
+                conviction=0.0,
                 aligned_with_entry=False,
                 rationale="no order-flow telemetry provided -- skipping",
                 signals={"missing": ["cumulative_delta", "order_book_imbalance"]},

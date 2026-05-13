@@ -160,6 +160,7 @@ class MnqLiveSupervisor:
             from eta_engine.strategies.per_bot_registry import (
                 validate_registry_no_duplicates,
             )
+
             validate_registry_no_duplicates(raise_on_duplicate=True)
         except RuntimeError as exc:
             logger.error(
@@ -173,8 +174,7 @@ class MnqLiveSupervisor:
             # Older registry without validator — skip the guard rather
             # than block startup.  Log so the operator knows.
             logger.warning(
-                "mnq supervisor: validate_registry_no_duplicates not available; "
-                "skipping duplicate-config guard",
+                "mnq supervisor: validate_registry_no_duplicates not available; skipping duplicate-config guard",
             )
 
         await self.bot.start()
@@ -236,6 +236,7 @@ class MnqLiveSupervisor:
 
         if initial:
             from eta_engine.bots.base_bot import Position
+
             self.bot.state.open_positions = [
                 Position(
                     symbol=sym,
@@ -248,15 +249,14 @@ class MnqLiveSupervisor:
             ]
             logger.warning(
                 "mnq supervisor SEEDED open_positions from broker: %d positions (%s)",
-                len(self.bot.state.open_positions), broker_qty_by_symbol,
+                len(self.bot.state.open_positions),
+                broker_qty_by_symbol,
             )
 
         local_qty_by_symbol: dict[str, float] = {}
         for pos in self.bot.state.open_positions:
             signed = pos.size if pos.side.lower() in ("long", "buy") else -pos.size
-            local_qty_by_symbol[pos.symbol.upper()] = (
-                local_qty_by_symbol.get(pos.symbol.upper(), 0.0) + signed
-            )
+            local_qty_by_symbol[pos.symbol.upper()] = local_qty_by_symbol.get(pos.symbol.upper(), 0.0) + signed
 
         divergence: dict[str, dict[str, float]] = {}
         all_syms = set(broker_qty_by_symbol) | set(local_qty_by_symbol)
@@ -271,22 +271,18 @@ class MnqLiveSupervisor:
                 "mnq supervisor RECONCILE DIVERGENCE — broker disagrees with local: %s",
                 divergence,
             )
-            cb = (
-                getattr(self.bot, "_circuit_breaker", None)
-                or getattr(self.bot, "circuit_breaker", None)
-            )
+            cb = getattr(self.bot, "_circuit_breaker", None) or getattr(self.bot, "circuit_breaker", None)
             if cb is not None and hasattr(cb, "on_position_reconcile"):
                 try:
                     cb.on_position_reconcile(
-                        broker_qty=broker_qty_by_symbol, broker_pnl=None,
+                        broker_qty=broker_qty_by_symbol,
+                        broker_pnl=None,
                     )
                 except Exception as exc:  # noqa: BLE001
                     logger.warning("circuit_breaker.on_position_reconcile raised: %s", exc)
             self.state.last_event = f"reconcile_divergence:{len(divergence)}_symbol(s)"
         else:
-            self.state.last_event = (
-                "reconcile_initial_ok" if initial else "reconcile_ok"
-            )
+            self.state.last_event = "reconcile_initial_ok" if initial else "reconcile_ok"
 
         return {
             "reconciled": True,
@@ -303,6 +299,7 @@ class MnqLiveSupervisor:
         kills an active session.
         """
         import asyncio
+
         while True:
             try:
                 await asyncio.sleep(interval_s)

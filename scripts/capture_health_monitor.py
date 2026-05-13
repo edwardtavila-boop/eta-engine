@@ -36,6 +36,7 @@ Run
     python -m eta_engine.scripts.capture_health_monitor \
         --symbols MNQ NQ M2K 6E MCL MYM NG MBT
 """
+
 from __future__ import annotations
 
 import argparse
@@ -57,15 +58,14 @@ SUB_STATUS_LOG = LOG_DIR / "ibkr_subscription_status.jsonl"
 
 DEFAULT_SYMBOLS = ["MNQ", "NQ", "M2K", "6E", "MCL", "MYM", "NG", "MBT"]
 
-TICK_STALE_SECONDS = 30 * 60       # ticks should land within 30min during RTH
-DEPTH_STALE_SECONDS = 5 * 60       # depth snapshots are 1Hz, very fresh expected
-TICK_MIN_SIZE_BYTES = 10_000       # ~10KB minimum for a full RTH session
-DEPTH_MIN_SIZE_BYTES = 1_000_000   # ~1MB minimum (1Hz snapshots add up)
+TICK_STALE_SECONDS = 30 * 60  # ticks should land within 30min during RTH
+DEPTH_STALE_SECONDS = 5 * 60  # depth snapshots are 1Hz, very fresh expected
+TICK_MIN_SIZE_BYTES = 10_000  # ~10KB minimum for a full RTH session
+DEPTH_MIN_SIZE_BYTES = 1_000_000  # ~1MB minimum (1Hz snapshots add up)
 SUB_AUDIT_MAX_AGE_HOURS = 24
 
 
-def _check_capture_file(d: Path, symbol: str, today: date,
-                        stale_seconds: int, min_size_bytes: int) -> dict:
+def _check_capture_file(d: Path, symbol: str, today: date, stale_seconds: int, min_size_bytes: int) -> dict:
     """Return health status for one symbol's capture file today + yesterday."""
     # File naming: <SYMBOL>_<YYYYMMDD>.jsonl
     today_path = d / f"{symbol}_{today.strftime('%Y%m%d')}.jsonl"
@@ -100,8 +100,7 @@ def _check_capture_file(d: Path, symbol: str, today: date,
 def _check_subscription_audit_age() -> dict:
     """Look at the most recent line of ibkr_subscription_status.jsonl."""
     if not SUB_STATUS_LOG.exists():
-        return {"status": "NEVER_RUN",
-                "note": "verify_ibkr_subscriptions has never run"}
+        return {"status": "NEVER_RUN", "note": "verify_ibkr_subscriptions has never run"}
     try:
         with SUB_STATUS_LOG.open("r", encoding="utf-8") as f:
             lines = f.readlines()
@@ -144,26 +143,21 @@ def _emit_alert(level: str, message: str, payload: dict) -> None:
         # D6: surface to stderr — silent swallow meant disk-full
         # incidents went un-recorded when the alert log itself
         # couldn't be written.
-        print(f"capture_health_monitor WARN: could not append alert to "
-              f"{ALERT_LOG}: {e}", file=sys.stderr)
+        print(f"capture_health_monitor WARN: could not append alert to {ALERT_LOG}: {e}", file=sys.stderr)
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--symbols", nargs="+", default=DEFAULT_SYMBOLS,
-                    help="symbols to check (default: pinned-bot set)")
-    ap.add_argument("--json", action="store_true",
-                    help="JSON output (machine-readable)")
+    ap.add_argument("--symbols", nargs="+", default=DEFAULT_SYMBOLS, help="symbols to check (default: pinned-bot set)")
+    ap.add_argument("--json", action="store_true", help="JSON output (machine-readable)")
     args = ap.parse_args()
 
     today = datetime.now(UTC).date()
     tick_results: list[dict] = []
     depth_results: list[dict] = []
     for sym in args.symbols:
-        tick_results.append(_check_capture_file(
-            TICKS_DIR, sym, today, TICK_STALE_SECONDS, TICK_MIN_SIZE_BYTES))
-        depth_results.append(_check_capture_file(
-            DEPTH_DIR, sym, today, DEPTH_STALE_SECONDS, DEPTH_MIN_SIZE_BYTES))
+        tick_results.append(_check_capture_file(TICKS_DIR, sym, today, TICK_STALE_SECONDS, TICK_MIN_SIZE_BYTES))
+        depth_results.append(_check_capture_file(DEPTH_DIR, sym, today, DEPTH_STALE_SECONDS, DEPTH_MIN_SIZE_BYTES))
 
     sub_audit = _check_subscription_audit_age()
 
@@ -186,8 +180,7 @@ def main() -> int:
     if sub_audit.get("status") == "FRESH" and not sub_audit.get("all_realtime"):
         issues.append("sub audit FAIL -- at least one exchange not realtime")
 
-    verdict = "GREEN" if not issues else (
-        "RED" if any("MISSING" in i for i in issues) else "YELLOW")
+    verdict = "GREEN" if not issues else ("RED" if any("MISSING" in i for i in issues) else "YELLOW")
 
     digest = {
         "ts": datetime.now(UTC).isoformat(),
@@ -203,8 +196,7 @@ def main() -> int:
         with HEALTH_LOG.open("a", encoding="utf-8") as f:
             f.write(json.dumps(digest, separators=(",", ":")) + "\n")
     except OSError as e:
-        print(f"capture_health_monitor WARN: could not append digest to "
-              f"{HEALTH_LOG}: {e}", file=sys.stderr)
+        print(f"capture_health_monitor WARN: could not append digest to {HEALTH_LOG}: {e}", file=sys.stderr)
 
     if verdict != "GREEN":
         _emit_alert(verdict, f"capture health {verdict}: {len(issues)} issue(s)", digest)

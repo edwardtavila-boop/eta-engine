@@ -154,11 +154,11 @@ class LocalLLMGateway:
             ) from e
 
         body = {
-            "model":       self._model,
-            "messages":    messages,
-            "max_tokens":  max_tokens,
+            "model": self._model,
+            "messages": messages,
+            "max_tokens": max_tokens,
             "temperature": temperature,
-            "stream":      False,
+            "stream": False,
         }
         last_exc: Exception | None = None
         for attempt in range(self._max_retries + 1):
@@ -183,7 +183,7 @@ class LocalLLMGateway:
             except (httpx.ConnectError, httpx.ConnectTimeout, httpx.ReadTimeout) as e:
                 last_exc = e
                 if attempt < self._max_retries:
-                    await asyncio.sleep(0.25 * (2 ** attempt))
+                    await asyncio.sleep(0.25 * (2**attempt))
                     continue
                 raise LocalLLMUnavailable(
                     f"local LLM unreachable at {self._url}: {e}",
@@ -193,7 +193,7 @@ class LocalLLMGateway:
             except Exception as e:  # noqa: BLE001 -- final catch-all
                 last_exc = e
                 if attempt < self._max_retries:
-                    await asyncio.sleep(0.25 * (2 ** attempt))
+                    await asyncio.sleep(0.25 * (2**attempt))
                     continue
                 raise LocalLLMClientError(
                     f"local LLM unexpected error: {e}",
@@ -203,7 +203,9 @@ class LocalLLMGateway:
 
 
 def _parse_openai_response(
-    payload: dict, model: str, latency_ms: float,
+    payload: dict,
+    model: str,
+    latency_ms: float,
 ) -> LocalLLMCompletion:
     choices = payload.get("choices", [])
     if not choices:

@@ -221,7 +221,8 @@ class ORBStrategy:
     # -- ES-confirmation plumbing --------------------------------------------
 
     def attach_es_provider(
-        self, provider: Callable[[BarData], BarData | None] | None,
+        self,
+        provider: Callable[[BarData], BarData | None] | None,
     ) -> None:
         """Wire up an ES-bar provider for the cross-asset filter.
 
@@ -274,24 +275,16 @@ class ORBStrategy:
             range_end = _add_minutes(self.cfg.rth_open_local, self.cfg.range_minutes)
             if local_t < range_end:
                 # accumulate the range
-                self._day.range_high = (
-                    bar.high if self._day.range_high is None
-                    else max(self._day.range_high, bar.high)
-                )
-                self._day.range_low = (
-                    bar.low if self._day.range_low is None
-                    else min(self._day.range_low, bar.low)
-                )
+                self._day.range_high = bar.high if self._day.range_high is None else max(self._day.range_high, bar.high)
+                self._day.range_low = bar.low if self._day.range_low is None else min(self._day.range_low, bar.low)
                 # mirror the range build for ES so the breakout phase can
                 # cross-check both legs without a second pass
                 if es_bar is not None:
                     self._day.es_range_high = (
-                        es_bar.high if self._day.es_range_high is None
-                        else max(self._day.es_range_high, es_bar.high)
+                        es_bar.high if self._day.es_range_high is None else max(self._day.es_range_high, es_bar.high)
                     )
                     self._day.es_range_low = (
-                        es_bar.low if self._day.es_range_low is None
-                        else min(self._day.es_range_low, es_bar.low)
+                        es_bar.low if self._day.es_range_low is None else min(self._day.es_range_low, es_bar.low)
                     )
                 return None
             # range window has passed
@@ -426,10 +419,8 @@ class ORBStrategy:
 
             # Volume confirmation on breakout bar
             if self.cfg.volume_mult > 0.0:
-                recent = hist[-self.cfg.volume_lookback:] if hist else []
-                avg_vol = (
-                    sum(b.volume for b in recent) / len(recent) if recent else 0.0
-                )
+                recent = hist[-self.cfg.volume_lookback :] if hist else []
+                avg_vol = sum(b.volume for b in recent) / len(recent) if recent else 0.0
                 if avg_vol > 0.0 and bar.volume < self.cfg.volume_mult * avg_vol:
                     return None
 
@@ -442,11 +433,7 @@ class ORBStrategy:
                 if not bool(es_ctx.get("es_aligned", True)):
                     return None
             if self.cfg.require_es_confirmation:
-                if (
-                    es_bar is None
-                    or self._day.es_range_high is None
-                    or self._day.es_range_low is None
-                ):
+                if es_bar is None or self._day.es_range_high is None or self._day.es_range_low is None:
                     return None
                 if side == "BUY" and not (es_bar.high > self._day.es_range_high):
                     return None
@@ -477,9 +464,7 @@ class ORBStrategy:
             # Volume confirmation
             if self.cfg.volume_mult > 0.0:
                 recent = hist[-self.cfg.volume_lookback :] if hist else []
-                avg_vol = (
-                    sum(b.volume for b in recent) / len(recent) if recent else 0.0
-                )
+                avg_vol = sum(b.volume for b in recent) / len(recent) if recent else 0.0
                 if avg_vol > 0.0 and bar.volume < self.cfg.volume_mult * avg_vol:
                     return None
 
@@ -505,11 +490,7 @@ class ORBStrategy:
                 if not bool(es_ctx.get("es_aligned", True)):
                     return None
             if self.cfg.require_es_confirmation:
-                if (
-                    es_bar is None
-                    or self._day.es_range_high is None
-                    or self._day.es_range_low is None
-                ):
+                if es_bar is None or self._day.es_range_high is None or self._day.es_range_low is None:
                     return None
                 if side == "BUY" and not (es_bar.high > self._day.es_range_high):
                     return None
@@ -535,9 +516,15 @@ class ORBStrategy:
 
         regime_tag = "orb_retest" if self.cfg.require_retest else "orb_breakout"
         opened = _Open(
-            entry_bar=bar, side=side, qty=qty, entry_price=entry_price,
-            stop=stop, target=target, risk_usd=risk_usd,
-            confluence=10.0, leverage=1.0,
+            entry_bar=bar,
+            side=side,
+            qty=qty,
+            entry_price=entry_price,
+            stop=stop,
+            target=target,
+            risk_usd=risk_usd,
+            confluence=10.0,
+            leverage=1.0,
             regime=regime_tag,
         )
         self._day.breakout_taken = True

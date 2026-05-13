@@ -198,10 +198,7 @@ def _operator_action(tws: dict[str, Any], client_portal: dict[str, Any]) -> str:
     tws_ready = bool(tws.get("ready"))
     client_portal_ready = bool(client_portal.get("ready"))
     if tws_ready and client_portal_ready:
-        return (
-            "Both IBKR surfaces are ready; paper_live can use TWS 4002 "
-            "and REST sidecars can use Client Portal 5000."
-        )
+        return "Both IBKR surfaces are ready; paper_live can use TWS 4002 and REST sidecars can use Client Portal 5000."
     if tws_ready:
         return (
             "paper_live order routing is ready through TWS 4002; install or start "

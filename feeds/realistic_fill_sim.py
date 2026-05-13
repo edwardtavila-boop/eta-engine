@@ -26,6 +26,7 @@ Modes:
 
 The simulator is *deterministic given a seed*, so paper-soak runs reproduce.
 """
+
 from __future__ import annotations
 
 import random
@@ -36,7 +37,6 @@ from eta_engine.feeds.instrument_specs import (
     CRYPTO_SPOT_SYMBOLS,
     CRYPTO_SPOT_TAKER_FEE_RT,
     InstrumentSpec,
-    get_spec,
     is_rth_session,
 )
 
@@ -48,11 +48,11 @@ Mode = Literal["realistic", "pessimistic", "legacy"]
 # can plausibly land between realistic and pessimistic.
 _MODE_PARAMS: dict[Mode, dict[str, float]] = {
     "realistic": dict(
-        entry_slip_ticks=1.0,           # Adverse slip on market entry, in ticks
-        stop_slip_mult=1.0,             # Multiplier on spec.base_slip_ticks for stop fills
-        target_slip_ticks=0.0,          # Limit fills don't slip favorably
-        straddle_target_first_pct=0.45, # P(target hit first | bar straddles both)
-        straddle_use_close_bias=1.0,    # Weight on close-vs-open bar-direction informant
+        entry_slip_ticks=1.0,  # Adverse slip on market entry, in ticks
+        stop_slip_mult=1.0,  # Multiplier on spec.base_slip_ticks for stop fills
+        target_slip_ticks=0.0,  # Limit fills don't slip favorably
+        straddle_target_first_pct=0.45,  # P(target hit first | bar straddles both)
+        straddle_use_close_bias=1.0,  # Weight on close-vs-open bar-direction informant
         thin_bar_target_skip_pct=0.30,  # P(target NOT filled | touch-only on thin bar)
         commission_mult=1.0,
     ),
@@ -91,14 +91,14 @@ class BarOHLCV:
 class EntryFill:
     fill_price: float
     slippage_ticks: float
-    commission_charged: bool   # entry charges half of RT commission; exit charges other half
+    commission_charged: bool  # entry charges half of RT commission; exit charges other half
     notes: str
 
 
 @dataclass(frozen=True, slots=True)
 class ExitFill:
     fill_price: float
-    exit_reason: str           # "stop_loss" | "take_profit" | "no_exit"
+    exit_reason: str  # "stop_loss" | "take_profit" | "no_exit"
     slippage_ticks: float
     notes: str
 
@@ -144,8 +144,8 @@ class RealisticFillSim:
 
     def simulate_entry(
         self,
-        side: str,                   # "LONG" or "SHORT"
-        entry_bar: BarOHLCV,         # Bar AFTER the signal bar — assume next-bar-open fill
+        side: str,  # "LONG" or "SHORT"
+        entry_bar: BarOHLCV,  # Bar AFTER the signal bar — assume next-bar-open fill
         spec: InstrumentSpec,
     ) -> EntryFill:
         """Market-on-next-open entry with adverse slippage.
@@ -214,7 +214,10 @@ class RealisticFillSim:
         return self._resolve_straddle(side, position_entry, stop_price, target_price, bar, spec)
 
     def commission_for_trade(
-        self, spec: InstrumentSpec, qty: float, exit_price: float,
+        self,
+        spec: InstrumentSpec,
+        qty: float,
+        exit_price: float,
     ) -> float:
         """Round-trip commission in USD (charged at exit)."""
         if self.params["commission_mult"] <= 0.0:
@@ -228,7 +231,11 @@ class RealisticFillSim:
     # ── internals ────────────────────────────────────────────────────
 
     def _fill_stop(
-        self, side: str, stop_price: float, bar: BarOHLCV, spec: InstrumentSpec,
+        self,
+        side: str,
+        stop_price: float,
+        bar: BarOHLCV,
+        spec: InstrumentSpec,
     ) -> ExitFill:
         slip_ticks = self._slip_for(spec, bar) * self.params["stop_slip_mult"]
         # Apply RTH/overnight multiplier
@@ -253,7 +260,11 @@ class RealisticFillSim:
         )
 
     def _fill_target(
-        self, side: str, target_price: float, bar: BarOHLCV, spec: InstrumentSpec,
+        self,
+        side: str,
+        target_price: float,
+        bar: BarOHLCV,
+        spec: InstrumentSpec,
     ) -> ExitFill:
         # Targets are limit orders.  If price traded THROUGH the limit (more
         # than 1 tick favorable past the price), full fill at limit price.
@@ -266,9 +277,13 @@ class RealisticFillSim:
         if not traded_through:
             # Touch-only — apply thin-bar skip probability
             med = self.median_volume()
-            if med > 0 and bar.volume < med and self.params["thin_bar_target_skip_pct"] > 0:
-                if self._rng.random() < self.params["thin_bar_target_skip_pct"]:
-                    return ExitFill(0.0, "no_exit", 0.0, "thin_bar_target_skipped")
+            if (
+                med > 0
+                and bar.volume < med
+                and self.params["thin_bar_target_skip_pct"] > 0
+                and self._rng.random() < self.params["thin_bar_target_skip_pct"]
+            ):
+                return ExitFill(0.0, "no_exit", 0.0, "thin_bar_target_skipped")
 
         fill_price = self._round_to_tick(target_price, spec.tick_size)
         return ExitFill(
@@ -303,10 +318,7 @@ class RealisticFillSim:
         dist_to_target = abs(bar.open - target_price)
         dist_to_stop = abs(bar.open - stop_price)
         total = dist_to_target + dist_to_stop
-        if total <= 0:
-            distance_p_target = 0.5
-        else:
-            distance_p_target = dist_to_stop / total  # closer-to-open = wins more often
+        distance_p_target = 0.5 if total <= 0 else dist_to_stop / total  # closer-to-open = wins more often
 
         # Direction bias: bull bar (close > open) ⇒ for LONG, target is up ⇒ target more likely first
         if bar.close > bar.open:
@@ -318,11 +330,7 @@ class RealisticFillSim:
 
         # Blend: 60% distance, 30% direction, 10% mode-prior
         prior = self.params["straddle_target_first_pct"]
-        p_target_first = (
-            0.60 * distance_p_target +
-            0.30 * direction_p_target +
-            0.10 * prior
-        )
+        p_target_first = 0.60 * distance_p_target + 0.30 * direction_p_target + 0.10 * prior
 
         if self._rng.random() < p_target_first:
             res = self._fill_target(side, target_price, bar, spec)
@@ -330,13 +338,15 @@ class RealisticFillSim:
             if res.exit_reason == "no_exit":
                 return self._fill_stop(side, stop_price, bar, spec)
             return ExitFill(
-                fill_price=res.fill_price, exit_reason="take_profit_straddle",
+                fill_price=res.fill_price,
+                exit_reason="take_profit_straddle",
                 slippage_ticks=res.slippage_ticks,
                 notes=f"straddle;p_tf={p_target_first:.2f}",
             )
         res = self._fill_stop(side, stop_price, bar, spec)
         return ExitFill(
-            fill_price=res.fill_price, exit_reason="stop_loss_straddle",
+            fill_price=res.fill_price,
+            exit_reason="stop_loss_straddle",
             slippage_ticks=res.slippage_ticks,
             notes=f"straddle;p_tf={p_target_first:.2f}",
         )

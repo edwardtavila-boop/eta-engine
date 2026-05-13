@@ -14,6 +14,7 @@ The confluence aggregator can use the learned hit_rate as a multiplier
 on the school's static WEIGHT: schools that have been right earn more
 say; schools that have been wrong get muted automatically.
 """
+
 from __future__ import annotations
 
 import json
@@ -38,9 +39,9 @@ class SchoolEdge:
 
     school: str
     n_obs: int = 0
-    n_aligned_wins: int = 0      # bias matched + realized R > 0
-    n_aligned_losses: int = 0    # bias matched + realized R <= 0
-    sum_r: float = 0.0           # sum of realized R for trades school agreed with
+    n_aligned_wins: int = 0  # bias matched + realized R > 0
+    n_aligned_losses: int = 0  # bias matched + realized R <= 0
+    sum_r: float = 0.0  # sum of realized R for trades school agreed with
     last_updated: str = ""
 
     @property
@@ -77,6 +78,7 @@ class SchoolEdge:
             return 1.0  # not enough samples to judge
         # tanh-bounded: expectancy 0 -> 1.0; +0.5R -> ~1.4; -0.5R -> ~0.6
         from math import tanh
+
         return 1.0 + 0.5 * tanh(self.expectancy)
 
     def calibrate_conviction(self, raw_conviction: float) -> float:
@@ -94,6 +96,7 @@ class SchoolEdge:
         if self.n_obs < 8:
             return raw_conviction  # insufficient data
         from math import tanh
+
         factor = 1.0 + 0.5 * tanh((self.hit_rate - 0.5) * 3.0)
         calibrated = raw_conviction * factor
         return max(0.05, min(0.95, calibrated))
@@ -142,23 +145,29 @@ class EdgeTracker:
         except OSError:
             pass
         try:
-            self.state_path.write_text(json.dumps({
-                "saved_at": datetime.now(UTC).isoformat(),
-                "edges": {
-                    name: {
-                        "n_obs": e.n_obs,
-                        "n_aligned_wins": e.n_aligned_wins,
-                        "n_aligned_losses": e.n_aligned_losses,
-                        "sum_r": e.sum_r,
-                        "hit_rate": e.hit_rate,
-                        "avg_r": e.avg_r,
-                        "expectancy": e.expectancy,
-                        "weight_modifier": e.weight_modifier(),
-                        "last_updated": e.last_updated,
-                    }
-                    for name, e in self._edges.items()
-                },
-            }, indent=2), encoding="utf-8")
+            self.state_path.write_text(
+                json.dumps(
+                    {
+                        "saved_at": datetime.now(UTC).isoformat(),
+                        "edges": {
+                            name: {
+                                "n_obs": e.n_obs,
+                                "n_aligned_wins": e.n_aligned_wins,
+                                "n_aligned_losses": e.n_aligned_losses,
+                                "sum_r": e.sum_r,
+                                "hit_rate": e.hit_rate,
+                                "avg_r": e.avg_r,
+                                "expectancy": e.expectancy,
+                                "weight_modifier": e.weight_modifier(),
+                                "last_updated": e.last_updated,
+                            }
+                            for name, e in self._edges.items()
+                        },
+                    },
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
         except OSError as exc:
             logger.warning("edge tracker save failed: %s", exc)
 
@@ -184,8 +193,8 @@ class EdgeTracker:
         self,
         *,
         school: str,
-        school_bias: str,    # "long" | "short" | "neutral"
-        entry_side: str,     # the trade actually taken
+        school_bias: str,  # "long" | "short" | "neutral"
+        entry_side: str,  # the trade actually taken
         realized_r: float,
     ) -> None:
         """Record one observation. Bot calls this after each trade
@@ -194,9 +203,8 @@ class EdgeTracker:
             e = self._edges.setdefault(school, SchoolEdge(school=school))
             e.n_obs += 1
             # Did the school AGREE with the entry side?
-            agreed = (
-                (school_bias == "long" and entry_side == "long")
-                or (school_bias == "short" and entry_side == "short")
+            agreed = (school_bias == "long" and entry_side == "long") or (
+                school_bias == "short" and entry_side == "short"
             )
             if agreed:
                 e.sum_r += realized_r

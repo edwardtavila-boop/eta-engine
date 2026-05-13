@@ -87,7 +87,8 @@ def _is_negative_window(idx: int) -> WindowStats:
 
 def test_strict_gate_passes_clean_signal() -> None:
     cfg = WalkForwardConfig(
-        window_days=60, step_days=30,
+        window_days=60,
+        step_days=30,
         min_trades_per_window=3,
         strict_fold_dsr_gate=True,
         fold_dsr_min_pass_fraction=0.5,
@@ -134,7 +135,8 @@ def test_dsr_trials_include_sweep_count(monkeypatch: pytest.MonkeyPatch) -> None
 def test_strict_gate_rejects_is_negative() -> None:
     """IS-positive gate must catch IS-negative + OOS-positive lucky split."""
     cfg = WalkForwardConfig(
-        window_days=60, step_days=30,
+        window_days=60,
+        step_days=30,
         min_trades_per_window=3,
         strict_fold_dsr_gate=True,
     )
@@ -146,7 +148,8 @@ def test_strict_gate_rejects_is_negative() -> None:
 
 def test_long_haul_mode_passes_when_pos_fraction_meets_threshold() -> None:
     cfg = WalkForwardConfig(
-        window_days=365, step_days=180,
+        window_days=365,
+        step_days=180,
         min_trades_per_window=3,
         long_haul_mode=True,
         long_haul_min_pos_fraction=0.55,
@@ -170,7 +173,8 @@ def test_long_haul_mode_passes_when_pos_fraction_meets_threshold() -> None:
 
 def test_long_haul_mode_rejects_low_pos_fraction() -> None:
     cfg = WalkForwardConfig(
-        window_days=365, step_days=180,
+        window_days=365,
+        step_days=180,
         min_trades_per_window=3,
         long_haul_mode=True,
         long_haul_min_pos_fraction=0.55,
@@ -181,7 +185,8 @@ def test_long_haul_mode_rejects_low_pos_fraction() -> None:
             window_index=i,
             is_sharpe=1.0,
             oos_sharpe=2.0 if i < 4 else -1.0,
-            is_trades=10, oos_trades=4,
+            is_trades=10,
+            oos_trades=4,
         )
         for i in range(10)
     ]
@@ -191,7 +196,8 @@ def test_long_haul_mode_rejects_low_pos_fraction() -> None:
 
 def test_grid_mode_uses_profit_factor_not_sharpe() -> None:
     cfg = WalkForwardConfig(
-        window_days=90, step_days=30,
+        window_days=90,
+        step_days=30,
         min_trades_per_window=3,
         grid_mode=True,
         grid_min_profit_factor=1.3,
@@ -217,7 +223,8 @@ def test_grid_mode_uses_profit_factor_not_sharpe() -> None:
 
 def test_grid_mode_rejects_pf_below_threshold() -> None:
     cfg = WalkForwardConfig(
-        window_days=90, step_days=30,
+        window_days=90,
+        step_days=30,
         min_trades_per_window=3,
         grid_mode=True,
         grid_min_profit_factor=1.3,
@@ -225,8 +232,10 @@ def test_grid_mode_rejects_pf_below_threshold() -> None:
     windows = [
         WindowStats(
             window_index=i,
-            is_sharpe=0.5, oos_sharpe=0.5,
-            is_trades=20, oos_trades=15,
+            is_sharpe=0.5,
+            oos_sharpe=0.5,
+            is_trades=20,
+            oos_trades=15,
             oos_profit_factor=0.9,  # losing
             oos_max_dd_pct=15.0,
         )
@@ -272,11 +281,12 @@ def test_drift_assess_green_when_recent_matches_baseline() -> None:
         r_stddev=1.2,
     )
     # 25 trades, 50% wins, +0.4R avg → matches baseline
-    recent = [_trade(0.4, i) for i in range(13)] + [
-        _trade(-0.4, i) for i in range(13, 25)
-    ]
+    recent = [_trade(0.4, i) for i in range(13)] + [_trade(-0.4, i) for i in range(13, 25)]
     a = assess_drift(
-        strategy_id="test_v1", recent=recent, baseline=baseline, min_trades=20,
+        strategy_id="test_v1",
+        recent=recent,
+        baseline=baseline,
+        min_trades=20,
     )
     assert a.severity == "green"
 
@@ -292,8 +302,12 @@ def test_drift_assess_red_on_collapsed_winrate() -> None:
     # 25 trades all losers → far below baseline
     recent = [_trade(-1.0, i) for i in range(25)]
     a = assess_drift(
-        strategy_id="test_v1", recent=recent, baseline=baseline,
-        min_trades=20, amber_z=2.0, red_z=3.0,
+        strategy_id="test_v1",
+        recent=recent,
+        baseline=baseline,
+        min_trades=20,
+        amber_z=2.0,
+        red_z=3.0,
     )
     assert a.severity == "red"
 
@@ -302,20 +316,23 @@ def test_drift_assess_green_on_insufficient_sample() -> None:
     """Don't false-alarm on tiny samples."""
     baseline = BaselineSnapshot(
         strategy_id="test_v1",
-        n_trades=100, win_rate=0.5, avg_r=0.4, r_stddev=1.0,
+        n_trades=100,
+        win_rate=0.5,
+        avg_r=0.4,
+        r_stddev=1.0,
     )
     recent = [_trade(-1.0, i) for i in range(5)]  # well below min_trades
     a = assess_drift(
-        strategy_id="test_v1", recent=recent, baseline=baseline,
+        strategy_id="test_v1",
+        recent=recent,
+        baseline=baseline,
         min_trades=20,
     )
     assert a.severity == "green"
 
 
 def test_baseline_from_trades_round_trips() -> None:
-    trades = [_trade(0.5, i) for i in range(10)] + [
-        _trade(-0.3, i) for i in range(10, 20)
-    ]
+    trades = [_trade(0.5, i) for i in range(10)] + [_trade(-0.3, i) for i in range(10, 20)]
     snap = BaselineSnapshot.from_trades("test_v1", trades)
     assert snap.n_trades == 20
     assert 0.45 < snap.win_rate < 0.55

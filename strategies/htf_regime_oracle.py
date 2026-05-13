@@ -93,9 +93,9 @@ class HtfRegimeOracleConfig:
 class HtfRegimeReport:
     """Oracle output. Mutable for ease of attaching audit metadata."""
 
-    direction: str        # "long" / "short" / "neutral"
-    conviction: float     # 0.0 - 1.0
-    composite: float      # -1.0 to +1.0 (signed)
+    direction: str  # "long" / "short" / "neutral"
+    conviction: float  # 0.0 - 1.0
+    composite: float  # -1.0 to +1.0 (signed)
     components: dict[str, float] = field(default_factory=dict)
     timestamp: datetime | None = None
 
@@ -214,10 +214,7 @@ class HtfRegimeOracle:
             "macro": self.cfg.weight_macro,
         }
         weight_sum = sum(weights.values())
-        composite = (
-            0.0 if weight_sum <= 0
-            else sum(components[k] * (weights[k] / weight_sum) for k in components)
-        )
+        composite = 0.0 if weight_sum <= 0 else sum(components[k] * (weights[k] / weight_sum) for k in components)
         composite = max(-1.0, min(1.0, composite))
 
         # Smoothing
@@ -226,9 +223,7 @@ class HtfRegimeOracle:
                 self._smoothed_composite = composite
             else:
                 alpha = 2.0 / (self.cfg.smoothing_period_days + 1)
-                self._smoothed_composite = (
-                    alpha * composite + (1 - alpha) * self._smoothed_composite
-                )
+                self._smoothed_composite = alpha * composite + (1 - alpha) * self._smoothed_composite
             effective = self._smoothed_composite
         else:
             effective = composite

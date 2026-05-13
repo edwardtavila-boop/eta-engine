@@ -54,9 +54,11 @@ def _bar(
     base = datetime(2026, 1, 15, 9, 30, tzinfo=_NY)
     ts = (base + timedelta(minutes=minute)).astimezone(UTC)
     return BarData(
-        timestamp=ts, symbol="MNQ",
+        timestamp=ts,
+        symbol="MNQ",
         open=o if o is not None else (h + low) / 2,
-        high=h, low=low,
+        high=h,
+        low=low,
         close=c if c is not None else (h + low) / 2,
         volume=v,
     )
@@ -66,8 +68,10 @@ def _backtest_config() -> BacktestConfig:
     return BacktestConfig(
         start_date=datetime(2026, 1, 1, tzinfo=UTC),
         end_date=datetime(2026, 1, 31, tzinfo=UTC),
-        symbol="MNQ", initial_equity=10_000.0,
-        risk_per_trade_pct=0.01, confluence_threshold=0.0,
+        symbol="MNQ",
+        initial_equity=10_000.0,
+        risk_per_trade_pct=0.01,
+        confluence_threshold=0.0,
         max_trades_per_day=10,
     )
 
@@ -91,7 +95,11 @@ class _StaticEntryStrategy:
         self._fired = False
 
     def maybe_enter(
-        self, bar: BarData, hist: list[BarData], equity: float, config: BacktestConfig,
+        self,
+        bar: BarData,
+        hist: list[BarData],
+        equity: float,
+        config: BacktestConfig,
     ) -> _Open | None:
         if self._fired:
             return None
@@ -100,9 +108,14 @@ class _StaticEntryStrategy:
 
 
 def _build_runner_open(
-    *, side: str = "BUY", entry: float = 100.0, stop: float = 90.0,
-    rr_partial: float = 1.5, rr_target: float = 3.5,
-    partial_qty_frac: float = 0.5, qty: float = 1.0,
+    *,
+    side: str = "BUY",
+    entry: float = 100.0,
+    stop: float = 90.0,
+    rr_partial: float = 1.5,
+    rr_target: float = 3.5,
+    partial_qty_frac: float = 0.5,
+    qty: float = 1.0,
 ) -> _Open:
     """Build a 1.5R-partial + 3.5R-runner _Open in long or short orientation."""
     stop_dist = abs(entry - stop)
@@ -114,9 +127,15 @@ def _build_runner_open(
         target = entry - rr_target * stop_dist
     base_bar = _bar(h=entry + 5, low=entry - 5, c=entry, minute=0)
     return _Open(
-        entry_bar=base_bar, side=side, qty=qty, entry_price=entry,
-        stop=stop, target=target, risk_usd=stop_dist * qty,
-        confluence=10.0, leverage=1.0,
+        entry_bar=base_bar,
+        side=side,
+        qty=qty,
+        entry_price=entry,
+        stop=stop,
+        target=target,
+        risk_usd=stop_dist * qty,
+        confluence=10.0,
+        leverage=1.0,
         partial_target=partial,
         partial_qty_frac=partial_qty_frac,
     )
@@ -130,9 +149,15 @@ def test_open_partial_target_invariants_long() -> None:
     with pytest.raises(ValueError, match="partial_target"):
         bar = _bar(h=105, low=95, c=100)
         _Open(
-            entry_bar=bar, side="BUY", qty=1.0, entry_price=100.0,
-            stop=90.0, target=105.0, risk_usd=10.0,
-            confluence=0.0, leverage=1.0,
+            entry_bar=bar,
+            side="BUY",
+            qty=1.0,
+            entry_price=100.0,
+            stop=90.0,
+            target=105.0,
+            risk_usd=10.0,
+            confluence=0.0,
+            leverage=1.0,
             partial_target=110.0,  # > target
             partial_qty_frac=0.5,
         )
@@ -145,9 +170,15 @@ def test_open_partial_target_invariants_short() -> None:
     with pytest.raises(ValueError, match="partial_target"):
         bar = _bar(h=105, low=95, c=100)
         _Open(
-            entry_bar=bar, side="SELL", qty=1.0, entry_price=100.0,
-            stop=110.0, target=95.0, risk_usd=10.0,
-            confluence=0.0, leverage=1.0,
+            entry_bar=bar,
+            side="SELL",
+            qty=1.0,
+            entry_price=100.0,
+            stop=110.0,
+            target=95.0,
+            risk_usd=10.0,
+            confluence=0.0,
+            leverage=1.0,
             partial_target=90.0,  # < target on SHORT
             partial_qty_frac=0.5,
         )
@@ -157,9 +188,15 @@ def test_open_partial_qty_frac_must_be_in_open_unit_interval() -> None:
     bar = _bar(h=105, low=95, c=100)
     with pytest.raises(ValueError, match="partial_qty_frac"):
         _Open(
-            entry_bar=bar, side="BUY", qty=1.0, entry_price=100.0,
-            stop=90.0, target=120.0, risk_usd=10.0,
-            confluence=0.0, leverage=1.0,
+            entry_bar=bar,
+            side="BUY",
+            qty=1.0,
+            entry_price=100.0,
+            stop=90.0,
+            target=120.0,
+            risk_usd=10.0,
+            confluence=0.0,
+            leverage=1.0,
             partial_target=115.0,
             partial_qty_frac=1.5,  # out of range
         )
@@ -174,8 +211,13 @@ def test_engine_partial_exit_locks_in_cushion_and_runs_to_target() -> None:
       * Total pnl_R ≈ 0.5*1.5 + 0.5*3.5 = 2.5R, exit_reason="runner_target_hit".
     """
     opened = _build_runner_open(
-        side="BUY", entry=100.0, stop=90.0,
-        rr_partial=1.5, rr_target=3.5, partial_qty_frac=0.5, qty=1.0,
+        side="BUY",
+        entry=100.0,
+        stop=90.0,
+        rr_partial=1.5,
+        rr_target=3.5,
+        partial_qty_frac=0.5,
+        qty=1.0,
     )
     # Bar 0 = entry bar (won't trigger partial — partial is at 115)
     # Bar 1: high=116 → partial hits; low must stay above BE (100) so
@@ -207,8 +249,13 @@ def test_engine_partial_exit_then_runner_stops_out_at_be() -> None:
     Expected pnl: +0.5 × 1.5R cushion + 0.5 × 0R = +0.75R.
     """
     opened = _build_runner_open(
-        side="BUY", entry=100.0, stop=90.0,
-        rr_partial=1.5, rr_target=3.5, partial_qty_frac=0.5, qty=1.0,
+        side="BUY",
+        entry=100.0,
+        stop=90.0,
+        rr_partial=1.5,
+        rr_target=3.5,
+        partial_qty_frac=0.5,
+        qty=1.0,
     )
     # Bar 1: partial hits at 115
     # Bar 2: low touches 100 (entry) → runner BE stop fires
@@ -235,14 +282,19 @@ def test_engine_partial_exit_then_runner_stops_out_at_be() -> None:
 def test_engine_partial_short_side_pnl_correct() -> None:
     """SHORT scale-out: partial at -1.5R, runner to -3.5R, BE stop on retrace."""
     opened = _build_runner_open(
-        side="SELL", entry=100.0, stop=110.0,
-        rr_partial=1.5, rr_target=3.5, partial_qty_frac=0.5, qty=1.0,
+        side="SELL",
+        entry=100.0,
+        stop=110.0,
+        rr_partial=1.5,
+        rr_target=3.5,
+        partial_qty_frac=0.5,
+        qty=1.0,
     )
     # Partial at 100 - 15 = 85; target at 100 - 35 = 65
     bars = [
         _bar(h=102, low=95, c=100, minute=0),
         _bar(h=99, low=84, c=84.5, minute=5),  # partial hits (low <= 85)
-        _bar(h=99, low=64, c=66, minute=10),    # runner target (low <= 65)
+        _bar(h=99, low=64, c=66, minute=10),  # runner target (low <= 65)
     ]
     strategy = _StaticEntryStrategy(opened)
     cfg = _backtest_config()
@@ -262,9 +314,15 @@ def test_engine_legacy_no_partial_target_unchanged() -> None:
     """When partial_target is None, engine behaves identically to legacy."""
     bar = _bar(h=105, low=95, c=100, minute=0)
     opened = _Open(
-        entry_bar=bar, side="BUY", qty=1.0, entry_price=100.0,
-        stop=90.0, target=120.0, risk_usd=10.0,
-        confluence=10.0, leverage=1.0,
+        entry_bar=bar,
+        side="BUY",
+        qty=1.0,
+        entry_price=100.0,
+        stop=90.0,
+        target=120.0,
+        risk_usd=10.0,
+        confluence=10.0,
+        leverage=1.0,
         partial_target=None,
     )
     bars = [
@@ -292,11 +350,17 @@ def test_engine_legacy_no_partial_target_unchanged() -> None:
 
 
 def _fake_report(
-    bias: Bias, conviction: float, alignment: float = 1.0,
-    n_aligned: int = 15, n_disagree: int = 2, n_neutral: int = 5,
+    bias: Bias,
+    conviction: float,
+    alignment: float = 1.0,
+    n_aligned: int = 15,
+    n_disagree: int = 2,
+    n_neutral: int = 5,
 ) -> SageReport:
     v = SchoolVerdict(
-        school="fake", bias=bias, conviction=conviction,
+        school="fake",
+        bias=bias,
+        conviction=conviction,
         aligned_with_entry=(bias != Bias.NEUTRAL),
         rationale="test fixture",
     )
@@ -315,6 +379,7 @@ def _fake_report(
 @pytest.fixture
 def fake_sage(monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-untyped-def]
     """Install a controllable sage stub (mirrors test_sage_strategies)."""
+
     class _FakeSage:
         next_report: SageReport | None = None
         call_count: int = 0
@@ -333,26 +398,41 @@ def fake_sage(monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-untyped-def]
 
     fake = _FakeSage()
     monkeypatch.setattr(
-        "eta_engine.brain.jarvis_v3.sage.consultation.consult_sage", fake,
+        "eta_engine.brain.jarvis_v3.sage.consultation.consult_sage",
+        fake,
     )
     return fake
 
 
-def _ny_bar(local_h: int, local_m: int, *, high: float, low: float,
-            close: float | None = None, open_: float | None = None,
-            volume: float = 1000.0, day: int = 15) -> BarData:
+def _ny_bar(
+    local_h: int,
+    local_m: int,
+    *,
+    high: float,
+    low: float,
+    close: float | None = None,
+    open_: float | None = None,
+    volume: float = 1000.0,
+    day: int = 15,
+) -> BarData:
     local_dt = datetime(2026, 1, day, local_h, local_m, tzinfo=_NY)
     utc_dt = local_dt.astimezone(UTC)
     o = open_ if open_ is not None else (high + low) / 2
     c = close if close is not None else (high + low) / 2
     return BarData(
-        timestamp=utc_dt, symbol="MNQ", open=o, high=high, low=low,
-        close=c, volume=volume,
+        timestamp=utc_dt,
+        symbol="MNQ",
+        open=o,
+        high=high,
+        low=low,
+        close=c,
+        volume=volume,
     )
 
 
 def _gated_orb(
-    *, overlay_enabled: bool = True,
+    *,
+    overlay_enabled: bool = True,
     enable_scale_out: bool = True,
     enable_vix_filter: bool = False,  # default OFF in tests; opt in per-test
     rr_partial: float = 1.5,
@@ -367,9 +447,13 @@ def _gated_orb(
     sage_base.update(sage_overrides)
     cfg = SageGatedORBConfig(
         orb=ORBConfig(
-            ema_bias_period=0, volume_mult=0.0, atr_period=5,
-            range_minutes=15, require_retest=False,
-            rr_target=rr_target, atr_stop_mult=2.0,
+            ema_bias_period=0,
+            volume_mult=0.0,
+            atr_period=5,
+            range_minutes=15,
+            require_retest=False,
+            rr_target=rr_target,
+            atr_stop_mult=2.0,
         ),
         sage=SageConsensusConfig(**sage_base),
         overlay_enabled=overlay_enabled,
@@ -400,7 +484,9 @@ def test_gated_orb_emits_partial_target_on_fire(fake_sage) -> None:
     cfg = _backtest_config()
     hist = _drive_orb_range(s, hi=120, lo=100)
     fake_sage.next_report = _fake_report(
-        Bias.LONG, conviction=0.9, alignment=1.0,
+        Bias.LONG,
+        conviction=0.9,
+        alignment=1.0,
     )
     bar = _ny_bar(9, 45, high=125, low=120, close=124)
     out = s.maybe_enter(bar, hist, 10_000.0, cfg)
@@ -456,10 +542,12 @@ def _build_vix_provider(values_by_minute: dict[int, float]):  # type: ignore[no-
     The provider matches a bar by the minute offset within the day,
     so tests can deliver varying VIX values over a sequence of bars.
     """
+
     def _provider(bar: BarData) -> float | None:
         local = bar.timestamp.astimezone(_NY)
         key = local.hour * 60 + local.minute
         return values_by_minute.get(key)
+
     return _provider
 
 
@@ -471,9 +559,9 @@ def test_vix_filter_blocks_entry_above_p90(fake_sage) -> None:
         # warmup bars (during the range build, which calls maybe_enter)
         # plus one current bar; we'll feed 5 unique-timestamped bars
         # before the breakout fires.
-        0: 10.0,    # 9:30
-        5: 11.0,    # 9:35
-        10: 12.0,   # 9:40
+        0: 10.0,  # 9:30
+        5: 11.0,  # 9:35
+        10: 12.0,  # 9:40
         # bars 9:45 ... will be the breakout-firing minute. We seed
         # warm history via direct calls below.
     }

@@ -20,6 +20,7 @@ Usage:
     python -m eta_engine.scripts.sage_oracle --all --json
     python -m eta_engine.scripts.sage_oracle --bot btc_hybrid --schools wyckoff,smc_ict,trend_following
 """
+
 from __future__ import annotations
 
 import argparse
@@ -113,44 +114,94 @@ def _load_bars(symbol: str, timeframe: str, limit: int = 300) -> list[dict[str, 
             # to int so seasonality's _bar_timestamp_utc takes the epoch
             # branch (datetime.fromtimestamp) instead of failing on
             # fromisoformat("1715403600").
-            ts_raw: Any = (
-                r.get("ts") or r.get("timestamp")
-                or r.get("datetime") or r.get("time") or ""
-            )
+            ts_raw: Any = r.get("ts") or r.get("timestamp") or r.get("datetime") or r.get("time") or ""
             if isinstance(ts_raw, str) and ts_raw.isdigit():
                 ts_raw = int(ts_raw)
-            bars.append({
-                "ts": ts_raw,
-                "open": float(r.get("open") or r.get("Open") or 0),
-                "high": float(r.get("high") or r.get("High") or 0),
-                "low": float(r.get("low") or r.get("Low") or 0),
-                "close": float(r.get("close") or r.get("Close") or 0),
-                "volume": float(r.get("volume") or r.get("Volume") or 0),
-            })
+            bars.append(
+                {
+                    "ts": ts_raw,
+                    "open": float(r.get("open") or r.get("Open") or 0),
+                    "high": float(r.get("high") or r.get("High") or 0),
+                    "low": float(r.get("low") or r.get("Low") or 0),
+                    "close": float(r.get("close") or r.get("Close") or 0),
+                    "volume": float(r.get("volume") or r.get("Volume") or 0),
+                }
+            )
     return bars
 
 
-_CRYPTO_ROOTS_LOCAL = frozenset({
-    "BTC", "ETH", "SOL", "AVAX", "LINK", "DOGE", "XRP", "MBT", "MET",
-})
-_FUTURES_ROOTS_LOCAL = frozenset({
-    # Equity-index
-    "MNQ", "NQ", "ES", "MES", "RTY", "M2K", "YM", "MYM",
-    # Energies
-    "CL", "MCL", "NG", "RB", "HO", "BZ",
-    # Metals
-    "GC", "MGC", "SI", "SIL", "HG", "PA", "PL",
-    # Rates
-    "ZN", "ZB", "ZF", "ZT",
-    # FX (full + micros)
-    "6E", "M6E", "6A", "M6A", "6B", "M6B", "6J", "M6J", "6C", "6N", "6S",
-    # Grains
-    "ZC", "ZS", "ZW", "ZL", "ZM",
-    # Softs
-    "KC", "SB", "CC", "CT",
-    # Livestock
-    "LE", "HE",
-})
+_CRYPTO_ROOTS_LOCAL = frozenset(
+    {
+        "BTC",
+        "ETH",
+        "SOL",
+        "AVAX",
+        "LINK",
+        "DOGE",
+        "XRP",
+        "MBT",
+        "MET",
+    }
+)
+_FUTURES_ROOTS_LOCAL = frozenset(
+    {
+        # Equity-index
+        "MNQ",
+        "NQ",
+        "ES",
+        "MES",
+        "RTY",
+        "M2K",
+        "YM",
+        "MYM",
+        # Energies
+        "CL",
+        "MCL",
+        "NG",
+        "RB",
+        "HO",
+        "BZ",
+        # Metals
+        "GC",
+        "MGC",
+        "SI",
+        "SIL",
+        "HG",
+        "PA",
+        "PL",
+        # Rates
+        "ZN",
+        "ZB",
+        "ZF",
+        "ZT",
+        # FX (full + micros)
+        "6E",
+        "M6E",
+        "6A",
+        "M6A",
+        "6B",
+        "M6B",
+        "6J",
+        "M6J",
+        "6C",
+        "6N",
+        "6S",
+        # Grains
+        "ZC",
+        "ZS",
+        "ZW",
+        "ZL",
+        "ZM",
+        # Softs
+        "KC",
+        "SB",
+        "CC",
+        "CT",
+        # Livestock
+        "LE",
+        "HE",
+    }
+)
 
 
 def _instrument_class(symbol: str) -> str:
@@ -194,8 +245,8 @@ def consult_for_bot(
     peer_returns: dict[str, list[float]] = {}
     self_class = _instrument_class(assignment.symbol)
     self_root = assignment.symbol.upper().rstrip("0123456789")
-    peer_pool = ("BTC", "ETH", "SOL") if self_class == "crypto" else (
-        ("MNQ", "NQ", "ES") if self_class == "futures" else ()
+    peer_pool = (
+        ("BTC", "ETH", "SOL") if self_class == "crypto" else (("MNQ", "NQ", "ES") if self_class == "futures" else ())
     )
     for peer_sym in peer_pool:
         if peer_sym == self_root:
@@ -204,11 +255,7 @@ def consult_for_bot(
         if len(peer_bars) < 5:
             continue
         closes = [b["close"] for b in peer_bars if b.get("close")]
-        rets = [
-            (closes[i] - closes[i - 1]) / closes[i - 1]
-            for i in range(1, len(closes))
-            if closes[i - 1] > 0
-        ]
+        rets = [(closes[i] - closes[i - 1]) / closes[i - 1] for i in range(1, len(closes)) if closes[i - 1] > 0]
         if rets:
             peer_returns[peer_sym] = rets
 
@@ -244,18 +291,21 @@ def consult_for_bot(
             detect_clashes,
             strongest_clash_modifier,
         )
+
         matches = detect_clashes(report)
         for c in matches:
-            clashes_data.append({
-                "name": c.name,
-                "school_a": c.school_a,
-                "bias_a": c.bias_a.value,
-                "school_b": c.school_b,
-                "bias_b": c.bias_b.value,
-                "interpretation": c.interpretation,
-                "verdict_modifier": c.verdict_modifier,
-                "cap_mult": c.cap_mult,
-            })
+            clashes_data.append(
+                {
+                    "name": c.name,
+                    "school_a": c.school_a,
+                    "bias_a": c.bias_a.value,
+                    "school_b": c.school_b,
+                    "bias_b": c.bias_b.value,
+                    "interpretation": c.interpretation,
+                    "verdict_modifier": c.verdict_modifier,
+                    "cap_mult": c.cap_mult,
+                }
+            )
         if matches:
             clash_modifier, clash_cap_mult = strongest_clash_modifier(matches)
     except Exception:  # noqa: BLE001
@@ -271,16 +321,18 @@ def consult_for_bot(
     schools = []
     for name, v in report.per_school.items():
         edge = edge_snapshot.get(name, {})
-        schools.append({
-            "school": name,
-            "bias": v.bias.value,
-            "conviction": round(v.conviction, 4),
-            "aligned_with_entry": bool(v.aligned_with_entry),
-            "rationale": (v.rationale or "")[:200],
-            "edge_n_obs": int(edge.get("n_obs", 0)),
-            "edge_hit_rate": float(edge.get("hit_rate", 0.5)),
-            "edge_expectancy_r": float(edge.get("expectancy", 0.0)),
-        })
+        schools.append(
+            {
+                "school": name,
+                "bias": v.bias.value,
+                "conviction": round(v.conviction, 4),
+                "aligned_with_entry": bool(v.aligned_with_entry),
+                "rationale": (v.rationale or "")[:200],
+                "edge_n_obs": int(edge.get("n_obs", 0)),
+                "edge_hit_rate": float(edge.get("hit_rate", 0.5)),
+                "edge_expectancy_r": float(edge.get("expectancy", 0.0)),
+            }
+        )
     schools.sort(key=lambda s: s["conviction"], reverse=True)
 
     return {
@@ -311,20 +363,25 @@ def _print_text(r: dict[str, Any]) -> None:
         return
 
     print("=" * 102)
-    print(f" SAGE ORACLE  {r['bot_id']} ({r['symbol']}/{r['timeframe']}) "
-          f"side={r['side']}  bars={r['n_bars']}  last={r['last_close']:.4f}")
+    print(
+        f" SAGE ORACLE  {r['bot_id']} ({r['symbol']}/{r['timeframe']}) "
+        f"side={r['side']}  bars={r['n_bars']}  last={r['last_close']:.4f}"
+    )
     print("=" * 102)
-    print(f"  composite_bias={r['composite_bias']:<8} "
-          f"conviction={r['conviction']:.3f}  "
-          f"alignment={r['alignment_score']:.2f}  "
-          f"consensus={r['consensus_pct']:.2f}")
-    print(f"  schools  consulted={r['schools_consulted']}  "
-          f"aligned={r['schools_aligned']}  "
-          f"disagreeing={r['schools_disagreeing']}  "
-          f"neutral={r['schools_neutral']}")
+    print(
+        f"  composite_bias={r['composite_bias']:<8} "
+        f"conviction={r['conviction']:.3f}  "
+        f"alignment={r['alignment_score']:.2f}  "
+        f"consensus={r['consensus_pct']:.2f}"
+    )
+    print(
+        f"  schools  consulted={r['schools_consulted']}  "
+        f"aligned={r['schools_aligned']}  "
+        f"disagreeing={r['schools_disagreeing']}  "
+        f"neutral={r['schools_neutral']}"
+    )
     print("-" * 102)
-    print(f"  {'school':<28} {'bias':<8} {'conv':>5} {'algn':>4} "
-          f"{'edge_n':>6} {'hit%':>5} {'exp_R':>6}  rationale")
+    print(f"  {'school':<28} {'bias':<8} {'conv':>5} {'algn':>4} {'edge_n':>6} {'hit%':>5} {'exp_R':>6}  rationale")
     print("-" * 102)
     for s in r["schools"]:
         print(
@@ -333,64 +390,73 @@ def _print_text(r: dict[str, Any]) -> None:
             f"{s['conviction']:>5.2f} "
             f"{('Y' if s['aligned_with_entry'] else 'n'):>4} "
             f"{s['edge_n_obs']:>6} "
-            f"{s['edge_hit_rate']*100:>5.1f} "
+            f"{s['edge_hit_rate'] * 100:>5.1f} "
             f"{s['edge_expectancy_r']:>+6.2f}  "
             f"{(s['rationale'] or '').replace(chr(10), ' ')[:50]}"
         )
     # Top + bottom-confidence dissenters
     high_dissent = [
-        s for s in r["schools"]
-        if s["bias"] != r["composite_bias"]
-        and s["bias"] != "neutral"
-        and s["conviction"] >= 0.50
+        s
+        for s in r["schools"]
+        if s["bias"] != r["composite_bias"] and s["bias"] != "neutral" and s["conviction"] >= 0.50
     ]
     if high_dissent:
         print("-" * 102)
         print("  HIGH-CONVICTION DISSENTERS:")
         for s in high_dissent:
-            print(f"    [{s['school']}] {s['bias']} (conv={s['conviction']:.2f})  "
-                  f"{(s['rationale'] or '')[:70]}")
+            print(f"    [{s['school']}] {s['bias']} (conv={s['conviction']:.2f})  {(s['rationale'] or '')[:70]}")
     # Curated clash patterns (defer/tighten/loosen verdicts)
     clashes = r.get("clashes") or []
     if clashes:
         print("-" * 102)
-        print(f"  CLASH PATTERNS ({len(clashes)}) — modifier="
-              f"{r.get('clash_modifier')} cap_mult={r.get('clash_cap_mult')}:")
+        print(
+            f"  CLASH PATTERNS ({len(clashes)}) — modifier="
+            f"{r.get('clash_modifier')} cap_mult={r.get('clash_cap_mult')}:"
+        )
         for c in clashes:
-            print(f"    [{c['name']}] {c['school_a']}={c['bias_a']} vs "
-                  f"{c['school_b']}={c['bias_b']} → {c['verdict_modifier']}")
+            print(
+                f"    [{c['name']}] {c['school_a']}={c['bias_a']} vs "
+                f"{c['school_b']}={c['bias_b']} → {c['verdict_modifier']}"
+            )
             print(f"      {(c['interpretation'] or '')[:90]}")
     print("=" * 102)
 
 
 _DIAMOND_BOT_IDS = (
-    "btc_optimized", "btc_hybrid", "btc_regime_trend_etf", "btc_sage_daily_etf",
-    "volume_profile_btc", "btc_hybrid_sage", "funding_rate_btc",
-    "btc_crypto_scalp", "vwap_mr_btc", "btc_ensemble_2of3",
-    "eth_perp", "eth_sage_daily",
-    "volume_profile_mnq", "rsi_mr_mnq",
+    "btc_optimized",
+    "btc_hybrid",
+    "btc_regime_trend_etf",
+    "btc_sage_daily_etf",
+    "volume_profile_btc",
+    "btc_hybrid_sage",
+    "funding_rate_btc",
+    "btc_crypto_scalp",
+    "vwap_mr_btc",
+    "btc_ensemble_2of3",
+    "eth_perp",
+    "eth_sage_daily",
+    "volume_profile_mnq",
+    "rsi_mr_mnq",
 )
 
 
 def main(argv: list[str] | None = None) -> int:
     with contextlib.suppress(AttributeError, ValueError):
         import sys as _sys
+
         _sys.stdout.reconfigure(errors="replace")  # type: ignore[union-attr]
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--bot", default=None, help="Single bot_id")
-    p.add_argument("--diamonds", action="store_true",
-                   help="Run on the diamond + post-fix top-earner set")
-    p.add_argument("--all", action="store_true",
-                   help="Run on every bot in per_bot_registry.ASSIGNMENTS")
-    p.add_argument("--side", default="long", choices=("long", "short"),
-                   help="Proposed entry side (default long)")
-    p.add_argument("--schools", default=None,
-                   help="Comma-separated school NAMEs to limit to")
+    p.add_argument("--diamonds", action="store_true", help="Run on the diamond + post-fix top-earner set")
+    p.add_argument("--all", action="store_true", help="Run on every bot in per_bot_registry.ASSIGNMENTS")
+    p.add_argument("--side", default="long", choices=("long", "short"), help="Proposed entry side (default long)")
+    p.add_argument("--schools", default=None, help="Comma-separated school NAMEs to limit to")
     p.add_argument("--json", action="store_true")
     args = p.parse_args(argv)
 
     if args.all:
         from eta_engine.strategies.per_bot_registry import ASSIGNMENTS
+
         targets = tuple(a.bot_id for a in ASSIGNMENTS)
     elif args.diamonds:
         targets = _DIAMOND_BOT_IDS

@@ -131,8 +131,7 @@ def is_grid_safe(
         if abs(vol_z) > cfg.vol_z_max:
             return (
                 False,
-                f"|vol_z| {abs(vol_z):.2f} > {cfg.vol_z_max:.2f} "
-                "-> regime-shift; grid disabled",
+                f"|vol_z| {abs(vol_z):.2f} > {cfg.vol_z_max:.2f} -> regime-shift; grid disabled",
             )
 
     return True, "ranging regime; grid allowed"

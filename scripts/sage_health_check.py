@@ -14,6 +14,7 @@ Usage::
     python -m eta_engine.scripts.sage_health_check
     python -m eta_engine.scripts.sage_health_check --json-out state/sage/last_health_report.json
 """
+
 from __future__ import annotations
 
 import argparse
@@ -51,6 +52,7 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     from eta_engine.brain.jarvis_v3.sage.health import default_monitor
+
     monitor = default_monitor()
     issues = monitor.check_health()
     snapshot = monitor.snapshot()
@@ -96,6 +98,7 @@ def _dispatch_alerts(critical: list) -> None:
     """Send Resend email / Slack / Pushover alert for degraded schools."""
     try:
         from eta_engine.obs.alert_dispatcher import dispatch
+
         schools_str = ", ".join(i.school for i in critical)
         dispatch(
             event="sage_school_degraded",

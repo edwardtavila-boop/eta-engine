@@ -43,6 +43,7 @@ class _FakeResponse:
     def json(self) -> Any:
         if self._raise_on_json:
             import json as _json
+
             raise _json.JSONDecodeError("fake", "doc", 0)
         return self._payload
 
@@ -84,7 +85,8 @@ class _FakeClient:
 
 
 def _install_fake(
-    monkeypatch: pytest.MonkeyPatch, responses: list[Any],
+    monkeypatch: pytest.MonkeyPatch,
+    responses: list[Any],
 ) -> list[dict[str, Any]]:
     """Replace ``httpx.Client`` so every ``with httpx.Client(...)`` returns
     a ``_FakeClient`` drawing from ``responses``. The returned ``requests``

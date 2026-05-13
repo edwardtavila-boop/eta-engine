@@ -36,6 +36,7 @@ LunarCrush and writes to the cache file) is documented in
 ``deploy/hermes_vps_config.yaml`` example block. This module is the
 READ surface only — it works the moment the fetch task starts emitting.
 """
+
 from __future__ import annotations
 
 import contextlib
@@ -122,7 +123,8 @@ def _load_cache(asset_class: str, cache_dir: Path | None = None) -> dict[str, An
     if _now() - asof > timedelta(minutes=STALE_AFTER_MIN):
         logger.info(
             "sentiment cache for %s is stale (%s) — returning None",
-            asset_class, asof,
+            asset_class,
+            asof,
         )
         return None
     return data
@@ -134,7 +136,8 @@ def _load_cache(asset_class: str, cache_dir: Path | None = None) -> dict[str, An
 
 
 def current_sentiment(
-    asset_class: str, cache_dir: Path | None = None,
+    asset_class: str,
+    cache_dir: Path | None = None,
 ) -> dict[str, Any] | None:
     """Return the latest sentiment snapshot for ``asset_class`` or ``None``.
 
@@ -158,7 +161,9 @@ def current_sentiment(
 
 
 def sentiment_history(
-    asset_class: str, n: int = 100, cache_dir: Path | None = None,
+    asset_class: str,
+    n: int = 100,
+    cache_dir: Path | None = None,
 ) -> list[dict[str, Any]]:
     """Return the last ``n`` historical snapshots for ``asset_class``.
 

@@ -36,31 +36,37 @@ def test_run_attribution_matches_signal_entry_and_exit(tmp_path) -> None:
     now = datetime.now(UTC).isoformat()
     signal_path = tmp_path / "signals.jsonl"
     fill_path = tmp_path / "fills.jsonl"
-    _jsonl(signal_path, [
-        {
-            "ts": now,
-            "strategy_id": "book_imbalance",
-            "signal_id": "sig-1",
-            "side": "BUY",
-            "entry_price": 100.0,
-            "intended_target_price": 102.0,
-            "intended_stop_price": 99.0,
-        },
-    ])
-    _jsonl(fill_path, [
-        {
-            "ts": now,
-            "signal_id": "sig-1",
-            "exit_reason": "ENTRY",
-            "actual_fill_price": 99.75,
-        },
-        {
-            "ts": now,
-            "signal_id": "sig-1",
-            "exit_reason": "TARGET",
-            "actual_fill_price": 102.25,
-        },
-    ])
+    _jsonl(
+        signal_path,
+        [
+            {
+                "ts": now,
+                "strategy_id": "book_imbalance",
+                "signal_id": "sig-1",
+                "side": "BUY",
+                "entry_price": 100.0,
+                "intended_target_price": 102.0,
+                "intended_stop_price": 99.0,
+            },
+        ],
+    )
+    _jsonl(
+        fill_path,
+        [
+            {
+                "ts": now,
+                "signal_id": "sig-1",
+                "exit_reason": "ENTRY",
+                "actual_fill_price": 99.75,
+            },
+            {
+                "ts": now,
+                "signal_id": "sig-1",
+                "exit_reason": "TARGET",
+                "actual_fill_price": 102.25,
+            },
+        ],
+    )
 
     report = attr.run_attribution(
         "book_imbalance",

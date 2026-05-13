@@ -2,6 +2,7 @@ r"""
 Canonical VPS fix — single source of truth at C:\EvolutionaryTradingAlgo.
 Fixes service XML paths, re-registers WinSW services, validates, starts everything.
 """
+
 import subprocess
 import sys
 from pathlib import Path
@@ -35,9 +36,9 @@ def fix_xml_paths(xml_path: Path) -> bool:
     if str(OLD) in content and str(CANONICAL) not in content:
         content = content.replace(str(OLD), str(CANONICAL))
         changed = True
-    # Also fix firm_command_center\eta_engine paths to canonical
-    if r"firm_command_center\eta_engine" in content:
-        content = content.replace(r"firm_command_center\eta_engine", r"firm\eta_engine")
+        # Also fix firm_command_center\eta_engine paths to canonical
+        if r"firm_command_center\eta_engine" in content:  # HISTORICAL-PATH-OK
+            content = content.replace(r"firm_command_center\eta_engine", r"firm\eta_engine")  # HISTORICAL-PATH-OK
         changed = True
 
     if changed:
@@ -65,6 +66,7 @@ def reinstall_service(winsw: Path, xml_path: Path) -> bool:
 
     # Copy xml and winsw
     import shutil
+
     dest_xml = svc_dir / xml_path.name
     shutil.copy2(str(xml_path), str(dest_xml))
     dest_exe = svc_dir / "winsw.exe"
@@ -80,7 +82,9 @@ def reinstall_service(winsw: Path, xml_path: Path) -> bool:
         try:
             result = subprocess.run(
                 [str(dest_exe), action] + args,
-                capture_output=True, text=True, timeout=30,
+                capture_output=True,
+                text=True,
+                timeout=30,
                 cwd=str(svc_dir),
             )
             if result.returncode != 0 and action != "stop":
@@ -92,7 +96,7 @@ def reinstall_service(winsw: Path, xml_path: Path) -> bool:
     return True
 
 
-def main():
+def main() -> int | None:
     print("=" * 60)
     print("  CANONICAL VPS FIX — Source of truth: C:\\EvolutionaryTradingAlgo")
     print("=" * 60)
@@ -127,7 +131,9 @@ def main():
     if python_exe.exists():
         result = subprocess.run(
             [str(python_exe), str(CANONICAL / "eta_engine" / "scripts" / "health_check.py")],
-            capture_output=True, text=True, timeout=30,
+            capture_output=True,
+            text=True,
+            timeout=30,
             cwd=str(CANONICAL),
         )
         print(result.stdout[-500:] if len(result.stdout) > 500 else result.stdout)
@@ -135,7 +141,10 @@ def main():
     # Step 5: List all services
     print("\n--- Step 5: Service status ---")
     result = subprocess.run(
-        ["sc", "query"], capture_output=True, text=True, timeout=15,
+        ["sc", "query"],
+        capture_output=True,
+        text=True,
+        timeout=15,
     )
     for line in result.stdout.splitlines():
         if any(s in line for s in ["Firm", "Hermes", "ETA", "SERVICE_NAME", "STATE"]):

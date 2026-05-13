@@ -502,15 +502,82 @@ def _task_health_watchdog(state_dir: Path) -> dict:
     out_path = state_dir / "health_watchdog.json"
     out_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
 
-    # Telegram ping if we had to restart anything (non-blocking)
+    # Telegram ping policy (operator-facing): silence routine
+    # auto-restarts. Only alert when a SAME service has been restarted
+    # multiple times in a short window — that's a real problem worth
+    # waking up for. One-off transient restarts get logged to JSON
+    # but don't spam Telegram.
+    #
+    # Env-var escape hatch:
+    #   HEALTH_WATCHDOG_NOISY=1  → restore old "ping on every restart"
+    #     behavior (rarely useful; mostly for debugging the watchdog)
     if report["actions"] and any("state_after" in a for a in report["actions"]):
         try:
-            from eta_engine.deploy.scripts.telegram_alerts import send_from_env
-
             restarted = [a["svc"] for a in report["actions"] if a.get("state_after")]
-            if restarted:
+            should_alert = False
+            alert_reason = ""
+
+            if os.environ.get("HEALTH_WATCHDOG_NOISY") in ("1", "true", "yes"):
+                should_alert = bool(restarted)
+                alert_reason = "noisy_mode"
+            else:
+                # Track restart frequency in a rolling history file
+                history_path = state_dir / "health_watchdog_restart_history.jsonl"
+                history_path.parent.mkdir(parents=True, exist_ok=True)
+                now_ts = datetime.now(UTC)
+                window_min = 60
+                threshold = 3  # 3+ restarts of same svc within window_min = real problem
+                # Read recent restart entries
+                recent: list[dict] = []
+                if history_path.exists():
+                    try:
+                        with history_path.open(encoding="utf-8") as fh:
+                            for raw in fh:
+                                line = raw.strip()
+                                if not line:
+                                    continue
+                                try:
+                                    rec = json.loads(line)
+                                except json.JSONDecodeError:
+                                    continue
+                                try:
+                                    rec_ts = datetime.fromisoformat(
+                                        str(rec.get("ts", "")).replace("Z", "+00:00"),
+                                    )
+                                except ValueError:
+                                    continue
+                                if (now_ts - rec_ts).total_seconds() <= window_min * 60:
+                                    recent.append(rec)
+                    except OSError:
+                        pass
+                # Append this restart batch
+                try:
+                    with history_path.open("a", encoding="utf-8") as fh:
+                        for svc in restarted:
+                            fh.write(
+                                json.dumps(
+                                    {
+                                        "ts": now_ts.isoformat(),
+                                        "svc": svc,
+                                    }
+                                )
+                                + "\n"
+                            )
+                except OSError:
+                    pass
+                # Tally per-service restart count over the window
+                for svc in restarted:
+                    n = sum(1 for r in recent if r.get("svc") == svc) + 1  # +1 for THIS restart
+                    if n >= threshold:
+                        should_alert = True
+                        alert_reason = f"{svc} restarted {n}× in {window_min}min"
+                        break
+
+            if should_alert:
+                from eta_engine.deploy.scripts.telegram_alerts import send_from_env
+
                 send_from_env(
-                    f"*Watchdog auto-healed*: {', '.join(restarted)}",
+                    f"🔧 *Repeated auto-restart*: {', '.join(restarted)} ({alert_reason})",
                     priority="WARN",
                 )
         except Exception:  # noqa: BLE001
@@ -833,6 +900,7 @@ def _task_prometheus_export(state_dir: Path) -> dict:
     # without volume = wrong tier being selected).
     try:
         from eta_engine.brain.multi_model_telemetry import summarize  # noqa: PLC0415
+
         fm = summarize(limit=10_000)  # whole log; cheap, log is small
         lines.extend(
             [

@@ -15,6 +15,7 @@ area get a confluence bonus; trades AGAINST a fresh LVN get a penalty.
 Inputs are pre-bucketed (price_bucket -> volume) so the caller chooses
 the bucket size (typically 1 tick or 0.1% of price for crypto).
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -22,21 +23,21 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class VolumeProfile:
-    poc: float                      # price of the most-traded bucket
-    vah: float                      # value area high (70% containment)
-    val: float                      # value area low
+    poc: float  # price of the most-traded bucket
+    vah: float  # value area high (70% containment)
+    val: float  # value area low
     total_volume: float
     poc_volume: float
-    hvn_levels: list[float]         # high-volume nodes
-    lvn_levels: list[float]         # low-volume nodes
+    hvn_levels: list[float]  # high-volume nodes
+    lvn_levels: list[float]  # low-volume nodes
 
 
 def compute_profile(
     buckets: dict[float, float],
     *,
     value_area_pct: float = 0.70,
-    hvn_threshold_pct: float = 0.80,    # >= 80% of POC volume
-    lvn_threshold_pct: float = 0.20,    # <= 20% of POC volume
+    hvn_threshold_pct: float = 0.80,  # >= 80% of POC volume
+    lvn_threshold_pct: float = 0.20,  # <= 20% of POC volume
 ) -> VolumeProfile:
     """Compute the canonical levels from a price->volume mapping.
 
@@ -45,9 +46,13 @@ def compute_profile(
     """
     if not buckets:
         return VolumeProfile(
-            poc=0.0, vah=0.0, val=0.0,
-            total_volume=0.0, poc_volume=0.0,
-            hvn_levels=[], lvn_levels=[],
+            poc=0.0,
+            vah=0.0,
+            val=0.0,
+            total_volume=0.0,
+            poc_volume=0.0,
+            hvn_levels=[],
+            lvn_levels=[],
         )
 
     sorted_prices = sorted(buckets.keys())
@@ -92,7 +97,8 @@ def compute_profile(
 
 
 def position_relative_to_value_area(
-    price: float, profile: VolumeProfile,
+    price: float,
+    profile: VolumeProfile,
 ) -> str:
     """Categorize a price relative to the value area.
 
@@ -115,7 +121,4 @@ def is_near_lvn(price: float, profile: VolumeProfile, *, tolerance_pct: float = 
     interest there (rejection). Either way, a trade hovering near an
     LVN is at higher risk.
     """
-    return any(
-        abs(price - lvn) / max(price, 1e-9) <= tolerance_pct
-        for lvn in profile.lvn_levels
-    )
+    return any(abs(price - lvn) / max(price, 1e-9) <= tolerance_pct for lvn in profile.lvn_levels)

@@ -58,9 +58,7 @@ def state_root(tmp_path: Path) -> Path:
     return root
 
 
-def _write_pending_task(
-    root: Path, task_id: str, *, preferred_agent: str = "any"
-) -> Path:
+def _write_pending_task(root: Path, task_id: str, *, preferred_agent: str = "any") -> Path:
     payload = {
         "id": task_id,
         "title": f"test task {task_id}",
@@ -109,11 +107,7 @@ def test_heartbeat_includes_claimed_tasks(state_root: Path) -> None:
     c = ac.AgentCoordinator("claude", state_root=state_root)
     c.claim("T-2026-05-05-100")
     c.emit_heartbeat()
-    hb = json.loads(
-        (state_root / "agents" / "claude.heartbeat.json").read_text(
-            encoding="utf-8"
-        )
-    )
+    hb = json.loads((state_root / "agents" / "claude.heartbeat.json").read_text(encoding="utf-8"))
     assert hb["claimed_tasks"] == ["T-2026-05-05-100"]
 
 
@@ -130,9 +124,7 @@ def test_claim_basic_path(state_root: Path) -> None:
     assert task["status"] == "in_progress"
     # File should be in claude's in_progress, gone from pending.
     assert not (state_root / "tasks/pending/T-2026-05-05-200.yaml").exists()
-    assert (
-        state_root / "tasks/in_progress/claude/T-2026-05-05-200.yaml"
-    ).exists()
+    assert (state_root / "tasks/in_progress/claude/T-2026-05-05-200.yaml").exists()
 
 
 def test_claim_missing_task_raises(state_root: Path) -> None:
@@ -172,10 +164,7 @@ def test_claim_race_two_threads(state_root: Path) -> None:
     assert len(lost) == 1, f"expected 1 loser, got {results}"
     # Winner's in_progress holds the task; loser's does not.
     winner = won[0]
-    assert (
-        state_root
-        / f"tasks/in_progress/{winner}/T-2026-05-05-300.yaml"
-    ).exists()
+    assert (state_root / f"tasks/in_progress/{winner}/T-2026-05-05-300.yaml").exists()
 
 
 def test_claim_releases_lock_on_success(state_root: Path) -> None:
@@ -197,9 +186,7 @@ def test_claim_refuses_task_preferred_for_another_agent(state_root: Path) -> Non
         c.claim("T-2026-05-05-320")
 
     assert (state_root / "tasks/pending/T-2026-05-05-320.yaml").exists()
-    assert not (
-        state_root / "tasks/in_progress/codex/T-2026-05-05-320.yaml"
-    ).exists()
+    assert not (state_root / "tasks/in_progress/codex/T-2026-05-05-320.yaml").exists()
     assert not (state_root / "locks/T-2026-05-05-320.lock").exists()
 
 
@@ -214,9 +201,7 @@ def test_claim_can_force_cross_agent_preference(state_root: Path) -> None:
     task = c.claim("T-2026-05-05-330", force_preferred=True)
 
     assert task["agent"] == "codex"
-    assert (
-        state_root / "tasks/in_progress/codex/T-2026-05-05-330.yaml"
-    ).exists()
+    assert (state_root / "tasks/in_progress/codex/T-2026-05-05-330.yaml").exists()
 
 
 # --------------------------------------------------------------------------
@@ -259,9 +244,7 @@ def test_complete_moves_task(state_root: Path) -> None:
     assert payload["deliverable_refs"] == ["foo/bar.py"]
     assert payload["completed_at"] is not None
     # Last note records completion summary.
-    assert any(
-        n["note"].startswith("completed: all green") for n in payload["notes"]
-    )
+    assert any(n["note"].startswith("completed: all green") for n in payload["notes"])
 
 
 def test_complete_without_claim_raises(state_root: Path) -> None:
@@ -320,9 +303,7 @@ def test_journal_append_only(state_root: Path) -> None:
 # --------------------------------------------------------------------------
 
 
-def _force_heartbeat_age(
-    state_root: Path, agent: str, *, age: timedelta
-) -> None:
+def _force_heartbeat_age(state_root: Path, agent: str, *, age: timedelta) -> None:
     hb = state_root / "agents" / f"{agent}.heartbeat.json"
     payload = json.loads(hb.read_text(encoding="utf-8"))
     old_ts = (datetime.now(UTC) - age).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -344,15 +325,9 @@ def test_reclaim_stale_returns_tasks_to_pending(state_root: Path) -> None:
     # Task back in pending.
     assert (state_root / "tasks/pending/T-2026-05-05-800.yaml").exists()
     # Gone from claude's in_progress.
-    assert not (
-        state_root / "tasks/in_progress/claude/T-2026-05-05-800.yaml"
-    ).exists()
+    assert not (state_root / "tasks/in_progress/claude/T-2026-05-05-800.yaml").exists()
     # Reclaim note was appended.
-    payload = yaml.safe_load(
-        (state_root / "tasks/pending/T-2026-05-05-800.yaml").read_text(
-            encoding="utf-8"
-        )
-    )
+    payload = yaml.safe_load((state_root / "tasks/pending/T-2026-05-05-800.yaml").read_text(encoding="utf-8"))
     assert any("reclaimed" in n["note"] for n in payload["notes"])
 
 
@@ -364,9 +339,7 @@ def test_reclaim_stale_skips_fresh_agent(state_root: Path) -> None:
     janitor = ac.AgentCoordinator("codex", state_root=state_root)
     reclaimed = janitor.reclaim_stale()
     assert "T-2026-05-05-810" not in reclaimed
-    assert (
-        state_root / "tasks/in_progress/claude/T-2026-05-05-810.yaml"
-    ).exists()
+    assert (state_root / "tasks/in_progress/claude/T-2026-05-05-810.yaml").exists()
 
 
 def test_reclaim_stale_handles_missing_heartbeat(state_root: Path) -> None:
@@ -408,9 +381,7 @@ def test_list_pending_no_filter_returns_all(state_root: Path) -> None:
 # --------------------------------------------------------------------------
 
 
-def test_cli_heartbeat(
-    state_root: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
-) -> None:
+def test_cli_heartbeat(state_root: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture) -> None:
     monkeypatch.setattr(ac, "DEFAULT_STATE_ROOT", state_root)
     rc = ac.main(["heartbeat", "--agent", "claude"])
     assert rc == 0
@@ -419,9 +390,7 @@ def test_cli_heartbeat(
     assert (state_root / "agents/claude.heartbeat.json").exists()
 
 
-def test_cli_list_pending(
-    state_root: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
-) -> None:
+def test_cli_list_pending(state_root: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture) -> None:
     monkeypatch.setattr(ac, "DEFAULT_STATE_ROOT", state_root)
     _write_pending_task(state_root, "T-CLI-1")
     rc = ac.main(["list-pending"])
@@ -477,28 +446,26 @@ def test_cli_claim_respects_preferred_agent_by_default(
     assert (state_root / "tasks/pending/T-CLI-PREF.yaml").exists()
 
 
-def test_cli_claim_force_preferred_allows_operator_override(
-    state_root: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_cli_claim_force_preferred_allows_operator_override(state_root: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(ac, "DEFAULT_STATE_ROOT", state_root)
     _write_pending_task(state_root, "T-CLI-FORCE", preferred_agent="claude")
 
-    rc = ac.main([
-        "claim",
-        "--agent",
-        "codex",
-        "--task",
-        "T-CLI-FORCE",
-        "--force-preferred",
-    ])
+    rc = ac.main(
+        [
+            "claim",
+            "--agent",
+            "codex",
+            "--task",
+            "T-CLI-FORCE",
+            "--force-preferred",
+        ]
+    )
 
     assert rc == 0
     assert (state_root / "tasks/in_progress/codex/T-CLI-FORCE.yaml").exists()
 
 
-def test_cli_block(
-    state_root: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
-) -> None:
+def test_cli_block(state_root: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture) -> None:
     monkeypatch.setattr(ac, "DEFAULT_STATE_ROOT", state_root)
     _write_pending_task(state_root, "T-CLI-3")
     ac.main(["claim", "--agent", "claude", "--task", "T-CLI-3"])
@@ -517,9 +484,7 @@ def test_cli_block(
     assert (state_root / "tasks/blocked/T-CLI-3.yaml").exists()
 
 
-def test_cli_reclaim_stale(
-    state_root: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
-) -> None:
+def test_cli_reclaim_stale(state_root: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture) -> None:
     monkeypatch.setattr(ac, "DEFAULT_STATE_ROOT", state_root)
     _write_pending_task(state_root, "T-CLI-4")
     claude = ac.AgentCoordinator("claude", state_root=state_root)

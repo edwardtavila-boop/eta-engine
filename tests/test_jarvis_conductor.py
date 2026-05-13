@@ -4,6 +4,7 @@ The conductor is the *only* new code that hooks into JarvisFull.consult().
 These tests verify the 5-stream pipeline composes correctly and that any
 single-stream failure falls back to legacy behavior (never raises).
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -80,8 +81,10 @@ def test_orchestrate_writes_exactly_one_trace_line(monkeypatch, tmp_path):
 
 def test_orchestrate_never_raises_when_portfolio_brain_fails(monkeypatch, tmp_path):
     """Any single-stream failure → legacy fallback, no exception."""
+
     def boom():
         raise RuntimeError("portfolio brain exploded")
+
     monkeypatch.setattr(portfolio_brain, "snapshot", boom)
     trace_path = tmp_path / "trace.jsonl"
     # MUST NOT raise
@@ -110,8 +113,10 @@ def test_orchestrate_never_raises_when_hot_learner_fails(monkeypatch, tmp_path):
 
 def test_orchestrate_never_raises_when_trace_emitter_fails(monkeypatch, tmp_path):
     """trace_emitter failure → consult still returns a valid result."""
+
     def boom(*args, **kwargs):
         raise OSError("disk full")
+
     monkeypatch.setattr(portfolio_brain, "snapshot", _healthy_ctx)
     monkeypatch.setattr(te, "emit", boom)
 
@@ -127,7 +132,8 @@ def test_orchestrate_passes_hot_learner_weights(monkeypatch, tmp_path):
 
     monkeypatch.setattr(portfolio_brain, "snapshot", _healthy_ctx)
     monkeypatch.setattr(
-        hot_learner, "current_weights",
+        hot_learner,
+        "current_weights",
         lambda asset: {"order_flow": 1.3, "wyckoff": 0.7},
     )
     trace_path = tmp_path / "trace.jsonl"
@@ -138,6 +144,7 @@ def test_orchestrate_passes_hot_learner_weights(monkeypatch, tmp_path):
 
 def test_orchestrate_clamps_size_to_max_1_5(monkeypatch, tmp_path):
     """Final size never exceeds 1.5 even when base × modifier would."""
+
     # Force portfolio_modifier > 1.0 via a custom snapshot+assess pair.
     def fake_snapshot():
         # any healthy context — assess() returns 1.0 in default rules,
@@ -182,7 +189,9 @@ def test_observe_close_never_raises(monkeypatch):
     monkeypatch.setattr(hot_learner, "observe_close", boom)
     # MUST NOT raise
     jc.observe_close(
-        asset_class="BTC", school_attribution={"a": 1.0}, r_outcome=1.0,
+        asset_class="BTC",
+        school_attribution={"a": 1.0},
+        r_outcome=1.0,
     )
 
 
@@ -210,6 +219,7 @@ def test_build_school_inputs_returns_empty_for_none() -> None:
 
 def test_build_school_inputs_returns_empty_for_malformed_report() -> None:
     """Object without per_school attribute → empty dict, no exception."""
+
     class Garbage:
         pass
 
@@ -221,18 +231,24 @@ def test_build_school_inputs_signs_score_by_alignment() -> None:
     from eta_engine.brain.jarvis_v3.sage import base as sage_base
 
     aligned_long = sage_base.SchoolVerdict(
-        school="momentum", bias=sage_base.Bias.LONG,
-        conviction=0.8, aligned_with_entry=True,
+        school="momentum",
+        bias=sage_base.Bias.LONG,
+        conviction=0.8,
+        aligned_with_entry=True,
         rationale="trend up",
     )
     misaligned_short = sage_base.SchoolVerdict(
-        school="mean_revert", bias=sage_base.Bias.SHORT,
-        conviction=0.6, aligned_with_entry=False,
+        school="mean_revert",
+        bias=sage_base.Bias.SHORT,
+        conviction=0.6,
+        aligned_with_entry=False,
         rationale="overbought",
     )
     neutral = sage_base.SchoolVerdict(
-        school="risk", bias=sage_base.Bias.NEUTRAL,
-        conviction=0.0, aligned_with_entry=False,
+        school="risk",
+        bias=sage_base.Bias.NEUTRAL,
+        conviction=0.0,
+        aligned_with_entry=False,
     )
 
     report = sage_base.SageReport(
@@ -263,14 +279,20 @@ def test_build_school_inputs_preserves_rationale_truncated() -> None:
 
     long_text = "x" * 500
     verdict = sage_base.SchoolVerdict(
-        school="s", bias=sage_base.Bias.LONG, conviction=0.5,
-        aligned_with_entry=True, rationale=long_text,
+        school="s",
+        bias=sage_base.Bias.LONG,
+        conviction=0.5,
+        aligned_with_entry=True,
+        rationale=long_text,
     )
     report = sage_base.SageReport(
         per_school={"s": verdict},
-        composite_bias=sage_base.Bias.LONG, conviction=0.5,
-        schools_consulted=1, schools_aligned_with_entry=1,
-        schools_disagreeing_with_entry=0, schools_neutral=0,
+        composite_bias=sage_base.Bias.LONG,
+        conviction=0.5,
+        schools_consulted=1,
+        schools_aligned_with_entry=1,
+        schools_disagreeing_with_entry=0,
+        schools_neutral=0,
     )
     out = jc.build_school_inputs_from_sage(report)
     assert len(out["s"]["rationale"]) <= 200
@@ -287,7 +309,9 @@ def test_build_school_inputs_never_raises_on_hostile_verdict() -> None:
             raise RuntimeError("won't expose bias")
 
     good = sage_base.SchoolVerdict(
-        school="good", bias=sage_base.Bias.LONG, conviction=0.7,
+        school="good",
+        bias=sage_base.Bias.LONG,
+        conviction=0.7,
         aligned_with_entry=True,
     )
 
@@ -306,14 +330,14 @@ def test_orchestrate_with_school_inputs_emits_them_to_trace(monkeypatch, tmp_pat
     trace_path = tmp_path / "trace.jsonl"
 
     school_inputs = {
-        "momentum": {"score": 0.7, "conviction": 0.7, "bias": "long",
-                     "rationale": "trend up", "rng_seed": None},
-        "mean_revert": {"score": -0.3, "conviction": 0.3, "bias": "short",
-                        "rationale": "overbought", "rng_seed": None},
+        "momentum": {"score": 0.7, "conviction": 0.7, "bias": "long", "rationale": "trend up", "rng_seed": None},
+        "mean_revert": {"score": -0.3, "conviction": 0.3, "bias": "short", "rationale": "overbought", "rng_seed": None},
     }
     jc.orchestrate(
-        req=_FakeReq(), base_size=1.0,
-        trace_path=trace_path, school_inputs=school_inputs,
+        req=_FakeReq(),
+        base_size=1.0,
+        trace_path=trace_path,
+        school_inputs=school_inputs,
     )
     records = te.tail(n=1, path=trace_path)
     assert len(records) == 1

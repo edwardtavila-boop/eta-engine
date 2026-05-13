@@ -18,6 +18,7 @@ Use:
 The script is idempotent: re-running after a successful flatten is
 a no-op (broker has no positions, supervisor confirms zero state).
 """
+
 from __future__ import annotations
 
 import argparse
@@ -64,18 +65,21 @@ def _query_broker_positions_sync() -> list[dict[str, Any]]:
     collide with the supervisor's venue loop.
     Returns a list of dicts with keys symbol/secType/position/avgCost."""
     from ib_insync import IB
+
     ib = IB()
     try:
         ib.connect("127.0.0.1", 4002, clientId=77, timeout=10)
         out = []
         for p in ib.positions():
-            out.append({
-                "symbol": p.contract.symbol,
-                "secType": p.contract.secType,
-                "position": float(p.position),
-                "avgCost": float(p.avgCost) if p.avgCost else 0.0,
-                "_contract": p.contract,
-            })
+            out.append(
+                {
+                    "symbol": p.contract.symbol,
+                    "secType": p.contract.secType,
+                    "position": float(p.position),
+                    "avgCost": float(p.avgCost) if p.avgCost else 0.0,
+                    "_contract": p.contract,
+                }
+            )
         return out
     finally:
         with contextlib.suppress(Exception):
@@ -83,13 +87,17 @@ def _query_broker_positions_sync() -> list[dict[str, Any]]:
 
 
 def _flatten_one_sync(
-    contract: Any, qty: float, *, dry_run: bool,  # noqa: ANN401 — ib_insync Contract
+    contract: object,
+    qty: float,
+    *,
+    dry_run: bool,  # noqa: ANN401 — ib_insync Contract
 ) -> tuple[bool, str]:
     """Submit a reduce-only market order via fresh ib_insync.IB.
 
     Sign of qty: positive long → SELL to close; negative short → BUY.
     """
     from ib_insync import IB, MarketOrder
+
     action = "SELL" if qty > 0 else "BUY"
     abs_qty = abs(qty)
     sym = contract.symbol
@@ -104,6 +112,7 @@ def _flatten_one_sync(
         # canonical futures exchange before submit.
         if not getattr(contract, "exchange", "") and getattr(contract, "secType", "") == "FUT":
             from eta_engine.venues.ibkr_live import FUTURES_MAP
+
             mapping = FUTURES_MAP.get(contract.symbol)
             if mapping:
                 contract.exchange = mapping[1]
@@ -127,16 +136,16 @@ def _flatten_one_sync(
             ib.disconnect()
 
 
-
-
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--confirm", action="store_true",
+        "--confirm",
+        action="store_true",
         help="Actually send the flatten orders. Without this, dry-run.",
     )
     parser.add_argument(
-        "--symbol", default=None,
+        "--symbol",
+        default=None,
         help="Limit to a single symbol root (e.g. 'MNQ').",
     )
     args = parser.parse_args(argv)

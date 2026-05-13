@@ -75,15 +75,25 @@ def test_thresholds_in_valid_range() -> None:
     # strategy here is the one-line change to keep the registry tests
     # green for it.
     _IGNORES_THRESHOLD = {  # noqa: N806 - module-style constant inside test fn
-        "orb", "drb", "grid", "crypto_orb",
-        "crypto_trend", "crypto_meanrev", "crypto_scalp",
-        "sage_consensus", "orb_sage_gated", "crypto_regime_trend",
-        "crypto_macro_confluence", "sage_daily_gated", "ensemble_voting",
+        "orb",
+        "drb",
+        "grid",
+        "crypto_orb",
+        "crypto_trend",
+        "crypto_meanrev",
+        "crypto_scalp",
+        "sage_consensus",
+        "orb_sage_gated",
+        "crypto_regime_trend",
+        "crypto_macro_confluence",
+        "sage_daily_gated",
+        "ensemble_voting",
         # Foundation strategies (2026-04-27): compression-breakout
         # and sweep-reclaim use their own internal triggers (BB-width
         # percentile + ATR-MA / wick + reclaim) and don't read the
         # confluence threshold.
-        "compression_breakout", "sweep_reclaim",
+        "compression_breakout",
+        "sweep_reclaim",
         # Confluence scorecard uses internal scorecard_config
         # (min_score, factor EMAs, A+ multiplier) and ignores
         # the basic confluence threshold entirely.
@@ -111,17 +121,13 @@ def test_thresholds_in_valid_range() -> None:
     for a in ASSIGNMENTS:
         if a.strategy_kind in _IGNORES_THRESHOLD:
             continue
-        assert 0.0 < a.confluence_threshold <= 10.0, (
-            f"{a.bot_id} threshold {a.confluence_threshold} out of (0, 10]"
-        )
+        assert 0.0 < a.confluence_threshold <= 10.0, f"{a.bot_id} threshold {a.confluence_threshold} out of (0, 10]"
 
 
 def test_window_step_consistent() -> None:
     for a in ASSIGNMENTS:
         assert a.step_days > 0, f"{a.bot_id} step_days must be positive"
-        assert a.step_days <= a.window_days, (
-            f"{a.bot_id} step_days {a.step_days} > window_days {a.window_days}"
-        )
+        assert a.step_days <= a.window_days, f"{a.bot_id} step_days {a.step_days} > window_days {a.window_days}"
 
 
 def test_scorer_name_is_known() -> None:
@@ -136,18 +142,14 @@ def test_scorer_name_is_known() -> None:
 
 def test_block_regimes_is_frozenset() -> None:
     for a in ASSIGNMENTS:
-        assert isinstance(a.block_regimes, frozenset), (
-            f"{a.bot_id} block_regimes must be frozenset (immutability)"
-        )
+        assert isinstance(a.block_regimes, frozenset), f"{a.bot_id} block_regimes must be frozenset (immutability)"
 
 
 def test_rationale_is_substantive() -> None:
     """Rationale exists for a reason — every assignment must justify
     itself in at least 50 chars so future readers know why."""
     for a in ASSIGNMENTS:
-        assert len(a.rationale) >= 50, (
-            f"{a.bot_id} rationale too short: {a.rationale!r}"
-        )
+        assert len(a.rationale) >= 50, f"{a.bot_id} rationale too short: {a.rationale!r}"
 
 
 def test_known_bots_present() -> None:
@@ -155,9 +157,7 @@ def test_known_bots_present() -> None:
     Smoke-test the most prominent ones; full coverage is enforced
     by registry-vs-bots-dir audit when added."""
     for required in ("mnq_futures", "nq_futures", "btc_hybrid"):
-        assert get_for_bot(required) is not None, (
-            f"{required} missing from registry"
-        )
+        assert get_for_bot(required) is not None, f"{required} missing from registry"
 
 
 def test_btc_etf_assignments_use_canonical_history_root() -> None:

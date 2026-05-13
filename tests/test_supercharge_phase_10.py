@@ -7,6 +7,7 @@
 - l2_strategy_fuse (consecutive-loss circuit breaker)
 - l2_daily_summary (operator one-line review)
 """
+
 # ruff: noqa: N802, PLR2004
 from __future__ import annotations
 
@@ -72,8 +73,7 @@ def test_roll_unknown_symbol_returns_unknown() -> None:
 
 
 def test_blackout_empty_check_returns_clear(tmp_path: Path) -> None:
-    result = blackout.is_in_blackout(
-        "MNQ", _path=tmp_path / "events.jsonl")
+    result = blackout.is_in_blackout("MNQ", _path=tmp_path / "events.jsonl")
     assert result.in_blackout is False
 
 
@@ -84,7 +84,9 @@ def test_blackout_add_and_check(tmp_path: Path) -> None:
         blackout.BlackoutWindow(
             start=(now - timedelta(minutes=10)).isoformat(),
             end=(now + timedelta(minutes=20)).isoformat(),
-            reason="FOMC", symbols=["MNQ", "NQ"], note="test",
+            reason="FOMC",
+            symbols=["MNQ", "NQ"],
+            note="test",
         ),
         _path=path,
     )
@@ -101,7 +103,8 @@ def test_blackout_symbol_filter_excludes_unaffected(tmp_path: Path) -> None:
         blackout.BlackoutWindow(
             start=(now - timedelta(minutes=10)).isoformat(),
             end=(now + timedelta(minutes=20)).isoformat(),
-            reason="FOMC", symbols=["MNQ"],  # only MNQ
+            reason="FOMC",
+            symbols=["MNQ"],  # only MNQ
         ),
         _path=path,
     )
@@ -116,7 +119,8 @@ def test_blackout_wildcard_affects_all_symbols(tmp_path: Path) -> None:
         blackout.BlackoutWindow(
             start=(now - timedelta(minutes=10)).isoformat(),
             end=(now + timedelta(minutes=20)).isoformat(),
-            reason="ALL_HALT", symbols=["*"],
+            reason="ALL_HALT",
+            symbols=["*"],
         ),
         _path=path,
     )
@@ -132,7 +136,8 @@ def test_blackout_outside_window_clears(tmp_path: Path) -> None:
         blackout.BlackoutWindow(
             start=(now + timedelta(hours=1)).isoformat(),
             end=(now + timedelta(hours=2)).isoformat(),
-            reason="future", symbols=["MNQ"],
+            reason="future",
+            symbols=["MNQ"],
         ),
         _path=path,
     )
@@ -177,6 +182,7 @@ def test_heartbeat_picks_youngest_log(tmp_path: Path) -> None:
     old.write_text("old data\n", encoding="utf-8")
     # Make old file's mtime older
     import os
+
     old_time = (datetime.now(UTC) - timedelta(hours=2)).timestamp()
     os.utime(old, (old_time, old_time))
     new.write_text("new data\n", encoding="utf-8")
@@ -208,22 +214,27 @@ def test_recon_ghost_position_detected(tmp_path: Path) -> None:
     """Broker has position, supervisor doesn't know."""
     fill_path = tmp_path / "fill.jsonl"
     now = datetime.now(UTC)
-    fill_path.write_text(json.dumps({
-        "ts": now.isoformat(),
-        "signal_id": "MNQ-LONG-test",
-        "broker_exec_id": "x1",
-        "exit_reason": "ENTRY",
-        "side": "LONG",
-        "actual_fill_price": 100.0,
-        "qty_filled": 1,
-        "bot_id": "mnq_book_imbalance_shadow",
-        "symbol": "MNQ",
-    }) + "\n", encoding="utf-8")
+    fill_path.write_text(
+        json.dumps(
+            {
+                "ts": now.isoformat(),
+                "signal_id": "MNQ-LONG-test",
+                "broker_exec_id": "x1",
+                "exit_reason": "ENTRY",
+                "side": "LONG",
+                "actual_fill_price": 100.0,
+                "qty_filled": 1,
+                "bot_id": "mnq_book_imbalance_shadow",
+                "symbol": "MNQ",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     # Supervisor knows nothing (empty file)
     sup_path = tmp_path / "sup.json"
     sup_path.write_text("[]", encoding="utf-8")
-    report = recon.reconcile(
-        _supervisor_path=sup_path, _broker_path=fill_path)
+    report = recon.reconcile(_supervisor_path=sup_path, _broker_path=fill_path)
     assert report.n_discrepancies >= 1
     assert any(d.verdict == "GHOST_POSITION" for d in report.discrepancies)
 
@@ -231,14 +242,22 @@ def test_recon_ghost_position_detected(tmp_path: Path) -> None:
 def test_recon_phantom_belief_detected(tmp_path: Path) -> None:
     """Supervisor believes position is open, broker has nothing."""
     sup_path = tmp_path / "sup.json"
-    sup_path.write_text(json.dumps([{
-        "bot_id": "mnq_book_imbalance_shadow",
-        "symbol": "MNQ", "side": "LONG", "qty": 1,
-    }]), encoding="utf-8")
+    sup_path.write_text(
+        json.dumps(
+            [
+                {
+                    "bot_id": "mnq_book_imbalance_shadow",
+                    "symbol": "MNQ",
+                    "side": "LONG",
+                    "qty": 1,
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
     fill_path = tmp_path / "fill.jsonl"
     fill_path.write_text("", encoding="utf-8")
-    report = recon.reconcile(
-        _supervisor_path=sup_path, _broker_path=fill_path)
+    report = recon.reconcile(_supervisor_path=sup_path, _broker_path=fill_path)
     assert any(d.verdict == "PHANTOM_BELIEF" for d in report.discrepancies)
 
 
@@ -249,7 +268,8 @@ def test_recon_phantom_belief_detected(tmp_path: Path) -> None:
 
 def test_fuse_initial_state_not_blown(tmp_path: Path) -> None:
     result = fuse.check_fuse(
-        "book_imbalance_v1", "MNQ",
+        "book_imbalance_v1",
+        "MNQ",
         _path=tmp_path / "fuses.json",
     )
     assert result["blocked"] is False
@@ -259,11 +279,13 @@ def test_fuse_blows_after_threshold_losses(tmp_path: Path) -> None:
     path = tmp_path / "fuses.json"
     for _ in range(5):
         fuse.record_outcome(
-            "book_imbalance_v1", "MNQ", won=False,
-            fuse_threshold=5, _path=path,
+            "book_imbalance_v1",
+            "MNQ",
+            won=False,
+            fuse_threshold=5,
+            _path=path,
         )
-    result = fuse.check_fuse(
-        "book_imbalance_v1", "MNQ", _path=path)
+    result = fuse.check_fuse("book_imbalance_v1", "MNQ", _path=path)
     assert result["blocked"] is True
     assert result["reason"] == "strategy_fuse_blown"
 
@@ -272,14 +294,11 @@ def test_fuse_winning_trade_resets_counter(tmp_path: Path) -> None:
     path = tmp_path / "fuses.json"
     # 3 losses, then a win, then more losses
     for _ in range(3):
-        fuse.record_outcome("book_imbalance_v1", "MNQ", won=False,
-                              fuse_threshold=5, _path=path)
-    fuse.record_outcome("book_imbalance_v1", "MNQ", won=True,
-                          fuse_threshold=5, _path=path)
+        fuse.record_outcome("book_imbalance_v1", "MNQ", won=False, fuse_threshold=5, _path=path)
+    fuse.record_outcome("book_imbalance_v1", "MNQ", won=True, fuse_threshold=5, _path=path)
     # Counter should be reset; need 5 more to blow
     for _ in range(4):
-        fuse.record_outcome("book_imbalance_v1", "MNQ", won=False,
-                              fuse_threshold=5, _path=path)
+        fuse.record_outcome("book_imbalance_v1", "MNQ", won=False, fuse_threshold=5, _path=path)
     result = fuse.check_fuse("book_imbalance_v1", "MNQ", _path=path)
     assert result["blocked"] is False  # only 4 consec losses
 
@@ -287,13 +306,10 @@ def test_fuse_winning_trade_resets_counter(tmp_path: Path) -> None:
 def test_fuse_auto_resets_after_cooldown(tmp_path: Path) -> None:
     path = tmp_path / "fuses.json"
     for _ in range(5):
-        fuse.record_outcome("book_imbalance_v1", "MNQ", won=False,
-                              fuse_threshold=5, _path=path)
+        fuse.record_outcome("book_imbalance_v1", "MNQ", won=False, fuse_threshold=5, _path=path)
     # Check far in the future (after cooldown)
     future = datetime.now(UTC) + timedelta(hours=2)
-    result = fuse.check_fuse(
-        "book_imbalance_v1", "MNQ",
-        cooldown_seconds=3600, now=future, _path=path)
+    result = fuse.check_fuse("book_imbalance_v1", "MNQ", cooldown_seconds=3600, now=future, _path=path)
     assert result["blocked"] is False
     assert result["reason"] == "cooldown_elapsed"
 
@@ -301,14 +317,11 @@ def test_fuse_auto_resets_after_cooldown(tmp_path: Path) -> None:
 def test_fuse_manual_reset(tmp_path: Path) -> None:
     path = tmp_path / "fuses.json"
     for _ in range(5):
-        fuse.record_outcome("book_imbalance_v1", "MNQ", won=False,
-                              fuse_threshold=5, _path=path)
-    assert fuse.check_fuse(
-        "book_imbalance_v1", "MNQ", _path=path)["blocked"] is True
+        fuse.record_outcome("book_imbalance_v1", "MNQ", won=False, fuse_threshold=5, _path=path)
+    assert fuse.check_fuse("book_imbalance_v1", "MNQ", _path=path)["blocked"] is True
     cleared = fuse.reset_fuse("book_imbalance_v1", "MNQ", _path=path)
     assert cleared is True
-    assert fuse.check_fuse(
-        "book_imbalance_v1", "MNQ", _path=path)["blocked"] is False
+    assert fuse.check_fuse("book_imbalance_v1", "MNQ", _path=path)["blocked"] is False
 
 
 # ────────────────────────────────────────────────────────────────────
@@ -319,6 +332,7 @@ def test_fuse_manual_reset(tmp_path: Path) -> None:
 def test_daily_summary_builds_without_data() -> None:
     """build_summary should work even with empty logs."""
     from eta_engine.scripts import l2_daily_summary as ds
+
     summary = ds.build_summary()
     assert summary.overall_verdict in ("GREEN", "YELLOW", "RED")
     assert summary.n_strategies >= 1  # registry has entries
@@ -326,6 +340,7 @@ def test_daily_summary_builds_without_data() -> None:
 
 def test_daily_summary_slack_format_includes_emoji() -> None:
     from eta_engine.scripts import l2_daily_summary as ds
+
     summary = ds.build_summary()
     s = ds.format_slack(summary)
     assert ":" in s  # contains slack emoji

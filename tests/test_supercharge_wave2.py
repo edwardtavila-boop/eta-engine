@@ -6,6 +6,7 @@ Covers:
   * BaseBot.set_equity_ceiling + effective_equity
   * position_reconciler venue-fetch path (async sync wrapper)
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -25,12 +26,15 @@ def test_candidate_register_and_get() -> None:
         get_candidate,
         register_candidate,
     )
+
     clear_registry()
 
-    def policy_fn(req, ctx): return "verdict"
+    def policy_fn(req, ctx):
+        return "verdict"
 
     register_candidate(
-        "v18", policy_fn,
+        "v18",
+        policy_fn,
         parent_version=17,
         rationale="lower MIN_CONFLUENCE 8.0->7.5",
     )
@@ -44,6 +48,7 @@ def test_candidate_register_rejects_non_callable() -> None:
         clear_registry,
         register_candidate,
     )
+
     clear_registry()
     with pytest.raises(TypeError):
         register_candidate("bad", "not a callable")  # type: ignore[arg-type]
@@ -54,9 +59,11 @@ def test_candidate_register_rejects_duplicate_without_overwrite() -> None:
         clear_registry,
         register_candidate,
     )
+
     clear_registry()
 
-    def p(req, ctx): return None
+    def p(req, ctx):
+        return None
 
     register_candidate("v18", p)
     with pytest.raises(ValueError, match="already registered"):
@@ -71,13 +78,16 @@ def test_candidate_list_returns_metadata_not_callable() -> None:
         list_candidates,
         register_candidate,
     )
+
     clear_registry()
 
-    def p1(req, ctx): return None
-    def p2(req, ctx): return None
+    def p1(req, ctx):
+        return None
 
-    register_candidate("v18", p1, parent_version=17, rationale="r1",
-                       metadata={"author": "kaizen"})
+    def p2(req, ctx):
+        return None
+
+    register_candidate("v18", p1, parent_version=17, rationale="r1", metadata={"author": "kaizen"})
     register_candidate("v19", p2, parent_version=18, rationale="r2")
 
     listed = list_candidates()
@@ -97,6 +107,7 @@ def test_candidate_get_unknown_raises_keyerror() -> None:
         clear_registry,
         get_candidate,
     )
+
     clear_registry()
     with pytest.raises(KeyError):
         get_candidate("v99")
@@ -120,6 +131,7 @@ def test_heartbeat_writer_tick_writes_file(tmp_path: Path) -> None:
 
 def test_heartbeat_writer_cycle_increments(tmp_path: Path) -> None:
     from eta_engine.obs.heartbeat_writer import HeartbeatWriter
+
     hb = HeartbeatWriter("test", state_dir=tmp_path)
     hb.tick()
     hb.tick()
@@ -155,8 +167,10 @@ def test_basebot_no_ceiling_returns_state_equity() -> None:
         def __init__(self, equity: float) -> None:
             self.state = type("S", (), {"equity": equity})()
             self._equity_ceiling_usd = None
+
         # Borrow the methods from BaseBot
         from eta_engine.bots.base_bot import BaseBot
+
         set_equity_ceiling = BaseBot.set_equity_ceiling
         effective_equity = BaseBot.effective_equity
 
@@ -171,6 +185,7 @@ def test_basebot_set_equity_ceiling_caps_below() -> None:
         def __init__(self, equity: float) -> None:
             self.state = type("S", (), {"equity": equity})()
             self._equity_ceiling_usd = None
+
         set_equity_ceiling = BaseBot.set_equity_ceiling
         effective_equity = BaseBot.effective_equity
 
@@ -187,6 +202,7 @@ def test_basebot_ceiling_above_state_returns_state_equity() -> None:
         def __init__(self, equity: float) -> None:
             self.state = type("S", (), {"equity": equity})()
             self._equity_ceiling_usd = None
+
         set_equity_ceiling = BaseBot.set_equity_ceiling
         effective_equity = BaseBot.effective_equity
 
@@ -202,6 +218,7 @@ def test_basebot_set_equity_ceiling_rejects_zero_or_negative() -> None:
         def __init__(self) -> None:
             self.state = type("S", (), {"equity": 1.0})()
             self._equity_ceiling_usd = None
+
         set_equity_ceiling = BaseBot.set_equity_ceiling
 
     bot = _StubBot()
@@ -218,6 +235,7 @@ def test_basebot_set_equity_ceiling_none_uncaps() -> None:
         def __init__(self) -> None:
             self.state = type("S", (), {"equity": 10000.0})()
             self._equity_ceiling_usd = None
+
         set_equity_ceiling = BaseBot.set_equity_ceiling
         effective_equity = BaseBot.effective_equity
 
@@ -258,6 +276,7 @@ def test_position_reconciler_diff_with_real_async_fetch_no_drift(
         fetch_bot_positions,
         fetch_broker_positions,
     )
-    bot_pos = fetch_bot_positions()       # explicit-disable returns {}
+
+    bot_pos = fetch_bot_positions()  # explicit-disable returns {}
     broker_pos = fetch_broker_positions()  # stub returns {}
     assert diff_positions(bot_pos, broker_pos) == []

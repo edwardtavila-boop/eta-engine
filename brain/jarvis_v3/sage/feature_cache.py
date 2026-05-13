@@ -20,6 +20,7 @@ finishes, the cache is dropped with the context.
 Backward-compatible: existing schools that don't call get_or_compute
 behave exactly as before. The cache is a tiny dict on each ctx.
 """
+
 from __future__ import annotations
 
 import threading

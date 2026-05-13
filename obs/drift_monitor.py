@@ -179,41 +179,24 @@ def assess_drift(
 
     if abs(wr_z) >= red_z:
         severity = "red"
-        reasons.append(
-            f"win rate {recent_wr * 100:.1f}% vs baseline {p0 * 100:.1f}% "
-            f"(z={wr_z:+.2f}, |z|>={red_z})"
-        )
+        reasons.append(f"win rate {recent_wr * 100:.1f}% vs baseline {p0 * 100:.1f}% (z={wr_z:+.2f}, |z|>={red_z})")
     elif abs(wr_z) >= amber_z:
         severity = "amber"
-        reasons.append(
-            f"win rate {recent_wr * 100:.1f}% vs baseline {p0 * 100:.1f}% "
-            f"(z={wr_z:+.2f}, |z|>={amber_z})"
-        )
+        reasons.append(f"win rate {recent_wr * 100:.1f}% vs baseline {p0 * 100:.1f}% (z={wr_z:+.2f}, |z|>={amber_z})")
 
     if abs(r_z) >= red_z:
         severity = "red"
-        reasons.append(
-            f"avg R {recent_mean:+.3f} vs baseline {baseline.avg_r:+.3f} "
-            f"(z={r_z:+.2f}, |z|>={red_z})"
-        )
+        reasons.append(f"avg R {recent_mean:+.3f} vs baseline {baseline.avg_r:+.3f} (z={r_z:+.2f}, |z|>={red_z})")
     elif abs(r_z) >= amber_z and severity == "green":
         severity = "amber"
-        reasons.append(
-            f"avg R {recent_mean:+.3f} vs baseline {baseline.avg_r:+.3f} "
-            f"(z={r_z:+.2f}, |z|>={amber_z})"
-        )
+        reasons.append(f"avg R {recent_mean:+.3f} vs baseline {baseline.avg_r:+.3f} (z={r_z:+.2f}, |z|>={amber_z})")
     elif abs(r_z) >= amber_z:
         # Already amber/red from win rate; append the r-side reason
         # so the operator sees both.
-        reasons.append(
-            f"avg R {recent_mean:+.3f} vs baseline {baseline.avg_r:+.3f} "
-            f"(z={r_z:+.2f})"
-        )
+        reasons.append(f"avg R {recent_mean:+.3f} vs baseline {baseline.avg_r:+.3f} (z={r_z:+.2f})")
 
     if severity == "green" and not reasons:
-        reasons.append(
-            f"within {amber_z}σ of baseline (wr_z={wr_z:+.2f}, r_z={r_z:+.2f})"
-        )
+        reasons.append(f"within {amber_z}σ of baseline (wr_z={wr_z:+.2f}, r_z={r_z:+.2f})")
 
     return DriftAssessment(
         strategy_id=strategy_id,
@@ -313,7 +296,8 @@ def assess_fleet_correlation(
     n = min(len(rs_a), len(rs_b))
     if n < min_paired:
         return FleetCorrelationAssessment(
-            bot_a=bot_a, bot_b=bot_b,
+            bot_a=bot_a,
+            bot_b=bot_b,
             severity="green",
             n_paired=n,
             rho=0.0,
@@ -327,7 +311,8 @@ def assess_fleet_correlation(
 
     if rho >= red_rho:
         return FleetCorrelationAssessment(
-            bot_a=bot_a, bot_b=bot_b,
+            bot_a=bot_a,
+            bot_b=bot_b,
             severity="red",
             n_paired=n,
             rho=rho,
@@ -340,7 +325,8 @@ def assess_fleet_correlation(
         )
     if rho >= amber_rho:
         return FleetCorrelationAssessment(
-            bot_a=bot_a, bot_b=bot_b,
+            bot_a=bot_a,
+            bot_b=bot_b,
             severity="amber",
             n_paired=n,
             rho=rho,
@@ -352,7 +338,8 @@ def assess_fleet_correlation(
             ],
         )
     return FleetCorrelationAssessment(
-        bot_a=bot_a, bot_b=bot_b,
+        bot_a=bot_a,
+        bot_b=bot_b,
         severity="green",
         n_paired=n,
         rho=rho,

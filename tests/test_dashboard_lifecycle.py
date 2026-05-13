@@ -1,4 +1,5 @@
 """Tests for bot lifecycle endpoints."""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -19,6 +20,7 @@ def auth_paths(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("ETA_DASHBOARD_STEP_UP_PIN", "1234")
     monkeypatch.setenv("ETA_STATE_DIR", str(tmp_path))
     from eta_engine.deploy.scripts.dashboard_auth import create_user
+
     create_user(users, "edward", "pw")
     return tmp_path
 
@@ -26,6 +28,7 @@ def auth_paths(tmp_path: Path, monkeypatch):
 @pytest.fixture(autouse=True)
 def _reset_rate_limit_between_tests():
     from eta_engine.deploy.scripts.dashboard_api import _LOGIN_FAILURES
+
     _LOGIN_FAILURES.clear()
     yield
     _LOGIN_FAILURES.clear()
@@ -34,6 +37,7 @@ def _reset_rate_limit_between_tests():
 @pytest.fixture
 def authed_client(auth_paths):
     from eta_engine.deploy.scripts.dashboard_api import app
+
     c = TestClient(app)
     r = c.post("/api/auth/login", json={"username": "edward", "password": "pw"})
     assert r.status_code == 200
@@ -50,6 +54,7 @@ def stepped_up_client(authed_client):
 def test_pause_requires_session(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("ETA_STATE_DIR", str(tmp_path))
     from eta_engine.deploy.scripts.dashboard_api import app
+
     c = TestClient(app)
     r = c.post("/api/bot/mnq/pause")
     assert r.status_code == 401
@@ -89,6 +94,7 @@ def test_kill_requires_step_up(authed_client) -> None:
 
 def test_kill_with_step_up_trips_latch(stepped_up_client, auth_paths) -> None:
     import json
+
     r = stepped_up_client.post("/api/bot/mnq/kill")
     assert r.status_code == 200
     latch = auth_paths / "safety" / "kill_switch_latch.json"

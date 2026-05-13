@@ -47,6 +47,7 @@ def _build_strategy(name: str):  # noqa: ANN202 - factory closure
             CryptoTrendConfig,
             CryptoTrendStrategy,
         )
+
         cfg = CryptoTrendConfig()
         return (lambda: CryptoTrendStrategy(cfg)), (
             f"crypto_trend(fast={cfg.fast_ema}, slow={cfg.slow_ema}, "
@@ -58,6 +59,7 @@ def _build_strategy(name: str):  # noqa: ANN202 - factory closure
             CryptoMeanRevConfig,
             CryptoMeanRevStrategy,
         )
+
         cfg = CryptoMeanRevConfig()
         return (lambda: CryptoMeanRevStrategy(cfg)), (
             f"crypto_meanrev(bb={cfg.bb_period}/{cfg.bb_stddev_mult}, "
@@ -69,6 +71,7 @@ def _build_strategy(name: str):  # noqa: ANN202 - factory closure
             CryptoScalpConfig,
             CryptoScalpStrategy,
         )
+
         cfg = CryptoScalpConfig()
         return (lambda: CryptoScalpStrategy(cfg)), (
             f"crypto_scalp(lookback={cfg.lookback_bars}, "
@@ -80,10 +83,10 @@ def _build_strategy(name: str):  # noqa: ANN202 - factory closure
             CryptoORBConfig,
             crypto_orb_strategy,
         )
+
         cfg = CryptoORBConfig()
         return (lambda: crypto_orb_strategy(cfg)), (
-            f"crypto_orb(range={cfg.range_minutes}m, "
-            f"atr_stop={cfg.atr_stop_mult}, rr={cfg.rr_target})"
+            f"crypto_orb(range={cfg.range_minutes}m, atr_stop={cfg.atr_stop_mult}, rr={cfg.rr_target})"
         )
     raise ValueError(f"unknown strategy: {name}")
 
@@ -91,7 +94,8 @@ def _build_strategy(name: str):  # noqa: ANN202 - factory closure
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--strategy", required=True,
+        "--strategy",
+        required=True,
         choices=list(_DEFAULT_TF.keys()),
         help="Crypto strategy module to walk-forward.",
     )
@@ -126,8 +130,10 @@ def main() -> int:
     )
 
     cfg = BacktestConfig(
-        start_date=bars[0].timestamp, end_date=bars[-1].timestamp,
-        symbol=ds.symbol, initial_equity=10_000.0,
+        start_date=bars[0].timestamp,
+        end_date=bars[-1].timestamp,
+        symbol=ds.symbol,
+        initial_equity=10_000.0,
         risk_per_trade_pct=0.01,
         confluence_threshold=0.0,
         max_trades_per_day=10,

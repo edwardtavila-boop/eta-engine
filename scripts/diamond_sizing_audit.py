@@ -51,6 +51,7 @@ Usage
     python -m eta_engine.scripts.diamond_sizing_audit
     python -m eta_engine.scripts.diamond_sizing_audit --json
 """
+
 from __future__ import annotations
 
 # ruff: noqa: PLR2004
@@ -65,18 +66,15 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKSPACE_ROOT = ROOT.parent
-TRADE_CLOSES_CANONICAL = (
-    WORKSPACE_ROOT / "var" / "eta_engine" / "state"
-    / "jarvis_intel" / "trade_closes.jsonl"
-)
+TRADE_CLOSES_CANONICAL = WORKSPACE_ROOT / "var" / "eta_engine" / "state" / "jarvis_intel" / "trade_closes.jsonl"
 TRADE_CLOSES_LEGACY = (
-    WORKSPACE_ROOT / "eta_engine" / "state"  # HISTORICAL-PATH-OK
-    / "jarvis_intel" / "trade_closes.jsonl"
+    WORKSPACE_ROOT
+    / "eta_engine"
+    / "state"  # HISTORICAL-PATH-OK
+    / "jarvis_intel"
+    / "trade_closes.jsonl"
 )
-OUT_LATEST = (
-    WORKSPACE_ROOT / "var" / "eta_engine" / "state"
-    / "diamond_sizing_audit_latest.json"
-)
+OUT_LATEST = WORKSPACE_ROOT / "var" / "eta_engine" / "state" / "diamond_sizing_audit_latest.json"
 
 #: Below this trade count we can't trust the $/R statistics yet.
 MIN_TRADES_FOR_VERDICT = 5
@@ -124,12 +122,14 @@ def _read_trades_dual_source() -> list[dict[str, Any]]:
                     rec = json.loads(line)
                 except json.JSONDecodeError:
                     continue
-                key = "|".join([
-                    str(rec.get("signal_id") or ""),
-                    str(rec.get("bot_id") or ""),
-                    str(rec.get("ts") or ""),
-                    str(rec.get("realized_r") or ""),
-                ])
+                key = "|".join(
+                    [
+                        str(rec.get("signal_id") or ""),
+                        str(rec.get("bot_id") or ""),
+                        str(rec.get("ts") or ""),
+                        str(rec.get("realized_r") or ""),
+                    ]
+                )
                 if key in seen:
                     continue
                 seen.add(key)
@@ -193,8 +193,7 @@ def _classify_sizing(
     return "SIZING_OK", round(n_breach, 2)
 
 
-def _score_bot(bot_id: str, trades: list[dict[str, Any]],
-               threshold_usd: float | None) -> SizingScorecard:
+def _score_bot(bot_id: str, trades: list[dict[str, Any]], threshold_usd: float | None) -> SizingScorecard:
     sc = SizingScorecard(
         bot_id=bot_id,
         n_trades_total=len(trades),
@@ -218,10 +217,7 @@ def _score_bot(bot_id: str, trades: list[dict[str, Any]],
     sc.n_trades_with_pnl = len(per_trade)
     if sc.n_trades_with_pnl < MIN_TRADES_FOR_VERDICT:
         sc.verdict = "INSUFFICIENT_DATA"
-        sc.rationale = (
-            f"{sc.n_trades_with_pnl} trades with usable R+PnL "
-            f"(need >= {MIN_TRADES_FOR_VERDICT})"
-        )
+        sc.rationale = f"{sc.n_trades_with_pnl} trades with usable R+PnL (need >= {MIN_TRADES_FOR_VERDICT})"
         if sc.n_trades_with_pnl > 0:
             sc.cum_r = round(sum(r for r, _, _ in per_trade), 4)
             sc.cum_usd = round(sum(p for _, p, _ in per_trade), 2)
@@ -234,10 +230,8 @@ def _score_bot(bot_id: str, trades: list[dict[str, Any]],
     avg = sum(usd_per_r_samples) / len(usd_per_r_samples)
     sc.usd_per_r_avg = round(avg, 2)
     if len(usd_per_r_samples) > 1:
-        var = sum((x - avg) ** 2 for x in usd_per_r_samples) / (
-            len(usd_per_r_samples) - 1
-        )
-        sc.usd_per_r_std = round(var ** 0.5, 2)
+        var = sum((x - avg) ** 2 for x in usd_per_r_samples) / (len(usd_per_r_samples) - 1)
+        sc.usd_per_r_std = round(var**0.5, 2)
     else:
         sc.usd_per_r_std = 0.0
 
@@ -251,13 +245,13 @@ def _score_bot(bot_id: str, trades: list[dict[str, Any]],
         sc.avg_qty = round(sum(qtys) / len(qtys), 3)
 
     sc.verdict, sc.n_stopouts_to_breach = _classify_sizing(
-        sc.usd_per_r_max_abs, threshold_usd,
+        sc.usd_per_r_max_abs,
+        threshold_usd,
     )
 
     floor_str = f"${threshold_usd:.0f}" if threshold_usd is not None else "n/a"
     sc.rationale = (
-        f"worst-trade $/R={sc.usd_per_r_max_abs}, floor={floor_str}, "
-        f"stopouts_to_breach={sc.n_stopouts_to_breach}"
+        f"worst-trade $/R={sc.usd_per_r_max_abs}, floor={floor_str}, stopouts_to_breach={sc.n_stopouts_to_breach}"
     )
     return sc
 
@@ -308,7 +302,8 @@ def run() -> dict[str, Any]:
     try:
         OUT_LATEST.parent.mkdir(parents=True, exist_ok=True)
         OUT_LATEST.write_text(
-            json.dumps(summary, indent=2, default=str), encoding="utf-8",
+            json.dumps(summary, indent=2, default=str),
+            encoding="utf-8",
         )
     except OSError as exc:
         print(f"WARN: write_latest failed: {exc}", file=sys.stderr)
@@ -337,9 +332,7 @@ def _print(summary: dict[str, Any]) -> None:
         avg_s = f"{avg:>9.1f}" if avg is not None else f"{'—':>9s}"
         worst_s = f"{worst:>10.1f}" if worst is not None else f"{'—':>10s}"
         thr_s = f"{thr:>8.0f}" if thr is not None else f"{'—':>8s}"
-        stopouts_s = (
-            f"{stopouts:>9.2f}" if stopouts is not None else f"{'—':>9s}"
-        )
+        stopouts_s = f"{stopouts:>9.2f}" if stopouts is not None else f"{'—':>9s}"
         print(
             f" {sc['bot_id']:25s} {sc['verdict']:18s} "
             f"{sc['n_trades_with_pnl']:>5d} "

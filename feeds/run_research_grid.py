@@ -112,11 +112,7 @@ def _filter_extras(extras: dict[str, object], prefix: str) -> dict[str, object]:
     if isinstance(nested, dict):
         return dict(nested)
     pre = f"{prefix}_"
-    return {
-        k[len(pre):]: v
-        for k, v in extras.items()
-        if k.startswith(pre) and k != nested_key
-    }
+    return {k[len(pre) :]: v for k, v in extras.items() if k.startswith(pre) and k != nested_key}
 
 
 def _safe_kwargs(cfg_cls: type, kwargs: dict[str, object]) -> dict[str, object]:
@@ -130,6 +126,7 @@ def _safe_kwargs(cfg_cls: type, kwargs: dict[str, object]) -> dict[str, object]:
     so the gap is visible during research, not hidden.
     """
     import dataclasses
+
     valid = {f.name for f in dataclasses.fields(cfg_cls)}
     accepted = {k: v for k, v in kwargs.items() if k in valid}
     dropped = sorted(set(kwargs) - valid)
@@ -156,11 +153,7 @@ def _merge_strategy_overrides(
             if field_name in extras and field_name not in merged:
                 merged[field_name] = extras[field_name]
     for source_key, target_key in (aliases or {}).items():
-        if (
-            source_key in extras
-            and target_key in valid
-            and target_key not in merged
-        ):
+        if source_key in extras and target_key in valid and target_key not in merged:
             merged[target_key] = extras[source_key]
     return merged
 
@@ -253,10 +246,7 @@ def _build_macro_confluence_config(extras: dict[str, object]):  # type: ignore[n
     )
 
     tier_4_filters = extras.get("tier_4_filters")
-    if (
-        "etf_csv_path" in extras
-        or (isinstance(tier_4_filters, list) and "etf_flow" in tier_4_filters)
-    ):
+    if "etf_csv_path" in extras or (isinstance(tier_4_filters, list) and "etf_flow" in tier_4_filters):
         filter_overrides.setdefault("require_etf_flow_alignment", True)
 
     filters_cfg = MacroConfluenceConfig(
@@ -374,7 +364,9 @@ _CROSS_ASSET_REF_CACHE: dict[str, object] = {}
 
 
 def _build_cross_asset_ref_provider(
-    bot_symbol: str, ref_symbol: str, ref_timeframe: str,
+    bot_symbol: str,
+    ref_symbol: str,
+    ref_timeframe: str,
 ) -> object:
     """Build a reference-price callable for cross-asset divergence strategies.
 
@@ -390,15 +382,19 @@ def _build_cross_asset_ref_provider(
     lib = default_library()
     ds = lib.get(symbol=ref_symbol, timeframe=ref_timeframe)
     if ds is None:
+
         def _no_ref(bar: object) -> float:
             return 0.0
+
         _CROSS_ASSET_REF_CACHE[cache_key] = _no_ref
         return _no_ref
 
     bars = lib.load_bars(ds, require_positive_prices=True)
     if not bars:
+
         def _no_ref(bar: object) -> float:
             return 0.0
+
         _CROSS_ASSET_REF_CACHE[cache_key] = _no_ref
         return _no_ref
 
@@ -463,6 +459,7 @@ def _build_funding_rate_provider() -> object:
     for fp in funding_paths:
         if fp.exists():
             import csv
+
             with open(str(fp), newline="") as fh:
                 for row in csv.DictReader(fh):
                     try:
@@ -477,8 +474,10 @@ def _build_funding_rate_provider() -> object:
                 break
 
     if not funding_rows:
+
         def _no_funding(bar: object) -> float:
             return 0.0
+
         _FUNDING_RATE_PROVIDER_CACHE[cache_key] = _no_funding
         return _no_funding
 
@@ -495,6 +494,7 @@ def _build_funding_rate_provider() -> object:
         return best_rate
 
         _FUNDING_RATE_PROVIDER_CACHE[cache_key] = _provider
+
     return _provider
 
 
@@ -513,7 +513,8 @@ def _with_funding_rate_provider(factory: object) -> object:
 
 
 def _build_crypto_strategy_factory(  # type: ignore[no-untyped-def]  # noqa: ANN202
-    kind: str, extras: dict[str, object] | None = None,
+    kind: str,
+    extras: dict[str, object] | None = None,
 ):
     """Return a zero-arg factory that builds a fresh crypto strategy
     instance per walk-forward window. Per-bot extras prefixed with the
@@ -526,6 +527,7 @@ def _build_crypto_strategy_factory(  # type: ignore[no-untyped-def]  # noqa: ANN
             CryptoORBConfig,
             crypto_orb_strategy,
         )
+
         cfg = CryptoORBConfig(
             **_safe_kwargs(CryptoORBConfig, _filter_extras(extras, "crypto_orb")),
         )
@@ -535,6 +537,7 @@ def _build_crypto_strategy_factory(  # type: ignore[no-untyped-def]  # noqa: ANN
             CryptoTrendConfig,
             CryptoTrendStrategy,
         )
+
         cfg = CryptoTrendConfig(
             **_safe_kwargs(CryptoTrendConfig, _filter_extras(extras, "crypto_trend")),
         )
@@ -544,6 +547,7 @@ def _build_crypto_strategy_factory(  # type: ignore[no-untyped-def]  # noqa: ANN
             CryptoMeanRevConfig,
             CryptoMeanRevStrategy,
         )
+
         cfg = CryptoMeanRevConfig(
             **_safe_kwargs(CryptoMeanRevConfig, _filter_extras(extras, "crypto_meanrev")),
         )
@@ -553,6 +557,7 @@ def _build_crypto_strategy_factory(  # type: ignore[no-untyped-def]  # noqa: ANN
             CryptoScalpConfig,
             CryptoScalpStrategy,
         )
+
         cfg = CryptoScalpConfig(
             **_safe_kwargs(CryptoScalpConfig, _filter_extras(extras, "crypto_scalp")),
         )
@@ -561,12 +566,14 @@ def _build_crypto_strategy_factory(  # type: ignore[no-untyped-def]  # noqa: ANN
         from eta_engine.strategies.crypto_regime_trend_strategy import (
             CryptoRegimeTrendStrategy,
         )
+
         cfg = _build_crypto_regime_trend_config(extras)
         return lambda: CryptoRegimeTrendStrategy(cfg)
     if kind == "sage_consensus":
         from eta_engine.strategies.sage_consensus_strategy import (
             SageConsensusStrategy,
         )
+
         cfg = _build_sage_consensus_config(extras)
         return lambda: SageConsensusStrategy(cfg)
     if kind == "crypto_macro_confluence":
@@ -580,6 +587,7 @@ def _build_crypto_strategy_factory(  # type: ignore[no-untyped-def]  # noqa: ANN
         from eta_engine.strategies.crypto_macro_confluence_strategy import (
             CryptoMacroConfluenceStrategy,
         )
+
         cfg = _build_macro_confluence_config(extras)
         return lambda: CryptoMacroConfluenceStrategy(cfg)
     if kind == "sage_daily_gated":
@@ -589,6 +597,7 @@ def _build_crypto_strategy_factory(  # type: ignore[no-untyped-def]  # noqa: ANN
             GridConfig,
             GridTradingStrategy,
         )
+
         cfg = GridConfig(
             **_safe_kwargs(GridConfig, _filter_extras(extras, "grid")),
         )
@@ -608,21 +617,26 @@ def _build_crypto_strategy_factory(  # type: ignore[no-untyped-def]  # noqa: ANN
             nq_compression_preset,
             sol_compression_preset,
         )
+
         preset_factories = {
-            "btc": btc_compression_preset, "eth": eth_compression_preset,
-            "sol": sol_compression_preset, "mnq": mnq_compression_preset,
+            "btc": btc_compression_preset,
+            "eth": eth_compression_preset,
+            "sol": sol_compression_preset,
+            "mnq": mnq_compression_preset,
             "nq": nq_compression_preset,
         }
         preset_name = (extras.get("compression_preset") or "btc").lower()
         base_cfg = preset_factories.get(preset_name, btc_compression_preset)()
         overrides = _merge_strategy_overrides(
-            extras, "compression", CompressionBreakoutConfig, include_direct_fields=True,
+            extras,
+            "compression",
+            CompressionBreakoutConfig,
+            include_direct_fields=True,
         )
         overrides.pop("compression_preset", None)
         overrides.pop("preset", None)
         cfg = CompressionBreakoutConfig(
-            **{**base_cfg.__dict__,
-               **_safe_kwargs(CompressionBreakoutConfig, overrides)},
+            **{**base_cfg.__dict__, **_safe_kwargs(CompressionBreakoutConfig, overrides)},
         )
         return lambda: CompressionBreakoutStrategy(cfg)
     if kind == "sweep_reclaim":
@@ -631,6 +645,7 @@ def _build_crypto_strategy_factory(  # type: ignore[no-untyped-def]  # noqa: ANN
             SweepReclaimConfig,
             SweepReclaimStrategy,
         )
+
         preset_name = (extras.get("sweep_preset") or "btc").lower()
         if preset_name not in SWEEP_PRESET_FACTORIES:
             supported = ", ".join(sorted(SWEEP_PRESET_FACTORIES))
@@ -639,13 +654,15 @@ def _build_crypto_strategy_factory(  # type: ignore[no-untyped-def]  # noqa: ANN
             )
         base_cfg = SWEEP_PRESET_FACTORIES[preset_name]()
         overrides = _merge_strategy_overrides(
-            extras, "sweep", SweepReclaimConfig, include_direct_fields=True,
+            extras,
+            "sweep",
+            SweepReclaimConfig,
+            include_direct_fields=True,
         )
         overrides.pop("sweep_preset", None)
         overrides.pop("preset", None)
         cfg = SweepReclaimConfig(
-            **{**base_cfg.__dict__,
-               **_safe_kwargs(SweepReclaimConfig, overrides)},
+            **{**base_cfg.__dict__, **_safe_kwargs(SweepReclaimConfig, overrides)},
         )
         return lambda: SweepReclaimStrategy(cfg)
     if kind == "rsi_mean_reversion":
@@ -657,9 +674,12 @@ def _build_crypto_strategy_factory(  # type: ignore[no-untyped-def]  # noqa: ANN
             mnq_rsi_mr_preset,
             nq_rsi_mr_preset,
         )
+
         preset_factories = {
-            "mnq": mnq_rsi_mr_preset, "nq": nq_rsi_mr_preset,
-            "btc": btc_rsi_mr_preset, "eth": eth_rsi_mr_preset,
+            "mnq": mnq_rsi_mr_preset,
+            "nq": nq_rsi_mr_preset,
+            "btc": btc_rsi_mr_preset,
+            "eth": eth_rsi_mr_preset,
         }
         preset_name = (extras.get("rsi_mr_preset") or extras.get("per_ticker_optimal") or "mnq").lower()
         base_cfg = preset_factories.get(preset_name, mnq_rsi_mr_preset)()
@@ -679,9 +699,12 @@ def _build_crypto_strategy_factory(  # type: ignore[no-untyped-def]  # noqa: ANN
             mnq_vwap_mr_preset,
             nq_vwap_mr_preset,
         )
+
         preset_factories = {
-            "mnq": mnq_vwap_mr_preset, "nq": nq_vwap_mr_preset,
-            "btc": btc_vwap_mr_preset, "eth": eth_vwap_mr_preset,
+            "mnq": mnq_vwap_mr_preset,
+            "nq": nq_vwap_mr_preset,
+            "btc": btc_vwap_mr_preset,
+            "eth": eth_vwap_mr_preset,
         }
         preset_name = (extras.get("vwap_mr_preset") or extras.get("per_ticker_optimal") or "mnq").lower()
         base_cfg = preset_factories.get(preset_name, mnq_vwap_mr_preset)()
@@ -701,14 +724,20 @@ def _build_crypto_strategy_factory(  # type: ignore[no-untyped-def]  # noqa: ANN
             mnq_volume_profile_preset,
             nq_volume_profile_preset,
         )
+
         preset_factories = {
-            "mnq": mnq_volume_profile_preset, "nq": nq_volume_profile_preset,
-            "btc": btc_volume_profile_preset, "eth": eth_volume_profile_preset,
+            "mnq": mnq_volume_profile_preset,
+            "nq": nq_volume_profile_preset,
+            "btc": btc_volume_profile_preset,
+            "eth": eth_volume_profile_preset,
         }
         preset_name = (extras.get("vol_prof_preset") or extras.get("per_ticker_optimal") or "mnq").lower()
         base_cfg = preset_factories.get(preset_name, mnq_volume_profile_preset)()
         overrides = _merge_strategy_overrides(
-            extras, "vol_prof", VolumeProfileStrategyConfig, include_direct_fields=True,
+            extras,
+            "vol_prof",
+            VolumeProfileStrategyConfig,
+            include_direct_fields=True,
         )
         overrides.pop("vol_prof_preset", None)
         overrides.pop("preset", None)
@@ -725,9 +754,12 @@ def _build_crypto_strategy_factory(  # type: ignore[no-untyped-def]  # noqa: ANN
             mnq_gap_fill_preset,
             nq_gap_fill_preset,
         )
+
         preset_factories = {
-            "mnq": mnq_gap_fill_preset, "nq": nq_gap_fill_preset,
-            "btc": btc_gap_fill_preset, "eth": eth_gap_fill_preset,
+            "mnq": mnq_gap_fill_preset,
+            "nq": nq_gap_fill_preset,
+            "btc": btc_gap_fill_preset,
+            "eth": eth_gap_fill_preset,
         }
         preset_name = (extras.get("gap_fill_preset") or extras.get("per_ticker_optimal") or "mnq").lower()
         base_cfg = preset_factories.get(preset_name, mnq_gap_fill_preset)()
@@ -746,9 +778,12 @@ def _build_crypto_strategy_factory(  # type: ignore[no-untyped-def]  # noqa: ANN
             mnq_vs_es_divergence_preset,
             nq_vs_es_divergence_preset,
         )
+
         preset_factories = {
-            "mnq": mnq_vs_es_divergence_preset, "nq": nq_vs_es_divergence_preset,
-            "btc": btc_vs_eth_divergence_preset, "eth": btc_vs_eth_divergence_preset,
+            "mnq": mnq_vs_es_divergence_preset,
+            "nq": nq_vs_es_divergence_preset,
+            "btc": btc_vs_eth_divergence_preset,
+            "eth": btc_vs_eth_divergence_preset,
         }
         preset_name = (extras.get("xasset_preset") or extras.get("per_ticker_optimal") or "mnq").lower()
         base_cfg = preset_factories.get(preset_name, mnq_vs_es_divergence_preset)()
@@ -766,13 +801,18 @@ def _build_crypto_strategy_factory(  # type: ignore[no-untyped-def]  # noqa: ANN
             btc_funding_rate_preset,
             eth_funding_rate_preset,
         )
+
         preset_factories = {
-            "btc": btc_funding_rate_preset, "eth": eth_funding_rate_preset,
+            "btc": btc_funding_rate_preset,
+            "eth": eth_funding_rate_preset,
         }
         preset_name = (extras.get("fund_rate_preset") or extras.get("per_ticker_optimal") or "btc").lower()
         base_cfg = preset_factories.get(preset_name, btc_funding_rate_preset)()
         overrides = _merge_strategy_overrides(
-            extras, "fund_rate", FundingRateStrategyConfig, include_direct_fields=True,
+            extras,
+            "fund_rate",
+            FundingRateStrategyConfig,
+            include_direct_fields=True,
         )
         overrides.pop("fund_rate_preset", None)
         overrides.pop("preset", None)
@@ -785,7 +825,8 @@ def _build_crypto_strategy_factory(  # type: ignore[no-untyped-def]  # noqa: ANN
 
 
 def _build_strategy_factory(  # type: ignore[no-untyped-def]  # noqa: ANN202
-    kind: str, extras: dict[str, object] | None = None,
+    kind: str,
+    extras: dict[str, object] | None = None,
 ):
     extras = extras or {}
     if kind == "orb":
@@ -818,10 +859,7 @@ def _bars_note(ds: object, bars: list[object], max_bars: int | None) -> str:
     expected = min(max_bars, row_count) if max_bars is not None else row_count
     if len(bars) < expected:
         if max_bars is not None and max_bars < row_count:
-            return (
-                f"{len(bars)}/{expected} latest capped tradable "
-                f"positive-price bars ({row_count} raw) / {days:.0f}d"
-            )
+            return f"{len(bars)}/{expected} latest capped tradable positive-price bars ({row_count} raw) / {days:.0f}d"
         return f"{len(bars)}/{row_count} total tradable positive-price bars / {days:.0f}d"
     if max_bars is not None and len(bars) < row_count:
         return f"{len(bars)}/{row_count} latest bars / {days:.0f}d capped"
@@ -842,11 +880,17 @@ def run_cell(cell: ResearchCell, *, max_bars: int | None = None) -> CellResult:
     ds = default_library().get(symbol=cell.symbol, timeframe=cell.timeframe)
     if ds is None:
         return CellResult(
-            cell=cell, n_windows=0, n_positive_oos=0,
-            agg_is_sharpe=0.0, agg_oos_sharpe=0.0,
-            avg_oos_degradation=0.0, deflated_sharpe=0.0,
-            fold_dsr_median=0.0, fold_dsr_pass_fraction=0.0,
-            pass_gate=False, note=f"NO_DATA: {cell.symbol}/{cell.timeframe}",
+            cell=cell,
+            n_windows=0,
+            n_positive_oos=0,
+            agg_is_sharpe=0.0,
+            agg_oos_sharpe=0.0,
+            avg_oos_degradation=0.0,
+            deflated_sharpe=0.0,
+            fold_dsr_median=0.0,
+            fold_dsr_pass_fraction=0.0,
+            pass_gate=False,
+            note=f"NO_DATA: {cell.symbol}/{cell.timeframe}",
         )
 
     bars = default_library().load_bars(
@@ -857,11 +901,17 @@ def run_cell(cell: ResearchCell, *, max_bars: int | None = None) -> CellResult:
     )
     if not bars:
         return CellResult(
-            cell=cell, n_windows=0, n_positive_oos=0,
-            agg_is_sharpe=0.0, agg_oos_sharpe=0.0,
-            avg_oos_degradation=0.0, deflated_sharpe=0.0,
-            fold_dsr_median=0.0, fold_dsr_pass_fraction=0.0,
-            pass_gate=False, note="EMPTY_BARS",
+            cell=cell,
+            n_windows=0,
+            n_positive_oos=0,
+            agg_is_sharpe=0.0,
+            agg_oos_sharpe=0.0,
+            avg_oos_degradation=0.0,
+            deflated_sharpe=0.0,
+            fold_dsr_median=0.0,
+            fold_dsr_pass_fraction=0.0,
+            pass_gate=False,
+            note="EMPTY_BARS",
         )
 
     base_cfg = BacktestConfig(
@@ -919,6 +969,7 @@ def run_cell(cell: ResearchCell, *, max_bars: int | None = None) -> CellResult:
             EnsembleVotingConfig,
             EnsembleVotingStrategy,
         )
+
         voter_names = cell.extras.get("voters") or []
         # Aliases for voter names that use a different name in the
         # ensemble extras than in the factory dispatch.
@@ -939,10 +990,15 @@ def run_cell(cell: ResearchCell, *, max_bars: int | None = None) -> CellResult:
             sub_strategies.append((name, sub_factory()))
         if not sub_strategies:
             return CellResult(
-                cell=cell, n_windows=0, n_positive_oos=0,
-                agg_is_sharpe=0.0, agg_oos_sharpe=0.0,
-                avg_oos_degradation=0.0, deflated_sharpe=0.0,
-                fold_dsr_median=0.0, fold_dsr_pass_fraction=0.0,
+                cell=cell,
+                n_windows=0,
+                n_positive_oos=0,
+                agg_is_sharpe=0.0,
+                agg_oos_sharpe=0.0,
+                avg_oos_degradation=0.0,
+                deflated_sharpe=0.0,
+                fold_dsr_median=0.0,
+                fold_dsr_pass_fraction=0.0,
                 pass_gate=False,
                 note="NO_VOTERS: ensemble_voting needs extras['voters']",
             )
@@ -956,6 +1012,7 @@ def run_cell(cell: ResearchCell, *, max_bars: int | None = None) -> CellResult:
         if min_agree is not None:
             ens_cfg_kwargs.setdefault("min_agreement_count", min_agree)
         ens_cfg = EnsembleVotingConfig(**ens_cfg_kwargs)
+
         # EnsembleVotingStrategy isn't safe to share across windows —
         # voters carry per-bar state. Build per-window via a closure
         # that reconstructs both the voters and the ensemble.
@@ -969,6 +1026,7 @@ def run_cell(cell: ResearchCell, *, max_bars: int | None = None) -> CellResult:
                     continue
                 voters.append((name, f()))
             return EnsembleVotingStrategy(voters, ens_cfg)
+
         res = WalkForwardEngine().run(
             bars=bars,
             pipeline=FeaturePipeline.default(),
@@ -978,12 +1036,23 @@ def run_cell(cell: ResearchCell, *, max_bars: int | None = None) -> CellResult:
             strategy_factory=_ensemble_factory,
         )
     elif cell.strategy_kind in (
-        "crypto_orb", "crypto_trend", "crypto_meanrev", "crypto_scalp",
-        "crypto_regime_trend", "crypto_macro_confluence", "sage_consensus",
-        "sage_daily_gated", "grid",
-        "compression_breakout", "sweep_reclaim",
-        "rsi_mean_reversion", "vwap_reversion", "volume_profile",
-        "gap_fill", "cross_asset_divergence", "funding_rate",
+        "crypto_orb",
+        "crypto_trend",
+        "crypto_meanrev",
+        "crypto_scalp",
+        "crypto_regime_trend",
+        "crypto_macro_confluence",
+        "sage_consensus",
+        "sage_daily_gated",
+        "grid",
+        "compression_breakout",
+        "sweep_reclaim",
+        "rsi_mean_reversion",
+        "vwap_reversion",
+        "volume_profile",
+        "gap_fill",
+        "cross_asset_divergence",
+        "funding_rate",
     ):
         # Crypto-specific strategy variants. All share the same
         # maybe_enter(bar, hist, equity, config) -> _Open|None contract
@@ -1037,13 +1106,17 @@ def run_cell(cell: ResearchCell, *, max_bars: int | None = None) -> CellResult:
                         bot_symbol = str(cell.extras.get("per_ticker_optimal", ""))
                         if ref_asset == "ES1" or "MNQ" in bot_symbol or "NQ" in bot_symbol:
                             sub_factory = _with_cross_asset_ref_provider(
-                                sub_factory, bot_symbol=bot_symbol,
-                                ref_symbol="ES1", ref_timeframe="5m",
+                                sub_factory,
+                                bot_symbol=bot_symbol,
+                                ref_symbol="ES1",
+                                ref_timeframe="5m",
                             )
                         elif ref_asset == "ETH" or "BTC" in bot_symbol:
                             sub_factory = _with_cross_asset_ref_provider(
-                                sub_factory, bot_symbol=bot_symbol,
-                                ref_symbol="ETH", ref_timeframe="1h",
+                                sub_factory,
+                                bot_symbol=bot_symbol,
+                                ref_symbol="ETH",
+                                ref_timeframe="1h",
                             )
                     elif sub_kind == "funding_rate":
                         sub_factory = _with_funding_rate_provider(sub_factory)
@@ -1100,8 +1173,7 @@ def render_table(results: Sequence[CellResult]) -> str:
     ]
     for r in results:
         gate_str = (
-            ("/".join(sorted(r.cell.block_regimes)) if r.cell.block_regimes else "—")
-            if r.cell.block_regimes else "—"
+            ("/".join(sorted(r.cell.block_regimes)) if r.cell.block_regimes else "—") if r.cell.block_regimes else "—"
         )
         verdict = "PASS" if r.pass_gate else "FAIL"
         lines.append(
@@ -1121,11 +1193,7 @@ def classify_research_results(results: Sequence[CellResult]) -> str:
         return "promotable"
     if all(
         result.n_windows == 0
-        and (
-            result.note.startswith("NO_DATA")
-            or result.note == "EMPTY_BARS"
-            or result.note.startswith("ERROR:")
-        )
+        and (result.note.startswith("NO_DATA") or result.note == "EMPTY_BARS" or result.note.startswith("ERROR:"))
         for result in results
     ):
         return "no_data"
@@ -1164,9 +1232,7 @@ def render_report(
     return (
         f"# Research Grid — {generated_at.isoformat()}\n\n"
         f"Cells: {len(matrix)}\n\n"
-        f"Artifact class: `{artifact_class}`\n\n"
-        + table
-        + "\n"
+        f"Artifact class: `{artifact_class}`\n\n" + table + "\n"
     )
 
 
@@ -1296,18 +1362,26 @@ def main() -> int:
             results.append(r)
             print(
                 f"      -> windows={r.n_windows} "
-                f"agg_OOS={r.agg_oos_sharpe:+.3f} pass_frac={r.fold_dsr_pass_fraction*100:.1f}% "
+                f"agg_OOS={r.agg_oos_sharpe:+.3f} pass_frac={r.fold_dsr_pass_fraction * 100:.1f}% "
                 f"verdict={'PASS' if r.pass_gate else 'FAIL'}"
             )
         except Exception as exc:  # noqa: BLE001
             print(f"      -> ERROR: {exc!r}")
-            results.append(CellResult(
-                cell=cell, n_windows=0, n_positive_oos=0,
-                agg_is_sharpe=0.0, agg_oos_sharpe=0.0,
-                avg_oos_degradation=0.0, deflated_sharpe=0.0,
-                fold_dsr_median=0.0, fold_dsr_pass_fraction=0.0,
-                pass_gate=False, note=f"ERROR: {type(exc).__name__}",
-            ))
+            results.append(
+                CellResult(
+                    cell=cell,
+                    n_windows=0,
+                    n_positive_oos=0,
+                    agg_is_sharpe=0.0,
+                    agg_oos_sharpe=0.0,
+                    avg_oos_degradation=0.0,
+                    deflated_sharpe=0.0,
+                    fold_dsr_median=0.0,
+                    fold_dsr_pass_fraction=0.0,
+                    pass_gate=False,
+                    note=f"ERROR: {type(exc).__name__}",
+                )
+            )
 
     table = render_table(results)
     print("\n" + table)

@@ -15,6 +15,7 @@ This module exposes a watcher that:
 
 Run as a 30-second scheduled task once the per-broker pollers land.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -47,6 +48,7 @@ class PositionDiff:
     symbol: str
     bot_qty: float
     broker_qty: float
+
     @property
     def abs_drift(self) -> float:
         return abs(self.bot_qty - self.broker_qty)
@@ -123,8 +125,7 @@ def fetch_bot_positions(
     if not files:
         if os.environ.get("ETA_RECONCILE_ALLOW_EMPTY_STATE") == "1":
             logger.info(
-                "no bot positions files under %s; "
-                "ETA_RECONCILE_ALLOW_EMPTY_STATE=1 honored (first-boot case)",
+                "no bot positions files under %s; ETA_RECONCILE_ALLOW_EMPTY_STATE=1 honored (first-boot case)",
                 root / "bots",
             )
             return {}
@@ -145,7 +146,9 @@ def fetch_bot_positions(
         except (OSError, json.JSONDecodeError) as exc:
             logger.warning(
                 "skipping corrupt bot-positions file for bot=%s (%s): %s",
-                bot_name, path, exc,
+                bot_name,
+                path,
+                exc,
             )
             continue
         # Prefer the embedded bot_name when present (defensive against
@@ -178,11 +181,13 @@ async def _fetch_broker_positions_async() -> dict[str, dict[str, float]]:
     venues: list[Any] = []
     try:
         from eta_engine.venues.ibkr import IbkrClientPortalVenue
+
         venues.append(IbkrClientPortalVenue())
     except Exception as exc:  # noqa: BLE001
         logger.debug("IBKR venue unavailable: %s", exc)
     try:
         from eta_engine.venues.tastytrade import TastytradeVenue
+
         venues.append(TastytradeVenue())
     except Exception as exc:  # noqa: BLE001
         logger.debug("Tastytrade venue unavailable: %s", exc)
@@ -191,8 +196,7 @@ async def _fetch_broker_positions_async() -> dict[str, dict[str, float]]:
         try:
             positions = await venue.get_positions()
         except Exception as exc:  # noqa: BLE001
-            logger.warning("get_positions failed for venue=%s: %s",
-                           getattr(venue, "name", "?"), exc)
+            logger.warning("get_positions failed for venue=%s: %s", getattr(venue, "name", "?"), exc)
             continue
         for pos in positions or []:
             sym = str(pos.get("symbol") or pos.get("ticker") or "").upper()
@@ -218,11 +222,13 @@ def fetch_broker_positions() -> dict[str, dict[str, float]]:
           does, so the operator should be told)
     """
     import asyncio
+
     try:
         loop = asyncio.get_event_loop()
         if loop.is_running():
             # Already inside an event loop; can't nest. Run in a thread.
             import concurrent.futures
+
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
                 return ex.submit(asyncio.run, _fetch_broker_positions_async()).result(timeout=30)
     except RuntimeError:
@@ -235,22 +241,24 @@ def fire_drift_alert(diffs: list[PositionDiff], *, alerts_yaml: Path) -> None:
         import yaml
 
         from eta_engine.obs.alert_dispatcher import AlertDispatcher
+
         cfg = yaml.safe_load(alerts_yaml.read_text(encoding="utf-8"))
         dispatcher = AlertDispatcher(cfg)
-        dispatcher.send("position_drift", {
-            "diff_count": len(diffs),
-            "summary": [
-                {"bot": d.bot, "symbol": d.symbol, "bot_qty": d.bot_qty, "broker_qty": d.broker_qty}
-                for d in diffs
-            ],
-        })
+        dispatcher.send(
+            "position_drift",
+            {
+                "diff_count": len(diffs),
+                "summary": [
+                    {"bot": d.bot, "symbol": d.symbol, "bot_qty": d.bot_qty, "broker_qty": d.broker_qty} for d in diffs
+                ],
+            },
+        )
     except Exception as exc:  # noqa: BLE001
         logger.warning("position_drift alert dispatch failed (non-fatal): %s", exc)
 
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(description=__doc__,
-                                formatter_class=argparse.RawDescriptionHelpFormatter)
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--tolerance", type=float, default=0.0001)
     p.add_argument("--alerts-yaml", type=Path, default=ROOT / "configs" / "alerts.yaml")
     p.add_argument("--dry-run", action="store_true")
@@ -267,15 +275,18 @@ def main(argv: list[str] | None = None) -> int:
     diffs = diff_positions(bot_pos, broker_pos, tolerance=args.tolerance)
 
     if not diffs:
-        logger.info("reconcile: %d bot-position keys, %d broker-position keys, NO DIFF",
-                    sum(len(v) for v in bot_pos.values()),
-                    sum(len(v) for v in broker_pos.values()))
+        logger.info(
+            "reconcile: %d bot-position keys, %d broker-position keys, NO DIFF",
+            sum(len(v) for v in bot_pos.values()),
+            sum(len(v) for v in broker_pos.values()),
+        )
         return 0
 
     logger.warning("reconcile: %d drift(s) detected", len(diffs))
     for d in diffs:
-        logger.warning("  %s/%s: bot=%.4f broker=%.4f drift=%.4f",
-                       d.bot, d.symbol, d.bot_qty, d.broker_qty, d.abs_drift)
+        logger.warning(
+            "  %s/%s: bot=%.4f broker=%.4f drift=%.4f", d.bot, d.symbol, d.bot_qty, d.broker_qty, d.abs_drift
+        )
 
     if not args.dry_run:
         fire_drift_alert(diffs, alerts_yaml=args.alerts_yaml)

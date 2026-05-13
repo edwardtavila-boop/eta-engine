@@ -6,6 +6,7 @@ falling back to heuristic-only analysis when no key is configured.
 
 Output: ``reports/strategy_reviews/{strategy_id}_review.json``.
 """
+
 from __future__ import annotations
 
 import json
@@ -141,11 +142,13 @@ class AdversarialStrategyReviewer:
         )
         req = urllib.request.Request(  # noqa: S310 — fixed-scheme HTTPS to a configured base URL
             f"{_ANTHROPIC_BASE_URL.rstrip('/')}/v1/messages",
-            data=json.dumps({
-                "model": "claude-sonnet-4-6",
-                "max_tokens": 1024,
-                "messages": [{"role": "user", "content": prompt}],
-            }).encode(),
+            data=json.dumps(
+                {
+                    "model": "claude-sonnet-4-6",
+                    "max_tokens": 1024,
+                    "messages": [{"role": "user", "content": prompt}],
+                }
+            ).encode(),
             headers={
                 "Content-Type": "application/json",
                 "x-api-key": _ANTHROPIC_API_KEY,
@@ -171,88 +174,120 @@ class AdversarialStrategyReviewer:
         modes: list[dict] = []
         lower = yaml_text.lower()
         if "stop_loss" not in lower and "stop" not in lower:
-            modes.append({
-                "name": "missing_stop_loss", "severity": "critical",
-                "detail": "No stop-loss defined", "mitigation": "Add stop-loss based on ATR",
-            })
+            modes.append(
+                {
+                    "name": "missing_stop_loss",
+                    "severity": "critical",
+                    "detail": "No stop-loss defined",
+                    "mitigation": "Add stop-loss based on ATR",
+                }
+            )
         if "take_profit" not in lower and "target" not in lower:
-            modes.append({
-                "name": "missing_take_profit", "severity": "high",
-                "detail": "No take-profit defined", "mitigation": "Add take-profit at 1.5-2x risk",
-            })
+            modes.append(
+                {
+                    "name": "missing_take_profit",
+                    "severity": "high",
+                    "detail": "No take-profit defined",
+                    "mitigation": "Add take-profit at 1.5-2x risk",
+                }
+            )
         if results and results.get("trades", 0) < 30:
-            modes.append({
-                "name": "low_sample", "severity": "high",
-                "detail": f"Only {results.get('trades', 0)} trades",
-                "mitigation": "Require min 30 trades before paper_soak",
-            })
+            modes.append(
+                {
+                    "name": "low_sample",
+                    "severity": "high",
+                    "detail": f"Only {results.get('trades', 0)} trades",
+                    "mitigation": "Require min 30 trades before paper_soak",
+                }
+            )
         if results and results.get("win_rate", 0) > 0.8:
-            modes.append({
-                "name": "suspicious_win_rate", "severity": "medium",
-                "detail": "Win rate >80% may indicate overfitting",
-                "mitigation": "Walk-forward validate",
-            })
+            modes.append(
+                {
+                    "name": "suspicious_win_rate",
+                    "severity": "medium",
+                    "detail": "Win rate >80% may indicate overfitting",
+                    "mitigation": "Walk-forward validate",
+                }
+            )
         return modes
 
     def _assess_regime_sensitivity(self, yaml_text: str) -> list[dict]:
         regimes: list[dict] = []
         lower = yaml_text.lower()
         if "trend" in lower and "mean_reversion" not in lower:
-            regimes.append({
-                "regime": "chop", "risk": "high",
-                "note": "Trend strategy will whipsaw in chop",
-            })
+            regimes.append(
+                {
+                    "regime": "chop",
+                    "risk": "high",
+                    "note": "Trend strategy will whipsaw in chop",
+                }
+            )
         if "mean_reversion" in lower and "trend" not in lower:
-            regimes.append({
-                "regime": "trending_up", "risk": "high",
-                "note": "Mean reversion fades strong trends",
-            })
+            regimes.append(
+                {
+                    "regime": "trending_up",
+                    "risk": "high",
+                    "note": "Mean reversion fades strong trends",
+                }
+            )
         return regimes
 
     def _check_overfitting(self, results: dict | None) -> list[dict]:
         flags: list[dict] = []
         if results:
             if results.get("sharpe", 0) > 3.0:
-                flags.append({
-                    "flag": "extreme_sharpe",
-                    "detail": f"Sharpe {results['sharpe']} > 3.0 — likely overfit",
-                })
+                flags.append(
+                    {
+                        "flag": "extreme_sharpe",
+                        "detail": f"Sharpe {results['sharpe']} > 3.0 — likely overfit",
+                    }
+                )
             if results.get("parameters", 0) > 10:
-                flags.append({
-                    "flag": "many_parameters",
-                    "detail": f"{results['parameters']} params for {results.get('trades', 0)} trades",
-                })
+                flags.append(
+                    {
+                        "flag": "many_parameters",
+                        "detail": f"{results['parameters']} params for {results.get('trades', 0)} trades",
+                    }
+                )
         return flags
 
     def _check_sample_size(self, results: dict | None) -> list[dict]:
         if not results:
-            return [{
-                "warning": "no_backtest_results",
-                "detail": "Cannot validate without backtest data",
-            }]
+            return [
+                {
+                    "warning": "no_backtest_results",
+                    "detail": "Cannot validate without backtest data",
+                }
+            ]
         n = results.get("trades", 0)
         if n < 30:
-            return [{
-                "warning": "insufficient_trades",
-                "detail": f"Only {n} trades; min 30 recommended",
-            }]
+            return [
+                {
+                    "warning": "insufficient_trades",
+                    "detail": f"Only {n} trades; min 30 recommended",
+                }
+            ]
         return []
 
     def _slippage_fee_check(self, yaml_text: str) -> list[dict]:
         issues: list[dict] = []
         lower = yaml_text.lower()
         if "slippage" not in lower:
-            issues.append({
-                "issue": "no_slippage_model",
-                "detail": "Slippage not configured; assumes 0-cost execution",
-                "recommendation": "Add 1-tick MNQ slippage (~$0.50/contract)",
-            })
+            issues.append(
+                {
+                    "issue": "no_slippage_model",
+                    "detail": "Slippage not configured; assumes 0-cost execution",
+                    "recommendation": "Add 1-tick MNQ slippage (~$0.50/contract)",
+                }
+            )
         if "commission" not in lower and "fee" not in lower:
-            issues.append({
-                "issue": "no_commission_model",
-                "detail": "Commission not configured",
-                "recommendation": "Add $2.50/contract MNQ commission",
-            })
+            issues.append(
+                {
+                    "issue": "no_commission_model",
+                    "detail": "Commission not configured",
+                    "recommendation": "Add $2.50/contract MNQ commission",
+                }
+            )
         return issues
 
     def _write(self, report: dict[str, Any]) -> None:
@@ -264,6 +299,7 @@ class AdversarialStrategyReviewer:
 
 def main() -> None:
     import argparse
+
     p = argparse.ArgumentParser()
     p.add_argument("--strategy-id", default="test_strategy")
     p.add_argument(

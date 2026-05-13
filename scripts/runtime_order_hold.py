@@ -40,19 +40,26 @@ _TRUTHY = {"1", "true", "yes", "on", "hold", "held"}
 
 # Recognised scope tokens. Anything else collapses to "all" so an operator
 # typo cannot silently disable a hold.
-_KNOWN_SCOPES: frozenset[str] = frozenset({
-    "all", "ibkr", "futures", "crypto", "alpaca", "tastytrade",
-})
+_KNOWN_SCOPES: frozenset[str] = frozenset(
+    {
+        "all",
+        "ibkr",
+        "futures",
+        "crypto",
+        "alpaca",
+        "tastytrade",
+    }
+)
 
 # Mapping from scope token to the set of (venue, asset_class) tuples it
 # blocks. ``("*", "*")`` is the wildcard match used by the "all" scope.
 # Asset classes follow the v2 routing schema: "futures" or "crypto".
 _SCOPE_BLOCKS: dict[str, frozenset[tuple[str, str]]] = {
-    "all":        frozenset({("*", "*")}),
-    "ibkr":       frozenset({("ibkr", "*")}),
-    "futures":    frozenset({("*", "futures")}),
-    "crypto":     frozenset({("*", "crypto")}),
-    "alpaca":     frozenset({("alpaca", "*")}),
+    "all": frozenset({("*", "*")}),
+    "ibkr": frozenset({("ibkr", "*")}),
+    "futures": frozenset({("*", "futures")}),
+    "crypto": frozenset({("*", "crypto")}),
+    "alpaca": frozenset({("alpaca", "*")}),
     "tastytrade": frozenset({("tastytrade", "*")}),
 }
 
@@ -236,19 +243,22 @@ def write_order_entry_hold(
     hold_path = Path(path) if path is not None else default_hold_path()
     hold_path.parent.mkdir(parents=True, exist_ok=True)
     canonical_scope = _normalise_scope(scope)
-    payload = json.dumps(
-        {
-            "active": bool(active),
-            "reason": reason,
-            "scope": canonical_scope,
-            "set_at_utc": datetime.now(UTC).isoformat(),
-            # Legacy field kept for back-compat with operators / tools
-            # that previously expected ``ts``.
-            "ts": datetime.now(UTC).isoformat(),
-        },
-        indent=2,
-        sort_keys=True,
-    ) + "\n"
+    payload = (
+        json.dumps(
+            {
+                "active": bool(active),
+                "reason": reason,
+                "scope": canonical_scope,
+                "set_at_utc": datetime.now(UTC).isoformat(),
+                # Legacy field kept for back-compat with operators / tools
+                # that previously expected ``ts``.
+                "ts": datetime.now(UTC).isoformat(),
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n"
+    )
     tmp = hold_path.with_suffix(hold_path.suffix + ".tmp")
     tmp.write_text(payload, encoding="utf-8")
     os.replace(tmp, hold_path)
@@ -284,13 +294,19 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if ns.cmd == "set":
         path = write_order_entry_hold(
-            active=True, reason=ns.reason, scope=ns.scope, path=ns.path,
+            active=True,
+            reason=ns.reason,
+            scope=ns.scope,
+            path=ns.path,
         )
         print(path)
         return 0
     if ns.cmd == "clear":
         path = write_order_entry_hold(
-            active=False, reason=ns.reason, scope="all", path=ns.path,
+            active=False,
+            reason=ns.reason,
+            scope="all",
+            path=ns.path,
         )
         print(path)
         return 0

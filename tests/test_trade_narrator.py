@@ -1,4 +1,5 @@
 """Tests for trade_narrator — Track 10 (deterministic per-consult narrator)."""
+
 from __future__ import annotations
 
 from datetime import UTC, date, datetime, timedelta
@@ -107,8 +108,12 @@ def test_append_to_journal_appends_without_duplicating_header(tmp_path: Path) ->
     fixed_now = datetime(2026, 5, 12, 15, 0, 0, tzinfo=UTC)
     for i in range(3):
         trade_narrator.append_to_journal(
-            {"ts": fixed_now.isoformat(), "bot_id": f"b{i}", "consult_id": f"c{i}",
-             "verdict": {"final_verdict": "HOLD", "final_size_multiplier": 0.0}},
+            {
+                "ts": fixed_now.isoformat(),
+                "bot_id": f"b{i}",
+                "consult_id": f"c{i}",
+                "verdict": {"final_verdict": "HOLD", "final_size_multiplier": 0.0},
+            },
             journal_dir=tmp_path,
             now=fixed_now,
         )
@@ -133,8 +138,12 @@ def test_read_day_accepts_iso_string(tmp_path: Path) -> None:
 
     fixed_now = datetime(2026, 5, 12, 15, 0, 0, tzinfo=UTC)
     trade_narrator.append_to_journal(
-        {"ts": fixed_now.isoformat(), "bot_id": "b", "consult_id": "c",
-         "verdict": {"final_verdict": "PROCEED", "final_size_multiplier": 1.0}},
+        {
+            "ts": fixed_now.isoformat(),
+            "bot_id": "b",
+            "consult_id": "c",
+            "verdict": {"final_verdict": "PROCEED", "final_size_multiplier": 1.0},
+        },
         journal_dir=tmp_path,
         now=fixed_now,
     )
@@ -169,8 +178,12 @@ def test_append_never_raises_on_bad_dir(tmp_path: Path, monkeypatch) -> None:
     # Force mkdir to fail
     monkeypatch.setattr("pathlib.Path.mkdir", explode)
     ok = trade_narrator.append_to_journal(
-        {"ts": "2026-05-12T10:00:00Z", "bot_id": "x", "consult_id": "c",
-         "verdict": {"final_verdict": "PROCEED", "final_size_multiplier": 1.0}},
+        {
+            "ts": "2026-05-12T10:00:00Z",
+            "bot_id": "x",
+            "consult_id": "c",
+            "verdict": {"final_verdict": "PROCEED", "final_size_multiplier": 1.0},
+        },
         journal_dir=tmp_path,
     )
     assert ok is False
@@ -181,11 +194,15 @@ def test_size_modifier_renders_from_verdict_or_top_level() -> None:
     from eta_engine.brain.jarvis_v3 import trade_narrator
 
     rec_a = {
-        "ts": "2026-05-12T00:00:00Z", "bot_id": "b", "consult_id": "c",
+        "ts": "2026-05-12T00:00:00Z",
+        "bot_id": "b",
+        "consult_id": "c",
         "verdict": {"final_size_multiplier": 0.42},
     }
     rec_b = {
-        "ts": "2026-05-12T00:00:00Z", "bot_id": "b", "consult_id": "c",
+        "ts": "2026-05-12T00:00:00Z",
+        "bot_id": "b",
+        "consult_id": "c",
         "final_size": 0.42,
     }
     assert "42%" in trade_narrator.narrate(rec_a)

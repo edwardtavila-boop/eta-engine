@@ -15,7 +15,7 @@ try:
     import yfinance as yf
 except ImportError:
     print("yfinance not installed. Run: pip install yfinance")
-    raise SystemExit(1)
+    raise SystemExit(1) from None
 
 
 HISTORY_ROOT = Path(__file__).resolve().parents[1] / "data" / "crypto" / "history"
@@ -52,19 +52,21 @@ def fetch_daily(symbol: str, years: int = 2) -> list[dict]:
         try:
             o = float(row["Open"].iloc[0] if hasattr(row["Open"], "iloc") else row["Open"])
             h = float(row["High"].iloc[0] if hasattr(row["High"], "iloc") else row["High"])
-            l = float(row["Low"].iloc[0] if hasattr(row["Low"], "iloc") else row["Low"])
+            low = float(row["Low"].iloc[0] if hasattr(row["Low"], "iloc") else row["Low"])
             c = float(row["Close"].iloc[0] if hasattr(row["Close"], "iloc") else row["Close"])
             v = float(row["Volume"].iloc[0] if hasattr(row["Volume"], "iloc") else row["Volume"])
         except (TypeError, ValueError, IndexError):
             continue
-        rows.append({
-            "time": ts.strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "open": round(o, 2),
-            "high": round(h, 2),
-            "low": round(l, 2),
-            "close": round(c, 2),
-            "volume": round(v, 2),
-        })
+        rows.append(
+            {
+                "time": ts.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "open": round(o, 2),
+                "high": round(h, 2),
+                "low": round(low, 2),
+                "close": round(c, 2),
+                "volume": round(v, 2),
+            }
+        )
 
     print(f"[yfinance] {len(rows)} daily rows for {ticker} ({rows[0]['time'][:10]} to {rows[-1]['time'][:10]})")
     return rows
@@ -81,7 +83,7 @@ def write_csv(symbol: str, rows: list[dict]) -> Path:
     return out
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description="Fetch crypto daily bars via yfinance")
     parser.add_argument("--symbols", default="BTC,ETH", help="Comma-separated symbols")
     parser.add_argument("--years", type=int, default=2, help="Years of history")

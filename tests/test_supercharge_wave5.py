@@ -7,6 +7,7 @@ Covers:
   * horizons_helper: graceful no-op when horizons.project unavailable
   * refresh_correlation_matrix: pearson math
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -21,6 +22,7 @@ if TYPE_CHECKING:
 
 def test_stress_bucket_quantization() -> None:
     from eta_engine.brain.jarvis_v3.contextual_bandit import _stress_bucket
+
     assert _stress_bucket(0.10) == "low"
     assert _stress_bucket(0.40) == "med"
     assert _stress_bucket(0.65) == "high"
@@ -29,12 +31,14 @@ def test_stress_bucket_quantization() -> None:
 
 def test_context_key_compose() -> None:
     from eta_engine.brain.jarvis_v3.contextual_bandit import context_key
+
     k = context_key(regime="trend_up", session_phase="OPEN_DRIVE", stress_composite=0.85)
     assert k == "trend_up|OPEN_DRIVE|extreme"
 
 
 def test_contextual_bandit_register_then_choose(tmp_path: Path) -> None:
     from eta_engine.brain.jarvis_v3.contextual_bandit import ContextualBandit
+
     cb = ContextualBandit(state_path=tmp_path / "post.json")
     cb.register_arm("v17")
     cb.register_arm("v18")
@@ -46,6 +50,7 @@ def test_contextual_bandit_observe_updates_posterior(tmp_path: Path) -> None:
     import random
 
     from eta_engine.brain.jarvis_v3.contextual_bandit import ContextualBandit
+
     cb = ContextualBandit(state_path=tmp_path / "post.json", rng=random.Random(0))
     cb.register_arm("v17")
     cb.register_arm("v18")
@@ -62,6 +67,7 @@ def test_contextual_bandit_observe_updates_posterior(tmp_path: Path) -> None:
 
 def test_contextual_bandit_state_persists(tmp_path: Path) -> None:
     from eta_engine.brain.jarvis_v3.contextual_bandit import ContextualBandit
+
     state = tmp_path / "post.json"
     cb1 = ContextualBandit(state_path=state)
     cb1.register_arm("v17")
@@ -76,6 +82,7 @@ def test_contextual_bandit_state_persists(tmp_path: Path) -> None:
 
 def test_critical_tier_bypasses_budget() -> None:
     from eta_engine.brain.model_policy_budget import allow_llm_call
+
     v = allow_llm_call(estimated_cost_usd=999.0, tier="critical")
     assert v.allowed is True
     assert v.reason_code == "critical_bypass"
@@ -83,6 +90,7 @@ def test_critical_tier_bypasses_budget() -> None:
 
 def test_budget_verdict_has_required_fields() -> None:
     from eta_engine.brain.model_policy_budget import BudgetVerdict
+
     v = BudgetVerdict(allowed=True, reason_code="x", detail="y", budget_usd=50.0)
     assert v.allowed is True
     assert v.budget_usd == 50.0
@@ -97,6 +105,7 @@ def test_horizons_helper_returns_empty_when_module_breaks() -> None:
 
     class _Stub:
         pass
+
     out = horizons_helper.projected_caps(_Stub())
     # May return some caps if horizons.project handles a stub ctx, OR
     # may return empty. Either way, the function must not raise.
@@ -108,6 +117,7 @@ def test_shortest_horizon_cap_falls_back_to_one_when_unavailable() -> None:
 
     class _Stub:
         pass
+
     cap = horizons_helper.shortest_horizon_cap(_Stub())
     # Either a real cap from horizons.project, or 1.0 fallback. Bot's
     # sizing math is unaffected by the fallback.
@@ -120,6 +130,7 @@ def test_shortest_horizon_cap_falls_back_to_one_when_unavailable() -> None:
 
 def test_pearson_perfectly_correlated_returns_1() -> None:
     from eta_engine.scripts.refresh_correlation_matrix import _pearson
+
     a = [0.001, 0.002, 0.003, 0.004, 0.005, 0.006]
     b = [x * 2 for x in a]
     assert _pearson(a, b) == pytest.approx(1.0, abs=0.01)
@@ -127,6 +138,7 @@ def test_pearson_perfectly_correlated_returns_1() -> None:
 
 def test_pearson_anti_correlated_returns_minus_1() -> None:
     from eta_engine.scripts.refresh_correlation_matrix import _pearson
+
     a = [0.001, 0.002, 0.003, 0.004, 0.005]
     b = [-x for x in a]
     assert _pearson(a, b) == pytest.approx(-1.0, abs=0.01)
@@ -134,4 +146,5 @@ def test_pearson_anti_correlated_returns_minus_1() -> None:
 
 def test_pearson_short_series_returns_zero() -> None:
     from eta_engine.scripts.refresh_correlation_matrix import _pearson
+
     assert _pearson([0.1, 0.2], [0.3, 0.4]) == 0.0

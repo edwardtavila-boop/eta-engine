@@ -97,9 +97,7 @@ def test_check_broker_keys_missing_does_not_resurrect_tradovate(
     assert result.details["dormant_brokers"] == ["Tradovate"]
 
 
-def test_drift_watchdog_recent_uses_canonical_resolver(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_drift_watchdog_recent_uses_canonical_resolver(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     log_path = tmp_path / "var" / "eta_engine" / "state" / "drift_watchdog.jsonl"
     log_path.parent.mkdir(parents=True)
     log_path.write_text('{"severity":"green"}\n', encoding="utf-8")

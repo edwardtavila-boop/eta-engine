@@ -1,4 +1,5 @@
 """Regression tests for L2 operator/audit helper scripts."""
+
 from __future__ import annotations
 
 import sys

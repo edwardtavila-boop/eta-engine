@@ -48,6 +48,7 @@ Use case (post-trade audit):
     )
     # -> CausalEffect(beta=0.34, p_value_proxy=0.02, ...)
 """
+
 from __future__ import annotations
 
 import logging
@@ -87,7 +88,9 @@ def _correlation(xs: list[float], ys: list[float]) -> float:
 
 
 def partial_correlation(
-    x: list[float], y: list[float], z: list[float],
+    x: list[float],
+    y: list[float],
+    z: list[float],
 ) -> float:
     """Partial correlation of (x, y) conditioning on z.
 
@@ -161,10 +164,7 @@ def discover_skeleton(
     Variables with < min_samples observations are dropped from the
     consideration set entirely.
     """
-    nodes = [
-        k for k, v in feature_history.items()
-        if len(v) >= min_samples
-    ]
+    nodes = [k for k, v in feature_history.items() if len(v) >= min_samples]
     skeleton = CausalSkeleton()
     if len(nodes) < 2:
         return skeleton
@@ -172,7 +172,7 @@ def discover_skeleton(
     # Pairwise unconditional pass
     candidates: set[tuple[str, str]] = set()
     for i, a in enumerate(nodes):
-        for b in nodes[i + 1:]:
+        for b in nodes[i + 1 :]:
             r = _correlation(feature_history[a], feature_history[b])
             skeleton.correlations[(a, b)] = round(r, 4)
             if abs(r) > independence_threshold:
@@ -207,10 +207,10 @@ class CausalEffect:
 
     treatment: str
     outcome: str
-    beta: float                  # OLS coefficient of treatment after adjust
+    beta: float  # OLS coefficient of treatment after adjust
     n_samples: int
     adjusted_for: list[str] = field(default_factory=list)
-    p_value_proxy: float = 0.0   # rough significance via t-statistic
+    p_value_proxy: float = 0.0  # rough significance via t-statistic
     notes: str = ""
 
 
@@ -235,26 +235,31 @@ def estimate_causal_effect(
     """
     if treatment not in feature_history or outcome not in feature_history:
         return CausalEffect(
-            treatment=treatment, outcome=outcome,
-            beta=0.0, n_samples=0,
+            treatment=treatment,
+            outcome=outcome,
+            beta=0.0,
+            n_samples=0,
             adjusted_for=adjust_for,
             notes="missing series",
         )
-    n = min(
-        len(feature_history[treatment]),
-        len(feature_history[outcome]),
-        *(
-            len(feature_history[k]) for k in adjust_for
-            if k in feature_history
-        ),
-    ) if adjust_for else min(
-        len(feature_history[treatment]),
-        len(feature_history[outcome]),
+    n = (
+        min(
+            len(feature_history[treatment]),
+            len(feature_history[outcome]),
+            *(len(feature_history[k]) for k in adjust_for if k in feature_history),
+        )
+        if adjust_for
+        else min(
+            len(feature_history[treatment]),
+            len(feature_history[outcome]),
+        )
     )
     if n < 4:
         return CausalEffect(
-            treatment=treatment, outcome=outcome,
-            beta=0.0, n_samples=n,
+            treatment=treatment,
+            outcome=outcome,
+            beta=0.0,
+            n_samples=n,
             adjusted_for=adjust_for,
             notes="insufficient samples",
         )
@@ -273,8 +278,10 @@ def estimate_causal_effect(
     den = sum((t[i] - mx) ** 2 for i in range(n))
     if den == 0:
         return CausalEffect(
-            treatment=treatment, outcome=outcome,
-            beta=0.0, n_samples=n,
+            treatment=treatment,
+            outcome=outcome,
+            beta=0.0,
+            n_samples=n,
             adjusted_for=adjust_for,
             notes="treatment has zero variance after adjustment",
         )

@@ -22,6 +22,7 @@ Operator commands::
     python -m eta_engine.obs.operator_override resume
     python -m eta_engine.obs.operator_override status
 """
+
 from __future__ import annotations
 
 import argparse
@@ -69,8 +70,10 @@ def get_state() -> OverrideState:
         data = json.loads(OVERRIDE_PATH.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError):
         return OverrideState(
-            level=OverrideLevel.NORMAL, set_by="default",
-            set_at=datetime.now(UTC), reason="override file unreadable",
+            level=OverrideLevel.NORMAL,
+            set_by="default",
+            set_at=datetime.now(UTC),
+            reason="override file unreadable",
         )
 
     try:
@@ -109,17 +112,26 @@ def get_state() -> OverrideState:
 
 
 def set_state(
-    level: OverrideLevel, *, reason: str, set_by: str = "operator",
+    level: OverrideLevel,
+    *,
+    reason: str,
+    set_by: str = "operator",
     expires_at: datetime | None = None,
 ) -> Path:
     OVERRIDE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    OVERRIDE_PATH.write_text(json.dumps({
-        "level": level.value,
-        "set_by": set_by,
-        "set_at": datetime.now(UTC).isoformat(),
-        "reason": reason,
-        "expires_at": expires_at.isoformat() if expires_at else None,
-    }, indent=2), encoding="utf-8")
+    OVERRIDE_PATH.write_text(
+        json.dumps(
+            {
+                "level": level.value,
+                "set_by": set_by,
+                "set_at": datetime.now(UTC).isoformat(),
+                "reason": reason,
+                "expires_at": expires_at.isoformat() if expires_at else None,
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
     return OVERRIDE_PATH
 
 
@@ -132,8 +144,7 @@ def is_paused(*, hard_only: bool = False) -> bool:
 
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(description=__doc__,
-                                formatter_class=argparse.RawDescriptionHelpFormatter)
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest="cmd", required=True)
 
     p_soft = sub.add_parser("pause-soft", help="Stop NEW entries; existing positions wind down")
@@ -150,8 +161,7 @@ def main(argv: list[str] | None = None) -> int:
 
     args = p.parse_args(argv)
 
-    logging.basicConfig(level=logging.INFO,
-                        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 
     if args.cmd == "pause-soft":
         path = set_state(OverrideLevel.SOFT_PAUSE, reason=args.reason)

@@ -78,10 +78,7 @@ def _fetch_chunk_bitmex(symbol: str, start_ms: int, end_ms: int) -> list[dict]:
     # ISO+offset (+00:00) — BitMEX rejects it as invalid.
     start_d = datetime.fromtimestamp(start_ms / 1000, UTC).strftime("%Y-%m-%d")
     end_d = datetime.fromtimestamp(end_ms / 1000, UTC).strftime("%Y-%m-%d")
-    url = (
-        f"{_BITMEX_BASE}?symbol={bitmex_sym}"
-        f"&startTime={start_d}&endTime={end_d}&count=500"
-    )
+    url = f"{_BITMEX_BASE}?symbol={bitmex_sym}&startTime={start_d}&endTime={end_d}&count=500"
     req = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:
@@ -95,10 +92,12 @@ def _fetch_chunk_bitmex(symbol: str, start_ms: int, end_ms: int) -> list[dict]:
                     ts = datetime.fromisoformat(
                         r["timestamp"].replace("Z", "+00:00"),
                     )
-                    out.append({
-                        "fundingTime": int(ts.timestamp() * 1000),
-                        "fundingRate": float(r["fundingRate"]),
-                    })
+                    out.append(
+                        {
+                            "fundingTime": int(ts.timestamp() * 1000),
+                            "fundingRate": float(r["fundingRate"]),
+                        }
+                    )
                 except (KeyError, ValueError, TypeError):
                     continue
             return out
@@ -113,10 +112,7 @@ def _fetch_chunk_bitmex(symbol: str, start_ms: int, end_ms: int) -> list[dict]:
 
 def _fetch_chunk_bybit(symbol: str, start_ms: int, end_ms: int) -> list[dict]:
     """Bybit funding history (US-friendly). Returns up to 200 records."""
-    url = (
-        f"{_BYBIT_BASE}?category=linear&symbol={symbol}"
-        f"&startTime={start_ms}&endTime={end_ms}&limit=200"
-    )
+    url = f"{_BYBIT_BASE}?category=linear&symbol={symbol}&startTime={start_ms}&endTime={end_ms}&limit=200"
     req = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:
@@ -129,10 +125,12 @@ def _fetch_chunk_bybit(symbol: str, start_ms: int, end_ms: int) -> list[dict]:
             out = []
             for r in rows:
                 try:
-                    out.append({
-                        "fundingTime": int(r["fundingRateTimestamp"]),
-                        "fundingRate": float(r["fundingRate"]),
-                    })
+                    out.append(
+                        {
+                            "fundingTime": int(r["fundingRateTimestamp"]),
+                            "fundingRate": float(r["fundingRate"]),
+                        }
+                    )
                 except (KeyError, ValueError, TypeError):
                     continue
             return out
@@ -147,9 +145,7 @@ def _fetch_chunk_bybit(symbol: str, start_ms: int, end_ms: int) -> list[dict]:
 
 def _fetch_chunk_binance(symbol: str, start_ms: int, end_ms: int) -> list[dict]:
     """Binance funding (geo-blocked from US — fallback only)."""
-    url = (
-        f"{_BINANCE_BASE}?symbol={symbol}&startTime={start_ms}&endTime={end_ms}&limit=1000"
-    )
+    url = f"{_BINANCE_BASE}?symbol={symbol}&startTime={start_ms}&endTime={end_ms}&limit=1000"
     req = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:
@@ -206,8 +202,8 @@ def fetch_funding(
         chunk_end_ms = min(cursor_start_ms + chunk_ms, end_ms)
         print(
             f"  {symbol} "
-            f"{datetime.fromtimestamp(cursor_start_ms/1000, UTC).date()} -> "
-            f"{datetime.fromtimestamp(chunk_end_ms/1000, UTC).date()}"
+            f"{datetime.fromtimestamp(cursor_start_ms / 1000, UTC).date()} -> "
+            f"{datetime.fromtimestamp(chunk_end_ms / 1000, UTC).date()}"
         )
         rows = _fetch_chunk(symbol, cursor_start_ms, chunk_end_ms)
         if not rows:
@@ -257,8 +253,7 @@ def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--symbol", default="BTCUSDT")
     p.add_argument("--years", type=int, default=5)
-    p.add_argument("--out", type=Path,
-                   default=CRYPTO_HISTORY_ROOT / "BTCFUND_8h.csv")
+    p.add_argument("--out", type=Path, default=CRYPTO_HISTORY_ROOT / "BTCFUND_8h.csv")
     args = p.parse_args()
 
     end = datetime.now(UTC)
@@ -273,7 +268,7 @@ def main() -> int:
     print(
         f"[funding] wrote {n} rows to {args.out}; "
         f"last={datetime.fromtimestamp(last['time'], UTC).date()} "
-        f"rate={last['funding_rate']*100:+.4f}%"
+        f"rate={last['funding_rate'] * 100:+.4f}%"
     )
     return 0
 

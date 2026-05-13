@@ -27,9 +27,7 @@ if TYPE_CHECKING:
     from eta_engine.strategies.retrospective import TradeOutcome
 
 
-_ENTRY_SIGNAL_TYPES: frozenset[SignalType] = frozenset(
-    {SignalType.LONG, SignalType.SHORT}
-)
+_ENTRY_SIGNAL_TYPES: frozenset[SignalType] = frozenset({SignalType.LONG, SignalType.SHORT})
 
 
 _REGIME_MAP: dict[RegimeType, RegimeLabel] = {

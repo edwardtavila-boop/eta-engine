@@ -47,10 +47,7 @@ def _commands_for_check(check: CheckResult) -> list[str]:
         commands.extend(str(cmd) for cmd in vps_commands)
 
     def _add_smoke_commands(entries: list[Any]) -> None:
-        entry_text = " ".join(
-            str(item.get("file") if isinstance(item, dict) else item)
-            for item in entries
-        )
+        entry_text = " ".join(str(item.get("file") if isinstance(item, dict) else item) for item in entries)
         if "decision_journal.jsonl" in entry_text:
             commands.append("python -m eta_engine.scripts.decision_journal_smoke --json")
         if "runtime_log.jsonl" in entry_text:
@@ -96,10 +93,7 @@ def build_summary(*, skip_backup_test: bool = True) -> dict[str, Any]:
 def _print_human(summary: dict[str, Any]) -> None:
     """Print an operator-friendly blocker summary."""
     print(f"VPS failover readiness: {summary['overall_severity'].upper()}")
-    print(
-        "Counts: "
-        + ", ".join(f"{key}={value}" for key, value in summary["counts"].items())
-    )
+    print("Counts: " + ", ".join(f"{key}={value}" for key, value in summary["counts"].items()))
     blockers = summary["blockers"]
     if not blockers:
         print("No red/amber blockers.")

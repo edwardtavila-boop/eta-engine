@@ -1,4 +1,5 @@
 """Tests for trace_emitter — live JARVIS consult reasoning stream (Stream 2)."""
+
 from __future__ import annotations
 
 import gzip
@@ -209,7 +210,8 @@ def test_read_since_returns_new_records_after_offset(tmp_path: Path) -> None:
 
     # Second poll only sees the new ones
     records, offset_after_second = trace_emitter.read_since(
-        offset=offset_after_first, path=path,
+        offset=offset_after_first,
+        path=path,
     )
     ids_second = [r["consult_id"] for r in records]
     assert ids_second == ["c2", "c3"]
@@ -221,7 +223,8 @@ def test_read_since_handles_missing_file(tmp_path: Path) -> None:
     from eta_engine.brain.jarvis_v3 import trace_emitter
 
     records, offset = trace_emitter.read_since(
-        offset=42, path=tmp_path / "does_not_exist.jsonl",
+        offset=42,
+        path=tmp_path / "does_not_exist.jsonl",
     )
     assert records == []
     assert offset == 0
@@ -317,7 +320,9 @@ def test_capture_v2_extras_with_dataclass_portfolio_ctx() -> None:
         fleet_kill_active=False,
     )
     extras = trace_emitter.capture_v2_extras(
-        bot_id="b", asset_class="MNQ", portfolio_ctx=ctx,
+        bot_id="b",
+        asset_class="MNQ",
+        portfolio_ctx=ctx,
     )
     pi = extras["portfolio_inputs"]
     assert pi["portfolio_drawdown_today_r"] == -1.5
@@ -331,7 +336,9 @@ def test_capture_v2_extras_handles_dict_portfolio_ctx() -> None:
 
     ctx_dict = {"fleet_kill_active": True, "portfolio_drawdown_today_r": -2.0}
     extras = trace_emitter.capture_v2_extras(
-        bot_id="b", asset_class="MNQ", portfolio_ctx=ctx_dict,
+        bot_id="b",
+        asset_class="MNQ",
+        portfolio_ctx=ctx_dict,
     )
     assert extras["portfolio_inputs"]["fleet_kill_active"] is True
     assert extras["portfolio_inputs"]["portfolio_drawdown_today_r"] == -2.0
@@ -345,15 +352,23 @@ def test_capture_v2_extras_captures_overrides_snapshot(tmp_path, monkeypatch) ->
     monkeypatch.setattr(hermes_overrides, "DEFAULT_OVERRIDES_PATH", overrides_path)
     # Pin both a size_modifier and a school weight
     hermes_overrides.apply_size_modifier(
-        bot_id="test_bot", modifier=0.6, reason="test",
-        ttl_minutes=10, path=overrides_path,
+        bot_id="test_bot",
+        modifier=0.6,
+        reason="test",
+        ttl_minutes=10,
+        path=overrides_path,
     )
     hermes_overrides.apply_school_weight(
-        asset="MNQ", school="momentum", weight=1.3, reason="test",
-        ttl_minutes=10, path=overrides_path,
+        asset="MNQ",
+        school="momentum",
+        weight=1.3,
+        reason="test",
+        ttl_minutes=10,
+        path=overrides_path,
     )
     extras = trace_emitter.capture_v2_extras(
-        bot_id="test_bot", asset_class="MNQ",
+        bot_id="test_bot",
+        asset_class="MNQ",
     )
     snap = extras["overrides_snapshot"]
     assert snap["size_modifier"] == 0.6
@@ -365,7 +380,9 @@ def test_capture_v2_extras_never_raises_on_missing_ctx() -> None:
     from eta_engine.brain.jarvis_v3 import trace_emitter
 
     extras = trace_emitter.capture_v2_extras(
-        bot_id="b", asset_class="MNQ", portfolio_ctx=None,
+        bot_id="b",
+        asset_class="MNQ",
+        portfolio_ctx=None,
     )
     assert extras["portfolio_inputs"] == {}
 
@@ -379,7 +396,9 @@ def test_capture_v2_extras_never_raises_on_broken_ctx() -> None:
             raise RuntimeError(f"refuses to expose {name}")
 
     extras = trace_emitter.capture_v2_extras(
-        bot_id="b", asset_class="MNQ", portfolio_ctx=Hostile(),
+        bot_id="b",
+        asset_class="MNQ",
+        portfolio_ctx=Hostile(),
     )
     # No exception; portfolio_inputs ends up empty
     assert extras["portfolio_inputs"] == {}
@@ -562,7 +581,9 @@ def test_read_since_respects_limit(tmp_path: Path) -> None:
     assert [r["consult_id"] for r in records] == ["c0", "c1"]
 
     more_records, final_offset = trace_emitter.read_since(
-        offset=next_offset, limit=10, path=path,
+        offset=next_offset,
+        limit=10,
+        path=path,
     )
     assert [r["consult_id"] for r in more_records] == ["c2", "c3", "c4"]
     assert final_offset == path.stat().st_size

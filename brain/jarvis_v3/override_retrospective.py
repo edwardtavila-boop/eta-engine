@@ -138,10 +138,7 @@ class OverrideRetroLogger:
                 regime=event.regime,
                 session=event.session,
                 action=event.action,
-                was_overridden=(
-                    event.operator_override_level
-                    in {"HARD_PAUSE", "KILL", "SOFT_PAUSE"}
-                ),
+                was_overridden=(event.operator_override_level in {"HARD_PAUSE", "KILL", "SOFT_PAUSE"}),
             )
 
         return retro
@@ -170,10 +167,7 @@ class OverrideRetroLogger:
                 f"Consider whether Jarvis should detect this pattern "
                 f"and self-soften next time."
             )
-        return (
-            f"Operator adjusted Jarvis decision for {event.action}. "
-            f"Logging as training datum for Coach."
-        )
+        return f"Operator adjusted Jarvis decision for {event.action}. Logging as training datum for Coach."
 
     def _build_action_items(
         self,
@@ -201,12 +195,8 @@ class OverrideRetroLogger:
                     f"({event.regime}, {event.session}, {event.action})"
                 )
         if event.override_reason:
-            items.append(
-                f"Log override reason: {event.override_reason}"
-            )
-        items.append(
-            "Updated Coach posterior for (regime, session, action) cell."
-        )
+            items.append(f"Log override reason: {event.override_reason}")
+        items.append("Updated Coach posterior for (regime, session, action) cell.")
         return items
 
     def _log_event(self, event: OverrideEvent) -> None:
@@ -230,7 +220,7 @@ class OverrideRetroLogger:
         try:
             lines = self.log_path.read_text(encoding="utf-8").strip().splitlines()
             events = []
-            for line in lines[-n * 2:]:
+            for line in lines[-n * 2 :]:
                 try:
                     data = json.loads(line)
                     if data.get("type") == "override_event":

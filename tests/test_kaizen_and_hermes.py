@@ -107,13 +107,19 @@ class TestKaizenGuard:
         from eta_engine.brain.jarvis_v3.kaizen_guard import KaizenGuard
 
         guard = KaizenGuard()
-        assert guard.should_rollback("param_a", pre_change_sharpe=1.5, post_change_sharpe=1.2, trades_since_change=15) is True
+        assert (
+            guard.should_rollback("param_a", pre_change_sharpe=1.5, post_change_sharpe=1.2, trades_since_change=15)
+            is True
+        )
 
     def test_should_rollback_ignores_too_few_trades(self):
         from eta_engine.brain.jarvis_v3.kaizen_guard import KaizenGuard
 
         guard = KaizenGuard()
-        assert guard.should_rollback("param_a", pre_change_sharpe=1.5, post_change_sharpe=1.2, trades_since_change=3) is False
+        assert (
+            guard.should_rollback("param_a", pre_change_sharpe=1.5, post_change_sharpe=1.2, trades_since_change=3)
+            is False
+        )
 
     def test_save_load_state_roundtrip(self):
         from eta_engine.brain.jarvis_v3.kaizen_guard import KaizenGuard
@@ -181,7 +187,11 @@ class TestKaizenEngine:
             engine = KaizenEngine(instruments=[cfg], state_dir=Path(tmp))
             losing_trades = _mock_trades(30, pnl=-10)
             promoted, retired = engine._manage_strategy_lifecycle(
-                "MNQ", losing_trades, [], cfg, datetime.now(UTC),
+                "MNQ",
+                losing_trades,
+                [],
+                cfg,
+                datetime.now(UTC),
             )
             # No registered strategies yet, so no retirements
             assert len(retired) == 0
@@ -217,6 +227,7 @@ class TestHermesBridge:
 
     def test_bridge_queues_notification(self):
         import pytest
+
         pytest.skip("HermesBridge requires running event loop for _enqueue — needs pytest-asyncio")
 
     def test_store_and_forward(self):
@@ -228,7 +239,9 @@ class TestHermesBridge:
 
         with tempfile.TemporaryDirectory() as tmp:
             bridge = HermesBridge(
-                bot_token="", chat_id="", enable_telegram=False,
+                bot_token="",
+                chat_id="",
+                enable_telegram=False,
             )
             bridge.STORE_AND_FORWARD_PATH = Path(tmp) / "saf.jsonl"
             notification = JarvisNotification(
@@ -243,9 +256,9 @@ class TestHermesBridge:
 
     def test_notify_all_message_types(self):
         import pytest
+
         pytest.skip("HermesBridge requires running event loop for _enqueue — needs pytest-asyncio")
         # All should succeed without exception
-        assert bridge._queue.qsize() >= 6 or bridge._sent_count >= 0
 
 
 # ─── Supercharged QUBO Tests ────────────────────────────────
@@ -256,10 +269,7 @@ class TestSuperchargedQubo:
         from eta_engine.brain.jarvis_v3.quantum.qubo_supercharged import risk_parity_qubo
 
         returns = [0.1, 0.2, 0.15, 0.05]
-        cov = [[1.0, 0.5, 0.3, 0.2],
-               [0.5, 1.0, 0.4, 0.3],
-               [0.3, 0.4, 1.0, 0.1],
-               [0.2, 0.3, 0.1, 1.0]]
+        cov = [[1.0, 0.5, 0.3, 0.2], [0.5, 1.0, 0.4, 0.3], [0.3, 0.4, 1.0, 0.1], [0.2, 0.3, 0.1, 1.0]]
         labels = ["BTC", "ETH", "SOL", "MNQ"]
         problem = risk_parity_qubo(expected_returns=returns, covariance=cov, asset_labels=labels)
         assert problem.n_vars == 4
@@ -279,7 +289,10 @@ class TestSuperchargedQubo:
         ]
         labels = ["BTC", "ETH", "SOL"]
         problem = regime_aware_qubo(
-            expected_returns=returns, covariance=cov, modifiers=modifiers, asset_labels=labels,
+            expected_returns=returns,
+            covariance=cov,
+            modifiers=modifiers,
+            asset_labels=labels,
         )
         assert problem.n_vars == 3
         assert len(problem.Q) > 0
@@ -322,8 +335,11 @@ class TestSuperchargedQubo:
         candidates = [-10.0, 5.0, -3.0]
         corr = [[1.0, 0.5, 0.0], [0.5, 1.0, 0.3], [0.0, 0.3, 1.0]]
         problem = hedging_basket_qubo(
-            positions=positions, candidates=candidates, pairwise_correlation=corr,
-            hedge_labels=["H1", "H2", "H3"], position_labels=["P1", "P2"],
+            positions=positions,
+            candidates=candidates,
+            pairwise_correlation=corr,
+            hedge_labels=["H1", "H2", "H3"],
+            position_labels=["P1", "P2"],
         )
         assert problem.n_vars == 3
 
@@ -336,7 +352,9 @@ class TestSuperchargedQubo:
         short = HorizonSlice(name="short", weight=1.0, expected_returns=[0.1, 0.2, 0.15])
         long = HorizonSlice(name="long", weight=0.5, expected_returns=[0.05, 0.1, 0.2])
         problem = multi_horizon_qubo(
-            horizons=[short, long], asset_labels=["BTC", "ETH", "SOL"], max_assets_total=4,
+            horizons=[short, long],
+            asset_labels=["BTC", "ETH", "SOL"],
+            max_assets_total=4,
         )
         assert problem.n_vars == 6
         assert len(problem.labels) == 6
@@ -357,7 +375,9 @@ class TestShouldInvoke:
         from eta_engine.brain.jarvis_v3.quantum.quantum_agent import QuantumOptimizerAgent
 
         should, reason = QuantumOptimizerAgent.should_invoke(
-            n_symbols=5, regime_changed_since_last=False, volatility_changed_pct=0.05,
+            n_symbols=5,
+            regime_changed_since_last=False,
+            volatility_changed_pct=0.05,
         )
         assert should is False
         assert "stable" in reason or "regime" in reason
@@ -366,7 +386,8 @@ class TestShouldInvoke:
         from eta_engine.brain.jarvis_v3.quantum.quantum_agent import QuantumOptimizerAgent
 
         should, reason = QuantumOptimizerAgent.should_invoke(
-            n_symbols=5, regime_changed_since_last=True,
+            n_symbols=5,
+            regime_changed_since_last=True,
         )
         assert should is True
 
@@ -374,7 +395,9 @@ class TestShouldInvoke:
         from eta_engine.brain.jarvis_v3.quantum.quantum_agent import QuantumOptimizerAgent
 
         should, reason = QuantumOptimizerAgent.should_invoke(
-            n_symbols=5, regime_changed_since_last=False, volatility_changed_pct=0.30,
+            n_symbols=5,
+            regime_changed_since_last=False,
+            volatility_changed_pct=0.30,
         )
         assert should is True
 
@@ -382,7 +405,9 @@ class TestShouldInvoke:
         from eta_engine.brain.jarvis_v3.quantum.quantum_agent import QuantumOptimizerAgent
 
         should, reason = QuantumOptimizerAgent.should_invoke(
-            n_symbols=5, regime_changed_since_last=True, last_invoked_seconds_ago=30,
+            n_symbols=5,
+            regime_changed_since_last=True,
+            last_invoked_seconds_ago=30,
         )
         assert should is False
         assert "rate" in reason.lower()

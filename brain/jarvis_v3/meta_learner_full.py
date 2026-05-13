@@ -24,6 +24,7 @@ instead of unconstrained model rewrites.
 
 Pure stdlib + math.
 """
+
 from __future__ import annotations
 
 import logging
@@ -55,10 +56,10 @@ _DEFAULT_BOUNDS = ParamBounds()
 class MultiObjective:
     """Joint performance on 4 metrics."""
 
-    avg_r: float                # higher is better
-    sharpe: float               # higher is better
-    max_dd_r: float             # less negative is better -- stored as positive number
-    ulcer_index: float          # lower is better
+    avg_r: float  # higher is better
+    sharpe: float  # higher is better
+    max_dd_r: float  # less negative is better -- stored as positive number
+    ulcer_index: float  # lower is better
     n_observations: int = 0
 
 
@@ -68,10 +69,7 @@ def compute_multi_objective(realized_r: list[float]) -> MultiObjective:
     if n == 0:
         return MultiObjective(0.0, 0.0, 0.0, 0.0, 0)
     avg_r = sum(realized_r) / n
-    sd = (
-        math.sqrt(sum((r - avg_r) ** 2 for r in realized_r) / max(n - 1, 1))
-        if n >= 2 else 0.0
-    )
+    sd = math.sqrt(sum((r - avg_r) ** 2 for r in realized_r) / max(n - 1, 1)) if n >= 2 else 0.0
     sharpe = avg_r / sd if sd > 0 else 0.0
     # Max drawdown (in cumulative R units)
     cum = 0.0
@@ -84,10 +82,7 @@ def compute_multi_objective(realized_r: list[float]) -> MultiObjective:
         dd = peak - cum
         max_dd = max(max_dd, dd)
         drawdown_squares.append(dd * dd)
-    ulcer = (
-        math.sqrt(sum(drawdown_squares) / len(drawdown_squares))
-        if drawdown_squares else 0.0
-    )
+    ulcer = math.sqrt(sum(drawdown_squares) / len(drawdown_squares)) if drawdown_squares else 0.0
     return MultiObjective(
         avg_r=round(avg_r, 4),
         sharpe=round(sharpe, 4),
@@ -111,7 +106,7 @@ def pareto_dominates(
     ulcer_index -- lower is better.
     """
     metrics: list[tuple[float, float, bool]] = [
-        (challenger.avg_r, champion.avg_r, True),       # higher better
+        (challenger.avg_r, champion.avg_r, True),  # higher better
         (challenger.sharpe, champion.sharpe, True),
         (challenger.max_dd_r, champion.max_dd_r, False),  # lower better
         (challenger.ulcer_index, champion.ulcer_index, False),
@@ -200,10 +195,10 @@ class SensitivityProbe:
     axis. Estimates the local gradient sign + magnitude."""
 
     param_name: str
-    delta: float                 # the perturbation size used
-    upper_avg_r: float           # avg R at +delta point
-    lower_avg_r: float           # avg R at -delta point
-    sensitivity: float           # (upper - lower) / (2 * delta) -- gradient proxy
+    delta: float  # the perturbation size used
+    upper_avg_r: float  # avg R at +delta point
+    lower_avg_r: float  # avg R at -delta point
+    sensitivity: float  # (upper - lower) / (2 * delta) -- gradient proxy
 
 
 def probe_sensitivity(
@@ -390,16 +385,15 @@ class MetaLearnerFull:
         promote one. Returns the promotion record or None."""
         if self._champion_metrics is None:
             return None
-        eligible = [
-            t for t in self._trials.values()
-            if t.n >= self.cfg.min_episodes
-        ]
+        eligible = [t for t in self._trials.values() if t.n >= self.cfg.min_episodes]
         if not eligible:
             return None
         winners = [
-            t for t in eligible
+            t
+            for t in eligible
             if pareto_dominates(
-                t.metrics, self._champion_metrics,
+                t.metrics,
+                self._champion_metrics,
                 min_dominated_dimensions=self.cfg.min_dominated_dimensions,
             )
         ]
@@ -413,7 +407,8 @@ class MetaLearnerFull:
         improvement = best.metrics.avg_r - self._champion_metrics.avg_r
         if best.parent_param_mutated:
             self._param_bandit.observe(
-                best.parent_param_mutated, improvement,
+                best.parent_param_mutated,
+                improvement,
             )
 
         record = {

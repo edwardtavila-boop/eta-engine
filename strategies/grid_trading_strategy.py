@@ -56,12 +56,12 @@ if TYPE_CHECKING:
 class GridConfig:
     """Knobs for grid-trading."""
 
-    ref_lookback: int = 50          # bars used to compute the rolling reference price
+    ref_lookback: int = 50  # bars used to compute the rolling reference price
     grid_spacing_pct: float = 0.005  # 0.5% between rungs (typical for BTC 1h)
-    n_levels: int = 6                # rungs per side (above + below)
+    n_levels: int = 6  # rungs per side (above + below)
     atr_period: int = 14
-    atr_stop_mult: float = 2.5       # outside-the-grid stop
-    rr_target: float = 1.0           # target = 1 grid step (rr=1 vs grid step)
+    atr_stop_mult: float = 2.5  # outside-the-grid stop
+    rr_target: float = 1.0  # target = 1 grid step (rr=1 vs grid step)
     risk_per_trade_pct: float = 0.005  # smaller than ORB — many fires
     max_trades_per_day: int = 6
     min_warmup_bars: int = 60
@@ -83,7 +83,7 @@ class GridConfig:
     adaptive_atr_pct_min: float = 0.30  # below this ATR%-rank → min spacing
     adaptive_atr_pct_max: float = 0.70  # above this → max spacing
     adaptive_min_spacing_pct: float = 0.0025  # 0.25%
-    adaptive_max_spacing_pct: float = 0.012   # 1.2%
+    adaptive_max_spacing_pct: float = 0.012  # 1.2%
     # Kill switch: when ATR rank > this, disable the grid entirely
     # (volatility regime suggests trending, not grid-friendly).
     adaptive_kill_atr_pct: float = 0.85
@@ -132,7 +132,7 @@ class GridTradingStrategy:
         atrs: list[float] = []
         period = self.cfg.atr_period
         for i in range(len(hist) - lookback, len(hist)):
-            window = hist[max(0, i - period):i]
+            window = hist[max(0, i - period) : i]
             if not window:
                 continue
             atrs.append(sum(b.high - b.low for b in window) / len(window))
@@ -156,9 +156,8 @@ class GridTradingStrategy:
             return self.cfg.adaptive_max_spacing_pct
         # Interpolate
         frac = (rank - lo) / max(hi - lo, 1e-9)
-        return (
-            self.cfg.adaptive_min_spacing_pct
-            + frac * (self.cfg.adaptive_max_spacing_pct - self.cfg.adaptive_min_spacing_pct)
+        return self.cfg.adaptive_min_spacing_pct + frac * (
+            self.cfg.adaptive_max_spacing_pct - self.cfg.adaptive_min_spacing_pct
         )
 
     def maybe_enter(
@@ -178,7 +177,7 @@ class GridTradingStrategy:
             return None
 
         # Reference = median of recent closes (robust to outlier bars)
-        recent = hist[-self.cfg.ref_lookback:]
+        recent = hist[-self.cfg.ref_lookback :]
         sorted_closes = sorted(b.close for b in recent)
         mid = sorted_closes[len(sorted_closes) // 2]
         if mid <= 0.0:
@@ -203,7 +202,7 @@ class GridTradingStrategy:
         short_levels = [mid + i * spacing for i in range(1, self.cfg.n_levels + 1)]
 
         # ATR for stop sizing
-        atr_bars = hist[-self.cfg.atr_period:]
+        atr_bars = hist[-self.cfg.atr_period :]
         atr = sum(b.high - b.low for b in atr_bars) / len(atr_bars) if atr_bars else 0.0
         if atr <= 0.0:
             return None
@@ -230,16 +229,13 @@ class GridTradingStrategy:
         target: float = bar.close
         # If both fire on the same bar, prefer the one furthest from
         # mid (deeper edge of the grid).
-        if long_hit is not None and (
-            short_hit is None or abs(long_hit - mid) >= abs(short_hit - mid)
-        ):
+        if long_hit is not None and (short_hit is None or abs(long_hit - mid) >= abs(short_hit - mid)):
             if not self.cfg.trend_filter or bar.close >= mid * (1 - self.cfg.grid_spacing_pct * self.cfg.n_levels):
                 side = "BUY"
                 entry_price = long_hit
                 target = entry_price + self.cfg.rr_target * spacing
         elif short_hit is not None and (
-            not self.cfg.trend_filter
-            or bar.close <= mid * (1 + self.cfg.grid_spacing_pct * self.cfg.n_levels)
+            not self.cfg.trend_filter or bar.close <= mid * (1 + self.cfg.grid_spacing_pct * self.cfg.n_levels)
         ):
             side = "SELL"
             entry_price = short_hit
@@ -257,9 +253,15 @@ class GridTradingStrategy:
         from eta_engine.backtest.engine import _Open
 
         opened = _Open(
-            entry_bar=bar, side=side, qty=qty, entry_price=entry_price,
-            stop=stop, target=target, risk_usd=risk_usd,
-            confluence=10.0, leverage=1.0,
+            entry_bar=bar,
+            side=side,
+            qty=qty,
+            entry_price=entry_price,
+            stop=stop,
+            target=target,
+            risk_usd=risk_usd,
+            confluence=10.0,
+            leverage=1.0,
             regime="grid_trading",
         )
         self._state.trades_today += 1

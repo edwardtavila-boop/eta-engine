@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 
 def _get_firm_signals_webhook() -> str | None:
     import os
+
     return os.environ.get("FIRM_DISCORD_WEBHOOK_FIRM_SIGNALS") or None
 
 
@@ -35,16 +36,11 @@ def dispatch_verdict(
     elif consolidated.final_verdict == "CONDITIONAL":
         level = "WARN"
 
-    title = (
-        f"JARVIS: {consolidated.final_verdict} "
-        f"for {consolidated.subsystem} {consolidated.action}"
-    )
+    title = f"JARVIS: {consolidated.final_verdict} for {consolidated.subsystem} {consolidated.action}"
     message_parts = [f"Confidence: {consolidated.confidence:.0%}"]
     message_parts.append(f"Reason: {consolidated.base_reason}")
     if verdict.final_size_multiplier is not None:
-        message_parts.append(
-            f"Size: {verdict.final_size_multiplier:.0%}"
-        )
+        message_parts.append(f"Size: {verdict.final_size_multiplier:.0%}")
     if verdict.narrative_terse:
         message_parts.append(f"Narrative: {verdict.narrative_terse}")
     message = " | ".join(message_parts)
@@ -53,6 +49,7 @@ def dispatch_verdict(
         import asyncio
 
         from eta_engine.obs.alerts import Alert, AlertLevel
+
         level_map = {
             "INFO": AlertLevel.INFO,
             "WARN": AlertLevel.WARN,

@@ -21,6 +21,7 @@ provider), this school is a no-op. Integration shape:
 The KNOWLEDGE block + verdict signature stay stable so consumers can
 opt-in incrementally.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -51,7 +52,9 @@ class OptionsGreeksSchool(SchoolBase):
         options = getattr(ctx, "options", None)
         if not options or not isinstance(options, dict):
             return SchoolVerdict(
-                school=self.NAME, bias=Bias.NEUTRAL, conviction=0.0,
+                school=self.NAME,
+                bias=Bias.NEUTRAL,
+                conviction=0.0,
                 aligned_with_entry=False,
                 rationale="no options telemetry on ctx -- school skipped",
                 signals={"missing": ["ctx.options"]},
@@ -86,7 +89,10 @@ class OptionsGreeksSchool(SchoolBase):
 
         entry_bias = Bias.LONG if ctx.side.lower() == "long" else Bias.SHORT
         return SchoolVerdict(
-            school=self.NAME, bias=bias, conviction=conv,
+            school=self.NAME,
+            bias=bias,
+            conviction=conv,
             aligned_with_entry=(bias == entry_bias),
-            rationale=rationale, signals=signals,
+            rationale=rationale,
+            signals=signals,
         )

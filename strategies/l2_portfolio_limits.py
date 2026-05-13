@@ -41,6 +41,7 @@ Live trading hook
         _rollback_recorded_entry(decision.reason)
         return None
 """
+
 from __future__ import annotations
 
 import json
@@ -76,40 +77,37 @@ DEFAULT_MAX_TOTAL_ABSOLUTE_CONTRACTS = 5
 # (10x MNQ tick value) counts as 10 MNQ-equivalents.
 UNDERLYING_GROUPS: dict[str, dict[str, float]] = {
     # NASDAQ group: 1 unit = 1 MNQ contract.  NQ multiplier is 10x.
-    "NASDAQ": {"MNQ": 1.0, "NQ": 10.0,
-                "MNQ1": 1.0, "NQ1": 10.0,
-                "MNQM6": 1.0, "NQM6": 10.0, "MNQU6": 1.0, "NQU6": 10.0},
+    "NASDAQ": {
+        "MNQ": 1.0,
+        "NQ": 10.0,
+        "MNQ1": 1.0,
+        "NQ1": 10.0,
+        "MNQM6": 1.0,
+        "NQM6": 10.0,
+        "MNQU6": 1.0,
+        "NQU6": 10.0,
+    },
     # Crude group: 1 unit = 1 MCL.  CL is 10x.
-    "CRUDE": {"MCL": 1.0, "CL": 10.0,
-                "MCL1": 1.0, "CL1": 10.0,
-                "MCLM6": 1.0, "CLM6": 10.0, "MCLN6": 1.0, "CLN6": 10.0},
+    "CRUDE": {"MCL": 1.0, "CL": 10.0, "MCL1": 1.0, "CL1": 10.0, "MCLM6": 1.0, "CLM6": 10.0, "MCLN6": 1.0, "CLN6": 10.0},
     # Gold group: 1 unit = 1 MGC.  GC is 10x.
-    "GOLD": {"MGC": 1.0, "GC": 10.0,
-              "MGC1": 1.0, "GC1": 10.0,
-              "MGCM6": 1.0, "GCM6": 10.0, "MGCQ6": 1.0, "GCQ6": 10.0},
+    "GOLD": {"MGC": 1.0, "GC": 10.0, "MGC1": 1.0, "GC1": 10.0, "MGCM6": 1.0, "GCM6": 10.0, "MGCQ6": 1.0, "GCQ6": 10.0},
     # S&P group: 1 unit = 1 MES.  ES is 5x.
-    "SP": {"MES": 1.0, "ES": 5.0,
-            "MES1": 1.0, "ES1": 5.0,
-            "MESM6": 1.0, "ESM6": 5.0},
+    "SP": {"MES": 1.0, "ES": 5.0, "MES1": 1.0, "ES1": 5.0, "MESM6": 1.0, "ESM6": 5.0},
     # Dow group: 1 unit = 1 MYM.  YM is 5x.
-    "DOW": {"MYM": 1.0, "YM": 5.0,
-             "MYM1": 1.0, "YM1": 5.0,
-             "MYMM6": 1.0, "YMM6": 5.0},
+    "DOW": {"MYM": 1.0, "YM": 5.0, "MYM1": 1.0, "YM1": 5.0, "MYMM6": 1.0, "YMM6": 5.0},
     # Russell group
-    "RUSSELL": {"M2K": 1.0, "RTY": 5.0,
-                 "M2K1": 1.0, "RTY1": 5.0,
-                 "M2KM6": 1.0, "RTYM6": 5.0},
+    "RUSSELL": {"M2K": 1.0, "RTY": 5.0, "M2K1": 1.0, "RTY1": 5.0, "M2KM6": 1.0, "RTYM6": 5.0},
     # 10y note / 30y bond don't need a group (single bot each)
 }
 
 #: Per-group MNQ-equivalent caps.  Operator commitment from the
 #: diamond decision memo (var/eta_engine/decisions/diamond_set_2026_05_12.md).
 DEFAULT_MAX_COMBINED_UNITS_PER_GROUP: dict[str, float] = {
-    "NASDAQ": 1.0,   # 1 NASDAQ direction at a time across MNQ + NQ
-    "CRUDE":  2.0,   # max 2 MCL-equivalent contracts across cl_momentum + mcl + cl_macro
-    "GOLD":   1.0,   # max 1 MGC-equivalent across mgc + gc
-    "SP":     2.0,
-    "DOW":    2.0,
+    "NASDAQ": 1.0,  # 1 NASDAQ direction at a time across MNQ + NQ
+    "CRUDE": 2.0,  # max 2 MCL-equivalent contracts across cl_momentum + mcl + cl_macro
+    "GOLD": 1.0,  # max 1 MGC-equivalent across mgc + gc
+    "SP": 2.0,
+    "DOW": 2.0,
     "RUSSELL": 2.0,
 }
 
@@ -121,13 +119,14 @@ DEFAULT_MAX_COMBINED_UNITS_PER_GROUP: dict[str, float] = {
 #: two diamonds.  Format: {bot_id: [bot_ids_to_suppress_when_this_fires]}
 DEFAULT_SAME_DAY_SUPPRESSORS: dict[str, list[str]] = {
     "mnq_futures_sage": ["nq_futures_sage"],
-    "nq_futures_sage":  ["mnq_futures_sage"],
+    "nq_futures_sage": ["mnq_futures_sage"],
 }
 
 
 @dataclass
 class CrossBotDecision:
     """Verdict on whether a bot may fire given today's prior fills."""
+
     suppressed: bool
     reason: str
     suppressor_bot_id: str | None = None
@@ -152,8 +151,7 @@ def check_cross_bot_dedup(
     (suppressed=False) — observability failure should never block
     a trade for the wrong reason.  Caller logs the decision.
     """
-    suppressor_map = (suppressors if suppressors is not None
-                       else DEFAULT_SAME_DAY_SUPPRESSORS)
+    suppressor_map = suppressors if suppressors is not None else DEFAULT_SAME_DAY_SUPPRESSORS
     # Find which bots' fills would suppress this one.  The map is
     # bidirectional: if A suppresses B, B also suppresses A (the
     # operator's "one bet" rule).
@@ -168,8 +166,7 @@ def check_cross_bot_dedup(
     today_str = when.strftime("%Y-%m-%d")
     path = _fill_path if _fill_path is not None else BROKER_FILL_LOG
     if not path.exists():
-        return CrossBotDecision(
-            suppressed=False, reason="no_broker_fills_log")
+        return CrossBotDecision(suppressed=False, reason="no_broker_fills_log")
     try:
         with path.open("r", encoding="utf-8") as f:
             for line in f:
@@ -195,8 +192,7 @@ def check_cross_bot_dedup(
                     suppressor_signal_ts=ts,
                 )
     except OSError:
-        return CrossBotDecision(
-            suppressed=False, reason="fill_log_read_error")
+        return CrossBotDecision(suppressed=False, reason="fill_log_read_error")
     return CrossBotDecision(suppressed=False, reason="no_same_day_blocker")
 
 
@@ -243,8 +239,7 @@ class PortfolioDecision:
     detail: dict = field(default_factory=dict)
 
 
-def _compute_open_positions(*, _path: Path | None = None,
-                              since_days: int = 14) -> dict[tuple[str, str], int]:
+def _compute_open_positions(*, _path: Path | None = None, since_days: int = 14) -> dict[tuple[str, str], int]:
     """Scan broker_fills.jsonl, return {(symbol, side): net_qty}.
 
     Each ENTRY fill increments; matching TARGET/STOP/TIMEOUT
@@ -286,8 +281,7 @@ def _compute_open_positions(*, _path: Path | None = None,
                 side = str(rec.get("side", "?")).upper()
                 exit_reason = str(rec.get("exit_reason", "")).upper()
                 qty = int(rec.get("qty_filled", 0))
-                entry = by_sig.setdefault(sid, {"side": side, "entered": 0,
-                                                   "exited": 0, "symbol": None})
+                entry = by_sig.setdefault(sid, {"side": side, "entered": 0, "exited": 0, "symbol": None})
                 if exit_reason == "ENTRY":
                     entry["entered"] += qty
                     # Symbol may be carried separately; if not, leave as None
@@ -310,19 +304,22 @@ def _compute_open_positions(*, _path: Path | None = None,
             # Best effort: infer from signal_id prefix (e.g. "MNQ-LONG-...")
             parts = sid.split("-")
             symbol = parts[0] if parts else "?"
-        positions[(symbol, entry["side"])] = positions.get(
-            (symbol, entry["side"]), 0) + net
+        positions[(symbol, entry["side"])] = positions.get((symbol, entry["side"]), 0) + net
     return positions
 
 
-def check_portfolio_limits(symbol: str, side: str, qty: int,
-                             *,
-                             max_same_side_per_symbol: int = DEFAULT_MAX_SAME_SIDE_PER_SYMBOL,
-                             max_concurrent_per_symbol: int = DEFAULT_MAX_CONCURRENT_PER_SYMBOL,
-                             max_total_absolute_contracts: int = DEFAULT_MAX_TOTAL_ABSOLUTE_CONTRACTS,
-                             max_combined_units_per_group: dict[str, float] | None = None,
-                             _fill_path: Path | None = None,
-                             _log_path: Path | None = None) -> PortfolioDecision:
+def check_portfolio_limits(
+    symbol: str,
+    side: str,
+    qty: int,
+    *,
+    max_same_side_per_symbol: int = DEFAULT_MAX_SAME_SIDE_PER_SYMBOL,
+    max_concurrent_per_symbol: int = DEFAULT_MAX_CONCURRENT_PER_SYMBOL,
+    max_total_absolute_contracts: int = DEFAULT_MAX_TOTAL_ABSOLUTE_CONTRACTS,
+    max_combined_units_per_group: dict[str, float] | None = None,
+    _fill_path: Path | None = None,
+    _log_path: Path | None = None,
+) -> PortfolioDecision:
     """Check whether a new entry would exceed portfolio-level limits.
 
     Returns blocked=True when the proposed (symbol, side, qty)
@@ -338,10 +335,19 @@ def check_portfolio_limits(symbol: str, side: str, qty: int,
     canonical_side = "LONG" if side_upper in ("LONG", "BUY") else "SHORT"
 
     # Same-side count on this symbol
-    same_side_existing = positions.get((symbol, canonical_side), 0) \
-                          + positions.get((symbol, "LONG" if canonical_side == "BUY" else "BUY"
-                                            if canonical_side == "LONG" else "SHORT"
-                                            if canonical_side == "SELL" else canonical_side), 0)
+    same_side_existing = positions.get((symbol, canonical_side), 0) + positions.get(
+        (
+            symbol,
+            "LONG"
+            if canonical_side == "BUY"
+            else "BUY"
+            if canonical_side == "LONG"
+            else "SHORT"
+            if canonical_side == "SELL"
+            else canonical_side,
+        ),
+        0,
+    )
     same_side_existing = positions.get((symbol, canonical_side), 0)
     # Total on this symbol (both sides — used for the "no concurrent
     # long+short stacking" rule)
@@ -352,73 +358,85 @@ def check_portfolio_limits(symbol: str, side: str, qty: int,
     # Decisions in priority order
     proposed_total = total_absolute + qty
     if proposed_total > max_total_absolute_contracts:
-        return _log_decision(PortfolioDecision(
-            blocked=True,
-            reason=f"total_absolute_exceeded:{proposed_total}>{max_total_absolute_contracts}",
-            open_positions={f"{s}:{sd}": v for (s, sd), v in positions.items()},
-            detail={"proposed_total": proposed_total,
-                     "limit": max_total_absolute_contracts}),
-            _log_path)
+        return _log_decision(
+            PortfolioDecision(
+                blocked=True,
+                reason=f"total_absolute_exceeded:{proposed_total}>{max_total_absolute_contracts}",
+                open_positions={f"{s}:{sd}": v for (s, sd), v in positions.items()},
+                detail={"proposed_total": proposed_total, "limit": max_total_absolute_contracts},
+            ),
+            _log_path,
+        )
 
     if same_side_existing + qty > max_same_side_per_symbol:
-        return _log_decision(PortfolioDecision(
-            blocked=True,
-            reason=f"same_side_stacking:{symbol}_{canonical_side}_"
-                    f"{same_side_existing + qty}>{max_same_side_per_symbol}",
-            open_positions={f"{s}:{sd}": v for (s, sd), v in positions.items()},
-            detail={"existing_same_side": same_side_existing,
-                     "proposed_qty": qty,
-                     "limit": max_same_side_per_symbol}),
-            _log_path)
+        return _log_decision(
+            PortfolioDecision(
+                blocked=True,
+                reason=f"same_side_stacking:{symbol}_{canonical_side}_"
+                f"{same_side_existing + qty}>{max_same_side_per_symbol}",
+                open_positions={f"{s}:{sd}": v for (s, sd), v in positions.items()},
+                detail={
+                    "existing_same_side": same_side_existing,
+                    "proposed_qty": qty,
+                    "limit": max_same_side_per_symbol,
+                },
+            ),
+            _log_path,
+        )
 
     if total_on_symbol + qty > max_concurrent_per_symbol:
-        return _log_decision(PortfolioDecision(
-            blocked=True,
-            reason=f"symbol_concurrent_exceeded:{symbol}_"
-                    f"{total_on_symbol + qty}>{max_concurrent_per_symbol}",
-            open_positions={f"{s}:{sd}": v for (s, sd), v in positions.items()},
-            detail={"existing_on_symbol": total_on_symbol,
-                     "limit": max_concurrent_per_symbol}),
-            _log_path)
+        return _log_decision(
+            PortfolioDecision(
+                blocked=True,
+                reason=f"symbol_concurrent_exceeded:{symbol}_{total_on_symbol + qty}>{max_concurrent_per_symbol}",
+                open_positions={f"{s}:{sd}": v for (s, sd), v in positions.items()},
+                detail={"existing_on_symbol": total_on_symbol, "limit": max_concurrent_per_symbol},
+            ),
+            _log_path,
+        )
 
     # Combined-notional check across correlated underlyings (2026-05-12
     # diamond memo).  MNQ + NQ count as one NASDAQ bet, MCL + CL +
     # cl_macro count as one crude bet, MGC + GC count as one gold bet.
-    group_caps = (max_combined_units_per_group
-                  if max_combined_units_per_group is not None
-                  else DEFAULT_MAX_COMBINED_UNITS_PER_GROUP)
+    group_caps = (
+        max_combined_units_per_group
+        if max_combined_units_per_group is not None
+        else DEFAULT_MAX_COMBINED_UNITS_PER_GROUP
+    )
     group_name, units_for_this_order = _resolve_underlying_group(symbol)
     if group_name is not None and group_name in group_caps:
-        existing_units = _group_existing_units(
-            positions, group_name, side=canonical_side)
+        existing_units = _group_existing_units(positions, group_name, side=canonical_side)
         cap = group_caps[group_name]
         if existing_units + units_for_this_order * qty > cap:
-            return _log_decision(PortfolioDecision(
-                blocked=True,
-                reason=(
-                    f"combined_underlying_exceeded:{group_name}_"
-                    f"{existing_units + units_for_this_order * qty:.1f}>"
-                    f"{cap:.1f}_units"
+            return _log_decision(
+                PortfolioDecision(
+                    blocked=True,
+                    reason=(
+                        f"combined_underlying_exceeded:{group_name}_"
+                        f"{existing_units + units_for_this_order * qty:.1f}>"
+                        f"{cap:.1f}_units"
+                    ),
+                    open_positions={f"{s}:{sd}": v for (s, sd), v in positions.items()},
+                    detail={
+                        "group": group_name,
+                        "existing_units_in_group": round(existing_units, 2),
+                        "units_for_this_order": round(units_for_this_order * qty, 2),
+                        "cap_units": cap,
+                        "side": canonical_side,
+                    },
                 ),
-                open_positions={f"{s}:{sd}": v for (s, sd), v in positions.items()},
-                detail={
-                    "group": group_name,
-                    "existing_units_in_group": round(existing_units, 2),
-                    "units_for_this_order": round(units_for_this_order * qty, 2),
-                    "cap_units": cap,
-                    "side": canonical_side,
-                }),
-                _log_path)
+                _log_path,
+            )
 
     # All limits OK
     return PortfolioDecision(
-        blocked=False, reason="ok",
+        blocked=False,
+        reason="ok",
         open_positions={f"{s}:{sd}": v for (s, sd), v in positions.items()},
     )
 
 
-def _log_decision(decision: PortfolioDecision,
-                    _log_path: Path | None = None) -> PortfolioDecision:
+def _log_decision(decision: PortfolioDecision, _log_path: Path | None = None) -> PortfolioDecision:
     """Append decision to log only when blocked (avoid log noise)."""
     if not decision.blocked:
         return decision
@@ -426,14 +444,19 @@ def _log_decision(decision: PortfolioDecision,
     try:
         log_path.parent.mkdir(parents=True, exist_ok=True)
         with log_path.open("a", encoding="utf-8") as f:
-            f.write(json.dumps({
-                "ts": datetime.now(UTC).isoformat(),
-                "blocked": decision.blocked,
-                "reason": decision.reason,
-                "open_positions": decision.open_positions,
-                "detail": decision.detail,
-            }, separators=(",", ":")) + "\n")
+            f.write(
+                json.dumps(
+                    {
+                        "ts": datetime.now(UTC).isoformat(),
+                        "blocked": decision.blocked,
+                        "reason": decision.reason,
+                        "open_positions": decision.open_positions,
+                        "detail": decision.detail,
+                    },
+                    separators=(",", ":"),
+                )
+                + "\n"
+            )
     except OSError as e:
-        print(f"l2_portfolio_limits WARN: log write failed: {e}",
-              file=sys.stderr)
+        print(f"l2_portfolio_limits WARN: log write failed: {e}", file=sys.stderr)
     return decision

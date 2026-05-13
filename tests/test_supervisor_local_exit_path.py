@@ -22,6 +22,7 @@ The fourth test pins the existing alpaca contract so a future change
 that re-enables bracket attachment for reduce_only orders can't slip
 through code review.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -60,17 +61,19 @@ def test_pending_order_json_round_trip_preserves_reduce_only(
     # field; the rest are bracket carryover the parser already handles.
     pending = tmp_path / "btc_optimized.pending_order.json"
     pending.write_text(
-        json.dumps({
-            "ts": "2026-05-06T12:00:00+00:00",
-            "signal_id": "exit-sig-001",
-            "side": "SELL",
-            "qty": 0.05,
-            "symbol": "BTC",
-            "limit_price": 81_900.0,
-            "stop_price": None,
-            "target_price": None,
-            "reduce_only": True,
-        }),
+        json.dumps(
+            {
+                "ts": "2026-05-06T12:00:00+00:00",
+                "signal_id": "exit-sig-001",
+                "side": "SELL",
+                "qty": 0.05,
+                "symbol": "BTC",
+                "limit_price": 81_900.0,
+                "stop_price": None,
+                "target_price": None,
+                "reduce_only": True,
+            }
+        ),
         encoding="utf-8",
     )
 
@@ -99,17 +102,19 @@ def test_pending_order_json_default_reduce_only_is_false(
 
     pending = tmp_path / "alpha.pending_order.json"
     pending.write_text(
-        json.dumps({
-            "ts": "2026-05-06T12:00:00+00:00",
-            "signal_id": "entry-001",
-            "side": "BUY",
-            "qty": 1.0,
-            "symbol": "MNQ",
-            "limit_price": 18_000.0,
-            "stop_price": 17_900.0,
-            "target_price": 18_100.0,
-            # reduce_only intentionally absent — older file format.
-        }),
+        json.dumps(
+            {
+                "ts": "2026-05-06T12:00:00+00:00",
+                "signal_id": "entry-001",
+                "side": "BUY",
+                "qty": 1.0,
+                "symbol": "MNQ",
+                "limit_price": 18_000.0,
+                "stop_price": 17_900.0,
+                "target_price": 18_100.0,
+                # reduce_only intentionally absent — older file format.
+            }
+        ),
         encoding="utf-8",
     )
 
@@ -193,9 +198,7 @@ def test_supervisor_exit_for_crypto_writes_reduce_only_pending(
     payload = json.loads(written.read_text(encoding="utf-8"))
 
     # The flag on the wire — load-bearing for the venue's exit handling.
-    assert payload["reduce_only"] is True, (
-        f"expected reduce_only=True in pending JSON, got {payload!r}"
-    )
+    assert payload["reduce_only"] is True, f"expected reduce_only=True in pending JSON, got {payload!r}"
     # Sanity: side/qty/symbol passthrough still intact.
     assert payload["side"] == "SELL"
     assert payload["qty"] == 0.05
@@ -303,9 +306,7 @@ def test_supervisor_entry_pending_default_reduce_only_is_false(
     # No reduce_only kwarg — defaults to False (entry semantics).
     router._write_pending_order(bot, rec)
 
-    payload = json.loads(
-        (tmp_path / "alpha.pending_order.json").read_text(encoding="utf-8")
-    )
+    payload = json.loads((tmp_path / "alpha.pending_order.json").read_text(encoding="utf-8"))
     assert payload["reduce_only"] is False
 
 
@@ -441,9 +442,7 @@ def test_broker_router_forwards_reduce_only_to_venue(
 
     asyncio.run(router._process_pending_file(pending_path))
 
-    assert len(venue.calls) == 1, (
-        f"expected exactly 1 venue call, got {len(venue.calls)}"
-    )
+    assert len(venue.calls) == 1, f"expected exactly 1 venue call, got {len(venue.calls)}"
     request = venue.calls[0]
     assert request.reduce_only is True, (
         f"expected reduce_only=True on OrderRequest, got "
@@ -566,9 +565,7 @@ def test_alpaca_reduce_only_crypto_order_skips_bracket() -> None:
 
     payload = venue.build_order_payload(req)
 
-    assert "order_class" not in payload, (
-        f"reduce_only crypto BUY-back must not attach order_class; got {payload!r}"
-    )
+    assert "order_class" not in payload, f"reduce_only crypto BUY-back must not attach order_class; got {payload!r}"
     assert "take_profit" not in payload
     assert "stop_loss" not in payload
     # Sanity: side / qty / symbol survive untouched.

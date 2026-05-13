@@ -18,13 +18,17 @@ from eta_engine.strategies.pi_cycle_strategy import (
 )
 
 
-def _bar(idx: int, *, h: float, low: float, c: float | None = None,
-         v: float = 1000.0) -> BarData:
+def _bar(idx: int, *, h: float, low: float, c: float | None = None, v: float = 1000.0) -> BarData:
     ts = datetime(2026, 1, 1, tzinfo=UTC) + timedelta(days=idx)
     c = c if c is not None else (h + low) / 2
     return BarData(
-        timestamp=ts, symbol="BTC", open=(h + low) / 2,
-        high=h, low=low, close=c, volume=v,
+        timestamp=ts,
+        symbol="BTC",
+        open=(h + low) / 2,
+        high=h,
+        low=low,
+        close=c,
+        volume=v,
     )
 
 
@@ -32,8 +36,10 @@ def _config() -> BacktestConfig:
     return BacktestConfig(
         start_date=datetime(2026, 1, 1, tzinfo=UTC),
         end_date=datetime(2030, 12, 31, tzinfo=UTC),
-        symbol="BTC", initial_equity=10_000.0,
-        risk_per_trade_pct=0.02, confluence_threshold=0.0,
+        symbol="BTC",
+        initial_equity=10_000.0,
+        risk_per_trade_pct=0.02,
+        confluence_threshold=0.0,
         max_trades_per_day=1,
     )
 
@@ -45,9 +51,13 @@ def _config() -> BacktestConfig:
 
 def _classifier(**overrides) -> HtfRegimeClassifier:  # type: ignore[no-untyped-def]
     base = {
-        "fast_ema": 5, "slow_ema": 20, "slope_lookback": 5,
-        "warmup_bars": 30, "atr_period": 5,
-        "trend_distance_pct": 3.0, "range_atr_pct_max": 2.0,
+        "fast_ema": 5,
+        "slow_ema": 20,
+        "slope_lookback": 5,
+        "warmup_bars": 30,
+        "atr_period": 5,
+        "trend_distance_pct": 3.0,
+        "range_atr_pct_max": 2.0,
         "slope_threshold_pct": 0.5,
     }
     base.update(overrides)
@@ -151,9 +161,11 @@ def _pi(**overrides) -> PiCycleStrategy:  # type: ignore[no-untyped-def]
     by hand on synthetic data.
     """
     base = {
-        "fast_sma_period": 5, "slow_sma_period": 15,
+        "fast_sma_period": 5,
+        "slow_sma_period": 15,
         "fast_sma_multiplier": 1.0,  # tests use 1.0; production = 2.0
-        "atr_period": 5, "cooldown_bars": 5,
+        "atr_period": 5,
+        "cooldown_bars": 5,
     }
     base.update(overrides)
     return PiCycleStrategy(PiCycleConfig(**base))

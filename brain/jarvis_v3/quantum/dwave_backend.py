@@ -26,6 +26,7 @@ Operator notes:
   * Chain breaks: we expose the chain-break ratio in the result
     metadata so the operator can detect noisy returns
 """
+
 from __future__ import annotations
 
 import logging
@@ -44,6 +45,7 @@ def available() -> bool:
     """Return True iff dwave-ocean-sdk's primary modules are importable."""
     try:
         import importlib
+
         # We need at LEAST dimod (BQM model) -- neal and dwave.system
         # are nice-to-haves but the import probe should be cheap
         return importlib.util.find_spec("dimod") is not None
@@ -75,7 +77,10 @@ def qubo_to_bqm(problem: QuboProblem):  # noqa: ANN201 -- dimod is optional dep
                 quadratic[(j, i)] = quadratic.get((j, i), 0.0) + qij
 
     return dimod.BinaryQuadraticModel(
-        linear, quadratic, 0.0, dimod.BINARY,
+        linear,
+        quadratic,
+        0.0,
+        dimod.BINARY,
     )
 
 
@@ -99,8 +104,7 @@ def solve_with_dwave(
     """
     if not available():
         raise ImportError(
-            "dwave-ocean-sdk not installed; install with "
-            "`pip install dwave-ocean-sdk` or use the classical_sa backend",
+            "dwave-ocean-sdk not installed; install with `pip install dwave-ocean-sdk` or use the classical_sa backend",
         )
 
     bqm = qubo_to_bqm(problem)
@@ -108,6 +112,7 @@ def solve_with_dwave(
     if use_qpu:
         try:
             from dwave.system import DWaveSampler, EmbeddingComposite
+
             sampler = EmbeddingComposite(DWaveSampler())
             kwargs: dict = {"num_reads": num_reads}
             if chain_strength is not None:
@@ -115,7 +120,8 @@ def solve_with_dwave(
             sampleset = sampler.sample(bqm, **kwargs)
         except (ImportError, Exception) as exc:
             logger.warning(
-                "dwave: QPU unavailable (%s); falling back to local neal", exc,
+                "dwave: QPU unavailable (%s); falling back to local neal",
+                exc,
             )
             sampleset = _solve_with_neal(bqm, num_reads=num_reads, seed=seed)
     else:
@@ -131,6 +137,7 @@ def solve_with_dwave(
     qubo_energy = problem.evaluate(x)
 
     from eta_engine.brain.jarvis_v3.quantum.qubo_solver import SolverResult
+
     return SolverResult(
         x=x,
         energy=round(qubo_energy, 6),
@@ -157,6 +164,7 @@ def _solve_with_neal(  # noqa: ANN202 -- neal is optional dep
     # New path (Ocean SDK 6+)
     try:
         from dwave.samplers import SimulatedAnnealingSampler
+
         sampler = SimulatedAnnealingSampler()
         return sampler.sample(bqm, num_reads=num_reads, seed=seed)
     except ImportError:
@@ -164,6 +172,7 @@ def _solve_with_neal(  # noqa: ANN202 -- neal is optional dep
     # Legacy path
     try:
         import neal
+
         sampler = neal.SimulatedAnnealingSampler()
         return sampler.sample(bqm, num_reads=num_reads, seed=seed)
     except ImportError as exc:

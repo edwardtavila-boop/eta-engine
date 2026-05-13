@@ -260,9 +260,14 @@ def _convert_main_to_history(source: Path, target: Path) -> int:
     rows = 0
     target.parent.mkdir(parents=True, exist_ok=True)
     tmp = target.with_suffix(f"{target.suffix}.tmp")
-    with source.open("r", encoding="utf-8", newline="") as src, tmp.open(
-        "w", encoding="utf-8", newline="",
-    ) as dst:
+    with (
+        source.open("r", encoding="utf-8", newline="") as src,
+        tmp.open(
+            "w",
+            encoding="utf-8",
+            newline="",
+        ) as dst,
+    ):
         reader = csv.DictReader(src)
         writer = csv.writer(dst)
         writer.writerow(["time", "open", "high", "low", "close", "volume"])
@@ -285,14 +290,16 @@ def _convert_main_to_history(source: Path, target: Path) -> int:
                     dt = dt.replace(tzinfo=UTC)
                 ts = int(dt.timestamp())
             try:
-                writer.writerow([
-                    ts,
-                    float(row["open"]),
-                    float(row["high"]),
-                    float(row["low"]),
-                    float(row["close"]),
-                    float(row.get("volume", 0.0) or 0.0),
-                ])
+                writer.writerow(
+                    [
+                        ts,
+                        float(row["open"]),
+                        float(row["high"]),
+                        float(row["low"]),
+                        float(row["close"]),
+                        float(row.get("volume", 0.0) or 0.0),
+                    ]
+                )
             except (KeyError, ValueError):
                 continue
             rows += 1
@@ -312,14 +319,16 @@ def _read_history_ohlcv(path: Path) -> list[dict[str, float]]:
         reader = csv.DictReader(fh)
         for row in reader:
             try:
-                out.append({
-                    "time": int(float(row["time"])),
-                    "open": float(row["open"]),
-                    "high": float(row["high"]),
-                    "low": float(row["low"]),
-                    "close": float(row["close"]),
-                    "volume": float(row.get("volume", 0.0) or 0.0),
-                })
+                out.append(
+                    {
+                        "time": int(float(row["time"])),
+                        "open": float(row["open"]),
+                        "high": float(row["high"]),
+                        "low": float(row["low"]),
+                        "close": float(row["close"]),
+                        "volume": float(row.get("volume", 0.0) or 0.0),
+                    }
+                )
             except (KeyError, TypeError, ValueError):
                 continue
     out.sort(key=lambda row: row["time"])
@@ -355,14 +364,16 @@ def _resample_rows(rows: list[dict[str, float]], timeframe: str) -> list[dict[st
     out: list[dict[str, float]] = []
     for bucket_ts in sorted(buckets):
         bucket_rows = sorted(buckets[bucket_ts], key=lambda row: row["time"])
-        out.append({
-            "time": bucket_ts,
-            "open": bucket_rows[0]["open"],
-            "high": max(row["high"] for row in bucket_rows),
-            "low": min(row["low"] for row in bucket_rows),
-            "close": bucket_rows[-1]["close"],
-            "volume": sum(row["volume"] for row in bucket_rows),
-        })
+        out.append(
+            {
+                "time": bucket_ts,
+                "open": bucket_rows[0]["open"],
+                "high": max(row["high"] for row in bucket_rows),
+                "low": min(row["low"] for row in bucket_rows),
+                "close": bucket_rows[-1]["close"],
+                "volume": sum(row["volume"] for row in bucket_rows),
+            }
+        )
     return out
 
 
@@ -374,14 +385,16 @@ def _write_history_rows(path: Path, rows: list[dict[str, float]]) -> int:
         writer = csv.writer(fh)
         writer.writerow(["time", "open", "high", "low", "close", "volume"])
         for row in rows:
-            writer.writerow([
-                int(row["time"]),
-                row["open"],
-                row["high"],
-                row["low"],
-                row["close"],
-                row["volume"],
-            ])
+            writer.writerow(
+                [
+                    int(row["time"]),
+                    row["open"],
+                    row["high"],
+                    row["low"],
+                    row["close"],
+                    row["volume"],
+                ]
+            )
     return len(rows)
 
 
@@ -404,8 +417,7 @@ def _import_futures(
             skipped += 1
             continue
         print(
-            f"[hydrate:futures] {candidate.note}: {candidate.source} -> {target} "
-            f"({candidate.row_count:,} rows)",
+            f"[hydrate:futures] {candidate.note}: {candidate.source} -> {target} ({candidate.row_count:,} rows)",
         )
         if dry_run:
             skipped += 1
@@ -438,8 +450,7 @@ def _synthesize_futures_timeframes(
         existing_rows = _probe_rows(target, "history") if target.exists() else 0
         if existing_rows > 0 and not force:
             print(
-                f"[hydrate:resample] skip {target.name} "
-                f"(existing rows={existing_rows:,})",
+                f"[hydrate:resample] skip {target.name} (existing rows={existing_rows:,})",
             )
             skipped += 1
             continue
@@ -484,8 +495,7 @@ def _fetch_crypto_prices(*, force: bool = False, dry_run: bool = False) -> tuple
             continue
         start = now - timedelta(days=30 * plan.months)
         print(
-            f"[hydrate:crypto] fetching {plan.symbol}/{plan.timeframe} "
-            f"{start.date()} -> {now.date()}",
+            f"[hydrate:crypto] fetching {plan.symbol}/{plan.timeframe} {start.date()} -> {now.date()}",
         )
         if dry_run:
             skipped += 1

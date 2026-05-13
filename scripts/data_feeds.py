@@ -26,6 +26,7 @@ Selection happens in JarvisStrategySupervisor.__init__ via the
 composite). The factory ``make_data_feed`` is the single entry
 point.
 """
+
 from __future__ import annotations
 
 import logging
@@ -66,23 +67,63 @@ def _empty_bar(symbol: str, last_close: float = 100.0) -> dict[str, Any]:
 _CRYPTO_ROOTS = {"BTC", "ETH", "SOL", "AVAX", "LINK", "DOGE", "XRP", "MBT", "MET"}
 _FUTURES_ROOTS = {
     # Equity-index
-    "MNQ", "NQ", "ES", "MES", "RTY", "M2K", "YM", "MYM",
+    "MNQ",
+    "NQ",
+    "ES",
+    "MES",
+    "RTY",
+    "M2K",
+    "YM",
+    "MYM",
     # Energies
-    "CL", "MCL", "NG", "RB", "HO", "BZ",
+    "CL",
+    "MCL",
+    "NG",
+    "RB",
+    "HO",
+    "BZ",
     # Metals
-    "GC", "MGC", "SI", "SIL", "HG", "PA", "PL",
+    "GC",
+    "MGC",
+    "SI",
+    "SIL",
+    "HG",
+    "PA",
+    "PL",
     # Rates
-    "ZN", "ZB", "ZF", "ZT",
+    "ZN",
+    "ZB",
+    "ZF",
+    "ZT",
     # FX (full-size + micros)
-    "6E", "M6E", "6A", "M6A", "6B", "M6B", "6J", "M6J", "6C", "6N", "6S",
+    "6E",
+    "M6E",
+    "6A",
+    "M6A",
+    "6B",
+    "M6B",
+    "6J",
+    "M6J",
+    "6C",
+    "6N",
+    "6S",
     # Grains
-    "ZC", "ZS", "ZW", "ZL", "ZM",
+    "ZC",
+    "ZS",
+    "ZW",
+    "ZL",
+    "ZM",
     # Softs
-    "KC", "SB", "CC", "CT",
+    "KC",
+    "SB",
+    "CC",
+    "CT",
     # Livestock
-    "LE", "HE",
+    "LE",
+    "HE",
     # CME crypto futures (also passable as crypto via spot mapping)
-    "MBT", "MET",
+    "MBT",
+    "MET",
 }
 
 
@@ -144,55 +185,59 @@ class YFinanceDataFeed:
         "XRP": "XRP-USD",
         # Equity-index futures (full-size + micros)
         "MNQ": "MNQ=F",
-        "NQ":  "NQ=F",
-        "ES":  "ES=F",
+        "NQ": "NQ=F",
+        "ES": "ES=F",
         "MES": "MES=F",
         "RTY": "RTY=F",
         "M2K": "M2K=F",
-        "YM":  "YM=F",
+        "YM": "YM=F",
         "MYM": "MYM=F",
         # Energies (full-size + micros)
-        "CL":  "CL=F",   # WTI crude
+        "CL": "CL=F",  # WTI crude
         "MCL": "MCL=F",
-        "NG":  "NG=F",   # natural gas
-        "RB":  "RB=F",   # gasoline
-        "HO":  "HO=F",   # heating oil
-        "BZ":  "BZ=F",   # Brent
+        "NG": "NG=F",  # natural gas
+        "RB": "RB=F",  # gasoline
+        "HO": "HO=F",  # heating oil
+        "BZ": "BZ=F",  # Brent
         # Metals (full-size + micros)
-        "GC":  "GC=F",   # gold
+        "GC": "GC=F",  # gold
         "MGC": "MGC=F",
-        "SI":  "SI=F",   # silver
+        "SI": "SI=F",  # silver
         "SIL": "SIL=F",  # micro silver
-        "HG":  "HG=F",   # copper
-        "PA":  "PA=F",   # palladium
-        "PL":  "PL=F",   # platinum
+        "HG": "HG=F",  # copper
+        "PA": "PA=F",  # palladium
+        "PL": "PL=F",  # platinum
         # Rates (full-size; micros if user adds them)
-        "ZN":  "ZN=F",   # 10y note
-        "ZB":  "ZB=F",   # 30y bond
-        "ZF":  "ZF=F",   # 5y note
-        "ZT":  "ZT=F",   # 2y note
+        "ZN": "ZN=F",  # 10y note
+        "ZB": "ZB=F",  # 30y bond
+        "ZF": "ZF=F",  # 5y note
+        "ZT": "ZT=F",  # 2y note
         # FX futures (full-size + micros)
-        "6E":  "6E=F",   "M6E": "M6E=F",  # EUR/USD
-        "6A":  "6A=F",   "M6A": "M6A=F",  # AUD/USD
-        "6B":  "6B=F",   "M6B": "M6B=F",  # GBP/USD
-        "6J":  "6J=F",   "M6J": "M6J=F",  # JPY/USD
-        "6C":  "6C=F",                    # CAD/USD
-        "6N":  "6N=F",                    # NZD/USD
-        "6S":  "6S=F",                    # CHF/USD
+        "6E": "6E=F",
+        "M6E": "M6E=F",  # EUR/USD
+        "6A": "6A=F",
+        "M6A": "M6A=F",  # AUD/USD
+        "6B": "6B=F",
+        "M6B": "M6B=F",  # GBP/USD
+        "6J": "6J=F",
+        "M6J": "M6J=F",  # JPY/USD
+        "6C": "6C=F",  # CAD/USD
+        "6N": "6N=F",  # NZD/USD
+        "6S": "6S=F",  # CHF/USD
         # Grains
-        "ZC":  "ZC=F",   # corn
-        "ZS":  "ZS=F",   # soybeans
-        "ZW":  "ZW=F",   # wheat
-        "ZL":  "ZL=F",   # soy oil
-        "ZM":  "ZM=F",   # soy meal
+        "ZC": "ZC=F",  # corn
+        "ZS": "ZS=F",  # soybeans
+        "ZW": "ZW=F",  # wheat
+        "ZL": "ZL=F",  # soy oil
+        "ZM": "ZM=F",  # soy meal
         # Softs
-        "KC":  "KC=F",   # coffee
-        "SB":  "SB=F",   # sugar
-        "CC":  "CC=F",   # cocoa
-        "CT":  "CT=F",   # cotton
+        "KC": "KC=F",  # coffee
+        "SB": "SB=F",  # sugar
+        "CC": "CC=F",  # cocoa
+        "CT": "CT=F",  # cotton
         # Livestock
-        "LE":  "LE=F",   # live cattle
-        "HE":  "HE=F",   # lean hogs
+        "LE": "LE=F",  # live cattle
+        "HE": "HE=F",  # lean hogs
         # CME crypto futures track underlying spot for our purposes
         "MBT": "BTC-USD",
         "MET": "ETH-USD",
@@ -223,6 +268,7 @@ class YFinanceDataFeed:
 
         try:
             import yfinance as yf
+
             t = yf.Ticker(ticker)
             hist = t.history(period="1d", interval="1m", auto_adjust=False)
             if hist is None or hist.empty:
@@ -300,6 +346,7 @@ class CoinbaseDataFeed:
 
         try:
             import requests
+
             url = f"{self.BASE_URL}/products/{product}/candles"
             resp = requests.get(url, params={"granularity": 60}, timeout=5)
             resp.raise_for_status()
@@ -392,17 +439,18 @@ class IbkrDataFeed:
             try:
                 import os
 
-                from ib_insync import IB
                 from eta_engine.scripts.jarvis_strategy_supervisor import (
                     _run_on_live_ibkr_loop,
                 )
                 from eta_engine.venues.ibkr_live import ibkr_connect_timeout_seconds
+                from ib_insync import IB
 
-                async def _do_connect() -> "IB":
+                async def _do_connect() -> IB:
                     ib = IB()
                     connect_timeout_s = ibkr_connect_timeout_seconds()
                     await ib.connectAsync(
-                        self._host, self._port,
+                        self._host,
+                        self._port,
                         clientId=self._client_id,
                         timeout=connect_timeout_s,
                     )
@@ -439,12 +487,12 @@ class IbkrDataFeed:
         supervisor's main thread raise.
         """
         try:
+            from eta_engine.scripts.jarvis_strategy_supervisor import (
+                _run_on_live_ibkr_loop,
+            )
             from eta_engine.venues.ibkr_live import (
                 FUTURES_MAP,
                 _resolve_front_month_mnq,
-            )
-            from eta_engine.scripts.jarvis_strategy_supervisor import (
-                _run_on_live_ibkr_loop,
             )
             from ib_insync import Future
         except ImportError:
@@ -461,7 +509,9 @@ class IbkrDataFeed:
             except Exception as exc:  # noqa: BLE001
                 logger.warning(
                     "IbkrDataFeed: front-month resolution failed for %s/%s: %s",
-                    root, exchange, exc,
+                    root,
+                    exchange,
+                    exc,
                 )
                 return None
             contract = Future(symbol=root, exchange=exchange, currency="USD")
@@ -503,6 +553,7 @@ class IbkrDataFeed:
             from eta_engine.scripts.jarvis_strategy_supervisor import (  # noqa: PLC0415
                 _run_on_live_ibkr_loop,
             )
+
             bars = _run_on_live_ibkr_loop(
                 self._ib.reqHistoricalDataAsync(
                     contract,
@@ -583,6 +634,7 @@ class CompositeDataFeed:
         self._stats: dict[str, dict[str, int]] = {}
 
         import os
+
         self._crypto_feed = os.getenv("ETA_CRYPTO_FEED", "coinbase").strip().lower()
         self._futures_feed = os.getenv("ETA_FUTURES_FEED", "yfinance").strip().lower()
         self._fallback_feed = os.getenv("ETA_FALLBACK_FEED", "yfinance").strip().lower()
@@ -623,7 +675,9 @@ class CompositeDataFeed:
         except Exception as exc:  # noqa: BLE001
             logger.warning(
                 "CompositeDataFeed: %s raised on %s: %s",
-                feed_name, symbol, exc,
+                feed_name,
+                symbol,
+                exc,
             )
             self._record(feed_name, symbol, ok=False)
             return None
@@ -651,7 +705,9 @@ class CompositeDataFeed:
             if bar is not None:
                 logger.info(
                     "CompositeDataFeed: %s served %s after %s missed",
-                    fallback, symbol, primary,
+                    fallback,
+                    symbol,
+                    primary,
                 )
                 return bar
         # Both primary and fallback returned empty bars — final fallback
@@ -685,4 +741,5 @@ def make_data_feed(name: str) -> Any:  # noqa: ANN401 — multiple feed classes 
     # Mock is built lazily by the caller (it lives in
     # jarvis_strategy_supervisor to keep the feed module dependency-free).
     from eta_engine.scripts.jarvis_strategy_supervisor import MockDataFeed
+
     return MockDataFeed()

@@ -178,6 +178,7 @@ def test_btc_sage_daily_registry_assignment_pins_champion_base_config() -> None:
         strategy = _build_strategy_factory(assignment.strategy_kind, assignment.extras)()
     except ValueError as e:
         import pytest
+
         pytest.skip(f"Registry strategy_kind changed: {e}")
 
     assert isinstance(strategy, SageDailyGatedStrategy)
@@ -197,6 +198,7 @@ def test_mnq_registry_assignment_pins_latest_slice_orb_config() -> None:
         strategy = _build_strategy_factory(assignment.strategy_kind, assignment.extras)()
     except ValueError as e:
         import pytest
+
         pytest.skip(f"Registry strategy_kind changed: {e}")
 
     assert assignment.strategy_id == "mnq_orb_v2"
@@ -239,7 +241,7 @@ def test_eth_registry_assignment_pins_latest_slice_crypto_orb_config() -> None:
     assignment = get_for_bot("eth_perp")
     assert assignment is not None
 
-    strategy = _build_strategy_factory(assignment.strategy_kind, assignment.extras)()
+    _build_strategy_factory(assignment.strategy_kind, assignment.extras)()
 
     assert assignment.strategy_id == "eth_corb_v4"
     # eth_corb_v4 registry values may drift — validate basic structure
@@ -258,6 +260,7 @@ def test_btc_ensemble_registry_extras_rebuild_all_tuned_voters() -> None:
         sage = _build_strategy_factory("sage_daily_gated", assignment.extras)()
     except ValueError as e:
         import pytest
+
         pytest.skip(f"Registry strategy_kind changed: {e}")
 
     assert isinstance(regime, CryptoRegimeTrendStrategy)
@@ -273,6 +276,7 @@ def test_btc_regime_trend_etf_registry_assignment_pins_macro_filter_stack() -> N
         strategy = _build_strategy_factory(assignment.strategy_kind, assignment.extras)()
     except ValueError as e:
         import pytest
+
         pytest.skip(f"Registry strategy_kind changed: {e}")
 
     assert isinstance(strategy, CryptoMacroConfluenceStrategy)

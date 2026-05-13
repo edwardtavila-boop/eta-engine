@@ -33,6 +33,7 @@ Caveats baked into the design:
     nonsense
   * Document the quantum contribution in the decision journal
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -86,13 +87,13 @@ class QuantumJobRecord:
 class CloudConfig:
     """Operator-tunable knobs for cloud usage."""
 
-    enable_cloud: bool = False                    # MASTER SWITCH; default OFF
+    enable_cloud: bool = False  # MASTER SWITCH; default OFF
     preferred_backend: QuantumBackend = QuantumBackend.CLASSICAL_SA
-    classical_validate_cloud: bool = True         # require SA cross-check
-    cache_ttl_seconds: int = 86_400               # 24h
-    max_cost_per_job_usd: float = 0.50            # hard ceiling
-    max_cost_per_day_usd: float = 5.00            # daily budget
-    timeout_seconds: float = 30.0                 # cloud call timeout
+    classical_validate_cloud: bool = True  # require SA cross-check
+    cache_ttl_seconds: int = 86_400  # 24h
+    max_cost_per_job_usd: float = 0.50  # hard ceiling
+    max_cost_per_day_usd: float = 5.00  # daily budget
+    timeout_seconds: float = 30.0  # cloud call timeout
 
 
 # ─── Backend detection ────────────────────────────────────────────
@@ -105,18 +106,21 @@ def _detect_available_backends() -> list[QuantumBackend]:
     available: list[QuantumBackend] = []
     try:
         import importlib
+
         if importlib.util.find_spec("dwave.system") is not None:
             available.append(QuantumBackend.DWAVE)
     except (ImportError, AttributeError):
         pass
     try:
         import importlib
+
         if importlib.util.find_spec("qiskit") is not None:
             available.append(QuantumBackend.QISKIT)
     except (ImportError, AttributeError):
         pass
     try:
         import importlib
+
         if importlib.util.find_spec("pennylane") is not None:
             available.append(QuantumBackend.PENNYLANE)
     except (ImportError, AttributeError):
@@ -132,10 +136,7 @@ def _problem_hash(problem: QuboProblem) -> str:
     """Stable hash for a QUBO instance, for cache lookup."""
     payload = {
         "n_vars": problem.n_vars,
-        "Q": {
-            str(i): {str(j): round(v, 9) for j, v in row.items()}
-            for i, row in problem.Q.items()
-        },
+        "Q": {str(i): {str(j): round(v, 9) for j, v in row.items()} for i, row in problem.Q.items()},
     }
     s = json.dumps(payload, sort_keys=True)
     return hashlib.sha256(s.encode("utf-8")).hexdigest()[:16]
@@ -145,7 +146,7 @@ def _problem_hash(problem: QuboProblem) -> str:
 class _CachedResult:
     ts: str
     problem_hash: str
-    result: dict             # SolverResult as dict
+    result: dict  # SolverResult as dict
     backend: str
 
 
@@ -172,7 +173,8 @@ class _ResultCache:
             self.path.parent.mkdir(parents=True, exist_ok=True)
             self.path.write_text(
                 json.dumps(
-                    {k: asdict(v) for k, v in self._cache.items()}, indent=2,
+                    {k: asdict(v) for k, v in self._cache.items()},
+                    indent=2,
                 ),
                 encoding="utf-8",
             )
@@ -264,43 +266,41 @@ class QuantumCloudAdapter:
 
         t0 = time.perf_counter()
         result, fell_back = self._dispatch(
-            backend=backend, problem=problem, n_iterations=n_iterations,
+            backend=backend,
+            problem=problem,
+            n_iterations=n_iterations,
         )
         elapsed_ms = (time.perf_counter() - t0) * 1000.0
 
         billed_backend = (
-            backend
-            if backend != QuantumBackend.CLASSICAL_SA and not fell_back
-            else QuantumBackend.CLASSICAL_SA
+            backend if backend != QuantumBackend.CLASSICAL_SA and not fell_back else QuantumBackend.CLASSICAL_SA
         )
         cost = self._estimate_cost_usd(
-            backend=billed_backend, n_vars=problem.n_vars,
+            backend=billed_backend,
+            n_vars=problem.n_vars,
         )
         self._daily_spend_usd += cost
 
         # Validate cloud result if requested
-        if (
-            backend != QuantumBackend.CLASSICAL_SA
-            and self.cfg.classical_validate_cloud
-            and not fell_back
-        ):
+        if backend != QuantumBackend.CLASSICAL_SA and self.cfg.classical_validate_cloud and not fell_back:
             sa_check = simulated_annealing_solve(
-                problem, n_iterations=n_iterations, seed=42,
+                problem,
+                n_iterations=n_iterations,
+                seed=42,
             )
             if sa_check.energy < result.energy - 1e-6:
                 logger.warning(
-                    "quantum: cloud %s energy %.4f WORSE than classical SA "
-                    "%.4f; using classical result",
-                    backend.value, result.energy, sa_check.energy,
+                    "quantum: cloud %s energy %.4f WORSE than classical SA %.4f; using classical result",
+                    backend.value,
+                    result.energy,
+                    sa_check.energy,
                 )
                 result = sa_check
                 fell_back = True
 
         record = QuantumJobRecord(
             ts=datetime.now(UTC).isoformat(),
-            backend=(
-                QuantumBackend.CLASSICAL_SA.value if fell_back else backend.value
-            ),
+            backend=(QuantumBackend.CLASSICAL_SA.value if fell_back else backend.value),
             problem_hash=h,
             n_vars=problem.n_vars,
             runtime_ms=round(elapsed_ms, 2),
@@ -311,17 +311,15 @@ class QuantumCloudAdapter:
             fell_back_to_classical=fell_back,
             note=(
                 f"{backend.value} beaten by classical SA cross-check"
-                if (
-                    backend != QuantumBackend.CLASSICAL_SA
-                    and self.cfg.classical_validate_cloud
-                    and fell_back
-                )
+                if (backend != QuantumBackend.CLASSICAL_SA and self.cfg.classical_validate_cloud and fell_back)
                 else ""
             ),
         )
         self._append_job_log(record)
         self.cache.put(
-            h, result=asdict(result), backend=record.backend,
+            h,
+            result=asdict(result),
+            backend=record.backend,
         )
 
         return result, record
@@ -368,7 +366,9 @@ class QuantumCloudAdapter:
 
         if backend == QuantumBackend.CLASSICAL_SA:
             return simulated_annealing_solve(
-                problem, n_iterations=n_iterations, seed=42,
+                problem,
+                n_iterations=n_iterations,
+                seed=42,
             ), False
 
         # D-Wave path
@@ -380,9 +380,12 @@ class QuantumCloudAdapter:
                 from eta_engine.brain.jarvis_v3.quantum.dwave_backend import (
                     solve_with_dwave,
                 )
+
                 if dwave_available():
                     return solve_with_dwave(
-                        problem, num_reads=100, seed=42,
+                        problem,
+                        num_reads=100,
+                        seed=42,
                         use_qpu=False,  # neal local first; flip on QPU when ready
                     ), False
             except (ImportError, Exception) as exc:  # noqa: BLE001
@@ -400,9 +403,13 @@ class QuantumCloudAdapter:
                 from eta_engine.brain.jarvis_v3.quantum.qaoa_backend import (
                     solve_with_qaoa,
                 )
+
                 if qiskit_available():
                     return solve_with_qaoa(
-                        problem, p_layers=2, max_iter=100, seed=42,
+                        problem,
+                        p_layers=2,
+                        max_iter=100,
+                        seed=42,
                         use_simulator=True,
                     ), False
             except (ImportError, Exception) as exc:  # noqa: BLE001
@@ -420,17 +427,22 @@ class QuantumCloudAdapter:
         # Fallback for any backend whose SDK is missing or whose call
         # raised: classical SA with fell_back=True
         result = simulated_annealing_solve(
-            problem, n_iterations=n_iterations, seed=42,
+            problem,
+            n_iterations=n_iterations,
+            seed=42,
         )
         return result, True
 
     def _estimate_cost_usd(
-        self, *, backend: QuantumBackend, n_vars: int,
+        self,
+        *,
+        backend: QuantumBackend,
+        n_vars: int,
     ) -> float:
         """Rough cost estimates (USD). Wire to vendor pricing when
         cloud calls land."""
         if backend == QuantumBackend.DWAVE:
-            return 0.001 * max(1, n_vars)         # ~$0.001/var
+            return 0.001 * max(1, n_vars)  # ~$0.001/var
         if backend == QuantumBackend.QISKIT:
             return 0.0015 * max(1, n_vars)
         if backend == QuantumBackend.PENNYLANE:
@@ -444,6 +456,7 @@ class QuantumCloudAdapter:
         h: str,
     ) -> tuple[SolverResult, QuantumJobRecord]:
         from eta_engine.brain.jarvis_v3.quantum.qubo_solver import SolverResult
+
         result = SolverResult(**cached.result)
         if problem.labels:
             result.labels = list(problem.labels)

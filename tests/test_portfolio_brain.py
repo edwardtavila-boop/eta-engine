@@ -5,6 +5,7 @@ can be modulated by joint-fleet exposure, drawdown, and correlation
 clusters. Tests cover each rule's threshold, the clamping bound,
 and the snapshot graceful-fallback path.
 """
+
 from __future__ import annotations
 
 import sys

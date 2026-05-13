@@ -24,6 +24,7 @@ Usage
   python -m eta_engine.scripts.run_kaizen_close_cycle --window-hours 168 --cycle WEEKLY
   python -m eta_engine.scripts.run_kaizen_close_cycle --dry-run
 """
+
 from __future__ import annotations
 
 import argparse
@@ -83,7 +84,8 @@ def synthesize_inputs(events: list[JournalEvent]) -> dict[str, Any]:
         once_seen[ev.intent] += 1
 
     surprises = [
-        intent for intent, n in once_seen.items()
+        intent
+        for intent, n in once_seen.items()
         if n == 1 and any(ev.intent == intent and ev.outcome != Outcome.NOTED for ev in events)
     ]
 
@@ -143,39 +145,51 @@ def fire_alert(ticket: KaizenTicket, retro: Retrospective, *, alerts_yaml: Path 
             return
         cfg = yaml.safe_load(cfg_path.read_text(encoding="utf-8"))
         dispatcher = AlertDispatcher(cfg)
-        result = dispatcher.send("kaizen_plus_one", {
-            "ticket_id": ticket.id,
-            "title": ticket.title,
-            "rationale": ticket.rationale,
-            "impact": ticket.impact,
-            "cycle": retro.cycle_kind.value,
-            "window_start": retro.window_start.isoformat(),
-            "window_end": retro.window_end.isoformat(),
-            "kpis": retro.kpis,
-            "lessons": retro.lessons,
-        })
-        logger.info("alert dispatched: %s -> delivered=%s blocked=%s",
-                    "kaizen_plus_one", result.delivered, result.blocked)
+        result = dispatcher.send(
+            "kaizen_plus_one",
+            {
+                "ticket_id": ticket.id,
+                "title": ticket.title,
+                "rationale": ticket.rationale,
+                "impact": ticket.impact,
+                "cycle": retro.cycle_kind.value,
+                "window_start": retro.window_start.isoformat(),
+                "window_end": retro.window_end.isoformat(),
+                "kpis": retro.kpis,
+                "lessons": retro.lessons,
+            },
+        )
+        logger.info(
+            "alert dispatched: %s -> delivered=%s blocked=%s", "kaizen_plus_one", result.delivered, result.blocked
+        )
     except Exception as exc:  # noqa: BLE001
         logger.warning("alert dispatch failed (non-fatal): %s", exc)
 
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--journal", type=Path, default=None,
-                   help="Decision journal JSONL (defaults to var/eta_engine/state/decision_journal.jsonl)")
-    p.add_argument("--ledger", type=Path,
-                   default=ROOT / "docs" / "kaizen_ledger.jsonl",
-                   help="Kaizen ledger JSONL (default: eta_engine/docs/kaizen_ledger.jsonl)")
-    p.add_argument("--window-hours", type=float, default=24.0,
-                   help="Look back this many hours for events (default: 24)")
-    p.add_argument("--cycle", type=str, default="DAILY",
-                   choices=[k.value for k in CycleKind],
-                   help="Cycle kind (default: DAILY)")
-    p.add_argument("--dry-run", action="store_true",
-                   help="Synthesize + print but don't append to ledger or fire alerts")
-    p.add_argument("--no-alert", action="store_true",
-                   help="Skip the Resend notification even on a real run")
+    p.add_argument(
+        "--journal",
+        type=Path,
+        default=None,
+        help="Decision journal JSONL (defaults to var/eta_engine/state/decision_journal.jsonl)",
+    )
+    p.add_argument(
+        "--ledger",
+        type=Path,
+        default=ROOT / "docs" / "kaizen_ledger.jsonl",
+        help="Kaizen ledger JSONL (default: eta_engine/docs/kaizen_ledger.jsonl)",
+    )
+    p.add_argument(
+        "--window-hours", type=float, default=24.0, help="Look back this many hours for events (default: 24)"
+    )
+    p.add_argument(
+        "--cycle", type=str, default="DAILY", choices=[k.value for k in CycleKind], help="Cycle kind (default: DAILY)"
+    )
+    p.add_argument(
+        "--dry-run", action="store_true", help="Synthesize + print but don't append to ledger or fire alerts"
+    )
+    p.add_argument("--no-alert", action="store_true", help="Skip the Resend notification even on a real run")
     p.add_argument("-v", "--verbose", action="store_true")
     args = p.parse_args(argv)
 
@@ -189,19 +203,21 @@ def main(argv: list[str] | None = None) -> int:
     window_end = datetime.now(UTC)
     window_start = window_end - timedelta(hours=args.window_hours)
     events = journal.read_since(window_start)
-    logger.info("loaded %d events from %s (window: last %.1f hours)",
-                len(events), journal.path, args.window_hours)
+    logger.info("loaded %d events from %s (window: last %.1f hours)", len(events), journal.path, args.window_hours)
 
     if not events:
         logger.warning(
-            "no events in window -- emitting baseline +1 anyway (Kaizen doctrine: "
-            "every cycle MUST produce a ticket)"
+            "no events in window -- emitting baseline +1 anyway (Kaizen doctrine: every cycle MUST produce a ticket)"
         )
 
     inputs = synthesize_inputs(events)
-    logger.info("synthesized: well=%d went_poorly=%d surprises=%d total_events=%.0f",
-                len(inputs["went_well"]), len(inputs["went_poorly"]),
-                len(inputs["surprises"]), inputs["kpis"].get("total_events", 0))
+    logger.info(
+        "synthesized: well=%d went_poorly=%d surprises=%d total_events=%.0f",
+        len(inputs["went_well"]),
+        len(inputs["went_poorly"]),
+        len(inputs["surprises"]),
+        inputs["kpis"].get("total_events", 0),
+    )
 
     retro, ticket = close_cycle(
         cycle_kind=CycleKind(args.cycle),
@@ -232,8 +248,12 @@ def main(argv: list[str] | None = None) -> int:
     ledger.add_retro(retro)
     ledger.add_ticket(ticket)
     ledger.save(args.ledger)
-    logger.info("appended retro + ticket to %s (now: %d retros, %d tickets)",
-                args.ledger, len(ledger.retrospectives()), len(ledger.tickets()))
+    logger.info(
+        "appended retro + ticket to %s (now: %d retros, %d tickets)",
+        args.ledger,
+        len(ledger.retrospectives()),
+        len(ledger.tickets()),
+    )
 
     if not args.no_alert:
         fire_alert(ticket, retro)

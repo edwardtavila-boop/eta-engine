@@ -68,6 +68,7 @@ Run (manually inspect last write)
 
     python -m eta_engine.scripts.l2_supervisor_state_persister --show
 """
+
 from __future__ import annotations
 
 # ruff: noqa: ANN401, PLR2004
@@ -91,6 +92,7 @@ SUPERVISOR_STATE = STATE_DIR / "supervisor_open_positions.json"
 class PersistResult:
     """Return value from persist_open_positions — operator can log
     or alert on staleness/failure."""
+
     ok: bool
     n_positions: int
     path: str
@@ -180,8 +182,7 @@ def persist_open_positions(
         cleaned.append(normalized)
     if n_dropped:
         print(
-            f"WARN: state_persister dropped {n_dropped} malformed position "
-            f"record(s); persisted {len(cleaned)}",
+            f"WARN: state_persister dropped {n_dropped} malformed position record(s); persisted {len(cleaned)}",
             file=sys.stderr,
         )
 
@@ -200,12 +201,16 @@ def persist_open_positions(
         os.replace(tmp_path, path)
     except OSError as e:
         return PersistResult(
-            ok=False, n_positions=len(cleaned),
-            path=str(path), error=f"OSError: {e}",
+            ok=False,
+            n_positions=len(cleaned),
+            path=str(path),
+            error=f"OSError: {e}",
         )
 
     return PersistResult(
-        ok=True, n_positions=len(cleaned), path=str(path),
+        ok=True,
+        n_positions=len(cleaned),
+        path=str(path),
     )
 
 
@@ -220,8 +225,7 @@ def read_persisted_state(*, _path: Path | None = None) -> dict | None:
         return None
 
 
-def staleness_seconds(*, _path: Path | None = None,
-                       _now: datetime | None = None) -> float | None:
+def staleness_seconds(*, _path: Path | None = None, _now: datetime | None = None) -> float | None:
     """Return seconds since the state file was last persisted.  None
     if the file is missing or malformed."""
     path = _path if _path is not None else SUPERVISOR_STATE
@@ -241,11 +245,12 @@ def staleness_seconds(*, _path: Path | None = None,
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--show", action="store_true",
-                    help="Print the current persisted state and exit")
-    ap.add_argument("--staleness", action="store_true",
-                    help="Print seconds since last persist; nonzero "
-                         "exit if file missing/malformed")
+    ap.add_argument("--show", action="store_true", help="Print the current persisted state and exit")
+    ap.add_argument(
+        "--staleness",
+        action="store_true",
+        help="Print seconds since last persist; nonzero exit if file missing/malformed",
+    )
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
 
@@ -257,8 +262,7 @@ def main() -> int:
         if args.json:
             print(json.dumps({"staleness_seconds": age}))
         else:
-            print(f"staleness: {age:.1f}s "
-                  f"({age / 60:.1f}min)")
+            print(f"staleness: {age:.1f}s ({age / 60:.1f}min)")
         # Operator gate — warn if older than 5 minutes
         return 1 if age > 300 else 0
 
@@ -283,12 +287,14 @@ def main() -> int:
         else:
             print()
             print(f"  {'Bot':<32s} {'Symbol':<8s} {'Side':<6s} {'Qty':<5s}")
-            print(f"  {'-'*32:<32s} {'-'*8:<8s} {'-'*6:<6s} {'-'*5}")
+            print(f"  {'-' * 32:<32s} {'-' * 8:<8s} {'-' * 6:<6s} {'-' * 5}")
             for p in positions:
-                print(f"  {p.get('bot_id', '?'):<32s} "
-                      f"{p.get('symbol', '?'):<8s} "
-                      f"{p.get('side', '?'):<6s} "
-                      f"{int(p.get('qty', 0)):<5d}")
+                print(
+                    f"  {p.get('bot_id', '?'):<32s} "
+                    f"{p.get('symbol', '?'):<8s} "
+                    f"{p.get('side', '?'):<6s} "
+                    f"{int(p.get('qty', 0)):<5d}"
+                )
         print()
         return 0
 

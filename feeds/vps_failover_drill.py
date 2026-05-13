@@ -318,9 +318,7 @@ def _missing_env_requirements(
     missing: dict[str, list[str]] = {}
     for group, requirements in groups.items():
         group_missing = [
-            " or ".join(options)
-            for options in requirements
-            if not _env_option_satisfied(key_state, options)
+            " or ".join(options) for options in requirements if not _env_option_satisfied(key_state, options)
         ]
         if group_missing:
             missing[group] = group_missing
@@ -418,10 +416,7 @@ def _check_state_files_fresh() -> CheckResult:
         return CheckResult(
             name="state_files_fresh",
             severity="amber",
-            summary=(
-                f"{len(stale)} state file(s) >24h old: "
-                + ", ".join(f"{n} ({h:.0f}h)" for n, h in stale[:3])
-            ),
+            summary=(f"{len(stale)} state file(s) >24h old: " + ", ".join(f"{n} ({h:.0f}h)" for n, h in stale[:3])),
             details={"stale": [{"file": n, "age_h": h} for n, h in stale]},
         )
     return CheckResult(
@@ -438,10 +433,7 @@ def _check_secrets_present() -> CheckResult:
         return CheckResult(
             name="secrets_present",
             severity="amber",
-            summary=(
-                ".env missing — operator must populate broker keys "
-                "before flipping live"
-            ),
+            summary=(".env missing — operator must populate broker keys before flipping live"),
             details=_env_readiness_details(),
         )
     details = _env_readiness_details()
@@ -469,8 +461,7 @@ def _check_secrets_present() -> CheckResult:
             name="secrets_present",
             severity="amber",
             summary=(
-                f".env exists but {missing_count} required launch key(s) are "
-                "missing or empty (values not emitted)"
+                f".env exists but {missing_count} required launch key(s) are missing or empty (values not emitted)"
             ),
             details=inspected_details,
         )
@@ -708,10 +699,7 @@ def _backup_restore_round_trip(skip: bool) -> CheckResult:
         return CheckResult(
             name="backup_restore_round_trip",
             severity="green",
-            summary=(
-                f"backup/restore round-trip OK: {size_match} files, "
-                f"{tar_path.stat().st_size:,} bytes compressed"
-            ),
+            summary=(f"backup/restore round-trip OK: {size_match} files, {tar_path.stat().st_size:,} bytes compressed"),
         )
 
 
@@ -753,20 +741,18 @@ def _check_idempotent_resume() -> CheckResult:
             name="idempotent_resume",
             severity="amber",
             summary=(
-                "idempotent resume evidence incomplete -- verify manually that "
-                "resumed daemons cannot double-fire"
+                "idempotent resume evidence incomplete -- verify manually that resumed daemons cannot double-fire"
             ),
             details={"evidence": evidence, "missing": missing},
         )
     return CheckResult(
         name="idempotent_resume",
         severity="green",
-        summary=(
-            "idempotent resume covered by live deterministic order-id router "
-            "+ required preflight gate"
-        ),
+        summary=("idempotent resume covered by live deterministic order-id router + required preflight gate"),
         details={"evidence": evidence},
     )
+
+
 # ---------------------------------------------------------------------------
 # Operator-day checklist
 # ---------------------------------------------------------------------------
@@ -785,8 +771,7 @@ _DRILL_DAY_CHECKLIST: list[tuple[str, str]] = [
     ("T+30", "Start daemons: live_supervisor, drift_watchdog, jarvis_dashboard."),
     (
         "T+35",
-        "Confirm drift_watchdog appended at least one row to "
-        "var/eta_engine/state/drift_watchdog.jsonl.",
+        "Confirm drift_watchdog appended at least one row to var/eta_engine/state/drift_watchdog.jsonl.",
     ),
     ("T+40", "Submit one PAPER round-trip order via IBKR; verify fill recorded."),
     ("T+45", "Compare round-trip to last known-good record on old host (sanity)."),
@@ -809,8 +794,7 @@ def _emit_drill_checklist(only_checklist: bool = False) -> None:
     print()
     if not only_checklist:
         print(
-            "On real DR day, also run THIS script with --drill-mode "
-            "to skip dry-run and only print the checklist.",
+            "On real DR day, also run THIS script with --drill-mode to skip dry-run and only print the checklist.",
         )
 
 
@@ -843,15 +827,18 @@ def exit_code_for_checks(checks: list[CheckResult]) -> int:
 def main() -> int:
     p = argparse.ArgumentParser(prog="vps_failover_drill")
     p.add_argument(
-        "--no-backup-test", action="store_true",
+        "--no-backup-test",
+        action="store_true",
         help="skip the tar/untar round-trip (faster)",
     )
     p.add_argument(
-        "--drill-mode", action="store_true",
+        "--drill-mode",
+        action="store_true",
         help="emit only the operator checklist (no dry-run)",
     )
     p.add_argument(
-        "--json", action="store_true",
+        "--json",
+        action="store_true",
         help="machine-readable output",
     )
     args = p.parse_args()
@@ -864,16 +851,20 @@ def main() -> int:
     checks = collect_checks(skip_backup_test=args.no_backup_test)
 
     sev_glyph = {
-        "green": "[GREEN]", "amber": "[AMBER]",
-        "red": "[RED]", "skip": "[SKIP]",
+        "green": "[GREEN]",
+        "amber": "[AMBER]",
+        "red": "[RED]",
+        "skip": "[SKIP]",
     }
 
     if args.json:
         import json
+
         print(
             json.dumps(
                 [asdict(c) for c in checks],
-                indent=2, default=str,
+                indent=2,
+                default=str,
             ),
         )
     else:

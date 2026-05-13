@@ -69,10 +69,7 @@ class DRBStrategy:
         self.cfg = config or DRBConfig()
         self._state = _DRBState()
         self._ema: float | None = None
-        self._ema_alpha = (
-            2.0 / (self.cfg.ema_bias_period + 1)
-            if self.cfg.ema_bias_period > 0 else 0.0
-        )
+        self._ema_alpha = 2.0 / (self.cfg.ema_bias_period + 1) if self.cfg.ema_bias_period > 0 else 0.0
 
     def maybe_enter(
         self,
@@ -120,7 +117,7 @@ class DRBStrategy:
         # at least ema_bias_period prior bars before allowing entries.
         if self.cfg.ema_bias_period > 0 and len(prior) < self.cfg.ema_bias_period:
             return None
-        ref_bars = prior[-self.cfg.lookback_days:]
+        ref_bars = prior[-self.cfg.lookback_days :]
         ref_high = max(b.high for b in ref_bars)
         ref_low = min(b.low for b in ref_bars)
         ref_range = ref_high - ref_low
@@ -128,7 +125,7 @@ class DRBStrategy:
             return None
 
         # ── ATR for stop sizing ──
-        atr_window = hist[-self.cfg.atr_period:] if hist else []
+        atr_window = hist[-self.cfg.atr_period :] if hist else []
         if len(atr_window) < 2:
             return None
         atr = sum(b.high - b.low for b in atr_window) / len(atr_window)
@@ -164,9 +161,15 @@ class DRBStrategy:
             target = entry_price - self.cfg.rr_target * stop_dist
 
         opened = _Open(
-            entry_bar=bar, side=side, qty=qty, entry_price=entry_price,
-            stop=stop, target=target, risk_usd=risk_usd,
-            confluence=10.0, leverage=1.0,
+            entry_bar=bar,
+            side=side,
+            qty=qty,
+            entry_price=entry_price,
+            stop=stop,
+            target=target,
+            risk_usd=risk_usd,
+            confluence=10.0,
+            leverage=1.0,
             regime="drb_breakout",
         )
         self._state.breakout_taken_today = True

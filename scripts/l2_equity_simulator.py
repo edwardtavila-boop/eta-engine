@@ -45,6 +45,7 @@ Run
         --strategy book_imbalance --symbol MNQ \\
         --n-paths 10000 --trades-per-path 100
 """
+
 from __future__ import annotations
 
 # ruff: noqa: PLR2004
@@ -80,13 +81,11 @@ class EquitySimReport:
     p99_max_drawdown_pct: float | None
     prob_drawdown_exceeds_threshold: float | None
     threshold_pct: float
-    risk_of_ruin: float | None        # P(account hits 0)
+    risk_of_ruin: float | None  # P(account hits 0)
     notes: list[str] = field(default_factory=list)
 
 
-def _read_trade_returns(strategy: str, symbol: str,
-                          *, _path: Path | None = None,
-                          since_days: int = 90) -> list[float]:
+def _read_trade_returns(strategy: str, symbol: str, *, _path: Path | None = None, since_days: int = 90) -> list[float]:
     """Read per-trade pnl_dollars_net from backtest log.
 
     Falls back to constructing returns from win/loss + avg pnl when
@@ -123,10 +122,8 @@ def _read_trade_returns(strategy: str, symbol: str,
                 # gives a synthetic distribution that matches mean and
                 # win rate; not perfect but better than nothing.
                 n_trades = int(rec.get("n_trades", 0))
-                n_wins = int(rec.get("n_wins", 0)) if "n_wins" in rec \
-                          else int(round(rec.get("win_rate", 0) * n_trades))
-                total_pnl = float(rec.get("total_pnl_dollars_net",
-                                            rec.get("total_pnl_dollars", 0)))
+                n_wins = int(rec.get("n_wins", 0)) if "n_wins" in rec else int(round(rec.get("win_rate", 0) * n_trades))
+                total_pnl = float(rec.get("total_pnl_dollars_net", rec.get("total_pnl_dollars", 0)))
                 if n_trades < 1:
                     continue
                 avg = total_pnl / n_trades
@@ -147,17 +144,22 @@ def _read_trade_returns(strategy: str, symbol: str,
     return returns
 
 
-def simulate(returns: list[float],
-              *, n_paths: int = 10000,
-              trades_per_path: int = 100,
-              starting_equity_usd: float = 10000.0,
-              threshold_pct: float = 20.0,
-              seed: int | None = None) -> EquitySimReport:
+def simulate(
+    returns: list[float],
+    *,
+    n_paths: int = 10000,
+    trades_per_path: int = 100,
+    starting_equity_usd: float = 10000.0,
+    threshold_pct: float = 20.0,
+    seed: int | None = None,
+) -> EquitySimReport:
     """Run Monte Carlo simulation.  Returns aggregate report."""
     notes: list[str] = []
     if not returns:
         return EquitySimReport(
-            strategy="?", symbol="?", n_paths=n_paths,
+            strategy="?",
+            symbol="?",
+            n_paths=n_paths,
             trades_per_path=trades_per_path,
             starting_equity_usd=starting_equity_usd,
             n_historical_trades_used=0,
@@ -173,8 +175,7 @@ def simulate(returns: list[float],
             notes=["no historical trade returns available"],
         )
     if len(returns) < 30:
-        notes.append(f"Only {len(returns)} historical trades — "
-                       "simulator output is statistically weak below n=30")
+        notes.append(f"Only {len(returns)} historical trades — simulator output is statistically weak below n=30")
     rng = random.Random(seed)
     end_equities: list[float] = []
     max_drawdowns_pct: list[float] = []
@@ -220,7 +221,9 @@ def simulate(returns: list[float],
     risk_of_ruin = n_ruined / n_paths
 
     return EquitySimReport(
-        strategy="?", symbol="?", n_paths=n_paths,
+        strategy="?",
+        symbol="?",
+        n_paths=n_paths,
         trades_per_path=trades_per_path,
         starting_equity_usd=starting_equity_usd,
         n_historical_trades_used=len(returns),
@@ -244,8 +247,9 @@ def main() -> int:
     ap.add_argument("--n-paths", type=int, default=10000)
     ap.add_argument("--trades-per-path", type=int, default=100)
     ap.add_argument("--starting-equity", type=float, default=10000.0)
-    ap.add_argument("--threshold-pct", type=float, default=20.0,
-                    help="Drawdown threshold for prob calculation (default 20%)")
+    ap.add_argument(
+        "--threshold-pct", type=float, default=20.0, help="Drawdown threshold for prob calculation (default 20%)"
+    )
     ap.add_argument("--seed", type=int, default=None)
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
@@ -264,9 +268,7 @@ def main() -> int:
 
     try:
         with EQUITY_SIM_LOG.open("a", encoding="utf-8") as f:
-            f.write(json.dumps({"ts": datetime.now(UTC).isoformat(),
-                                 **asdict(report)},
-                                separators=(",", ":")) + "\n")
+            f.write(json.dumps({"ts": datetime.now(UTC).isoformat(), **asdict(report)}, separators=(",", ":")) + "\n")
     except OSError as e:
         print(f"WARN: equity sim log write failed: {e}", file=sys.stderr)
 
@@ -284,12 +286,21 @@ def main() -> int:
     print(f"  historical trades    : {report.n_historical_trades_used}")
     print()
     print("  End equity (p10/median/p90):")
-    print(f"    p10    : ${report.p10_end_equity_usd:,.2f}"
-          if report.p10_end_equity_usd is not None else "    p10    : n/a")
-    print(f"    median : ${report.median_end_equity_usd:,.2f}"
-          if report.median_end_equity_usd is not None else "    median : n/a")
-    print(f"    p90    : ${report.p90_end_equity_usd:,.2f}"
-          if report.p90_end_equity_usd is not None else "    p90    : n/a")
+    print(
+        f"    p10    : ${report.p10_end_equity_usd:,.2f}"
+        if report.p10_end_equity_usd is not None
+        else "    p10    : n/a"
+    )
+    print(
+        f"    median : ${report.median_end_equity_usd:,.2f}"
+        if report.median_end_equity_usd is not None
+        else "    median : n/a"
+    )
+    print(
+        f"    p90    : ${report.p90_end_equity_usd:,.2f}"
+        if report.p90_end_equity_usd is not None
+        else "    p90    : n/a"
+    )
     print()
     print("  Max drawdown (median/p90/p99):")
     print(f"    median : {report.median_max_drawdown_pct}%")

@@ -88,22 +88,22 @@ _DEFAULT_BASE_URL = "https://127.0.0.1:5000/v1/api"
 # crypto exposure for retail accounts; CME-listed BTC futures use a
 # different conid that requires the futures market-data bundle.
 _SYMBOL_TO_CONID: dict[str, int] = {
-    "BTC": 764777976,   # PAXOS BTCUSD spot
-    "ETH": 764777977,   # PAXOS ETHUSD spot
+    "BTC": 764777976,  # PAXOS BTCUSD spot
+    "ETH": 764777977,  # PAXOS ETHUSD spot
 }
 
 # IBKR Client Portal supports these bar sizes for /iserver/marketdata/history.
 # Map our unified timeframe vocabulary to IBKR's. ``D`` -> ``1d`` per the
 # Client Portal docs.
 _TF_TO_IBKR_BAR: dict[str, str] = {
-    "1m":  "1min",
-    "5m":  "5min",
+    "1m": "1min",
+    "5m": "5min",
     "15m": "15min",
     "30m": "30min",
-    "1h":  "1h",
-    "4h":  "4h",
-    "1d":  "1d",
-    "D":   "1d",
+    "1h": "1h",
+    "4h": "4h",
+    "1d": "1d",
+    "D": "1d",
 }
 
 # Approximate bar count per chunk that the Client Portal returns. Empirical
@@ -113,14 +113,14 @@ _CHUNK_BAR_LIMIT = 900
 
 # Bar duration in seconds for chunk math. 1d := 86400s.
 _BAR_SECONDS: dict[str, int] = {
-    "1m":  60,
-    "5m":  300,
+    "1m": 60,
+    "5m": 300,
     "15m": 900,
     "30m": 1800,
-    "1h":  3600,
-    "4h":  14400,
-    "1d":  86400,
-    "D":   86400,
+    "1h": 3600,
+    "4h": 14400,
+    "1d": 86400,
+    "D": 86400,
 }
 
 
@@ -150,7 +150,10 @@ def _make_ctx() -> ssl.SSLContext:
 
 
 def _fetch_chunk(
-    base_url: str, req: _ChunkRequest, *, timeout: float = 15.0,
+    base_url: str,
+    req: _ChunkRequest,
+    *,
+    timeout: float = 15.0,
 ) -> list[dict]:
     """Hit ``/iserver/marketdata/history`` once. Returns the raw bar list.
 
@@ -158,12 +161,7 @@ def _fetch_chunk(
     market-data sub" from "bad conid" requires reading the gateway
     log; the script just reports zero rows so the operator notices.
     """
-    qs = (
-        f"?conid={req.conid}"
-        f"&period={req.period}"
-        f"&bar={req.bar}"
-        f"&startTime={req.end_ms}"
-    )
+    qs = f"?conid={req.conid}&period={req.period}&bar={req.bar}&startTime={req.end_ms}"
     url = f"{base_url}/iserver/marketdata/history{qs}"
     request = urllib.request.Request(  # noqa: S310 -- localhost gateway
         url,
@@ -171,7 +169,9 @@ def _fetch_chunk(
     )
     try:
         with urllib.request.urlopen(  # noqa: S310 -- localhost gateway
-            request, timeout=timeout, context=_make_ctx(),
+            request,
+            timeout=timeout,
+            context=_make_ctx(),
         ) as resp:
             payload = json.loads(resp.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
@@ -227,7 +227,11 @@ def _period_for_chunk(bar: str) -> str:
 
 
 def fetch_bars(
-    *, symbol: str, timeframe: str, start: datetime, end: datetime,
+    *,
+    symbol: str,
+    timeframe: str,
+    start: datetime,
+    end: datetime,
     base_url: str = _DEFAULT_BASE_URL,
 ) -> list[dict]:
     """Pull all bars in [start, end). Stitches IBKR's chunked responses.
@@ -263,7 +267,10 @@ def fetch_bars(
     while cursor > start:
         end_ms = int(cursor.timestamp() * 1000)
         req = _ChunkRequest(
-            conid=conid, bar=bar, period=period, end_ms=end_ms,
+            conid=conid,
+            bar=bar,
+            period=period,
+            end_ms=end_ms,
         )
         print(
             f"  fetching {symbol}/{timeframe} <= {cursor.isoformat()} ...",
@@ -355,25 +362,34 @@ def write_csv(path: Path, rows: list[dict]) -> None:
 def main() -> int:
     p = argparse.ArgumentParser(prog="fetch_ibkr_crypto_bars")
     p.add_argument(
-        "--symbol", default="BTC", choices=sorted(_SYMBOL_TO_CONID),
+        "--symbol",
+        default="BTC",
+        choices=sorted(_SYMBOL_TO_CONID),
         help="crypto symbol; conid resolved from venues.ibkr defaults",
     )
     p.add_argument(
-        "--timeframe", default="1h", choices=sorted(_TF_TO_IBKR_BAR),
+        "--timeframe",
+        default="1h",
+        choices=sorted(_TF_TO_IBKR_BAR),
         help="bar size (matches the data.library naming convention)",
     )
     p.add_argument(
-        "--months", type=int, default=12,
+        "--months",
+        type=int,
+        default=12,
         help="lookback in months (mutually exclusive with --start/--end)",
     )
     p.add_argument("--start", help="ISO date YYYY-MM-DD")
     p.add_argument("--end", help="ISO date YYYY-MM-DD; default = today")
     p.add_argument(
-        "--root", type=Path, default=IBKR_HISTORY_ROOT,
+        "--root",
+        type=Path,
+        default=IBKR_HISTORY_ROOT,
         help="output directory (default: canonical ETA IBKR crypto history root)",
     )
     p.add_argument(
-        "--base-url", default=_DEFAULT_BASE_URL,
+        "--base-url",
+        default=_DEFAULT_BASE_URL,
         help="Client Portal gateway URL",
     )
     args = p.parse_args()
@@ -382,24 +398,21 @@ def main() -> int:
         start = datetime.fromisoformat(args.start).replace(tzinfo=UTC)
     else:
         start = datetime.now(UTC) - timedelta(days=30 * args.months)
-    end = (
-        datetime.fromisoformat(args.end).replace(tzinfo=UTC)
-        if args.end else datetime.now(UTC)
-    )
+    end = datetime.fromisoformat(args.end).replace(tzinfo=UTC) if args.end else datetime.now(UTC)
 
     print(
-        f"[fetch_ibkr_crypto_bars] {args.symbol}/{args.timeframe} "
-        f"{start.date()} -> {end.date()} -> {args.root}",
+        f"[fetch_ibkr_crypto_bars] {args.symbol}/{args.timeframe} {start.date()} -> {end.date()} -> {args.root}",
     )
     print(
-        f"  base_url={args.base_url}  "
-        f"conid={_SYMBOL_TO_CONID[args.symbol]} "
-        f"bar={_TF_TO_IBKR_BAR[args.timeframe]}",
+        f"  base_url={args.base_url}  conid={_SYMBOL_TO_CONID[args.symbol]} bar={_TF_TO_IBKR_BAR[args.timeframe]}",
     )
 
     rows = fetch_bars(
-        symbol=args.symbol, timeframe=args.timeframe,
-        start=start, end=end, base_url=args.base_url,
+        symbol=args.symbol,
+        timeframe=args.timeframe,
+        start=start,
+        end=end,
+        base_url=args.base_url,
     )
     if not rows:
         print(

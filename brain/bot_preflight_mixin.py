@@ -29,6 +29,7 @@ Doesn't replace ``_ask_jarvis`` -- the JARVIS gate inside
      mixin behaves exactly like _ask_jarvis -- backward-compatible)
   3. consistent decision return shape across all bots
 """
+
 from __future__ import annotations
 
 import logging
@@ -74,6 +75,7 @@ class BotPreFlightMixin:
             # Mimic the PreflightDecision shape using the bot's existing
             # _ask_jarvis flow so the consumer code stays uniform.
             from eta_engine.brain.jarvis_admin import ActionType
+
             payload = dict(extra_payload or {})
             payload.update({"side": side, "symbol": symbol, "confidence": confluence})
             if rationale:
@@ -82,8 +84,10 @@ class BotPreFlightMixin:
                 # Bot has neither _ask_jarvis nor opted into pre-flight.
                 # Default: allow with full size.
                 return PreflightDecision(
-                    allowed=True, size_cap_mult=1.0,
-                    reason="no jarvis attached", reason_code="no_jarvis",
+                    allowed=True,
+                    size_cap_mult=1.0,
+                    reason="no jarvis attached",
+                    reason_code="no_jarvis",
                     binding="approved",
                 )
             allowed, cap, code = self._ask_jarvis(ActionType.ORDER_PLACE, **payload)

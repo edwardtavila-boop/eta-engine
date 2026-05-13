@@ -13,6 +13,7 @@ to a specific class of bug that the legacy paper_trade_sim shipped:
 - session bucketing distinguishes RTH from overnight
 - duplicate sessions don't accumulate in the ledger
 """
+
 from __future__ import annotations
 
 import pytest
@@ -129,8 +130,12 @@ def test_long_stop_fills_below_trigger_price():
     spec = get_spec("MNQ")
     bar = BarOHLCV(open=100.0, high=100.5, low=98.5, close=99.0, volume=500)
     exit_fill = sim.simulate_exit(
-        side="LONG", position_entry=100.0,
-        stop_price=99.0, target_price=102.0, bar=bar, spec=spec,
+        side="LONG",
+        position_entry=100.0,
+        stop_price=99.0,
+        target_price=102.0,
+        bar=bar,
+        spec=spec,
     )
     assert exit_fill.exit_reason == "stop_loss"
     assert exit_fill.fill_price <= 99.0
@@ -142,8 +147,12 @@ def test_short_stop_fills_above_trigger_price():
     spec = get_spec("MNQ")
     bar = BarOHLCV(open=100.0, high=101.5, low=99.5, close=101.0, volume=500)
     exit_fill = sim.simulate_exit(
-        side="SHORT", position_entry=100.0,
-        stop_price=101.0, target_price=98.0, bar=bar, spec=spec,
+        side="SHORT",
+        position_entry=100.0,
+        stop_price=101.0,
+        target_price=98.0,
+        bar=bar,
+        spec=spec,
     )
     assert exit_fill.exit_reason == "stop_loss"
     assert exit_fill.fill_price >= 101.0
@@ -154,8 +163,12 @@ def test_legacy_mode_stop_fills_at_exact_trigger():
     spec = get_spec("MNQ")
     bar = BarOHLCV(open=100.0, high=100.5, low=98.5, close=99.0, volume=500)
     exit_fill = sim.simulate_exit(
-        side="LONG", position_entry=100.0,
-        stop_price=99.0, target_price=102.0, bar=bar, spec=spec,
+        side="LONG",
+        position_entry=100.0,
+        stop_price=99.0,
+        target_price=102.0,
+        bar=bar,
+        spec=spec,
     )
     assert exit_fill.fill_price == pytest.approx(99.0, abs=spec.tick_size)
     assert exit_fill.slippage_ticks == 0
@@ -168,8 +181,12 @@ def test_stop_fill_is_never_outside_bar_range():
     spec = get_spec("MNQ")
     bar = BarOHLCV(open=100.0, high=100.5, low=99.5, close=99.6, volume=100)
     exit_fill = sim.simulate_exit(
-        side="LONG", position_entry=100.0,
-        stop_price=99.5, target_price=102.0, bar=bar, spec=spec,
+        side="LONG",
+        position_entry=100.0,
+        stop_price=99.5,
+        target_price=102.0,
+        bar=bar,
+        spec=spec,
     )
     assert bar.low <= exit_fill.fill_price <= bar.high
 
@@ -185,8 +202,12 @@ def test_target_fill_at_exact_limit_price():
     for _ in range(20):
         sim.feed_bar_volume(500)
     exit_fill = sim.simulate_exit(
-        side="LONG", position_entry=100.0,
-        stop_price=99.0, target_price=102.0, bar=bar, spec=spec,
+        side="LONG",
+        position_entry=100.0,
+        stop_price=99.0,
+        target_price=102.0,
+        bar=bar,
+        spec=spec,
     )
     assert exit_fill.exit_reason == "take_profit"
     assert exit_fill.fill_price == pytest.approx(102.0, abs=spec.tick_size)
@@ -202,8 +223,12 @@ def test_target_does_not_slip_favorably():
         sim.feed_bar_volume(500)
     bar = BarOHLCV(open=100.0, high=110.0, low=99.5, close=109.5, volume=500)
     exit_fill = sim.simulate_exit(
-        side="LONG", position_entry=100.0,
-        stop_price=99.0, target_price=102.0, bar=bar, spec=spec,
+        side="LONG",
+        position_entry=100.0,
+        stop_price=99.0,
+        target_price=102.0,
+        bar=bar,
+        spec=spec,
     )
     assert exit_fill.fill_price == pytest.approx(102.0, abs=spec.tick_size)
 
@@ -217,7 +242,11 @@ def test_straddle_does_not_always_pick_stop_in_realistic_mode():
     spec = get_spec("MNQ")
     # Pre-feed normal-volume history so neither bar is flagged thin.
     bar = BarOHLCV(
-        open=100.0, high=103.0, low=98.0, close=100.0, volume=500,
+        open=100.0,
+        high=103.0,
+        low=98.0,
+        close=100.0,
+        volume=500,
     )
     targets, stops = 0, 0
     for seed in range(40):
@@ -225,8 +254,12 @@ def test_straddle_does_not_always_pick_stop_in_realistic_mode():
         for _ in range(20):
             sim.feed_bar_volume(500)
         result = sim.simulate_exit(
-            side="LONG", position_entry=100.0,
-            stop_price=99.0, target_price=102.0, bar=bar, spec=spec,
+            side="LONG",
+            position_entry=100.0,
+            stop_price=99.0,
+            target_price=102.0,
+            bar=bar,
+            spec=spec,
         )
         if "take_profit" in result.exit_reason:
             targets += 1
@@ -246,14 +279,17 @@ def test_legacy_mode_straddle_picks_stop_deterministically():
     # Bar with both stop and target inside range, neutral close
     bar = BarOHLCV(open=100.0, high=103.0, low=98.0, close=100.0, volume=500)
     result = sim.simulate_exit(
-        side="LONG", position_entry=100.0,
-        stop_price=99.0, target_price=102.0, bar=bar, spec=spec,
+        side="LONG",
+        position_entry=100.0,
+        stop_price=99.0,
+        target_price=102.0,
+        bar=bar,
+        spec=spec,
     )
     # In legacy mode, blend still applies but with prior=0.  Outcome
     # depends on bar.close vs bar.open.  Verify we at least don't
     # straddle-tag it as a mixed outcome.
-    assert result.exit_reason in {"stop_loss", "take_profit",
-                                  "stop_loss_straddle", "take_profit_straddle"}
+    assert result.exit_reason in {"stop_loss", "take_profit", "stop_loss_straddle", "take_profit_straddle"}
 
 
 # ── commissions ───────────────────────────────────────────────────
@@ -290,8 +326,12 @@ def test_no_exit_when_bar_misses_both_levels():
     spec = get_spec("MNQ")
     bar = BarOHLCV(open=100.0, high=100.5, low=99.5, close=100.2, volume=500)
     exit_fill = sim.simulate_exit(
-        side="LONG", position_entry=100.0,
-        stop_price=98.0, target_price=102.0, bar=bar, spec=spec,
+        side="LONG",
+        position_entry=100.0,
+        stop_price=98.0,
+        target_price=102.0,
+        bar=bar,
+        spec=spec,
     )
     assert exit_fill.exit_reason == "no_exit"
     assert exit_fill.slippage_ticks == 0
@@ -313,8 +353,12 @@ def test_thin_bar_can_skip_touch_only_target():
         for _ in range(20):
             sim.feed_bar_volume(500)
         result = sim.simulate_exit(
-            side="LONG", position_entry=100.0,
-            stop_price=99.0, target_price=102.0, bar=bar, spec=spec,
+            side="LONG",
+            position_entry=100.0,
+            stop_price=99.0,
+            target_price=102.0,
+            bar=bar,
+            spec=spec,
         )
         if result.exit_reason == "no_exit":
             skipped_count += 1
@@ -352,10 +396,17 @@ def test_paper_soak_tracker_detects_duplicate_session():
         _is_duplicate_of_prev,
         _record_session,
     )
+
     base_data = {
-        "bars": 720, "signals": 5, "trades": 5, "winners": 3, "losers": 2,
-        "win_rate": 60.0, "total_pnl": 100.0,
-        "avg_pnl_per_trade": 20.0, "max_dd": 50.0,
+        "bars": 720,
+        "signals": 5,
+        "trades": 5,
+        "winners": 3,
+        "losers": 2,
+        "win_rate": 60.0,
+        "total_pnl": 100.0,
+        "avg_pnl_per_trade": 20.0,
+        "max_dd": 50.0,
     }
     row1 = _build_session_row(base_data, days=30, now_iso="2026-05-01T00:00:00+00:00")
     row2 = _build_session_row(base_data, days=30, now_iso="2026-05-01T01:00:00+00:00")
@@ -375,15 +426,36 @@ def test_paper_soak_tracker_accepts_distinct_session():
         _build_session_row,
         _record_session,
     )
+
     row1 = _build_session_row(
-        {"bars": 720, "signals": 5, "trades": 5, "winners": 3, "losers": 2,
-         "win_rate": 60.0, "total_pnl": 100.0, "avg_pnl_per_trade": 20.0, "max_dd": 50.0},
-        days=30, now_iso="2026-05-01T00:00:00+00:00",
+        {
+            "bars": 720,
+            "signals": 5,
+            "trades": 5,
+            "winners": 3,
+            "losers": 2,
+            "win_rate": 60.0,
+            "total_pnl": 100.0,
+            "avg_pnl_per_trade": 20.0,
+            "max_dd": 50.0,
+        },
+        days=30,
+        now_iso="2026-05-01T00:00:00+00:00",
     )
     row2 = _build_session_row(
-        {"bars": 720, "signals": 6, "trades": 6, "winners": 4, "losers": 2,
-         "win_rate": 66.7, "total_pnl": 150.0, "avg_pnl_per_trade": 25.0, "max_dd": 30.0},
-        days=30, now_iso="2026-05-02T00:00:00+00:00",
+        {
+            "bars": 720,
+            "signals": 6,
+            "trades": 6,
+            "winners": 4,
+            "losers": 2,
+            "win_rate": 66.7,
+            "total_pnl": 150.0,
+            "avg_pnl_per_trade": 25.0,
+            "max_dd": 30.0,
+        },
+        days=30,
+        now_iso="2026-05-02T00:00:00+00:00",
     )
     ledger: dict = {"bot_sessions": {}}
     _record_session(ledger, "test_bot", row1, "2026-05-01T00:00:00+00:00")
@@ -426,12 +498,20 @@ def test_realistic_sim_produces_lower_pnl_than_legacy_on_same_data():
             bar = BarOHLCV(open=100.0, high=100.5, low=98.5, close=99.0, volume=500)
 
         legacy_exit = sim_legacy.simulate_exit(
-            side="LONG", position_entry=100.0,
-            stop_price=99.0, target_price=102.0, bar=bar, spec=spec,
+            side="LONG",
+            position_entry=100.0,
+            stop_price=99.0,
+            target_price=102.0,
+            bar=bar,
+            spec=spec,
         )
         realistic_exit = sim_real.simulate_exit(
-            side="LONG", position_entry=100.0,
-            stop_price=99.0, target_price=102.0, bar=bar, spec=spec,
+            side="LONG",
+            position_entry=100.0,
+            stop_price=99.0,
+            target_price=102.0,
+            bar=bar,
+            spec=spec,
         )
 
         legacy_pnl += (legacy_exit.fill_price - 100.0) * qty * spec.point_value

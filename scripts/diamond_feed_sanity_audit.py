@@ -56,6 +56,7 @@ Run
     python -m eta_engine.scripts.diamond_feed_sanity_audit
     python -m eta_engine.scripts.diamond_feed_sanity_audit --json
 """
+
 from __future__ import annotations
 
 # ruff: noqa: PLR2004
@@ -70,18 +71,15 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKSPACE_ROOT = ROOT.parent
-TRADE_CLOSES_CANONICAL = (
-    WORKSPACE_ROOT / "var" / "eta_engine" / "state"
-    / "jarvis_intel" / "trade_closes.jsonl"
-)
+TRADE_CLOSES_CANONICAL = WORKSPACE_ROOT / "var" / "eta_engine" / "state" / "jarvis_intel" / "trade_closes.jsonl"
 TRADE_CLOSES_LEGACY = (
-    WORKSPACE_ROOT / "eta_engine" / "state"  # HISTORICAL-PATH-OK
-    / "jarvis_intel" / "trade_closes.jsonl"
+    WORKSPACE_ROOT
+    / "eta_engine"
+    / "state"  # HISTORICAL-PATH-OK
+    / "jarvis_intel"
+    / "trade_closes.jsonl"
 )
-OUT_LATEST = (
-    WORKSPACE_ROOT / "var" / "eta_engine" / "state"
-    / "diamond_feed_sanity_audit_latest.json"
-)
+OUT_LATEST = WORKSPACE_ROOT / "var" / "eta_engine" / "state" / "diamond_feed_sanity_audit_latest.json"
 
 #: Below this trade count, we don't have enough samples to detect
 #: a pattern. Below SAMPLE_THRESHOLD records the verdict is INSUFFICIENT_DATA.
@@ -129,12 +127,14 @@ def _read_trades_dual_source() -> list[dict[str, Any]]:
                     rec = json.loads(line)
                 except json.JSONDecodeError:
                     continue
-                key = "|".join([
-                    str(rec.get("signal_id") or ""),
-                    str(rec.get("bot_id") or ""),
-                    str(rec.get("ts") or ""),
-                    str(rec.get("realized_r") or ""),
-                ])
+                key = "|".join(
+                    [
+                        str(rec.get("signal_id") or ""),
+                        str(rec.get("bot_id") or ""),
+                        str(rec.get("ts") or ""),
+                        str(rec.get("realized_r") or ""),
+                    ]
+                )
                 if key in seen:
                     continue
                 seen.add(key)
@@ -173,21 +173,21 @@ def _score_bot(bot_id: str, trades: list[dict[str, Any]]) -> FeedSanityScorecard
         sc.fill_price_max = round(max(fill_prices), 4)
         sorted_fps = sorted(fill_prices)
         sc.fill_price_median = round(
-            sorted_fps[len(sorted_fps) // 2], 4,
+            sorted_fps[len(sorted_fps) // 2],
+            4,
         )
         # Range fraction: (max - min) / median.  A real market shows
         # at least a few percent of variation across hundreds of trades;
         # a stuck/placeholder feed shows zero or tiny variation.
         if sc.fill_price_median and sc.fill_price_median != 0:
             sc.fill_price_range_fraction = round(
-                (sc.fill_price_max - sc.fill_price_min) / sc.fill_price_median, 4,
+                (sc.fill_price_max - sc.fill_price_min) / sc.fill_price_median,
+                4,
             )
 
     if sc.n_records < SAMPLE_THRESHOLD:
         sc.verdict = "INSUFFICIENT_DATA"
-        sc.rationale = (
-            f"only {sc.n_records} records (need >= {SAMPLE_THRESHOLD})"
-        )
+        sc.rationale = f"only {sc.n_records} records (need >= {SAMPLE_THRESHOLD})"
         return sc
 
     # ── Apply checks ──────────────────────────────────────────────────
@@ -217,8 +217,7 @@ def _score_bot(bot_id: str, trades: list[dict[str, Any]]) -> FeedSanityScorecard
     # MISSING_PNL_FIELD: majority lack the field entirely
     if sc.n_with_pnl < sc.n_records / 2:
         flags.append(
-            f"MISSING_PNL_FIELD ({sc.n_with_pnl}/{sc.n_records} "
-            "records have extra.realized_pnl)",
+            f"MISSING_PNL_FIELD ({sc.n_with_pnl}/{sc.n_records} records have extra.realized_pnl)",
         )
 
     # MISSING_SIDE_FIELD: writer skipping side field
@@ -230,11 +229,15 @@ def _score_bot(bot_id: str, trades: list[dict[str, Any]]) -> FeedSanityScorecard
 
     sc.flags = flags
     sc.verdict = "FLAGGED" if flags else "CLEAN"
-    sc.rationale = "; ".join(flags) if flags else (
-        f"all checks pass — {sc.n_records} records, "
-        f"fill_price ${sc.fill_price_min}-${sc.fill_price_max} "
-        f"(range {sc.fill_price_range_fraction:.2%} of median), "
-        f"{sc.n_zero_pnl}/{sc.n_with_pnl} zero-PnL"
+    sc.rationale = (
+        "; ".join(flags)
+        if flags
+        else (
+            f"all checks pass — {sc.n_records} records, "
+            f"fill_price ${sc.fill_price_min}-${sc.fill_price_max} "
+            f"(range {sc.fill_price_range_fraction:.2%} of median), "
+            f"{sc.n_zero_pnl}/{sc.n_with_pnl} zero-PnL"
+        )
     )
     return sc
 
@@ -261,18 +264,17 @@ def run() -> dict[str, Any]:
     # they're the prime example of feed-sanity issues — we want them
     # in the report so the operator can see when the data catches up).
     extra_targets = {
-        "mbt_sweep_reclaim", "mbt_overnight_gap",
-        "mbt_rth_orb", "mbt_funding_basis",
+        "mbt_sweep_reclaim",
+        "mbt_overnight_gap",
+        "mbt_rth_orb",
+        "mbt_funding_basis",
     }
     for t in trades:
         bid = t.get("bot_id")
         if bid in extra_targets:
             by_bot[bid].append(t)
 
-    scorecards: list[FeedSanityScorecard] = [
-        _score_bot(bot_id, by_bot.get(bot_id, []))
-        for bot_id in sorted(by_bot)
-    ]
+    scorecards: list[FeedSanityScorecard] = [_score_bot(bot_id, by_bot.get(bot_id, [])) for bot_id in sorted(by_bot)]
 
     counts: dict[str, int] = defaultdict(int)
     for sc in scorecards:
@@ -289,7 +291,8 @@ def run() -> dict[str, Any]:
     try:
         OUT_LATEST.parent.mkdir(parents=True, exist_ok=True)
         OUT_LATEST.write_text(
-            json.dumps(summary, indent=2, default=str), encoding="utf-8",
+            json.dumps(summary, indent=2, default=str),
+            encoding="utf-8",
         )
     except OSError as exc:
         print(f"WARN: write_latest failed: {exc}", file=sys.stderr)
@@ -300,27 +303,19 @@ def _print(summary: dict[str, Any]) -> None:
     print("=" * 130)
     print(
         f" DIAMOND FEED SANITY AUDIT  ({summary['ts']})  "
-        + ", ".join(
-            f"{k}={v}" for k, v in summary["verdict_counts"].items()
-        ),
+        + ", ".join(f"{k}={v}" for k, v in summary["verdict_counts"].items()),
     )
     print("=" * 130)
     print(
-        f" {'bot':25s} {'verdict':18s} {'n':>5s}  "
-        f"{'fill_price_range':>22s}  rationale",
+        f" {'bot':25s} {'verdict':18s} {'n':>5s}  {'fill_price_range':>22s}  rationale",
     )
     print("-" * 130)
     for sc in summary["scorecards"]:
         fp_min = sc.get("fill_price_min")
         fp_max = sc.get("fill_price_max")
-        fp_s = (
-            f"${fp_min:>8.2f}..${fp_max:<8.2f}"
-            if fp_min is not None and fp_max is not None
-            else f"{'—':>22s}"
-        )
+        fp_s = f"${fp_min:>8.2f}..${fp_max:<8.2f}" if fp_min is not None and fp_max is not None else f"{'—':>22s}"
         print(
-            f" {sc['bot_id']:25s} {sc['verdict']:18s} "
-            f"{sc['n_records']:>5d}  {fp_s}  {sc['rationale'][:60]}",
+            f" {sc['bot_id']:25s} {sc['verdict']:18s} {sc['n_records']:>5d}  {fp_s}  {sc['rationale'][:60]}",
         )
         if sc.get("flags"):
             for f in sc["flags"]:

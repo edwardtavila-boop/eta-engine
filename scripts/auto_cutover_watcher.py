@@ -24,6 +24,7 @@ Environment:
     ETA_AUTO_CRYPTO_CUTOVER=1   # opt-in to actually flip the env + restart
     ETA_CUTOVER_STATUS_FILE     # path for the status JSON (default: var/.../cutover_status.json)
 """
+
 from __future__ import annotations
 
 import argparse
@@ -64,6 +65,7 @@ def _query_crypto_permission() -> tuple[bool, dict[str, object]]:
     """Connect to TWS via dedicated clientId and read Cryptocurrency@USD.
     Returns (perms_active, summary_dict). perms_active=True iff > 0."""
     from ib_insync import IB
+
     ib = IB()
     summary: dict[str, object] = {}
     try:
@@ -113,8 +115,7 @@ def _enable_crypto_in_env() -> bool:
         else:
             out.append(line)
     if not flipped and not any(
-        ln.strip().startswith("ETA_IBKR_CRYPTO=") and not ln.strip().startswith("#")
-        for ln in lines
+        ln.strip().startswith("ETA_IBKR_CRYPTO=") and not ln.strip().startswith("#") for ln in lines
     ):
         out.append("ETA_IBKR_CRYPTO=1")
         flipped = True
@@ -129,11 +130,15 @@ def _restart_supervisor() -> bool:
         # kill
         subprocess.run(  # noqa: S603 — controlled, no user input
             [
-                "powershell", "-NoProfile", "-Command",
+                "powershell",
+                "-NoProfile",
+                "-Command",
                 "Get-CimInstance Win32_Process -Filter \"Name='python.exe'\" | "
                 "Where-Object { $_.CommandLine -match 'jarvis_strategy_supervisor' } | "
                 "ForEach-Object { Stop-Process -Id $_.ProcessId -Force }",
-            ], check=False, timeout=20,
+            ],
+            check=False,
+            timeout=20,
         )
         # restart via Start-Process (detached)
         log_dir = Path(r"C:\EvolutionaryTradingAlgo\var\eta_engine\logs")
@@ -142,7 +147,9 @@ def _restart_supervisor() -> bool:
         log_file = log_dir / f"supervisor_{ts}.log"
         subprocess.run(  # noqa: S603
             [
-                "powershell", "-NoProfile", "-Command",
+                "powershell",
+                "-NoProfile",
+                "-Command",
                 "Start-Process -FilePath "
                 "'C:\\EvolutionaryTradingAlgo\\eta_engine\\.venv\\Scripts\\python.exe' "
                 "-ArgumentList 'scripts\\jarvis_strategy_supervisor.py' "
@@ -150,7 +157,9 @@ def _restart_supervisor() -> bool:
                 f"-RedirectStandardOutput '{log_file}' "
                 f"-RedirectStandardError '{log_file}.err' "
                 "-WindowStyle Hidden",
-            ], check=False, timeout=20,
+            ],
+            check=False,
+            timeout=20,
         )
         return True
     except Exception as exc:  # noqa: BLE001
@@ -162,6 +171,7 @@ def _emit_cutover_event(perms_summary: dict[str, object]) -> None:
     """Drop a v3 event so Hermes pings the operator's Telegram."""
     try:
         from eta_engine.brain.jarvis_v3.policies._v3_events import emit_event
+
         emit_event(
             layer="ops",
             event="live_crypto_activated",
@@ -179,10 +189,12 @@ def _emit_cutover_event(perms_summary: dict[str, object]) -> None:
 
 
 def _write_status(status: dict[str, object]) -> None:
-    path = Path(os.getenv(
-        "ETA_CUTOVER_STATUS_FILE",
-        r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\cutover_status.json",
-    ))
+    path = Path(
+        os.getenv(
+            "ETA_CUTOVER_STATUS_FILE",
+            r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\cutover_status.json",
+        )
+    )
     with contextlib.suppress(OSError):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(status, indent=2, default=str), encoding="utf-8")
@@ -191,9 +203,9 @@ def _write_status(status: dict[str, object]) -> None:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--apply", action="store_true",
-        help="Actually flip env + restart if perms are active. "
-             "Otherwise log only.",
+        "--apply",
+        action="store_true",
+        help="Actually flip env + restart if perms are active. Otherwise log only.",
     )
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
@@ -201,7 +213,10 @@ def main(argv: list[str] | None = None) -> int:
     perms_active, summary = _query_crypto_permission()
     env_active = _crypto_currently_enabled_in_env()
     auto_opted_in = os.getenv("ETA_AUTO_CRYPTO_CUTOVER", "").lower() in {
-        "1", "true", "yes", "on",
+        "1",
+        "true",
+        "yes",
+        "on",
     }
 
     status = {
@@ -224,14 +239,15 @@ def main(argv: list[str] | None = None) -> int:
             status["supervisor_restarted"] = restarted
         else:
             logger.info(
-                "PERMS ACTIVE but auto-cutover NOT applied "
-                "(--apply=%s, ETA_AUTO_CRYPTO_CUTOVER=%s)",
-                args.apply, auto_opted_in,
+                "PERMS ACTIVE but auto-cutover NOT applied (--apply=%s, ETA_AUTO_CRYPTO_CUTOVER=%s)",
+                args.apply,
+                auto_opted_in,
             )
             status["action"] = "ready_pending_opt_in"
             # Always emit the v3 event so the operator knows perms flipped
             try:
                 from eta_engine.brain.jarvis_v3.policies._v3_events import emit_event
+
                 emit_event(
                     layer="ops",
                     event="crypto_perms_ready",

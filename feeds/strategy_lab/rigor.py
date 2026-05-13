@@ -47,17 +47,17 @@ EULER_MASCHERONI: float = 0.5772156649015329
 
 _BSM_A: tuple[float, ...] = (
     -3.969683028665376e1,
-     2.209460984245205e2,
+    2.209460984245205e2,
     -2.759285104469687e2,
-     1.383577518672690e2,
+    1.383577518672690e2,
     -3.066479806614716e1,
-     2.506628277459239e0,
+    2.506628277459239e0,
 )
 _BSM_B: tuple[float, ...] = (
     -5.447609879822406e1,
-     1.615858368580409e2,
+    1.615858368580409e2,
     -1.556989798598866e2,
-     6.680131188771972e1,
+    6.680131188771972e1,
     -1.328068155288572e1,
 )
 _BSM_C: tuple[float, ...] = (
@@ -65,14 +65,14 @@ _BSM_C: tuple[float, ...] = (
     -3.223964580411365e-1,
     -2.400758277161838e0,
     -2.549732539343734e0,
-     4.374664141464968e0,
-     2.938163982698783e0,
+    4.374664141464968e0,
+    2.938163982698783e0,
 )
 _BSM_D: tuple[float, ...] = (
-     7.784695709041462e-3,
-     3.224671290700398e-1,
-     2.445134137142996e0,
-     3.754408661907416e0,
+    7.784695709041462e-3,
+    3.224671290700398e-1,
+    2.445134137142996e0,
+    3.754408661907416e0,
 )
 
 
@@ -84,22 +84,18 @@ def norm_ppf(p: float) -> float:
     phigh = 1 - plow
     if p < plow:
         q = math.sqrt(-2.0 * math.log(p))
-        num = (((((_BSM_C[0]*q + _BSM_C[1])*q + _BSM_C[2])*q + _BSM_C[3])*q +
-                _BSM_C[4])*q + _BSM_C[5])
-        den = ((((_BSM_D[0]*q + _BSM_D[1])*q + _BSM_D[2])*q + _BSM_D[3])*q + 1)
+        num = ((((_BSM_C[0] * q + _BSM_C[1]) * q + _BSM_C[2]) * q + _BSM_C[3]) * q + _BSM_C[4]) * q + _BSM_C[5]
+        den = (((_BSM_D[0] * q + _BSM_D[1]) * q + _BSM_D[2]) * q + _BSM_D[3]) * q + 1
         return num / den
     if p > phigh:
         q = math.sqrt(-2.0 * math.log(1 - p))
-        num = (((((_BSM_C[0]*q + _BSM_C[1])*q + _BSM_C[2])*q + _BSM_C[3])*q +
-                _BSM_C[4])*q + _BSM_C[5])
-        den = ((((_BSM_D[0]*q + _BSM_D[1])*q + _BSM_D[2])*q + _BSM_D[3])*q + 1)
+        num = ((((_BSM_C[0] * q + _BSM_C[1]) * q + _BSM_C[2]) * q + _BSM_C[3]) * q + _BSM_C[4]) * q + _BSM_C[5]
+        den = (((_BSM_D[0] * q + _BSM_D[1]) * q + _BSM_D[2]) * q + _BSM_D[3]) * q + 1
         return -num / den
     q = p - 0.5
     r = q * q
-    num = (((((_BSM_A[0]*r + _BSM_A[1])*r + _BSM_A[2])*r + _BSM_A[3])*r +
-            _BSM_A[4])*r + _BSM_A[5]) * q
-    den = ((((_BSM_B[0]*r + _BSM_B[1])*r + _BSM_B[2])*r + _BSM_B[3])*r +
-           _BSM_B[4])*r + 1
+    num = (((((_BSM_A[0] * r + _BSM_A[1]) * r + _BSM_A[2]) * r + _BSM_A[3]) * r + _BSM_A[4]) * r + _BSM_A[5]) * q
+    den = ((((_BSM_B[0] * r + _BSM_B[1]) * r + _BSM_B[2]) * r + _BSM_B[3]) * r + _BSM_B[4]) * r + 1
     return num / den
 
 
@@ -144,8 +140,12 @@ def block_bootstrap_expR(
     p5, p50, p95 = np.percentile(means, [5.0, 50.0, 95.0])
     p_raw = float((means <= 0.0).mean())
     return BootstrapResult(
-        p5=float(p5), p50=float(p50), p95=float(p95),
-        p_value_raw=p_raw, block_size=block_size, n_resamples=n_resamples,
+        p5=float(p5),
+        p50=float(p50),
+        p95=float(p95),
+        p_value_raw=p_raw,
+        block_size=block_size,
+        n_resamples=n_resamples,
     )
 
 
@@ -168,6 +168,7 @@ def default_multi_test_count() -> int:
     """
     try:
         from eta_engine.strategies.per_bot_registry import ASSIGNMENTS, is_active
+
         n = sum(1 for a in ASSIGNMENTS if is_active(a))
         return max(1, n)
     except (ImportError, AttributeError):
@@ -197,19 +198,40 @@ def friction_R_per_trade(
     half_spread_dollars = spec.half_spread_ticks * spec.tick_value_usd
     rt_friction_dollars = spec.commission_rt + 2.0 * half_spread_dollars
     fallback_atr_pts = {
-        "MNQ": 30.0, "MNQ1": 30.0, "NQ": 30.0, "NQ1": 30.0,
-        "ES":  6.0,  "ES1": 6.0, "MES": 6.0,
-        "GC":  8.0,  "GC1": 8.0, "MGC": 8.0,
-        "CL":  1.0,  "CL1": 1.0, "MCL": 1.0,
-        "NG":  0.10, "NG1": 0.10,
-        "6E":  0.0030, "6E1": 0.0030, "M6E": 0.0030,
-        "ZN":  0.30, "ZN1": 0.30,
-        "MBT": 1500.0, "BTC": 1500.0,
-        "MET": 60.0,  "ETH": 60.0,
-        "SOL": 5.0, "XRP": 0.05,
+        "MNQ": 30.0,
+        "MNQ1": 30.0,
+        "NQ": 30.0,
+        "NQ1": 30.0,
+        "ES": 6.0,
+        "ES1": 6.0,
+        "MES": 6.0,
+        "GC": 8.0,
+        "GC1": 8.0,
+        "MGC": 8.0,
+        "CL": 1.0,
+        "CL1": 1.0,
+        "MCL": 1.0,
+        "NG": 0.10,
+        "NG1": 0.10,
+        "6E": 0.0030,
+        "6E1": 0.0030,
+        "M6E": 0.0030,
+        "ZN": 0.30,
+        "ZN1": 0.30,
+        "MBT": 1500.0,
+        "BTC": 1500.0,
+        "MET": 60.0,
+        "ETH": 60.0,
+        "SOL": 5.0,
+        "XRP": 0.05,
     }
-    atr_pts = typical_atr_pts if typical_atr_pts is not None else fallback_atr_pts.get(
-        symbol.upper(), 1.0,
+    atr_pts = (
+        typical_atr_pts
+        if typical_atr_pts is not None
+        else fallback_atr_pts.get(
+            symbol.upper(),
+            1.0,
+        )
     )
     # 2026-05-07: was ``spec.point_value`` directly. That returned 5.0 for
     # BTC and 50.0 for ETH from the CME futures table even when the audit
@@ -219,6 +241,7 @@ def friction_R_per_trade(
     # ambiguity correctly.
     try:
         from eta_engine.feeds.instrument_specs import effective_point_value
+
         pv = float(effective_point_value(symbol, route="auto") or spec.point_value)
     except Exception:  # noqa: BLE001
         pv = spec.point_value
@@ -275,9 +298,8 @@ def expected_max_sr(n_trials: int) -> float:
     """
     if n_trials <= 1:
         return 0.0
-    return (
-        (1 - EULER_MASCHERONI) * norm_ppf(1 - 1.0 / n_trials)
-        + EULER_MASCHERONI * norm_ppf(1 - 1.0 / (n_trials * math.e))
+    return (1 - EULER_MASCHERONI) * norm_ppf(1 - 1.0 / n_trials) + EULER_MASCHERONI * norm_ppf(
+        1 - 1.0 / (n_trials * math.e)
     )
 
 
@@ -308,13 +330,13 @@ def deflated_sharpe(
         return 0.0
     sr = mean / sd
     centered = pnl_r - mean
-    m2 = float((centered ** 2).mean())
-    m3 = float((centered ** 3).mean())
-    m4 = float((centered ** 4).mean())
+    m2 = float((centered**2).mean())
+    m3 = float((centered**3).mean())
+    m4 = float((centered**4).mean())
     if m2 <= 0.0:
         return 0.0
-    skew = m3 / (m2 ** 1.5)
-    kurt = m4 / (m2 ** 2)
+    skew = m3 / (m2**1.5)
+    kurt = m4 / (m2**2)
     # Bailey & Lopez de Prado (2014): the expected max of N estimated
     # Sharpe ratios under the null (true SR = 0) has SD = 1/sqrt(T),
     # so E[max_N hat_SR] = (1/sqrt(T)) * E[max_N standard_normals].
@@ -363,12 +385,12 @@ def compute_rigor(
     sharpe_deflated_min: float = 1.0,
 ) -> RigorReport:
     """Run all 5 extensions and return the strict-gate verdict."""
-    n_trials = (
-        int(multi_test_count) if multi_test_count is not None
-        else default_multi_test_count()
-    )
+    n_trials = int(multi_test_count) if multi_test_count is not None else default_multi_test_count()
     boot = block_bootstrap_expR(
-        pnl_r, block_size=block_size, n_resamples=n_resamples, seed=seed,
+        pnl_r,
+        block_size=block_size,
+        n_resamples=n_resamples,
+        seed=seed,
     )
     p_adj = bonferroni_adjust(boot.p_value_raw, n_trials)
     fric = friction_R_per_trade(symbol, avg_stop_atr_mult, typical_atr_pts)
@@ -387,8 +409,7 @@ def compute_rigor(
         fails.append(f"expR_net {net:.3f} <= 0 (friction kills edge)")
     if not sh.sign_stable:
         fails.append(
-            f"split_half not sign-stable (h1={sh.expR_half_1:.3f}, "
-            f"h2={sh.expR_half_2:.3f})",
+            f"split_half not sign-stable (h1={sh.expR_half_1:.3f}, h2={sh.expR_half_2:.3f})",
         )
     if ds < sharpe_deflated_min:
         fails.append(f"sharpe_deflated {ds:.2f} < {sharpe_deflated_min}")

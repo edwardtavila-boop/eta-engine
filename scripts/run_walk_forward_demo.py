@@ -76,35 +76,21 @@ def _explain_gate(res, wf) -> list[str]:  # noqa: ANN001
     # worth calling out even if the strict gate doesn't fail on it
     # alone, since high per-window degradation usually masks the real
     # cause of an aggregate-DSR pass-fail.
-    high_deg_windows = [
-        w for w in res.windows
-        if w.get("degradation_pct", 0.0) > 0.50
-    ]
+    high_deg_windows = [w for w in res.windows if w.get("degradation_pct", 0.0) > 0.50]
     if high_deg_windows:
         idxs = ", ".join(str(w["window"]) for w in high_deg_windows)
-        reasons.append(
-            f"OOS degradation > 50% in window(s): {idxs} "
-            f"(strategy IS-overfits in those folds)"
-        )
+        reasons.append(f"OOS degradation > 50% in window(s): {idxs} (strategy IS-overfits in those folds)")
     if res.fold_dsr_median <= 0.5:
-        reasons.append(
-            f"Per-fold DSR median {res.fold_dsr_median:.3f} <= 0.5 threshold"
-        )
+        reasons.append(f"Per-fold DSR median {res.fold_dsr_median:.3f} <= 0.5 threshold")
     if res.fold_dsr_pass_fraction < wf.fold_dsr_min_pass_fraction:
         reasons.append(
             f"Per-fold DSR pass fraction {res.fold_dsr_pass_fraction * 100:.1f}% "
             f"< {wf.fold_dsr_min_pass_fraction * 100:.0f}% threshold"
         )
-    low_trade_windows = [
-        w for w in res.windows
-        if w.get("oos_trades", 0) < wf.min_trades_per_window
-    ]
+    low_trade_windows = [w for w in res.windows if w.get("oos_trades", 0) < wf.min_trades_per_window]
     if low_trade_windows:
         idxs = ", ".join(str(w["window"]) for w in low_trade_windows)
-        reasons.append(
-            f"OOS trade count below min ({wf.min_trades_per_window}) "
-            f"in window(s): {idxs}"
-        )
+        reasons.append(f"OOS trade count below min ({wf.min_trades_per_window}) in window(s): {idxs}")
     return reasons
 
 

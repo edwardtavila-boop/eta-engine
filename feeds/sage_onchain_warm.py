@@ -15,6 +15,7 @@ Usage::
     python -m eta_engine.scripts.sage_onchain_warm --symbols BTCUSDT,ETHUSDT
     python -m eta_engine.scripts.sage_onchain_warm --force-refresh
 """
+
 from __future__ import annotations
 
 import argparse
@@ -41,8 +42,7 @@ def main(argv: list[str] | None = None) -> int:
         default=",".join(DEFAULT_SYMBOLS),
         help="Comma-separated symbols to warm. Default: BTCUSDT,ETHUSDT",
     )
-    p.add_argument("--force-refresh", action="store_true",
-                   help="Bypass the 5-min cache and re-fetch every symbol.")
+    p.add_argument("--force-refresh", action="store_true", help="Bypass the 5-min cache and re-fetch every symbol.")
     p.add_argument("-v", "--verbose", action="store_true")
     args = p.parse_args(argv)
 

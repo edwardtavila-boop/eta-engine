@@ -48,6 +48,7 @@ Run
     # JSON output (machine-readable)
     python -m eta_engine.scripts.verify_ibkr_subscriptions --json
 """
+
 from __future__ import annotations
 
 # ruff: noqa: ANN401, BLE001, SIM105
@@ -84,31 +85,36 @@ IBC_PRIVATE_PASSWORD_FILES = (
 # Representative probe symbol per exchange.  These are the most-liquid
 # contracts on each venue so the probe always gets a fresh quote.
 PROBES: dict[str, dict[str, str]] = {
-    "CME":   {"symbol": "MNQ", "secType": "CONTFUT", "exchange": "CME",
-              "purpose": "Equity-index futures (MNQ/NQ/MES/ES/M2K/RTY)"},
-    "NYMEX": {"symbol": "CL",  "secType": "CONTFUT", "exchange": "NYMEX",
-              "purpose": "Energy futures (CL/MCL/NG)"},
-    "COMEX": {"symbol": "GC",  "secType": "CONTFUT", "exchange": "COMEX",
-              "purpose": "Metals futures (GC/MGC)"},
-    "CBOT":  {"symbol": "ZN",  "secType": "CONTFUT", "exchange": "CBOT",
-              "purpose": "Rates futures (ZN/ZB/YM/MYM)"},
+    "CME": {
+        "symbol": "MNQ",
+        "secType": "CONTFUT",
+        "exchange": "CME",
+        "purpose": "Equity-index futures (MNQ/NQ/MES/ES/M2K/RTY)",
+    },
+    "NYMEX": {"symbol": "CL", "secType": "CONTFUT", "exchange": "NYMEX", "purpose": "Energy futures (CL/MCL/NG)"},
+    "COMEX": {"symbol": "GC", "secType": "CONTFUT", "exchange": "COMEX", "purpose": "Metals futures (GC/MGC)"},
+    "CBOT": {"symbol": "ZN", "secType": "CONTFUT", "exchange": "CBOT", "purpose": "Rates futures (ZN/ZB/YM/MYM)"},
     # IBKR routes 6E via CME (Globex), so a separate ICE probe is
     # only relevant if the operator subscribes to ICE-listed FX
     # crosses.  Skip by default; can be re-enabled with --include-ice.
 }
 
 OPTIONAL_PROBES: dict[str, dict[str, str]] = {
-    "ICE":   {"symbol": "DX",  "secType": "CONTFUT", "exchange": "NYBOT",
-              "purpose": "ICE Forex (DX dollar index, optional)"},
+    "ICE": {
+        "symbol": "DX",
+        "secType": "CONTFUT",
+        "exchange": "NYBOT",
+        "purpose": "ICE Forex (DX dollar index, optional)",
+    },
 }
 
 
 # IBKR mktDataType callback values:
 DATA_TYPE_LABEL = {
-    1: ("REALTIME",        "PASS",  "live tick stream"),
-    2: ("FROZEN",          "WARN",  "frozen at last close -- outside RTH or no subscription"),
-    3: ("DELAYED",         "FAIL",  "15-min delayed -- subscription INACTIVE for this exchange"),
-    4: ("DELAYED-FROZEN",  "FAIL",  "delayed AND frozen -- subscription INACTIVE + outside RTH"),
+    1: ("REALTIME", "PASS", "live tick stream"),
+    2: ("FROZEN", "WARN", "frozen at last close -- outside RTH or no subscription"),
+    3: ("DELAYED", "FAIL", "15-min delayed -- subscription INACTIVE for this exchange"),
+    4: ("DELAYED-FROZEN", "FAIL", "delayed AND frozen -- subscription INACTIVE + outside RTH"),
 }
 
 
@@ -194,31 +200,34 @@ def _ibc_credential_status(
     private_file_passwords = [(path, _read_first_line(path)) for path in ibc_password_files]
     password_file_placeholder = bool(password_file.exists() and _is_secret_sentinel(file_password))
     private_password_placeholder = any(
-        path.exists() and _is_secret_sentinel(value)
-        for path, value in private_file_passwords
+        path.exists() and _is_secret_sentinel(value) for path, value in private_file_passwords
     )
 
-    login_source, _ = _first_usable_secret([
-        ("env", env_map.get("ETA_IBC_LOGIN_ID")),
-        ("env", env_map.get("IBKR_USERNAME")),
-        ("env", env_map.get("IBKR_LOGIN_ID")),
-        ("ibc_private_config", private_config.get("IbLoginId")),
-        ("credential_json", credential_payload.get("username")),
-        ("credential_json", credential_payload.get("user")),
-        ("credential_json", credential_payload.get("login")),
-        ("credential_json", credential_payload.get("ib_login_id")),
-        ("credential_json", credential_payload.get("user_id")),
-    ])
-    password_source, password_placeholder_seen = _first_usable_secret([
-        ("env", env_map.get("ETA_IBC_PASSWORD")),
-        ("env", env_map.get("IBKR_PASSWORD")),
-        ("ibc_private_config", private_config.get("IbPassword")),
-        *[("ibc_password_file", value) for _, value in private_file_passwords],
-        ("password_file", file_password),
-        ("credential_json", credential_payload.get("password")),
-        ("credential_json", credential_payload.get("pass")),
-        ("credential_json", credential_payload.get("ib_password")),
-    ])
+    login_source, _ = _first_usable_secret(
+        [
+            ("env", env_map.get("ETA_IBC_LOGIN_ID")),
+            ("env", env_map.get("IBKR_USERNAME")),
+            ("env", env_map.get("IBKR_LOGIN_ID")),
+            ("ibc_private_config", private_config.get("IbLoginId")),
+            ("credential_json", credential_payload.get("username")),
+            ("credential_json", credential_payload.get("user")),
+            ("credential_json", credential_payload.get("login")),
+            ("credential_json", credential_payload.get("ib_login_id")),
+            ("credential_json", credential_payload.get("user_id")),
+        ]
+    )
+    password_source, password_placeholder_seen = _first_usable_secret(
+        [
+            ("env", env_map.get("ETA_IBC_PASSWORD")),
+            ("env", env_map.get("IBKR_PASSWORD")),
+            ("ibc_private_config", private_config.get("IbPassword")),
+            *[("ibc_password_file", value) for _, value in private_file_passwords],
+            ("password_file", file_password),
+            ("credential_json", credential_payload.get("password")),
+            ("credential_json", credential_payload.get("pass")),
+            ("credential_json", credential_payload.get("ib_password")),
+        ]
+    )
 
     login_present = login_source is not None
     password_present = password_source is not None
@@ -229,8 +238,7 @@ def _ibc_credential_status(
     elif not login_present:
         status = "MISSING_LOGIN"
         operator_action = (
-            "Seed ETA_IBC_LOGIN_ID/IBKR_USERNAME or add a username to "
-            "eta_engine/secrets/ibkr_credentials.json."
+            "Seed ETA_IBC_LOGIN_ID/IBKR_USERNAME or add a username to eta_engine/secrets/ibkr_credentials.json."
         )
     elif password_placeholder_seen or password_file_placeholder or private_password_placeholder:
         status = "PLACEHOLDER_PASSWORD"
@@ -284,8 +292,9 @@ def _tws_port() -> int | None:
     return None
 
 
-def _probe_one_exchange(ib: object, exchange: str, spec: dict[str, str],
-                        timeout: float = 5.0, log: logging.Logger | None = None) -> dict:
+def _probe_one_exchange(
+    ib: object, exchange: str, spec: dict[str, str], timeout: float = 5.0, log: logging.Logger | None = None
+) -> dict:
     """Issue a reqMktData on one contract, wait for first mktDataType
     callback, then cancel.  Returns a result dict.
 
@@ -304,14 +313,22 @@ def _probe_one_exchange(ib: object, exchange: str, spec: dict[str, str],
         contract = ContFuture(spec["symbol"], spec["exchange"])
         qualified = ib.qualifyContracts(contract)  # type: ignore[attr-defined]
         if not qualified:
-            return {"exchange": exchange, "symbol": spec["symbol"],
-                    "data_type": None, "verdict": "ERROR",
-                    "reason": f"qualifyContracts returned empty for {spec['symbol']}@{spec['exchange']}"}
+            return {
+                "exchange": exchange,
+                "symbol": spec["symbol"],
+                "data_type": None,
+                "verdict": "ERROR",
+                "reason": f"qualifyContracts returned empty for {spec['symbol']}@{spec['exchange']}",
+            }
         contract = qualified[0]
     except Exception as e:
-        return {"exchange": exchange, "symbol": spec["symbol"],
-                "data_type": None, "verdict": "ERROR",
-                "reason": f"contract qualify failed: {e}"}
+        return {
+            "exchange": exchange,
+            "symbol": spec["symbol"],
+            "data_type": None,
+            "verdict": "ERROR",
+            "reason": f"contract qualify failed: {e}",
+        }
 
     # Force realtime request; IBKR will silently downgrade if the sub
     # isn't active on this exchange -- we read the response back.
@@ -336,11 +353,13 @@ def _probe_one_exchange(ib: object, exchange: str, spec: dict[str, str],
         #   200 = No security definition has been found
         #   162 = Historical Market Data Service error
         if errorCode in (354, 10089, 10090, 10091, 10168, 200, 162):
-            captured_errors.append({
-                "code": int(errorCode),
-                "message": str(errorString)[:200],
-                "req_id": int(reqId) if reqId is not None else -1,
-            })
+            captured_errors.append(
+                {
+                    "code": int(errorCode),
+                    "message": str(errorString)[:200],
+                    "req_id": int(reqId) if reqId is not None else -1,
+                }
+            )
 
     def _on_pending_ticks(tickers) -> None:  # noqa: ANN001
         # ib_insync.pendingTickersEvent fires when actual tick data
@@ -357,8 +376,7 @@ def _probe_one_exchange(ib: object, exchange: str, spec: dict[str, str],
                 bid = getattr(t, "bid", None)
                 ask = getattr(t, "ask", None)
                 last = getattr(t, "last", None)
-                if (bid not in (None, -1) or ask not in (None, -1)
-                        or last not in (None, -1)):
+                if bid not in (None, -1) or ask not in (None, -1) or last not in (None, -1):
                     captured_ticks.append({"bid": bid, "ask": ask, "last": last})
                     return
         except Exception:
@@ -397,8 +415,7 @@ def _probe_one_exchange(ib: object, exchange: str, spec: dict[str, str],
             bid = getattr(ticker, "bid", None)
             ask = getattr(ticker, "ask", None)
             last = getattr(ticker, "last", None)
-            if (bid not in (None, -1) or ask not in (None, -1)
-                    or last not in (None, -1)):
+            if bid not in (None, -1) or ask not in (None, -1) or last not in (None, -1):
                 captured_ticks.append({"bid": bid, "ask": ask, "last": last})
         try:
             ib.cancelMktData(contract)  # type: ignore[attr-defined]
@@ -407,50 +424,66 @@ def _probe_one_exchange(ib: object, exchange: str, spec: dict[str, str],
         for ev_name in ("errorEvent", "mktDataTypeEvent", "pendingTickersEvent"):
             try:
                 ev = getattr(ib, ev_name)
-                handler = {"errorEvent": _on_error,
-                            "mktDataTypeEvent": _on_market_data_type,
-                            "pendingTickersEvent": _on_pending_ticks}[ev_name]
+                handler = {
+                    "errorEvent": _on_error,
+                    "mktDataTypeEvent": _on_market_data_type,
+                    "pendingTickersEvent": _on_pending_ticks,
+                }[ev_name]
                 ev -= handler
             except Exception:
                 pass
     except Exception as e:
-        return {"exchange": exchange, "symbol": spec["symbol"],
-                "data_type": None, "verdict": "ERROR",
-                "reason": f"reqMktData failed: {e}"}
+        return {
+            "exchange": exchange,
+            "symbol": spec["symbol"],
+            "data_type": None,
+            "verdict": "ERROR",
+            "reason": f"reqMktData failed: {e}",
+        }
 
     # Subscription error wins — even if mktDataType=1 was echoed back,
     # an Error 354/10168 means the underlying tick stream will never arrive.
     if captured_errors:
         err = captured_errors[0]
-        return {"exchange": exchange, "symbol": spec["symbol"],
-                "data_type": None, "verdict": "FAIL",
-                "reason": f"Error {err['code']}: {err['message'][:80]}",
-                "purpose": spec["purpose"],
-                "ibkr_errors": captured_errors}
+        return {
+            "exchange": exchange,
+            "symbol": spec["symbol"],
+            "data_type": None,
+            "verdict": "FAIL",
+            "reason": f"Error {err['code']}: {err['message'][:80]}",
+            "purpose": spec["purpose"],
+            "ibkr_errors": captured_errors,
+        }
 
     if not captured_ticks:
-        return {"exchange": exchange, "symbol": spec["symbol"],
-                "data_type": captured_type[0] if captured_type else None,
-                "verdict": "TIMEOUT",
-                "reason": f"no real tick data within {timeout}s -- subscription may be missing or market closed"}
+        return {
+            "exchange": exchange,
+            "symbol": spec["symbol"],
+            "data_type": captured_type[0] if captured_type else None,
+            "verdict": "TIMEOUT",
+            "reason": f"no real tick data within {timeout}s -- subscription may be missing or market closed",
+        }
 
     # Real ticks arrived → subscription is genuinely active
     dt = captured_type[0] if captured_type else 1
-    label, verdict, note = DATA_TYPE_LABEL.get(
-        dt, (f"UNKNOWN({dt})", "ERROR", "unrecognized data type code"))
+    label, verdict, note = DATA_TYPE_LABEL.get(dt, (f"UNKNOWN({dt})", "ERROR", "unrecognized data type code"))
     sample = captured_ticks[0]
-    return {"exchange": exchange, "symbol": spec["symbol"],
-            "data_type": dt, "data_type_label": label,
-            "verdict": verdict,
-            "reason": f"{note} (last={sample.get('last')}, bid={sample.get('bid')}, ask={sample.get('ask')})",
-            "purpose": spec["purpose"],
-            "target_conid": target_conid,
-            "sample_tick": sample}
+    return {
+        "exchange": exchange,
+        "symbol": spec["symbol"],
+        "data_type": dt,
+        "data_type_label": label,
+        "verdict": verdict,
+        "reason": f"{note} (last={sample.get('last')}, bid={sample.get('bid')}, ask={sample.get('ask')})",
+        "purpose": spec["purpose"],
+        "target_conid": target_conid,
+        "sample_tick": sample,
+    }
 
 
-def _probe_depth_of_book(ib: object, symbol: str, exchange: str,
-                          *, timeout: float = 5.0,
-                          log: logging.Logger | None = None) -> dict:
+def _probe_depth_of_book(
+    ib: object, symbol: str, exchange: str, *, timeout: float = 5.0, log: logging.Logger | None = None
+) -> dict:
     """Probe whether reqMktDepth works for the given symbol — this is
     a SEPARATE subscription from real-time tick data.
 
@@ -462,23 +495,27 @@ def _probe_depth_of_book(ib: object, symbol: str, exchange: str,
         contract = ContFuture(symbol, exchange)
         qualified = ib.qualifyContracts(contract)  # type: ignore[attr-defined]
         if not qualified:
-            return {"exchange": exchange, "symbol": symbol,
-                    "verdict": "ERROR",
-                    "reason": "qualifyContracts returned empty"}
+            return {
+                "exchange": exchange,
+                "symbol": symbol,
+                "verdict": "ERROR",
+                "reason": "qualifyContracts returned empty",
+            }
         contract = qualified[0]
     except Exception as e:
-        return {"exchange": exchange, "symbol": symbol,
-                "verdict": "ERROR", "reason": f"qualify failed: {e}"}
+        return {"exchange": exchange, "symbol": symbol, "verdict": "ERROR", "reason": f"qualify failed: {e}"}
 
     captured_errors: list[dict] = []
     n_updates = [0]
 
     def _on_depth_error(reqId, errorCode, errorString, contract_arg=None) -> None:  # noqa: ANN001, ARG001, N803
         if errorCode in (309, 354, 10089, 10090, 10091, 322, 200):
-            captured_errors.append({
-                "code": int(errorCode),
-                "message": str(errorString)[:200],
-            })
+            captured_errors.append(
+                {
+                    "code": int(errorCode),
+                    "message": str(errorString)[:200],
+                }
+            )
 
     try:
         try:
@@ -505,43 +542,52 @@ def _probe_depth_of_book(ib: object, symbol: str, exchange: str,
         except Exception:
             pass
     except Exception as e:
-        return {"exchange": exchange, "symbol": symbol,
-                "verdict": "ERROR", "reason": f"reqMktDepth failed: {e}"}
+        return {"exchange": exchange, "symbol": symbol, "verdict": "ERROR", "reason": f"reqMktDepth failed: {e}"}
 
     if captured_errors:
         err = captured_errors[0]
-        return {"exchange": exchange, "symbol": symbol,
-                "verdict": "FAIL",
-                "reason": f"Error {err['code']}: {err['message']}",
-                "ibkr_errors": captured_errors}
+        return {
+            "exchange": exchange,
+            "symbol": symbol,
+            "verdict": "FAIL",
+            "reason": f"Error {err['code']}: {err['message']}",
+            "ibkr_errors": captured_errors,
+        }
 
     if n_updates[0] == 0:
-        return {"exchange": exchange, "symbol": symbol,
-                "verdict": "TIMEOUT",
-                "reason": f"no depth updates in {timeout}s -- subscription may be inactive or market closed"}
+        return {
+            "exchange": exchange,
+            "symbol": symbol,
+            "verdict": "TIMEOUT",
+            "reason": f"no depth updates in {timeout}s -- subscription may be inactive or market closed",
+        }
 
-    return {"exchange": exchange, "symbol": symbol,
-            "verdict": "PASS", "n_levels_seen": n_updates[0],
-            "reason": "depth-of-book streaming"}
+    return {
+        "exchange": exchange,
+        "symbol": symbol,
+        "verdict": "PASS",
+        "n_levels_seen": n_updates[0],
+        "reason": "depth-of-book streaming",
+    }
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--port", type=int, default=None,
-                    help="TWS API port (auto-detect from 4002/7497/4001)")
+    ap.add_argument("--port", type=int, default=None, help="TWS API port (auto-detect from 4002/7497/4001)")
     ap.add_argument("--host", default="127.0.0.1")
-    ap.add_argument("--client-id", type=int, default=33,
-                    help="ib_insync client ID (default 33 -- separate from supervisor)")
-    ap.add_argument("--include-ice", action="store_true",
-                    help="Also probe ICE/NYBOT (e.g. DX dollar index)")
-    ap.add_argument("--probe-timeout", type=float, default=5.0,
-                    help="Seconds to wait for mktDataType callback per exchange")
-    ap.add_argument("--json", action="store_true",
-                    help="Output JSON only (machine-readable)")
+    ap.add_argument(
+        "--client-id", type=int, default=33, help="ib_insync client ID (default 33 -- separate from supervisor)"
+    )
+    ap.add_argument("--include-ice", action="store_true", help="Also probe ICE/NYBOT (e.g. DX dollar index)")
+    ap.add_argument(
+        "--probe-timeout", type=float, default=5.0, help="Seconds to wait for mktDataType callback per exchange"
+    )
+    ap.add_argument("--json", action="store_true", help="Output JSON only (machine-readable)")
     args = ap.parse_args()
 
     logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s",
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(message)s",
         datefmt="%H:%M:%S",
     )
     log = logging.getLogger("verify_ibkr_subs")
@@ -655,8 +701,7 @@ def main() -> int:
     depth_results: list[dict] = []
     if not args.json:
         log.info("probing CME depth-of-book via MNQ@CME (reqMktDepth)...")
-    depth_results.append(_probe_depth_of_book(
-        ib, "MNQ", "CME", timeout=args.probe_timeout, log=log))
+    depth_results.append(_probe_depth_of_book(ib, "MNQ", "CME", timeout=args.probe_timeout, log=log))
 
     try:
         ib.disconnect()
@@ -668,7 +713,9 @@ def main() -> int:
     all_depth_ok = all(r.get("verdict") == "PASS" for r in depth_results)
     digest = {
         "ts": datetime.now(UTC).isoformat(),
-        "host": args.host, "port": port, "client_id": args.client_id,
+        "host": args.host,
+        "port": port,
+        "client_id": args.client_id,
         "setup_status": "OK",
         "setup_error_code": None,
         "credential_status": credential_status,
@@ -687,14 +734,17 @@ def main() -> int:
         print(f"IBKR subscription audit  ({digest['ts']})  port={port}")
         print("=" * 78)
         print(f"  {'Exchange':<8s}  {'Symbol':<6s}  {'Type':<14s}  {'Verdict':<8s}  Note")
-        print(f"  {'-'*8:<8s}  {'-'*6:<6s}  {'-'*14:<14s}  {'-'*8:<8s}  {'-'*40}")
+        print(f"  {'-' * 8:<8s}  {'-' * 6:<6s}  {'-' * 14:<14s}  {'-' * 8:<8s}  {'-' * 40}")
         for r in results:
             label = r.get("data_type_label", "ERROR")
             verdict = r.get("verdict", "ERROR")
-            mark = {"PASS": "[OK]", "WARN": "[??]", "FAIL": "[!!]",
-                    "ERROR": "[!!]", "TIMEOUT": "[--]"}.get(verdict, "[?]")
-            print(f"  {r['exchange']:<8s}  {r['symbol']:<6s}  {label:<14s}  "
-                  f"{mark} {verdict:<5s}  {r.get('reason', '')[:50]}")
+            mark = {"PASS": "[OK]", "WARN": "[??]", "FAIL": "[!!]", "ERROR": "[!!]", "TIMEOUT": "[--]"}.get(
+                verdict, "[?]"
+            )
+            print(
+                f"  {r['exchange']:<8s}  {r['symbol']:<6s}  {label:<14s}  "
+                f"{mark} {verdict:<5s}  {r.get('reason', '')[:50]}"
+            )
         print()
         if digest["all_realtime"]:
             print("  >>> ALL REALTIME -- IBKR Pro tick subscriptions active across probed exchanges.")
@@ -716,10 +766,8 @@ def main() -> int:
         print("-" * 78)
         for r in depth_results:
             verdict = r.get("verdict", "ERROR")
-            mark = {"PASS": "[OK]", "FAIL": "[!!]", "ERROR": "[!!]",
-                    "TIMEOUT": "[--]"}.get(verdict, "[?]")
-            print(f"  {r['exchange']:<8s}  {r['symbol']:<6s}  "
-                  f"{mark} {verdict:<8s}  {r.get('reason', '')[:50]}")
+            mark = {"PASS": "[OK]", "FAIL": "[!!]", "ERROR": "[!!]", "TIMEOUT": "[--]"}.get(verdict, "[?]")
+            print(f"  {r['exchange']:<8s}  {r['symbol']:<6s}  {mark} {verdict:<8s}  {r.get('reason', '')[:50]}")
         if not all_depth_ok:
             print()
             print("      L2 capture daemons WILL NOT WRITE DATA without depth subscription.")

@@ -90,7 +90,8 @@ def _build_session_row(data: dict, days: int, now_iso: str) -> dict:
     """Translate sim JSON into a ledger row, tolerating old + new shapes."""
     pnl = data.get("total_pnl", data.get("pnl", 0.0))
     return {
-        "date": now_iso, "days": days,
+        "date": now_iso,
+        "days": days,
         "bars": data.get("bars", 0),
         "signals": data.get("signals", 0),
         "trades": data.get("trades", 0),
@@ -133,12 +134,15 @@ def _record_session(ledger: dict, bot_id: str, candidate: dict, now_iso: str) ->
     prev = bot_sessions[-1] if bot_sessions else None
     if _is_duplicate_of_prev(prev, candidate):
         if not _ALLOW_DUPLICATE:
-            ledger.setdefault("warnings", []).append({
-                "ts": now_iso, "bot": bot_id,
-                "kind": "duplicate_window_skipped",
-                "trades": candidate.get("trades"),
-                "pnl": candidate.get("pnl"),
-            })
+            ledger.setdefault("warnings", []).append(
+                {
+                    "ts": now_iso,
+                    "bot": bot_id,
+                    "kind": "duplicate_window_skipped",
+                    "trades": candidate.get("trades"),
+                    "pnl": candidate.get("pnl"),
+                }
+            )
             return "duplicate_skipped"
         outcome = "appended_forced"
     else:
@@ -203,12 +207,15 @@ def run_session(days: int = 30, parallel: int = 0) -> int:
 
             candidate = _build_session_row(data, days, now_iso)
             outcome = _record_session(ledger, bot_id, candidate, now_iso)
-            unique = len({(s["trades"], s["winners"], round(s["pnl"], 2))
-                          for s in ledger["bot_sessions"].get(bot_id, [])})
+            unique = len(
+                {(s["trades"], s["winners"], round(s["pnl"], 2)) for s in ledger["bot_sessions"].get(bot_id, [])}
+            )
             sessions_n = len(ledger["bot_sessions"].get(bot_id, []))
             tag = "DUP-SKIP" if outcome == "duplicate_skipped" else "OK"
-            print(f"  [{bot_id}] {tag} {candidate['trades']}T pnl=${candidate['pnl']:+.2f} "
-                  f"(unique-windows: {unique}/{sessions_n})")
+            print(
+                f"  [{bot_id}] {tag} {candidate['trades']}T pnl=${candidate['pnl']:+.2f} "
+                f"(unique-windows: {unique}/{sessions_n})"
+            )
 
     _save_ledger(ledger)
     return 0
@@ -237,12 +244,12 @@ def _run_one_bot(a: object, days: int, now_iso: str, ledger: dict) -> None:
             return
         candidate = _build_session_row(data, days, now_iso)
         outcome = _record_session(ledger, a.bot_id, candidate, now_iso)
-        unique = len({(s["trades"], s["winners"], round(s["pnl"], 2))
-                      for s in ledger["bot_sessions"].get(a.bot_id, [])})
+        unique = len(
+            {(s["trades"], s["winners"], round(s["pnl"], 2)) for s in ledger["bot_sessions"].get(a.bot_id, [])}
+        )
         sessions_n = len(ledger["bot_sessions"].get(a.bot_id, []))
         tag = "DUP-SKIP" if outcome == "duplicate_skipped" else "OK"
-        print(f"{tag} {candidate['trades']}T pnl=${candidate['pnl']:+.2f} "
-              f"(unique-windows: {unique}/{sessions_n})")
+        print(f"{tag} {candidate['trades']}T pnl=${candidate['pnl']:+.2f} (unique-windows: {unique}/{sessions_n})")
     except subprocess.TimeoutExpired:
         print("TIMEOUT")
     except (json.JSONDecodeError, KeyError) as e:
@@ -252,6 +259,7 @@ def _run_one_bot(a: object, days: int, now_iso: str, ledger: dict) -> None:
 def _run_one_bot_subprocess(a: object, days: int, session_count: int = 0) -> tuple[str, dict | None, str | None]:
     """Run one bot in a subprocess (for parallel mode). Returns (bot_id, data_dict, error_str)."""
     import subprocess as sp
+
     cmd = [sys.executable, str(SIM_SCRIPT), "--bot", a.bot_id, "--days", str(days), "--json"]
     skip = session_count * days
     if skip > 0:
@@ -284,8 +292,7 @@ def show_status() -> int:
     print("-" * 86)
 
     for bot_id, history in sorted(sessions.items()):
-        unique_keys = {(s.get("trades"), s.get("winners"), round(s.get("pnl", 0.0), 2))
-                       for s in history}
+        unique_keys = {(s.get("trades"), s.get("winners"), round(s.get("pnl", 0.0), 2)) for s in history}
         unique_n = len(unique_keys)
         # Cumulative across UNIQUE sessions only — sums of dups are nonsense
         seen: set = set()
@@ -302,8 +309,9 @@ def show_status() -> int:
         wr = (total_win / (total_win + total_loss)) * 100 if (total_win + total_loss) > 0 else 0.0
         ready_ok = total_trades >= MIN_TRADES and unique_n >= 3
         ready = "YES" if ready_ok else f"no ({total_trades}/{MIN_TRADES}T, {unique_n}/3 uniq)"
-        print(f"{bot_id:<28} {len(history):>5} {unique_n:>5} {total_trades:>7} "
-              f"${total_pnl:>+10.2f} {wr:>5.1f}% {ready}")
+        print(
+            f"{bot_id:<28} {len(history):>5} {unique_n:>5} {total_trades:>7} ${total_pnl:>+10.2f} {wr:>5.1f}% {ready}"
+        )
 
     return 0
 
@@ -315,8 +323,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--status", action="store_true", help="show current soak status")
     p.add_argument("--reset", type=str, default=None, help="bot_id to reset soak clock")
     p.add_argument("--parallel", type=int, default=0, help="run N bots in parallel (0=sequential)")
-    p.add_argument("--allow-duplicate", action="store_true",
-                   help="record duplicate-window sessions (default: skip them)")
+    p.add_argument(
+        "--allow-duplicate", action="store_true", help="record duplicate-window sessions (default: skip them)"
+    )
     args = p.parse_args(argv)
 
     _ALLOW_DUPLICATE = args.allow_duplicate

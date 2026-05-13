@@ -79,21 +79,12 @@ class _Open:
                     f"vwap_reversion bug class — fix the strategy."
                 )
             if self.target <= self.entry_price:
-                raise ValueError(
-                    f"LONG target ({self.target}) must be ABOVE entry "
-                    f"({self.entry_price})."
-                )
+                raise ValueError(f"LONG target ({self.target}) must be ABOVE entry ({self.entry_price}).")
         elif s in {"SELL", "SHORT"}:
             if self.stop <= self.entry_price:
-                raise ValueError(
-                    f"SHORT stop ({self.stop}) must be ABOVE entry "
-                    f"({self.entry_price})."
-                )
+                raise ValueError(f"SHORT stop ({self.stop}) must be ABOVE entry ({self.entry_price}).")
             if self.target >= self.entry_price:
-                raise ValueError(
-                    f"SHORT target ({self.target}) must be BELOW entry "
-                    f"({self.entry_price})."
-                )
+                raise ValueError(f"SHORT target ({self.target}) must be BELOW entry ({self.entry_price}).")
         else:
             raise ValueError(f"side must be BUY/LONG or SELL/SHORT, got {self.side!r}")
         if self.qty <= 0:
@@ -107,9 +98,7 @@ class _Open:
         # corrupt the trade pnl. Catch at construction.
         if self.partial_target is not None:
             if not (0.0 < self.partial_qty_frac < 1.0):
-                raise ValueError(
-                    f"partial_qty_frac must be in (0, 1), got {self.partial_qty_frac}"
-                )
+                raise ValueError(f"partial_qty_frac must be in (0, 1), got {self.partial_qty_frac}")
             if s in {"BUY", "LONG"}:
                 if not (self.entry_price < self.partial_target < self.target):
                     raise ValueError(
@@ -159,9 +148,7 @@ class BacktestEngine:
         # MNQ Window 0 finding (strategy bleeds in trending regimes,
         # +EV in choppy). Default None preserves legacy no-gate
         # behaviour for every existing caller.
-        self.block_regimes = (
-            frozenset(block_regimes) if block_regimes is not None else None
-        )
+        self.block_regimes = frozenset(block_regimes) if block_regimes is not None else None
         # ctx-flag gate: every key listed here must be truthy in the
         # ctx dict for _enter() to proceed. Built for the 2026-04-27
         # MNQ optimization stack (session_ok blocks first/last 30m
@@ -234,7 +221,8 @@ class BacktestEngine:
 
     # ── Trade-close callback infrastructure ──
     def attach_trade_close_callback(
-        self, callback: Callable[[Trade], None] | None,
+        self,
+        callback: Callable[[Trade], None] | None,
     ) -> None:
         """Attach (or detach) a trade-close callback after construction.
 
@@ -337,8 +325,7 @@ class BacktestEngine:
             t.partial_target is not None
             and not t.partial_taken
             and (
-                (t.side == "BUY" and bar.high >= t.partial_target)
-                or (t.side == "SELL" and bar.low <= t.partial_target)
+                (t.side == "BUY" and bar.high >= t.partial_target) or (t.side == "SELL" and bar.low <= t.partial_target)
             )
         ):
             partial_qty = t.qty * t.partial_qty_frac

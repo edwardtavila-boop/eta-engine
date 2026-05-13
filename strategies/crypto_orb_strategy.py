@@ -75,10 +75,7 @@ def crypto_orb_strategy(config: CryptoORBConfig | None = None) -> ORBStrategy:
     """
     cfg = config or CryptoORBConfig()
     _default = CryptoORBConfig()
-    if (
-        cfg.rth_open_local == _default.rth_open_local
-        and cfg.range_minutes == _default.range_minutes
-    ):
+    if cfg.rth_open_local == _default.rth_open_local and cfg.range_minutes == _default.range_minutes:
         raise ValueError(
             "CryptoORBStrategy requires explicit rth_open_local + "
             "range_minutes — crypto has no session open, you must "

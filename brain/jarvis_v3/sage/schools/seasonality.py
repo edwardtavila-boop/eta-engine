@@ -10,6 +10,7 @@ Heuristic: lookup the current bar's timestamp against a static seasonal
 edge table. Returns LONG/SHORT/NEUTRAL with conviction proportional to
 the historical edge magnitude.
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -25,23 +26,23 @@ from eta_engine.brain.jarvis_v3.sage.base import (
 #: Hour-of-day (ET) -> (bias, conviction). Rough heuristic; refine from
 #: realized data once edge tracker has 3+ months of bars.
 HOURLY_EDGE_ET: dict[int, tuple[Bias, float]] = {
-    9:  (Bias.LONG,    0.45),  # 09:30 NY open momentum
-    10: (Bias.LONG,    0.30),
+    9: (Bias.LONG, 0.45),  # 09:30 NY open momentum
+    10: (Bias.LONG, 0.30),
     11: (Bias.NEUTRAL, 0.10),
     12: (Bias.NEUTRAL, 0.20),  # lunch-time chop
     13: (Bias.NEUTRAL, 0.20),
-    14: (Bias.LONG,    0.25),  # afternoon resumption (slight bullish bias historically)
+    14: (Bias.LONG, 0.25),  # afternoon resumption (slight bullish bias historically)
     15: (Bias.NEUTRAL, 0.15),
     16: (Bias.NEUTRAL, 0.10),  # close
 }
 
 #: Day-of-week (Mon=0) -> (bias, conviction)
 WEEKDAY_EDGE: dict[int, tuple[Bias, float]] = {
-    0: (Bias.LONG,    0.20),  # Monday gap-fill bias
+    0: (Bias.LONG, 0.20),  # Monday gap-fill bias
     1: (Bias.NEUTRAL, 0.10),
     2: (Bias.NEUTRAL, 0.10),
     3: (Bias.NEUTRAL, 0.10),
-    4: (Bias.SHORT,   0.15),  # Friday risk-off bias (mild)
+    4: (Bias.SHORT, 0.15),  # Friday risk-off bias (mild)
 }
 
 
@@ -76,14 +77,19 @@ class SeasonalitySchool(SchoolBase):
     def analyze(self, ctx: MarketContext) -> SchoolVerdict:
         if ctx.n_bars == 0:
             return SchoolVerdict(
-                school=self.NAME, bias=Bias.NEUTRAL, conviction=0.0,
-                aligned_with_entry=False, rationale="no bars",
+                school=self.NAME,
+                bias=Bias.NEUTRAL,
+                conviction=0.0,
+                aligned_with_entry=False,
+                rationale="no bars",
             )
         last_bar = ctx.bars[-1]
         ts = _bar_timestamp_utc(last_bar)
         if ts is None:
             return SchoolVerdict(
-                school=self.NAME, bias=Bias.NEUTRAL, conviction=0.0,
+                school=self.NAME,
+                bias=Bias.NEUTRAL,
+                conviction=0.0,
                 aligned_with_entry=False,
                 rationale="no parseable timestamp on last bar",
             )
@@ -114,7 +120,7 @@ class SeasonalitySchool(SchoolBase):
         elif wd_conv > 0.10:
             bias = wd_bias
             conv = wd_conv
-            rationale = f"weekday ({['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][weekday]}) bias dominates"
+            rationale = f"weekday ({['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][weekday]}) bias dominates"
         else:
             bias = Bias.NEUTRAL
             conv = 0.05

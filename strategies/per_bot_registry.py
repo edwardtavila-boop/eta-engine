@@ -49,11 +49,9 @@ _BASE_BLOCK = frozenset({"trending_up", "trending_down"})
 
 
 ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
-
     # ═══════════════════════════════════════════════════════════════════
     # DIAMOND TIER — paper-soak proven profitable (ETH)
     # ═══════════════════════════════════════════════════════════════════
-
     # eth_sweep_reclaim — THE CHAMPION. 62.5% WR, +$17k on 160 trades.
     # Sweep/reclaim on ETH 1h: detects liquidity sweeps at prior N-bar
     # extremes, waits for reclaim + close confirmation, enters with
@@ -84,7 +82,7 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "crypto_native": True,
             "sweep_preset": "eth",
             "research_candidate": True,
-                    "warmup_policy": {"promoted_on": "2026-05-05", "warmup_days": 30, "risk_multiplier_during_warmup": 0.5},
+            "warmup_policy": {"promoted_on": "2026-05-05", "warmup_days": 30, "risk_multiplier_during_warmup": 0.5},
             "daily_loss_limit_pct": 4.0,
             "deactivated": True,
             "deactivated_on": "2026-05-07",
@@ -94,9 +92,8 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
                 "Identical lab metrics to eth_sage_daily and eth_perp "
                 "(= one strategy in three wrappers)."
             ),
-},
+        },
     ),
-
     # eth_perp — SAVED. 40% WR, +$8.8k on 120 trades.
     # Was crypto_orb with RR=1.0 (0% WR). Switched to sage_daily_gated
     # with crypto_orb base at RR=3.0. Sage gate filters directional false
@@ -155,7 +152,6 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             ),
         },
     ),
-
     # eth_sage_daily — ELITE-GATE 2026-05-05: ALL GREEN — promote to paper-soak.
     #   Latest 720d lab retest cleared all gates: 370 trades, 52.7% WR,
     #   Sharpe 0.859, PF 1.114, max DD 19.0%. This is now the active ETH
@@ -192,10 +188,13 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             },
             "elite_gate_passed_PRIOR_CLAIM": "2026-05-05",
             "elite_gate_results_PRIOR_CLAIM": (
-                "370 trades, 52.7% WR, Sharpe 0.859, PF 1.114, "
-                "max DD 19.0%, pass_reason=all gates passed"
+                "370 trades, 52.7% WR, Sharpe 0.859, PF 1.114, max DD 19.0%, pass_reason=all gates passed"
             ),
-            "walk_forward_overrides": {"agg_degradation_mode": True, "long_haul_mode": True, "long_haul_min_pos_fraction": 0.38},
+            "walk_forward_overrides": {
+                "agg_degradation_mode": True,
+                "long_haul_mode": True,
+                "long_haul_min_pos_fraction": 0.38,
+            },
             "underlying_strategy": "crypto_orb",
             # Differentiator from eth_sweep_reclaim (which is pure
             # sweep_reclaim with no sub_strategy_extras). Both bots
@@ -227,7 +226,7 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "sage_strict_mode": False,
             "sage_lookback_daily_bars": 200,
             "warmup_policy": {"promoted_on": "2026-04-30", "warmup_days": 30, "risk_multiplier_during_warmup": 0.5},
-                    "daily_loss_limit_pct": 4.0,
+            "daily_loss_limit_pct": 4.0,
             # CELLARED 2026-05-12: operator pivot to FUTURES ONLY fleet
             # (IBKR/Tastytrade now, Tradovate within 48h).  Spot ETH on
             # Alpaca/Coinbase paused indefinitely pending re-evaluation.
@@ -240,13 +239,11 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
                 "ETH suspended.  ETH exposure available via CME micro-ether "
                 "futures (MET) which remains in production candidate set."
             ),
-},
+        },
     ),
-
     # ═══════════════════════════════════════════════════════════════════
     # DIAMOND TIER — paper-soak proven profitable (BTC)
     # ═══════════════════════════════════════════════════════════════════
-
     # btc_optimized — PROVEN BTC ARCHITECTURE. 50% WR, +$35k on 32 trades.
     # Sweep_reclaim + confluence scorecard. THIS is the BTC diamond —
     # no other BTC architecture is positive in paper soak.
@@ -289,8 +286,12 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
                 },
             },
             "scorecard_config": {
-                "min_score": 2, "a_plus_score": 3, "a_plus_size_mult": 1.3,
-                "fast_ema": 21, "mid_ema": 50, "slow_ema": 100,
+                "min_score": 2,
+                "a_plus_score": 3,
+                "a_plus_size_mult": 1.3,
+                "fast_ema": 21,
+                "mid_ema": 50,
+                "slow_ema": 100,
             },
             "per_ticker_optimal": "BTC",
             "research_candidate": True,
@@ -313,7 +314,6 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             ),
         },
     ),
-
     # sol_optimized — paper-soak research bot for SOL diversification.
     # Mirrors the proven btc_optimized mechanic (sweep_reclaim + scorecard)
     # but on SOL/USD spot via Alpaca. Status starts at research_candidate
@@ -378,8 +378,12 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
                 },
             },
             "scorecard_config": {
-                "min_score": 2, "a_plus_score": 3, "a_plus_size_mult": 1.3,
-                "fast_ema": 21, "mid_ema": 50, "slow_ema": 100,
+                "min_score": 2,
+                "a_plus_score": 3,
+                "a_plus_size_mult": 1.3,
+                "fast_ema": 21,
+                "mid_ema": 50,
+                "slow_ema": 100,
             },
             "per_ticker_optimal": "SOL",
             "research_candidate": True,
@@ -404,7 +408,6 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             ),
         },
     ),
-
     # btc_hybrid — migrated to proven BTC architecture (was sage_daily_gated 0% WR).
     StrategyAssignment(
         bot_id="btc_hybrid",
@@ -428,15 +431,23 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "walk_forward_overrides": {"long_haul_mode": True, "long_haul_min_pos_fraction": 0.38},
             "sub_strategy_kind": "sweep_reclaim",
             "sub_strategy_extras": {
-                "level_lookback": 48, "reclaim_window": 3,
-                "min_wick_pct": 0.30, "min_volume_z": 0.3,
-                "rr_target": 3.0, "atr_stop_mult": 2.0,
-                "max_trades_per_day": 2, "min_bars_between_trades": 12,
+                "level_lookback": 48,
+                "reclaim_window": 3,
+                "min_wick_pct": 0.30,
+                "min_volume_z": 0.3,
+                "rr_target": 3.0,
+                "atr_stop_mult": 2.0,
+                "max_trades_per_day": 2,
+                "min_bars_between_trades": 12,
                 "warmup_bars": 72,
             },
             "scorecard_config": {
-                "min_score": 2, "a_plus_score": 3, "a_plus_size_mult": 1.3,
-                "fast_ema": 21, "mid_ema": 50, "slow_ema": 100,
+                "min_score": 2,
+                "a_plus_score": 3,
+                "a_plus_size_mult": 1.3,
+                "fast_ema": 21,
+                "mid_ema": 50,
+                "slow_ema": 100,
             },
             "per_ticker_optimal": "BTC",
             "daily_loss_limit_pct": 4.0,
@@ -462,7 +473,6 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "fleet_audit_dedup_on": "2026-05-07",
         },
     ),
-
     # btc_regime_trend_etf — TIGHTER variant of the BTC sweep_reclaim
     # base.  Reactivated 2026-05-05 with deliberately differentiated
     # parameters (vs btc_hybrid's wider profile) so the three BTC slots
@@ -501,21 +511,28 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "fleet_corr_partner": "btc_hybrid",
             "sub_strategy_kind": "sweep_reclaim",
             "sub_strategy_extras": {
-                "level_lookback": 24, "reclaim_window": 3,
-                "min_wick_pct": 0.50, "min_volume_z": 0.3,
-                "rr_target": 2.0, "atr_stop_mult": 1.5,
-                "max_trades_per_day": 2, "min_bars_between_trades": 12,
+                "level_lookback": 24,
+                "reclaim_window": 3,
+                "min_wick_pct": 0.50,
+                "min_volume_z": 0.3,
+                "rr_target": 2.0,
+                "atr_stop_mult": 1.5,
+                "max_trades_per_day": 2,
+                "min_bars_between_trades": 12,
                 "warmup_bars": 72,
             },
             "scorecard_config": {
-                "min_score": 3, "a_plus_score": 4, "a_plus_size_mult": 1.3,
-                "fast_ema": 21, "mid_ema": 50, "slow_ema": 100,
+                "min_score": 3,
+                "a_plus_score": 4,
+                "a_plus_size_mult": 1.3,
+                "fast_ema": 21,
+                "mid_ema": 50,
+                "slow_ema": 100,
             },
             "per_ticker_optimal": "BTC",
             "etf_csv_path": _ETF_FLOWS_PATH,
         },
     ),
-
     # btc_sage_daily_etf — WIDER variant of the BTC sweep_reclaim base.
     # Reactivated 2026-05-05 with deliberately differentiated parameters
     # (vs btc_hybrid's baseline AND vs the tight variant above).
@@ -553,25 +570,31 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "daily_loss_limit_pct": 4.0,
             "sub_strategy_kind": "sweep_reclaim",
             "sub_strategy_extras": {
-                "level_lookback": 96, "reclaim_window": 5,
-                "min_wick_pct": 0.30, "min_volume_z": 0.3,
-                "rr_target": 4.0, "atr_stop_mult": 2.0,
-                "max_trades_per_day": 1, "min_bars_between_trades": 24,
+                "level_lookback": 96,
+                "reclaim_window": 5,
+                "min_wick_pct": 0.30,
+                "min_volume_z": 0.3,
+                "rr_target": 4.0,
+                "atr_stop_mult": 2.0,
+                "max_trades_per_day": 1,
+                "min_bars_between_trades": 24,
                 "warmup_bars": 200,
             },
             "scorecard_config": {
-                "min_score": 2, "a_plus_score": 3, "a_plus_size_mult": 1.3,
-                "fast_ema": 21, "mid_ema": 50, "slow_ema": 200,
+                "min_score": 2,
+                "a_plus_score": 3,
+                "a_plus_size_mult": 1.3,
+                "fast_ema": 21,
+                "mid_ema": 50,
+                "slow_ema": 200,
             },
             "per_ticker_optimal": "BTC",
             "etf_csv_path": _ETF_FLOWS_PATH,
         },
     ),
-
     # ═══════════════════════════════════════════════════════════════════
     # DIAMOND TIER — paper-soak proven workable (MNQ/NQ futures)
     # ═══════════════════════════════════════════════════════════════════
-
     # mnq_futures_sage — ORB with retest + sage gate. 30.1% WR, close to breakeven.
     # RETUNED: lowered sage conv 0.50→0.40 (fewer missed breakouts), volume filter
     # 1.0→1.5 (require real volume on breakout), retest window 5→3 (faster confirm).
@@ -600,11 +623,20 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "sage_min_conviction": 0.55,
             "sage_min_alignment": 0.50,
             "sage_lookback_bars": 200,
-            "enabled_schools": frozenset({
-                "dow_theory", "wyckoff", "trend_following", "vpa", "market_profile",
-                "smc_ict", "order_flow", "support_resistance",
-                "volatility_regime", "risk_management",
-            }),
+            "enabled_schools": frozenset(
+                {
+                    "dow_theory",
+                    "wyckoff",
+                    "trend_following",
+                    "vpa",
+                    "market_profile",
+                    "smc_ict",
+                    "order_flow",
+                    "support_resistance",
+                    "volatility_regime",
+                    "risk_management",
+                }
+            ),
             "orb_range_minutes": 15,
             "orb_config": {
                 "range_minutes": 15,
@@ -630,7 +662,7 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "enable_vix_filter": True,
             "vix_lookback_bars": 252,
             "vix_pct_threshold": 0.90,
-                        "alpha_sniper": {
+            "alpha_sniper": {
                 "enable_tape_reading": True,
                 "enable_intermarket": True,
                 "enable_spread_check": False,
@@ -642,7 +674,6 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "daily_loss_limit_pct": 4.0,
         },
     ),
-
     # nq_futures_sage — same ORB+retest+sage on NQ. 35.4% WR, RR=3.0.
     StrategyAssignment(
         bot_id="nq_futures_sage",
@@ -667,11 +698,20 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "sage_min_conviction": 0.55,
             "sage_min_alignment": 0.50,
             "sage_lookback_bars": 200,
-            "enabled_schools": frozenset({
-                "dow_theory", "wyckoff", "trend_following", "vpa", "market_profile",
-                "smc_ict", "order_flow", "support_resistance",
-                "volatility_regime", "risk_management",
-            }),
+            "enabled_schools": frozenset(
+                {
+                    "dow_theory",
+                    "wyckoff",
+                    "trend_following",
+                    "vpa",
+                    "market_profile",
+                    "smc_ict",
+                    "order_flow",
+                    "support_resistance",
+                    "volatility_regime",
+                    "risk_management",
+                }
+            ),
             "orb_range_minutes": 15,
             "orb_config": {
                 "range_minutes": 15,
@@ -692,7 +732,7 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "enable_vix_filter": True,
             "vix_lookback_bars": 252,
             "vix_pct_threshold": 0.90,
-                        "alpha_sniper": {
+            "alpha_sniper": {
                 "enable_tape_reading": True,
                 "enable_intermarket": True,
                 "enable_spread_check": False,
@@ -704,7 +744,6 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "daily_loss_limit_pct": 4.0,
         },
     ),
-
     # mnq_sweep_reclaim — NEW DIAMOND. Same btc_optimized formula on MNQ 5m intraday.
     # Sweep_reclaim finds liquidity grabs at prior N-bar extremes; confluence
     # scorecard requires 2/5 quality factors. MNQ-specific: tighter ATR stop
@@ -759,8 +798,12 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
                 "enable_drift_boost": False,
             },
             "scorecard_config": {
-                "min_score": 2, "a_plus_score": 3, "a_plus_size_mult": 1.3,
-                "fast_ema": 9, "mid_ema": 21, "slow_ema": 50,
+                "min_score": 2,
+                "a_plus_score": 3,
+                "a_plus_size_mult": 1.3,
+                "fast_ema": 9,
+                "mid_ema": 21,
+                "slow_ema": 50,
             },
             "per_ticker_optimal": "MNQ",
             "research_candidate": True,
@@ -768,14 +811,12 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "warmup_policy": {"promoted_on": "2026-05-02", "warmup_days": 30, "risk_multiplier_during_warmup": 0.5},
         },
     ),
-
     # ═══════════════════════════════════════════════════════════════════
     # DIAMOND TIER — new supercharged extensions (2026-05-02)
     # Fresh builds. Paper-soak pending. Architecture proven via
     # btc_optimized pattern (sub-strategy → confluence scorecard → A+
     # size boost). Each fills a gap the existing diamond tier misses.
     # ═══════════════════════════════════════════════════════════════════
-
     # rsi_mr_mnq — RSI/BB Mean Reversion on MNQ 5m.
     StrategyAssignment(
         bot_id="rsi_mr_mnq",
@@ -802,17 +843,22 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "promotion_status": "research_candidate",
             "sub_strategy_kind": "rsi_mean_reversion",
             "sub_strategy_extras": {
-                "rsi_period": 14, "oversold_threshold": 25.0,
+                "rsi_period": 14,
+                "oversold_threshold": 25.0,
                 "overbought_threshold": 75.0,
-                "bb_window": 20, "bb_std_mult": 2.0,
-                "min_volume_z": 0.3, "require_rejection": True,
+                "bb_window": 20,
+                "bb_std_mult": 2.0,
+                "min_volume_z": 0.3,
+                "require_rejection": True,
                 # PAPER-SOAK V2 tuning (2026-05-06): heatmap said 1.0x =
                 # sharpe 1.81, but actual paper soak showed ~50T at -$50
                 # (near-breakeven) — 1.0x was eating stops on noise before
                 # the mean-reversion could play out.  1.5x + rr 2.0 is the
                 # fleet-soak-informed target.
-                "rr_target": 2.0, "atr_stop_mult": 1.5,
-                "max_trades_per_day": 3, "min_bars_between_trades": 12,
+                "rr_target": 2.0,
+                "atr_stop_mult": 1.5,
+                "max_trades_per_day": 3,
+                "min_bars_between_trades": 12,
                 "warmup_bars": 50,
                 # 2026-05-07: HTF agreement gate on 5m bars (commit 1fec044).
                 # rsi_long/short_threshold are stricter A+ thresholds the
@@ -825,13 +871,18 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
                 "require_htf_agreement": True,
             },
             "scorecard_config": {
-                "min_score": 2, "a_plus_score": 3, "a_plus_size_mult": 1.3,
-                "fast_ema": 9, "mid_ema": 21, "slow_ema": 50,
+                "min_score": 2,
+                "a_plus_score": 3,
+                "a_plus_size_mult": 1.3,
+                "fast_ema": 9,
+                "mid_ema": 21,
+                "slow_ema": 50,
             },
             "per_ticker_optimal": "MNQ",
             "paper_soak_result": "28.6% WR, +$66 on 7 trades",
             "walk_forward_overrides": {
-                "long_haul_mode": True, "long_haul_min_pos_fraction": 0.33,
+                "long_haul_mode": True,
+                "long_haul_min_pos_fraction": 0.33,
                 "min_trades_per_window": 2,
             },
             "research_candidate": True,
@@ -851,7 +902,6 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             ),
         },
     ),
-
     # rsi_mr_btc — DEACTIVATED. BTC 1h trends too strongly for mean-reversion.
     # RSI/BB mean-reversion works on MNQ 5m (28.6% WR, +$66) but BTC on 1h
     # has persistent directional moves that break the mean-reversion premise.
@@ -875,7 +925,6 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         ),
         extras={"deactivated": True, "deactivation_reason": "BTC trends too strongly for mean-reversion on 1h"},
     ),
-
     # vwap_mr_mnq — VWAP Reversion on MNQ 5m.
     StrategyAssignment(
         bot_id="vwap_mr_mnq",
@@ -899,15 +948,22 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "promotion_status": "production_candidate",
             "sub_strategy_kind": "vwap_reversion",
             "sub_strategy_extras": {
-                "vwap_std_band": 2.0, "min_dev_std_mult": 1.8,
+                "vwap_std_band": 2.0,
+                "min_dev_std_mult": 1.8,
                 "min_volume_z": 0.3,
-                "rr_target": 2.0, "atr_stop_mult": 1.0,
-                "max_trades_per_day": 3, "min_bars_between_trades": 12,
+                "rr_target": 2.0,
+                "atr_stop_mult": 1.0,
+                "max_trades_per_day": 3,
+                "min_bars_between_trades": 12,
                 "warmup_bars": 50,
             },
             "scorecard_config": {
-                "min_score": 2, "a_plus_score": 3, "a_plus_size_mult": 1.3,
-                "fast_ema": 9, "mid_ema": 21, "slow_ema": 50,
+                "min_score": 2,
+                "a_plus_score": 3,
+                "a_plus_size_mult": 1.3,
+                "fast_ema": 9,
+                "mid_ema": 21,
+                "slow_ema": 50,
             },
             "per_ticker_optimal": "MNQ",
             "paper_soak_result": "58.8% WR, +$171 on 3000 bars",
@@ -928,7 +984,6 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             ),
         },
     ),
-
     # vwap_mr_nq — VWAP Reversion on NQ 5m.
     StrategyAssignment(
         bot_id="vwap_mr_nq",
@@ -952,15 +1007,22 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "promotion_status": "production_candidate",
             "sub_strategy_kind": "vwap_reversion",
             "sub_strategy_extras": {
-                "vwap_std_band": 2.0, "min_dev_std_mult": 1.8,
+                "vwap_std_band": 2.0,
+                "min_dev_std_mult": 1.8,
                 "min_volume_z": 0.3,
-                "rr_target": 2.0, "atr_stop_mult": 1.0,
-                "max_trades_per_day": 3, "min_bars_between_trades": 12,
+                "rr_target": 2.0,
+                "atr_stop_mult": 1.0,
+                "max_trades_per_day": 3,
+                "min_bars_between_trades": 12,
                 "warmup_bars": 50,
             },
             "scorecard_config": {
-                "min_score": 2, "a_plus_score": 3, "a_plus_size_mult": 1.3,
-                "fast_ema": 9, "mid_ema": 21, "slow_ema": 50,
+                "min_score": 2,
+                "a_plus_score": 3,
+                "a_plus_size_mult": 1.3,
+                "fast_ema": 9,
+                "mid_ema": 21,
+                "slow_ema": 50,
             },
             "per_ticker_optimal": "NQ",
             "daily_loss_limit_pct": 4.0,
@@ -978,7 +1040,6 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             ),
         },
     ),
-
     # vwap_mr_btc — VWAP Reversion on BTC 1h.
     StrategyAssignment(
         bot_id="vwap_mr_btc",
@@ -1005,10 +1066,13 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "promotion_status": "production_candidate",
             "sub_strategy_kind": "vwap_reversion",
             "sub_strategy_extras": {
-                "vwap_std_band": 2.0, "min_dev_std_mult": 1.5,
+                "vwap_std_band": 2.0,
+                "min_dev_std_mult": 1.5,
                 "min_volume_z": 0.3,
-                "rr_target": 2.5, "atr_stop_mult": 1.5,
-                "max_trades_per_day": 2, "min_bars_between_trades": 12,
+                "rr_target": 2.5,
+                "atr_stop_mult": 1.5,
+                "max_trades_per_day": 2,
+                "min_bars_between_trades": 12,
                 "warmup_bars": 72,
                 # London-window gate (07:00-09:00 UTC). Strings are coerced
                 # to datetime.time in VWAPReversionConfig.__post_init__ so
@@ -1018,8 +1082,12 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
                 "session_tz": "UTC",
             },
             "scorecard_config": {
-                "min_score": 1, "a_plus_score": 2, "a_plus_size_mult": 1.5,
-                "fast_ema": 21, "mid_ema": 50, "slow_ema": 100,
+                "min_score": 1,
+                "a_plus_score": 2,
+                "a_plus_size_mult": 1.5,
+                "fast_ema": 21,
+                "mid_ema": 50,
+                "slow_ema": 100,
             },
             "per_ticker_optimal": "BTC",
             "paper_soak_result": "85.7% WR, +$1,947 on 3000 bars",
@@ -1043,7 +1111,6 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             ),
         },
     ),
-
     # volume_profile_mnq — Volume Profile / Value Area on MNQ 5m.
     StrategyAssignment(
         bot_id="volume_profile_mnq",
@@ -1085,10 +1152,13 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             ),
             "sub_strategy_kind": "volume_profile",
             "sub_strategy_extras": {
-                "profile_lookback": 1000, "bucket_size": 2.0,
-                "min_va_spread_atr_mult": 2.0, "min_extreme_distance_atr_mult": 1.5,
+                "profile_lookback": 1000,
+                "bucket_size": 2.0,
+                "min_va_spread_atr_mult": 2.0,
+                "min_extreme_distance_atr_mult": 1.5,
                 "max_qty_equity_pct": 0.005,
-                "require_rejection": True, "min_rejection_wick_pct": 0.25,
+                "require_rejection": True,
+                "min_rejection_wick_pct": 0.25,
                 "min_volume_z": 0.3,
                 "freeze_profile_after_warmup": False,
                 # PAPER-SOAK V2 (2026-05-06): freeze_profile_after_warmup
@@ -1096,15 +1166,21 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
                 # 0-1000 meant all 50 entries fired on STALE POC/VAH/VAL,
                 # explaining the -$2800 bleed.  False + warmup 500 lets
                 # the profile stay current.  rr_target 1.5→2.0.
-                "rr_target": 2.0, "atr_stop_mult": 2.5,
-                "max_trades_per_day": 2, "min_bars_between_trades": 24,
+                "rr_target": 2.0,
+                "atr_stop_mult": 2.5,
+                "max_trades_per_day": 2,
+                "min_bars_between_trades": 24,
                 "warmup_bars": 500,
             },
             "scorecard_config": {
-                "min_score": 2, "a_plus_score": 3, "a_plus_size_mult": 1.3,
-                "fast_ema": 9, "mid_ema": 21, "slow_ema": 50,
+                "min_score": 2,
+                "a_plus_score": 3,
+                "a_plus_size_mult": 1.3,
+                "fast_ema": 9,
+                "mid_ema": 21,
+                "slow_ema": 50,
             },
-                        "edge_enabled": True,
+            "edge_enabled": True,
             "edge_config": {
                 "enable_session_gate": True,
                 "is_crypto": False,
@@ -1131,7 +1207,6 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "daily_loss_limit_pct": 4.0,
         },
     ),
-
     # volume_profile_nq — Volume Profile / Value Area on NQ 5m.
     # NEW 2026-05-07: clone of volume_profile_mnq targeting NQ. The MNQ
     # variant is the audit's only deflated-Sharpe survivor (sh_def +1.98
@@ -1177,24 +1252,33 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             ),
             "sub_strategy_kind": "volume_profile",
             "sub_strategy_extras": {
-                "profile_lookback": 1000, "bucket_size": 2.0,
-                "min_va_spread_atr_mult": 2.0, "min_extreme_distance_atr_mult": 1.5,
+                "profile_lookback": 1000,
+                "bucket_size": 2.0,
+                "min_va_spread_atr_mult": 2.0,
+                "min_extreme_distance_atr_mult": 1.5,
                 # NQ has 10x the per-tick value of MNQ; scale equity-pct
                 # cap down 4x so 1 NQ contract is actually purchaseable
                 # within budget but heavy stacking is constrained.
                 "max_qty_equity_pct": 0.00125,
-                "require_rejection": True, "min_rejection_wick_pct": 0.25,
+                "require_rejection": True,
+                "min_rejection_wick_pct": 0.25,
                 "min_volume_z": 0.3,
                 "freeze_profile_after_warmup": False,
-                "rr_target": 2.0, "atr_stop_mult": 2.5,
-                "max_trades_per_day": 2, "min_bars_between_trades": 24,
+                "rr_target": 2.0,
+                "atr_stop_mult": 2.5,
+                "max_trades_per_day": 2,
+                "min_bars_between_trades": 24,
                 "warmup_bars": 500,
             },
             "scorecard_config": {
-                "min_score": 2, "a_plus_score": 3, "a_plus_size_mult": 1.3,
-                "fast_ema": 9, "mid_ema": 21, "slow_ema": 50,
+                "min_score": 2,
+                "a_plus_score": 3,
+                "a_plus_size_mult": 1.3,
+                "fast_ema": 9,
+                "mid_ema": 21,
+                "slow_ema": 50,
             },
-                        "edge_enabled": True,
+            "edge_enabled": True,
             "edge_config": {
                 "enable_session_gate": True,
                 "is_crypto": False,
@@ -1221,7 +1305,6 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "daily_loss_limit_pct": 4.0,
         },
     ),
-
     # volume_profile_btc — Volume Profile / Value Area on BTC 1h.
     StrategyAssignment(
         bot_id="volume_profile_btc",
@@ -1254,19 +1337,28 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "promotion_status": "production_candidate",
             "sub_strategy_kind": "volume_profile",
             "sub_strategy_extras": {
-                "profile_lookback": 500, "bucket_size": 50.0,
-                "min_va_spread_atr_mult": 2.0, "min_extreme_distance_atr_mult": 1.5,
+                "profile_lookback": 500,
+                "bucket_size": 50.0,
+                "min_va_spread_atr_mult": 2.0,
+                "min_extreme_distance_atr_mult": 1.5,
                 "max_qty_equity_pct": 0.005,
-                "require_rejection": True, "min_rejection_wick_pct": 0.20,
+                "require_rejection": True,
+                "min_rejection_wick_pct": 0.20,
                 "min_volume_z": 0.2,
                 "freeze_profile_after_warmup": False,
-                "rr_target": 3.0, "atr_stop_mult": 1.5,
-                "max_trades_per_day": 2, "min_bars_between_trades": 24,
+                "rr_target": 3.0,
+                "atr_stop_mult": 1.5,
+                "max_trades_per_day": 2,
+                "min_bars_between_trades": 24,
                 "warmup_bars": 300,
             },
             "scorecard_config": {
-                "min_score": 2, "a_plus_score": 3, "a_plus_size_mult": 1.3,
-                "fast_ema": 21, "mid_ema": 50, "slow_ema": 100,
+                "min_score": 2,
+                "a_plus_score": 3,
+                "a_plus_size_mult": 1.3,
+                "fast_ema": 21,
+                "mid_ema": 50,
+                "slow_ema": 100,
             },
             "per_ticker_optimal": "BTC",
             "research_candidate": True,
@@ -1290,7 +1382,6 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             ),
         },
     ),
-
     # gap_fill_mnq — DEACTIVATED. Session gaps not reliably detected
     # in 5m data without RTH session markers. DeepSeek analysis: structural.
     StrategyAssignment(
@@ -1307,7 +1398,6 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         rationale="DEACTIVATED — session gaps not reliably detected without RTH markers.",
         extras={"deactivated": True, "deactivation_reason": "session gap detection unreliable"},
     ),
-
     # gap_fill_btc — DEACTIVATED. BTC is 24/7, no meaningful overnight gaps.
     StrategyAssignment(
         bot_id="gap_fill_btc",
@@ -1323,7 +1413,6 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         rationale="DEACTIVATED — BTC is 24/7 with continuous trading; no meaningful overnight gaps exist in crypto markets unlike traditional equities and futures.",
         extras={"deactivated": True, "deactivation_reason": "24/7 crypto, no overnight gap edge"},
     ),
-
     # cross_asset_mnq — NQ/ES ratio divergence on MNQ 5m.
     StrategyAssignment(
         bot_id="cross_asset_mnq",
@@ -1349,23 +1438,32 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "promotion_status": "production_candidate",
             "sub_strategy_kind": "cross_asset_divergence",
             "sub_strategy_extras": {
-                "z_lookback": 100, "entry_z_threshold": 2.0,
+                "z_lookback": 100,
+                "entry_z_threshold": 2.0,
                 "min_z_threshold": 1.5,
                 "min_volume_z": 0.3,
-                "rr_target": 2.5, "atr_stop_mult": 2.5,
-                "max_trades_per_day": 2, "min_bars_between_trades": 12,
+                "rr_target": 2.5,
+                "atr_stop_mult": 2.5,
+                "max_trades_per_day": 2,
+                "min_bars_between_trades": 12,
                 "warmup_bars": 100,
                 "reference_asset": "ES1",
             },
             "scorecard_config": {
-                "min_score": 2, "a_plus_score": 3, "a_plus_size_mult": 1.3,
-                "fast_ema": 9, "mid_ema": 21, "slow_ema": 50,
+                "min_score": 2,
+                "a_plus_score": 3,
+                "a_plus_size_mult": 1.3,
+                "fast_ema": 9,
+                "mid_ema": 21,
+                "slow_ema": 50,
             },
             "per_ticker_optimal": "MNQ",
             "paper_soak_result": "56.2% WR, +$1,084 on 16 trades",
             "walk_forward_overrides": {
-                "grid_mode": True, "grid_min_profit_factor": 1.0,
-                "grid_max_dd_pct": 50.0, "grid_min_pos_fraction": 0.33,
+                "grid_mode": True,
+                "grid_min_profit_factor": 1.0,
+                "grid_max_dd_pct": 50.0,
+                "grid_min_pos_fraction": 0.33,
                 "min_trades_per_window": 2,
             },
             "daily_loss_limit_pct": 4.0,
@@ -1382,7 +1480,6 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             ),
         },
     ),
-
     # cross_asset_btc — BTC/ETH ratio divergence on BTC 1h.
     StrategyAssignment(
         bot_id="cross_asset_btc",
@@ -1407,28 +1504,36 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "deactivation_reason": "20% WR on paper sim — BTC/ETH ratio not mean-reverting on 1h",
             "sub_strategy_kind": "cross_asset_divergence",
             "sub_strategy_extras": {
-                "z_lookback": 168, "entry_z_threshold": 1.5,
+                "z_lookback": 168,
+                "entry_z_threshold": 1.5,
                 "min_z_threshold": 1.0,
                 "min_volume_z": 0.2,
-                "rr_target": 2.5, "atr_stop_mult": 1.5,
-                "max_trades_per_day": 2, "min_bars_between_trades": 12,
+                "rr_target": 2.5,
+                "atr_stop_mult": 1.5,
+                "max_trades_per_day": 2,
+                "min_bars_between_trades": 12,
                 "warmup_bars": 168,
                 "reference_asset": "ETH",
             },
             "scorecard_config": {
-                "min_score": 2, "a_plus_score": 3, "a_plus_size_mult": 1.3,
-                "fast_ema": 21, "mid_ema": 50, "slow_ema": 100,
+                "min_score": 2,
+                "a_plus_score": 3,
+                "a_plus_size_mult": 1.3,
+                "fast_ema": 21,
+                "mid_ema": 50,
+                "slow_ema": 100,
             },
             "per_ticker_optimal": "BTC",
             "paper_soak_result": "30.4% WR, +$7,624 on 46 trades",
             "walk_forward_overrides": {
-                "grid_mode": True, "grid_min_profit_factor": 1.0,
-                "grid_max_dd_pct": 50.0, "grid_min_pos_fraction": 0.5,
+                "grid_mode": True,
+                "grid_min_profit_factor": 1.0,
+                "grid_max_dd_pct": 50.0,
+                "grid_min_pos_fraction": 0.5,
             },
             "warmup_policy": {"promoted_on": "2026-05-02", "warmup_days": 30, "risk_multiplier_during_warmup": 0.5},
         },
     ),
-
     # funding_rate_btc — Funding rate momentum on BTC 1h.
     StrategyAssignment(
         bot_id="funding_rate_btc",
@@ -1456,22 +1561,32 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "promotion_status": "production_candidate",
             "sub_strategy_kind": "funding_rate",
             "sub_strategy_extras": {
-                "persistence_lookback": 6, "persistence_threshold": 0.50,
-                "ema_period": 21, "require_pullback": True,
+                "persistence_lookback": 6,
+                "persistence_threshold": 0.50,
+                "ema_period": 21,
+                "require_pullback": True,
                 "min_volume_z": 0.2,
-                "rr_target": 2.0, "atr_stop_mult": 1.5,
-                "max_trades_per_day": 2, "min_bars_between_trades": 12,
+                "rr_target": 2.0,
+                "atr_stop_mult": 1.5,
+                "max_trades_per_day": 2,
+                "min_bars_between_trades": 12,
                 "warmup_bars": 72,
             },
             "scorecard_config": {
-                "min_score": 2, "a_plus_score": 3, "a_plus_size_mult": 1.3,
-                "fast_ema": 21, "mid_ema": 50, "slow_ema": 100,
+                "min_score": 2,
+                "a_plus_score": 3,
+                "a_plus_size_mult": 1.3,
+                "fast_ema": 21,
+                "mid_ema": 50,
+                "slow_ema": 100,
             },
             "per_ticker_optimal": "BTC",
             "paper_soak_result": "52.6% WR, +$6,383 on 19 trades",
             "walk_forward_overrides": {
-                "grid_mode": True, "grid_min_profit_factor": 1.0,
-                "grid_max_dd_pct": 50.0, "grid_min_pos_fraction": 0.33,
+                "grid_mode": True,
+                "grid_min_profit_factor": 1.0,
+                "grid_max_dd_pct": 50.0,
+                "grid_min_pos_fraction": 0.33,
             },
             # Warmup mult lifted 0.5 → 1.0 on 2026-05-06: paper soak 52.6% WR
             # + $6,383 PnL on 19 trades, production_candidate stamp. Daily
@@ -1492,18 +1607,14 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             ),
         },
     ),
-
     # ═══════════════════════════════════════════════════════════════════
     # MICRO FUTURES — leveraged MBT/MET (1/10th BTC/ETH on CME)
     # ═══════════════════════════════════════════════════════════════════
-
     # MBT/MET micro futures — de-duplicated. See correct entries at end of
     # file with symbol="MBT1"/"MET". These stubs were duplicates.
-
     # ═══════════════════════════════════════════════════════════════════
     # SHADOW BENCHMARK — diagnostic only, not for live exposure
     # ═══════════════════════════════════════════════════════════════════
-
     StrategyAssignment(
         bot_id="btc_hybrid_sage",
         strategy_id="btc_corb_sage_v1",
@@ -1523,7 +1634,13 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "sage_min_conviction": 0.40,
             "sage_lookback_bars": 200,
             "orb_range_minutes": 60,
-            "orb_config": {"range_minutes": 60, "rr_target": 2.5, "atr_stop_mult": 2.5, "ema_bias_period": 100, "max_trades_per_day": 2},
+            "orb_config": {
+                "range_minutes": 60,
+                "rr_target": 2.5,
+                "atr_stop_mult": 2.5,
+                "ema_bias_period": 100,
+                "max_trades_per_day": 2,
+            },
             "instrument_class": "crypto",
             "deactivated": True,
             "deactivated_on": "2026-05-07",
@@ -1538,7 +1655,6 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             ),
         },
     ),
-
     StrategyAssignment(
         bot_id="btc_ensemble_2of3",
         strategy_id="btc_ensemble_2of3_v1",
@@ -1570,7 +1686,6 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             ),
         },
     ),
-
     StrategyAssignment(
         bot_id="sol_perp",
         strategy_id="sol_corb_v2",
@@ -1588,9 +1703,15 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "promotion_status": "shadow_benchmark",
             "shadow_reason": "SOL 1h produces 20% WR regardless of strategy. SOL has no standalone edge on 1h — it's a pure BTC beta proxy.",
             "research_candidate": True,
-            "level_lookback": 48, "reclaim_window": 3, "min_wick_pct": 0.25,
-            "min_volume_z": 0.3, "rr_target": 3.0, "atr_stop_mult": 2.5,
-            "max_trades_per_day": 2, "min_bars_between_trades": 12, "warmup_bars": 72,
+            "level_lookback": 48,
+            "reclaim_window": 3,
+            "min_wick_pct": 0.25,
+            "min_volume_z": 0.3,
+            "rr_target": 3.0,
+            "atr_stop_mult": 2.5,
+            "max_trades_per_day": 2,
+            "min_bars_between_trades": 12,
+            "warmup_bars": 72,
             "risk_per_trade_pct": 0.005,
             "deactivated": True,
             "deactivated_on": "2026-05-07",
@@ -1603,7 +1724,6 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             ),
         },
     ),
-
     StrategyAssignment(
         bot_id="eth_compression",
         strategy_id="eth_compression_v1",
@@ -1621,7 +1741,13 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "compression_preset": "eth",
             "promotion_status": "shadow_benchmark",
             "shadow_reason": "12.5% WR paper soak. Compression breakout doesn't produce edge on ETH 1h.",
-            "compression_config": {"compression_recency_window": 12, "min_close_location": 0.50, "min_volume_z": 0.2, "atr_stop_mult": 2.0, "rr_target": 2.5},
+            "compression_config": {
+                "compression_recency_window": 12,
+                "min_close_location": 0.50,
+                "min_volume_z": 0.2,
+                "atr_stop_mult": 2.0,
+                "rr_target": 2.5,
+            },
             # Elite scoreboard 2026-05-05: PF=0.68 Sharpe=-0.93
             # expR=-0.0245 over 124 closes — confirmed shadow_reason.
             # Compression-breakout on ETH 1h has no edge regardless of
@@ -1634,7 +1760,6 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             ),
         },
     ),
-
     StrategyAssignment(
         bot_id="mnq_futures_optimized",
         strategy_id="mnq_optimized_v1",
@@ -1653,11 +1778,17 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "shadow_reason": "33% WR, losing. mnq_futures_sage is the stronger MNQ launch lane.",
             "sub_strategy_kind": "orb_sage_gated",
             "sub_strategy_extras": {"sage_min_conviction": 0.65, "sage_lookback_bars": 200, "orb_range_minutes": 15},
-            "scorecard_config": {"min_score": 3, "a_plus_score": 4, "a_plus_size_mult": 1.5, "fast_ema": 9, "mid_ema": 21, "slow_ema": 50},
+            "scorecard_config": {
+                "min_score": 3,
+                "a_plus_score": 4,
+                "a_plus_size_mult": 1.5,
+                "fast_ema": 9,
+                "mid_ema": 21,
+                "slow_ema": 50,
+            },
             "per_ticker_optimal": "MNQ",
         },
     ),
-
     StrategyAssignment(
         bot_id="btc_crypto_scalp",
         strategy_id="btc_crypto_scalp_v1",
@@ -1676,7 +1807,12 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "shadow_reason": "0% WR on BTC 5m. Wrong timeframe for BTC — 1h is the right cadence.",
             "per_ticker_optimal": "BTC",
             "crypto_native": True,
-            "mtf_scalp_config": {"htf_bars_per_aggregate": 12, "ltf_rr_target": 2.5, "ltf_atr_stop_mult": 1.5, "max_trades_per_day": 6},
+            "mtf_scalp_config": {
+                "htf_bars_per_aggregate": 12,
+                "ltf_rr_target": 2.5,
+                "ltf_atr_stop_mult": 1.5,
+                "max_trades_per_day": 6,
+            },
             "deactivated": True,
             "deactivated_on": "2026-05-07",
             "deactivated_reason": (
@@ -1689,7 +1825,6 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             ),
         },
     ),
-
     StrategyAssignment(
         bot_id="sol_sweep_scalp",
         strategy_id="sol_sweep_scalp_v1",
@@ -1708,20 +1843,24 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "shadow_reason": "SOL 1h sweep_reclaim at 20% WR. Same as sol_perp — SOL has no standalone edge.",
             "per_ticker_optimal": "SOL",
             "crypto_native": True,
-            "level_lookback": 48, "reclaim_window": 3, "min_wick_pct": 0.30,
-            "min_volume_z": 0.5, "rr_target": 3.0, "atr_stop_mult": 2.5,
-            "max_trades_per_day": 2, "min_bars_between_trades": 12, "warmup_bars": 72,
+            "level_lookback": 48,
+            "reclaim_window": 3,
+            "min_wick_pct": 0.30,
+            "min_volume_z": 0.5,
+            "rr_target": 3.0,
+            "atr_stop_mult": 2.5,
+            "max_trades_per_day": 2,
+            "min_bars_between_trades": 12,
+            "warmup_bars": 72,
             "risk_per_trade_pct": 0.005,
             "deactivated": True,
             "deactivated_on": "2026-05-04",
             "deactivated_reason": "lab_sweep_2026_05_04: sol_sweep_scalp failed gates (sharpe=-0.91, exp_R=-0.072, wr=0.348)",
         },
     ),
-
     # ═══════════════════════════════════════════════════════════════════
     # DEACTIVATED / NON-EDGE — excluded from paper-soak
     # ═══════════════════════════════════════════════════════════════════
-
     StrategyAssignment(
         bot_id="crypto_seed",
         strategy_id="crypto_seed_dca",
@@ -1751,7 +1890,6 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             ),
         },
     ),
-
     StrategyAssignment(
         bot_id="xrp_perp",
         strategy_id="xrp_DEACTIVATED",
@@ -1766,7 +1904,6 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         rationale="DEACTIVATED — no news or regulatory event feed available for XRP; cannot validate fundamental edge drivers.",
         extras={"deactivated": True, "deactivation_reason": "no news feed"},
     ),
-
     # ═══════════════════════════════════════════════════════════════════
     # Deactivated/historical stubs — kept in registry only to satisfy
     # registry/requirements bidirectional-sync audit. Their data
@@ -1774,7 +1911,6 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
     # readiness checks still reference these IDs by name. Reactivate by
     # flipping deactivated=False in extras and updating strategy_id.
     # ═══════════════════════════════════════════════════════════════════
-
     StrategyAssignment(
         bot_id="mnq_futures",
         strategy_id="mnq_futures_DEPRECATED",
@@ -1789,7 +1925,6 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         rationale="DEPRECATED — superseded by mnq_futures_sage (sage-overlay variant).",
         extras={"deactivated": True, "deactivation_reason": "superseded by mnq_futures_sage"},
     ),
-
     StrategyAssignment(
         bot_id="nq_futures",
         strategy_id="nq_futures_DEPRECATED",
@@ -1804,7 +1939,6 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         rationale="DEPRECATED — superseded by nq_futures_sage (sage-overlay variant).",
         extras={"deactivated": True, "deactivation_reason": "superseded by nq_futures_sage"},
     ),
-
     StrategyAssignment(
         bot_id="mnq_sage_consensus",
         strategy_id="mnq_sage_consensus_DEPRECATED",
@@ -1819,7 +1953,6 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         rationale="DEPRECATED — folded into mnq_futures_sage; kept as historical stub for registry sync.",
         extras={"deactivated": True, "deactivation_reason": "folded into mnq_futures_sage"},
     ),
-
     StrategyAssignment(
         bot_id="nq_daily_drb",
         strategy_id="nq_daily_drb_DEPRECATED",
@@ -1834,7 +1967,6 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         rationale="DEPRECATED — daily DRB variant superseded by nq_futures_sage; kept as historical stub.",
         extras={"deactivated": True, "deactivation_reason": "superseded by nq_futures_sage"},
     ),
-
     StrategyAssignment(
         bot_id="btc_regime_trend",
         strategy_id="btc_regime_trend_DEPRECATED",
@@ -1849,14 +1981,12 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         rationale="DEPRECATED — superseded by btc_regime_trend_etf (ETF-routed execution).",
         extras={"deactivated": True, "deactivation_reason": "superseded by btc_regime_trend_etf"},
     ),
-
     # ═══════════════════════════════════════════════════════════════════
     # MBT/MET — CME micro crypto futures (US-person compliant)
     # ═══════════════════════════════════════════════════════════════════
     # Uses the same proven sweep_reclaim+scorecard architecture as BTC
     # but on CME micro futures with RTH session constraints. MBT tracks
     # BTCUSDT through M2 translation, MET tracks ETHUSDT.
-
     StrategyAssignment(
         bot_id="mbt_sweep_reclaim",
         strategy_id="mbt_sweep_reclaim_v1",
@@ -1884,10 +2014,14 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "walk_forward_overrides": {"long_haul_mode": True, "long_haul_min_pos_fraction": 0.38},
             "sub_strategy_kind": "sweep_reclaim",
             "sub_strategy_extras": {
-                "level_lookback": 48, "reclaim_window": 3,
-                "min_wick_pct": 0.30, "min_volume_z": 0.3,
-                "rr_target": 3.0, "atr_stop_mult": 2.0,
-                "max_trades_per_day": 2, "min_bars_between_trades": 12,
+                "level_lookback": 48,
+                "reclaim_window": 3,
+                "min_wick_pct": 0.30,
+                "min_volume_z": 0.3,
+                "rr_target": 3.0,
+                "atr_stop_mult": 2.0,
+                "max_trades_per_day": 2,
+                "min_bars_between_trades": 12,
                 "warmup_bars": 72,
             },
             "edge_enabled": True,
@@ -1902,15 +2036,18 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
                 "enable_drift_boost": False,
             },
             "scorecard_config": {
-                "min_score": 2, "a_plus_score": 3, "a_plus_size_mult": 1.3,
-                "fast_ema": 21, "mid_ema": 50, "slow_ema": 100,
+                "min_score": 2,
+                "a_plus_score": 3,
+                "a_plus_size_mult": 1.3,
+                "fast_ema": 21,
+                "mid_ema": 50,
+                "slow_ema": 100,
             },
             "per_ticker_optimal": "MBT",
             "daily_loss_limit_pct": 4.0,
             "fleet_corr_partner": "btc_hybrid",
         },
     ),
-
     StrategyAssignment(
         bot_id="met_sweep_reclaim",
         strategy_id="met_sweep_reclaim_v1",
@@ -1938,10 +2075,14 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "walk_forward_overrides": {"long_haul_mode": True, "long_haul_min_pos_fraction": 0.38},
             "sub_strategy_kind": "sweep_reclaim",
             "sub_strategy_extras": {
-                "level_lookback": 48, "reclaim_window": 3,
-                "min_wick_pct": 0.30, "min_volume_z": 0.3,
-                "rr_target": 3.0, "atr_stop_mult": 2.0,
-                "max_trades_per_day": 2, "min_bars_between_trades": 12,
+                "level_lookback": 48,
+                "reclaim_window": 3,
+                "min_wick_pct": 0.30,
+                "min_volume_z": 0.3,
+                "rr_target": 3.0,
+                "atr_stop_mult": 2.0,
+                "max_trades_per_day": 2,
+                "min_bars_between_trades": 12,
                 "warmup_bars": 72,
             },
             "edge_enabled": True,
@@ -1956,15 +2097,18 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
                 "enable_drift_boost": False,
             },
             "scorecard_config": {
-                "min_score": 2, "a_plus_score": 3, "a_plus_size_mult": 1.3,
-                "fast_ema": 21, "mid_ema": 50, "slow_ema": 100,
+                "min_score": 2,
+                "a_plus_score": 3,
+                "a_plus_size_mult": 1.3,
+                "fast_ema": 21,
+                "mid_ema": 50,
+                "slow_ema": 100,
             },
             "per_ticker_optimal": "MET",
             "daily_loss_limit_pct": 4.0,
             "fleet_corr_partner": "eth_perp",
         },
     ),
-
     # ═══════════════════════════════════════════════════════════════════
     # CME CRYPTO MICRO FUTURES — RESEARCH CANDIDATES (2026-05-07)
     # Three new MBT/MET strategies designed for the FUTURES microstructure
@@ -1973,7 +2117,6 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
     # All start as research_candidate; promotion to paper_soak gated on
     # walk-forward + Monte Carlo per docs/STRATEGY_OPTIMIZATION_ROADMAP.md.
     # ═══════════════════════════════════════════════════════════════════
-
     StrategyAssignment(
         bot_id="mbt_funding_basis",
         strategy_id="mbt_funding_basis_v1",
@@ -2016,7 +2159,6 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "basis_provider_kind": "log_return_fallback",
         },
     ),
-
     # MBT z-fade — honest rename of mbt_funding_basis with HTF-trend
     # filter + EDA-derived thresholds (z>=2.5, RR=1.5, 4-bar time-stop).
     # The original "funding basis" name was misleading: production has
@@ -2070,7 +2212,6 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             ),
         },
     ),
-
     StrategyAssignment(
         bot_id="mbt_overnight_gap",
         strategy_id="mbt_overnight_gap_v2",  # v2: continuation thesis
@@ -2109,7 +2250,6 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "daily_loss_limit_pct": 3.0,
         },
     ),
-
     StrategyAssignment(
         bot_id="met_rth_orb",
         strategy_id="met_rth_orb_v1",
@@ -2155,7 +2295,6 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "daily_loss_limit_pct": 3.0,
         },
     ),
-
     # ═══════════════════════════════════════════════════════════════════
     # MBT RTH ORB — 2026-05-07
     # Migrated from met_rth_orb after 70d EDA showed MET friction
@@ -2202,7 +2341,6 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             #   promotion past research_candidate).
         },
     ),
-
     # ═══════════════════════════════════════════════════════════════════
     # ANCHOR-SWEEP TIER (2026-05-04)
     # Named-anchor variant of sweep_reclaim for US index futures.
@@ -2211,7 +2349,6 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
     # institutions stop-hunt at FIXED, named levels (PDH/PDL/PMH/PML/
     # ONH/ONL). This variant anchors detection to those levels.
     # ═══════════════════════════════════════════════════════════════════
-
     # ELITE-GATE 2026-05-05: ALL GREEN — promote to paper-soak.
     #   50 OOS trades, +$175 OOS PnL, 32% WR, +133% decay, beats
     #   random baseline by $408.  First MNQ strategy through the
@@ -2259,7 +2396,6 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "daily_loss_limit_pct": 4.0,
         },
     ),
-
     # ELITE-GATE 2026-05-05: RED — DO NOT promote.
     #   49 OOS trades, $-267 OOS PnL, 26.5% WR (low), beats baseline
     #   by only $153.  1 signal rejected (rr_too_small=1).
@@ -2292,7 +2428,6 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "daily_loss_limit_pct": 4.0,
         },
     ),
-
     # ═══════════════════════════════════════════════════════════════════
     # COMMODITY + FX TIER (2026-05-04)
     # User directive: "sage needs to read real data for all tickers
@@ -2330,16 +2465,25 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         extras={
             "promotion_status": "research_candidate",
             "sub_strategy_kind": "sweep_reclaim",
-            "sub_strategy_extras": {"sweep_preset": "gc",
-                "level_lookback": 48, "reclaim_window": 3,
-                "min_wick_pct": 0.40, "min_volume_z": 0.3,
-                "rr_target": 3.0, "atr_stop_mult": 3.0,
-                "max_trades_per_day": 2, "min_bars_between_trades": 12,
+            "sub_strategy_extras": {
+                "sweep_preset": "gc",
+                "level_lookback": 48,
+                "reclaim_window": 3,
+                "min_wick_pct": 0.40,
+                "min_volume_z": 0.3,
+                "rr_target": 3.0,
+                "atr_stop_mult": 3.0,
+                "max_trades_per_day": 2,
+                "min_bars_between_trades": 12,
                 "warmup_bars": 72,
             },
             "scorecard_config": {
-                "min_score": 2, "a_plus_score": 3, "a_plus_size_mult": 1.3,
-                "fast_ema": 21, "mid_ema": 50, "slow_ema": 100,
+                "min_score": 2,
+                "a_plus_score": 3,
+                "a_plus_size_mult": 1.3,
+                "fast_ema": 21,
+                "mid_ema": 50,
+                "slow_ema": 100,
             },
             "per_ticker_optimal": "GC",
             "research_candidate": True,
@@ -2358,7 +2502,6 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             ),
         },
     ),
-
     StrategyAssignment(
         bot_id="cl_sweep_reclaim",
         strategy_id="cl_sweep_reclaim_v1",
@@ -2382,16 +2525,25 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         extras={
             "promotion_status": "research_candidate",
             "sub_strategy_kind": "sweep_reclaim",
-            "sub_strategy_extras": {"sweep_preset": "cl",
-                "level_lookback": 48, "reclaim_window": 3,
-                "min_wick_pct": 0.30, "min_volume_z": 0.3,
-                "rr_target": 2.5, "atr_stop_mult": 2.0,
-                "max_trades_per_day": 2, "min_bars_between_trades": 12,
+            "sub_strategy_extras": {
+                "sweep_preset": "cl",
+                "level_lookback": 48,
+                "reclaim_window": 3,
+                "min_wick_pct": 0.30,
+                "min_volume_z": 0.3,
+                "rr_target": 2.5,
+                "atr_stop_mult": 2.0,
+                "max_trades_per_day": 2,
+                "min_bars_between_trades": 12,
                 "warmup_bars": 72,
             },
             "scorecard_config": {
-                "min_score": 2, "a_plus_score": 3, "a_plus_size_mult": 1.3,
-                "fast_ema": 21, "mid_ema": 50, "slow_ema": 100,
+                "min_score": 2,
+                "a_plus_score": 3,
+                "a_plus_size_mult": 1.3,
+                "fast_ema": 21,
+                "mid_ema": 50,
+                "slow_ema": 100,
             },
             "per_ticker_optimal": "CL",
             "research_candidate": True,
@@ -2408,7 +2560,6 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             ),
         },
     ),
-
     # ELITE-GATE 2026-05-05 (365d window): ALL GREEN — promote to paper-soak.
     #   30 OOS trades, +$589 OOS PnL, 36.7% WR, +248% decay,
     #   beats random baseline by $12,171.  4th strategy through
@@ -2456,18 +2607,27 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "elite_gate_passed_PRIOR_CLAIM": "2026-05-05",
             "elite_gate_results_PRIOR_CLAIM": "30T OOS over 365d, +$589 PnL, 36.7% WR, +248% decay, beats baseline by $12,171",
             "sub_strategy_kind": "sweep_reclaim",
-            "sub_strategy_extras": {"sweep_preset": "ng",
-                "level_lookback": 48, "reclaim_window": 3,
-                "min_wick_pct": 0.30, "min_volume_z": 0.3,
-                "rr_target": 2.5, "atr_stop_mult": 2.0,
-                "max_trades_per_day": 2, "min_bars_between_trades": 12,
+            "sub_strategy_extras": {
+                "sweep_preset": "ng",
+                "level_lookback": 48,
+                "reclaim_window": 3,
+                "min_wick_pct": 0.30,
+                "min_volume_z": 0.3,
+                "rr_target": 2.5,
+                "atr_stop_mult": 2.0,
+                "max_trades_per_day": 2,
+                "min_bars_between_trades": 12,
                 "warmup_bars": 72,
             },
             "scorecard_config": {
-                "min_score": 2, "a_plus_score": 3, "a_plus_size_mult": 1.3,
-                "fast_ema": 21, "mid_ema": 50, "slow_ema": 100,
+                "min_score": 2,
+                "a_plus_score": 3,
+                "a_plus_size_mult": 1.3,
+                "fast_ema": 21,
+                "mid_ema": 50,
+                "slow_ema": 100,
             },
-                        "edge_enabled": True,
+            "edge_enabled": True,
             "edge_config": {
                 "enable_session_gate": True,
                 "is_crypto": False,
@@ -2485,7 +2645,6 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "daily_loss_limit_pct": 4.0,
         },
     ),
-
     StrategyAssignment(
         bot_id="zn_sweep_reclaim",
         strategy_id="zn_sweep_reclaim_v1",
@@ -2507,21 +2666,27 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         ),
         extras={
             "promotion_status": "shadow_benchmark",
-            "shadow_reason": (
-                "YM/zn sweep_reclaim losing heavily at -$3.6k/20 windows. "
-                "Keep as diagnostic only."
-            ),
+            "shadow_reason": ("YM/zn sweep_reclaim losing heavily at -$3.6k/20 windows. Keep as diagnostic only."),
             "sub_strategy_kind": "sweep_reclaim",
-            "sub_strategy_extras": {"sweep_preset": "zn",
-                "level_lookback": 48, "reclaim_window": 3,
-                "min_wick_pct": 0.30, "min_volume_z": 0.3,
-                "rr_target": 2.5, "atr_stop_mult": 2.0,
-                "max_trades_per_day": 2, "min_bars_between_trades": 12,
+            "sub_strategy_extras": {
+                "sweep_preset": "zn",
+                "level_lookback": 48,
+                "reclaim_window": 3,
+                "min_wick_pct": 0.30,
+                "min_volume_z": 0.3,
+                "rr_target": 2.5,
+                "atr_stop_mult": 2.0,
+                "max_trades_per_day": 2,
+                "min_bars_between_trades": 12,
                 "warmup_bars": 72,
             },
             "scorecard_config": {
-                "min_score": 2, "a_plus_score": 3, "a_plus_size_mult": 1.3,
-                "fast_ema": 21, "mid_ema": 50, "slow_ema": 100,
+                "min_score": 2,
+                "a_plus_score": 3,
+                "a_plus_size_mult": 1.3,
+                "fast_ema": 21,
+                "mid_ema": 50,
+                "slow_ema": 100,
             },
             "per_ticker_optimal": "ZN",
             "research_candidate": True,
@@ -2538,7 +2703,6 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             ),
         },
     ),
-
     StrategyAssignment(
         bot_id="eur_sweep_reclaim",
         strategy_id="eur_sweep_reclaim_v1",
@@ -2560,18 +2724,27 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         extras={
             "promotion_status": "paper_soak",
             "sub_strategy_kind": "sweep_reclaim",
-            "sub_strategy_extras": {"sweep_preset": "eur",
-                "level_lookback": 48, "reclaim_window": 3,
-                "min_wick_pct": 0.30, "min_volume_z": 0.3,
-                "rr_target": 2.5, "atr_stop_mult": 2.0,
-                "max_trades_per_day": 2, "min_bars_between_trades": 12,
+            "sub_strategy_extras": {
+                "sweep_preset": "eur",
+                "level_lookback": 48,
+                "reclaim_window": 3,
+                "min_wick_pct": 0.30,
+                "min_volume_z": 0.3,
+                "rr_target": 2.5,
+                "atr_stop_mult": 2.0,
+                "max_trades_per_day": 2,
+                "min_bars_between_trades": 12,
                 "warmup_bars": 72,
             },
             "scorecard_config": {
-                "min_score": 2, "a_plus_score": 3, "a_plus_size_mult": 1.3,
-                "fast_ema": 21, "mid_ema": 50, "slow_ema": 100,
+                "min_score": 2,
+                "a_plus_score": 3,
+                "a_plus_size_mult": 1.3,
+                "fast_ema": 21,
+                "mid_ema": 50,
+                "slow_ema": 100,
             },
-                        "edge_enabled": True,
+            "edge_enabled": True,
             "edge_config": {
                 "enable_session_gate": True,
                 "is_crypto": False,
@@ -2589,7 +2762,6 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "daily_loss_limit_pct": 4.0,
         },
     ),
-
     # ═══════════════════════════════════════════════════════════════════
     # EQUITY-INDEX MICROS TIER (2026-05-04)
     # MES (S&P), M2K (Russell), YM (Dow), MYM (micro Dow). The full-size
@@ -2620,16 +2792,25 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         extras={
             "promotion_status": "research_candidate",
             "sub_strategy_kind": "sweep_reclaim",
-            "sub_strategy_extras": {"sweep_preset": "mes",
-                "level_lookback": 48, "reclaim_window": 3,
-                "min_wick_pct": 0.30, "min_volume_z": 0.3,
-                "rr_target": 2.5, "atr_stop_mult": 2.0,
-                "max_trades_per_day": 2, "min_bars_between_trades": 12,
+            "sub_strategy_extras": {
+                "sweep_preset": "mes",
+                "level_lookback": 48,
+                "reclaim_window": 3,
+                "min_wick_pct": 0.30,
+                "min_volume_z": 0.3,
+                "rr_target": 2.5,
+                "atr_stop_mult": 2.0,
+                "max_trades_per_day": 2,
+                "min_bars_between_trades": 12,
                 "warmup_bars": 72,
             },
             "scorecard_config": {
-                "min_score": 2, "a_plus_score": 3, "a_plus_size_mult": 1.3,
-                "fast_ema": 21, "mid_ema": 50, "slow_ema": 100,
+                "min_score": 2,
+                "a_plus_score": 3,
+                "a_plus_size_mult": 1.3,
+                "fast_ema": 21,
+                "mid_ema": 50,
+                "slow_ema": 100,
             },
             "per_ticker_optimal": "MES",
             "research_candidate": True,
@@ -2649,7 +2830,6 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             ),
         },
     ),
-
     StrategyAssignment(
         bot_id="m2k_sweep_reclaim",
         strategy_id="m2k_sweep_reclaim_v1",
@@ -2672,18 +2852,27 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         extras={
             "promotion_status": "paper_soak",
             "sub_strategy_kind": "sweep_reclaim",
-            "sub_strategy_extras": {"sweep_preset": "m2k",
-                "level_lookback": 48, "reclaim_window": 3,
-                "min_wick_pct": 0.30, "min_volume_z": 0.3,
-                "rr_target": 2.5, "atr_stop_mult": 2.0,
-                "max_trades_per_day": 2, "min_bars_between_trades": 12,
+            "sub_strategy_extras": {
+                "sweep_preset": "m2k",
+                "level_lookback": 48,
+                "reclaim_window": 3,
+                "min_wick_pct": 0.30,
+                "min_volume_z": 0.3,
+                "rr_target": 2.5,
+                "atr_stop_mult": 2.0,
+                "max_trades_per_day": 2,
+                "min_bars_between_trades": 12,
                 "warmup_bars": 72,
             },
             "scorecard_config": {
-                "min_score": 2, "a_plus_score": 3, "a_plus_size_mult": 1.3,
-                "fast_ema": 21, "mid_ema": 50, "slow_ema": 100,
+                "min_score": 2,
+                "a_plus_score": 3,
+                "a_plus_size_mult": 1.3,
+                "fast_ema": 21,
+                "mid_ema": 50,
+                "slow_ema": 100,
             },
-                        "edge_enabled": True,
+            "edge_enabled": True,
             "edge_config": {
                 "enable_session_gate": True,
                 "is_crypto": False,
@@ -2701,7 +2890,6 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "daily_loss_limit_pct": 4.0,
         },
     ),
-
     StrategyAssignment(
         bot_id="ym_sweep_reclaim",
         strategy_id="ym_sweep_reclaim_v1",
@@ -2723,35 +2911,39 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         ),
         extras={
             "promotion_status": "shadow_benchmark",
-            "shadow_reason": (
-                "YM/zn sweep_reclaim losing heavily at -$3.6k/20 windows. "
-                "Keep as diagnostic only."
-            ),
+            "shadow_reason": ("YM/zn sweep_reclaim losing heavily at -$3.6k/20 windows. Keep as diagnostic only."),
             "sub_strategy_kind": "sweep_reclaim",
-            "sub_strategy_extras": {"sweep_preset": "ym",
-                "level_lookback": 48, "reclaim_window": 3,
-                "min_wick_pct": 0.30, "min_volume_z": 0.3,
-                "rr_target": 2.5, "atr_stop_mult": 2.0,
-                "max_trades_per_day": 2, "min_bars_between_trades": 12,
+            "sub_strategy_extras": {
+                "sweep_preset": "ym",
+                "level_lookback": 48,
+                "reclaim_window": 3,
+                "min_wick_pct": 0.30,
+                "min_volume_z": 0.3,
+                "rr_target": 2.5,
+                "atr_stop_mult": 2.0,
+                "max_trades_per_day": 2,
+                "min_bars_between_trades": 12,
                 "warmup_bars": 72,
             },
             "scorecard_config": {
-                "min_score": 2, "a_plus_score": 3, "a_plus_size_mult": 1.3,
-                "fast_ema": 21, "mid_ema": 50, "slow_ema": 100,
+                "min_score": 2,
+                "a_plus_score": 3,
+                "a_plus_size_mult": 1.3,
+                "fast_ema": 21,
+                "mid_ema": 50,
+                "slow_ema": 100,
             },
             "per_ticker_optimal": "YM",
             "research_candidate": True,
             "daily_loss_limit_pct": 4.0,
         },
     ),
-
     # MICRO TIER (added 2026-05-08): the "limited starting capital"
     # cohort. These bots clone the proven sweep_reclaim+scorecard
     # template onto the micro-variant contracts where notional fits
     # the per-bot $10k budget without needing the paper_futures_floor
     # lift. Each is a direct rehab path for a retired full-size
     # cousin per docs/STRATEGY_REHAB_PLAN.md.
-
     # mym_sweep_reclaim — Micro Dow rehab path for ym_sweep_reclaim.
     # MYM at ~$25k notional (vs YM ~$248k) fits within typical micro
     # margin (~$1.1k); 624 days of MYM 1h data backfilled 2026-05-08.
@@ -2778,18 +2970,27 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         extras={
             "promotion_status": "paper_soak",
             "sub_strategy_kind": "sweep_reclaim",
-            "sub_strategy_extras": {"sweep_preset": "mym",
-                "level_lookback": 48, "reclaim_window": 3,
-                "min_wick_pct": 0.30, "min_volume_z": 0.3,
-                "rr_target": 2.5, "atr_stop_mult": 2.0,
-                "max_trades_per_day": 2, "min_bars_between_trades": 12,
+            "sub_strategy_extras": {
+                "sweep_preset": "mym",
+                "level_lookback": 48,
+                "reclaim_window": 3,
+                "min_wick_pct": 0.30,
+                "min_volume_z": 0.3,
+                "rr_target": 2.5,
+                "atr_stop_mult": 2.0,
+                "max_trades_per_day": 2,
+                "min_bars_between_trades": 12,
                 "warmup_bars": 72,
             },
             "scorecard_config": {
-                "min_score": 2, "a_plus_score": 3, "a_plus_size_mult": 1.3,
-                "fast_ema": 21, "mid_ema": 50, "slow_ema": 100,
+                "min_score": 2,
+                "a_plus_score": 3,
+                "a_plus_size_mult": 1.3,
+                "fast_ema": 21,
+                "mid_ema": 50,
+                "slow_ema": 100,
             },
-                        "edge_enabled": True,
+            "edge_enabled": True,
             "edge_config": {
                 "enable_session_gate": True,
                 "is_crypto": False,
@@ -2814,7 +3015,6 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "per_bot_budget_usd": 30000,
         },
     ),
-
     # mgc_sweep_reclaim — Micro Gold rehab path for gc_sweep_reclaim.
     # MGC at ~$47k notional (vs GC ~$470k) fits within micro margin
     # (~$1.1k). The full-size GC variant lost -0.179 net on the
@@ -2843,18 +3043,27 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         extras={
             "promotion_status": "research_candidate",
             "sub_strategy_kind": "sweep_reclaim",
-            "sub_strategy_extras": {"sweep_preset": "mgc",
-                "level_lookback": 48, "reclaim_window": 3,
-                "min_wick_pct": 0.40, "min_volume_z": 0.3,
-                "rr_target": 3.0, "atr_stop_mult": 3.0,
-                "max_trades_per_day": 2, "min_bars_between_trades": 12,
+            "sub_strategy_extras": {
+                "sweep_preset": "mgc",
+                "level_lookback": 48,
+                "reclaim_window": 3,
+                "min_wick_pct": 0.40,
+                "min_volume_z": 0.3,
+                "rr_target": 3.0,
+                "atr_stop_mult": 3.0,
+                "max_trades_per_day": 2,
+                "min_bars_between_trades": 12,
                 "warmup_bars": 72,
             },
             "scorecard_config": {
-                "min_score": 2, "a_plus_score": 3, "a_plus_size_mult": 1.3,
-                "fast_ema": 21, "mid_ema": 50, "slow_ema": 100,
+                "min_score": 2,
+                "a_plus_score": 3,
+                "a_plus_size_mult": 1.3,
+                "fast_ema": 21,
+                "mid_ema": 50,
+                "slow_ema": 100,
             },
-                        "edge_enabled": True,
+            "edge_enabled": True,
             "edge_config": {
                 "enable_session_gate": True,
                 "is_crypto": False,
@@ -2872,7 +3081,6 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "daily_loss_limit_pct": 4.0,
         },
     ),
-
     # mcl_sweep_reclaim — Micro Crude rehab path for cl_sweep_reclaim.
     # MCL at ~$9.7k notional (vs CL ~$97k) fits cleanly. Full CL
     # variant flipped -0.052 net on corrected engine; MCL has $100/pt
@@ -2899,18 +3107,27 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         extras={
             "promotion_status": "paper_soak",
             "sub_strategy_kind": "sweep_reclaim",
-            "sub_strategy_extras": {"sweep_preset": "mcl",
-                "level_lookback": 48, "reclaim_window": 3,
-                "min_wick_pct": 0.30, "min_volume_z": 0.3,
-                "rr_target": 2.5, "atr_stop_mult": 2.0,
-                "max_trades_per_day": 2, "min_bars_between_trades": 12,
+            "sub_strategy_extras": {
+                "sweep_preset": "mcl",
+                "level_lookback": 48,
+                "reclaim_window": 3,
+                "min_wick_pct": 0.30,
+                "min_volume_z": 0.3,
+                "rr_target": 2.5,
+                "atr_stop_mult": 2.0,
+                "max_trades_per_day": 2,
+                "min_bars_between_trades": 12,
                 "warmup_bars": 72,
             },
             "scorecard_config": {
-                "min_score": 2, "a_plus_score": 3, "a_plus_size_mult": 1.3,
-                "fast_ema": 21, "mid_ema": 50, "slow_ema": 100,
+                "min_score": 2,
+                "a_plus_score": 3,
+                "a_plus_size_mult": 1.3,
+                "fast_ema": 21,
+                "mid_ema": 50,
+                "slow_ema": 100,
             },
-                        "edge_enabled": True,
+            "edge_enabled": True,
             "edge_config": {
                 "enable_session_gate": True,
                 "is_crypto": False,
@@ -2928,7 +3145,6 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "daily_loss_limit_pct": 4.0,
         },
     ),
-
     # mes_sweep_reclaim_v2 — REHAB (Tier-1) candidate per
     # docs/STRATEGY_REHAB_PLAN.md. The deactivated v1 used MNQ-derived
     # sweep_preset on 1h; corrected-engine audit flipped it to -0.484
@@ -2962,18 +3178,27 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         extras={
             "promotion_status": "research_candidate",
             "sub_strategy_kind": "sweep_reclaim",
-            "sub_strategy_extras": {"sweep_preset": "mes_v2",
-                "level_lookback": 24, "reclaim_window": 3,
-                "min_wick_pct": 0.25, "min_volume_z": 0.3,
-                "rr_target": 2.5, "atr_stop_mult": 1.5,
-                "max_trades_per_day": 3, "min_bars_between_trades": 12,
+            "sub_strategy_extras": {
+                "sweep_preset": "mes_v2",
+                "level_lookback": 24,
+                "reclaim_window": 3,
+                "min_wick_pct": 0.25,
+                "min_volume_z": 0.3,
+                "rr_target": 2.5,
+                "atr_stop_mult": 1.5,
+                "max_trades_per_day": 3,
+                "min_bars_between_trades": 12,
                 "warmup_bars": 72,
             },
             "scorecard_config": {
-                "min_score": 2, "a_plus_score": 3, "a_plus_size_mult": 1.3,
-                "fast_ema": 21, "mid_ema": 50, "slow_ema": 100,
+                "min_score": 2,
+                "a_plus_score": 3,
+                "a_plus_size_mult": 1.3,
+                "fast_ema": 21,
+                "mid_ema": 50,
+                "slow_ema": 100,
             },
-                        "edge_enabled": True,
+            "edge_enabled": True,
             "edge_config": {
                 "enable_session_gate": True,
                 "is_crypto": False,
@@ -2991,7 +3216,6 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "daily_loss_limit_pct": 4.0,
         },
     ),
-
     # rsi_mr_mnq_v2 — REHAB (Tier-1) candidate per
     # docs/STRATEGY_REHAB_PLAN.md. The deactivated v1 audit (post
     # multiplier-fix) showed n=93, sharpe 0.28, expR_net -0.003 with
@@ -3029,10 +3253,14 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
                 "rsi_period": 14,
                 "oversold_threshold": 28.0,
                 "overbought_threshold": 72.0,
-                "bb_window": 20, "bb_std_mult": 2.0,
-                "min_volume_z": 0.2, "require_rejection": True,
-                "rr_target": 2.0, "atr_stop_mult": 1.5,
-                "max_trades_per_day": 3, "min_bars_between_trades": 12,
+                "bb_window": 20,
+                "bb_std_mult": 2.0,
+                "min_volume_z": 0.2,
+                "require_rejection": True,
+                "rr_target": 2.0,
+                "atr_stop_mult": 1.5,
+                "max_trades_per_day": 3,
+                "min_bars_between_trades": 12,
                 "warmup_bars": 50,
                 "rsi_long_threshold": 22.0,
                 "rsi_short_threshold": 78.0,
@@ -3041,10 +3269,14 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
                 "require_htf_agreement": True,
             },
             "scorecard_config": {
-                "min_score": 2, "a_plus_score": 3, "a_plus_size_mult": 1.3,
-                "fast_ema": 9, "mid_ema": 21, "slow_ema": 50,
+                "min_score": 2,
+                "a_plus_score": 3,
+                "a_plus_size_mult": 1.3,
+                "fast_ema": 9,
+                "mid_ema": 21,
+                "slow_ema": 50,
             },
-                        "edge_enabled": True,
+            "edge_enabled": True,
             "edge_config": {
                 "enable_session_gate": True,
                 "is_crypto": False,
@@ -3059,14 +3291,14 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             },
             "per_ticker_optimal": "MNQ",
             "walk_forward_overrides": {
-                "long_haul_mode": True, "long_haul_min_pos_fraction": 0.33,
+                "long_haul_mode": True,
+                "long_haul_min_pos_fraction": 0.33,
                 "min_trades_per_window": 2,
             },
             "research_candidate": True,
             "daily_loss_limit_pct": 4.0,
         },
     ),
-
     # mgc_sweep_reclaim_v2 — FAILED REHAB. Tier-1 rehab per
     # STRATEGY_REHAB_PLAN.md (relax min_wick_pct 0.40->0.30 +
     # level_lookback 48->32) was supposed to fire 2-3x more often
@@ -3102,16 +3334,25 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         extras={
             "promotion_status": "research_candidate",
             "sub_strategy_kind": "sweep_reclaim",
-            "sub_strategy_extras": {"sweep_preset": "mgc_v2",
-                "level_lookback": 32, "reclaim_window": 3,
-                "min_wick_pct": 0.30, "min_volume_z": 0.3,
-                "rr_target": 3.0, "atr_stop_mult": 3.0,
-                "max_trades_per_day": 2, "min_bars_between_trades": 12,
+            "sub_strategy_extras": {
+                "sweep_preset": "mgc_v2",
+                "level_lookback": 32,
+                "reclaim_window": 3,
+                "min_wick_pct": 0.30,
+                "min_volume_z": 0.3,
+                "rr_target": 3.0,
+                "atr_stop_mult": 3.0,
+                "max_trades_per_day": 2,
+                "min_bars_between_trades": 12,
                 "warmup_bars": 72,
             },
             "scorecard_config": {
-                "min_score": 2, "a_plus_score": 3, "a_plus_size_mult": 1.3,
-                "fast_ema": 21, "mid_ema": 50, "slow_ema": 100,
+                "min_score": 2,
+                "a_plus_score": 3,
+                "a_plus_size_mult": 1.3,
+                "fast_ema": 21,
+                "mid_ema": 50,
+                "slow_ema": 100,
             },
             "per_ticker_optimal": "MGC",
             "research_candidate": True,
@@ -3128,7 +3369,6 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             ),
         },
     ),
-
     # cl_macro — Oil macro fade strategy for turbulent headline-driven markets
     StrategyAssignment(
         bot_id="cl_macro",
@@ -3153,11 +3393,9 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "daily_loss_limit_pct": 4.0,
         },
     ),
-
     # ================================================================
     # ASSET-SPECIFIC EDGES (2026-05-08) — momentum for commodities, range for FX
     # ================================================================
-
     # gc_momentum — commodity momentum on Gold 1h
     StrategyAssignment(
         bot_id="gc_momentum",
@@ -3171,17 +3409,13 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         step_days=90,
         min_trades_per_window=5,
         strategy_kind="commodity_momentum",
-        rationale=(
-            "Momentum trend-following on Gold 1h. ROC+ADX+MA thrust entries. "
-            "Wide 3.5x ATR stops, 3.0 RR."
-        ),
+        rationale=("Momentum trend-following on Gold 1h. ROC+ADX+MA thrust entries. Wide 3.5x ATR stops, 3.0 RR."),
         extras={
             "promotion_status": "research_candidate",
             "momentum_preset": "gc",
             "daily_loss_limit_pct": 4.0,
         },
     ),
-
     # cl_momentum — commodity momentum on Crude Oil 1h
     StrategyAssignment(
         bot_id="cl_momentum",
@@ -3205,7 +3439,6 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "daily_loss_limit_pct": 4.0,
         },
     ),
-
     # eur_range — FX range mean-reversion on Euro 1h
     StrategyAssignment(
         bot_id="eur_range",
@@ -3219,17 +3452,13 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         step_days=90,
         min_trades_per_window=5,
         strategy_kind="fx_range",
-        rationale=(
-            "Range mean-reversion on Euro FX 1h. BB(20,2) + RSI(14) extremes "
-            "with volume confirmation."
-        ),
+        rationale=("Range mean-reversion on Euro FX 1h. BB(20,2) + RSI(14) extremes with volume confirmation."),
         extras={
             "promotion_status": "research_candidate",
             "range_preset": "eur",
             "daily_loss_limit_pct": 4.0,
         },
     ),
-
     # zn_range — range mean-reversion on 10Y Treasury 1h
     StrategyAssignment(
         bot_id="zn_range",
@@ -3253,13 +3482,13 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "daily_loss_limit_pct": 4.0,
         },
     ),
-
 )
 
 
 # ---------------------------------------------------------------------------
 # Lookup API
 # ---------------------------------------------------------------------------
+
 
 def get_for_bot(bot_id: str) -> StrategyAssignment | None:
     for a in ASSIGNMENTS:
@@ -3284,6 +3513,7 @@ def _load_kaizen_overrides() -> dict[str, dict]:
         if not _KAIZEN_OVERRIDES_PATH.exists():
             return {}
         import json as _json
+
         data = _json.loads(_KAIZEN_OVERRIDES_PATH.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {}
@@ -3313,6 +3543,7 @@ def is_active(assignment: StrategyAssignment) -> bool:
         from eta_engine.feeds.capital_allocator import (  # noqa: PLC0415
             DIAMOND_BOTS,
         )
+
         if assignment.bot_id in DIAMOND_BOTS:
             return True
     except ImportError:
@@ -3451,8 +3682,7 @@ def validate_registry_no_duplicates(
 
     if raise_on_duplicate:
         raise RuntimeError(
-            f"registry has {len(duplicates)} duplicate-config bot group(s); "
-            f"refusing to load: " + " | ".join(warnings)
+            f"registry has {len(duplicates)} duplicate-config bot group(s); refusing to load: " + " | ".join(warnings)
         )
     return warnings
 

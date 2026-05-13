@@ -1,4 +1,5 @@
 """Tests for the daily loss kill switch + bot scoreboard."""
+
 from __future__ import annotations
 
 import json
@@ -16,6 +17,7 @@ import pytest
 def tmp_closes(tmp_path: Path):
     """Patch the killswitch's trade_closes path to a tmp file."""
     from eta_engine.scripts import daily_loss_killswitch as ks
+
     closes = tmp_path / "trade_closes.jsonl"
     with patch.object(ks, "_TRADE_CLOSES_PATH", closes):
         yield closes
@@ -34,6 +36,7 @@ def _write_close(path: Path, *, ts: str, pnl: float, bot_id: str = "bot_a") -> N
 def test_killswitch_passes_when_pnl_above_floor(tmp_closes: Path) -> None:
     """A positive day = killswitch never trips."""
     from eta_engine.scripts.daily_loss_killswitch import is_killswitch_tripped
+
     _write_close(tmp_closes, ts=_today_iso() + "T12:00:00+00:00", pnl=+50.0)
     os.environ["ETA_KILLSWITCH_DAILY_LIMIT_USD"] = "-300"
     try:
@@ -46,6 +49,7 @@ def test_killswitch_passes_when_pnl_above_floor(tmp_closes: Path) -> None:
 
 def test_killswitch_trips_below_floor(tmp_closes: Path) -> None:
     from eta_engine.scripts.daily_loss_killswitch import is_killswitch_tripped
+
     _write_close(tmp_closes, ts=_today_iso() + "T09:00:00+00:00", pnl=-200.0)
     _write_close(tmp_closes, ts=_today_iso() + "T11:00:00+00:00", pnl=-150.0)
     os.environ["ETA_KILLSWITCH_DAILY_LIMIT_USD"] = "-300"
@@ -60,6 +64,7 @@ def test_killswitch_trips_below_floor(tmp_closes: Path) -> None:
 def test_killswitch_ignores_yesterday(tmp_closes: Path) -> None:
     """Losses from prior days don't count toward today's limit."""
     from eta_engine.scripts.daily_loss_killswitch import is_killswitch_tripped
+
     yesterday = (datetime.now(UTC) - timedelta(days=1)).date().isoformat()
     _write_close(tmp_closes, ts=yesterday + "T09:00:00+00:00", pnl=-1000.0)
     _write_close(tmp_closes, ts=_today_iso() + "T09:00:00+00:00", pnl=-50.0)
@@ -74,9 +79,10 @@ def test_killswitch_ignores_yesterday(tmp_closes: Path) -> None:
 def test_killswitch_pct_spec_overrides_usd(tmp_closes: Path) -> None:
     """ETA_KILLSWITCH_DAILY_LIMIT_PCT translates via _EQUITY_USD."""
     from eta_engine.scripts.daily_loss_killswitch import is_killswitch_tripped
+
     _write_close(tmp_closes, ts=_today_iso() + "T09:00:00+00:00", pnl=-200.0)
     os.environ["ETA_KILLSWITCH_DAILY_LIMIT_PCT"] = "5"  # 5%
-    os.environ["ETA_KILLSWITCH_EQUITY_USD"] = "10000"   # → -$500 floor
+    os.environ["ETA_KILLSWITCH_EQUITY_USD"] = "10000"  # → -$500 floor
     try:
         tripped, _ = is_killswitch_tripped()
     finally:
@@ -87,6 +93,7 @@ def test_killswitch_pct_spec_overrides_usd(tmp_closes: Path) -> None:
 
 def test_killswitch_disabled_env_short_circuits(tmp_closes: Path) -> None:
     from eta_engine.scripts.daily_loss_killswitch import is_killswitch_tripped
+
     _write_close(tmp_closes, ts=_today_iso() + "T09:00:00+00:00", pnl=-50000.0)
     os.environ["ETA_KILLSWITCH_DISABLED"] = "1"
     try:
@@ -99,6 +106,7 @@ def test_killswitch_disabled_env_short_circuits(tmp_closes: Path) -> None:
 
 def test_killswitch_status_returns_full_snapshot(tmp_closes: Path) -> None:
     from eta_engine.scripts.daily_loss_killswitch import killswitch_status
+
     _write_close(tmp_closes, ts=_today_iso() + "T09:00:00+00:00", pnl=-100.0)
     os.environ["ETA_KILLSWITCH_DAILY_LIMIT_USD"] = "-300"
     try:
@@ -117,9 +125,12 @@ def test_killswitch_status_returns_full_snapshot(tmp_closes: Path) -> None:
 def test_scoreboard_metrics_compute_from_closes(tmp_path: Path) -> None:
     """_bot_metrics aggregates win_rate and avg_R from closes."""
     from eta_engine.scripts.bot_scoreboard import _bot_metrics
+
     bot = {
-        "bot_id": "btc_test", "symbol": "BTC",
-        "n_entries": 5, "n_exits": 3,
+        "bot_id": "btc_test",
+        "symbol": "BTC",
+        "n_entries": 5,
+        "n_exits": 3,
         "open_position": None,
     }
     closes = [
@@ -137,6 +148,7 @@ def test_scoreboard_metrics_compute_from_closes(tmp_path: Path) -> None:
 
 def test_scoreboard_classifies_assets() -> None:
     from eta_engine.scripts.bot_scoreboard import _asset_class
+
     assert _asset_class("BTC") == "crypto"
     assert _asset_class("ETHUSD") == "crypto"
     assert _asset_class("MNQ1") == "futures"
@@ -146,9 +158,12 @@ def test_scoreboard_classifies_assets() -> None:
 def test_scoreboard_handles_no_closes() -> None:
     """Brand-new bot with zero exits shouldn't divide-by-zero."""
     from eta_engine.scripts.bot_scoreboard import _bot_metrics
+
     bot = {
-        "bot_id": "fresh", "symbol": "BTC",
-        "n_entries": 1, "n_exits": 0,
+        "bot_id": "fresh",
+        "symbol": "BTC",
+        "n_entries": 1,
+        "n_exits": 0,
         "realized_pnl": 0.0,
         "open_position": {"side": "BUY", "qty": 0.001, "entry_price": 80000},
     }

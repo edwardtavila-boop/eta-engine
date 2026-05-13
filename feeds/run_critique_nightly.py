@@ -14,6 +14,7 @@ Output: appends a structured review note to
 ``state/kaizen_critique/<YYYY-MM-DD>.json`` and fires a Resend alert
 when severity is HIGH.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -30,14 +31,15 @@ logger = logging.getLogger("run_critique_nightly")
 
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(description=__doc__,
-                                formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--audit-dir", type=Path,
-                   default=ROOT / "state" / "jarvis_audit",
-                   help="Directory of JARVIS audit *.jsonl files")
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument(
+        "--audit-dir",
+        type=Path,
+        default=ROOT / "state" / "jarvis_audit",
+        help="Directory of JARVIS audit *.jsonl files",
+    )
     p.add_argument("--window-hours", type=float, default=24.0)
-    p.add_argument("--out-dir", type=Path,
-                   default=ROOT / "state" / "kaizen_critique")
+    p.add_argument("--out-dir", type=Path, default=ROOT / "state" / "kaizen_critique")
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("-v", "--verbose", action="store_true")
     args = p.parse_args(argv)
@@ -71,11 +73,13 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     report = critique_window(all_records)
-    logger.info("critique: severity=%s fp=%.3f fn=%.3f drift=%.3f",
-                getattr(report, "severity", "?"),
-                getattr(report, "false_positive_rate", 0.0),
-                getattr(report, "false_negative_rate", 0.0),
-                getattr(report, "drift_score", 0.0))
+    logger.info(
+        "critique: severity=%s fp=%.3f fn=%.3f drift=%.3f",
+        getattr(report, "severity", "?"),
+        getattr(report, "false_positive_rate", 0.0),
+        getattr(report, "false_negative_rate", 0.0),
+        getattr(report, "drift_score", 0.0),
+    )
 
     today = datetime.now(UTC).date().isoformat()
     out_path = args.out_dir / f"{today}.json"
@@ -90,15 +94,19 @@ def main(argv: list[str] | None = None) -> int:
         try:
             import yaml
             from eta_engine.obs.alert_dispatcher import AlertDispatcher
+
             cfg = yaml.safe_load((ROOT / "configs" / "alerts.yaml").read_text(encoding="utf-8"))
             dispatcher = AlertDispatcher(cfg)
-            result = dispatcher.send("critique_high_severity", {
-                "severity": severity,
-                "false_positive_rate": getattr(report, "false_positive_rate", 0.0),
-                "false_negative_rate": getattr(report, "false_negative_rate", 0.0),
-                "drift_score": getattr(report, "drift_score", 0.0),
-                "summary": getattr(report, "summary", ""),
-            })
+            result = dispatcher.send(
+                "critique_high_severity",
+                {
+                    "severity": severity,
+                    "false_positive_rate": getattr(report, "false_positive_rate", 0.0),
+                    "false_negative_rate": getattr(report, "false_negative_rate", 0.0),
+                    "drift_score": getattr(report, "drift_score", 0.0),
+                    "summary": getattr(report, "summary", ""),
+                },
+            )
             logger.info("alert dispatched: delivered=%s", result.delivered)
         except Exception as exc:  # noqa: BLE001
             logger.warning("critique alert dispatch failed: %s", exc)

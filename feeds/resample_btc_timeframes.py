@@ -59,8 +59,15 @@ _DEFAULT_SOURCE: dict[str, str] = {
 }
 
 _TF_TO_SECONDS: dict[str, int] = {
-    "1m": 60, "5m": 300, "15m": 900, "1h": 3600, "4h": 14400,
-    "D": 86400, "1d": 86400, "1W": 86400 * 7, "W": 86400 * 7,
+    "1m": 60,
+    "5m": 300,
+    "15m": 900,
+    "1h": 3600,
+    "4h": 14400,
+    "D": 86400,
+    "1d": 86400,
+    "1W": 86400 * 7,
+    "W": 86400 * 7,
 }
 
 
@@ -73,14 +80,16 @@ def _read_csv(path: Path) -> list[dict[str, float]]:
         r = csv.DictReader(f)
         for row in r:
             try:
-                out.append({
-                    "time": int(row["time"]),
-                    "open": float(row["open"]),
-                    "high": float(row["high"]),
-                    "low": float(row["low"]),
-                    "close": float(row["close"]),
-                    "volume": float(row["volume"]),
-                })
+                out.append(
+                    {
+                        "time": int(row["time"]),
+                        "open": float(row["open"]),
+                        "high": float(row["high"]),
+                        "low": float(row["low"]),
+                        "close": float(row["close"]),
+                        "volume": float(row["volume"]),
+                    }
+                )
             except (ValueError, KeyError, TypeError):
                 continue
     out.sort(key=lambda r: r["time"])
@@ -108,7 +117,8 @@ def _bucket_key(ts: int, target_tf: str) -> int:
 
 
 def resample(
-    source_rows: list[dict[str, float]], target_tf: str,
+    source_rows: list[dict[str, float]],
+    target_tf: str,
 ) -> list[dict[str, float]]:
     """Aggregate OHLCV bars into target_tf buckets. Canonical resampling."""
     if not source_rows:
@@ -121,14 +131,16 @@ def resample(
     out: list[dict[str, float]] = []
     for bucket_ts in sorted(buckets):
         bars = sorted(buckets[bucket_ts], key=lambda x: x["time"])
-        out.append({
-            "time": bucket_ts,
-            "open": bars[0]["open"],
-            "high": max(b["high"] for b in bars),
-            "low": min(b["low"] for b in bars),
-            "close": bars[-1]["close"],
-            "volume": sum(b["volume"] for b in bars),
-        })
+        out.append(
+            {
+                "time": bucket_ts,
+                "open": bars[0]["open"],
+                "high": max(b["high"] for b in bars),
+                "low": min(b["low"] for b in bars),
+                "close": bars[-1]["close"],
+                "volume": sum(b["volume"] for b in bars),
+            }
+        )
     return out
 
 
@@ -145,7 +157,10 @@ def _write_csv(path: Path, rows: list[dict[str, float]]) -> int:
 
 
 def synthesize_one(
-    history_root: Path, symbol: str, target_tf: str, source_tf: str,
+    history_root: Path,
+    symbol: str,
+    target_tf: str,
+    source_tf: str,
 ) -> int:
     """Synthesize one timeframe. Returns row count written."""
     src_path = history_root / f"{symbol.upper()}_{source_tf}.csv"
@@ -165,10 +180,8 @@ def synthesize_one(
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--symbol", default="BTC")
-    p.add_argument("--tf", default=None,
-                   help="target tf (15m, 4h, 1W). Omit to synthesize all defaults.")
-    p.add_argument("--src-tf", default=None,
-                   help="source tf (default: smallest practical for target)")
+    p.add_argument("--tf", default=None, help="target tf (15m, 4h, 1W). Omit to synthesize all defaults.")
+    p.add_argument("--src-tf", default=None, help="source tf (default: smallest practical for target)")
     p.add_argument("--root", type=Path, default=_DEFAULT_HISTORY_ROOT)
     args = p.parse_args()
 

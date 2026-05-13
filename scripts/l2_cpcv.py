@@ -40,6 +40,7 @@ Limitations
 - Purge + embargo size depends on signal autocorrelation.  Defaults
   are conservative (10 samples each side).
 """
+
 from __future__ import annotations
 
 # ruff: noqa: PLR2004
@@ -62,6 +63,7 @@ CPCV_LOG = LOG_DIR / "l2_cpcv_runs.jsonl"
 @dataclass
 class CPCVSplit:
     """One train/test split with its score."""
+
     split_idx: int
     test_fold_indices: tuple[int, ...]
     n_train: int
@@ -83,7 +85,7 @@ class CPCVReport:
     test_score_min: float | None
     test_score_max: float | None
     test_score_median: float | None
-    sample_sharpe: float | None      # Deflated by realized n_splits
+    sample_sharpe: float | None  # Deflated by realized n_splits
     splits: list[CPCVSplit] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
 
@@ -102,10 +104,9 @@ def _build_fold_indices(n_samples: int, n_folds: int) -> list[tuple[int, int]]:
     return folds
 
 
-def _purged_train_indices(n_samples: int,
-                           test_folds: list[tuple[int, int]],
-                           *, purge_size: int = 10,
-                           embargo_size: int = 10) -> list[int]:
+def _purged_train_indices(
+    n_samples: int, test_folds: list[tuple[int, int]], *, purge_size: int = 10, embargo_size: int = 10
+) -> list[int]:
     """Return list of training-set sample indices with purge + embargo
     zones around each test fold removed."""
     excluded: set[int] = set()
@@ -129,14 +130,19 @@ def _sharpe_from_returns(returns: list[float]) -> float:
         return 0.0
     m = statistics.mean(returns)
     var = sum((r - m) ** 2 for r in returns) / max(len(returns) - 1, 1)
-    std = var ** 0.5
+    std = var**0.5
     return m / std if std > 0 else 0.0
 
 
-def cpcv(returns: list[float], *,
-         n_folds: int = 6, k_test: int = 2,
-         purge_size: int = 10, embargo_size: int = 10,
-         metric: str = "sharpe") -> CPCVReport:
+def cpcv(
+    returns: list[float],
+    *,
+    n_folds: int = 6,
+    k_test: int = 2,
+    purge_size: int = 10,
+    embargo_size: int = 10,
+    metric: str = "sharpe",
+) -> CPCVReport:
     """Run CPCV over a series of per-trade returns.
 
     For each combination of k test folds (out of n_folds total),
@@ -146,16 +152,21 @@ def cpcv(returns: list[float], *,
     n = len(returns)
     notes: list[str] = []
     if n < n_folds * 3:
-        notes.append(f"Sample {n} too small for {n_folds} folds — "
-                       "need at least 3 samples per fold")
+        notes.append(f"Sample {n} too small for {n_folds} folds — need at least 3 samples per fold")
     if n < 20:
         return CPCVReport(
-            n_folds=n_folds, k_test=k_test, n_splits=0,
-            purge_size=purge_size, embargo_size=embargo_size,
+            n_folds=n_folds,
+            k_test=k_test,
+            n_splits=0,
+            purge_size=purge_size,
+            embargo_size=embargo_size,
             metric_name=metric,
-            test_score_mean=None, test_score_stddev=None,
-            test_score_min=None, test_score_max=None,
-            test_score_median=None, sample_sharpe=None,
+            test_score_mean=None,
+            test_score_stddev=None,
+            test_score_min=None,
+            test_score_max=None,
+            test_score_median=None,
+            sample_sharpe=None,
             notes=notes + ["sample too small for CPCV (need n >= 20)"],
         )
     folds = _build_fold_indices(n, n_folds)
@@ -169,9 +180,7 @@ def cpcv(returns: list[float], *,
             test_indices.extend(range(lo, hi))
         test_returns = [returns[i] for i in test_indices]
         # Train indices (purged + embargoed)
-        train_indices = _purged_train_indices(
-            n, test_folds, purge_size=purge_size,
-            embargo_size=embargo_size)
+        train_indices = _purged_train_indices(n, test_folds, purge_size=purge_size, embargo_size=embargo_size)
         train_returns = [returns[i] for i in train_indices]
         # Score
         if metric == "sharpe":
@@ -182,23 +191,32 @@ def cpcv(returns: list[float], *,
             test_score = statistics.mean(test_returns) if test_returns else 0.0
         else:
             raise ValueError(f"unknown metric: {metric}")
-        splits.append(CPCVSplit(
-            split_idx=split_idx,
-            test_fold_indices=tuple(test_fold_indices),
-            n_train=len(train_indices), n_test=len(test_indices),
-            train_score=round(train_score, 4),
-            test_score=round(test_score, 4),
-        ))
+        splits.append(
+            CPCVSplit(
+                split_idx=split_idx,
+                test_fold_indices=tuple(test_fold_indices),
+                n_train=len(train_indices),
+                n_test=len(test_indices),
+                train_score=round(train_score, 4),
+                test_score=round(test_score, 4),
+            )
+        )
         test_scores.append(test_score)
 
     if not test_scores:
         return CPCVReport(
-            n_folds=n_folds, k_test=k_test, n_splits=0,
-            purge_size=purge_size, embargo_size=embargo_size,
+            n_folds=n_folds,
+            k_test=k_test,
+            n_splits=0,
+            purge_size=purge_size,
+            embargo_size=embargo_size,
             metric_name=metric,
-            test_score_mean=None, test_score_stddev=None,
-            test_score_min=None, test_score_max=None,
-            test_score_median=None, sample_sharpe=None,
+            test_score_mean=None,
+            test_score_stddev=None,
+            test_score_min=None,
+            test_score_max=None,
+            test_score_median=None,
+            sample_sharpe=None,
             notes=notes + ["no splits computed"],
         )
 
@@ -213,8 +231,11 @@ def cpcv(returns: list[float], *,
     sample_sharpe = mean_score / stddev_score if stddev_score > 0 else 0.0
 
     return CPCVReport(
-        n_folds=n_folds, k_test=k_test, n_splits=len(splits),
-        purge_size=purge_size, embargo_size=embargo_size,
+        n_folds=n_folds,
+        k_test=k_test,
+        n_splits=len(splits),
+        purge_size=purge_size,
+        embargo_size=embargo_size,
         metric_name=metric,
         test_score_mean=round(mean_score, 4),
         test_score_stddev=round(stddev_score, 4),
@@ -222,7 +243,8 @@ def cpcv(returns: list[float], *,
         test_score_max=round(max_score, 4),
         test_score_median=round(median_score, 4),
         sample_sharpe=round(sample_sharpe, 4),
-        splits=splits, notes=notes,
+        splits=splits,
+        notes=notes,
     )
 
 
@@ -233,8 +255,7 @@ def main() -> int:
     ap.add_argument("--purge", type=int, default=10)
     ap.add_argument("--embargo", type=int, default=10)
     ap.add_argument("--metric", default="sharpe", choices=["sharpe", "mean"])
-    ap.add_argument("--input", type=Path, default=None,
-                    help="JSON file with array of per-trade returns")
+    ap.add_argument("--input", type=Path, default=None, help="JSON file with array of per-trade returns")
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
 
@@ -243,19 +264,22 @@ def main() -> int:
     else:
         print("No --input provided; generating synthetic returns for demo")
         import random
+
         rng = random.Random(42)
         returns = [rng.gauss(0.1, 1.0) for _ in range(100)]
 
-    report = cpcv(returns,
-                    n_folds=args.n_folds, k_test=args.k_test,
-                    purge_size=args.purge, embargo_size=args.embargo,
-                    metric=args.metric)
+    report = cpcv(
+        returns,
+        n_folds=args.n_folds,
+        k_test=args.k_test,
+        purge_size=args.purge,
+        embargo_size=args.embargo,
+        metric=args.metric,
+    )
 
     try:
         with CPCV_LOG.open("a", encoding="utf-8") as f:
-            f.write(json.dumps({"ts": datetime.now(UTC).isoformat(),
-                                 **asdict(report)},
-                                separators=(",", ":")) + "\n")
+            f.write(json.dumps({"ts": datetime.now(UTC).isoformat(), **asdict(report)}, separators=(",", ":")) + "\n")
     except OSError as e:
         print(f"WARN: cpcv log write failed: {e}", file=sys.stderr)
 
@@ -268,8 +292,7 @@ def main() -> int:
 
     print()
     print("=" * 78)
-    print(f"CPCV  (n_folds={report.n_folds}, k_test={report.k_test}, "
-          f"metric={report.metric_name})")
+    print(f"CPCV  (n_folds={report.n_folds}, k_test={report.k_test}, metric={report.metric_name})")
     print("=" * 78)
     print(f"  n_splits         : {report.n_splits}")
     print(f"  purge / embargo  : {report.purge_size} / {report.embargo_size}")

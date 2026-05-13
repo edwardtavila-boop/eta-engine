@@ -19,18 +19,30 @@ from eta_engine.strategies.orb_strategy import ORBConfig, ORBStrategy, _add_minu
 _NY = ZoneInfo("America/New_York")
 
 
-def _bar(local_h: int, local_m: int, *, high: float, low: float,
-         open_: float | None = None, close: float | None = None,
-         volume: float = 1000.0,
-         day: int = 15) -> BarData:
+def _bar(
+    local_h: int,
+    local_m: int,
+    *,
+    high: float,
+    low: float,
+    open_: float | None = None,
+    close: float | None = None,
+    volume: float = 1000.0,
+    day: int = 15,
+) -> BarData:
     """Construct a 5m bar at New York local time on 2026-01-DD."""
     local_dt = datetime(2026, 1, day, local_h, local_m, tzinfo=_NY)
     utc_dt = local_dt.astimezone(UTC)
     o = open_ if open_ is not None else (high + low) / 2
     c = close if close is not None else (high + low) / 2
     return BarData(
-        timestamp=utc_dt, symbol="MNQ", open=o, high=high, low=low,
-        close=c, volume=volume,
+        timestamp=utc_dt,
+        symbol="MNQ",
+        open=o,
+        high=high,
+        low=low,
+        close=c,
+        volume=volume,
     )
 
 
@@ -38,8 +50,10 @@ def _config_for_test() -> BacktestConfig:
     return BacktestConfig(
         start_date=datetime(2026, 1, 1, tzinfo=UTC),
         end_date=datetime(2026, 1, 31, tzinfo=UTC),
-        symbol="MNQ", initial_equity=10_000.0,
-        risk_per_trade_pct=0.01, confluence_threshold=5.0,
+        symbol="MNQ",
+        initial_equity=10_000.0,
+        risk_per_trade_pct=0.01,
+        confluence_threshold=5.0,
         max_trades_per_day=10,
     )
 
@@ -261,8 +275,13 @@ def test_ema_bias_blocks_long_below_ema() -> None:
     for i in range(50):
         ts = (base + timedelta(minutes=i)).astimezone(UTC)
         bar = BarData(
-            timestamp=ts, symbol="MNQ", open=500.0, high=500.0,
-            low=500.0, close=500.0, volume=1000.0,
+            timestamp=ts,
+            symbol="MNQ",
+            open=500.0,
+            high=500.0,
+            low=500.0,
+            close=500.0,
+            volume=1000.0,
         )
         warmup_hist.append(bar)
         s.maybe_enter(bar, warmup_hist, 10_000.0, cfg)
@@ -325,21 +344,32 @@ def test_emits_orb_regime_tag() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _es_bar(local_h: int, local_m: int, *, high: float, low: float,
-            close: float | None = None, day: int = 15) -> BarData:
+def _es_bar(
+    local_h: int, local_m: int, *, high: float, low: float, close: float | None = None, day: int = 15
+) -> BarData:
     """Build a synthetic ES1 bar at the same NY-local time as a primary bar."""
     local_dt = datetime(2026, 1, day, local_h, local_m, tzinfo=_NY)
     utc_dt = local_dt.astimezone(UTC)
     c = close if close is not None else (high + low) / 2
     return BarData(
-        timestamp=utc_dt, symbol="ES", open=(high + low) / 2,
-        high=high, low=low, close=c, volume=5000.0,
+        timestamp=utc_dt,
+        symbol="ES",
+        open=(high + low) / 2,
+        high=high,
+        low=low,
+        close=c,
+        volume=5000.0,
     )
 
 
 def _drive_range_with_es(
-    s: ORBStrategy, *, mnq_high: float, mnq_low: float,
-    es_high: float, es_low: float, day: int = 15,
+    s: ORBStrategy,
+    *,
+    mnq_high: float,
+    mnq_low: float,
+    es_high: float,
+    es_low: float,
+    day: int = 15,
 ) -> None:
     """Run the three range-window bars through the strategy with paired ES bars.
 
@@ -360,7 +390,9 @@ def _drive_range_with_es(
     for h, m in [(9, 30), (9, 35), (9, 40)]:
         s.maybe_enter(
             _bar(h, m, high=mnq_high, low=mnq_low, day=day),
-            [], 10_000.0, cfg,
+            [],
+            10_000.0,
+            cfg,
         )
 
 
@@ -379,8 +411,7 @@ def test_es_filter_off_means_no_change() -> None:
 def test_es_confirmation_long_passes_when_es_also_breaks_high() -> None:
     s = _fixture_strategy(range_minutes=15, require_es_confirmation=True)
     cfg = _config_for_test()
-    _drive_range_with_es(s, mnq_high=120.0, mnq_low=100.0,
-                         es_high=4500.0, es_low=4400.0)
+    _drive_range_with_es(s, mnq_high=120.0, mnq_low=100.0, es_high=4500.0, es_low=4400.0)
     hist = [_bar(8, m, high=120.0, low=100.0) for m in range(0, 30, 5)]
 
     def _provider(b: BarData) -> BarData | None:
@@ -398,8 +429,7 @@ def test_es_confirmation_long_blocked_when_es_does_not_break() -> None:
     """MNQ breaks high, ES stays inside its range → no trade."""
     s = _fixture_strategy(range_minutes=15, require_es_confirmation=True)
     cfg = _config_for_test()
-    _drive_range_with_es(s, mnq_high=120.0, mnq_low=100.0,
-                         es_high=4500.0, es_low=4400.0)
+    _drive_range_with_es(s, mnq_high=120.0, mnq_low=100.0, es_high=4500.0, es_low=4400.0)
     hist = [_bar(8, m, high=120.0, low=100.0) for m in range(0, 30, 5)]
 
     def _provider(b: BarData) -> BarData | None:
@@ -415,8 +445,7 @@ def test_es_confirmation_long_blocked_when_es_does_not_break() -> None:
 def test_es_confirmation_short_passes_when_es_also_breaks_low() -> None:
     s = _fixture_strategy(range_minutes=15, require_es_confirmation=True)
     cfg = _config_for_test()
-    _drive_range_with_es(s, mnq_high=120.0, mnq_low=100.0,
-                         es_high=4500.0, es_low=4400.0)
+    _drive_range_with_es(s, mnq_high=120.0, mnq_low=100.0, es_high=4500.0, es_low=4400.0)
     hist = [_bar(8, m, high=120.0, low=100.0) for m in range(0, 30, 5)]
 
     def _provider(b: BarData) -> BarData | None:
@@ -433,8 +462,7 @@ def test_es_confirmation_blocks_when_provider_returns_none() -> None:
     """Fail-closed: missing ES bar at trade minute → no trade."""
     s = _fixture_strategy(range_minutes=15, require_es_confirmation=True)
     cfg = _config_for_test()
-    _drive_range_with_es(s, mnq_high=120.0, mnq_low=100.0,
-                         es_high=4500.0, es_low=4400.0)
+    _drive_range_with_es(s, mnq_high=120.0, mnq_low=100.0, es_high=4500.0, es_low=4400.0)
     hist = [_bar(8, m, high=120.0, low=100.0) for m in range(0, 30, 5)]
     s.attach_es_provider(lambda _b: None)
     bar = _bar(9, 45, high=125.0, low=120.0, close=124.0)

@@ -53,6 +53,7 @@ Use case (paired with intelligence layer):
         # Exit immediately
         bot.exit_position(reason=f"thesis broken: {breach.description}")
 """
+
 from __future__ import annotations
 
 import json
@@ -72,7 +73,7 @@ DEFAULT_BREACH_LOG = ROOT / "state" / "jarvis_intel" / "thesis_breaches.jsonl"
 class ThesisInvalidationRule:
     """One concrete condition that breaks the thesis."""
 
-    kind: str                         # "regime_changed_to" / "price_breaks" / etc.
+    kind: str  # "regime_changed_to" / "price_breaks" / etc.
     params: dict
     description: str = ""
 
@@ -154,9 +155,11 @@ def _evaluate_rule(
                 DEFAULT_2026_USA_EVENTS,
                 is_within_event_window,
             )
+
             now = datetime.now(UTC)
             event = is_within_event_window(
-                now, events=DEFAULT_2026_USA_EVENTS,
+                now,
+                events=DEFAULT_2026_USA_EVENTS,
                 window_min_override=int(max_minutes),
             )
             return event is not None
@@ -258,7 +261,9 @@ class ThesisTracker:
             except Exception as exc:  # noqa: BLE001
                 logger.warning(
                     "thesis_tracker: rule eval failed for %s/%s (%s)",
-                    signal_id, rule.kind, exc,
+                    signal_id,
+                    rule.kind,
+                    exc,
                 )
         return None
 
@@ -286,10 +291,7 @@ class ThesisTracker:
         try:
             data = json.loads(self.theses_path.read_text(encoding="utf-8"))
             for sig, raw in data.items():
-                rules = [
-                    ThesisInvalidationRule(**r)
-                    for r in raw.get("invalidation_rules", [])
-                ]
+                rules = [ThesisInvalidationRule(**r) for r in raw.get("invalidation_rules", [])]
                 t = TradeThesis(
                     signal_id=raw["signal_id"],
                     bot_id=raw.get("bot_id", ""),

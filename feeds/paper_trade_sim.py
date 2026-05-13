@@ -8,6 +8,7 @@ without copy-paste drift between two implementations.
 
 Deprecated: import from ``eta_engine.scripts.paper_trade_sim`` directly.
 """
+
 from __future__ import annotations
 
 from eta_engine.scripts.paper_trade_sim import (  # noqa: F401

@@ -31,6 +31,7 @@ Usage::
     python scripts/score_policy_candidate.py --window-days 30
     python scripts/score_policy_candidate.py --candidate v18
 """
+
 from __future__ import annotations
 
 import argparse
@@ -197,8 +198,7 @@ def candidate_metrics(records: list[dict[str, Any]], *, candidate_module: str | 
     try:
         candidate = get_candidate(candidate_module)
     except KeyError:
-        logger.error("no candidate registered as '%s' -- did you import the module?",
-                     candidate_module)
+        logger.error("no candidate registered as '%s' -- did you import the module?", candidate_module)
         return champion_metrics(records)
 
     if not records:
@@ -270,10 +270,7 @@ def candidate_replay_status(candidate_module: str | None) -> dict[str, object]:
         "mode": "candidate_missing",
         "candidate": candidate_module,
         "registered": False,
-        "message": (
-            f"candidate '{candidate_module}' is not registered; candidate "
-            "metrics mirror champion baseline"
-        ),
+        "message": (f"candidate '{candidate_module}' is not registered; candidate metrics mirror champion baseline"),
     }
 
 
@@ -300,14 +297,15 @@ def compare(champ: dict[str, float], cand: dict[str, float]) -> dict[str, str]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(description=__doc__,
-                                formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--audit-dir", type=Path,
-                   default=ROOT / "state" / "jarvis_audit",
-                   help="Directory containing JARVIS audit *.jsonl files")
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument(
+        "--audit-dir",
+        type=Path,
+        default=ROOT / "state" / "jarvis_audit",
+        help="Directory containing JARVIS audit *.jsonl files",
+    )
     p.add_argument("--window-days", type=int, default=30)
-    p.add_argument("--candidate", type=str, default=None,
-                   help="Registered candidate policy name, e.g. v18")
+    p.add_argument("--candidate", type=str, default=None, help="Registered candidate policy name, e.g. v18")
     p.add_argument("--json", action="store_true")
     p.add_argument("-v", "--verbose", action="store_true")
     args = p.parse_args(argv)
@@ -322,18 +320,23 @@ def main(argv: list[str] | None = None) -> int:
     records = load_audit_records(audit_paths, since=since)
 
     champ = champion_metrics(records)
-    cand  = candidate_metrics(records, candidate_module=args.candidate)
+    cand = candidate_metrics(records, candidate_module=args.candidate)
     verdicts = compare(champ, cand)
     replay_status = candidate_replay_status(args.candidate)
 
     if args.json:
-        print(json.dumps({
-            "window_days": args.window_days,
-            "candidate_replay": replay_status,
-            "champion":    champ,
-            "candidate":   cand,
-            "verdicts":    verdicts,
-        }, indent=2))
+        print(
+            json.dumps(
+                {
+                    "window_days": args.window_days,
+                    "candidate_replay": replay_status,
+                    "champion": champ,
+                    "candidate": cand,
+                    "verdicts": verdicts,
+                },
+                indent=2,
+            )
+        )
     else:
         print(f"\n  window: last {args.window_days} days  ({len(records)} records)")
         print("  metric           champion       candidate      verdict")

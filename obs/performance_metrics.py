@@ -20,6 +20,7 @@ benchmark?"
 Operator runs ``python scripts/eta_perf_report.py`` daily / weekly to
 inspect the rolling metrics and catch degradation.
 """
+
 from __future__ import annotations
 
 import math
@@ -36,8 +37,8 @@ class PerfMetrics:
     sortino: float
     calmar: float
     max_dd_pct: float
-    psr: float                  # P[Sharpe > 0]
-    psr_vs_one: float           # P[Sharpe > 1.0]
+    psr: float  # P[Sharpe > 0]
+    psr_vs_one: float  # P[Sharpe > 1.0]
     skew: float
     kurtosis: float
 
@@ -53,8 +54,8 @@ def _moments(xs: list[float]) -> tuple[float, float, float, float]:
     sd = math.sqrt(var)
     if sd == 0:
         return mean, 0.0, 0.0, 0.0
-    skew = sum((x - mean) ** 3 for x in xs) / (n * (sd ** 3))
-    kurt = sum((x - mean) ** 4 for x in xs) / (n * (sd ** 4)) - 3.0  # excess
+    skew = sum((x - mean) ** 3 for x in xs) / (n * (sd**3))
+    kurt = sum((x - mean) ** 4 for x in xs) / (n * (sd**4)) - 3.0  # excess
     return mean, sd, skew, kurt
 
 
@@ -78,7 +79,9 @@ def _norm_cdf(z: float) -> float:
 
 
 def probabilistic_sharpe_ratio(
-    returns: list[float], *, target_sharpe: float = 0.0,
+    returns: list[float],
+    *,
+    target_sharpe: float = 0.0,
     ann_factor: float = 252.0,
 ) -> float:
     """PSR = P(true_Sharpe > target | observed_Sharpe, n, skew, kurt).
@@ -96,9 +99,7 @@ def probabilistic_sharpe_ratio(
     sharpe_per_step = mean / sd
     target_per_step = target_sharpe / math.sqrt(ann_factor)
     # Stationary distribution of Sharpe ratio under PSR derivation
-    se = math.sqrt(
-        (1.0 - skew * sharpe_per_step + (kurt + 2) / 4 * (sharpe_per_step ** 2)) / (n - 1)
-    )
+    se = math.sqrt((1.0 - skew * sharpe_per_step + (kurt + 2) / 4 * (sharpe_per_step**2)) / (n - 1))
     z = (sharpe_per_step - target_per_step) / se
     return round(_norm_cdf(z), 4)
 
@@ -118,18 +119,24 @@ def compute_metrics(
     n = len(r_multiples)
     if n == 0:
         return PerfMetrics(
-            n_trades=0, win_rate=0.0, profit_factor=0.0,
-            expectancy_r=0.0, sharpe=0.0, sortino=0.0, calmar=0.0,
-            max_dd_pct=0.0, psr=0.0, psr_vs_one=0.0,
-            skew=0.0, kurtosis=0.0,
+            n_trades=0,
+            win_rate=0.0,
+            profit_factor=0.0,
+            expectancy_r=0.0,
+            sharpe=0.0,
+            sortino=0.0,
+            calmar=0.0,
+            max_dd_pct=0.0,
+            psr=0.0,
+            psr_vs_one=0.0,
+            skew=0.0,
+            kurtosis=0.0,
         )
 
     wins = [r for r in r_multiples if r > 0]
     losses = [r for r in r_multiples if r < 0]
     win_rate = len(wins) / n
-    profit_factor = (
-        (sum(wins) / abs(sum(losses))) if losses and sum(losses) != 0 else float("inf")
-    )
+    profit_factor = (sum(wins) / abs(sum(losses))) if losses and sum(losses) != 0 else float("inf")
 
     mean, sd, skew, kurt = _moments(r_multiples)
 
@@ -141,9 +148,7 @@ def compute_metrics(
         d_sd = 0.0
 
     sharpe = (mean / sd * math.sqrt(ann_factor)) if sd > 0 else 0.0
-    sortino = (mean / d_sd * math.sqrt(ann_factor)) if d_sd > 0 else (
-        float("inf") if mean > 0 else 0.0
-    )
+    sortino = (mean / d_sd * math.sqrt(ann_factor)) if d_sd > 0 else (float("inf") if mean > 0 else 0.0)
 
     # Equity curve: use provided or reconstruct
     if equity_curve is None:

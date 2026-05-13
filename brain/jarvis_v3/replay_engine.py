@@ -31,6 +31,7 @@ the realized R is available for measuring lift.
 
 Pure stdlib. No NumPy.
 """
+
 from __future__ import annotations
 
 import json
@@ -59,8 +60,8 @@ class ReplayDelta:
     original_verdict: str
     new_verdict: str
     realized_r: float | None
-    change_kind: str             # "improvement" / "regression" / "ambiguous"
-    delta_r: float | None        # signed: positive = new policy did better
+    change_kind: str  # "improvement" / "regression" / "ambiguous"
+    delta_r: float | None  # signed: positive = new policy did better
 
 
 @dataclass
@@ -158,10 +159,7 @@ def replay_decisions(
             trade_by_sig[sig] = float(t.get("realized_r", 0.0))
 
     # Filter to recent verdicts
-    recent = [
-        v for v in verdicts
-        if (dt := _parse_ts(v.get("ts"))) is not None and dt >= cutoff
-    ]
+    recent = [v for v in verdicts if (dt := _parse_ts(v.get("ts"))) is not None and dt >= cutoff]
 
     deltas: list[ReplayDelta] = []
     n_consultations = len(recent)
@@ -173,7 +171,8 @@ def replay_decisions(
         except Exception as exc:  # noqa: BLE001
             logger.warning(
                 "replay_engine: new_policy raised on %s (%s)",
-                v.get("signal_id"), exc,
+                v.get("signal_id"),
+                exc,
             )
             continue
         if new == original:
@@ -181,33 +180,32 @@ def replay_decisions(
         sig = str(v.get("signal_id", ""))
         realized = trade_by_sig.get(sig)
         change_kind, delta_r = _classify(
-            original, new, realized, improvement_kinds,
+            original,
+            new,
+            realized,
+            improvement_kinds,
         )
-        deltas.append(ReplayDelta(
-            signal_id=sig,
-            ts=str(v.get("ts", "")),
-            original_verdict=original,
-            new_verdict=new,
-            realized_r=realized,
-            change_kind=change_kind,
-            delta_r=delta_r,
-        ))
+        deltas.append(
+            ReplayDelta(
+                signal_id=sig,
+                ts=str(v.get("ts", "")),
+                original_verdict=original,
+                new_verdict=new,
+                realized_r=realized,
+                change_kind=change_kind,
+                delta_r=delta_r,
+            )
+        )
 
     n_changed = len(deltas)
     improvements = [d for d in deltas if d.change_kind == "improvement"]
     regressions = [d for d in deltas if d.change_kind == "regression"]
     ambiguous = [d for d in deltas if d.change_kind == "ambiguous"]
     avg_imp = (
-        sum(d.delta_r for d in improvements if d.delta_r is not None)
-        / len(improvements)
-    ) if improvements else 0.0
-    avg_reg = (
-        sum(d.delta_r for d in regressions if d.delta_r is not None)
-        / len(regressions)
-    ) if regressions else 0.0
-    net_lift = sum(
-        d.delta_r for d in deltas if d.delta_r is not None
-    ) / max(n_consultations, 1)
+        (sum(d.delta_r for d in improvements if d.delta_r is not None) / len(improvements)) if improvements else 0.0
+    )
+    avg_reg = (sum(d.delta_r for d in regressions if d.delta_r is not None) / len(regressions)) if regressions else 0.0
+    net_lift = sum(d.delta_r for d in deltas if d.delta_r is not None) / max(n_consultations, 1)
 
     summary = (
         f"Replay over {n_days_back:.0f} days, {n_consultations} consultations: "

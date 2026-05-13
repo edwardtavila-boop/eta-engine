@@ -215,10 +215,7 @@ def run_guard(
             returncode = _run_task_command(verb, task_name)
             task_results.append({"verb": verb, "task_name": task_name, "returncode": returncode})
     else:
-        task_results = [
-            {"verb": verb, "task_name": task_name, "returncode": None}
-            for verb, task_name in release_tasks
-        ]
+        task_results = [{"verb": verb, "task_name": task_name, "returncode": None} for verb, task_name in release_tasks]
 
     status = "released" if execute else "ready_to_release"
     state = _base_state(

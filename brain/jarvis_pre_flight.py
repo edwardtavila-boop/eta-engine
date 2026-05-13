@@ -34,6 +34,7 @@ Drop-in usage from a bot::
     # When the trade closes:
     record_fill_with_realized_r(self._journal, intent, r_multiple=R)
 """
+
 from __future__ import annotations
 
 import logging
@@ -99,11 +100,13 @@ def bot_pre_flight(
         )
 
     payload = dict(extra_payload or {})
-    payload.update({
-        "side": side,
-        "symbol": symbol,
-        "confidence": confluence,
-    })
+    payload.update(
+        {
+            "side": side,
+            "symbol": symbol,
+            "confidence": confluence,
+        }
+    )
     if rationale:
         payload["rationale"] = rationale
     # Wave-6 (2026-04-27): auto-attach sage_bars when the bot maintains
@@ -139,10 +142,7 @@ def bot_pre_flight(
         updater = getattr(bot, "_online_updater", None)
         if updater is not None and hasattr(updater, "sizing_decision"):
             try:
-                bucket = str(
-                    payload.get("feature_bucket")
-                    or f"{symbol}:{side}:conf_{int(float(confluence))}"
-                )
+                bucket = str(payload.get("feature_bucket") or f"{symbol}:{side}:conf_{int(float(confluence))}")
                 online_decision = updater.sizing_decision(bucket)
                 if online_decision.multiplier < final_cap:
                     final_cap = online_decision.multiplier
@@ -160,9 +160,11 @@ def bot_pre_flight(
         size_cap_mult=final_cap,
         reason=f"approved (corr={corr.cap_mult:.2f}, jarvis_cap={jarvis_cap}{online_reason})",
         reason_code="approved",
-        binding="online_learning" if online_binding else "approved" if final_cap >= 1.0 else (
-            "correlation" if final_cap == corr.cap_mult else "jarvis"
-        ),
+        binding="online_learning"
+        if online_binding
+        else "approved"
+        if final_cap >= 1.0
+        else ("correlation" if final_cap == corr.cap_mult else "jarvis"),
     )
 
 
@@ -201,7 +203,7 @@ def record_fill_with_realized_r(
         logger.warning("realized_r journal append failed (non-fatal): %s", exc)
 
 
-def sage_pre_open_check(*, bot, symbol: str = "") -> dict[str, Any] | None:
+def sage_pre_open_check(*, bot: object, symbol: str = "") -> dict[str, Any] | None:
     """Consult Sage before daily open for holistic regime + bias read.
 
     Called by bots during their daily-open routine. Uses the bot's
@@ -225,6 +227,7 @@ def sage_pre_open_check(*, bot, symbol: str = "") -> dict[str, Any] | None:
         if not sage_bars or len(sage_bars) < 30:
             return None
         from eta_engine.brain.jarvis_v3.sage import MarketContext, consult_sage
+
         ctx = MarketContext(
             bars=list(sage_bars),
             side="long",

@@ -1,4 +1,5 @@
 """Tests for agent_registry — T14 inter-agent coordination."""
+
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
@@ -77,6 +78,7 @@ def test_reacquire_same_owner_extends_ttl(tmp_path: Path) -> None:
     assert res2["status"] == "REACQUIRED"
     # New expires_at is later than the first one
     from datetime import datetime as _dt
+
     assert _dt.fromisoformat(res2["expires_at"]) > _dt.fromisoformat(res1["expires_at"])
 
 
@@ -106,7 +108,8 @@ def test_release_lock_voluntarily(tmp_path: Path) -> None:
 
 
 def test_expired_lock_auto_swept_on_next_acquire(
-    tmp_path: Path, monkeypatch,
+    tmp_path: Path,
+    monkeypatch,
 ) -> None:
     """An expired lock doesn't block subsequent acquires."""
     from eta_engine.brain.jarvis_v3 import agent_registry
@@ -127,7 +130,8 @@ def test_expired_lock_auto_swept_on_next_acquire(
 
 
 def test_list_agents_filters_stale_when_only_alive(
-    tmp_path: Path, monkeypatch,
+    tmp_path: Path,
+    monkeypatch,
 ) -> None:
     """only_alive=True hides agents that haven't heartbeat'd recently."""
     from eta_engine.brain.jarvis_v3 import agent_registry

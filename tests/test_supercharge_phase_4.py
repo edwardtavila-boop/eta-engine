@@ -4,6 +4,7 @@
 - l2_confidence_calibration: Brier score + bucket calibration
 - l2_backtest_harness: generalization for microprice_drift + aggressor_flow
 """
+
 # ruff: noqa: N802, PLR2004
 from __future__ import annotations
 
@@ -78,6 +79,7 @@ def test_emit_fill_writes_record(tmp_path: Path) -> None:
 def test_emit_signal_from_imbalance_adapter(tmp_path: Path) -> None:
     """Pass an ImbalanceSignal-shaped object directly to the adapter."""
     from eta_engine.strategies.book_imbalance_strategy import ImbalanceSignal
+
     sig = ImbalanceSignal(
         side="LONG",
         entry_price=29270.25,
@@ -91,8 +93,7 @@ def test_emit_signal_from_imbalance_adapter(tmp_path: Path) -> None:
         symbol="MNQ",
     )
     path = tmp_path / "sig.jsonl"
-    rec = obs.emit_signal_from_imbalance(sig, bot_id="mnq_book_imbalance_shadow",
-                                            _path=path)
+    rec = obs.emit_signal_from_imbalance(sig, bot_id="mnq_book_imbalance_shadow", _path=path)
     assert rec["signal_id"] == "MNQ-LONG-test"
     assert rec["symbol"] == "MNQ"
 
@@ -104,12 +105,8 @@ def test_emit_signal_from_imbalance_adapter(tmp_path: Path) -> None:
 
 def test_brier_score_perfect_predictor() -> None:
     """All confidences match outcomes exactly → brier=0."""
-    outcomes = [
-        {"signal_id": f"s{i}", "confidence": 1.0, "outcome": 1}
-        for i in range(15)
-    ] + [
-        {"signal_id": f"s{i}", "confidence": 0.0, "outcome": 0}
-        for i in range(15, 30)
+    outcomes = [{"signal_id": f"s{i}", "confidence": 1.0, "outcome": 1} for i in range(15)] + [
+        {"signal_id": f"s{i}", "confidence": 0.0, "outcome": 0} for i in range(15, 30)
     ]
     brier = cal.compute_brier_score(outcomes)
     assert brier == 0.0
@@ -117,12 +114,8 @@ def test_brier_score_perfect_predictor() -> None:
 
 def test_brier_score_chance_predictor() -> None:
     """All confidences at 0.5 with mixed outcomes → brier=0.25."""
-    outcomes = [
-        {"signal_id": f"s{i}", "confidence": 0.5, "outcome": 1}
-        for i in range(10)
-    ] + [
-        {"signal_id": f"s{i}", "confidence": 0.5, "outcome": 0}
-        for i in range(10, 20)
+    outcomes = [{"signal_id": f"s{i}", "confidence": 0.5, "outcome": 1} for i in range(10)] + [
+        {"signal_id": f"s{i}", "confidence": 0.5, "outcome": 0} for i in range(10, 20)
     ]
     brier = cal.compute_brier_score(outcomes)
     assert brier == pytest.approx(0.25, abs=0.001)
@@ -130,8 +123,7 @@ def test_brier_score_chance_predictor() -> None:
 
 def test_brier_score_none_when_insufficient() -> None:
     assert cal.compute_brier_score([]) is None
-    assert cal.compute_brier_score(
-        [{"signal_id": "s0", "confidence": 0.5, "outcome": 1}]) is None
+    assert cal.compute_brier_score([{"signal_id": "s0", "confidence": 0.5, "outcome": 1}]) is None
 
 
 def test_calibration_buckets_basic() -> None:
@@ -165,7 +157,7 @@ def test_build_outcomes_matches_terminal_fills() -> None:
         {"signal_id": "s1", "exit_reason": "ENTRY"},
         {"signal_id": "s1", "exit_reason": "TARGET"},  # terminal win
         {"signal_id": "s2", "exit_reason": "ENTRY"},
-        {"signal_id": "s2", "exit_reason": "STOP"},   # terminal loss
+        {"signal_id": "s2", "exit_reason": "STOP"},  # terminal loss
     ]
     outcomes = cal._build_outcomes(signals, fills)
     by_sig = {o["signal_id"]: o for o in outcomes}
@@ -174,8 +166,7 @@ def test_build_outcomes_matches_terminal_fills() -> None:
     assert "s3" not in by_sig  # no fill → excluded
 
 
-def test_run_calibration_no_data_returns_none_brier(
-        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_run_calibration_no_data_returns_none_brier(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(cal, "SIGNAL_LOG", tmp_path / "sig.jsonl")
     monkeypatch.setattr(cal, "BROKER_FILL_LOG", tmp_path / "fill.jsonl")
     monkeypatch.setattr(cal, "CALIBRATION_LOG", tmp_path / "cal.jsonl")
@@ -186,7 +177,8 @@ def test_run_calibration_no_data_returns_none_brier(
 
 
 def test_run_calibration_triggers_falsification_when_brier_high(
-        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setattr(cal, "SIGNAL_LOG", tmp_path / "sig.jsonl")
     monkeypatch.setattr(cal, "BROKER_FILL_LOG", tmp_path / "fill.jsonl")
     monkeypatch.setattr(cal, "CALIBRATION_LOG", tmp_path / "cal.jsonl")
@@ -196,21 +188,27 @@ def test_run_calibration_triggers_falsification_when_brier_high(
     fill_lines = []
     for i in range(100):
         sid = f"sig{i}"
-        sig_lines.append(json.dumps({
-            "ts": (base + timedelta(seconds=i)).isoformat(),
-            "signal_id": sid,
-            "confidence": 0.85,
-            "strategy_id": "book_imbalance_v1",
-        }))
-        fill_lines.append(json.dumps({
-            "ts": (base + timedelta(seconds=i * 2)).isoformat(),
-            "signal_id": sid,
-            "exit_reason": "STOP",
-        }))
-    (tmp_path / "sig.jsonl").write_text("\n".join(sig_lines) + "\n",
-                                           encoding="utf-8")
-    (tmp_path / "fill.jsonl").write_text("\n".join(fill_lines) + "\n",
-                                            encoding="utf-8")
+        sig_lines.append(
+            json.dumps(
+                {
+                    "ts": (base + timedelta(seconds=i)).isoformat(),
+                    "signal_id": sid,
+                    "confidence": 0.85,
+                    "strategy_id": "book_imbalance_v1",
+                }
+            )
+        )
+        fill_lines.append(
+            json.dumps(
+                {
+                    "ts": (base + timedelta(seconds=i * 2)).isoformat(),
+                    "signal_id": sid,
+                    "exit_reason": "STOP",
+                }
+            )
+        )
+    (tmp_path / "sig.jsonl").write_text("\n".join(sig_lines) + "\n", encoding="utf-8")
+    (tmp_path / "fill.jsonl").write_text("\n".join(fill_lines) + "\n", encoding="utf-8")
     report = cal.run_calibration(falsification_threshold=0.30)
     # Brier ≈ (0.85 - 0)^2 = 0.7225 → exceeds 0.30 threshold
     assert report.brier_score > 0.30
@@ -222,13 +220,12 @@ def test_run_calibration_triggers_falsification_when_brier_high(
 # ────────────────────────────────────────────────────────────────────
 
 
-def test_run_microprice_drift_no_data(tmp_path: Path,
-                                          monkeypatch: pytest.MonkeyPatch) -> None:
+def test_run_microprice_drift_no_data(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(l2_backtest_harness, "DEPTH_DIR", tmp_path)
-    monkeypatch.setattr(l2_backtest_harness, "CONFIG_SEARCH_LOG",
-                         tmp_path / "config_search.jsonl")
+    monkeypatch.setattr(l2_backtest_harness, "CONFIG_SEARCH_LOG", tmp_path / "config_search.jsonl")
     result = l2_backtest_harness.run_microprice_drift(
-        "MNQ", days=1,
+        "MNQ",
+        days=1,
         drift_threshold_ticks=2.0,
         consecutive_snaps=3,
         log_config_search_flag=False,
@@ -237,19 +234,17 @@ def test_run_microprice_drift_no_data(tmp_path: Path,
     assert result.n_trades == 0
 
 
-def test_run_microprice_drift_with_synthetic_data(tmp_path: Path,
-                                                       monkeypatch: pytest.MonkeyPatch) -> None:
+def test_run_microprice_drift_with_synthetic_data(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(l2_backtest_harness, "DEPTH_DIR", tmp_path)
-    monkeypatch.setattr(l2_backtest_harness, "CONFIG_SEARCH_LOG",
-                         tmp_path / "config_search.jsonl")
+    monkeypatch.setattr(l2_backtest_harness, "CONFIG_SEARCH_LOG", tmp_path / "config_search.jsonl")
     today = datetime.now(UTC).replace(microsecond=0, second=0)
     snaps, _ = depth_simulator.simulate(
-        symbol="MNQ", duration_minutes=30,
-        regime_mix="imbalanced_long", seed=42, start_dt=today)
-    depth_simulator.write_snapshots(snaps, "MNQ", output_dir=tmp_path,
-                                       date_str=today.strftime("%Y%m%d"))
+        symbol="MNQ", duration_minutes=30, regime_mix="imbalanced_long", seed=42, start_dt=today
+    )
+    depth_simulator.write_snapshots(snaps, "MNQ", output_dir=tmp_path, date_str=today.strftime("%Y%m%d"))
     result = l2_backtest_harness.run_microprice_drift(
-        "MNQ", days=1,
+        "MNQ",
+        days=1,
         drift_threshold_ticks=2.0,
         consecutive_snaps=3,
         walk_forward=False,
@@ -259,15 +254,12 @@ def test_run_microprice_drift_with_synthetic_data(tmp_path: Path,
     assert result.n_snapshots == 360
 
 
-def test_run_aggressor_flow_no_bars_returns_zero_trades(tmp_path: Path,
-                                                              monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(l2_backtest_harness, "CONFIG_SEARCH_LOG",
-                         tmp_path / "config_search.jsonl")
+def test_run_aggressor_flow_no_bars_returns_zero_trades(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(l2_backtest_harness, "CONFIG_SEARCH_LOG", tmp_path / "config_search.jsonl")
     # _load_l1_bars uses ROOT.parent / "mnq_data" / "history_l1"
     # We can't easily monkeypatch that, but with no real bars the result
     # should naturally be 0
-    result = l2_backtest_harness.run_aggressor_flow(
-        "MNQ", days=1, log_config_search_flag=False)
+    result = l2_backtest_harness.run_aggressor_flow("MNQ", days=1, log_config_search_flag=False)
     assert result.strategy == "aggressor_flow"
     # n_trades should be 0 since no real bars exist
     assert result.n_trades == 0
@@ -276,6 +268,7 @@ def test_run_aggressor_flow_no_bars_returns_zero_trades(tmp_path: Path,
 def test_harness_main_cli_supports_all_three_strategies() -> None:
     """The argparse choices include all 3 strategy types."""
     import inspect
+
     src = inspect.getsource(l2_backtest_harness)
     assert "microprice_drift" in src
     assert "aggressor_flow" in src

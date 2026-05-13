@@ -30,6 +30,7 @@ Public interface:
 Storage: ``var/eta_engine/state/trade_journal/YYYY-MM-DD.md`` per
 CLAUDE.md hard rule #1. One file per day, append-only, plain markdown.
 """
+
 from __future__ import annotations
 
 import contextlib
@@ -166,10 +167,7 @@ def narrate(record: dict) -> str:
     block_reason = _fmt_block_reason(record)
     hermes = _fmt_hermes_calls(record)
 
-    return (
-        f"[{hhmmss}] {bot}  {verdict} @ {size_pct}  "
-        f"consult={consult_id}.{block_reason}{dissent}{hermes}"
-    ).rstrip()
+    return (f"[{hhmmss}] {bot}  {verdict} @ {size_pct}  consult={consult_id}.{block_reason}{dissent}{hermes}").rstrip()
 
 
 def _atomic_append(path: Path, text: str) -> bool:
@@ -196,7 +194,9 @@ def _atomic_append(path: Path, text: str) -> bool:
 
 
 def append_to_journal(
-    record: dict, journal_dir: Path | None = None, now: datetime | None = None,
+    record: dict,
+    journal_dir: Path | None = None,
+    now: datetime | None = None,
 ) -> bool:
     """Narrate the record and append the paragraph to today's journal file.
 

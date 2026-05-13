@@ -28,6 +28,7 @@ Registration helper sits at ``deploy/register_memory_backup_task.ps1``.
 Restore: just copy a backup file back to the active path, then restart
 the Hermes gateway. Each backup is a complete standalone SQLite DB.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -199,8 +200,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--src", type=Path, default=DEFAULT_SRC)
     p.add_argument("--dest", type=Path, default=DEFAULT_DEST_DIR)
     p.add_argument("--keep", type=int, default=DEFAULT_KEEP_LAST)
-    p.add_argument("--no-verify", action="store_true",
-                   help="Skip integrity_check on the new backup")
+    p.add_argument("--no-verify", action="store_true", help="Skip integrity_check on the new backup")
     p.add_argument("--quiet", action="store_true")
     return p
 

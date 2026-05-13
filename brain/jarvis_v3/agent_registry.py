@@ -47,6 +47,7 @@ Public interface
 * ``release_lock(agent_id, resource)`` — voluntarily release.
 * ``check_lock(resource)`` — read-only: who owns this resource?
 """
+
 from __future__ import annotations
 
 import contextlib
@@ -105,8 +106,8 @@ def _empty_state() -> dict[str, Any]:
             "agents + active resource locks. Stale entries are filtered "
             "automatically by readers; rewrite happens on next mutation."
         ),
-        "agents": {},   # {agent_id: {role, version, registered_at, last_heartbeat}}
-        "locks": {},    # {resource: {owner_agent_id, acquired_at, expires_at, purpose}}
+        "agents": {},  # {agent_id: {role, version, registered_at, last_heartbeat}}
+        "locks": {},  # {resource: {owner_agent_id, acquired_at, expires_at, purpose}}
     }
 
 
@@ -134,7 +135,9 @@ def _atomic_write(target: Path, data: dict[str, Any]) -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
     serialized = json.dumps(data, indent=2, default=str)
     fd, tmp_name = tempfile.mkstemp(
-        prefix=".tmp_agent_registry_", suffix=".json", dir=str(target.parent),
+        prefix=".tmp_agent_registry_",
+        suffix=".json",
+        dir=str(target.parent),
     )
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
@@ -165,8 +168,9 @@ def _is_lock_active(entry: dict[str, Any], now: datetime | None = None) -> bool:
     return expires > (now or _now())
 
 
-def _is_agent_alive(entry: dict[str, Any], now: datetime | None = None,
-                    liveness_s: int = DEFAULT_AGENT_LIVENESS_SECONDS) -> bool:
+def _is_agent_alive(
+    entry: dict[str, Any], now: datetime | None = None, liveness_s: int = DEFAULT_AGENT_LIVENESS_SECONDS
+) -> bool:
     if not isinstance(entry, dict):
         return False
     hb = _parse_iso(entry.get("last_heartbeat"))
@@ -217,7 +221,9 @@ def register_agent(
 
 
 def deregister_agent(
-    agent_id: str, release_locks: bool = True, path: Path | None = None,
+    agent_id: str,
+    release_locks: bool = True,
+    path: Path | None = None,
 ) -> dict[str, Any]:
     """Remove an agent. By default also releases any locks the agent holds —
     clean shutdown protocol. Set ``release_locks=False`` to deregister
@@ -274,7 +280,8 @@ def heartbeat(agent_id: str, path: Path | None = None) -> dict[str, Any]:
 
 
 def list_agents(
-    only_alive: bool = True, path: Path | None = None,
+    only_alive: bool = True,
+    path: Path | None = None,
 ) -> list[dict[str, Any]]:
     """Return a list of registered agents. By default filters to those with
     a heartbeat within DEFAULT_AGENT_LIVENESS_SECONDS.
@@ -289,11 +296,13 @@ def list_agents(
             alive = _is_agent_alive(entry, now)
             if only_alive and not alive:
                 continue
-            out.append({
-                "agent_id": agent_id,
-                "alive": alive,
-                **entry,
-            })
+            out.append(
+                {
+                    "agent_id": agent_id,
+                    "alive": alive,
+                    **entry,
+                }
+            )
         return out
     except Exception as exc:  # noqa: BLE001
         logger.warning("agent_registry.list_agents dropped: %s", exc)
@@ -338,10 +347,7 @@ def acquire_lock(
         data = _load(path)
 
         # Sweep expired locks
-        data["locks"] = {
-            r: lock for r, lock in data["locks"].items()
-            if _is_lock_active(lock, now)
-        }
+        data["locks"] = {r: lock for r, lock in data["locks"].items() if _is_lock_active(lock, now)}
 
         existing = data["locks"].get(resource)
         if existing and isinstance(existing, dict):
@@ -388,7 +394,9 @@ def acquire_lock(
 
 
 def release_lock(
-    agent_id: str, resource: str, path: Path | None = None,
+    agent_id: str,
+    resource: str,
+    path: Path | None = None,
 ) -> dict[str, Any]:
     """Voluntarily release a lock. Only the owner can release.
     Trying to release a lock you don't hold returns NOT_OWNER.
@@ -418,7 +426,8 @@ def release_lock(
 
 
 def check_lock(
-    resource: str, path: Path | None = None,
+    resource: str,
+    path: Path | None = None,
 ) -> dict[str, Any] | None:
     """Read-only: return the active lock entry for ``resource``, or ``None``.
 

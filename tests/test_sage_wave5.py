@@ -12,6 +12,7 @@ Covers:
   * narrative template fallback
   * sage health monitor flags broken schools
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
@@ -30,14 +31,16 @@ def _bars(n: int, *, trend: str = "up", base: float = 21000) -> list[dict]:
         center = base + sign * i * 5
         if trend == "chop":
             center = base + (3 if i % 2 == 0 else -3)
-        out.append({
-            "ts": (now - timedelta(minutes=(n - i) * 5)).isoformat(),
-            "open": center - 1,
-            "high": center + 5,
-            "low": center - 5,
-            "close": center + (sign * 2 if trend != "chop" else (1 if i % 2 == 0 else -1)),
-            "volume": 1000 + i * 5,
-        })
+        out.append(
+            {
+                "ts": (now - timedelta(minutes=(n - i) * 5)).isoformat(),
+                "open": center - 1,
+                "high": center + 5,
+                "low": center - 5,
+                "close": center + (sign * 2 if trend != "chop" else (1 if i % 2 == 0 else -1)),
+                "volume": 1000 + i * 5,
+            }
+        )
     return out
 
 
@@ -50,7 +53,8 @@ def test_marketcontext_has_tf_and_for_tf() -> None:
     bars_5m = _bars(50)
     bars_1h = _bars(20)
     ctx = MarketContext(
-        bars=bars_5m, side="long",
+        bars=bars_5m,
+        side="long",
         bars_by_tf={"5m": bars_5m, "1h": bars_1h},
     )
     assert ctx.has_tf("5m") is True
@@ -63,6 +67,7 @@ def test_marketcontext_has_tf_and_for_tf() -> None:
 
 def test_marketcontext_for_tf_passthrough_when_tf_missing() -> None:
     from eta_engine.brain.jarvis_v3.sage import MarketContext
+
     bars = _bars(50)
     ctx = MarketContext(bars=bars, side="long")
     assert ctx.for_tf("missing") is ctx
@@ -124,8 +129,7 @@ def test_edge_tracker_observe_and_weight_modifier(tmp_path: Path) -> None:
     et = EdgeTracker(state_path=tmp_path / "edge.json")
     # 12 wins, 0 losses, all aligned -> hit_rate = 1.0, expectancy > 0
     for _ in range(12):
-        et.observe(school="trend_following", school_bias="long",
-                   entry_side="long", realized_r=1.5)
+        et.observe(school="trend_following", school_bias="long", entry_side="long", realized_r=1.5)
 
     edge = et.edge_for("trend_following")
     assert edge.hit_rate == 1.0
@@ -138,8 +142,7 @@ def test_edge_tracker_negative_expectancy_lowers_weight(tmp_path: Path) -> None:
 
     et = EdgeTracker(state_path=tmp_path / "edge.json")
     for _ in range(15):
-        et.observe(school="bad_school", school_bias="long",
-                   entry_side="long", realized_r=-0.7)
+        et.observe(school="bad_school", school_bias="long", entry_side="long", realized_r=-0.7)
     edge = et.edge_for("bad_school")
     assert edge.weight_modifier() < 1.0
 
@@ -166,12 +169,16 @@ def test_disagreement_detect_topping_pattern() -> None:
 
     verdicts = {
         "dow_theory": SchoolVerdict(school="dow_theory", bias=Bias.LONG, conviction=0.7),
-        "wyckoff":    SchoolVerdict(school="wyckoff", bias=Bias.SHORT, conviction=0.6),
+        "wyckoff": SchoolVerdict(school="wyckoff", bias=Bias.SHORT, conviction=0.6),
     }
     report = SageReport(
-        per_school=verdicts, composite_bias=Bias.NEUTRAL, conviction=0.5,
-        schools_consulted=2, schools_aligned_with_entry=1,
-        schools_disagreeing_with_entry=1, schools_neutral=0,
+        per_school=verdicts,
+        composite_bias=Bias.NEUTRAL,
+        conviction=0.5,
+        schools_consulted=2,
+        schools_aligned_with_entry=1,
+        schools_disagreeing_with_entry=1,
+        schools_neutral=0,
     )
     matches = detect_clashes(report)
     assert any(m.name == "structural_uptrend_topping" for m in matches)
@@ -185,11 +192,25 @@ def test_strongest_clash_modifier_defer_wins() -> None:
     )
 
     matches = [
-        ClashPattern(name="t", school_a="x", bias_a=Bias.LONG, school_b="y",
-                     bias_b=Bias.SHORT, interpretation="", verdict_modifier="tighten_cap",
-                     cap_mult=0.5),
-        ClashPattern(name="d", school_a="a", bias_a=Bias.LONG, school_b="b",
-                     bias_b=Bias.SHORT, interpretation="", verdict_modifier="defer"),
+        ClashPattern(
+            name="t",
+            school_a="x",
+            bias_a=Bias.LONG,
+            school_b="y",
+            bias_b=Bias.SHORT,
+            interpretation="",
+            verdict_modifier="tighten_cap",
+            cap_mult=0.5,
+        ),
+        ClashPattern(
+            name="d",
+            school_a="a",
+            bias_a=Bias.LONG,
+            school_b="b",
+            bias_b=Bias.SHORT,
+            interpretation="",
+            verdict_modifier="defer",
+        ),
     ]
     mod, mult = strongest_clash_modifier(matches)
     assert mod == "defer"
@@ -200,6 +221,7 @@ def test_disagreement_reverse_match() -> None:
     from eta_engine.brain.jarvis_v3.sage import SageReport, SchoolVerdict
     from eta_engine.brain.jarvis_v3.sage.base import Bias
     from eta_engine.brain.jarvis_v3.sage.disagreement import detect_clashes
+
     # Pattern: trend_intact_choch_warning expects trend=LONG, smc=SHORT
     # Reverse: trend=SHORT, smc=LONG should match
     verdicts = {
@@ -207,9 +229,13 @@ def test_disagreement_reverse_match() -> None:
         "smc_ict": SchoolVerdict(school="smc_ict", bias=Bias.LONG, conviction=0.7),
     }
     report = SageReport(
-        per_school=verdicts, composite_bias=Bias.NEUTRAL, conviction=0.5,
-        schools_consulted=2, schools_aligned_with_entry=0,
-        schools_disagreeing_with_entry=2, schools_neutral=0,
+        per_school=verdicts,
+        composite_bias=Bias.NEUTRAL,
+        conviction=0.5,
+        schools_consulted=2,
+        schools_aligned_with_entry=0,
+        schools_disagreeing_with_entry=2,
+        schools_neutral=0,
     )
     matches = detect_clashes(report)
     assert any(m.name == "trend_intact_choch_warning" for m in matches)
@@ -219,14 +245,19 @@ def test_disagreement_risk_management_violation() -> None:
     from eta_engine.brain.jarvis_v3.sage import SageReport, SchoolVerdict
     from eta_engine.brain.jarvis_v3.sage.base import Bias
     from eta_engine.brain.jarvis_v3.sage.disagreement import detect_clashes
+
     verdicts = {
         "risk_management": SchoolVerdict(school="risk_management", bias=Bias.NEUTRAL, conviction=0.0),
         "dow_theory": SchoolVerdict(school="dow_theory", bias=Bias.LONG, conviction=0.8),
     }
     report = SageReport(
-        per_school=verdicts, composite_bias=Bias.LONG, conviction=0.4,
-        schools_consulted=2, schools_aligned_with_entry=1,
-        schools_disagreeing_with_entry=0, schools_neutral=1,
+        per_school=verdicts,
+        composite_bias=Bias.LONG,
+        conviction=0.4,
+        schools_consulted=2,
+        schools_aligned_with_entry=1,
+        schools_disagreeing_with_entry=0,
+        schools_neutral=1,
     )
     matches = detect_clashes(report)
     assert any(m.name == "risk_violated_anything_long" for m in matches)
@@ -236,14 +267,19 @@ def test_disagreement_vol_regime_neutral_pattern() -> None:
     from eta_engine.brain.jarvis_v3.sage import SageReport, SchoolVerdict
     from eta_engine.brain.jarvis_v3.sage.base import Bias
     from eta_engine.brain.jarvis_v3.sage.disagreement import detect_clashes
+
     verdicts = {
         "volatility_regime": SchoolVerdict(school="volatility_regime", bias=Bias.NEUTRAL, conviction=0.5),
         "trend_following": SchoolVerdict(school="trend_following", bias=Bias.LONG, conviction=0.7),
     }
     report = SageReport(
-        per_school=verdicts, composite_bias=Bias.NEUTRAL, conviction=0.5,
-        schools_consulted=2, schools_aligned_with_entry=1,
-        schools_disagreeing_with_entry=0, schools_neutral=1,
+        per_school=verdicts,
+        composite_bias=Bias.NEUTRAL,
+        conviction=0.5,
+        schools_consulted=2,
+        schools_aligned_with_entry=1,
+        schools_disagreeing_with_entry=0,
+        schools_neutral=1,
     )
     matches = detect_clashes(report)
     assert any(m.name == "vol_regime_quiet_breakout" for m in matches) or len(matches) >= 1
@@ -251,6 +287,7 @@ def test_disagreement_vol_regime_neutral_pattern() -> None:
 
 def test_disagreement_strongest_clash_modifier_empty() -> None:
     from eta_engine.brain.jarvis_v3.sage.disagreement import strongest_clash_modifier
+
     result, mult = strongest_clash_modifier([])
     assert result == "no_change"
     assert mult == 1.0
@@ -269,11 +306,15 @@ def test_dependency_graph_boosts_target_when_predicate_fires() -> None:
 
     verdicts = {
         "wyckoff": SchoolVerdict(school="wyckoff", bias=Bias.LONG, conviction=0.8),
-        "vpa":     SchoolVerdict(school="vpa", bias=Bias.LONG, conviction=0.6),
+        "vpa": SchoolVerdict(school="vpa", bias=Bias.LONG, conviction=0.6),
     }
     rule = DependencyRule(
-        name="r", when_school="wyckoff", when_bias=Bias.LONG,
-        when_min_conviction=0.7, target_school="vpa", target_bias=Bias.LONG,
+        name="r",
+        when_school="wyckoff",
+        when_bias=Bias.LONG,
+        when_min_conviction=0.7,
+        target_school="vpa",
+        target_bias=Bias.LONG,
         boost=1.3,
     )
     boosts = apply_dependency_boosts(verdicts, rules=[rule])
@@ -396,10 +437,12 @@ def test_sage_parallel_and_serial_produce_same_keys() -> None:
 
     clear_sage_cache()
     bars = _bars(60, trend="up")
-    r_serial = consult_sage(MarketContext(bars=bars, side="long", symbol="A"),
-                            parallel=False, use_cache=False, apply_edge_weights=False)
-    r_parallel = consult_sage(MarketContext(bars=bars, side="long", symbol="B"),
-                              parallel=True, use_cache=False, apply_edge_weights=False)
+    r_serial = consult_sage(
+        MarketContext(bars=bars, side="long", symbol="A"), parallel=False, use_cache=False, apply_edge_weights=False
+    )
+    r_parallel = consult_sage(
+        MarketContext(bars=bars, side="long", symbol="B"), parallel=True, use_cache=False, apply_edge_weights=False
+    )
     # Same set of schools should fire in both
     assert set(r_serial.per_school.keys()) == set(r_parallel.per_school.keys())
 
@@ -414,15 +457,21 @@ def test_narrative_template_fallback_no_anthropic_key(monkeypatch) -> None:
     from eta_engine.brain.jarvis_v3.sage.narrative import explain_sage
 
     verdicts = {
-        "dow_theory":     SchoolVerdict(school="dow_theory", bias=Bias.LONG, conviction=0.7,
-                                        aligned_with_entry=True, rationale="HH+HL"),
-        "trend_following": SchoolVerdict(school="trend_following", bias=Bias.LONG, conviction=0.6,
-                                         aligned_with_entry=True, rationale="EMA stack up"),
+        "dow_theory": SchoolVerdict(
+            school="dow_theory", bias=Bias.LONG, conviction=0.7, aligned_with_entry=True, rationale="HH+HL"
+        ),
+        "trend_following": SchoolVerdict(
+            school="trend_following", bias=Bias.LONG, conviction=0.6, aligned_with_entry=True, rationale="EMA stack up"
+        ),
     }
     report = SageReport(
-        per_school=verdicts, composite_bias=Bias.LONG, conviction=0.65,
-        schools_consulted=2, schools_aligned_with_entry=2,
-        schools_disagreeing_with_entry=0, schools_neutral=0,
+        per_school=verdicts,
+        composite_bias=Bias.LONG,
+        conviction=0.65,
+        schools_consulted=2,
+        schools_aligned_with_entry=2,
+        schools_disagreeing_with_entry=0,
+        schools_neutral=0,
     )
     text = explain_sage(report, symbol="MNQ", use_llm=False, bar_ts_key="t1")
     assert "MNQ" in text

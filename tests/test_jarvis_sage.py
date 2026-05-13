@@ -7,6 +7,7 @@ Covers:
   * consult_sage runs every school and returns a SageReport
   * v22 candidate uses sage to modulate v17 (loosen on agree, defer on disagree)
 """
+
 from __future__ import annotations
 
 import pytest
@@ -19,13 +20,15 @@ def _uptrend_bars(n: int = 60, *, start: float = 21000, vol: int = 1000) -> list
     bars = []
     for i in range(n):
         base = start + i * 5
-        bars.append({
-            "open":   base,
-            "high":   base + 8,
-            "low":    base - 2,
-            "close":  base + 5,
-            "volume": vol + i * 10,
-        })
+        bars.append(
+            {
+                "open": base,
+                "high": base + 8,
+                "low": base - 2,
+                "close": base + 5,
+                "volume": vol + i * 10,
+            }
+        )
     return bars
 
 
@@ -33,13 +36,15 @@ def _downtrend_bars(n: int = 60, *, start: float = 21000, vol: int = 1000) -> li
     bars = []
     for i in range(n):
         base = start - i * 5
-        bars.append({
-            "open":   base,
-            "high":   base + 2,
-            "low":    base - 8,
-            "close":  base - 5,
-            "volume": vol + i * 10,
-        })
+        bars.append(
+            {
+                "open": base,
+                "high": base + 2,
+                "low": base - 8,
+                "close": base - 5,
+                "volume": vol + i * 10,
+            }
+        )
     return bars
 
 
@@ -47,13 +52,15 @@ def _chop_bars(n: int = 60, *, mid: float = 21000) -> list[dict]:
     bars = []
     for i in range(n):
         delta = 3.0 if i % 2 == 0 else -3.0
-        bars.append({
-            "open":   mid,
-            "high":   mid + 5,
-            "low":    mid - 5,
-            "close":  mid + delta,
-            "volume": 1000,
-        })
+        bars.append(
+            {
+                "open": mid,
+                "high": mid + 5,
+                "low": mid - 5,
+                "close": mid + delta,
+                "volume": 1000,
+            }
+        )
     return bars
 
 
@@ -62,6 +69,7 @@ def _chop_bars(n: int = 60, *, mid: float = 21000) -> list[dict]:
 
 def test_marketcontext_helpers() -> None:
     from eta_engine.brain.jarvis_v3.sage import MarketContext
+
     bars = _uptrend_bars(n=10)
     ctx = MarketContext(bars=bars, side="long")
     assert ctx.n_bars == 10
@@ -74,6 +82,7 @@ def test_marketcontext_helpers() -> None:
 def test_schoolverdict_validates_conviction() -> None:
     from eta_engine.brain.jarvis_v3.sage import SchoolVerdict
     from eta_engine.brain.jarvis_v3.sage.base import Bias
+
     SchoolVerdict(school="x", bias=Bias.LONG, conviction=0.5)
     with pytest.raises(ValueError):
         SchoolVerdict(school="x", bias=Bias.LONG, conviction=1.5)
@@ -146,8 +155,10 @@ def test_risk_management_rejects_over_max() -> None:
     from eta_engine.brain.jarvis_v3.sage.schools.risk_management import RiskManagementSchool
 
     ctx = MarketContext(
-        bars=_uptrend_bars(40), side="long",
-        account_equity_usd=10000, risk_per_trade_pct=0.05,  # 5% > 2% cap
+        bars=_uptrend_bars(40),
+        side="long",
+        account_equity_usd=10000,
+        risk_per_trade_pct=0.05,  # 5% > 2% cap
     )
     v = RiskManagementSchool().analyze(ctx)
     assert v.conviction == 0.0  # explicit non-compliance
@@ -159,8 +170,11 @@ def test_risk_management_full_compliance_at_one_pct() -> None:
     from eta_engine.brain.jarvis_v3.sage.schools.risk_management import RiskManagementSchool
 
     ctx = MarketContext(
-        bars=_uptrend_bars(40), side="long",
-        account_equity_usd=10000, risk_per_trade_pct=0.01, stop_distance_pct=0.005,
+        bars=_uptrend_bars(40),
+        side="long",
+        account_equity_usd=10000,
+        risk_per_trade_pct=0.01,
+        stop_distance_pct=0.005,
     )
     v = RiskManagementSchool().analyze(ctx)
     assert v.conviction >= 0.9
@@ -209,7 +223,10 @@ def test_confluence_aggregates_long_majority() -> None:
 
     class _S(SchoolBase):
         NAME = "x"
-        def analyze(self, ctx): return None  # type: ignore[return-value]
+
+        def analyze(self, ctx):
+            return None  # type: ignore[return-value]
+
     schools = {"a": _S(), "b": _S(), "c": _S()}
     schools["a"].WEIGHT = 1.0
     schools["b"].WEIGHT = 1.0
@@ -234,7 +251,10 @@ def test_confluence_neutral_when_split() -> None:
 
     class _S(SchoolBase):
         NAME = "x"
-        def analyze(self, ctx): return None  # type: ignore[return-value]
+
+        def analyze(self, ctx):
+            return None  # type: ignore[return-value]
+
     schools = {"a": _S(), "b": _S()}
 
     verdicts = {
@@ -248,6 +268,7 @@ def test_confluence_neutral_when_split() -> None:
 def test_confluence_handles_empty_input() -> None:
     from eta_engine.brain.jarvis_v3.sage.base import Bias
     from eta_engine.brain.jarvis_v3.sage.confluence import aggregate
+
     report = aggregate({}, {}, entry_side="long")
     assert report.composite_bias == Bias.NEUTRAL
     assert report.conviction == 0.0
@@ -261,9 +282,9 @@ def test_consult_sage_runs_every_school_on_uptrend() -> None:
     from eta_engine.brain.jarvis_v3.sage import MarketContext, consult_sage
     from eta_engine.brain.jarvis_v3.sage.base import Bias
 
-    ctx = MarketContext(bars=_uptrend_bars(60), side="long",
-                        account_equity_usd=10000, risk_per_trade_pct=0.01,
-                        stop_distance_pct=0.005)
+    ctx = MarketContext(
+        bars=_uptrend_bars(60), side="long", account_equity_usd=10000, risk_per_trade_pct=0.01, stop_distance_pct=0.005
+    )
     report = consult_sage(ctx)
     # All non-failing schools should report
     assert report.schools_consulted >= 10
@@ -292,6 +313,7 @@ def test_v22_sage_confluence_registered() -> None:
 
     from eta_engine.brain.jarvis_v3 import candidate_policy
     from eta_engine.brain.jarvis_v3 import policies as policies_pkg
+
     candidate_policy.clear_registry()
     importlib.reload(policies_pkg.v17_champion)
     importlib.reload(policies_pkg.v18_high_stress_tighten)
@@ -321,11 +343,15 @@ def test_v22_returns_v17_baseline_when_no_sage_bars() -> None:
 
     # Stub v17 to return APPROVED. v22 should pass through unchanged.
     base = ActionResponse(
-        request_id="r", verdict=Verdict.APPROVED,
-        reason="ok", reason_code="ok",
+        request_id="r",
+        verdict=Verdict.APPROVED,
+        reason="ok",
+        reason_code="ok",
         jarvis_action=ActionSuggestion.TRADE,
-        stress_composite=0.5, session_phase=SessionPhase.OPEN_DRIVE,
-        binding_constraint="", size_cap_mult=None,
+        stress_composite=0.5,
+        session_phase=SessionPhase.OPEN_DRIVE,
+        binding_constraint="",
+        size_cap_mult=None,
     )
     orig = v22_mod.evaluate_request
     try:

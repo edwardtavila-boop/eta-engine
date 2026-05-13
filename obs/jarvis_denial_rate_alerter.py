@@ -23,6 +23,7 @@ Usage
   python -m eta_engine.obs.jarvis_denial_rate_alerter --window-min 5 --threshold 0.5
   python -m eta_engine.obs.jarvis_denial_rate_alerter --dry-run
 """
+
 from __future__ import annotations
 
 import argparse
@@ -114,10 +115,12 @@ def in_cooldown(state_path: Path, cooldown_min: float) -> bool:
 def update_cooldown_state(state_path: Path, payload: dict[str, Any]) -> None:
     state_path.parent.mkdir(parents=True, exist_ok=True)
     state_path.write_text(
-        json.dumps({
-            "last_fired_at": datetime.now(UTC).isoformat(),
-            **payload,
-        }),
+        json.dumps(
+            {
+                "last_fired_at": datetime.now(UTC).isoformat(),
+                **payload,
+            }
+        ),
         encoding="utf-8",
     )
 
@@ -134,17 +137,20 @@ def fire_alert(stats: dict[str, Any], *, alerts_yaml: Path) -> bool:
             return False
         cfg = yaml.safe_load(alerts_yaml.read_text(encoding="utf-8"))
         dispatcher = AlertDispatcher(cfg)
-        result = dispatcher.send("jarvis_denial_rate_high", {
-            "denial_rate": stats["denial_rate"],
-            "rejections": stats["rejections"],
-            "total": stats["total"],
-            "verdict_counts": stats["verdict_counts"],
-            "summary": (
-                f"JARVIS rejected {stats['rejections']}/{stats['total']} orders "
-                f"({stats['denial_rate']:.0%}) in the recent window. "
-                f"Possible regime shift -- check the tape."
-            ),
-        })
+        result = dispatcher.send(
+            "jarvis_denial_rate_high",
+            {
+                "denial_rate": stats["denial_rate"],
+                "rejections": stats["rejections"],
+                "total": stats["total"],
+                "verdict_counts": stats["verdict_counts"],
+                "summary": (
+                    f"JARVIS rejected {stats['rejections']}/{stats['total']} orders "
+                    f"({stats['denial_rate']:.0%}) in the recent window. "
+                    f"Possible regime shift -- check the tape."
+                ),
+            },
+        )
         logger.info("alert dispatched: delivered=%s blocked=%s", result.delivered, result.blocked)
         return bool(result.delivered)
     except Exception as exc:  # noqa: BLE001
@@ -154,25 +160,32 @@ def fire_alert(stats: dict[str, Any], *, alerts_yaml: Path) -> bool:
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--audit-glob", action="append", default=None,
-                   help="Glob(s) for JARVIS audit JSONL files. Repeatable. "
-                        "Default: state/jarvis_audit/*.jsonl + var/jarvis_audit/*.jsonl")
-    p.add_argument("--window-min", type=float, default=5.0,
-                   help="Look back this many minutes (default: 5)")
-    p.add_argument("--threshold", type=float, default=0.50,
-                   help="Fire when denial_rate >= this (default: 0.50)")
-    p.add_argument("--min-events", type=int, default=10,
-                   help="Need at least this many records to evaluate (default: 10)")
-    p.add_argument("--cooldown-min", type=float, default=30.0,
-                   help="Don't re-fire within this many minutes of last alert (default: 30)")
-    p.add_argument("--state-file", type=Path,
-                   default=ROOT / "var" / "alerter" / "jarvis_denial_rate_state.json",
-                   help="State file for cooldown tracking")
-    p.add_argument("--alerts-yaml", type=Path,
-                   default=ROOT / "configs" / "alerts.yaml",
-                   help="Path to alerts.yaml")
-    p.add_argument("--dry-run", action="store_true",
-                   help="Compute + print stats but do not fire alert or update state")
+    p.add_argument(
+        "--audit-glob",
+        action="append",
+        default=None,
+        help="Glob(s) for JARVIS audit JSONL files. Repeatable. "
+        "Default: state/jarvis_audit/*.jsonl + var/jarvis_audit/*.jsonl",
+    )
+    p.add_argument("--window-min", type=float, default=5.0, help="Look back this many minutes (default: 5)")
+    p.add_argument("--threshold", type=float, default=0.50, help="Fire when denial_rate >= this (default: 0.50)")
+    p.add_argument(
+        "--min-events", type=int, default=10, help="Need at least this many records to evaluate (default: 10)"
+    )
+    p.add_argument(
+        "--cooldown-min",
+        type=float,
+        default=30.0,
+        help="Don't re-fire within this many minutes of last alert (default: 30)",
+    )
+    p.add_argument(
+        "--state-file",
+        type=Path,
+        default=ROOT / "var" / "alerter" / "jarvis_denial_rate_state.json",
+        help="State file for cooldown tracking",
+    )
+    p.add_argument("--alerts-yaml", type=Path, default=ROOT / "configs" / "alerts.yaml", help="Path to alerts.yaml")
+    p.add_argument("--dry-run", action="store_true", help="Compute + print stats but do not fire alert or update state")
     p.add_argument("-v", "--verbose", action="store_true")
     args = p.parse_args(argv)
 
@@ -205,23 +218,26 @@ def main(argv: list[str] | None = None) -> int:
     stats = compute_denial_stats(records)
     logger.info(
         "stats: total=%d rejections=%d rate=%.1f%%",
-        stats["total"], stats["rejections"], stats["denial_rate"] * 100,
+        stats["total"],
+        stats["rejections"],
+        stats["denial_rate"] * 100,
     )
 
     if stats["total"] < args.min_events:
-        logger.info("only %d events (< min %d) -- not enough to evaluate, exiting clean",
-                    stats["total"], args.min_events)
+        logger.info(
+            "only %d events (< min %d) -- not enough to evaluate, exiting clean", stats["total"], args.min_events
+        )
         return 0
 
     if stats["denial_rate"] < args.threshold:
-        logger.info("rate %.1f%% < threshold %.1f%% -- nominal, exiting clean",
-                    stats["denial_rate"] * 100, args.threshold * 100)
+        logger.info(
+            "rate %.1f%% < threshold %.1f%% -- nominal, exiting clean", stats["denial_rate"] * 100, args.threshold * 100
+        )
         return 0
 
     # Threshold breached
     if in_cooldown(args.state_file, args.cooldown_min):
-        logger.info("threshold breached BUT in cooldown (%.1f min) -- skipping alert",
-                    args.cooldown_min)
+        logger.info("threshold breached BUT in cooldown (%.1f min) -- skipping alert", args.cooldown_min)
         return 0
 
     print("\n  !! JARVIS DENIAL-RATE THRESHOLD BREACHED")
@@ -236,11 +252,14 @@ def main(argv: list[str] | None = None) -> int:
 
     delivered = fire_alert(stats, alerts_yaml=args.alerts_yaml)
     if delivered:
-        update_cooldown_state(args.state_file, {
-            "denial_rate": stats["denial_rate"],
-            "rejections": stats["rejections"],
-            "total": stats["total"],
-        })
+        update_cooldown_state(
+            args.state_file,
+            {
+                "denial_rate": stats["denial_rate"],
+                "rejections": stats["rejections"],
+                "total": stats["total"],
+            },
+        )
         logger.info("alert delivered + cooldown state updated -> %s", args.state_file)
     else:
         logger.warning("alert dispatch returned no deliveries; not entering cooldown")

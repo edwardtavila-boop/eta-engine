@@ -89,11 +89,11 @@ DIAMOND_BOTS: set[str] = {
     # Alpaca spot is cellared (POOL_SPLIT["spot"]=0.0); Tradovate dormant.
     # Crypto exposure comes from CME micro crypto futures (MET/MBT) routed
     # through IBKR — NOT from BTC/ETH/SOL spot via Alpaca.
-    "met_sweep_reclaim",     # n= 208 cum_r=+136R wr=69%  *wave-14* (CME MET futures via IBKR — highest avg_R in fleet)
+    "met_sweep_reclaim",  # n= 208 cum_r=+136R wr=69%  *wave-14* (CME MET futures via IBKR — highest avg_R in fleet)
     "mes_sweep_reclaim_v2",  # n= 416 cum_r=+136R wr=63%  *wave-14* (CME MICRO S&P FUTURES via IBKR)
-    "eur_range",             # n= 124 cum_r= +64R wr=71%  *wave-14* (CME 6E EUROFX FUTURES via IBKR)
-    "ng_sweep_reclaim",      # n= 243 cum_r= +91R wr=65%  *wave-14* (CME NG NAT GAS FUTURES via IBKR)
-    "mes_sweep_reclaim",     # n= 197 cum_r= +56R wr=61%  *wave-14* (CME MICRO S&P FUTURES via IBKR, paired with v2)
+    "eur_range",  # n= 124 cum_r= +64R wr=71%  *wave-14* (CME 6E EUROFX FUTURES via IBKR)
+    "ng_sweep_reclaim",  # n= 243 cum_r= +91R wr=65%  *wave-14* (CME NG NAT GAS FUTURES via IBKR)
+    "mes_sweep_reclaim",  # n= 197 cum_r= +56R wr=61%  *wave-14* (CME MICRO S&P FUTURES via IBKR, paired with v2)
     # NOT promoted (wave-16 IBKR-futures-only mandate):
     #   volume_profile_btc — Alpaca SPOT BTC; cellared per POOL_SPLIT.
     #     Strong R-edge (+121R/n=339) but the wrong broker for the

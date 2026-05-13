@@ -20,6 +20,7 @@ returns v17 -- v18's ``observe_outcome`` calls do nothing because the
 arm is never picked. Flipping ``ETA_BANDIT_ENABLED=true`` activates the
 epsilon-greedy split (10% v18, 90% v17 in the default config).
 """
+
 from __future__ import annotations
 
 import logging

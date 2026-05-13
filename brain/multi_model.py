@@ -80,9 +80,11 @@ def _telemetry_record(
 # Orchestrated response
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class MultiModelResponse:
     """Unified response from any provider."""
+
     text: str
     provider: ForceProvider
     model: str = ""
@@ -99,6 +101,7 @@ class MultiModelResponse:
 # ---------------------------------------------------------------------------
 # Orchestrator
 # ---------------------------------------------------------------------------
+
 
 def route_and_execute(
     *,
@@ -137,26 +140,40 @@ def route_and_execute(
 
     logger.info(
         "routing category=%s preferred=%s tier=%s",
-        category.value, preferred.value, selection.tier.value,
+        category.value,
+        preferred.value,
+        selection.tier.value,
     )
 
     if max_cost_usd is not None:
         _enforce_call_budget(
-            preferred=preferred, tier=selection.tier,
-            max_tokens=max_tokens, max_cost_usd=max_cost_usd,
+            preferred=preferred,
+            tier=selection.tier,
+            max_tokens=max_tokens,
+            max_cost_usd=max_cost_usd,
         )
 
     response = _route_and_execute_inner(
-        category=category, selection=selection, preferred=preferred,
-        system_prompt=system_prompt, user_message=user_message,
-        max_tokens=max_tokens, temperature=temperature, workspace=workspace,
+        category=category,
+        selection=selection,
+        preferred=preferred,
+        system_prompt=system_prompt,
+        user_message=user_message,
+        max_tokens=max_tokens,
+        temperature=temperature,
+        workspace=workspace,
     )
 
-    log_call(record=_telemetry_record(
-        kind="chain_stage" if chain_stage else "route",
-        category=category, preferred=preferred, response=response,
-        stage=chain_stage, chain_id=chain_id,
-    ))
+    log_call(
+        record=_telemetry_record(
+            kind="chain_stage" if chain_stage else "route",
+            category=category,
+            preferred=preferred,
+            response=response,
+            stage=chain_stage,
+            chain_id=chain_id,
+        )
+    )
     return response
 
 
@@ -176,23 +193,31 @@ def _route_and_execute_inner(
     if preferred == ForceProvider.CLAUDE:
         if not check_claude_available():
             return _fallback_deepseek(
-                category=category, tier=selection.tier,
-                system_prompt=system_prompt, user_message=user_message,
-                max_tokens=max_tokens, temperature=temperature,
+                category=category,
+                tier=selection.tier,
+                system_prompt=system_prompt,
+                user_message=user_message,
+                max_tokens=max_tokens,
+                temperature=temperature,
                 fallback_reason="claude CLI not installed (run: npm install -g @anthropic-ai/claude-code)",
             )
         cli_resp = _claude_call(
-            tier=selection.tier, system_prompt=system_prompt,
-            user_message=user_message, max_tokens=max_tokens,
+            tier=selection.tier,
+            system_prompt=system_prompt,
+            user_message=user_message,
+            max_tokens=max_tokens,
             workspace=workspace,
         )
         failure = _classify_cli_failure(cli_resp)
         if failure is None:
             return _wrap_cli(cli_resp, ForceProvider.CLAUDE, category, selection.tier)
         return _fallback_deepseek(
-            category=category, tier=selection.tier,
-            system_prompt=system_prompt, user_message=user_message,
-            max_tokens=max_tokens, temperature=temperature,
+            category=category,
+            tier=selection.tier,
+            system_prompt=system_prompt,
+            user_message=user_message,
+            max_tokens=max_tokens,
+            temperature=temperature,
             fallback_reason=_claude_fallback_reason(failure),
         )
 
@@ -200,30 +225,41 @@ def _route_and_execute_inner(
     if preferred == ForceProvider.CODEX:
         if not check_codex_available():
             return _fallback_deepseek(
-                category=category, tier=selection.tier,
-                system_prompt=system_prompt, user_message=user_message,
-                max_tokens=max_tokens, temperature=temperature,
+                category=category,
+                tier=selection.tier,
+                system_prompt=system_prompt,
+                user_message=user_message,
+                max_tokens=max_tokens,
+                temperature=temperature,
                 fallback_reason="codex CLI not installed (run: npm install -g @openai/codex)",
             )
         cli_resp = _codex_call(
-            tier=selection.tier, system_prompt=system_prompt,
-            user_message=user_message, workspace=workspace,
+            tier=selection.tier,
+            system_prompt=system_prompt,
+            user_message=user_message,
+            workspace=workspace,
         )
         failure = _classify_cli_failure(cli_resp)
         if failure is None:
             return _wrap_cli(cli_resp, ForceProvider.CODEX, category, selection.tier)
         return _fallback_deepseek(
-            category=category, tier=selection.tier,
-            system_prompt=system_prompt, user_message=user_message,
-            max_tokens=max_tokens, temperature=temperature,
+            category=category,
+            tier=selection.tier,
+            system_prompt=system_prompt,
+            user_message=user_message,
+            max_tokens=max_tokens,
+            temperature=temperature,
             fallback_reason=_codex_fallback_reason(failure),
         )
 
     # --- DEEPSEEK path (default) ---
     return _execute_deepseek(
-        category=category, tier=selection.tier,
-        system_prompt=system_prompt, user_message=user_message,
-        max_tokens=max_tokens, temperature=temperature,
+        category=category,
+        tier=selection.tier,
+        system_prompt=system_prompt,
+        user_message=user_message,
+        max_tokens=max_tokens,
+        temperature=temperature,
     )
 
 
@@ -275,6 +311,7 @@ async def route_and_execute_async(
 # ---------------------------------------------------------------------------
 # Provider execution helpers
 # ---------------------------------------------------------------------------
+
 
 def _claude_call(
     *,
@@ -430,6 +467,7 @@ def _fallback_deepseek(
     # quality regression. If those tasks fall back to DeepSeek, escalate
     # the log level so it shows up in dashboards and on-call alerts.
     from eta_engine.brain.model_policy import TaskBucket, bucket_for  # noqa: PLC0415
+
     is_architectural = bucket_for(category) == TaskBucket.ARCHITECTURAL
     log_fn = logger.error if is_architectural else logger.warning
     log_fn(
@@ -462,6 +500,7 @@ def _fallback_deepseek(
 # ---------------------------------------------------------------------------
 # Model selection per provider
 # ---------------------------------------------------------------------------
+
 
 def _claude_model_for_tier(tier: ModelTier) -> str:
     mapping = {
@@ -563,6 +602,7 @@ def _classify_cli_failure(resp: CLIResponse) -> str | None:
 # Status / health
 # ---------------------------------------------------------------------------
 
+
 def force_multiplier_status() -> dict[str, Any]:
     """Return a status dict for dashboards and health checks."""
     cli_status = cli_provider_status()
@@ -587,10 +627,7 @@ def force_multiplier_status() -> dict[str, Any]:
                 "role": "Worker Bee — high-volume generation, boilerplate, grunt",
             },
         },
-        "routing_table": {
-            cat.value: force_provider_for(TaskCategory(cat)).value
-            for cat in TaskCategory
-        },
+        "routing_table": {cat.value: force_provider_for(TaskCategory(cat)).value for cat in TaskCategory},
         "fallback": "All tasks fall back to DeepSeek API if preferred provider unavailable",
     }
 
@@ -736,12 +773,13 @@ def force_multiplier_chain(
         if result.total_cost_usd > max_total_cost_usd:
             logger.error(
                 "[chain] budget exceeded before stage=%s: cost=$%.4f > cap=$%.4f",
-                stage, result.total_cost_usd, max_total_cost_usd,
+                stage,
+                result.total_cost_usd,
+                max_total_cost_usd,
             )
             result.aborted_at = stage
             raise ChainBudgetExceededError(
-                f"Chain cost ${result.total_cost_usd:.4f} > cap ${max_total_cost_usd:.2f} "
-                f"before running {stage}"
+                f"Chain cost ${result.total_cost_usd:.4f} > cap ${max_total_cost_usd:.2f} before running {stage}"
             )
         return True
 
@@ -753,9 +791,11 @@ def force_multiplier_chain(
         """
         if not resp.text.strip() and abort_on_empty:
             logger.error(
-                "[chain] stage=%s returned empty text — aborting chain "
-                "(provider=%s fallback=%s reason=%s)",
-                stage, resp.provider.value, resp.fallback_used, resp.fallback_reason,
+                "[chain] stage=%s returned empty text — aborting chain (provider=%s fallback=%s reason=%s)",
+                stage,
+                resp.provider.value,
+                resp.fallback_used,
+                resp.fallback_reason,
             )
             result.aborted_at = stage
             return False

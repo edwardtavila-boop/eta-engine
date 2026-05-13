@@ -37,6 +37,7 @@ Integration pattern (every external call wraps in record_call):
                         error_msg=str(exc))
         # caller decides what to do
 """
+
 from __future__ import annotations
 
 import json
@@ -129,7 +130,9 @@ class SkillRegistry:
         if name in self._skills:
             return
         self._skills[name] = _SkillRecord(
-            name=name, kind=kind, target_latency_ms=target_latency_ms,
+            name=name,
+            kind=kind,
+            target_latency_ms=target_latency_ms,
         )
 
     def record_call(
@@ -171,10 +174,7 @@ class SkillRegistry:
         return [self._compute_health(r) for r in self._skills.values()]
 
     def degraded_or_unavailable(self) -> list[SkillHealth]:
-        return [
-            h for h in self.health_report()
-            if h.status != SkillStatus.HEALTHY
-        ]
+        return [h for h in self.health_report() if h.status != SkillStatus.HEALTHY]
 
     def is_available(self, name: str) -> bool:
         h = self.health(name)
@@ -191,18 +191,14 @@ class SkillRegistry:
         latencies = list(rec.latencies)
         successes = list(rec.successes)
         n = len(successes)
-        error_rate = (
-            1.0 - sum(successes) / n if n > 0 else 0.0
-        )
+        error_rate = 1.0 - sum(successes) / n if n > 0 else 0.0
         p50 = _percentile(latencies, 0.50) if latencies else 0.0
         p95 = _percentile(latencies, 0.95) if latencies else 0.0
 
         status: SkillStatus
         if rec.consecutive_failures >= 5 or error_rate > 0.25:
             status = SkillStatus.UNAVAILABLE
-        elif error_rate > 0.05 or (
-            rec.target_latency_ms > 0 and p95 > 2 * rec.target_latency_ms
-        ):
+        elif error_rate > 0.05 or (rec.target_latency_ms > 0 and p95 > 2 * rec.target_latency_ms):
             status = SkillStatus.DEGRADED
         else:
             status = SkillStatus.HEALTHY
@@ -264,7 +260,8 @@ class SkillRegistry:
                 for name, rec in self._skills.items()
             }
             self.state_path.write_text(
-                json.dumps(payload, indent=2), encoding="utf-8",
+                json.dumps(payload, indent=2),
+                encoding="utf-8",
             )
         except OSError as exc:
             logger.warning("skill_health: save failed (%s)", exc)

@@ -57,6 +57,7 @@ Run
     # JSON output for downstream automation
     python -m eta_engine.scripts.l2_sweep_harness --json
 """
+
 from __future__ import annotations
 
 import argparse
@@ -94,6 +95,7 @@ class SweepResult:
 @dataclass
 class SweepSummary:
     """Top-level sweep result + best-config selection."""
+
     strategy: str
     symbol: str
     days: int
@@ -115,14 +117,18 @@ DEFAULT_ATR_STOP_MULTS = [1.0, 1.5]
 DEFAULT_RR_TARGETS = [1.5, 2.0]
 
 
-def run_sweep(symbol: str, days: int, *,
-              entry_thresholds: list[float] | None = None,
-              consecutive_snaps: list[int] | None = None,
-              atr_stop_mults: list[float] | None = None,
-              rr_targets: list[float] | None = None,
-              n_levels: int = 3,
-              min_n_for_sharpe: int = 30,
-              apply_regime_filter: bool = True) -> SweepSummary:
+def run_sweep(
+    symbol: str,
+    days: int,
+    *,
+    entry_thresholds: list[float] | None = None,
+    consecutive_snaps: list[int] | None = None,
+    atr_stop_mults: list[float] | None = None,
+    rr_targets: list[float] | None = None,
+    n_levels: int = 3,
+    min_n_for_sharpe: int = 30,
+    apply_regime_filter: bool = True,
+) -> SweepSummary:
     """Run book_imbalance across a parameter grid and return a
     SweepSummary with deflated-sharpe ranking.
 
@@ -135,20 +141,21 @@ def run_sweep(symbol: str, days: int, *,
         deflated_sharpe_ratio,
         run_book_imbalance,
     )
+
     entry_thresholds = entry_thresholds or DEFAULT_ENTRY_THRESHOLDS
     consecutive_snaps = consecutive_snaps or DEFAULT_CONSECUTIVE_SNAPS
     atr_stop_mults = atr_stop_mults or DEFAULT_ATR_STOP_MULTS
     rr_targets = rr_targets or DEFAULT_RR_TARGETS
 
-    grid = list(product(entry_thresholds, consecutive_snaps,
-                          atr_stop_mults, rr_targets))
+    grid = list(product(entry_thresholds, consecutive_snaps, atr_stop_mults, rr_targets))
     n_configs = len(grid)
     bonferroni = 0.05 / n_configs if n_configs > 0 else None
 
     results: list[SweepResult] = []
-    for (et, cs, asm, rrt) in grid:
+    for et, cs, asm, rrt in grid:
         run_result = run_book_imbalance(
-            symbol, days,
+            symbol,
+            days,
             entry_threshold=et,
             consecutive_snaps=cs,
             n_levels=n_levels,
@@ -165,22 +172,22 @@ def run_sweep(symbol: str, days: int, *,
         # Deflate THIS config's sharpe against the sweep size as n_trials
         dsr_sweep = None
         if run_result.n_trades >= 5 and n_configs > 1:
-            dsr_sweep = deflated_sharpe_ratio(
-                run_result.sharpe_proxy, n_configs, run_result.n_trades)
-        results.append(SweepResult(
-            config={"entry_threshold": et, "consecutive_snaps": cs,
-                     "atr_stop_mult": asm, "rr_target": rrt},
-            n_trades=run_result.n_trades,
-            n_signals=run_result.n_signals,
-            win_rate=run_result.win_rate,
-            sharpe_proxy=run_result.sharpe_proxy,
-            sharpe_proxy_valid=run_result.sharpe_proxy_valid,
-            sharpe_ci_95=run_result.sharpe_ci_95,
-            deflated_sharpe_in_sweep=dsr_sweep,
-            total_pnl_dollars_net=run_result.total_pnl_dollars_net,
-            walk_forward_passes=wf_passes,
-            walk_forward_test_sharpe=wf_test_sharpe,
-        ))
+            dsr_sweep = deflated_sharpe_ratio(run_result.sharpe_proxy, n_configs, run_result.n_trades)
+        results.append(
+            SweepResult(
+                config={"entry_threshold": et, "consecutive_snaps": cs, "atr_stop_mult": asm, "rr_target": rrt},
+                n_trades=run_result.n_trades,
+                n_signals=run_result.n_signals,
+                win_rate=run_result.win_rate,
+                sharpe_proxy=run_result.sharpe_proxy,
+                sharpe_proxy_valid=run_result.sharpe_proxy_valid,
+                sharpe_ci_95=run_result.sharpe_ci_95,
+                deflated_sharpe_in_sweep=dsr_sweep,
+                total_pnl_dollars_net=run_result.total_pnl_dollars_net,
+                walk_forward_passes=wf_passes,
+                walk_forward_test_sharpe=wf_test_sharpe,
+            )
+        )
 
     # Rank: prefer deflated_sharpe when available; fall back to raw sharpe
     def rank_key(r: SweepResult) -> float:
@@ -196,11 +203,13 @@ def run_sweep(symbol: str, days: int, *,
     if n_valid == 0:
         warnings.append(
             f"NO CONFIG has n_trades >= {min_n_for_sharpe}.  All sharpe "
-            "rankings are statistically meaningless on this sample.")
+            "rankings are statistically meaningless on this sample."
+        )
     if n_valid < n_configs / 2:
         warnings.append(
             f"Only {n_valid}/{n_configs} configs reached min sample size.  "
-            "Sweep results are dominated by under-sampled noise.")
+            "Sweep results are dominated by under-sampled noise."
+        )
 
     promotion_passes = False
     if best is not None:
@@ -230,14 +239,10 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--symbol", default="MNQ")
     ap.add_argument("--days", type=int, default=14)
-    ap.add_argument("--entry-thresholds", default=None,
-                    help="Comma-separated floats (default 1.5,1.75,2.0)")
-    ap.add_argument("--consecutive-snaps", default=None,
-                    help="Comma-separated ints (default 2,3,4)")
-    ap.add_argument("--atr-stop-mults", default=None,
-                    help="Comma-separated floats (default 1.0,1.5)")
-    ap.add_argument("--rr-targets", default=None,
-                    help="Comma-separated floats (default 1.5,2.0)")
+    ap.add_argument("--entry-thresholds", default=None, help="Comma-separated floats (default 1.5,1.75,2.0)")
+    ap.add_argument("--consecutive-snaps", default=None, help="Comma-separated ints (default 2,3,4)")
+    ap.add_argument("--atr-stop-mults", default=None, help="Comma-separated floats (default 1.0,1.5)")
+    ap.add_argument("--rr-targets", default=None, help="Comma-separated floats (default 1.5,2.0)")
     ap.add_argument("--n-levels", type=int, default=3)
     ap.add_argument("--min-n", type=int, default=30)
     ap.add_argument("--no-regime-filter", action="store_true")
@@ -255,7 +260,8 @@ def main() -> int:
         return [int(x.strip()) for x in s.split(",")]
 
     summary = run_sweep(
-        args.symbol, args.days,
+        args.symbol,
+        args.days,
         entry_thresholds=_parse_floats(args.entry_thresholds),
         consecutive_snaps=_parse_ints(args.consecutive_snaps),
         atr_stop_mults=_parse_floats(args.atr_stop_mults),
@@ -291,30 +297,37 @@ def main() -> int:
 
     print()
     print("=" * 78)
-    print(f"L2 sweep harness — {summary.strategy} on {summary.symbol} "
-          f"over {summary.days}d")
+    print(f"L2 sweep harness — {summary.strategy} on {summary.symbol} over {summary.days}d")
     print("=" * 78)
     print(f"  configs tried   : {summary.n_configs_tried}")
-    print(f"  configs valid   : {summary.n_configs_valid} (n_trades >= "
-          f"{args.min_n})")
-    print(f"  bonferroni α    : {summary.bonferroni_alpha:.4f}"
-          if summary.bonferroni_alpha else "  bonferroni α    : n/a")
+    print(f"  configs valid   : {summary.n_configs_valid} (n_trades >= {args.min_n})")
+    print(
+        f"  bonferroni α    : {summary.bonferroni_alpha:.4f}" if summary.bonferroni_alpha else "  bonferroni α    : n/a"
+    )
     print()
-    print(f"  {'Rank':<5s} {'sharpe':<8s} {'dsr':<8s} {'n_trades':<9s} "
-          f"{'win':<6s} {'pnl_net':<10s} {'wf_pass':<8s} config")
-    print(f"  {'-'*5:<5s} {'-'*8:<8s} {'-'*8:<8s} {'-'*9:<9s} "
-          f"{'-'*6:<6s} {'-'*10:<10s} {'-'*8:<8s} {'-'*30}")
+    print(
+        f"  {'Rank':<5s} {'sharpe':<8s} {'dsr':<8s} {'n_trades':<9s} "
+        f"{'win':<6s} {'pnl_net':<10s} {'wf_pass':<8s} config"
+    )
+    print(
+        f"  {'-' * 5:<5s} {'-' * 8:<8s} {'-' * 8:<8s} {'-' * 9:<9s} "
+        f"{'-' * 6:<6s} {'-' * 10:<10s} {'-' * 8:<8s} {'-' * 30}"
+    )
     for i, r in enumerate(summary.results[:20], 1):  # show top 20
         dsr = f"{r.deflated_sharpe_in_sweep:+.3f}" if r.deflated_sharpe_in_sweep is not None else "n/a"
         wf = "YES" if r.walk_forward_passes else "no"
         sharpe_str = f"{r.sharpe_proxy:+.3f}" if r.sharpe_proxy_valid else f"{r.sharpe_proxy:+.3f}*"
-        cfg_str = (f"et={r.config['entry_threshold']} "
-                    f"cs={r.config['consecutive_snaps']} "
-                    f"asm={r.config['atr_stop_mult']} "
-                    f"rr={r.config['rr_target']}")
-        print(f"  #{i:<3d} {sharpe_str:<8s} {dsr:<8s} {r.n_trades:<9d} "
-              f"{r.win_rate*100:5.1f}% ${r.total_pnl_dollars_net:>+8.2f} "
-              f"{wf:<8s} {cfg_str}")
+        cfg_str = (
+            f"et={r.config['entry_threshold']} "
+            f"cs={r.config['consecutive_snaps']} "
+            f"asm={r.config['atr_stop_mult']} "
+            f"rr={r.config['rr_target']}"
+        )
+        print(
+            f"  #{i:<3d} {sharpe_str:<8s} {dsr:<8s} {r.n_trades:<9d} "
+            f"{r.win_rate * 100:5.1f}% ${r.total_pnl_dollars_net:>+8.2f} "
+            f"{wf:<8s} {cfg_str}"
+        )
     if any(not r.sharpe_proxy_valid for r in summary.results):
         print("    * = sharpe_proxy_valid=False (n_trades < min_n)")
     print()
@@ -326,14 +339,15 @@ def main() -> int:
     if summary.best_config:
         b = summary.best_config
         print(f"  BEST CONFIG: {b.config}")
-        print(f"    sharpe={b.sharpe_proxy:+.3f}  dsr={b.deflated_sharpe_in_sweep}"
-              if b.deflated_sharpe_in_sweep is not None
-              else f"    sharpe={b.sharpe_proxy:+.3f}  dsr=n/a")
+        print(
+            f"    sharpe={b.sharpe_proxy:+.3f}  dsr={b.deflated_sharpe_in_sweep}"
+            if b.deflated_sharpe_in_sweep is not None
+            else f"    sharpe={b.sharpe_proxy:+.3f}  dsr=n/a"
+        )
         print(f"    walk-forward OOS passes: {b.walk_forward_passes}")
     print()
     print(f"  PROMOTION GATE: {'PASS' if summary.promotion_gate_passes else 'FAIL'}")
-    print("    Gate requires: best config has valid sharpe AND "
-          "walk_forward_passes AND deflated_sharpe >= 0.5")
+    print("    Gate requires: best config has valid sharpe AND walk_forward_passes AND deflated_sharpe >= 0.5")
     print()
     return 0 if summary.promotion_gate_passes else 1
 

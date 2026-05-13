@@ -173,8 +173,7 @@ def _fetch_coinglass(symbol: str, days: int, api_key: str) -> list[tuple[int, fl
     cg_symbol = _COINGLASS_SYMBOLS.get(symbol)
     if cg_symbol is None:
         raise UnsupportedSymbolError(
-            f"CoinGlass does not have a configured aggregate for {symbol!r}; "
-            f"supported: {sorted(_COINGLASS_SYMBOLS)}"
+            f"CoinGlass does not have a configured aggregate for {symbol!r}; supported: {sorted(_COINGLASS_SYMBOLS)}"
         )
     end_ms = int(datetime.now(tz=UTC).timestamp() * 1000)
     # Add a small buffer so we slightly over-fetch and let dedup trim.
@@ -301,10 +300,7 @@ def fetch_funding_rates(
     sym = symbol.upper()
     if source == "coinglass":
         if not api_key:
-            raise MissingApiKeyError(
-                "CoinGlass requires an API key. Set CRYPTO_FUNDING_API_KEY "
-                "or pass --api-key."
-            )
+            raise MissingApiKeyError("CoinGlass requires an API key. Set CRYPTO_FUNDING_API_KEY or pass --api-key.")
         rows = _fetch_coinglass(sym, days, api_key)
     elif source == "bitmex":
         rows = _fetch_bitmex(sym, days)
@@ -349,7 +345,8 @@ def _validate_rows(rows: list[tuple[int, float]]) -> list[tuple[int, float]]:
 
 
 def merge_and_write(
-    out_path: Path, fetched: list[tuple[int, float]],
+    out_path: Path,
+    fetched: list[tuple[int, float]],
 ) -> tuple[int, int, int]:
     """Idempotent merge: existing ∪ fetched, dedup by ts, sort ascending.
 
@@ -398,27 +395,37 @@ def _coverage_str(out_path: Path) -> str:
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="fetch_funding_rates_extended", description=__doc__)
     p.add_argument(
-        "--symbols", nargs="+", default=["BTC", "ETH", "SOL"],
+        "--symbols",
+        nargs="+",
+        default=["BTC", "ETH", "SOL"],
         help="Symbol tickers to backfill (default: BTC ETH SOL).",
     )
     p.add_argument(
-        "--days", type=int, default=365,
+        "--days",
+        type=int,
+        default=365,
         help="Lookback window in days (default: 365).",
     )
     p.add_argument(
-        "--source", choices=["coinglass", "bitmex"], default="coinglass",
+        "--source",
+        choices=["coinglass", "bitmex"],
+        default="coinglass",
         help="Funding-rate source (default: coinglass aggregated index).",
     )
     p.add_argument(
-        "--api-key", default=None,
+        "--api-key",
+        default=None,
         help="CoinGlass API key. Falls back to $CRYPTO_FUNDING_API_KEY env.",
     )
     p.add_argument(
-        "--root", type=Path, default=CRYPTO_HISTORY_ROOT,
+        "--root",
+        type=Path,
+        default=CRYPTO_HISTORY_ROOT,
         help="Output directory (default: workspace data/crypto/history).",
     )
     p.add_argument(
-        "--log-level", default="INFO",
+        "--log-level",
+        default="INFO",
         help="Python log level (default: INFO).",
     )
     args = p.parse_args(argv)
@@ -450,7 +457,11 @@ def main(argv: list[str] | None = None) -> int:
         before, added, after = merge_and_write(out_path, fetched)
         logger.info(
             "[funding] %s wrote %d rows (was %d, +%d new); coverage=%s",
-            sym, after, before, added, _coverage_str(out_path),
+            sym,
+            after,
+            before,
+            added,
+            _coverage_str(out_path),
         )
     return rc
 

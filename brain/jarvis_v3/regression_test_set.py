@@ -20,6 +20,7 @@ Cases are added two ways:
 
 Pure stdlib + persistent JSON.
 """
+
 from __future__ import annotations
 
 import json
@@ -40,8 +41,8 @@ DEFAULT_CASES_PATH = ROOT / "state" / "jarvis_intel" / "regression_cases.json"
 
 
 class CaseKind(StrEnum):
-    PASS_CASE = "PASS_CASE"            # must stay APPROVED
-    FAIL_CASE = "FAIL_CASE"            # must stay DENIED/DEFERRED
+    PASS_CASE = "PASS_CASE"  # must stay APPROVED
+    FAIL_CASE = "FAIL_CASE"  # must stay DENIED/DEFERRED
 
 
 @dataclass
@@ -64,7 +65,7 @@ class CaseResult:
 
     case_id: str
     kind: str
-    expected_to_approve: bool          # True for PASS_CASE
+    expected_to_approve: bool  # True for PASS_CASE
     actual_verdict: str
     passed: bool
     note: str = ""
@@ -154,7 +155,9 @@ class RegressionSuite:
                 verdict = str(policy_fn(case.proposal_payload))
             except Exception as exc:  # noqa: BLE001
                 logger.warning(
-                    "regression: policy raised on %s (%s)", case.case_id, exc,
+                    "regression: policy raised on %s (%s)",
+                    case.case_id,
+                    exc,
                 )
                 verdict = "ERROR"
 
@@ -164,22 +167,22 @@ class RegressionSuite:
             note = ""
             if not passed:
                 if expected_approve:
-                    note = (
-                        f"PASS_CASE regressed: expected APPROVED, got {verdict}"
-                    )
+                    note = f"PASS_CASE regressed: expected APPROVED, got {verdict}"
                 else:
                     note = (
                         f"FAIL_CASE regressed: expected DENIED/DEFERRED, "
                         f"got {verdict} (this case lost {case.realized_r:+.2f}R)"
                     )
-            results.append(CaseResult(
-                case_id=case.case_id,
-                kind=case.kind.value,
-                expected_to_approve=expected_approve,
-                actual_verdict=verdict,
-                passed=passed,
-                note=note,
-            ))
+            results.append(
+                CaseResult(
+                    case_id=case.case_id,
+                    kind=case.kind.value,
+                    expected_to_approve=expected_approve,
+                    actual_verdict=verdict,
+                    passed=passed,
+                    note=note,
+                )
+            )
 
         n = len(results)
         n_passed = sum(1 for r in results if r.passed)
@@ -230,7 +233,8 @@ class RegressionSuite:
                 for cid, c in self._cases.items()
             }
             self.cases_path.write_text(
-                json.dumps(payload, indent=2), encoding="utf-8",
+                json.dumps(payload, indent=2),
+                encoding="utf-8",
             )
         except OSError as exc:
             logger.warning("regression: save failed (%s)", exc)

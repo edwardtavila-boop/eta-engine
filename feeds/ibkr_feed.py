@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
-from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    pass
+    from collections.abc import Callable
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +95,7 @@ class IbkrFeed:
             import ssl
 
             import aiohttp
+
             ssl_ctx = ssl.create_default_context()
             ssl_ctx.check_hostname = False
             ssl_ctx.verify_mode = ssl.CERT_NONE
@@ -107,14 +108,13 @@ class IbkrFeed:
                 body = await resp.json()
                 if body.get("authenticated"):
                     # Initialize account context (required for market data snapshots)
-                    try:
+                    with contextlib.suppress(Exception):
                         await self._session.get("iserver/accounts")
-                    except Exception:
-                        pass
                     self._connected = True
                     logger.info(
                         "IBKR feed connected: authenticated=%s connected=%s",
-                        body.get("authenticated"), body.get("connected"),
+                        body.get("authenticated"),
+                        body.get("connected"),
                     )
                     return True
                 logger.warning("IBKR gateway not authenticated: %s", body)
@@ -128,10 +128,8 @@ class IbkrFeed:
         self._running = False
         if self._task is not None:
             self._task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._task
-            except asyncio.CancelledError:
-                pass
             self._task = None
         if self._session is not None:
             await self._session.close()

@@ -83,7 +83,7 @@ class SweepReclaimConfig:
     # Volume confirmation — reclaim bar's volume should exceed
     # the N-bar average by this z-score (in std-deviations).
     volume_z_lookback: int = 20
-    min_volume_z: float = 0.0      # 0 = disabled; 0.5 = mild; 1.0 = strict
+    min_volume_z: float = 0.0  # 0 = disabled; 0.5 = mild; 1.0 = strict
 
     # Risk
     atr_period: int = 14
@@ -109,10 +109,10 @@ class SweepReclaimConfig:
     # missing data — operator must wire mark_captures_expected at
     # session start.
     enable_l2_overlay: bool = True
-    l2_min_stop_qty: int = 50          # min visible contra-side qty
+    l2_min_stop_qty: int = 50  # min visible contra-side qty
     l2_hidden_qty_floor: int | None = None  # iceberg estimate; None = off
-    l2_window_seconds: int = 60         # how far back to search for pre-touch
-    l2_symbol: str = "MNQ"             # symbol for depth-file lookup
+    l2_window_seconds: int = 60  # how far back to search for pre-touch
+    l2_symbol: str = "MNQ"  # symbol for depth-file lookup
 
     # ── 2026-05-12 wave-4 refinements ───────────────────────────────
     #
@@ -130,11 +130,11 @@ class SweepReclaimConfig:
     # we size DOWN; when vol is low (atr < median * lower) we keep
     # baseline.  1.0 = disabled (legacy behavior).
     vol_adjusted_sizing: bool = False
-    vol_baseline_window: int = 96    # bars over which to compute median ATR
+    vol_baseline_window: int = 96  # bars over which to compute median ATR
     vol_high_threshold: float = 1.5  # multiplier above median = "high vol"
-    vol_low_threshold: float = 0.7   # multiplier below median = "low vol"
+    vol_low_threshold: float = 0.7  # multiplier below median = "low vol"
     vol_high_size_mult: float = 0.5  # size halved in high-vol regime
-    vol_low_size_mult: float = 1.0   # baseline in low-vol regime
+    vol_low_size_mult: float = 1.0  # baseline in low-vol regime
 
     # Session filter: skip bars whose UTC hour is in `excluded_hours_utc`.
     # Empty tuple = no filter (legacy).  Used by mgc to drop the close
@@ -175,8 +175,7 @@ class SweepReclaimStrategy:
         self._n_session_filter_rejects: int = 0
         self._n_confirm_pending: int = 0
         # ATR median window for vol-adjusted sizing
-        self._atr_history: deque[float] = deque(
-            maxlen=max(self.cfg.vol_baseline_window, 24))
+        self._atr_history: deque[float] = deque(maxlen=max(self.cfg.vol_baseline_window, 24))
         # Reclaim-confirmation state per pending sweep
         # Key = (side, swept_level, sweep_idx); value = consecutive bars
         # the close has held on the reclaim side
@@ -204,7 +203,7 @@ class SweepReclaimStrategy:
         if len(self._level_window) < self.cfg.level_lookback:
             return
         # Use prior bars only (not current) to define "recent" levels
-        prior = list(self._level_window)[-self.cfg.level_lookback:-1]
+        prior = list(self._level_window)[-self.cfg.level_lookback : -1]
         if not prior:
             return
         recent_low = min(low for _, _, low in prior)
@@ -224,10 +223,7 @@ class SweepReclaimStrategy:
                 ("BUY", recent_low, self._bars_seen, bar.close),
             )
             self._n_long_sweeps_seen += 1
-        elif (
-            self.cfg.allow_long
-            and bar.low < recent_low
-        ):
+        elif self.cfg.allow_long and bar.low < recent_low:
             self._n_wick_quality_rejects += 1
 
         # Short sweep: high pierces above recent_high
@@ -240,10 +236,7 @@ class SweepReclaimStrategy:
                 ("SELL", recent_high, self._bars_seen, bar.close),
             )
             self._n_short_sweeps_seen += 1
-        elif (
-            self.cfg.allow_short
-            and bar.high > recent_high
-        ):
+        elif self.cfg.allow_short and bar.high > recent_high:
             self._n_wick_quality_rejects += 1
 
     def _check_reclaim(self, bar: BarData) -> tuple[str, float] | None:
@@ -291,7 +284,7 @@ class SweepReclaimStrategy:
             return 0.0
         mean = sum(prior_vols) / len(prior_vols)
         var = sum((v - mean) ** 2 for v in prior_vols) / len(prior_vols)
-        std = var ** 0.5
+        std = var**0.5
         if std <= 0.0:
             return 0.0
         return (bar.volume - mean) / std
@@ -360,8 +353,7 @@ class SweepReclaimStrategy:
             return None
         if (
             self._last_entry_idx is not None
-            and (self._bars_seen - self._last_entry_idx)
-            < self.cfg.min_bars_between_trades
+            and (self._bars_seen - self._last_entry_idx) < self.cfg.min_bars_between_trades
         ):
             return None
 
@@ -375,7 +367,7 @@ class SweepReclaimStrategy:
                 return None
 
         # Risk sizing
-        atr_window = hist[-self.cfg.atr_period:] if hist else []
+        atr_window = hist[-self.cfg.atr_period :] if hist else []
         if len(atr_window) < 2:
             return None
         atr = sum(b.high - b.low for b in atr_window) / len(atr_window)
@@ -393,8 +385,7 @@ class SweepReclaimStrategy:
         # single regime-shift bar doesn't burn double our intended
         # risk.  When vol is normal, baseline.  Operator opt-in via
         # vol_adjusted_sizing=True; default off = legacy behavior.
-        if (self.cfg.vol_adjusted_sizing
-                and len(self._atr_history) >= self.cfg.vol_baseline_window // 2):
+        if self.cfg.vol_adjusted_sizing and len(self._atr_history) >= self.cfg.vol_baseline_window // 2:
             sorted_atrs = sorted(self._atr_history)
             median_atr = sorted_atrs[len(sorted_atrs) // 2]
             if median_atr > 0:
@@ -439,6 +430,7 @@ class SweepReclaimStrategy:
         if self.cfg.enable_l2_overlay:
             try:
                 from eta_engine.strategies.l2_overlay import confirm_sweep_with_l2
+
                 l2_side = "LONG" if side == "BUY" else "SHORT"
                 gate = confirm_sweep_with_l2(
                     symbol=self.cfg.l2_symbol,
@@ -463,9 +455,15 @@ class SweepReclaimStrategy:
         self._trades_today += 1
         self._n_reclaims_fired += 1
         return _Open(
-            entry_bar=bar, side=side, qty=qty, entry_price=entry,
-            stop=stop, target=target, risk_usd=risk_usd,
-            confluence=10.0, leverage=1.0,
+            entry_bar=bar,
+            side=side,
+            qty=qty,
+            entry_price=entry,
+            stop=stop,
+            target=target,
+            risk_usd=risk_usd,
+            confluence=10.0,
+            leverage=1.0,
             regime=f"sweep_reclaim_{side.lower()}_lvl{swept_level:.1f}",
         )
 
@@ -551,12 +549,18 @@ def eth_daily_sweep_preset() -> SweepReclaimConfig:
     swings $80-150/bar. 2.0x gives $120-300 stop, enough to survive noise).
     rr_target bumped 2.0→2.5 for positive expectancy at lower WR."""
     return SweepReclaimConfig(
-        level_lookback=48, reclaim_window=3,
-        min_wick_pct=0.40, volume_z_lookback=24, min_volume_z=0.5,
-        atr_period=14, atr_stop_mult=2.0,  # was 1.0 — too tight for ETH 1h
-        rr_target=2.5,                      # was 2.0
+        level_lookback=48,
+        reclaim_window=3,
+        min_wick_pct=0.40,
+        volume_z_lookback=24,
+        min_volume_z=0.5,
+        atr_period=14,
+        atr_stop_mult=2.0,  # was 1.0 — too tight for ETH 1h
+        rr_target=2.5,  # was 2.0
         risk_per_trade_pct=0.005,
-        min_bars_between_trades=12, max_trades_per_day=2, warmup_bars=72,
+        min_bars_between_trades=12,
+        max_trades_per_day=2,
+        warmup_bars=72,
     )
 
 
@@ -575,8 +579,8 @@ def sol_daily_sweep_preset() -> SweepReclaimConfig:
         volume_z_lookback=24,
         min_volume_z=0.1,
         atr_period=14,
-        atr_stop_mult=2.2,        # wider still
-        rr_target=2.5,             # bump RR to keep edge per-trade
+        atr_stop_mult=2.2,  # wider still
+        rr_target=2.5,  # bump RR to keep edge per-trade
         risk_per_trade_pct=0.004,  # smaller risk per trade (higher vol)
         min_bars_between_trades=12,
         max_trades_per_day=2,
@@ -594,11 +598,18 @@ def gc_sweep_preset() -> SweepReclaimConfig:
     Tuned 2026-05-08: atr_stop 2.5→3.0 (wider for gold's macro swings),
     rr_target 2.5→3.5 (bigger wins), max_trades 2→1 (selectivity)."""
     return SweepReclaimConfig(
-        level_lookback=72, reclaim_window=3,
-        min_wick_pct=0.40, volume_z_lookback=24, min_volume_z=0.3,
-        atr_period=14, atr_stop_mult=3.0, rr_target=3.5,
-        risk_per_trade_pct=0.005, min_bars_between_trades=12,
-        max_trades_per_day=1, warmup_bars=72,
+        level_lookback=72,
+        reclaim_window=3,
+        min_wick_pct=0.40,
+        volume_z_lookback=24,
+        min_volume_z=0.3,
+        atr_period=14,
+        atr_stop_mult=3.0,
+        rr_target=3.5,
+        risk_per_trade_pct=0.005,
+        min_bars_between_trades=12,
+        max_trades_per_day=1,
+        warmup_bars=72,
     )
 
 
@@ -606,11 +617,18 @@ def cl_sweep_preset() -> SweepReclaimConfig:
     """Crude oil (CL) 1h — $1000/pt, $150-250/h ATR, ~$65k notional.
     Tuned 2026-05-08: atr_stop 1.5→2.5 (oil whipsaws), rr_target 2.5→3.0."""
     return SweepReclaimConfig(
-        level_lookback=48, reclaim_window=3,
-        min_wick_pct=0.30, volume_z_lookback=24, min_volume_z=0.3,
-        atr_period=14, atr_stop_mult=2.5, rr_target=3.0,
-        risk_per_trade_pct=0.005, min_bars_between_trades=12,
-        max_trades_per_day=2, warmup_bars=72,
+        level_lookback=48,
+        reclaim_window=3,
+        min_wick_pct=0.30,
+        volume_z_lookback=24,
+        min_volume_z=0.3,
+        atr_period=14,
+        atr_stop_mult=2.5,
+        rr_target=3.0,
+        risk_per_trade_pct=0.005,
+        min_bars_between_trades=12,
+        max_trades_per_day=2,
+        warmup_bars=72,
     )
 
 
@@ -620,11 +638,18 @@ def ng_sweep_preset() -> SweepReclaimConfig:
     highest RR (3.0 to compensate), highest vol_z filter (0.5).
     PAPER-SOAK TUNED: ATR stop 3.0→4.0, vol_z 0.2→0.5."""
     return SweepReclaimConfig(
-        level_lookback=48, reclaim_window=3,
-        min_wick_pct=0.25, volume_z_lookback=24, min_volume_z=0.5,
-        atr_period=14, atr_stop_mult=4.0, rr_target=3.0,
-        risk_per_trade_pct=0.005, min_bars_between_trades=12,
-        max_trades_per_day=2, warmup_bars=72,
+        level_lookback=48,
+        reclaim_window=3,
+        min_wick_pct=0.25,
+        volume_z_lookback=24,
+        min_volume_z=0.5,
+        atr_period=14,
+        atr_stop_mult=4.0,
+        rr_target=3.0,
+        risk_per_trade_pct=0.005,
+        min_bars_between_trades=12,
+        max_trades_per_day=2,
+        warmup_bars=72,
     )
 
 
@@ -632,11 +657,18 @@ def eur_sweep_preset() -> SweepReclaimConfig:
     """Euro FX (6E) 1h — $125k notional, $5-10/h ATR.
     Tuned 2026-05-08: atr_stop 1.0→1.5 (FX ranges need room), rr_target 2.0→2.5."""
     return SweepReclaimConfig(
-        level_lookback=72, reclaim_window=3,
-        min_wick_pct=0.30, volume_z_lookback=24, min_volume_z=0.3,
-        atr_period=14, atr_stop_mult=1.5, rr_target=2.5,
-        risk_per_trade_pct=0.005, min_bars_between_trades=12,
-        max_trades_per_day=3, warmup_bars=72,
+        level_lookback=72,
+        reclaim_window=3,
+        min_wick_pct=0.30,
+        volume_z_lookback=24,
+        min_volume_z=0.3,
+        atr_period=14,
+        atr_stop_mult=1.5,
+        rr_target=2.5,
+        risk_per_trade_pct=0.005,
+        min_bars_between_trades=12,
+        max_trades_per_day=3,
+        warmup_bars=72,
     )
 
 
@@ -644,11 +676,18 @@ def mes_sweep_preset() -> SweepReclaimConfig:
     """Micro ES (MES) 1h — $50/pt on $2,500 notional, 1/10th ES.
     Same volatility as MNQ/NQ index futures. MNQ-tuned params."""
     return SweepReclaimConfig(
-        level_lookback=30, reclaim_window=3,
-        min_wick_pct=0.40, volume_z_lookback=20, min_volume_z=0.5,
-        atr_period=14, atr_stop_mult=1.5, rr_target=2.0,
-        risk_per_trade_pct=0.005, min_bars_between_trades=6,
-        max_trades_per_day=4, warmup_bars=50,
+        level_lookback=30,
+        reclaim_window=3,
+        min_wick_pct=0.40,
+        volume_z_lookback=20,
+        min_volume_z=0.5,
+        atr_period=14,
+        atr_stop_mult=1.5,
+        rr_target=2.0,
+        risk_per_trade_pct=0.005,
+        min_bars_between_trades=6,
+        max_trades_per_day=4,
+        warmup_bars=50,
     )
 
 
@@ -659,11 +698,18 @@ def mes_v2_sweep_preset() -> SweepReclaimConfig:
     launch, and live dispatch do not silently inherit BTC defaults.
     """
     return SweepReclaimConfig(
-        level_lookback=24, reclaim_window=3,
-        min_wick_pct=0.25, volume_z_lookback=24, min_volume_z=0.3,
-        atr_period=14, atr_stop_mult=1.5, rr_target=2.5,
-        risk_per_trade_pct=0.005, min_bars_between_trades=12,
-        max_trades_per_day=3, warmup_bars=72,
+        level_lookback=24,
+        reclaim_window=3,
+        min_wick_pct=0.25,
+        volume_z_lookback=24,
+        min_volume_z=0.3,
+        atr_period=14,
+        atr_stop_mult=1.5,
+        rr_target=2.5,
+        risk_per_trade_pct=0.005,
+        min_bars_between_trades=12,
+        max_trades_per_day=3,
+        warmup_bars=72,
     )
 
 
@@ -691,22 +737,36 @@ def m2k_sweep_preset() -> SweepReclaimConfig:
     based on observed regressions, not speculation.
     """
     return SweepReclaimConfig(
-        level_lookback=30, reclaim_window=3,
-        min_wick_pct=0.35, volume_z_lookback=20, min_volume_z=0.4,
-        atr_period=14, atr_stop_mult=1.5, rr_target=2.5,
-        risk_per_trade_pct=0.005, min_bars_between_trades=8,
-        max_trades_per_day=3, warmup_bars=50,
+        level_lookback=30,
+        reclaim_window=3,
+        min_wick_pct=0.35,
+        volume_z_lookback=20,
+        min_volume_z=0.4,
+        atr_period=14,
+        atr_stop_mult=1.5,
+        rr_target=2.5,
+        risk_per_trade_pct=0.005,
+        min_bars_between_trades=8,
+        max_trades_per_day=3,
+        warmup_bars=50,
     )
 
 
 def mym_sweep_preset() -> SweepReclaimConfig:
     """MYM 1h rehab preset for micro Dow exposure."""
     return SweepReclaimConfig(
-        level_lookback=48, reclaim_window=3,
-        min_wick_pct=0.30, volume_z_lookback=24, min_volume_z=0.3,
-        atr_period=14, atr_stop_mult=2.0, rr_target=2.5,
-        risk_per_trade_pct=0.005, min_bars_between_trades=12,
-        max_trades_per_day=2, warmup_bars=72,
+        level_lookback=48,
+        reclaim_window=3,
+        min_wick_pct=0.30,
+        volume_z_lookback=24,
+        min_volume_z=0.3,
+        atr_period=14,
+        atr_stop_mult=2.0,
+        rr_target=2.5,
+        risk_per_trade_pct=0.005,
+        min_bars_between_trades=12,
+        max_trades_per_day=2,
+        warmup_bars=72,
     )
 
 
@@ -714,11 +774,18 @@ def ym_sweep_preset() -> SweepReclaimConfig:
     """Mini Dow (YM) 1h — $5/pt on $5,000 notional, 1/2 ES.
     Wider ranges than MNQ, more structured trends."""
     return SweepReclaimConfig(
-        level_lookback=30, reclaim_window=3,
-        min_wick_pct=0.35, volume_z_lookback=20, min_volume_z=0.3,
-        atr_period=14, atr_stop_mult=2.0, rr_target=2.0,
-        risk_per_trade_pct=0.005, min_bars_between_trades=8,
-        max_trades_per_day=3, warmup_bars=50,
+        level_lookback=30,
+        reclaim_window=3,
+        min_wick_pct=0.35,
+        volume_z_lookback=20,
+        min_volume_z=0.3,
+        atr_period=14,
+        atr_stop_mult=2.0,
+        rr_target=2.0,
+        risk_per_trade_pct=0.005,
+        min_bars_between_trades=8,
+        max_trades_per_day=3,
+        warmup_bars=50,
     )
 
 
@@ -770,11 +837,18 @@ def mgc_sweep_preset() -> SweepReclaimConfig:
     reclaim_confirm_bars=2 over-filtering signals.  Revert to 1 if so.
     """
     return SweepReclaimConfig(
-        level_lookback=48, reclaim_window=3,
-        min_wick_pct=0.40, volume_z_lookback=24, min_volume_z=0.5,
-        atr_period=14, atr_stop_mult=2.5, rr_target=3.5,
-        risk_per_trade_pct=0.005, min_bars_between_trades=12,
-        max_trades_per_day=2, warmup_bars=72,
+        level_lookback=48,
+        reclaim_window=3,
+        min_wick_pct=0.40,
+        volume_z_lookback=24,
+        min_volume_z=0.5,
+        atr_period=14,
+        atr_stop_mult=2.5,
+        rr_target=3.5,
+        risk_per_trade_pct=0.005,
+        min_bars_between_trades=12,
+        max_trades_per_day=2,
+        warmup_bars=72,
         reclaim_confirm_bars=2,
         vol_adjusted_sizing=True,
         # excluded_hours_utc deliberately empty — see docstring "Wave-5"
@@ -785,22 +859,36 @@ def mgc_sweep_preset() -> SweepReclaimConfig:
 def mgc_v2_sweep_preset() -> SweepReclaimConfig:
     """Failed MGC relaxed-wick rehab preset kept for audit reproducibility."""
     return SweepReclaimConfig(
-        level_lookback=32, reclaim_window=3,
-        min_wick_pct=0.30, volume_z_lookback=24, min_volume_z=0.3,
-        atr_period=14, atr_stop_mult=3.0, rr_target=3.0,
-        risk_per_trade_pct=0.005, min_bars_between_trades=12,
-        max_trades_per_day=2, warmup_bars=72,
+        level_lookback=32,
+        reclaim_window=3,
+        min_wick_pct=0.30,
+        volume_z_lookback=24,
+        min_volume_z=0.3,
+        atr_period=14,
+        atr_stop_mult=3.0,
+        rr_target=3.0,
+        risk_per_trade_pct=0.005,
+        min_bars_between_trades=12,
+        max_trades_per_day=2,
+        warmup_bars=72,
     )
 
 
 def mcl_sweep_preset() -> SweepReclaimConfig:
     """MCL 1h micro-crude rehab preset."""
     return SweepReclaimConfig(
-        level_lookback=48, reclaim_window=3,
-        min_wick_pct=0.30, volume_z_lookback=24, min_volume_z=0.3,
-        atr_period=14, atr_stop_mult=2.0, rr_target=2.5,
-        risk_per_trade_pct=0.005, min_bars_between_trades=12,
-        max_trades_per_day=2, warmup_bars=72,
+        level_lookback=48,
+        reclaim_window=3,
+        min_wick_pct=0.30,
+        volume_z_lookback=24,
+        min_volume_z=0.3,
+        atr_period=14,
+        atr_stop_mult=2.0,
+        rr_target=2.5,
+        risk_per_trade_pct=0.005,
+        min_bars_between_trades=12,
+        max_trades_per_day=2,
+        warmup_bars=72,
     )
 
 
@@ -808,11 +896,18 @@ def zn_sweep_preset() -> SweepReclaimConfig:
     """10-Year T-Note (ZN) 1h — $1,000/pt on $110,000 notional.
     Tightest ranges — wider lookback, tighter stop, higher RR."""
     return SweepReclaimConfig(
-        level_lookback=72, reclaim_window=4,
-        min_wick_pct=0.40, volume_z_lookback=24, min_volume_z=0.5,
-        atr_period=14, atr_stop_mult=1.0, rr_target=3.0,
-        risk_per_trade_pct=0.005, min_bars_between_trades=12,
-        max_trades_per_day=2, warmup_bars=72,
+        level_lookback=72,
+        reclaim_window=4,
+        min_wick_pct=0.40,
+        volume_z_lookback=24,
+        min_volume_z=0.5,
+        atr_period=14,
+        atr_stop_mult=1.0,
+        rr_target=3.0,
+        risk_per_trade_pct=0.005,
+        min_bars_between_trades=12,
+        max_trades_per_day=2,
+        warmup_bars=72,
     )
 
 

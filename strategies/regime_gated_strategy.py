@@ -100,8 +100,7 @@ if TYPE_CHECKING:
             hist: list[BarData],
             equity: float,
             config: BacktestConfig,
-        ) -> _Open | None:
-            ...
+        ) -> _Open | None: ...
 
 
 # Sensible defaults: drop volatile (where strategies bleed) but
@@ -157,9 +156,7 @@ class RegimeGatedStrategy:
         # This is the right architecture when the regime read needs
         # HTF (daily) cadence but the strategy fires on LTF (1h, 5m)
         # bars — same pattern as the sage daily verdict provider.
-        self._regime_provider: (
-            Callable[[date], HtfRegimeClassification] | None
-        ) = None
+        self._regime_provider: Callable[[date], HtfRegimeClassification] | None = None
         # Audit counters — useful in walk-forward post-mortems
         self._n_seen: int = 0
         self._n_proposed: int = 0
@@ -275,9 +272,7 @@ class RegimeGatedStrategy:
         self._n_allowed += 1
 
         # Tag with regime classification for audit
-        new_tag = (
-            f"{opened.regime}_regime_{cls.regime}_{cls.bias}_{cls.mode}"
-        )
+        new_tag = f"{opened.regime}_regime_{cls.regime}_{cls.bias}_{cls.mode}"
         return replace(opened, regime=new_tag)
 
 
@@ -292,7 +287,8 @@ class RegimeGatedStrategy:
 
 
 def btc_daily_provider_preset(
-    *, strict_long_only: bool = False,
+    *,
+    strict_long_only: bool = False,
 ) -> RegimeGatedConfig:
     """BTC preset for use WITH a daily-bar regime provider.
 
@@ -310,10 +306,7 @@ def btc_daily_provider_preset(
     return RegimeGatedConfig(
         classifier=HtfRegimeClassifierConfig(),  # placeholder
         allowed_regimes=frozenset({"trending", "ranging"}),
-        allowed_biases=(
-            frozenset({"long"}) if strict_long_only
-            else frozenset({"long", "short", "neutral"})
-        ),
+        allowed_biases=(frozenset({"long"}) if strict_long_only else frozenset({"long", "short", "neutral"})),
         allowed_modes=frozenset({"trend_follow", "mean_revert"}),
         require_bias_match_side=strict_long_only,
     )
@@ -341,22 +334,19 @@ def btc_daily_preset(*, strict_long_only: bool = False) -> RegimeGatedConfig:
     """
     cls = HtfRegimeClassifierConfig(
         # 1h cadence — span 50 / 200 *days* of 1h bars.
-        fast_ema=50 * 24,           # 1200 bars ~ 50 days
-        slow_ema=200 * 24,          # 4800 bars ~ 200 days
-        slope_lookback=24 * 5,      # 5-day slope window
+        fast_ema=50 * 24,  # 1200 bars ~ 50 days
+        slow_ema=200 * 24,  # 4800 bars ~ 200 days
+        slope_lookback=24 * 5,  # 5-day slope window
         slope_threshold_pct=0.5,
         trend_distance_pct=3.0,
         range_atr_pct_max=2.0,
-        atr_period=24 * 7,          # 7-day ATR
+        atr_period=24 * 7,  # 7-day ATR
         warmup_bars=200 * 24 + 50,  # full slow-EMA fill
     )
     return RegimeGatedConfig(
         classifier=cls,
         allowed_regimes=frozenset({"trending", "ranging"}),
-        allowed_biases=(
-            frozenset({"long"}) if strict_long_only
-            else frozenset({"long", "short", "neutral"})
-        ),
+        allowed_biases=(frozenset({"long"}) if strict_long_only else frozenset({"long", "short", "neutral"})),
         allowed_modes=frozenset({"trend_follow", "mean_revert"}),
         require_bias_match_side=strict_long_only,
     )
@@ -381,14 +371,14 @@ def mnq_intraday_preset() -> RegimeGatedConfig:
     """
     cls = HtfRegimeClassifierConfig(
         # 5m cadence — fast = 100 minutes, slow = 5 hours.
-        fast_ema=20,                 # 100m
-        slow_ema=60,                 # 300m = 5h
-        slope_lookback=12,           # 1h slope window
-        slope_threshold_pct=0.10,    # MNQ moves ~0.5% / RTH session
+        fast_ema=20,  # 100m
+        slow_ema=60,  # 300m = 5h
+        slope_lookback=12,  # 1h slope window
+        slope_threshold_pct=0.10,  # MNQ moves ~0.5% / RTH session
         trend_distance_pct=0.5,
         range_atr_pct_max=0.30,
-        atr_period=12,               # 1h ATR
-        warmup_bars=80,              # full slow-EMA fill
+        atr_period=12,  # 1h ATR
+        warmup_bars=80,  # full slow-EMA fill
     )
     return RegimeGatedConfig(
         classifier=cls,
@@ -412,8 +402,8 @@ def eth_daily_preset() -> RegimeGatedConfig:
         slow_ema=200 * 24,
         slope_lookback=24 * 5,
         slope_threshold_pct=0.5,
-        trend_distance_pct=4.0,      # ETH moves more
-        range_atr_pct_max=2.5,       # higher ATR cutoff
+        trend_distance_pct=4.0,  # ETH moves more
+        range_atr_pct_max=2.5,  # higher ATR cutoff
         atr_period=24 * 7,
         warmup_bars=200 * 24 + 50,
     )
@@ -439,8 +429,8 @@ def sol_daily_preset() -> RegimeGatedConfig:
         slow_ema=200 * 24,
         slope_lookback=24 * 5,
         slope_threshold_pct=0.5,
-        trend_distance_pct=5.0,      # SOL moves even more
-        range_atr_pct_max=3.5,       # widest ATR cutoff
+        trend_distance_pct=5.0,  # SOL moves even more
+        range_atr_pct_max=3.5,  # widest ATR cutoff
         atr_period=24 * 7,
         warmup_bars=200 * 24 + 50,
     )

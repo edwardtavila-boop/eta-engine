@@ -90,9 +90,8 @@ def _expected_max_sr(n_trials: int) -> float:
     """Expected maximum of n_trials iid N(0,1) draws (Gumbel approximation)."""
     if n_trials <= 1:
         return 0.0
-    return (
-        (1.0 - _EULER) * _phi_inv(1.0 - 1.0 / n_trials)
-        + _EULER * _phi_inv(1.0 - 1.0 / (n_trials * _E))
+    return (1.0 - _EULER) * _phi_inv(1.0 - 1.0 / n_trials) + _EULER * _phi_inv(
+        1.0 - 1.0 / (n_trials * _E)
     )
 
 

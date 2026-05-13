@@ -69,10 +69,10 @@ class PiCycleConfig:
     # a multi-month signal; we aren't trying to extract every $.
     # Stop at 50% of the move-to-target distance (no ATR — Pi
     # Cycle is a structural / fundamental call, not vol-driven).
-    risk_per_trade_pct: float = 0.02     # 2% — bigger than usual since few trades
-    rr_target: float = 5.0               # multi-month hold
+    risk_per_trade_pct: float = 0.02  # 2% — bigger than usual since few trades
+    rr_target: float = 5.0  # multi-month hold
     atr_period: int = 14
-    atr_stop_mult: float = 4.0           # wide stop, daily bars
+    atr_stop_mult: float = 4.0  # wide stop, daily bars
 
     # Hygiene — only one Pi Cycle signal at a time
     max_concurrent: int = 1
@@ -84,8 +84,8 @@ class PiCycleConfig:
     # signals; bottom-buy signals are positive but less reliable
     # because BTC bottoms are messy and the indicator can fire mid-
     # crash before the actual low.
-    enable_top_signal: bool = True       # 111-SMA*2 crosses ABOVE 350-SMA -> SELL
-    enable_bottom_signal: bool = True    # 111-SMA*2 crosses BELOW 350-SMA -> BUY
+    enable_top_signal: bool = True  # 111-SMA*2 crosses ABOVE 350-SMA -> SELL
+    enable_bottom_signal: bool = True  # 111-SMA*2 crosses BELOW 350-SMA -> BUY
 
 
 class PiCycleStrategy:
@@ -116,10 +116,7 @@ class PiCycleStrategy:
         self._slow_window.append(bar.close)
 
         # Wait until both windows are full
-        if (
-            len(self._fast_window) < self.cfg.fast_sma_period
-            or len(self._slow_window) < self.cfg.slow_sma_period
-        ):
+        if len(self._fast_window) < self.cfg.fast_sma_period or len(self._slow_window) < self.cfg.slow_sma_period:
             return None
 
         fast_sma = sum(self._fast_window) / len(self._fast_window)
@@ -139,17 +136,11 @@ class PiCycleStrategy:
         side: str | None = None
         regime_tag = ""
         # TOP cross: prev <= 0 and diff > 0  (fast×2 crossed above slow)
-        if (
-            self.cfg.enable_top_signal
-            and prev <= 0.0 and diff > 0.0
-        ):
+        if self.cfg.enable_top_signal and prev <= 0.0 and diff > 0.0:
             side = "SELL"
             regime_tag = "pi_cycle_top"
         # BOTTOM cross: prev >= 0 and diff < 0  (fast×2 crossed below slow)
-        elif (
-            self.cfg.enable_bottom_signal
-            and prev >= 0.0 and diff < 0.0
-        ):
+        elif self.cfg.enable_bottom_signal and prev >= 0.0 and diff < 0.0:
             side = "BUY"
             regime_tag = "pi_cycle_bottom"
 
@@ -157,7 +148,7 @@ class PiCycleStrategy:
             return None
 
         # ── ATR sizing (wide stop on daily) ──
-        atr_window = hist[-self.cfg.atr_period:] if hist else []
+        atr_window = hist[-self.cfg.atr_period :] if hist else []
         if len(atr_window) < 2:
             return None
         atr = sum(b.high - b.low for b in atr_window) / len(atr_window)
@@ -183,9 +174,15 @@ class PiCycleStrategy:
         from eta_engine.backtest.engine import _Open
 
         opened = _Open(
-            entry_bar=bar, side=side, qty=qty, entry_price=entry_price,
-            stop=stop, target=target, risk_usd=risk_usd,
-            confluence=10.0, leverage=1.0,
+            entry_bar=bar,
+            side=side,
+            qty=qty,
+            entry_price=entry_price,
+            stop=stop,
+            target=target,
+            risk_usd=risk_usd,
+            confluence=10.0,
+            leverage=1.0,
             regime=regime_tag,
         )
         self._last_fire_idx = self._bars_seen

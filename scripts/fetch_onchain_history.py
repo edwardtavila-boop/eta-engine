@@ -85,7 +85,8 @@ def _http_json(url: str, *, timeout: float = 10.0) -> object | None:
     )
     try:
         with urllib.request.urlopen(  # noqa: S310 -- public APIs
-            request, timeout=timeout,
+            request,
+            timeout=timeout,
         ) as resp:
             return json.loads(resp.read().decode("utf-8"))
     except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError) as exc:
@@ -302,15 +303,21 @@ def write_csv(path: Path, series: dict[date, dict[str, float]], cols: list[str])
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="fetch_onchain_history")
     p.add_argument(
-        "--symbol", default=None, choices=[None, "BTC", "ETH", "SOL"],
+        "--symbol",
+        default=None,
+        choices=[None, "BTC", "ETH", "SOL"],
         help="single symbol; default = all (BTC + ETH + SOL)",
     )
     p.add_argument(
-        "--days", type=int, default=365,
+        "--days",
+        type=int,
+        default=365,
         help="lookback in days (Coingecko free tier caps daily granularity at ~365)",
     )
     p.add_argument(
-        "--root", type=Path, default=ONCHAIN_ROOT,
+        "--root",
+        type=Path,
+        default=ONCHAIN_ROOT,
         help="output directory (default: canonical ETA crypto on-chain root)",
     )
     args = p.parse_args(argv)
@@ -336,8 +343,7 @@ def main(argv: list[str] | None = None) -> int:
         series = {d: row for d, row in series.items() if cutoff <= d <= today}
         if not series:
             print(
-                f"  zero rows for {sym} — APIs may be rate-limited; "
-                "retry in a minute",
+                f"  zero rows for {sym} — APIs may be rate-limited; retry in a minute",
             )
             rc = 1
             continue
@@ -346,8 +352,7 @@ def main(argv: list[str] | None = None) -> int:
         write_csv(out, series, cols)
         n_dense = sum(1 for d in series if all(c in series[d] for c in cols))
         print(
-            f"  wrote {len(series)} day rows to {out}  "
-            f"(dense rows = {n_dense}; sparse cells filled blank)",
+            f"  wrote {len(series)} day rows to {out}  (dense rows = {n_dense}; sparse cells filled blank)",
         )
     return rc
 

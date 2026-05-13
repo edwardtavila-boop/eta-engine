@@ -22,6 +22,7 @@ This module is a THIN BOLT-ON. The actual projection math lives in
 backward-compatible (returns empty dict if horizons.project doesn't
 exist or fails).
 """
+
 from __future__ import annotations
 
 import logging

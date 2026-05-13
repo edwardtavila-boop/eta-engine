@@ -5,6 +5,7 @@ Point of Control (POC, highest-volume price), Value Area (~70% of total
 volume around POC). Bias by where current price sits vs VAH (value area
 high) / VAL (value area low) / POC.
 """
+
 from __future__ import annotations
 
 from collections import defaultdict
@@ -36,7 +37,9 @@ class MarketProfileSchool(SchoolBase):
         n = ctx.n_bars
         if n < 30:
             return SchoolVerdict(
-                school=self.NAME, bias=Bias.NEUTRAL, conviction=0.0,
+                school=self.NAME,
+                bias=Bias.NEUTRAL,
+                conviction=0.0,
                 aligned_with_entry=False,
                 rationale=f"insufficient bars ({n} < 30)",
             )
@@ -44,12 +47,15 @@ class MarketProfileSchool(SchoolBase):
         last_close = float(bars[-1]["close"])
         if last_close <= 0:
             return SchoolVerdict(
-                school=self.NAME, bias=Bias.NEUTRAL, conviction=0.0,
-                aligned_with_entry=False, rationale="zero last close",
+                school=self.NAME,
+                bias=Bias.NEUTRAL,
+                conviction=0.0,
+                aligned_with_entry=False,
+                rationale="zero last close",
             )
         bucket = max(1.0, last_close * self.PRICE_BUCKET_PCT)
 
-        def _build_vol_profile():
+        def _build_vol_profile() -> dict[float, float]:
             vol_at: dict[float, float] = defaultdict(float)
             for b in bars:
                 o, h, low, c = float(b["open"]), float(b["high"]), float(b["low"]), float(b["close"])
@@ -63,8 +69,11 @@ class MarketProfileSchool(SchoolBase):
 
         if not vol_at:
             return SchoolVerdict(
-                school=self.NAME, bias=Bias.NEUTRAL, conviction=0.0,
-                aligned_with_entry=False, rationale="no volume in profile",
+                school=self.NAME,
+                bias=Bias.NEUTRAL,
+                conviction=0.0,
+                aligned_with_entry=False,
+                rationale="no volume in profile",
             )
 
         # POC = max-volume bucket

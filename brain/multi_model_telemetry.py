@@ -35,6 +35,7 @@ Set ``ETA_FM_TELEMETRY=0`` to skip writes (used in tests that shouldn't
 pollute the log). Set ``ETA_FM_TELEMETRY_LOG=/path/to/file.jsonl`` to
 override the log path (used by isolated unit tests via ``tmp_path``).
 """
+
 from __future__ import annotations
 
 import json
@@ -50,11 +51,7 @@ from typing import Any
 # Default location: <workspace>/var/eta_engine/state/multi_model_telemetry.jsonl.
 # Resolved lazily so ETA_FM_TELEMETRY_LOG can override at runtime.
 _DEFAULT_TELEMETRY_PATH = (
-    Path(__file__).resolve().parents[2]
-    / "var"
-    / "eta_engine"
-    / "state"
-    / "multi_model_telemetry.jsonl"
+    Path(__file__).resolve().parents[2] / "var" / "eta_engine" / "state" / "multi_model_telemetry.jsonl"
 )
 _LOG_LOCK = threading.Lock()
 
@@ -261,10 +258,7 @@ def summarize(*, limit: int = 1000) -> dict[str, Any]:
         "total_cost_usd": round(total_cost, 6),
         "fallback_count": fallbacks,
         "fallback_rate": round(fallbacks / len(records), 3) if records else 0.0,
-        "by_provider": {
-            p: {**s, "cost_usd": round(s["cost_usd"], 6)}
-            for p, s in by_provider.items()
-        },
+        "by_provider": {p: {**s, "cost_usd": round(s["cost_usd"], 6)} for p, s in by_provider.items()},
         "first_ts": records[0].get("ts"),
         "last_ts": records[-1].get("ts"),
     }

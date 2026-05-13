@@ -79,14 +79,12 @@ async def fetch_onchain_snapshot(
     if use_mcp_taps_enabled():
         if mcp_client is None:
             logger.warning(
-                "ETA_USE_MCP_TAPS=1 but no mcp_client provided; "
-                "falling back to REST BlockscoutClient for %s",
+                "ETA_USE_MCP_TAPS=1 but no mcp_client provided; falling back to REST BlockscoutClient for %s",
                 asset,
             )
         elif address is None:
             logger.warning(
-                "ETA_USE_MCP_TAPS=1 but no on-chain address supplied for %s; "
-                "falling back to REST BlockscoutClient",
+                "ETA_USE_MCP_TAPS=1 but no on-chain address supplied for %s; falling back to REST BlockscoutClient",
                 asset,
             )
         else:

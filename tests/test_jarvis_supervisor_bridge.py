@@ -10,6 +10,7 @@ These tests pin the bridge contract so the dashboard cannot regress to
 the silent-zero state where ``confirmed_bots: 0`` despite the supervisor
 running 16 bots.
 """
+
 from __future__ import annotations
 
 import json
@@ -24,6 +25,7 @@ def test_supervisor_bridge_returns_empty_when_heartbeat_missing(tmp_path: Path) 
     from eta_engine.scripts.jarvis_supervisor_bridge import (
         jarvis_supervisor_bot_accounts,
     )
+
     accounts = jarvis_supervisor_bot_accounts(
         heartbeat_path=tmp_path / "missing.json",
     )
@@ -35,6 +37,7 @@ def test_supervisor_bridge_returns_empty_on_garbage_json(tmp_path: Path) -> None
     from eta_engine.scripts.jarvis_supervisor_bridge import (
         jarvis_supervisor_bot_accounts,
     )
+
     hb = tmp_path / "heartbeat.json"
     hb.write_text("{not json}", encoding="utf-8")
     accounts = jarvis_supervisor_bot_accounts(heartbeat_path=hb)
@@ -46,6 +49,7 @@ def test_supervisor_bridge_lifts_bots_into_account_shape(tmp_path: Path) -> None
     from eta_engine.scripts.jarvis_supervisor_bridge import (
         jarvis_supervisor_bot_accounts,
     )
+
     hb_data = {
         "ts": "2026-04-28T12:00:00+00:00",
         "tick_count": 5,
@@ -100,7 +104,7 @@ def test_supervisor_bridge_lifts_bots_into_account_shape(tmp_path: Path) -> None
     assert mnq["broker"] == "paper-sim"
     assert mnq["confirmed"] is True
     assert mnq["today"]["trades"] == 3
-    assert mnq["today"]["wins"] == 3            # realized_pnl > 0
+    assert mnq["today"]["wins"] == 3  # realized_pnl > 0
     assert mnq["today"]["losses"] == 0
     assert mnq["today"]["pnl"] == 1.5
     assert mnq["source"] == "jarvis_strategy_supervisor"
@@ -118,9 +122,9 @@ def test_supervisor_bridge_lifts_bots_into_account_shape(tmp_path: Path) -> None
 
     btc = accounts[1]
     assert btc["id"] == "btc_hybrid"
-    assert btc["status"] == "running"            # has open_position
+    assert btc["status"] == "running"  # has open_position
     assert btc["today"]["wins"] == 0
-    assert btc["today"]["losses"] == 1           # realized_pnl < 0
+    assert btc["today"]["losses"] == 1  # realized_pnl < 0
     assert btc["today"]["pnl"] == -0.5
     assert btc["open_position"]["side"] == "BUY"
     assert btc["open_positions"] == 1
@@ -138,6 +142,7 @@ def test_supervisor_bridge_prefers_per_bot_mode_over_top_level(tmp_path: Path) -
     from eta_engine.scripts.jarvis_supervisor_bridge import (
         jarvis_supervisor_bot_accounts,
     )
+
     hb_data = {
         "ts": "2026-05-04T12:00:00+00:00",
         # Top-level mode set to paper_live; every per-bot row should
@@ -186,6 +191,7 @@ def test_supervisor_bridge_idle_status_when_no_entries_no_position(tmp_path: Pat
     from eta_engine.scripts.jarvis_supervisor_bridge import (
         jarvis_supervisor_bot_accounts,
     )
+
     hb_data = {
         "ts": "2026-04-28T12:00:00+00:00",
         "mode": "paper_sim",
@@ -219,9 +225,11 @@ def test_merge_returns_payload_unchanged_when_no_heartbeat(tmp_path: Path) -> No
     from eta_engine.scripts.jarvis_supervisor_bridge import (
         merge_supervisor_into_payload,
     )
+
     payload = {"bot_accounts": [{"id": "legacy_bot", "name": "legacy"}]}
     result = merge_supervisor_into_payload(
-        payload, heartbeat_path=tmp_path / "missing.json",
+        payload,
+        heartbeat_path=tmp_path / "missing.json",
     )
     assert result is payload
 
@@ -231,6 +239,7 @@ def test_merge_layers_supervisor_on_top_of_legacy(tmp_path: Path) -> None:
     from eta_engine.scripts.jarvis_supervisor_bridge import (
         merge_supervisor_into_payload,
     )
+
     hb_data = {
         "ts": "2026-04-28T12:00:00+00:00",
         "mode": "paper_sim",
@@ -259,14 +268,14 @@ def test_merge_layers_supervisor_on_top_of_legacy(tmp_path: Path) -> None:
         ],
     }
     result = merge_supervisor_into_payload(payload, heartbeat_path=hb)
-    assert result is not payload                 # fresh dict
+    assert result is not payload  # fresh dict
     accounts = result["bot_accounts"]
     ids = [a["id"] for a in accounts]
     assert "mnq_futures" in ids
-    assert "legacy_btc" in ids                   # non-conflicting kept
+    assert "legacy_btc" in ids  # non-conflicting kept
     # The supervisor row replaced the legacy one (precedence rule)
     mnq = next(a for a in accounts if a["id"] == "mnq_futures")
-    assert mnq["name"] == "mnq_futures"          # not "stale_mnq"
+    assert mnq["name"] == "mnq_futures"  # not "stale_mnq"
     assert mnq["today"]["trades"] == 5
     assert mnq["source"] == "jarvis_strategy_supervisor"
 
@@ -280,6 +289,7 @@ def test_supervisor_bridge_normalizes_through_dashboard_view(tmp_path: Path) -> 
     command_center isn't fully checked out yet).
     """
     import pytest
+
     try:
         from eta_engine.command_center.server.bot_fleet_dashboard import (
             build_bot_fleet_view,
@@ -327,6 +337,6 @@ def test_supervisor_bridge_normalizes_through_dashboard_view(tmp_path: Path) -> 
     surfaced = next(r for r in mnq_rows if r.get("id") == "mnq_futures")
     assert surfaced["today_trades"] == 5
     assert surfaced["today_pnl"] == 2.0
-    assert surfaced["today_win_rate"] == 100.0   # 5/5
+    assert surfaced["today_win_rate"] == 100.0  # 5/5
     assert surfaced["confirmed"] is True
     assert surfaced["running"] is True

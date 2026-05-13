@@ -39,6 +39,7 @@ Public interface
 NEVER raises. Bots with insufficient data (n_trades < MIN_OBS) are
 flagged ``insufficient_data=True`` and skipped from sizing math.
 """
+
 from __future__ import annotations
 
 import logging
@@ -64,9 +65,7 @@ DEFAULT_TRADE_CLOSES_PATH = _STATE_ROOT / "jarvis_intel" / "trade_closes.jsonl"
 # trade ledger reads from BOTH and dedupes; kelly_optimizer must do
 # the same or it silently sees only the recent shim and reports
 # ``insufficient_data`` for bots that actually have thousands of trades.
-_LEGACY_TRADE_CLOSES_PATH = (
-    _LEGACY_STATE_ROOT / "jarvis_intel" / "trade_closes.jsonl"
-)
+_LEGACY_TRADE_CLOSES_PATH = _LEGACY_STATE_ROOT / "jarvis_intel" / "trade_closes.jsonl"
 
 MIN_OBS = 20  # bots with fewer than 20 closed trades over the lookback window get insufficient_data
 SIZE_MOD_LOW, SIZE_MOD_HIGH = 0.0, 1.0
@@ -84,9 +83,9 @@ class SizingRecommendation:
     avg_r: float
     std_r: float
     min_r: float
-    f_kelly: float          # raw Kelly fraction (can be > 1)
-    f_target: float         # kelly_fraction × f_kelly
-    f_adjusted: float       # after drawdown penalty
+    f_kelly: float  # raw Kelly fraction (can be > 1)
+    f_target: float  # kelly_fraction × f_kelly
+    f_adjusted: float  # after drawdown penalty
     recommended_size_modifier: float  # final clamped to [0, 1]
     rationale: str
 
@@ -102,6 +101,7 @@ def _read_single_jsonl(
 ) -> list[dict[str, Any]]:
     """Read one trade_closes.jsonl file with optional since-filter."""
     import json
+
     if not target.exists():
         return []
     out: list[dict[str, Any]] = []
@@ -128,7 +128,9 @@ def _read_single_jsonl(
                 out.append(rec)
     except OSError as exc:
         logger.warning(
-            "kelly_optimizer._read_single_jsonl failed (%s): %s", target, exc,
+            "kelly_optimizer._read_single_jsonl failed (%s): %s",
+            target,
+            exc,
         )
     return out
 
@@ -166,12 +168,14 @@ def _read_trade_closes(
     # Dedupe on (signal_id, bot_id, ts, realized_r) — same key the
     # closed_trade_ledger uses. Primary wins when there's a collision.
     def _key(r: dict[str, Any]) -> str:
-        return "|".join([
-            str(r.get("signal_id") or ""),
-            str(r.get("bot_id") or ""),
-            str(r.get("ts") or ""),
-            str(r.get("realized_r") or ""),
-        ])
+        return "|".join(
+            [
+                str(r.get("signal_id") or ""),
+                str(r.get("bot_id") or ""),
+                str(r.get("ts") or ""),
+                str(r.get("realized_r") or ""),
+            ]
+        )
 
     seen: set[str] = set()
     merged: list[dict[str, Any]] = []
@@ -208,7 +212,7 @@ def _kelly_fraction(mean: float, std: float) -> float:
     """Continuous Kelly = µ / σ². Returns 0 if std=0 (no variance)."""
     if std <= 0:
         return 0.0
-    return mean / (std ** 2)
+    return mean / (std**2)
 
 
 def _drawdown_penalty_factor(min_r: float, std: float, alpha: float) -> float:
@@ -282,15 +286,21 @@ def recommend_sizing(
     for bid, rs in by_bot.items():
         n = len(rs)
         if n < MIN_OBS:
-            recs.append(SizingRecommendation(
-                bot_id=bid,
-                n_trades=n,
-                insufficient_data=True,
-                avg_r=0.0, std_r=0.0, min_r=0.0,
-                f_kelly=0.0, f_target=0.0, f_adjusted=0.0,
-                recommended_size_modifier=1.0,
-                rationale=f"only {n} trades in {lookback_days}d (need ≥ {MIN_OBS}); keeping baseline 1.0×",
-            ))
+            recs.append(
+                SizingRecommendation(
+                    bot_id=bid,
+                    n_trades=n,
+                    insufficient_data=True,
+                    avg_r=0.0,
+                    std_r=0.0,
+                    min_r=0.0,
+                    f_kelly=0.0,
+                    f_target=0.0,
+                    f_adjusted=0.0,
+                    recommended_size_modifier=1.0,
+                    rationale=f"only {n} trades in {lookback_days}d (need ≥ {MIN_OBS}); keeping baseline 1.0×",
+                )
+            )
             continue
         mean, std, lo, _hi = _stats(rs)
         fk = _kelly_fraction(mean, std)
@@ -308,19 +318,21 @@ def recommend_sizing(
         ]
         rationale = " | ".join(rationale_bits)
 
-        recs.append(SizingRecommendation(
-            bot_id=bid,
-            n_trades=n,
-            insufficient_data=False,
-            avg_r=round(mean, 4),
-            std_r=round(std, 4),
-            min_r=round(lo, 4),
-            f_kelly=round(fk, 4),
-            f_target=round(ft, 4),
-            f_adjusted=round(fa, 4),
-            recommended_size_modifier=round(clamped, 4),
-            rationale=rationale,
-        ))
+        recs.append(
+            SizingRecommendation(
+                bot_id=bid,
+                n_trades=n,
+                insufficient_data=False,
+                avg_r=round(mean, 4),
+                std_r=round(std, 4),
+                min_r=round(lo, 4),
+                f_kelly=round(fk, 4),
+                f_target=round(ft, 4),
+                f_adjusted=round(fa, 4),
+                recommended_size_modifier=round(clamped, 4),
+                rationale=rationale,
+            )
+        )
 
     # Sort by recommended_size_modifier descending so operator sees the
     # confident bots first

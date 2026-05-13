@@ -972,10 +972,7 @@ class TestDashboardAPI:
         assert "fl-equity-curve" in cards
         assert cards["cc-verdict-stream"]["source"] == "sse"
         assert cards["cc-paper-live-transition"]["endpoint"] == "/api/jarvis/paper_live_transition"
-        assert (
-            cards["cc-strategy-supercharge-results"]["endpoint"]
-            == "/api/jarvis/strategy_supercharge_results"
-        )
+        assert cards["cc-strategy-supercharge-results"]["endpoint"] == "/api/jarvis/strategy_supercharge_results"
         assert cards["fl-controls"]["source"] == "client"
         assert cards["fl-roster"]["endpoint"] == "/api/bot-fleet?since_days=1"
         assert cards["fl-equity-curve"]["endpoint"].startswith("/api/fleet-equity?")
@@ -1101,9 +1098,7 @@ class TestDashboardAPI:
         assert hardening["summary"]["order_action_allowed"] is False
         assert hardening["jarvis_hermes_admin_ai"]["status"] == "WARN"
         assert hardening["jarvis_hermes_admin_ai"]["ready"] is False
-        assert hardening["jarvis_hermes_admin_ai"]["next_actions"] == [
-            "Review bridge_plan_tasks: T17 wave pending"
-        ]
+        assert hardening["jarvis_hermes_admin_ai"]["next_actions"] == ["Review bridge_plan_tasks: T17 wave pending"]
         assert hardening["age_s"] is not None
         assert data["checks"]["vps_ops_hardening_contract"] is True
         assert data["checks"]["hardening_contract"] is True
@@ -1125,9 +1120,7 @@ class TestDashboardAPI:
                         "source": "jarvis_status.operator_queue",
                         "summary": {"BLOCKED": 1, "OBSERVED": 0, "UNKNOWN": 0},
                         "top_blockers": [{"op_id": "OP-19", "title": "IBKR API blocked"}],
-                        "top_launch_blockers": [
-                            {"op_id": "OP-19", "detail": "IBKR API 4002 down"}
-                        ],
+                        "top_launch_blockers": [{"op_id": "OP-19", "detail": "IBKR API 4002 down"}],
                     },
                 }
             ),
@@ -1164,9 +1157,7 @@ class TestDashboardAPI:
                         "summary": {"BLOCKED": 1, "OBSERVED": 0, "UNKNOWN": 0},
                         "launch_blocked_count": 1,
                         "top_blockers": [{"op_id": "OP-18", "title": "stale install blocker"}],
-                        "top_launch_blockers": [
-                            {"op_id": "OP-18", "detail": "stale install blocker"}
-                        ],
+                        "top_launch_blockers": [{"op_id": "OP-18", "detail": "stale install blocker"}],
                     },
                 }
             ),
@@ -1226,10 +1217,7 @@ class TestDashboardAPI:
         assert data["findings"] == []
         assert data["direct"]["bot_fleet"]["bot_total"] == data["diagnostics"]["bot_fleet"]["bot_total"]
         assert data["direct"]["bot_fleet"]["active_bots"] == data["diagnostics"]["bot_fleet"]["active_bots"]
-        assert (
-            data["direct"]["equity"]["point_count"]
-            == data["diagnostics"]["equity"]["point_count"]
-        )
+        assert data["direct"]["equity"]["point_count"] == data["diagnostics"]["equity"]["point_count"]
         assert "no-store" in r.headers["Cache-Control"]
 
     def test_dashboard_diagnostics_includes_bot_strategy_readiness(self, app_client, monkeypatch):
@@ -1599,9 +1587,7 @@ class TestDashboardAPI:
                             "status": "BLOCKED",
                             "exit_code": 1,
                             "payload": {
-                                "next_action": (
-                                    "Verify manual broker OCO coverage or flatten current paper exposure."
-                                ),
+                                "next_action": ("Verify manual broker OCO coverage or flatten current paper exposure."),
                                 "position_summary": {
                                     "missing_bracket_count": 1,
                                     "broker_open_position_count": 1,
@@ -1614,9 +1600,7 @@ class TestDashboardAPI:
                             "exit_code": 1,
                             "payload": {
                                 "primary_bot": "volume_profile_mnq",
-                                "next_actions": [
-                                    "Keep volume_profile_mnq in paper_soak until can_live_trade=true."
-                                ],
+                                "next_actions": ["Keep volume_profile_mnq in paper_soak until can_live_trade=true."],
                             },
                         },
                         {
@@ -1725,9 +1709,7 @@ class TestDashboardAPI:
                             "status": "BLOCKED",
                             "exit_code": 1,
                             "payload": {
-                                "next_action": (
-                                    "5 broker bracket-required positions missing broker-native OCO."
-                                ),
+                                "next_action": ("5 broker bracket-required positions missing broker-native OCO."),
                                 "position_summary": {
                                     "missing_bracket_count": 5,
                                     "broker_open_position_count": 6,
@@ -1739,9 +1721,7 @@ class TestDashboardAPI:
                             "status": "BLOCKED",
                             "exit_code": 1,
                             "payload": {
-                                "next_actions": [
-                                    "Keep volume_profile_mnq in paper_soak until bracket audit clears."
-                                ],
+                                "next_actions": ["Keep volume_profile_mnq in paper_soak until bracket audit clears."],
                             },
                         },
                     ],
@@ -1774,9 +1754,7 @@ class TestDashboardAPI:
                             "exit_code": 1,
                             "payload": {
                                 "primary_bot": "volume_profile_mnq",
-                                "next_actions": [
-                                    "Restore live /api/bot-fleet position truth."
-                                ],
+                                "next_actions": ["Restore live /api/bot-fleet position truth."],
                             },
                         },
                         {
@@ -1979,8 +1957,7 @@ class TestDashboardAPI:
                         "socket_ok": True,
                         "handshake_ok": True,
                         "handshake_detail": (
-                            "serverVersion=176; clientId=9011; attempt=1; "
-                            "positions=0 open; executions=0"
+                            "serverVersion=176; clientId=9011; attempt=1; positions=0 open; executions=0"
                         ),
                     },
                 },
@@ -2103,9 +2080,7 @@ class TestDashboardAPI:
             "Flatten unprotected paper exposure",
         ]
         assert payload["systems"]["broker_bracket_audit"]["order_action_count"] == 1
-        assert payload["systems"]["broker_bracket_audit"]["primary_action_label"] == (
-            "Verify broker OCO coverage"
-        )
+        assert payload["systems"]["broker_bracket_audit"]["primary_action_label"] == ("Verify broker OCO coverage")
         assert payload["systems"]["broker_bracket_audit"]["order_action_label"] == (
             "Flatten unprotected paper exposure"
         )
@@ -2139,9 +2114,7 @@ class TestDashboardAPI:
         assert bridge.json()["paper_live"]["held_by_bracket_audit"] is True
         assert payload["broker_bracket_audit"]["position_summary"]["broker_bracket_required_position_count"] == 1
 
-    def test_master_status_keeps_advisory_queue_separate_from_launch_status(
-        self, app_client, tmp_path, monkeypatch
-    ):
+    def test_master_status_keeps_advisory_queue_separate_from_launch_status(self, app_client, tmp_path, monkeypatch):
         import eta_engine.deploy.scripts.dashboard_api as mod
 
         monkeypatch.setattr(
@@ -2234,8 +2207,7 @@ class TestDashboardAPI:
             "cleanup_allowed": False,
             "destructive_actions_performed": False,
             "recommended_action": (
-                "Rerun the read-only inventory and live probes; "
-                "no root cleanup is authorized by this plan."
+                "Rerun the read-only inventory and live probes; no root cleanup is authorized by this plan."
             ),
             "counts": {
                 "status": 0,
@@ -2625,7 +2597,8 @@ class TestDashboardAPI:
         assert j["brokers"]["alpaca"]["policy_status"] == "paused_cellar"
         assert "alpaca" in j["paused_brokers"]
         assert "alpaca" not in j["active_brokers"]
-        assert j["pending_brokers"] == ["tradovate"]
+        assert j["pending_brokers"] == []
+        assert j["dormant_brokers"] == ["tradovate"]
         # active_brokers is a sorted list of ready names (may be empty
         # in a test env with no creds, which is fine).
         assert isinstance(j["active_brokers"], list)
@@ -2956,6 +2929,7 @@ class TestDashboardAPI:
     def test_default_state_dir_is_repo_relative(self):
         """_DEFAULT_STATE must be under the eta_engine repo, not LOCALAPPDATA."""
         from eta_engine.deploy.scripts.dashboard_api import _DEFAULT_STATE
+
         s = str(_DEFAULT_STATE).replace("\\", "/")
         assert "AppData" not in s, f"state dir leaked into AppData: {s}"
         assert "eta_engine" in s.lower(), f"state dir not under eta_engine: {s}"
@@ -3078,7 +3052,7 @@ class TestDashboardAPI:
                             "can_paper_trade": False,
                             "can_live_trade": False,
                             "next_action": "Removed from the active fleet.",
-                        }
+                        },
                     ],
                 }
             ),
@@ -3302,8 +3276,7 @@ class TestDashboardAPI:
                             "risk": "medium",
                             "decision": "manual_review_required",
                             "action": (
-                                "Choose whether each companion repo follows root, "
-                                "live branch, or remains pinned."
+                                "Choose whether each companion repo follows root, live branch, or remains pinned."
                             ),
                             "evidence": [
                                 "submodule_drift=5",
@@ -3426,7 +3399,7 @@ class TestDashboardAPI:
                             "current_price": 2500.0,
                             "market_value": -500.0,
                             "unrealized_pl": -5.0,
-                        }
+                        },
                     ],
                 },
                 "ibkr": {
@@ -3450,6 +3423,9 @@ class TestDashboardAPI:
         portfolio = r.json()["portfolio_summary"]
         assert portfolio["source"] == "live_broker_state"
         assert portfolio["focus_policy"]["mode"] == "futures_focus"
+        assert portfolio["focus_policy"]["active_venues"] == ["ibkr"]
+        assert portfolio["focus_policy"]["standby_venues"] == ["tastytrade"]
+        assert portfolio["focus_policy"]["dormant_venues"] == ["tradovate"]
         assert portfolio["focus_policy"]["paused_venues"] == ["alpaca"]
         assert portfolio["broker_net_pnl"] == 35.0
         assert portfolio["hidden_disabled_count"] == 0
@@ -3462,10 +3438,7 @@ class TestDashboardAPI:
         sleeves = {row["sleeve"]: row for row in portfolio["allocation_sleeves"]}
         assert sleeves["equity_index_futures"]["open_position_count"] == 1
         assert "crypto" not in sleeves
-        contributors = {
-            (row["venue"], row["symbol"]): row
-            for row in portfolio["pnl_contributors"]
-        }
+        contributors = {(row["venue"], row["symbol"]): row for row in portfolio["pnl_contributors"]}
         assert contributors[("ibkr", "MNQM6")]["sleeve"] == "equity_index_futures"
         assert contributors[("ibkr", "MNQM6")]["ownership_status"] == "managed_symbol"
         assert contributors[("ibkr", "MNQM6")]["unrealized_pnl"] == 25.0
@@ -3923,47 +3896,51 @@ class TestDashboardAPI:
         legacy_dir = state / "bots" / "btc_hybrid"
         legacy_dir.mkdir(parents=True, exist_ok=True)
         (legacy_dir / "status.json").write_text(
-            json.dumps({
-                "name": "btc_hybrid",
-                "symbol": "BTC",
-                "status": "idle",
-                "open_positions": 0,
-                "open_position": {},
-                "position_state": {"state": "flat"},
-            }),
+            json.dumps(
+                {
+                    "name": "btc_hybrid",
+                    "symbol": "BTC",
+                    "status": "idle",
+                    "open_positions": 0,
+                    "open_position": {},
+                    "position_state": {"state": "flat"},
+                }
+            ),
             encoding="utf-8",
         )
         sup_dir = state / "jarvis_intel" / "supervisor"
         sup_dir.mkdir(parents=True, exist_ok=True)
         (sup_dir / "heartbeat.json").write_text(
-            json.dumps({
-                "ts": "2026-05-08T00:00:00+00:00",
-                "mode": "paper_live",
-                "bots": [
-                    {
-                        "bot_id": "btc_hybrid",
-                        "symbol": "BTC",
-                        "strategy_kind": "hybrid",
-                        "direction": "long",
-                        "n_entries": 0,
-                        "n_exits": 0,
-                        "realized_pnl": 0.0,
-                        "open_position": {
-                            "side": "BUY",
-                            "qty": 0.05,
-                            "entry_price": 67000.0,
-                            "mark_price": 67350.0,
-                            "bracket_stop": 66200.0,
-                            "bracket_target": 68400.0,
-                            "last_bar_high": 67400.0,
-                            "last_bar_low": 67100.0,
-                            "broker_bracket": False,
-                            "bracket_src": "supervisor_local",
+            json.dumps(
+                {
+                    "ts": "2026-05-08T00:00:00+00:00",
+                    "mode": "paper_live",
+                    "bots": [
+                        {
+                            "bot_id": "btc_hybrid",
+                            "symbol": "BTC",
+                            "strategy_kind": "hybrid",
+                            "direction": "long",
+                            "n_entries": 0,
+                            "n_exits": 0,
+                            "realized_pnl": 0.0,
+                            "open_position": {
+                                "side": "BUY",
+                                "qty": 0.05,
+                                "entry_price": 67000.0,
+                                "mark_price": 67350.0,
+                                "bracket_stop": 66200.0,
+                                "bracket_target": 68400.0,
+                                "last_bar_high": 67400.0,
+                                "last_bar_low": 67100.0,
+                                "broker_bracket": False,
+                                "bracket_src": "supervisor_local",
+                            },
+                            "last_bar_ts": "2026-05-08T00:00:00+00:00",
                         },
-                        "last_bar_ts": "2026-05-08T00:00:00+00:00",
-                    },
-                ],
-            }),
+                    ],
+                }
+            ),
             encoding="utf-8",
         )
 
@@ -4312,8 +4289,7 @@ class TestDashboardAPI:
                         "socket_ok": True,
                         "handshake_ok": True,
                         "handshake_detail": (
-                            "serverVersion=176; clientId=9011; attempt=1; "
-                            "positions=0 open; executions=0"
+                            "serverVersion=176; clientId=9011; attempt=1; positions=0 open; executions=0"
                         ),
                     },
                 },
@@ -4506,9 +4482,7 @@ class TestDashboardAPI:
         assert payload["summary"]["broker_bracket_primary_qty"] == 3.0
         assert payload["summary"]["broker_bracket_primary_market_value"] == 176010.0
         assert payload["summary"]["broker_bracket_primary_unrealized_pnl"] == -33.79
-        assert payload["summary"]["broker_bracket_primary_coverage_status"] == (
-            "requires_manual_oco_verification"
-        )
+        assert payload["summary"]["broker_bracket_primary_coverage_status"] == ("requires_manual_oco_verification")
 
     def test_bot_fleet_embeds_live_broker_state(self, app_client, monkeypatch):
         import eta_engine.deploy.scripts.dashboard_api as mod
@@ -4629,45 +4603,136 @@ class TestDashboardAPI:
     def test_derive_ibkr_today_realized_pnl_prefers_futures_bucket(self):
         import eta_engine.deploy.scripts.dashboard_api as mod
 
-        assert mod._derive_ibkr_today_realized_pnl(
-            {"futures_pnl": 10133.83, "unrealized_pnl": 0.0}
-        ) == 10133.83
-        assert mod._derive_ibkr_today_realized_pnl(
-            {"futures_pnl": 10133.83, "unrealized_pnl": 133.83}
-        ) == 10000.0
-        assert mod._derive_ibkr_today_realized_pnl(
-            {"account_summary_realized_pnl": 321.98}
-        ) == 321.98
+        assert mod._derive_ibkr_today_realized_pnl({"futures_pnl": 10133.83, "unrealized_pnl": 0.0}) == 10133.83
+        assert mod._derive_ibkr_today_realized_pnl({"futures_pnl": 10133.83, "unrealized_pnl": 133.83}) == 10000.0
+        assert mod._derive_ibkr_today_realized_pnl({"account_summary_realized_pnl": 321.98}) == 321.98
+
+    def test_extract_ibkr_mtd_performance_from_account_bucket(self):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        payload = {
+            "DU1234567": {
+                "MTD": {
+                    "nav": [101_000.0, 103_450.25],
+                    "cps": [0.004, 0.02426],
+                    "dates": ["2026-05-01", "2026-05-12"],
+                    "startNAV": {"date": "2026-04-30", "val": 101_000.0},
+                }
+            }
+        }
+
+        extracted = mod._ibkr_extract_mtd_performance(payload, account_id="DU1234567")
+
+        assert extracted["ready"] is True
+        assert extracted["account_id"] == "DU1234567"
+        assert extracted["mtd_pnl"] == 2450.25
+        assert extracted["mtd_return_pct"] == 2.43
+        assert extracted["source"] == "ibkr_client_portal_pa_performance_mtd"
+
+    def test_extract_ibkr_mtd_performance_from_series_payload(self):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        payload = {
+            "nav": {
+                "data": [
+                    {
+                        "id": "DU7654321",
+                        "navs": [50_000.0, 50_210.0, 50_800.0],
+                        "dates": ["2026-05-01", "2026-05-02", "2026-05-12"],
+                    }
+                ],
+                "startNAV": {"date": "2026-04-30", "val": 50_000.0},
+            },
+            "cps": {
+                "data": [
+                    {
+                        "id": "DU7654321",
+                        "returns": [0.0, 0.0042, 0.016],
+                    }
+                ]
+            },
+        }
+
+        extracted = mod._ibkr_extract_mtd_performance(payload, account_id="DU7654321")
+
+        assert extracted["ready"] is True
+        assert extracted["account_id"] == "DU7654321"
+        assert extracted["mtd_pnl"] == 800.0
+        assert extracted["mtd_return_pct"] == 1.6
+
+    def test_ibkr_net_liq_mtd_tracker_persists_month_baseline(self, tmp_path, monkeypatch):
+        import importlib
+
+        monkeypatch.setenv("ETA_STATE_DIR", str(tmp_path / "state"))
+
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        importlib.reload(mod)
+        first = mod._ibkr_net_liquidation_mtd_snapshot(
+            account_id="DU7770001",
+            net_liquidation=100_000.0,
+            checked_at="2026-05-12T14:00:00+00:00",
+            now_utc=datetime(2026, 5, 12, 14, 0, tzinfo=UTC),
+        )
+        second = mod._ibkr_net_liquidation_mtd_snapshot(
+            account_id="DU7770001",
+            net_liquidation=101_250.5,
+            checked_at="2026-05-12T15:00:00+00:00",
+            now_utc=datetime(2026, 5, 12, 15, 0, tzinfo=UTC),
+        )
+
+        assert first["ready"] is True
+        assert first["source"] == "ibkr_net_liquidation_month_tracker_bootstrap"
+        assert first["mtd_pnl"] == 0.0
+        assert first["start_nav"] == 100000.0
+        assert first["baseline_initialized"] is True
+
+        assert second["ready"] is True
+        assert second["source"] == "ibkr_net_liquidation_month_tracker"
+        assert second["mtd_pnl"] == 1250.5
+        assert second["start_nav"] == 100000.0
+        assert second["end_nav"] == 101250.5
+        assert second["mtd_return_pct"] == 1.25
+        assert second["baseline_initialized"] is False
+
+        tracker_path = tmp_path / "state" / "broker_mtd" / "ibkr_net_liq_month_tracker.json"
+        payload = json.loads(tracker_path.read_text(encoding="utf-8"))
+        month_state = payload["accounts"]["DU7770001"]["2026-05"]
+        assert month_state["baseline_net_liquidation"] == 100000.0
+        assert month_state["last_net_liquidation"] == 101250.5
+        assert month_state["last_seen_at"] == "2026-05-12T15:00:00+00:00"
 
     def test_closed_outcomes_from_alpaca_filled_order_pairs(self):
         import eta_engine.deploy.scripts.dashboard_api as mod
 
-        outcomes = mod._closed_outcomes_from_filled_orders([
-            {
-                "symbol": "BTC/USD",
-                "side": "buy",
-                "filled_qty": "1.0",
-                "filled_avg_price": "100.00",
-                "filled_at": "2026-05-07T14:00:00Z",
-                "status": "filled",
-            },
-            {
-                "symbol": "BTC/USD",
-                "side": "sell",
-                "filled_qty": "0.5",
-                "filled_avg_price": "110.00",
-                "filled_at": "2026-05-07T15:00:00Z",
-                "status": "filled",
-            },
-            {
-                "symbol": "BTC/USD",
-                "side": "sell",
-                "filled_qty": "0.5",
-                "filled_avg_price": "90.00",
-                "filled_at": "2026-05-07T16:00:00Z",
-                "status": "filled",
-            },
-        ])
+        outcomes = mod._closed_outcomes_from_filled_orders(
+            [
+                {
+                    "symbol": "BTC/USD",
+                    "side": "buy",
+                    "filled_qty": "1.0",
+                    "filled_avg_price": "100.00",
+                    "filled_at": "2026-05-07T14:00:00Z",
+                    "status": "filled",
+                },
+                {
+                    "symbol": "BTC/USD",
+                    "side": "sell",
+                    "filled_qty": "0.5",
+                    "filled_avg_price": "110.00",
+                    "filled_at": "2026-05-07T15:00:00Z",
+                    "status": "filled",
+                },
+                {
+                    "symbol": "BTC/USD",
+                    "side": "sell",
+                    "filled_qty": "0.5",
+                    "filled_avg_price": "90.00",
+                    "filled_at": "2026-05-07T16:00:00Z",
+                    "status": "filled",
+                },
+            ]
+        )
 
         assert outcomes["closed_outcome_count"] == 2
         assert outcomes["evaluated_outcome_count"] == 2
@@ -4695,6 +4760,9 @@ class TestDashboardAPI:
             lambda **kwargs: {
                 "today_executions": 18,
                 "today_realized_pnl": 10133.83,
+                "account_mtd_pnl": 2450.25,
+                "account_mtd_return_pct": 2.43,
+                "account_mtd_source": "ibkr_client_portal_pa_performance_mtd",
                 "unrealized_pnl": 0.0,
                 "open_position_count": 0,
                 "ready": True,
@@ -4711,8 +4779,20 @@ class TestDashboardAPI:
         live = mod._live_broker_state_payload()
 
         assert live["focus_policy"]["mode"] == "futures_focus"
+        assert live["focus_policy"]["active_venues"] == ["ibkr"]
+        assert live["focus_policy"]["standby_venues"] == ["tastytrade"]
+        assert live["focus_policy"]["dormant_venues"] == ["tradovate"]
+        assert live["tradovate"]["status"] in {
+            "dormant",
+            "dormant_auth_failed",
+            "awaiting_auth",
+            "auth_failed",
+            "paper_enabled",
+        }
         assert live["today_actual_fills"] == 18
         assert live["today_realized_pnl"] == 10133.83
+        assert live["broker_mtd_pnl"] == 2450.25
+        assert live["broker_mtd_return_pct"] == 2.43
         assert live["total_unrealized_pnl"] == 0.0
         assert live["open_position_count"] == 0
         assert live["all_venue_today_actual_fills"] == 20
@@ -4724,6 +4804,7 @@ class TestDashboardAPI:
         assert live["cellar_total_unrealized_pnl"] == -5.34
         assert live["cellar_open_position_count"] == 2
         assert live["ibkr"]["today_realized_pnl"] == 10133.83
+        assert live["sources"]["broker_mtd_pnl"] == "ibkr_client_portal_pa_performance_mtd"
         assert live["alpaca"]["today_realized_pnl"] == -15.03
         assert live["alpaca"]["policy_status"] == "paused_backburner"
 
@@ -5193,9 +5274,7 @@ class TestDashboardAPI:
                     "installer_sha256": "ABC123",
                     "authenticode_status": "NotSigned",
                     "operator_action_required": True,
-                    "operator_action": (
-                        "IB Gateway 10.46 is not installed at C:\\Jts\\ibgateway\\1046."
-                    ),
+                    "operator_action": ("IB Gateway 10.46 is not installed at C:\\Jts\\ibgateway\\1046."),
                 },
             ),
             encoding="utf-8",

@@ -5,6 +5,7 @@ Wave-5 #8 + BTC integration 2026-05-01:
   * annualized yield → carry trade attractiveness
   * perp vs spot vs CME futures basis across venues
 """
+
 from __future__ import annotations
 
 from eta_engine.brain.jarvis_v3.sage.base import (
@@ -44,14 +45,16 @@ class FundingBasisSchool(SchoolBase):
         basis = telemetry.get("perp_spot_basis_pct", getattr(ctx, "perp_spot_basis_pct", None))
         cross_spread = telemetry.get("cross_exchange_spread_bps")
         ann_yield = telemetry.get("annualized_yield_pct")
-        exchange_list = telemetry.get("exchange_rates", {})
+        telemetry.get("exchange_rates", {})
 
         signals: dict = {}
         rationale_parts: list[str] = []
 
         if funding is None and basis is None:
             return SchoolVerdict(
-                school=self.NAME, bias=Bias.NEUTRAL, conviction=0.0,
+                school=self.NAME,
+                bias=Bias.NEUTRAL,
+                conviction=0.0,
                 aligned_with_entry=False,
                 rationale="no funding/basis telemetry on ctx",
                 signals={"missing": ["funding_rate_bps", "perp_spot_basis_pct"]},
@@ -96,7 +99,9 @@ class FundingBasisSchool(SchoolBase):
 
         entry_bias = Bias.LONG if ctx.side.lower() == "long" else Bias.SHORT
         return SchoolVerdict(
-            school=self.NAME, bias=bias, conviction=conv,
+            school=self.NAME,
+            bias=bias,
+            conviction=conv,
             aligned_with_entry=(bias == entry_bias),
             rationale=rationale,
             signals=signals,

@@ -64,9 +64,9 @@ if TYPE_CHECKING:
 class SageDailyVerdict:
     """Daily sage read: composite bias + conviction."""
 
-    direction: str          # 'long' | 'short' | 'neutral'
-    conviction: float       # 0.0 - 1.0
-    composite: float        # -1.0 to +1.0
+    direction: str  # 'long' | 'short' | 'neutral'
+    conviction: float  # 0.0 - 1.0
+    composite: float  # -1.0 to +1.0
 
 
 @dataclass(frozen=True)
@@ -107,7 +107,8 @@ class SageDailyGatedStrategy:
     # -- provider plumbing ---------------------------------------------------
 
     def attach_daily_verdict_provider(
-        self, provider: Callable[[date], SageDailyVerdict] | None,
+        self,
+        provider: Callable[[date], SageDailyVerdict] | None,
     ) -> None:
         """Attach a daily-sage verdict lookup.
 
@@ -171,23 +172,18 @@ class SageDailyGatedStrategy:
             # Long requires sage bull, short requires sage bear; neutral vetoes
             if verdict.direction == "neutral":
                 return None
-            ok = (
-                (opened.side == "BUY" and verdict.direction == "long")
-                or (opened.side == "SELL" and verdict.direction == "short")
+            ok = (opened.side == "BUY" and verdict.direction == "long") or (
+                opened.side == "SELL" and verdict.direction == "short"
             )
         else:
             # Long requires sage NOT bear, short requires sage NOT bull
-            ok = (
-                (opened.side == "BUY" and verdict.direction != "short")
-                or (opened.side == "SELL" and verdict.direction != "long")
+            ok = (opened.side == "BUY" and verdict.direction != "short") or (
+                opened.side == "SELL" and verdict.direction != "long"
             )
 
         if not ok:
             return None
 
         # Tag with sage daily verdict for audit
-        new_tag = (
-            f"{opened.regime}_sage_daily_{verdict.direction}_"
-            f"conv{verdict.conviction:.2f}"
-        )
+        new_tag = f"{opened.regime}_sage_daily_{verdict.direction}_conv{verdict.conviction:.2f}"
         return replace(opened, regime=new_tag)

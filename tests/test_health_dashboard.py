@@ -1,4 +1,5 @@
 """Tests for health_dashboard — unified status across all log surfaces."""
+
 from __future__ import annotations
 
 import json
@@ -137,18 +138,12 @@ def test_alert_message_normalizes_consistency_circuit_trip_detail() -> None:
         "payload": {
             "verdict": {
                 "action": "PAUSE_NEW_ENTRIES",
-                "reason": (
-                    "apex 30% consistency VIOLATION: largest day "
-                    "250.0 exceeds max 75.0"
-                ),
+                "reason": ("apex 30% consistency VIOLATION: largest day 250.0 exceeds max 75.0"),
             },
         },
     }
 
-    assert (
-        hd._alert_message(alert)
-        == "PAUSE_NEW_ENTRIES: apex 30% consistency VIOLATION"
-    )
+    assert hd._alert_message(alert) == "PAUSE_NEW_ENTRIES: apex 30% consistency VIOLATION"
 
 
 def test_alert_message_uses_title_when_body_is_placeholder() -> None:
@@ -164,11 +159,13 @@ def test_alert_message_normalizes_broker_credential_aliases() -> None:
     variants = ["creds", "creds missing", "missing creds"]
 
     rendered = {
-        hd._alert_message({
-            "source": "broker-session-monitor",
-            "title": "broker ibkr YELLOW",
-            "body": variant,
-        })
+        hd._alert_message(
+            {
+                "source": "broker-session-monitor",
+                "title": "broker ibkr YELLOW",
+                "body": variant,
+            }
+        )
         for variant in variants
     }
 
@@ -179,29 +176,32 @@ def test_render_text_groups_broker_credential_aliases(
     isolated_logs: Path,
 ) -> None:
     now = datetime.now(UTC)
-    _write_jsonl(hd.SOURCES["alerts"], [
-        {
-            "ts": (now - timedelta(minutes=5)).timestamp(),
-            "level": "WARN",
-            "source": "broker-session-monitor",
-            "title": "broker ibkr YELLOW",
-            "body": "creds",
-        },
-        {
-            "ts": (now - timedelta(minutes=4)).timestamp(),
-            "level": "WARN",
-            "source": "broker-session-monitor",
-            "title": "broker ibkr YELLOW",
-            "body": "creds missing",
-        },
-        {
-            "ts": (now - timedelta(minutes=3)).timestamp(),
-            "level": "WARN",
-            "source": "broker-session-monitor",
-            "title": "broker ibkr YELLOW",
-            "body": "missing creds",
-        },
-    ])
+    _write_jsonl(
+        hd.SOURCES["alerts"],
+        [
+            {
+                "ts": (now - timedelta(minutes=5)).timestamp(),
+                "level": "WARN",
+                "source": "broker-session-monitor",
+                "title": "broker ibkr YELLOW",
+                "body": "creds",
+            },
+            {
+                "ts": (now - timedelta(minutes=4)).timestamp(),
+                "level": "WARN",
+                "source": "broker-session-monitor",
+                "title": "broker ibkr YELLOW",
+                "body": "creds missing",
+            },
+            {
+                "ts": (now - timedelta(minutes=3)).timestamp(),
+                "level": "WARN",
+                "source": "broker-session-monitor",
+                "title": "broker ibkr YELLOW",
+                "body": "missing creds",
+            },
+        ],
+    )
 
     text = hd.render_text(hd.build_dashboard())
 
@@ -213,29 +213,32 @@ def test_render_text_drops_generic_alert_when_specific_detail_exists(
     isolated_logs: Path,
 ) -> None:
     now = datetime.now(UTC)
-    _write_jsonl(hd.SOURCES["alerts"], [
-        {
-            "ts": (now - timedelta(minutes=5)).timestamp(),
-            "level": "WARN",
-            "source": "broker-session-monitor",
-            "title": "broker ibkr YELLOW",
-            "body": "x",
-        },
-        {
-            "ts": (now - timedelta(minutes=4)).timestamp(),
-            "level": "WARN",
-            "source": "broker-session-monitor",
-            "title": "broker ibkr YELLOW",
-            "body": "credentials missing",
-        },
-        {
-            "ts": (now - timedelta(minutes=3)).timestamp(),
-            "level": "WARN",
-            "source": "broker-session-monitor",
-            "title": "broker tastytrade YELLOW",
-            "body": "x",
-        },
-    ])
+    _write_jsonl(
+        hd.SOURCES["alerts"],
+        [
+            {
+                "ts": (now - timedelta(minutes=5)).timestamp(),
+                "level": "WARN",
+                "source": "broker-session-monitor",
+                "title": "broker ibkr YELLOW",
+                "body": "x",
+            },
+            {
+                "ts": (now - timedelta(minutes=4)).timestamp(),
+                "level": "WARN",
+                "source": "broker-session-monitor",
+                "title": "broker ibkr YELLOW",
+                "body": "credentials missing",
+            },
+            {
+                "ts": (now - timedelta(minutes=3)).timestamp(),
+                "level": "WARN",
+                "source": "broker-session-monitor",
+                "title": "broker tastytrade YELLOW",
+                "body": "x",
+            },
+        ],
+    )
 
     d = hd.build_dashboard()
     groups = hd._recent_alert_groups(d["recent_alerts"])
@@ -252,30 +255,33 @@ def test_render_text_groups_consistency_circuit_trip_variants(
     isolated_logs: Path,
 ) -> None:
     now = datetime.now(UTC)
-    _write_jsonl(hd.SOURCES["alerts"], [
-        {
-            "ts": (now - timedelta(minutes=6)).timestamp(),
-            "level": "WARN",
-            "event": "circuit_trip",
-            "payload": {
-                "verdict": {
-                    "action": "PAUSE_NEW_ENTRIES",
-                    "reason": "apex 30% consistency VIOLATION: largest day 250",
+    _write_jsonl(
+        hd.SOURCES["alerts"],
+        [
+            {
+                "ts": (now - timedelta(minutes=6)).timestamp(),
+                "level": "WARN",
+                "event": "circuit_trip",
+                "payload": {
+                    "verdict": {
+                        "action": "PAUSE_NEW_ENTRIES",
+                        "reason": "apex 30% consistency VIOLATION: largest day 250",
+                    },
                 },
             },
-        },
-        {
-            "ts": (now - timedelta(minutes=5)).timestamp(),
-            "level": "WARN",
-            "event": "circuit_trip",
-            "payload": {
-                "verdict": {
-                    "action": "PAUSE_NEW_ENTRIES",
-                    "reason": "apex 30% consistency VIOLATION: largest day 1000",
+            {
+                "ts": (now - timedelta(minutes=5)).timestamp(),
+                "level": "WARN",
+                "event": "circuit_trip",
+                "payload": {
+                    "verdict": {
+                        "action": "PAUSE_NEW_ENTRIES",
+                        "reason": "apex 30% consistency VIOLATION: largest day 1000",
+                    },
                 },
             },
-        },
-    ])
+        ],
+    )
 
     groups = hd._recent_alert_groups(hd.build_dashboard()["recent_alerts"])
     messages = [group["message"] for group in groups]
@@ -288,27 +294,30 @@ def test_render_text_prioritizes_actionable_alert_groups(
     isolated_logs: Path,
 ) -> None:
     now = datetime.now(UTC)
-    _write_jsonl(hd.SOURCES["alerts"], [
-        {
-            "ts": (now - timedelta(minutes=10)).timestamp(),
-            "level": "INFO",
-            "source": "runtime_start",
-            "payload": {"active_bots": ["mnq"], "live": False},
-        },
-        {
-            "ts": (now - timedelta(minutes=9)).timestamp(),
-            "level": "INFO",
-            "source": "runtime_stop",
-            "payload": {"bars": 2},
-        },
-        {
-            "ts": (now - timedelta(minutes=2)).timestamp(),
-            "level": "WARN",
-            "source": "broker-session-monitor",
-            "title": "broker ibkr YELLOW",
-            "body": "credentials missing",
-        },
-    ])
+    _write_jsonl(
+        hd.SOURCES["alerts"],
+        [
+            {
+                "ts": (now - timedelta(minutes=10)).timestamp(),
+                "level": "INFO",
+                "source": "runtime_start",
+                "payload": {"active_bots": ["mnq"], "live": False},
+            },
+            {
+                "ts": (now - timedelta(minutes=9)).timestamp(),
+                "level": "INFO",
+                "source": "runtime_stop",
+                "payload": {"bars": 2},
+            },
+            {
+                "ts": (now - timedelta(minutes=2)).timestamp(),
+                "level": "WARN",
+                "source": "broker-session-monitor",
+                "title": "broker ibkr YELLOW",
+                "body": "credentials missing",
+            },
+        ],
+    )
 
     text = hd.render_text(hd.build_dashboard())
 
@@ -319,36 +328,39 @@ def test_render_text_prioritizes_actionable_alert_groups(
 
 def test_render_text_groups_duplicate_recent_alerts(isolated_logs: Path) -> None:
     now = datetime.now(UTC)
-    _write_jsonl(hd.SOURCES["alerts"], [
-        {
-            "ts": (now - timedelta(minutes=5)).timestamp(),
-            "level": "WARN",
-            "source": "broker-session-monitor",
-            "title": "broker ibkr YELLOW",
-            "body": "x",
-        },
-        {
-            "ts": (now - timedelta(minutes=4)).timestamp(),
-            "level": "WARN",
-            "source": "broker-session-monitor",
-            "title": "broker ibkr YELLOW",
-            "body": "x",
-        },
-        {
-            "ts": (now - timedelta(minutes=3)).timestamp(),
-            "level": "WARN",
-            "source": "broker-session-monitor",
-            "title": "broker ibkr YELLOW",
-            "body": "x",
-        },
-        {
-            "ts": (now - timedelta(minutes=2)).timestamp(),
-            "level": "CRITICAL",
-            "source": "broker-session-monitor",
-            "title": "broker tastytrade RED",
-            "body": "500",
-        },
-    ])
+    _write_jsonl(
+        hd.SOURCES["alerts"],
+        [
+            {
+                "ts": (now - timedelta(minutes=5)).timestamp(),
+                "level": "WARN",
+                "source": "broker-session-monitor",
+                "title": "broker ibkr YELLOW",
+                "body": "x",
+            },
+            {
+                "ts": (now - timedelta(minutes=4)).timestamp(),
+                "level": "WARN",
+                "source": "broker-session-monitor",
+                "title": "broker ibkr YELLOW",
+                "body": "x",
+            },
+            {
+                "ts": (now - timedelta(minutes=3)).timestamp(),
+                "level": "WARN",
+                "source": "broker-session-monitor",
+                "title": "broker ibkr YELLOW",
+                "body": "x",
+            },
+            {
+                "ts": (now - timedelta(minutes=2)).timestamp(),
+                "level": "CRITICAL",
+                "source": "broker-session-monitor",
+                "title": "broker tastytrade RED",
+                "body": "500",
+            },
+        ],
+    )
 
     text = hd.render_text(hd.build_dashboard())
 
@@ -382,12 +394,23 @@ def test_last_jsonl_record_skips_empty_lines(isolated_logs: Path) -> None:
 def test_read_recent_alerts_filters_by_hours(isolated_logs: Path) -> None:
     p = isolated_logs / "alerts.jsonl"
     now = datetime.now(UTC)
-    _write_jsonl(p, [
-        {"timestamp_utc": (now - timedelta(hours=48)).isoformat(),
-         "source": "old", "level": "RED", "message": "way old"},
-        {"timestamp_utc": (now - timedelta(hours=2)).isoformat(),
-         "source": "recent", "level": "YELLOW", "message": "recent"},
-    ])
+    _write_jsonl(
+        p,
+        [
+            {
+                "timestamp_utc": (now - timedelta(hours=48)).isoformat(),
+                "source": "old",
+                "level": "RED",
+                "message": "way old",
+            },
+            {
+                "timestamp_utc": (now - timedelta(hours=2)).isoformat(),
+                "source": "recent",
+                "level": "YELLOW",
+                "message": "recent",
+            },
+        ],
+    )
     out = hd._read_recent_alerts(p, hours=24)
     assert len(out) == 1
     assert out[0]["source"] == "recent"
@@ -402,16 +425,34 @@ def test_read_recent_alerts_handles_mixed_ts_shapes(isolated_logs: Path) -> None
     """Older alert writers use float epoch_s in `ts`; newer use ISO in `timestamp_utc`."""
     p = isolated_logs / "alerts.jsonl"
     now = datetime.now(UTC)
-    p.write_text("\n".join([
-        # ISO-string shape (newer)
-        json.dumps({"timestamp_utc": (now - timedelta(hours=1)).isoformat(),
-                    "source": "newer", "level": "RED", "message": "iso fmt"}),
-        # Float epoch shape (older)
-        json.dumps({"ts": (now - timedelta(hours=2)).timestamp(),
-                    "source": "older", "level": "YELLOW", "message": "epoch fmt"}),
-        # Garbage ts that doesn't parse
-        json.dumps({"ts": "not-a-date", "source": "broken"}),
-    ]) + "\n", encoding="utf-8")
+    p.write_text(
+        "\n".join(
+            [
+                # ISO-string shape (newer)
+                json.dumps(
+                    {
+                        "timestamp_utc": (now - timedelta(hours=1)).isoformat(),
+                        "source": "newer",
+                        "level": "RED",
+                        "message": "iso fmt",
+                    }
+                ),
+                # Float epoch shape (older)
+                json.dumps(
+                    {
+                        "ts": (now - timedelta(hours=2)).timestamp(),
+                        "source": "older",
+                        "level": "YELLOW",
+                        "message": "epoch fmt",
+                    }
+                ),
+                # Garbage ts that doesn't parse
+                json.dumps({"ts": "not-a-date", "source": "broken"}),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     out = hd._read_recent_alerts(p, hours=24)
     assert len(out) == 2  # newer + older accepted; broken skipped
     sources = {r["source"] for r in out}
@@ -433,34 +474,75 @@ def test_build_dashboard_all_never_run(isolated_logs: Path) -> None:
 
 def test_build_dashboard_green_when_all_fresh(isolated_logs: Path) -> None:
     now = datetime.now(UTC).isoformat()
-    _write_jsonl(hd.SOURCES["supercharge_runs"], [{
-        "ts": now, "tier": "sweep",
-        "phase2": {"n_bots": 5, "n_verdicts": 5, "n_skipped_cached": 0},
-        "phase3": {"n_agreements": 3, "n_dissents": 0},
-    }])
-    _write_jsonl(hd.SOURCES["ibkr_sub_status"], [{
-        "ts": now, "all_realtime": True,
-        "results": [{"exchange": "CME", "verdict": "PASS"}],
-    }])
-    _write_jsonl(hd.SOURCES["capture_health"], [{
-        "ts": now, "verdict": "GREEN", "n_symbols": 8, "issues": [],
-    }])
-    _write_jsonl(hd.SOURCES["disk_space"], [{
-        "ts": now, "verdict": "GREEN",
-        "checks": [{"label": "ticks", "free_gb": 400}],
-    }])
-    _write_jsonl(hd.SOURCES["capture_rotation"], [{
-        "ts": now, "apply": True, "totals": {"n_compressed": 2, "n_cold_archived": 1},
-    }])
-    hd.SOURCES["verdict_cache"].write_text(json.dumps({
-        "bot_a": {"verdict": "GREEN"},
-        "bot_b": {"verdict": "GREEN"},
-        "bot_c": {"verdict": "YELLOW"},
-    }), encoding="utf-8")
-    _write_jsonl(hd.SOURCES["jarvis_recs"], [
-        {"bot_id": "bot_a", "size_cap_mult": 1.0, "ts": now},
-        {"bot_id": "bot_b", "size_cap_mult": 0.8, "ts": now},
-    ])
+    _write_jsonl(
+        hd.SOURCES["supercharge_runs"],
+        [
+            {
+                "ts": now,
+                "tier": "sweep",
+                "phase2": {"n_bots": 5, "n_verdicts": 5, "n_skipped_cached": 0},
+                "phase3": {"n_agreements": 3, "n_dissents": 0},
+            }
+        ],
+    )
+    _write_jsonl(
+        hd.SOURCES["ibkr_sub_status"],
+        [
+            {
+                "ts": now,
+                "all_realtime": True,
+                "results": [{"exchange": "CME", "verdict": "PASS"}],
+            }
+        ],
+    )
+    _write_jsonl(
+        hd.SOURCES["capture_health"],
+        [
+            {
+                "ts": now,
+                "verdict": "GREEN",
+                "n_symbols": 8,
+                "issues": [],
+            }
+        ],
+    )
+    _write_jsonl(
+        hd.SOURCES["disk_space"],
+        [
+            {
+                "ts": now,
+                "verdict": "GREEN",
+                "checks": [{"label": "ticks", "free_gb": 400}],
+            }
+        ],
+    )
+    _write_jsonl(
+        hd.SOURCES["capture_rotation"],
+        [
+            {
+                "ts": now,
+                "apply": True,
+                "totals": {"n_compressed": 2, "n_cold_archived": 1},
+            }
+        ],
+    )
+    hd.SOURCES["verdict_cache"].write_text(
+        json.dumps(
+            {
+                "bot_a": {"verdict": "GREEN"},
+                "bot_b": {"verdict": "GREEN"},
+                "bot_c": {"verdict": "YELLOW"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    _write_jsonl(
+        hd.SOURCES["jarvis_recs"],
+        [
+            {"bot_id": "bot_a", "size_cap_mult": 1.0, "ts": now},
+            {"bot_id": "bot_b", "size_cap_mult": 0.8, "ts": now},
+        ],
+    )
 
     d = hd.build_dashboard()
     assert d["sections"]["supercharge"]["status"] == "GREEN"
@@ -478,16 +560,21 @@ def test_build_dashboard_green_when_all_fresh(isolated_logs: Path) -> None:
 def test_build_dashboard_surfaces_ibkr_setup_blocked(isolated_logs: Path) -> None:
     now = datetime.now(UTC).isoformat()
     action = "Seed IBC credentials before starting Gateway."
-    _write_jsonl(hd.SOURCES["ibkr_sub_status"], [{
-        "ts": now,
-        "setup_status": "BLOCKED",
-        "setup_error_code": "ibc_credentials_missing",
-        "operator_action": action,
-        "all_realtime": False,
-        "all_depth_ok": False,
-        "results": [],
-        "depth_results": [],
-    }])
+    _write_jsonl(
+        hd.SOURCES["ibkr_sub_status"],
+        [
+            {
+                "ts": now,
+                "setup_status": "BLOCKED",
+                "setup_error_code": "ibc_credentials_missing",
+                "operator_action": action,
+                "all_realtime": False,
+                "all_depth_ok": False,
+                "results": [],
+                "depth_results": [],
+            }
+        ],
+    )
 
     d = hd.build_dashboard()
 
@@ -504,20 +591,30 @@ def test_build_dashboard_marks_capture_blocked_by_ibkr_setup(
 ) -> None:
     now = datetime.now(UTC).isoformat()
     action = "Seed IBC credentials before starting Gateway."
-    _write_jsonl(hd.SOURCES["ibkr_sub_status"], [{
-        "ts": now,
-        "setup_status": "BLOCKED",
-        "setup_error_code": "ibc_credentials_missing",
-        "operator_action": action,
-        "all_realtime": False,
-        "all_depth_ok": False,
-    }])
-    _write_jsonl(hd.SOURCES["capture_health"], [{
-        "ts": now,
-        "verdict": "RED",
-        "n_symbols": 2,
-        "issues": ["ticks MNQ: MISSING", "depth MNQ: MISSING"],
-    }])
+    _write_jsonl(
+        hd.SOURCES["ibkr_sub_status"],
+        [
+            {
+                "ts": now,
+                "setup_status": "BLOCKED",
+                "setup_error_code": "ibc_credentials_missing",
+                "operator_action": action,
+                "all_realtime": False,
+                "all_depth_ok": False,
+            }
+        ],
+    )
+    _write_jsonl(
+        hd.SOURCES["capture_health"],
+        [
+            {
+                "ts": now,
+                "verdict": "RED",
+                "n_symbols": 2,
+                "issues": ["ticks MNQ: MISSING", "depth MNQ: MISSING"],
+            }
+        ],
+    )
 
     d = hd.build_dashboard()
     cap = d["sections"]["capture_health"]
@@ -532,23 +629,28 @@ def test_build_dashboard_marks_capture_blocked_by_ibkr_setup(
 
 def test_build_dashboard_surfaces_capture_rotation_notes(isolated_logs: Path) -> None:
     now = datetime.now(UTC).isoformat()
-    _write_jsonl(hd.SOURCES["capture_rotation"], [{
-        "ts": now,
-        "apply": False,
-        "ticks": {
-            "kind": "ticks",
-            "n_compressed": 0,
-            "n_cold_archived": 0,
-            "note": "dir missing",
-        },
-        "depth": {
-            "kind": "depth",
-            "n_compressed": 0,
-            "n_cold_archived": 0,
-            "note": "dir missing",
-        },
-        "totals": {"n_compressed": 0, "n_cold_archived": 0},
-    }])
+    _write_jsonl(
+        hd.SOURCES["capture_rotation"],
+        [
+            {
+                "ts": now,
+                "apply": False,
+                "ticks": {
+                    "kind": "ticks",
+                    "n_compressed": 0,
+                    "n_cold_archived": 0,
+                    "note": "dir missing",
+                },
+                "depth": {
+                    "kind": "depth",
+                    "n_compressed": 0,
+                    "n_cold_archived": 0,
+                    "note": "dir missing",
+                },
+                "totals": {"n_compressed": 0, "n_cold_archived": 0},
+            }
+        ],
+    )
 
     d = hd.build_dashboard()
 
@@ -565,27 +667,42 @@ def test_build_dashboard_marks_capture_rotation_blocked_by_capture_health(
 ) -> None:
     now = datetime.now(UTC).isoformat()
     action = "Seed IBC credentials before starting Gateway."
-    _write_jsonl(hd.SOURCES["ibkr_sub_status"], [{
-        "ts": now,
-        "setup_status": "BLOCKED",
-        "setup_error_code": "ibc_credentials_missing",
-        "operator_action": action,
-        "all_realtime": False,
-        "all_depth_ok": False,
-    }])
-    _write_jsonl(hd.SOURCES["capture_health"], [{
-        "ts": now,
-        "verdict": "RED",
-        "n_symbols": 2,
-        "issues": ["ticks MNQ: MISSING", "depth MNQ: MISSING"],
-    }])
-    _write_jsonl(hd.SOURCES["capture_rotation"], [{
-        "ts": now,
-        "apply": False,
-        "ticks": {"kind": "ticks", "note": "dir missing"},
-        "depth": {"kind": "depth", "note": "dir missing"},
-        "totals": {"n_compressed": 0, "n_cold_archived": 0},
-    }])
+    _write_jsonl(
+        hd.SOURCES["ibkr_sub_status"],
+        [
+            {
+                "ts": now,
+                "setup_status": "BLOCKED",
+                "setup_error_code": "ibc_credentials_missing",
+                "operator_action": action,
+                "all_realtime": False,
+                "all_depth_ok": False,
+            }
+        ],
+    )
+    _write_jsonl(
+        hd.SOURCES["capture_health"],
+        [
+            {
+                "ts": now,
+                "verdict": "RED",
+                "n_symbols": 2,
+                "issues": ["ticks MNQ: MISSING", "depth MNQ: MISSING"],
+            }
+        ],
+    )
+    _write_jsonl(
+        hd.SOURCES["capture_rotation"],
+        [
+            {
+                "ts": now,
+                "apply": False,
+                "ticks": {"kind": "ticks", "note": "dir missing"},
+                "depth": {"kind": "depth", "note": "dir missing"},
+                "totals": {"n_compressed": 0, "n_cold_archived": 0},
+            }
+        ],
+    )
 
     d = hd.build_dashboard()
 
@@ -602,13 +719,18 @@ def test_build_dashboard_marks_jarvis_idle_when_no_green_candidates(
     isolated_logs: Path,
 ) -> None:
     now = datetime.now(UTC).isoformat()
-    _write_jsonl(hd.SOURCES["supercharge_runs"], [{
-        "ts": now,
-        "tier": "sweep",
-        "phase2": {"n_bots": 25, "n_verdicts": 0},
-        "phase3": {"n_consulted": 0, "n_agreements": 0, "n_dissents": 0},
-        "phase4": {"n_arbitrated": 0},
-    }])
+    _write_jsonl(
+        hd.SOURCES["supercharge_runs"],
+        [
+            {
+                "ts": now,
+                "tier": "sweep",
+                "phase2": {"n_bots": 25, "n_verdicts": 0},
+                "phase3": {"n_consulted": 0, "n_agreements": 0, "n_dissents": 0},
+                "phase4": {"n_arbitrated": 0},
+            }
+        ],
+    )
 
     d = hd.build_dashboard()
 
@@ -623,13 +745,18 @@ def test_build_dashboard_warns_when_jarvis_expected_but_missing(
     isolated_logs: Path,
 ) -> None:
     now = datetime.now(UTC).isoformat()
-    _write_jsonl(hd.SOURCES["supercharge_runs"], [{
-        "ts": now,
-        "tier": "sweep",
-        "phase2": {"n_bots": 25, "n_verdicts": 3},
-        "phase3": {"n_consulted": 3, "n_agreements": 2, "n_dissents": 1},
-        "phase4": {"n_arbitrated": 0},
-    }])
+    _write_jsonl(
+        hd.SOURCES["supercharge_runs"],
+        [
+            {
+                "ts": now,
+                "tier": "sweep",
+                "phase2": {"n_bots": 25, "n_verdicts": 3},
+                "phase3": {"n_consulted": 3, "n_agreements": 2, "n_dissents": 1},
+                "phase4": {"n_arbitrated": 0},
+            }
+        ],
+    )
 
     d = hd.build_dashboard()
 
@@ -640,10 +767,16 @@ def test_build_dashboard_warns_when_jarvis_expected_but_missing(
 
 def test_build_dashboard_overall_worst_when_critical(isolated_logs: Path) -> None:
     now = datetime.now(UTC).isoformat()
-    _write_jsonl(hd.SOURCES["disk_space"], [{
-        "ts": now, "verdict": "CRITICAL",
-        "checks": [{"label": "ticks", "free_gb": 1.0}],
-    }])
+    _write_jsonl(
+        hd.SOURCES["disk_space"],
+        [
+            {
+                "ts": now,
+                "verdict": "CRITICAL",
+                "checks": [{"label": "ticks", "free_gb": 1.0}],
+            }
+        ],
+    )
     d = hd.build_dashboard()
     assert d["overall"] == "CRITICAL"
 
@@ -662,13 +795,20 @@ def test_render_text_returns_string(isolated_logs: Path) -> None:
 # ── main() exit-code mapping ──────────────────────────────────────
 
 
-def test_main_exits_per_overall(isolated_logs: Path, monkeypatch: pytest.MonkeyPatch,
-                                 capsys: pytest.CaptureFixture) -> None:
+def test_main_exits_per_overall(
+    isolated_logs: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+) -> None:
     now = datetime.now(UTC).isoformat()
-    _write_jsonl(hd.SOURCES["disk_space"], [{
-        "ts": now, "verdict": "RED",
-        "checks": [{"label": "ticks", "free_gb": 5.0}],
-    }])
+    _write_jsonl(
+        hd.SOURCES["disk_space"],
+        [
+            {
+                "ts": now,
+                "verdict": "RED",
+                "checks": [{"label": "ticks", "free_gb": 5.0}],
+            }
+        ],
+    )
     monkeypatch.setattr("sys.argv", ["health_dashboard"])
     rc = hd.main()
     assert rc == 2  # RED → exit 2

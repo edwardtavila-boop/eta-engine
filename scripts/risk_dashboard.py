@@ -10,6 +10,7 @@ Usage
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import sys
 from datetime import UTC, datetime
@@ -19,10 +20,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT.parent))
 
 if hasattr(sys.stdout, "reconfigure"):
-    try:
+    with contextlib.suppress(AttributeError, OSError):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    except (AttributeError, OSError):
-        pass
 
 
 def risk_dashboard() -> dict:
@@ -38,19 +37,21 @@ def risk_dashboard() -> dict:
             continue
         profile = risk_profile_for_bot(a.bot_id)
         status = a.extras.get("promotion_status", "unknown")
-        bots.append({
-            "bot_id": a.bot_id,
-            "symbol": a.symbol,
-            "timeframe": a.timeframe,
-            "strategy_kind": a.strategy_kind,
-            "status": status,
-            "risk_pct": profile["risk_pct"],
-            "daily_loss_pct": profile["daily_loss_pct"],
-            "max_trades_per_day": profile["max_trades_per_day"],
-            "oos_sharpe": profile.get("oos_sharpe", 0),
-            "tier": profile.get("tier", "baseline"),
-            "in_warmup": profile.get("in_warmup", False),
-        })
+        bots.append(
+            {
+                "bot_id": a.bot_id,
+                "symbol": a.symbol,
+                "timeframe": a.timeframe,
+                "strategy_kind": a.strategy_kind,
+                "status": status,
+                "risk_pct": profile["risk_pct"],
+                "daily_loss_pct": profile["daily_loss_pct"],
+                "max_trades_per_day": profile["max_trades_per_day"],
+                "oos_sharpe": profile.get("oos_sharpe", 0),
+                "tier": profile.get("tier", "baseline"),
+                "in_warmup": profile.get("in_warmup", False),
+            }
+        )
         fleet_risk_total += profile["risk_pct"]
         fleet_dd_total += profile["daily_loss_pct"]
 
@@ -87,15 +88,19 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(data, indent=2, default=str))
     else:
         f = data["fleet"]
-        print(f"RISK DASHBOARD  |  {f['total_bots']} bots  |  Fleet DD cap: {f['fleet_daily_budget_pct']*100:.1f}%")
-        print(f"  Allocated risk: {f['total_risk_allocated_pct']*100:.1f}% of equity across {f['total_bots']} bots")
+        print(f"RISK DASHBOARD  |  {f['total_bots']} bots  |  Fleet DD cap: {f['fleet_daily_budget_pct'] * 100:.1f}%")
+        print(f"  Allocated risk: {f['total_risk_allocated_pct'] * 100:.1f}% of equity across {f['total_bots']} bots")
         print()
-        print(f"{'Bot':<28} {'Symbol':<6} {'Status':<22} {'Tier':<8} {'Risk%':>6} {'DD cap%':>8} {'Trades/day':>11} {'Sharpe':>8}")
+        print(
+            f"{'Bot':<28} {'Symbol':<6} {'Status':<22} {'Tier':<8} {'Risk%':>6} {'DD cap%':>8} {'Trades/day':>11} {'Sharpe':>8}"
+        )
         print("-" * 110)
         for b in data["bots"]:
-            print(f"{b['bot_id']:<28} {b['symbol']:<6} {b['status']:<22} {_color(b['tier']):<8} "
-                  f"{b['risk_pct']*100:>5.1f}% {b['daily_loss_pct']*100:>7.1f}% {b['max_trades_per_day']:>11} "
-                  f"{b['oos_sharpe']:>+8.2f}")
+            print(
+                f"{b['bot_id']:<28} {b['symbol']:<6} {b['status']:<22} {_color(b['tier']):<8} "
+                f"{b['risk_pct'] * 100:>5.1f}% {b['daily_loss_pct'] * 100:>7.1f}% {b['max_trades_per_day']:>11} "
+                f"{b['oos_sharpe']:>+8.2f}"
+            )
 
         # Risk matrix breakdown
         print("\nRisk matrix:")

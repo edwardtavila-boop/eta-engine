@@ -31,6 +31,7 @@ Run
 
     python -m eta_engine.scripts.l2_ensemble_validator --days 30
 """
+
 from __future__ import annotations
 
 # ruff: noqa: PLR2004
@@ -57,13 +58,12 @@ class EnsembleValidation:
     best_constituent_sharpe: float | None
     ensemble_sharpe_estimate: float | None  # synthesized from weighted-avg
     ensemble_outperforms: bool | None
-    margin: float | None                      # ensemble - best_constituent
-    verdict: str                              # OUTPERFORM | UNDERPERFORM | INCONCLUSIVE
+    margin: float | None  # ensemble - best_constituent
+    verdict: str  # OUTPERFORM | UNDERPERFORM | INCONCLUSIVE
     notes: list[str] = field(default_factory=list)
 
 
-def _read_recent_sharpes(*, since_days: int = 30,
-                           _path: Path) -> dict[str, list[float]]:
+def _read_recent_sharpes(*, since_days: int = 30, _path: Path) -> dict[str, list[float]]:
     """Return {strategy: [sharpe_proxy values]} from recent log."""
     if not _path.exists():
         return {}
@@ -90,16 +90,14 @@ def _read_recent_sharpes(*, since_days: int = 30,
                     continue
                 strategy = rec.get("strategy")
                 sharpe = rec.get("sharpe_proxy")
-                if (strategy and sharpe is not None
-                        and rec.get("sharpe_proxy_valid", False)):
+                if strategy and sharpe is not None and rec.get("sharpe_proxy_valid", False):
                     out.setdefault(strategy, []).append(float(sharpe))
     except OSError:
         return {}
     return out
 
 
-def validate_ensemble(*, since_days: int = 30,
-                         _backtest_path: Path | None = None) -> EnsembleValidation:
+def validate_ensemble(*, since_days: int = 30, _backtest_path: Path | None = None) -> EnsembleValidation:
     """Compute whether ensemble OOS sharpe beats best individual.
 
     Synthesizes ensemble sharpe via weighted average of constituent
@@ -112,27 +110,30 @@ def validate_ensemble(*, since_days: int = 30,
     sharpes = _read_recent_sharpes(since_days=since_days, _path=path)
     if not sharpes:
         return EnsembleValidation(
-            n_constituents=0, constituent_sharpes={},
-            best_constituent=None, best_constituent_sharpe=None,
+            n_constituents=0,
+            constituent_sharpes={},
+            best_constituent=None,
+            best_constituent_sharpe=None,
             ensemble_sharpe_estimate=None,
-            ensemble_outperforms=None, margin=None,
+            ensemble_outperforms=None,
+            margin=None,
             verdict="INCONCLUSIVE",
             notes=["no recent sharpe data for any constituent"],
         )
     avg_sharpe = {s: statistics.mean(vals) for s, vals in sharpes.items()}
     notes: list[str] = []
     if len(avg_sharpe) < 2:
-        notes.append(
-            "fewer than 2 constituents have history; ensemble layer "
-            "has no diversification benefit yet")
+        notes.append("fewer than 2 constituents have history; ensemble layer has no diversification benefit yet")
         return EnsembleValidation(
             n_constituents=len(avg_sharpe),
             constituent_sharpes={k: round(v, 3) for k, v in avg_sharpe.items()},
             best_constituent=next(iter(avg_sharpe.keys())) if avg_sharpe else None,
             best_constituent_sharpe=next(iter(avg_sharpe.values()), None),
             ensemble_sharpe_estimate=None,
-            ensemble_outperforms=None, margin=None,
-            verdict="INCONCLUSIVE", notes=notes,
+            ensemble_outperforms=None,
+            margin=None,
+            verdict="INCONCLUSIVE",
+            notes=notes,
         )
 
     best_strategy = max(avg_sharpe, key=lambda s: avg_sharpe[s])
@@ -160,18 +161,19 @@ def validate_ensemble(*, since_days: int = 30,
                 f"Ensemble proxy sharpe ({round(ensemble_sharpe, 3)}) does "
                 f"NOT exceed best individual {best_strategy} "
                 f"({round(best_sharpe, 3)}) by >0.05 — consider trading "
-                f"{best_strategy} solo or rebalancing weights.")
+                f"{best_strategy} solo or rebalancing weights."
+            )
 
     return EnsembleValidation(
         n_constituents=len(avg_sharpe),
         constituent_sharpes={k: round(v, 3) for k, v in avg_sharpe.items()},
         best_constituent=best_strategy,
         best_constituent_sharpe=round(best_sharpe, 3),
-        ensemble_sharpe_estimate=round(ensemble_sharpe, 3)
-                                       if ensemble_sharpe is not None else None,
+        ensemble_sharpe_estimate=round(ensemble_sharpe, 3) if ensemble_sharpe is not None else None,
         ensemble_outperforms=outperforms,
         margin=round(margin, 3) if margin is not None else None,
-        verdict=verdict, notes=notes,
+        verdict=verdict,
+        notes=notes,
     )
 
 
@@ -184,12 +186,9 @@ def main() -> int:
     report = validate_ensemble(since_days=args.days)
     try:
         with ENSEMBLE_VALIDATOR_LOG.open("a", encoding="utf-8") as f:
-            f.write(json.dumps({"ts": datetime.now(UTC).isoformat(),
-                                 **asdict(report)},
-                                separators=(",", ":")) + "\n")
+            f.write(json.dumps({"ts": datetime.now(UTC).isoformat(), **asdict(report)}, separators=(",", ":")) + "\n")
     except OSError as e:
-        print(f"WARN: ensemble validator log write failed: {e}",
-              file=sys.stderr)
+        print(f"WARN: ensemble validator log write failed: {e}", file=sys.stderr)
 
     if args.json:
         print(json.dumps(asdict(report), indent=2))
@@ -200,15 +199,13 @@ def main() -> int:
     print("L2 ENSEMBLE VALIDATOR")
     print("=" * 78)
     print(f"  n_constituents       : {report.n_constituents}")
-    print(f"  best constituent     : {report.best_constituent} "
-          f"(sharpe={report.best_constituent_sharpe})")
+    print(f"  best constituent     : {report.best_constituent} (sharpe={report.best_constituent_sharpe})")
     print(f"  ensemble sharpe est. : {report.ensemble_sharpe_estimate}")
     print(f"  margin               : {report.margin}")
     print(f"  verdict              : {report.verdict}")
     print()
     print("  Constituent sharpes:")
-    for s, v in sorted(report.constituent_sharpes.items(),
-                         key=lambda kv: kv[1], reverse=True):
+    for s, v in sorted(report.constituent_sharpes.items(), key=lambda kv: kv[1], reverse=True):
         print(f"    {s:<30s} {v:+.3f}")
     if report.notes:
         print()

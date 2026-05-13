@@ -19,6 +19,7 @@ Env knobs:
   ETA_KILLSWITCH_DISABLED             default unset (set to "1" to disable)
   ETA_KILLSWITCH_TIMEZONE             default "UTC"
 """
+
 from __future__ import annotations
 
 import json
@@ -29,9 +30,7 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-_TRADE_CLOSES_PATH = Path(
-    r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\jarvis_intel\trade_closes.jsonl"
-)
+_TRADE_CLOSES_PATH = Path(r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\jarvis_intel\trade_closes.jsonl")
 
 
 def _today_utc_date_str() -> str:
@@ -41,6 +40,7 @@ def _today_utc_date_str() -> str:
         return datetime.now(UTC).date().isoformat()
     try:
         from zoneinfo import ZoneInfo
+
         return datetime.now(ZoneInfo(tz_name)).date().isoformat()
     except Exception:  # noqa: BLE001
         return datetime.now(UTC).date().isoformat()
@@ -80,7 +80,9 @@ def _today_realized_pnl_usd() -> float:
                 ts = (
                     rec.get("close_ts")
                     or (extra.get("close_ts") if isinstance(extra, dict) else None)
-                    or rec.get("ts") or rec.get("fill_ts") or ""
+                    or rec.get("ts")
+                    or rec.get("fill_ts")
+                    or ""
                 )
                 if not _is_today(ts):
                     continue
@@ -136,10 +138,7 @@ def is_killswitch_tripped() -> tuple[bool, str]:
     limit_usd = _resolve_limit_usd()
     today_pnl = _today_realized_pnl_usd()
     if today_pnl <= limit_usd:
-        return True, (
-            f"day_pnl=${today_pnl:+.2f} ≤ limit=${limit_usd:+.2f} "
-            f"(date={_today_utc_date_str()})"
-        )
+        return True, (f"day_pnl=${today_pnl:+.2f} ≤ limit=${limit_usd:+.2f} (date={_today_utc_date_str()})")
     return False, f"day_pnl=${today_pnl:+.2f} (limit=${limit_usd:+.2f})"
 
 

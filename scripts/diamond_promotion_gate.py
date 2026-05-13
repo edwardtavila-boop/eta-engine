@@ -67,6 +67,7 @@ criteria vs grandfathered ones. (Existing diamonds are never demoted
 by this script — the gate is promotion-only. Demotion is the
 ``diamond_falsification_watchdog`` job.)
 """
+
 from __future__ import annotations
 
 # ruff: noqa: PLR2004
@@ -81,18 +82,11 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKSPACE_ROOT = ROOT.parent
-TRADE_CLOSES_CANONICAL = (
-    WORKSPACE_ROOT / "var" / "eta_engine" / "state"
-    / "jarvis_intel" / "trade_closes.jsonl"
-)
+TRADE_CLOSES_CANONICAL = WORKSPACE_ROOT / "var" / "eta_engine" / "state" / "jarvis_intel" / "trade_closes.jsonl"
 TRADE_CLOSES_LEGACY = (
-    WORKSPACE_ROOT / "eta_engine" / "state"
-    / "jarvis_intel" / "trade_closes.jsonl"  # noqa: ERA001  (canonical archive — see HISTORICAL-PATH-OK)
+    WORKSPACE_ROOT / "eta_engine" / "state" / "jarvis_intel" / "trade_closes.jsonl"  # noqa: ERA001  (canonical archive — see HISTORICAL-PATH-OK)
 )
-OUT_LATEST = (
-    WORKSPACE_ROOT / "var" / "eta_engine" / "state"
-    / "diamond_promotion_gate_latest.json"
-)
+OUT_LATEST = WORKSPACE_ROOT / "var" / "eta_engine" / "state" / "diamond_promotion_gate_latest.json"
 
 # Bot ids that are not real bots (internal layer-propagation events,
 # pseudo-rows). Exclude from promotion analysis.
@@ -171,12 +165,14 @@ def _read_trades_dual_source() -> list[dict[str, Any]]:
                     rec = json.loads(line)
                 except json.JSONDecodeError:
                     continue
-                key = "|".join([
-                    str(rec.get("signal_id") or ""),
-                    str(rec.get("bot_id") or ""),
-                    str(rec.get("ts") or ""),
-                    str(rec.get("realized_r") or ""),
-                ])
+                key = "|".join(
+                    [
+                        str(rec.get("signal_id") or ""),
+                        str(rec.get("bot_id") or ""),
+                        str(rec.get("ts") or ""),
+                        str(rec.get("realized_r") or ""),
+                    ]
+                )
                 if key in seen:
                     continue
                 seen.add(key)
@@ -218,10 +214,7 @@ def _score_bot(bot_id: str, trades: list[dict[str, Any]]) -> BotScorecard:
     chk.avg_r = round(sum(rs) / len(rs), 4)
     chk.win_rate_pct = round(100.0 * sum(1 for r in rs if r > 0) / len(rs), 2)
     chk.n_calendar_days = len(days)
-    chk.n_sessions_positive = sum(
-        1 for srs in per_session.values()
-        if srs and sum(srs) / len(srs) > 0
-    )
+    chk.n_sessions_positive = sum(1 for srs in per_session.values() if srs and sum(srs) / len(srs) > 0)
     chk.max_single_day_share = round(
         max(days.values()) / len(rs) if days else 1.0,
         4,
@@ -267,9 +260,7 @@ def _score_bot(bot_id: str, trades: list[dict[str, Any]]) -> BotScorecard:
     elif not all_soft_pass:
         failed = [k for k, v in chk.soft_gate_results.items() if not v]
         chk.verdict = "NEEDS_MORE_DATA"
-        chk.rationale = (
-            f"hard gates pass; soft gates need work: {', '.join(failed)}"
-        )
+        chk.rationale = f"hard gates pass; soft gates need work: {', '.join(failed)}"
     else:
         chk.verdict = "PROMOTE"
         chk.rationale = (
@@ -286,6 +277,7 @@ def _load_existing_diamonds() -> set[str]:
         from eta_engine.feeds.capital_allocator import (  # noqa: PLC0415
             DIAMOND_BOTS,
         )
+
         return set(DIAMOND_BOTS)
     except ImportError:
         return set()
@@ -323,9 +315,7 @@ def run(*, include_existing: bool = False) -> dict[str, Any]:
         "ts": datetime.now(UTC).isoformat(),
         "n_scored": len(scorecards),
         "n_promote": sum(1 for s in scorecards if s.verdict == "PROMOTE"),
-        "n_needs_more": sum(
-            1 for s in scorecards if s.verdict == "NEEDS_MORE_DATA"
-        ),
+        "n_needs_more": sum(1 for s in scorecards if s.verdict == "NEEDS_MORE_DATA"),
         "n_reject": sum(1 for s in scorecards if s.verdict == "REJECT"),
         "include_existing": include_existing,
         "candidates": [asdict(s) for s in scorecards],
@@ -333,7 +323,8 @@ def run(*, include_existing: bool = False) -> dict[str, Any]:
     try:
         OUT_LATEST.parent.mkdir(parents=True, exist_ok=True)
         OUT_LATEST.write_text(
-            json.dumps(summary, indent=2, default=str), encoding="utf-8",
+            json.dumps(summary, indent=2, default=str),
+            encoding="utf-8",
         )
     except OSError as exc:
         print(f"WARN: write_latest failed: {exc}", file=sys.stderr)
@@ -372,7 +363,7 @@ def _print_report(summary: dict[str, Any]) -> None:
             f"avg_r={s['avg_r']:+.4f}  "
             f"wr={s['win_rate_pct']:5.1f}%  "
             f"days={s['n_calendar_days']:3d} "
-            f"({s.get('first_day','')}..{s.get('last_day','')})  "
+            f"({s.get('first_day', '')}..{s.get('last_day', '')})  "
             f"sessions+={s['n_sessions_positive']}",
         )
         print(f"        {s['rationale']}")
@@ -383,7 +374,8 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--json", action="store_true")
     ap.add_argument(
-        "--include-existing", action="store_true",
+        "--include-existing",
+        action="store_true",
         help="also score current diamonds (informational; never demotes)",
     )
     args = ap.parse_args()

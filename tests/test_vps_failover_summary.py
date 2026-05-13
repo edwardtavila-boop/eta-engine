@@ -96,9 +96,7 @@ def test_summary_adds_smoke_commands_for_stale_canonical_state(monkeypatch) -> N
 
 
 def test_summary_json_main_prints_machine_readable_payload(monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]
-    checks = [
-        vps_failover_drill.CheckResult(name="deploy_files_present", severity="green", summary="ok")
-    ]
+    checks = [vps_failover_drill.CheckResult(name="deploy_files_present", severity="green", summary="ok")]
     monkeypatch.setattr(vps_failover_drill, "collect_checks", lambda **_kwargs: checks)
 
     rc = vps_failover_summary.main(["--json"])

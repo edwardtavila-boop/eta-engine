@@ -79,12 +79,17 @@ class BaselineSnapshot(BaseModel):
 
     @classmethod
     def from_trades(
-        cls, strategy_id: str, trades: Sequence[Trade],
+        cls,
+        strategy_id: str,
+        trades: Sequence[Trade],
     ) -> BaselineSnapshot:
         if not trades:
             return cls(
-                strategy_id=strategy_id, n_trades=0,
-                win_rate=0.0, avg_r=0.0, r_stddev=0.0,
+                strategy_id=strategy_id,
+                n_trades=0,
+                win_rate=0.0,
+                avg_r=0.0,
+                r_stddev=0.0,
             )
         rs = [t.pnl_r for t in trades]
         n = len(rs)
@@ -207,14 +212,12 @@ def assess_drift(
         # Already amber/red from win rate; append the r-side reason
         # so the operator sees both.
         reasons.append(
-            f"avg R {recent_mean:+.3f} vs baseline {baseline.avg_r:+.3f} "
-            f"(z={r_z:+.2f})",
+            f"avg R {recent_mean:+.3f} vs baseline {baseline.avg_r:+.3f} (z={r_z:+.2f})",
         )
 
     if severity == "green" and not reasons:
         reasons.append(
-            f"within {amber_z}sigma of baseline "
-            f"(wr_z={wr_z:+.2f}, r_z={r_z:+.2f})",
+            f"within {amber_z}sigma of baseline (wr_z={wr_z:+.2f}, r_z={r_z:+.2f})",
         )
 
     return DriftAssessment(

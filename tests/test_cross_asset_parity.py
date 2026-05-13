@@ -186,11 +186,7 @@ def test_regime_gate_crypto_vol_ladder() -> None:
     assert btc.classifier.trend_distance_pct <= eth.classifier.trend_distance_pct
     assert eth.classifier.trend_distance_pct <= sol.classifier.trend_distance_pct
     # ATR cutoff also ladders
-    assert (
-        btc.classifier.range_atr_pct_max
-        <= eth.classifier.range_atr_pct_max
-        <= sol.classifier.range_atr_pct_max
-    )
+    assert btc.classifier.range_atr_pct_max <= eth.classifier.range_atr_pct_max <= sol.classifier.range_atr_pct_max
 
 
 def test_regime_gate_futures_vs_crypto_clearly_distinct() -> None:

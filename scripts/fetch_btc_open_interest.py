@@ -59,18 +59,32 @@ _USER_AGENT = "eta-engine/fetch_btc_open_interest"
 
 # Bybit's intervalTime takes specific values
 _TF_TO_BYBIT_INTERVAL: dict[str, str] = {
-    "5m": "5min", "15m": "15min", "30m": "30min", "1h": "1h",
-    "4h": "4h", "1d": "1d",
+    "5m": "5min",
+    "15m": "15min",
+    "30m": "30min",
+    "1h": "1h",
+    "4h": "4h",
+    "1d": "1d",
 }
 
 _TF_TO_PERIOD: dict[str, str] = {
-    "5m": "5m", "15m": "15m", "30m": "30m", "1h": "1h",
-    "2h": "2h", "4h": "4h", "6h": "6h", "12h": "12h", "1d": "1d",
+    "5m": "5m",
+    "15m": "15m",
+    "30m": "30m",
+    "1h": "1h",
+    "2h": "2h",
+    "4h": "4h",
+    "6h": "6h",
+    "12h": "12h",
+    "1d": "1d",
 }
 
 
 def _fetch_chunk_bybit(
-    symbol: str, period: str, start_ms: int, end_ms: int,
+    symbol: str,
+    period: str,
+    start_ms: int,
+    end_ms: int,
 ) -> list[dict]:
     """Bybit OI history (US-friendly). Returns 200 most recent records
     in [startTime, endTime]. Schema differs from Binance — normalize
@@ -101,13 +115,13 @@ def _fetch_chunk_bybit(
 
 
 def _fetch_chunk_binance(
-    symbol: str, period: str, start_ms: int, end_ms: int,
+    symbol: str,
+    period: str,
+    start_ms: int,
+    end_ms: int,
 ) -> list[dict]:
     """Binance OI history (geo-blocked from US — fallback only)."""
-    url = (
-        f"{_BINANCE_BASE}?symbol={symbol}&period={period}"
-        f"&startTime={start_ms}&endTime={end_ms}&limit=500"
-    )
+    url = f"{_BINANCE_BASE}?symbol={symbol}&period={period}&startTime={start_ms}&endTime={end_ms}&limit=500"
     req = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:
@@ -135,8 +149,7 @@ def _normalize_bybit(rows: list[dict]) -> list[dict]:
             oi = float(r["openInterest"])
         except (KeyError, ValueError, TypeError):
             continue
-        out.append({"timestamp": ts_ms, "sumOpenInterest": str(oi),
-                    "sumOpenInterestValue": "0"})
+        out.append({"timestamp": ts_ms, "sumOpenInterest": str(oi), "sumOpenInterestValue": "0"})
     return out
 
 
@@ -150,8 +163,10 @@ def _fetch_chunk(symbol: str, period: str, start_ms: int, end_ms: int) -> list[d
 
 
 def fetch_oi(
-    symbol: str = "BTCUSDT", period: str = "1h",
-    start: datetime | None = None, end: datetime | None = None,
+    symbol: str = "BTCUSDT",
+    period: str = "1h",
+    start: datetime | None = None,
+    end: datetime | None = None,
 ) -> list[dict]:
     """Fetch OI history in chunks. Returns list of dicts with time +
     sumOpenInterest + sumOpenInterestValue."""
@@ -175,8 +190,8 @@ def fetch_oi(
         chunk_start_ms = max(chunk_start_ms, start_ms)
         print(
             f"  {symbol}/{period} "
-            f"{datetime.fromtimestamp(chunk_start_ms/1000, UTC).date()} -> "
-            f"{datetime.fromtimestamp(cursor_end_ms/1000, UTC).date()}"
+            f"{datetime.fromtimestamp(chunk_start_ms / 1000, UTC).date()} -> "
+            f"{datetime.fromtimestamp(cursor_end_ms / 1000, UTC).date()}"
         )
         rows = _fetch_chunk(symbol, period, chunk_start_ms, cursor_end_ms)
         if not rows:
@@ -186,11 +201,13 @@ def fetch_oi(
             if ts in seen:
                 continue
             seen.add(ts)
-            all_rows.append({
-                "time": ts // 1000,
-                "open_interest_btc": float(r["sumOpenInterest"]),
-                "open_interest_usd": float(r["sumOpenInterestValue"]),
-            })
+            all_rows.append(
+                {
+                    "time": ts // 1000,
+                    "open_interest_btc": float(r["sumOpenInterest"]),
+                    "open_interest_usd": float(r["sumOpenInterestValue"]),
+                }
+            )
         # Advance cursor: oldest timestamp in this chunk - 1
         oldest_ts = min(int(r["timestamp"]) for r in rows)
         if oldest_ts <= start_ms:
@@ -233,14 +250,10 @@ def main() -> int:
     p.add_argument("--months", type=int, default=24)
     p.add_argument("--start", type=str, default=None)
     p.add_argument("--end", type=str, default=None)
-    p.add_argument("--out", type=Path,
-                   default=CRYPTO_HISTORY_ROOT / "BTCOI_1h.csv")
+    p.add_argument("--out", type=Path, default=CRYPTO_HISTORY_ROOT / "BTCOI_1h.csv")
     args = p.parse_args()
 
-    end = (
-        datetime.fromisoformat(args.end).replace(tzinfo=UTC)
-        if args.end else datetime.now(UTC)
-    )
+    end = datetime.fromisoformat(args.end).replace(tzinfo=UTC) if args.end else datetime.now(UTC)
     if args.start:
         start = datetime.fromisoformat(args.start).replace(tzinfo=UTC)
     else:
@@ -258,7 +271,7 @@ def main() -> int:
         f"[oi] wrote {n} rows to {args.out}; "
         f"last={datetime.fromtimestamp(last['time'], UTC).date()} "
         f"OI={last['open_interest_btc']:.0f} BTC "
-        f"(${last['open_interest_usd']/1e9:.2f}B)"
+        f"(${last['open_interest_usd'] / 1e9:.2f}B)"
     )
     return 0
 

@@ -37,6 +37,7 @@ Bars containing the schema:
     timestamp_utc, epoch_s, open, high, low, close,
     volume_total, volume_buy, volume_sell, n_trades
 """
+
 from __future__ import annotations
 
 # ruff: noqa: ANN401
@@ -49,9 +50,10 @@ from typing import Any
 @dataclass
 class AggressorFlowConfig:
     """Tuning surface."""
-    window_bars: int = 10           # rolling lookback (in bars)
-    entry_threshold: float = 0.35   # |ratio| min to fire
-    consecutive_bars: int = 2       # min consecutive bars above threshold
+
+    window_bars: int = 10  # rolling lookback (in bars)
+    entry_threshold: float = 0.35  # |ratio| min to fire
+    consecutive_bars: int = 2  # min consecutive bars above threshold
     require_close_confirm: bool = True  # close must move in imbalance direction
     atr_stop_mult: float = 1.0
     rr_target: float = 2.0
@@ -75,7 +77,7 @@ class AggressorFlowState:
 
 @dataclass
 class AggressorFlowSignal:
-    side: str            # "LONG" | "SHORT"
+    side: str  # "LONG" | "SHORT"
     entry_price: float
     stop: float
     target: float
@@ -126,10 +128,9 @@ def compute_imbalance_ratio(bars: list[dict]) -> tuple[float, float, float]:
     return (sum_buy - sum_sell) / total, sum_buy, sum_sell
 
 
-def evaluate_bar(bar: dict, config: AggressorFlowConfig,
-                  state: AggressorFlowState, *,
-                  atr: float = 1.0,
-                  symbol: str = "MNQ") -> AggressorFlowSignal | None:
+def evaluate_bar(
+    bar: dict, config: AggressorFlowConfig, state: AggressorFlowState, *, atr: float = 1.0, symbol: str = "MNQ"
+) -> AggressorFlowSignal | None:
     """Process one bar.  Updates state.  Returns signal or None."""
     bar_dt = _bar_dt(bar)
     today = (bar_dt or datetime.now(UTC)).strftime("%Y%m%d")
@@ -153,7 +154,7 @@ def evaluate_bar(bar: dict, config: AggressorFlowConfig,
         return None
 
     state.bar_window.append(bar)
-    window = list(state.bar_window)[-config.window_bars:]
+    window = list(state.bar_window)[-config.window_bars :]
     if len(window) < config.window_bars:
         return None  # not enough history yet
 
@@ -190,10 +191,20 @@ def evaluate_bar(bar: dict, config: AggressorFlowConfig,
             state.consecutive_long_count = 0
             state.last_signal_dt = bar_dt
             state.trades_today += 1
-            return _emit(side="LONG", entry=entry, stop=stop, target=target,
-                          ratio=ratio, n_consec=config.consecutive_bars,
-                          bar=bar, symbol=symbol, state=state, config=config,
-                          sum_buy=sum_buy, sum_sell=sum_sell)
+            return _emit(
+                side="LONG",
+                entry=entry,
+                stop=stop,
+                target=target,
+                ratio=ratio,
+                n_consec=config.consecutive_bars,
+                bar=bar,
+                symbol=symbol,
+                state=state,
+                config=config,
+                sum_buy=sum_buy,
+                sum_sell=sum_sell,
+            )
     # SHORT side
     elif ratio <= -config.entry_threshold:
         state.consecutive_short_count += 1
@@ -206,10 +217,20 @@ def evaluate_bar(bar: dict, config: AggressorFlowConfig,
             state.consecutive_short_count = 0
             state.last_signal_dt = bar_dt
             state.trades_today += 1
-            return _emit(side="SHORT", entry=entry, stop=stop, target=target,
-                          ratio=ratio, n_consec=config.consecutive_bars,
-                          bar=bar, symbol=symbol, state=state, config=config,
-                          sum_buy=sum_buy, sum_sell=sum_sell)
+            return _emit(
+                side="SHORT",
+                entry=entry,
+                stop=stop,
+                target=target,
+                ratio=ratio,
+                n_consec=config.consecutive_bars,
+                bar=bar,
+                symbol=symbol,
+                state=state,
+                config=config,
+                sum_buy=sum_buy,
+                sum_sell=sum_sell,
+            )
     else:
         # Neutral zone — reset both
         state.consecutive_long_count = 0
@@ -217,10 +238,21 @@ def evaluate_bar(bar: dict, config: AggressorFlowConfig,
     return None
 
 
-def _emit(*, side: str, entry: float, stop: float, target: float,
-          ratio: float, n_consec: int, bar: dict, symbol: str,
-          state: AggressorFlowState, config: AggressorFlowConfig,
-          sum_buy: float, sum_sell: float) -> AggressorFlowSignal:
+def _emit(
+    *,
+    side: str,
+    entry: float,
+    stop: float,
+    target: float,
+    ratio: float,
+    n_consec: int,
+    bar: dict,
+    symbol: str,
+    state: AggressorFlowState,
+    config: AggressorFlowConfig,
+    sum_buy: float,
+    sum_sell: float,
+) -> AggressorFlowSignal:
     bar_ts = str(bar.get("timestamp_utc", ""))
     signal_id = f"{symbol}-AGGFLOW-{side}-{bar_ts}"
     state.emitted_signal_ids.add(signal_id)
@@ -230,8 +262,9 @@ def _emit(*, side: str, entry: float, stop: float, target: float,
         stop=round(stop, 4),
         target=round(target, 4),
         confidence=round(min(1.0, abs(ratio) / 0.5), 2),
-        rationale=(f"aggressor flow ratio={ratio:+.2f} (buy={sum_buy:.0f}, "
-                   f"sell={sum_sell:.0f}) for {n_consec} consec bars"),
+        rationale=(
+            f"aggressor flow ratio={ratio:+.2f} (buy={sum_buy:.0f}, sell={sum_sell:.0f}) for {n_consec} consec bars"
+        ),
         bar_ts=bar_ts,
         signal_id=signal_id,
         qty_contracts=1,
@@ -241,8 +274,7 @@ def _emit(*, side: str, entry: float, stop: float, target: float,
     )
 
 
-def make_aggressor_flow_strategy(config: AggressorFlowConfig | None = None,
-                                    *, symbol: str = "MNQ") -> Any:
+def make_aggressor_flow_strategy(config: AggressorFlowConfig | None = None, *, symbol: str = "MNQ") -> Any:
     cfg = config or AggressorFlowConfig()
     state = AggressorFlowState()
 

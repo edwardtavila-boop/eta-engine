@@ -85,14 +85,18 @@ def test_purge_expired_drops_old_entries(tmp_path: Path) -> None:
     sha_new = FilesCache.hash_content(b"new")
     old_t = datetime.now(UTC) - timedelta(seconds=100)
     cache._index[sha_old] = CachedFile(
-        sha256=sha_old, file_id="f_old",
+        sha256=sha_old,
+        file_id="f_old",
         uploaded_at=old_t.strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
-        bytes=3, label="",
+        bytes=3,
+        label="",
     )
     cache._index[sha_new] = CachedFile(
-        sha256=sha_new, file_id="f_new",
+        sha256=sha_new,
+        file_id="f_new",
         uploaded_at=datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
-        bytes=3, label="",
+        bytes=3,
+        label="",
     )
     dropped = cache.purge_expired()
     assert dropped == 1
@@ -106,6 +110,7 @@ def test_ensure_uploaded_returns_none_without_anthropic(
 ) -> None:
     # Force the import of `anthropic` to fail.
     import sys
+
     monkeypatch.setitem(sys.modules, "anthropic", None)
     cache = FilesCache(cache_path=tmp_path / "fc.json")
     # No SDK + no client -> ensure_uploaded returns None.
@@ -125,6 +130,7 @@ def test_is_files_api_available_returns_bool() -> None:
 def test_ensure_uploaded_uses_cache_on_repeat(tmp_path: Path) -> None:
     cache = FilesCache(cache_path=tmp_path / "fc.json")
     cache.remember(b"abc", file_id="file_001", label="lbl")
+
     # Stub out client; should never be called.
     class _NoCallClient:
         class beta:  # noqa: N801

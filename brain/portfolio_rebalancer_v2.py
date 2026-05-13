@@ -14,6 +14,7 @@ Policy shape:
   4. Preserve the total baseline budget unless the fleet drawdown brake fires,
      in which case the total target budget is cut in half.
 """
+
 from __future__ import annotations
 
 import logging
@@ -30,7 +31,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class BotPerformance:
     bot_name: str
-    rolling_returns: Sequence[float]   # daily returns over the rolling window
+    rolling_returns: Sequence[float]  # daily returns over the rolling window
     baseline_usd: float
 
 

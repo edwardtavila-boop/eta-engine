@@ -36,6 +36,7 @@ is constrained (small steps, all from a whitelist), and promotion
 requires a clean improvement margin. Operator can disable promotion
 entirely by setting ``auto_promote=False``.
 """
+
 from __future__ import annotations
 
 import logging
@@ -185,10 +186,10 @@ class ShadowTrial:
 class MetaLearnerConfig:
     """Operator-tunable knobs for the evolutionary loop."""
 
-    promotion_margin_r: float = 0.20    # challenger must beat champion by >= 0.20R avg
-    min_episodes: int = 30               # before any promotion is considered
-    n_challengers: int = 3               # how many challengers per generation
-    auto_promote: bool = False           # if False, only PROPOSES; operator confirms
+    promotion_margin_r: float = 0.20  # challenger must beat champion by >= 0.20R avg
+    min_episodes: int = 30  # before any promotion is considered
+    n_challengers: int = 3  # how many challengers per generation
+    auto_promote: bool = False  # if False, only PROPOSES; operator confirms
 
 
 class MetaLearner:
@@ -252,10 +253,7 @@ class MetaLearner:
         must beat champion by ``promotion_margin_r`` AND have at
         least ``min_episodes`` observations.
         """
-        eligible = [
-            t for t in self._trials.values()
-            if t.n >= self.cfg.min_episodes
-        ]
+        eligible = [t for t in self._trials.values() if t.n >= self.cfg.min_episodes]
         if not eligible:
             return None
         best = max(eligible, key=lambda t: t.avg_r)
@@ -265,8 +263,10 @@ class MetaLearner:
             logger.info(
                 "meta-learner: challenger %s beats champion %s by %.3f R "
                 "(margin %.2f); auto_promote=False, recording proposal only",
-                best.challenger_id, self._champion_id,
-                best.avg_r - champion_avg_r, self.cfg.promotion_margin_r,
+                best.challenger_id,
+                self._champion_id,
+                best.avg_r - champion_avg_r,
+                self.cfg.promotion_margin_r,
             )
             if memory is not None:
                 v = memory.record_procedural_version(
@@ -302,7 +302,8 @@ class MetaLearner:
         """Convenience: evaluate any pending trials, then spawn the
         next generation. Returns the newly-promoted version, if any."""
         promoted = self.evaluate_and_promote(
-            memory=memory, champion_avg_r=champion_avg_r,
+            memory=memory,
+            champion_avg_r=champion_avg_r,
         )
         # Clean up promoted trials so they don't compete again
         if promoted:
@@ -323,17 +324,20 @@ class MetaLearner:
             return CandidateConfig()
         try:
             import json
+
             data = json.loads(self.champion_path.read_text(encoding="utf-8"))
             return CandidateConfig.from_dict(data)
         except (OSError, ValueError) as exc:
             logger.warning(
-                "meta-learner: champion load failed (%s); fresh defaults", exc,
+                "meta-learner: champion load failed (%s); fresh defaults",
+                exc,
             )
             return CandidateConfig()
 
     def _save_champion(self) -> None:
         try:
             import json
+
             self.champion_path.parent.mkdir(parents=True, exist_ok=True)
             self.champion_path.write_text(
                 json.dumps(self._champion.to_dict(), indent=2),

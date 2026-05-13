@@ -1471,16 +1471,19 @@ class CryptoSeedBot(BaseBot):
                 RegimeGateConfig,
                 is_grid_safe,
             )
+
             cfg_raw: dict[str, Any] = {}
             try:
                 from eta_engine.strategies.per_bot_registry import get_for_bot
+
                 a = get_for_bot(getattr(self.config, "name", ""))
                 if a is not None:
                     cfg_raw = dict(a.extras)
             except Exception:  # noqa: BLE001 -- registry lookup defensive
                 pass
             allowed, _reason = is_grid_safe(
-                bar, config=RegimeGateConfig.from_extras(cfg_raw),
+                bar,
+                config=RegimeGateConfig.from_extras(cfg_raw),
             )
             if not allowed:
                 return False

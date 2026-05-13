@@ -90,23 +90,27 @@ def _assignment(bot_id: str, partner: str | None = None) -> StrategyAssignment:
         step_days=30,
         min_trades_per_window=10,
         rationale="test fixture for fleet_correlation_watchdog tests; "
-                  "needs to be at least 50 chars long to satisfy the registry rationale check.",
+        "needs to be at least 50 chars long to satisfy the registry rationale check.",
         extras=extras,
     )
 
 
 def test_partner_pairs_skips_bots_without_partner() -> None:
-    pairs = _partner_pairs([
-        _assignment("solo_bot", partner=None),
-    ])
+    pairs = _partner_pairs(
+        [
+            _assignment("solo_bot", partner=None),
+        ]
+    )
     assert pairs == []
 
 
 def test_partner_pairs_dedupes_bidirectional_links() -> None:
-    pairs = _partner_pairs([
-        _assignment("btc_hybrid", partner="eth_perp"),
-        _assignment("eth_perp", partner="btc_hybrid"),
-    ])
+    pairs = _partner_pairs(
+        [
+            _assignment("btc_hybrid", partner="eth_perp"),
+            _assignment("eth_perp", partner="btc_hybrid"),
+        ]
+    )
     assert len(pairs) == 1
     bots = sorted(pairs[0])
     assert bots == ["btc_hybrid", "eth_perp"]
@@ -114,16 +118,20 @@ def test_partner_pairs_dedupes_bidirectional_links() -> None:
 
 def test_partner_pairs_drops_dangling_references() -> None:
     """Partner that isn't in the registry -> silently skipped."""
-    pairs = _partner_pairs([
-        _assignment("btc_hybrid", partner="ghost_bot"),
-    ])
+    pairs = _partner_pairs(
+        [
+            _assignment("btc_hybrid", partner="ghost_bot"),
+        ]
+    )
     assert pairs == []
 
 
 def test_partner_pairs_drops_self_reference() -> None:
-    pairs = _partner_pairs([
-        _assignment("btc_hybrid", partner="btc_hybrid"),
-    ])
+    pairs = _partner_pairs(
+        [
+            _assignment("btc_hybrid", partner="btc_hybrid"),
+        ]
+    )
     assert pairs == []
 
 
@@ -147,6 +155,7 @@ def test_assess_pair_red_on_perfectly_correlated_streams(journal: DecisionJourna
     rs = [1.0, -0.5, 0.7, -0.4, 1.2, 0.9, -0.6, 1.1, -0.3, 0.8, 1.0, -0.7]
     # Pull strategy_ids for the canonical pair
     from eta_engine.strategies.per_bot_registry import get_for_bot
+
     sid_a = get_for_bot("btc_hybrid").strategy_id  # type: ignore[union-attr]
     sid_b = get_for_bot("eth_perp").strategy_id  # type: ignore[union-attr]
     _seed_trades(journal, sid_a, rs)
@@ -184,15 +193,13 @@ def test_run_once_red_severity_writes_blocked_event(journal: DecisionJournal) ->
     emits a BLOCKED-outcome GRADER event recording the trip."""
     rs = [1.0, -0.5, 0.7, -0.4, 1.2, 0.9, -0.6, 1.1, -0.3, 0.8, 1.0, -0.7]
     from eta_engine.strategies.per_bot_registry import get_for_bot
+
     sid_a = get_for_bot("btc_hybrid").strategy_id  # type: ignore[union-attr]
     sid_b = get_for_bot("eth_perp").strategy_id  # type: ignore[union-attr]
     _seed_trades(journal, sid_a, rs)
     _seed_trades(journal, sid_b, rs)
     run_once(journal=journal, write_event=True)
-    grader_events = [
-        e for e in journal.iter_all()
-        if e.actor == Actor.GRADER and "btc_hybrid" in e.intent
-    ]
+    grader_events = [e for e in journal.iter_all() if e.actor == Actor.GRADER and "btc_hybrid" in e.intent]
     assert any(e.outcome == Outcome.BLOCKED for e in grader_events)
     # Verdict metadata carries the structured action
     blocked = next(e for e in grader_events if e.outcome == Outcome.BLOCKED)

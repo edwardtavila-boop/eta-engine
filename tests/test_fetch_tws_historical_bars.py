@@ -11,6 +11,7 @@ Verifies:
 * End-to-end ``run()`` with a mocked IB returning synthetic bars
 * Single-chunk failure does not crash the loop
 """
+
 from __future__ import annotations
 
 import csv
@@ -57,9 +58,7 @@ class _MockIB:
         # `[]` (no port open) and `None` (default to 4002) are distinct --
         # use a sentinel check rather than truthiness so an empty list is
         # honored as "all ports closed".
-        self.connect_success_ports = (
-            [4002] if connect_success_ports is None else connect_success_ports
-        )
+        self.connect_success_ports = [4002] if connect_success_ports is None else connect_success_ports
         self.synthetic_bars_per_chunk = synthetic_bars_per_chunk
         self.fail_chunk_indices = fail_chunk_indices or set()
         self.pacing_violation_indices = pacing_violation_indices or set()
@@ -86,10 +85,7 @@ class _MockIB:
     def qualifyContracts(self, *contracts: Any) -> list[Any]:  # noqa: N802
         self.qualify_calls.extend(contracts)
         # Return a fake qualified contract for each input.
-        return [
-            _MockQualifiedContract(symbol=getattr(c, "symbol", "?"))
-            for c in contracts
-        ]
+        return [_MockQualifiedContract(symbol=getattr(c, "symbol", "?")) for c in contracts]
 
     def reqContractDetails(self, contract: Any) -> list[Any]:  # noqa: N802
         # Default mock: shouldn't be called when qualifyContracts succeeds.
@@ -107,13 +103,15 @@ class _MockIB:
         formatDate: int,  # noqa: N803, ARG002
     ) -> list[_MockBar]:
         idx = len(self.history_calls)
-        self.history_calls.append({
-            "endDateTime": endDateTime,
-            "durationStr": durationStr,
-            "barSizeSetting": barSizeSetting,
-            "whatToShow": whatToShow,
-            "useRTH": useRTH,
-        })
+        self.history_calls.append(
+            {
+                "endDateTime": endDateTime,
+                "durationStr": durationStr,
+                "barSizeSetting": barSizeSetting,
+                "whatToShow": whatToShow,
+                "useRTH": useRTH,
+            }
+        )
         if idx in self.pacing_violation_indices:
             raise RuntimeError("Historical Market Data Service error message:Pacing violation")
         if idx in self.fail_chunk_indices:
@@ -128,10 +126,16 @@ class _MockIB:
         salt = idx * 31  # 31 prime, so chunks don't collide on 5m boundaries.
         for i in range(self.synthetic_bars_per_chunk):
             ts = end_dt - timedelta(minutes=5 * (i + 1) + salt)
-            out.append(_MockBar(
-                dt=ts, o=50000.0 + idx, h=50100.0 + idx,
-                lo=49900.0 + idx, c=50050.0 + idx, v=10.0,
-            ))
+            out.append(
+                _MockBar(
+                    dt=ts,
+                    o=50000.0 + idx,
+                    h=50100.0 + idx,
+                    lo=49900.0 + idx,
+                    c=50050.0 + idx,
+                    v=10.0,
+                )
+            )
         return out
 
 
@@ -158,13 +162,21 @@ def test_parser_defaults_match_spec() -> None:
 
 def test_parser_accepts_overrides() -> None:
     parser = mod.build_parser()
-    args = parser.parse_args([
-        "--symbols", "MNQ", "ES",
-        "--days", "30",
-        "--timeframe", "1m",
-        "--port", "7497",
-        "--client-id", "42",
-    ])
+    args = parser.parse_args(
+        [
+            "--symbols",
+            "MNQ",
+            "ES",
+            "--days",
+            "30",
+            "--timeframe",
+            "1m",
+            "--port",
+            "7497",
+            "--client-id",
+            "42",
+        ]
+    )
     assert args.symbols == ["MNQ", "ES"]
     assert args.days == 30
     assert args.timeframe == "1m"
@@ -214,7 +226,11 @@ def test_plan_chunks_rejects_unknown_timeframe() -> None:
 def test_bar_to_row_handles_datetime() -> None:
     bar = _MockBar(
         dt=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
-        o=100.0, h=101.0, lo=99.0, c=100.5, v=42.0,
+        o=100.0,
+        h=101.0,
+        lo=99.0,
+        c=100.5,
+        v=42.0,
     )
     row = mod._bar_to_row(bar)
     assert row is not None
@@ -226,7 +242,11 @@ def test_bar_to_row_handles_datetime() -> None:
 def test_bar_to_row_handles_naive_datetime_as_utc() -> None:
     bar = _MockBar(
         dt=datetime(2026, 5, 1, 12, 0),  # naive
-        o=1, h=1, lo=1, c=1, v=1,
+        o=1,
+        h=1,
+        lo=1,
+        c=1,
+        v=1,
     )
     row = mod._bar_to_row(bar)
     assert row is not None
@@ -243,7 +263,10 @@ def test_bar_to_row_returns_none_on_missing_date() -> None:
 def test_connect_with_fallback_uses_primary_when_open() -> None:
     ib = _MockIB(connect_success_ports=[4002])
     landed = mod._connect_with_fallback(
-        ib, host="127.0.0.1", primary_port=4002, client_id=11,
+        ib,
+        host="127.0.0.1",
+        primary_port=4002,
+        client_id=11,
     )
     assert landed == 4002
     assert ib.connect_calls == [("127.0.0.1", 4002, 11)]
@@ -252,7 +275,10 @@ def test_connect_with_fallback_uses_primary_when_open() -> None:
 def test_connect_with_fallback_walks_to_secondary() -> None:
     ib = _MockIB(connect_success_ports=[7497])  # only paper TWS open
     landed = mod._connect_with_fallback(
-        ib, host="127.0.0.1", primary_port=4002, client_id=11,
+        ib,
+        host="127.0.0.1",
+        primary_port=4002,
+        client_id=11,
     )
     assert landed == 7497
     # Tried 4002 first, then 7497.
@@ -263,7 +289,10 @@ def test_connect_with_fallback_raises_when_all_closed() -> None:
     ib = _MockIB(connect_success_ports=[])
     with pytest.raises(ConnectionError):
         mod._connect_with_fallback(
-            ib, host="127.0.0.1", primary_port=4002, client_id=11,
+            ib,
+            host="127.0.0.1",
+            primary_port=4002,
+            client_id=11,
         )
 
 
@@ -315,10 +344,8 @@ def test_dow_futures_supported_with_quarterly_rolls(tmp_path: Path) -> None:
 def test_csv_format_matches_load_ohlcv_expectations(tmp_path: Path) -> None:
     out_path = tmp_path / "MBT1_5m.csv"
     rows = [
-        {"time": 1_700_000_000, "open": 50000.0, "high": 50100.0,
-         "low": 49900.0, "close": 50050.0, "volume": 12.5},
-        {"time": 1_700_000_300, "open": 50050.0, "high": 50200.0,
-         "low": 50000.0, "close": 50150.0, "volume": 10.0},
+        {"time": 1_700_000_000, "open": 50000.0, "high": 50100.0, "low": 49900.0, "close": 50050.0, "volume": 12.5},
+        {"time": 1_700_000_300, "open": 50050.0, "high": 50200.0, "low": 50000.0, "close": 50150.0, "volume": 10.0},
     ]
     mod.write_csv(out_path, rows)
 
@@ -329,10 +356,12 @@ def test_csv_format_matches_load_ohlcv_expectations(tmp_path: Path) -> None:
 
 # --- Dry run ---
 def test_run_dry_run_does_not_connect(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
     tmp_path: Path,
 ) -> None:
     """--dry-run must print plan and never instantiate ib_insync.IB()."""
+
     def boom(*_a: Any, **_kw: Any) -> Any:
         raise AssertionError("dry-run must not import or call ib_insync")
 
@@ -340,12 +369,18 @@ def test_run_dry_run_does_not_connect(
     # is the primary entry, so guard against accidental connect.
     monkeypatch.setattr(mod, "_connect_with_fallback", boom)
 
-    rc = mod.run([
-        "--symbols", "MBT", "MET",
-        "--days", "30",
-        "--root", str(tmp_path),
-        "--dry-run",
-    ])
+    rc = mod.run(
+        [
+            "--symbols",
+            "MBT",
+            "MET",
+            "--days",
+            "30",
+            "--root",
+            str(tmp_path),
+            "--dry-run",
+        ]
+    )
     assert rc == 0
     out = capsys.readouterr().out
     assert "dry-run" in out
@@ -356,15 +391,22 @@ def test_run_dry_run_does_not_connect(
 
 
 def test_dry_run_chunk_total_for_540d_two_symbols(
-    capsys: pytest.CaptureFixture[str], tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
 ) -> None:
     """The runbook total is 540d x 5m x 2 sym = 36 chunks."""
-    rc = mod.run([
-        "--symbols", "MBT", "MET",
-        "--days", "540",
-        "--root", str(tmp_path),
-        "--dry-run",
-    ])
+    rc = mod.run(
+        [
+            "--symbols",
+            "MBT",
+            "MET",
+            "--days",
+            "540",
+            "--root",
+            str(tmp_path),
+            "--dry-run",
+        ]
+    )
     assert rc == 0
     out = capsys.readouterr().out
     assert "total chunks across symbols: 36" in out
@@ -372,18 +414,24 @@ def test_dry_run_chunk_total_for_540d_two_symbols(
 
 # --- End-to-end ---
 def test_run_writes_canonical_csv_with_mocked_ib(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     ib = _MockIB(synthetic_bars_per_chunk=5)
     monkeypatch.setattr(mod.time, "sleep", lambda *_a, **_kw: None)
 
     rc = mod.run(
         [
-            "--symbols", "MBT",
-            "--days", "60",  # 2 chunks
-            "--end", "2026-05-01",
-            "--root", str(tmp_path),
-            "--pacing-sleep", "0",
+            "--symbols",
+            "MBT",
+            "--days",
+            "60",  # 2 chunks
+            "--end",
+            "2026-05-01",
+            "--root",
+            str(tmp_path),
+            "--pacing-sleep",
+            "0",
         ],
         ib=ib,
     )
@@ -415,7 +463,8 @@ def test_run_writes_canonical_csv_with_mocked_ib(
 
 
 def test_run_continues_past_a_failed_chunk(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     """A single bad chunk must log + continue, not abort the symbol."""
     ib = _MockIB(synthetic_bars_per_chunk=5, fail_chunk_indices={0})
@@ -423,11 +472,16 @@ def test_run_continues_past_a_failed_chunk(
 
     rc = mod.run(
         [
-            "--symbols", "MBT",
-            "--days", "60",
-            "--end", "2026-05-01",
-            "--root", str(tmp_path),
-            "--pacing-sleep", "0",
+            "--symbols",
+            "MBT",
+            "--days",
+            "60",
+            "--end",
+            "2026-05-01",
+            "--root",
+            str(tmp_path),
+            "--pacing-sleep",
+            "0",
         ],
         ib=ib,
     )
@@ -441,7 +495,8 @@ def test_run_continues_past_a_failed_chunk(
 
 
 def test_run_handles_pacing_violation_with_backoff(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     """A pacing violation triggers the back-off branch, not the generic-fail one."""
     sleep_calls: list[float] = []
@@ -454,11 +509,16 @@ def test_run_handles_pacing_violation_with_backoff(
 
     rc = mod.run(
         [
-            "--symbols", "MBT",
-            "--days", "60",
-            "--end", "2026-05-01",
-            "--root", str(tmp_path),
-            "--pacing-sleep", "0",
+            "--symbols",
+            "MBT",
+            "--days",
+            "60",
+            "--end",
+            "2026-05-01",
+            "--root",
+            str(tmp_path),
+            "--pacing-sleep",
+            "0",
         ],
         ib=ib,
     )
@@ -468,7 +528,8 @@ def test_run_handles_pacing_violation_with_backoff(
 
 
 def test_run_returns_1_when_no_rows_fetched(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     """Empty fetch should fail loudly so the operator notices."""
     ib = _MockIB(synthetic_bars_per_chunk=0)
@@ -476,11 +537,16 @@ def test_run_returns_1_when_no_rows_fetched(
 
     rc = mod.run(
         [
-            "--symbols", "MBT",
-            "--days", "30",
-            "--end", "2026-05-01",
-            "--root", str(tmp_path),
-            "--pacing-sleep", "0",
+            "--symbols",
+            "MBT",
+            "--days",
+            "30",
+            "--end",
+            "2026-05-01",
+            "--root",
+            str(tmp_path),
+            "--pacing-sleep",
+            "0",
         ],
         ib=ib,
     )
@@ -488,7 +554,8 @@ def test_run_returns_1_when_no_rows_fetched(
 
 
 def test_run_skips_unsupported_symbol(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     """An unknown symbol logs a warning + is dropped from the work list."""
@@ -498,11 +565,17 @@ def test_run_skips_unsupported_symbol(
     with caplog.at_level("WARNING"):
         rc = mod.run(
             [
-                "--symbols", "MBT", "ZZZ_NOT_A_FUTURES_SYMBOL",
-                "--days", "30",
-                "--end", "2026-05-01",
-                "--root", str(tmp_path),
-                "--pacing-sleep", "0",
+                "--symbols",
+                "MBT",
+                "ZZZ_NOT_A_FUTURES_SYMBOL",
+                "--days",
+                "30",
+                "--end",
+                "2026-05-01",
+                "--root",
+                str(tmp_path),
+                "--pacing-sleep",
+                "0",
             ],
             ib=ib,
         )
@@ -515,18 +588,24 @@ def test_run_skips_unsupported_symbol(
 
 
 def test_run_returns_1_on_connect_failure(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     ib = _MockIB(connect_success_ports=[])  # all ports closed
     monkeypatch.setattr(mod.time, "sleep", lambda *_a, **_kw: None)
 
     rc = mod.run(
         [
-            "--symbols", "MBT",
-            "--days", "30",
-            "--end", "2026-05-01",
-            "--root", str(tmp_path),
-            "--pacing-sleep", "0",
+            "--symbols",
+            "MBT",
+            "--days",
+            "30",
+            "--end",
+            "2026-05-01",
+            "--root",
+            str(tmp_path),
+            "--pacing-sleep",
+            "0",
         ],
         ib=ib,
     )
@@ -564,7 +643,8 @@ class _AmbiguousIB(_MockIB):
 
 
 def test_front_month_fallback_picks_soonest_non_expired(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     """When qualifyContracts returns [] (ambiguous), the fetcher must fall
     back to reqContractDetails and pick the SOONEST non-expired expiration.
@@ -583,11 +663,16 @@ def test_front_month_fallback_picks_soonest_non_expired(
 
     rc = mod.run(
         [
-            "--symbols", "MBT",
-            "--days", "30",
-            "--end", "2026-05-07",
-            "--root", str(tmp_path),
-            "--pacing-sleep", "0",
+            "--symbols",
+            "MBT",
+            "--days",
+            "30",
+            "--end",
+            "2026-05-07",
+            "--root",
+            str(tmp_path),
+            "--pacing-sleep",
+            "0",
         ],
         ib=ib,
     )
@@ -604,7 +689,8 @@ def test_front_month_fallback_picks_soonest_non_expired(
 
 
 def test_front_month_fallback_aborts_when_all_expired(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     """All candidates expired → fetcher logs + skips the symbol cleanly."""
     ib = _AmbiguousIB(
@@ -615,11 +701,16 @@ def test_front_month_fallback_aborts_when_all_expired(
 
     rc = mod.run(
         [
-            "--symbols", "MBT",
-            "--days", "30",
-            "--end", "2026-05-07",
-            "--root", str(tmp_path),
-            "--pacing-sleep", "0",
+            "--symbols",
+            "MBT",
+            "--days",
+            "30",
+            "--end",
+            "2026-05-07",
+            "--root",
+            str(tmp_path),
+            "--pacing-sleep",
+            "0",
         ],
         ib=ib,
     )
@@ -687,26 +778,23 @@ def test_commodity_exchanges_match_ibkr_contract_resolution() -> None:
     """
     expected: dict[str, tuple[str, str]] = {
         # symbol: (root, exchange) — must match venues.ibkr_live.FUTURES_MAP
-        "GC":  ("GC",  "COMEX"),
+        "GC": ("GC", "COMEX"),
         "MGC": ("MGC", "COMEX"),
-        "CL":  ("CL",  "NYMEX"),
+        "CL": ("CL", "NYMEX"),
         "MCL": ("MCL", "NYMEX"),
-        "NG":  ("NG",  "NYMEX"),
-        "ZN":  ("ZN",  "CBOT"),
-        "ZB":  ("ZB",  "CBOT"),
+        "NG": ("NG", "NYMEX"),
+        "ZN": ("ZN", "CBOT"),
+        "ZB": ("ZB", "CBOT"),
         # 6E: IB indexes Euro FX under "EUR" trading code, NOT "6E".
         # See venues.ibkr_live._build_contract for the same translation.
-        "6E":  ("EUR", "CME"),
+        "6E": ("EUR", "CME"),
         "M6E": ("M6E", "CME"),
     }
     for sym, (want_root, want_exchange) in expected.items():
         spec = mod._FUTURES_MAP.get(sym)
         assert spec is not None, f"{sym} missing from _FUTURES_MAP"
         root, exchange, currency, _mult = spec
-        assert root == want_root, (
-            f"{sym}: root={root!r} but IBKR indexes it as {want_root!r} "
-            f"(see venues/ibkr_live.py)"
-        )
+        assert root == want_root, f"{sym}: root={root!r} but IBKR indexes it as {want_root!r} (see venues/ibkr_live.py)"
         assert exchange == want_exchange, (
             f"{sym}: exchange={exchange!r} but IBKR routes it on "
             f"{want_exchange!r}; using the wrong child of CME Group makes "
@@ -724,29 +812,30 @@ def test_commodity_multipliers_match_instrument_specs() -> None:
     """
     # (symbol, expected_multiplier_as_str)
     expected_multipliers: dict[str, str] = {
-        "GC":  "100",      # USD per 1.0 of price (gold: $100/oz)
-        "MGC": "10",       # micro gold: 1/10th
-        "CL":  "1000",     # USD per $1.00 of crude (1000 bbl)
-        "MCL": "100",      # micro crude: 1/10th
-        "NG":  "10000",    # USD per 1.0 of nat gas price (10000 MMBtu)
-        "ZN":  "1000",     # USD per 1.0 of price (10y note)
-        "ZB":  "1000",     # USD per 1.0 of price (30y bond)
-        "6E":  "125000",   # full-size Euro FX: EUR 125,000
-        "M6E": "12500",    # micro Euro FX: 1/10th
+        "GC": "100",  # USD per 1.0 of price (gold: $100/oz)
+        "MGC": "10",  # micro gold: 1/10th
+        "CL": "1000",  # USD per $1.00 of crude (1000 bbl)
+        "MCL": "100",  # micro crude: 1/10th
+        "NG": "10000",  # USD per 1.0 of nat gas price (10000 MMBtu)
+        "ZN": "1000",  # USD per 1.0 of price (10y note)
+        "ZB": "1000",  # USD per 1.0 of price (30y bond)
+        "6E": "125000",  # full-size Euro FX: EUR 125,000
+        "M6E": "12500",  # micro Euro FX: 1/10th
     }
     for sym, want_mult in expected_multipliers.items():
         spec = mod._FUTURES_MAP.get(sym)
         assert spec is not None
         _root, _exchange, _ccy, mult = spec
         assert mult == want_mult, (
-            f"{sym}: multiplier={mult!r} but expected {want_mult!r}; "
-            "wrong multiplier => sizing-math errors downstream"
+            f"{sym}: multiplier={mult!r} but expected {want_mult!r}; wrong multiplier => sizing-math errors downstream"
         )
 
 
 @pytest.mark.parametrize("symbol", list(_COMMODITY_SYMBOLS))
 def test_commodity_dry_run_emits_chunk_plan(
-    symbol: str, capsys: pytest.CaptureFixture[str], tmp_path: Path,
+    symbol: str,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
 ) -> None:
     """--dry-run must produce a chunk plan for each commodity at 5m.
 
@@ -754,13 +843,19 @@ def test_commodity_dry_run_emits_chunk_plan(
     is the same chunking math MBT/MET use, so any commodity that fails
     here would point to a regression in plan_chunks, not the symbol.
     """
-    rc = mod.run([
-        "--symbols", symbol,
-        "--days", "540",
-        "--timeframe", "5m",
-        "--root", str(tmp_path),
-        "--dry-run",
-    ])
+    rc = mod.run(
+        [
+            "--symbols",
+            symbol,
+            "--days",
+            "540",
+            "--timeframe",
+            "5m",
+            "--root",
+            str(tmp_path),
+            "--dry-run",
+        ]
+    )
     assert rc == 0
     out = capsys.readouterr().out
     assert symbol in out
@@ -770,16 +865,23 @@ def test_commodity_dry_run_emits_chunk_plan(
 
 
 def test_commodity_dry_run_total_for_5_symbols(
-    capsys: pytest.CaptureFixture[str], tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
 ) -> None:
     """The 5-commodity 540d 5m fleet fetch is 5 x 18 = 90 chunks."""
-    rc = mod.run([
-        "--symbols", *_COMMODITY_SYMBOLS,
-        "--days", "540",
-        "--timeframe", "5m",
-        "--root", str(tmp_path),
-        "--dry-run",
-    ])
+    rc = mod.run(
+        [
+            "--symbols",
+            *_COMMODITY_SYMBOLS,
+            "--days",
+            "540",
+            "--timeframe",
+            "5m",
+            "--root",
+            str(tmp_path),
+            "--dry-run",
+        ]
+    )
     assert rc == 0
     out = capsys.readouterr().out
     assert "total chunks across symbols: 90" in out
@@ -787,7 +889,9 @@ def test_commodity_dry_run_total_for_5_symbols(
 
 @pytest.mark.parametrize("symbol", list(_COMMODITY_SYMBOLS))
 def test_commodity_end_to_end_with_mocked_ib(
-    symbol: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+    symbol: str,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     """Each commodity runs end-to-end against a mocked IB and writes its CSV.
 
@@ -799,11 +903,16 @@ def test_commodity_end_to_end_with_mocked_ib(
 
     rc = mod.run(
         [
-            "--symbols", symbol,
-            "--days", "60",  # 2 chunks
-            "--end", "2026-05-07",
-            "--root", str(tmp_path),
-            "--pacing-sleep", "0",
+            "--symbols",
+            symbol,
+            "--days",
+            "60",  # 2 chunks
+            "--end",
+            "2026-05-07",
+            "--root",
+            str(tmp_path),
+            "--pacing-sleep",
+            "0",
         ],
         ib=ib,
     )
@@ -817,7 +926,9 @@ def test_commodity_end_to_end_with_mocked_ib(
 
 @pytest.mark.parametrize("symbol", list(_COMMODITY_SYMBOLS))
 def test_commodity_front_month_fallback_resolves(
-    symbol: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+    symbol: str,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     """The same qualifyContracts -> reqContractDetails fallback used by
     MBT/MET must work for commodities, which also have multiple active
@@ -836,11 +947,16 @@ def test_commodity_front_month_fallback_resolves(
 
     rc = mod.run(
         [
-            "--symbols", symbol,
-            "--days", "30",
-            "--end", "2026-05-07",
-            "--root", str(tmp_path),
-            "--pacing-sleep", "0",
+            "--symbols",
+            symbol,
+            "--days",
+            "30",
+            "--end",
+            "2026-05-07",
+            "--root",
+            str(tmp_path),
+            "--pacing-sleep",
+            "0",
         ],
         ib=ib,
     )
@@ -872,7 +988,9 @@ def test_enumerate_back_fetch_contracts_540d_mbt_monthly() -> None:
     """
     end = datetime(2026, 5, 7, tzinfo=UTC)
     contracts = mod.enumerate_back_fetch_contracts(
-        symbol="MBT", days=540, end=end,
+        symbol="MBT",
+        days=540,
+        end=end,
     )
     # 540d window crosses 18-19 calendar-month boundaries.
     assert 18 <= len(contracts) <= 19
@@ -887,7 +1005,9 @@ def test_enumerate_back_fetch_contracts_quarterly_mnq() -> None:
     """For quarterly contracts (MNQ), 540d -> ~6 quarterly listings."""
     end = datetime(2026, 5, 7, tzinfo=UTC)
     contracts = mod.enumerate_back_fetch_contracts(
-        symbol="MNQ", days=540, end=end,
+        symbol="MNQ",
+        days=540,
+        end=end,
     )
     # All months are quarterly: 3, 6, 9, or 12.
     for _y, m in contracts:
@@ -903,7 +1023,9 @@ def test_enumerate_back_fetch_contracts_monthly_cl() -> None:
     """
     end = datetime(2026, 5, 7, tzinfo=UTC)
     contracts = mod.enumerate_back_fetch_contracts(
-        symbol="CL", days=90, end=end,
+        symbol="CL",
+        days=90,
+        end=end,
     )
     assert (2026, 5) in contracts
     assert (2026, 4) in contracts
@@ -947,7 +1069,10 @@ def test_build_specific_future_rejects_unknown_symbol() -> None:
 def test_plan_back_fetch_chunks_monthly_one_chunk() -> None:
     """A monthly contract's ~30-day window should be ~1 chunk at 5m."""
     plan = mod.plan_back_fetch_chunks(
-        symbol="MBT", year=2026, month=4, timeframe="5m",
+        symbol="MBT",
+        year=2026,
+        month=4,
+        timeframe="5m",
     )
     # 30-day window / 30-day chunks = 1 chunk.
     assert len(plan) == 1
@@ -957,7 +1082,10 @@ def test_plan_back_fetch_chunks_monthly_one_chunk() -> None:
 def test_plan_back_fetch_chunks_quarterly_three_chunks() -> None:
     """A quarterly contract's ~90-day window -> 3 chunks at 5m."""
     plan = mod.plan_back_fetch_chunks(
-        symbol="MNQ", year=2026, month=6, timeframe="5m",
+        symbol="MNQ",
+        year=2026,
+        month=6,
+        timeframe="5m",
     )
     # ~90-day window / 30-day chunks -> 3 chunks.
     assert 2 <= len(plan) <= 4
@@ -967,17 +1095,13 @@ def test_plan_back_fetch_chunks_quarterly_three_chunks() -> None:
 def test_stitch_continuous_no_adjust_concatenates_chronologically() -> None:
     """Without --adjust, stitched output is the raw concatenation."""
     rows_old = [
-        {"time": 1000, "open": 50000.0, "high": 50100.0, "low": 49900.0,
-         "close": 50050.0, "volume": 10.0},
-        {"time": 1300, "open": 50050.0, "high": 50200.0, "low": 50000.0,
-         "close": 50150.0, "volume": 11.0},
+        {"time": 1000, "open": 50000.0, "high": 50100.0, "low": 49900.0, "close": 50050.0, "volume": 10.0},
+        {"time": 1300, "open": 50050.0, "high": 50200.0, "low": 50000.0, "close": 50150.0, "volume": 11.0},
     ]
     rows_new = [
         # Newer contract starts at higher price (e.g. roll premium of $200).
-        {"time": 1600, "open": 50350.0, "high": 50450.0, "low": 50250.0,
-         "close": 50400.0, "volume": 12.0},
-        {"time": 1900, "open": 50400.0, "high": 50500.0, "low": 50300.0,
-         "close": 50450.0, "volume": 13.0},
+        {"time": 1600, "open": 50350.0, "high": 50450.0, "low": 50250.0, "close": 50400.0, "volume": 12.0},
+        {"time": 1900, "open": 50400.0, "high": 50500.0, "low": 50300.0, "close": 50450.0, "volume": 13.0},
     ]
     out = mod._stitch_continuous(
         [((2026, 4), rows_old), ((2026, 5), rows_new)],
@@ -994,14 +1118,11 @@ def test_stitch_continuous_with_adjust_makes_price_continuous() -> None:
     delta = first(new).close - last(old).close so the roll is seamless.
     """
     rows_old = [
-        {"time": 1000, "open": 50000.0, "high": 50100.0, "low": 49900.0,
-         "close": 50050.0, "volume": 10.0},
-        {"time": 1300, "open": 50050.0, "high": 50200.0, "low": 50000.0,
-         "close": 50150.0, "volume": 11.0},
+        {"time": 1000, "open": 50000.0, "high": 50100.0, "low": 49900.0, "close": 50050.0, "volume": 10.0},
+        {"time": 1300, "open": 50050.0, "high": 50200.0, "low": 50000.0, "close": 50150.0, "volume": 11.0},
     ]
     rows_new = [
-        {"time": 1600, "open": 50350.0, "high": 50450.0, "low": 50250.0,
-         "close": 50400.0, "volume": 12.0},
+        {"time": 1600, "open": 50350.0, "high": 50450.0, "low": 50250.0, "close": 50400.0, "volume": 12.0},
     ]
     out = mod._stitch_continuous(
         [((2026, 4), rows_old), ((2026, 5), rows_new)],
@@ -1022,16 +1143,12 @@ def test_stitch_continuous_dedupes_overlapping_timestamps() -> None:
     roll overlap, only the older contract's value is kept (first-wins).
     """
     rows_old = [
-        {"time": 1000, "open": 1.0, "high": 1.0, "low": 1.0,
-         "close": 1.0, "volume": 1.0},
-        {"time": 2000, "open": 2.0, "high": 2.0, "low": 2.0,
-         "close": 2.0, "volume": 2.0},  # overlap with rows_new[0]
+        {"time": 1000, "open": 1.0, "high": 1.0, "low": 1.0, "close": 1.0, "volume": 1.0},
+        {"time": 2000, "open": 2.0, "high": 2.0, "low": 2.0, "close": 2.0, "volume": 2.0},  # overlap with rows_new[0]
     ]
     rows_new = [
-        {"time": 2000, "open": 99.0, "high": 99.0, "low": 99.0,
-         "close": 99.0, "volume": 99.0},
-        {"time": 3000, "open": 3.0, "high": 3.0, "low": 3.0,
-         "close": 3.0, "volume": 3.0},
+        {"time": 2000, "open": 99.0, "high": 99.0, "low": 99.0, "close": 99.0, "volume": 99.0},
+        {"time": 3000, "open": 3.0, "high": 3.0, "low": 3.0, "close": 3.0, "volume": 3.0},
     ]
     out = mod._stitch_continuous(
         [((2026, 4), rows_old), ((2026, 5), rows_new)],
@@ -1049,10 +1166,8 @@ def test_stitch_continuous_empty_input() -> None:
 def test_stitch_continuous_single_contract_no_adjust_or_change() -> None:
     """Single contract: stitch is a passthrough (deduped, sorted)."""
     rows = [
-        {"time": 1000, "open": 1, "high": 1, "low": 1,
-         "close": 1, "volume": 1},
-        {"time": 500, "open": 0.5, "high": 0.5, "low": 0.5,
-         "close": 0.5, "volume": 0.5},  # out-of-order
+        {"time": 1000, "open": 1, "high": 1, "low": 1, "close": 1, "volume": 1},
+        {"time": 500, "open": 0.5, "high": 0.5, "low": 0.5, "close": 0.5, "volume": 0.5},  # out-of-order
     ]
     out = mod._stitch_continuous([((2026, 5), rows)], adjust=True)
     assert [r["time"] for r in out] == [500, 1000]
@@ -1088,14 +1203,18 @@ class _BackFetchIB(_MockIB):
                 month = int(yyyymm[4:6])
                 if (year, month) in self.unlisted_months:
                     continue
-            out.append(_MockQualifiedContract(
-                symbol=getattr(c, "symbol", "?"), expiry=yyyymm,
-            ))
+            out.append(
+                _MockQualifiedContract(
+                    symbol=getattr(c, "symbol", "?"),
+                    expiry=yyyymm,
+                )
+            )
         return out
 
 
 def test_back_fetch_mode_writes_csv_with_mocked_ib(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     """End-to-end: --back-fetch enumerates monthly contracts, qualifies
     each by YYYYMM, fetches per-contract chunks, stitches and writes CSV.
@@ -1105,11 +1224,16 @@ def test_back_fetch_mode_writes_csv_with_mocked_ib(
 
     rc = mod.run(
         [
-            "--symbols", "MBT",
-            "--days", "90",  # ~4 monthly contracts
-            "--end", "2026-05-07",
-            "--root", str(tmp_path),
-            "--pacing-sleep", "0",
+            "--symbols",
+            "MBT",
+            "--days",
+            "90",  # ~4 monthly contracts
+            "--end",
+            "2026-05-07",
+            "--root",
+            str(tmp_path),
+            "--pacing-sleep",
+            "0",
             "--back-fetch",
         ],
         ib=ib,
@@ -1134,7 +1258,8 @@ def test_back_fetch_mode_writes_csv_with_mocked_ib(
 
 
 def test_back_fetch_skips_unlisted_contract_gracefully(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     """If a historical contract isn't listed by IBKR (e.g. very old or
     not yet listed), the back-fetcher logs and continues.
@@ -1148,11 +1273,16 @@ def test_back_fetch_skips_unlisted_contract_gracefully(
 
     rc = mod.run(
         [
-            "--symbols", "MBT",
-            "--days", "90",
-            "--end", "2026-05-07",
-            "--root", str(tmp_path),
-            "--pacing-sleep", "0",
+            "--symbols",
+            "MBT",
+            "--days",
+            "90",
+            "--end",
+            "2026-05-07",
+            "--root",
+            str(tmp_path),
+            "--pacing-sleep",
+            "0",
             "--back-fetch",
         ],
         ib=ib,
@@ -1163,7 +1293,8 @@ def test_back_fetch_skips_unlisted_contract_gracefully(
 
 
 def test_back_fetch_with_adjust_produces_continuous_csv(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     """--back-fetch --adjust produces a price-continuous series.
 
@@ -1177,11 +1308,16 @@ def test_back_fetch_with_adjust_produces_continuous_csv(
 
     rc = mod.run(
         [
-            "--symbols", "MBT",
-            "--days", "90",
-            "--end", "2026-05-07",
-            "--root", str(tmp_path),
-            "--pacing-sleep", "0",
+            "--symbols",
+            "MBT",
+            "--days",
+            "90",
+            "--end",
+            "2026-05-07",
+            "--root",
+            str(tmp_path),
+            "--pacing-sleep",
+            "0",
             "--back-fetch",
             "--adjust",
         ],
@@ -1198,17 +1334,22 @@ def test_back_fetch_with_adjust_produces_continuous_csv(
 
 
 def test_back_fetch_dry_run_prints_per_contract_plan(
-    capsys: pytest.CaptureFixture[str], tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
 ) -> None:
     """--dry-run --back-fetch prints the per-contract enumeration
     instead of the legacy single-front-month plan.
     """
     rc = mod.run(
         [
-            "--symbols", "MBT",
-            "--days", "540",
-            "--end", "2026-05-07",
-            "--root", str(tmp_path),
+            "--symbols",
+            "MBT",
+            "--days",
+            "540",
+            "--end",
+            "2026-05-07",
+            "--root",
+            str(tmp_path),
             "--dry-run",
             "--back-fetch",
         ],
@@ -1223,17 +1364,22 @@ def test_back_fetch_dry_run_prints_per_contract_plan(
 
 
 def test_back_fetch_dry_run_quarterly_symbol(
-    capsys: pytest.CaptureFixture[str], tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
 ) -> None:
     """Quarterly symbols (MNQ) enumerate fewer contracts in --back-fetch
     dry-run -- 540d / quarterly = ~6 contracts vs ~18 for monthly.
     """
     rc = mod.run(
         [
-            "--symbols", "MNQ",
-            "--days", "540",
-            "--end", "2026-05-07",
-            "--root", str(tmp_path),
+            "--symbols",
+            "MNQ",
+            "--days",
+            "540",
+            "--end",
+            "2026-05-07",
+            "--root",
+            str(tmp_path),
             "--dry-run",
             "--back-fetch",
         ],
@@ -1244,7 +1390,8 @@ def test_back_fetch_dry_run_quarterly_symbol(
 
 
 def test_legacy_front_month_only_still_works_no_regression(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     """--back-fetch is opt-in; default behavior unchanged.
 
@@ -1257,11 +1404,16 @@ def test_legacy_front_month_only_still_works_no_regression(
 
     rc = mod.run(
         [
-            "--symbols", "MBT",
-            "--days", "60",  # 2 chunks -- legacy mode
-            "--end", "2026-05-07",
-            "--root", str(tmp_path),
-            "--pacing-sleep", "0",
+            "--symbols",
+            "MBT",
+            "--days",
+            "60",  # 2 chunks -- legacy mode
+            "--end",
+            "2026-05-07",
+            "--root",
+            str(tmp_path),
+            "--pacing-sleep",
+            "0",
             # NO --back-fetch -- this exercises the unchanged legacy path.
         ],
         ib=ib,
@@ -1279,16 +1431,15 @@ def test_back_fetch_csv_format_unchanged() -> None:
     """
     # Write an in-memory back-fetch CSV via merge_with_existing -> write_csv.
     rows = [
-        {"time": 1000, "open": 50000.0, "high": 50100.0, "low": 49900.0,
-         "close": 50050.0, "volume": 10.0},
+        {"time": 1000, "open": 50000.0, "high": 50100.0, "low": 49900.0, "close": 50050.0, "volume": 10.0},
     ]
     import io  # noqa: PLC0415 -- test-local
+
     buf = io.StringIO()
     w = csv.writer(buf)
     w.writerow(["time", "open", "high", "low", "close", "volume"])
     for r in rows:
-        w.writerow([r["time"], r["open"], r["high"], r["low"],
-                    r["close"], r["volume"]])
+        w.writerow([r["time"], r["open"], r["high"], r["low"], r["close"], r["volume"]])
     buf.seek(0)
     header = next(csv.reader(buf))
     assert header == ["time", "open", "high", "low", "close", "volume"]
@@ -1308,4 +1459,3 @@ def test_parser_accepts_back_fetch_and_adjust_flags() -> None:
     args = parser.parse_args([])
     assert args.back_fetch is False
     assert args.adjust is False
-

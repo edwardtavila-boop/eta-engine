@@ -61,6 +61,7 @@ from eta_engine.brain.multi_model_telemetry import read_recent, summarize  # noq
 # Argument parsing
 # ---------------------------------------------------------------------------
 
+
 def _category_choices() -> list[str]:
     return [c.value for c in TaskCategory]
 
@@ -81,26 +82,34 @@ def _build_parser() -> argparse.ArgumentParser:
     p_ask = sub.add_parser("ask", help="single routed call")
     p_ask.add_argument("task", help="the task description / user message")
     p_ask.add_argument(
-        "--category", "-c",
+        "--category",
+        "-c",
         choices=_category_choices(),
         default=TaskCategory.SIMPLE_EDIT.value,
         help="TaskCategory to route by (default: simple_edit -> deepseek)",
     )
     p_ask.add_argument(
-        "--system", "-s",
+        "--system",
+        "-s",
         default="",
         help="system prompt (defaults to empty)",
     )
     p_ask.add_argument(
-        "--max-tokens", type=int, default=1024,
+        "--max-tokens",
+        type=int,
+        default=1024,
         help="max output tokens (default 1024)",
     )
     p_ask.add_argument(
-        "--max-cost", type=float, default=0.10,
+        "--max-cost",
+        type=float,
+        default=0.10,
         help="hard cost ceiling in USD (default $0.10; 0 = no cap)",
     )
     p_ask.add_argument(
-        "--temperature", type=float, default=0.7,
+        "--temperature",
+        type=float,
+        default=0.7,
         help="sampling temperature (default 0.7)",
     )
     p_ask.add_argument(
@@ -113,7 +122,8 @@ def _build_parser() -> argparse.ArgumentParser:
         help="working directory passed to CLI providers (default: current dir)",
     )
     p_ask.add_argument(
-        "--json", action="store_true",
+        "--json",
+        action="store_true",
         help="emit the full MultiModelResponse as JSON instead of just text",
     )
 
@@ -121,16 +131,22 @@ def _build_parser() -> argparse.ArgumentParser:
     p_chain = sub.add_parser("chain", help="run plan -> implement -> verify pipeline")
     p_chain.add_argument("task", help="the task description")
     p_chain.add_argument(
-        "--skip", action="append", default=[],
+        "--skip",
+        action="append",
+        default=[],
         choices=["plan", "implement", "verify"],
         help="skip a stage (repeat to skip multiple)",
     )
     p_chain.add_argument(
-        "--max-tokens", type=int, default=2048,
+        "--max-tokens",
+        type=int,
+        default=2048,
         help="per-stage token budget (default 2048)",
     )
     p_chain.add_argument(
-        "--max-cost", type=float, default=1.00,
+        "--max-cost",
+        type=float,
+        default=1.00,
         help="total cost ceiling in USD across all stages (default $1.00)",
     )
     p_chain.add_argument(
@@ -138,25 +154,32 @@ def _build_parser() -> argparse.ArgumentParser:
         help="working directory passed to CLI providers",
     )
     p_chain.add_argument(
-        "--json", action="store_true",
+        "--json",
+        action="store_true",
         help="emit the full ChainResult as JSON",
     )
 
     # --- status ---
     p_status = sub.add_parser("status", help="provider availability + telemetry summary")
     p_status.add_argument(
-        "--json", action="store_true",
+        "--json",
+        action="store_true",
         help="emit JSON instead of human-readable",
     )
     p_status.add_argument(
-        "--limit", type=int, default=1000,
+        "--limit",
+        type=int,
+        default=1000,
         help="how many recent telemetry records to aggregate (default 1000)",
     )
 
     # --- log ---
     p_log = sub.add_parser("log", help="tail the FM telemetry log")
     p_log.add_argument(
-        "-n", "--limit", type=int, default=20,
+        "-n",
+        "--limit",
+        type=int,
+        default=20,
         help="how many records to show (default 20)",
     )
     p_log.add_argument(
@@ -165,11 +188,13 @@ def _build_parser() -> argparse.ArgumentParser:
         help="filter by actual_provider",
     )
     p_log.add_argument(
-        "--fallbacks-only", action="store_true",
+        "--fallbacks-only",
+        action="store_true",
         help="only show records where fallback_used=True",
     )
     p_log.add_argument(
-        "--json", action="store_true",
+        "--json",
+        action="store_true",
         help="emit raw JSONL lines (default: pretty table)",
     )
 
@@ -179,6 +204,7 @@ def _build_parser() -> argparse.ArgumentParser:
 # ---------------------------------------------------------------------------
 # Subcommand handlers
 # ---------------------------------------------------------------------------
+
 
 def _cmd_ask(args: argparse.Namespace) -> int:
     fp = ForceProvider(args.provider) if args.provider else None
@@ -194,24 +220,31 @@ def _cmd_ask(args: argparse.Namespace) -> int:
         max_cost_usd=max_cost,
     )
     if args.json:
-        print(json.dumps({
-            "provider": resp.provider.value,
-            "model": resp.model,
-            "tier": resp.tier.value if resp.tier else None,
-            "input_tokens": resp.input_tokens,
-            "output_tokens": resp.output_tokens,
-            "cost_usd": resp.cost_usd,
-            "elapsed_ms": resp.elapsed_ms,
-            "fallback_used": resp.fallback_used,
-            "fallback_reason": resp.fallback_reason,
-            "text": resp.text,
-        }, indent=2))
+        print(
+            json.dumps(
+                {
+                    "provider": resp.provider.value,
+                    "model": resp.model,
+                    "tier": resp.tier.value if resp.tier else None,
+                    "input_tokens": resp.input_tokens,
+                    "output_tokens": resp.output_tokens,
+                    "cost_usd": resp.cost_usd,
+                    "elapsed_ms": resp.elapsed_ms,
+                    "fallback_used": resp.fallback_used,
+                    "fallback_reason": resp.fallback_reason,
+                    "text": resp.text,
+                },
+                indent=2,
+            )
+        )
     else:
         # Header line, then the text.
         prov = resp.provider.value
         suffix = " (fallback)" if resp.fallback_used else ""
-        print(f"# {prov}{suffix}  model={resp.model}  cost=${resp.cost_usd:.6f}  "
-              f"elapsed={resp.elapsed_ms:.0f}ms", file=sys.stderr)
+        print(
+            f"# {prov}{suffix}  model={resp.model}  cost=${resp.cost_usd:.6f}  elapsed={resp.elapsed_ms:.0f}ms",
+            file=sys.stderr,
+        )
         if resp.fallback_used:
             print(f"# fallback_reason: {resp.fallback_reason}", file=sys.stderr)
         print(resp.text)
@@ -253,8 +286,10 @@ def _cmd_chain(args: argparse.Namespace) -> int:
         stage = getattr(result, stage_name)
         if stage is None:
             continue
-        print(f"\n{bar}\n{stage_name.upper()}  ({stage.provider.value}"
-              f"{' fallback' if stage.fallback_used else ''})\n{bar}")
+        print(
+            f"\n{bar}\n{stage_name.upper()}  ({stage.provider.value}"
+            f"{' fallback' if stage.fallback_used else ''})\n{bar}"
+        )
         print(stage.text)
 
     print(f"\n{bar}\nSUMMARY\n{bar}")
@@ -289,8 +324,10 @@ def _cmd_status(args: argparse.Namespace) -> int:
     if summary["calls"]:
         print("  by provider:")
         for prov, slot in summary["by_provider"].items():
-            print(f"    {prov:9s}  calls={slot['calls']:4d}  "
-                  f"cost=${slot['cost_usd']:.6f}  fallbacks={slot['fallbacks_received']}")
+            print(
+                f"    {prov:9s}  calls={slot['calls']:4d}  "
+                f"cost=${slot['cost_usd']:.6f}  fallbacks={slot['fallbacks_received']}"
+            )
     return 0
 
 
@@ -300,7 +337,7 @@ def _cmd_log(args: argparse.Namespace) -> int:
         records = [r for r in records if r.get("actual_provider") == args.provider]
     if args.fallbacks_only:
         records = [r for r in records if r.get("fallback_used")]
-    records = records[-args.limit:]
+    records = records[-args.limit :]
 
     if not records:
         print("(no records)")
@@ -312,8 +349,7 @@ def _cmd_log(args: argparse.Namespace) -> int:
         return 0
 
     # Pretty table
-    print(f"{'TIMESTAMP':26s} {'CATEGORY':24s} {'PROVIDER':10s} "
-          f"{'MODEL':22s} {'COST':>10s} {'MS':>7s} FB")
+    print(f"{'TIMESTAMP':26s} {'CATEGORY':24s} {'PROVIDER':10s} {'MODEL':22s} {'COST':>10s} {'MS':>7s} FB")
     print("-" * 110)
     for r in records:
         ts = r.get("ts", "")[:25]
@@ -330,6 +366,7 @@ def _cmd_log(args: argparse.Namespace) -> int:
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
+
 
 def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()

@@ -31,6 +31,7 @@ Inline guard for strategies that consume the tick stream:
 Batch mode for capture audit:
     python -m eta_engine.scripts.tick_anomaly_detector --symbol MNQ
 """
+
 from __future__ import annotations
 
 # ruff: noqa: PLR2004
@@ -51,7 +52,7 @@ TICKS_DIR = ROOT.parent / "mnq_data" / "ticks"
 
 @dataclass
 class TickValidationResult:
-    verdict: str               # "OK" | "WARN" | "SKIP"
+    verdict: str  # "OK" | "WARN" | "SKIP"
     anomalies: list[str] = field(default_factory=list)
 
 
@@ -63,10 +64,13 @@ def _is_finite_number(x: object) -> bool:
     return math.isfinite(v)
 
 
-def validate_tick(tick: dict,
-                   *, last_real_price: float | None = None,
-                   max_price_jump_pct: float = 10.0,
-                   max_ts_drift_seconds: float = 60.0) -> TickValidationResult:
+def validate_tick(
+    tick: dict,
+    *,
+    last_real_price: float | None = None,
+    max_price_jump_pct: float = 10.0,
+    max_ts_drift_seconds: float = 60.0,
+) -> TickValidationResult:
     """Validate one tick.  Returns verdict + anomaly list.
 
     Strategies should treat SKIP as "don't update state on this
@@ -115,8 +119,7 @@ def validate_tick(tick: dict,
     if last_real_price is not None and last_real_price > 0:
         jump_pct = abs(float(price) - last_real_price) / last_real_price * 100
         if jump_pct > max_price_jump_pct:
-            anomalies.append(
-                f"implausible_jump:{jump_pct:.2f}%_from_{last_real_price}")
+            anomalies.append(f"implausible_jump:{jump_pct:.2f}%_from_{last_real_price}")
             return TickValidationResult(verdict="SKIP", anomalies=anomalies)
 
     # ── 6. ts vs epoch_s drift ────────────────────────────────────
@@ -139,9 +142,7 @@ def validate_tick(tick: dict,
 def audit_tick_file(path: Path, *, max_emit: int = 0) -> dict:
     """Walk one day's tick file; emit per-tick verdicts.  Tracks last
     real price across ticks for jump detection."""
-    summary: dict = {"path": str(path), "n_total": 0, "n_ok": 0,
-                      "n_warn": 0, "n_skip": 0,
-                      "anomaly_counts": {}}
+    summary: dict = {"path": str(path), "n_total": 0, "n_ok": 0, "n_warn": 0, "n_skip": 0, "anomaly_counts": {}}
     if not path.exists():
         summary["error"] = "file_not_found"
         return summary
@@ -158,33 +159,36 @@ def audit_tick_file(path: Path, *, max_emit: int = 0) -> dict:
                     tick = json.loads(line)
                 except json.JSONDecodeError:
                     summary["n_skip"] += 1
-                    summary["anomaly_counts"]["bad_json"] = \
-                        summary["anomaly_counts"].get("bad_json", 0) + 1
+                    summary["anomaly_counts"]["bad_json"] = summary["anomaly_counts"].get("bad_json", 0) + 1
                     continue
                 result = validate_tick(tick, last_real_price=last_real_price)
                 key = f"n_{result.verdict.lower()}"
                 summary[key] = summary.get(key, 0) + 1
                 for a in result.anomalies:
                     base_key = a.split(":", 1)[0]
-                    summary["anomaly_counts"][base_key] = \
-                        summary["anomaly_counts"].get(base_key, 0) + 1
+                    summary["anomaly_counts"][base_key] = summary["anomaly_counts"].get(base_key, 0) + 1
                 if result.verdict == "OK":
                     last_real_price = float(tick.get("price", 0))
                 if result.verdict != "OK" and emitted < max_emit:
                     try:
                         with TICK_ANOMALY_LOG.open("a", encoding="utf-8") as out:
-                            out.write(json.dumps({
-                                "ts": datetime.now(UTC).isoformat(),
-                                "source_file": str(path),
-                                "tick_ts": tick.get("ts"),
-                                "tick_price": tick.get("price"),
-                                "verdict": result.verdict,
-                                "anomalies": result.anomalies,
-                            }, separators=(",", ":")) + "\n")
+                            out.write(
+                                json.dumps(
+                                    {
+                                        "ts": datetime.now(UTC).isoformat(),
+                                        "source_file": str(path),
+                                        "tick_ts": tick.get("ts"),
+                                        "tick_price": tick.get("price"),
+                                        "verdict": result.verdict,
+                                        "anomalies": result.anomalies,
+                                    },
+                                    separators=(",", ":"),
+                                )
+                                + "\n"
+                            )
                         emitted += 1
                     except OSError as e:
-                        print(f"WARN: tick anomaly log write failed: {e}",
-                              file=sys.stderr)
+                        print(f"WARN: tick anomaly log write failed: {e}", file=sys.stderr)
     except OSError as e:
         summary["error"] = str(e)
     return summary
@@ -221,8 +225,7 @@ def main() -> int:
     if summary.get("anomaly_counts"):
         print()
         print("  Anomaly breakdown:")
-        for k, v in sorted(summary["anomaly_counts"].items(),
-                            key=lambda kv: kv[1], reverse=True):
+        for k, v in sorted(summary["anomaly_counts"].items(), key=lambda kv: kv[1], reverse=True):
             print(f"    {k:<30s} {v:,}")
     print()
     return 1 if summary.get("n_skip", 0) > summary.get("n_total", 1) * 0.05 else 0

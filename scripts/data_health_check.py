@@ -15,6 +15,7 @@ Usage
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import sys
 from dataclasses import dataclass, field
@@ -26,10 +27,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT.parent))
 
 if hasattr(sys.stdout, "reconfigure"):
-    try:
+    with contextlib.suppress(AttributeError, OSError):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    except (AttributeError, OSError):
-        pass
 
 from eta_engine.data.library import default_library  # noqa: E402
 
@@ -41,6 +40,7 @@ if TYPE_CHECKING:
 @dataclass
 class DatasetSummary:
     """One data file on disk, summarized."""
+
     symbol: str
     timeframe: str
     path: str
@@ -73,24 +73,10 @@ def _describe_dataset(ds: DatasetMeta) -> DatasetSummary:
 
 
 def _make_row(audit: BotAudit) -> BotHealthRow:
-    available_crit = [
-        _describe_dataset(ds)
-        for req, ds in audit.available
-        if req.critical
-    ]
-    available_opt = [
-        _describe_dataset(ds)
-        for req, ds in audit.available
-        if not req.critical
-    ]
-    missing_crit = [
-        f"{r.kind}:{r.symbol}/{r.timeframe or '-'}"
-        for r in audit.missing_critical
-    ]
-    missing_opt = [
-        f"{r.kind}:{r.symbol}/{r.timeframe or '-'}"
-        for r in audit.missing_optional
-    ]
+    available_crit = [_describe_dataset(ds) for req, ds in audit.available if req.critical]
+    available_opt = [_describe_dataset(ds) for req, ds in audit.available if not req.critical]
+    missing_crit = [f"{r.kind}:{r.symbol}/{r.timeframe or '-'}" for r in audit.missing_critical]
+    missing_opt = [f"{r.kind}:{r.symbol}/{r.timeframe or '-'}" for r in audit.missing_optional]
     if audit.deactivated:
         status = "DEACTIVATED"
     elif audit.missing_critical:
@@ -166,26 +152,36 @@ def main(argv: list[str] | None = None) -> int:
         print(header)
         print("-" * 140)
         for r in rows:
-            avail_str = ", ".join(
-                f"{d.symbol}/{d.timeframe}({d.row_count}r,{d.days_span:.0f}d)"
-                for d in r.critical_available
-            ) or "—"
+            avail_str = (
+                ", ".join(f"{d.symbol}/{d.timeframe}({d.row_count}r,{d.days_span:.0f}d)" for d in r.critical_available)
+                or "—"
+            )
             miss_str = ", ".join(r.critical_missing) or "—"
-            status_icon = {"GREEN": "GREEN", "AMBER": "AMBER", "RED": "RED  ", "DEACTIVATED": "DEACT", "UNKNOWN": "?????"}.get(r.status, r.status)
+            status_icon = {
+                "GREEN": "GREEN",
+                "AMBER": "AMBER",
+                "RED": "RED  ",
+                "DEACTIVATED": "DEACT",
+                "UNKNOWN": "?????",
+            }.get(r.status, r.status)
             print(f"{r.bot_id:<24} {status_icon:<12} {avail_str:<60} {miss_str}")
         summary = _summary_line(rows)
-        print(f"\nGREEN={summary['green']} AMBER={summary['amber']} RED={summary['red']} "
-              f"DEACT={summary['deactivated']} / {summary['total']} total")
+        print(
+            f"\nGREEN={summary['green']} AMBER={summary['amber']} RED={summary['red']} "
+            f"DEACT={summary['deactivated']} / {summary['total']} total"
+        )
 
         # Show the global data catalog
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print("Global data catalog")
         print("=" * 60)
         lib = default_library()
         for ds in sorted(lib.list(), key=lambda d: (d.symbol, d.timeframe)):
             days = (ds.end_ts - ds.start_ts).total_seconds() / 86400
-            print(f"  {ds.symbol:<20} {ds.timeframe:<6} {ds.row_count:>8} rows  {days:>8.0f}d  "
-                  f"{ds.start_ts.strftime('%Y-%m-%d')} → {ds.end_ts.strftime('%Y-%m-%d')}  {ds.path}")
+            print(
+                f"  {ds.symbol:<20} {ds.timeframe:<6} {ds.row_count:>8} rows  {days:>8.0f}d  "
+                f"{ds.start_ts.strftime('%Y-%m-%d')} → {ds.end_ts.strftime('%Y-%m-%d')}  {ds.path}"
+            )
     return 0
 
 

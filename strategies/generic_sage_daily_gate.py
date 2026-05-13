@@ -52,8 +52,7 @@ if TYPE_CHECKING:
             hist: list[BarData],
             equity: float,
             config: BacktestConfig,
-        ) -> _Open | None:
-            ...
+        ) -> _Open | None: ...
 
 
 @dataclass(frozen=True)
@@ -81,7 +80,8 @@ class GenericSageDailyGateStrategy:
         self._verdict_provider: Callable[[date], SageDailyVerdict] | None = None
 
     def attach_daily_verdict_provider(
-        self, provider: Callable[[date], SageDailyVerdict] | None,
+        self,
+        provider: Callable[[date], SageDailyVerdict] | None,
     ) -> None:
         """Attach a daily-sage verdict lookup."""
         self._verdict_provider = provider
@@ -115,22 +115,17 @@ class GenericSageDailyGateStrategy:
         if self.cfg.strict_mode:
             if verdict.direction == "neutral":
                 return None
-            ok = (
-                (opened.side == "BUY" and verdict.direction == "long")
-                or (opened.side == "SELL" and verdict.direction == "short")
+            ok = (opened.side == "BUY" and verdict.direction == "long") or (
+                opened.side == "SELL" and verdict.direction == "short"
             )
         else:
-            ok = (
-                (opened.side == "BUY" and verdict.direction != "short")
-                or (opened.side == "SELL" and verdict.direction != "long")
+            ok = (opened.side == "BUY" and verdict.direction != "short") or (
+                opened.side == "SELL" and verdict.direction != "long"
             )
 
         if not ok:
             return None
 
         # Tag with sage daily verdict for audit
-        new_tag = (
-            f"{opened.regime}_dailysage_{verdict.direction}"
-            f"_conv{verdict.conviction:.2f}"
-        )
+        new_tag = f"{opened.regime}_dailysage_{verdict.direction}_conv{verdict.conviction:.2f}"
         return replace(opened, regime=new_tag)

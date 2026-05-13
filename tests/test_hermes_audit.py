@@ -15,6 +15,7 @@ Two surfaces exercised:
    sustained outage doesn't spam the operator), but ``recovered=True``
    always sends so the operator sees the all-clear.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -63,7 +64,9 @@ def _run_loop_with_audit_path(
         ),
     ):
         return kaizen_loop.run_loop(
-            since_iso=None, bootstraps=10, apply_actions=False,
+            since_iso=None,
+            bootstraps=10,
+            apply_actions=False,
         )
 
 
@@ -226,8 +229,11 @@ def test_backoff_alert_recovered_bypasses_rate_limit(
     # Force the rate-limit window to be "active" by stamping the gate
     # at a recent monotonic timestamp. ``recovered=True`` must still send.
     import time as _time
+
     monkeypatch.setattr(
-        hermes_bridge, "_LAST_BACKOFF_ALERT_AT", _time.monotonic(),
+        hermes_bridge,
+        "_LAST_BACKOFF_ALERT_AT",
+        _time.monotonic(),
     )
 
     sent: list[tuple] = []

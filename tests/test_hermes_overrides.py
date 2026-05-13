@@ -8,6 +8,7 @@ Covers:
   * hot_learner.current_weights composes the operator overlay correctly
   * read paths never raise on bad input
 """
+
 from __future__ import annotations
 
 import json
@@ -48,7 +49,11 @@ def test_expired_size_modifier_returns_none(tmp_path: Path) -> None:
 
     path = tmp_path / "hermes_overrides.json"
     hermes_overrides.apply_size_modifier(
-        bot_id="bot_x", modifier=0.5, reason="r", ttl_minutes=5, path=path,
+        bot_id="bot_x",
+        modifier=0.5,
+        reason="r",
+        ttl_minutes=5,
+        path=path,
     )
     # Look up using a "now" that's after expiry.
     future = datetime.now(UTC) + timedelta(minutes=120)
@@ -61,10 +66,18 @@ def test_size_modifier_clamped_on_write(tmp_path: Path) -> None:
 
     path = tmp_path / "hermes_overrides.json"
     res_high = hermes_overrides.apply_size_modifier(
-        bot_id="b1", modifier=5.0, reason="test", ttl_minutes=10, path=path,
+        bot_id="b1",
+        modifier=5.0,
+        reason="test",
+        ttl_minutes=10,
+        path=path,
     )
     res_low = hermes_overrides.apply_size_modifier(
-        bot_id="b2", modifier=-0.5, reason="test", ttl_minutes=10, path=path,
+        bot_id="b2",
+        modifier=-0.5,
+        reason="test",
+        ttl_minutes=10,
+        path=path,
     )
     assert res_high["modifier"] == 1.0
     assert res_low["modifier"] == 0.0
@@ -76,8 +89,12 @@ def test_school_weight_roundtrip(tmp_path: Path) -> None:
 
     path = tmp_path / "hermes_overrides.json"
     hermes_overrides.apply_school_weight(
-        asset="MNQ", school="momentum",
-        weight=1.2, reason="boost test", ttl_minutes=10, path=path,
+        asset="MNQ",
+        school="momentum",
+        weight=1.2,
+        reason="boost test",
+        ttl_minutes=10,
+        path=path,
     )
     out = hermes_overrides.get_school_weights("MNQ", path=path)
     assert out == {"momentum": 1.2}
@@ -89,11 +106,19 @@ def test_active_overrides_summary_filters_expired(tmp_path: Path) -> None:
 
     path = tmp_path / "hermes_overrides.json"
     hermes_overrides.apply_size_modifier(
-        bot_id="live", modifier=0.7, reason="r", ttl_minutes=60, path=path,
+        bot_id="live",
+        modifier=0.7,
+        reason="r",
+        ttl_minutes=60,
+        path=path,
     )
     hermes_overrides.apply_school_weight(
-        asset="MNQ", school="momentum",
-        weight=1.1, reason="r", ttl_minutes=60, path=path,
+        asset="MNQ",
+        school="momentum",
+        weight=1.1,
+        reason="r",
+        ttl_minutes=60,
+        path=path,
     )
 
     # Now manually inject an expired entry directly into the sidecar.
@@ -120,7 +145,11 @@ def test_clear_override_removes_entry(tmp_path: Path) -> None:
 
     path = tmp_path / "hermes_overrides.json"
     hermes_overrides.apply_size_modifier(
-        bot_id="b1", modifier=0.7, reason="r", ttl_minutes=60, path=path,
+        bot_id="b1",
+        modifier=0.7,
+        reason="r",
+        ttl_minutes=60,
+        path=path,
     )
     res = hermes_overrides.clear_override(bot_id="b1", path=path)
     assert res["status"] == "REMOVED"
@@ -137,28 +166,38 @@ def test_clear_override_not_found(tmp_path: Path) -> None:
 
 
 def test_portfolio_brain_honors_size_override(
-    tmp_path: Path, monkeypatch,
+    tmp_path: Path,
+    monkeypatch,
 ) -> None:
     """portfolio_brain.assess applies the operator override AFTER its own clamp."""
     from eta_engine.brain.jarvis_v3 import hermes_overrides, portfolio_brain
 
     overrides_path = tmp_path / "hermes_overrides.json"
     monkeypatch.setattr(
-        hermes_overrides, "DEFAULT_OVERRIDES_PATH", overrides_path,
+        hermes_overrides,
+        "DEFAULT_OVERRIDES_PATH",
+        overrides_path,
     )
 
     hermes_overrides.apply_size_modifier(
-        bot_id="atr_breakout_mnq", modifier=0.5,
-        reason="test pin", ttl_minutes=10, path=overrides_path,
+        bot_id="atr_breakout_mnq",
+        modifier=0.5,
+        reason="test pin",
+        ttl_minutes=10,
+        path=overrides_path,
     )
 
     # Build a request that would normally pass with modifier=1.0
-    req = type("R", (), {
-        "bot_id": "atr_breakout_mnq",
-        "asset_class": "MNQ",
-        "asset": "MNQ",
-        "action": "ENTER",
-    })()
+    req = type(
+        "R",
+        (),
+        {
+            "bot_id": "atr_breakout_mnq",
+            "asset_class": "MNQ",
+            "asset": "MNQ",
+            "action": "ENTER",
+        },
+    )()
     ctx = portfolio_brain.PortfolioContext(
         fleet_long_notional_by_asset={},
         fleet_short_notional_by_asset={},
@@ -174,20 +213,28 @@ def test_portfolio_brain_honors_size_override(
 
 
 def test_portfolio_brain_no_override_unchanged_behavior(
-    tmp_path: Path, monkeypatch,
+    tmp_path: Path,
+    monkeypatch,
 ) -> None:
     """When no override exists, the cascade result is unchanged."""
     from eta_engine.brain.jarvis_v3 import hermes_overrides, portfolio_brain
 
     monkeypatch.setattr(
-        hermes_overrides, "DEFAULT_OVERRIDES_PATH",
+        hermes_overrides,
+        "DEFAULT_OVERRIDES_PATH",
         tmp_path / "empty.json",
     )
 
-    req = type("R", (), {
-        "bot_id": "no_pin_bot", "asset_class": "MNQ",
-        "asset": "MNQ", "action": "ENTER",
-    })()
+    req = type(
+        "R",
+        (),
+        {
+            "bot_id": "no_pin_bot",
+            "asset_class": "MNQ",
+            "asset": "MNQ",
+            "action": "ENTER",
+        },
+    )()
     ctx = portfolio_brain.PortfolioContext(
         fleet_long_notional_by_asset={},
         fleet_short_notional_by_asset={},
@@ -215,7 +262,8 @@ def test_get_size_modifier_handles_corrupt_sidecar(tmp_path: Path) -> None:
 
 
 def test_apply_size_modifier_never_raises_when_save_blows_up(
-    tmp_path: Path, monkeypatch,
+    tmp_path: Path,
+    monkeypatch,
 ) -> None:
     """Write to a parent path that can't be created → WRITE_FAILED, no raise."""
     from eta_engine.brain.jarvis_v3 import hermes_overrides
@@ -227,8 +275,11 @@ def test_apply_size_modifier_never_raises_when_save_blows_up(
     monkeypatch.setattr(hermes_overrides, "_save", kaboom)
 
     res = hermes_overrides.apply_size_modifier(
-        bot_id="test_bot", modifier=0.5, reason="r",
-        ttl_minutes=10, path=tmp_path / "overrides.json",
+        bot_id="test_bot",
+        modifier=0.5,
+        reason="r",
+        ttl_minutes=10,
+        path=tmp_path / "overrides.json",
     )
     assert res["status"] == "WRITE_FAILED"
     assert "unhandled_exception" in res["reason"]
@@ -246,7 +297,9 @@ def test_apply_school_weight_never_raises_on_weird_input() -> None:
     # should catch it. (In normal usage operators pass strings; this is
     # defense-in-depth.)
     res = hermes_overrides.apply_school_weight(
-        asset="MNQ", school="momentum", weight=1.1,
+        asset="MNQ",
+        school="momentum",
+        weight=1.1,
         reason=BrokenStr(),  # type: ignore[arg-type]
         ttl_minutes=10,
     )
@@ -256,7 +309,8 @@ def test_apply_school_weight_never_raises_on_weird_input() -> None:
 
 
 def test_clear_override_never_raises_when_save_blows_up(
-    tmp_path: Path, monkeypatch,
+    tmp_path: Path,
+    monkeypatch,
 ) -> None:
     """Catastrophic save failure during clear → WRITE_FAILED, no exception."""
     from eta_engine.brain.jarvis_v3 import hermes_overrides
@@ -264,8 +318,11 @@ def test_clear_override_never_raises_when_save_blows_up(
     path = tmp_path / "overrides.json"
     # Seed a real entry so we hit the actual clear path.
     hermes_overrides.apply_size_modifier(
-        bot_id="b1", modifier=0.7, reason="r",
-        ttl_minutes=10, path=path,
+        bot_id="b1",
+        modifier=0.7,
+        reason="r",
+        ttl_minutes=10,
+        path=path,
     )
 
     def kaboom(*args, **kwargs):

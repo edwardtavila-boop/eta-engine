@@ -6,6 +6,7 @@ Coverage:
   * kaizen_reactivate.reactivate() removes entries
   * 2-run confirmation gate (HELD on first sighting, APPLIED on second)
 """
+
 from __future__ import annotations
 
 import json
@@ -28,7 +29,9 @@ def tmp_overrides(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setattr(kaizen_loop, "_OVERRIDES_PATH", sidecar)
     monkeypatch.setattr(kaizen_reactivate, "_OVERRIDES_PATH", sidecar)
     monkeypatch.setattr(
-        per_bot_registry, "_KAIZEN_OVERRIDES_PATH", sidecar,
+        per_bot_registry,
+        "_KAIZEN_OVERRIDES_PATH",
+        sidecar,
     )
     return sidecar
 
@@ -37,6 +40,7 @@ def tmp_overrides(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 def tmp_action_log(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     log = tmp_path / "kaizen_actions.jsonl"
     from eta_engine.scripts import kaizen_loop
+
     monkeypatch.setattr(kaizen_loop, "_ACTION_LOG", log)
     return log
 
@@ -65,12 +69,16 @@ def test_is_active_true_when_sidecar_missing(tmp_overrides: Path) -> None:
 def test_is_active_false_when_listed_in_sidecar(tmp_overrides: Path) -> None:
     """Bot in sidecar → drops out of is_active()."""
     tmp_overrides.write_text(
-        json.dumps({"deactivated": {
-            "volume_profile_mnq": {
-                "applied_at": "2026-05-05T06:00:00+00:00",
-                "reason": "tier=DECAY mc=DEAD test fixture",
-            },
-        }}),
+        json.dumps(
+            {
+                "deactivated": {
+                    "volume_profile_mnq": {
+                        "applied_at": "2026-05-05T06:00:00+00:00",
+                        "reason": "tier=DECAY mc=DEAD test fixture",
+                    },
+                }
+            }
+        ),
         encoding="utf-8",
     )
 
@@ -82,14 +90,18 @@ def test_is_active_false_when_listed_in_sidecar(tmp_overrides: Path) -> None:
 def test_readiness_row_exposes_kaizen_sidecar_deactivation(tmp_overrides: Path) -> None:
     """Readiness must say why a pinned bot disappeared from live surfaces."""
     tmp_overrides.write_text(
-        json.dumps({"deactivated": {
-            "volume_profile_mnq": {
-                "applied_at": "2026-05-11T20:50:00+00:00",
-                "reason": "test fixture drift",
-                "tier": "DECAY",
-                "mc_verdict": "DEAD",
-            },
-        }}),
+        json.dumps(
+            {
+                "deactivated": {
+                    "volume_profile_mnq": {
+                        "applied_at": "2026-05-11T20:50:00+00:00",
+                        "reason": "test fixture drift",
+                        "tier": "DECAY",
+                        "mc_verdict": "DEAD",
+                    },
+                }
+            }
+        ),
         encoding="utf-8",
     )
 
@@ -150,11 +162,16 @@ def test_apply_kaizen_deactivation_creates_sidecar(tmp_overrides: Path) -> None:
     """First-time apply creates the file with the bot listed."""
     from eta_engine.scripts.kaizen_loop import _apply_kaizen_deactivation
 
-    _apply_kaizen_deactivation("ghost_bot", {
-        "reason": "test",
-        "tier": "DECAY", "mc_verdict": "DEAD",
-        "expectancy_r": -0.05, "n": 50,
-    })
+    _apply_kaizen_deactivation(
+        "ghost_bot",
+        {
+            "reason": "test",
+            "tier": "DECAY",
+            "mc_verdict": "DEAD",
+            "expectancy_r": -0.05,
+            "n": 50,
+        },
+    )
 
     assert tmp_overrides.exists()
     data = json.loads(tmp_overrides.read_text(encoding="utf-8"))
@@ -171,8 +188,7 @@ def test_apply_kaizen_deactivation_is_idempotent(tmp_overrides: Path) -> None:
     """Re-applying for the same bot just updates the timestamp."""
     from eta_engine.scripts.kaizen_loop import _apply_kaizen_deactivation
 
-    rec = {"reason": "first", "tier": "DECAY", "mc_verdict": "MIXED",
-           "expectancy_r": -0.01, "n": 30}
+    rec = {"reason": "first", "tier": "DECAY", "mc_verdict": "MIXED", "expectancy_r": -0.01, "n": 30}
     _apply_kaizen_deactivation("ghost_bot", rec)
     first_data = json.loads(tmp_overrides.read_text(encoding="utf-8"))
 
@@ -195,12 +211,12 @@ def test_apply_kaizen_deactivation_preserves_other_entries(
     """Adding a new bot doesn't drop existing entries."""
     from eta_engine.scripts.kaizen_loop import _apply_kaizen_deactivation
 
-    _apply_kaizen_deactivation("bot_a", {"reason": "x", "tier": "DECAY",
-                                          "mc_verdict": "DEAD",
-                                          "expectancy_r": -0.01, "n": 30})
-    _apply_kaizen_deactivation("bot_b", {"reason": "y", "tier": "DECAY",
-                                          "mc_verdict": "MIXED",
-                                          "expectancy_r": -0.02, "n": 35})
+    _apply_kaizen_deactivation(
+        "bot_a", {"reason": "x", "tier": "DECAY", "mc_verdict": "DEAD", "expectancy_r": -0.01, "n": 30}
+    )
+    _apply_kaizen_deactivation(
+        "bot_b", {"reason": "y", "tier": "DECAY", "mc_verdict": "MIXED", "expectancy_r": -0.02, "n": 35}
+    )
 
     data = json.loads(tmp_overrides.read_text(encoding="utf-8"))
     assert set(data["deactivated"].keys()) == {"bot_a", "bot_b"}
@@ -213,12 +229,17 @@ def test_apply_kaizen_deactivation_preserves_other_entries(
 
 def test_reactivate_removes_listed_bot(tmp_overrides: Path) -> None:
     """`kaizen_reactivate <bot>` removes the entry from the sidecar."""
-    tmp_overrides.write_text(json.dumps({"deactivated": {
-        "ghost_bot": {"applied_at": "2026-05-05T00:00:00+00:00",
-                      "reason": "test"},
-        "other_bot": {"applied_at": "2026-05-05T00:00:00+00:00",
-                      "reason": "test"},
-    }}), encoding="utf-8")
+    tmp_overrides.write_text(
+        json.dumps(
+            {
+                "deactivated": {
+                    "ghost_bot": {"applied_at": "2026-05-05T00:00:00+00:00", "reason": "test"},
+                    "other_bot": {"applied_at": "2026-05-05T00:00:00+00:00", "reason": "test"},
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
 
     from eta_engine.scripts.kaizen_reactivate import reactivate
 
@@ -241,9 +262,18 @@ def test_reactivate_handles_unknown_bot(tmp_overrides: Path) -> None:
 
 
 def test_clear_all_empties_sidecar(tmp_overrides: Path) -> None:
-    tmp_overrides.write_text(json.dumps({"deactivated": {
-        "a": {"reason": "x"}, "b": {"reason": "y"}, "c": {"reason": "z"},
-    }}), encoding="utf-8")
+    tmp_overrides.write_text(
+        json.dumps(
+            {
+                "deactivated": {
+                    "a": {"reason": "x"},
+                    "b": {"reason": "y"},
+                    "c": {"reason": "z"},
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
 
     from eta_engine.scripts.kaizen_reactivate import clear_all
 
@@ -259,24 +289,44 @@ def test_clear_all_empties_sidecar(tmp_overrides: Path) -> None:
 
 
 def test_first_run_holds_pending_confirmation(
-    tmp_overrides: Path, tmp_action_log: Path,
+    tmp_overrides: Path,
+    tmp_action_log: Path,
 ) -> None:
     """First time a bot meets RETIRE criteria, status=HELD_PENDING_CONFIRMATION."""
     from eta_engine.scripts import kaizen_loop
 
-    elite = {"bots": {"bad_bot": {
-        "tier": "DECAY", "n": 50, "profit_factor": 0.6,
-        "sharpe": -0.4, "expectancy_r": -0.02,
-        "max_drawdown_r": 25, "rolling_decay_pct": 80,
-        "sum_pnl_usd": -2500,
-    }}}
-    mc = {"bots": {"bad_bot": {"verdict": "DEAD", "n": 50,
-                                "p05_final_R": -0.5, "p_negative": 0.99,
-                                "luck_score": 0.1, "actual_final_R": -0.3}}}
+    elite = {
+        "bots": {
+            "bad_bot": {
+                "tier": "DECAY",
+                "n": 50,
+                "profit_factor": 0.6,
+                "sharpe": -0.4,
+                "expectancy_r": -0.02,
+                "max_drawdown_r": 25,
+                "rolling_decay_pct": 80,
+                "sum_pnl_usd": -2500,
+            }
+        }
+    }
+    mc = {
+        "bots": {
+            "bad_bot": {
+                "verdict": "DEAD",
+                "n": 50,
+                "p05_final_R": -0.5,
+                "p_negative": 0.99,
+                "luck_score": 0.1,
+                "actual_final_R": -0.3,
+            }
+        }
+    }
 
-    with patch.object(kaizen_loop, "_run_elite_scoreboard", return_value=elite), \
-         patch.object(kaizen_loop, "_run_monte_carlo", return_value=mc), \
-         patch.object(kaizen_loop, "_read_edge_tracker_snapshot", return_value={}):
+    with (
+        patch.object(kaizen_loop, "_run_elite_scoreboard", return_value=elite),
+        patch.object(kaizen_loop, "_run_monte_carlo", return_value=mc),
+        patch.object(kaizen_loop, "_read_edge_tracker_snapshot", return_value={}),
+    ):
         report = kaizen_loop.run_loop(apply_actions=True)
 
     assert report["held_count"] == 1
@@ -288,37 +338,60 @@ def test_first_run_holds_pending_confirmation(
 
 
 def test_second_run_applies_after_confirmation(
-    tmp_overrides: Path, tmp_action_log: Path,
+    tmp_overrides: Path,
+    tmp_action_log: Path,
 ) -> None:
     """When the same RETIRE recommendation appears twice, --apply triggers
     sidecar write + status=APPLIED."""
     # Pre-seed the action log as if there was a prior run yesterday.
     tmp_action_log.write_text(
-        json.dumps({
-            "ts": "2026-05-04T06:00:00+00:00",
-            "action": "RETIRE",
-            "bot_id": "bad_bot",
-            "reason": "tier=DECAY mc=DEAD",
-            "status": "RECOMMENDED",
-        }) + "\n",
+        json.dumps(
+            {
+                "ts": "2026-05-04T06:00:00+00:00",
+                "action": "RETIRE",
+                "bot_id": "bad_bot",
+                "reason": "tier=DECAY mc=DEAD",
+                "status": "RECOMMENDED",
+            }
+        )
+        + "\n",
         encoding="utf-8",
     )
 
     from eta_engine.scripts import kaizen_loop
 
-    elite = {"bots": {"bad_bot": {
-        "tier": "DECAY", "n": 50, "profit_factor": 0.6,
-        "sharpe": -0.4, "expectancy_r": -0.02,
-        "max_drawdown_r": 25, "rolling_decay_pct": 80,
-        "sum_pnl_usd": -2500,
-    }}}
-    mc = {"bots": {"bad_bot": {"verdict": "DEAD", "n": 50,
-                                "p05_final_R": -0.5, "p_negative": 0.99,
-                                "luck_score": 0.1, "actual_final_R": -0.3}}}
+    elite = {
+        "bots": {
+            "bad_bot": {
+                "tier": "DECAY",
+                "n": 50,
+                "profit_factor": 0.6,
+                "sharpe": -0.4,
+                "expectancy_r": -0.02,
+                "max_drawdown_r": 25,
+                "rolling_decay_pct": 80,
+                "sum_pnl_usd": -2500,
+            }
+        }
+    }
+    mc = {
+        "bots": {
+            "bad_bot": {
+                "verdict": "DEAD",
+                "n": 50,
+                "p05_final_R": -0.5,
+                "p_negative": 0.99,
+                "luck_score": 0.1,
+                "actual_final_R": -0.3,
+            }
+        }
+    }
 
-    with patch.object(kaizen_loop, "_run_elite_scoreboard", return_value=elite), \
-         patch.object(kaizen_loop, "_run_monte_carlo", return_value=mc), \
-         patch.object(kaizen_loop, "_read_edge_tracker_snapshot", return_value={}):
+    with (
+        patch.object(kaizen_loop, "_run_elite_scoreboard", return_value=elite),
+        patch.object(kaizen_loop, "_run_monte_carlo", return_value=mc),
+        patch.object(kaizen_loop, "_read_edge_tracker_snapshot", return_value={}),
+    ):
         report = kaizen_loop.run_loop(apply_actions=True)
 
     assert report["held_count"] == 0
@@ -332,31 +405,58 @@ def test_second_run_applies_after_confirmation(
 
 
 def test_report_only_never_writes_sidecar(
-    tmp_overrides: Path, tmp_action_log: Path,
+    tmp_overrides: Path,
+    tmp_action_log: Path,
 ) -> None:
     """Without --apply, even a 2-run-confirmed RETIRE doesn't deactivate."""
     tmp_action_log.write_text(
-        json.dumps({"action": "RETIRE", "bot_id": "bad_bot",
-                    "ts": "2026-05-04T06:00:00+00:00",
-                    "reason": "prior", "status": "RECOMMENDED"}) + "\n",
+        json.dumps(
+            {
+                "action": "RETIRE",
+                "bot_id": "bad_bot",
+                "ts": "2026-05-04T06:00:00+00:00",
+                "reason": "prior",
+                "status": "RECOMMENDED",
+            }
+        )
+        + "\n",
         encoding="utf-8",
     )
 
     from eta_engine.scripts import kaizen_loop
 
-    elite = {"bots": {"bad_bot": {
-        "tier": "DECAY", "n": 50, "profit_factor": 0.6,
-        "sharpe": -0.4, "expectancy_r": -0.02,
-        "max_drawdown_r": 25, "rolling_decay_pct": 80,
-        "sum_pnl_usd": -2500,
-    }}}
-    mc = {"bots": {"bad_bot": {"verdict": "DEAD", "n": 50,
-                                "p05_final_R": -0.5, "p_negative": 0.99,
-                                "luck_score": 0.1, "actual_final_R": -0.3}}}
+    elite = {
+        "bots": {
+            "bad_bot": {
+                "tier": "DECAY",
+                "n": 50,
+                "profit_factor": 0.6,
+                "sharpe": -0.4,
+                "expectancy_r": -0.02,
+                "max_drawdown_r": 25,
+                "rolling_decay_pct": 80,
+                "sum_pnl_usd": -2500,
+            }
+        }
+    }
+    mc = {
+        "bots": {
+            "bad_bot": {
+                "verdict": "DEAD",
+                "n": 50,
+                "p05_final_R": -0.5,
+                "p_negative": 0.99,
+                "luck_score": 0.1,
+                "actual_final_R": -0.3,
+            }
+        }
+    }
 
-    with patch.object(kaizen_loop, "_run_elite_scoreboard", return_value=elite), \
-         patch.object(kaizen_loop, "_run_monte_carlo", return_value=mc), \
-         patch.object(kaizen_loop, "_read_edge_tracker_snapshot", return_value={}):
+    with (
+        patch.object(kaizen_loop, "_run_elite_scoreboard", return_value=elite),
+        patch.object(kaizen_loop, "_run_monte_carlo", return_value=mc),
+        patch.object(kaizen_loop, "_read_edge_tracker_snapshot", return_value={}),
+    ):
         report = kaizen_loop.run_loop(apply_actions=False)  # REPORT-ONLY
 
     assert report["applied_count"] == 0

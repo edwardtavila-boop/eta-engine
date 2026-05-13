@@ -25,6 +25,7 @@ back; when Qiskit's result object does not expose a usable best
 measurement, this module recovers with a classical verifier instead
 of fabricating an all-zero vector.
 """
+
 from __future__ import annotations
 
 import logging
@@ -43,6 +44,7 @@ def available() -> bool:
     """Return True iff qiskit is importable."""
     try:
         import importlib
+
         return importlib.util.find_spec("qiskit") is not None
     except (ImportError, AttributeError):
         return False
@@ -124,8 +126,7 @@ def solve_with_qaoa(
         from qiskit_algorithms.optimizers import COBYLA
     except ImportError as exc:
         raise ImportError(
-            f"qiskit submodule import failed ({exc}); ensure qiskit-aer "
-            "and qiskit-algorithms are installed",
+            f"qiskit submodule import failed ({exc}); ensure qiskit-aer and qiskit-algorithms are installed",
         ) from exc
 
     # Sampler selection (qiskit_algorithms 0.4+ QAOA takes a Sampler,
@@ -141,6 +142,7 @@ def solve_with_qaoa(
     sampler_kind = ""
     if use_simulator:
         from qiskit.primitives import StatevectorSampler
+
         sampler = StatevectorSampler(seed=seed)
         sampler_kind = "qiskit.primitives.StatevectorSampler"
     else:
@@ -152,16 +154,18 @@ def solve_with_qaoa(
             from qiskit_ibm_runtime import (
                 SamplerV2 as IBMSampler,
             )
+
             service = QiskitRuntimeService(channel="ibm_quantum")
             backend = service.least_busy(simulator=False)
             sampler = IBMSampler(mode=backend)
             sampler_kind = "qiskit_ibm_runtime.SamplerV2"
         except (ImportError, Exception) as exc:  # noqa: BLE001
             logger.warning(
-                "qaoa: IBM cloud unavailable (%s); falling back to "
-                "StatevectorSampler", exc,
+                "qaoa: IBM cloud unavailable (%s); falling back to StatevectorSampler",
+                exc,
             )
             from qiskit.primitives import StatevectorSampler
+
             sampler = StatevectorSampler(seed=seed)
             sampler_kind = "qiskit.primitives.StatevectorSampler (fallback)"
     logger.debug("qaoa: using sampler %s", sampler_kind)
@@ -192,6 +196,7 @@ def solve_with_qaoa(
     if not pauli_terms:
         # Trivial: all zero -> minimum is x = 0 vector, energy = offset
         from eta_engine.brain.jarvis_v3.quantum.qubo_solver import SolverResult
+
         return SolverResult(
             x=[0] * n,
             energy=offset,
@@ -222,6 +227,7 @@ def solve_with_qaoa(
     qubo_energy = fallback_result.energy if fallback_result is not None else problem.evaluate(x)
 
     from eta_engine.brain.jarvis_v3.quantum.qubo_solver import SolverResult
+
     return SolverResult(
         x=x,
         energy=round(qubo_energy, 6),
@@ -242,7 +248,9 @@ def run_qaoa_simulator(
     """Convenience wrapper: always uses the local Aer simulator."""
     return solve_with_qaoa(
         problem,
-        p_layers=p_layers, max_iter=max_iter, seed=seed,
+        p_layers=p_layers,
+        max_iter=max_iter,
+        seed=seed,
         use_simulator=True,
     )
 

@@ -8,6 +8,7 @@ distribution if range-bound after uptrend, markup/markdown if trending).
 The 3 laws (Supply/Demand, Cause/Effect, Effort vs Result) all reduce
 to: did volume confirm the price move? VPA school covers this.
 """
+
 from __future__ import annotations
 
 from eta_engine.brain.jarvis_v3.sage.base import (
@@ -38,7 +39,9 @@ class WyckoffSchool(SchoolBase):
         n = ctx.n_bars
         if n < 30:
             return SchoolVerdict(
-                school=self.NAME, bias=Bias.NEUTRAL, conviction=0.0,
+                school=self.NAME,
+                bias=Bias.NEUTRAL,
+                conviction=0.0,
                 aligned_with_entry=False,
                 rationale=f"insufficient bars ({n} < 30) for phase assessment",
                 signals={"n_bars": n},
@@ -60,17 +63,9 @@ class WyckoffSchool(SchoolBase):
         last_vol = float(last.get("volume", 0))
 
         # Spring: last bar's low pierced range_low BUT closed back inside on volume
-        spring = (
-            last_low < range_low
-            and last_close > range_low
-            and last_vol >= avg_vol * 1.2
-        )
+        spring = last_low < range_low and last_close > range_low and last_vol >= avg_vol * 1.2
         # Upthrust: last bar's high pierced range_high BUT closed back inside on volume
-        upthrust = (
-            last_high > range_high
-            and last_close < range_high
-            and last_vol >= avg_vol * 1.2
-        )
+        upthrust = last_high > range_high and last_close < range_high and last_vol >= avg_vol * 1.2
 
         # Phase classification: trend over last 50 bars
         prior_trend = "neutral"

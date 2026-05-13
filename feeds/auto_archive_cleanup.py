@@ -13,6 +13,7 @@ disk over time. This script:
 Run quarterly via scheduled task or manually after major migrations.
 Idempotent: a directory that's already been archived is skipped.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -33,7 +34,7 @@ def parse_archive_date(name: str) -> datetime | None:
     """_archive_2026-04-25 -> datetime(2026, 4, 25, tzinfo=UTC)"""
     for prefix in ("_archive_", "_archive-"):
         if name.startswith(prefix):
-            datestr = name[len(prefix):]
+            datestr = name[len(prefix) :]
             for fmt in ("%Y-%m-%d", "%Y%m%d"):
                 try:
                     return datetime.strptime(datestr, fmt).replace(tzinfo=UTC)
@@ -54,17 +55,16 @@ def compress_dir(src: Path, dst: Path) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(description=__doc__,
-                                formatter_class=argparse.RawDescriptionHelpFormatter)
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--workspace", type=Path, default=WORKSPACE)
     p.add_argument("--max-age-days", type=int, default=90)
-    p.add_argument("--archive-out", type=Path,
-                   default=WORKSPACE / "data" / "compressed_archives")
-    p.add_argument("--restic", action="store_true",
-                   help="After compressing, run `restic backup` on the .tar.gz "
-                        "(requires RESTIC_REPOSITORY + RESTIC_PASSWORD env)")
-    p.add_argument("--keep-uncompressed", action="store_true",
-                   help="Compress but do NOT delete the source directory")
+    p.add_argument("--archive-out", type=Path, default=WORKSPACE / "data" / "compressed_archives")
+    p.add_argument(
+        "--restic",
+        action="store_true",
+        help="After compressing, run `restic backup` on the .tar.gz (requires RESTIC_REPOSITORY + RESTIC_PASSWORD env)",
+    )
+    p.add_argument("--keep-uncompressed", action="store_true", help="Compress but do NOT delete the source directory")
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("-v", "--verbose", action="store_true")
     args = p.parse_args(argv)
@@ -92,8 +92,9 @@ def main(argv: list[str] | None = None) -> int:
             logger.debug("skip %s: name doesn't parse as a date", child.name)
             continue
         if d.timestamp() > cutoff:
-            logger.debug("skip %s: only %.0f days old (< %d)",
-                         child.name, (datetime.now(UTC) - d).days, args.max_age_days)
+            logger.debug(
+                "skip %s: only %.0f days old (< %d)", child.name, (datetime.now(UTC) - d).days, args.max_age_days
+            )
             continue
         candidates.append(child)
 
@@ -128,10 +129,14 @@ def main(argv: list[str] | None = None) -> int:
 
         if args.restic:
             import subprocess
+
             try:
                 subprocess.run(
                     ["restic", "backup", str(out), "--tag", "archive"],
-                    check=True, capture_output=True, text=True, timeout=600,
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                    timeout=600,
                 )
                 logger.info("  -> restic backup OK")
             except (subprocess.SubprocessError, OSError) as exc:

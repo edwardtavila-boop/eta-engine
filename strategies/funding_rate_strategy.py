@@ -82,7 +82,6 @@ class FundingRateStrategyConfig:
 
 
 class FundingRateStrategy:
-
     def __init__(self, config: FundingRateStrategyConfig | None = None) -> None:
         self.cfg = config or FundingRateStrategyConfig()
         self._funding_provider: Callable[[BarData], float] | None = None
@@ -116,14 +115,15 @@ class FundingRateStrategy:
         }
 
     def attach_funding_provider(
-        self, p: Callable[[BarData], float] | None,
+        self,
+        p: Callable[[BarData], float] | None,
     ) -> None:
         self._funding_provider = p
 
     def _funding_persistence(self) -> float:
         if len(self._funding_signs) < self.cfg.persistence_lookback:
             return 0.0
-        recent = list(self._funding_signs)[-self.cfg.persistence_lookback:]
+        recent = list(self._funding_signs)[-self.cfg.persistence_lookback :]
         pos_count = sum(1 for s in recent if s > 0)
         neg_count = sum(1 for s in recent if s < 0)
         total = pos_count + neg_count
@@ -134,7 +134,7 @@ class FundingRateStrategy:
     def _funding_direction(self) -> str:
         if len(self._funding_signs) < self.cfg.persistence_lookback:
             return "neutral"
-        recent = list(self._funding_signs)[-self.cfg.persistence_lookback:]
+        recent = list(self._funding_signs)[-self.cfg.persistence_lookback :]
         pos_count = sum(1 for s in recent if s > 0)
         neg_count = sum(1 for s in recent if s < 0)
         if pos_count > neg_count:
@@ -156,14 +156,17 @@ class FundingRateStrategy:
         vols = list(self._volume_window)
         mean = sum(vols) / len(vols)
         var = sum((v - mean) ** 2 for v in vols) / len(vols)
-        std = var ** 0.5
+        std = var**0.5
         if std <= 0.0:
             return 0.0
         return (bar.volume - mean) / std
 
     def maybe_enter(
-        self, bar: BarData, hist: list[BarData],
-        equity: float, config: BacktestConfig,
+        self,
+        bar: BarData,
+        hist: list[BarData],
+        equity: float,
+        config: BacktestConfig,
     ) -> _Open | None:
         bar_date = bar.timestamp.date()
         if self._last_day != bar_date:
@@ -193,10 +196,7 @@ class FundingRateStrategy:
                 # always satisfied and rendered persistence_threshold a
                 # no-op.  This fix makes persistence_lookback=6 mean what
                 # it claims (6 funding cycles, ~48h on Binance perps).
-                if (
-                    self._last_funding_value is None
-                    or abs(funding - self._last_funding_value) > 1e-12
-                ):
+                if self._last_funding_value is None or abs(funding - self._last_funding_value) > 1e-12:
                     self._funding_signs.append(
                         1 if funding > 0 else (-1 if funding < 0 else 0),
                     )
@@ -246,7 +246,7 @@ class FundingRateStrategy:
             self._n_vol_reject += 1
             return None
 
-        atr_window = hist[-self.cfg.atr_period:] if hist else []
+        atr_window = hist[-self.cfg.atr_period :] if hist else []
         if len(atr_window) < 2:
             return None
         atr = sum(b.high - b.low for b in atr_window) / len(atr_window)
@@ -276,30 +276,50 @@ class FundingRateStrategy:
         self._trades_today += 1
         self._n_fired += 1
         return _Open(
-            entry_bar=bar, side=side, qty=qty, entry_price=entry,
-            stop=stop, target=target, risk_usd=risk_usd,
-            confluence=7.0, leverage=1.0,
+            entry_bar=bar,
+            side=side,
+            qty=qty,
+            entry_price=entry,
+            stop=stop,
+            target=target,
+            risk_usd=risk_usd,
+            confluence=7.0,
+            leverage=1.0,
             regime=f"fund_rate_{side.lower()}_p{persistence:.1f}",
         )
 
 
 def btc_funding_rate_preset() -> FundingRateStrategyConfig:
     return FundingRateStrategyConfig(
-        persistence_lookback=6, persistence_threshold=0.60,
-        ema_period=21, require_pullback=True,
-        volume_z_lookback=24, min_volume_z=0.2,
-        atr_period=14, atr_stop_mult=1.5, rr_target=2.0,
-        risk_per_trade_pct=0.005, min_bars_between_trades=12,
-        max_trades_per_day=2, warmup_bars=72,
+        persistence_lookback=6,
+        persistence_threshold=0.60,
+        ema_period=21,
+        require_pullback=True,
+        volume_z_lookback=24,
+        min_volume_z=0.2,
+        atr_period=14,
+        atr_stop_mult=1.5,
+        rr_target=2.0,
+        risk_per_trade_pct=0.005,
+        min_bars_between_trades=12,
+        max_trades_per_day=2,
+        warmup_bars=72,
     )
 
 
 def eth_funding_rate_preset() -> FundingRateStrategyConfig:
     return FundingRateStrategyConfig(
-        persistence_lookback=6, persistence_threshold=0.50,
-        ema_period=21, require_pullback=True,
-        volume_z_lookback=24, min_volume_z=0.2,
-        atr_period=14, atr_stop_mult=1.8, rr_target=2.0,
-        risk_per_trade_pct=0.005, min_bars_between_trades=12,
-        max_trades_per_day=2, warmup_bars=72,
+        persistence_lookback=6,
+        persistence_threshold=0.50,
+        ema_period=21,
+        require_pullback=True,
+        volume_z_lookback=24,
+        min_volume_z=0.2,
+        atr_period=14,
+        atr_stop_mult=1.8,
+        rr_target=2.0,
+        risk_per_trade_pct=0.005,
+        min_bars_between_trades=12,
+        max_trades_per_day=2,
+        warmup_bars=72,
     )

@@ -85,8 +85,10 @@ def _resolution_payload(req: DataRequirement, dataset: DatasetMeta) -> dict[str,
     timeframe_matches = effective_timeframe is None or dataset.timeframe == effective_timeframe
 
     if dataset_symbol == expected_symbol:
-        mode = "timeframe_fallback" if not timeframe_matches else (
-            "synthetic" if expected_symbol != req.symbol.upper() else "direct"
+        mode = (
+            "timeframe_fallback"
+            if not timeframe_matches
+            else ("synthetic" if expected_symbol != req.symbol.upper() else "direct")
         )
     else:
         mode = "proxy"
@@ -288,10 +290,7 @@ def _audit_payload(audit: BotAudit, *, generated_at: datetime | None = None) -> 
         "critical_coverage_pct": round(audit.critical_coverage_pct, 2),
         "critical_freshness": _critical_freshness_payload(audit, generated_at=generated_at),
         "optional_freshness": _optional_freshness_payload(audit, generated_at=generated_at),
-        "available": [
-            _available_item(req, dataset, generated_at=generated_at)
-            for req, dataset in audit.available
-        ],
+        "available": [_available_item(req, dataset, generated_at=generated_at) for req, dataset in audit.available],
         "missing_critical": [_requirement_payload(req) for req in audit.missing_critical],
         "missing_optional": [_requirement_payload(req) for req in audit.missing_optional],
         "sources_hint": list(audit.sources_hint),
@@ -301,10 +300,7 @@ def _audit_payload(audit: BotAudit, *, generated_at: datetime | None = None) -> 
 def _freshness_summary(datasets: list[DatasetMeta], generated_at: datetime) -> dict[str, Any]:
     canonical_by_pair = _canonical_datasets(datasets)
     canonical_keys = {dataset.key for dataset in canonical_by_pair.values()}
-    payload_by_key = {
-        dataset.key: _dataset_payload(dataset, generated_at=generated_at)
-        for dataset in datasets
-    }
+    payload_by_key = {dataset.key: _dataset_payload(dataset, generated_at=generated_at) for dataset in datasets}
     items: list[dict[str, Any]] = []
     superseded: list[dict[str, Any]] = []
     for dataset in datasets:
@@ -332,17 +328,9 @@ def _freshness_summary(datasets: list[DatasetMeta], generated_at: datetime) -> d
         "counts": counts,
         "canonical_counts": canonical_counts,
         "stale": [item for item in items if item["freshness"]["status"] == "stale"],
-        "canonical_stale": [
-            item
-            for item in items
-            if item["canonical"] and item["freshness"]["status"] == "stale"
-        ],
+        "canonical_stale": [item for item in items if item["canonical"] and item["freshness"]["status"] == "stale"],
         "superseded": superseded,
-        "superseded_stale": [
-            item
-            for item in superseded
-            if item["freshness"]["status"] == "stale"
-        ],
+        "superseded_stale": [item for item in superseded if item["freshness"]["status"] == "stale"],
         "warm": [item for item in items if item["freshness"]["status"] == "warm"],
     }
 
@@ -367,22 +355,28 @@ def _bot_optional_freshness_summary(items: list[dict[str, Any]]) -> dict[str, An
         if status in status_counts:
             status_counts[status] += 1
         if freshness["counts"]["stale"]:
-            stale_bots.append({
-                "bot_id": bot_id,
-                "stale_count": freshness["counts"]["stale"],
-                "stale": freshness["stale"],
-            })
+            stale_bots.append(
+                {
+                    "bot_id": bot_id,
+                    "stale_count": freshness["counts"]["stale"],
+                    "stale": freshness["stale"],
+                }
+            )
         if freshness["counts"]["warm"]:
-            warm_bots.append({
-                "bot_id": bot_id,
-                "warm_count": freshness["counts"]["warm"],
-                "warm": freshness["warm"],
-            })
+            warm_bots.append(
+                {
+                    "bot_id": bot_id,
+                    "warm_count": freshness["counts"]["warm"],
+                    "warm": freshness["warm"],
+                }
+            )
         if freshness["counts"]["missing"]:
-            missing_bots.append({
-                "bot_id": bot_id,
-                "missing_optional": item["missing_optional"],
-            })
+            missing_bots.append(
+                {
+                    "bot_id": bot_id,
+                    "missing_optional": item["missing_optional"],
+                }
+            )
 
     return {
         "status_counts": status_counts,
@@ -454,22 +448,28 @@ def _bot_critical_freshness_summary(items: list[dict[str, Any]]) -> dict[str, An
         if status in status_counts:
             status_counts[status] += 1
         if status == "stale":
-            stale_bots.append({
-                "bot_id": bot_id,
-                "stale_count": freshness["counts"]["stale"],
-                "stale": freshness["stale"],
-            })
+            stale_bots.append(
+                {
+                    "bot_id": bot_id,
+                    "stale_count": freshness["counts"]["stale"],
+                    "stale": freshness["stale"],
+                }
+            )
         elif status == "warm":
-            warm_bots.append({
-                "bot_id": bot_id,
-                "warm_count": freshness["counts"]["warm"],
-                "warm": freshness["warm"],
-            })
+            warm_bots.append(
+                {
+                    "bot_id": bot_id,
+                    "warm_count": freshness["counts"]["warm"],
+                    "warm": freshness["warm"],
+                }
+            )
         elif status == "blocked":
-            blocked_bots.append({
-                "bot_id": bot_id,
-                "missing_critical": item["missing_critical"],
-            })
+            blocked_bots.append(
+                {
+                    "bot_id": bot_id,
+                    "missing_critical": item["missing_critical"],
+                }
+            )
 
     return {
         "status_counts": status_counts,
@@ -567,6 +567,7 @@ def main(argv: list[str] | None = None) -> int:
     # blocked on missing data feeds (especially crypto).
     from eta_engine.data.audit import audit_all
     from eta_engine.data.audit import summary_markdown as audit_summary
+
     audits = audit_all(library=lib)
     print(audit_summary(audits))
     print()
@@ -582,12 +583,12 @@ def main(argv: list[str] | None = None) -> int:
     blocked = {
         a.bot_id: {
             "missing_critical": [
-                {"kind": r.kind, "symbol": r.symbol, "timeframe": r.timeframe}
-                for r in a.missing_critical
+                {"kind": r.kind, "symbol": r.symbol, "timeframe": r.timeframe} for r in a.missing_critical
             ],
             "sources_hint": list(a.sources_hint),
         }
-        for a in audits if not a.is_runnable
+        for a in audits
+        if not a.is_runnable
     }
 
     journal = DecisionJournal(args.journal)

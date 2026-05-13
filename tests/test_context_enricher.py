@@ -1,4 +1,5 @@
 """Tests for eta_engine.brain.jarvis_v3.context_enricher — multi-TF + event-aware context."""
+
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
@@ -24,6 +25,7 @@ def test_enrich_returns_EnrichedContext() -> None:  # noqa: N802 — name fixed 
 
 def test_enrich_handles_missing_library(monkeypatch) -> None:
     """If data.library.default_library raises, enrich still returns a valid context with empty multi_tf."""
+
     def _boom():
         raise RuntimeError("library is dormant")
 
@@ -63,7 +65,7 @@ def test_nearby_events_populated_pre_fomc(tmp_path, monkeypatch) -> None:
     future_ts = now + timedelta(minutes=30)
     yaml_text = (
         "events:\n"
-        f"  - ts_utc: \"{future_ts.strftime('%Y-%m-%dT%H:%M:%SZ')}\"\n"
+        f'  - ts_utc: "{future_ts.strftime("%Y-%m-%dT%H:%M:%SZ")}"\n'
         "    kind: FOMC\n"
         "    symbol: null\n"
         "    severity: 3\n"
@@ -79,6 +81,7 @@ def test_nearby_events_populated_pre_fomc(tmp_path, monkeypatch) -> None:
 
 def test_multi_tf_agreement_all_bull(monkeypatch) -> None:
     """When library returns bullish trend on every TF, agreement is positive and > 0.5."""
+
     class _FakeDataset:
         def __init__(self) -> None:
             self.symbol = "BTC"
