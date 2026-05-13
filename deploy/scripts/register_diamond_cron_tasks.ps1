@@ -71,6 +71,14 @@ $settings = New-ScheduledTaskSettingsSet `
     -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
     -ExecutionTimeLimit (New-TimeSpan -Minutes 30)
 
+# Use the SYSTEM service account (matches the existing
+# ETA-Diamond-WatchdogDaily and other ETA-Diamond-* tasks).
+# WORKGROUP\trader fails account-name-to-SID lookup on this VPS.
+$principal = New-ScheduledTaskPrincipal `
+    -UserId "SYSTEM" `
+    -LogonType ServiceAccount `
+    -RunLevel Limited
+
 function Register-DiamondTask {
     param(
         [string]$Name,
@@ -92,10 +100,9 @@ function Register-DiamondTask {
         -Action $action `
         -Trigger $Trigger `
         -Settings $settings `
-        -User $TaskUser `
-        -RunLevel Limited `
+        -Principal $principal `
         -Description $Desc | Out-Null
-    Write-Host "  registered"
+    Write-Host "  registered (SYSTEM)"
     if ($StartNow) {
         Start-ScheduledTask -TaskName $Name
         Write-Host "  started"
