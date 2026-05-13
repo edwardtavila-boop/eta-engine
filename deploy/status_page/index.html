@@ -1601,7 +1601,7 @@ function aggregateContributionRows(rows) {
   return Array.from(grouped.values())
     .map((row) => {
       const extra = row.symbol && row.symbol !== row.label ? row.symbol : '';
-      const detailParts = [row.bucket];
+      const detailParts = [];
       if (extra) detailParts.push(extra);
       if (row.closeCount > 0) detailParts.push(`${row.closeCount} close${row.closeCount === 1 ? '' : 's'}`);
       if (row.openCount > 0) detailParts.push(`${row.openCount} open row${row.openCount === 1 ? '' : 's'}`);
@@ -1620,23 +1620,54 @@ function aggregateContributionRows(rows) {
     .sort((a, b) => (b.value - a.value) || (a.label > b.label ? 1 : -1));
 }
 
+function pickTopImpactRows(rows, limit = 5) {
+  const ranked = Array.isArray(rows) ? rows.slice() : [];
+  if (!ranked.length || limit <= 0) return [];
+  const negatives = ranked.filter((row) => row.pnl < 0).sort((a, b) => (b.value - a.value) || (a.label > b.label ? 1 : -1));
+  const positives = ranked.filter((row) => row.pnl > 0).sort((a, b) => (b.value - a.value) || (a.label > b.label ? 1 : -1));
+  const selectedKeys = new Set();
+  const selected = [];
+  const pushUnique = (row) => {
+    if (!row) return;
+    const key = `${String(row.label || '').toLowerCase()}|${String(row.symbol || '').toLowerCase()}`;
+    if (selectedKeys.has(key)) return;
+    selectedKeys.add(key);
+    selected.push(row);
+  };
+
+  pushUnique(negatives[0]);
+  pushUnique(positives[0]);
+
+  for (const row of ranked) {
+    if (selected.length >= limit) break;
+    pushUnique(row);
+  }
+
+  return selected
+    .sort((a, b) => (b.value - a.value) || (a.label > b.label ? 1 : -1))
+    .slice(0, limit);
+}
+
 function renderContributionGraph(bots, liveBroker, portfolioSummary) {
   const el = document.getElementById('pnlContributionGraph');
   const source = document.getElementById('contributionSource');
   const sub = document.getElementById('contributionSub');
   if (!el) return;
   let rows = portfolioContributionRows(portfolioSummary);
-  let sourceLabelText = rows.length ? 'portfolio API' : 'broker exposure';
-  if (!rows.length) rows = brokerContributionRows(liveBroker);
+  let sourceLabelText = 'portfolio API';
+  if (!rows.length) {
+    rows = brokerContributionRows(liveBroker);
+    sourceLabelText = rows.length ? 'broker closes + exposure' : 'broker exposure';
+  }
   if (!rows.length) {
     rows = botContributionRows(bots);
     sourceLabelText = 'bot PnL fallback';
   }
   const rankedRows = aggregateContributionRows(rows);
-  const topRows = rankedRows.slice(0, 5);
+  const topRows = pickTopImpactRows(rankedRows, 5);
   if (source) source.textContent = sourceLabelText;
   if (sub) sub.textContent = topRows.length
-    ? `Top ${topRows.length} distinct strategies/tickers by absolute PnL impact`
+    ? `Top ${topRows.length} distinct winners and losers by PnL impact`
       : 'Waiting for book, fills, or PnL';
   if (!topRows.length) {
     el.innerHTML = '<div class="empty-panel">No PnL contribution yet. The graph will populate from broker exposure first, then bot PnL fallback.</div>';
