@@ -11,15 +11,15 @@ scoring logic, gauntlet gate design). Haiku 4.5 for grunt work -- log parsing,
 simple file edits, commit message drafts. That single swap cuts burn rate ~5x."
 
 Wave-19 (2026-05-04): Force-Multiplier provider routing. Each TaskCategory maps
-to the best provider for that work type:
-  * CLAUDE  (Lead Architect) — planning, architecture, code review, red team
-  * DEEPSEEK (Worker Bee)    — high-volume generation, boilerplate, grunt work
-  * CODEX   (Systems Expert) — debugging, test execution, security audits
+to the best allowed provider for that work type:
+  * CODEX    (Lead Architect / Systems Expert) — planning, review, debug, security
+  * DEEPSEEK (Worker Bee)                       — high-volume generation and grunt work
+  * CLAUDE   (legacy enum only)                 — disabled by operator policy
 
 Before this module every agent frontmatter defaulted to ``model: opus`` -- the
 Max plan was quietly burning 5x quota on tasks that a mid-tier model would do
 perfectly. The fix is a *single source of truth* that JARVIS consults whenever
-a subsystem (or a sub-agent dispatcher, or a CLAUDE.md directive) needs to pick
+a subsystem (or a sub-agent dispatcher, or an agent directive) needs to pick
 the model for a piece of work.
 
 Design principles (mirrors ``brain.jarvis_admin``)
@@ -33,7 +33,7 @@ Design principles (mirrors ``brain.jarvis_admin``)
 
 Public API
 ----------
-  * ``ModelTier``        -- enum of the three Claude model tiers
+  * ``ModelTier``        -- enum of the historical model tiers
   * ``TaskCategory``     -- enum of every task kind the fleet performs
   * ``ForceProvider``    -- enum of Force Multiplier providers (CLAUDE/DEEPSEEK/CODEX)
   * ``ModelSelection``   -- pydantic: tier + reason + cost multiplier
@@ -60,10 +60,9 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class ModelTier(StrEnum):
-    """The three Claude model tiers the fleet uses.
+    """The historical model tiers the fleet uses.
 
-    Values match what Claude Code expects in sub-agent frontmatter
-    (``model: opus`` etc.) so this enum can be written straight to disk.
+    Values stay stable for existing frontmatter and audit records.
     """
 
     OPUS = "opus"
@@ -74,10 +73,10 @@ class ModelTier(StrEnum):
 class ForceProvider(StrEnum):
     """Provider selection for the Force-Multiplier workflow (Wave-19).
 
-    Each provider has a distinct role based on 2026 strengths:
-      * CLAUDE   — Lead Architect: planning, architecture, nuanced review
+    Active roles:
+      * CODEX    — Lead Architect / Systems Expert: planning, review, debug, security
       * DEEPSEEK — Worker Bee: high-volume generation, boilerplate, grunt work
-      * CODEX    — Systems Expert: debugging, test execution, security audits
+      * CLAUDE   — Legacy compatibility enum; disabled by operator policy
     """
 
     CLAUDE = "claude"
@@ -97,7 +96,7 @@ COST_RATIO: dict[ModelTier, float] = {
 
 # DeepSeek provider cost ratios (vs same SONNET baseline = 1.0x)
 # Source: eta_engine.brain.llm_provider.COST_RATIO
-# DeepSeek V4 Flash is ~21× cheaper than Claude Sonnet for input tokens.
+# DeepSeek V4 Flash is retained as the only paid API lane.
 DEEPSEEK_COST_RATIO: dict[ModelTier, float] = {
     ModelTier.OPUS: 0.145,  # V4 Pro = $0.435/1M vs Sonnet $3.00/1M
     ModelTier.SONNET: 0.047,  # V4 Flash = $0.14/1M
@@ -209,14 +208,14 @@ _TIER_TO_BUCKET: dict[ModelTier, TaskBucket] = {
 # ---------------------------------------------------------------------------
 
 _CATEGORY_TO_PROVIDER: dict[TaskCategory, ForceProvider] = {
-    # CLAUDE (Lead Architect) — planning, architecture, nuanced review
-    TaskCategory.ARCHITECTURE_DECISION: ForceProvider.CLAUDE,
-    TaskCategory.RISK_POLICY_DESIGN: ForceProvider.CLAUDE,
-    TaskCategory.GAUNTLET_GATE_DESIGN: ForceProvider.CLAUDE,
-    TaskCategory.STATE_MACHINE_DESIGN: ForceProvider.CLAUDE,
-    TaskCategory.RED_TEAM_SCORING: ForceProvider.CLAUDE,
-    TaskCategory.ADVERSARIAL_REVIEW: ForceProvider.CLAUDE,
-    TaskCategory.CODE_REVIEW: ForceProvider.CLAUDE,
+    # Legacy Claude categories now route to Codex by operator policy.
+    TaskCategory.ARCHITECTURE_DECISION: ForceProvider.CODEX,
+    TaskCategory.RISK_POLICY_DESIGN: ForceProvider.CODEX,
+    TaskCategory.GAUNTLET_GATE_DESIGN: ForceProvider.CODEX,
+    TaskCategory.STATE_MACHINE_DESIGN: ForceProvider.CODEX,
+    TaskCategory.RED_TEAM_SCORING: ForceProvider.CODEX,
+    TaskCategory.ADVERSARIAL_REVIEW: ForceProvider.CODEX,
+    TaskCategory.CODE_REVIEW: ForceProvider.CODEX,
     # CODEX (Systems Expert) — debugging, test execution, security, computer use
     TaskCategory.DEBUG: ForceProvider.CODEX,
     TaskCategory.TEST_EXECUTION: ForceProvider.CODEX,
@@ -299,9 +298,9 @@ def force_provider_for(category: TaskCategory) -> ForceProvider:
     """Pure policy: given a task category, return the Force-Multiplier provider.
 
     Maps each task to the provider best suited for that work type:
-      * CLAUDE   — architectural decisions, adversarial review, code review
+      * CODEX    — architecture, adversarial review, debugging, security
       * DEEPSEEK — high-volume generation, boilerplate, grunt work
-      * CODEX    — debugging, test execution, security audits, computer use
+      * CLAUDE   — legacy compatibility enum only; never selected by default
 
     Falls back to DEEPSEEK for unknown categories (cheapest, safest default).
     """

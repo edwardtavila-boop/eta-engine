@@ -271,6 +271,9 @@ def _cmd_help() -> str:
         "`/pause BOT`     halt one bot (size_modifier=0)\n"
         "`/resume BOT`    clear override for one bot\n"
         "`/size BOT N`    set size_modifier to N (0..1)\n"
+        "`/sage`          Sage status, health, and school weights\n"
+        "`/sage weight ASSET SCHOOL N [TTL]` set school weight\n"
+        "`/sage clear ASSET SCHOOL` clear school weight\n"
         "\n"
         "*Channel:*\n"
         "`/silence Nm`    mute outbound pulse for N minutes\n"
@@ -488,6 +491,102 @@ def _cmd_bots() -> str:
     return "\n".join(lines)
 
 
+def _cmd_sage(arg: str) -> str:
+    """Hermes operator control surface for Sage status + school weights."""
+    parts = arg.strip().split()
+    action = parts[0].lower() if parts else "status"
+
+    if action in {"status", "summary"}:
+        try:
+            from eta_engine.brain.jarvis_v3 import hermes_overrides
+            from eta_engine.brain.jarvis_v3.sage import SCHOOLS
+
+            summary = hermes_overrides.active_overrides_summary()
+        except Exception as exc:  # noqa: BLE001
+            return f"_sage status unavailable_: `{str(exc)[:120]}`"
+
+        school_weights = summary.get("school_weights") or {}
+        n_overrides = sum(len(v) for v in school_weights.values() if isinstance(v, dict))
+        sample = ", ".join(sorted(SCHOOLS)[:8])
+        return (
+            "*Sage status*\n"
+            f"`schools`: {len(SCHOOLS)}\n"
+            f"`active school overrides`: {n_overrides}\n"
+            f"`sample`: {sample}"
+        )
+
+    if action == "health":
+        try:
+            from eta_engine.brain.jarvis_v3.sage.health import default_monitor
+
+            monitor = default_monitor()
+            issues = monitor.check_health()
+            snapshot = monitor.snapshot()
+        except Exception as exc:  # noqa: BLE001
+            return f"_sage health unavailable_: `{str(exc)[:120]}`"
+
+        critical = [i for i in issues if getattr(i, "severity", "") == "critical"]
+        warn = [i for i in issues if getattr(i, "severity", "") == "warn"]
+        lines = [
+            "*Sage health*",
+            f"`schools_observed`: {len(snapshot)}",
+            f"`critical`: {len(critical)}",
+            f"`warn`: {len(warn)}",
+        ]
+        for issue in critical[:5]:
+            lines.append(f"`CRIT` `{issue.school}` neutral={issue.neutral_rate:.2%}")
+        return "\n".join(lines)
+
+    if action == "weight":
+        if len(parts) not in {4, 5}:
+            return "_usage: `/sage weight <ASSET> <SCHOOL> <weight> [ttl_minutes]`_"
+        asset, school, weight_raw = parts[1], parts[2], parts[3]
+        try:
+            weight = float(weight_raw)
+        except ValueError:
+            return "_weight must be numeric, e.g. `/sage weight MNQ momentum 1.2`_"
+        ttl = 360
+        if len(parts) == 5:
+            try:
+                ttl = int(parts[4])
+            except ValueError:
+                return "_ttl_minutes must be an integer_"
+        try:
+            from eta_engine.brain.jarvis_v3 import hermes_overrides
+
+            result = hermes_overrides.apply_school_weight(
+                asset=asset.upper(),
+                school=school,
+                weight=weight,
+                reason="telegram /sage weight by operator",
+                ttl_minutes=ttl,
+                source="telegram_inbound_bot",
+            )
+        except Exception as exc:  # noqa: BLE001
+            return f"_sage weight failed_: `{str(exc)[:120]}`"
+        status = result.get("status") if isinstance(result, dict) else "?"
+        return f"*Sage weight* `{asset.upper()}` `{school}` -> `{weight}` status: `{status}` ttl={ttl}m"
+
+    if action == "clear":
+        if len(parts) != 3:
+            return "_usage: `/sage clear <ASSET> <SCHOOL>`_"
+        asset, school = parts[1], parts[2]
+        try:
+            from eta_engine.brain.jarvis_v3 import hermes_overrides
+
+            result = hermes_overrides.clear_override(asset=asset.upper(), school=school)
+        except Exception as exc:  # noqa: BLE001
+            return f"_sage clear failed_: `{str(exc)[:120]}`"
+        status = result.get("status") if isinstance(result, dict) else "?"
+        return f"*Sage clear* `{asset.upper()}` `{school}` status: `{status}`"
+
+    return (
+        "_usage: `/sage`, `/sage health`, "
+        "`/sage weight <ASSET> <SCHOOL> <weight> [ttl_minutes]`, "
+        "or `/sage clear <ASSET> <SCHOOL>`_"
+    )
+
+
 def _cmd_pause(arg: str) -> str:
     """`/pause botname` — set size_modifier=0 for one bot."""
     bot_id = arg.strip()
@@ -672,6 +771,7 @@ COMMANDS: dict[str, Any] = {
     "/pause": (_cmd_pause, True),
     "/resume": (_cmd_resume, True),
     "/size": (_cmd_size, True),
+    "/sage": (_cmd_sage, True),
     "/silence": (_cmd_silence, True),
     "/unsilence": (_cmd_unsilence, False),
     "/ack": (_cmd_ack, True),

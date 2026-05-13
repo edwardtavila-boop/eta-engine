@@ -1,10 +1,12 @@
 """
-Three-AI Parallel Orchestrator — Claude + DeepSeek + Codex operating in synergy.
+Subscription-first AI orchestrator - Codex + DeepSeek operating in synergy.
 
-Routes tasks to all three AIs simultaneously based on their strengths:
-  Claude   → Architecture, planning, code review
-  DeepSeek → Implementation, generation, testing
-  Codex    → Verification, security, deployment
+Routes tasks to the allowed AI lanes based on their strengths:
+  Codex    -> Architecture, planning, code review, verification, security
+  DeepSeek -> Implementation, generation, testing, documentation
+
+Claude remains a disabled legacy lane; any stale Claude route falls forward to
+Codex, then DeepSeek if Codex is unavailable.
 
 Usage:
     python -m eta_engine.scripts.three_ai_orchestrator --task "Implement caching layer"
@@ -43,11 +45,10 @@ class ParallelTask:
 
 
 def dispatch_parallel(*, goal: str, categories: list[str] | None = None) -> list[ParallelTask]:
-    """Dispatch a goal to all three AIs in parallel based on their strengths.
+    """Dispatch a goal across Codex and DeepSeek based on their strengths.
 
-    Claude gets: architecture, review, planning
+    Codex gets: architecture, review, planning, verification, security
     DeepSeek gets: implementation, generation, grunt
-    Codex gets: verification, security, execution
     """
     if categories is None:
         categories = ["architecture_decision", "strategy_edit", "test_execution"]
@@ -95,7 +96,7 @@ def dispatch_parallel(*, goal: str, categories: list[str] | None = None) -> list
 def _system_prompt_for(cat: TaskCategory, provider: ForceProvider) -> str:
     prompts = {
         ForceProvider.CLAUDE: (
-            "You are Claude, the Lead Architect of the Evolutionary Trading Algo. "
+            "You are Codex covering a disabled legacy Claude route for the Evolutionary Trading Algo. "
             "Your role: architectural decisions, risk policy, adversarial review, code quality. "
             "Be precise, adversarial, and thorough. Output structured markdown."
         ),
@@ -131,11 +132,11 @@ def daemon_mode(interval_sec: int = 300) -> None:
 
     while True:
         status = force_multiplier_status()
-        all_healthy = all(status["providers"][p]["available"] for p in ["claude", "codex", "deepseek"])
+        all_healthy = all(status["providers"][p]["available"] for p in ["codex", "deepseek"])
 
         logger.info(
-            "3AI Health: claude=%s codex=%s deepseek=%s all=%s",
-            status["providers"]["claude"]["available"],
+            "AI Health: claude_disabled=%s codex=%s deepseek=%s all=%s",
+            status["providers"]["claude"]["disabled_by_policy"],
             status["providers"]["codex"]["available"],
             status["providers"]["deepseek"]["available"],
             all_healthy,

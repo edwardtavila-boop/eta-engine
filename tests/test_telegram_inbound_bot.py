@@ -21,6 +21,7 @@ def test_dispatch_help_returns_command_list() -> None:
     assert "/pnl" in reply
     assert "/anomalies" in reply
     assert "/preflight" in reply
+    assert "/sage" in reply
 
 
 def test_dispatch_unknown_command_returns_hint() -> None:
@@ -1057,6 +1058,59 @@ def test_cmd_size_requires_two_args() -> None:
 
     reply = telegram_inbound_bot.dispatch_command("/size mnq_floor")
     assert "usage" in reply.lower()
+
+
+def test_cmd_sage_status_lists_schools() -> None:
+    from eta_engine.scripts import telegram_inbound_bot
+
+    reply = telegram_inbound_bot.dispatch_command("/sage")
+    assert "Sage" in reply
+    assert "schools" in reply.lower()
+
+
+def test_cmd_sage_weight_applies_school_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    from eta_engine.brain.jarvis_v3 import hermes_overrides
+    from eta_engine.scripts import telegram_inbound_bot
+
+    captured: list[dict[str, Any]] = []
+
+    def fake_apply(**kw: Any) -> dict[str, Any]:
+        captured.append(kw)
+        return {"status": "APPLIED", **kw}
+
+    monkeypatch.setattr(hermes_overrides, "apply_school_weight", fake_apply)
+
+    reply = telegram_inbound_bot.dispatch_command("/sage weight MNQ momentum 1.25 90")
+    assert "Sage weight" in reply
+    assert captured[0]["asset"] == "MNQ"
+    assert captured[0]["school"] == "momentum"
+    assert captured[0]["weight"] == 1.25
+    assert captured[0]["ttl_minutes"] == 90
+
+
+def test_cmd_sage_clear_removes_school_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    from eta_engine.brain.jarvis_v3 import hermes_overrides
+    from eta_engine.scripts import telegram_inbound_bot
+
+    captured: list[dict[str, Any]] = []
+
+    def fake_clear(**kw: Any) -> dict[str, Any]:
+        captured.append(kw)
+        return {"status": "REMOVED", **kw}
+
+    monkeypatch.setattr(hermes_overrides, "clear_override", fake_clear)
+
+    reply = telegram_inbound_bot.dispatch_command("/sage clear MNQ momentum")
+    assert "Sage clear" in reply
+    assert captured[0]["asset"] == "MNQ"
+    assert captured[0]["school"] == "momentum"
+
+
+def test_cmd_sage_weight_rejects_garbage() -> None:
+    from eta_engine.scripts import telegram_inbound_bot
+
+    reply = telegram_inbound_bot.dispatch_command("/sage weight MNQ momentum nope")
+    assert "weight must be numeric" in reply.lower()
 
 
 def test_cmd_route_picks_account_with_most_headroom(

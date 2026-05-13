@@ -350,3 +350,4 @@ python -m eta_engine.scripts.fm log -n 5
 You should see a row with the matching `category`, the expected
 `provider`, and `fallback_used=N`. If `fallback_used=Y`, the
 preferred provider was unavailable — check `fm status` to see why.
+> 2026-05-13 operator policy: Codex is the subscription-backed architect/verifier, DeepSeek V4 is the only paid API lane, and Claude/Anthropic API usage is disabled. Historical Claude sections below are legacy context unless `ETA_ENABLE_CLAUDE_CLI=1` is deliberately set for a manual experiment.

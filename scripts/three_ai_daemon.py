@@ -1,7 +1,7 @@
-"""Three-AI autonomous coordination daemon.
+"""Subscription-first autonomous coordination daemon.
 
-Runs Claude as architect, DeepSeek as implementer, and Codex as verifier in a
-repeatable coordination cycle. Runtime state is written only under the
+Runs Codex as architect/verifier and DeepSeek as implementer in a repeatable
+coordination cycle. Runtime state is written only under the
 canonical workspace var/eta_engine/state tree.
 """
 
@@ -48,9 +48,9 @@ def role_tasks(cycle_id: str) -> tuple[RoleTask, ...]:
         RoleTask(
             result_key="architecture",
             category=TaskCategory.ARCHITECTURE_DECISION,
-            ai="Claude",
+            ai="Codex",
             system_prompt=(
-                "You are Claude, Lead Architect. Review the current state and identify the single "
+                "You are Codex, Lead Architect. Review the current state and identify the single "
                 "highest-leverage action."
             ),
             user_message=f"Current state: autonomous coordination cycle {cycle_id}. Execute architecture review.",

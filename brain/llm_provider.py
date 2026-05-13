@@ -1,39 +1,36 @@
 """
-LLM provider abstraction — DeepSeek V4 native default.
-Anthropic/Claude is retained as a fallback.
-LiteLLM + OpenRouter for multi-provider routing.
-Langfuse traces every call for observability.
-OPENAI added for Force-Multiplier (primarily CLI-based via Codex).
+LLM provider abstraction - DeepSeek V4 native default.
+
+Operator policy:
+  * DeepSeek V4 is the only paid API lane.
+  * Codex subscription CLI powers architect/review/admin work outside this file.
+  * Anthropic, OpenAI API, LiteLLM, and OpenRouter paths are legacy enum values
+    only; ``chat_completion`` blocks them before any network call.
+
+Langfuse traces DeepSeek calls for observability.
 
 Architecture
 ============
-  ETA_LLM_PROVIDER=deepseek   → DeepSeek V4 (native, default)
-  ETA_LLM_PROVIDER=anthropic  → Anthropic (legacy fallback)
-  ETA_LLM_PROVIDER=openai     → OpenAI (API-based, separate from Codex CLI)
-  ETA_LLM_PROVIDER=litellm    → LiteLLM (unified failover)
-  ETA_LLM_PROVIDER=openrouter → OpenRouter (real-time cheapest)
-  (auto)                      → DeepSeek if DEEPSEEK_API_KEY set, else Anthropic
+  ETA_LLM_PROVIDER=deepseek   -> DeepSeek V4 (native, default)
+  any other value             -> ignored and blocked by operator policy
 
 Tier → Model mapping (DeepSeek V4)
 ==================================
-  OPUS     → deepseek-v4-pro    (thinking)  — architectural / adversarial
-  SONNET   → deepseek-v4-flash  (thinking)  — routine reasoning
-  HAIKU    → deepseek-v4-flash  (non-think) — grunt work / cost floor
-  REASONER → deepseek-v4-flash  (thinking)  — chain-of-thought
+  OPUS     -> deepseek-v4-pro    (thinking)  - architectural / adversarial
+  SONNET   -> deepseek-v4-flash  (thinking)  - routine reasoning
+  HAIKU    -> deepseek-v4-flash  (non-think) - grunt work / cost floor
+  REASONER -> deepseek-v4-flash  (thinking)  - chain-of-thought
 
 Agent assignments
 =================
-  BATMAN → V4 Pro     — adversarial review, Red Team scoring
-  ALFRED → V4 Flash   — documentation, code review
-  ROBIN  → V4 Flash   — log parsing, formatting (non-thinking)
+  BATMAN -> V4 Pro     - adversarial review, Red Team scoring
+  ALFRED -> V4 Flash   - documentation, code review
+  ROBIN  -> V4 Flash   - log parsing, formatting (non-thinking)
 
 Pricing (per 1M tokens, USD)
 =============================
-  DeepSeek V4 Flash  $0.14  in / $0.28  out  (~19× cheaper than Claude Sonnet)
+  DeepSeek V4 Flash  $0.14  in / $0.28  out
   DeepSeek V4 Pro    $0.435 in / $0.87  out  (75% discount until 2026-05-31)
-  Claude Haiku       $0.80  in / $4.00  out
-  Claude Sonnet      $3.00  in / $15.00 out  (baseline 1.00×)
-  Claude Opus        $15.00 in / $75.00 out
 """
 
 from __future__ import annotations
@@ -44,7 +41,6 @@ import os
 import threading
 import time
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
@@ -53,7 +49,6 @@ logger = logging.getLogger(__name__)
 
 _ENV_LOADED = False
 _ENV_LOAD_LOCK = threading.Lock()
-_MONTHLY_SPEND: dict[str, float] = {}
 
 
 def _ensure_dotenv() -> None:
@@ -258,31 +253,14 @@ def _langfuse_generation(
 
 
 def _default_provider() -> Provider:
-    """DeepSeek native default. OpenRouter for real-time cheapest. LiteLLM for auto-failover.
-
-    Priority:
-      1. ETA_LLM_PROVIDER=openrouter → OpenRouter (real-time cheapest routing)
-      2. ETA_LLM_PROVIDER=litellm     → LiteLLM (unified, auto-failover)
-      3. ETA_LLM_PROVIDER=anthropic   → explicit Anthropic override
-      4. Everything else              → DeepSeek
-    """
+    """Return the only API provider currently allowed by operator policy."""
     _ensure_dotenv()
     explicit = os.environ.get("ETA_LLM_PROVIDER", "").strip().lower()
-    if explicit in ("openrouter", "or"):
-        if os.environ.get("OPENROUTER_API_KEY", "").strip():
-            return Provider.OPENROUTER
-        logger.warning("ETA_LLM_PROVIDER=openrouter but no OPENROUTER_API_KEY — falling back")
-    if explicit in ("litellm", "lite"):
-        if os.environ.get("LITELLM_MASTER_KEY", "").strip():
-            return Provider.LITELLM
-        logger.warning("ETA_LLM_PROVIDER=litellm but no LITELLM_MASTER_KEY — falling back")
-    if explicit in ("anthropic", "claude", "ant"):
-        return Provider.ANTHROPIC
-    if os.environ.get("DEEPSEEK_API_KEY", "").strip():
-        return Provider.DEEPSEEK
-    if os.environ.get("ANTHROPIC_API_KEY", "").strip():
-        logger.warning("No DEEPSEEK_API_KEY — falling back to Anthropic")
-        return Provider.ANTHROPIC
+    if explicit and explicit not in {"deepseek", "ds"}:
+        logger.warning(
+            "ETA_LLM_PROVIDER=%s ignored: non-DeepSeek API providers are blocked by operator policy",
+            explicit,
+        )
     return Provider.DEEPSEEK
 
 
@@ -308,11 +286,26 @@ def chat_completion(
       HAIKU    → DeepSeek V4 Flash   (non-think) — grunt / cost floor
       REASONER → DeepSeek V4 Flash   (thinking)  — chain-of-thought
 
-    Falls back to Anthropic automatically if DeepSeek is unavailable.
-    Returns empty ``LLMResponse(text="")`` if no API key is configured.
+    Returns empty ``LLMResponse(text="")`` if no DeepSeek API key is configured.
+    Non-DeepSeek providers return a blocked response before any network call.
     """
     if provider is None:
         provider = _default_provider()
+
+    if provider != Provider.DEEPSEEK:
+        logger.warning(
+            "Blocked %s API completion: operator policy allows only DeepSeek V4 API usage",
+            provider.value,
+        )
+        return LLMResponse(
+            text="",
+            model=_TIER_MODEL.get((tier, provider), ""),
+            provider=provider,
+            input_tokens=0,
+            output_tokens=0,
+            cost_usd=0.0,
+            reasoning="blocked_by_operator_policy",
+        )
 
     model = _TIER_MODEL.get((tier, provider))
     if model is None:
@@ -321,19 +314,7 @@ def chat_completion(
 
     api_key = _get_api_key(provider)
     if not api_key:
-        other = Provider.ANTHROPIC if provider == Provider.DEEPSEEK else Provider.DEEPSEEK
-        other_key = _get_api_key(other)
-        if other_key:
-            logger.info("Falling back to %s (no key for %s)", other.value, provider.value)
-            return chat_completion(
-                tier=tier,
-                system_prompt=system_prompt,
-                user_message=user_message,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                provider=other,
-            )
-        logger.warning("No API key for any provider")
+        logger.warning("No DEEPSEEK_API_KEY configured; refusing non-DeepSeek API fallback")
         return LLMResponse(text="")
 
     started_at = time.time()
@@ -497,57 +478,20 @@ def _call_anthropic(
     max_tokens: int,
     temperature: float,
 ) -> LLMResponse:
-    """Call Anthropic Claude via the official SDK.
+    """Blocked legacy Anthropic adapter.
 
-    SAFETY: requires ETA_USE_CLAUDE_API=1 env var or max_tokens is capped
-    at 100 to prevent accidental large API bills. The Claude Pro subscription
-    ($20/month) does NOT cover API usage — these are separate billing."""
-    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
-    if not api_key:
-        return LLMResponse(
-            text="", model=model, provider=Provider.ANTHROPIC, input_tokens=0, output_tokens=0, cost_usd=0.0
-        )
-
-    # Kill-switch: refuse to call unless explicitly enabled
-    if not os.environ.get("ETA_USE_CLAUDE_API"):
-        return LLMResponse(
-            text="", model=model, provider=Provider.ANTHROPIC, input_tokens=0, output_tokens=0, cost_usd=0.0
-        )
-
-    # Safety cap: never send more than 4096 tokens unless explicitly overridden
-    effective_max = min(max_tokens, 4096)
-
-    # Monthly spend guard — refuse calls after $50/month budget
-    monthly_key = datetime.now(UTC).strftime("claude_spend_%Y_%m")
-    current = _MONTHLY_SPEND.get(monthly_key, 0.0)
-    if current >= 50.0:
-        return LLMResponse(
-            text="", model=model, provider=Provider.ANTHROPIC, input_tokens=0, output_tokens=0, cost_usd=0.0
-        )
-
-    from anthropic import Anthropic
-
-    client = Anthropic(api_key=api_key, timeout=30.0)
-    kwargs: dict[str, Any] = {
-        "model": model,
-        "max_tokens": effective_max,
-        "messages": [{"role": "user", "content": user_message}],
-    }
-    if system_prompt:
-        kwargs["system"] = [{"type": "text", "text": system_prompt}]
-
-    resp = client.messages.create(**kwargs)
-    text = "".join(b.text for b in resp.content if getattr(b, "type", None) == "text")
-    cost = _cost(model, resp.usage.input_tokens, resp.usage.output_tokens)
-    _MONTHLY_SPEND[monthly_key] = _MONTHLY_SPEND.get(monthly_key, 0.0) + cost
-
+    Kept only so older imports fail closed instead of resurrecting paid
+    Anthropic API usage.
+    """
+    _ = (system_prompt, user_message, max_tokens, temperature)
     return LLMResponse(
-        text=text.strip(),
+        text="",
         model=model,
         provider=Provider.ANTHROPIC,
-        input_tokens=resp.usage.input_tokens,
-        output_tokens=resp.usage.output_tokens,
-        cost_usd=cost,
+        input_tokens=0,
+        output_tokens=0,
+        cost_usd=0.0,
+        reasoning="blocked_by_operator_policy",
     )
 
 
@@ -559,37 +503,16 @@ def _call_litellm(
     max_tokens: int,
     temperature: float,
 ) -> LLMResponse:
-    """Call via LiteLLM — OpenAI-format API with automatic provider failover."""
-    import litellm
-
-    litellm.master_key = _get_api_key(Provider.LITELLM)
-    messages: list[dict[str, str]] = []
-    if system_prompt:
-        messages.append({"role": "system", "content": system_prompt})
-    messages.append({"role": "user", "content": user_message})
-
-    resp = litellm.completion(
-        model=model,
-        messages=messages,
-        max_tokens=max_tokens,
-        temperature=temperature,
-    )
-    choice = resp.choices[0]
-    text = choice.message.content or ""
-    reasoning = getattr(choice.message, "reasoning_content", "") or ""
-
-    in_tok = resp.usage.prompt_tokens if resp.usage else 0
-    out_tok = resp.usage.completion_tokens if resp.usage else 0
-    actual_model = getattr(resp, "model", model) or model
-
+    """Blocked legacy LiteLLM adapter; DeepSeek native is the only API lane."""
+    _ = (system_prompt, user_message, max_tokens, temperature)
     return LLMResponse(
-        text=text.strip(),
-        model=actual_model,
+        text="",
+        model=model,
         provider=Provider.LITELLM,
-        input_tokens=in_tok,
-        output_tokens=out_tok,
-        cost_usd=_cost(model, in_tok, out_tok),
-        reasoning=reasoning,
+        input_tokens=0,
+        output_tokens=0,
+        cost_usd=0.0,
+        reasoning="blocked_by_operator_policy",
     )
 
 
@@ -601,38 +524,16 @@ def _call_openrouter(
     max_tokens: int,
     temperature: float,
 ) -> LLMResponse:
-    """Call via OpenRouter — real-time cheapest provider routing."""
-    from openai import OpenAI
-
-    api_key = _get_api_key(Provider.OPENROUTER)
-    client = OpenAI(api_key=api_key, base_url="https://openrouter.ai/api/v1", timeout=60.0)
-
-    messages: list[dict[str, str]] = []
-    if system_prompt:
-        messages.append({"role": "system", "content": system_prompt})
-    messages.append({"role": "user", "content": user_message})
-
-    resp = client.chat.completions.create(
-        model=model,
-        messages=messages,
-        max_tokens=max_tokens,
-        temperature=temperature,
-    )
-
-    choice = resp.choices[0]
-    text = choice.message.content or ""
-
-    in_tok = resp.usage.prompt_tokens if resp.usage else 0
-    out_tok = resp.usage.completion_tokens if resp.usage else 0
-    actual_model = getattr(resp, "model", model) or model
-
+    """Blocked legacy OpenRouter adapter; DeepSeek native is the only API lane."""
+    _ = (system_prompt, user_message, max_tokens, temperature)
     return LLMResponse(
-        text=text.strip(),
-        model=actual_model,
+        text="",
+        model=model,
         provider=Provider.OPENROUTER,
-        input_tokens=in_tok,
-        output_tokens=out_tok,
-        cost_usd=_cost(model, in_tok, out_tok),
+        input_tokens=0,
+        output_tokens=0,
+        cost_usd=0.0,
+        reasoning="blocked_by_operator_policy",
     )
 
 
@@ -695,5 +596,6 @@ def native_provider_info() -> dict[str, Any]:
         "openai_key_configured": bool(_get_api_key(Provider.OPENAI)),
         "litellm_key_configured": bool(_get_api_key(Provider.LITELLM)),
         "openrouter_key_configured": bool(_get_api_key(Provider.OPENROUTER)),
+        "non_deepseek_api_blocked": True,
         "langfuse_enabled": _langfuse_available(),
     }

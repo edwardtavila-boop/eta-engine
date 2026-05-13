@@ -1,17 +1,23 @@
 """
-CLI-based LLM provider — shell out to ``claude`` and ``codex`` CLIs.
-Uses subscription-based OAuth (Claude Pro / ChatGPT Plus/Pro) — no API keys.
+CLI-based LLM provider - shell out to subscription CLIs without API keys.
+
+Operator policy:
+  * Codex CLI is the default subscription-backed admin/architect/review lane.
+  * Claude CLI is a disabled legacy lane unless ``ETA_ENABLE_CLAUDE_CLI=1`` is
+    deliberately set for a manual experiment.
+  * DeepSeek V4 remains the only paid API lane and is handled by
+    ``llm_provider.py``.
 
 Architecture
 ============
-  Claude  → ``claude -p "..." --print --output-format text``
-  Codex   → ``codex exec "..." --full-auto --ephemeral -C <workspace>``
-  DeepSeek → API-based (handled by ``llm_provider.py``)
+  Codex   -> ``codex exec "..." --full-auto --ephemeral -C <workspace>``
+  Claude  -> blocked by default; opt-in only
+  DeepSeek -> API-based (handled by ``llm_provider.py``)
 
-Both CLIs are invoked via ``npx`` by default (subscription auth). Direct
-binary paths can be configured via env vars:
-  ETA_CLAUDE_CLI  — path or command for claude (default: "npx @anthropic-ai/claude-code")
-  ETA_CODEX_CLI   — path or command for codex  (default: "npx codex")
+Codex is invoked via ``npx`` by default (subscription auth). Direct binary
+paths can be configured via env vars:
+  ETA_CODEX_CLI   - path or command for codex  (default: "npx codex")
+  ETA_CLAUDE_CLI  - optional legacy claude command when explicitly enabled
 """
 
 from __future__ import annotations
@@ -27,6 +33,10 @@ from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+
+def _env_truthy(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
 
 
 @dataclass
@@ -119,7 +129,7 @@ def _subprocess_env() -> dict[str, str]:
 
 
 # ---------------------------------------------------------------------------
-# Claude (Anthropic) — subscription-based CLI
+# Claude (Anthropic) - disabled legacy subscription CLI
 # ---------------------------------------------------------------------------
 
 
@@ -133,16 +143,26 @@ def call_claude(
     workspace: str | None = None,
     max_budget_usd: float = 1.00,
 ) -> CLIResponse:
-    """Non-interactive Claude call via``claude -p --print``.
+    """Non-interactive Claude call that fails closed unless explicitly enabled.
 
-    Authenticates via OAuth (Claude Pro subscription). No API key needed.
-    Uses ``npx @anthropic-ai/claude-code`` by default.
-
-    ``max_tokens`` is passed as ``--max-budget-usd`` (Claude CLI doesn't
-    support a direct token limit — budget acts as a soft cap).
+    This keeps old imports safe while defaulting all architect/review work to
+    Codex CLI and all paid API work to DeepSeek V4.
     """
-    base_cmd = _claude_command()
     started = time.time()
+    if not _env_truthy("ETA_ENABLE_CLAUDE_CLI"):
+        elapsed = (time.time() - started) * 1000
+        return CLIResponse(
+            text="[claude disabled by operator policy: use Codex CLI or DeepSeek V4]",
+            provider="claude",
+            model=model,
+            input_tokens=0,
+            output_tokens=0,
+            cost_usd=0.0,
+            elapsed_ms=elapsed,
+            exit_code=-3,
+        )
+
+    base_cmd = _claude_command()
 
     cmd: list[str] = [
         *base_cmd,
@@ -396,6 +416,8 @@ def invalidate_availability_cache() -> None:
 
 
 def check_claude_available() -> bool:
+    if not _env_truthy("ETA_ENABLE_CLAUDE_CLI"):
+        return False
     return _check_cli_available(_claude_command(), "claude")
 
 
@@ -407,6 +429,7 @@ def cli_provider_status() -> dict[str, Any]:
     return {
         "claude_available": check_claude_available(),
         "claude_command": " ".join(_claude_command()),
+        "claude_disabled_by_policy": not _env_truthy("ETA_ENABLE_CLAUDE_CLI"),
         "codex_available": check_codex_available(),
         "codex_command": " ".join(_codex_command()),
         "timeout_sec": DEFAULT_TIMEOUT_SEC,

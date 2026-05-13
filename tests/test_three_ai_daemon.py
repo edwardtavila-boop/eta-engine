@@ -23,7 +23,7 @@ def test_coordination_cycle_accepts_route_injection_and_marks_degraded() -> None
         if kwargs["category"].value == "strategy_edit":
             raise RuntimeError("worker quota exhausted")
         return SimpleNamespace(
-            provider=ForceProvider.CLAUDE,
+            provider=ForceProvider.CODEX,
             fallback_used=False,
             text="recommendation",
         )
@@ -42,7 +42,7 @@ def test_coordination_cycle_accepts_route_injection_and_marks_degraded() -> None
         ("test_execution", 123),
     ]
     assert report["results"]["implementation"]["error"] == "worker quota exhausted"
-    assert report["results"]["verification"]["provider"] == ForceProvider.CLAUDE.value
+    assert report["results"]["verification"]["provider"] == ForceProvider.CODEX.value
 
 
 def test_write_report_uses_canonical_state_root(tmp_path: Path) -> None:

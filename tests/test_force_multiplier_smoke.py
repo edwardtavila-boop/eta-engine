@@ -8,12 +8,12 @@ sys.path.insert(0, r"C:\EvolutionaryTradingAlgo")
 
 def test_cli_provider_imports():
     from eta_engine.brain.cli_provider import (
-        call_claude,
         call_codex,
+        check_claude_available,
     )
 
-    assert call_claude is not None
     assert call_codex is not None
+    assert check_claude_available() is False
 
 
 def test_force_provider_enum():
@@ -42,6 +42,8 @@ def test_cli_health_check():
     assert "codex_command" in status
     assert isinstance(status["claude_available"], bool)
     assert isinstance(status["codex_available"], bool)
+    assert status["claude_available"] is False
+    assert status["claude_disabled_by_policy"] is True
 
 
 def test_force_multiplier_status():
@@ -53,14 +55,15 @@ def test_force_multiplier_status():
     assert "codex" in fm["providers"]
     assert "deepseek" in fm["providers"]
     assert "routing_table" in fm
+    assert fm["providers"]["claude"]["disabled_by_policy"] is True
 
 
 def test_routing_counts():
     from eta_engine.brain.model_policy import ForceProvider, TaskCategory, force_provider_for
 
     counts = Counter(force_provider_for(c) for c in TaskCategory)
-    assert counts.get(ForceProvider.CLAUDE, 0) == 7
-    assert counts.get(ForceProvider.CODEX, 0) == 4
+    assert counts.get(ForceProvider.CLAUDE, 0) == 0
+    assert counts.get(ForceProvider.CODEX, 0) == 11
     assert counts.get(ForceProvider.DEEPSEEK, 0) == 13
     assert sum(counts.values()) == 24
 
@@ -68,8 +71,8 @@ def test_routing_counts():
 def test_specific_routes():
     from eta_engine.brain.model_policy import ForceProvider, TaskCategory, force_provider_for
 
-    assert force_provider_for(TaskCategory.ARCHITECTURE_DECISION) == ForceProvider.CLAUDE
-    assert force_provider_for(TaskCategory.CODE_REVIEW) == ForceProvider.CLAUDE
+    assert force_provider_for(TaskCategory.ARCHITECTURE_DECISION) == ForceProvider.CODEX
+    assert force_provider_for(TaskCategory.CODE_REVIEW) == ForceProvider.CODEX
     assert force_provider_for(TaskCategory.DEBUG) == ForceProvider.CODEX
     assert force_provider_for(TaskCategory.SECURITY_AUDIT) == ForceProvider.CODEX
     assert force_provider_for(TaskCategory.BOILERPLATE) == ForceProvider.DEEPSEEK

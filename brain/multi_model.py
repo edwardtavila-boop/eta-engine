@@ -1,18 +1,16 @@
 """
 Multi-Model Force Multiplier Orchestrator (Wave-19).
 
-Routes every task to the best provider based on 2026 strengths:
+Routes every task to the best allowed provider:
 
-  CLAUDE   (Lead Architect) — planning, architecture, code review, red team
-  DEEPSEEK (Worker Bee)     — high-volume generation, boilerplate, grunt work
-  CODEX    (Systems Expert) — debugging, test execution, security audits
+  CODEX    (Lead Architect / Systems Expert) - planning, review, debug, security
+  DEEPSEEK (Worker Bee)                      - high-volume generation and grunt work
 
-All three providers use existing subscriptions:
-  * Claude  → subscription CLI (Claude Pro) — no API key
-  * Codex   → subscription CLI (ChatGPT Plus/Pro) — no API key
-  * DeepSeek → cheap API ($0.14/1M input) — DEEPSEEK_API_KEY
-
-Graceful fallback: if a CLI provider is unavailable, tasks route to DeepSeek API.
+Operator policy:
+  * Codex uses the existing subscription CLI, not API billing.
+  * DeepSeek V4 is the only paid API lane.
+  * Claude/Anthropic API usage is disabled; legacy Claude routes fall forward
+    into Codex first, then DeepSeek if Codex is unavailable.
 """
 
 from __future__ import annotations
@@ -26,7 +24,6 @@ from eta_engine.brain.cli_provider import (
     CLIResponse,
     call_claude,
     call_codex,
-    check_claude_available,
     check_codex_available,
     cli_provider_status,
 )
@@ -191,34 +188,15 @@ def _route_and_execute_inner(
     """Pure routing logic without telemetry. Splits so logging is single-shot."""
     # --- CLAUDE path ---
     if preferred == ForceProvider.CLAUDE:
-        if not check_claude_available():
-            return _fallback_deepseek(
-                category=category,
-                tier=selection.tier,
-                system_prompt=system_prompt,
-                user_message=user_message,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                fallback_reason="claude CLI not installed (run: npm install -g @anthropic-ai/claude-code)",
-            )
-        cli_resp = _claude_call(
-            tier=selection.tier,
-            system_prompt=system_prompt,
-            user_message=user_message,
-            max_tokens=max_tokens,
-            workspace=workspace,
-        )
-        failure = _classify_cli_failure(cli_resp)
-        if failure is None:
-            return _wrap_cli(cli_resp, ForceProvider.CLAUDE, category, selection.tier)
-        return _fallback_deepseek(
+        return _fallback_codex_or_deepseek(
             category=category,
             tier=selection.tier,
             system_prompt=system_prompt,
             user_message=user_message,
             max_tokens=max_tokens,
             temperature=temperature,
-            fallback_reason=_claude_fallback_reason(failure),
+            workspace=workspace,
+            fallback_reason="claude disabled by operator policy",
         )
 
     # --- CODEX path ---
@@ -373,11 +351,13 @@ def _enforce_call_budget(
 
     Worst case = max_tokens billed at the resolved tier's output rate. We use
     the OUTPUT rate (the more expensive side) for a conservative estimate.
-    Claude/Codex CLI calls are subscription-billed (cost_usd=0 in the response)
-    so the budget only constrains the DeepSeek API path; we still enforce on
-    every call so callers don't have to know which provider will run.
+    Subscription CLI calls are reported as cost_usd=0 in the response, so the
+    budget only constrains the DeepSeek API path.
     """
     from eta_engine.brain.llm_provider import _COST_1M, _TIER_MODEL  # noqa: PLC0415
+
+    if preferred != ForceProvider.DEEPSEEK:
+        return
 
     # Map ForceProvider -> Provider for the cost lookup.
     if preferred == ForceProvider.DEEPSEEK:
@@ -497,6 +477,46 @@ def _fallback_deepseek(
     )
 
 
+def _fallback_codex_or_deepseek(
+    *,
+    category: TaskCategory,
+    tier: ModelTier,
+    system_prompt: str,
+    user_message: str,
+    max_tokens: int,
+    temperature: float,
+    workspace: str | None,
+    fallback_reason: str,
+) -> MultiModelResponse:
+    """Use Codex subscription CLI for disabled Claude routes, then DeepSeek."""
+    if check_codex_available():
+        cli_resp = _codex_call(
+            tier=tier,
+            system_prompt=system_prompt,
+            user_message=user_message,
+            workspace=workspace,
+        )
+        failure = _classify_cli_failure(cli_resp)
+        if failure is None:
+            response = _wrap_cli(cli_resp, ForceProvider.CODEX, category, tier)
+            response.fallback_used = True
+            response.fallback_reason = fallback_reason
+            return response
+        fallback_reason = f"{fallback_reason}; codex unavailable: {_codex_fallback_reason(failure)}"
+    else:
+        fallback_reason = f"{fallback_reason}; codex CLI unavailable"
+
+    return _fallback_deepseek(
+        category=category,
+        tier=tier,
+        system_prompt=system_prompt,
+        user_message=user_message,
+        max_tokens=max_tokens,
+        temperature=temperature,
+        fallback_reason=fallback_reason,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Model selection per provider
 # ---------------------------------------------------------------------------
@@ -524,7 +544,7 @@ def _codex_model_for_tier(tier: ModelTier) -> str:
     override = os.environ.get("ETA_CODEX_MODEL_OVERRIDE", "").strip()
     if override:
         return override
-    return "gpt-5.4"  # ChatGPT-subscription default; works for all tiers
+    return os.environ.get("ETA_CODEX_DEFAULT_MODEL", "gpt-5.5").strip() or "gpt-5.5"
 
 
 _AUTH_MARKERS: tuple[str, ...] = (
@@ -614,12 +634,13 @@ def force_multiplier_status() -> dict[str, Any]:
             "claude": {
                 "available": cli_status["claude_available"],
                 "command": cli_status["claude_command"],
-                "role": "Lead Architect — planning, architecture, code review",
+                "disabled_by_policy": cli_status["claude_disabled_by_policy"],
+                "role": "Disabled legacy lane; Codex handles architecture/review",
             },
             "codex": {
                 "available": cli_status["codex_available"],
                 "command": cli_status["codex_command"],
-                "role": "Systems Expert — debugging, test execution, security",
+                "role": "Lead Architect and Systems Expert",
             },
             "deepseek": {
                 "available": api_status["deepseek_key_configured"],
@@ -628,7 +649,7 @@ def force_multiplier_status() -> dict[str, Any]:
             },
         },
         "routing_table": {cat.value: force_provider_for(TaskCategory(cat)).value for cat in TaskCategory},
-        "fallback": "All tasks fall back to DeepSeek API if preferred provider unavailable",
+        "fallback": "Codex subscription CLI is preferred for admin/review; DeepSeek V4 is the only API fallback",
     }
 
 
@@ -636,9 +657,9 @@ def force_multiplier_status() -> dict[str, Any]:
 # Force-Multiplier chain orchestrator (Wave-19)
 # ---------------------------------------------------------------------------
 #
-# The canonical pipeline ties all three providers into one workflow:
+# The canonical pipeline ties the allowed providers into one workflow:
 #
-#   1. PLAN      (CLAUDE)    — architect the work, define interfaces & risks
+#   1. PLAN      (CODEX)     — architect the work, define interfaces & risks
 #   2. IMPLEMENT (DEEPSEEK)  — bulk-generate the actual code from the plan
 #   3. VERIFY    (CODEX)     — run the tests, audit security, report results
 #
@@ -727,7 +748,7 @@ def force_multiplier_chain(
 
     Stages
     ------
-    1. ``plan``      — CLAUDE (Lead Architect)  designs the work
+    1. ``plan``      — CODEX (Lead Architect)   designs the work
     2. ``implement`` — DEEPSEEK (Worker Bee)    produces the code
     3. ``verify``    — CODEX (Systems Expert)   runs/audits the work
 
@@ -740,7 +761,7 @@ def force_multiplier_chain(
         Example: ``skip=("verify",)`` when Codex monthly limit is hit.
     *_category : TaskCategory
         Override which TaskCategory drives the routing for each stage.
-        The defaults map to CLAUDE/DEEPSEEK/CODEX respectively.
+        The defaults map to CODEX/DEEPSEEK/CODEX respectively.
     workspace : str | None
         Working directory passed through to CLI providers.
     max_tokens : int
@@ -801,7 +822,7 @@ def force_multiplier_chain(
             return False
         return True
 
-    # --- Stage 1: PLAN (CLAUDE) ---
+    # --- Stage 1: PLAN (CODEX) ---
     if "plan" not in skip:
         logger.info("[chain] stage=plan task=%s", task[:80])
         plan = route_and_execute(

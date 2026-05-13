@@ -76,8 +76,8 @@ class TestRoutingCoverage:
             f"Add an explicit ForceProvider mapping for each."
         )
 
-    def test_architectural_categories_route_to_claude(self) -> None:
-        """Architecture / red-team / risk policy work must route to Claude."""
+    def test_architectural_categories_route_to_codex(self) -> None:
+        """Architecture / red-team / risk policy work routes to Codex."""
         architectural = [
             TaskCategory.ARCHITECTURE_DECISION,
             TaskCategory.RED_TEAM_SCORING,
@@ -88,9 +88,37 @@ class TestRoutingCoverage:
             TaskCategory.CODE_REVIEW,
         ]
         for cat in architectural:
-            assert force_provider_for(cat) == ForceProvider.CLAUDE, (
-                f"{cat.value} should route to CLAUDE (Lead Architect)"
-            )
+            assert force_provider_for(cat) == ForceProvider.CODEX, f"{cat.value} should route to CODEX"
+
+    def test_no_category_routes_to_claude_by_default(self) -> None:
+        assert all(force_provider_for(cat) != ForceProvider.CLAUDE for cat in TaskCategory)
+
+    def test_anthropic_env_does_not_change_default_api_provider(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from eta_engine.brain import llm_provider
+        from eta_engine.brain.llm_provider import Provider
+
+        monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "stub-not-used")
+        monkeypatch.setenv("ETA_LLM_PROVIDER", "anthropic")
+        llm_provider._ENV_LOADED = False
+
+        assert llm_provider._default_provider() == Provider.DEEPSEEK
+
+    def test_forced_anthropic_api_returns_blocked_empty_response(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from eta_engine.brain.llm_provider import ModelTier as ApiTier
+        from eta_engine.brain.llm_provider import Provider, chat_completion
+
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "stub-not-used")
+
+        response = chat_completion(
+            tier=ApiTier.HAIKU,
+            user_message="should not call anthropic",
+            provider=Provider.ANTHROPIC,
+        )
+
+        assert response.text == ""
+        assert response.provider == Provider.ANTHROPIC
+        assert "blocked" in response.reasoning
 
     def test_system_categories_route_to_codex(self) -> None:
         """Computer-use / debug / security work must route to Codex."""
@@ -427,27 +455,21 @@ class TestCallBudgetCeiling:
             max_cost_usd=0.01,
         )  # no exception
 
-    def test_subscription_provider_uses_api_pricing_as_safety_floor(self) -> None:
-        """Even though Claude/Codex CLI calls are subscription-billed, the
-        budget check uses the equivalent API pricing as a safety floor —
-        so a 100M-token call gets refused on principle, even if it
-        wouldn't actually charge. This protects callers that fall back
-        from CLI to the API path."""
-        # CLAUDE OPUS API output rate: $75/1M. 100M tokens = $7,500. Refused.
-        with pytest.raises(CallBudgetExceededError, match="Refused"):
-            _enforce_call_budget(
-                preferred=ForceProvider.CLAUDE,
-                tier=ModelTier.OPUS,
-                max_tokens=100_000_000,
-                max_cost_usd=0.10,
-            )
-        # Modest CLAUDE call passes the check easily.
+    def test_subscription_providers_have_no_api_budget_floor(self) -> None:
+        """Subscription CLI lanes do not consume the paid API budget."""
+        _enforce_call_budget(
+            preferred=ForceProvider.CODEX,
+            tier=ModelTier.OPUS,
+            max_tokens=100_000_000,
+            max_cost_usd=0.10,
+        )
+        # Legacy Claude routes are disabled and fall forward to Codex/DeepSeek.
         _enforce_call_budget(
             preferred=ForceProvider.CLAUDE,
-            tier=ModelTier.HAIKU,
-            max_tokens=200,
-            max_cost_usd=0.01,
-        )  # no exception — 200 × $4/1M = $0.0008
+            tier=ModelTier.OPUS,
+            max_tokens=100_000_000,
+            max_cost_usd=0.10,
+        )
 
 
 # ---------------------------------------------------------------------------
