@@ -109,7 +109,7 @@ function Register-DiamondTask {
     }
 }
 
-# -- 15-MIN CADENCE -- the ledger refresh that feeds every other audit --
+# -- 15-MIN CADENCE -- the ledger refresh + drawdown guard --
 # Windows Task Scheduler rejects RepetitionDuration > 31 days; use 365 days
 # and rely on the operator to re-run this script annually (or wire into
 # the existing yearly maintenance pass).
@@ -121,6 +121,9 @@ $every15MinTasks = @(
     @{ Name = "ETA-Diamond-LedgerEvery15Min"
         Args = "-m eta_engine.scripts.closed_trade_ledger"
         Desc = "Diamond: refresh closed_trade_ledger_latest.json every 15 min so the watchdog + downstream audits have live data" }
+    @{ Name = "ETA-Diamond-PropDrawdownGuardEvery15Min"
+        Args = "-m eta_engine.scripts.diamond_prop_drawdown_guard"
+        Desc = "Diamond: prop-fund 50K account daily/static DD + consistency rule guard (HALT/WATCH/OK signal for the supervisor)" }
 )
 
 foreach ($t in $every15MinTasks) {
@@ -142,6 +145,9 @@ $hourlyTasks = @(
     @{ Name = "ETA-Diamond-FeedSanityHourly"
         Args = "-m eta_engine.scripts.diamond_feed_sanity_audit"
         Desc = "Diamond: detect STUCK_PRICE / ZERO_PNL_ACTIVITY / MISSING_PNL/SIDE_FIELD pollution (catches MBT-style bugs)" }
+    @{ Name = "ETA-Diamond-PropAllocatorHourly"
+        Args = "-m eta_engine.scripts.diamond_prop_allocator"
+        Desc = "Diamond: confluence-aware capital allocation for the PROP_READY top-3 (BALANCED 33/33/33 vs DOMINANT 50/25/25)" }
 )
 
 foreach ($t in $hourlyTasks) {
