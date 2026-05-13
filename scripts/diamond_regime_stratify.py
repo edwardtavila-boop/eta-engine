@@ -136,26 +136,17 @@ def _classify(bucket: BucketStats) -> None:
 
 
 def _load_records(bot_id: str) -> list[dict]:
-    out: list[dict] = []
-    for path in TRADE_CLOSES_CANDIDATES:
-        if not path.exists():
-            continue
-        try:
-            with path.open("r", encoding="utf-8", errors="replace") as f:
-                for line in f:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        rec = json.loads(line)
-                    except json.JSONDecodeError:
-                        continue
-                    if rec.get("bot_id") != bot_id:
-                        continue
-                    out.append(rec)
-        except OSError:
-            continue
-    return out
+    """Wave-25: filter to live+paper data_source via the shared loader."""
+    from eta_engine.scripts.closed_trade_ledger import (
+        DEFAULT_PRODUCTION_DATA_SOURCES,
+        load_close_records,
+    )
+
+    return load_close_records(
+        source_paths=TRADE_CLOSES_CANDIDATES,
+        data_sources=DEFAULT_PRODUCTION_DATA_SOURCES,
+        bot_filter=bot_id,
+    )
 
 
 def _stratify_bot(bot_id: str) -> BotStratifyReport:

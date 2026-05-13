@@ -99,34 +99,36 @@ class DiamondCPCVReport:
 
 
 def _load_r_multiples(bot_id: str) -> list[float]:
-    """Collect per-trade R-multiples for the bot across known paths."""
+    """Collect per-trade R-multiples for the bot, filtered to live+paper.
+
+    Wave-25 (2026-05-13): delegates to closed_trade_ledger.load_close_records
+    which classifies records by data_source (live/paper/backtest/historical_
+    unverified/test_fixture) and excludes the latter three by default.
+    Without this filter CPCV ran on the legacy archive's ~43k backtest
+    emissions and produced ROBUST verdicts that did not reflect any
+    real out-of-sample edge.
+    """
+    from eta_engine.scripts.closed_trade_ledger import (
+        DEFAULT_PRODUCTION_DATA_SOURCES,
+        load_close_records,
+    )
+
+    rows = load_close_records(
+        source_paths=TRADE_CLOSES_CANDIDATES,
+        data_sources=DEFAULT_PRODUCTION_DATA_SOURCES,
+        bot_filter=bot_id,
+    )
     r_list: list[float] = []
-    for path in TRADE_CLOSES_CANDIDATES:
-        if not path.exists():
+    for rec in rows:
+        r = rec.get("realized_r")
+        if r is None:
             continue
         try:
-            with path.open("r", encoding="utf-8", errors="replace") as f:
-                for line in f:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        rec = json.loads(line)
-                    except json.JSONDecodeError:
-                        continue
-                    if rec.get("bot_id") != bot_id:
-                        continue
-                    r = rec.get("realized_r")
-                    if r is None:
-                        continue
-                    try:
-                        r_f = float(r)
-                    except (TypeError, ValueError):
-                        continue
-                    if r_f != 0.0:  # skip null / flat trades
-                        r_list.append(r_f)
-        except OSError:
+            r_f = float(r)
+        except (TypeError, ValueError):
             continue
+        if r_f != 0.0:  # skip null / flat trades
+            r_list.append(r_f)
     return r_list
 
 

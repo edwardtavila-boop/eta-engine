@@ -65,25 +65,20 @@ def _load_heartbeat() -> dict[str, Any]:
 
 
 def _load_closes() -> list[dict[str, Any]]:
-    """Parse trade_closes.jsonl. Each line is one closed trade with
-    bot_id, side, entry_price, exit_price, qty, realized_pnl,
-    realized_r."""
-    if not _TRADE_CLOSES_PATH.exists():
-        return []
-    out: list[dict[str, Any]] = []
-    try:
-        with _TRADE_CLOSES_PATH.open(encoding="utf-8") as fh:
-            for line in fh:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    out.append(json.loads(line))
-                except json.JSONDecodeError:
-                    continue
-    except OSError:
-        pass
-    return out
+    """Wave-25: filter to live+paper data_source via the shared loader.
+
+    Without this filter the scoreboard mixed in ~43k backtest emissions
+    from the legacy archive and reported inflated trade counts.
+    """
+    from eta_engine.scripts.closed_trade_ledger import (
+        DEFAULT_PRODUCTION_DATA_SOURCES,
+        load_close_records,
+    )
+
+    return load_close_records(
+        source_paths=[_TRADE_CLOSES_PATH],
+        data_sources=DEFAULT_PRODUCTION_DATA_SOURCES,
+    )
 
 
 def _bot_metrics(bot: dict[str, Any], closes: list[dict[str, Any]]) -> dict[str, Any]:

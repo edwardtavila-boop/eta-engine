@@ -275,46 +275,48 @@ def _read_trades_for_account(
 ) -> list[dict[str, Any]]:
     """Read all trades tagged for a given account_id.
 
-    Trades carry an optional ``account_id`` field; trades without one
-    are excluded from per-account aggregation (they're paper / dev
-    trades). The default scan is the canonical path; pass an override
-    for tests.
-    """
-    paths = [trade_closes_path] if trade_closes_path is not None else [_TRADE_CLOSES, _LEGACY_TRADE_CLOSES]
+    Wave-25 (2026-05-13): production reads (no override) go through
+    closed_trade_ledger.load_close_records which filters to live+paper
+    only. This is the prop-firm guardrail — we MUST NOT count
+    backtest emissions toward the consistency / DD math for an
+    actual prop account.
 
-    out: list[dict[str, Any]] = []
-    seen: set[str] = set()
-    for path in paths:
-        if not path.exists():
-            continue
-        try:
-            with path.open(encoding="utf-8") as fh:
-                for raw in fh:
-                    line = raw.strip()
-                    if not line:
-                        continue
-                    try:
-                        rec = json.loads(line)
-                    except json.JSONDecodeError:
-                        continue
-                    if str(rec.get("account_id") or "") != account_id:
-                        continue
-                    # Dedup across primary + legacy
-                    sig = "|".join(
-                        [
-                            str(rec.get("signal_id") or ""),
-                            str(rec.get("bot_id") or ""),
-                            str(rec.get("ts") or rec.get("closed_at") or ""),
-                            str(rec.get("realized_r") or ""),
-                        ]
-                    )
-                    if sig in seen:
-                        continue
-                    seen.add(sig)
-                    out.append(rec)
-        except OSError as exc:
-            logger.warning("prop_firm_guardrails read failed (%s): %s", path, exc)
-    return out
+    Tests with explicit ``trade_closes_path`` keep the legacy
+    single-source reader so they get exactly what they wrote.
+    """
+    if trade_closes_path is not None:
+        paths = [trade_closes_path]
+        out: list[dict[str, Any]] = []
+        for path in paths:
+            if not path.exists():
+                continue
+            try:
+                with path.open(encoding="utf-8") as fh:
+                    for raw in fh:
+                        line = raw.strip()
+                        if not line:
+                            continue
+                        try:
+                            rec = json.loads(line)
+                        except json.JSONDecodeError:
+                            continue
+                        if str(rec.get("account_id") or "") != account_id:
+                            continue
+                        out.append(rec)
+            except OSError as exc:
+                logger.warning("prop_firm_guardrails read failed (%s): %s", path, exc)
+        return out
+
+    from eta_engine.scripts.closed_trade_ledger import (
+        DEFAULT_PRODUCTION_DATA_SOURCES,
+        load_close_records,
+    )
+
+    rows = load_close_records(
+        source_paths=[_TRADE_CLOSES, _LEGACY_TRADE_CLOSES],
+        data_sources=DEFAULT_PRODUCTION_DATA_SOURCES,
+    )
+    return [r for r in rows if str(r.get("account_id") or "") == account_id]
 
 
 def _trade_pnl_usd(rec: dict[str, Any]) -> float:

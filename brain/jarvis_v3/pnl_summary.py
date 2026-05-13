@@ -165,36 +165,31 @@ def _read_trades_deduped(
     override_path: Path | None,
     since_dt: datetime | None,
 ) -> list[dict[str, Any]]:
-    """Read from canonical + legacy paths, dedupe on (signal_id, bot_id,
-    ts, realized_r) — same pattern as attribution_cube / kelly_optimizer.
+    """Read from canonical + legacy paths, filtered to live+paper.
 
-    When override_path is supplied (tests), behave as single-source.
+    Wave-25 (2026-05-13): production path delegates to
+    closed_trade_ledger.load_close_records (data_source filter).
+    Tests with explicit override_path get the legacy single-source reader.
     """
     if override_path is not None:
         return _read_jsonl(override_path, since_dt)
-    primary = _read_jsonl(DEFAULT_TRADE_CLOSES_PATH, since_dt)
-    legacy = _read_jsonl(LEGACY_TRADE_CLOSES_PATH, since_dt)
 
-    def _key(r: dict[str, Any]) -> str:
-        return "|".join(
-            [
-                str(r.get("signal_id") or ""),
-                str(r.get("bot_id") or ""),
-                str(r.get("ts") or r.get("closed_at") or ""),
-                str(r.get("realized_r") or ""),
-            ]
-        )
+    import math
 
-    seen: set[str] = set()
-    merged: list[dict[str, Any]] = []
-    for source in (primary, legacy):
-        for r in source:
-            k = _key(r)
-            if k in seen:
-                continue
-            seen.add(k)
-            merged.append(r)
-    return merged
+    from eta_engine.scripts.closed_trade_ledger import (
+        DEFAULT_PRODUCTION_DATA_SOURCES,
+        load_close_records,
+    )
+
+    since_days: int | None = None
+    if since_dt is not None:
+        delta_seconds = (datetime.now(UTC) - since_dt).total_seconds()
+        since_days = max(1, math.ceil(delta_seconds / 86400.0) + 1)
+    return load_close_records(
+        source_paths=[DEFAULT_TRADE_CLOSES_PATH, LEGACY_TRADE_CLOSES_PATH],
+        data_sources=DEFAULT_PRODUCTION_DATA_SOURCES,
+        since_days=since_days,
+    )
 
 
 def _extract_r(rec: dict[str, Any]) -> float | None:

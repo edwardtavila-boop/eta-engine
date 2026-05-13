@@ -134,37 +134,36 @@ def _read_trade_closes_all_sources(
     override_path: Path | None,
     since_dt: datetime | None,
 ) -> list[dict[str, Any]]:
-    """Read trade-close records from BOTH canonical and legacy paths,
-    deduping on (signal_id, bot_id, ts, realized_r). When ``override_path``
-    is supplied (tests with tmp_path), behave as a single-source reader
-    so callers get exactly what they wrote.
+    """Read trade-close records from BOTH canonical and legacy paths.
+
+    Wave-25 (2026-05-13): production reads (no override_path) now go
+    through closed_trade_ledger.load_close_records which classifies each
+    record by data_source (live/paper/backtest/historical_unverified/
+    test_fixture) and excludes the latter three by default. Tests with
+    explicit ``override_path`` keep the legacy single-source reader so
+    they get exactly what they wrote.
     """
     if override_path is not None:
         return _read_jsonl(override_path, since_dt)
 
-    primary = _read_jsonl(DEFAULT_TRADE_CLOSES_PATH, since_dt)
-    legacy = _read_jsonl(_LEGACY_TRADE_CLOSES_PATH, since_dt)
+    import math
 
-    def _key(r: dict[str, Any]) -> str:
-        return "|".join(
-            [
-                str(r.get("signal_id") or ""),
-                str(r.get("bot_id") or ""),
-                str(r.get("ts") or ""),
-                str(r.get("realized_r") or ""),
-            ]
-        )
+    from eta_engine.scripts.closed_trade_ledger import (
+        DEFAULT_PRODUCTION_DATA_SOURCES,
+        load_close_records,
+    )
 
-    seen: set[str] = set()
-    merged: list[dict[str, Any]] = []
-    for source in (primary, legacy):
-        for r in source:
-            k = _key(r)
-            if k in seen:
-                continue
-            seen.add(k)
-            merged.append(r)
-    return merged
+    since_days: int | None = None
+    if since_dt is not None:
+        delta_seconds = (datetime.now(UTC) - since_dt).total_seconds()
+        # +1 buffer day so the cutoff is inclusive; ceil handles fractional days.
+        since_days = max(1, math.ceil(delta_seconds / 86400.0) + 1)
+
+    return load_close_records(
+        source_paths=[DEFAULT_TRADE_CLOSES_PATH, _LEGACY_TRADE_CLOSES_PATH],
+        data_sources=DEFAULT_PRODUCTION_DATA_SOURCES,
+        since_days=since_days,
+    )
 
 
 # ---------------------------------------------------------------------------

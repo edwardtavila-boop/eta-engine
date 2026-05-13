@@ -54,49 +54,43 @@ def _is_today(ts_str: str) -> bool:
 
 
 def _today_realized_pnl_usd() -> float:
-    """Sum realized_pnl across all trade closes timestamped today.
+    """Sum realized_pnl across LIVE trade closes timestamped today.
 
-    Reads the JSONL fully each call. The file is small (one record per
-    closed trade) and typically <1MB, so this is cheap. If it ever
-    grows, add a cache+offset.
+    Wave-25 (2026-05-13): only counts records with ``data_source="live"``
+    so paper / backtest emissions do not trip the killswitch. Without
+    this filter the killswitch could fire on backfilled historical
+    losses or paper-sim runs.
     """
-    if not _TRADE_CLOSES_PATH.exists():
-        return 0.0
+    from eta_engine.scripts.closed_trade_ledger import (
+        DATA_SOURCE_LIVE,
+        load_close_records,
+    )
+
+    rows = load_close_records(
+        source_paths=[_TRADE_CLOSES_PATH],
+        data_sources=frozenset({DATA_SOURCE_LIVE}),
+    )
     total = 0.0
-    try:
-        with _TRADE_CLOSES_PATH.open(encoding="utf-8") as fh:
-            for line in fh:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    rec = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                # close_trade writes top-level fields plus extra={}.
-                # Newer records put realized_pnl in extra; older ones
-                # in top-level. Read both for backwards compatibility.
-                extra = rec.get("extra") or {}
-                ts = (
-                    rec.get("close_ts")
-                    or (extra.get("close_ts") if isinstance(extra, dict) else None)
-                    or rec.get("ts")
-                    or rec.get("fill_ts")
-                    or ""
-                )
-                if not _is_today(ts):
-                    continue
-                pnl = rec.get("realized_pnl")
-                if pnl is None and isinstance(extra, dict):
-                    pnl = extra.get("realized_pnl")
-                if pnl is None:
-                    continue
-                try:
-                    total += float(pnl)
-                except (TypeError, ValueError):
-                    continue
-    except OSError as exc:
-        logger.debug("killswitch read failed: %s", exc)
+    for rec in rows:
+        extra = rec.get("extra") or {}
+        ts = (
+            rec.get("close_ts")
+            or (extra.get("close_ts") if isinstance(extra, dict) else None)
+            or rec.get("ts")
+            or rec.get("fill_ts")
+            or ""
+        )
+        if not _is_today(ts):
+            continue
+        pnl = rec.get("realized_pnl")
+        if pnl is None and isinstance(extra, dict):
+            pnl = extra.get("realized_pnl")
+        if pnl is None:
+            continue
+        try:
+            total += float(pnl)
+        except (TypeError, ValueError):
+            continue
     return total
 
 

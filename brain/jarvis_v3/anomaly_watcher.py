@@ -146,28 +146,31 @@ def _read_trades(
     override_path: Path | None,
     since_dt: datetime | None,
 ) -> list[dict[str, Any]]:
-    """Read trade closes from canonical + legacy paths, deduped."""
+    """Read trade closes filtered to live+paper data_source.
+
+    Wave-25 (2026-05-13): production path delegates to
+    closed_trade_ledger.load_close_records (data_source filter).
+    Tests with explicit override_path get the legacy single-source reader.
+    """
     if override_path is not None:
         return _read_jsonl(override_path, since_dt)
-    primary = _read_jsonl(DEFAULT_TRADE_CLOSES_PATH, since_dt)
-    legacy = _read_jsonl(LEGACY_TRADE_CLOSES_PATH, since_dt)
-    seen: set[str] = set()
-    out: list[dict[str, Any]] = []
-    for src in (primary, legacy):
-        for r in src:
-            k = "|".join(
-                [
-                    str(r.get("signal_id") or ""),
-                    str(r.get("bot_id") or ""),
-                    str(r.get("ts") or r.get("closed_at") or ""),
-                    str(r.get("realized_r") or ""),
-                ]
-            )
-            if k in seen:
-                continue
-            seen.add(k)
-            out.append(r)
-    return out
+
+    import math
+
+    from eta_engine.scripts.closed_trade_ledger import (
+        DEFAULT_PRODUCTION_DATA_SOURCES,
+        load_close_records,
+    )
+
+    since_days: int | None = None
+    if since_dt is not None:
+        delta_seconds = (datetime.now(UTC) - since_dt).total_seconds()
+        since_days = max(1, math.ceil(delta_seconds / 86400.0) + 1)
+    return load_close_records(
+        source_paths=[DEFAULT_TRADE_CLOSES_PATH, LEGACY_TRADE_CLOSES_PATH],
+        data_sources=DEFAULT_PRODUCTION_DATA_SOURCES,
+        since_days=since_days,
+    )
 
 
 def _extract_r(rec: dict[str, Any]) -> float | None:

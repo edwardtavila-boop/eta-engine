@@ -431,6 +431,10 @@ def test_maybe_enter_allows_submit_entry_during_rth(monkeypatch) -> None:
     consult so the test doesn't need the full intelligence stack online."""
     sup, bot = _make_supervisor_with_gated_bot()
     monkeypatch.setattr("random.random", lambda: 0.0)
+    monkeypatch.setattr(
+        "eta_engine.feeds.capital_allocator.resolve_execution_target",
+        lambda bot_id, prospective_loss_usd: ("live", "test_live"),
+    )
 
     submit_called: list[dict[str, Any]] = []
 
@@ -589,6 +593,10 @@ def test_daily_loss_cap_does_not_halt_when_below_floor(monkeypatch) -> None:
     """Same bot, smaller loss (-$100 = -2% < 3%) → not halted; entry path
     proceeds through the dice / JARVIS layers."""
     sup, bot = _make_supervisor_with_gated_bot(daily_cap=3.0)
+    monkeypatch.setattr(
+        "eta_engine.feeds.capital_allocator.resolve_execution_target",
+        lambda bot_id, prospective_loss_usd: ("live", "test_live"),
+    )
     fake_now = _ct_to_utc(2026, 5, 15, 10, 0)
     bot.session_state.daily_session_date = current_session_date(fake_now)
     bot.session_state.daily_pnl_anchor = 0.0
