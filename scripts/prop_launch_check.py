@@ -126,15 +126,65 @@ def _check_drawdown_guard() -> dict:
     }
 
 
+def _check_supervisor() -> dict:
+    """Supervisor process health: heartbeat freshness + tick + mode + n_bots.
+
+    Canonical path is
+    ``var/eta_engine/state/jarvis_intel/supervisor/heartbeat.json``
+    (also referenced by v25/v26/v27 policy modules). Receipt > 5 min
+    old indicates the supervisor task is hung or stopped.
+    """
+    p = (
+        WORKSPACE_ROOT
+        / "var"
+        / "eta_engine"
+        / "state"
+        / "jarvis_intel"
+        / "supervisor"
+        / "heartbeat.json"
+    )
+    if not p.exists():
+        return {"missing": True, "path": str(p)}
+    try:
+        age_seconds = datetime.now(UTC).timestamp() - p.stat().st_mtime
+        d = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return {"missing": True, "path": str(p), "error": str(exc)}
+    return {
+        "missing": False,
+        "age_seconds": round(age_seconds, 1),
+        "tick_count": d.get("tick_count"),
+        "mode": d.get("mode"),
+        "feed": d.get("feed"),
+        "n_bots": d.get("n_bots"),
+        "live_money_enabled": d.get("live_money_enabled"),
+    }
+
+
 def _build_action_list(
     dryrun: dict,
     lifecycle: dict,
     leaderboard: dict,
     channels: dict,
     drawdown: dict,
+    supervisor: dict | None = None,
 ) -> list[str]:
     """Translate HOLD / NO_GO sections into operator-actionable steps."""
     actions: list[str] = []
+
+    # Supervisor health — front of queue if hung/missing
+    if supervisor is not None:
+        if supervisor.get("missing"):
+            actions.append(
+                f"Supervisor heartbeat MISSING at {supervisor.get('path', '?')}. "
+                "Verify ApexRuntimeSupervisor scheduled task is Running. "
+                "No trades will fire if the supervisor process is down.",
+            )
+        elif supervisor.get("age_seconds", 0) > 300:
+            actions.append(
+                f"Supervisor heartbeat STALE ({supervisor['age_seconds']}s old). "
+                "Task may be hung. Restart ApexRuntimeSupervisor before launch.",
+            )
 
     # Alert channels
     if not (channels["telegram"] or channels["discord"] or channels["generic"]):
@@ -212,6 +262,23 @@ def _print_human(report: dict) -> None:
     print(f"  PROP LAUNCH CHECK  ({report['ts']})  verdict={verdict}")
     print("=" * 92)
     print(f"  {summary_text}")
+
+    # Supervisor health
+    supervisor = report.get("supervisor", {})
+    _print_section_header("Supervisor health")
+    if supervisor.get("missing"):
+        print(f"  HEARTBEAT MISSING at {supervisor.get('path', '?')}")
+        if supervisor.get("error"):
+            print(f"    error: {supervisor['error']}")
+    else:
+        age = supervisor.get("age_seconds")
+        stale = " (STALE)" if age and age > 300 else ""
+        print(f"  heartbeat: {age}s old{stale}")
+        print(
+            f"  tick={supervisor.get('tick_count')} mode={supervisor.get('mode')} "
+            f"feed={supervisor.get('feed')} n_bots={supervisor.get('n_bots')} "
+            f"live_money={supervisor.get('live_money_enabled')}",
+        )
 
     # Drawdown guard
     _print_section_header("Drawdown guard")
@@ -292,7 +359,15 @@ def main(argv: list[str] | None = None) -> int:
     leaderboard = _check_leaderboard()
     channels = _check_alert_channels()
     drawdown = _check_drawdown_guard()
-    actions = _build_action_list(dryrun, lifecycle, leaderboard, channels, drawdown)
+    supervisor = _check_supervisor()
+    actions = _build_action_list(
+        dryrun,
+        lifecycle,
+        leaderboard,
+        channels,
+        drawdown,
+        supervisor=supervisor,
+    )
 
     report = {
         "ts": datetime.now(UTC).replace(microsecond=0).isoformat(),
@@ -301,6 +376,7 @@ def main(argv: list[str] | None = None) -> int:
         "leaderboard": leaderboard,
         "alert_channels": channels,
         "drawdown_guard": drawdown,
+        "supervisor": supervisor,
         "actions": actions,
     }
 
