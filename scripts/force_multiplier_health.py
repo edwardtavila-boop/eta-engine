@@ -1,16 +1,17 @@
 """Force Multiplier health probe.
 
-Run this anytime to verify the three-provider integration end-to-end.
-Reports per-provider availability, runs a tiny live call where safe,
-and prints actionable next steps for any failure.
+Run this anytime to verify the subscription-first integration end-to-end.
+Reports allowed-provider availability, runs a tiny live call where safe,
+and prints actionable next steps for any failure. Claude is intentionally
+disabled by operator policy and is not counted as a failed provider.
 
 Usage
 -----
     python -m eta_engine.scripts.force_multiplier_health
     python -m eta_engine.scripts.force_multiplier_health --live    # also do live calls
 
-The --live flag costs ~$0.000005 on DeepSeek and uses ~5s of Claude/Codex
-subscription quota. Skip it on quota-constrained days.
+The --live flag costs a tiny DeepSeek call and uses Codex subscription quota.
+Skip it on quota-constrained days.
 """
 
 from __future__ import annotations
@@ -29,9 +30,7 @@ if str(ROOT) not in sys.path:
 from datetime import UTC  # noqa: E402  (datetime import follows sys.path setup)
 
 from eta_engine.brain.cli_provider import (  # noqa: E402  (needs sys.path setup above)
-    call_claude,
     call_codex,
-    check_claude_available,
     check_codex_available,
     cli_provider_status,
 )
@@ -118,30 +117,8 @@ def probe_deepseek(*, live: bool) -> tuple[bool, str]:
 
 
 def probe_claude(*, live: bool) -> tuple[bool, str]:
-    if not check_claude_available():
-        return False, "claude CLI not installed — run: npm install -g @anthropic-ai/claude-code"
-    status = cli_provider_status()
-    if not live:
-        return True, f"installed: {status['claude_command']} (skipped live call)"
-    resp = call_claude(
-        user_message="Reply only with the word: READY",
-        model="haiku",
-        max_budget_usd=0.05,
-        timeout=60,
-    )
-    failure = _classify_cli_failure(resp)
-    if failure is None and resp.text.strip():
-        return True, f"live OK ({resp.elapsed_ms:.0f}ms, exit={resp.exit_code})"
-    if failure == "auth":
-        return False, (
-            "claude not authenticated for non-interactive use — run `claude setup-token` "
-            "(`claude login` only auths the chat session; -p needs a long-lived token)"
-        )
-    if failure == "quota":
-        return False, "claude monthly quota exhausted — wait for reset or upgrade plan"
-    if failure == "timeout":
-        return False, "claude CLI timed out — check network / subscription"
-    return False, f"failure={failure or 'empty'} text={resp.text[:120]!r}"
+    _ = live
+    return True, "disabled by operator policy; Codex handles architect/review"
 
 
 def probe_codex(*, live: bool) -> tuple[bool, str]:
@@ -150,11 +127,9 @@ def probe_codex(*, live: bool) -> tuple[bool, str]:
     status = cli_provider_status()
     if not live:
         return True, f"installed: {status['codex_command']} (skipped live call)"
-    # ChatGPT subscriptions only support gpt-5.4 (not o3/o4-mini); use that
-    # for the live probe so we don't get a misleading 400-not-supported error.
     resp = call_codex(
         user_message="Reply only with the word: READY",
-        model="gpt-5.4",
+        model=os.environ.get("ETA_CODEX_DEFAULT_MODEL", "gpt-5.5").strip() or "gpt-5.5",
         timeout=120,
     )
     failure = _classify_cli_failure(resp)
@@ -171,9 +146,8 @@ def probe_codex(*, live: bool) -> tuple[bool, str]:
 
 def _probe_results(*, live: bool) -> list[tuple[str, bool, str]]:
     probes = [
+        ("CODEX    (Lead Architect / Systems Expert)", probe_codex),
         ("DEEPSEEK (Worker Bee)", probe_deepseek),
-        ("CLAUDE   (Lead Architect)", probe_claude),
-        ("CODEX    (Systems Expert)", probe_codex),
     ]
     return [(name, *fn(live=live)) for name, fn in probes]
 
@@ -267,19 +241,19 @@ def main() -> int:
     by_provider: dict[str, list[str]] = {}
     for cat, prov in rt.items():
         by_provider.setdefault(prov, []).append(cat)
-    for prov in ("claude", "deepseek", "codex"):
+    for prov in ("codex", "deepseek", "claude"):
         cats = by_provider.get(prov, [])
         print(f"  {prov:9s} ({len(cats):2d} tasks): {', '.join(cats[:4])}{' ...' if len(cats) > 4 else ''}")
 
     _hr("Summary")
-    print(f"  {pass_count}/3 providers ready")
-    if pass_count < 3:
+    print(f"  {pass_count}/{len(results)} allowed providers ready")
+    if pass_count < len(results):
         print("\n  Next steps:")
         for name, ok, msg in results:
             if not ok:
                 print(f"    - {name}: {msg}")
     print()
-    return 0 if pass_count == 3 else 1
+    return 0 if pass_count == len(results) else 1
 
 
 if __name__ == "__main__":

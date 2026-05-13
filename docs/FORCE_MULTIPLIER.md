@@ -1,16 +1,18 @@
 # Force Multiplier — Multi-Model Orchestration
 
-**Wave-19 (2026-05-04)**. Routes every LLM task to the provider best suited for that work, using the operator's existing subscriptions instead of pay-per-token API keys for the premium tiers.
+**Wave-19 (2026-05-04), refreshed 2026-05-13**. Routes every LLM task to the provider best suited for that work while keeping paid API use limited to DeepSeek V4.
 
-## The three roles
+> Current operator policy: Codex is the subscription-backed architect/reviewer/operator lane, DeepSeek V4 is the only paid API lane, and Claude/Anthropic API usage is disabled unless `ETA_ENABLE_CLAUDE_CLI=1` is deliberately set for a manual experiment.
+
+## Active roles
 
 | Provider | Role | Auth | Cost model |
 |---|---|---|---|
 | **DeepSeek V4** | **Worker Bee** — bulk generation, boilerplate, large codebase mapping | `DEEPSEEK_API_KEY` (cheap API) | ~$0.14/1M input tokens |
-| **Claude** | **Lead Architect** — planning, architecture, code review, red-team | `claude login` (Pro/Max subscription) | included in monthly plan |
-| **Codex** | **Systems Expert** — debugging, test execution, security audits, computer-use | `codex login` (ChatGPT Plus/Pro subscription) | included in monthly plan |
+| **Codex** | **Lead Architect + Systems Expert** — planning, architecture, code review, debugging, security audits, computer-use | `codex login` (ChatGPT Plus/Pro subscription) | included in monthly plan |
+| **Claude** | **Disabled legacy lane** | blocked by policy | blocked |
 
-If a CLI provider is unavailable (not authenticated, quota exhausted, timeout), the task transparently falls back to **DeepSeek API** so work never blocks.
+If Codex CLI is unavailable (not authenticated, quota exhausted, timeout), eligible work falls back to **DeepSeek API**. Legacy Claude routes fall forward to Codex first and never call the Anthropic API.
 
 ## Setup
 
@@ -24,37 +26,7 @@ DEEPSEEK_API_KEY=sk-...
 
 The loader (`eta_engine/brain/llm_provider.py::_ensure_dotenv`) reads both the workspace root `.env` and `eta_engine/.env`, with the submodule-local file winning for `ETA_*` keys.
 
-### 2. Claude CLI (subscription)
-
-Install once:
-
-```bash
-npm install -g @anthropic-ai/claude-code
-```
-
-Authenticate. The `claude` CLI has TWO auth states:
-
-- `claude login` — interactive chat session (used when you type `claude` and chat)
-- `claude setup-token` — long-lived token for `claude -p` non-interactive calls
-
-The Force Multiplier integration uses `claude -p`, so you need `setup-token`:
-
-```bash
-claude setup-token   # opens browser, paste back token
-```
-
-Verify:
-
-```bash
-claude --version              # should print 2.x
-claude auth status            # should show "loggedIn": true
-claude -p "say hi" --print    # should produce a response, not 401
-```
-
-If `auth status` says logged in but `-p` returns 401, the issue is specifically the
-non-interactive token — `setup-token` will fix it without touching the chat session auth.
-
-### 3. Codex CLI (subscription)
+### 2. Codex CLI (subscription)
 
 Install once:
 
@@ -75,7 +47,7 @@ codex --version
 codex exec "say hi" --full-auto --skip-git-repo-check
 ```
 
-### 4. Health probe
+### 3. Health probe
 
 After setup, run from the workspace root:
 
@@ -84,7 +56,7 @@ python -m eta_engine.scripts.force_multiplier_health           # config-only che
 python -m eta_engine.scripts.force_multiplier_health --live    # also makes live calls
 ```
 
-The `--live` flag costs ~$0.000010 on DeepSeek and burns a few seconds of subscription quota on Claude/Codex. Skip it if you're conserving monthly limits.
+The `--live` flag costs a tiny DeepSeek call and burns a few seconds of Codex subscription quota. Skip it if you're conserving monthly limits.
 
 ## Usage
 
@@ -97,14 +69,14 @@ from eta_engine.brain.multi_model import route_and_execute
 from eta_engine.brain.model_policy import TaskCategory
 
 resp = route_and_execute(
-    category=TaskCategory.ARCHITECTURE_DECISION,  # → CLAUDE
+    category=TaskCategory.ARCHITECTURE_DECISION,  # → CODEX
     system_prompt="You are an architect.",
     user_message="Should we use Redis or PostgreSQL for the rate-limit cache?",
     max_tokens=400,
 )
 
-print(resp.provider.value)   # "claude" (or "deepseek" if claude unavailable)
-print(resp.fallback_used)    # False if claude succeeded, True if it fell back
+print(resp.provider.value)   # "codex" (or "deepseek" if codex unavailable)
+print(resp.fallback_used)    # False if codex succeeded, True if it fell back
 print(resp.text)
 ```
 
@@ -118,7 +90,7 @@ from eta_engine.brain.model_policy import ForceProvider
 resp = route_and_execute(
     category=TaskCategory.STRATEGY_EDIT,
     user_message="Refactor confluence_v3.py to use the new venue base class.",
-    force_provider=ForceProvider.CLAUDE,   # override → use Claude even though policy says DeepSeek
+    force_provider=ForceProvider.CODEX,    # override -> use Codex even though policy says DeepSeek
 )
 ```
 
@@ -135,7 +107,7 @@ result = force_multiplier_chain(
     max_tokens=2000,
 )
 
-print(result.plan.text)         # CLAUDE — architectural plan
+print(result.plan.text)         # CODEX — architectural plan
 print(result.implement.text)    # DEEPSEEK — implementation
 print(result.verify.text)       # CODEX — verification / test plan
 print(result.total_cost_usd)    # only counts DeepSeek API spend
@@ -163,29 +135,27 @@ result = force_multiplier_chain(
 24 task categories, mapped at policy-time in [`brain/model_policy.py`](../brain/model_policy.py):
 
 ```
-CLAUDE   (7 tasks):  red_team_scoring, gauntlet_gate_design, risk_policy_design,
+CODEX    (11 tasks): red_team_scoring, gauntlet_gate_design, risk_policy_design,
                      architecture_decision, adversarial_review, state_machine_design,
-                     code_review
-
-CODEX    (4 tasks):  debug, test_execution, security_audit, computer_use_task
+                     code_review, debug, test_execution, security_audit,
+                     computer_use_task
 
 DEEPSEEK (13 tasks): strategy_edit, test_run, refactor, skeleton_scaffold, doc_writing,
                      data_pipeline, log_parsing, simple_edit, commit_message,
                      formatting, lint_fix, trivial_lookup, boilerplate
+
+CLAUDE   (0 tasks):  disabled legacy enum; no default routing
 ```
 
 Adding a new category: edit `_CATEGORY_TO_TIER` and `_CATEGORY_TO_PROVIDER` in `brain/model_policy.py`. The test `test_every_category_has_a_tier` will fail if you forget.
 
 ## Failure modes & fallback semantics
 
-`MultiModelResponse.fallback_used` is `True` whenever the preferred provider was unavailable and DeepSeek handled the task. Possible `fallback_reason` values:
+`MultiModelResponse.fallback_used` is `True` whenever the preferred provider was unavailable and another allowed provider handled the task. Possible `fallback_reason` values:
 
 | Reason | Cause | Fix |
 |---|---|---|
-| `claude CLI not installed` | npm package missing | `npm install -g @anthropic-ai/claude-code` |
-| `claude CLI not authenticated` | OAuth not set up | `claude login` |
-| `claude monthly quota exhausted` | Pro plan limit hit | wait for reset / upgrade plan |
-| `claude CLI timed out` | network or long task | check connectivity / increase `ETA_CLI_TIMEOUT_SEC` |
+| `claude disabled by operator policy` | legacy route requested | use Codex, or deliberately opt in with `ETA_ENABLE_CLAUDE_CLI=1` for manual experiments |
 | `codex CLI not authenticated` | OAuth not set up | `codex login` |
 | `codex monthly quota exhausted (ChatGPT Plus/Pro monthly limit)` | usage cap hit | wait for billing-cycle reset |
 
@@ -196,12 +166,11 @@ The auth/quota detection lives in `multi_model._classify_cli_failure` and only m
 | Var | Purpose | Default |
 |---|---|---|
 | `DEEPSEEK_API_KEY` | DeepSeek V4 API key | required for DeepSeek path |
-| `ETA_CLAUDE_CLI` | Override claude binary | `claude` (PATH) → `npx @anthropic-ai/claude-code` |
+| `ETA_ENABLE_CLAUDE_CLI` | Deliberate manual opt-in for legacy Claude CLI | unset / disabled |
 | `ETA_CODEX_CLI` | Override codex binary | `codex` (PATH) → `npx codex` |
 | `ETA_CLI_TIMEOUT_SEC` | Per-call CLI timeout | `300` |
-| `ETA_CODEX_MODEL_OVERRIDE` | Force a specific Codex model | `gpt-5.4` (subscription-compatible) |
-| `ANTHROPIC_API_KEY` | (optional) bypass OAuth, use API directly | unset |
-| `OPENAI_API_KEY` | (optional) for OpenAI API path | unset |
+| `ETA_CODEX_DEFAULT_MODEL` | Default Codex subscription model | `gpt-5.5` |
+| `ETA_CODEX_MODEL_OVERRIDE` | Force a specific Codex model | unset |
 
 > **Important: parent-process env wins over `.env`.** The loader uses
 > `override=False` so credentials set by systemd, your shell profile, or CI
@@ -213,11 +182,8 @@ The auth/quota detection lives in `multi_model._classify_cli_failure` and only m
 Override examples:
 
 ```bash
-# Force npx invocation even if claude is on PATH (useful for CI):
-export ETA_CLAUDE_CLI="npx @anthropic-ai/claude-code"
-
-# Use ANTHROPIC_API_KEY instead of OAuth (Pro plan not required):
-export ANTHROPIC_API_KEY=sk-ant-...
+# Force npx invocation even if codex is on PATH (useful for CI):
+export ETA_CODEX_CLI="npx codex"
 ```
 
 ## File layout
@@ -225,8 +191,8 @@ export ANTHROPIC_API_KEY=sk-ant-...
 ```
 eta_engine/
 ├── brain/
-│   ├── llm_provider.py             ← API path (DeepSeek + OpenAI/Anthropic native)
-│   ├── cli_provider.py             ← CLI path (Claude + Codex via subscription)
+│   ├── llm_provider.py             ← API path (DeepSeek only; legacy adapters blocked)
+│   ├── cli_provider.py             ← CLI path (Codex via subscription; Claude disabled)
 │   ├── model_policy.py             ← TaskCategory → ForceProvider routing
 │   ├── multi_model.py              ← orchestrator: route_and_execute, chain
 │   └── multi_model_telemetry.py    ← JSONL audit log + summary aggregation
@@ -264,11 +230,9 @@ have configured. Examples already migrated:
 
 Skip the migration and leave a `# NOTE` comment when:
 
-1. **The call deliberately targets a specific provider's caching/feature**
-   that the orchestrator would route around. Example:
-   `_task_prompt_warmup` in `run_task.py` populates the *Anthropic*
-   prompt cache — routing through `route_and_execute` with HAIKU tier
-   would send to DeepSeek, defeating the purpose.
+1. **The call deliberately targets a provider-specific cache or diagnostic**
+   that the orchestrator would route around. Keep these rare probes explicitly
+   gated and documented so they cannot become default routing.
 
 2. **The call is in a tight inner loop** (e.g. per-tick) where the
    subprocess overhead of CLI providers would matter. Use
@@ -350,4 +314,3 @@ python -m eta_engine.scripts.fm log -n 5
 You should see a row with the matching `category`, the expected
 `provider`, and `fallback_used=N`. If `fallback_used=Y`, the
 preferred provider was unavailable — check `fm status` to see why.
-> 2026-05-13 operator policy: Codex is the subscription-backed architect/verifier, DeepSeek V4 is the only paid API lane, and Claude/Anthropic API usage is disabled. Historical Claude sections below are legacy context unless `ETA_ENABLE_CLAUDE_CLI=1` is deliberately set for a manual experiment.

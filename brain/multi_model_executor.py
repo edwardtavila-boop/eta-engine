@@ -1,8 +1,8 @@
 """
 MultiModel Executor — bridges the Avengers Fleet to the Force Multiplier orchestrator.
 
-Allows Fleet dispatch to route through the full multi-model pipeline
-(Claude CLI → Codex CLI → DeepSeek API) instead of a single Anthropic API backend.
+Allows Fleet dispatch to route through the subscription-first multi-model
+pipeline (Codex CLI -> DeepSeek API) instead of any Anthropic API backend.
 
 Usage:
     from eta_engine.brain.multi_model_executor import MultiModelExecutor
@@ -38,11 +38,10 @@ class MultiModelExecutor:
     """Implements the Avengers ``Executor`` Protocol using the Force Multiplier orchestrator.
 
     Each task is routed to the best provider:
-      * CLAUDE   (Lead Architect) — architectural, red team, code review
-      * DEEPSEEK (Worker Bee)     — high-volume generation, boilerplate, grunt
-      * CODEX    (Systems Expert) — debugging, test execution, security audits
+      * CODEX    (Lead Architect / Systems Expert) - architecture, review, debug
+      * DEEPSEEK (Worker Bee)                      - high-volume generation
 
-    Falls back to DeepSeek API if Claude/Codex CLI is unavailable.
+    Falls back to DeepSeek API if Codex CLI is unavailable.
     """
 
     def __call__(

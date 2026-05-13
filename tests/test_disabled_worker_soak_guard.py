@@ -4,7 +4,7 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
-from scripts import disabled_worker_soak_guard
+from eta_engine.scripts import disabled_worker_soak_guard
 
 
 def _created_at() -> datetime:

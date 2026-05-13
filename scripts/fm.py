@@ -14,7 +14,7 @@ This wraps that into a one-liner the operator can run from PowerShell:
 Subcommands
 ===========
   ``ask``      — single ``route_and_execute`` call; prints the response
-  ``chain``    — full Claude→DeepSeek→Codex pipeline
+  ``chain``    — full Codex→DeepSeek→Codex pipeline
   ``status``   — show provider availability + recent telemetry summary
   ``log``      — tail the FM telemetry log
 
@@ -30,7 +30,7 @@ Examples
 
     fm status              # provider health + last 100 calls aggregated
     fm log -n 5            # last 5 telemetry records, pretty-printed
-    fm log --provider claude   # only claude calls
+    fm log --provider codex    # only codex calls
 """
 
 from __future__ import annotations
@@ -73,7 +73,7 @@ def _provider_choices() -> list[str]:
 def _build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="fm",
-        description="Force-Multiplier CLI — route LLM tasks across DeepSeek/Claude/Codex",
+        description="Force-Multiplier CLI — route tasks across Codex subscription CLI and DeepSeek V4",
     )
     p.add_argument("-v", "--verbose", action="store_true", help="show INFO logs")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -314,7 +314,7 @@ def _cmd_status(args: argparse.Namespace) -> int:
     print("Force-Multiplier providers:")
     for prov_name, prov_info in health["providers"].items():
         avail = prov_info.get("available")
-        mark = "OK" if avail else "FAIL"
+        mark = "SKIP" if prov_info.get("disabled_by_policy") else ("OK" if avail else "FAIL")
         print(f"  [{mark:4s}] {prov_name:9s}  {prov_info.get('role', '')}")
     print()
     print(f"Telemetry (last {args.limit} calls):")

@@ -1,8 +1,10 @@
 """Agent coordination protocol — file-based task queue for multi-AI sessions.
 
-Three AI assistants (Claude, Codex, DeepSeek) share this workspace and need
+Codex, DeepSeek, and legacy coordination agents share this workspace and need
 to claim work atomically without colliding. This module is the coordination
-primitive every session imports.
+primitive every session imports. Claude remains in the accepted agent-id list
+only for backwards-compatible task files; default work should target Codex or
+DeepSeek.
 
 Design notes
 ------------
@@ -22,18 +24,19 @@ Design notes
   than ``ETA_AGENT_HEARTBEAT_STALE_MIN`` minutes (default 30), its claimed
   tasks auto-return to pending so other agents can pick them up.
 
-Per CLAUDE.md: agents claim tasks and do work, but COMMITS still go through
-human approval. This module deliberately does not run git.
+Per workspace policy: agents claim tasks and do work, but commits still go
+through the normal operator-controlled git flow. This module deliberately does
+not run git.
 
 CLI usage
 ---------
-    python -m eta_engine.scripts.agent_coordinator heartbeat --agent claude
+    python -m eta_engine.scripts.agent_coordinator heartbeat --agent codex
     python -m eta_engine.scripts.agent_coordinator list-pending
-    python -m eta_engine.scripts.agent_coordinator claim --agent claude --task T-...
+    python -m eta_engine.scripts.agent_coordinator claim --agent codex --task T-...
     python -m eta_engine.scripts.agent_coordinator complete \
-        --agent claude --task T-... --deliverable file.py --summary 'short'
+        --agent codex --task T-... --deliverable file.py --summary 'short'
     python -m eta_engine.scripts.agent_coordinator block \
-        --agent claude --task T-... --reason 'needs operator decision'
+        --agent codex --task T-... --reason 'needs operator decision'
     python -m eta_engine.scripts.agent_coordinator reclaim-stale
 """
 
@@ -226,7 +229,7 @@ class AgentCoordinator:
         """Return pending tasks the caller is eligible to claim.
 
         ``preferred_agent`` filter: if a task has ``preferred_agent: codex``
-        and the caller is claude, the task is skipped UNLESS ``preferred_agent``
+        and the caller is another agent, the task is skipped UNLESS ``preferred_agent``
         is "any" or matches the caller. Tasks marked any are always shown.
         """
         out: list[dict[str, Any]] = []
@@ -525,7 +528,7 @@ def _print_pending(tasks: list[dict[str, Any]]) -> None:
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(
         prog="agent_coordinator",
-        description="Multi-agent task queue (Claude / Codex / DeepSeek).",
+        description="Multi-agent task queue (Codex / DeepSeek / legacy ids).",
     )
     sub = p.add_subparsers(dest="cmd", required=True)
 
@@ -536,7 +539,7 @@ def main(argv: list[str] | None = None) -> int:
     sp.add_argument(
         "--preferred",
         default=None,
-        help="filter by preferred_agent (claude/codex/deepseek)",
+        help="filter by preferred_agent (codex/deepseek/legacy claude)",
     )
 
     sp = sub.add_parser("claim", help="claim a pending task")

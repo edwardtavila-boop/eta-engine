@@ -1,6 +1,7 @@
 """Smoke test for Force Multiplier integration (Wave-19) — pytest format."""
 
 import sys
+from argparse import Namespace
 from collections import Counter
 
 sys.path.insert(0, r"C:\EvolutionaryTradingAlgo")
@@ -86,3 +87,43 @@ def test_fallback_routing():
     routed = {c: force_provider_for(c) for c in all_cats}
     for cat, provider in routed.items():
         assert provider in ForceProvider, f"{cat} routed to unknown provider {provider}"
+
+
+def test_force_multiplier_health_tracks_only_allowed_lanes(monkeypatch):
+    from eta_engine.scripts import force_multiplier_health
+
+    monkeypatch.setattr(force_multiplier_health, "probe_codex", lambda *, live: (True, "codex ok"))
+    monkeypatch.setattr(force_multiplier_health, "probe_deepseek", lambda *, live: (True, "deepseek ok"))
+
+    results = force_multiplier_health._probe_results(live=False)
+
+    labels = [name for name, _, _ in results]
+    assert labels == ["CODEX    (Lead Architect / Systems Expert)", "DEEPSEEK (Worker Bee)"]
+    assert all("CLAUDE" not in label for label in labels)
+
+
+def test_fm_status_marks_policy_disabled_claude_as_skip(monkeypatch, capsys):
+    from eta_engine.scripts import fm
+
+    monkeypatch.setattr(
+        fm,
+        "force_multiplier_status",
+        lambda: {
+            "providers": {
+                "claude": {"available": False, "disabled_by_policy": True, "role": "disabled"},
+                "codex": {"available": True, "role": "architect"},
+                "deepseek": {"available": True, "role": "worker"},
+            }
+        },
+    )
+    monkeypatch.setattr(
+        fm,
+        "summarize",
+        lambda *, limit: {"calls": 0, "total_cost_usd": 0.0, "fallback_rate": 0.0, "by_provider": {}},
+    )
+
+    assert fm._cmd_status(Namespace(json=False, limit=100)) == 0
+
+    out = capsys.readouterr().out
+    assert "[SKIP]" in out
+    assert "[FAIL] claude" not in out
