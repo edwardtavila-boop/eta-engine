@@ -142,17 +142,22 @@ def _score_bot(bot_id: str, trades: list[dict[str, Any]], now_utc: datetime | No
         now_utc = datetime.now(UTC)
     cutoff_14d = now_utc - timedelta(days=RECENT_DAYS_WINDOW)
 
+    # Tick-leak guard (2026-05-13): diamond demotion gate is a destructive
+    # decision-maker (decides which diamonds get downgraded). A single
+    # tick-leak record (r=69 on mnq_futures_sage) would skew the R_DRIFT
+    # and R_BLEED computations and could mis-demote a real diamond.
+    from eta_engine.brain.jarvis_v3 import trade_close_sanitizer  # noqa: PLC0415
+
     # Parse timestamps + filter to last 14 days
     days_seen: set[str] = set()
     recent_trades_with_ts: list[tuple[datetime, float]] = []
     for t in trades:
         ts = _parse_ts(t.get("ts"))
-        r = t.get("realized_r")
-        try:
-            r_val = float(r) if r is not None else None
-        except (TypeError, ValueError):
-            r_val = None
-        if ts is None or r_val is None:
+        status, value = trade_close_sanitizer.classify(t)
+        if status == "suspect" or status == "none" or value is None:
+            continue
+        r_val = float(value)
+        if ts is None:
             continue
         if ts >= cutoff_14d:
             sc.n_new_trades_14d += 1

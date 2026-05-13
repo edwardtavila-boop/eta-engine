@@ -84,10 +84,20 @@ def _load_closes() -> list[dict[str, Any]]:
 
 
 def _bot_metrics(bot: dict[str, Any], closes: list[dict[str, Any]]) -> dict[str, Any]:
+    # Tick-leak guard (2026-05-13): bot_scoreboard powers the per-bot
+    # JSON status that the dashboard reads; same +69R leak would inflate
+    # avg_r and win_rate. classify() drops suspect rows.
+    from eta_engine.brain.jarvis_v3 import trade_close_sanitizer  # noqa: PLC0415
+
     bid = bot.get("bot_id", "")
     bot_closes = [c for c in closes if c.get("bot_id") == bid]
     n_closes = len(bot_closes)
-    rs = [float(c.get("realized_r", 0) or 0) for c in bot_closes if c.get("realized_r") is not None]
+    rs: list[float] = []
+    for c in bot_closes:
+        status, value = trade_close_sanitizer.classify(c)
+        if status == "suspect" or status == "none" or value is None:
+            continue
+        rs.append(float(value))
     # Trade closes are written by feedback_loop.close_trade. Older
     # records carry only realized_r; newer ones include realized_pnl
     # in extra={}. Read both shapes so this works pre/post upgrade.

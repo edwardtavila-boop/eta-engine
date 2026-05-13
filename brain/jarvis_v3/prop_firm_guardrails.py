@@ -320,7 +320,19 @@ def _read_trades_for_account(
 
 
 def _trade_pnl_usd(rec: dict[str, Any]) -> float:
-    """Best-effort dollar PnL from a trade close record."""
+    """Best-effort dollar PnL from a trade close record.
+
+    Priority order (post 2026-05-13 tick-leak fix):
+      1. explicit USD field on the record (writer-supplied)
+      2. ``extra.realized_pnl`` (writer-supplied USD inside the extra dict)
+      3. sanitized R-value × $-per-R (last resort, after classify-drop
+         of suspect tick-leak records)
+
+    Critical for prop-firm drawdown enforcement: a single tick-leak
+    record with ``realized_r=69`` on MNQ would otherwise compute as
+    +$1,380 of phantom profit, swinging the trailing-drawdown high-
+    water-mark and tripping false breach alerts.
+    """
     # 1. explicit USD field wins
     for key in ("realized_pnl_usd", "pnl_usd", "realized_usd"):
         if key in rec:
@@ -328,11 +340,28 @@ def _trade_pnl_usd(rec: dict[str, Any]) -> float:
                 return float(rec[key])
             except (TypeError, ValueError):
                 continue
-    # 2. R * dollar_per_R fallback
-    try:
-        r = float(rec.get("realized_r") or rec.get("r") or 0.0)
-    except (TypeError, ValueError):
-        r = 0.0
+
+    # 2. extra.realized_pnl wins next — this is the writer-supplied
+    # dollar amount for the trade, available on post-fix closes.
+    extra = rec.get("extra")
+    if isinstance(extra, dict):
+        pnl_raw = extra.get("realized_pnl")
+        if pnl_raw is not None:
+            try:
+                return float(pnl_raw)
+            except (TypeError, ValueError):
+                pass
+
+    # 3. Sanitized R × $-per-R fallback. classify() drops suspect
+    # tick-leak rows (returns "suspect") so they contribute $0 rather
+    # than blowing up the drawdown high-water-mark.
+    from eta_engine.brain.jarvis_v3 import trade_close_sanitizer  # noqa: PLC0415
+
+    status, value = trade_close_sanitizer.classify(rec)
+    if status == "suspect" or status == "none" or value is None:
+        return 0.0
+    r = float(value)
+
     dollar_per_r = rec.get("dollar_per_r")
     if dollar_per_r is None:
         symbol = str(rec.get("symbol") or rec.get("instrument") or "").upper()

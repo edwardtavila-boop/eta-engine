@@ -180,17 +180,19 @@ def _read_trades_dual_source() -> list[dict[str, Any]]:
 def _score_bot(bot_id: str, trades: list[dict[str, Any]]) -> BotScorecard:
     chk = BotScorecard(bot_id=bot_id, n_trades=len(trades))
 
+    # Tick-leak guard (2026-05-13): promotion gate is the bidirectional
+    # twin of demotion gate. A single +69R tick-leak on a candidate
+    # could fake-promote a marginal bot to diamond status.
+    from eta_engine.brain.jarvis_v3 import trade_close_sanitizer  # noqa: PLC0415
+
     rs: list[float] = []
     days: Counter = Counter()
     per_session: dict[str, list[float]] = defaultdict(list)
     for t in trades:
-        r = t.get("realized_r")
-        if r is None:
+        status, value = trade_close_sanitizer.classify(t)
+        if status == "suspect" or status == "none" or value is None:
             continue
-        try:
-            r_val = float(r)
-        except (TypeError, ValueError):
-            continue
+        r_val = float(value)
         rs.append(r_val)
         ts = t.get("ts", "")
         if isinstance(ts, str) and len(ts) >= 10:

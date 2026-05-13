@@ -454,3 +454,111 @@ def test_snapshot_progress_to_target(tmp_path: Path) -> None:
     assert snap is not None
     assert snap.profit_to_target == 1_500.0  # need another $1500 to hit $3k target
     assert snap.pct_to_target == 0.5
+
+
+# ────────────────────────────────────────────────────────────────────
+# 2026-05-13: tick-leak guard on _trade_pnl_usd
+#
+# Pre-fix, a single record with ``realized_r=69`` on MNQ would compute
+# as +$1380 phantom profit, swinging the trailing-DD high-water-mark
+# and risking a false BluSky/Apex breach. The sanitizer drops these.
+# ────────────────────────────────────────────────────────────────────
+
+
+def test_trade_pnl_usd_drops_tick_leak() -> None:
+    """A record with realized_r=69 and NO USD/extra fields must
+    contribute $0 (the suspect r is dropped, not multiplied)."""
+    from eta_engine.brain.jarvis_v3 import prop_firm_guardrails as g
+
+    rec = {
+        "account_id": "blusky-50K-launch",
+        "symbol": "MNQ1",
+        "realized_r": 69.0,  # ticks-traveled, not R-multiple
+        "ts": _ts(1),
+    }
+    assert g._trade_pnl_usd(rec) == 0.0
+
+
+def test_trade_pnl_usd_prefers_explicit_usd_over_r() -> None:
+    """If realized_pnl_usd is on the record, R is irrelevant — even a
+    bogus tick-leak realized_r doesn't matter."""
+    from eta_engine.brain.jarvis_v3 import prop_firm_guardrails as g
+
+    rec = {
+        "account_id": "blusky-50K-launch",
+        "symbol": "MNQ1",
+        "realized_r": 69.0,
+        "realized_pnl_usd": 17.25,
+        "ts": _ts(1),
+    }
+    assert g._trade_pnl_usd(rec) == 17.25
+
+
+def test_trade_pnl_usd_prefers_extra_realized_pnl_over_r() -> None:
+    """If extra.realized_pnl is set, use that directly rather than
+    R-based recovery."""
+    from eta_engine.brain.jarvis_v3 import prop_firm_guardrails as g
+
+    rec = {
+        "account_id": "blusky-50K-launch",
+        "symbol": "MNQ1",
+        "realized_r": 32661.0,  # bogus tick-count leak
+        "extra": {"realized_pnl": 12.50},
+        "ts": _ts(1),
+    }
+    assert g._trade_pnl_usd(rec) == 12.50
+
+
+def test_trade_pnl_usd_clean_r_still_works() -> None:
+    """Sanity check: a legitimate realized_r still multiplies into
+    correct PnL when no explicit USD field is available.
+
+    MNQ: dollar_per_R = $20 (per _DEFAULT_DOLLAR_PER_R), so r=1.5
+    yields $30 PnL.
+    """
+    from eta_engine.brain.jarvis_v3 import prop_firm_guardrails as g
+
+    rec = {
+        "account_id": "blusky-50K-launch",
+        "symbol": "MNQ1",
+        "realized_r": 1.5,
+        "ts": _ts(1),
+    }
+    assert g._trade_pnl_usd(rec) == 30.0
+
+
+def test_drawdown_unaffected_by_tick_leak(tmp_path: Path) -> None:
+    """End-to-end: a fleet day with 1 real loss and 1 tick-leak record
+    must compute drawdown from the real loss only.
+
+    Before the fix: r=69 on MNQ would add +$1380 to the high-water
+    mark, then any real -$200 loss would look like a -$1580 drawdown
+    that could falsely trip BluSky's $1500 daily-loss cap.
+    """
+    from eta_engine.brain.jarvis_v3 import prop_firm_guardrails as g
+
+    path = tmp_path / "tc.jsonl"
+    _write_trades(
+        path,
+        [
+            {
+                "account_id": "blusky-50K-launch",
+                "realized_pnl_usd": -200.0,
+                "ts": _ts(2),
+            },
+            # Tick-leak phantom — pre-fix would have added +$1380
+            {
+                "account_id": "blusky-50K-launch",
+                "symbol": "MNQ1",
+                "realized_r": 69.0,
+                "ts": _ts(1),
+            },
+        ],
+    )
+    snap = g.snapshot_one("blusky-50K-launch", trade_closes_path=path)
+    assert snap is not None
+    # Daily PnL is just the -$200, NOT (-200 + 1380 phantom)
+    assert snap.state.day_pnl_usd == pytest.approx(-200.0)
+    # And we're well within the $1500 cap → severity is OK / warn,
+    # NOT blown.
+    assert snap.severity != "blown"

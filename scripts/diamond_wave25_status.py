@@ -141,8 +141,24 @@ def _alert_channel_status() -> dict:
 
 
 def _ledger_truth_summary() -> dict:
-    """Per-data-source counts across ALL records (the pollution snapshot)."""
+    """Per-data-source pollution snapshot + strict/inclusive view counts.
+
+    Three views the operator should understand:
+
+    * ``unfiltered``  — every record on disk, broken out by classification.
+                        Shows pollution sources (test_fixture,
+                        historical_unverified, etc.).
+    * ``production``  — strict {live, paper} filter. What the prop-launch
+                        gates (promotion_gate, drawdown_guard,
+                        prop_firm_guardrails) see.
+    * ``operator``    — inclusive {live, paper, live_unverified} filter.
+                        What the dashboards + pnl_summary +
+                        attribution_cube see; includes canonical-path
+                        records that pre-date the data_source tagging.
+    """
     from eta_engine.scripts.closed_trade_ledger import (  # noqa: PLC0415
+        DEFAULT_OPERATOR_DATA_SOURCES,
+        DEFAULT_PRODUCTION_DATA_SOURCES,
         load_close_records,
     )
 
@@ -151,7 +167,15 @@ def _ledger_truth_summary() -> dict:
     for r in all_rows:
         ds = str(r.get("_data_source") or "?")
         counts[ds] = counts.get(ds, 0) + 1
-    return dict(sorted(counts.items()))
+    production_total = sum(counts.get(ds, 0) for ds in DEFAULT_PRODUCTION_DATA_SOURCES)
+    operator_total = sum(counts.get(ds, 0) for ds in DEFAULT_OPERATOR_DATA_SOURCES)
+    return {
+        "unfiltered": dict(sorted(counts.items())),
+        "production_strict_count": production_total,
+        "operator_inclusive_count": operator_total,
+        "production_filter": sorted(DEFAULT_PRODUCTION_DATA_SOURCES),
+        "operator_filter": sorted(DEFAULT_OPERATOR_DATA_SOURCES),
+    }
 
 
 def build_status_report() -> dict:
@@ -212,8 +236,11 @@ def _print_table(report: dict) -> None:
         chan.append("generic_webhook")
     chan_text = "+".join(chan) if chan else "(NONE -- HALT will only show on dashboard)"
     print(f"  alerts: {chan_text}")
-    print("  ledger pollution snapshot:")
-    for ds, n in report["ledger_pollution_snapshot"].items():
+    snap = report["ledger_pollution_snapshot"]
+    print(f"  ledger view: production_strict={snap['production_strict_count']} (filter={snap['production_filter']})")
+    print(f"               operator_inclusive={snap['operator_inclusive_count']} (filter={snap['operator_filter']})")
+    print("  unfiltered counts by classification:")
+    for ds, n in snap["unfiltered"].items():
         print(f"    {ds}: {n}")
     print()
     header = (
