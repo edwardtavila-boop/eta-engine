@@ -52,6 +52,12 @@ def _load_closes(since_iso: str | None = None) -> dict[str, list[float]]:
     if not _TRADE_CLOSES.exists():
         return out
     try:
+        # Tick-leak guard (2026-05-13): Monte Carlo bootstrap on the
+        # raw realized_r blows up confidence intervals when a single
+        # tick-leak record contributes 32661R. classify() drops
+        # suspect rows and recovers what can be recovered from PnL.
+        from eta_engine.brain.jarvis_v3 import trade_close_sanitizer  # noqa: PLC0415
+
         with _TRADE_CLOSES.open(encoding="utf-8") as fh:
             for raw in fh:
                 line = raw.strip()
@@ -64,11 +70,12 @@ def _load_closes(since_iso: str | None = None) -> dict[str, list[float]]:
                 if since_iso and str(rec.get("ts", "")) < since_iso:
                     continue
                 bid = rec.get("bot_id")
-                r = rec.get("realized_r")
-                if bid is None or r is None:
+                if bid is None:
                     continue
-                with contextlib.suppress(TypeError, ValueError):
-                    out[bid].append(float(r))
+                status, value = trade_close_sanitizer.classify(rec)
+                if status == "suspect" or status == "none" or value is None:
+                    continue
+                out[bid].append(float(value))
     except OSError:
         return out
     return out

@@ -364,3 +364,100 @@ def test_query_multi_dim_with_direction(tmp_path: Path) -> None:
     assert rows_by_key[("m2k", "long")].n_trades == 2
     assert rows_by_key[("m2k", "short")].n_trades == 1
     assert rows_by_key[("eur", "long")].n_trades == 1
+
+
+# ────────────────────────────────────────────────────────────────────
+# 2026-05-13: tick-leak sanitizer integration
+#
+# Before this hookup, the attribution cube would happily sum +32,661R
+# from a single MNQ trade where the writer recorded ticks-traveled
+# instead of R-multiple. The trade_close_sanitizer guards against
+# that by capping anything beyond R_SANITY_CEILING (currently 20R)
+# and recovering when extra.realized_pnl + symbol-root tick value
+# allow reconstruction.
+# ────────────────────────────────────────────────────────────────────
+
+
+def test_attribution_drops_tick_leak_r(tmp_path: Path) -> None:
+    """A trade with realized_r=69 (ticks, not R) and NO recovery
+    fields must be dropped by the sanitizer — total_r stays clean."""
+    from eta_engine.brain.jarvis_v3 import attribution_cube
+
+    path = tmp_path / "tc.jsonl"
+    _write_trades(
+        path,
+        [
+            # Clean trade: 1R
+            {"bot_id": "x", "asset_class": "MNQ", "realized_r": 1.0, "ts": "2026-05-12T14:00:00Z"},
+            # Tick-leak: 69R with no extra.realized_pnl — sanitizer should drop
+            {"bot_id": "x", "asset_class": "MNQ", "realized_r": 69.0, "ts": "2026-05-12T15:00:00Z"},
+        ],
+    )
+
+    result = attribution_cube.query(
+        slice_by=["bot"],
+        trade_closes_path=path,
+    )
+    by_key = {r.key["bot"]: r for r in result.rows}
+    assert "x" in by_key
+    # Only the clean 1.0R survived — the 69 was dropped entirely
+    # (suspect rows do not contribute to total_r AND do not bump n_trades,
+    # because counting them would let a single bug-event poison the
+    # per-bot trade count too).
+    assert by_key["x"].total_r == 1.0
+    assert by_key["x"].n_trades == 1
+
+
+def test_attribution_recovers_tick_leak_when_pnl_available(tmp_path: Path) -> None:
+    """A trade with bogus realized_r=32661 BUT a clean
+    extra.realized_pnl + extra.symbol on a known futures root must have
+    its R recovered (pnl_usd / dollar_per_R from the sanitizer table)
+    rather than dropped.
+
+    For MNQ the sanitizer uses dollar_per_R = $20, so $10 PnL recovers
+    to 0.5R.
+    """
+    from eta_engine.brain.jarvis_v3 import attribution_cube
+
+    path = tmp_path / "tc.jsonl"
+    _write_trades(
+        path,
+        [
+            {
+                "bot_id": "x",
+                "asset_class": "MNQ",
+                "realized_r": 32661.0,
+                # Sanitizer reads extra.symbol + extra.realized_pnl
+                "extra": {"realized_pnl": 10.0, "symbol": "MNQ1"},
+                "ts": "2026-05-12T14:00:00Z",
+            },
+        ],
+    )
+    result = attribution_cube.query(
+        slice_by=["bot"],
+        trade_closes_path=path,
+    )
+    by_key = {r.key["bot"]: r for r in result.rows}
+    assert "x" in by_key, "recovered record was dropped — sanitizer integration broken"
+    # Recovered r = 10/20 = 0.5, NOT 32661
+    assert abs(by_key["x"].total_r - 0.5) < 1e-6
+    assert by_key["x"].n_trades == 1
+
+
+def test_attribution_back_compat_legacy_r_field(tmp_path: Path) -> None:
+    """Legacy trade closes that used `r` (not `realized_r`) still
+    work — the sanitizer fall-through reads them."""
+    from eta_engine.brain.jarvis_v3 import attribution_cube
+
+    path = tmp_path / "tc.jsonl"
+    _write_trades(
+        path,
+        [
+            {"bot_id": "a", "asset_class": "MNQ", "r": 1.5, "ts": "2026-05-12T14:00:00Z"},
+            {"bot_id": "a", "asset_class": "MNQ", "r": -0.5, "ts": "2026-05-12T15:00:00Z"},
+        ],
+    )
+    result = attribution_cube.query(slice_by=["bot"], trade_closes_path=path)
+    by_key = {r.key["bot"]: r for r in result.rows}
+    assert by_key["a"].total_r == 1.0
+    assert by_key["a"].n_trades == 2

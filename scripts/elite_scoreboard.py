@@ -79,14 +79,20 @@ def _per_bot_metrics(closes: list[dict[str, Any]]) -> dict[str, Any]:
     trough of cumulative R). Rolling decay = (peak rolling-30 Sharpe -
     current rolling-30 Sharpe) / peak.
     """
+    # Tick-leak guard (2026-05-13): pre-sanitizer values from
+    # mnq_futures_sage / ym_sweep_reclaim include ticks-traveled or raw
+    # PnL in the realized_r field, distorting tier classification by
+    # 10-100x. classify() drops "suspect" rows entirely and recovers
+    # from extra.realized_pnl + symbol when possible.
+    from eta_engine.brain.jarvis_v3 import trade_close_sanitizer  # noqa: PLC0415
+
     rs: list[float] = []
     pnls: list[float] = []
     for c in closes:
-        r = c.get("realized_r")
-        if r is None:
+        status, value = trade_close_sanitizer.classify(c)
+        if status == "suspect" or status == "none" or value is None:
             continue
-        with contextlib.suppress(TypeError, ValueError):
-            rs.append(float(r))
+        rs.append(float(value))
         # PnL (extra dict) — present on post-fix closes
         extra = c.get("extra") or {}
         if isinstance(extra, dict):
@@ -215,15 +221,18 @@ def _correlation_matrix(closes_by_bot: dict[str, list[dict[str, Any]]]) -> dict[
     should pick one or rotate. Pearson correlation, computed only for
     bots with ≥10 trades.
     """
+    # Same tick-leak guard as compute_per_bot_metrics — correlations
+    # were also poisoned by 32661R outliers on ym_sweep_reclaim.
+    from eta_engine.brain.jarvis_v3 import trade_close_sanitizer  # noqa: PLC0415
+
     streams: dict[str, list[float]] = {}
     for bot_id, recs in closes_by_bot.items():
         rs: list[float] = []
         for c in recs:
-            r = c.get("realized_r")
-            if r is None:
+            status, value = trade_close_sanitizer.classify(c)
+            if status == "suspect" or status == "none" or value is None:
                 continue
-            with contextlib.suppress(TypeError, ValueError):
-                rs.append(float(r))
+            rs.append(float(value))
         if len(rs) >= 10:
             streams[bot_id] = rs
 

@@ -331,20 +331,36 @@ def query(
             "consult_ids": set(),
         }
     )
+    # Lazy import keeps the cube cheap when called with empty trade_closes
+    # (e.g., the smoke test); the sanitizer guards against the
+    # mnq_futures_sage tick-leak and the legacy USD-in-r leak by
+    # capping anything beyond R_SANITY_CEILING and recovering when
+    # the dollar P&L + symbol-root tick value is available.
+    from eta_engine.brain.jarvis_v3 import trade_close_sanitizer  # noqa: PLC0415
+
     for rec in rows_norm:
+        # Canonical field is `realized_r` (per jarvis_intel/trade_closes.jsonl
+        # schema). Older trade closes used `r` or `r_value`; the sanitizer
+        # reads both, and also walks ``extra.realized_pnl`` + symbol root
+        # for recovery when the canonical value is bogus.
+        #
+        # classify() distinguishes:
+        #   clean     → use the value as-is
+        #   recovered → use the recomputed pnl/$-per-R value
+        #   suspect   → drop the row entirely (no n_trades increment)
+        #   none      → no usable r field at all, treat as 0.0 contribution
+        #               (this is the historical behavior of the pre-sanitizer
+        #               code, preserved for back-compat)
+        status, value = trade_close_sanitizer.classify(rec)
+        if status == "suspect":
+            # Tick-leak or other bogus realized_r without recoverable
+            # extra.realized_pnl — drop the row from attribution so a
+            # single bug-event does not corrupt fleet rollups.
+            continue
+        r = 0.0 if status == "none" or value is None else float(value)
         key_tuple = tuple(_key_for(rec, d) for d in slice_by)
         b = buckets[key_tuple]
         b["n_trades"] += 1
-        # Canonical field is `realized_r` (per jarvis_intel/trade_closes.jsonl
-        # schema). Older trade closes used `r` or `r_value`; preserve back-compat
-        # by falling through.
-        raw_r = rec.get("realized_r")
-        if raw_r is None:
-            raw_r = rec.get("r", rec.get("r_value", 0.0))
-        try:
-            r = float(raw_r)
-        except (TypeError, ValueError):
-            r = 0.0
         b["total_r"] += r
         if r > 0:
             b["wins"] += 1
