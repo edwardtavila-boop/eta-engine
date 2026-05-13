@@ -3,6 +3,22 @@
 The supervisor writes append-only close records. This script normalizes
 those JSONL rows into a small schema-backed status artifact used by the
 public ops surface and prop-live readiness gate.
+
+Wave-25 (2026-05-13) added data-source classification:
+  - test_fixture       — known test bot IDs (t1, propagate_bot, etc.)
+  - historical_unverified — records from the legacy in-repo archive
+                            (eta_engine/state/jarvis_intel/...)  # HISTORICAL-PATH-OK
+  - live_unverified    — records from the canonical state path that
+                          lack an explicit data_source tag
+  - live / paper / backtest — explicit data_source values from records
+                              tagged at the write site (forward-only;
+                              older records will not have these tags)
+
+By default, the ledger now EXCLUDES test fixtures and historical
+unverified records. Audits making prop-launch decisions must default
+to ``live`` + ``paper`` only; backtest-emitted records that polluted
+the legacy archive previously inflated composite scores 17x for some
+bots (m2k 1151 trades vs. ~4 actual live).
 """
 
 from __future__ import annotations
@@ -22,9 +38,41 @@ if str(_PARENT) not in sys.path:
 
 from eta_engine.scripts import workspace_roots  # noqa: E402
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2  # bumped: records now carry data_source classification
 DEFAULT_OUT = workspace_roots.ETA_CLOSED_TRADE_LEDGER_PATH
 DEFAULT_RECENT_LIMIT = 50
+
+# Known test/fixture bot IDs that have polluted the canonical
+# trade_closes.jsonl. These records are excluded from production
+# audits by default. Update when new test fixtures are introduced.
+TEST_BOT_IDS = frozenset(
+    {
+        "t1",
+        "t2",
+        "t3",
+        "propagate_bot",
+        "test_bot",
+        "fake_bot",
+        "mock_bot",
+        "fixture_bot",
+        "smoke_bot",
+        "demo_bot",
+    },
+)
+
+# Recognized data_source classifications. Used for filtering at audit
+# time and for tagging at write time.
+DATA_SOURCE_LIVE = "live"  # real fills from a live broker connection
+DATA_SOURCE_PAPER = "paper"  # paper-trading simulator with realistic fills
+DATA_SOURCE_BACKTEST = "backtest"  # historical replay
+DATA_SOURCE_LIVE_UNVERIFIED = "live_unverified"  # canonical path, no tag
+DATA_SOURCE_HISTORICAL_UNVERIFIED = "historical_unverified"  # legacy archive
+DATA_SOURCE_TEST_FIXTURE = "test_fixture"  # known test bot IDs
+
+# Production audit default: only records we can defend as live or paper.
+# Any record without a tag and from the canonical path is suspect; only
+# explicit ``live`` and ``paper`` records pass.
+DEFAULT_PRODUCTION_DATA_SOURCES = frozenset({DATA_SOURCE_LIVE, DATA_SOURCE_PAPER})
 
 
 def _parse_ts(raw: Any) -> datetime | None:  # noqa: ANN401
@@ -77,12 +125,58 @@ def _iter_jsonl(path: Path) -> list[dict[str, Any]]:
     return rows
 
 
+def classify_data_source(row: dict[str, Any]) -> str:
+    """Classify a trade-close record by its origin.
+
+    Order of precedence (most specific first):
+      1. Explicit ``data_source`` field on the record (forward-tagged).
+      2. Test bot IDs (t1, propagate_bot, etc.) → test_fixture.
+      3. Source path is the legacy in-repo archive
+         (``eta_engine/state/jarvis_intel/...``) → historical_unverified.  # HISTORICAL-PATH-OK
+      4. Source path is the canonical workspace state path → live_unverified.
+      5. Anything else → live_unverified (defensive default).
+
+    The classification is used both for filtering (audits drop test
+    fixtures and historical-unverified records by default) and for
+    transparent reporting (per_data_source counts in the report).
+    """
+    explicit = str(row.get("data_source") or "").strip().lower()
+    if explicit in {
+        DATA_SOURCE_LIVE,
+        DATA_SOURCE_PAPER,
+        DATA_SOURCE_BACKTEST,
+        DATA_SOURCE_LIVE_UNVERIFIED,
+        DATA_SOURCE_HISTORICAL_UNVERIFIED,
+        DATA_SOURCE_TEST_FIXTURE,
+    }:
+        return explicit
+
+    bot_id = str(row.get("bot_id") or "").strip().lower()
+    if bot_id in TEST_BOT_IDS:
+        return DATA_SOURCE_TEST_FIXTURE
+
+    source_path = str(row.get("_source_path") or "").replace("\\", "/").lower()
+    # The legacy archive lives inside the repo at eta_engine/state/.  # HISTORICAL-PATH-OK
+    # The canonical live state lives at .../var/eta_engine/state/.
+    if "/eta_engine/state/jarvis_intel/" in source_path and "/var/" not in source_path:  # HISTORICAL-PATH-OK
+        return DATA_SOURCE_HISTORICAL_UNVERIFIED
+    return DATA_SOURCE_LIVE_UNVERIFIED
+
+
 def load_close_records(
     *,
     source_paths: list[Path] | None = None,
     since_days: int | None = None,
     bot_filter: str | None = None,
+    data_sources: frozenset[str] | set[str] | None = None,
 ) -> list[dict[str, Any]]:
+    """Load close records, optionally filtered by data_source.
+
+    ``data_sources`` is a set of acceptable data_source classifications.
+    None or empty means no filter (legacy behaviour). Production callers
+    should pass ``DEFAULT_PRODUCTION_DATA_SOURCES`` to avoid pollution
+    from the legacy archive and test fixtures.
+    """
     cutoff = datetime.now(UTC) - timedelta(days=since_days) if since_days else None
     seen: set[str] = set()
     records: list[dict[str, Any]] = []
@@ -93,6 +187,10 @@ def load_close_records(
                 continue
             bot_id = str(row.get("bot_id") or "")
             if bot_filter and bot_id != bot_filter:
+                continue
+            classification = classify_data_source(row)
+            row["_data_source"] = classification
+            if data_sources and classification not in data_sources:
                 continue
             extra = _as_dict(row.get("extra"))
             key = "|".join(
@@ -130,6 +228,7 @@ def _normalize_close(row: dict[str, Any]) -> dict[str, Any]:
         "regime": row.get("regime") or "",
         "session": row.get("session") or "",
         "action_taken": row.get("action_taken") or "",
+        "data_source": row.get("_data_source") or classify_data_source(row),
         "source_path": row.get("_source_path") or "",
     }
 
@@ -166,13 +265,24 @@ def build_ledger_report(
     since_days: int | None = None,
     bot_filter: str | None = None,
     recent_limit: int = DEFAULT_RECENT_LIMIT,
+    data_sources: frozenset[str] | set[str] | None = None,
 ) -> dict[str, Any]:
     paths = source_paths or _default_source_paths()
-    raw_records = load_close_records(
+    # Pre-classification pass over ALL records so we can report the
+    # full pollution picture even when filtering kicks in.
+    all_raw = load_close_records(
         source_paths=paths,
         since_days=since_days,
         bot_filter=bot_filter,
+        data_sources=None,  # no filter on the diagnostic pass
     )
+    per_data_source_full = defaultdict(int)
+    for row in all_raw:
+        per_data_source_full[row.get("_data_source") or "?"] += 1
+
+    # Production filter — defaults to live + paper if caller didn't specify.
+    effective_filter = data_sources if data_sources is not None else DEFAULT_PRODUCTION_DATA_SOURCES
+    raw_records = [row for row in all_raw if row.get("_data_source") in effective_filter]
     closes = [_normalize_close(row) for row in raw_records]
     stats = _stats_for(closes)
     existing_sources = [str(path) for path in paths if path.exists()]
@@ -188,6 +298,8 @@ def build_ledger_report(
         "active_source_paths": existing_sources,
         "since_days": since_days,
         "bot_filter": bot_filter,
+        "data_sources_filter": sorted(effective_filter) if effective_filter else None,
+        "per_data_source_unfiltered": dict(sorted(per_data_source_full.items())),
         **stats,
         "per_bot": _per_bot_stats(closes),
         "recent_closes": closes[-recent_limit:] if recent_limit > 0 else [],
@@ -211,23 +323,56 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--no-write", action="store_true")
+    parser.add_argument(
+        "--data-source",
+        action="append",
+        choices=[
+            DATA_SOURCE_LIVE,
+            DATA_SOURCE_PAPER,
+            DATA_SOURCE_BACKTEST,
+            DATA_SOURCE_LIVE_UNVERIFIED,
+            DATA_SOURCE_HISTORICAL_UNVERIFIED,
+            DATA_SOURCE_TEST_FIXTURE,
+        ],
+        help=(
+            "Data source classification(s) to INCLUDE; repeatable. "
+            "Default = live + paper (drops legacy archive + test fixtures). "
+            "Pass --include-all to disable filtering."
+        ),
+    )
+    parser.add_argument(
+        "--include-all",
+        action="store_true",
+        help="Include ALL data sources (legacy/test/historical). Use only for diagnostic dumps.",
+    )
     args = parser.parse_args(argv)
+
+    if args.include_all:
+        data_sources = None
+    elif args.data_source:
+        data_sources = frozenset(args.data_source)
+    else:
+        data_sources = DEFAULT_PRODUCTION_DATA_SOURCES
 
     report = build_ledger_report(
         source_paths=args.source,
         since_days=args.since_days,
         bot_filter=args.bot,
         recent_limit=args.recent_limit,
+        data_sources=data_sources,
     )
     out_path = None if args.no_write else write_report(report, args.out)
     if args.json:
         print(json.dumps(report, indent=2, sort_keys=True, default=str))
     else:
-        print(f"closed-trade ledger: {report['closed_trade_count']} closes")
+        print(f"closed-trade ledger: {report['closed_trade_count']} closes (filter={report['data_sources_filter']})")
         print(f"win rate: {report['win_rate_pct']}%")
         print(f"total PnL: {report['total_realized_pnl']:+.2f}")
         print(f"cumulative R: {report['cumulative_r']:+.4f}R")
         print(f"source status: {report['source_status']}")
+        print("per data_source (UNFILTERED -- shows full pollution picture):")
+        for ds, n in report.get("per_data_source_unfiltered", {}).items():
+            print(f"  {ds}: {n}")
         if out_path is not None:
             print(f"wrote: {out_path}")
     return 0

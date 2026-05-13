@@ -407,6 +407,7 @@ def test_supervisor_blocks_nasdaq_sleeve_breach(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
+    from eta_engine.feeds import capital_allocator as ca
     from eta_engine.scripts import daily_loss_killswitch
     from eta_engine.scripts.jarvis_strategy_supervisor import (
         BotInstance,
@@ -424,6 +425,8 @@ def test_supervisor_blocks_nasdaq_sleeve_breach(
 
     monkeypatch.setenv("ETA_SUPERVISOR_STATE_DIR", str(tmp_path))
     monkeypatch.setenv("ETA_PROP_SLEEVE_CAP_NASDAQ_MNQ_EQUIV", "10")
+    monkeypatch.setattr(ca, "BOT_LIFECYCLE_STATE_PATH", tmp_path / "lifecycle.json")
+    ca.set_bot_lifecycle("mnq_prop_candidate", ca.LIFECYCLE_EVAL_LIVE)
     monkeypatch.setattr(
         daily_loss_killswitch,
         "is_killswitch_tripped",

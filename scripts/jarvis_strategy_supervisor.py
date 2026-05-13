@@ -3803,6 +3803,61 @@ class JarvisStrategySupervisor:
                 bot.bot_id,
             )
 
+        # ── Wave-25: pre-trade risk gate + lifecycle routing ────────────
+        # Composite check that uses the prop drawdown guard's live
+        # buffers + per-bot lifecycle state to decide whether this
+        # signal goes to:
+        #   - "live"   submit to broker (current behavior)
+        #   - "paper"  route to paper engine (future feature; for now,
+        #              tag as paper-only and skip the broker call)
+        #   - "reject" refuse the signal entirely
+        #
+        # The operator's design (2026-05-13): "if we cant buy the contract
+        # or it will put the prop firm account at massive risk of dd or
+        # liquidation then just have it paper trading and improving."
+        # This block implements that intent.
+        try:
+            from eta_engine.feeds.capital_allocator import (  # noqa: PLC0415
+                resolve_execution_target,
+            )
+
+            # Estimate prospective stop-out loss in USD. For Monday eval
+            # we use a conservative 0.5% of $50K account = $250 default.
+            # When the strategy plumbing exposes per-signal stop_usd this
+            # should be replaced with the precise number.
+            prospective_loss_est_usd = 250.0
+            target, target_reason = resolve_execution_target(
+                bot.bot_id,
+                prospective_loss_usd=prospective_loss_est_usd,
+            )
+            if target == "reject":
+                bot.last_aggregation_reject_reason = f"wave25_risk_reject: {target_reason}"
+                bot.last_aggregation_reject_at = datetime.now(UTC).isoformat()
+                logger.warning(
+                    "WAVE25 RISK REJECT %s: %s — supervisor refusing signal",
+                    bot.bot_id,
+                    target_reason,
+                )
+                return
+            if target == "paper":
+                bot.last_aggregation_reject_reason = f"wave25_route_paper: {target_reason}"
+                bot.last_aggregation_reject_at = datetime.now(UTC).isoformat()
+                logger.info(
+                    "WAVE25 PAPER %s: %s — signal observed but not routed to live broker (paper-only tier)",
+                    bot.bot_id,
+                    target_reason,
+                )
+                # Future: emit a paper-tagged trade-close so kaizen can
+                # learn from the signal. For now we drop it; the audit
+                # path picks up zero-trade days as observation gaps.
+                return
+            # target == "live" → fall through to existing broker call
+        except Exception:  # noqa: BLE001
+            logger.exception(
+                "wave25 risk gate failed for %s; proceeding with live submit",
+                bot.bot_id,
+            )
+
         # Order side derived from the (possibly Sage-flipped) `side`
         # variable established above, NOT from bot.direction. Locking the
         # broker side to the registered direction would defeat the whole
@@ -4996,6 +5051,24 @@ class JarvisStrategySupervisor:
                 # direction so we never emit a None.  This path only
                 # fires if the broker fill record was malformed.
                 _trade_direction = bot.direction
+            # Wave-25 (2026-05-13) — tag every supervisor-emitted close
+            # with its origin so audits can filter live-vs-paper-vs-backtest.
+            # The supervisor consumes fills from a broker route; if the bot
+            # was routed to paper, tag accordingly. Fallback to "live" since
+            # the supervisor's primary mode is live broker fills.
+            try:
+                _bot_data_source = (
+                    str(getattr(bot, "data_source", "") or "").strip().lower()
+                    or str(getattr(bot, "execution_mode", "") or "").strip().lower()
+                )
+            except Exception:  # noqa: BLE001
+                _bot_data_source = ""
+            if _bot_data_source in {"paper", "paper_trade", "paper_sim", "sim"}:
+                _close_data_source = "paper"
+            elif _bot_data_source in {"backtest", "bt", "replay"}:
+                _close_data_source = "backtest"
+            else:
+                _close_data_source = "live"
             close_trade(
                 signal_id=rec.signal_id,
                 realized_r=rec.realized_r or 0.0,
@@ -5016,6 +5089,7 @@ class JarvisStrategySupervisor:
                     "close_ts": rec.fill_ts,
                     "macro_bias": macro_bias,
                 },
+                data_source=_close_data_source,
             )
         except Exception as exc:  # noqa: BLE001
             logger.warning("feedback propagate failed for %s: %s", bot.bot_id, exc)

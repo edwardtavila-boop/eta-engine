@@ -63,7 +63,16 @@ DEFAULT_TRADE_LOG = workspace_roots.ETA_JARVIS_TRADE_CLOSES_PATH
 
 @dataclass
 class TradeCloseRecord:
-    """Audit record for one trade-close cycle."""
+    """Audit record for one trade-close cycle.
+
+    The ``data_source`` field is the wave-25 (2026-05-13) addition that
+    tags every record with its origin (``live``, ``paper``, ``backtest``).
+    Audits filter on this field by default to avoid mixing backtest-emitted
+    records with real fills. Default value is ``backtest`` because every
+    new caller MUST opt-in to ``live`` or ``paper`` explicitly — anything
+    that forgets is treated as backtest and excluded from prop-launch
+    decision-making.
+    """
 
     ts: str
     signal_id: str
@@ -76,6 +85,7 @@ class TradeCloseRecord:
     layers_updated: list[str] = field(default_factory=list)
     layer_errors: list[str] = field(default_factory=list)
     extra: dict = field(default_factory=dict)
+    data_source: str = "backtest"
 
 
 def close_trade(
@@ -96,6 +106,7 @@ def close_trade(
     meta_challenger_id: str | None = None,
     extra: dict | None = None,
     trade_log_path: Path = DEFAULT_TRADE_LOG,
+    data_source: str = "backtest",
 ) -> TradeCloseRecord:
     """Propagate a closed trade's realized R to every learning subsystem.
 
@@ -225,6 +236,7 @@ def close_trade(
         layers_updated=layers_updated,
         layer_errors=layer_errors,
         extra=extra or {},
+        data_source=str(data_source or "backtest").lower(),
     )
     try:
         trade_log_path.parent.mkdir(parents=True, exist_ok=True)

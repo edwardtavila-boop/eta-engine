@@ -876,6 +876,18 @@ class JarvisStrategySupervisor:
                 _trade_direction = "short"
             else:
                 _trade_direction = bot.direction
+            # Wave-25: tag with the bot's execution mode so audits can
+            # filter live-vs-paper-vs-backtest. Defensive default = live.
+            _bot_mode = (
+                str(getattr(bot, "data_source", "") or "").strip().lower()
+                or str(getattr(bot, "execution_mode", "") or "").strip().lower()
+            )
+            if _bot_mode in {"paper", "paper_trade", "paper_sim", "sim"}:
+                _close_data_source = "paper"
+            elif _bot_mode in {"backtest", "bt", "replay"}:
+                _close_data_source = "backtest"
+            else:
+                _close_data_source = "live"
             close_trade(
                 signal_id=rec.signal_id,
                 realized_r=rec.realized_r or 0.0,
@@ -887,6 +899,7 @@ class JarvisStrategySupervisor:
                 bot_id=bot.bot_id,
                 memory=self._memory,
                 narrative=f"close after {bot.n_exits} exits, pnl={bot.realized_pnl:+.2f}",
+                data_source=_close_data_source,
             )
         except Exception as exc:  # noqa: BLE001
             logger.warning("feedback propagate failed for %s: %s", bot.bot_id, exc)

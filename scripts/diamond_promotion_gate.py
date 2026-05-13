@@ -152,32 +152,24 @@ class BotScorecard:
 
 
 def _read_trades_dual_source() -> list[dict[str, Any]]:
-    """Read both canonical and legacy archives, dedupe on
-    (signal_id, bot_id, ts, realized_r)."""
-    seen: set[str] = set()
-    out: list[dict[str, Any]] = []
-    for path in (TRADE_CLOSES_CANONICAL, TRADE_CLOSES_LEGACY):
-        if not path.exists():
-            continue
-        with path.open(encoding="utf-8", errors="replace") as fh:
-            for line in fh:
-                try:
-                    rec = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                key = "|".join(
-                    [
-                        str(rec.get("signal_id") or ""),
-                        str(rec.get("bot_id") or ""),
-                        str(rec.get("ts") or ""),
-                        str(rec.get("realized_r") or ""),
-                    ]
-                )
-                if key in seen:
-                    continue
-                seen.add(key)
-                out.append(rec)
-    return out
+    """Read both canonical and legacy archives, dedupe + filter by data_source.
+
+    Wave-25 (2026-05-13): delegated to ``closed_trade_ledger.load_close_records``
+    which now classifies every record by data_source (live/paper/backtest/
+    historical_unverified/test_fixture) and filters out the latter two by
+    default. Without this filter the legacy archive injected ~43k backtest
+    emissions that inflated composite scores ~17x for some bots (m2k 1151
+    "trades" vs ~4 actual live).
+    """
+    from eta_engine.scripts.closed_trade_ledger import (
+        DEFAULT_PRODUCTION_DATA_SOURCES,
+        load_close_records,
+    )
+
+    return load_close_records(
+        source_paths=[TRADE_CLOSES_CANONICAL, TRADE_CLOSES_LEGACY],
+        data_sources=DEFAULT_PRODUCTION_DATA_SOURCES,
+    )
 
 
 # ────────────────────────────────────────────────────────────────────

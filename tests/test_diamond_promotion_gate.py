@@ -20,7 +20,13 @@ def _write_jsonl(path: Path, rows: list[dict]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as fh:
         for r in rows:
-            fh.write(json.dumps(r) + "\n")
+            # Wave-25: tag every fixture row as live so the production
+            # filter (defaults to live+paper) accepts them. Tests that
+            # don't set data_source explicitly intend to exercise the
+            # gate's logic on real production-grade records.
+            tagged = dict(r)
+            tagged.setdefault("data_source", "live")
+            fh.write(json.dumps(tagged) + "\n")
 
 
 def _run_with_data(

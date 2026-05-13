@@ -942,6 +942,7 @@ def test_maybe_enter_uses_sage_bias_to_pick_side(tmp_path, monkeypatch) -> None:
     from unittest.mock import MagicMock, patch
 
     from eta_engine.brain.jarvis_v3.sage.base import Bias
+    from eta_engine.feeds import capital_allocator as ca
     from eta_engine.scripts.jarvis_strategy_supervisor import (
         BotInstance,
         JarvisStrategySupervisor,
@@ -950,6 +951,8 @@ def test_maybe_enter_uses_sage_bias_to_pick_side(tmp_path, monkeypatch) -> None:
 
     monkeypatch.setenv("ETA_SAGE_DRIVEN_SIDE", "1")
     monkeypatch.setenv("ETA_KILLSWITCH_DISABLED", "1")
+    monkeypatch.setattr(ca, "BOT_LIFECYCLE_STATE_PATH", tmp_path / "lifecycle.json")
+    ca.set_bot_lifecycle("t1", ca.LIFECYCLE_EVAL_LIVE)
 
     cfg = SupervisorConfig()
     cfg.state_dir = tmp_path / "state"

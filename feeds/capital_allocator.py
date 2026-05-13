@@ -295,6 +295,226 @@ def prop_entry_size_multiplier(bot_id: str) -> float:
     return 1.0
 
 
+# ────────────────────────────────────────────────────────────────────
+# Wave-25 (2026-05-13) — pre-trade risk gate + lifecycle state
+#
+# These helpers let the supervisor make a finer-grained routing
+# decision than the binary HALT/WATCH/OK guard:
+#
+#   1. evaluate_pre_trade_risk(): given a prospective stop-out loss,
+#      decides whether to allow_live, route_to_paper, or reject.
+#      Reads buffers from diamond_prop_drawdown_guard_latest.json so
+#      we never hit the live broker if the trade would push the
+#      account into the consistency / DD trigger zone.
+#
+#   2. get_bot_lifecycle() / set_bot_lifecycle(): per-bot state
+#      machine that controls whether live execution is permitted
+#      at all. States:
+#        - EVAL_LIVE     -- trades on the prop-firm eval account
+#        - EVAL_PAPER    -- paper-traded only (kaizen-only learning)
+#        - FUNDED_LIVE   -- post-eval, on the funded account
+#        - RETIRED       -- no entries, audit-only
+#
+#   3. resolve_execution_target(): composite of all gates above.
+#      The supervisor calls this and gets back ``"live"``,
+#      ``"paper"``, or ``"reject"`` plus a reason string.
+# ────────────────────────────────────────────────────────────────────
+
+PROP_DRAWDOWN_GUARD_RECEIPT = Path(
+    r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\diamond_prop_drawdown_guard_latest.json",
+)
+BOT_LIFECYCLE_STATE_PATH = Path(
+    r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\bot_lifecycle.json",
+)
+
+# Lifecycle states.
+LIFECYCLE_EVAL_LIVE = "EVAL_LIVE"
+LIFECYCLE_EVAL_PAPER = "EVAL_PAPER"
+LIFECYCLE_FUNDED_LIVE = "FUNDED_LIVE"
+LIFECYCLE_RETIRED = "RETIRED"
+
+# When the prospective loss would consume more than this fraction of
+# today's daily-DD buffer, the trade is routed to paper instead of
+# live. 0.5 = "if a single trade would burn through half of today's
+# remaining buffer, don't risk it."
+SOFT_DAILY_DD_FRACTION = 0.5
+
+
+def _read_drawdown_guard_state() -> dict[str, Any]:
+    """Read the most recent prop-drawdown-guard receipt.
+
+    Returns an empty dict if the receipt is missing or malformed.
+    """
+    try:
+        if not PROP_DRAWDOWN_GUARD_RECEIPT.exists():
+            return {}
+        return json.loads(PROP_DRAWDOWN_GUARD_RECEIPT.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def get_bot_lifecycle(bot_id: str) -> str:
+    """Return the lifecycle state for a bot.
+
+    Defaults:
+      - PROP_READY bots without an explicit entry default to EVAL_PAPER
+        (conservative: must be opted into EVAL_LIVE explicitly).
+      - All other bots default to EVAL_PAPER as well — there is no live
+        execution for non-prop bots in the current architecture.
+    """
+    try:
+        if not BOT_LIFECYCLE_STATE_PATH.exists():
+            return LIFECYCLE_EVAL_PAPER
+        state = json.loads(BOT_LIFECYCLE_STATE_PATH.read_text(encoding="utf-8"))
+        if not isinstance(state, dict):
+            return LIFECYCLE_EVAL_PAPER
+        bots = state.get("bots") or state  # accept both shapes
+        if not isinstance(bots, dict):
+            return LIFECYCLE_EVAL_PAPER
+        value = str(bots.get(bot_id, "")).strip().upper()
+        if value in {
+            LIFECYCLE_EVAL_LIVE,
+            LIFECYCLE_EVAL_PAPER,
+            LIFECYCLE_FUNDED_LIVE,
+            LIFECYCLE_RETIRED,
+        }:
+            return value
+    except (OSError, json.JSONDecodeError, AttributeError):
+        pass
+    return LIFECYCLE_EVAL_PAPER
+
+
+def set_bot_lifecycle(bot_id: str, state: str) -> None:
+    """Persist a bot's lifecycle state. Operator-facing helper.
+
+    Raises ValueError if state is not a recognized constant.
+    """
+    if state not in {
+        LIFECYCLE_EVAL_LIVE,
+        LIFECYCLE_EVAL_PAPER,
+        LIFECYCLE_FUNDED_LIVE,
+        LIFECYCLE_RETIRED,
+    }:
+        msg = f"unknown lifecycle state: {state!r}"
+        raise ValueError(msg)
+    BOT_LIFECYCLE_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    current: dict[str, Any] = {}
+    if BOT_LIFECYCLE_STATE_PATH.exists():
+        try:
+            current = json.loads(BOT_LIFECYCLE_STATE_PATH.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            current = {}
+    if not isinstance(current, dict):
+        current = {}
+    bots = current.get("bots")
+    if not isinstance(bots, dict):
+        bots = {}
+        current["bots"] = bots
+    bots[bot_id] = state
+    BOT_LIFECYCLE_STATE_PATH.write_text(
+        json.dumps(current, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+
+def evaluate_pre_trade_risk(
+    bot_id: str,
+    *,
+    prospective_loss_usd: float,
+    soft_dd_fraction: float = SOFT_DAILY_DD_FRACTION,
+) -> tuple[str, str]:
+    """Pre-trade risk gate. Returns (verdict, reason).
+
+    Verdicts:
+      - "allow_live": safe to submit to live broker.
+      - "route_to_paper": would breach the soft DD threshold; skip live.
+      - "reject": would breach hard daily-DD or static DD limits; refuse
+        entirely (don't even paper, the signal is too risky to honor).
+
+    ``prospective_loss_usd`` is the dollar loss if the trade hits its
+    stop. Pass a positive number (e.g. 250.0 for "if this stops out we
+    lose $250").
+    """
+    if prospective_loss_usd <= 0:
+        # Defensive: zero-or-negative prospective loss makes no sense
+        # for a stop-out scenario; allow but log on the caller side.
+        return ("allow_live", "non_positive_prospective_loss")
+
+    state = _read_drawdown_guard_state()
+    if not state:
+        # No guard receipt → fail open (the prop_guard layer will have
+        # blocked us already if anything was actually wrong).
+        return ("allow_live", "no_guard_state")
+
+    daily = state.get("daily_dd_check") or {}
+    static = state.get("static_dd_check") or {}
+    daily_buffer = float(daily.get("buffer_usd") or 0.0)
+    static_buffer = float(static.get("buffer_usd") or 0.0)
+    daily_limit = float(daily.get("limit_usd") or 0.0)
+
+    if static_buffer > 0 and prospective_loss_usd >= static_buffer:
+        return (
+            "reject",
+            f"would_breach_static_dd: loss=${prospective_loss_usd:.2f} >= buffer=${static_buffer:.2f}",
+        )
+    if daily_buffer > 0 and prospective_loss_usd >= daily_buffer:
+        return (
+            "reject",
+            f"would_breach_daily_dd: loss=${prospective_loss_usd:.2f} >= buffer=${daily_buffer:.2f}",
+        )
+    soft_threshold = daily_limit * soft_dd_fraction if daily_limit > 0 else 0.0
+    if soft_threshold > 0 and prospective_loss_usd >= soft_threshold:
+        reason = (
+            f"would_breach_soft_dd: loss=${prospective_loss_usd:.2f} "
+            f">= soft=${soft_threshold:.2f} ({soft_dd_fraction:.0%} of ${daily_limit:.0f})"
+        )
+        return (
+            "route_to_paper",
+            reason,
+        )
+    return ("allow_live", "ok")
+
+
+def resolve_execution_target(
+    bot_id: str,
+    *,
+    prospective_loss_usd: float,
+) -> tuple[str, str]:
+    """Composite gate: lifecycle + prop guard + pre-trade risk.
+
+    Returns (target, reason). ``target`` is one of:
+      - "live"      -- submit to the live broker
+      - "paper"     -- route to the paper-trading sim
+      - "reject"    -- refuse the signal entirely
+
+    Order of precedence:
+      1. Lifecycle RETIRED → reject ("retired bot")
+      2. Lifecycle EVAL_PAPER → paper ("eval_paper lifecycle")
+      3. Prop guard HALT for prop_ready → reject ("prop_guard_halt")
+      4. Pre-trade risk reject → reject (passes through reason)
+      5. Pre-trade risk route_to_paper → paper (passes through reason)
+      6. Default → live ("ok")
+    """
+    lifecycle = get_bot_lifecycle(bot_id)
+    if lifecycle == LIFECYCLE_RETIRED:
+        return ("reject", "lifecycle_retired")
+    if lifecycle == LIFECYCLE_EVAL_PAPER:
+        return ("paper", "lifecycle_eval_paper")
+
+    if should_block_prop_entry(bot_id):
+        return ("reject", "prop_guard_halt")
+
+    risk_verdict, risk_reason = evaluate_pre_trade_risk(
+        bot_id,
+        prospective_loss_usd=prospective_loss_usd,
+    )
+    if risk_verdict == "reject":
+        return ("reject", risk_reason)
+    if risk_verdict == "route_to_paper":
+        return ("paper", risk_reason)
+    return ("live", "ok")
+
+
 def is_ibkr_futures_eligible(bot_id: str) -> bool:
     """Return True if this bot's strategy can route through IBKR futures.
 
