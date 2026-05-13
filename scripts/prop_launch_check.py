@@ -136,6 +136,16 @@ def _check_launch_candidates() -> dict:
       * win_rate >= 50%
       * NOT flagged ASYMMETRY_BUG by the qty audit (if available)
 
+    Also computes a per-qty-band breakdown to surface "vol-regime filter
+    candidates" — bots whose qty<1 (high-vol, vol_adjusted_sizing-halved)
+    sub-cohort meets the launch profile even though the aggregate fails
+    (wave-25o). A filter-candidate has:
+      * qty<1 band n >= 20
+      * qty<1 band cum_USD > 0
+      * qty<1 band WR >= 80%
+    The operator can flip ``vol_low_size_mult=0.0`` to capture only the
+    high-vol sub-cohort. See docs/MNQ_FUTURES_SAGE_VOL_REGIME_FORENSIC.md.
+
     Returns counts + the candidate list so the action-builder can
     surface "no candidates yet — don't launch" as a priority item.
     """
@@ -157,7 +167,47 @@ def _check_launch_candidates() -> dict:
         except (OSError, json.JSONDecodeError):
             pass
 
+    def _band_stats(subset_rows: list[dict]) -> dict:
+        """Compute n, WR, cum_R, cum_USD for a row subset."""
+        n_sub = len(subset_rows)
+        if not n_sub:
+            return {"n": 0, "wr": 0.0, "cum_r": 0.0, "cum_usd": None}
+        cum_r_sub = sum(float(r.get("realized_r", 0) or 0) for r in subset_rows)
+        wins_sub = sum(1 for r in subset_rows if float(r.get("realized_r", 0) or 0) > 0)
+        wr_sub = wins_sub / n_sub * 100
+        pnls_sub: list[float] = []
+        for r in subset_rows:
+            extra = r.get("extra") or {}
+            usd = r.get("realized_pnl")
+            if usd is None and isinstance(extra, dict):
+                usd = extra.get("realized_pnl")
+            try:
+                if usd is not None:
+                    pnls_sub.append(float(usd))
+            except (TypeError, ValueError):
+                pass
+        cum_usd_sub = sum(pnls_sub) if pnls_sub else None
+        return {
+            "n": n_sub,
+            "wr": round(wr_sub, 1),
+            "cum_r": round(cum_r_sub, 2),
+            "cum_usd": round(cum_usd_sub, 2) if cum_usd_sub is not None else None,
+        }
+
+    def _row_qty(r: dict) -> float:
+        """Extract numeric qty (handles missing or extra-embedded values)."""
+        q = r.get("qty")
+        if q is None:
+            extra = r.get("extra") or {}
+            if isinstance(extra, dict):
+                q = extra.get("qty")
+        try:
+            return float(q) if q is not None else 1.0
+        except (TypeError, ValueError):
+            return 1.0
+
     candidates: list[dict] = []
+    filter_candidates: list[dict] = []
     rejected: list[dict] = []
     for bot_id in sorted(DIAMOND_BOTS):
         rows = load_close_records(
@@ -167,44 +217,53 @@ def _check_launch_candidates() -> dict:
         n = len(rows)
         if n < 5:
             continue
-        cum_r = sum(float(r.get("realized_r", 0) or 0) for r in rows)
-        wins = sum(1 for r in rows if float(r.get("realized_r", 0) or 0) > 0)
-        wr = wins / n * 100 if n else 0
-        pnls = []
-        for r in rows:
-            extra = r.get("extra") or {}
-            usd = r.get("realized_pnl")
-            if usd is None and isinstance(extra, dict):
-                usd = extra.get("realized_pnl")
-            try:
-                if usd is not None:
-                    pnls.append(float(usd))
-            except (TypeError, ValueError):
-                pass
-        cum_usd = sum(pnls) if pnls else None
+        agg = _band_stats(rows)
+        # Per-qty-band breakdown (wave-25o): vol_adjusted_sizing halves
+        # qty to 0.5 on high-vol bars; the resulting band split often
+        # explains R-vs-USD divergence (one band profitable, one churning).
+        rows_full = [r for r in rows if _row_qty(r) >= 1.0]
+        rows_half = [r for r in rows if _row_qty(r) < 1.0]
+        band_full = _band_stats(rows_full)
+        band_half = _band_stats(rows_half)
         is_asym = bot_id in asymmetric
         is_candidate = (
             n >= 50
-            and (cum_usd or 0) > 0
-            and cum_r > 0
-            and wr >= 50.0
+            and (agg["cum_usd"] or 0) > 0
+            and agg["cum_r"] > 0
+            and agg["wr"] >= 50.0
             and not is_asym
+        )
+        # Vol-regime filter candidate: qty<1 band meets launch profile
+        # even though aggregate fails. Operator can flip
+        # vol_low_size_mult=0.0 to skip normal-vol setups entirely.
+        is_filter_candidate = (
+            not is_candidate
+            and band_half["n"] >= 20
+            and (band_half["cum_usd"] or 0) > 0
+            and band_half["wr"] >= 80.0
         )
         record = {
             "bot_id": bot_id,
             "n": n,
-            "wr": round(wr, 1),
-            "cum_r": round(cum_r, 2),
-            "cum_usd": round(cum_usd, 2) if cum_usd is not None else None,
+            "wr": agg["wr"],
+            "cum_r": agg["cum_r"],
+            "cum_usd": agg["cum_usd"],
             "asymmetry_flagged": is_asym,
+            "qty_band_full": band_full,
+            "qty_band_half": band_half,
+            "vol_regime_filter_candidate": is_filter_candidate,
         }
         if is_candidate:
             candidates.append(record)
         else:
             rejected.append(record)
+            if is_filter_candidate:
+                filter_candidates.append(record)
     return {
         "n_candidates": len(candidates),
         "candidates": candidates,
+        "n_filter_candidates": len(filter_candidates),
+        "filter_candidates": filter_candidates,
         "rejected_top5": sorted(rejected, key=lambda r: -(r["n"]))[:5],
     }
 
@@ -266,13 +325,42 @@ def _build_action_list(
                 f"{r['bot_id']}(n={r['n']},USD={r.get('cum_usd')})"
                 for r in top5[:3]
             )
+            top5_clause = (
+                f"Top-N rejected: {top5_summary}. "
+                if top5_summary
+                else "No bots have enough production data (n>=5) on this filter yet. "
+            )
             actions.append(
                 "NO LAUNCH-CANDIDATE BOT exists yet. Profile required: "
                 "n>=50 trades, cum_USD>0, cum_R>0, win_rate>=50%, NOT flagged "
                 "ASYMMETRY_BUG. "
-                f"Top-N rejected: {top5_summary}. "
+                f"{top5_clause}"
                 "Do not promote any bot to EVAL_LIVE until at least one "
                 "meets the profile. See docs/LAUNCH_CANDIDATE_SCAN_*.md.",
+            )
+
+        # Wave-25o: surface vol-regime filter candidates — bots whose qty<1
+        # band is launch-profile-quality even when aggregate fails. One
+        # config flip (vol_low_size_mult=0.0) makes them eligible after a
+        # 2-week paper-soak confirms the high-vol-only book stays stable.
+        for fc in candidates.get("filter_candidates", []) or []:
+            half = fc.get("qty_band_half", {}) or {}
+            full = fc.get("qty_band_full", {}) or {}
+            half_usd = half.get("cum_usd")
+            full_usd = full.get("cum_usd")
+            half_usd_fmt = f"${half_usd:+.0f}" if half_usd is not None else "n/a"
+            full_usd_fmt = f"${full_usd:+.0f}" if full_usd is not None else "n/a"
+            actions.append(
+                f"VOL-REGIME FILTER candidate: {fc['bot_id']} — "
+                f"qty<1 band (high-vol, half-size) shows "
+                f"n={half.get('n', 0)}, WR={half.get('wr', 0.0):.1f}%, "
+                f"cum_USD={half_usd_fmt}. "
+                f"qty=1 band churns "
+                f"(n={full.get('n', 0)}, WR={full.get('wr', 0.0):.1f}%, "
+                f"cum_USD={full_usd_fmt}). "
+                "Set vol_low_size_mult=0.0 in the bot's strategy config to "
+                "skip normal-vol setups; paper-soak for 2 weeks before EVAL_LIVE. "
+                "See docs/MNQ_FUTURES_SAGE_VOL_REGIME_FORENSIC.md.",
             )
 
     # Supervisor health — front of queue if hung/missing
@@ -387,24 +475,56 @@ def _print_human(report: dict) -> None:
     candidates = report.get("launch_candidates", {})
     _print_section_header("Launch candidates (n>=50, cum_USD>0, cum_R>0, WR>=50%, !ASYM)")
     n_c = candidates.get("n_candidates", 0)
+    n_fc = candidates.get("n_filter_candidates", 0)
     if n_c == 0:
-        print("  ZERO candidates — system says DO NOT LAUNCH live yet")
+        print("  ZERO strict candidates — system says DO NOT LAUNCH live yet")
+        if n_fc > 0:
+            print(
+                f"  {n_fc} VOL-REGIME FILTER candidate(s): aggregate fails but the "
+                "qty<1 (high-vol) band passes. See action items + "
+                "docs/MNQ_FUTURES_SAGE_VOL_REGIME_FORENSIC.md.",
+            )
         top5 = candidates.get("rejected_top5", [])
         if top5:
             print(f"  Top {len(top5)} rejected (most data):")
             for r in top5:
                 usd = f"${r.get('cum_usd'):+.0f}" if r.get("cum_usd") is not None else "n/a"
                 asym = " ASYM" if r.get("asymmetry_flagged") else ""
+                fc_marker = " *VOL_FILTER" if r.get("vol_regime_filter_candidate") else ""
                 print(
                     f"    {r['bot_id']:<28} n={r['n']:>4} WR={r['wr']:>4.1f}% "
-                    f"cum_R={r['cum_r']:>+7.1f} cum_USD={usd}{asym}",
+                    f"cum_R={r['cum_r']:>+7.1f} cum_USD={usd}{asym}{fc_marker}",
                 )
+                # Per-qty-band split (wave-25o) — surface only when both
+                # bands have material samples; this is where the
+                # vol_adjusted_sizing asymmetry is most visible.
+                half = r.get("qty_band_half", {}) or {}
+                full = r.get("qty_band_full", {}) or {}
+                if half.get("n", 0) >= 5 and full.get("n", 0) >= 5:
+                    h_usd = (
+                        f"${half.get('cum_usd'):+.0f}"
+                        if half.get("cum_usd") is not None
+                        else "n/a"
+                    )
+                    f_usd = (
+                        f"${full.get('cum_usd'):+.0f}"
+                        if full.get("cum_usd") is not None
+                        else "n/a"
+                    )
+                    print(
+                        f"        qty<1: n={half['n']:>3} WR={half['wr']:>5.1f}% USD={h_usd:>7}    "
+                        f"qty>=1: n={full['n']:>3} WR={full['wr']:>5.1f}% USD={f_usd:>7}",
+                    )
     else:
         print(f"  {n_c} candidate(s) meet the profile:")
         for c in candidates.get("candidates", []):
             print(
                 f"    {c['bot_id']:<28} n={c['n']:>4} WR={c['wr']:>4.1f}% "
                 f"cum_R={c['cum_r']:>+7.1f} cum_USD=${c['cum_usd']:+.2f}",
+            )
+        if n_fc > 0:
+            print(
+                f"  {n_fc} additional VOL-REGIME FILTER candidate(s) — see action items.",
             )
 
     # Drawdown guard
