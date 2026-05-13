@@ -122,6 +122,7 @@ def _normalize_record(rec: Any) -> dict | None:
             # Closed/flat positions don't belong in open_positions.
             return None
         side_norm = str(side).upper()
+        side_norm = {"BUY": "LONG", "SELL": "SHORT"}.get(side_norm, side_norm)
         if side_norm not in ("LONG", "SHORT"):
             return None
         return {

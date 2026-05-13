@@ -139,7 +139,11 @@ def classify_data_source(row: dict[str, Any]) -> str:
 
     Order of precedence (most specific first):
       1. Explicit ``data_source`` field on the record (forward-tagged).
-      2. Test bot IDs (t1, propagate_bot, etc.) → test_fixture.
+      1. Test bot IDs (t1, propagate_bot, etc.) → test_fixture.
+         This check runs FIRST so a test fixture that was written with
+         an explicit ``data_source="live"`` (e.g. via a supervisor
+         smoke test) still gets quarantined as test_fixture.
+      2. Explicit ``data_source`` field on the record (forward-tagged).
       3. Source path is the legacy in-repo archive
          (``eta_engine/state/jarvis_intel/...``) → historical_unverified.  # HISTORICAL-PATH-OK
       4. Source path is the canonical workspace state path → live_unverified.
@@ -148,7 +152,17 @@ def classify_data_source(row: dict[str, Any]) -> str:
     The classification is used both for filtering (audits drop test
     fixtures and historical-unverified records by default) and for
     transparent reporting (per_data_source counts in the report).
+
+    Wave-25g (2026-05-13): swapped 1 ↔ 2. Previously the explicit
+    ``data_source`` field won over the test_bot_id check, which let
+    62 test-fixture records (t1, propagate_bot) leak into the
+    ``live`` classification when the supervisor's wave-25 tagging
+    fired during test runs. Test bot quarantine must win unconditionally.
     """
+    bot_id = str(row.get("bot_id") or "").strip().lower()
+    if bot_id in TEST_BOT_IDS:
+        return DATA_SOURCE_TEST_FIXTURE
+
     explicit = str(row.get("data_source") or "").strip().lower()
     if explicit in {
         DATA_SOURCE_LIVE,
@@ -159,10 +173,6 @@ def classify_data_source(row: dict[str, Any]) -> str:
         DATA_SOURCE_TEST_FIXTURE,
     }:
         return explicit
-
-    bot_id = str(row.get("bot_id") or "").strip().lower()
-    if bot_id in TEST_BOT_IDS:
-        return DATA_SOURCE_TEST_FIXTURE
 
     source_path = str(row.get("_source_path") or "").replace("\\", "/").lower()
     # The legacy archive lives inside the repo at eta_engine/state/.  # HISTORICAL-PATH-OK

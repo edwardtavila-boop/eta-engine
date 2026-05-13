@@ -862,6 +862,48 @@ def test_router_paper_live_futures_floor_reaches_broker_with_small_cash(
     assert venue.request.price == rec.fill_price
 
 
+def test_router_paper_sim_futures_floor_records_local_fill_with_50k_cash(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from eta_engine.scripts import jarvis_strategy_supervisor as supervisor
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        BotInstance,
+        ExecutionRouter,
+        SupervisorConfig,
+    )
+
+    monkeypatch.setenv("ETA_LIVE_FUTURES_BUDGET_PER_BOT_USD", "500")
+    monkeypatch.setenv("ETA_LIVE_FUTURES_FLEET_BUDGET_USD", "5000")
+    monkeypatch.setenv("ETA_PAPER_FUTURES_FLOOR", "1")
+    monkeypatch.setattr(supervisor.l2hooks, "pre_trade_check", lambda *_args: True)
+    monkeypatch.setattr(supervisor.l2hooks, "record_signal", lambda *_args: None)
+
+    cfg = SupervisorConfig()
+    cfg.mode = "paper_sim"
+    router = ExecutionRouter(cfg=cfg, bf_dir=tmp_path)
+    bot = BotInstance(
+        bot_id="mnq_floor_sim",
+        symbol="MNQ1",
+        strategy_kind="x",
+        direction="long",
+        cash=50000.0,
+    )
+
+    rec = router.submit_entry(
+        bot=bot,
+        signal_id="sig-floor-sim",
+        side="BUY",
+        bar={"close": 28250.0, "high": 28260.0, "low": 28240.0, "open": 28245.0},
+        size_mult=1.0,
+    )
+
+    assert rec is not None
+    assert rec.qty == 1.0
+    assert rec.paper is True
+    assert bot.open_position is not None
+
+
 def test_write_pending_order_includes_brackets_when_available(
     tmp_path: Path,
 ) -> None:

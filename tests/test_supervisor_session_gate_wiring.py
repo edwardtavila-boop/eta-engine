@@ -487,6 +487,64 @@ def test_maybe_enter_allows_submit_entry_during_rth(monkeypatch) -> None:
     assert len(submit_called) == 1
 
 
+def test_maybe_enter_routes_eval_paper_into_local_paper_sim(monkeypatch) -> None:
+    """EVAL_PAPER means no broker submit, but paper_sim must still simulate.
+
+    Regression coverage for the paper-soak lane: the lifecycle gate returns
+    target="paper" for eval bots. In paper_sim mode that should continue into
+    the local simulator so the bot can build a soak ledger instead of only
+    writing shadow signals.
+    """
+    sup, bot = _make_supervisor_with_gated_bot()
+    monkeypatch.setattr("random.random", lambda: 0.0)
+    monkeypatch.setattr(
+        "eta_engine.feeds.capital_allocator.resolve_execution_target",
+        lambda bot_id, prospective_loss_usd: ("paper", "lifecycle_eval_paper"),
+    )
+
+    submit_called: list[dict[str, Any]] = []
+
+    def _fake_submit_entry(**kwargs: Any) -> None:
+        submit_called.append(kwargs)
+        return None
+
+    monkeypatch.setattr(sup._router, "submit_entry", _fake_submit_entry)
+
+    class _FakeConsolidated:
+        final_verdict = "APPROVED"
+
+    class _FakeVerdict:
+        consolidated = _FakeConsolidated()
+        final_size_multiplier = 1.0
+
+        def is_blocked(self) -> bool:
+            return False
+
+    monkeypatch.setattr(sup, "_consult_jarvis", lambda **kwargs: _FakeVerdict())
+    monkeypatch.setattr(sup, "_consult_sage_for_bot", lambda *a, **kw: None)
+    monkeypatch.setattr(sup, "_check_signal_aggregation", lambda **kwargs: "")
+    monkeypatch.setattr(
+        "eta_engine.scripts.daily_loss_killswitch.is_killswitch_tripped",
+        lambda: (False, ""),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "eta_engine.scripts.shadow_signal_logger.log_shadow_signal",
+        lambda **kwargs: None,
+    )
+
+    fake_now = _ct_to_utc(2026, 5, 15, 10, 0)
+    monkeypatch.setattr(
+        "eta_engine.scripts.jarvis_strategy_supervisor.datetime",
+        _FakeDatetime(fake_now),
+    )
+
+    bar = {"close": 21450.0, "high": 21455.0, "low": 21445.0, "open": 21450.0}
+    sup._maybe_enter(bot, bar)
+
+    assert len(submit_called) == 1
+
+
 def test_maybe_flatten_for_eod_calls_submit_exit(monkeypatch) -> None:
     """When the gate signals EoD-pending and the bot has an open position,
     the supervisor force-flattens via _router.submit_exit and propagates

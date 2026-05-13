@@ -160,6 +160,59 @@ def test_operator_filter_includes_canonical_untagged_rows(tmp_path: Path) -> Non
     assert report["data_sources_filter"] == ["live", "live_unverified", "paper"]
 
 
+def test_test_fixture_bot_id_wins_over_explicit_live_tag(tmp_path: Path) -> None:
+    """Wave-25g regression: a test-fixture bot (t1, propagate_bot, ...)
+    that was written with an explicit ``data_source="live"`` MUST still
+    classify as test_fixture and be excluded from production audits.
+
+    Before this fix, 62 supervisor-test records (42 from t1 + 18 from
+    propagate_bot + 2 real bots) were classified as 'live' because the
+    explicit field won over the test-bot-id check. The strict
+    production filter then incorrectly included them in launch-readiness
+    decisions.
+    """
+    source = tmp_path / "trade_closes.jsonl"
+    _write_jsonl(
+        source,
+        [
+            # Test fixture that was tagged live during a supervisor smoke test
+            {
+                "ts": "2026-05-13T00:00:00+00:00",
+                "signal_id": "t1_smoke",
+                "bot_id": "t1",
+                "data_source": "live",  # ← explicit, but should not win
+                "realized_r": 5.0,
+                "extra": {"realized_pnl": 500, "symbol": "MNQ1"},
+            },
+            {
+                "ts": "2026-05-13T00:01:00+00:00",
+                "signal_id": "propagate_smoke",
+                "bot_id": "propagate_bot",
+                "data_source": "live",
+                "realized_r": 3.0,
+                "extra": {"realized_pnl": 300, "symbol": "MNQ1"},
+            },
+            # Real bot tagged live — should pass
+            {
+                "ts": "2026-05-13T00:02:00+00:00",
+                "signal_id": "real_trade",
+                "bot_id": "m2k_sweep_reclaim",
+                "data_source": "live",
+                "realized_r": 0.5,
+                "extra": {"realized_pnl": 5, "symbol": "M2K"},
+            },
+        ],
+    )
+
+    report = ledger.build_ledger_report(source_paths=[source])
+
+    # Strict production filter (default) should see exactly 1 row,
+    # not 3. The 2 test fixtures must be quarantined regardless of
+    # the explicit data_source tag they were written with.
+    assert report["closed_trade_count"] == 1
+    assert report["per_data_source_unfiltered"] == {"live": 1, "test_fixture": 2}
+
+
 # ────────────────────────────────────────────────────────────────────
 # 2026-05-13: ledger sanitizer integration — normalized rows must
 # carry a clean realized_r and the cumulative_r aggregate must not

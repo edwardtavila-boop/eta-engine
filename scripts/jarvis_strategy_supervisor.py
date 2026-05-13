@@ -839,7 +839,11 @@ class ExecutionRouter:
         # contract (or 0.001 crypto), skip the entry rather than
         # over-sizing into a margin call.
         if is_futures:
-            paper_floor_enabled = self.cfg.mode == "paper_live" and float(os.getenv("ETA_PAPER_FUTURES_FLOOR", "1")) > 0
+            paper_floor_enabled = (
+                self.cfg.mode in {"paper_sim", "paper_live"}
+                and not self.cfg.live_money_enabled
+                and float(os.getenv("ETA_PAPER_FUTURES_FLOOR", "1")) > 0
+            )
             # Let cap_qty_to_budget apply the explicit paper futures floor.
             qty = 1.0 if 0.0 < qty < 1.0 and paper_floor_enabled else float(int(qty))
         else:
@@ -999,6 +1003,32 @@ class ExecutionRouter:
             bot.open_position["bracket_stop"] = round(_round_to_tick(_ps, bot.symbol), 4)
             bot.open_position["bracket_target"] = round(_round_to_tick(_pt, bot.symbol), 4)
             bot.open_position["bracket_src"] = f"paper:{_psrc}"
+            # ROOT CAUSE FIX 2026-05-13 (tick-leak upstream): record
+            # the INITIAL planned stop distance + computed risk_unit so
+            # that the close path can use it for realized_r even after
+            # ``_stale_tighten`` or trailing-stop logic has mutated
+            # ``bracket_stop``. Without this, ``realized_r = pnl /
+            # current_bracket_distance`` produces +69R / +21R phantom
+            # values once the stop has been ratcheted to within 1 tick
+            # of the entry price. This is what produced the
+            # mnq_futures_sage outliers the sanitizer was created to
+            # drop. The sanitizer remains as defense-in-depth.
+            try:
+                from eta_engine.feeds.instrument_specs import (  # noqa: PLC0415
+                    effective_point_value,
+                )
+
+                _pv_at_entry = float(
+                    effective_point_value(bot.symbol, route="auto") or 1.0,
+                )
+            except Exception:  # noqa: BLE001
+                _pv_at_entry = 1.0
+            initial_stop_distance = abs(
+                float(bot.open_position["bracket_stop"]) - float(rec.fill_price),
+            )
+            initial_risk_unit = initial_stop_distance * qty * _pv_at_entry
+            bot.open_position["initial_stop_distance"] = round(initial_stop_distance, 6)
+            bot.open_position["initial_risk_unit"] = round(initial_risk_unit, 4)
             # Re-persist with bracket fields included so a restart
             # restores the planned stop/target, not just side+qty.
             self._persist_open_position(bot)
@@ -1515,15 +1545,27 @@ class ExecutionRouter:
         # downstream R-attribution and the broker order would disagree
         # on size.
         pnl = pnl_per_unit * exit_qty * _pv
-        # Realized R: prefer planned bracket-stop distance × qty × pv as
-        # the denominator. That is what the lab uses, so live R becomes
-        # apples-to-apples comparable to lab expectancy_r. Falls back to
-        # 1% of cash for legacy positions without a stored bracket.
-        plan_stop = pos.get("bracket_stop")
+        # Realized R: prefer the INITIAL planned risk_unit recorded at
+        # entry time (immune to ``_stale_tighten`` mutating bracket_stop
+        # mid-trade). Without this, a winning trade after a stop-tighten
+        # produces +20-69R phantom values that pollute every downstream
+        # aggregator. The defensive trade_close_sanitizer is the final
+        # safety net.
+        #
+        # Fallback chain:
+        #   1. pos["initial_risk_unit"]  (set at entry, post-fix)
+        #   2. abs(current bracket_stop − entry_price) × qty × pv  (pre-fix legacy)
+        #   3. 1% of cash  (pre-bracket legacy)
         risk_unit = 0.0
-        if plan_stop is not None:
+        initial_risk_unit = pos.get("initial_risk_unit")
+        if initial_risk_unit is not None:
             with contextlib.suppress(TypeError, ValueError):
-                risk_unit = abs(float(plan_stop) - pos["entry_price"]) * exit_qty * _pv
+                risk_unit = float(initial_risk_unit)
+        if risk_unit <= 0:
+            plan_stop = pos.get("bracket_stop")
+            if plan_stop is not None:
+                with contextlib.suppress(TypeError, ValueError):
+                    risk_unit = abs(float(plan_stop) - pos["entry_price"]) * exit_qty * _pv
         if risk_unit <= 0:
             risk_unit = bot.cash * 0.01
         realized_r = pnl / max(risk_unit, 1e-9) if risk_unit > 0 else 0.0
@@ -3815,7 +3857,7 @@ class JarvisStrategySupervisor:
                 bot.last_aggregation_reject_reason = f"route_paper: {target_reason}"
                 bot.last_aggregation_reject_at = datetime.now(UTC).isoformat()
                 logger.info(
-                    "ROUTE PAPER %s: %s — observed but not submitted (paper tier)",
+                    "ROUTE PAPER %s: %s; broker submit suppressed",
                     bot.bot_id,
                     target_reason,
                 )
@@ -3851,7 +3893,12 @@ class JarvisStrategySupervisor:
                         "shadow_signal_logger failed for %s",
                         bot.bot_id,
                     )
-                return
+                if self.cfg.mode != "paper_sim":
+                    return
+                logger.info(
+                    "ROUTE PAPER %s: continuing into local paper_sim fill path",
+                    bot.bot_id,
+                )
             # target == "live" → fall through to existing broker call
         except Exception:  # noqa: BLE001
             # Defensive: gate-chain failures must never crash the

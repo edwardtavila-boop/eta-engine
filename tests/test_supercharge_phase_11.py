@@ -109,6 +109,21 @@ def test_persister_lowercase_side_normalizes(tmp_path: Path) -> None:
     assert payload["positions"][0]["side"] == "LONG"
 
 
+def test_persister_order_side_normalizes_to_position_side(tmp_path: Path) -> None:
+    target = tmp_path / "supervisor.json"
+    result = persister.persist_open_positions(
+        [
+            {"bot_id": "long_bot", "symbol": "MNQ", "side": "BUY", "qty": 1},
+            {"bot_id": "short_bot", "symbol": "MCL", "side": "SELL", "qty": 1},
+        ],
+        _path=target,
+    )
+    assert result.ok is True
+    assert result.n_positions == 2
+    payload = json.loads(target.read_text(encoding="utf-8"))
+    assert [row["side"] for row in payload["positions"]] == ["LONG", "SHORT"]
+
+
 def test_persister_atomic_overwrite(tmp_path: Path) -> None:
     """A second call replaces the file in place — readers always see
     one of two whole snapshots, never a half-written file."""
