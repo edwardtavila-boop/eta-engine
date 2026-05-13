@@ -165,10 +165,12 @@ def _read_trades_deduped(
     override_path: Path | None,
     since_dt: datetime | None,
 ) -> list[dict[str, Any]]:
-    """Read from canonical + legacy paths, filtered to live+paper.
+    """Read from canonical + legacy paths for operator-facing PnL.
 
     Wave-25 (2026-05-13): production path delegates to
     closed_trade_ledger.load_close_records (data_source filter).
+    Operator views include canonical untagged closes from older bots while
+    still excluding test fixtures, legacy archive rows, and backtests.
     Tests with explicit override_path get the legacy single-source reader.
     """
     if override_path is not None:
@@ -177,7 +179,7 @@ def _read_trades_deduped(
     import math
 
     from eta_engine.scripts.closed_trade_ledger import (
-        DEFAULT_PRODUCTION_DATA_SOURCES,
+        DEFAULT_OPERATOR_DATA_SOURCES,
         load_close_records,
     )
 
@@ -187,20 +189,22 @@ def _read_trades_deduped(
         since_days = max(1, math.ceil(delta_seconds / 86400.0) + 1)
     return load_close_records(
         source_paths=[DEFAULT_TRADE_CLOSES_PATH, LEGACY_TRADE_CLOSES_PATH],
-        data_sources=DEFAULT_PRODUCTION_DATA_SOURCES,
+        data_sources=DEFAULT_OPERATOR_DATA_SOURCES,
         since_days=since_days,
     )
 
 
 def _extract_r(rec: dict[str, Any]) -> float | None:
-    """Canonical field is realized_r; r and r_value are legacy aliases."""
-    raw = rec.get("realized_r")
-    if raw is None:
-        raw = rec.get("r", rec.get("r_value"))
-    try:
-        return float(raw) if raw is not None else None
-    except (TypeError, ValueError):
-        return None
+    """Sanitized R for PnL aggregation.
+
+    Delegates to trade_close_sanitizer so dollar-leaked / tick-leaked
+    values (mnq_futures_sage's r=69 issue) don't pollute MTD totals.
+    Canonical field is ``realized_r``; ``r`` and ``r_value`` are legacy
+    aliases handled inside the sanitizer.
+    """
+    from eta_engine.brain.jarvis_v3.trade_close_sanitizer import sanitize_r
+
+    return sanitize_r(rec)
 
 
 def _to_trade_row(rec: dict[str, Any]) -> TradeRow | None:

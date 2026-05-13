@@ -146,10 +146,12 @@ def _read_trades(
     override_path: Path | None,
     since_dt: datetime | None,
 ) -> list[dict[str, Any]]:
-    """Read trade closes filtered to live+paper data_source.
+    """Read trade closes for operator-facing anomaly detection.
 
     Wave-25 (2026-05-13): production path delegates to
     closed_trade_ledger.load_close_records (data_source filter).
+    Includes canonical untagged closes from older bots, but not test,
+    historical archive, or backtest rows.
     Tests with explicit override_path get the legacy single-source reader.
     """
     if override_path is not None:
@@ -158,7 +160,7 @@ def _read_trades(
     import math
 
     from eta_engine.scripts.closed_trade_ledger import (
-        DEFAULT_PRODUCTION_DATA_SOURCES,
+        DEFAULT_OPERATOR_DATA_SOURCES,
         load_close_records,
     )
 
@@ -168,19 +170,20 @@ def _read_trades(
         since_days = max(1, math.ceil(delta_seconds / 86400.0) + 1)
     return load_close_records(
         source_paths=[DEFAULT_TRADE_CLOSES_PATH, LEGACY_TRADE_CLOSES_PATH],
-        data_sources=DEFAULT_PRODUCTION_DATA_SOURCES,
+        data_sources=DEFAULT_OPERATOR_DATA_SOURCES,
         since_days=since_days,
     )
 
 
 def _extract_r(rec: dict[str, Any]) -> float | None:
-    raw = rec.get("realized_r")
-    if raw is None:
-        raw = rec.get("r", rec.get("r_value"))
-    try:
-        return float(raw) if raw is not None else None
-    except (TypeError, ValueError):
-        return None
+    """Sanitized R for anomaly detectors.
+
+    Delegates to trade_close_sanitizer so a bot writing ``realized_r=69``
+    (tick count) doesn't fire a false suspicious_win critical hit.
+    """
+    from eta_engine.brain.jarvis_v3.trade_close_sanitizer import sanitize_r
+
+    return sanitize_r(rec)
 
 
 # ---------------------------------------------------------------------------

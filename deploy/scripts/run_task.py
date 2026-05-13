@@ -459,9 +459,87 @@ def _write_meta_report(state_dir: Path, report: dict) -> None:
 # ===========================================================================
 
 
+# Service-alive probes for the health watchdog. Keys are scheduled-task
+# names; values are (kind, target) tuples. The "port" kind opens a TCP
+# socket to verify the service is bound and accepting connections —
+# independent of whether the scheduled task itself is in Running state.
+#
+# Why this matters: ETA-IBGateway uses a one-shot launcher task that
+# starts the gateway process and exits, leaving the task in Ready state
+# while the gateway PID stays alive on port 4002. Without this probe,
+# the watchdog would "restart" the gateway every 5 min and spam the
+# operator with bogus 12×/hour alerts.
+_SERVICE_HEALTH_PROBES: dict[str, tuple[str, object]] = {
+    "ETA-IBGateway": ("port", 4002),
+    "ETA-Dashboard-API": ("port", 8000),
+    "ETA-Broker-Router": ("process_cmdline", "broker_router.py"),
+    "ETA-PaperLive-Supervisor": ("process_cmdline", "paperlive_supervisor"),
+}
+
+
+def _service_alive_via_probe(svc: str) -> tuple[bool, str]:
+    """Return ``(alive, detail)`` for the service's known probe.
+
+    Returns ``(False, "no_probe_configured")`` when the service has no
+    entry in ``_SERVICE_HEALTH_PROBES`` — in that case the caller falls
+    back to the legacy task-state restart logic. NEVER raises.
+    """
+    probe = _SERVICE_HEALTH_PROBES.get(svc)
+    if probe is None:
+        return (False, "no_probe_configured")
+    kind, target = probe
+    if kind == "port":
+        try:
+            import socket as _socket
+
+            with _socket.create_connection(("127.0.0.1", int(target)), timeout=2.0):
+                return (True, f"port_{target}_listening")
+        except Exception:  # noqa: BLE001 — fail-soft watchdog, never raise
+            return (False, f"port_{target}_closed")
+    if kind == "process_cmdline":
+        try:
+            import subprocess as _subprocess
+
+            out = _subprocess.check_output(
+                [
+                    "powershell",
+                    "-NoProfile",
+                    "-Command",
+                    (
+                        "(Get-CimInstance Win32_Process -Filter \"Name='python.exe'\" "
+                        f"| Where-Object {{ $_.CommandLine -like '*{target}*' }} "
+                        "| Measure-Object).Count"
+                    ),
+                ],
+                text=True,
+                timeout=10,
+            ).strip()
+            n = int(out or "0")
+            if n > 0:
+                return (True, f"process_match_{target}={n}")
+            return (False, f"process_match_{target}=0")
+        except Exception as exc:  # noqa: BLE001
+            return (False, f"process_probe_failed:{type(exc).__name__}")
+    return (False, f"unknown_probe_kind:{kind}")
+
+
 def _task_health_watchdog(state_dir: Path) -> dict:
-    """ALFRED: auto-heal. Every 5min check the 3 boot services are Running;
-    restart any that have been Ready for > 2 min. Telegram on first restart."""
+    """ALFRED: auto-heal. Every 5min check the boot services are running.
+
+    "Running" here means the underlying SERVICE is alive — not just the
+    scheduled task's State field. Many services (notably ETA-IBGateway)
+    use a one-shot scheduled task that LAUNCHES a long-running process
+    and then exits; the task state goes back to ``Ready`` while the
+    process keeps running. Restarting on State != Running for those
+    cases would cycle the gateway every 5 min and spam the operator.
+
+    Restart criterion (in order):
+      1. Probe the scheduled-task state.
+      2. If state == Running → healthy, no action.
+      3. If state != Running but the service's PROCESS+PORT proves it's
+         alive (per ``_SERVICE_HEALTH_PROBES``) → healthy, no action.
+      4. Otherwise → start the task.
+    """
     import subprocess
 
     report: dict = {"ts": datetime.now(UTC).isoformat(), "actions": []}
@@ -487,6 +565,22 @@ def _task_health_watchdog(state_dir: Path) -> dict:
         if not out:
             continue
         if out != "Running":
+            # Before restarting, check if the underlying service is alive
+            # via its known probe (port/process). Many services use
+            # one-shot launcher tasks that exit after spawning the real
+            # process. Skipping the false restart here is what prevents
+            # the every-5-min "12x" Telegram spam for ETA-IBGateway.
+            alive_via_probe, probe_detail = _service_alive_via_probe(svc)
+            if alive_via_probe:
+                report["actions"].append(
+                    {
+                        "svc": svc,
+                        "state": out,
+                        "skipped_restart": True,
+                        "probe": probe_detail,
+                    }
+                )
+                continue
             try:
                 subprocess.run(
                     ["powershell", "-NoProfile", "-Command", f"Start-ScheduledTask -TaskName {svc}"],
@@ -572,6 +666,53 @@ def _task_health_watchdog(state_dir: Path) -> dict:
                         should_alert = True
                         alert_reason = f"{svc} restarted {n}× in {window_min}min"
                         break
+
+                # Alert dedupe: once we've alerted for this service in
+                # the dedup window, suppress further spam. A persistently
+                # flapping service hits the threshold every cycle, so
+                # without this guard the operator gets pinged every 5
+                # minutes until they manually intervene. Track the most
+                # recent alert ts per-service in a sidecar file.
+                if should_alert:
+                    alert_dedup_path = state_dir / "health_watchdog_alert_dedup.json"
+                    alert_dedup_window_min = int(
+                        os.environ.get("HEALTH_WATCHDOG_ALERT_DEDUP_MIN", "60"),
+                    )
+                    try:
+                        dedup_state: dict[str, str] = {}
+                        if alert_dedup_path.exists():
+                            dedup_state = json.loads(alert_dedup_path.read_text(encoding="utf-8")) or {}
+                        # Identify which service triggered this alert (first match wins)
+                        trigger_svc = None
+                        for svc in restarted:
+                            count = sum(1 for r in recent if r.get("svc") == svc) + 1
+                            if count >= threshold:
+                                trigger_svc = svc
+                                break
+                        if trigger_svc:
+                            last_alert_iso = dedup_state.get(trigger_svc)
+                            if last_alert_iso:
+                                try:
+                                    last_alert_dt = datetime.fromisoformat(
+                                        last_alert_iso.replace("Z", "+00:00"),
+                                    )
+                                    age_min = (now_ts - last_alert_dt).total_seconds() / 60.0
+                                    if age_min < alert_dedup_window_min:
+                                        should_alert = False
+                                        alert_reason += (
+                                            f" [suppressed: alerted {age_min:.0f}m ago]"
+                                        )
+                                except ValueError:
+                                    pass
+                            if should_alert:
+                                # Record this alert so subsequent ticks dedupe
+                                dedup_state[trigger_svc] = now_ts.isoformat()
+                                alert_dedup_path.write_text(
+                                    json.dumps(dedup_state, indent=2),
+                                    encoding="utf-8",
+                                )
+                    except (OSError, json.JSONDecodeError):
+                        pass
 
             if should_alert:
                 from eta_engine.deploy.scripts.telegram_alerts import send_from_env

@@ -90,6 +90,56 @@ def _run_elite_scoreboard(since_iso: str | None) -> dict[str, Any]:
         return {"error": str(exc), "n_bots": 0, "bots": {}, "tier_counts": {}}
 
 
+def _build_top_n_rankings(elite: dict[str, Any], n: int = 5) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Build (top5_elite, top5_dark) from the per-bot scoreboard.
+
+    REGRESSION: kaizen_loop's elite_summary was only forwarding total_closes
+    and tier_counts — the actual top5_elite + top5_dark arrays were never
+    populated despite consumers (zeus, /accounts, dashboard) expecting them.
+    Operator-reported gap: "no elite/dark rankings" alongside ELITE=6 tier
+    counts.
+
+    Ranking metric: ``sum_r`` (= ``expectancy_r * n``) — total R earned
+    over the scoreboard window. This is the most operator-meaningful
+    single number: it captures both win rate and trade count, rewards
+    bots that actually generate PnL, and penalises tiny-sample lottery
+    winners.
+
+    Inclusion filter: only bots with at least 5 trades qualify (avoids
+    the INSUFFICIENT-tier 1-trade lottery winners polluting the
+    rankings).
+    """
+    bots_dict = elite.get("bots")
+    if not isinstance(bots_dict, dict) or not bots_dict:
+        return ([], [])
+
+    scored: list[dict[str, Any]] = []
+    for bot_id, metrics in bots_dict.items():
+        if not isinstance(metrics, dict):
+            continue
+        n_trades = int(metrics.get("n") or 0)
+        if n_trades < 5:
+            continue
+        expectancy = float(metrics.get("expectancy_r") or 0.0)
+        scored.append(
+            {
+                "bot_id": str(bot_id),
+                "tier": str(metrics.get("tier") or "UNKNOWN"),
+                "score": round(expectancy * n_trades, 4),  # total R earned
+                "n": n_trades,
+                "win_rate": float(metrics.get("win_rate") or 0.0),
+                "expectancy_r": expectancy,
+                "sharpe": float(metrics.get("sharpe") or 0.0),
+                "max_drawdown_r": float(metrics.get("max_drawdown_r") or 0.0),
+            }
+        )
+
+    scored.sort(key=lambda b: b["score"], reverse=True)
+    top5_elite = scored[:n]
+    top5_dark = list(reversed(scored[-n:])) if len(scored) > n else []
+    return (top5_elite, top5_dark)
+
+
 def _run_monte_carlo(since_iso: str | None, bootstraps: int) -> dict[str, Any]:
     """Run the bootstrap robustness validator."""
     try:
@@ -542,6 +592,15 @@ def run_loop(
         "elite_summary": {
             "total_closes": elite.get("total_closes"),
             "tier_counts": elite.get("tier_counts"),
+            # Top-5 rankings: restored 2026-05-13 after operator reported
+            # both arrays were empty despite ELITE=6 tier count.
+            **dict(
+                zip(
+                    ("top5_elite", "top5_dark"),
+                    _build_top_n_rankings(elite, n=5),
+                    strict=False,
+                )
+            ),
         },
         "mc_summary": {
             "verdict_counts": mc.get("verdict_counts"),

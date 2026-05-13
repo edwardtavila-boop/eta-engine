@@ -125,3 +125,36 @@ def test_closed_trade_ledger_excludes_unverified_rows_by_default(tmp_path: Path)
     assert report["closed_trade_count"] == 1
     assert report["total_realized_pnl"] == 10.0
     assert report["per_data_source_unfiltered"] == {"live_unverified": 1, "paper": 1}
+
+
+def test_operator_filter_includes_canonical_untagged_rows(tmp_path: Path) -> None:
+    source = tmp_path / "trade_closes.jsonl"
+    _write_jsonl(
+        source,
+        [
+            {
+                "ts": "2026-05-09T00:00:00+00:00",
+                "signal_id": "paper",
+                "bot_id": "volume_profile_mnq",
+                "data_source": "paper",
+                "realized_r": 1.0,
+                "extra": {"realized_pnl": 10, "symbol": "MNQ1"},
+            },
+            {
+                "ts": "2026-05-09T00:01:00+00:00",
+                "signal_id": "untagged",
+                "bot_id": "volume_profile_mnq",
+                "realized_r": 2.0,
+                "extra": {"realized_pnl": 20, "symbol": "MNQ1"},
+            },
+        ],
+    )
+
+    report = ledger.build_ledger_report(
+        source_paths=[source],
+        data_sources=ledger.DEFAULT_OPERATOR_DATA_SOURCES,
+    )
+
+    assert report["closed_trade_count"] == 2
+    assert report["total_realized_pnl"] == 30.0
+    assert report["data_sources_filter"] == ["live", "live_unverified", "paper"]

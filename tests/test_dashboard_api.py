@@ -5932,3 +5932,87 @@ class TestDashboardAPI:
         assert data["data_ts"] > data["server_ts"] - 5
         assert data["session_truth_status"] == "live"
         assert data["truth_summary_line"] == "Live ETA truth: 2/2 bot heartbeat(s) are fresh."
+
+    def test_normalize_trade_close_sanitizes_r69_tick_leak(self):
+        """REGRESSION: operator saw mnq_futures_sage MNQ1 r=69.0 on $17.25 PnL.
+
+        The 69 is the tick count, not the R value. Dashboard's per-trade
+        view (_normalize_trade_close) now runs every row through
+        trade_close_sanitizer so the open-book display shows the corrected
+        ~0.86R instead of the inflated 69R. The raw value is preserved in
+        ``realized_r_raw`` for audit and a flag ``realized_r_sanitized``
+        marks the row as touched.
+        """
+        from eta_engine.deploy.scripts.dashboard_api import _normalize_trade_close
+
+        buggy = {
+            "ts": "2026-05-13T08:11:38.350511+00:00",
+            "bot_id": "mnq_futures_sage",
+            "realized_r": 69.0,  # the bug — tick count written into R field
+            "action_taken": "approve_full",
+            "direction": "SHORT",
+            "extra": {
+                "realized_pnl": 17.25,
+                "fill_price": 29375.0,
+                "qty": 0.5,
+                "symbol": "MNQ1",
+                "side": "SELL",
+            },
+        }
+        out = _normalize_trade_close(buggy)
+        assert out is not None
+        # Sanitized realized_r should be ~0.86, not 69
+        assert out["realized_r"] is not None
+        assert abs(out["realized_r"] - 0.8625) < 1e-6
+        # Raw original preserved for audit
+        assert out["realized_r_raw"] == 69.0
+        # Flag set so dashboard renderer can show a "sanitized" badge
+        assert out["realized_r_sanitized"] is True
+        # Other fields untouched
+        assert out["bot_id"] == "mnq_futures_sage"
+        assert out["symbol"] == "MNQ1"
+        assert out["realized_pnl"] == 17.25
+
+    def test_normalize_trade_close_passes_clean_value_through(self):
+        """A legitimate small R value passes through with realized_r_sanitized=False."""
+        from eta_engine.deploy.scripts.dashboard_api import _normalize_trade_close
+
+        clean = {
+            "ts": "2026-05-13T07:51:50.280411+00:00",
+            "bot_id": "mnq_futures_sage",
+            "realized_r": -1.18,
+            "action_taken": "approve_full",
+            "direction": "SHORT",
+            "extra": {
+                "realized_pnl": -23.6,
+                "fill_price": 29400.0,
+                "qty": 1.0,
+                "symbol": "MNQ1",
+                "side": "BUY",
+            },
+        }
+        out = _normalize_trade_close(clean)
+        assert out is not None
+        assert out["realized_r"] == -1.18
+        assert out["realized_r_raw"] == -1.18
+        assert out["realized_r_sanitized"] is False
+
+    def test_normalize_trade_close_drops_unrecoverable_suspect(self):
+        """A value that's huge AND can't be recovered: realized_r becomes None."""
+        from eta_engine.deploy.scripts.dashboard_api import _normalize_trade_close
+
+        suspect = {
+            "ts": "2026-05-05T03:16:47.591093+00:00",
+            "bot_id": "ym_sweep_reclaim",
+            "realized_r": 32661.39,  # raw USD leaked into R field
+            "action_taken": "approve_full",
+            "extra": {
+                "realized_pnl": 0.0,  # nothing useful to recompute from
+                "symbol": "YM",  # YM not in known dollar_per_r table
+            },
+        }
+        out = _normalize_trade_close(suspect)
+        assert out is not None
+        assert out["realized_r"] is None  # sanitizer rejected
+        assert out["realized_r_raw"] == 32661.39  # raw preserved for audit
+        assert out["realized_r_sanitized"] is True

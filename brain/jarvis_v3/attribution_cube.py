@@ -139,7 +139,8 @@ def _read_trade_closes_all_sources(
     Wave-25 (2026-05-13): production reads (no override_path) now go
     through closed_trade_ledger.load_close_records which classifies each
     record by data_source (live/paper/backtest/historical_unverified/
-    test_fixture) and excludes the latter three by default. Tests with
+    test_fixture) and excludes test/historical/backtest rows by default.
+    Operator reads include canonical untagged closes from older bots. Tests with
     explicit ``override_path`` keep the legacy single-source reader so
     they get exactly what they wrote.
     """
@@ -149,7 +150,7 @@ def _read_trade_closes_all_sources(
     import math
 
     from eta_engine.scripts.closed_trade_ledger import (
-        DEFAULT_PRODUCTION_DATA_SOURCES,
+        DEFAULT_OPERATOR_DATA_SOURCES,
         load_close_records,
     )
 
@@ -161,7 +162,7 @@ def _read_trade_closes_all_sources(
 
     return load_close_records(
         source_paths=[DEFAULT_TRADE_CLOSES_PATH, _LEGACY_TRADE_CLOSES_PATH],
-        data_sources=DEFAULT_PRODUCTION_DATA_SOURCES,
+        data_sources=DEFAULT_OPERATOR_DATA_SOURCES,
         since_days=since_days,
     )
 

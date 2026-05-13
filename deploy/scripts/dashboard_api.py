@@ -5713,7 +5713,10 @@ def _fill_r_by_bot_since_days(since_days: int = 0) -> tuple[dict[str, float], di
             ts_dt = _parse_fill_dt(row.get("ts"))
             if ts_dt is not None and ts_dt >= cutoff_dt:
                 with contextlib.suppress(TypeError, ValueError):
-                    totals[bot] += float(row.get("realized_r", 0.0))
+                    # Sanitize so r=69-style tick leaks don't poison rollups
+                    r_clean = _sanitize_trade_close_r(row)
+                    if r_clean is not None:
+                        totals[bot] += float(r_clean)
             curr = latest.get(bot)
             if curr is None or str(row.get("ts") or "") >= str(curr.get("ts") or ""):
                 latest[bot] = row
@@ -5753,7 +5756,10 @@ def _intraday_equity_from_fills(bot: str | None, baseline: float, since_days: in
     out: list[dict] = []
     for row in rows:
         with contextlib.suppress(TypeError, ValueError):
-            eq += float(row.get("realized_r", 0.0))
+            # Sanitize each step so equity curve doesn't get a +69R cliff
+            r_clean = _sanitize_trade_close_r(row)
+            if r_clean is not None:
+                eq += float(r_clean)
         out.append({"ts": str(row.get("ts") or ""), "equity": round(eq, 2)})
     return out
 
@@ -6257,7 +6263,15 @@ def _ibkr_net_liquidation_mtd_snapshot(
 
 
 def _recent_trade_closes(limit: int = 25) -> list[dict]:
-    """Return the newest Jarvis trade-close ledger rows without heavy reads."""
+    """Return the newest Jarvis trade-close ledger rows without heavy reads.
+
+    Every row is run through the trade_close_sanitizer so downstream
+    consumers (the open-book view, equity rollups, recent-trades list)
+    see CLEAN realized_r values — never the r=69 tick-leak or the
+    raw-USD-in-r-field bug from older bots. The original value is
+    preserved in ``realized_r_raw`` for audit + a flag
+    ``realized_r_sanitized`` marks rows that were touched.
+    """
     path = _state_dir() / "jarvis_intel" / "trade_closes.jsonl"
     if not path.exists():
         return []
@@ -6285,10 +6299,39 @@ def _recent_trade_closes(limit: int = 25) -> list[dict]:
         except json.JSONDecodeError:
             continue
         if isinstance(row, dict):
+            # Apply the sanitizer in place: any tick-leak or USD-leak in
+            # realized_r is corrected before the row leaves this function.
+            # Source-of-truth on disk stays untouched (preserved as
+            # realized_r_raw on the in-memory copy for audit).
+            _apply_sanitizer_inplace(row)
             out.append(row)
         if len(out) >= limit:
             break
     return out
+
+
+def _apply_sanitizer_inplace(row: dict) -> None:
+    """Mutate ``row`` so realized_r is sanitized + raw is preserved.
+
+    Schema after:
+      * ``realized_r``           — clean value (or None for unrecoverable)
+      * ``realized_r_raw``       — original bot-written value
+      * ``realized_r_sanitized`` — True when sanitizer changed the value
+    """
+    try:
+        from eta_engine.brain.jarvis_v3.trade_close_sanitizer import sanitize_r
+
+        raw_val = row.get("realized_r")
+        try:
+            raw_float = float(raw_val) if raw_val is not None else None
+        except (TypeError, ValueError):
+            raw_float = None
+        cleaned = sanitize_r(row)
+        row["realized_r_raw"] = raw_float
+        row["realized_r_sanitized"] = cleaned != raw_float
+        row["realized_r"] = cleaned
+    except Exception:  # noqa: BLE001 — fail-soft, leave row untouched
+        pass
 
 
 def _normalize_live_position(row: dict, *, venue: str) -> dict | None:
@@ -6401,6 +6444,18 @@ def _normalize_trade_close(row: dict) -> dict | None:
     pnl_value = _first_present(extra, ("realized_pnl", "pnl"))
     if pnl_value is None:
         pnl_value = _first_present(row, ("realized_pnl", "pnl"))
+    # Sanitize the per-trade realized_r so the open-book view doesn't
+    # display the r=69 tick-leak bug. If the row was already sanitized
+    # by ``_recent_trade_closes`` upstream, ``realized_r_raw`` is already
+    # set — preserve it. Otherwise compute now.
+    if "realized_r_raw" in row:
+        raw_for_audit = row.get("realized_r_raw")
+        sanitized_r = _float_value(row.get("realized_r"))
+        was_sanitized = bool(row.get("realized_r_sanitized"))
+    else:
+        raw_for_audit = _float_value(row.get("realized_r"))
+        sanitized_r = _sanitize_trade_close_r(row)
+        was_sanitized = sanitized_r != raw_for_audit
     return {
         "ts": row.get("ts") or extra.get("close_ts"),
         "close_ts": extra.get("close_ts") or row.get("ts"),
@@ -6410,11 +6465,33 @@ def _normalize_trade_close(row: dict) -> dict | None:
         "qty": _float_value(qty_value),
         "fill_price": _float_value(fill_value),
         "realized_pnl": _float_value(pnl_value),
-        "realized_r": _float_value(row.get("realized_r")),
+        "realized_r": sanitized_r,
+        "realized_r_raw": raw_for_audit,
+        "realized_r_sanitized": was_sanitized,
         "action_taken": row.get("action_taken"),
         "layers_updated": layers_updated if isinstance(layers_updated, list) else [],
         "layer_errors": layer_errors if isinstance(layer_errors, list) else [],
     }
+
+
+def _sanitize_trade_close_r(row: dict) -> float | None:
+    """Run a trade_closes row through the canonical sanitizer.
+
+    Defends the open-book view against the r=69 tick-leak bug (and the
+    older raw-USD-in-r-field bug). The sanitizer recovers the true R
+    when ``extra.realized_pnl`` + ``extra.symbol`` are present and the
+    symbol root has a known dollar-per-R; otherwise returns the original
+    value if clean, or None if it's an unrecoverable suspect.
+    """
+    try:
+        from eta_engine.brain.jarvis_v3.trade_close_sanitizer import sanitize_r
+
+        return sanitize_r(row)
+    except Exception:  # noqa: BLE001 — fail-soft to original value
+        try:
+            return float(row.get("realized_r"))
+        except (TypeError, ValueError):
+            return None
 
 
 def _closed_outcomes_from_filled_orders(orders: list[dict]) -> dict:

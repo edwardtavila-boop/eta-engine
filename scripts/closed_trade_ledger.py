@@ -72,7 +72,16 @@ DATA_SOURCE_TEST_FIXTURE = "test_fixture"  # known test bot IDs
 # Production audit default: only records we can defend as live or paper.
 # Any record without a tag and from the canonical path is suspect; only
 # explicit ``live`` and ``paper`` records pass.
+# Prop-launch gates should stay on this strict filter.
 DEFAULT_PRODUCTION_DATA_SOURCES = frozenset({DATA_SOURCE_LIVE, DATA_SOURCE_PAPER})
+
+# Operator-facing truth default: include canonical-path records that old bots
+# wrote before forward data_source tags existed. This lets dashboards and PnL
+# summaries show actual fleet closes while still excluding test fixtures,
+# historical-unverified archive rows, and backtests.
+DEFAULT_OPERATOR_DATA_SOURCES = frozenset(
+    {DATA_SOURCE_LIVE, DATA_SOURCE_PAPER, DATA_SOURCE_LIVE_UNVERIFIED},
+)
 
 
 def _parse_ts(raw: Any) -> datetime | None:  # noqa: ANN401
@@ -280,7 +289,7 @@ def build_ledger_report(
     for row in all_raw:
         per_data_source_full[row.get("_data_source") or "?"] += 1
 
-    # Production filter — defaults to live + paper if caller didn't specify.
+    # Production filter defaults to strict live + paper if caller did not specify.
     effective_filter = data_sources if data_sources is not None else DEFAULT_PRODUCTION_DATA_SOURCES
     raw_records = [row for row in all_raw if row.get("_data_source") in effective_filter]
     closes = [_normalize_close(row) for row in raw_records]

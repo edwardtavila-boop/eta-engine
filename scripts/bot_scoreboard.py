@@ -65,19 +65,21 @@ def _load_heartbeat() -> dict[str, Any]:
 
 
 def _load_closes() -> list[dict[str, Any]]:
-    """Wave-25: filter to live+paper data_source via the shared loader.
+    """Wave-25: filter to operator-truth data sources via the shared loader.
 
     Without this filter the scoreboard mixed in ~43k backtest emissions
-    from the legacy archive and reported inflated trade counts.
+    from the legacy archive and reported inflated trade counts. The operator
+    view keeps canonical untagged closes from older bots so current PnL does
+    not disappear before all writers forward-tag records.
     """
     from eta_engine.scripts.closed_trade_ledger import (
-        DEFAULT_PRODUCTION_DATA_SOURCES,
+        DEFAULT_OPERATOR_DATA_SOURCES,
         load_close_records,
     )
 
     return load_close_records(
         source_paths=[_TRADE_CLOSES_PATH],
-        data_sources=DEFAULT_PRODUCTION_DATA_SOURCES,
+        data_sources=DEFAULT_OPERATOR_DATA_SOURCES,
     )
 
 

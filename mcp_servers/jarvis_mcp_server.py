@@ -1505,11 +1505,52 @@ def _tool_retire_strategy(args: dict[str, Any]) -> dict[str, Any]:
     sighting → HELD + recorded; second sighting → APPLIED + sidecar
     write. The sidecar is what ``per_bot_registry.is_active()`` reads
     on the next supervisor restart.
+
+    DIAMOND PROTECTION (2026-05-13): bots in
+    ``capital_allocator.DIAMOND_BOTS`` are NEVER deactivated via this
+    path.  This mirrors the protection already enforced by
+    ``kaizen_loop.run_loop()`` and ``per_bot_registry.is_active()``; we
+    short-circuit here so the override file does not collect stale
+    entries that the supervisor's diamond layer would silently ignore.
     """
     bot_id = str(args.get("bot_id", ""))
     reason = str(args.get("reason", ""))
     if not bot_id:
         return {"status": "REJECTED", "reason": "missing_bot_id"}
+
+    # Diamond protection: refuse the write entirely. Hermes can retry
+    # other actions (size cut, scaling) but auto-retire of a diamond
+    # requires the operator removing the bot from DIAMOND_BOTS first.
+    try:
+        from eta_engine.feeds.capital_allocator import (  # noqa: PLC0415
+            DIAMOND_BOTS,
+        )
+
+        if bot_id in DIAMOND_BOTS:
+            _append_kaizen_action(
+                {
+                    "ts": _now_iso(),
+                    "action": "RETIRE",
+                    "bot_id": bot_id,
+                    "reason": reason,
+                    "source": "hermes_mcp",
+                    "status": "PROTECTED_DIAMOND",
+                },
+            )
+            return {
+                "status": "REJECTED",
+                "reason": "diamond_protected",
+                "bot_id": bot_id,
+                "note": (
+                    "bot is in DIAMOND_BOTS — auto-retire blocked. "
+                    "Operator must remove from DIAMOND_BOTS explicitly "
+                    "before this bot can be retired."
+                ),
+            }
+    except ImportError:
+        # If the import ever fails, fall through to normal path rather
+        # than silently disabling the diamond gate.
+        pass
 
     prior = _previous_retire_targets()
     record = {

@@ -320,3 +320,99 @@ def test_diamond_protection_doc_exists() -> None:
     # Doc must enumerate all 8 diamonds
     for bot_id in EXPECTED_DIAMONDS:
         assert f"`{bot_id}`" in text, f"doc missing {bot_id}"
+
+
+# ────────────────────────────────────────────────────────────────────
+# Layer 2b — Hermes MCP retire tool refuses to RETIRE diamonds
+# (2026-05-13: added after Hermes auto-retired nq_futures_sage via MCP;
+# the override write was a no-op due to Layer 3 but produced confusion.)
+# ────────────────────────────────────────────────────────────────────
+
+
+def test_mcp_retire_tool_refuses_diamond(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """jarvis_retire_strategy MCP tool must reject diamonds outright
+    (not just have the override be a no-op at the supervisor layer)."""
+    from eta_engine.mcp_servers import jarvis_mcp_server
+
+    # Redirect sidecar paths to the tmp dir so we do not touch the real
+    # state files during the test.
+    fake_overrides = tmp_path / "kaizen_overrides.json"
+    fake_actions = tmp_path / "kaizen_actions.jsonl"
+    monkeypatch.setattr(jarvis_mcp_server, "_KAIZEN_OVERRIDES_PATH", fake_overrides)
+    monkeypatch.setattr(jarvis_mcp_server, "_KAIZEN_ACTION_LOG_PATH", fake_actions)
+
+    # Pretend this is the 2nd retire request (prior includes the bot)
+    # so without the diamond gate it would write the override.
+    monkeypatch.setattr(
+        jarvis_mcp_server,
+        "_previous_retire_targets",
+        lambda: {"nq_futures_sage"},
+    )
+
+    result = jarvis_mcp_server._tool_retire_strategy(
+        {"bot_id": "nq_futures_sage", "reason": "diamond test"},
+    )
+    assert result["status"] == "REJECTED"
+    assert result["reason"] == "diamond_protected"
+    # The override file must NOT have been written (or if written by
+    # an existing pass, the diamond key must not be present).
+    if fake_overrides.exists():
+        data = json.loads(fake_overrides.read_text(encoding="utf-8"))
+        assert "nq_futures_sage" not in data.get("deactivated", {})
+
+
+def test_mcp_retire_tool_still_works_for_non_diamond(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Sanity check: the new gate is targeted — non-diamond retires
+    still proceed through HELD → APPLIED."""
+    from eta_engine.mcp_servers import jarvis_mcp_server
+
+    fake_overrides = tmp_path / "kaizen_overrides.json"
+    fake_actions = tmp_path / "kaizen_actions.jsonl"
+    monkeypatch.setattr(jarvis_mcp_server, "_KAIZEN_OVERRIDES_PATH", fake_overrides)
+    monkeypatch.setattr(jarvis_mcp_server, "_KAIZEN_ACTION_LOG_PATH", fake_actions)
+    # First call: no prior → HELD
+    monkeypatch.setattr(jarvis_mcp_server, "_previous_retire_targets", lambda: set())
+    held = jarvis_mcp_server._tool_retire_strategy(
+        {"bot_id": "definitely_not_a_diamond_xyz", "reason": "test"},
+    )
+    assert held["status"] == "HELD"
+    # Second call: prior includes the bot → APPLIED
+    monkeypatch.setattr(
+        jarvis_mcp_server,
+        "_previous_retire_targets",
+        lambda: {"definitely_not_a_diamond_xyz"},
+    )
+    applied = jarvis_mcp_server._tool_retire_strategy(
+        {"bot_id": "definitely_not_a_diamond_xyz", "reason": "test"},
+    )
+    assert applied["status"] == "APPLIED"
+    data = json.loads(fake_overrides.read_text(encoding="utf-8"))
+    assert "definitely_not_a_diamond_xyz" in data["deactivated"]
+
+
+def test_mcp_retire_tool_diamond_gate_logs_protected_status(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Auditability invariant: the diamond rejection must still leave
+    a trace in the kaizen_actions log with status=PROTECTED_DIAMOND
+    so the operator can later see Hermes tried and was blocked."""
+    from eta_engine.mcp_servers import jarvis_mcp_server
+
+    fake_overrides = tmp_path / "kaizen_overrides.json"
+    fake_actions = tmp_path / "kaizen_actions.jsonl"
+    monkeypatch.setattr(jarvis_mcp_server, "_KAIZEN_OVERRIDES_PATH", fake_overrides)
+    monkeypatch.setattr(jarvis_mcp_server, "_KAIZEN_ACTION_LOG_PATH", fake_actions)
+    monkeypatch.setattr(
+        jarvis_mcp_server,
+        "_previous_retire_targets",
+        lambda: {"cl_momentum"},
+    )
+    jarvis_mcp_server._tool_retire_strategy(
+        {"bot_id": "cl_momentum", "reason": "diamond audit log test"},
+    )
+    rows = [json.loads(line) for line in fake_actions.read_text(encoding="utf-8").splitlines() if line.strip()]
+    assert any(
+        r.get("bot_id") == "cl_momentum" and r.get("status") == "PROTECTED_DIAMOND"
+        for r in rows
+    )

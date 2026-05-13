@@ -762,6 +762,167 @@ class TestSuperchargeTasks:
         out = _task_health_watchdog(state)
         assert out.get("skipped") is True
 
+    def test_service_alive_probe_known_port_returns_status(self, monkeypatch):
+        """Port-probe should return alive=True when the port accepts a connection."""
+        from eta_engine.deploy.scripts import run_task
+
+        class FakeSocket:
+            def __enter__(self) -> FakeSocket:
+                return self
+
+            def __exit__(self, *_: object) -> bool:
+                return False
+
+        monkeypatch.setattr(
+            "socket.create_connection",
+            lambda *args, **kwargs: FakeSocket(),
+        )
+        alive, detail = run_task._service_alive_via_probe("ETA-IBGateway")
+        assert alive is True
+        assert "port_4002" in detail
+
+    def test_service_alive_probe_returns_false_when_port_closed(self, monkeypatch):
+        from eta_engine.deploy.scripts import run_task
+
+        def boom(*_a, **_kw):
+            raise OSError("refused")
+
+        monkeypatch.setattr("socket.create_connection", boom)
+        alive, detail = run_task._service_alive_via_probe("ETA-IBGateway")
+        assert alive is False
+        assert "closed" in detail
+
+    def test_service_alive_probe_unknown_svc_returns_no_probe(self):
+        from eta_engine.deploy.scripts import run_task
+
+        alive, detail = run_task._service_alive_via_probe("ETA-NoSuchSvc")
+        assert alive is False
+        assert detail == "no_probe_configured"
+
+    def test_service_alive_probe_never_raises(self, monkeypatch):
+        """Even with totally broken probe, helper returns (False, reason) cleanly."""
+        from eta_engine.deploy.scripts import run_task
+
+        def boom(*_a, **_kw):
+            raise RuntimeError("simulated crash")
+
+        monkeypatch.setattr("socket.create_connection", boom)
+        alive, _detail = run_task._service_alive_via_probe("ETA-Dashboard-API")
+        assert alive is False  # Did not raise
+
+    def test_health_watchdog_alert_dedupe_suppresses_within_window(
+        self,
+        tmp_path,
+        monkeypatch,
+    ):
+        """Once a service has triggered an alert, suppress repeats for 60min.
+
+        Without this dedupe, a persistently-flapping service (like the
+        ETA-IBGateway state issue) would page the operator every 5min.
+        """
+        import json
+        from datetime import UTC, datetime, timedelta
+
+        from eta_engine.deploy.scripts import run_task
+
+        state = tmp_path / "state"
+        state.mkdir()
+
+        # Pre-seed the dedup file showing we alerted for ETA-IBGateway 10 min ago
+        dedup_path = state / "health_watchdog_alert_dedup.json"
+        ten_min_ago = (datetime.now(UTC) - timedelta(minutes=10)).isoformat()
+        dedup_path.write_text(
+            json.dumps({"ETA-IBGateway": ten_min_ago}),
+            encoding="utf-8",
+        )
+
+        # Pre-seed history showing 5 restarts of ETA-IBGateway in last hour
+        history_path = state / "health_watchdog_restart_history.jsonl"
+        now_iso = datetime.now(UTC).isoformat()
+        with history_path.open("w", encoding="utf-8") as fh:
+            for _ in range(5):
+                fh.write(json.dumps({"ts": now_iso, "svc": "ETA-IBGateway"}) + "\n")
+
+        # Capture telegram send attempts
+        sent: list[tuple[str, str]] = []
+
+        def fake_send(text: str, priority: str = "INFO") -> dict:
+            sent.append((text, priority))
+            return {"ok": True}
+
+        monkeypatch.setattr(
+            "eta_engine.deploy.scripts.telegram_alerts.send_from_env",
+            fake_send,
+        )
+        monkeypatch.setattr("os.name", "nt", raising=False)
+        monkeypatch.setattr(
+            "subprocess.check_output",
+            lambda *a, **kw: "Ready",
+        )
+        monkeypatch.setattr(
+            "subprocess.run",
+            lambda *a, **kw: None,
+        )
+        # Force the probe to say "not alive" so restart path is exercised
+        monkeypatch.setattr(
+            run_task,
+            "_service_alive_via_probe",
+            lambda svc: (False, "test_probe_dead"),
+        )
+
+        run_task._task_health_watchdog(state)
+        # Should NOT have sent: we already alerted 10min ago, dedup_window=60min
+        assert sent == [], (
+            f"alert was sent despite dedupe (expected suppression): {sent}"
+        )
+
+    def test_health_watchdog_skips_restart_when_port_alive(
+        self,
+        tmp_path,
+        monkeypatch,
+    ):
+        """REGRESSION: when the underlying port is listening, skip the false restart.
+
+        This was the root cause of the every-5-min ETA-IBGateway spam: the
+        scheduled-task state goes Ready while the gateway process keeps
+        running. Without the port probe, watchdog 'restarts' it 12x per hour.
+        """
+        from eta_engine.deploy.scripts import run_task
+
+        state = tmp_path / "state"
+        state.mkdir()
+        monkeypatch.setattr("os.name", "nt", raising=False)
+        # Task state reports "Ready" (not Running) for ETA-IBGateway
+        monkeypatch.setattr(
+            "subprocess.check_output",
+            lambda *a, **kw: "Ready",
+        )
+        restart_calls: list[str] = []
+
+        def fake_run(args, **_kw):
+            # Track if Start-ScheduledTask is ever invoked
+            joined = " ".join(args) if isinstance(args, list) else str(args)
+            if "Start-ScheduledTask" in joined:
+                restart_calls.append(joined)
+            return None
+
+        monkeypatch.setattr("subprocess.run", fake_run)
+        # Port 4002 IS alive: probe returns True
+        monkeypatch.setattr(
+            run_task,
+            "_service_alive_via_probe",
+            lambda svc: (svc == "ETA-IBGateway", "port_4002_listening"),
+        )
+
+        result = run_task._task_health_watchdog(state)
+        # No restart attempt should have been made for ETA-IBGateway
+        assert not any(
+            "ETA-IBGateway" in c for c in restart_calls
+        ), f"unexpected restart attempt: {restart_calls}"
+        # The action record should show skipped_restart=True
+        skipped = [a for a in result.get("restarted", []) if "IBGateway" in str(a)]
+        assert skipped == [], "ETA-IBGateway should not be in restarted list"
+
     def test_disk_cleanup_runs_without_error(self, tmp_path, monkeypatch):
         state = tmp_path / "state"
         state.mkdir()
