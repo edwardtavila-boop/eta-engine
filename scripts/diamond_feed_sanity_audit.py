@@ -91,19 +91,37 @@ SAMPLE_THRESHOLD = 10
 #: span at least a few percent over hundreds of trades.
 STUCK_PRICE_RANGE_FRACTION = 0.02  # < 2% range across all trades = stuck
 
+#: STUCK_PRICE guard: a narrow-window scalping strategy can legitimately
+#: produce a tight price range, but it will still produce many DISTINCT
+#: fill prices (one per fill). A truly stuck feed returns the same
+#: handful of values repeatedly. Require BOTH narrow range AND low
+#: distinct fraction before flagging. The MBT pollution case had
+#: ~5 unique prices across 374 trades (~1.3% distinct).
+STUCK_PRICE_DISTINCT_FRACTION_FLOOR = 0.5  # >=50% unique = not stuck
+
+#: Schema cutoff: records before this timestamp predate wave-10's
+#: extra.{realized_pnl,side,fill_price} fields. Excluding them from
+#: the MISSING_* checks prevents legitimate historical records from
+#: being scored as writer regressions. (Wave-10 = direction
+#: stratification, landed ~2026-05-05.)
+LEGACY_SCHEMA_CUTOFF_TS = "2026-05-05T00:00:00+00:00"
+
 
 @dataclass
 class FeedSanityScorecard:
     bot_id: str
     n_records: int = 0
+    n_modern_records: int = 0
     n_with_fill_price: int = 0
     n_with_pnl: int = 0
     n_with_side: int = 0
     n_zero_pnl: int = 0
+    n_distinct_fill_prices: int = 0
     fill_price_min: float | None = None
     fill_price_max: float | None = None
     fill_price_median: float | None = None
     fill_price_range_fraction: float | None = None
+    fill_price_distinct_fraction: float | None = None
     verdict: str = "INSUFFICIENT_DATA"
     flags: list[str] = field(default_factory=list)
     rationale: str = ""
@@ -138,6 +156,13 @@ def _score_bot(bot_id: str, trades: list[dict[str, Any]]) -> FeedSanityScorecard
 
     fill_prices: list[float] = []
     for t in trades:
+        # Only score records from the modern schema era for the
+        # MISSING_* writer-regression checks. Pre-wave-10 records lack
+        # the extra.* fields by design, not by writer bug.
+        ts = str(t.get("ts") or "")
+        is_modern = ts >= LEGACY_SCHEMA_CUTOFF_TS
+        if is_modern:
+            sc.n_modern_records += 1
         extra = t.get("extra") or {}
         if not isinstance(extra, dict):
             continue
@@ -175,6 +200,16 @@ def _score_bot(bot_id: str, trades: list[dict[str, Any]]) -> FeedSanityScorecard
                 (sc.fill_price_max - sc.fill_price_min) / sc.fill_price_median,
                 4,
             )
+        # Distinct-fraction: a stuck feed returns the same few values
+        # repeatedly (low distinct fraction). A narrow-window scalper
+        # returns many distinct values within a tight range (high
+        # distinct fraction). Use this to disambiguate.
+        sc.n_distinct_fill_prices = len(set(fill_prices))
+        if sc.n_with_fill_price:
+            sc.fill_price_distinct_fraction = round(
+                sc.n_distinct_fill_prices / sc.n_with_fill_price,
+                4,
+            )
 
     if sc.n_records < SAMPLE_THRESHOLD:
         sc.verdict = "INSUFFICIENT_DATA"
@@ -185,16 +220,24 @@ def _score_bot(bot_id: str, trades: list[dict[str, Any]]) -> FeedSanityScorecard
     flags: list[str] = []
 
     # STUCK_PRICE: fill_price has near-zero variance across trades
-    # (placeholder feed returning the same value every trade)
+    # AND most prices are repeats (low distinct fraction). The
+    # distinct guard prevents narrow-window scalping strategies from
+    # being false-flagged when they trade in a tight price band but
+    # still produce unique fills.
     if (
         sc.fill_price_range_fraction is not None
         and sc.n_with_fill_price >= SAMPLE_THRESHOLD
         and sc.fill_price_range_fraction < STUCK_PRICE_RANGE_FRACTION
+        and (
+            sc.fill_price_distinct_fraction is not None
+            and sc.fill_price_distinct_fraction < STUCK_PRICE_DISTINCT_FRACTION_FLOOR
+        )
     ):
         flags.append(
             f"STUCK_PRICE (fill_price range = "
-            f"{sc.fill_price_range_fraction * 100:.2f}% of median "
-            f"across {sc.n_with_fill_price} records — feed appears "
+            f"{sc.fill_price_range_fraction * 100:.2f}% of median, "
+            f"{sc.n_distinct_fill_prices}/{sc.n_with_fill_price} distinct "
+            f"({sc.fill_price_distinct_fraction * 100:.0f}%) — feed appears "
             "placeholder/static)",
         )
 
@@ -205,31 +248,39 @@ def _score_bot(bot_id: str, trades: list[dict[str, Any]]) -> FeedSanityScorecard
             "all realized_pnl=0 — broken writer or zero price action)",
         )
 
-    # MISSING_PNL_FIELD: majority lack the field entirely
-    if sc.n_with_pnl < sc.n_records / 2:
+    # MISSING_PNL_FIELD: majority of MODERN-ERA records lack the field.
+    # Pre-wave-10 records (ts < LEGACY_SCHEMA_CUTOFF_TS) are excluded
+    # from the denominator since the schema did not include extra.* by
+    # design back then.
+    if sc.n_modern_records >= SAMPLE_THRESHOLD and sc.n_with_pnl < sc.n_modern_records / 2:
         flags.append(
-            f"MISSING_PNL_FIELD ({sc.n_with_pnl}/{sc.n_records} records have extra.realized_pnl)",
+            f"MISSING_PNL_FIELD ({sc.n_with_pnl}/{sc.n_modern_records} modern-era "
+            "records have extra.realized_pnl)",
         )
 
-    # MISSING_SIDE_FIELD: writer skipping side field
-    if sc.n_with_side < sc.n_records / 2:
+    # MISSING_SIDE_FIELD: writer skipping side field on modern-era records
+    if sc.n_modern_records >= SAMPLE_THRESHOLD and sc.n_with_side < sc.n_modern_records / 2:
         flags.append(
-            f"MISSING_SIDE_FIELD ({sc.n_with_side}/{sc.n_records} "
+            f"MISSING_SIDE_FIELD ({sc.n_with_side}/{sc.n_modern_records} modern-era "
             "records have extra.side — wave-10 direction derivation will misfire)",
         )
 
     sc.flags = flags
     sc.verdict = "FLAGGED" if flags else "CLEAN"
-    sc.rationale = (
-        "; ".join(flags)
-        if flags
-        else (
+    if flags:
+        sc.rationale = "; ".join(flags)
+    elif sc.fill_price_range_fraction is not None:
+        sc.rationale = (
             f"all checks pass — {sc.n_records} records, "
             f"fill_price ${sc.fill_price_min}-${sc.fill_price_max} "
             f"(range {sc.fill_price_range_fraction:.2%} of median), "
             f"{sc.n_zero_pnl}/{sc.n_with_pnl} zero-PnL"
         )
-    )
+    else:
+        sc.rationale = (
+            f"all checks pass — {sc.n_records} records "
+            f"({sc.n_modern_records} modern-era), no fill_price data"
+        )
     return sc
 
 
