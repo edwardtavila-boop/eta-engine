@@ -3794,6 +3794,59 @@ class JarvisStrategySupervisor:
         if size_mult <= 0:
             return
 
+        # ── Force Multiplier trade-decision gates (low-cost AI second
+        # opinion, wave-25c 2026-05-13). Two hooks:
+        #
+        #   1. CONDITIONAL verdict → call fm_trade_gates.sanity_check_conditional
+        #      with the live bar + verdict summary. FM returns APPROVE /
+        #      CAUTION / ABORT. We block ONLY on an explicit ABORT/BLOCK
+        #      first-token; everything else (errors, timeouts, parse
+        #      failures, CAUTION) defaults to approve. The whole gate is
+        #      capped at $0.001 per call to prevent FM cost spirals.
+        #
+        #   2. Confidence in [0.60, 0.85] → fire-and-forget call to
+        #      log_conviction_rationale which writes a one-sentence "why
+        #      this conviction?" line to the fm_trade_gates.jsonl sidecar.
+        #      Advisory only — never blocks.
+        #
+        # The whole hook is wrapped in try/except so FM unavailability is
+        # invisible to the trade path. FM is advisory; the trade pipeline
+        # remains the source of truth.
+        try:
+            _consol = getattr(verdict, "consolidated", None)
+            if _consol is not None:
+                _final = str(getattr(_consol, "final_verdict", "")).upper()
+                _conf = float(getattr(_consol, "confidence", 1.0) or 1.0)
+                if _final == "CONDITIONAL":
+                    from eta_engine.brain.fm_trade_gates import (  # noqa: PLC0415
+                        sanity_check_conditional,
+                    )
+                    if not sanity_check_conditional(
+                        bot_id=bot.bot_id,
+                        signal_id=signal_id,
+                        side=side,
+                        bar=bar,
+                        verdict=verdict,
+                    ):
+                        logger.info(
+                            "FM sanity gate BLOCKED %s signal=%s (CONDITIONAL)",
+                            bot.bot_id,
+                            signal_id,
+                        )
+                        return
+                if 0.60 <= _conf <= 0.85:
+                    from eta_engine.brain.fm_trade_gates import (  # noqa: PLC0415
+                        log_conviction_rationale,
+                    )
+                    log_conviction_rationale(
+                        bot_id=bot.bot_id,
+                        signal_id=signal_id,
+                        verdict=verdict,
+                        confidence=_conf,
+                    )
+        except Exception:  # noqa: BLE001 — FM is advisory; never block on FM failure
+            pass
+
         # Apply regime-driven size multiplier on top of JARVIS's own
         # final_size_multiplier. The regime detector recommends a global
         # scaler (1.0 in trending regimes, 0.6-0.8 in vol expansion / chop)

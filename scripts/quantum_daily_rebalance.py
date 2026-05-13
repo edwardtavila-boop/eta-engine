@@ -35,7 +35,14 @@ logger = logging.getLogger("quantum_daily_rebalance")
 
 # ── Cost discipline ─────────────────────────────────────────
 
-QUANTUM_DAILY_BUDGET_USD = 2.00
+# Wave-25c (2026-05-13): bumped 2.00 -> 5.00 for moderate supercharge.
+# Headroom for a 6-hour cadence (4x daily) with an expanded candidate
+# set (8-10 symbols per instrument vs 3-4) plus the occasional D-Wave
+# Leap QPU call. Worst case at moderate supercharge:
+#   4 runs/day × 4 instruments × $0.05 classical = $0.80
+#   + ~24 QPU invocations/day × $0.15 = $3.60
+#   ≈ $4.40/day, comfortably under the new $5.00 ceiling.
+QUANTUM_DAILY_BUDGET_USD = 5.00
 QUANTUM_COST_PER_INVOCATION_USD = 0.05
 QUANTUM_MIN_SYMBOLS = 3
 

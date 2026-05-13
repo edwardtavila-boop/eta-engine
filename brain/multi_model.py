@@ -100,6 +100,113 @@ class MultiModelResponse:
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# Cache layer (wave-25c 2026-05-13)
+# ---------------------------------------------------------------------------
+# Short-TTL LRU cache keyed on the call signature. Same prompt called twice
+# within the TTL window returns the cached response without hitting the
+# provider. This dedupes the per-tick narrative-call storm (each supervisor
+# tick can emit 17+ identical doc_writing prompts for the same bar).
+#
+# Disable via ETA_FM_CACHE=0. TTL via ETA_FM_CACHE_TTL_SECONDS (default 300).
+# LRU size via ETA_FM_CACHE_MAX (default 256 entries, ~5KB each).
+
+import hashlib as _hashlib  # noqa: E402
+import threading as _threading  # noqa: E402
+import time as _time  # noqa: E402
+from collections import OrderedDict as _OrderedDict  # noqa: E402
+
+_FM_CACHE: "_OrderedDict[str, tuple[float, MultiModelResponse]]" = _OrderedDict()
+_FM_CACHE_LOCK = _threading.Lock()
+_FM_CACHE_HITS = 0
+_FM_CACHE_MISSES = 0
+
+
+def _fm_cache_enabled() -> bool:
+    return os.environ.get("ETA_FM_CACHE", "1").strip() != "0"
+
+
+def _fm_cache_ttl_seconds() -> float:
+    try:
+        return float(os.environ.get("ETA_FM_CACHE_TTL_SECONDS", "300"))
+    except ValueError:
+        return 300.0
+
+
+def _fm_cache_max() -> int:
+    try:
+        return int(os.environ.get("ETA_FM_CACHE_MAX", "256"))
+    except ValueError:
+        return 256
+
+
+def _fm_cache_key(
+    category: "TaskCategory",
+    system_prompt: str,
+    user_message: str,
+    max_tokens: int,
+    temperature: float,
+    force_provider: "ForceProvider | None",
+) -> str:
+    payload = "\x1f".join(
+        (
+            getattr(category, "value", str(category)),
+            system_prompt or "",
+            user_message or "",
+            str(int(max_tokens)),
+            f"{float(temperature):.4f}",
+            getattr(force_provider, "value", "") if force_provider is not None else "",
+        ),
+    )
+    return _hashlib.sha256(payload.encode("utf-8")).hexdigest()[:32]
+
+
+def _fm_cache_get(key: str) -> "MultiModelResponse | None":
+    global _FM_CACHE_HITS, _FM_CACHE_MISSES
+    ttl = _fm_cache_ttl_seconds()
+    if ttl <= 0:
+        _FM_CACHE_MISSES += 1
+        return None
+    now = _time.time()
+    with _FM_CACHE_LOCK:
+        entry = _FM_CACHE.get(key)
+        if entry is None:
+            _FM_CACHE_MISSES += 1
+            return None
+        ts, response = entry
+        if now - ts > ttl:
+            _FM_CACHE.pop(key, None)
+            _FM_CACHE_MISSES += 1
+            return None
+        _FM_CACHE.move_to_end(key)
+        _FM_CACHE_HITS += 1
+        return response
+
+
+def _fm_cache_put(key: str, response: "MultiModelResponse") -> None:
+    cap = _fm_cache_max()
+    if cap <= 0:
+        return
+    with _FM_CACHE_LOCK:
+        _FM_CACHE[key] = (_time.time(), response)
+        _FM_CACHE.move_to_end(key)
+        while len(_FM_CACHE) > cap:
+            _FM_CACHE.popitem(last=False)
+
+
+def fm_cache_stats() -> dict[str, int]:
+    """Operator-readable cache stats — for the FM-rollup script."""
+    with _FM_CACHE_LOCK:
+        size = len(_FM_CACHE)
+    return {
+        "size": size,
+        "hits": _FM_CACHE_HITS,
+        "misses": _FM_CACHE_MISSES,
+        "ttl_seconds": int(_fm_cache_ttl_seconds()),
+        "max_entries": _fm_cache_max(),
+    }
+
+
 def route_and_execute(
     *,
     category: TaskCategory,
@@ -124,14 +231,39 @@ def route_and_execute(
     preferred provider was unavailable and DeepSeek handled the task.
 
     Telemetry: every call writes one record to
-    ``state/force_multiplier_calls.jsonl`` (set ``ETA_FM_TELEMETRY=0`` to disable).
-    ``chain_id`` and ``chain_stage`` link calls made by ``force_multiplier_chain``
-    so a multi-stage run can be reconstructed from the log.
+    ``var/eta_engine/state/multi_model_telemetry.jsonl`` (set
+    ``ETA_FM_TELEMETRY=0`` to disable, ``ETA_FM_TELEMETRY_LOG=<path>`` to
+    redirect). ``chain_id`` and ``chain_stage`` link calls made by
+    ``force_multiplier_chain`` so a multi-stage run can be reconstructed
+    from the log.
+
+    Cache: identical calls (same category + prompts + max_tokens +
+    temperature + force_provider) within ``ETA_FM_CACHE_TTL_SECONDS``
+    (default 300) return the cached response without hitting the
+    provider. Disable via ``ETA_FM_CACHE=0``. Cached responses are NOT
+    re-logged to telemetry so the call-count stat in the jsonl reflects
+    provider invocations, not request count.
 
     Budget: pass ``max_cost_usd`` to refuse a call whose worst-case spend
     (max_tokens × per-token rate at the resolved tier) would exceed the cap.
     Raises :class:`CallBudgetExceededError` BEFORE making the LLM call.
     """
+    # Cache check before any logging / budget enforcement so a hit is
+    # truly side-effect-free.
+    cache_key = ""
+    if _fm_cache_enabled():
+        cache_key = _fm_cache_key(
+            category=category,
+            system_prompt=system_prompt,
+            user_message=user_message,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            force_provider=force_provider,
+        )
+        cached = _fm_cache_get(cache_key)
+        if cached is not None:
+            return cached
+
     selection = select_model(category)
     preferred = force_provider or force_provider_for(category)
 
@@ -171,6 +303,8 @@ def route_and_execute(
             chain_id=chain_id,
         )
     )
+    if cache_key:
+        _fm_cache_put(cache_key, response)
     return response
 
 
