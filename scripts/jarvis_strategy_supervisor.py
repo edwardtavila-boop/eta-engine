@@ -3920,10 +3920,26 @@ class JarvisStrategySupervisor:
             if target == "paper":
                 bot.last_aggregation_reject_reason = f"route_paper: {target_reason}"
                 bot.last_aggregation_reject_at = datetime.now(UTC).isoformat()
+                # Wave-25c rev6 (2026-05-13 operator clarification):
+                # paper_live mode means "submit to IBKR paper broker
+                # (TWS port 4002 via broker_router)" — NOT shadow-only.
+                # The previous suppression at this branch (introduced
+                # with wave-25 conditional routing) was treating
+                # paper_live as if it were shadow, which meant the IBKR
+                # paper account received zero orders and the 14
+                # EVAL_PAPER diamonds were accumulating fills only in
+                # the supervisor's internal sim, not realistic
+                # broker-side fills. Operator's design intent:
+                #   * paper_sim   -> internal supervisor sim (no broker)
+                #   * paper_live  -> IBKR paper broker (real fill data)
+                #   * live        -> live broker (real money)
+                # We log "ROUTE PAPER" + shadow audit either way, then
+                # fall through to the broker submit path for paper_live.
                 logger.info(
-                    "ROUTE PAPER %s: %s; broker submit suppressed",
+                    "ROUTE PAPER %s: %s; mode=%s",
                     bot.bot_id,
                     target_reason,
+                    self.cfg.mode,
                 )
                 # Best-effort shadow log so kaizen + dashboard see what
                 # the bot wanted to do today. Never crash on log failure.
@@ -3950,6 +3966,7 @@ class JarvisStrategySupervisor:
                             "bar_ts": str(bar.get("ts")) if isinstance(bar, dict) else "",
                             "size_mult_at_skip": float(size_mult),
                             "prop_guard_signal": get_prop_guard_signal(),
+                            "supervisor_mode": self.cfg.mode,
                         },
                     )
                 except Exception:  # noqa: BLE001
@@ -3957,11 +3974,23 @@ class JarvisStrategySupervisor:
                         "shadow_signal_logger failed for %s",
                         bot.bot_id,
                     )
-                if self.cfg.mode != "paper_sim":
+                if self.cfg.mode == "live":
+                    # Refuse to send real money on an EVAL_PAPER bot — the
+                    # promote-to-EVAL_LIVE handshake must happen first.
+                    logger.info(
+                        "ROUTE PAPER %s: mode=live, refusing live submit for paper-lifecycle bot",
+                        bot.bot_id,
+                    )
                     return
+                # paper_sim and paper_live both fall through.
+                #   paper_sim   → internal supervisor sim fill (no broker)
+                #   paper_live  → broker_router writes pending_order.json
+                #                 to TWS_PORT=4002 (IBKR paper) for real
+                #                 fill telemetry.
                 logger.info(
-                    "ROUTE PAPER %s: continuing into local paper_sim fill path",
+                    "ROUTE PAPER %s: continuing into %s fill path",
                     bot.bot_id,
+                    self.cfg.mode,
                 )
             # target == "live" → fall through to existing broker call
         except Exception:  # noqa: BLE001
