@@ -717,14 +717,62 @@ def dispatch_command(text: str) -> str:
 
 _HERMES_EXE = r"C:\Users\Administrator\.hermes\hermes-agent\.venv\Scripts\hermes.exe"
 _HERMES_TIMEOUT_S = 90
+# Hermes session name used for Telegram chats. ``hermes chat --continue
+# <name>`` resumes the same conversation history so multi-turn dialog
+# stays coherent across messages. One name per chat_id keeps the
+# threads isolated — even though the bot only ever talks to one
+# operator today, a future allowlist expansion gets clean separation
+# for free.
+_HERMES_SESSION_PREFIX = "telegram"
+# How long a Telegram session stays "warm" before we start a fresh one.
+# Resets the conversation on big gaps so Hermes doesn't try to thread
+# yesterday's questions with tonight's, which usually hurts more than helps.
+_HERMES_SESSION_TTL_S = 6 * 60 * 60  # 6 hours
+_HERMES_LAST_CHAT_PATH = _VAR_ROOT / "telegram_hermes_last_chat.json"
 
 
-def _ask_hermes(prompt: str) -> str:
+def _session_name_for_chat(chat_id: int | str | None) -> str:
+    """Stable Hermes session name per Telegram chat_id.
+
+    Hermes ``chat --continue <name>`` resumes the conversation matching
+    that name. We persist the most recent activity ts for the chat to a
+    small JSON so a long gap (>``_HERMES_SESSION_TTL_S``) automatically
+    rolls into a fresh session — yesterday's context doesn't drift into
+    tonight's questions.
+    """
+    base = f"{_HERMES_SESSION_PREFIX}-{chat_id if chat_id is not None else 'default'}"
+    rec = _read_json(_HERMES_LAST_CHAT_PATH) or {}
+    entry = rec.get(str(chat_id)) if isinstance(rec, dict) else None
+    if not isinstance(entry, dict):
+        entry = {}
+    last_ts_str = entry.get("ts")
+    epoch_now = datetime.now(UTC).timestamp()
+    last_ts_epoch = 0.0
+    if isinstance(last_ts_str, str):
+        try:
+            last_ts_epoch = datetime.fromisoformat(last_ts_str.replace("Z", "+00:00")).timestamp()
+        except ValueError:
+            last_ts_epoch = 0.0
+    cycle = int(entry.get("cycle") or 0)
+    if epoch_now - last_ts_epoch > _HERMES_SESSION_TTL_S:
+        cycle += 1
+    name = f"{base}-{cycle}"
+    # Persist updated timestamp + cycle so the next call sees it.
+    if isinstance(rec, dict):
+        rec[str(chat_id)] = {"ts": _now_iso(), "cycle": cycle, "name": name}
+        with contextlib.suppress(OSError):
+            _write_json(_HERMES_LAST_CHAT_PATH, rec)
+    return name
+
+
+def _ask_hermes(prompt: str, *, chat_id: int | str | None = None) -> str:
     """Route a free-text operator message to Hermes Agent for a natural reply.
 
-    Spawns ``hermes chat -q "<prompt>" -Q --source tool`` in a subprocess,
-    captures stdout, returns the formatted reply for Telegram. Hook auto-accept
-    is a separate explicit opt-in because this path is reachable from a phone.
+    Spawns ``hermes chat -q "<prompt>" -Q --source tool --continue <session>``
+    in a subprocess, captures stdout, returns the formatted reply for Telegram.
+    The ``--continue`` flag stitches multi-turn conversations together so
+    follow-up messages keep context (e.g. "what about mes_sweep_reclaim?"
+    after a "how's the fleet" message will know which fleet to look at).
 
     Why subprocess instead of the 8642 HTTP API: the gateway requires bearer
     auth that's harder to manage from the inbound bot. The CLI is the same
@@ -765,6 +813,12 @@ def _ask_hermes(prompt: str) -> str:
         "--source",
         "tool",  # tag as third-party so it doesn't litter session lists
     ]
+    # Continuity: same session name across messages from the same chat
+    # so Hermes remembers prior turns. TTL-aware: a >6h gap auto-rolls
+    # into a fresh session name. Disabled by setting ETA_TELEGRAM_HERMES_NO_CONTINUE=1.
+    if not _env_truthy("ETA_TELEGRAM_HERMES_NO_CONTINUE"):
+        session_name = _session_name_for_chat(chat_id)
+        cmd.extend(["--continue", session_name])
     if _env_truthy("ETA_TELEGRAM_HERMES_ACCEPT_HOOKS"):
         cmd.append("--accept-hooks")
     try:
@@ -862,7 +916,7 @@ def process_update(update: dict[str, Any], allowed: set[int]) -> dict[str, Any] 
             )
         else:
             record["command"] = "<free_text>"
-            reply = _ask_hermes(text)
+            reply = _ask_hermes(text, chat_id=chat_id)
 
     record["reply_preview"] = reply[:200]
     send_reply(chat_id, reply, reply_to_message_id=msg.get("message_id"))

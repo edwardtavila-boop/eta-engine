@@ -179,7 +179,7 @@ def test_process_update_routes_free_text_to_hermes_when_enabled(
 
     captured: list[str] = []
 
-    def fake_ask_hermes(prompt: str) -> str:
+    def fake_ask_hermes(prompt: str, *, chat_id: int | str | None = None) -> str:
         captured.append(prompt)
         return "Fleet up +2.5R today, all bots within prop limits."
 
@@ -224,6 +224,126 @@ def test_ask_hermes_handles_empty_input() -> None:
 
     reply = telegram_inbound_bot._ask_hermes("   ")
     assert "empty" in reply.lower()
+
+
+def test_session_name_for_chat_is_stable_within_ttl(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Same chat_id back-to-back should reuse the same session name."""
+    from eta_engine.scripts import telegram_inbound_bot
+
+    monkeypatch.setattr(
+        telegram_inbound_bot,
+        "_HERMES_LAST_CHAT_PATH",
+        tmp_path / "last.json",
+    )
+    n1 = telegram_inbound_bot._session_name_for_chat(123)
+    n2 = telegram_inbound_bot._session_name_for_chat(123)
+    assert n1 == n2
+    assert n1.startswith("telegram-123-")
+
+
+def test_session_name_for_chat_rolls_on_long_gap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A gap >TTL forces a fresh cycle number so old context doesn't bleed in."""
+    import json
+
+    from eta_engine.scripts import telegram_inbound_bot
+
+    last_path = tmp_path / "last.json"
+    stale_ts = (datetime.now(UTC) - timedelta(hours=7)).isoformat()
+    last_path.write_text(
+        json.dumps({"123": {"ts": stale_ts, "cycle": 0, "name": "telegram-123-0"}}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(telegram_inbound_bot, "_HERMES_LAST_CHAT_PATH", last_path)
+    name = telegram_inbound_bot._session_name_for_chat(123)
+    assert name == "telegram-123-1"
+
+
+def test_session_name_for_chat_isolates_by_chat_id(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from eta_engine.scripts import telegram_inbound_bot
+
+    monkeypatch.setattr(
+        telegram_inbound_bot,
+        "_HERMES_LAST_CHAT_PATH",
+        tmp_path / "last.json",
+    )
+    name_a = telegram_inbound_bot._session_name_for_chat(111)
+    name_b = telegram_inbound_bot._session_name_for_chat(222)
+    assert name_a != name_b
+    assert "111" in name_a
+    assert "222" in name_b
+
+
+def test_ask_hermes_passes_continue_flag_with_session_name(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """The subprocess invocation must include --continue <session> by default."""
+    from types import SimpleNamespace
+
+    from eta_engine.scripts import telegram_inbound_bot
+
+    fake_exe = tmp_path / "hermes.exe"
+    fake_exe.write_text("", encoding="utf-8")
+    monkeypatch.setenv("ETA_HERMES_CLI", str(fake_exe))
+    monkeypatch.setattr(
+        telegram_inbound_bot,
+        "_HERMES_LAST_CHAT_PATH",
+        tmp_path / "last.json",
+    )
+    monkeypatch.delenv("ETA_TELEGRAM_HERMES_NO_CONTINUE", raising=False)
+
+    captured: dict[str, list[str]] = {}
+
+    def fake_run(args, **_kwargs):
+        captured["cmd"] = list(args)
+        return SimpleNamespace(returncode=0, stdout="ok", stderr="")
+
+    monkeypatch.setattr("subprocess.run", fake_run)
+    telegram_inbound_bot._ask_hermes("hello", chat_id=555)
+    cmd = captured["cmd"]
+    assert "--continue" in cmd
+    idx = cmd.index("--continue")
+    assert cmd[idx + 1].startswith("telegram-555-")
+
+
+def test_ask_hermes_omits_continue_when_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """ETA_TELEGRAM_HERMES_NO_CONTINUE=1 disables the resume flag."""
+    from types import SimpleNamespace
+
+    from eta_engine.scripts import telegram_inbound_bot
+
+    fake_exe = tmp_path / "hermes.exe"
+    fake_exe.write_text("", encoding="utf-8")
+    monkeypatch.setenv("ETA_HERMES_CLI", str(fake_exe))
+    monkeypatch.setattr(
+        telegram_inbound_bot,
+        "_HERMES_LAST_CHAT_PATH",
+        tmp_path / "last.json",
+    )
+    monkeypatch.setenv("ETA_TELEGRAM_HERMES_NO_CONTINUE", "1")
+
+    captured: dict[str, list[str]] = {}
+
+    def fake_run(args, **_kwargs):
+        captured["cmd"] = list(args)
+        return SimpleNamespace(returncode=0, stdout="ok", stderr="")
+
+    monkeypatch.setattr("subprocess.run", fake_run)
+    telegram_inbound_bot._ask_hermes("hello", chat_id=555)
+    cmd = captured["cmd"]
+    assert "--continue" not in cmd
 
 
 def test_ask_hermes_wraps_prompt_with_safety_policy(
