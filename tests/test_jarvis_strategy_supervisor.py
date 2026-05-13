@@ -1269,6 +1269,47 @@ def test_supervisor_open_position_heartbeat_includes_latest_mark(
     assert payload["bots"][0]["last_bar_close"] == 105.0
 
 
+def test_tick_once_preserves_fractional_qty_for_l2_persist(tmp_path: Path, monkeypatch) -> None:
+    from eta_engine.scripts import jarvis_strategy_supervisor as mod
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        BotInstance,
+        JarvisStrategySupervisor,
+        SupervisorConfig,
+    )
+
+    captured: dict[str, list[dict]] = {}
+
+    def fake_persist(positions: list[dict]) -> None:
+        captured["positions"] = positions
+
+    cfg = SupervisorConfig()
+    cfg.mode = "paper_sim"
+    cfg.state_dir = tmp_path / "state"
+    sup = JarvisStrategySupervisor(cfg=cfg)
+    monkeypatch.setattr(mod, "persist_open_positions", fake_persist)
+    monkeypatch.setattr(sup, "_tick_bot", lambda _bot, _tick_count: None)
+    sup.bots.append(
+        BotInstance(
+            bot_id="mbt_fractional_paper",
+            symbol="MBT1",
+            strategy_kind="x",
+            direction="long",
+            cash=50_000.0,
+            open_position={
+                "side": "BUY",
+                "qty": 0.125,
+                "entry_price": 80_000.0,
+                "entry_ts": "2026-05-13T16:00:00+00:00",
+                "signal_id": "sig-mbt",
+            },
+        )
+    )
+
+    sup._tick_once(1)
+
+    assert captured["positions"][0]["qty"] == 0.125
+
+
 def test_supervisor_heartbeat_embeds_strategy_readiness(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
     import json
 

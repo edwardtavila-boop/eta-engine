@@ -3111,7 +3111,7 @@ class JarvisStrategySupervisor:
                         "bot_id": bot.bot_id,
                         "symbol": bot.symbol,
                         "side": str(bot.open_position.get("side", "?")).upper(),
-                        "qty": int(abs(float(bot.open_position.get("qty", 0) or 0))),
+                        "qty": abs(float(bot.open_position.get("qty", 0) or 0)),
                     }
                     for bot in self.bots
                     if isinstance(bot.open_position, dict) and bot.open_position.get("qty")
