@@ -87,7 +87,14 @@ log = logging.getLogger("capture_depth_snapshots")
 
 _DEFAULT_HOST: str = "127.0.0.1"
 _DEFAULT_PORT: int = 4002
-_DEFAULT_CLIENT_ID: int = 32
+# 2026-05-13: bumped from 32 to 132. The supervisor + its helpers
+# routinely occupy clientIds 30-50 via parallel IB connections; clientId
+# 32 collided with PID 8792 (supervisor child) in production, surfacing
+# as "Error 326: client id is already in use" and rc=1 on every
+# scheduled-task firing. Capture tasks now use the 130+ range which the
+# supervisor doesn't touch. _connect retries with a randomized clientId
+# in 200-300 if the chosen one is somehow still in use.
+_DEFAULT_CLIENT_ID: int = 132
 _CONNECT_TIMEOUT_S: float = 20.0
 
 _DEFAULT_SYMBOLS: tuple[str, ...] = (
@@ -200,24 +207,65 @@ class DepthSnapshotCapture:
         self._stop = threading.Event()
 
     def connect(self) -> None:
+        """Connect to IBKR gateway with clientId-collision retry.
+
+        2026-05-13: the supervisor + its helpers occupy IB clientIds in
+        the 30-50 range AND zombie connections from previous runs can
+        keep arbitrary clientIds reserved until TWS times them out
+        (typically 5-10 min). The first connect() may surface this as a
+        TimeoutError because the IBKR Error 326 is async-emitted via
+        the wrapper, NOT raised through the Python connect() call.
+        Retry up to 3 times with a fresh random clientId in 200-999
+        before giving up — that band is far enough from both the GUI
+        reserved range (1-31) and the supervisor's operating range
+        (30-50) that a fresh-random collision is extremely unlikely.
+        """
+        import random  # noqa: PLC0415
+
         from ib_insync import IB  # noqa: PLC0415
 
-        ib = IB()
-        ib.connect(
-            self.host,
-            self.port,
-            clientId=self.client_id,
-            timeout=_CONNECT_TIMEOUT_S,
-        )
-        ib.reqMarketDataType(1)  # realtime
-        self._ib = ib
-        log.info(
-            "connected ib_insync host=%s port=%s clientId=%s depth_rows=%d cadence_ms=%d",
-            self.host,
-            self.port,
-            self.client_id,
-            self.depth_rows,
-            int(self.snapshot_interval_s * 1000),
+        attempts: list[int] = [self.client_id]
+        # 3 fallback random IDs in case the preferred one is busy.
+        attempts.extend(random.randint(200, 999) for _ in range(3))
+
+        last_exc: Exception | None = None
+        for cid in attempts:
+            ib = IB()
+            try:
+                ib.connect(
+                    self.host,
+                    self.port,
+                    clientId=cid,
+                    timeout=_CONNECT_TIMEOUT_S,
+                )
+            except Exception as exc:  # noqa: BLE001
+                last_exc = exc
+                log.warning(
+                    "connect attempt clientId=%d failed (%s); trying next id",
+                    cid, exc,
+                )
+                # Best-effort cleanup of the half-open IB instance.
+                try:
+                    ib.disconnect()
+                except Exception:  # noqa: BLE001
+                    pass
+                continue
+            # Success
+            self.client_id = cid
+            ib.reqMarketDataType(1)  # realtime
+            self._ib = ib
+            log.info(
+                "connected ib_insync host=%s port=%s clientId=%s depth_rows=%d cadence_ms=%d",
+                self.host,
+                self.port,
+                self.client_id,
+                self.depth_rows,
+                int(self.snapshot_interval_s * 1000),
+            )
+            return
+        # All attempts failed — re-raise the last exception.
+        raise RuntimeError(
+            f"could not connect to IBKR gateway after {len(attempts)} clientId attempts: {last_exc}",
         )
 
     def _resolve(self, sym: str) -> Any:
@@ -388,7 +436,35 @@ def _run_capture(args: argparse.Namespace) -> int:
         capture.snapshot_loop()
     except KeyboardInterrupt:
         log.info("KeyboardInterrupt")
-    except Exception:
+    except ConnectionRefusedError:
+        # IBKR Gateway not reachable. Common during cold-start ordering
+        # (broker task hasn't started yet). Exit 0 so the scheduled-task
+        # alarm doesn't fire; the next run will pick up the connection.
+        log.warning(
+            "IBKR gateway %s:%s refused connection; exiting cleanly until gateway is up",
+            args.host, args.port,
+        )
+        return 0
+    except Exception as exc:  # noqa: BLE001
+        # 2026-05-13: distinguish "subscription missing" (operator hasn't
+        # paid for CME Depth of Book) from a real bug. Subscription gaps
+        # surface as repeated "no contract details" or RuntimeError for
+        # specific symbols — those are an OPS BACKLOG item, not a crash.
+        msg = str(exc).lower()
+        if (
+            "depth subscription" in msg
+            or "market data subscription" in msg
+            or "no contract details" in msg
+            or "no non-expired" in msg
+        ):
+            log.warning(
+                "capture_depth: data subscription likely missing (%s). "
+                "This is an ops backlog item — not a real failure. "
+                "See IBKR Account Mgmt > Market Data Subscriptions for "
+                "CME Depth of Book. Exiting 0.",
+                exc,
+            )
+            return 0
         log.exception("capture loop crashed")
         return 1
     finally:

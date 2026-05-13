@@ -19,20 +19,17 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 STATE_DIR = Path(r"C:\EvolutionaryTradingAlgo\var\eta_engine\state")
-HEARTBEAT_PATH = Path(
-    r"C:\EvolutionaryTradingAlgo\eta_engine\state\jarvis_intel\supervisor\heartbeat.json"
-)
+HEARTBEAT_PATH = STATE_DIR / "jarvis_intel" / "supervisor" / "heartbeat.json"
 LEADERBOARD = STATE_DIR / "diamond_leaderboard_latest.json"
 LAUNCH_READINESS = STATE_DIR / "diamond_prop_launch_readiness_latest.json"
 KAIZEN_LATEST = STATE_DIR / "kaizen_latest.json"
 EVENTS_LOG = STATE_DIR / "eta_events.jsonl"
-QUANTUM_DIR = Path(r"C:\EvolutionaryTradingAlgo\eta_engine\state\quantum")
+QUANTUM_DIR = STATE_DIR / "quantum"
 
 
 def _load_json(path: Path) -> dict[str, Any]:
@@ -176,17 +173,17 @@ def render_text(state: dict[str, Any]) -> str:
         f"{d.get('n_prop_ready')} PROP_READY: {d.get('prop_ready_bots') or '(none)'}"
     )
 
-    l = state["launch_readiness"]
+    launch = state["launch_readiness"]
     lines.append(
-        f"Launch verdict  : {l.get('verdict')}  "
-        f"({l.get('days_until_launch')}d to {l.get('launch_date')})"
+        f"Launch verdict  : {launch.get('verdict')}  "
+        f"({launch.get('days_until_launch')}d to {launch.get('launch_date')})"
     )
-    if l.get("failing_gates"):
-        lines.append(f"  NO_GO gates   : {', '.join(l['failing_gates'])}")
-    if l.get("warning_gates"):
-        lines.append(f"  WARN gates    : {', '.join(l['warning_gates'])}")
-    if l.get("summary"):
-        lines.append(f"  summary       : {l['summary']}")
+    if launch.get("failing_gates"):
+        lines.append(f"  NO_GO gates   : {', '.join(launch['failing_gates'])}")
+    if launch.get("warning_gates"):
+        lines.append(f"  WARN gates    : {', '.join(launch['warning_gates'])}")
+    if launch.get("summary"):
+        lines.append(f"  summary       : {launch['summary']}")
 
     k = state["kaizen"]
     lines.append(

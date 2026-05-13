@@ -635,6 +635,7 @@ def run_loop(
         "applied_count": applied_count,
         "held_count": held_count,
         "diamond_protected_count": protected_count,
+        "self_healed_diamond_overrides": self_healed,
         "actions": actions,
         "per_bot": per_bot,
         "school_edges_top": school_edges[:10],

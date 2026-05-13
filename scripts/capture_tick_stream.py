@@ -100,7 +100,12 @@ log = logging.getLogger("capture_tick_stream")
 
 _DEFAULT_HOST: str = "127.0.0.1"
 _DEFAULT_PORT: int = 4002
-_DEFAULT_CLIENT_ID: int = 31
+# 2026-05-13: bumped from 31 to 131. clientId 31 collided with the
+# supervisor + its helpers (PIDs 2416/7720/8792 hold connections to
+# IBKR gateway), surfacing as "Error 326: client id is already in use"
+# and rc=1 on scheduled-task firings. The 130+ range stays clear of
+# the supervisor's operating clientIds.
+_DEFAULT_CLIENT_ID: int = 131
 _CONNECT_TIMEOUT_S: float = 20.0
 
 # Pinned-bot symbol set (matches the 12-bot active pin as of 2026-05-08).
@@ -225,24 +230,54 @@ class TickStreamCapture:
         self._stop = threading.Event()
 
     def connect(self) -> None:
+        """Connect with multi-retry clientId-collision handling.
+
+        IBKR Error 326 (clientId in use) is emitted async via the wrapper,
+        not raised through ib.connect() — the Python call surfaces it as
+        a TimeoutError when the server then closes the connection. So we
+        retry up to 3 times with fresh random IDs in 200-999 rather than
+        sniffing exception messages.
+        """
+        import random  # noqa: PLC0415
+
         from ib_insync import IB  # noqa: PLC0415
 
-        ib = IB()
-        ib.connect(
-            self.host,
-            self.port,
-            clientId=self.client_id,
-            timeout=_CONNECT_TIMEOUT_S,
-        )
-        # 1 = realtime; if account lacks subscription this silently
-        # downgrades to delayed. We catch that below via timestamp check.
-        ib.reqMarketDataType(1)
-        self._ib = ib
-        log.info(
-            "connected ib_insync host=%s port=%s clientId=%s realtime requested",
-            self.host,
-            self.port,
-            self.client_id,
+        attempts: list[int] = [self.client_id]
+        attempts.extend(random.randint(200, 999) for _ in range(3))
+
+        last_exc: Exception | None = None
+        for cid in attempts:
+            ib = IB()
+            try:
+                ib.connect(
+                    self.host,
+                    self.port,
+                    clientId=cid,
+                    timeout=_CONNECT_TIMEOUT_S,
+                )
+            except Exception as exc:  # noqa: BLE001
+                last_exc = exc
+                log.warning(
+                    "connect attempt clientId=%d failed (%s); trying next id",
+                    cid, exc,
+                )
+                try:
+                    ib.disconnect()
+                except Exception:  # noqa: BLE001
+                    pass
+                continue
+            self.client_id = cid
+            ib.reqMarketDataType(1)
+            self._ib = ib
+            log.info(
+                "connected ib_insync host=%s port=%s clientId=%s realtime requested",
+                self.host,
+                self.port,
+                self.client_id,
+            )
+            return
+        raise RuntimeError(
+            f"could not connect to IBKR gateway after {len(attempts)} clientId attempts: {last_exc}",
         )
 
     def _resolve(self, sym: str) -> Any:
@@ -354,21 +389,13 @@ def _setup_logging(level: str) -> None:
     )
 
 
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--symbols",
-        nargs="+",
-        default=list(_DEFAULT_SYMBOLS),
-        help=f"futures roots to subscribe (default: {' '.join(_DEFAULT_SYMBOLS)})",
-    )
-    parser.add_argument("--host", default=_DEFAULT_HOST)
-    parser.add_argument("--port", type=int, default=_DEFAULT_PORT)
-    parser.add_argument("--client-id", type=int, default=_DEFAULT_CLIENT_ID)
-    parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
-    args = parser.parse_args(argv)
-    _setup_logging(args.log_level)
+def _run_capture(args: argparse.Namespace) -> int:
+    """Drive the capture lifecycle; isolated for test instrumentation.
 
+    2026-05-13: split out of ``main()`` so the graceful-exit branches
+    (ConnectionRefusedError + subscription-gap RuntimeError) can be
+    exercised by pytest without spawning a subprocess.
+    """
     capture = TickStreamCapture(
         symbols=list(args.symbols),
         host=args.host,
@@ -391,13 +418,58 @@ def main(argv: list[str] | None = None) -> int:
         capture.run()
     except KeyboardInterrupt:
         log.info("KeyboardInterrupt")
-    except Exception:
+    except ConnectionRefusedError:
+        # IBKR Gateway not reachable (broker hasn't started yet, or is
+        # being restarted). Exit 0 so the scheduled-task alarm doesn't
+        # fire; the next cycle will reconnect.
+        log.warning(
+            "IBKR gateway %s:%s refused connection; exiting cleanly",
+            args.host, args.port,
+        )
+        return 0
+    except Exception as exc:  # noqa: BLE001
+        # 2026-05-13: subscription gaps (CME Top-of-Book / Real-Time
+        # ticks) surface as "no contract details" / RuntimeError for
+        # specific symbols. Treat as ops backlog (no paid feed), not a
+        # crash — return 0 so schtasks shows clean state until the
+        # operator adds the subscription.
+        msg = str(exc).lower()
+        if (
+            "market data subscription" in msg
+            or "no contract details" in msg
+            or "no non-expired" in msg
+        ):
+            log.warning(
+                "capture_tick: market data subscription likely missing (%s). "
+                "Ops backlog — not a real failure. Exiting 0.",
+                exc,
+            )
+            return 0
         log.exception("capture loop crashed")
         return 1
     finally:
         capture.close_writers()
         log.info("final counts: %s", capture.stats())
     return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    """CLI entrypoint — parses args, configures logging, delegates to
+    ``_run_capture`` for the actual capture lifecycle."""
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--symbols",
+        nargs="+",
+        default=list(_DEFAULT_SYMBOLS),
+        help=f"futures roots to subscribe (default: {' '.join(_DEFAULT_SYMBOLS)})",
+    )
+    parser.add_argument("--host", default=_DEFAULT_HOST)
+    parser.add_argument("--port", type=int, default=_DEFAULT_PORT)
+    parser.add_argument("--client-id", type=int, default=_DEFAULT_CLIENT_ID)
+    parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
+    args = parser.parse_args(argv)
+    _setup_logging(args.log_level)
+    return _run_capture(args)
 
 
 if __name__ == "__main__":

@@ -39,9 +39,7 @@ from pathlib import Path
 from typing import Any
 
 STATE_DIR = Path(r"C:\EvolutionaryTradingAlgo\var\eta_engine\state")
-HEARTBEAT_PATH = Path(
-    r"C:\EvolutionaryTradingAlgo\eta_engine\state\jarvis_intel\supervisor\heartbeat.json"
-)
+HEARTBEAT_PATH = STATE_DIR / "jarvis_intel" / "supervisor" / "heartbeat.json"
 LEADERBOARD_PATH = STATE_DIR / "diamond_leaderboard_latest.json"
 LAUNCH_READINESS_PATH = STATE_DIR / "diamond_prop_launch_readiness_latest.json"
 
@@ -81,7 +79,7 @@ def _capture_snapshot() -> dict[str, Any]:
     return snap
 
 
-def _emit_event(kind: str, **detail: Any) -> dict[str, Any]:
+def _emit_event(kind: str, **detail: object) -> dict[str, Any]:
     """Append one event to the JSONL + post to webhook if configured."""
     event = {
         "ts": datetime.now(UTC).isoformat(),
