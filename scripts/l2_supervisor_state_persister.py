@@ -117,8 +117,8 @@ def _normalize_record(rec: Any) -> dict | None:
             qty = getattr(rec, "qty", None)
         if bot_id is None or symbol is None or side is None or qty is None:
             return None
-        qty_int = int(qty)
-        if qty_int <= 0:
+        qty_value = float(qty)
+        if qty_value <= 0:
             # Closed/flat positions don't belong in open_positions.
             return None
         side_norm = str(side).upper()
@@ -129,7 +129,7 @@ def _normalize_record(rec: Any) -> dict | None:
             "bot_id": str(bot_id),
             "symbol": str(symbol),
             "side": side_norm,
-            "qty": qty_int,
+            "qty": int(qty_value) if qty_value.is_integer() else round(qty_value, 6),
         }
     except (TypeError, ValueError):
         return None

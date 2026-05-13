@@ -124,6 +124,19 @@ def test_persister_order_side_normalizes_to_position_side(tmp_path: Path) -> Non
     assert [row["side"] for row in payload["positions"]] == ["LONG", "SHORT"]
 
 
+def test_persister_preserves_fractional_positive_qty(tmp_path: Path) -> None:
+    target = tmp_path / "supervisor.json"
+    result = persister.persist_open_positions(
+        [{"bot_id": "paper_mbt", "symbol": "MBT1", "side": "BUY", "qty": 0.125}],
+        _path=target,
+    )
+
+    assert result.ok is True
+    assert result.n_positions == 1
+    payload = json.loads(target.read_text(encoding="utf-8"))
+    assert payload["positions"][0]["qty"] == 0.125
+
+
 def test_persister_atomic_overwrite(tmp_path: Path) -> None:
     """A second call replaces the file in place — readers always see
     one of two whole snapshots, never a half-written file."""
@@ -194,7 +207,19 @@ def test_persister_output_readable_by_reconciliation(tmp_path: Path) -> None:
     parsed = recon.load_supervisor_positions(_path=target)
     assert len(parsed) == 2
     assert {p.symbol for p in parsed} == {"MNQ", "NQ"}
-    assert all(isinstance(p.qty, int) for p in parsed)
+    assert all(isinstance(p.qty, float) for p in parsed)
+
+
+def test_persister_fractional_output_readable_by_reconciliation(tmp_path: Path) -> None:
+    target = tmp_path / "supervisor.json"
+    persister.persist_open_positions(
+        [{"bot_id": "paper_mbt", "symbol": "MBT1", "side": "BUY", "qty": 0.125}],
+        _path=target,
+    )
+
+    parsed = recon.load_supervisor_positions(_path=target)
+    assert len(parsed) == 1
+    assert parsed[0].qty == 0.125
 
 
 def test_reconciliation_detects_phantom_when_persister_says_open(tmp_path: Path) -> None:

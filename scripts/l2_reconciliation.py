@@ -76,7 +76,7 @@ class PositionRecord:
     bot_id: str
     symbol: str
     side: str  # "LONG" | "SHORT"
-    qty: int
+    qty: float
 
 
 @dataclass
@@ -84,16 +84,16 @@ class Discrepancy:
     bot_id: str
     symbol: str
     side: str
-    supervisor_qty: int
-    broker_qty: int
+    supervisor_qty: float
+    broker_qty: float
     verdict: str  # IN_SYNC | GHOST_POSITION | PHANTOM_BELIEF | QTY_MISMATCH
     notes: list[str] = field(default_factory=list)
 
 
 @dataclass
 class ReconciliationReport:
-    n_supervisor_positions: int
-    n_broker_positions: int
+    n_supervisor_positions: float
+    n_broker_positions: float
     n_in_sync: int
     n_discrepancies: int
     discrepancies: list[Discrepancy] = field(default_factory=list)
@@ -122,7 +122,7 @@ def load_supervisor_positions(*, _path: Path | None = None) -> list[PositionReco
                         bot_id=str(rec.get("bot_id", "?")),
                         symbol=str(rec.get("symbol", "?")),
                         side=str(rec.get("side", "?")).upper(),
-                        qty=int(rec.get("qty", 0)),
+                        qty=float(rec.get("qty", 0)),
                     )
                 )
             except (TypeError, ValueError):
@@ -164,7 +164,7 @@ def reconstruct_broker_positions(*, _path: Path | None = None, since_days: int =
                 if not sid:
                     continue
                 exit_reason = str(rec.get("exit_reason", "")).upper()
-                qty = int(rec.get("qty_filled", 0))
+                qty = float(rec.get("qty_filled", 0))
                 side = str(rec.get("side", "?")).upper()
                 entry = by_sig.setdefault(
                     sid,
@@ -212,11 +212,11 @@ def reconcile(*, _supervisor_path: Path | None = None, _broker_path: Path | None
     broker_pos = reconstruct_broker_positions(_path=_broker_path)
 
     # Index by (bot_id, symbol, side)
-    sup_idx: dict[tuple[str, str, str], int] = {}
+    sup_idx: dict[tuple[str, str, str], float] = {}
     for p in supervisor_pos:
         key = (p.bot_id, p.symbol, p.side)
         sup_idx[key] = sup_idx.get(key, 0) + p.qty
-    brk_idx: dict[tuple[str, str, str], int] = {}
+    brk_idx: dict[tuple[str, str, str], float] = {}
     for p in broker_pos:
         key = (p.bot_id, p.symbol, p.side)
         brk_idx[key] = brk_idx.get(key, 0) + p.qty
@@ -287,7 +287,8 @@ def main() -> int:
         print(f"  {'-' * 25:<25s} {'-' * 8:<8s} {'-' * 6:<6s} {'-' * 5:<5s} {'-' * 5:<5s} {'-' * 20}")
         for d in report.discrepancies:
             print(
-                f"  {d.bot_id:<25s} {d.symbol:<8s} {d.side:<6s} {d.supervisor_qty:<5d} {d.broker_qty:<5d} {d.verdict}"
+                f"  {d.bot_id:<25s} {d.symbol:<8s} {d.side:<6s} "
+                f"{d.supervisor_qty:<8.6g} {d.broker_qty:<8.6g} {d.verdict}"
             )
     print()
     return 1 if report.n_discrepancies > 0 else 0
