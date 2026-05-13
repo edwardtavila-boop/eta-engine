@@ -83,6 +83,14 @@ TRADE_CLOSES_LEGACY = (
     / "trade_closes.jsonl"
 )
 OUT_LATEST = WORKSPACE_ROOT / "var" / "eta_engine" / "state" / "diamond_prop_drawdown_guard_latest.json"
+#: Alerts log feeds the dashboard's daily summary + operator alerts.
+ALERTS_LOG = WORKSPACE_ROOT / "logs" / "eta_engine" / "alerts_log.jsonl"
+#: Halt flag file — supervisor reads this BEFORE every prop-fund entry.
+#: When the file exists, prop-fund entries are BLOCKED. The flag is
+#: re-emitted every cron cycle while signal=HALT; cleared otherwise.
+PROP_HALT_FLAG_PATH = WORKSPACE_ROOT / "var" / "eta_engine" / "state" / "prop_halt_active.flag"
+#: WATCH flag — supervisor halves position size while present.
+PROP_WATCH_FLAG_PATH = WORKSPACE_ROOT / "var" / "eta_engine" / "state" / "prop_watch_active.flag"
 
 #: Default prop account configuration ($50K eval/funded — typical
 #: BluSky / Apex / Topstep style).
@@ -397,7 +405,109 @@ def run(
         )
     except OSError as exc:
         print(f"WARN: write_latest failed: {exc}", file=sys.stderr)
+
+    # Wave-22: emit flag files + alert events so the supervisor and
+    # dashboard pick up HALT/WATCH state without polling the JSON.
+    _emit_signal_flags(receipt)
+    _fire_alerts(receipt)
+
     return summary
+
+
+# ────────────────────────────────────────────────────────────────────
+# Wave-22: flag files + alerts pipeline
+# ────────────────────────────────────────────────────────────────────
+
+
+def _emit_signal_flags(receipt: GuardReceipt) -> None:
+    """Write/clear flag files based on the master signal.
+
+    Supervisor checks for these files BEFORE every prop-fund entry:
+      - prop_halt_active.flag present  -> reject ALL prop entries
+      - prop_watch_active.flag present -> halve qty on prop entries
+      - neither present                -> normal sizing
+
+    Idempotent: writes/clears each tick so the FS reflects current state.
+    """
+    try:
+        PROP_HALT_FLAG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        if receipt.signal == "HALT":
+            PROP_HALT_FLAG_PATH.write_text(
+                json.dumps(
+                    {
+                        "ts": receipt.ts,
+                        "rationale": receipt.rationale,
+                        "prop_ready_bots": receipt.prop_ready_bots,
+                    },
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
+            if PROP_WATCH_FLAG_PATH.exists():
+                PROP_WATCH_FLAG_PATH.unlink()
+        elif receipt.signal == "WATCH":
+            PROP_WATCH_FLAG_PATH.write_text(
+                json.dumps(
+                    {
+                        "ts": receipt.ts,
+                        "rationale": receipt.rationale,
+                        "prop_ready_bots": receipt.prop_ready_bots,
+                    },
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
+            if PROP_HALT_FLAG_PATH.exists():
+                PROP_HALT_FLAG_PATH.unlink()
+        else:  # OK
+            for p in (PROP_HALT_FLAG_PATH, PROP_WATCH_FLAG_PATH):
+                if p.exists():
+                    p.unlink()
+    except OSError as exc:
+        print(f"WARN: flag file emit failed: {exc}", file=sys.stderr)
+
+
+def _fire_alerts(receipt: GuardReceipt) -> None:
+    """Append HALT/WATCH events to the shared alerts_log.
+
+    Pattern matches diamond_falsification_watchdog's _fire_alerts_for_critical
+    so the dashboard's daily-summary + alerts panel surface prop-guard
+    events alongside the existing diamond alerts.
+
+    Idempotent in the sense that a fresh HALT each cycle emits a fresh
+    alert; the dashboard de-dupes by alert_id and timestamp window.
+    Best-effort: any I/O error is logged and silently continues.
+    """
+    if receipt.signal == "OK":
+        return  # don't spam the log with OK heartbeats
+    try:
+        ALERTS_LOG.parent.mkdir(parents=True, exist_ok=True)
+        severity = "RED" if receipt.signal == "HALT" else "YELLOW"
+        alert = {
+            "timestamp_utc": receipt.ts,
+            "ts": receipt.ts,
+            "severity": severity,
+            "source": "diamond_prop_drawdown_guard",
+            "alert_id": f"prop_guard_{receipt.signal.lower()}",
+            "headline": (
+                f"PROP GUARD {receipt.signal}: "
+                f"daily=${receipt.daily_pnl_usd:+.2f}  "
+                f"total=${receipt.total_pnl_usd:+.2f}  "
+                f"{receipt.rationale}"
+            ),
+            "details": {
+                "signal": receipt.signal,
+                "rationale": receipt.rationale,
+                "daily_pnl_usd": receipt.daily_pnl_usd,
+                "total_pnl_usd": receipt.total_pnl_usd,
+                "consistency_ratio": receipt.consistency_ratio,
+                "prop_ready_bots": receipt.prop_ready_bots,
+            },
+        }
+        with ALERTS_LOG.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(alert, default=str) + "\n")
+    except OSError as exc:
+        print(f"WARN: alerts log append failed: {exc}", file=sys.stderr)
 
 
 def _print(summary: dict[str, Any]) -> None:

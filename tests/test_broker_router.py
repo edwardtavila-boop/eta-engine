@@ -303,6 +303,57 @@ class TestParsePendingFile:
         assert order.symbol == "MNQ"
         assert order.limit_price == 25_000.0
 
+    def test_parse_pending_file_strips_bad_single_digit_suffix(
+        self, tmp_path: Path
+    ) -> None:
+        """REGRESSION: bots have emitted MNQ1/MES1/MCL1 which IBKR rejects.
+
+        The parse_pending_file layer normalizes a recognized futures root
+        plus a stray single-digit to the bare root, which IBKR resolves
+        as the front-month continuous contract.
+        """
+        for bad, expected in [
+            ("MNQ1", "MNQ"),
+            ("MES1", "MES"),
+            ("MCL1", "MCL"),
+            ("MYM1", "MYM"),
+            ("MGC1", "MGC"),
+            ("M6E1", "M6E"),
+            ("MBT1", "MBT"),
+            ("GC1", "GC"),
+            ("6E1", "6E"),
+        ]:
+            path = _write_pending(tmp_path, bot_id=f"b_{bad}", symbol=bad)
+            order = broker_router.parse_pending_file(path)
+            assert order.symbol == expected, f"{bad} -> {order.symbol}, expected {expected}"
+
+    def test_parse_pending_file_preserves_valid_contract_codes(
+        self, tmp_path: Path
+    ) -> None:
+        """Real IBKR contract codes (letter+year) must NOT be stripped."""
+        for good in ["MNQM6", "MNQH7", "MESZ6", "ESH7"]:
+            path = _write_pending(tmp_path, bot_id=f"b_{good}", symbol=good)
+            order = broker_router.parse_pending_file(path)
+            assert order.symbol == good, f"{good} got mangled to {order.symbol}"
+
+    def test_parse_pending_file_preserves_crypto_and_unrelated_symbols(
+        self, tmp_path: Path
+    ) -> None:
+        """Crypto/unknown symbols don't match the normalizer and stay untouched."""
+        for sym in ["BTC", "SOL", "ETH", "SOL1", "XYZ1"]:
+            path = _write_pending(tmp_path, bot_id=f"b_{sym}", symbol=sym)
+            order = broker_router.parse_pending_file(path)
+            assert order.symbol == sym
+
+    def test_normalize_futures_symbol_function_direct(self) -> None:
+        """Direct unit test of the helper for documentation/coverage."""
+        norm = broker_router._normalize_futures_symbol
+        assert norm("MNQ") == "MNQ"
+        assert norm("MNQ1") == "MNQ"
+        assert norm("MNQM6") == "MNQM6"
+        assert norm("") == ""
+        assert norm("BTC") == "BTC"
+
     def test_parse_pending_file_extracts_bot_id_from_filename(self, tmp_path: Path) -> None:
         path = _write_pending(tmp_path, bot_id="btc_optimized")
         order = broker_router.parse_pending_file(path)

@@ -223,6 +223,78 @@ def get_bot_tier(
     return TIER_CANDIDATE
 
 
+#: Wave-22 supervisor-facing prop-guard state.  These three constants
+#: are exposed so the supervisor's entry path can do a single lookup
+#: before placing any PROP_READY order:
+#:
+#:    from eta_engine.feeds.capital_allocator import (
+#:        get_prop_guard_signal, PROP_HALT_FLAG_PATH, PROP_WATCH_FLAG_PATH,
+#:    )
+#:    signal = get_prop_guard_signal()
+#:    if signal == "HALT": skip entry
+#:    elif signal == "WATCH": qty = qty // 2
+PROP_HALT_FLAG_PATH = Path(
+    r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\prop_halt_active.flag",
+)
+PROP_WATCH_FLAG_PATH = Path(
+    r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\prop_watch_active.flag",
+)
+
+
+def get_prop_guard_signal() -> str:
+    """Return the current prop-fund drawdown guard signal.
+
+    Single source of truth for the supervisor's entry decision.
+    Reads the flag files written by diamond_prop_drawdown_guard each
+    15-min cycle:
+
+      HALT  - either flag file says HALT; supervisor MUST skip entries
+      WATCH - WATCH flag present; supervisor should halve position size
+      OK    - no flag files present; supervisor proceeds normally
+
+    Cheap: just two `Path.exists()` calls per invocation. Safe to call
+    on every entry tick.
+    """
+    if PROP_HALT_FLAG_PATH.exists():
+        return "HALT"
+    if PROP_WATCH_FLAG_PATH.exists():
+        return "WATCH"
+    return "OK"
+
+
+def should_block_prop_entry(bot_id: str) -> bool:
+    """Convenience helper: return True if the supervisor must SKIP the
+    entry for a prop-ready bot right now.
+
+    The supervisor's entry-decision path calls this with the bot_id;
+    True means hard-skip (no fallback, no retry).
+    """
+    prop_ready = load_prop_ready_bots()
+    if bot_id not in prop_ready:
+        return False  # not a prop-ready bot, prop guard doesn't apply
+    return get_prop_guard_signal() == "HALT"
+
+
+def prop_entry_size_multiplier(bot_id: str) -> float:
+    """Return the multiplier the supervisor should apply to qty for a
+    prop-ready bot's entry.
+
+      1.0   normal sizing (OK signal)
+      0.5   halved (WATCH signal — de-risk while approaching limits)
+      0.0   block (HALT — should_block_prop_entry returns True; this is
+            here for callers that don't want a separate skip check)
+    """
+    prop_ready = load_prop_ready_bots()
+    if bot_id not in prop_ready:
+        return 1.0  # not a prop-ready bot, no adjustment
+    signal = get_prop_guard_signal()
+    if signal == "HALT":
+        return 0.0
+    if signal == "WATCH":
+        return 0.5
+    return 1.0
+
+
 def is_ibkr_futures_eligible(bot_id: str) -> bool:
     """Return True if this bot's strategy can route through IBKR futures.
 

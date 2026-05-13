@@ -112,11 +112,12 @@ def test_today_spend_returns_today_only(tmp_path: Path) -> None:
     from eta_engine.brain.jarvis_v3 import cost_tracker
 
     log = tmp_path / "audit.jsonl"
+    now = datetime.now(UTC).isoformat()
     _write_audit(
         log,
         [
-            {"ts": _ts(0, 1), "tool": "today_call"},
-            {"ts": _ts(0, 2), "tool": "today_call"},
+            {"ts": now, "tool": "today_call"},
+            {"ts": now, "tool": "today_call"},
             {"ts": _ts(5, 0), "tool": "old_call"},
         ],
     )

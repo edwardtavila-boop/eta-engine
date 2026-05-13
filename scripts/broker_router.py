@@ -786,13 +786,48 @@ def parse_pending_file(path: Path) -> PendingOrder:
         signal_id=str(payload["signal_id"]),
         side=side,
         qty=qty,
-        symbol=str(payload["symbol"]),
+        symbol=_normalize_futures_symbol(str(payload["symbol"])),
         limit_price=limit_price,
         bot_id=bot_id,
         stop_price=stop_price,
         target_price=target_price,
         reduce_only=reduce_only,
     )
+
+
+# Futures roots that IBKR resolves as continuous front-month when passed
+# without a contract-month suffix. Bots have intermittently emitted these
+# with a stray trailing single-digit (e.g. "MNQ1") that IBKR rejects with
+# a generic "rejected order_id=N". The intake normalizer strips that bad
+# suffix so the rest of the pipeline only sees clean roots.
+_FUTURES_ROOTS_TO_NORMALIZE = (
+    "MNQ", "MES", "MGC", "MCL", "M6E", "MYM", "MBT",
+    "NQ", "ES", "GC", "CL", "6E", "SI", "NG", "ZB", "ZN",
+)
+
+
+def _normalize_futures_symbol(symbol: str) -> str:
+    """Strip stray single-digit suffix from a known futures root.
+
+    ``MNQ1`` -> ``MNQ`` (front-month continuous). Idempotent for already-
+    clean roots and for full contract codes like ``MNQM6`` (June 2026).
+
+    The stripper only fires when:
+      1. The string starts with a recognized futures root, AND
+      2. Exactly ONE digit follows the root, AND
+      3. Nothing else follows that digit.
+
+    This protects against false-positive normalization of valid
+    contract codes (``MNQH7`` = March 2027 stays untouched).
+    """
+    if not symbol:
+        return symbol
+    for root in _FUTURES_ROOTS_TO_NORMALIZE:
+        if symbol.startswith(root):
+            rest = symbol[len(root):]
+            if len(rest) == 1 and rest.isdigit():
+                return root
+    return symbol
 
 
 def pending_order_sanity_denial(order: PendingOrder) -> str:
