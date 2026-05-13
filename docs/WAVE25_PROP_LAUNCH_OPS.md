@@ -39,7 +39,28 @@ State lives in `var/eta_engine/state/bot_lifecycle.json`:
 Defaults: any bot **not** explicitly listed defaults to `EVAL_PAPER` —
 **conservative**. Operator must opt bots into `EVAL_LIVE` explicitly.
 
-CLI helpers (Python REPL):
+### Operator CLI (preferred — wave-25d)
+
+```powershell
+# Show the current table
+python -m eta_engine.scripts.manage_lifecycle list
+
+# Promote m2k to live eval trading
+python -m eta_engine.scripts.manage_lifecycle set m2k_sweep_reclaim EVAL_LIVE
+
+# Park mes_v2 in paper-only
+python -m eta_engine.scripts.manage_lifecycle set mes_sweep_reclaim_v2 EVAL_PAPER
+
+# Revert to the EVAL_PAPER default
+python -m eta_engine.scripts.manage_lifecycle clear m2k_sweep_reclaim
+```
+
+The CLI is **idempotent** — `set` with an unchanged value returns
+"no-op" without rewriting the file (wave-25e hardening). All writes
+go through a tmp+rename atomic replace so a partial-write crash
+cannot corrupt the lifecycle JSON.
+
+### Python REPL (alternative)
 
 ```python
 from eta_engine.feeds.capital_allocator import (
@@ -50,11 +71,8 @@ from eta_engine.feeds.capital_allocator import (
     LIFECYCLE_RETIRED,
 )
 
-# Promote m2k to live eval trading
-set_bot_lifecycle("m2k_sweep_reclaim", LIFECYCLE_EVAL_LIVE)
-
-# Park mes_v2 in paper-only (R-vs-USD bug not yet reconciled)
-set_bot_lifecycle("mes_sweep_reclaim_v2", LIFECYCLE_EVAL_PAPER)
+changed = set_bot_lifecycle("m2k_sweep_reclaim", LIFECYCLE_EVAL_LIVE)
+# Returns True on actual change, False on no-op.
 ```
 
 ## Pre-trade risk gate
@@ -68,6 +86,32 @@ Triggered for every PROP_READY signal. Reads buffers from
 
 For the BluSky 50K eval, daily DD = $1,500. Soft threshold = $750.
 Default prospective loss estimate per signal = **$250** (0.5% of $50K).
+
+## Unified supervisor entry gate (wave-25e consolidation)
+
+The supervisor's `_maybe_enter` runs a single composite gate region
+that consolidates waves 22 + 25. Order of operations (per signal):
+
+1. **WATCH-mode size halving** — if prop guard signal is WATCH,
+   `size_mult *= 0.5` BEFORE the risk gate so the risk gate evaluates
+   the de-risked size.
+2. **`resolve_execution_target`** — composite check:
+   - Lifecycle: RETIRED → reject, EVAL_PAPER → paper
+   - Prop guard HALT → reject (via `should_block_prop_entry`)
+   - Pre-trade risk: prospective loss vs daily/static DD buffer
+3. **Decision** — `target` is one of:
+   - `reject` → drop the signal entirely; record reject reason
+   - `paper` → log to `shadow_signals.jsonl`; no broker call
+   - `live` → fall through to broker submit (existing path)
+
+All gate-chain failures are caught defensively — the supervisor must
+never crash on a safety check. Worst case is a missed gate; a
+crashed supervisor refuses ALL bots.
+
+Reject reasons use a unified prefix for operator legibility:
+- `gate_reject: <reason>` — wave-25 rejected
+- `route_paper: <reason>` — wave-25 routed to paper
+- `gate_size_collapsed: <signal>` — WATCH multiplier dropped size to zero
 
 ## Data-source tagging — IMPORTANT
 

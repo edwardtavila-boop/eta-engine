@@ -192,6 +192,72 @@ def test_lifecycle_invalid_state_raises(tmp_path: Path, monkeypatch: object) -> 
         ca.set_bot_lifecycle("m2k", "INVALID_STATE")
 
 
+def test_lifecycle_set_is_idempotent(tmp_path: Path, monkeypatch: object) -> None:
+    """Repeated set_bot_lifecycle with the same value returns False and
+    does not touch the file (no wasted write, no mtime bump)."""
+    from eta_engine.feeds import capital_allocator as ca
+
+    p = tmp_path / "lifecycle.json"
+    monkeypatch.setattr(ca, "BOT_LIFECYCLE_STATE_PATH", p)
+
+    # First call: file written, returns True.
+    changed = ca.set_bot_lifecycle("m2k", ca.LIFECYCLE_EVAL_LIVE)
+    assert changed is True
+    mtime_first = p.stat().st_mtime_ns
+
+    # Second call with same value: no-op, returns False, mtime unchanged.
+    changed_again = ca.set_bot_lifecycle("m2k", ca.LIFECYCLE_EVAL_LIVE)
+    assert changed_again is False
+    assert p.stat().st_mtime_ns == mtime_first, "idempotent set should not rewrite the file"
+
+
+def test_lifecycle_atomic_write_no_stale_tmp(tmp_path: Path, monkeypatch: object) -> None:
+    """After set_bot_lifecycle, the temp file used for atomic replace
+    must NOT linger on disk (would clutter the state dir and could
+    cause confusion on subsequent reads)."""
+    from eta_engine.feeds import capital_allocator as ca
+
+    p = tmp_path / "lifecycle.json"
+    monkeypatch.setattr(ca, "BOT_LIFECYCLE_STATE_PATH", p)
+
+    ca.set_bot_lifecycle("m2k", ca.LIFECYCLE_EVAL_LIVE)
+    tmp = p.with_suffix(p.suffix + ".tmp")
+    assert not tmp.exists(), f"stale temp file lingered: {tmp}"
+    assert p.exists()
+
+
+def test_lifecycle_corrupt_file_does_not_crash_read(
+    tmp_path: Path,
+    monkeypatch: object,
+) -> None:
+    """A corrupt lifecycle.json should NOT crash get_bot_lifecycle;
+    defensive default = EVAL_PAPER."""
+    from eta_engine.feeds import capital_allocator as ca
+
+    p = tmp_path / "lifecycle.json"
+    monkeypatch.setattr(ca, "BOT_LIFECYCLE_STATE_PATH", p)
+    p.write_text("not-json-at-all", encoding="utf-8")
+    assert ca.get_bot_lifecycle("m2k") == ca.LIFECYCLE_EVAL_PAPER
+
+
+def test_lifecycle_corrupt_file_does_not_crash_write(
+    tmp_path: Path,
+    monkeypatch: object,
+) -> None:
+    """A corrupt lifecycle.json should NOT crash set_bot_lifecycle;
+    the writer rebuilds from scratch rather than silently merging."""
+    from eta_engine.feeds import capital_allocator as ca
+
+    p = tmp_path / "lifecycle.json"
+    monkeypatch.setattr(ca, "BOT_LIFECYCLE_STATE_PATH", p)
+    p.write_text("not-json-at-all", encoding="utf-8")
+    # Should not raise
+    ca.set_bot_lifecycle("m2k", ca.LIFECYCLE_EVAL_LIVE)
+    assert ca.get_bot_lifecycle("m2k") == ca.LIFECYCLE_EVAL_LIVE
+    raw = json.loads(p.read_text(encoding="utf-8"))
+    assert raw["bots"]["m2k"] == ca.LIFECYCLE_EVAL_LIVE
+
+
 # ────────────────────────────────────────────────────────────────────
 # resolve_execution_target — composite gate
 # ────────────────────────────────────────────────────────────────────

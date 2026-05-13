@@ -296,26 +296,38 @@ def test_prop_entry_size_multiplier_always_one_for_non_prop_ready(
 
 
 def test_supervisor_imports_prop_guard_helpers() -> None:
-    """Wave-23: the supervisor's entry hot path imports the three
-    prop-guard helpers. Regex-checked so the integration can't
-    silently regress during refactors."""
+    """Wave-23: the supervisor's entry hot path imports the prop-guard
+    helpers. Wave-25e consolidated the call sites — should_block_prop_entry
+    is now invoked inside resolve_execution_target instead of inline,
+    but prop_entry_size_multiplier is still called directly for WATCH-mode
+    size halving. Both names must remain importable.
+    """
     p = Path(__file__).resolve().parents[1] / "scripts" / "jarvis_strategy_supervisor.py"
     text = p.read_text(encoding="utf-8")
-    assert "should_block_prop_entry" in text, "supervisor missing should_block_prop_entry — wave-23 not wired"
-    assert "prop_entry_size_multiplier" in text, "supervisor missing prop_entry_size_multiplier — wave-23 not wired"
+    assert "prop_entry_size_multiplier" in text, "supervisor missing prop_entry_size_multiplier"
+    assert "resolve_execution_target" in text, "supervisor missing resolve_execution_target (wave-25 gate)"
 
 
 def test_supervisor_blocks_entry_on_HALT_signal() -> None:
-    """The supervisor calls should_block_prop_entry and returns early."""
+    """The supervisor returns early on prop_guard HALT.
+
+    Wave-25e consolidated the wave-22 + wave-25 prop_guard checks.
+    The HALT block is now enforced via resolve_execution_target ->
+    should_block_prop_entry (called inside the helper). The supervisor
+    handles the reject branch with the unified ``gate_reject`` reason
+    prefix and an early ``return``.
+    """
     p = Path(__file__).resolve().parents[1] / "scripts" / "jarvis_strategy_supervisor.py"
     text = p.read_text(encoding="utf-8")
-    assert "if should_block_prop_entry(bot.bot_id):" in text, "supervisor missing the should_block_prop_entry check"
-    assert "prop_guard_halt:" in text, "supervisor missing the prop_guard_halt rejection reason"
+    # The composite gate returns ("reject", "prop_guard_halt") on HALT.
+    assert 'if target == "reject":' in text, "supervisor missing the wave-25 reject branch"
+    assert "gate_reject:" in text, "supervisor missing the unified gate_reject reason prefix"
 
 
 def test_supervisor_applies_watch_size_multiplier() -> None:
     """The supervisor multiplies size_mult by prop_entry_size_multiplier
-    so WATCH halves the position and HALT zeros it."""
+    so WATCH halves the position and HALT zeros it. Wave-25e moved this
+    BEFORE the risk gate so the risk gate sees the de-risked size."""
     p = Path(__file__).resolve().parents[1] / "scripts" / "jarvis_strategy_supervisor.py"
     text = p.read_text(encoding="utf-8")
     assert "size_mult *= prop_mult" in text, "supervisor missing the WATCH-mode size_mult multiplication"

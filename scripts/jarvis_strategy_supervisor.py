@@ -3759,102 +3759,69 @@ class JarvisStrategySupervisor:
         except Exception:  # noqa: BLE001
             pass
 
-        # ── Wave-22: prop-fund drawdown guard ───────────────────────────
-        # For PROP_READY bots (the elite-3 running on the live prop account),
-        # consult the prop_halt_active.flag / prop_watch_active.flag files
-        # written by diamond_prop_drawdown_guard every 15 min.
+        # ── Unified prop-fund entry gate (waves 22 + 25, consolidated) ──
+        # One try/except instead of two. WATCH halves size_mult BEFORE
+        # the risk gate so the risk gate sees the de-risked size.
+        # ``resolve_execution_target`` internally calls
+        # ``should_block_prop_entry``; no duplicate HALT check.
         #
-        #   HALT  -> skip entry entirely (consistency / DD breach)
-        #   WATCH -> halve size_mult so the supervisor de-risks before HALT
-        #   OK    -> no change
+        # Decision matrix (per signal):
+        #   target=reject  → drop the signal entirely
+        #   target=paper   → log to shadow_signals.jsonl, no broker call
+        #   target=live    → fall through to the broker submit below
         #
-        # Non-prop-ready bots are unaffected (multiplier always 1.0).
+        # Operator design (2026-05-13): "if we cant buy the contract or
+        # it will put the prop firm account at massive risk of dd or
+        # liquidation then just have it paper trading and improving."
         try:
             from eta_engine.feeds.capital_allocator import (  # noqa: PLC0415
+                get_bot_lifecycle,
                 get_prop_guard_signal,
                 prop_entry_size_multiplier,
-                should_block_prop_entry,
-            )
-
-            if should_block_prop_entry(bot.bot_id):
-                bot.last_aggregation_reject_reason = (
-                    "prop_guard_halt: drawdown / consistency rule breached; see diamond_prop_drawdown_guard_latest.json"
-                )
-                bot.last_aggregation_reject_at = datetime.now(UTC).isoformat()
-                logger.warning(
-                    "PROP GUARD HALT %s (signal=%s) blocked entry — "
-                    "supervisor refusing prop entries until guard clears",
-                    bot.bot_id,
-                    get_prop_guard_signal(),
-                )
-                return
-            prop_mult = prop_entry_size_multiplier(bot.bot_id)
-            if prop_mult < 1.0:
-                # WATCH mode: halve the size
-                size_mult *= prop_mult
-                if size_mult <= 0:
-                    return
-        except Exception:  # noqa: BLE001
-            # Defensive: never let the prop guard import/lookup crash an
-            # entry — the worst case is a missed safety check, but a
-            # crashed supervisor is worse. Log + continue.
-            logger.exception(
-                "prop_guard check failed for %s; proceeding without it",
-                bot.bot_id,
-            )
-
-        # ── Wave-25: pre-trade risk gate + lifecycle routing ────────────
-        # Composite check that uses the prop drawdown guard's live
-        # buffers + per-bot lifecycle state to decide whether this
-        # signal goes to:
-        #   - "live"   submit to broker (current behavior)
-        #   - "paper"  route to paper engine (future feature; for now,
-        #              tag as paper-only and skip the broker call)
-        #   - "reject" refuse the signal entirely
-        #
-        # The operator's design (2026-05-13): "if we cant buy the contract
-        # or it will put the prop firm account at massive risk of dd or
-        # liquidation then just have it paper trading and improving."
-        # This block implements that intent.
-        try:
-            from eta_engine.feeds.capital_allocator import (  # noqa: PLC0415
                 resolve_execution_target,
             )
 
-            # Estimate prospective stop-out loss in USD. For Monday eval
-            # we use a conservative 0.5% of $50K account = $250 default.
-            # When the strategy plumbing exposes per-signal stop_usd this
-            # should be replaced with the precise number.
+            # 1. WATCH mode: halve size BEFORE the risk gate so a smaller
+            #    prospective loss is what the gate evaluates against.
+            prop_mult = prop_entry_size_multiplier(bot.bot_id)
+            if 0.0 < prop_mult < 1.0:
+                size_mult *= prop_mult
+                if size_mult <= 0:
+                    bot.last_aggregation_reject_reason = (
+                        f"gate_size_collapsed: prop_signal={get_prop_guard_signal()}"
+                    )
+                    bot.last_aggregation_reject_at = datetime.now(UTC).isoformat()
+                    return
+
+            # 2. Composite gate (lifecycle + prop_guard + pre-trade risk).
+            #    Eval-phase prospective loss = 0.5% of $50K = $250.
             prospective_loss_est_usd = 250.0
             target, target_reason = resolve_execution_target(
                 bot.bot_id,
                 prospective_loss_usd=prospective_loss_est_usd,
             )
+
             if target == "reject":
-                bot.last_aggregation_reject_reason = f"wave25_risk_reject: {target_reason}"
+                bot.last_aggregation_reject_reason = f"gate_reject: {target_reason}"
                 bot.last_aggregation_reject_at = datetime.now(UTC).isoformat()
                 logger.warning(
-                    "WAVE25 RISK REJECT %s: %s — supervisor refusing signal",
+                    "GATE REJECT %s: %s — supervisor refusing signal",
                     bot.bot_id,
                     target_reason,
                 )
                 return
+
             if target == "paper":
-                bot.last_aggregation_reject_reason = f"wave25_route_paper: {target_reason}"
+                bot.last_aggregation_reject_reason = f"route_paper: {target_reason}"
                 bot.last_aggregation_reject_at = datetime.now(UTC).isoformat()
                 logger.info(
-                    "WAVE25 PAPER %s: %s — signal observed but not routed to live broker (paper-only tier)",
+                    "ROUTE PAPER %s: %s — observed but not submitted (paper tier)",
                     bot.bot_id,
                     target_reason,
                 )
-                # Wave-25b: log the observed signal to shadow_signals.jsonl
-                # so kaizen + the operator dashboard can see what the bot
-                # WANTED to do today. Best-effort — supervisor must not
-                # crash on log failure.
+                # Best-effort shadow log so kaizen + dashboard see what
+                # the bot wanted to do today. Never crash on log failure.
                 try:
-                    from eta_engine.feeds.capital_allocator import (  # noqa: PLC0415
-                        get_bot_lifecycle,
-                    )
                     from eta_engine.scripts.shadow_signal_logger import (  # noqa: PLC0415
                         log_shadow_signal,
                     )
@@ -3876,6 +3843,7 @@ class JarvisStrategySupervisor:
                         extra={
                             "bar_ts": str(bar.get("ts")) if isinstance(bar, dict) else "",
                             "size_mult_at_skip": float(size_mult),
+                            "prop_guard_signal": get_prop_guard_signal(),
                         },
                     )
                 except Exception:  # noqa: BLE001
@@ -3886,8 +3854,11 @@ class JarvisStrategySupervisor:
                 return
             # target == "live" → fall through to existing broker call
         except Exception:  # noqa: BLE001
+            # Defensive: gate-chain failures must never crash the
+            # supervisor. Worst case is a missed safety check; a crashed
+            # supervisor refuses ALL bots.
             logger.exception(
-                "wave25 risk gate failed for %s; proceeding with live submit",
+                "unified entry gate failed for %s; proceeding with live submit",
                 bot.bot_id,
             )
 

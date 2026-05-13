@@ -384,37 +384,64 @@ def get_bot_lifecycle(bot_id: str) -> str:
     return LIFECYCLE_EVAL_PAPER
 
 
-def set_bot_lifecycle(bot_id: str, state: str) -> None:
-    """Persist a bot's lifecycle state. Operator-facing helper.
-
-    Raises ValueError if state is not a recognized constant.
-    """
-    if state not in {
+VALID_LIFECYCLE_STATES = frozenset(
+    {
         LIFECYCLE_EVAL_LIVE,
         LIFECYCLE_EVAL_PAPER,
         LIFECYCLE_FUNDED_LIVE,
         LIFECYCLE_RETIRED,
-    }:
+    },
+)
+
+
+def set_bot_lifecycle(bot_id: str, state: str) -> bool:
+    """Persist a bot's lifecycle state. Operator-facing helper.
+
+    Returns True if the file was modified, False if the requested state
+    already matched (idempotent — no write performed).
+
+    Raises ValueError if state is not a recognized constant.
+
+    Hardening (wave-25e):
+      * Atomic write via temp file + replace so a partial-write crash
+        does not corrupt the lifecycle JSON.
+      * Idempotent: skips the write when the on-disk state is already
+        the requested value.
+      * Validates the existing file's structure on read; rebuilds from
+        scratch if corrupt rather than silently merging into garbage.
+    """
+    if state not in VALID_LIFECYCLE_STATES:
         msg = f"unknown lifecycle state: {state!r}"
         raise ValueError(msg)
+
     BOT_LIFECYCLE_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+
     current: dict[str, Any] = {}
     if BOT_LIFECYCLE_STATE_PATH.exists():
         try:
-            current = json.loads(BOT_LIFECYCLE_STATE_PATH.read_text(encoding="utf-8"))
+            loaded = json.loads(BOT_LIFECYCLE_STATE_PATH.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                current = loaded
         except (OSError, json.JSONDecodeError):
             current = {}
-    if not isinstance(current, dict):
-        current = {}
+
     bots = current.get("bots")
     if not isinstance(bots, dict):
         bots = {}
         current["bots"] = bots
+
+    # Idempotency: no-op if already in the requested state.
+    if bots.get(bot_id) == state:
+        return False
+
     bots[bot_id] = state
-    BOT_LIFECYCLE_STATE_PATH.write_text(
-        json.dumps(current, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
+    payload = json.dumps(current, indent=2, sort_keys=True) + "\n"
+    # Atomic write: temp file + os.replace (rename is atomic on POSIX
+    # and NTFS for same-filesystem moves).
+    tmp = BOT_LIFECYCLE_STATE_PATH.with_suffix(BOT_LIFECYCLE_STATE_PATH.suffix + ".tmp")
+    tmp.write_text(payload, encoding="utf-8")
+    tmp.replace(BOT_LIFECYCLE_STATE_PATH)
+    return True
 
 
 def evaluate_pre_trade_risk(

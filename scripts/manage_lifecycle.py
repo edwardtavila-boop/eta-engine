@@ -100,8 +100,11 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.cmd == "set":
-        ca.set_bot_lifecycle(args.bot_id, args.state)
-        print(f"set {args.bot_id} -> {args.state}")
+        changed = ca.set_bot_lifecycle(args.bot_id, args.state)
+        if changed:
+            print(f"set {args.bot_id} -> {args.state}")
+        else:
+            print(f"{args.bot_id} already at {args.state} (no-op)")
         _print_table(state_path)
         return 0
 
