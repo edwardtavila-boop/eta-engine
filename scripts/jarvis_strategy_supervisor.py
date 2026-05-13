@@ -1684,6 +1684,12 @@ class ExecutionRouter:
             path = self._open_position_path(bot.bot_id)
             path.parent.mkdir(parents=True, exist_ok=True)
             tmp = path.with_suffix(".json.tmp")
+            # Keep per-bot restart state self-describing. The L2 aggregate
+            # heartbeat has bot.symbol in memory, but a standalone
+            # open_position.json must carry the symbol so diagnostics and
+            # restart recovery never classify a real paper position as
+            # malformed.
+            bot.open_position["symbol"] = bot.symbol
             tmp.write_text(json.dumps(bot.open_position, default=str), encoding="utf-8")
             os.replace(tmp, path)
         except Exception as exc:  # noqa: BLE001 — persistence is best-effort

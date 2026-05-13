@@ -168,6 +168,43 @@ def test_router_submit_entry_paper_sim(tmp_path: Path) -> None:
     assert bot.n_entries == 1
 
 
+def test_persisted_open_position_includes_symbol(tmp_path: Path) -> None:
+    import json
+
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        BotInstance,
+        ExecutionRouter,
+        SupervisorConfig,
+    )
+
+    cfg = SupervisorConfig()
+    cfg.mode = "paper_sim"
+    cfg.state_dir = tmp_path / "state"
+    router = ExecutionRouter(cfg=cfg, bf_dir=tmp_path)
+    bot = BotInstance(
+        bot_id="mnq_symbol_persist",
+        symbol="MNQ1",
+        strategy_kind="x",
+        direction="long",
+        cash=50_000.0,
+        open_position={
+            "side": "BUY",
+            "qty": 1.0,
+            "entry_price": 29_300.0,
+            "entry_ts": "2026-05-13T16:00:00+00:00",
+            "signal_id": "sig-symbol",
+        },
+    )
+
+    router._persist_open_position(bot)
+
+    path = cfg.state_dir / "bots" / "mnq_symbol_persist" / "open_position.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    assert payload["symbol"] == "MNQ1"
+    assert bot.open_position is not None
+    assert bot.open_position["symbol"] == "MNQ1"
+
+
 def test_router_submit_exit_computes_pnl(tmp_path: Path) -> None:
     from eta_engine.scripts.jarvis_strategy_supervisor import (
         BotInstance,
