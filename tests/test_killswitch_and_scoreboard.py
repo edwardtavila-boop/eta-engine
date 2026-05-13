@@ -28,7 +28,16 @@ def _today_iso() -> str:
 
 
 def _write_close(path: Path, *, ts: str, pnl: float, bot_id: str = "bot_a") -> None:
-    line = json.dumps({"close_ts": ts, "realized_pnl": pnl, "bot_id": bot_id})
+    line = json.dumps(
+        {
+            "ts": ts,
+            "close_ts": ts,
+            "signal_id": f"{bot_id}:{ts}:{pnl}",
+            "realized_pnl": pnl,
+            "bot_id": bot_id,
+            "data_source": "live",
+        }
+    )
     with path.open("a", encoding="utf-8") as fh:
         fh.write(line + "\n")
 

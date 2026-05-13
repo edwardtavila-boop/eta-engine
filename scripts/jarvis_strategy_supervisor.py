@@ -3847,9 +3847,42 @@ class JarvisStrategySupervisor:
                     bot.bot_id,
                     target_reason,
                 )
-                # Future: emit a paper-tagged trade-close so kaizen can
-                # learn from the signal. For now we drop it; the audit
-                # path picks up zero-trade days as observation gaps.
+                # Wave-25b: log the observed signal to shadow_signals.jsonl
+                # so kaizen + the operator dashboard can see what the bot
+                # WANTED to do today. Best-effort — supervisor must not
+                # crash on log failure.
+                try:
+                    from eta_engine.feeds.capital_allocator import (  # noqa: PLC0415
+                        get_bot_lifecycle,
+                    )
+                    from eta_engine.scripts.shadow_signal_logger import (  # noqa: PLC0415
+                        log_shadow_signal,
+                    )
+
+                    log_shadow_signal(
+                        bot_id=bot.bot_id,
+                        signal_id=str(
+                            getattr(bar, "signal_id", "")
+                            or (bar.get("signal_id") if isinstance(bar, dict) else "")
+                            or f"{bot.bot_id}_{datetime.now(UTC).isoformat()}",
+                        ),
+                        symbol=str(bot.symbol),
+                        side=("BUY" if side == "long" else "SELL"),
+                        qty_intended=1,
+                        lifecycle=get_bot_lifecycle(bot.bot_id),
+                        route_target="paper",
+                        route_reason=target_reason,
+                        prospective_loss_usd=prospective_loss_est_usd,
+                        extra={
+                            "bar_ts": str(bar.get("ts")) if isinstance(bar, dict) else "",
+                            "size_mult_at_skip": float(size_mult),
+                        },
+                    )
+                except Exception:  # noqa: BLE001
+                    logger.exception(
+                        "shadow_signal_logger failed for %s",
+                        bot.bot_id,
+                    )
                 return
             # target == "live" → fall through to existing broker call
         except Exception:  # noqa: BLE001

@@ -154,6 +154,9 @@ $hourlyTasks = @(
     @{ Name = "ETA-Diamond-PropAllocatorHourly"
         Args = "-m eta_engine.scripts.diamond_prop_allocator"
         Desc = "Diamond: confluence-aware capital allocation for the PROP_READY top-3 (BALANCED 33/33/33 vs DOMINANT 50/25/25)" }
+    @{ Name = "ETA-Diamond-Wave25StatusHourly"
+        Args = "-m eta_engine.scripts.diamond_wave25_status"
+        Desc = "Diamond: wave-25 unified status snapshot (lifecycle + live/paper/shadow counts + alert channel state + ledger pollution snapshot)" }
 )
 
 foreach ($t in $hourlyTasks) {
