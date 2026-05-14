@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 from eta_engine.scripts import health_check
 
@@ -21,6 +22,11 @@ def _missing_supervisor_component() -> health_check.HealthComponent:
         detail="canonical_heartbeat_missing; canonical age unknown",
         score=0.1,
     )
+
+
+def _write_quantum_allocation(path: Path, ts: datetime) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"ts": ts.isoformat(), "results": []}), encoding="utf-8")
 
 
 def _patch_baseline_components(monkeypatch) -> None:
@@ -57,6 +63,40 @@ def test_kaizen_health_prefers_active_loop_latest_json(tmp_path, monkeypatch) ->
     assert "active loop latest" in component.detail
     assert "applied_count=1" in component.detail
     assert "reports=1" in component.detail
+
+
+def test_quantum_health_prefers_canonical_current_allocation(tmp_path, monkeypatch) -> None:
+    current = tmp_path / "var" / "eta_engine" / "state" / "quantum" / "current_allocation.json"
+    legacy_current = tmp_path / "eta_engine" / "state" / "quantum" / "current_allocation.json"
+    _write_quantum_allocation(current, datetime.now(UTC) - timedelta(minutes=15))
+    monkeypatch.setattr(health_check, "ETA_QUANTUM_CURRENT_ALLOCATION_PATH", current)
+    monkeypatch.setattr(health_check, "ETA_QUANTUM_STATE_DIR", current.parent)
+    monkeypatch.setattr(health_check, "ETA_LEGACY_QUANTUM_CURRENT_ALLOCATION_PATH", legacy_current)
+    monkeypatch.setattr(health_check, "ETA_LEGACY_QUANTUM_STATE_DIR", legacy_current.parent)
+
+    component = health_check._check_quantum_freshness()
+
+    assert component.healthy is True
+    assert component.status == "healthy"
+    assert component.score == 1.0
+    assert "last rebalance" in component.detail
+
+
+def test_quantum_health_uses_legacy_allocation_as_migration_fallback(tmp_path, monkeypatch) -> None:
+    current = tmp_path / "var" / "eta_engine" / "state" / "quantum" / "current_allocation.json"
+    legacy_current = tmp_path / "eta_engine" / "state" / "quantum" / "current_allocation.json"
+    _write_quantum_allocation(legacy_current, datetime.now(UTC) - timedelta(minutes=20))
+    monkeypatch.setattr(health_check, "ETA_QUANTUM_CURRENT_ALLOCATION_PATH", current)
+    monkeypatch.setattr(health_check, "ETA_QUANTUM_STATE_DIR", current.parent)
+    monkeypatch.setattr(health_check, "ETA_LEGACY_QUANTUM_CURRENT_ALLOCATION_PATH", legacy_current)
+    monkeypatch.setattr(health_check, "ETA_LEGACY_QUANTUM_STATE_DIR", legacy_current.parent)
+
+    component = health_check._check_quantum_freshness()
+
+    assert component.healthy is True
+    assert component.status == "legacy_migration"
+    assert component.score == 0.8
+    assert "legacy allocation fallback" in component.detail
 
 
 def test_main_honors_output_dir_cli_and_writes_report(tmp_path, monkeypatch, capsys) -> None:

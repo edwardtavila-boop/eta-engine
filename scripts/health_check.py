@@ -29,7 +29,13 @@ if str(ROOT.parent) not in sys.path:
     sys.path.insert(0, str(ROOT.parent))
 
 from eta_engine.scripts.supervisor_heartbeat_check import build_supervisor_heartbeat_report  # noqa: E402
-from eta_engine.scripts.workspace_roots import ETA_RUNTIME_STATE_DIR  # noqa: E402
+from eta_engine.scripts.workspace_roots import (  # noqa: E402
+    ETA_LEGACY_QUANTUM_CURRENT_ALLOCATION_PATH,
+    ETA_LEGACY_QUANTUM_STATE_DIR,
+    ETA_QUANTUM_CURRENT_ALLOCATION_PATH,
+    ETA_QUANTUM_STATE_DIR,
+    ETA_RUNTIME_STATE_DIR,
+)
 
 _STATE_DIR = ETA_RUNTIME_STATE_DIR
 
@@ -141,23 +147,12 @@ def _check_kaizen_state() -> HealthComponent:
     return HealthComponent("kaizen_engine", True, "healthy", f"{cycle_count} cycles completed", 1.0)
 
 
-def _check_quantum_freshness() -> HealthComponent:
-    quantum_dir = _STATE_DIR / "quantum"
-    if not quantum_dir.exists():
-        return HealthComponent("quantum_rebalance", True, "booting", "no quantum state dir", 0.5)
-
-    current = quantum_dir / "current_allocation.json"
-    if not current.exists():
-        return HealthComponent(
-            "quantum_rebalance",
-            True,
-            "booting",
-            "no current allocation - rebalance may not have run",
-            0.5,
-        )
-
+def _quantum_allocation_component(current: Path, *, source: str) -> HealthComponent:
+    status_ok = "healthy" if source == "canonical" else "legacy_migration"
+    score_ok = 1.0 if source == "canonical" else 0.8
+    detail_prefix = "" if source == "canonical" else "legacy allocation fallback; "
     try:
-        data = json.loads(current.read_text())
+        data = json.loads(current.read_text(encoding="utf-8"))
         ts_str = data.get("ts", "")
         if ts_str:
             ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
@@ -169,7 +164,7 @@ def _check_quantum_freshness() -> HealthComponent:
                     "quantum_rebalance",
                     False,
                     "stale",
-                    f"last rebalance {age_hours:.0f}h ago",
+                    f"{detail_prefix}last rebalance {age_hours:.0f}h ago",
                     0.3,
                 )
             if age_hours > 24:
@@ -177,14 +172,54 @@ def _check_quantum_freshness() -> HealthComponent:
                     "quantum_rebalance",
                     True,
                     "warning",
-                    f"last rebalance {age_hours:.0f}h ago",
+                    f"{detail_prefix}last rebalance {age_hours:.0f}h ago",
                     0.6,
                 )
-            return HealthComponent("quantum_rebalance", True, "healthy", f"last rebalance {age_hours:.1f}h ago", 1.0)
+            return HealthComponent(
+                "quantum_rebalance",
+                True,
+                status_ok,
+                f"{detail_prefix}last rebalance {age_hours:.1f}h ago",
+                score_ok,
+            )
     except (OSError, json.JSONDecodeError, ValueError):
-        return HealthComponent("quantum_rebalance", False, "warning", "unable to parse allocation file", 0.4)
+        return HealthComponent(
+            "quantum_rebalance",
+            False,
+            "warning",
+            f"unable to parse {source} allocation file",
+            0.4,
+        )
 
-    return HealthComponent("quantum_rebalance", True, "healthy", "allocation exists", 0.8)
+    return HealthComponent("quantum_rebalance", True, status_ok, f"{detail_prefix}allocation exists", score_ok)
+
+
+def _check_quantum_freshness() -> HealthComponent:
+    if ETA_QUANTUM_CURRENT_ALLOCATION_PATH.exists():
+        return _quantum_allocation_component(ETA_QUANTUM_CURRENT_ALLOCATION_PATH, source="canonical")
+
+    if ETA_QUANTUM_STATE_DIR.exists():
+        return HealthComponent(
+            "quantum_rebalance",
+            True,
+            "booting",
+            "canonical quantum state exists but no current allocation - rebalance may not have run",
+            0.5,
+        )
+
+    if ETA_LEGACY_QUANTUM_CURRENT_ALLOCATION_PATH.exists():
+        return _quantum_allocation_component(ETA_LEGACY_QUANTUM_CURRENT_ALLOCATION_PATH, source="legacy")
+
+    if ETA_LEGACY_QUANTUM_STATE_DIR.exists():
+        return HealthComponent(
+            "quantum_rebalance",
+            True,
+            "booting",
+            "legacy quantum state exists but no current allocation - migrate or rerun rebalance",
+            0.5,
+        )
+
+    return HealthComponent("quantum_rebalance", True, "booting", "no canonical quantum state dir", 0.5)
 
 
 def _check_hermes_connectivity() -> HealthComponent:

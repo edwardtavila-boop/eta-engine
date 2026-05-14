@@ -387,16 +387,7 @@ def build_supervisor_heartbeat_report(
             )
     else:
         status = "fresh"
-        stale_or_missing_legacy = [
-            candidate.label for candidate in legacy_candidates if not candidate.exists or not candidate.fresh
-        ]
-        if stale_or_missing_legacy:
-            diagnosis = "canonical_fresh_legacy_path_mismatch"
-            warnings.append(
-                "Canonical Jarvis supervisor heartbeat is fresh; stale alerts from legacy paths are path mismatches."
-            )
-        else:
-            diagnosis = "canonical_heartbeat_fresh"
+        diagnosis = "canonical_heartbeat_fresh"
 
     # If the main heartbeat is stale AND the keepalive is also stale
     # AND no legacy mirror is fresh, surface a hint that the

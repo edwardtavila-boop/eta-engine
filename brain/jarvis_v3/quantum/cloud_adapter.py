@@ -43,10 +43,13 @@ import time
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
-from pathlib import Path
 from typing import TYPE_CHECKING
 
+from eta_engine.scripts import workspace_roots
+
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from eta_engine.brain.jarvis_v3.quantum.qubo_solver import (
         QuboProblem,
         SolverResult,
@@ -54,9 +57,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-ROOT = Path(__file__).resolve().parents[3]
-JOBS_LOG_PATH = ROOT / "state" / "quantum" / "jobs.jsonl"
-RESULT_CACHE_PATH = ROOT / "state" / "quantum" / "result_cache.json"
+JOBS_LOG_PATH = workspace_roots.ETA_QUANTUM_JOBS_LOG_PATH
+RESULT_CACHE_PATH = workspace_roots.ETA_QUANTUM_RESULT_CACHE_PATH
 
 
 class QuantumBackend(StrEnum):

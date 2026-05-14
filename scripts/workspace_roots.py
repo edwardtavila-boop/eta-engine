@@ -32,6 +32,10 @@ ETA_RUNTIME_STATE_DIR = ROOT_VAR_DIR / "eta_engine" / "state"
 ETA_RUNTIME_LOG_DIR = ROOT_LOGS_DIR / "eta_engine"
 ETA_DATA_LAKE_ROOT = ROOT_VAR_DIR / "eta_engine" / "data_lake"
 ETA_RUNTIME_DECISION_JOURNAL_PATH = ETA_RUNTIME_STATE_DIR / "decision_journal.jsonl"
+ETA_QUANTUM_STATE_DIR = ETA_RUNTIME_STATE_DIR / "quantum"
+ETA_QUANTUM_CURRENT_ALLOCATION_PATH = ETA_QUANTUM_STATE_DIR / "current_allocation.json"
+ETA_QUANTUM_JOBS_LOG_PATH = ETA_QUANTUM_STATE_DIR / "jobs.jsonl"
+ETA_QUANTUM_RESULT_CACHE_PATH = ETA_QUANTUM_STATE_DIR / "result_cache.json"
 ETA_DATA_INVENTORY_SNAPSHOT_PATH = ETA_RUNTIME_STATE_DIR / "data_inventory_latest.json"
 ETA_SYMBOL_INTELLIGENCE_SNAPSHOT_PATH = ETA_RUNTIME_STATE_DIR / "symbol_intelligence_latest.json"
 ETA_SYMBOL_INTELLIGENCE_COLLECTOR_STATUS_PATH = ETA_RUNTIME_STATE_DIR / "symbol_intelligence_collector_latest.json"
@@ -85,8 +89,8 @@ ETA_KILL_SWITCH_LATCH_PATH = ETA_RUNTIME_STATE_DIR / "kill_switch_latch.json"
 ETA_TRAILING_DD_TRACKER_PATH = ETA_RUNTIME_STATE_DIR / "trailing_dd_tracker.json"
 ETA_LEGACY_KILL_SWITCH_LATCH_PATH = ETA_ENGINE_ROOT / "state" / "kill_switch_latch.json"
 ETA_LEGACY_TRAILING_DD_TRACKER_PATH = ETA_ENGINE_ROOT / "state" / "trailing_dd_tracker.json"
-# Force-Multiplier health probe snapshot. Cron / Task Scheduler writes a
-# JSON snapshot every 4h that dashboards poll; the canonical write target
+# Force-Multiplier health probe snapshot. Task Scheduler writes a
+# JSON snapshot every 15 minutes that dashboards poll; the canonical write target
 # is under var/, with the in-repo state/ kept as a one-shot read fallback
 # during the migration window.
 ETA_FM_HEALTH_SNAPSHOT_PATH = ETA_RUNTIME_STATE_DIR / "fm_health.json"
@@ -98,6 +102,10 @@ ETA_LEGACY_FM_HEALTH_SNAPSHOT_PATH = ETA_ENGINE_ROOT / "state" / "fm_health.json
 ETA_JARVIS_VERDICTS_PATH = ETA_RUNTIME_STATE_DIR / "jarvis_intel" / "verdicts.jsonl"
 ETA_LEGACY_JARVIS_VERDICTS_PATH = ETA_ENGINE_ROOT / "state" / "jarvis_intel" / "verdicts.jsonl"
 ETA_LEGACY_JARVIS_TRADE_CLOSES_PATH = ETA_ENGINE_ROOT / "state" / "jarvis_intel" / "trade_closes.jsonl"
+ETA_LEGACY_QUANTUM_STATE_DIR = ETA_ENGINE_ROOT / "state" / "quantum"
+ETA_LEGACY_QUANTUM_CURRENT_ALLOCATION_PATH = ETA_LEGACY_QUANTUM_STATE_DIR / "current_allocation.json"
+ETA_LEGACY_QUANTUM_JOBS_LOG_PATH = ETA_LEGACY_QUANTUM_STATE_DIR / "jobs.jsonl"
+ETA_LEGACY_QUANTUM_RESULT_CACHE_PATH = ETA_LEGACY_QUANTUM_STATE_DIR / "result_cache.json"
 # Eval results: promptfoo writes a single JSON aggregate per run.
 ETA_EVAL_PROMPTFOO_RESULTS_PATH = ETA_RUNTIME_STATE_DIR / "eval" / "promptfoo_results.json"
 ETA_LEGACY_EVAL_PROMPTFOO_RESULTS_PATH = ETA_ENGINE_ROOT / "state" / "eval" / "promptfoo_results.json"

@@ -8,7 +8,7 @@ Supercharged version with:
   * Telemetry push — each rebalance notifies Hermes bridge if configured
   * Parallel tempering for large portfolios (>16 symbols)
 
-Output: state/quantum/daily_rebalance_<date>.json and current_allocation.json
+Output: var/eta_engine/state/quantum/daily_rebalance_<date>.json and current_allocation.json
 
 Scheduled task (unchanged):
     schtasks /Create /TN "ETA Quantum Daily Rebalance"
@@ -30,6 +30,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT.parent) not in sys.path:
     sys.path.insert(0, str(ROOT.parent))
+
+from eta_engine.scripts import workspace_roots  # noqa: E402
 
 logger = logging.getLogger("quantum_daily_rebalance")
 
@@ -278,10 +280,10 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument(
         "--trade-log",
         type=Path,
-        default=Path(r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\jarvis_intel\trade_closes.jsonl"),
+        default=workspace_roots.ETA_JARVIS_TRADE_CLOSES_PATH,
     )
-    p.add_argument("--out-dir", type=Path, default=ROOT / "state" / "quantum")
-    p.add_argument("--state-dir", type=Path, default=ROOT / "state" / "quantum")
+    p.add_argument("--out-dir", type=Path, default=workspace_roots.ETA_QUANTUM_STATE_DIR)
+    p.add_argument("--state-dir", type=Path, default=workspace_roots.ETA_QUANTUM_STATE_DIR)
     p.add_argument("-v", "--verbose", action="store_true")
     args = p.parse_args(argv)
 

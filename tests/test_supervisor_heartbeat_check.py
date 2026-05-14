@@ -4,7 +4,7 @@ import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from scripts import health_check, supervisor_heartbeat_check
+from eta_engine.scripts import health_check, supervisor_heartbeat_check
 
 
 def _write_heartbeat(path: Path, ts: datetime, *, tick_count: int = 7) -> None:
@@ -29,7 +29,7 @@ def _write_keepalive(path: Path, ts: datetime) -> None:
     path.write_text(json.dumps({"keepalive_ts": ts.isoformat()}), encoding="utf-8")
 
 
-def test_canonical_fresh_explains_legacy_path_mismatch(tmp_path: Path) -> None:
+def test_canonical_fresh_is_authoritative_even_when_legacy_paths_are_absent(tmp_path: Path) -> None:
     now = datetime(2026, 5, 5, 6, 20, tzinfo=UTC)
     state_root = tmp_path / "var" / "eta_engine" / "state"
     eta_root = tmp_path / "eta_engine"
@@ -44,9 +44,9 @@ def test_canonical_fresh_explains_legacy_path_mismatch(tmp_path: Path) -> None:
 
     assert report["healthy"] is True
     assert report["status"] == "fresh"
-    assert report["diagnosis"] == "canonical_fresh_legacy_path_mismatch"
+    assert report["diagnosis"] == "canonical_heartbeat_fresh"
     assert report["canonical_age_seconds"] == 15.0
-    assert report["warnings"]
+    assert report["warnings"] == []
     assert report["candidates"][0]["payload_summary"]["bot_count"] == 1
 
 
@@ -144,7 +144,7 @@ def test_health_check_surfaces_supervisor_component(monkeypatch) -> None:
         lambda state_root: {
             "healthy": True,
             "status": "fresh",
-            "diagnosis": "canonical_fresh_legacy_path_mismatch",
+            "diagnosis": "canonical_heartbeat_fresh",
             "canonical_age_seconds": 12.5,
             "action_items": [],
         },
@@ -155,7 +155,7 @@ def test_health_check_surfaces_supervisor_component(monkeypatch) -> None:
     assert component.name == "supervisor_heartbeat"
     assert component.healthy is True
     assert component.status == "healthy"
-    assert "canonical_fresh_legacy_path_mismatch" in component.detail
+    assert "canonical_heartbeat_fresh" in component.detail
 
 
 def test_health_check_includes_supervisor_action_item(monkeypatch) -> None:
