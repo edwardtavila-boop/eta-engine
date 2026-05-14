@@ -62,6 +62,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 logger = logging.getLogger("eta_engine.brain.jarvis_v3.prop_firm_guardrails")
 
@@ -71,6 +72,7 @@ _LEGACY_STATE_ROOT = _WORKSPACE / "eta_engine" / "state"
 _TRADE_CLOSES = _STATE_ROOT / "jarvis_intel" / "trade_closes.jsonl"
 _LEGACY_TRADE_CLOSES = _LEGACY_STATE_ROOT / "jarvis_intel" / "trade_closes.jsonl"
 _ACCOUNT_MAP = _STATE_ROOT / "prop_firm_accounts.json"
+_ACCOUNT_DAY_TZ = ZoneInfo("America/New_York")
 
 EXPECTED_HOOKS = ("evaluate", "aggregate_status")
 
@@ -127,7 +129,7 @@ class AccountState:
     current_balance: float
     peak_balance: float  # high-water mark for trailing DD
     day_pnl_usd: float
-    today_date: str  # YYYY-MM-DD UTC
+    today_date: str  # YYYY-MM-DD in the account/operator timezone
     n_trades_today: int
     open_contracts: int
 
@@ -339,6 +341,13 @@ def _parse_iso(s: Any) -> datetime | None:  # noqa: ANN401
         return None
 
 
+def _account_day_iso(dt: datetime) -> str:
+    """Return the prop-account day in the operator's Atlanta/ET timezone."""
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=UTC)
+    return dt.astimezone(_ACCOUNT_DAY_TZ).date().isoformat()
+
+
 def _read_trades_for_account(
     account_id: str,
     trade_closes_path: Path | None = None,
@@ -482,7 +491,7 @@ def account_state_from_trades(
     starting = rules.starting_balance if rules else 0.0
 
     asof_dt = asof or datetime.now(UTC)
-    today_iso = asof_dt.date().isoformat()
+    today_iso = _account_day_iso(asof_dt)
 
     trades = _read_trades_for_account(account_id, trade_closes_path)
     current_balance = starting
@@ -496,7 +505,7 @@ def account_state_from_trades(
         if current_balance > peak_balance:
             peak_balance = current_balance
         ts = _parse_iso(rec.get("ts") or rec.get("closed_at"))
-        if ts is not None and ts.date().isoformat() == today_iso:
+        if ts is not None and _account_day_iso(ts) == today_iso:
             day_pnl += pnl
             n_trades_today += 1
 
