@@ -8116,10 +8116,11 @@ def _broker_oco_evidence_payload(live_broker_state: dict) -> dict:
 
 def _cached_live_broker_state_for_gateway_reconcile() -> dict:
     """Return cached IBKR live state for lightweight status-card reconciliation."""
+    now_ts = time.time()
     with _IBKR_PROBE_LOCK:
         cached = _IBKR_PROBE_CACHE.get("snapshot")
         cached_ts = float(_IBKR_PROBE_CACHE.get("ts") or 0.0)
-        age_s = max(0.0, time.time() - cached_ts) if cached_ts > 0 else None
+        age_s = max(0.0, now_ts - cached_ts) if cached_ts > 0 else None
         if isinstance(cached, dict) and age_s is not None and age_s < (_IBKR_PROBE_CACHE_TTL_S * 2):
             ibkr = dict(cached)
             ibkr.setdefault("cache_ts", cached_ts)
@@ -8131,6 +8132,9 @@ def _cached_live_broker_state_for_gateway_reconcile() -> dict:
                 "ibkr_cache_ts": cached_ts,
                 "ibkr_cache_age_s": round(age_s, 1),
             }
+    persisted = _load_persisted_ibkr_probe_cache(now_ts=now_ts)
+    if persisted:
+        return persisted
     return {}
 
 
@@ -8156,9 +8160,12 @@ def _cached_live_broker_state_for_diagnostics() -> dict:
     today_fills = int(_float_value(ibkr.get("today_executions")) or 0)
     broker_mtd_pnl = _float_value(ibkr.get("account_mtd_pnl"))
     broker_mtd_return_pct = _float_value(ibkr.get("account_mtd_return_pct"))
+    now_utc = datetime.now(UTC)
+    today_start_utc = _dashboard_local_day_start_utc(now_utc)
+    today_start_iso = today_start_utc.isoformat().replace("+00:00", "Z")
     trade_closes = _recent_trade_closes(limit=5000)
     focus_trade_closes = [row for row in trade_closes if not _trade_close_is_cellar(row)]
-    close_history = _close_history_windows(focus_trade_closes, now=datetime.now(UTC))
+    close_history = _close_history_windows(focus_trade_closes, now=now_utc)
     cache_age_s = _float_value(state.get("ibkr_cache_age_s") or ibkr.get("cache_age_s"))
     ibkr_snapshot_ready = bool(state.get("ibkr_cache_state") == "warm" or ibkr.get("ready") is True)
     return {
@@ -8170,6 +8177,9 @@ def _cached_live_broker_state_for_diagnostics() -> dict:
         "broker_snapshot_age_s": cache_age_s,
         "broker_snapshot_state": str(state.get("ibkr_cache_state") or "missing"),
         "server_ts": time.time(),
+        "reporting_timezone": DASHBOARD_LOCAL_TIME_ZONE_NAME,
+        "today_start_utc": today_start_iso,
+        "today_day_boundary": "local_midnight",
         "today_actual_fills": today_fills,
         "today_realized_pnl": today_realized,
         "broker_mtd_pnl": broker_mtd_pnl,
@@ -8979,7 +8989,59 @@ def _alpaca_live_state_snapshot(*, today_start_iso: str) -> dict:
 # plenty for an operator dashboard.
 _IBKR_PROBE_CACHE: dict = {"snapshot": None, "ts": 0.0}
 _IBKR_PROBE_CACHE_TTL_S = float(os.environ.get("ETA_DASHBOARD_IBKR_CACHE_TTL_S", "60"))
+_IBKR_PROBE_DISK_CACHE_MAX_AGE_S = float(os.environ.get("ETA_DASHBOARD_IBKR_DISK_CACHE_MAX_AGE_S", "900"))
 _IBKR_PROBE_LOCK = threading.Lock()
+
+
+def _ibkr_probe_cache_state_path() -> Path:
+    """Canonical last-good IBKR probe cache for dashboard restarts."""
+    return _state_dir() / "broker_cache" / "ibkr_probe_cache.json"
+
+
+def _persist_ibkr_probe_cache(snapshot: dict, *, ts: float) -> None:
+    if snapshot.get("ready") is not True:
+        return
+    with contextlib.suppress(Exception):
+        _write_json_atomic(
+            _ibkr_probe_cache_state_path(),
+            {
+                "schema_version": 1,
+                "ts": ts,
+                "written_at_utc": datetime.now(UTC).isoformat(),
+                "snapshot": snapshot,
+            },
+        )
+
+
+def _load_persisted_ibkr_probe_cache(*, now_ts: float | None = None) -> dict:
+    path = _ibkr_probe_cache_state_path()
+    if not path.exists():
+        return {}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001
+        return {}
+    snapshot = payload.get("snapshot") if isinstance(payload, dict) else None
+    if not isinstance(snapshot, dict):
+        return {}
+    cached_ts = _float_value(payload.get("ts"))
+    if cached_ts is None or cached_ts <= 0:
+        return {}
+    now = time.time() if now_ts is None else now_ts
+    age_s = max(0.0, now - cached_ts)
+    if age_s > _IBKR_PROBE_DISK_CACHE_MAX_AGE_S:
+        return {}
+    ibkr = dict(snapshot)
+    ibkr.setdefault("cache_ts", cached_ts)
+    ibkr.setdefault("cache_age_s", round(age_s, 1))
+    ibkr.setdefault("last_known", True)
+    ibkr["persisted_cache"] = True
+    return {
+        "ibkr": ibkr,
+        "ibkr_cache_state": "persisted",
+        "ibkr_cache_ts": cached_ts,
+        "ibkr_cache_age_s": round(age_s, 1),
+    }
 
 
 def _dashboard_ibkr_client_id_candidates() -> list[int]:
@@ -9586,9 +9648,11 @@ def _ibkr_live_state_snapshot(*, today_start_utc: datetime) -> dict:
     # Cache outcome (success or failure) so back-to-back dashboard hits
     # don't pile orphan eServers in IBG. Failure is cached too — there is
     # no point in probing a wedged gateway every few seconds.
+    cached_ts = time.time()
     with _IBKR_PROBE_LOCK:
         _IBKR_PROBE_CACHE["snapshot"] = dict(snapshot)
-        _IBKR_PROBE_CACHE["ts"] = time.time()
+        _IBKR_PROBE_CACHE["ts"] = cached_ts
+    _persist_ibkr_probe_cache(dict(snapshot), ts=cached_ts)
     return snapshot
 
 

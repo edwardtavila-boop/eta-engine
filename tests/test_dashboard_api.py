@@ -5341,8 +5341,53 @@ class TestDashboardAPI:
         assert live["ready"] is False
         assert live["broker_mtd_pnl"] == 24387.0
         assert live["broker_mtd_return_pct"] == 2.44
+        assert live["reporting_timezone"] == mod.DASHBOARD_LOCAL_TIME_ZONE_NAME
+        assert live["today_day_boundary"] == "local_midnight"
         assert live["sources"]["broker_mtd_pnl"] == "ibkr_net_liquidation_month_manual_override"
         assert live["ibkr"]["account_mtd_baseline_set_at"] == "2026-05-01T00:00:00+00:00"
+
+    def test_cached_diagnostics_restores_persisted_ibkr_probe_after_restart(
+        self,
+        tmp_path,
+        monkeypatch,
+    ):
+        import time
+
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        monkeypatch.setenv("ETA_STATE_DIR", str(tmp_path / "state"))
+        monkeypatch.setattr(mod, "_recent_trade_closes", lambda limit=5000: [])
+        with mod._IBKR_PROBE_LOCK:
+            mod._IBKR_PROBE_CACHE.clear()
+        cache_path = tmp_path / "state" / "broker_cache" / "ibkr_probe_cache.json"
+        cache_path.parent.mkdir(parents=True)
+        cache_path.write_text(
+            json.dumps(
+                {
+                    "ts": time.time(),
+                    "snapshot": {
+                        "ready": True,
+                        "today_executions": 17,
+                        "today_realized_pnl": -321.25,
+                        "unrealized_pnl": 42.5,
+                        "open_position_count": 3,
+                        "account_mtd_pnl": 22209.0,
+                        "account_mtd_return_pct": 2.22,
+                        "account_mtd_source": "ibkr_probe_cache_persisted",
+                    },
+                },
+            ),
+            encoding="utf-8",
+        )
+
+        live = mod._cached_live_broker_state_for_diagnostics()
+
+        assert live["broker_snapshot_state"] == "persisted"
+        assert live["today_actual_fills"] == 17
+        assert live["today_realized_pnl"] == -321.25
+        assert live["total_unrealized_pnl"] == 42.5
+        assert live["open_position_count"] == 3
+        assert live["broker_mtd_pnl"] == 22209.0
 
     def test_derive_ibkr_today_realized_pnl_prefers_futures_bucket(self):
         import eta_engine.deploy.scripts.dashboard_api as mod
