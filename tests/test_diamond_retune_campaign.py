@@ -71,6 +71,44 @@ def test_campaign_turns_retune_queue_into_safe_ranked_worklist() -> None:
     assert "no broker orders" in " ".join(report["safety_rails"]).lower()
 
 
+def test_campaign_default_covers_full_retune_queue_without_live_mutation() -> None:
+    from eta_engine.scripts import diamond_retune_campaign as campaign
+
+    audit = {
+        "summary": {
+            "n_bots": 14,
+            "n_retune": 7,
+            "safe_to_mutate_live": False,
+            "scoring_basis": "broker_closed_trade_pnl_first",
+        },
+        "retune_queue": [
+            {
+                "bot_id": f"bot_{idx}",
+                "symbol": f"S{idx}",
+                "strategy_kind": "confluence_scorecard",
+                "asset_sleeve": "equity_index",
+                "priority_score": float(100 - idx),
+                "issue_code": "broker_pnl_negative",
+                "retune_command": (
+                    "python -m eta_engine.scripts.run_research_grid "
+                    f"--source registry --bots bot_{idx} --report-policy runtime"
+                ),
+                "live_mutation_policy": "paper_only_advisory",
+                "safe_to_mutate_live": False,
+            }
+            for idx in range(7)
+        ],
+    }
+
+    report = campaign.build_campaign(audit)
+
+    assert report["summary"]["n_available_targets"] == 7
+    assert report["summary"]["n_selected_targets"] == 7
+    assert [target["rank"] for target in report["targets"]] == [1, 2, 3, 4, 5, 6, 7]
+    assert all(target["safe_to_mutate_live"] is False for target in report["targets"])
+    assert all(target["live_mutation_policy"] == "paper_only_advisory" for target in report["targets"])
+
+
 def test_runner_executes_allowed_registry_research_and_keeps_live_locked(tmp_path) -> None:
     from eta_engine.scripts import diamond_retune_runner as runner
 

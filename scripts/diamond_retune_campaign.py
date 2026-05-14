@@ -72,11 +72,11 @@ def _target(row: dict[str, Any], rank: int) -> dict[str, Any]:
     }
 
 
-def build_campaign(audit: dict[str, Any], *, limit: int = 5) -> dict[str, Any]:
+def build_campaign(audit: dict[str, Any], *, limit: int = 0) -> dict[str, Any]:
     queue_raw = audit.get("retune_queue")
     queue = [row for row in queue_raw if isinstance(row, dict)] if isinstance(queue_raw, list) else []
     ranked = _sort_queue(queue)
-    selected = ranked[: max(0, limit)]
+    selected = ranked[:limit] if limit > 0 else ranked
     targets = [_target(row, rank=i + 1) for i, row in enumerate(selected)]
     top = targets[0] if targets else {}
     audit_summary = audit.get("summary") if isinstance(audit.get("summary"), dict) else {}
@@ -102,7 +102,7 @@ def load_audit(path: Path = DEFAULT_AUDIT_PATH) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def run(*, audit_path: Path = DEFAULT_AUDIT_PATH, out_path: Path = OUT_LATEST, limit: int = 5) -> dict[str, Any]:
+def run(*, audit_path: Path = DEFAULT_AUDIT_PATH, out_path: Path = OUT_LATEST, limit: int = 0) -> dict[str, Any]:
     report = build_campaign(load_audit(audit_path), limit=limit)
     workspace_roots.ensure_parent(out_path)
     out_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -130,7 +130,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--audit-path", type=Path, default=DEFAULT_AUDIT_PATH)
     parser.add_argument("--out-path", type=Path, default=OUT_LATEST)
-    parser.add_argument("--limit", type=int, default=5)
+    parser.add_argument("--limit", type=int, default=0)
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)
     report = run(audit_path=args.audit_path, out_path=args.out_path, limit=args.limit)
