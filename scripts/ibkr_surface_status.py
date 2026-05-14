@@ -280,6 +280,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--skip-client-portal", action="store_true")
     parser.add_argument("--no-write", action="store_true")
     parser.add_argument("--output", type=Path, default=_STATUS_PATH)
+    parser.add_argument("--tws-watchdog-path", type=Path, default=_TWS_WATCHDOG_PATH)
+    parser.add_argument("--client-portal-reauth-path", type=Path, default=_CLIENT_PORTAL_REAUTH_PATH)
     args = parser.parse_args(argv)
 
     status = build_status(
@@ -288,6 +290,8 @@ def main(argv: list[str] | None = None) -> int:
         client_portal_url=args.client_portal_url,
         timeout=args.timeout,
         check_client_portal=not args.skip_client_portal,
+        tws_watchdog_path=args.tws_watchdog_path,
+        client_portal_reauth_path=args.client_portal_reauth_path,
     )
     if not args.no_write:
         _write_json(args.output, status)

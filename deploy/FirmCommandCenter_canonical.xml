@@ -5,7 +5,7 @@
   <executable>C:\EvolutionaryTradingAlgo\firm_command_center\eta_engine\.venv\Scripts\python.exe</executable>
   <arguments>-m uvicorn eta_engine.deploy.scripts.dashboard_api:app --host 127.0.0.1 --port 8420 --proxy-headers --forwarded-allow-ips=127.0.0.1</arguments>
   <workingdirectory>C:\EvolutionaryTradingAlgo</workingdirectory>
-  <env name="PYTHONPATH" value="C:\EvolutionaryTradingAlgo;C:\EvolutionaryTradingAlgo\firm_command_center\eta_engine;C:\EvolutionaryTradingAlgo\firm_command_center\eta_engine\src"/>
+  <env name="PYTHONPATH" value="C:\EvolutionaryTradingAlgo;C:\EvolutionaryTradingAlgo\eta_engine;C:\EvolutionaryTradingAlgo\eta_engine\src"/>
   <env name="PYTHONUTF8" value="1"/>
   <env name="PYTHONDONTWRITEBYTECODE" value="1"/>
   <env name="ETA_STATE_DIR" value="C:\EvolutionaryTradingAlgo\var\eta_engine\state"/>

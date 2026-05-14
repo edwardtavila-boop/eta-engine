@@ -372,6 +372,10 @@ def _positive_int_env(name: str, default: int) -> int:
     return value if value > 0 else default
 
 
+def _truthy_env(name: str, default: str = "0") -> bool:
+    return str(os.environ.get(name, default)).strip().lower() in {"1", "true", "yes", "on", "y"}
+
+
 # The Kaizen loop runs every 15 minutes. Keep a small grace window so normal
 # scheduler drift does not hide an otherwise current blocked-readiness receipt.
 _ETA_READINESS_SNAPSHOT_MAX_AGE_S = _positive_int_env(
@@ -8865,6 +8869,10 @@ def _ibkr_live_state_snapshot(*, today_start_utc: datetime) -> dict:
         "account_summary_tags": {},
         "checked_utc": datetime.now(UTC).isoformat(),
     }
+    if _truthy_env("ETA_DASHBOARD_DISABLE_BROKER_PROBES"):
+        snapshot["disabled"] = True
+        snapshot["error"] = "ibkr_probe_disabled"
+        return snapshot
     # ib_insync's package init calls asyncio.get_event_loop() at import
     # time. FastAPI/AnyIO worker threads have no loop, so the import
     # itself raises. Install a fresh loop in this thread BEFORE the
@@ -10316,7 +10324,13 @@ def _local_master_status_payload() -> dict[str, object]:
     paper = _paper_live_transition_payload(refresh=False)
     paper_ready = bool(paper.get("critical_ready"))
     operator_queue = _operator_queue_payload()
-    launch_blocked = int(operator_queue.get("launch_blocked_count") or 0)
+    launch_blocked_raw = paper.get("operator_queue_launch_blocked_count")
+    if launch_blocked_raw is None:
+        launch_blocked_raw = operator_queue.get("launch_blocked_count")
+    try:
+        launch_blocked = int(launch_blocked_raw or 0)
+    except (TypeError, ValueError):
+        launch_blocked = 0
     blocked = int(operator_queue.get("summary", {}).get("BLOCKED") or 0)
     runtime_mode = "paper_live" if paper_ready else "paper_sim"
     generated_at = datetime.now(UTC).isoformat()

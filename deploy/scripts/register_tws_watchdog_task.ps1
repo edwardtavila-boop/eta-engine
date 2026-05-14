@@ -82,17 +82,34 @@ $settings = New-ScheduledTaskSettingsSet `
     -ExecutionTimeLimit (New-TimeSpan -Minutes 2)
 $principal = New-ScheduledTaskPrincipal `
     -UserId "NT AUTHORITY\SYSTEM" -LogonType ServiceAccount -RunLevel Highest
+$description = "ETA TWS API 4002 watchdog. Keeps tws_watchdog.json fresh enough for the 180-second paper-live release guard."
+$registeredPrincipal = "SYSTEM"
+try {
+    Register-ScheduledTask `
+        -TaskName $TaskName `
+        -Description $description `
+        -Action $action `
+        -Trigger $triggers `
+        -Settings $settings `
+        -Principal $principal `
+        -Force | Out-Null
+} catch {
+    $currentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+    $fallbackPrincipal = New-ScheduledTaskPrincipal `
+        -UserId $currentUser -LogonType Interactive -RunLevel Limited
+    $fallbackTriggers = @((New-ScheduledTaskTrigger -AtLogOn -User $currentUser), $heartbeat)
+    Register-ScheduledTask `
+        -TaskName $TaskName `
+        -Description "$description Current-user fallback because SYSTEM registration was unavailable." `
+        -Action $action `
+        -Trigger $fallbackTriggers `
+        -Settings $settings `
+        -Principal $fallbackPrincipal `
+        -Force | Out-Null
+    $registeredPrincipal = "current_user:$currentUser"
+}
 
-Register-ScheduledTask `
-    -TaskName $TaskName `
-    -Description "ETA TWS API 4002 watchdog. Keeps tws_watchdog.json fresh enough for the 180-second paper-live release guard." `
-    -Action $action `
-    -Trigger $triggers `
-    -Settings $settings `
-    -Principal $principal `
-    -Force | Out-Null
-
-Write-Host "OK: Registered '$TaskName' as SYSTEM, AtStartup plus every $IntervalSeconds seconds."
+Write-Host "OK: Registered '$TaskName' as $registeredPrincipal, startup/logon plus every $IntervalSeconds seconds."
 if ($Start) {
     Start-ScheduledTask -TaskName $TaskName
     Write-Host "    Started '$TaskName' immediately."

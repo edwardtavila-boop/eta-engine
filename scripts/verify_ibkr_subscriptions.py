@@ -30,9 +30,11 @@ Output
     1 -- one or more exchanges return delayed / frozen / errored
     2 -- connection / setup error (no probe completed)
 
-The verifier is read-only -- no orders, no order requests, no
-historical-data calls.  Single-shot probe per exchange, ~1-2
-seconds per probe, total runtime under 30 seconds.
+The verifier never submits orders and never requests historical data.
+It does send a non-mutating open-orders request to detect whether IB
+Gateway's "Read-Only API" setting would reject paper-live order entry.
+Single-shot probe per exchange, ~1-2 seconds per probe, total runtime
+under 30 seconds.
 
 Run
 ---
@@ -57,12 +59,14 @@ from __future__ import annotations
 # SIM105 disabled because the bare try/except/pass pattern is more
 # readable than contextlib.suppress for these callback-attach calls.
 import argparse
+import asyncio
 import json
 import logging
 import os
 import socket
 import sys
 import time
+import warnings
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -80,6 +84,20 @@ IBC_PRIVATE_PASSWORD_FILES = (
     ROOT.parent / "var" / "eta_engine" / "ibc" / "private" / "ibkr_password.txt",
     ROOT / "secrets" / "ibkr_password.txt",
 )
+
+
+def _ensure_asyncio_event_loop() -> None:
+    """ib_insync/eventkit expects a default loop at import time on Python 3.14."""
+    loop: asyncio.AbstractEventLoop | None = None
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            loop = asyncio.get_event_loop()
+    except RuntimeError:
+        asyncio.set_event_loop(asyncio.new_event_loop())
+        return
+    if loop is not None and loop.is_closed():
+        asyncio.set_event_loop(asyncio.new_event_loop())
 
 
 # Representative probe symbol per exchange.  These are the most-liquid
@@ -290,6 +308,63 @@ def _tws_port() -> int | None:
             s.close()
             continue
     return None
+
+
+def _probe_order_api_access(ib: object, *, timeout: float = 1.5) -> dict[str, object]:
+    """Detect whether Gateway permits order-entry API calls without submitting an order."""
+    captured_errors: list[dict[str, object]] = []
+
+    def _on_error(reqId, errorCode, errorString, contract_arg=None) -> None:  # noqa: ANN001, ARG001, N803
+        message = str(errorString or "")
+        if int(errorCode or 0) == 321 and "read-only mode" in message.lower():
+            captured_errors.append(
+                {
+                    "code": int(errorCode),
+                    "message": message[:200],
+                    "req_id": int(reqId) if reqId is not None else -1,
+                }
+            )
+
+    try:
+        ib.errorEvent += _on_error  # type: ignore[attr-defined]
+    except Exception:
+        pass
+    try:
+        try:
+            ib.reqOpenOrders()  # type: ignore[attr-defined]
+        except Exception as exc:
+            return {
+                "ready": False,
+                "status": "error",
+                "detail": f"reqOpenOrders failed: {exc}",
+                "operator_action": "Verify IB Gateway API settings before launching paper_live.",
+            }
+        deadline = time.time() + max(0.1, timeout)
+        while time.time() < deadline and not captured_errors:
+            ib.sleep(0.1)  # type: ignore[attr-defined]
+    finally:
+        try:
+            ib.errorEvent -= _on_error  # type: ignore[attr-defined]
+        except Exception:
+            pass
+
+    if captured_errors:
+        return {
+            "ready": False,
+            "status": "read_only",
+            "detail": "IB Gateway API is in Read-Only mode; paper_live order entry would be rejected.",
+            "operator_action": (
+                "In IB Gateway Configure > Settings > API > Settings, uncheck Read-Only API, "
+                "then rerun python -m eta_engine.scripts.verify_ibkr_subscriptions --json."
+            ),
+            "ibkr_errors": captured_errors,
+        }
+    return {
+        "ready": True,
+        "status": "ok",
+        "detail": "Open-order API request was accepted; Gateway is not in API read-only mode.",
+        "operator_action": None,
+    }
 
 
 def _probe_one_exchange(
@@ -631,6 +706,7 @@ def main() -> int:
                 log.error("operator_action: %s", operator_action)
         return 2
 
+    _ensure_asyncio_event_loop()
     try:
         from ib_insync import IB
     except ImportError:
@@ -688,6 +764,8 @@ def main() -> int:
     if args.include_ice:
         probes.update(OPTIONAL_PROBES)
 
+    order_api = _probe_order_api_access(ib, timeout=min(args.probe_timeout, 2.0))
+
     results: list[dict] = []
     for exch, spec in probes.items():
         if not args.json:
@@ -721,6 +799,7 @@ def main() -> int:
         "credential_status": credential_status,
         "results": results,
         "depth_results": depth_results,
+        "order_api": order_api,
         "all_realtime": all_realtime,
         "all_depth_ok": all_depth_ok,
     }

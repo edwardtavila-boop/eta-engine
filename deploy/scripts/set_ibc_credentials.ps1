@@ -81,8 +81,48 @@ function Write-PasswordFile {
     if ($dir -and -not (Test-Path -LiteralPath $dir)) {
         New-Item -ItemType Directory -Path $dir -Force | Out-Null
     }
+    if (Test-Path -LiteralPath $Path) {
+        try {
+            $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+            $acl = Get-Acl -LiteralPath $Path
+            $rule = New-Object System.Security.AccessControl.FileSystemAccessRule(
+                $identity,
+                [System.Security.AccessControl.FileSystemRights]::FullControl,
+                [System.Security.AccessControl.AccessControlType]::Allow
+            )
+            $acl.SetAccessRule($rule)
+            Set-Acl -LiteralPath $Path -AclObject $acl
+        } catch {
+            try {
+                $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+                Start-Process -FilePath "icacls.exe" -ArgumentList @("`"$Path`"", "/grant:r", "$identity`:(F)") -Wait -NoNewWindow | Out-Null
+            } catch {
+                Write-Output "IBC_PASSWORD_FILE_WRITABLE=warning"
+            }
+        }
+        try {
+            Set-ItemProperty -LiteralPath $Path -Name IsReadOnly -Value $false -ErrorAction Stop
+        } catch {
+            Write-Output "IBC_PASSWORD_FILE_READONLY=warning"
+        }
+    }
     Set-Content -LiteralPath $Path -Value $Secret -Encoding UTF8 -NoNewline
     Protect-SecretFilePath -Path $Path
+}
+
+function Set-SecretEnvironmentVariable {
+    param(
+        [string]$Name,
+        [string]$Value
+    )
+
+    try {
+        [Environment]::SetEnvironmentVariable($Name, $Value, "Machine")
+        return "machine"
+    } catch {
+        [Environment]::SetEnvironmentVariable($Name, $Value, "User")
+        return "user"
+    }
 }
 
 Assert-CanonicalEtaPath -Path $CredentialJsonPath
@@ -115,11 +155,13 @@ if (-not $SkipPasswordFile) {
     Write-PasswordFile -Path $PasswordFilePath -Secret $resolvedPassword
 }
 
-[Environment]::SetEnvironmentVariable("ETA_IBC_LOGIN_ID", $resolvedLoginId, "Machine")
-[Environment]::SetEnvironmentVariable("ETA_IBC_PASSWORD", $resolvedPassword, "Machine")
+$loginEnvScope = Set-SecretEnvironmentVariable -Name "ETA_IBC_LOGIN_ID" -Value $resolvedLoginId
+$passwordEnvScope = Set-SecretEnvironmentVariable -Name "ETA_IBC_PASSWORD" -Value $resolvedPassword
 
 Write-Output "ETA_IBC_LOGIN_ID=seeded"
 Write-Output "ETA_IBC_PASSWORD=seeded"
+Write-Output "ETA_IBC_LOGIN_ID_SCOPE=$loginEnvScope"
+Write-Output "ETA_IBC_PASSWORD_SCOPE=$passwordEnvScope"
 if (-not $SkipPasswordFile) {
     Write-Output "IBC_PASSWORD_FILE=seeded"
 }

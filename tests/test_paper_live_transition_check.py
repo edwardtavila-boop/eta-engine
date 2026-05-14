@@ -199,6 +199,44 @@ def test_transition_check_ready_when_only_non_launch_operator_warnings_remain(mo
     assert result["paper_ready_bots"] == 10
 
 
+def test_transition_check_blocks_when_gateway_api_is_read_only(monkeypatch) -> None:
+    from eta_engine.scripts import paper_live_transition_check as mod
+
+    monkeypatch.setattr(mod.ibkr_surface_status, "build_status", lambda **_kwargs: _surface(ready=True))
+    monkeypatch.setattr(mod.ibgateway_release_guard, "run_guard", lambda **_kwargs: _release(ready=True))
+    monkeypatch.setattr(
+        mod.operator_queue_snapshot,
+        "build_snapshot",
+        lambda **_kwargs: _queue(
+            first_op="OP-16",
+            blocked=1,
+            paper_ready=10,
+            launch_blocked=0,
+            first_launch_op=None,
+        ),
+    )
+    monkeypatch.setattr(
+        mod,
+        "_latest_order_api_status",
+        lambda: {
+            "ready": False,
+            "status": "read_only",
+            "detail": "IB Gateway API is in Read-Only mode; paper_live order entry would be rejected.",
+            "operator_action": "Uncheck Read-Only API in IB Gateway API settings.",
+        },
+    )
+
+    result = mod.build_transition_check()
+
+    assert result["status"] == "blocked"
+    assert result["critical_ready"] is False
+    assert result["launch_command"] == ""
+    assert result["operator_queue_launch_blocked_count"] == 0
+    gate = next(gate for gate in result["gates"] if gate["name"] == "ibkr_order_api")
+    assert gate["passed"] is False
+    assert "Read-Only mode" in gate["detail"]
+
+
 def test_transition_check_accepts_already_released_guard(monkeypatch) -> None:
     from eta_engine.scripts import paper_live_transition_check as mod
 

@@ -94,6 +94,9 @@ def test_command_center_service_template_points_at_canonical_dashboard_api() -> 
     assert r"C:\EvolutionaryTradingAlgo" in text
     assert r"firm_command_center" in text
     assert r"\.venv\Scripts\python.exe" in text
+    assert r"C:\EvolutionaryTradingAlgo\eta_engine;C:\EvolutionaryTradingAlgo\eta_engine\src" in text
+    stale_mirror = "C:\\EvolutionaryTradingAlgo\\firm_command_center" + "\\eta_engine"
+    assert f'PYTHONPATH" value="C:\\EvolutionaryTradingAlgo;{stale_mirror}' not in text
     assert r"C:\EvolutionaryTradingAlgo\var\eta_engine\state" in text
     assert r"C:\EvolutionaryTradingAlgo\logs\eta_engine" in text
     assert "<workingdirectory>C:\\EvolutionaryTradingAlgo</workingdirectory>" in text

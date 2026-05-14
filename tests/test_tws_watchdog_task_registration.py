@@ -20,6 +20,10 @@ def test_tws_watchdog_registrar_keeps_release_guard_fresh() -> None:
     assert "-RepetitionInterval (New-TimeSpan -Seconds $IntervalSeconds)" in text
     assert "IntervalSeconds -lt 30 -or $IntervalSeconds -gt 120" in text
     assert "180-second paper-live release guard" in text
+    assert "NT AUTHORITY\\SYSTEM" in text
+    assert "LogonType Interactive" in text
+    assert "current_user:$currentUser" in text
+    assert "SYSTEM registration was unavailable" in text
     assert "C:\\Users\\edwar\\OneDrive" not in text
     assert "%LOCALAPPDATA%" not in text
     assert "C:\\mnq_data" not in text

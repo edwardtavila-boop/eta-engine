@@ -233,11 +233,23 @@ def test_ibc_credentials_helper_seeds_machine_env_without_logging_values() -> No
     assert "Resolve-JsonLoginId" in text
     assert "Write-PasswordFile" in text
     assert "Protect-SecretFilePath" in text
+    assert "Set-SecretEnvironmentVariable" in text
+    assert "WindowsIdentity]::GetCurrent().Name" in text
+    assert "FileSystemRights]::FullControl" in text
+    assert "Set-Acl -LiteralPath $Path -AclObject $acl" in text
+    assert 'Start-Process -FilePath "icacls.exe"' in text
+    assert '"/grant:r"' in text
+    assert "IBC_PASSWORD_FILE_WRITABLE=warning" in text
+    assert "IBC_PASSWORD_FILE_READONLY=warning" in text
     assert "Set-Content -LiteralPath $Path -Value $Secret -Encoding UTF8 -NoNewline" in text
-    assert 'SetEnvironmentVariable("ETA_IBC_LOGIN_ID"' in text
-    assert 'SetEnvironmentVariable("ETA_IBC_PASSWORD"' in text
+    assert 'Set-SecretEnvironmentVariable -Name "ETA_IBC_LOGIN_ID"' in text
+    assert 'Set-SecretEnvironmentVariable -Name "ETA_IBC_PASSWORD"' in text
+    assert 'SetEnvironmentVariable($Name, $Value, "Machine")' in text
+    assert 'SetEnvironmentVariable($Name, $Value, "User")' in text
     assert "ETA_IBC_LOGIN_ID=seeded" in text
     assert "ETA_IBC_PASSWORD=seeded" in text
+    assert "ETA_IBC_LOGIN_ID_SCOPE=" in text
+    assert "ETA_IBC_PASSWORD_SCOPE=" in text
     assert "IBC_PASSWORD_FILE=seeded" in text
     assert "Missing IBKR password" in text
     assert "Write-Output $resolvedPassword" not in text

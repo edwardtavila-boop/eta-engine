@@ -18,6 +18,7 @@ def app_client(tmp_path, monkeypatch):
     """Point dashboard_api at a temp state dir + return a TestClient."""
     monkeypatch.setenv("ETA_STATE_DIR", str(tmp_path / "state"))
     monkeypatch.setenv("ETA_LOG_DIR", str(tmp_path / "logs"))
+    monkeypatch.setenv("ETA_DASHBOARD_DISABLE_BROKER_PROBES", "1")
     monkeypatch.setenv(
         "ETA_COMMAND_CENTER_DOCTOR_RECEIPT_PATH",
         str(tmp_path / "state" / "command_center_doctor_latest.json"),
@@ -2245,7 +2246,7 @@ class TestDashboardAPI:
         monkeypatch.setattr(
             mod,
             "_operator_queue_payload",
-            lambda: {"summary": {"BLOCKED": 1}, "launch_blocked_count": 0},
+            lambda: {"summary": {"BLOCKED": 1}, "launch_blocked_count": 3},
         )
         (tmp_path / "state" / "paper_live_transition_check.json").write_text(
             json.dumps(

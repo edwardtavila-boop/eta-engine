@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sys
+from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -11,6 +12,78 @@ from eta_engine.scripts import verify_ibkr_subscriptions as vis
 
 if TYPE_CHECKING:
     import pytest
+
+
+def test_ensure_asyncio_event_loop_creates_loop_when_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+    loop = object()
+    captured = {}
+
+    def missing_loop() -> object:
+        raise RuntimeError("There is no current event loop in thread 'MainThread'.")
+
+    monkeypatch.setattr(vis.asyncio, "get_event_loop", missing_loop)
+    monkeypatch.setattr(vis.asyncio, "new_event_loop", lambda: loop)
+    monkeypatch.setattr(vis.asyncio, "set_event_loop", lambda value: captured.setdefault("loop", value))
+
+    vis._ensure_asyncio_event_loop()
+
+    assert captured["loop"] is loop
+
+
+def test_ensure_asyncio_event_loop_replaces_closed_loop(monkeypatch: pytest.MonkeyPatch) -> None:
+    replacement = object()
+    captured = {}
+
+    class ClosedLoop:
+        def is_closed(self) -> bool:
+            return True
+
+    monkeypatch.setattr(vis.asyncio, "get_event_loop", lambda: ClosedLoop())
+    monkeypatch.setattr(vis.asyncio, "new_event_loop", lambda: replacement)
+    monkeypatch.setattr(vis.asyncio, "set_event_loop", lambda value: captured.setdefault("loop", value))
+
+    vis._ensure_asyncio_event_loop()
+
+    assert captured["loop"] is replacement
+
+
+def test_probe_order_api_access_detects_read_only_gateway() -> None:
+    class Event:
+        def __init__(self) -> None:
+            self.handlers: list[Callable[..., None]] = []
+
+        def __iadd__(self, handler: Callable[..., None]) -> Event:
+            self.handlers.append(handler)
+            return self
+
+        def __isub__(self, handler: Callable[..., None]) -> Event:
+            self.handlers.remove(handler)
+            return self
+
+        def emit(self, *args: object) -> None:
+            for handler in list(self.handlers):
+                handler(*args)
+
+    class FakeIB:
+        def __init__(self) -> None:
+            self.errorEvent = Event()
+
+        def reqOpenOrders(self) -> None:
+            self.errorEvent.emit(
+                -1,
+                321,
+                "Error validating request: The API interface is currently in Read-Only mode.",
+                None,
+            )
+
+        def sleep(self, _seconds: float) -> None:
+            return None
+
+    status = vis._probe_order_api_access(FakeIB())
+
+    assert status["ready"] is False
+    assert status["status"] == "read_only"
+    assert "Read-Only mode" in status["detail"]
 
 
 def test_ibc_credential_status_flags_placeholder_password(tmp_path: Path) -> None:

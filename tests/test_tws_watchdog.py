@@ -34,6 +34,7 @@ def test_unhealthy_watchdog_status_includes_latest_ibgateway_jvm_oom(
     )
     status_path = tmp_path / "tws_watchdog.json"
     monkeypatch.setattr(tws_watchdog, "_STATUS_PATH", status_path)
+    monkeypatch.setattr(tws_watchdog, "_check_ib_handshake", lambda *_args, **_kwargs: (False, "mock handshake down"))
     monkeypatch.setattr(tws_watchdog, "_check_socket", lambda *_args, **_kwargs: False)
     monkeypatch.setattr(
         tws_watchdog,

@@ -64,16 +64,32 @@ $settings = New-ScheduledTaskSettingsSet `
     -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable `
     -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) `
     -ExecutionTimeLimit ([TimeSpan]::Zero)
-$principal = New-ScheduledTaskPrincipal `
+$description = "JARVIS strategy supervisor: paper-live composite feed with canonical heartbeat and logs."
+$systemPrincipal = New-ScheduledTaskPrincipal `
     -UserId "NT AUTHORITY\SYSTEM" -LogonType ServiceAccount -RunLevel Highest
 
-Register-ScheduledTask `
-    -TaskName $TaskName `
-    -Description "JARVIS strategy supervisor: paper-live composite feed with canonical heartbeat and logs." `
-    -Action $action -Trigger $triggers -Settings $settings -Principal $principal `
-    -Force | Out-Null
+try {
+    Register-ScheduledTask `
+        -TaskName $TaskName `
+        -Description $description `
+        -Action $action -Trigger $triggers -Settings $settings -Principal $systemPrincipal `
+        -Force | Out-Null
+    $principalLabel = "SYSTEM, AtStartup+AtLogOn"
+} catch {
+    $currentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+    Write-Warning "SYSTEM registration unavailable: $($_.Exception.Message)"
+    $userTriggers = @((New-ScheduledTaskTrigger -AtLogOn -User $currentUser))
+    $userPrincipal = New-ScheduledTaskPrincipal `
+        -UserId $currentUser -LogonType Interactive -RunLevel Limited
+    Register-ScheduledTask `
+        -TaskName $TaskName `
+        -Description $description `
+        -Action $action -Trigger $userTriggers -Settings $settings -Principal $userPrincipal `
+        -Force | Out-Null
+    $principalLabel = "current_user:$currentUser, AtLogOn"
+}
 
-Write-Host "OK: Registered '$TaskName' as SYSTEM, AtStartup+AtLogOn, restart-on-fail."
+Write-Host "OK: Registered '$TaskName' as $principalLabel, restart-on-fail."
 Write-Host "    Logs: $StdoutLog"
 Write-Host "          $StderrLog"
 Write-Host "    Start now with:  Start-ScheduledTask -TaskName '$TaskName'"

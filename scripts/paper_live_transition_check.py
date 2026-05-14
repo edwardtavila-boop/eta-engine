@@ -34,11 +34,50 @@ from eta_engine.scripts import (  # noqa: E402
 )
 
 _DEFAULT_OUT = workspace_roots.ETA_RUNTIME_STATE_DIR / "paper_live_transition_check.json"
+_IBKR_SUBSCRIPTION_LOG = workspace_roots.ETA_RUNTIME_LOG_DIR / "ibkr_subscription_status.jsonl"
 _LAUNCH_COMMAND = "$env:ETA_SUPERVISOR_MODE='paper_live'; python eta_engine/scripts/jarvis_strategy_supervisor.py"
 
 
 def _utc_now_iso() -> str:
     return datetime.now(UTC).isoformat()
+
+
+def _latest_order_api_status(
+    path: Path = _IBKR_SUBSCRIPTION_LOG,
+    *,
+    max_age_s: int = 900,
+) -> dict[str, Any] | None:
+    """Return fresh order-entry evidence from the IBKR subscription verifier, if present."""
+    try:
+        lines = [line for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    except (OSError, UnicodeDecodeError):
+        return None
+    for line in reversed(lines):
+        try:
+            payload = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(payload, dict):
+            continue
+        order_api = payload.get("order_api")
+        if not isinstance(order_api, dict):
+            return None
+        ts_raw = str(payload.get("ts") or "")
+        age_s: float | None = None
+        if ts_raw:
+            try:
+                ts = datetime.fromisoformat(ts_raw.replace("Z", "+00:00"))
+                age_s = (datetime.now(UTC) - ts).total_seconds()
+            except ValueError:
+                age_s = None
+        if age_s is not None and age_s > max_age_s:
+            return None
+        result = dict(order_api)
+        result["source"] = str(path)
+        if age_s is not None:
+            result["source_age_s"] = round(age_s, 3)
+        return result
+    return None
 
 
 def _gate(
@@ -156,6 +195,7 @@ def build_transition_check(
         max_watchdog_age_s=max_watchdog_age_s,
     )
     queue = operator_queue_snapshot.build_snapshot(limit=limit, refresh_readiness=True)
+    order_api_status = _latest_order_api_status()
 
     paper_live_ready = bool(ibkr_status.get("summary", {}).get("paper_live_ready"))
     release_ready = (
@@ -206,6 +246,21 @@ def build_transition_check(
             next_action="python -m eta_engine.scripts.paper_live_launch_check --json",
         ),
     ]
+    if isinstance(order_api_status, dict) and order_api_status.get("status") == "read_only":
+        gates.append(
+            _gate(
+                "ibkr_order_api",
+                passed=False,
+                detail=str(
+                    order_api_status.get("detail")
+                    or "IB Gateway API is in Read-Only mode; paper_live order entry would be rejected."
+                ),
+                next_action=str(
+                    order_api_status.get("operator_action")
+                    or "Uncheck Read-Only API in IB Gateway API settings, then rerun the verifier."
+                ),
+            ),
+        )
     critical_ready = all(gate["passed"] for gate in gates if gate["critical"])
     status = "ready_to_launch_paper_live" if critical_ready and launch_blockers == 0 else "blocked"
 
@@ -228,6 +283,7 @@ def build_transition_check(
         "gates": gates,
         "ibkr_surface_status": ibkr_status,
         "release_guard": release_guard,
+        "ibkr_order_api_status": order_api_status,
     }
 
 

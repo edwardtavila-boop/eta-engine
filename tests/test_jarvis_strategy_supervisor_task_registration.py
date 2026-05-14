@@ -6,6 +6,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "deploy" / "scripts" / "register_jarvis_strategy_supervisor_task.ps1"
 RUNNER = ROOT / "deploy" / "scripts" / "run_jarvis_strategy_supervisor_task.cmd"
+SET_ENV = ROOT / "deploy" / "scripts" / "set_supervisor_env.ps1"
 
 
 def test_supervisor_task_registration_is_canonical_and_logged() -> None:
@@ -22,6 +23,10 @@ def test_supervisor_task_registration_is_canonical_and_logged() -> None:
     assert "New-ScheduledTaskTrigger -AtLogOn" in text
     assert "RestartCount 999" in text
     assert "New-ScheduledTaskAction -Execute $Runner" in text
+    assert "SYSTEM registration unavailable" in text
+    assert "WindowsIdentity]::GetCurrent().Name" in text
+    assert "LogonType Interactive" in text
+    assert "current_user:$currentUser" in text
 
 
 def test_supervisor_task_registration_avoids_legacy_and_opaque_launchers() -> None:
@@ -66,6 +71,16 @@ def test_supervisor_task_runner_sets_env_and_redirects_logs() -> None:
     assert "jarvis_strategy_supervisor.stderr.log" in text
     assert "python.exe" in text
     assert "exit /b %ERRORLEVEL%" in text
+
+
+def test_supervisor_env_helper_matches_broker_router_paper_live_route() -> None:
+    text = SET_ENV.read_text(encoding="utf-8")
+
+    assert 'ETA_SUPERVISOR_MODE", "paper_live"' in text
+    assert 'ETA_SUPERVISOR_FEED", "composite"' in text
+    assert 'ETA_PAPER_LIVE_ORDER_ROUTE", "broker_router"' in text
+    assert 'ETA_PAPER_LIVE_ALLOWED_SYMBOLS", "MNQ,MNQ1,NQ,NQ1' in text
+    assert "direct_ibkr" not in text
 
 
 def test_supervisor_task_runner_pins_only_readiness_approved_paper_bots() -> None:
