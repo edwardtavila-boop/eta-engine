@@ -155,6 +155,67 @@ def test_scoreboard_metrics_compute_from_closes(tmp_path: Path) -> None:
     assert m["realized_pnl"] == 100  # +50 - 100 + 150
 
 
+def test_scoreboard_loads_daily_window_from_shared_ledger(monkeypatch) -> None:
+    from eta_engine.scripts import bot_scoreboard
+    from eta_engine.scripts.closed_trade_ledger import DEFAULT_OPERATOR_DATA_SOURCES
+
+    calls: list[dict[str, object]] = []
+
+    def fake_load_close_records(**kwargs):
+        calls.append(kwargs)
+        return [{"bot_id": "daily_bot", "realized_r": 1.0, "realized_pnl": 25.0}]
+
+    import eta_engine.scripts.closed_trade_ledger as ledger
+
+    monkeypatch.setattr(ledger, "load_close_records", fake_load_close_records)
+
+    rows = bot_scoreboard._load_closes(since_days=1)
+
+    assert rows == [{"bot_id": "daily_bot", "realized_r": 1.0, "realized_pnl": 25.0}]
+    assert calls[0]["since_days"] == 1
+    assert calls[0]["data_sources"] == DEFAULT_OPERATOR_DATA_SOURCES
+
+
+def test_scoreboard_pnl_map_shows_distinct_winners_and_losers() -> None:
+    from eta_engine.scripts.bot_scoreboard import _pnl_map
+
+    rows = [
+        {"bot_id": "winner_a", "symbol": "MNQ1", "asset": "futures", "closes": 3, "realized_pnl": 150.0, "win_rate": 1.0, "avg_r": 1.2},
+        {"bot_id": "winner_b", "symbol": "NG1", "asset": "futures", "closes": 2, "realized_pnl": 50.0, "win_rate": 0.5, "avg_r": 0.2},
+        {"bot_id": "flat", "symbol": "NQ1", "asset": "futures", "closes": 0, "realized_pnl": 0.0, "win_rate": 0.0, "avg_r": 0.0},
+        {"bot_id": "loser_a", "symbol": "MCL1", "asset": "futures", "closes": 4, "realized_pnl": -25.0, "win_rate": 0.25, "avg_r": -0.4},
+        {"bot_id": "loser_b", "symbol": "MNQ1", "asset": "futures", "closes": 5, "realized_pnl": -200.0, "win_rate": 0.2, "avg_r": -1.1},
+    ]
+
+    result = _pnl_map(rows, limit=2)
+
+    assert [row["bot_id"] for row in result["top_winners"]] == ["winner_a", "winner_b"]
+    assert [row["bot_id"] for row in result["top_losers"]] == ["loser_b", "loser_a"]
+    assert result["top_losers"][0]["realized_pnl"] == -200.0
+
+
+def test_scoreboard_daily_window_includes_close_only_bots() -> None:
+    from eta_engine.scripts.bot_scoreboard import _append_close_only_rows
+
+    rows = [
+        {"bot_id": "active_bot", "symbol": "MNQ1", "asset": "futures", "closes": 1, "realized_pnl": 50.0, "win_rate": 1.0, "avg_r": 0.5},
+    ]
+    closes = [
+        {"bot_id": "active_bot", "symbol": "MNQ1", "realized_r": 0.5, "realized_pnl": 50.0},
+        {"bot_id": "dormant_today", "extra": {"symbol": "MYM1", "realized_pnl": -84.25}, "realized_r": -0.75},
+    ]
+
+    skipped = _append_close_only_rows(rows, closes, include=False)
+    extended = _append_close_only_rows(rows, closes, include=True)
+
+    assert skipped == rows
+    assert [row["bot_id"] for row in extended] == ["active_bot", "dormant_today"]
+    assert extended[1]["symbol"] == "MYM1"
+    assert extended[1]["asset"] == "futures"
+    assert extended[1]["closes"] == 1
+    assert extended[1]["realized_pnl"] == -84.25
+
+
 def test_scoreboard_classifies_assets() -> None:
     from eta_engine.scripts.bot_scoreboard import _asset_class
 

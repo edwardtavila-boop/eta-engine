@@ -115,7 +115,7 @@ _ENV_COPY_COMMANDS = [
 _ENV_RUNTIME_REQUIRED_GROUP = {
     "runtime_mode": ["ETA_MODE=PAPER"],
     "jarvis_budget": [
-        "ANTHROPIC_API_KEY",
+        "DEEPSEEK_API_KEY",
         "JARVIS_HOURLY_USD_BUDGET",
         "JARVIS_DAILY_USD_BUDGET",
     ],
@@ -123,7 +123,7 @@ _ENV_RUNTIME_REQUIRED_GROUP = {
 _ENV_RUNTIME_REQUIRED_OPTIONS: dict[str, tuple[tuple[str, ...], ...]] = {
     "runtime_mode": (("ETA_MODE",),),
     "jarvis_budget": (
-        ("ANTHROPIC_API_KEY",),
+        ("DEEPSEEK_API_KEY",),
         ("JARVIS_HOURLY_USD_BUDGET",),
         ("JARVIS_DAILY_USD_BUDGET",),
     ),
@@ -183,7 +183,7 @@ _ENV_TASTY_RECOMMENDED_OPTIONS: dict[str, tuple[tuple[str, ...], ...]] = {
 _DIRECT_IBKR_ROUTES = {"direct_ibkr", "direct", "ibkr", ""}
 _ENV_TEMPLATE_REQUIRED_TOKENS = [
     "ETA_MODE",
-    "ANTHROPIC_API_KEY",
+    "DEEPSEEK_API_KEY",
     "JARVIS_HOURLY_USD_BUDGET",
     "JARVIS_DAILY_USD_BUDGET",
     "IBKR_VENUE_TYPE",

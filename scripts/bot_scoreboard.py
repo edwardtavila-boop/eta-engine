@@ -11,6 +11,7 @@ Usage:
     python -m eta_engine.scripts.bot_scoreboard --sort pnl
     python -m eta_engine.scripts.bot_scoreboard --asset crypto
     python -m eta_engine.scripts.bot_scoreboard --top 10
+    python -m eta_engine.scripts.bot_scoreboard --since-days 1 --json
 """
 
 from __future__ import annotations
@@ -35,7 +36,23 @@ _TRADE_CLOSES_PATH = workspace_roots.ETA_JARVIS_TRADE_CLOSES_PATH
 
 
 _CRYPTO_ROOTS = {"BTC", "ETH", "SOL", "AVAX", "LINK", "DOGE", "MBT", "MET"}
-_FUTURES_ROOTS = {"MNQ", "NQ", "ES", "MES", "MNQ1", "NQ1", "ES1", "MES1", "RTY", "M2K", "GC", "CL", "NG", "ZN", "6E"}
+_FUTURES_ROOTS = {
+    "6E",
+    "CL",
+    "ES",
+    "GC",
+    "M2K",
+    "MCL",
+    "MES",
+    "MGC",
+    "MNQ",
+    "MYM",
+    "NG",
+    "NQ",
+    "RTY",
+    "YM",
+    "ZN",
+}
 
 
 def _root(symbol: str) -> str:
@@ -64,7 +81,7 @@ def _load_heartbeat() -> dict[str, Any]:
         return {}
 
 
-def _load_closes() -> list[dict[str, Any]]:
+def _load_closes(*, since_days: int | None = None) -> list[dict[str, Any]]:
     """Wave-25: filter to operator-truth data sources via the shared loader.
 
     Without this filter the scoreboard mixed in ~43k backtest emissions
@@ -79,6 +96,7 @@ def _load_closes() -> list[dict[str, Any]]:
 
     return load_close_records(
         source_paths=[_TRADE_CLOSES_PATH],
+        since_days=since_days,
         data_sources=DEFAULT_OPERATOR_DATA_SOURCES,
     )
 
@@ -132,6 +150,44 @@ def _bot_metrics(bot: dict[str, Any], closes: list[dict[str, Any]]) -> dict[str,
     }
 
 
+def _close_symbol(row: dict[str, Any]) -> str:
+    extra = row.get("extra") or {}
+    if not isinstance(extra, dict):
+        extra = {}
+    return str(row.get("symbol") or extra.get("symbol") or "")
+
+
+def _append_close_only_rows(
+    rows: list[dict[str, Any]],
+    closes: list[dict[str, Any]],
+    *,
+    include: bool,
+) -> list[dict[str, Any]]:
+    """Add daily PnL rows for bots that traded but are not in the live heartbeat."""
+    if not include:
+        return rows
+    seen = {str(row.get("bot_id") or "") for row in rows}
+    close_only_bot_ids = sorted({str(row.get("bot_id") or "") for row in closes} - seen - {""})
+    extended = list(rows)
+    for bot_id in close_only_bot_ids:
+        bot_closes = [row for row in closes if str(row.get("bot_id") or "") == bot_id]
+        symbol = next((_close_symbol(row) for row in reversed(bot_closes) if _close_symbol(row)), "")
+        extended.append(
+            _bot_metrics(
+                {
+                    "bot_id": bot_id,
+                    "symbol": symbol,
+                    "n_entries": 0,
+                    "n_exits": 0,
+                    "open_position": None,
+                    "realized_pnl": 0.0,
+                },
+                closes,
+            ),
+        )
+    return extended
+
+
 def _format_row(m: dict[str, Any]) -> str:
     return (
         f"{m['bot_id']:<28} {m['symbol']:<6} {m['asset']:<7} "
@@ -161,6 +217,29 @@ def _summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def _pnl_map(rows: list[dict[str, Any]], *, limit: int = 5) -> dict[str, list[dict[str, Any]]]:
+    """Return top distinct winners and losers by realized PnL impact."""
+    ranked = sorted(rows, key=lambda row: float(row.get("realized_pnl") or 0.0), reverse=True)
+    winners = [row for row in ranked if float(row.get("realized_pnl") or 0.0) > 0][:limit]
+    losers = [row for row in reversed(ranked) if float(row.get("realized_pnl") or 0.0) < 0][:limit]
+
+    def compact(row: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "bot_id": row["bot_id"],
+            "symbol": row["symbol"],
+            "asset": row["asset"],
+            "closes": row["closes"],
+            "realized_pnl": round(float(row["realized_pnl"]), 2),
+            "win_rate": row["win_rate"],
+            "avg_r": row["avg_r"],
+        }
+
+    return {
+        "top_winners": [compact(row) for row in winners],
+        "top_losers": [compact(row) for row in losers],
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument(
@@ -176,14 +255,30 @@ def main(argv: list[str] | None = None) -> int:
         help="Filter to one asset class.",
     )
     p.add_argument("--top", type=int, default=None, help="Show top N bots.")
+    p.add_argument(
+        "--since-days",
+        type=int,
+        default=None,
+        help="Restrict close records to the last N days. Use 1 for the daily paper-soak readout.",
+    )
+    p.add_argument(
+        "--include-close-only",
+        action="store_true",
+        help="Include bots with closes in the selected window even if they are not in the current heartbeat roster.",
+    )
     p.add_argument("--json", action="store_true", help="Emit JSON instead of table.")
     args = p.parse_args(argv)
 
     hb = _load_heartbeat()
     bots = hb.get("bots", [])
-    closes = _load_closes()
+    closes = _load_closes(since_days=args.since_days)
 
     rows = [_bot_metrics(b, closes) for b in bots]
+    rows = _append_close_only_rows(
+        rows,
+        closes,
+        include=args.include_close_only or args.since_days is not None,
+    )
     if args.asset:
         rows = [r for r in rows if r["asset"] == args.asset]
     sort_key = {
@@ -199,7 +294,18 @@ def main(argv: list[str] | None = None) -> int:
         rows = rows[: args.top]
 
     if args.json:
-        print(json.dumps({"rows": rows, "summary": _summary(rows)}, indent=2, default=str))
+        print(
+            json.dumps(
+                {
+                    "rows": rows,
+                    "summary": _summary(rows),
+                    "pnl_map": _pnl_map(rows),
+                    "window_since_days": args.since_days,
+                },
+                indent=2,
+                default=str,
+            ),
+        )
         return 0
 
     print(
@@ -215,6 +321,19 @@ def main(argv: list[str] | None = None) -> int:
         f"TOTALS: bots={s['n_bots']} closes={s['total_closes']} "
         f"pnl=${s['total_realized_pnl']:+.2f} avgR={s['agg_avg_r']:+.2f}",
     )
+    pnl_map = _pnl_map(rows)
+    print("\nPnL Map: top 5 distinct winners and losers by PnL impact")
+    for label, key in (("Winners", "top_winners"), ("Losers", "top_losers")):
+        print(f"{label}:")
+        entries = pnl_map[key]
+        if not entries:
+            print("  - none")
+            continue
+        for row in entries:
+            print(
+                f"  - {row['bot_id']} {row['symbol']} "
+                f"{row['closes']} close(s) pnl=${row['realized_pnl']:+.2f}",
+            )
     return 0
 
 

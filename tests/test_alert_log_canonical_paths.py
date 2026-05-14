@@ -221,7 +221,7 @@ def test_vps_failover_existing_env_with_empty_required_keys_stays_amber(monkeypa
         "\n".join(
             [
                 "ETA_MODE=",
-                "ANTHROPIC_API_KEY=",
+                "DEEPSEEK_API_KEY=",
                 "JARVIS_HOURLY_USD_BUDGET=5",
                 "JARVIS_DAILY_USD_BUDGET=25",
                 "IBKR_VENUE_TYPE=paper",
@@ -271,7 +271,7 @@ def test_vps_failover_required_env_keys_populated_without_tastytrade_is_green(mo
         "\n".join(
             [
                 "ETA_MODE=PAPER",
-                "ANTHROPIC_API_KEY=placeholder-secret",
+                "DEEPSEEK_API_KEY=placeholder-secret",
                 "JARVIS_HOURLY_USD_BUDGET=5",
                 "JARVIS_DAILY_USD_BUDGET=25",
                 "IBKR_VENUE_TYPE=paper",
@@ -313,7 +313,7 @@ def test_vps_failover_env_template_completeness_fails_when_key_missing(monkeypat
     result = vps_failover_drill._check_env_template_complete()
 
     assert result.severity == "red"
-    assert "ANTHROPIC_API_KEY" in result.details["missing"]
+    assert "DEEPSEEK_API_KEY" in result.details["missing"]
 
 
 def test_vps_failover_no_bash_reports_vps_validation_commands(monkeypatch) -> None:
