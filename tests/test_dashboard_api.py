@@ -5127,6 +5127,86 @@ class TestDashboardAPI:
         assert live_broker["today_actual_fills"] == 12
         assert live_broker["open_position_count"] == 3
 
+    def test_bot_fleet_live_probe_falls_back_to_last_good_after_ibkr_timeout(self, app_client, monkeypatch):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        monkeypatch.setattr(
+            mod,
+            "_live_broker_state_payload",
+            lambda: {
+                "source": "live_broker_rest",
+                "broker_snapshot_source": "live_broker_rest",
+                "broker_snapshot_state": "fresh",
+                "today_actual_fills": 0,
+                "today_realized_pnl": 0.0,
+                "open_position_count": 0,
+                "ibkr": {
+                    "ready": False,
+                    "error": "ibkr_probe_failed:TimeoutError: TimeoutError()",
+                },
+            },
+        )
+        monkeypatch.setattr(
+            mod,
+            "_cached_live_broker_state_for_diagnostics",
+            lambda: {
+                "ready": True,
+                "source": "cached_live_broker_state_for_diagnostics",
+                "probe_skipped": True,
+                "broker_snapshot_source": "ibkr_probe_cache",
+                "broker_snapshot_state": "persisted",
+                "today_actual_fills": 17,
+                "today_realized_pnl": -321.25,
+                "open_position_count": 3,
+                "ibkr": {"ready": True},
+            },
+        )
+
+        r = app_client.get("/api/bot-fleet")
+
+        assert r.status_code == 200
+        payload = r.json()
+        summary = payload["summary"]
+        live_broker = payload["live_broker_state"]
+        assert summary["broker_today_actual_fills"] == 17
+        assert summary["broker_open_position_count"] == 3
+        assert summary["broker_today_realized_pnl"] == -321.25
+        assert live_broker["broker_snapshot_state"] == "persisted"
+        assert live_broker["refresh_probe_failed"] is True
+        assert live_broker["refresh_probe_error"].startswith("ibkr_probe_failed:TimeoutError")
+
+    def test_bot_fleet_live_probe_exception_uses_cached_broker_truth(self, app_client, monkeypatch):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        def fail_live_probe():
+            raise TimeoutError("ibkr socket timed out")
+
+        monkeypatch.setattr(mod, "_live_broker_state_payload", fail_live_probe)
+        monkeypatch.setattr(
+            mod,
+            "_cached_live_broker_state_for_diagnostics",
+            lambda: {
+                "ready": True,
+                "source": "cached_live_broker_state_for_diagnostics",
+                "probe_skipped": True,
+                "broker_snapshot_source": "ibkr_probe_cache",
+                "broker_snapshot_state": "warm",
+                "today_actual_fills": 22,
+                "today_realized_pnl": 44.5,
+                "open_position_count": 4,
+                "ibkr": {"ready": True},
+            },
+        )
+
+        r = app_client.get("/api/bot-fleet")
+
+        assert r.status_code == 200
+        payload = r.json()
+        assert payload["summary"]["broker_today_actual_fills"] == 22
+        assert payload["summary"]["broker_open_position_count"] == 4
+        assert payload["live_broker_state"]["refresh_probe_failed"] is True
+        assert payload["live_broker_state"]["refresh_probe_source"] == "bot_fleet_live_probe_exception"
+
     def test_bot_fleet_exposes_close_history_windows_top_level(self, app_client, monkeypatch):
         import eta_engine.deploy.scripts.dashboard_api as mod
 

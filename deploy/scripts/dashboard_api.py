@@ -5358,18 +5358,32 @@ def bot_fleet_roster(
     signal_cadence = _signal_cadence_summary(rows, server_ts=now_ts)
     if live_broker_probe:
         try:
-            live_broker_state = _live_broker_state_payload()
+            live_broker_state = _last_good_broker_state_after_failed_refresh(_live_broker_state_payload())
         except Exception as exc:  # noqa: BLE001
-            live_broker_state = {
-                "ready": False,
-                "error": f"live_broker_state_failed: {exc}",
-                "today_actual_fills": 0,
-                "today_realized_pnl": 0.0,
-                "total_unrealized_pnl": 0.0,
-                "open_position_count": 0,
-                "win_rate_30d": None,
-                "server_ts": time.time(),
-            }
+            try:
+                cached_broker_state = _cached_live_broker_state_for_diagnostics()
+            except Exception:  # noqa: BLE001
+                cached_broker_state = {}
+            if (
+                isinstance(cached_broker_state, dict)
+                and cached_broker_state.get("ready") is True
+                and not cached_broker_state.get("error")
+            ):
+                live_broker_state = dict(cached_broker_state)
+                live_broker_state["refresh_probe_failed"] = True
+                live_broker_state["refresh_probe_error"] = f"live_broker_state_failed: {exc}"
+                live_broker_state["refresh_probe_source"] = "bot_fleet_live_probe_exception"
+            else:
+                live_broker_state = {
+                    "ready": False,
+                    "error": f"live_broker_state_failed: {exc}",
+                    "today_actual_fills": 0,
+                    "today_realized_pnl": 0.0,
+                    "total_unrealized_pnl": 0.0,
+                    "open_position_count": 0,
+                    "win_rate_30d": None,
+                    "server_ts": time.time(),
+                }
     else:
         live_broker_state = _cached_live_broker_state_for_diagnostics()
     broker_open_position_count = _float_value(live_broker_state.get("open_position_count"))
