@@ -1033,6 +1033,7 @@ class TestDashboardAPI:
         assert data["command_center_watchdog"]["status"] in {
             "healthy",
             "missing_receipt",
+            "missing_watchdog",
             "stale_receipt",
             "stale_service",
             "service_unreachable",
@@ -1859,7 +1860,7 @@ class TestDashboardAPI:
         assert r.status_code == 200
         payload = r.json()
         watchdog = payload["command_center_watchdog"]
-        assert watchdog["status"] == "stale_service"
+        assert watchdog["status"] == "missing_watchdog"
         assert watchdog["fresh"] is True
         assert watchdog["failure_class"] == "stale_service"
         assert watchdog["operator_contract_state"] == "stale_service"
@@ -1877,6 +1878,130 @@ class TestDashboardAPI:
         assert watchdog["can_launch_from_desktop"] is True
         assert watchdog["launch_context"] == "interactive_uac_launcher"
         assert payload["checks"]["command_center_watchdog_contract"] is True
+
+    def test_dashboard_diagnostics_uses_status_receipt_when_doctor_receipt_stale(
+        self,
+        app_client,
+        tmp_path,
+    ):
+        receipt_path = tmp_path / "state" / "command_center_doctor_latest.json"
+        receipt_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": "eta.command_center.doctor.v1",
+                    "checked_at": (datetime.now(UTC) - timedelta(hours=1)).isoformat(),
+                    "healthy": True,
+                    "failure_class": "healthy",
+                    "operator_contract_state": "healthy",
+                    "recommended_action": "none",
+                    "repair_required": False,
+                    "operator_action": {
+                        "step": "none",
+                        "reason": "healthy",
+                        "command": None,
+                        "requires_elevation": False,
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        status_path = tmp_path / "state" / "command_center_watchdog_status_latest.json"
+        status_path.write_text(
+            json.dumps(
+                {
+                    "effective_status": "public_tunnel_token_rejected",
+                    "primary_blocker": "public_tunnel_token_rejected",
+                    "operator_next_step": "repair_public_tunnel_token",
+                    "operator_next_reason": "public_tunnel_token_rejected",
+                    "operator_next_command": ".\\scripts\\repair-public-tunnel-admin.cmd",
+                    "operator_next_requires_elevation": True,
+                    "watchdog_registered": False,
+                    "watchdog_state": "missing",
+                    "operator_action_plan": [
+                        {
+                            "role": "primary",
+                            "step": "repair_public_tunnel_token",
+                        },
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/dashboard/diagnostics")
+
+        assert r.status_code == 200
+        watchdog = r.json()["command_center_watchdog"]
+        assert watchdog["status"] == "stale_receipt"
+        assert watchdog["fresh"] is False
+        assert watchdog["recommended_action"] == "repair_public_tunnel_token"
+        assert watchdog["next_step"] == "repair_public_tunnel_token"
+        assert watchdog["next_command"] == ".\\scripts\\repair-public-tunnel-admin.cmd"
+        assert watchdog["repair_required"] is True
+        assert watchdog["requires_elevation"] is True
+        assert "public_tunnel_token_rejected" in watchdog["summary"]
+        assert "next=repair_public_tunnel_token" in watchdog["summary"]
+
+    def test_dashboard_diagnostics_blocks_green_when_watchdog_task_missing(
+        self,
+        app_client,
+        tmp_path,
+    ):
+        receipt_path = tmp_path / "state" / "command_center_doctor_latest.json"
+        receipt_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": "eta.command_center.doctor.v1",
+                    "checked_at": datetime.now(UTC).isoformat(),
+                    "healthy": True,
+                    "failure_class": "healthy",
+                    "operator_contract_state": "healthy",
+                    "recommended_action": "none",
+                    "repair_required": False,
+                    "operator_action": {
+                        "step": "none",
+                        "reason": "healthy",
+                        "command": None,
+                        "requires_elevation": False,
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        status_path = tmp_path / "state" / "command_center_watchdog_status_latest.json"
+        status_path.write_text(
+            json.dumps(
+                {
+                    "watchdog_registered": False,
+                    "watchdog_state": "missing",
+                    "operator_follow_up_actions": [
+                        {
+                            "step": "register_watchdog",
+                            "reason": "watchdog_missing",
+                            "command": (
+                                "powershell -ExecutionPolicy Bypass -File "
+                                ".\\scripts\\register-command-center-watchdog.ps1 -RunNow"
+                            ),
+                            "requires_elevation": True,
+                        }
+                    ],
+                    "operator_follow_up_count": 1,
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/dashboard/diagnostics")
+
+        assert r.status_code == 200
+        watchdog = r.json()["command_center_watchdog"]
+        assert watchdog["status"] == "missing_watchdog"
+        assert watchdog["healthy"] is False
+        assert watchdog["recommended_action"] == "register_watchdog"
+        assert watchdog["next_step"] == "register_watchdog"
+        assert watchdog["repair_required"] is True
+        assert watchdog["requires_elevation"] is True
+        assert watchdog["watchdog_registered"] is False
 
     def test_master_status_uses_local_payload_not_self_proxy(self, app_client, tmp_path, monkeypatch):
         import eta_engine.deploy.scripts.dashboard_api as mod

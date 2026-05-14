@@ -181,10 +181,15 @@ class TickWriter:
             self._current_date = date_str
 
     def append(self, record: dict[str, Any]) -> None:
+        # wave-25q post-review: read len(self._buf) INSIDE the lock so a
+        # concurrent appender can't make the count-trigger stale. Without
+        # this, two threads both appending near the threshold could each
+        # see len < trigger and never flush until the time gate fires.
         with self._buf_lock:
             self._buf.append(json.dumps(record, separators=(",", ":")))
+            buf_len = len(self._buf)
         now = time.monotonic()
-        if len(self._buf) >= _FLUSH_EVERY_TICKS or (now - self._last_flush) >= _FLUSH_EVERY_SECONDS:
+        if buf_len >= _FLUSH_EVERY_TICKS or (now - self._last_flush) >= _FLUSH_EVERY_SECONDS:
             self.flush()
 
     def flush(self) -> None:

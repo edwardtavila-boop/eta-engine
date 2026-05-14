@@ -775,23 +775,6 @@ def _command_center_watchdog_payload(*, server_ts: float) -> dict:
 
     operator_action = receipt.get("operator_action") if isinstance(receipt.get("operator_action"), dict) else {}
     failure_summary = receipt.get("failure_summary") if isinstance(receipt.get("failure_summary"), dict) else {}
-    checked_at = receipt.get("checked_at")
-    age_s = _iso_age_s(checked_at, server_ts=server_ts)
-    fresh = age_s is not None and age_s <= 900
-    healthy = bool(receipt.get("healthy")) and fresh
-    failure_class = str(receipt.get("failure_class") or "unknown")
-    contract_state = str(receipt.get("operator_contract_state") or failure_class)
-    recommended_action = str(receipt.get("recommended_action") or operator_action.get("step") or "unknown")
-    reason = str(operator_action.get("reason") or contract_state or failure_class)
-    status = "healthy" if healthy else ("stale_receipt" if not fresh else reason)
-    if status == "unknown" and failure_class != "unknown":
-        status = failure_class
-
-    summary = (
-        "Command Center watchdog is healthy."
-        if healthy
-        else (f"Command Center watchdog needs {recommended_action}: {reason}.")
-    )
     action_plan = (
         status_receipt.get("operator_action_plan")
         if isinstance(status_receipt.get("operator_action_plan"), list)
@@ -801,6 +784,67 @@ def _command_center_watchdog_payload(*, server_ts: float) -> dict:
         status_receipt.get("operator_follow_up_actions")
         if isinstance(status_receipt.get("operator_follow_up_actions"), list)
         else []
+    )
+    first_follow_up = follow_up_actions[0] if follow_up_actions and isinstance(follow_up_actions[0], dict) else {}
+    watchdog_missing = status_receipt.get("watchdog_registered") is False
+    checked_at = receipt.get("checked_at")
+    age_s = _iso_age_s(checked_at, server_ts=server_ts)
+    fresh = age_s is not None and age_s <= 900
+    receipt_healthy = bool(receipt.get("healthy")) and fresh
+    healthy = receipt_healthy and not watchdog_missing
+    failure_class = str(receipt.get("failure_class") or "unknown")
+    contract_state = str(receipt.get("operator_contract_state") or failure_class)
+    recommended_action = str(receipt.get("recommended_action") or operator_action.get("step") or "unknown")
+    reason = str(operator_action.get("reason") or contract_state or failure_class)
+    status = "healthy" if healthy else ("stale_receipt" if not fresh else reason)
+    if status == "unknown" and failure_class != "unknown":
+        status = failure_class
+    if watchdog_missing and fresh:
+        status = "missing_watchdog"
+
+    next_step = str(operator_action.get("step") or recommended_action)
+    next_command = operator_action.get("command")
+    repair_required = bool(receipt.get("repair_required"))
+    requires_elevation = bool(operator_action.get("requires_elevation"))
+    if not fresh or watchdog_missing:
+        status_reason = str(
+            status_receipt.get("operator_next_reason")
+            or status_receipt.get("primary_blocker")
+            or status_receipt.get("effective_status")
+            or status_receipt.get("operator_issue_status")
+            or ""
+        ).strip()
+        status_next_step = str(status_receipt.get("operator_next_step") or "").strip()
+        status_next_command = status_receipt.get("operator_next_command")
+        if status_next_step:
+            recommended_action = status_next_step
+            next_step = status_next_step
+        elif watchdog_missing and (receipt_healthy or recommended_action in {"none", "unknown"}):
+            recommended_action = str(first_follow_up.get("step") or "register_watchdog")
+            next_step = recommended_action
+        if status_next_command:
+            next_command = status_next_command
+        elif first_follow_up.get("command"):
+            next_command = first_follow_up.get("command")
+        if status_reason:
+            reason = status_reason
+        elif watchdog_missing and (receipt_healthy or reason in {"healthy", "unknown"}):
+            reason = str(first_follow_up.get("reason") or "watchdog_missing")
+        repair_required = True
+        requires_elevation = bool(
+            status_receipt.get("operator_next_requires_elevation")
+            or first_follow_up.get("requires_elevation")
+            or requires_elevation
+        )
+
+    summary = (
+        "Command Center watchdog is healthy."
+        if healthy
+        else (
+            f"Command Center watchdog receipt is stale; latest status says {reason}; next={recommended_action}."
+            if not fresh
+            else f"Command Center watchdog needs {recommended_action}: {reason}."
+        )
     )
 
     return {
@@ -814,8 +858,8 @@ def _command_center_watchdog_payload(*, server_ts: float) -> dict:
         "failure_class": failure_class,
         "operator_contract_state": contract_state,
         "recommended_action": recommended_action,
-        "next_step": str(operator_action.get("step") or recommended_action),
-        "next_command": operator_action.get("command"),
+        "next_step": next_step,
+        "next_command": next_command,
         "action_plan": action_plan,
         "action_count": int(status_receipt.get("operator_action_count") or len(action_plan)),
         "follow_up_actions": follow_up_actions,
@@ -825,8 +869,8 @@ def _command_center_watchdog_payload(*, server_ts: float) -> dict:
         "can_launch_from_desktop": status_receipt.get("operator_next_can_launch_from_desktop"),
         "launch_context": status_receipt.get("operator_next_launch_context"),
         "instruction": status_receipt.get("operator_next_instruction"),
-        "repair_required": bool(receipt.get("repair_required")),
-        "requires_elevation": bool(operator_action.get("requires_elevation")),
+        "repair_required": repair_required,
+        "requires_elevation": requires_elevation,
         "failure_summary": failure_summary,
         "summary": summary,
     }
@@ -1058,6 +1102,7 @@ def _dashboard_diagnostics_payload() -> dict:
             in {
                 "healthy",
                 "missing_receipt",
+                "missing_watchdog",
                 "stale_receipt",
                 "stale_service",
                 "service_unreachable",

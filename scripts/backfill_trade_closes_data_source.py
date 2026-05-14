@@ -103,7 +103,11 @@ def main() -> int:
             obj["data_source"] = "paper"
             n_tagged += 1
             per_bot_tagged[bid] = per_bot_tagged.get(bid, 0) + 1
-            fout.write(json.dumps(obj, separators=(", ", ": ")) + "\n")
+            # Use compact JSONL separators (",", ":") to match the rest of the
+            # ledger. The default (", ", ": ") would write spaces after commas
+            # and colons, breaking string-equality dedup tools and producing
+            # inconsistent format vs the canonical-writer output.
+            fout.write(json.dumps(obj, separators=(",", ":")) + "\n")
 
     if args.dry_run:
         tmp.unlink(missing_ok=True)

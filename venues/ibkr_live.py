@@ -1326,7 +1326,14 @@ class LiveIbkrVenue(VenueBase):
         try:
             self._ib.cancelOrder(trade.order)
             return True
-        except Exception:
+        except Exception as exc:  # noqa: BLE001
+            # wave-25q: silent False on cancel failure was creating
+            # orphaned brackets during kill-switch flatten. Log loudly
+            # so the operator sees the cancel didn't land.
+            logger.warning(
+                "cancel_order failed for %s order_id=%s: %s",
+                symbol, order_id, exc,
+            )
             return False
 
     async def get_positions(self) -> list[dict[str, Any]]:
@@ -1343,7 +1350,11 @@ class LiveIbkrVenue(VenueBase):
                 }
                 for p in positions
             ]
-        except Exception:
+        except Exception as exc:  # noqa: BLE001
+            # wave-25q: was silent on exception, callers now log the
+            # specific failure rather than treating no-positions as the
+            # same as broker-side query failure.
+            logger.warning("get_positions query failed: %s", exc)
             return []
 
     async def get_balance(self) -> dict[str, float]:
@@ -1360,7 +1371,11 @@ class LiveIbkrVenue(VenueBase):
                 elif s.tag == "TotalCashValue":
                     out["total_cash"] = float(s.value)
             return out
-        except Exception:
+        except Exception as exc:  # noqa: BLE001
+            # wave-25q: was silent — surface the actual error so a
+            # mis-configured account summary doesn't look like an
+            # unfunded account.
+            logger.warning("get_balance query failed: %s", exc)
             return {}
 
     async def get_order_status(self, symbol: str, order_id: str) -> OrderResult | None:

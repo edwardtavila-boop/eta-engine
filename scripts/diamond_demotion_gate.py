@@ -291,9 +291,9 @@ def _print(summary: dict[str, Any]) -> None:
             f"{sc['n_active_days_14d']:>9d}",
         )
         for f_ in sc.get("hard_failures") or []:
-            print(f"   ✗ HARD: {f_}")
+            print(f"   X HARD: {f_}")
         for f_ in sc.get("soft_failures") or []:
-            print(f"   ⚠ SOFT: {f_}")
+            print(f"   ! SOFT: {f_}")
     print()
 
 

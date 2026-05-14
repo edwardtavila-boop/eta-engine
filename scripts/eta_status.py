@@ -25,7 +25,20 @@ from typing import Any
 
 from eta_engine.scripts.supervisor_heartbeat_check import build_supervisor_heartbeat_report
 
-STATE_DIR = Path(r"C:\EvolutionaryTradingAlgo\var\eta_engine\state")
+# wave-25q post-review: derive STATE_DIR from __file__ rather than
+# hardcoding an absolute Windows path. The previous hardcode broke on
+# the VPS (different drive root in some deploys) and on dev machines
+# where the workspace lives under a non-C: path. ETA_STATE_DIR env-var
+# override is the canonical "I know better" escape hatch.
+import os  # noqa: E402,PLC0415,I001
+_STATE_DIR_ENV = os.environ.get("ETA_STATE_DIR")
+if _STATE_DIR_ENV:
+    STATE_DIR = Path(_STATE_DIR_ENV)
+else:
+    _SCRIPT_ROOT = Path(__file__).resolve()
+    # scripts/<file> -> eta_engine -> workspace_root
+    _WORKSPACE_ROOT = _SCRIPT_ROOT.parents[2]
+    STATE_DIR = _WORKSPACE_ROOT / "var" / "eta_engine" / "state"
 HEARTBEAT_PATH = STATE_DIR / "jarvis_intel" / "supervisor" / "heartbeat.json"
 LEADERBOARD = STATE_DIR / "diamond_leaderboard_latest.json"
 LAUNCH_READINESS = STATE_DIR / "diamond_prop_launch_readiness_latest.json"

@@ -72,7 +72,17 @@ LEDGER_PATH = STATE_DIR / "closed_trade_ledger_latest.json"
 OUT_LATEST = STATE_DIR / "diamond_prop_launch_readiness_latest.json"
 
 #: Default operator-set launch target.
-DEFAULT_LAUNCH_DATE = "2026-05-18"
+#: wave-25q post-review: pushed from 2026-05-18 (the original BluSky
+#: cutover target — NO_GO per wave-25n) to 2026-07-15. The quant review
+#: of the launch-candidate gate flagged that 2026-06-01 was statistically
+#: incoherent given the per-bot production-tagged trade cadence; only
+#: mnq_futures_sage could plausibly reach n>=50 in that window, and a
+#: NULL result would be a sample-size inference, not a strategy-quality
+#: inference. 2026-07-15 gives the fleet ~9 weeks to accumulate n>=150
+#: per top bot (the actual statistical confidence floor for detecting a
+#: +0.2R edge with σ≈1R at α=0.05, power=0.8). Operators override with
+#: --launch-date when a specific eval is purchased.
+DEFAULT_LAUNCH_DATE = "2026-07-15"
 
 #: Receipts older than this are stale (cron isn't firing).
 AGE_LIMIT_HOURS = 2.0

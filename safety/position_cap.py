@@ -29,7 +29,16 @@ from __future__ import annotations
 
 import os
 
-DEFAULT_CAP: float = 10.0
+# wave-25q post-review: lowered DEFAULT_CAP from 10 -> 2. The previous
+# default allowed a single MNQ entry to ship 10 contracts before the
+# per-symbol clamp kicked in — at $5/tick × 50-tick stop, that's $2,500
+# of risk per trade, ~167% of the BluSky $1,500 daily-loss limit. The
+# defense-in-depth posture says the global default must be safe on its
+# own; the per-symbol cap (_MAX_QTY_PER_ORDER) tightens further when
+# specified. Operators still set ETA_POSITION_CAP_<side>_<venue>_<sym>
+# env vars for per-bot tuning. For BluSky launch, set the per-symbol
+# vars to 1 explicitly.
+DEFAULT_CAP: float = 2.0
 
 
 class PositionCapExceededError(RuntimeError):

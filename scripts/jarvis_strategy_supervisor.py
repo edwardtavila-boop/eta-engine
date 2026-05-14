@@ -2567,8 +2567,15 @@ class JarvisStrategySupervisor:
             "matched": 0,
             "brokers_queried": [],
         }
-        if self.cfg.mode != "paper_live":
-            findings["skipped_reason"] = f"mode={self.cfg.mode} (only paper_live reconciles)"
+        # wave-25q post-review: previous version skipped reconcile on
+        # mode=live, which is exactly when reconcile matters MOST. A
+        # supervisor restart after a broker fill but before persist
+        # leaves the broker holding a position the supervisor doesn't
+        # know about — the divergence guard exists for that case. Now
+        # reconcile runs on both paper_live and live. Backtest/dry-run
+        # paths still skip.
+        if self.cfg.mode not in ("paper_live", "live"):
+            findings["skipped_reason"] = f"mode={self.cfg.mode} (only paper_live/live reconciles)"
             return findings
 
         broker_by_root: dict[str, float] = {}
@@ -3994,13 +4001,20 @@ class JarvisStrategySupervisor:
                 )
             # target == "live" → fall through to existing broker call
         except Exception:  # noqa: BLE001
-            # Defensive: gate-chain failures must never crash the
-            # supervisor. Worst case is a missed safety check; a crashed
-            # supervisor refuses ALL bots.
+            # wave-25q post-review (was wave-25e fail-OPEN): if the gate
+            # chain itself crashes, we MUST refuse the entry. The previous
+            # "proceeding with live submit" branch shipped unguarded
+            # orders whenever the gate import/exec broke — exactly the
+            # failure mode that ends prop evals. The cost of refusing
+            # one signal because a gate crashed is a missed trade. The
+            # cost of shipping unguarded is the eval.
             logger.exception(
-                "unified entry gate failed for %s; proceeding with live submit",
+                "unified entry gate CRASHED for %s — refusing entry "
+                "(fail-closed). Worst case: missed trade. Best case: "
+                "you don't blow the eval.",
                 bot.bot_id,
             )
+            return None
 
         # Order side derived from the (possibly Sage-flipped) `side`
         # variable established above, NOT from bot.direction. Locking the
@@ -4395,8 +4409,21 @@ class JarvisStrategySupervisor:
             runner["partial_realized_r"] = rec.realized_r
             runner.pop("exit_reason", None)
             bot.open_position = runner
-            with contextlib.suppress(Exception):
+            # CRITICAL (wave-25q post-review): the runner MUST be persisted
+            # to disk after the partial fires. submit_exit cleared the
+            # canonical file, so without a successful persist a supervisor
+            # restart would silently lose the remaining-qty leg. Log loudly
+            # on failure — operators need to see this in live trading.
+            try:
                 self._router._persist_open_position(bot)  # noqa: SLF001
+            except Exception:  # noqa: BLE001
+                logger.exception(
+                    "CRITICAL %s partial fired but runner persist FAILED — "
+                    "on restart the remaining %.6f qty will be orphaned. "
+                    "Manual reconciliation required.",
+                    bot.bot_id,
+                    remaining_qty,
+                )
             logger.info(
                 "PARTIAL %s %s closed=%.6f remaining=%.6f r=%.3f trigger_r=%.2f",
                 bot.bot_id,
