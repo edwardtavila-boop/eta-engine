@@ -210,11 +210,14 @@ tr:hover td{background:rgba(100,215,255,.055)}
 .card .sub{font-size:.66rem;line-height:1.35}
 .collapsible-section{margin:0 2rem 1rem;border:1px solid var(--border);border-radius:20px;background:linear-gradient(145deg,rgba(8,14,22,.78),rgba(3,8,14,.88));box-shadow:0 14px 44px rgba(0,0,0,.18);overflow:hidden}
 .ops-priority-section{border-color:rgba(100,215,255,.24);box-shadow:0 18px 54px rgba(0,0,0,.22),0 0 0 1px rgba(100,215,255,.04)}
-.collapsible-summary{list-style:none;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:.9rem 1rem;color:#f7fbff;font-weight:800;letter-spacing:.01em}
+.collapsible-summary{list-style:none;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:1rem 1.05rem;color:#f7fbff;font-weight:800;letter-spacing:.01em;background:linear-gradient(90deg,rgba(100,215,255,.075),rgba(255,255,255,.018) 44%,rgba(230,184,92,.055));border-bottom:1px solid rgba(255,255,255,.05)}
 .collapsible-summary::-webkit-details-marker{display:none}
-.collapsible-summary:after{content:"+";display:grid;place-items:center;width:24px;height:24px;border:1px solid rgba(255,255,255,.12);border-radius:999px;color:var(--accent);flex:0 0 auto}
-.collapsible-section[open]>.collapsible-summary:after{content:"-"}
-.collapsible-summary small{margin-left:.45rem;color:#94a8bd;font-weight:500;font-size:.66rem}
+.collapsible-summary:hover{background:linear-gradient(90deg,rgba(100,215,255,.115),rgba(255,255,255,.026) 44%,rgba(230,184,92,.08))}
+.collapsible-summary:after{content:"Open";display:grid;place-items:center;min-width:54px;height:28px;border:1px solid rgba(255,255,255,.14);border-radius:999px;color:#dff7ff;background:rgba(100,215,255,.07);font-size:.62rem;text-transform:uppercase;letter-spacing:.08em;flex:0 0 auto}
+.collapsible-section[open]>.collapsible-summary:after{content:"Hide";color:#fff3cd;background:rgba(230,184,92,.08);border-color:rgba(230,184,92,.2)}
+.summary-copy{display:grid;gap:.16rem;min-width:0}
+.summary-title{display:block;color:#f8fbff;font-size:.92rem}
+.collapsible-summary small{display:block;color:#a8bad0;font-weight:650;font-size:.68rem;line-height:1.28;letter-spacing:.01em}
 .collapsible-section>.card,.collapsible-section>.ops-truth-wrap,.collapsible-section>.allocation-sections,.collapsible-section>.table-wrap{margin:0;padding:0 1rem 1rem}
 .collapsible-section>.card{background:transparent;border:0;box-shadow:none}
 .collapsible-section>.table-wrap{overflow-x:auto}
@@ -292,7 +295,7 @@ tr:hover td{background:rgba(100,215,255,.055)}
   <div class="portfolio-hero">
     <div class="eyebrow">Ops Command</div>
     <h2>LIVE FUTURES. REAL RISK. FAST TRUTH.</h2>
-    <p class="portfolio-narrative" id="portfolioNarrative">Syncing live book and close ledger...</p>
+    <p class="portfolio-narrative" id="portfolioNarrative">Syncing live positions and closed trades...</p>
     <div class="hero-chips" id="portfolioHeroChips">
       <span class="hero-chip">Loading live scope...</span>
     </div>
@@ -322,10 +325,10 @@ tr:hover td{background:rgba(100,215,255,.055)}
 </section>
 
 <details class="collapsible-section ops-priority-section" id="opsTruthSection" open>
-  <summary class="collapsible-summary">Open Book, Exit Cover, Tape <small id="opsTruthSummaryLine">live book loading</small></summary>
+  <summary class="collapsible-summary"><span class="summary-copy"><span class="summary-title">Positions, Exits, and Orders</span><small id="opsTruthSummaryLine">Checking the live book...</small></span></summary>
 <div class="ops-truth-wrap">
   <div class="card">
-    <h3>Open Book &amp; Exit Cover</h3>
+    <h3>Positions &amp; Exit Protection</h3>
     <div class="truth-summary" id="positionSummary"></div>
     <div class="bracket-action-strip" id="bracketActionStrip"></div>
     <div class="position-list" id="openPositionsPanel">
@@ -333,10 +336,10 @@ tr:hover td{background:rgba(100,215,255,.055)}
     </div>
   </div>
   <div class="card">
-    <h3>Router Tape</h3>
+    <h3>Order Log</h3>
     <div class="truth-summary" id="routerTapeSummary"></div>
     <div class="router-tape" id="routerTapePanel">
-      <div class="empty-panel">Loading router tape...</div>
+      <div class="empty-panel">Loading order flow...</div>
     </div>
   </div>
 </div>
@@ -346,19 +349,19 @@ tr:hover td{background:rgba(100,215,255,.055)}
   <div class="card wide-card">
     <div class="panel-head">
       <div>
-        <h3>PnL Map</h3>
-        <div class="panel-kicker" id="contributionSub">Daily strategy winners/losers</div>
+        <h3>What Moved PnL</h3>
+        <div class="panel-kicker" id="contributionSub">Top gains and losses</div>
       </div>
-      <div class="truth-chip" id="contributionSource">daily close ledger</div>
+      <div class="truth-chip" id="contributionSource">today's closed trades</div>
     </div>
     <div class="contribution-graph" id="pnlContributionGraph">
-      <div class="empty-panel">Loading PnL map...</div>
+      <div class="empty-panel">Loading PnL impact...</div>
     </div>
   </div>
 </section>
 
 <section id="commandCenterContractAnchors" hidden aria-hidden="true">
-  <div data-contract-copy="readiness/staged rows; lifetime ledger not attached; today shown above; broker bracket gap; MTD closed outcomes; selected-window Close History; selected-window close history; close-ledger outcomes; lifetime ledger pending; closed outcomes in ledger; waiting for selected-window realized-R outcomes; paper-local open; Alpaca/spot paused; broker PnL fields unavailable"></div>
+  <div data-contract-copy="readiness/staged rows; lifetime ledger not attached; today shown above; broker bracket gap; missing broker OCO; Verify broker OCO coverage; Flatten unprotected paper exposure; MTD closed outcomes; selected-window Close History; selected-window close history; close-ledger outcomes; lifetime ledger pending; closed outcomes in ledger; waiting for selected-window realized-R outcomes; paper-local open; Alpaca/spot paused; broker PnL fields unavailable"></div>
   <div data-panel-id="cc-strategy-supercharge-results" data-endpoint="/api/jarvis/strategy_supercharge_results">
     <span id="strategyNearMisses"></span>
     <span id="strategyRetuneQueue"></span>
@@ -370,23 +373,23 @@ tr:hover td{background:rgba(100,215,255,.055)}
   <div class="card"><h3>Active</h3><div class="stat blue" id="activeBots">--</div><div class="sub" id="activeBotsSub">live runtime</div></div>
   <div class="card"><h3>Session Net</h3><div class="stat dim" id="todayPnl">--</div><div class="sub" id="todayPnlSub"></div></div>
   <div class="card"><h3 id="totalPnlLabel">Broker MTD</h3><div class="stat dim" id="totalPnl">--</div><div class="sub" id="totalPnlSub">IBKR portfolio pending</div></div>
-  <div class="card"><h3 id="cumulativeRLabel">MTD R</h3><div class="stat dim" id="cumulativeR">--</div><div class="sub" id="cumulativeRSub">realized-R pending</div></div>
-  <div class="card"><h3 id="totalTradesLabel">MTD Closes</h3><div class="stat blue" id="totalTrades">--</div><div class="sub" id="totalTradesSub"></div></div>
+  <div class="card"><h3 id="cumulativeRLabel">MTD Risk Units</h3><div class="stat dim" id="cumulativeR">--</div><div class="sub" id="cumulativeRSub">risk-unit score pending</div></div>
+  <div class="card"><h3 id="totalTradesLabel">MTD Closed Trades</h3><div class="stat blue" id="totalTrades">--</div><div class="sub" id="totalTradesSub"></div></div>
   <div class="card"><h3>Win Rate</h3><div class="stat blue" id="winRate">--</div><div class="sub" id="winRateDetail"></div></div>
-  <div class="card"><h3>Approved</h3><div class="stat green" id="approvedCount">--</div><div class="sub">go + conditional</div></div>
-  <div class="card"><h3>JARVIS Mode</h3><div class="stat yellow" id="jarvisMode">--</div></div>
-  <div class="card"><h3>Admin AI</h3><div class="stat" id="adminAiStatus">-</div><div class="sub" id="adminAiSub">Jarvis | Hermes</div></div>
-  <div class="card"><h3>IBKR Gateway</h3><div class="stat" id="gatewayStatus">--</div><div class="sub" id="gatewayStatusSub"></div></div>
-  <div class="card"><h3>Broker Router</h3><div class="stat" id="brokerRouterStatus">-</div><div class="sub" id="brokerRouterSub"></div></div>
-  <div class="card"><h3>Bracket Audit</h3><div class="stat" id="bracketAuditStatus">-</div><div class="sub" id="bracketAuditSub">OCO cover</div></div>
+  <div class="card"><h3>Trade-Ready</h3><div class="stat green" id="approvedCount">--</div><div class="sub">approved or conditional</div></div>
+  <div class="card"><h3>Policy Mode</h3><div class="stat yellow" id="jarvisMode">--</div></div>
+  <div class="card"><h3>AI Ops</h3><div class="stat" id="adminAiStatus">-</div><div class="sub" id="adminAiSub">Jarvis + Hermes</div></div>
+  <div class="card"><h3>IBKR Connection</h3><div class="stat" id="gatewayStatus">--</div><div class="sub" id="gatewayStatusSub"></div></div>
+  <div class="card"><h3>Order Router</h3><div class="stat" id="brokerRouterStatus">-</div><div class="sub" id="brokerRouterSub"></div></div>
+  <div class="card"><h3>Exit Protection</h3><div class="stat" id="bracketAuditStatus">-</div><div class="sub" id="bracketAuditSub">target + stop coverage</div></div>
   <div class="card exit-watch-card"><h3>Exit Watch</h3><div class="stat" id="exitWatchStatus">-</div><div class="sub" id="exitWatchSub">target | stop</div></div>
   <div class="card"><h3>Paper Live</h3><div class="stat" id="paperLiveStatus">--</div><div class="sub" id="paperLiveSub"></div></div>
-  <div class="card"><h3>Operator Queue</h3><div class="stat" id="operatorQueueStatus">--</div><div class="sub" id="operatorQueueSub"></div></div>
-  <div class="card"><h3>Risk Level</h3><div class="stat yellow" id="riskLevel">--</div><div class="risk-bar"><div class="risk-fill" id="riskBar" style="width:0%"></div></div><div class="sub" id="riskSub">drawdown + exit-watch SLA</div></div>
-  <div class="card"><h3>Signal Cadence</h3><div class="stat" id="signalCadenceStatus">-</div><div class="sub" id="signalCadenceSub">timing sync</div></div>
-  <div class="card"><h3>Ops Proxy</h3><div class="stat" id="opsProxyStatus">-</div><div class="sub" id="opsProxySub">8421 self-heal</div></div>
-  <div class="card"><h3>Ops Watchdog</h3><div class="stat" id="opsWatchdogStatus">-</div><div class="sub" id="opsWatchdogSub">surface doctor</div></div>
-  <div class="card vps-root-card" role="button" tabindex="0" onclick="focusVpsRootDetails()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();focusVpsRootDetails();}"><h3>VPS Root Review</h3><div class="stat" id="vpsRootStatus">-</div><div class="sub" id="vpsRootSub">root drift review</div></div>
+  <div class="card"><h3>Operator Holds</h3><div class="stat" id="operatorQueueStatus">--</div><div class="sub" id="operatorQueueSub"></div></div>
+  <div class="card"><h3>Risk Level</h3><div class="stat yellow" id="riskLevel">--</div><div class="risk-bar"><div class="risk-fill" id="riskBar" style="width:0%"></div></div><div class="sub" id="riskSub">drawdown + exit timing</div></div>
+  <div class="card"><h3>Signal Timing</h3><div class="stat" id="signalCadenceStatus">-</div><div class="sub" id="signalCadenceSub">signal spacing</div></div>
+  <div class="card"><h3>Web Proxy</h3><div class="stat" id="opsProxyStatus">-</div><div class="sub" id="opsProxySub">public dashboard route</div></div>
+  <div class="card"><h3>Dashboard Watch</h3><div class="stat" id="opsWatchdogStatus">-</div><div class="sub" id="opsWatchdogSub">health monitor</div></div>
+  <div class="card vps-root-card" role="button" tabindex="0" onclick="focusVpsRootDetails()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();focusVpsRootDetails();}"><h3>System Cleanup</h3><div class="stat" id="vpsRootStatus">-</div><div class="sub" id="vpsRootSub">workspace review</div></div>
 </div>
 
 <div class="compat-anchors" style="display:none" aria-hidden="true">
@@ -399,17 +402,17 @@ tr:hover td{background:rgba(100,215,255,.055)}
   </div>
   <div id="pnlWindowStrip"></div>
   <span id="pnlHistoryLabel">close history window</span>
-  <span id="pnlHistorySub">MTD close ledger pending</span>
+  <span id="pnlHistorySub">MTD closed trades pending</span>
   <canvas id="pnlChart"></canvas>
 </div>
 
 <details class="collapsible-section vps-root-detail-wrap" id="vpsRootDetailsWrap">
-  <summary class="collapsible-summary">VPS Root Reconciliation <small>gates and drift plan</small></summary>
+  <summary class="collapsible-summary"><span class="summary-copy"><span class="summary-title">System Cleanup Plan</span><small id="vpsRootSummaryLine">Workspace health and cleanup safety checks</small></span></summary>
   <div class="card vps-root-detail-card">
     <div class="panel-head">
       <div>
-        <h3>VPS Root Details</h3>
-        <div class="panel-kicker" id="vpsRootDetailKicker">review only</div>
+        <h3>System Cleanup Details</h3>
+        <div class="panel-kicker" id="vpsRootDetailKicker">read-only safety check</div>
       </div>
       <div class="truth-chip" id="vpsRootDetailStatus">waiting for plan</div>
     </div>
@@ -425,13 +428,13 @@ tr:hover td{background:rgba(100,215,255,.055)}
 </details>
 
 <details class="collapsible-section" id="allocationSectionWrap" hidden>
-  <summary class="collapsible-summary">Portfolio Sleeve Details <small id="allocationSectionSummary">sleeve groups</small></summary>
+  <summary class="collapsible-summary"><span class="summary-copy"><span class="summary-title">Allocation Details</span><small id="allocationSectionSummary">Strategy groups loading...</small></span></summary>
 <section class="allocation-sections" id="allocationSections">
   <div class="allocation-group">
     <div class="allocation-group-head">
       <div>
-        <div class="allocation-group-title">Portfolio Sleeves</div>
-        <div class="allocation-group-sub">Visible bots will group here by sleeve once the roster loads.</div>
+        <div class="allocation-group-title">Allocation Groups</div>
+        <div class="allocation-group-sub">Bots will group here by market once the roster loads.</div>
       </div>
     </div>
   </div>
@@ -439,7 +442,7 @@ tr:hover td{background:rgba(100,215,255,.055)}
 </details>
 
 <details class="collapsible-section" id="botRosterDetails">
-  <summary class="collapsible-summary">Full Bot Roster <small id="botRosterSummary">roster loading</small></summary>
+  <summary class="collapsible-summary"><span class="summary-copy"><span class="summary-title">Bot Roster</span><small id="botRosterSummary">Loading visible bots...</small></span></summary>
 <div class="table-wrap">
   <table>
     <thead>
@@ -878,8 +881,8 @@ function brokerMtdEvidence(liveBroker = null) {
 
 function closeLedgerSourceLabel(liveBroker = null) {
   const raw = String(liveBroker?.sources?.focus_mtd_closed_pnl || '').toLowerCase();
-  if (raw.includes('trade_close_ledger')) return 'MTD ledger';
-  return 'MTD ledger';
+  if (raw.includes('trade_close_ledger')) return 'MTD closed trades';
+  return 'MTD closed trades';
 }
 
 function fleetEquityLifetimeEvidence(fleetEquity) {
@@ -917,8 +920,8 @@ function readinessSnapshotPerformanceEvidence(diagnostics) {
   const fresh = snapshot.fresh !== false;
   const count = Number(snapshot.closed_trade_count || 0);
   const source = count > 0
-    ? `readiness ledger: ${count} closed outcome${count === 1 ? '' : 's'}`
-    : 'readiness ledger';
+    ? `readiness: ${count} closed trade${count === 1 ? '' : 's'}`
+    : 'readiness';
   return {
     value: fresh ? finiteNumber(snapshot.total_realized_pnl) : null,
     winRatePct: fresh ? finiteNumber(snapshot.win_rate_pct) : null,
@@ -984,7 +987,7 @@ function closeEvidenceSummary(liveBroker, portfolioSummary, windowKey = selected
       realizedR: rStats.value,
       realizedRCount: rStats.count,
       suppressedRCount: rStats.suppressed,
-      source: `${payload.label || windowed.key.toUpperCase()} closed-outcome ledger`,
+      source: `${payload.label || windowed.key.toUpperCase()} closed trades`,
       window: windowed.key,
       label: payload.label || windowed.key.toUpperCase(),
       since: payload.since,
@@ -1002,7 +1005,7 @@ function closeEvidenceSummary(liveBroker, portfolioSummary, windowKey = selected
           bot_id: row.bot_id,
           symbol: row.symbol,
           realized_pnl: row.realized_pnl,
-          source: row.source || 'portfolio contributor closed outcomes'
+          source: row.source || 'portfolio closed trades'
         }))
     : [];
   const rows = exposureCloses.length ? exposureCloses : contributorCloses;
@@ -1031,16 +1034,16 @@ function closeEvidenceSummary(liveBroker, portfolioSummary, windowKey = selected
     suppressedRCount: Math.max(0, rows.length - rValues.length),
     window: 'recent',
     label: 'Selected',
-    source: exposureCloses.length ? 'selected-window closed outcomes' : contributorCloses.length ? 'portfolio contributor closed outcomes' : 'close history unavailable'
+    source: exposureCloses.length ? 'selected-window closed trades' : contributorCloses.length ? 'portfolio closed trades' : 'close history unavailable'
   };
 }
 
 function winRateSourceText(source, windowLabel) {
   const raw = String(source || '').toLowerCase();
-  if (raw.includes('trade_close_ledger')) return `${windowLabel} ledger`;
+  if (raw.includes('trade_close_ledger')) return `${windowLabel} closed trades`;
   if (raw.includes('live_fill_ledger')) return `${windowLabel} fills`;
   if (raw.includes('alpaca_filled_order_pairs')) return `${windowLabel} Alpaca fills`;
-  return `${windowLabel} closes`;
+  return `${windowLabel} closed trades`;
 }
 
 function rerenderLastData() {
@@ -1069,7 +1072,7 @@ function renderPnlWindowControls(closeHistory) {
     const payload = windows[key] || {};
     const count = Number(payload.closed_outcome_count ?? 0);
     const active = closeHistory?.window === key ? ' active' : '';
-    const title = `${label}: ${count} close${count === 1 ? '' : 's'}`;
+    const title = `${label}: ${count} closed trade${count === 1 ? '' : 's'}`;
     return `<button type="button" class="${active.trim()}" data-close-window="${key}" title="${esc(title)}">${label}</button>`;
   }).join('');
   for (const button of controls.querySelectorAll('button[data-close-window]')) {
@@ -1083,7 +1086,7 @@ function renderPnlWindowStrip(closeHistory) {
   const windows = closeHistory?.windows || {};
   const available = CLOSE_HISTORY_WINDOWS.filter(([key]) => windows[key]);
   if (!available.length) {
-    strip.innerHTML = '<button type="button" class="history-window-tile active" data-close-window="mtd"><span>MTD Closed</span><strong>n/a</strong><small>close ledger</small></button>';
+    strip.innerHTML = '<button type="button" class="history-window-tile active" data-close-window="mtd"><span>MTD Closed</span><strong>n/a</strong><small>closed trades</small></button>';
   } else {
     strip.innerHTML = available.map(([key, label]) => {
       const payload = windows[key] || {};
@@ -1094,10 +1097,10 @@ function renderPnlWindowStrip(closeHistory) {
       const wrText = winRate == null ? 'WR n/a' : `${(winRate * 100).toFixed(1)}% WR`;
       const value = pnl == null ? 'n/a' : formatMoney(pnl, 0);
       return `
-        <button type="button" class="history-window-tile${active}" data-close-window="${esc(key)}" title="${esc(label)} selected-window realized PnL">
+        <button type="button" class="history-window-tile${active}" data-close-window="${esc(key)}" title="${esc(label)} realized PnL">
           <span>${esc(label)} Closed</span>
           <strong>${esc(value)}</strong>
-          <small>${esc(count)} close${count === 1 ? '' : 's'} | ${esc(wrText)}</small>
+          <small>${esc(count)} closed trade${count === 1 ? '' : 's'} | ${esc(wrText)}</small>
         </button>
       `;
     }).join('');
@@ -1144,7 +1147,7 @@ function brokerBracketActionLabels(bracketAudit, summary) {
     : [];
   summaryLabels.forEach(add);
   const fallbackById = {
-    verify_manual_broker_oco: 'Verify broker OCO coverage',
+    verify_manual_broker_oco: 'Verify target + stop coverage',
     flatten_unprotected_paper_exposure: 'Flatten unprotected paper exposure'
   };
   const ids = Array.isArray(summary?.broker_bracket_operator_action_ids)
@@ -1206,17 +1209,17 @@ function renderBracketActionStrip(d) {
     || unprotectedSymbols.join(', ')
     || 'unprotected exposure';
   const details = [
-    missing > 0 ? `${missing} missing broker OCO` : '',
+      missing > 0 ? `${missing} missing target/stop order${missing === 1 ? '' : 's'}` : '',
     primaryText ? `primary unprotected: ${primaryText}` : '',
     propDryRunBlocked ? 'paper-live launch held until operator verifies coverage or flattens' : ''
   ].filter(Boolean).join('; ');
-  const actionList = actions.length ? actions : ['Verify broker OCO coverage'];
+  const actionList = actions.length ? actions : ['Verify target + stop coverage'];
   el.className = 'bracket-action-strip active';
   el.innerHTML = actionList.map((label, index) => `
     <div class="bracket-action-card">
-      <span>${index === 0 ? 'bracket blocker actions' : 'operator option'}</span>
+        <span>${index === 0 ? 'exit protection action' : 'operator option'}</span>
       <strong>${esc(label)}</strong>
-      <small>${esc(details || 'Broker bracket coverage is under review.')}</small>
+        <small>${esc(details || 'Target and stop coverage is under review.')}</small>
     </div>
   `).join('');
 }
@@ -1324,8 +1327,8 @@ function buildBrokerPositions(liveBroker) {
         pnl: p.unrealized_pnl,
         pnlPct: p.unrealized_pct,
         protection: venue === 'ibkr'
-          ? 'Futures route requires broker-side TP/SL OCO bracket on new entries; watchdog backs up detached brackets.'
-      : 'Supervisor target/stop cover; reduce-only exits armed.'
+          ? 'Futures entries require broker target + stop orders; watchdog backs up detached exits.'
+      : 'Target and stop are armed; exits can only reduce risk.'
       };
     });
   }
@@ -1343,7 +1346,7 @@ function buildBrokerPositions(liveBroker) {
       value: p.market_value,
       pnl: p.unrealized_pl,
       pnlPct: p.unrealized_plpc,
-    protection: 'Supervisor target/stop cover; reduce-only exits armed.'
+    protection: 'Target and stop are armed; exits can only reduce risk.'
     });
   }
   const ibkrPositions = liveBroker?.ibkr?.open_positions || [];
@@ -1360,7 +1363,7 @@ function buildBrokerPositions(liveBroker) {
       value: p.market_value,
       pnl: p.unrealized_pnl,
       pnlPct: null,
-      protection: 'Futures route requires broker-side TP/SL OCO bracket on new entries; watchdog backs up detached brackets.'
+      protection: 'Futures entries require broker target + stop orders; watchdog backs up detached exits.'
     });
   }
   return positions;
@@ -1386,7 +1389,7 @@ function buildSupervisorPositions(bots) {
       const stopLevelText = stop == null ? '' : `stop ${formatMoney(stop, 2)}`;
       const watcherText = watcher.status ? `watcher ${watcher.status}` : 'watcher active';
       return {
-        broker: 'Supervisor paper',
+        broker: 'Local paper watch',
         symbol: `${bot.symbol || 'bot'} ${bot.id || bot.name || ''}`.trim(),
         side: state.side || bot.last_activity_side || 'open',
         qty: state.qty,
@@ -1401,16 +1404,49 @@ function buildSupervisorPositions(bots) {
     .filter(Boolean);
 }
 
+function displayActionLabel(value) {
+  const raw = String(value || '').trim().toLowerCase();
+  const labels = {
+    approve_full: 'approved',
+    approved_full: 'approved',
+    approve: 'approved',
+    close: 'closed',
+    closed: 'closed',
+    flatten: 'flattened',
+    reduce: 'reduced',
+    stop: 'stopped',
+    target: 'target hit'
+  };
+  if (labels[raw]) return labels[raw];
+  return raw
+    ? raw.replace(/_/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase())
+    : 'closed';
+}
+
+function friendlySourceLabel(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  return raw
+    .replace(/closed-outcome ledger/gi, 'closed trades')
+    .replace(/close ledger/gi, 'closed trades')
+    .replace(/trade_close_ledger/gi, 'closed trades')
+    .replace(/live_fill_ledger/gi, 'broker fills')
+    .replace(/portfolio API/gi, 'live portfolio')
+    .replace(/bot PnL fallback/gi, 'bot snapshot')
+    .replace(/vps_root_reconciliation_plan/gi, 'workspace cleanup plan')
+    .replace(/_/g, ' ');
+}
+
 function renderRecentCloses(closes, label = 'selected window', totalCount = null) {
   const maxRows = typeof window !== 'undefined' && window.matchMedia('(max-width: 640px)').matches ? 4 : 6;
   const rows = Array.isArray(closes) ? closes.slice(0, maxRows) : [];
   if (!rows.length) {
-    return '<div class="empty-panel">No closed outcomes have landed in this focus window yet.</div>';
+    return '<div class="empty-panel">No closed trades in this window yet.</div>';
   }
   const total = Number(totalCount ?? closes.length ?? rows.length);
   const shown = rows.length;
   const scope = String(label || 'selected window').replace(/_/g, ' ').trim();
-  const historyTitle = `${scope} Close History`;
+  const historyTitle = `${scope} Closed Trades`;
   return `<div class="close-history-block">
     <div class="close-history-heading">
       <strong>${esc(historyTitle)}</strong>
@@ -1420,14 +1456,14 @@ function renderRecentCloses(closes, label = 'selected window', totalCount = null
       const realized = finiteNumber(c.realized_pnl);
       const realizedClass = realized == null ? 'dim' : realized >= 0 ? 'green' : 'red';
       const outcomeClass = realized == null ? '' : realized >= 0 ? 'win' : 'loss';
-      const rText = c.realized_r == null ? 'R n/a' : Number(c.realized_r).toFixed(2) + 'R';
+      const rText = c.realized_r == null ? 'risk --' : Number(c.realized_r).toFixed(2) + 'R';
       const prices = closeTradePrices(c);
       const direction = closeTradeDirection(c);
       return `<article class="close-row ${outcomeClass}">
         <div class="close-row-top">
           <div class="close-row-title">
             <strong>${esc(c.bot_id || c.symbol || 'closed trade')}</strong>
-            <span class="badge ${realized == null ? 'badge-idle' : realized >= 0 ? 'badge-win' : 'badge-loss'}">${esc(c.action_taken || 'closed')}</span>
+            <span class="badge ${realized == null ? 'badge-idle' : realized >= 0 ? 'badge-win' : 'badge-loss'}">${esc(displayActionLabel(c.action_taken || 'closed'))}</span>
             <span class="symbol-tag">${esc(c.symbol || 'n/a')}</span>
           </div>
           <div class="close-row-pnl">
@@ -1436,7 +1472,7 @@ function renderRecentCloses(closes, label = 'selected window', totalCount = null
           </div>
         </div>
         <div class="close-row-meta">
-          <span>trade <strong>${esc(direction.toUpperCase())}</strong></span>
+          <span>side <strong>${esc(direction.toUpperCase())}</strong></span>
           <span>qty <strong>${esc(formatQty(c.qty))}</strong></span>
           <span>open <strong>${esc(formatMoney(prices.open, 2))}</strong></span>
           <span>close <strong>${esc(formatMoney(prices.close, 2))}</strong></span>
@@ -1475,25 +1511,25 @@ function renderOpsTruthSections(d, liveBroker, brokerRouter, closeHistory) {
   const opsTruthSummary = document.getElementById('opsTruthSummaryLine');
   if (opsTruthSummary) {
     const rowGapText = brokerRowsUnavailable > 0 ? ` | ${brokerRowsUnavailable} row gap` : '';
-    const realizedText = closeRealized == null ? 'close PnL n/a' : `${formatMoney(closeRealized, 2)} ${closeLabel} close PnL`;
-    opsTruthSummary.textContent = `${brokerOpenCountTruth} open | ${closeCount} ${closeLabel} closes | ${realizedText}${rowGapText}`;
+    const realizedText = closeRealized == null ? 'closed PnL pending' : `${formatMoney(closeRealized, 2)} closed PnL`;
+    opsTruthSummary.textContent = `${brokerOpenCountTruth} open | ${closeCount} ${closeLabel} closed trades | ${realizedText}${rowGapText}`;
   }
   positionSummary.innerHTML = [
-    `<span class="truth-chip"><strong>${brokerOpenCountTruth}</strong> broker open</span>`,
-    `<span class="truth-chip"><strong>${supervisorPositions.length}</strong> supervisor open</span>`,
-    `<span class="truth-chip"><strong>${fillsToday ?? 0}</strong> broker fills today</span>`,
-    `<span class="truth-chip"><strong>${formatMoneyOrUnavailable(totalRealized)}</strong> session realized</span>`,
-    `<span class="truth-chip"><strong>${formatMoneyOrUnavailable(closeRealized)}</strong> ${esc(closeLabel)} close PnL</span>`,
-    `<span class="truth-chip"><strong>${formatMoneyOrUnavailable(totalUnrealized)}</strong> unrealized</span>`,
-    `<span class="truth-chip"><strong>${closeCount}</strong> ${esc(closeLabel)} closes</span>`,
-    brokerRowsUnavailable > 0 ? `<span class="truth-chip"><strong>${brokerRowsUnavailable}</strong> rows missing</span>` : '',
-    `<span class="truth-chip"><strong>${esc(target_exit_visibility.status || 'unknown')}</strong> exits</span>`
+    `<span class="truth-chip"><strong>${brokerOpenCountTruth}</strong> open at broker</span>`,
+    `<span class="truth-chip"><strong>${supervisorPositions.length}</strong> watched locally</span>`,
+    `<span class="truth-chip"><strong>${fillsToday ?? 0}</strong> fills today</span>`,
+    `<span class="truth-chip"><strong>${formatMoneyOrUnavailable(totalRealized)}</strong> realized today</span>`,
+    `<span class="truth-chip"><strong>${formatMoneyOrUnavailable(closeRealized)}</strong> ${esc(closeLabel)} closed PnL</span>`,
+    `<span class="truth-chip"><strong>${formatMoneyOrUnavailable(totalUnrealized)}</strong> open PnL</span>`,
+    `<span class="truth-chip"><strong>${closeCount}</strong> ${esc(closeLabel)} closed trades</span>`,
+    brokerRowsUnavailable > 0 ? `<span class="truth-chip"><strong>${brokerRowsUnavailable}</strong> broker rows missing</span>` : '',
+    `<span class="truth-chip"><strong>${esc(target_exit_visibility.status || 'unknown')}</strong> exit status</span>`
   ].filter(Boolean).join('');
   renderBracketActionStrip(d);
 
   let positionsHtml = '';
   if (!positions.length && brokerOpenCountTruth > 0) {
-    positionsHtml = `<div class="empty-panel">Broker reports ${brokerOpenCountTruth} open focus position${brokerOpenCountTruth === 1 ? '' : 's'}, but broker position rows unavailable. Treat this as broker-reported open futures exposure without row detail; check IBKR and Bracket Audit before treating the book as flat.</div>`;
+    positionsHtml = `<div class="empty-panel">Broker reports ${brokerOpenCountTruth} open focus position${brokerOpenCountTruth === 1 ? '' : 's'}, but row detail is not available yet. Check IBKR and Exit Protection before treating the book as flat.</div>`;
   } else if (!positions.length) {
     const detail = compactText(target_exit_visibility.detail || 'No broker open positions in this snapshot.', 120);
     positionsHtml = `<div class="empty-panel">Flat now. ${esc(detail)}</div>`;
@@ -1509,9 +1545,9 @@ function renderOpsTruthSections(d, liveBroker, brokerRouter, closeHistory) {
         </div>
         <div class="position-meta">
           <span>qty <strong>${esc(formatQty(p.qty))}</strong></span>
-          <span>avg <strong>${esc(formatMoney(p.avg, 2))}</strong></span>
+          <span>entry <strong>${esc(formatMoney(p.avg, 2))}</strong></span>
           <span>mark <strong>${esc(formatMoney(p.mark, 2))}</strong></span>
-          <span>value <strong>${esc(formatMoney(p.value, 2))}</strong></span>
+          <span>exposure <strong>${esc(formatMoney(p.value, 2))}</strong></span>
           <span>PnL <strong class="${pnlClass}">${esc(formatMoney(p.pnl, 2))}${esc(pctLine)}</strong></span>
         </div>
         <div class="protection-line">${esc(p.protection)}</div>
@@ -1533,13 +1569,13 @@ function renderOpsTruthSections(d, liveBroker, brokerRouter, closeHistory) {
   const latest = brokerRouter?.latest_result || null;
   const hold = brokerRouter?.order_entry_hold || {};
   routerSummary.innerHTML = [
-    `<span class="truth-chip"><strong>${Number(counts.parsed || 0)}</strong> parsed</span>`,
-    `<span class="truth-chip"><strong>${Number(counts.submitted || 0)}</strong> submitted</span>`,
+    `<span class="truth-chip"><strong>${Number(counts.parsed || 0)}</strong> signals read</span>`,
+    `<span class="truth-chip"><strong>${Number(counts.submitted || 0)}</strong> orders sent</span>`,
     `<span class="truth-chip"><strong>${routerFilled}</strong> filled</span>`,
-    `<span class="truth-chip"><strong>${routerOpenNoFill}</strong> open/no-fill</span>`,
+    `<span class="truth-chip"><strong>${routerOpenNoFill}</strong> working</span>`,
     `<span class="truth-chip"><strong>${routerRejected}</strong> rejected</span>`,
-    `<span class="truth-chip"><strong>${Number(brokerRouter?.pending_count || 0)}</strong> pending</span>`,
-    `<span class="truth-chip"><strong>${hold.active ? 'ON' : 'OFF'}</strong> hold</span>`
+    `<span class="truth-chip"><strong>${Number(brokerRouter?.pending_count || 0)}</strong> waiting</span>`,
+    `<span class="truth-chip"><strong>${hold.active ? 'ON' : 'OFF'}</strong> entry hold</span>`
   ].join('');
 
   const rows = [];
@@ -1553,17 +1589,17 @@ function renderOpsTruthSections(d, liveBroker, brokerRouter, closeHistory) {
       : latestFilled || latestStatus === 'FILLED'
         ? 'badge-approve'
         : 'badge-idle';
-    const qtyText = latestFilled ? formatQty(latestQty) : 'open/no fill qty';
+    const qtyText = latestFilled ? formatQty(latestQty) : 'waiting for fill';
     rows.push(`<div class="tape-row">
       <div class="tape-head">
         <strong>${esc(latest.bot_id || 'latest order')}</strong>
         <span class="badge ${latestBadge}">${esc(latest.status || 'result')}</span>
       </div>
       <div class="tape-meta">
-        <span>venue <strong>${esc(latest.venue || 'n/a')}</strong></span>
-        <span>signal <strong>${esc(latest.signal_id || 'n/a')}</strong></span>
+        <span>broker <strong>${esc(latest.venue || 'n/a')}</strong></span>
+        <span>order <strong>${esc(latest.signal_id || 'n/a')}</strong></span>
         <span>qty <strong>${esc(qtyText)}</strong></span>
-        <span>avg <strong>${price && price > 0 ? esc(formatMoney(price, 2)) : 'open/no fill price'}</strong></span>
+        <span>avg <strong>${price && price > 0 ? esc(formatMoney(price, 2)) : 'waiting for fill'}</strong></span>
         <span>time <strong>${esc(formatTimeShort(latest.ts))}</strong></span>
       </div>
     </div>`);
@@ -1577,7 +1613,7 @@ function renderOpsTruthSections(d, liveBroker, brokerRouter, closeHistory) {
         : 'badge-idle';
     rows.push(`<div class="tape-row">
       <div class="tape-head">
-        <strong>${esc(event.file || event.kind || 'router event')}</strong>
+        <strong>${esc(event.file || event.kind || 'order event')}</strong>
         <span class="badge ${eventBadge}">${esc(event.detail || event.kind || 'event')}</span>
       </div>
       <div class="tape-meta">
@@ -1586,7 +1622,7 @@ function renderOpsTruthSections(d, liveBroker, brokerRouter, closeHistory) {
       </div>
     </div>`);
   }
-  routerPanel.innerHTML = rows.join('') || '<div class="empty-panel">No router events yet. Orders, fills, and rejects will appear here live.</div>';
+  routerPanel.innerHTML = rows.join('') || '<div class="empty-panel">No order events yet. Orders, fills, and rejects will appear here live.</div>';
 }
 
 function brokerContributionRows(liveBroker) {
@@ -1602,7 +1638,7 @@ function brokerContributionRows(liveBroker) {
         botId: p.bot_id || '',
         type: 'open_position_unrealized',
         openCount: 1,
-        sub: `${p.venue || 'broker'} open exposure`,
+        sub: `${p.venue || 'broker'} open position`,
         bucket: assetBucket(p.symbol),
         pnl: pnl || 0,
         value: Math.abs(finiteNumber(p.market_value) || 0)
@@ -1620,7 +1656,7 @@ function brokerContributionRows(liveBroker) {
         botId: c.bot_id || '',
         type: 'recent_close_realized',
         closeCount: 1,
-        sub: `${c.symbol || 'symbol'} realized close`,
+        sub: `${c.symbol || 'trade'} closed trade`,
         bucket: assetBucket(c.symbol),
         pnl,
         value: Math.abs(pnl)
@@ -1644,7 +1680,7 @@ function closeHistoryContributionRows(closeHistory) {
       botId,
       type: 'daily_close_realized',
       closeCount: 1,
-      sub: `${symbol || 'symbol'} realized close`,
+      sub: `${symbol || 'trade'} closed trade`,
       bucket: assetBucket(symbol),
       pnl,
       value: Math.abs(pnl)
@@ -1674,7 +1710,7 @@ function portfolioContributionRows(portfolioSummary) {
       type: row.type || '',
       closeCount: Number(row.close_count || 0),
       openCount: Number(row.open_count || 0),
-      sub: `${row.venue || row.source || 'portfolio'} ${ownership ? '| ' + ownership + ' | ' : ''}${exposure == null ? 'PnL' : 'exposure ' + formatMoney(exposure, 0)}`,
+      sub: `${ownership || row.venue || row.source || 'portfolio'} ${exposure == null ? 'PnL' : 'exposure ' + formatMoney(exposure, 0)}`,
       bucket: sleeveLabel(row.sleeve || row.bucket || assetBucket(row.symbol)),
       pnl: pnl || 0,
       value: Math.abs(finiteNumber(row.impact_value) ?? pnl ?? 0) || Math.abs(exposure || 0),
@@ -1805,7 +1841,7 @@ function contributionRowHtml(row, maxAbs) {
   const valueClass = row.pnl < 0 ? 'red' : row.pnl > 0 ? 'green' : 'dim';
   const rowClass = row.pnl < 0 ? 'negative' : row.pnl > 0 ? 'positive' : '';
   return `<div class="contribution-row ${rowClass}">
-    <div class="contribution-name"><strong>${esc(row.label)}</strong><span>${esc(row.bucket)} | ${esc(row.sub)}</span></div>
+    <div class="contribution-name"><strong>${esc(row.label)}</strong><span>${esc(row.bucket)} - ${esc(row.sub)}</span></div>
     <div class="contribution-track"><div class="contribution-fill ${klass}" style="width:${width}%"></div></div>
     <div class="contribution-value ${valueClass}">${esc(formatMoney(row.pnl, 2))}</div>
   </div>`;
@@ -1822,20 +1858,20 @@ function contributionLaneHtml(title, rows, emptyText, maxAbs) {
 function renderDailyContributionGraph(el, source, sub, dailyRows, closeHistory) {
   const split = pickWinnerLoserRows(dailyRows, 5);
   const displayRows = [...split.winners, ...split.losers];
-  if (source) source.textContent = closeHistory?.source || 'daily close ledger';
+  if (source) source.textContent = friendlySourceLabel(closeHistory?.source) || "today's closed trades";
   if (sub) {
     const count = Number(closeHistory?.count ?? dailyRows.length) || dailyRows.length;
     const label = closeHistory?.label || 'Today';
-    sub.textContent = `${label} strategy PnL | top 5 winners and top 5 losers | ${count} close${count === 1 ? '' : 's'}`;
+    sub.textContent = `${label} PnL impact - top gains and losses from ${count} closed trade${count === 1 ? '' : 's'}`;
   }
   if (!displayRows.length) {
-    el.innerHTML = '<div class="empty-panel">No daily strategy PnL impact yet. The map will populate after today&#39;s close outcomes land.</div>';
+    el.innerHTML = '<div class="empty-panel">No closed-trade PnL impact yet. This fills in as trades close.</div>';
     return true;
   }
   const maxAbs = Math.max(1, ...displayRows.map(row => row.value || Math.abs(row.pnl)));
   el.innerHTML = `<div class="contribution-split">
-    ${contributionLaneHtml('Daily Winners', split.winners, 'No winning daily closes yet.', maxAbs)}
-    ${contributionLaneHtml('Daily Losers', split.losers, 'No losing daily closes yet.', maxAbs)}
+    ${contributionLaneHtml('Biggest Gains', split.winners, 'No winning closed trades yet.', maxAbs)}
+    ${contributionLaneHtml('Biggest Losses', split.losers, 'No losing closed trades yet.', maxAbs)}
   </div>`;
   return true;
 }
@@ -1853,23 +1889,23 @@ function renderContributionGraph(bots, liveBroker, portfolioSummary, todayCloseH
   }
 
   let rows = portfolioContributionRows(portfolioSummary);
-  let sourceLabelText = 'portfolio API';
+  let sourceLabelText = 'Live portfolio';
   if (!rows.length) {
     rows = brokerContributionRows(liveBroker);
-    sourceLabelText = rows.length ? 'broker closes + exposure' : 'broker exposure';
+    sourceLabelText = rows.length ? 'Broker book' : 'Broker exposure';
   }
   if (!rows.length) {
     rows = botContributionRows(bots);
-    sourceLabelText = 'bot PnL fallback';
+    sourceLabelText = 'Bot snapshot';
   }
   const rankedRows = aggregateContributionRows(rows);
   const topRows = pickTopImpactRows(rankedRows, 5);
   if (source) source.textContent = sourceLabelText;
   if (sub) sub.textContent = topRows.length
-    ? `Daily close history pending | showing ${topRows.length} portfolio impact rows`
-    : 'Waiting for daily closes, book, fills, or PnL';
+    ? `Showing ${topRows.length} biggest PnL movers`
+    : 'Waiting for closed trades, open positions, or PnL';
   if (!topRows.length) {
-    el.innerHTML = '<div class="empty-panel">No PnL contribution yet. The graph will populate from broker exposure first, then bot PnL fallback.</div>';
+    el.innerHTML = '<div class="empty-panel">No PnL movers yet. This fills from broker positions first, then bot PnL if needed.</div>';
     return;
   }
   const maxAbs = Math.max(1, ...topRows.map(row => row.value || Math.abs(row.pnl)));
@@ -2014,7 +2050,7 @@ function renderPortfolioCommand(bots, hiddenCount, liveBroker, summary, d, today
     const bracketCount = Number(readinessSnapshot.broker_missing_bracket_count || 0);
     const readinessSub = readinessStatus === 'blocked'
       ? (bracketCount > 0
-        ? `${bracketCount} bracket gap | ${readinessSnapshot.prop_primary_bot || 'prop bot'} gated`
+        ? `${bracketCount} exit-protection gap | ${readinessSnapshot.prop_primary_bot || 'prop bot'} held`
         : readinessSnapshot.primary_action || readinessSnapshot.promotion_summary || 'gates blocked')
       : readinessStatus === 'ready'
         ? `${paperReady} ready | ${active} live`
@@ -2452,10 +2488,10 @@ function protectionForBot(bot) {
     return {text: 'armed on entry', sub: 'target/stop required before exposure'};
   }
   const route = brokerBracket
-    ? 'broker OCO TP/SL'
+    ? 'broker target + stop'
     : src.startsWith('paper')
-      ? 'paper supervisor target/stop exit'
-      : (src ? src : 'supervisor target/stop');
+      ? 'paper target/stop exit'
+      : (src ? src : 'target/stop watch');
   const targetText = target == null ? 'target n/a' : `target ${formatMoney(target, 2)}`;
   const stopText = stop == null ? 'stop n/a' : `stop ${formatMoney(stop, 2)}`;
   const targetGapText = targetGap == null ? '' : `gap ${formatMoney(targetGap, 2)}`;
@@ -2487,11 +2523,11 @@ function renderVpsRootReview(vpsRoot) {
   const ageMinutes = finiteNumber(vpsRoot?.plan_age_s ?? vpsRoot?.inventory_age_s);
   const ageText = ageMinutes == null ? 'age unknown' : `${Math.max(0, Math.round(ageMinutes / 60))}m old`;
   const needsReview = artifactStale || status === 'review_required' || risk === 'high' || risk === 'medium' || sourceDeleted > 0 || submoduleDrift > 0 || dirtyRepos > 0 || generatedArtifacts > 0 || statusRows > 0;
-  statusEl.textContent = status === 'missing' ? 'Missing' : artifactStale ? 'Stale Review' : needsReview ? 'Review' : 'Clear';
+  statusEl.textContent = status === 'missing' ? 'Missing' : artifactStale ? 'Refresh' : needsReview ? 'Review' : 'Clear';
   statusEl.className = 'stat ' + (needsReview || status === 'missing' ? 'yellow' : 'green');
   subEl.textContent = status === 'missing'
-    ? 'plan artifact missing; run VPS root inventory'
-    : `${artifactStale ? 'snapshot stale; ' : ''}${ageText}; risk ${risk}; source ${sourceDeleted}; drift ${submoduleDrift}; dirty repos ${dirtyRepos}; lab artifacts ${generatedArtifacts}; dormant ${dormantSubmodules}; cleanup ${cleanupAllowed ? 'allowed' : 'locked'}`;
+    ? 'cleanup plan missing; run workspace scan'
+    : `${artifactStale ? 'needs refresh; ' : ''}${ageText}; risk ${risk}; protected deletions ${sourceDeleted}; repo drift ${submoduleDrift}; uncommitted repos ${dirtyRepos}; new files ${generatedArtifacts}; inactive modules ${dormantSubmodules}; cleanup ${cleanupAllowed ? 'allowed' : 'locked'}`;
 }
 
 function focusVpsRootDetails() {
@@ -2504,6 +2540,7 @@ function renderVpsRootDetails(vpsRoot) {
   const stepsEl = document.getElementById('vpsRootSteps');
   const statusEl = document.getElementById('vpsRootDetailStatus');
   const kickerEl = document.getElementById('vpsRootDetailKicker');
+  const summaryLineEl = document.getElementById('vpsRootSummaryLine');
   if (!summaryEl || !stepsEl || !statusEl || !kickerEl) return;
 
   const payload = vpsRoot || {};
@@ -2527,27 +2564,32 @@ function renderVpsRootDetails(vpsRoot) {
   const statusText = status === 'missing'
     ? 'Missing plan'
     : artifactStale
-      ? 'Snapshot stale'
+      ? 'Needs refresh'
     : rootClean
-      ? 'Root clean'
+      ? 'Workspace clean'
     : cleanupAllowed
       ? 'Cleanup allowed'
       : 'Cleanup locked';
   statusEl.textContent = statusText;
   statusEl.className = 'truth-chip';
-  kickerEl.textContent = [payload.source || 'vps_root_reconciliation_plan', payload.plan_status || 'read-only'].filter(Boolean).join(' | ');
+  kickerEl.textContent = [friendlySourceLabel(payload.source || 'workspace scan'), payload.plan_status || 'read-only'].filter(Boolean).join(' | ');
+  if (summaryLineEl) {
+    summaryLineEl.textContent = status === 'missing'
+      ? 'Cleanup plan missing - run the workspace scan before deleting anything.'
+      : `${statusText} | ${snapshotAgeText} old | risk ${risk} | ${steps.length} review step${steps.length === 1 ? '' : 's'}`;
+  }
 
   const metrics = [
     ['Risk', risk],
     ['Cleanup', cleanupAllowed ? 'allowed' : 'locked'],
-    ['Snapshot age', snapshotAgeText],
-    ['Source deleted', sourceDeleted],
-    ['Unknown deleted', finiteNumber(summary.unknown_deleted) ?? 0],
-    ['Submodule drift', submoduleDrift],
-    ['Dirty repos', dirtyRepos],
-    ['Lab artifacts', generatedArtifacts],
-    ['Status rows', statusRows],
-    ['Dormant submodules', dormantSubmodules],
+    ['Scan age', snapshotAgeText],
+    ['Protected deletions', sourceDeleted],
+    ['Unknown deletions', finiteNumber(summary.unknown_deleted) ?? 0],
+    ['Repo drift', submoduleDrift],
+    ['Uncommitted repos', dirtyRepos],
+    ['New files', generatedArtifacts],
+    ['Git status rows', statusRows],
+    ['Inactive modules', dormantSubmodules],
     ['Review steps', steps.length]
   ];
   summaryEl.innerHTML = metrics.map(([label, value]) => `
@@ -2558,7 +2600,7 @@ function renderVpsRootDetails(vpsRoot) {
   `).join('');
 
   if (!steps.length) {
-    stepsEl.innerHTML = '<div class="empty-panel">No reconciliation steps found. Run the VPS root inventory before any cleanup.</div>';
+    stepsEl.innerHTML = '<div class="empty-panel">No cleanup steps found. Run the workspace scan before deleting anything.</div>';
     return;
   }
 
@@ -2693,14 +2735,14 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
     if (totalPnlSub) totalPnlSub.textContent = brokerMtd.source || 'IBKR portfolio MTD';
   }
 
-  // Selected-window R: bind this to the same close-history window as PnL,
-  // trades, and win rate. Dollar-like R values are suppressed instead of
-  // being displayed as fake giant R totals.
+  // Selected-window risk units: bind this to the same close-history window as
+  // PnL, trades, and win rate. Dollar-like values are suppressed instead of
+  // being displayed as fake risk units.
   const closeRows = closeHistory.rows || [];
   const selectedWindowLabel = closeHistory.label || selectedCloseHistoryWindow.toUpperCase();
   const selectedWindowCount = Number(closeHistory.count || 0);
   const rLabel = document.getElementById('cumulativeRLabel');
-  if (rLabel) rLabel.textContent = `${selectedWindowLabel} R`;
+  if (rLabel) rLabel.textContent = `${selectedWindowLabel} Risk Units`;
   const cumR = finiteNumber(closeHistory.realizedR);
   const rEl = document.getElementById('cumulativeR');
   const rSub = document.getElementById('cumulativeRSub');
@@ -2708,17 +2750,17 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
     rEl.textContent = '--';
     rEl.className = 'stat dim';
     if (rSub) rSub.textContent = closeRows.length
-      ? `${selectedWindowLabel} closes present | realized R hidden`
-      : `${selectedWindowLabel} realized-R pending`;
+      ? `${selectedWindowLabel} closed trades present | risk-unit score hidden`
+      : `${selectedWindowLabel} risk-unit score pending`;
   } else {
     rEl.textContent = cumR >= 0 ? '+' + cumR.toFixed(2) + 'R' : cumR.toFixed(2) + 'R';
     rEl.className = 'stat ' + (cumR > 0 ? 'green' : cumR < 0 ? 'red' : 'dim');
     if (rSub) {
       const rCount = Number(closeHistory.realizedRCount || 0);
       const hiddenText = Number(closeHistory.suppressedRCount || 0) > 0
-        ? `; ${closeHistory.suppressedRCount} dollar-like R value${Number(closeHistory.suppressedRCount) === 1 ? '' : 's'} hidden`
+        ? `; ${closeHistory.suppressedRCount} invalid risk-unit value${Number(closeHistory.suppressedRCount) === 1 ? '' : 's'} hidden`
         : '';
-      rSub.textContent = `${rCount || selectedWindowCount} R-tagged close${(rCount || selectedWindowCount) === 1 ? '' : 's'}${hiddenText}`;
+      rSub.textContent = `${rCount || selectedWindowCount} risk-scored closed trade${(rCount || selectedWindowCount) === 1 ? '' : 's'}${hiddenText}`;
     }
   }
 
@@ -2729,7 +2771,7 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
   const fillBackedRows = bots.filter(b => b.last_trade_ts).length;
   const signalUpdates = bots.filter(b => !b.last_trade_ts && b.last_signal_ts).length;
   const tradesLabel = document.getElementById('totalTradesLabel');
-  if (tradesLabel) tradesLabel.textContent = `${selectedWindowLabel} Closes`;
+  if (tradesLabel) tradesLabel.textContent = `${selectedWindowLabel} Closed Trades`;
   if (liveBrokerReady) {
     const liveFills = Number(liveBroker.today_actual_fills || 0);
     const exposure = liveBroker.position_exposure || {};
@@ -2742,14 +2784,14 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
       : `${brokerOpen} broker open`;
     const watchText = supervisorWatch > 0 ? ` | ${supervisorWatch} exit watch` : '';
     const closeHistoryText = selectedWindowCount > 0
-      ? `${selectedWindowCount} ledger close${selectedWindowCount === 1 ? '' : 's'}`
+      ? `${selectedWindowCount} closed trade${selectedWindowCount === 1 ? '' : 's'}`
       : '';
     document.getElementById('totalTrades').textContent = displayTrades;
-    document.getElementById('totalTradesSub').textContent = `${closeHistoryText || 'no ledger closes yet'} | ${liveFills} fills today | ${openText}${watchText}`;
+    document.getElementById('totalTradesSub').textContent = `${closeHistoryText || 'no closed trades yet'} | ${liveFills} fills today | ${openText}${watchText}`;
   } else {
     document.getElementById('totalTrades').textContent = selectedWindowCount || trades || fillBackedRows || 0;
     document.getElementById('totalTradesSub').textContent = selectedWindowCount
-      ? `${selectedWindowCount} ${selectedWindowLabel} ledger close${selectedWindowCount === 1 ? '' : 's'}`
+      ? `${selectedWindowCount} ${selectedWindowLabel} closed trade${selectedWindowCount === 1 ? '' : 's'}`
       : trades ? 'closed trades' : fillBackedRows ? 'fill evidence found' : signalUpdates ? `0 fills | ${signalUpdates} signal updates` : 'waiting for fills';
   }
 
@@ -2890,7 +2932,7 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
 
   const brokerRouter = d.broker_router || {};
   const routerStatus = String(brokerRouter.status || 'unknown').toLowerCase();
-  const routerLabels = {ok: 'OK', idle: 'Idle', processing: 'Processing', blocked: 'Blocked', held: 'Held', degraded: 'History', unknown: 'Unknown'};
+  const routerLabels = {ok: 'OK', idle: 'Idle', processing: 'Processing', blocked: 'Blocked', held: 'Held', degraded: 'Review', unknown: 'Unknown'};
   const routerClasses = {ok: 'green', idle: 'dim', processing: 'yellow', blocked: 'red', held: 'yellow', degraded: 'yellow', unknown: 'yellow'};
   const rejected = brokerRouter.result_status_counts ? Number(brokerRouter.result_status_counts.REJECTED || 0) : 0;
   const openNoFill = brokerRouter.result_status_counts ? Number(brokerRouter.result_status_counts.OPEN || 0) : 0;
@@ -2906,12 +2948,12 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
   const hold = brokerRouter.order_entry_hold || {};
   document.getElementById('brokerRouterSub').textContent =
     routerStatus === 'held' && hold.reason
-      ? 'order-entry hold: ' + hold.reason
+      ? 'entries held: ' + hold.reason
         : (pending || processing)
-          ? processing + ' processing; ' + pending + ' pending'
+          ? processing + ' processing; ' + pending + ' waiting'
           : (results || failed)
-            ? 'history: ' + results + ' results; ' + actualRouterFills + ' filled; ' + openNoFill + ' open/no-fill; ' + rejected + ' rejected; ' + failed + ' failed'
-      : 'waiting for flow';
+            ? results + ' checked; ' + actualRouterFills + ' filled; ' + openNoFill + ' working; ' + rejected + ' rejected; ' + failed + ' failed'
+      : 'No orders moving right now';
 
   const bracketAudit = d.broker_bracket_audit || summary.broker_bracket_audit || {};
   const bracketPosition = bracketAudit.position_summary || {};
@@ -2983,10 +3025,10 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
     const primaryText = bracketPrimaryExposureText(primaryUnprotected);
     const bracketSubParts = [
       propDryRunBlocked ? 'prop dry-run blocked' : '',
-      missingOco > 0 ? `${missingOco} missing broker OCO` : '',
+        missingOco > 0 ? `${missingOco} missing target/stop order${missingOco === 1 ? '' : 's'}` : '',
       primaryText ? `${primaryText} unprotected` : '',
       unprotectedSymbolsText && !primaryText ? `${unprotectedSymbolsText} unprotected` : '',
-      bracketRequired > 0 ? `${bracketRequired} bracket-required` : '',
+        bracketRequired > 0 ? `${bracketRequired} need target/stop protection` : '',
       auditBrokerOpen > 0 ? `${auditBrokerOpen} broker open` : '',
       actionChoiceText,
       conciseAuditAction
@@ -2994,7 +3036,7 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
     bracketStatusEl.textContent = bracketLabels[bracketKey] || 'Review';
     bracketStatusEl.className = 'stat ' + (bracketClasses[bracketKey] || 'yellow');
     bracketSubEl.textContent = compactText(
-    bracketSubParts.length ? bracketSubParts.join('; ') : 'OCO cover verified',
+    bracketSubParts.length ? bracketSubParts.join('; ') : 'target + stop coverage verified',
       145
     );
   }
@@ -3073,7 +3115,7 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
       : 'nearest target n/a';
     const touched = Number(exitWatch.target_touched_count || 0) + Number(exitWatch.stop_touched_count || 0);
     const missingBracketText = missingBrackets > 0
-      ? `${missingBrackets} broker bracket missing; verify broker OCO or manage flatten manually`
+      ? `${missingBrackets} target/stop order missing; verify broker exits or manage flatten manually`
       : '';
     const staleText = forceFlattenDue > 0
       ? `${forceFlattenDue} position${forceFlattenDue === 1 ? '' : 's'} past max-hold; force flatten due; oldest ${oldestDescriptor}`
@@ -3086,9 +3128,9 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
         );
     const fallback = [
       `${Number(exitWatch.broker_open_position_count ?? liveBroker.open_position_count ?? 0)} broker open`,
-      `${Number(exitWatch.supervisor_local_position_count || 0)} paper-local open`,
-      `${Number(exitWatch.supervisor_watch_count || 0)} supervisor`,
-      `${Number(exitWatch.broker_bracket_count || 0)} broker OCO`,
+      `${Number(exitWatch.supervisor_local_position_count || 0)} local paper open`,
+      `${Number(exitWatch.supervisor_watch_count || 0)} watched locally`,
+      `${Number(exitWatch.broker_bracket_count || 0)} protected at broker`,
       `${Number(exitWatch.missing_bracket_count || 0)} missing`,
       nextActionText,
       nearestText,
@@ -3141,8 +3183,8 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
   const paperLaunchBlocked = paperStatus === 'blocked' || paperTransitionLaunchBlocked > 0 || opLaunchBlocked > 0;
   const paperGateHeld = propDryRunBlocked && paperReady;
   const paperBracketHold = actionChoices.length
-    ? `held by Bracket Audit: ${actionChoices.join(' or ')}`
-    : 'held by Bracket Audit';
+    ? `held by Exit Protection: ${actionChoices.join(' or ')}`
+    : 'held by Exit Protection';
   let paperLabel = 'Unknown';
   let paperClass = 'yellow';
   if (paperLaunchBlocked) {
@@ -3175,13 +3217,13 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
 
   const proxyWatchdog = diagnostics?.dashboard_proxy_watchdog || {};
   const proxyStatus = String(proxyWatchdog.status || 'unknown').toLowerCase();
-  const proxyLabels = {ok: 'Self-Healing', probe_ok_watchdog_stale: 'Proxy OK', missing: 'Missing', stale: 'Stale', failed: 'Failed', degraded: 'Degraded', unknown: 'Unknown'};
+  const proxyLabels = {ok: 'Healthy', probe_ok_watchdog_stale: 'Route OK', missing: 'Missing', stale: 'Refresh', failed: 'Failed', degraded: 'Degraded', unknown: 'Unknown'};
   const proxyClasses = {ok: 'green', probe_ok_watchdog_stale: 'yellow', missing: 'yellow', stale: 'yellow', failed: 'red', degraded: 'red', unknown: 'yellow'};
-  const proxyReason = compactText(proxyWatchdog.probe_reason || proxyWatchdog.summary || 'watchdog not reporting');
-  const proxyAction = proxyWatchdog.action ? String(proxyWatchdog.action).replace(/_/g, ' ') : 'unknown';
+  const proxyReason = compactText(proxyWatchdog.probe_reason || proxyWatchdog.summary || 'route monitor not reporting');
+  const proxyAction = proxyWatchdog.action ? friendlySourceLabel(proxyWatchdog.action) : 'check route';
   const proxyAge = formatAgeSeconds(proxyWatchdog.checked_age_s ?? proxyWatchdog.heartbeat_age_s);
   const proxyDetail = proxyStatus === 'probe_ok_watchdog_stale'
-    ? `watchdog stale; proxy probe ${proxyReason}; ${proxyAge}`
+    ? `route works; monitor needs refresh; ${proxyAge}`
     : `${proxyAction}; ${proxyReason}; ${proxyAge}`;
   document.getElementById('opsProxyStatus').textContent = proxyLabels[proxyStatus] || proxyStatus.toUpperCase();
   document.getElementById('opsProxyStatus').className = 'stat ' + (proxyClasses[proxyStatus] || 'yellow');
@@ -3216,7 +3258,7 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
   const commandWatchdogStep = commandWatchdog.next_step || commandWatchdog.recommended_action || 'inspect';
   const commandWatchdogAge = formatAgeSeconds(commandWatchdog.age_s);
   const commandWatchdogDetail = commandWatchdog.summary
-    || `${String(commandWatchdogStep).replace(/_/g, ' ')}; ${commandWatchdog.failure_class || 'unknown'}; ${commandWatchdogAge}`;
+    || `${friendlySourceLabel(commandWatchdogStep)}; ${friendlySourceLabel(commandWatchdog.failure_class || 'unknown')}; ${commandWatchdogAge}`;
   document.getElementById('opsWatchdogStatus').textContent = commandWatchdogLabels[commandWatchdogStatus] || commandWatchdogStatus.toUpperCase();
   document.getElementById('opsWatchdogStatus').className = 'stat ' + (commandWatchdogClasses[commandWatchdogStatus] || 'yellow');
   document.getElementById('opsWatchdogSub').textContent = compactText(commandWatchdogDetail);
@@ -3266,7 +3308,7 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
     riskDetail = `${forceFlattenDue} position${forceFlattenDue === 1 ? '' : 's'} past max-hold; force flatten due`;
   } else if (targetExitStatus === 'missing_brackets' || missingBrackets > 0) {
     risk = risk === 'High' ? risk : 'Medium';
-    riskDetail = `${missingBrackets || 1} broker bracket missing; verify broker OCO or manage flatten manually`;
+    riskDetail = `${missingBrackets || 1} target/stop order missing; verify broker exits or manage flatten manually`;
   } else if (tightenStopDue > 0 || requireAckDue > 0) {
     risk = risk === 'High' ? risk : 'Medium';
     const due = tightenStopDue > 0
@@ -3326,14 +3368,14 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
     pnlHistoryLabel.textContent = historyEvidence?.isLifetime
       ? 'lifetime curve'
       : closeHistory.realizedPnl != null
-        ? `${closeHistory.label || 'Close'} closed outcomes`
+        ? `${closeHistory.label || 'Close'} closed trades`
         : '7-day curve';
   }
   const pnlHistorySub = document.getElementById('pnlHistorySub');
   if (pnlHistorySub) {
     pnlHistorySub.textContent = closeHistory.realizedPnl != null
-      ? `${formatMoney(closeHistory.realizedPnl, 2)} | ${closeHistory.count} closes | ${closeHistory.winRatePct == null ? 'WR n/a' : closeHistory.winRatePct.toFixed(1) + '% WR'}`
-      : (historyEvidence?.source || 'close ledger');
+      ? `${formatMoney(closeHistory.realizedPnl, 2)} | ${closeHistory.count} closed trade${closeHistory.count === 1 ? '' : 's'} | ${closeHistory.winRatePct == null ? 'WR n/a' : closeHistory.winRatePct.toFixed(1) + '% WR'}`
+      : (friendlySourceLabel(historyEvidence?.source) || 'closed trades');
   }
 
   // PnL chart -- will draw once data flows
