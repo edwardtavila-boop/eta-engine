@@ -242,6 +242,19 @@ tr:hover td{background:rgba(100,215,255,.055)}
 .close-row-meta{display:flex;flex-wrap:wrap;gap:.3rem .56rem;color:#8fa3b8;font-size:.67rem}
 .close-row-meta strong{color:#dce7f3;font-weight:600}
 .allocation-sections{padding:0}
+.portfolio-orb{gap:.62rem}
+.orb-ring{width:min(232px,64vw);padding:7px}
+.orb-inner{padding:.88rem}
+.orb-label{display:none}
+.orb-value{font-size:clamp(2.25rem,4vw,3.18rem);font-weight:950;letter-spacing:-.065em;line-height:.95;text-shadow:0 0 22px rgba(100,215,255,.28),0 0 34px rgba(230,184,92,.18)}
+.orb-readout{width:min(270px,100%);display:grid;gap:.42rem;margin-top:.08rem}
+.orb-sub{max-width:none;color:#f3f8ff;font-size:.82rem;font-weight:850;letter-spacing:.01em;line-height:1.2;text-shadow:0 0 18px rgba(100,215,255,.18)}
+.orb-win-rate{width:100%;margin-top:0;padding:.42rem .58rem;border-color:rgba(54,240,162,.32);background:linear-gradient(145deg,rgba(54,240,162,.14),rgba(255,255,255,.035));font-size:.72rem;font-weight:900;color:#f2fff9;box-shadow:inset 0 1px 0 rgba(255,255,255,.05),0 0 22px rgba(54,240,162,.10)}
+.orb-win-rate.red{border-color:rgba(255,91,110,.34);background:linear-gradient(145deg,rgba(255,91,110,.14),rgba(255,255,255,.035));color:#fff3f5}
+.orb-allocation-pills{width:min(292px,100%);gap:.48rem;margin-top:.16rem}
+.allocation-pill{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:.36rem;align-items:center;justify-content:stretch;padding:.48rem .58rem;font-size:.7rem;text-align:left}
+.allocation-pill .allocation-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#e7f1fb;font-weight:800}
+.allocation-pill .allocation-percent{font-size:.86rem;color:#fff;font-variant-numeric:tabular-nums}
 @media(min-width:1180px){.close-history-list{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:980px){.portfolio-command,.portfolio-analytics,.vps-root-detail-grid{grid-template-columns:1fr}.portfolio-command,.portfolio-analytics,.allocation-sections,.vps-root-detail-wrap{padding-left:1rem;padding-right:1rem}}
 @media(max-width:980px){.collapsible-section{margin-left:1rem;margin-right:1rem}.grid{grid-template-columns:repeat(auto-fit,minmax(136px,1fr));padding-left:1rem;padding-right:1rem}.portfolio-command{grid-template-columns:1fr}.portfolio-analytics{grid-template-columns:1fr}}
@@ -249,6 +262,9 @@ tr:hover td{background:rgba(100,215,255,.055)}
 @media(max-width:860px){.contribution-split{grid-template-columns:1fr}.contribution-lane-head{align-items:flex-start;flex-direction:column;gap:.16rem}}
 @media(max-width:640px){body{background:radial-gradient(ellipse 104vw 48vh at 50% -8%,rgba(100,215,255,.2),transparent 68%),radial-gradient(ellipse 92vw 42vh at 78% 10%,rgba(230,184,92,.14),transparent 72%),linear-gradient(155deg,#02050a,#07111c 46%,#02050a);background-size:100vw 100dvh,100vw 100dvh,auto;background-position:center top,center top,center top;background-attachment:scroll}body:before,body:after{left:0;right:0;width:100vw;max-width:100vw;overflow:hidden}body:after{inset:0;background-size:38px 38px,38px 38px,auto;mask-image:linear-gradient(180deg,#000 0%,rgba(0,0,0,.82) 48%,transparent 96%);animation:techPulse 18s ease-in-out infinite}.portfolio-hero:after,.premium-panel:after{inset:auto 0 -36% 0;height:140px}.header{align-items:stretch}.header>div:first-child{width:100%;text-align:center}.header .meta{display:flex;justify-content:center;flex-wrap:wrap;gap:.25rem;text-align:center}.controls{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));width:100%;gap:.55rem}.controls button{width:100%;max-width:none;min-width:0}.status-bar{padding:.72rem .9rem .45rem;align-items:center;justify-content:center;text-align:center}.status-bar>span{width:100%;max-width:100%;overflow-wrap:anywhere}.portfolio-command{gap:.78rem;padding:1rem .9rem .45rem;justify-items:center}.portfolio-hero,.premium-panel,.collapsible-section,.card,.wide-card{width:100%;max-width:100%;margin-left:auto;margin-right:auto;min-width:0}.portfolio-hero{padding:1rem .95rem .95rem;text-align:center}.portfolio-hero h2{font-size:clamp(1.22rem,7vw,1.72rem)}.portfolio-narrative{font-size:.79rem;line-height:1.48}.hero-chips,.truth-summary,.allocation-pills{gap:.35rem;justify-content:center}.hero-chip,.truth-chip,.allocation-pill{max-width:100%;padding:.4rem .58rem;font-size:.67rem;text-align:center;white-space:normal;justify-content:center}.hero-metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:.45rem}.hero-metric{padding:.54rem;text-align:center}.hero-metric span,.hero-metric strong,.hero-metric small{white-space:normal;overflow-wrap:anywhere;text-align:center}.portfolio-orb{padding:.92rem .82rem 1rem;align-items:center}.orb-ring{width:min(188px,66vw);margin-inline:auto}.orb-sub{font-size:.64rem;max-width:146px}.orb-allocation-pills{grid-template-columns:repeat(2,minmax(0,1fr));width:100%;max-width:100%}.ops-truth-wrap,.position-list,.router-tape,.close-history-list,.truth-summary,.hero-metrics,.grid{width:100%;max-width:100%;min-width:0}.grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:.65rem;padding:.8rem .9rem 1.1rem}.card{padding:.85rem}.position-card,.tape-row,.close-row{width:100%;max-width:100%;min-width:0}.position-head,.tape-head,.allocation-group-head,.vps-root-step-top,.close-history-heading,.close-row-top{flex-direction:column;align-items:flex-start}.position-meta,.tape-meta{grid-template-columns:repeat(2,minmax(0,1fr))}.position-meta span,.tape-meta span,.close-row-meta span,.close-row-title strong{min-width:0;white-space:normal;overflow-wrap:anywhere}.close-row-pnl{text-align:left}.table-wrap{padding:0 .9rem 1.2rem;max-width:100%}.collapsible-section{margin:0 .9rem .9rem;max-width:calc(100vw - 1.8rem)}.collapsible-summary{display:block;position:relative;padding:.9rem 3rem .85rem .95rem;text-align:left}.collapsible-summary small{display:block;margin:.25rem 0 0}.collapsible-summary:after{position:absolute;top:.8rem;right:.95rem}}
 @media(max-width:640px){html,body{width:100%;max-width:100%;min-width:0}body>*{max-width:100vw}.header,.status-bar,.portfolio-command,.portfolio-analytics,.allocation-sections,.vps-root-detail-wrap,.table-wrap{overflow-x:hidden}.card .stat{font-size:clamp(1.05rem,7vw,1.4rem);overflow-wrap:anywhere}.hero-metric small{font-size:.58rem;line-height:1.28}.contribution-value{text-align:left}.contribution-name strong,.allocation-group-title,.mini-bot-card strong{white-space:normal;overflow-wrap:anywhere}.table-wrap table{min-width:760px}.table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}}
+@media(max-width:640px){.orb-ring{width:min(202px,62vw);padding:6px}.orb-value{font-size:clamp(2.05rem,11vw,2.72rem)}.orb-readout{width:min(292px,100%)}.orb-sub{font-size:.78rem;max-width:none}.orb-win-rate{font-size:.68rem}.orb-allocation-pills{grid-template-columns:1fr;width:min(292px,100%)}.allocation-pill .allocation-name{white-space:normal}}
+@media(max-width:640px){.vps-root-detail-grid,.vps-root-detail-grid>*,.vps-root-detail-summary{width:100%;max-width:100%;min-width:0}.vps-root-detail-summary{grid-template-columns:repeat(2,minmax(0,1fr));gap:.46rem}.vps-root-metric{min-width:0;text-align:center;padding:.58rem}.vps-root-metric strong,.vps-root-metric span{overflow-wrap:anywhere;text-align:center}}
+@media(max-width:640px){.vps-root-step-list,.vps-root-step,.vps-root-step-top,.vps-root-action,.vps-root-evidence{width:100%;max-width:100%;min-width:0;overflow-wrap:anywhere}.vps-root-step{padding:.68rem}.vps-root-step-top strong{white-space:normal;overflow-wrap:anywhere}.vps-root-step-top span{white-space:normal;text-align:center}}
 @media(max-width:420px){.hero-metrics{grid-template-columns:1fr}.orb-ring{width:min(184px,74vw)}.status-bar{font-size:.72rem}.controls{grid-template-columns:1fr}.controls button{min-height:38px}.position-meta,.tape-meta{grid-template-columns:1fr}.close-row-meta{display:grid;grid-template-columns:1fr;gap:.18rem}}
 @media (prefers-reduced-motion:reduce){.card,.portfolio-hero,.premium-panel,.orb-ring,.orb-ring::before,.orb-inner{animation:none;transition:none;transform:none}}
 </style>
@@ -291,12 +307,13 @@ tr:hover td{background:rgba(100,215,255,.055)}
     <div class="orb-ring" id="allocationOrbRing" aria-label="Broker net and allocation ring">
       <div class="orb-inner">
         <div>
-          <div class="orb-label">Futures Net</div>
           <div class="orb-value" id="portfolioNetOrb">--</div>
-          <div class="orb-sub" id="portfolioNetOrbSub">realized | open</div>
-          <div class="orb-win-rate pending" id="portfolioWinRateOrb">Today WR pending</div>
         </div>
       </div>
+    </div>
+    <div class="orb-readout">
+      <div class="orb-sub" id="portfolioNetOrbSub">realized | open</div>
+      <div class="orb-win-rate pending" id="portfolioWinRateOrb">Today WR pending</div>
     </div>
     <div class="allocation-pills orb-allocation-pills" id="allocationPills">
       <span class="allocation-pill">Loading sleeves...</span>
@@ -557,17 +574,21 @@ const SLEEVE_LABELS = {
   crypto: 'Crypto',
   digital_assets: 'Crypto',
   cellar_spot_crypto: 'Backburner: Spot Paused',
-  equity_index_futures: 'Equity Index Futures',
-  index_futures: 'Equity Index Futures',
-  cme_crypto_futures: 'CME Crypto Futures',
-  spot_crypto: 'Spot Crypto',
-  metals_energy: 'Metals and Energy',
-  metals_and_energy: 'Metals and Energy',
-  commodities: 'Metals and Energy',
-  rates_fx: 'Rates and FX',
-  rates_and_fx: 'Rates and FX',
-  research_other: 'Research and Other',
-  research_and_other: 'Research and Other'
+  equity_index: 'Equity Index',
+  equity_index_futures: 'Equity Index',
+  index_futures: 'Equity Index',
+  cme_crypto_futures: 'Crypto',
+  crypto_futures: 'Crypto',
+  spot_crypto: 'Crypto',
+  'metals_&_energy': 'Metals & Energy',
+  metals_energy: 'Metals & Energy',
+  metals_and_energy: 'Metals & Energy',
+  commodities: 'Metals & Energy',
+  'rates_&_fx': 'Rates & FX',
+  rates_fx: 'Rates & FX',
+  rates_and_fx: 'Rates & FX',
+  research_other: 'Other',
+  research_and_other: 'Other'
 };
 const SPOT_CRYPTO_ROOTS = new Set(['BTC', 'ETH', 'SOL', 'XRP', 'AVAX', 'LINK', 'DOGE']);
 const CME_CRYPTO_FUTURE_ROOTS = new Set(['MBT', 'MET']);
@@ -595,7 +616,7 @@ function hasOpenBotExposure(bot) {
 
 function sleeveLabel(value) {
   const key = String(value || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
-  if (!key) return 'Research and Other';
+  if (!key) return 'Other';
   return SLEEVE_LABELS[key] || key.split('_').filter(Boolean).map(
     part => part.charAt(0).toUpperCase() + part.slice(1)
   ).join(' ');
@@ -707,12 +728,12 @@ function isDisplayableBot(bot) {
 
 function assetBucket(symbol) {
   const s = String(symbol || '').toUpperCase();
-  if (['MBT','MET'].some(x => s.startsWith(x))) return 'CME Crypto Futures';
+  if (['MBT','MET'].some(x => s.startsWith(x))) return 'Crypto';
   if (isSpotCryptoSymbol(s)) return 'Backburner: Spot Paused';
-  if (['MNQ','NQ','MES','ES','M2K','RTY','YM'].some(x => s.startsWith(x))) return 'Equity Index Futures';
-  if (['GC','MGC','SI','CL','MCL','NG'].some(x => s.startsWith(x))) return 'Metals and Energy';
-  if (['ZN','ZB','ZT','ZF','6E','EUR','DX'].some(x => s.startsWith(x))) return 'Rates and FX';
-  return 'Research and Other';
+  if (['MNQ','NQ','MES','ES','M2K','RTY','YM'].some(x => s.startsWith(x))) return 'Equity Index';
+  if (['GC','MGC','SI','CL','MCL','NG'].some(x => s.startsWith(x))) return 'Metals & Energy';
+  if (['ZN','ZB','ZT','ZF','6E','EUR','DX'].some(x => s.startsWith(x))) return 'Rates & FX';
+  return 'Other';
 }
 
 function isRuntimeActiveBot(bot) {
@@ -2072,7 +2093,7 @@ function renderAllocationPillsAndSections(bots, liveBroker, portfolioSummary) {
   }
   if (pills) {
     pills.innerHTML = visibleBuckets.map(bucket => {
-      return `<span class="allocation-pill"><span class="allocation-dot" style="background:${esc(bucket.color)};color:${esc(bucket.color)}"></span><strong>${esc(bucket.name)}</strong> ${bucket.weight.toFixed(0)}%</span>`;
+      return `<span class="allocation-pill"><span class="allocation-dot" style="background:${esc(bucket.color)};color:${esc(bucket.color)}"></span><span class="allocation-name">${esc(bucket.name)}</span><strong class="allocation-percent">${bucket.weight.toFixed(0)}%</strong></span>`;
     }).join('') || '<span class="allocation-pill">No active allocation rows</span>';
   }
   if (!sections) return;
