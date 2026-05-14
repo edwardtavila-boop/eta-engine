@@ -9,7 +9,7 @@
 param(
     [string]$TaskName = "ETA-Watchdog",
     [string]$Root = "C:\EvolutionaryTradingAlgo",
-    [string]$PythonExe = "C:\Program Files\Python312\python.exe",
+    [string]$PythonExe = "",
     [int]$IntervalSeconds = 60,
     [switch]$Start,
     [switch]$RestartExistingProcess
@@ -33,6 +33,18 @@ if ($RootFull -ne "C:\EvolutionaryTradingAlgo") {
 $EngineDir = Join-Path $RootFull "eta_engine"
 $StateDir = Join-Path $RootFull "var\eta_engine\state"
 $LogDir = Join-Path $RootFull "logs\eta_engine"
+
+if (-not $PythonExe) {
+    $VenvPython = Join-Path $EngineDir ".venv\Scripts\python.exe"
+    if (Test-Path -LiteralPath $VenvPython) {
+        $PythonExe = $VenvPython
+    } else {
+        $PythonCmd = Get-Command python -ErrorAction SilentlyContinue
+        if ($PythonCmd) {
+            $PythonExe = $PythonCmd.Source
+        }
+    }
+}
 
 Assert-CanonicalEtaPath -Path $EngineDir
 Assert-CanonicalEtaPath -Path $StateDir

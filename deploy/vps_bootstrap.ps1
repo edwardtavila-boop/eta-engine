@@ -337,7 +337,11 @@ if (-not $SkipETATasks) {
     if (Test-Path $etaWatchdogTaskScript) {
         Write-Host "  Registering long-running ETA watchdog task..." -ForegroundColor Gray
         if (-not $WhatIf) {
-            & $pwshPath -ExecutionPolicy Bypass -File $etaWatchdogTaskScript -Start -RestartExistingProcess
+            & $pwshPath -ExecutionPolicy Bypass -File $etaWatchdogTaskScript `
+                -Root $InstallRoot `
+                -PythonExe $pythonExe `
+                -Start `
+                -RestartExistingProcess
         }
     } else {
         Write-Host "  register_eta_watchdog_task.ps1 not found at $etaWatchdogTaskScript" -ForegroundColor Yellow

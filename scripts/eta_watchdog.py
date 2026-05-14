@@ -9,12 +9,11 @@ on hardened Windows hosts.
 
 Behavior matrix
 ---------------
-| heartbeat_age      | process_alive | action                  |
-|--------------------|---------------|-------------------------|
-| fresh (< stale_s)  | yes           | noop                    |
-| fresh              | no            | noop (pid unobserved)   |
-| stale              | yes           | kill + relaunch         |
-| stale / missing    | no            | relaunch                |
+| main heartbeat_age | keepalive      | action                  |
+|--------------------|----------------|-------------------------|
+| fresh (< stale_s)  | any            | noop                    |
+| stale / missing    | fresh          | restart service/task    |
+| stale / missing    | stale/missing  | relaunch                |
 
 The watchdog respects an operator opt-out: if
 ``var/eta_engine/state/supervisor_disabled.txt`` exists, all relaunch
@@ -26,6 +25,8 @@ Configuration env
 * ``ETA_WATCHDOG_STALE_S``        -- staleness threshold (default 300s).
 * ``ETA_WATCHDOG_TASK_NAME``      -- task name passed to schtasks /Run for
   relaunch (default ``ETA-Jarvis-Strategy-Supervisor``).
+* ``ETA_WATCHDOG_SERVICE_NAME``   -- Windows service fallback restarted before
+  Task Scheduler (default ``ETAJarvisSupervisor``).
 * ``ETA_WATCHDOG_WRAPPER_CMD``    -- alternative: path to the wrapper .cmd.
   When set, the watchdog launches the wrapper directly with subprocess
   rather than going through Task Scheduler. Useful for unit tests.
@@ -80,12 +81,19 @@ DEFAULT_TASK_NAME = os.getenv(
     "ETA_WATCHDOG_TASK_NAME",
     "ETA-Jarvis-Strategy-Supervisor",
 )
+DEFAULT_SERVICE_NAME = os.getenv("ETA_WATCHDOG_SERVICE_NAME", "ETAJarvisSupervisor")
 DEFAULT_PROCESS_SUBSTRING = os.getenv(
     "ETA_WATCHDOG_PROCESS_NAME",
     "jarvis_strategy_supervisor.py",
 )
 DEFAULT_HEARTBEAT_PATH = workspace_roots.ETA_JARVIS_SUPERVISOR_HEARTBEAT_PATH
 DEFAULT_KEEPALIVE_PATH = workspace_roots.ETA_JARVIS_SUPERVISOR_KEEPALIVE_PATH
+DEFAULT_MOCK_HEARTBEAT_PATH = (
+    workspace_roots.ETA_RUNTIME_STATE_DIR / "jarvis_intel" / "supervisor_mock" / "heartbeat.json"
+)
+DEFAULT_MOCK_KEEPALIVE_PATH = (
+    workspace_roots.ETA_RUNTIME_STATE_DIR / "jarvis_intel" / "supervisor_mock" / "heartbeat_keepalive.json"
+)
 DEFAULT_WATCHDOG_HEARTBEAT_PATH = workspace_roots.ETA_RUNTIME_STATE_DIR / "watchdog_heartbeat.json"
 DEFAULT_DISABLED_FLAG_PATH = workspace_roots.ETA_RUNTIME_STATE_DIR / "supervisor_disabled.txt"
 
@@ -96,6 +104,7 @@ class WatchdogDecision:
 
     component: str
     heartbeat_age_s: float | None
+    keepalive_age_s: float | None
     process_alive: bool
     stale: bool
     disabled_opt_out: bool
@@ -108,6 +117,7 @@ class WatchdogDecision:
         return {
             "component": self.component,
             "heartbeat_age_s": self.heartbeat_age_s,
+            "keepalive_age_s": self.keepalive_age_s,
             "process_alive": self.process_alive,
             "stale": self.stale,
             "disabled_opt_out": self.disabled_opt_out,
@@ -154,6 +164,101 @@ def _read_heartbeat_age_s(path: Path) -> float | None:
         return max(0.0, (datetime.now(UTC) - mtime).total_seconds())
     except OSError:
         return None
+
+
+def _supervisor_fallback_pairs(component: str, heartbeat_path: Path) -> list[tuple[Path, Path | None]]:
+    """Return alternate progress paths for the managed supervisor service.
+
+    The WinSW paper-sim service may intentionally write to
+    ``supervisor_mock`` while the canonical paper-live service writes to
+    ``supervisor``. A watchdog that only watches one tree can either miss the
+    running service or restart every minute. Fallback pairs are only enabled
+    for the default supervisor path so unit tests and explicitly overridden
+    paths remain deterministic.
+    """
+
+    if component != "supervisor":
+        return []
+    try:
+        is_default = heartbeat_path.resolve() == DEFAULT_HEARTBEAT_PATH.resolve()
+    except OSError:
+        is_default = heartbeat_path == DEFAULT_HEARTBEAT_PATH
+    if not is_default:
+        return []
+    return [(DEFAULT_MOCK_HEARTBEAT_PATH, DEFAULT_MOCK_KEEPALIVE_PATH)]
+
+
+def _select_heartbeat_pair(
+    *,
+    component: str,
+    heartbeat_path: Path,
+    keepalive_path: Path | None,
+    stale_s: float,
+    fallback_pairs: list[tuple[Path, Path | None]] | None,
+) -> tuple[Path, Path | None, float | None, float | None]:
+    """Pick the heartbeat pair that represents the active supervisor.
+
+    Main ``heartbeat.json`` is the progress signal. ``heartbeat_keepalive``
+    only proves the process is scheduled; it must not make a stuck main loop
+    look healthy.
+    """
+
+    pairs: list[tuple[Path, Path | None]] = [(heartbeat_path, keepalive_path)]
+    if fallback_pairs is not None:
+        pairs.extend(fallback_pairs)
+    else:
+        pairs.extend(_supervisor_fallback_pairs(component, heartbeat_path))
+
+    inspected: list[tuple[Path, Path | None, float | None, float | None]] = [
+        (main, keep, _read_heartbeat_age_s(main), _read_heartbeat_age_s(keep) if keep is not None else None)
+        for main, keep in pairs
+    ]
+
+    # A fresh main heartbeat wins: that is real progress.
+    for item in inspected:
+        main_age = item[2]
+        if main_age is not None and main_age <= stale_s:
+            return item
+
+    # If no main heartbeat is fresh, a fresh keepalive tells us which stuck
+    # supervisor instance needs recovery.
+    fresh_keepalive = [item for item in inspected if item[3] is not None and item[3] <= stale_s]
+    if fresh_keepalive:
+        return min(fresh_keepalive, key=lambda item: item[3] if item[3] is not None else float("inf"))
+
+    # Otherwise choose the newest stale main heartbeat for the most useful
+    # post-mortem path. If no main heartbeat exists, keep the primary pair.
+    with_main = [item for item in inspected if item[2] is not None]
+    if with_main:
+        return min(with_main, key=lambda item: item[2] if item[2] is not None else float("inf"))
+    return inspected[0]
+
+
+def _live_money_restart_block_reason(path: Path) -> str | None:
+    """Return a fail-closed reason when the last heartbeat says live money.
+
+    Paper self-heal may restart automatically. Live-money restart remains a
+    deliberate operator action unless explicitly overridden by env.
+    """
+
+    if os.environ.get("ETA_WATCHDOG_ALLOW_LIVE_RESTART", "").strip().lower() in {"1", "true", "yes", "on"}:
+        return None
+    if not path.exists():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    mode = str(payload.get("mode") or "").strip().lower()
+    live_money_enabled = payload.get("live_money_enabled")
+    if live_money_enabled is True or mode == "live":
+        return (
+            "last heartbeat indicates live-money mode; "
+            "set ETA_WATCHDOG_ALLOW_LIVE_RESTART=1 for manual override"
+        )
+    return None
 
 
 # ─── Process inspection ───────────────────────────────────────────────────
@@ -268,6 +373,7 @@ def _relaunch_supervisor(
     *,
     task_name: str = DEFAULT_TASK_NAME,
     wrapper_cmd: str | None = None,
+    service_name: str = DEFAULT_SERVICE_NAME,
 ) -> tuple[bool, str]:
     """Trigger a supervisor relaunch.
 
@@ -296,6 +402,37 @@ def _relaunch_supervisor(
             return True, f"wrapper_launched_pid={proc.pid}"
         except Exception as exc:  # noqa: BLE001
             return False, f"wrapper_launch_failed:{type(exc).__name__}:{exc}"
+
+    if os.name == "nt" and service_name:
+        escaped = service_name.replace("'", "''")
+        command = (
+            "$svc = Get-Service -Name '" + escaped + "' -ErrorAction SilentlyContinue; "
+            "if ($null -eq $svc) { exit 3 }; "
+            "if ($svc.Status -eq 'Running') { "
+            "Restart-Service -Name '" + escaped + "' -Force -ErrorAction Stop "
+            "} else { "
+            "Start-Service -Name '" + escaped + "' -ErrorAction Stop "
+            "}"
+        )
+        try:
+            result = subprocess.run(  # noqa: S603, S607
+                ["powershell", "-NoProfile", "-Command", command],
+                capture_output=True,
+                timeout=45,
+                check=False,
+                text=True,
+            )
+            if result.returncode == 0:
+                return True, f"service_restart_ok:{service_name}"
+            if result.returncode != 3:
+                logger.warning(
+                    "service restart failed for %s rc=%s stderr=%s",
+                    service_name,
+                    result.returncode,
+                    result.stderr.strip()[:200],
+                )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("service restart failed for %s: %s", service_name, exc)
 
     # Default: Windows Task Scheduler.
     try:
@@ -327,6 +464,7 @@ def watchdog_tick(
     watchdog_heartbeat_path: Path = DEFAULT_WATCHDOG_HEARTBEAT_PATH,
     task_name: str = DEFAULT_TASK_NAME,
     wrapper_cmd: str | None = None,
+    fallback_pairs: list[tuple[Path, Path | None]] | None = None,
     relaunch_fn: Callable[..., tuple[bool, str]] | None = None,
     pid_fn: Callable[[str], list[int]] | None = None,
     kill_fn: Callable[[list[int]], list[int]] | None = None,
@@ -340,28 +478,24 @@ def watchdog_tick(
     list_pids = pid_fn or _find_supervisor_pids
     kill = kill_fn or _kill_pids
 
-    # Heartbeat freshness: prefer keepalive when present + fresh, else
-    # fall back to main heartbeat. Either being fresh proves the
-    # process is doing some work.
-    main_age = _read_heartbeat_age_s(heartbeat_path)
-    keep_age = _read_heartbeat_age_s(keepalive_path) if keepalive_path is not None else None
-    if main_age is None and keep_age is None:
-        age = None
-    elif main_age is None:
-        age = keep_age
-    elif keep_age is None:
-        age = main_age
-    else:
-        age = min(main_age, keep_age)
+    heartbeat_path, keepalive_path, main_age, keep_age = _select_heartbeat_pair(
+        component=component,
+        heartbeat_path=heartbeat_path,
+        keepalive_path=keepalive_path,
+        stale_s=stale_s,
+        fallback_pairs=fallback_pairs,
+    )
 
     pids = list_pids(process_substring)
-    process_alive = bool(pids)
-    stale = age is None or age > stale_s
+    keepalive_fresh = keep_age is not None and keep_age <= stale_s
+    process_alive = bool(pids) or keepalive_fresh
+    stale = main_age is None or main_age > stale_s
     disabled = disabled_flag_path.exists()
 
     decision = WatchdogDecision(
         component=component,
-        heartbeat_age_s=age,
+        heartbeat_age_s=main_age,
+        keepalive_age_s=keep_age,
         process_alive=process_alive,
         stale=stale,
         disabled_opt_out=disabled,
@@ -374,6 +508,14 @@ def watchdog_tick(
     if disabled:
         decision.action = "skipped_disabled"
         decision.reason = "supervisor_disabled.txt present"
+        _record(component, decision)
+        _write_watchdog_heartbeat(watchdog_heartbeat_path, decision)
+        return decision
+
+    live_money_block = _live_money_restart_block_reason(heartbeat_path) if stale else None
+    if live_money_block:
+        decision.action = "skipped_live_money_guard"
+        decision.reason = live_money_block
         _record(component, decision)
         _write_watchdog_heartbeat(watchdog_heartbeat_path, decision)
         return decision
@@ -395,7 +537,10 @@ def watchdog_tick(
         killed = kill(pids)
         ok, reason = relaunch(task_name=task_name, wrapper_cmd=wrapper_cmd)
         decision.action = "killed_and_relaunched" if ok else "kill_then_relaunch_failed"
-        decision.reason = f"killed_pids={killed} relaunch_ok={ok} relaunch_reason={reason}"
+        decision.reason = (
+            f"killed_pids={killed} keepalive_age_s={keep_age} "
+            f"relaunch_ok={ok} relaunch_reason={reason}"
+        )
     else:
         ok, reason = relaunch(task_name=task_name, wrapper_cmd=wrapper_cmd)
         decision.action = "relaunched" if ok else "relaunch_failed"
@@ -416,6 +561,7 @@ def _record(component: str, decision: WatchdogDecision) -> None:
             extra={
                 "watched_component": component,
                 "heartbeat_age_s": decision.heartbeat_age_s,
+                "keepalive_age_s": decision.keepalive_age_s,
                 "process_alive": decision.process_alive,
                 "stale": decision.stale,
                 "process_pids_seen": list(decision.process_pids_seen),

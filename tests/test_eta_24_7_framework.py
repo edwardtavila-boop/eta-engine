@@ -169,6 +169,133 @@ def test_watchdog_trusts_fresh_heartbeat_when_pid_scan_is_empty(
     assert relaunch_calls == []
 
 
+def test_watchdog_restarts_when_main_loop_stuck_but_keepalive_fresh(
+    tmp_path: Path,
+) -> None:
+    """Fresh keepalive must not hide a stale main trading loop."""
+    from eta_engine.scripts import eta_watchdog
+
+    hb_path = tmp_path / "supervisor_heartbeat.json"
+    keepalive_path = tmp_path / "supervisor_keepalive.json"
+    hb_path.write_text(
+        json.dumps({"ts": "2020-01-01T00:00:00+00:00", "tick_count": 1, "mode": "paper_sim"}),
+        encoding="utf-8",
+    )
+    keepalive_path.write_text(
+        json.dumps({"keepalive_ts": datetime.now(UTC).isoformat()}),
+        encoding="utf-8",
+    )
+
+    relaunch_calls: list[dict[str, Any]] = []
+
+    def fake_relaunch(*, task_name: str, wrapper_cmd: str | None) -> tuple[bool, str]:
+        relaunch_calls.append({"task_name": task_name, "wrapper_cmd": wrapper_cmd})
+        return True, "fake_relaunched"
+
+    decision = eta_watchdog.watchdog_tick(
+        component="supervisor",
+        heartbeat_path=hb_path,
+        keepalive_path=keepalive_path,
+        process_substring="jarvis_strategy_supervisor.py",
+        stale_s=60.0,
+        disabled_flag_path=tmp_path / "supervisor_disabled.txt",
+        watchdog_heartbeat_path=tmp_path / "watchdog_heartbeat.json",
+        relaunch_fn=fake_relaunch,
+        pid_fn=lambda _sub: [],
+        kill_fn=lambda _pids: [],
+    )
+
+    assert decision.stale is True
+    assert decision.process_alive is True
+    assert decision.action == "killed_and_relaunched"
+    assert decision.keepalive_age_s is not None
+    assert "keepalive_age_s=" in decision.reason
+    assert relaunch_calls, "stuck main loop should trigger a restart"
+
+
+def test_watchdog_can_select_mock_supervisor_pair_for_managed_paper_service(
+    tmp_path: Path,
+) -> None:
+    """The VPS paper service can write supervisor_mock while still needing self-heal."""
+    from eta_engine.scripts import eta_watchdog
+
+    canonical_hb = tmp_path / "canonical" / "heartbeat.json"
+    canonical_keepalive = tmp_path / "canonical" / "heartbeat_keepalive.json"
+    mock_hb = tmp_path / "mock" / "heartbeat.json"
+    mock_keepalive = tmp_path / "mock" / "heartbeat_keepalive.json"
+
+    canonical_hb.parent.mkdir(parents=True, exist_ok=True)
+    canonical_hb.write_text(
+        json.dumps({"ts": "2020-01-01T00:00:00+00:00", "tick_count": 1, "mode": "paper_sim"}),
+        encoding="utf-8",
+    )
+    mock_hb.parent.mkdir(parents=True, exist_ok=True)
+    mock_hb.write_text(
+        json.dumps({"ts": "2020-01-01T00:00:00+00:00", "tick_count": 1, "mode": "paper_sim"}),
+        encoding="utf-8",
+    )
+    mock_keepalive.write_text(
+        json.dumps({"keepalive_ts": datetime.now(UTC).isoformat()}),
+        encoding="utf-8",
+    )
+
+    decision = eta_watchdog.watchdog_tick(
+        component="supervisor",
+        heartbeat_path=canonical_hb,
+        keepalive_path=canonical_keepalive,
+        fallback_pairs=[(mock_hb, mock_keepalive)],
+        stale_s=60.0,
+        disabled_flag_path=tmp_path / "supervisor_disabled.txt",
+        watchdog_heartbeat_path=tmp_path / "watchdog_heartbeat.json",
+        relaunch_fn=lambda **_kw: (True, "fake_relaunched"),
+        pid_fn=lambda _sub: [],
+        kill_fn=lambda _pids: [],
+    )
+
+    assert decision.heartbeat_path == str(mock_hb)
+    assert decision.keepalive_age_s is not None
+    assert decision.action == "killed_and_relaunched"
+
+
+def test_watchdog_refuses_automatic_live_money_restart(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Live-money restarts require an explicit operator override."""
+    from eta_engine.scripts import eta_watchdog
+
+    monkeypatch.delenv("ETA_WATCHDOG_ALLOW_LIVE_RESTART", raising=False)
+    hb_path = tmp_path / "supervisor_heartbeat.json"
+    hb_path.write_text(
+        json.dumps(
+            {
+                "ts": "2020-01-01T00:00:00+00:00",
+                "tick_count": 1,
+                "mode": "live",
+                "live_money_enabled": True,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    relaunch_calls: list[Any] = []
+    decision = eta_watchdog.watchdog_tick(
+        component="supervisor",
+        heartbeat_path=hb_path,
+        keepalive_path=None,
+        stale_s=60.0,
+        disabled_flag_path=tmp_path / "supervisor_disabled.txt",
+        watchdog_heartbeat_path=tmp_path / "watchdog_heartbeat.json",
+        relaunch_fn=lambda **_kw: relaunch_calls.append(_kw) or (True, "bad"),
+        pid_fn=lambda _sub: [],
+        kill_fn=lambda _pids: [],
+    )
+
+    assert decision.action == "skipped_live_money_guard"
+    assert "live-money" in decision.reason
+    assert relaunch_calls == []
+
+
 def test_watchdog_noop_when_supervisor_disabled_file_present(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

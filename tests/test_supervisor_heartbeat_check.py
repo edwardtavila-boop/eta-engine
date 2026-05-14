@@ -24,6 +24,11 @@ def _write_heartbeat(path: Path, ts: datetime, *, tick_count: int = 7) -> None:
     )
 
 
+def _write_keepalive(path: Path, ts: datetime) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"keepalive_ts": ts.isoformat()}), encoding="utf-8")
+
+
 def test_canonical_fresh_explains_legacy_path_mismatch(tmp_path: Path) -> None:
     now = datetime(2026, 5, 5, 6, 20, tzinfo=UTC)
     state_root = tmp_path / "var" / "eta_engine" / "state"
@@ -85,6 +90,34 @@ def test_fresh_mock_heartbeat_is_context_not_live_readiness(tmp_path: Path) -> N
     assert report["mock_candidates"][0]["fresh"] is True
     assert any("mock state does not satisfy live supervisor readiness" in item for item in report["warnings"])
     assert any("supervisor_mock" in item for item in report["action_items"])
+
+
+def test_mock_keepalive_stale_main_reports_paper_loop_stuck(tmp_path: Path) -> None:
+    now = datetime(2026, 5, 5, 6, 20, tzinfo=UTC)
+    state_root = tmp_path / "var" / "eta_engine" / "state"
+    eta_root = tmp_path / "eta_engine"
+    _write_heartbeat(state_root / "jarvis_intel" / "supervisor" / "heartbeat.json", now - timedelta(minutes=30))
+    _write_heartbeat(
+        state_root / "jarvis_intel" / "supervisor_mock" / "heartbeat.json",
+        now - timedelta(minutes=20),
+    )
+    _write_keepalive(
+        state_root / "jarvis_intel" / "supervisor_mock" / "heartbeat_keepalive.json",
+        now - timedelta(seconds=5),
+    )
+
+    report = supervisor_heartbeat_check.build_supervisor_heartbeat_report(
+        state_root=state_root,
+        eta_engine_root=eta_root,
+        now=now,
+        threshold_minutes=10,
+    )
+
+    assert report["healthy"] is False
+    assert report["status"] == "paper_main_loop_stuck"
+    assert report["diagnosis"] == "mock_main_heartbeat_stale_keepalive_fresh"
+    assert any("paper trading tick loop is blocked" in item for item in report["warnings"])
+    assert any("ETA-Watchdog" in item for item in report["action_items"])
 
 
 def test_write_report_uses_canonical_health_dir(tmp_path: Path) -> None:

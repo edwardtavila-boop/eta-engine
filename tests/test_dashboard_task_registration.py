@@ -8,6 +8,7 @@ RUNNER = ROOT / "deploy" / "scripts" / "run_dashboard_api_task.cmd"
 PROXY_SCRIPT = ROOT / "deploy" / "scripts" / "register_proxy8421_bridge_task.ps1"
 PROXY_RUNNER = ROOT / "deploy" / "scripts" / "run_proxy8421_task.cmd"
 PROXY_WATCHDOG_SCRIPT = ROOT / "deploy" / "scripts" / "register_dashboard_proxy_watchdog_task.ps1"
+ETA_WATCHDOG_SCRIPT = ROOT / "deploy" / "scripts" / "register_eta_watchdog_task.ps1"
 REPAIR_DASHBOARD_DURABILITY = ROOT / "deploy" / "scripts" / "repair_dashboard_durability_admin.cmd"
 DASHBOARD_SYNC_SCRIPT = ROOT / "deploy" / "scripts" / "sync_dashboard_api_live.ps1"
 COMMAND_CENTER_SERVICE_XML = ROOT / "deploy" / "FirmCommandCenter_canonical.xml"
@@ -224,6 +225,24 @@ def test_dashboard_proxy_watchdog_task_registration_avoids_legacy_paths() -> Non
     assert "crypto_data" not in text
     assert "TheFirm" not in text
     assert "The_Firm" not in text
+
+
+def test_eta_watchdog_bootstrap_passes_resolved_python() -> None:
+    text = (ROOT / "deploy" / "vps_bootstrap.ps1").read_text(encoding="utf-8")
+
+    assert "register_eta_watchdog_task.ps1" in text
+    assert "-Root $InstallRoot" in text
+    assert "-PythonExe $pythonExe" in text
+    assert "-RestartExistingProcess" in text
+
+
+def test_eta_watchdog_registrar_discovers_python_without_stale_hardcode() -> None:
+    text = ETA_WATCHDOG_SCRIPT.read_text(encoding="utf-8")
+
+    assert '[string]$PythonExe = ""' in text
+    assert 'Join-Path $EngineDir ".venv\\Scripts\\python.exe"' in text
+    assert "Get-Command python" in text
+    assert r"C:\Program Files\Python312\python.exe" not in text
 
 
 def test_dashboard_durability_admin_launcher_repairs_dashboard_and_queue_tasks() -> None:

@@ -76,7 +76,18 @@ def test_gather_marks_stale_launch_readiness_and_keeps_gate_details(monkeypatch,
 def test_render_text_prints_readiness_freshness_and_gate_rationales() -> None:
     state = {
         "ts": "2026-05-14T00:00:00+00:00",
-        "supervisor": {"tick_count": 1, "n_bots": 15, "mode": "paper_sim", "ts": "2026-05-14T00:00:00+00:00"},
+        "supervisor": {
+            "tick_count": 1,
+            "n_bots": 15,
+            "mode": "paper_sim",
+            "ts": "2026-05-14T00:00:00+00:00",
+            "health": {
+                "healthy": False,
+                "status": "paper_main_loop_stuck",
+                "diagnosis": "mock_main_heartbeat_stale_keepalive_fresh",
+                "action_items": ["Restart ETAJarvisSupervisor via the ETA-Watchdog/SYSTEM task."],
+            },
+        },
         "fm_cache": {"hits": 0, "misses": 0, "hit_rate_pct": 0.0, "size": 0, "ttl_seconds": 0},
         "fm_breaker": {"spent_today_usd": 0.0, "cap_usd": 1.0, "headroom_pct": 100.0, "tripped": False},
         "diamond_leaderboard": {"n_diamonds": 14, "n_prop_ready": 0, "prop_ready_bots": []},
@@ -113,5 +124,7 @@ def test_render_text_prints_readiness_freshness_and_gate_rationales() -> None:
     text = mod.render_text(state)
 
     assert "freshness    : STALE" in text
+    assert "health       : paper_main_loop_stuck" in text
+    assert "Restart ETAJarvisSupervisor" in text
     assert "R1_PROP_READY_DESIGNATED: only 0 PROP_READY bot(s)" in text
     assert "R7_LEDGER_FRESH: ledger stale" in text

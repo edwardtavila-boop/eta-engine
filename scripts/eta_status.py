@@ -23,6 +23,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from eta_engine.scripts.supervisor_heartbeat_check import build_supervisor_heartbeat_report
+
 STATE_DIR = Path(r"C:\EvolutionaryTradingAlgo\var\eta_engine\state")
 HEARTBEAT_PATH = STATE_DIR / "jarvis_intel" / "supervisor" / "heartbeat.json"
 LEADERBOARD = STATE_DIR / "diamond_leaderboard_latest.json"
@@ -87,6 +89,27 @@ def _age_seconds(ts: object) -> float | None:
     return round((datetime.now(UTC) - dt).total_seconds(), 1)
 
 
+def _state_root_for_heartbeat(path: Path) -> Path:
+    parts = path.parts
+    if len(parts) >= 4 and parts[-3:] == ("jarvis_intel", "supervisor", "heartbeat.json"):
+        return path.parents[2]
+    return path.parent
+
+
+def _supervisor_health_summary() -> dict[str, Any]:
+    try:
+        report = build_supervisor_heartbeat_report(state_root=_state_root_for_heartbeat(HEARTBEAT_PATH))
+    except Exception:
+        return {}
+    return {
+        "healthy": bool(report.get("healthy")),
+        "status": report.get("status"),
+        "diagnosis": report.get("diagnosis"),
+        "canonical_age_seconds": report.get("canonical_age_seconds"),
+        "action_items": report.get("action_items") or [],
+    }
+
+
 def _gate_details(gates: list[Any], status: str | None = None) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for gate in gates:
@@ -108,6 +131,7 @@ def _gate_details(gates: list[Any], status: str | None = None) -> list[dict[str,
 
 def gather() -> dict[str, Any]:
     hb = _load_json(HEARTBEAT_PATH)
+    supervisor_health = _supervisor_health_summary()
     lb = _load_json(LEADERBOARD)
     lr = _load_json(LAUNCH_READINESS)
     kz = _load_json(KAIZEN_LATEST)
@@ -138,6 +162,7 @@ def gather() -> dict[str, Any]:
             "tick_count": hb.get("tick_count"),
             "n_bots": hb.get("n_bots"),
             "mode": hb.get("mode"),
+            "health": supervisor_health,
         },
         "fm_cache": {
             "size": fm_cache.get("size"),
@@ -207,10 +232,17 @@ def render_text(state: dict[str, Any]) -> str:
     lines.append("=" * 72)
 
     s = state["supervisor"]
+    s_health = s.get("health") if isinstance(s.get("health"), dict) else {}
     lines.append(
         f"\nSupervisor      : tick={s.get('tick_count')}  n_bots={s.get('n_bots')}  "
         f"mode={s.get('mode')}  last={s.get('ts')}"
     )
+    if s_health.get("status"):
+        health_text = "healthy" if s_health.get("healthy") else str(s_health.get("status"))
+        lines.append(f"  health       : {health_text}  {s_health.get('diagnosis')}")
+        action_items = s_health.get("action_items") if isinstance(s_health.get("action_items"), list) else []
+        if action_items:
+            lines.append(f"  action       : {action_items[0]}")
 
     c = state["fm_cache"]
     lines.append(

@@ -287,6 +287,16 @@ def build_supervisor_heartbeat_report(
     fresh_mock = [
         candidate for candidate in mock_candidates if candidate.exists and candidate.readable and candidate.fresh
     ]
+    mock_main = mock_candidates[0] if mock_candidates else None
+    mock_keepalive = mock_candidates[1] if len(mock_candidates) > 1 else None
+    mock_main_loop_stuck = (
+        mock_keepalive is not None
+        and mock_keepalive.exists
+        and mock_keepalive.readable
+        and mock_keepalive.fresh
+        and mock_main is not None
+        and not (mock_main.exists and mock_main.readable and mock_main.fresh)
+    )
 
     keepalive_path = state_root / KEEPALIVE_RELATIVE
     keepalive = inspect_keepalive(
@@ -413,6 +423,18 @@ def build_supervisor_heartbeat_report(
         action_items.append(
             "Keep supervisor_mock isolated from live readiness; "
             "start ETA-Jarvis-Strategy-Supervisor for canonical health."
+        )
+
+    if mock_main_loop_stuck and not healthy and not fresh_legacy:
+        status = "paper_main_loop_stuck"
+        diagnosis = "mock_main_heartbeat_stale_keepalive_fresh"
+        warnings.append(
+            "Managed paper supervisor keep-alive is fresh in supervisor_mock, but its main heartbeat is stale; "
+            "the paper trading tick loop is blocked."
+        )
+        action_items.insert(
+            0,
+            "Restart ETAJarvisSupervisor via the ETA-Watchdog/SYSTEM task; live-money routes remain gated.",
         )
 
     return {
