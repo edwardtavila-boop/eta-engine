@@ -1400,7 +1400,7 @@ class TestDashboardAPI:
         assert "cc-strategy-supercharge-results" not in cards
         assert cards["cc-diamond-retune-status"]["endpoint"] == "/api/jarvis/diamond_retune_status"
         assert cards["fl-controls"]["source"] == "client"
-        assert cards["fl-roster"]["endpoint"] == "/api/bot-fleet?since_days=1"
+        assert cards["fl-roster"]["endpoint"] == "/api/bot-fleet?since_days=1&live_broker_probe=false"
         assert cards["fl-equity-curve"]["endpoint"].startswith("/api/fleet-equity?")
         assert all(card["status"] not in {"dead", "stale"} for card in data["cards"])
 
@@ -3725,7 +3725,7 @@ class TestDashboardAPI:
         (state / "bots").mkdir(parents=True, exist_ok=True)
         monkeypatch.setattr(
             mod,
-            "_live_broker_state_payload",
+            "_cached_live_broker_state_for_diagnostics",
             lambda: {
                 "today_actual_fills": 7,
                 "today_realized_pnl": 125.5,
@@ -3919,7 +3919,7 @@ class TestDashboardAPI:
         )
         monkeypatch.setattr(
             mod,
-            "_live_broker_state_payload",
+            "_cached_live_broker_state_for_diagnostics",
             lambda: {
                 "today_actual_fills": 2,
                 "today_realized_pnl": 10.0,
@@ -4083,7 +4083,7 @@ class TestDashboardAPI:
 
         monkeypatch.setattr(
             mod,
-            "_live_broker_state_payload",
+            "_cached_live_broker_state_for_diagnostics",
             lambda: {
                 "ready": True,
                 "today_actual_fills": 0,
@@ -4271,7 +4271,7 @@ class TestDashboardAPI:
         monkeypatch.setattr(mod.time, "time", lambda: server_dt.timestamp())
         monkeypatch.setattr(
             mod,
-            "_live_broker_state_payload",
+            "_cached_live_broker_state_for_diagnostics",
             lambda: {
                 "ready": True,
                 "today_actual_fills": 0,
@@ -4917,7 +4917,7 @@ class TestDashboardAPI:
         )
         monkeypatch.setattr(
             mod,
-            "_live_broker_state_payload",
+            "_cached_live_broker_state_for_diagnostics",
             lambda: {
                 "today_actual_fills": 0,
                 "today_realized_pnl": 0.0,
@@ -4993,7 +4993,7 @@ class TestDashboardAPI:
         )
         monkeypatch.setattr(
             mod,
-            "_live_broker_state_payload",
+            "_cached_live_broker_state_for_diagnostics",
             lambda: {
                 "ready": True,
                 "today_actual_fills": 0,
@@ -5103,12 +5103,16 @@ class TestDashboardAPI:
         assert payload["summary"]["broker_bracket_primary_unrealized_pnl"] == -33.79
         assert payload["summary"]["broker_bracket_primary_coverage_status"] == ("requires_manual_oco_verification")
 
-    def test_bot_fleet_embeds_live_broker_state(self, app_client, monkeypatch):
+    def test_bot_fleet_defaults_to_cached_broker_state(self, app_client, monkeypatch):
         import eta_engine.deploy.scripts.dashboard_api as mod
 
+        def fail_live_probe() -> dict:
+            raise AssertionError("default bot-fleet roster must not open a fresh broker probe")
+
+        monkeypatch.setattr(mod, "_live_broker_state_payload", fail_live_probe)
         monkeypatch.setattr(
             mod,
-            "_live_broker_state_payload",
+            "_cached_live_broker_state_for_diagnostics",
             lambda: {
                 "ready": True,
                 "today_actual_fills": 12,
@@ -5122,10 +5126,39 @@ class TestDashboardAPI:
         r = app_client.get("/api/bot-fleet")
 
         assert r.status_code == 200
-        live_broker = r.json()["live_broker_state"]
+        payload = r.json()
+        assert payload["summary"]["live_broker_probe_mode"] == "cached_diagnostics"
+        live_broker = payload["live_broker_state"]
         assert live_broker["ready"] is True
         assert live_broker["today_actual_fills"] == 12
         assert live_broker["open_position_count"] == 3
+
+    def test_bot_fleet_live_broker_probe_opt_in_embeds_live_state(self, app_client, monkeypatch):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        monkeypatch.setattr(
+            mod,
+            "_live_broker_state_payload",
+            lambda: {
+                "ready": True,
+                "source": "live_broker_rest",
+                "probe_skipped": False,
+                "today_actual_fills": 12,
+                "today_realized_pnl": 125.5,
+                "total_unrealized_pnl": 42.25,
+                "open_position_count": 3,
+                "server_ts": 1778119427.0,
+            },
+        )
+
+        r = app_client.get("/api/bot-fleet?live_broker_probe=true")
+
+        assert r.status_code == 200
+        payload = r.json()
+        assert payload["summary"]["live_broker_probe_mode"] == "live"
+        assert payload["live_broker_state"]["source"] == "live_broker_rest"
+        assert payload["live_broker_state"]["today_actual_fills"] == 12
+        assert payload["live_broker_state"]["open_position_count"] == 3
 
     def test_bot_fleet_live_probe_falls_back_to_last_good_after_ibkr_timeout(self, app_client, monkeypatch):
         import eta_engine.deploy.scripts.dashboard_api as mod
@@ -5162,7 +5195,7 @@ class TestDashboardAPI:
             },
         )
 
-        r = app_client.get("/api/bot-fleet")
+        r = app_client.get("/api/bot-fleet?live_broker_probe=true")
 
         assert r.status_code == 200
         payload = r.json()
@@ -5198,7 +5231,7 @@ class TestDashboardAPI:
             },
         )
 
-        r = app_client.get("/api/bot-fleet")
+        r = app_client.get("/api/bot-fleet?live_broker_probe=true")
 
         assert r.status_code == 200
         payload = r.json()
@@ -5270,7 +5303,7 @@ class TestDashboardAPI:
             },
         )
 
-        r = app_client.get("/api/bot-fleet")
+        r = app_client.get("/api/bot-fleet?live_broker_probe=true")
 
         assert r.status_code == 200
         payload = r.json()
@@ -6192,7 +6225,7 @@ class TestDashboardAPI:
         monkeypatch.setattr(
             mod,
             "bot_fleet_roster",
-            lambda response, since_days=1: {
+            lambda response, since_days=1, live_broker_probe=True: {
                 "live_broker_state": {
                     "position_exposure": {
                         "ready": True,

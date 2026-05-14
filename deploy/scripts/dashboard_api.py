@@ -198,7 +198,7 @@ DASHBOARD_CARD_REGISTRY = (
         "id": "fl-roster",
         "title": "Bot Fleet Roster",
         "source": "endpoint",
-        "endpoint": "/api/bot-fleet?since_days=1",
+        "endpoint": "/api/bot-fleet?since_days=1&live_broker_probe=false",
         "required": True,
         "stale_after_s": 15,
     },
@@ -294,7 +294,7 @@ DASHBOARD_CARD_REGISTRY = (
         "id": "fl-performance-os",
         "title": "Performance OS",
         "source": "endpoint",
-        "endpoint": "/api/bot-fleet",
+        "endpoint": "/api/bot-fleet?live_broker_probe=false",
         "required": True,
         "stale_after_s": 20,
     },
@@ -302,7 +302,7 @@ DASHBOARD_CARD_REGISTRY = (
         "id": "fl-health-badges",
         "title": "Bot Health Badges",
         "source": "endpoint",
-        "endpoint": "/api/bot-fleet",
+        "endpoint": "/api/bot-fleet?live_broker_probe=false",
         "required": True,
         "stale_after_s": 20,
     },
@@ -5174,9 +5174,9 @@ def bot_fleet_roster(
     bot: str | None = None,
     since_days: int = 1,
     include_disabled: bool = False,
-    live_broker_probe: bool = True,
+    live_broker_probe: bool = False,
 ) -> dict:
-    """Roster: scan state/bots/<name>/status.json for each bot."""
+    """Roster: scan bot state and use cached broker truth unless a live probe is requested."""
     from datetime import UTC, datetime
 
     from eta_engine.deploy.scripts.dashboard_state import read_json_safe
@@ -9909,7 +9909,7 @@ def live_position_exposure(response: Response) -> dict:
     response.headers["Pragma"] = "no-cache"
     response.headers["Expires"] = "0"
     try:
-        roster = bot_fleet_roster(Response(), since_days=1)
+        roster = bot_fleet_roster(Response(), since_days=1, live_broker_probe=True)
         live_state = roster.get("live_broker_state") if isinstance(roster, dict) else {}
         embedded = live_state.get("position_exposure") if isinstance(live_state, dict) else None
         if isinstance(embedded, dict):
