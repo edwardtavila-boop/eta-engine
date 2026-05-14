@@ -14,11 +14,13 @@ import json
 import os
 import sys
 import time
-from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT.parent))
@@ -33,6 +35,7 @@ from eta_engine.scripts.symbol_intelligence_audit import (  # noqa: E402
     PRIORITY_SYMBOLS,
     backfill_bars_from_history,
     backfill_decisions_from_journal,
+    backfill_decisions_from_shadow_signals,
     backfill_events_from_calendar,
     backfill_outcomes_from_closed_trade_ledger,
     backfill_quality_from_audit,
@@ -51,7 +54,7 @@ def _read_json(path: Path) -> dict[str, Any] | None:
         return {"read_error": True, "path": str(path)}
 
 
-def _parse_ts(raw: Any) -> datetime | None:
+def _parse_ts(raw: object) -> datetime | None:
     if not raw:
         return None
     try:
@@ -66,10 +69,7 @@ def _parse_ts(raw: Any) -> datetime | None:
 def _is_stale_lock(path: Path, *, stale_after_seconds: int, now: datetime) -> bool:
     raw = _read_json(path) or {}
     started = _parse_ts(raw.get("started_at_utc"))
-    if started is None:
-        age_seconds = time.time() - path.stat().st_mtime
-    else:
-        age_seconds = (now - started).total_seconds()
+    age_seconds = time.time() - path.stat().st_mtime if started is None else (now - started).total_seconds()
     return age_seconds > stale_after_seconds
 
 
@@ -116,6 +116,7 @@ def run_collection(
     history_root: Path = workspace_roots.MNQ_HISTORY_ROOT,
     calendar_path: Path = workspace_roots.ETA_RUNTIME_STATE_DIR / "event_calendar.yaml",
     journal_path: Path = workspace_roots.ETA_RUNTIME_DECISION_JOURNAL_PATH,
+    shadow_signals_path: Path = workspace_roots.ETA_JARVIS_SHADOW_SIGNALS_PATH,
     closed_trade_path: Path = workspace_roots.ETA_CLOSED_TRADE_LEDGER_PATH,
     tws_watchdog_path: Path = workspace_roots.ETA_RUNTIME_STATE_DIR / "tws_watchdog.json",
     ibgateway_reauth_path: Path = workspace_roots.ETA_RUNTIME_STATE_DIR / "ibgateway_reauth.json",
@@ -125,15 +126,24 @@ def run_collection(
     monotonic_start = time.monotonic()
     store = store or SymbolIntelStore()
 
+    journal_decisions = backfill_decisions_from_journal(
+        journal_path=journal_path,
+        store=store,
+        symbols=symbols,
+        bot_symbol_map=bot_symbol_map,
+    )
+    shadow_decisions = backfill_decisions_from_shadow_signals(
+        shadow_signals_path=shadow_signals_path,
+        store=store,
+        symbols=symbols,
+        bot_symbol_map=bot_symbol_map,
+    )
     counts = {
         "bars": backfill_bars_from_history(history_root=history_root, store=store, symbols=symbols),
         "events": backfill_events_from_calendar(calendar_path=calendar_path, store=store, symbols=symbols),
-        "decisions": backfill_decisions_from_journal(
-            journal_path=journal_path,
-            store=store,
-            symbols=symbols,
-            bot_symbol_map=bot_symbol_map,
-        ),
+        "decisions": journal_decisions + shadow_decisions,
+        "journal_decisions": journal_decisions,
+        "shadow_decisions": shadow_decisions,
         "outcomes": backfill_outcomes_from_closed_trade_ledger(source_path=closed_trade_path, store=store),
     }
     counts["quality"] = backfill_quality_from_audit(store=store, symbols=symbols, now=started)

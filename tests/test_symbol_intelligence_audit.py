@@ -5,9 +5,11 @@ from eta_engine.data.symbol_intel import SymbolIntelRecord, SymbolIntelStore
 from eta_engine.scripts.symbol_intelligence_audit import (
     backfill_bars_from_history,
     backfill_decisions_from_journal,
+    backfill_decisions_from_shadow_signals,
     backfill_events_from_calendar,
     backfill_outcomes_from_closed_trade_ledger,
     backfill_quality_from_audit,
+    default_bot_symbol_map,
     inspect_symbol,
     run_audit,
     write_snapshot,
@@ -155,6 +157,42 @@ def test_backfill_outcomes_from_closed_trade_ledger(tmp_path):
     assert rows[0].payload["exit_price"] == 29224.5
 
 
+def test_backfill_decisions_from_shadow_signals(tmp_path):
+    store = SymbolIntelStore(root=tmp_path / "lake")
+    shadow_signals = tmp_path / "shadow_signals.jsonl"
+    shadow_signals.write_text(
+        json.dumps(
+            {
+                "ts": "2026-05-13T06:33:18.571042+00:00",
+                "bot_id": "nq_futures_sage",
+                "signal_id": "nq_futures_sage_2026-05-13T06:33:18.570908+00:00",
+                "symbol": "NQ1",
+                "side": "BUY",
+                "qty_intended": 1,
+                "lifecycle": "EVAL_PAPER",
+                "route_target": "paper",
+                "route_reason": "lifecycle_eval_paper",
+                "prospective_loss_usd": 250.0,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    count = backfill_decisions_from_shadow_signals(
+        shadow_signals_path=shadow_signals,
+        store=store,
+        symbols=["NQ1"],
+    )
+    rows = list(store.iter_records(record_type="decision", symbol="NQ1"))
+
+    assert count == 1
+    assert len(rows) == 1
+    assert rows[0].source == "jarvis_shadow_signal"
+    assert rows[0].payload["bot"] == "nq_futures_sage"
+    assert rows[0].payload["route_target"] == "paper"
+
+
 def test_backfill_outcomes_from_live_close_stream_nested_payload(tmp_path):
     store = SymbolIntelStore(root=tmp_path / "lake")
     trade_closes = tmp_path / "trade_closes.jsonl"
@@ -227,6 +265,73 @@ def test_backfill_outcomes_infers_symbol_from_bot_map(tmp_path):
     assert len(rows) == 1
     assert rows[0].payload["bot"] == "nq_futures_sage"
     assert rows[0].payload["exit_price"] == 21150.25
+
+
+def test_default_bot_symbol_map_includes_legacy_mes_confluence():
+    assert default_bot_symbol_map()["mes_confluence"] == "MES1"
+
+
+def test_backfill_outcomes_infers_legacy_mes_confluence_symbol(tmp_path):
+    store = SymbolIntelStore(root=tmp_path / "lake")
+    trade_closes = tmp_path / "trade_closes.jsonl"
+    trade_closes.write_text(
+        json.dumps(
+            {
+                "bot_id": "mes_confluence",
+                "signal_id": "mes_confluence_102b4868",
+                "ts": "2026-05-04T12:35:36+00:00",
+                "realized_r": 0.0006,
+                "data_source": "paper",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    count = backfill_outcomes_from_closed_trade_ledger(
+        source_paths=[trade_closes],
+        store=store,
+        symbols=["MES1"],
+    )
+    rows = list(store.iter_records(record_type="outcome", symbol="MES1"))
+
+    assert count == 1
+    assert len(rows) == 1
+    assert rows[0].payload["bot"] == "mes_confluence"
+
+
+def test_backfill_outcomes_normalizes_root_symbol_aliases(tmp_path):
+    store = SymbolIntelStore(root=tmp_path / "lake")
+    trade_closes = tmp_path / "trade_closes.jsonl"
+    trade_closes.write_text(
+        json.dumps(
+            {
+                "bot_id": "ym_sweep_reclaim",
+                "signal_id": "ym_sweep_reclaim_db756962",
+                "ts": "2026-05-05T03:16:47+00:00",
+                "realized_r": 0.25,
+                "extra": {
+                    "symbol": "YM",
+                    "realized_pnl": 125.0,
+                    "close_ts": "2026-05-05T03:16:46+00:00",
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    count = backfill_outcomes_from_closed_trade_ledger(
+        source_paths=[trade_closes],
+        store=store,
+        symbols=["YM1"],
+    )
+    rows = list(store.iter_records(record_type="outcome", symbol="YM1"))
+
+    assert count == 1
+    assert len(rows) == 1
+    assert rows[0].payload["bot"] == "ym_sweep_reclaim"
+    assert rows[0].payload["realized_pnl"] == 125.0
 
 
 def test_write_snapshot_creates_parent_and_payload(tmp_path):

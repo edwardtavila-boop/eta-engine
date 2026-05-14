@@ -32,6 +32,19 @@ REQUIRED_COMPONENTS = ("bars", "events", "decisions", "outcomes", "quality")
 OPTIONAL_COMPONENTS = ("news", "book")
 FUTURE_RECORD_TOLERANCE_SECONDS = 300
 SCHEDULED_FUTURE_RECORD_TYPES = frozenset({"macro_event"})
+FUTURES_ROOT_ALIASES = {
+    "MNQ": "MNQ1",
+    "NQ": "NQ1",
+    "MES": "MES1",
+    "ES": "ES1",
+    "MYM": "MYM1",
+    "YM": "YM1",
+}
+LEGACY_BOT_SYMBOL_FALLBACKS = {
+    # Historical close streams predate the registry entry but still carry
+    # valid paper outcomes that should inform coverage audits.
+    "mes_confluence": "MES1",
+}
 _COMPONENT_RECORD_TYPES = {
     "bars": "bar",
     "events": "macro_event",
@@ -415,9 +428,15 @@ def default_bot_symbol_map() -> dict[str, str]:
     try:
         from eta_engine.strategies.per_bot_registry import ASSIGNMENTS
 
-        return {assignment.bot_id: assignment.symbol.upper().strip() for assignment in ASSIGNMENTS}
+        mapped = {assignment.bot_id: _normalize_symbol(assignment.symbol) for assignment in ASSIGNMENTS}
+        return {**LEGACY_BOT_SYMBOL_FALLBACKS, **mapped}
     except Exception:
-        return {}
+        return dict(LEGACY_BOT_SYMBOL_FALLBACKS)
+
+
+def _normalize_symbol(raw: object) -> str:
+    symbol = str(raw).upper().strip()
+    return FUTURES_ROOT_ALIASES.get(symbol, symbol)
 
 
 def _decision_symbols(row: dict[str, Any], bot_symbol_map: dict[str, str]) -> set[str]:
@@ -425,7 +444,7 @@ def _decision_symbols(row: dict[str, Any], bot_symbol_map: dict[str, str]) -> se
     for scope in _row_scopes(row):
         for key in ("symbol", "ticker", "contract", "root_symbol", "instrument"):
             if scope.get(key):
-                symbols.add(str(scope[key]).upper().strip())
+                symbols.add(_normalize_symbol(scope[key]))
     for bot_id in _row_bot_ids(row):
         mapped = bot_symbol_map.get(bot_id)
         if mapped:
@@ -444,7 +463,7 @@ def backfill_decisions_from_journal(
         return 0
     store = store or SymbolIntelStore()
     bot_symbol_map = bot_symbol_map or default_bot_symbol_map()
-    target_symbols = {symbol.upper().strip() for symbol in symbols}
+    target_symbols = {_normalize_symbol(symbol) for symbol in symbols}
     existing_keys = _existing_payload_values(store, record_type="decision", payload_key="decision_key")
     count = 0
     with journal_path.open("r", encoding="utf-8") as fh:
@@ -477,6 +496,47 @@ def backfill_decisions_from_journal(
                 store.append(rec)
                 existing_keys.add(decision_key)
                 count += 1
+    return count
+
+
+def backfill_decisions_from_shadow_signals(
+    *,
+    shadow_signals_path: Path = workspace_roots.ETA_JARVIS_SHADOW_SIGNALS_PATH,
+    store: SymbolIntelStore | None = None,
+    symbols: list[str] | tuple[str, ...] = PRIORITY_SYMBOLS,
+    bot_symbol_map: dict[str, str] | None = None,
+) -> int:
+    store = store or SymbolIntelStore()
+    bot_symbol_map = bot_symbol_map or default_bot_symbol_map()
+    target_symbols = {_normalize_symbol(symbol) for symbol in symbols}
+    existing_keys = _existing_payload_values(store, record_type="decision", payload_key="decision_key")
+    count = 0
+    for row in _iter_trade_rows_from_path(shadow_signals_path):
+        for symbol in sorted(_decision_symbols(row, bot_symbol_map) & target_symbols):
+            decision_key = f"shadow|{row.get('signal_id') or row.get('ts')}|{symbol}"
+            if decision_key in existing_keys:
+                continue
+            rec = SymbolIntelRecord(
+                record_type="decision",
+                ts_utc=_parse_ts(row.get("ts") or row.get("timestamp")),
+                symbol=symbol,
+                source="jarvis_shadow_signal",
+                payload={
+                    "decision_key": decision_key,
+                    "bot": row.get("bot") or row.get("bot_id"),
+                    "signal_id": row.get("signal_id"),
+                    "side": row.get("side"),
+                    "qty_intended": row.get("qty_intended"),
+                    "lifecycle": row.get("lifecycle"),
+                    "route_target": row.get("route_target"),
+                    "route_reason": row.get("route_reason"),
+                    "prospective_loss_usd": row.get("prospective_loss_usd"),
+                },
+                quality=SymbolIntelQuality(confidence=0.75, is_reconciled=True),
+            )
+            store.append(rec)
+            existing_keys.add(decision_key)
+            count += 1
     return count
 
 
@@ -521,10 +581,14 @@ def bootstrap_existing_truth_surfaces(
     symbols: list[str] | tuple[str, ...] = PRIORITY_SYMBOLS,
 ) -> dict[str, int]:
     store = store or SymbolIntelStore()
+    journal_decisions = backfill_decisions_from_journal(store=store, symbols=symbols)
+    shadow_decisions = backfill_decisions_from_shadow_signals(store=store, symbols=symbols)
     counts = {
         "bars": backfill_bars_from_history(store=store, symbols=symbols),
         "events": backfill_events_from_calendar(store=store, symbols=symbols),
-        "decisions": backfill_decisions_from_journal(store=store, symbols=symbols),
+        "decisions": journal_decisions + shadow_decisions,
+        "journal_decisions": journal_decisions,
+        "shadow_decisions": shadow_decisions,
         "outcomes": backfill_outcomes_from_closed_trade_ledger(store=store, symbols=symbols),
     }
     counts["quality"] = backfill_quality_from_audit(store=store, symbols=symbols)
@@ -538,7 +602,7 @@ def _row_symbol(row: dict[str, Any], *, bot_symbol_map: dict[str, str] | None = 
             symbol = bot_symbol_map.get(bot_id)
             if symbol:
                 break
-    return str(symbol).upper().strip() if symbol else None
+    return _normalize_symbol(symbol) if symbol else None
 
 
 def _dedupe_key(row: dict[str, Any]) -> str:
@@ -561,7 +625,7 @@ def backfill_outcomes_from_closed_trade_ledger(
 ) -> int:
     store = store or SymbolIntelStore()
     bot_symbol_map = bot_symbol_map or default_bot_symbol_map()
-    target_symbols = {symbol.upper().strip() for symbol in symbols} if symbols else None
+    target_symbols = {_normalize_symbol(symbol) for symbol in symbols} if symbols else None
     if source_paths is not None:
         paths = list(source_paths)
     elif source_path == workspace_roots.ETA_CLOSED_TRADE_LEDGER_PATH:
