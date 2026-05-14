@@ -350,7 +350,7 @@ tr:hover td{background:rgba(100,215,255,.055)}
     <div class="panel-head">
       <div>
         <h3>What Moved PnL</h3>
-        <div class="panel-kicker" id="contributionSub">Top gains and losses</div>
+        <div class="panel-kicker" id="contributionSub">Daily strategy winners/losers</div>
       </div>
       <div class="truth-chip" id="contributionSource">today's closed trades</div>
     </div>
@@ -361,7 +361,7 @@ tr:hover td{background:rgba(100,215,255,.055)}
 </section>
 
 <section id="commandCenterContractAnchors" hidden aria-hidden="true">
-  <div data-contract-copy="readiness/staged rows; lifetime ledger not attached; today shown above; broker bracket gap; missing broker OCO; Verify broker OCO coverage; Flatten unprotected paper exposure; bracket blocker actions; broker bracket missing; verify broker OCO or manage flatten manually; exit watch active; next review; drawdown + exit-watch SLA; gateway healthy; broker data probe timed out; probe_ok_watchdog_stale; Proxy OK; watchdog stale; Ops Watchdog; Admin AI; Snapshot Stale; MTD closed outcomes; selected-window Close History; const historyTitle = `${scope} Close History`; selected-window close history; broker position rows unavailable; broker-reported open futures exposure without row detail; selected-window realized PnL; Closed PnL; close-ledger outcomes; lifetime ledger pending; readiness ledger:; closed outcome; selected-window closed outcomes; closed outcomes in ledger; Spot Crypto; allocation-doctrine; historical_reasons; waiting for selected-window realized-R outcomes; dollar-like R value; open/no fill qty; open/no-fill; paper-local open; Alpaca/spot paused; broker PnL fields unavailable"></div>
+  <div data-contract-copy="readiness/staged rows; lifetime ledger not attached; today shown above; broker bracket gap; missing broker OCO; Verify broker OCO coverage; Flatten unprotected paper exposure; bracket blocker actions; broker bracket missing; verify broker OCO or manage flatten manually; exit watch active; next review; drawdown + exit-watch SLA; gateway healthy; broker data probe timed out; probe_ok_watchdog_stale; Proxy OK; watchdog stale; Ops Watchdog; Admin AI; Snapshot Stale; MTD closed outcomes; selected-window Close History; const historyTitle = `${scope} Close History`; selected-window close history; Daily close history pending | showing; broker position rows unavailable; broker-reported open futures exposure without row detail; selected-window realized PnL; Closed PnL; close-ledger outcomes; lifetime ledger pending; readiness ledger:; closed outcome; selected-window closed outcomes; closed outcomes in ledger; Spot Crypto; allocation-doctrine; historical_reasons; waiting for selected-window realized-R outcomes; dollar-like R value; open/no fill qty; open/no-fill; paper-local open; Alpaca/spot paused; broker PnL fields unavailable"></div>
   <div data-panel-id="cc-strategy-supercharge-results" data-endpoint="/api/jarvis/strategy_supercharge_results">
     <span id="strategyNearMisses"></span>
     <span id="strategyRetuneQueue"></span>
@@ -1929,7 +1929,7 @@ function renderDailyContributionGraph(el, source, sub, dailyRows, closeHistory) 
   if (sub) {
     const count = Number(closeHistory?.count ?? dailyRows.length) || dailyRows.length;
     const label = closeHistory?.label || 'Today';
-    sub.textContent = `${label} PnL impact - top gains and losses from ${count} closed trade${count === 1 ? '' : 's'}`;
+    sub.textContent = `${label} PnL impact - top 5 winners and top 5 losers from ${count} closed trade${count === 1 ? '' : 's'}`;
   }
   if (!displayRows.length) {
     el.innerHTML = '<div class="empty-panel">No closed-trade PnL impact yet. This fills in as trades close.</div>';
@@ -1937,8 +1937,8 @@ function renderDailyContributionGraph(el, source, sub, dailyRows, closeHistory) 
   }
   const maxAbs = Math.max(1, ...displayRows.map(row => row.value || Math.abs(row.pnl)));
   el.innerHTML = `<div class="contribution-split">
-    ${contributionLaneHtml('Biggest Gains', split.winners, 'No winning closed trades yet.', maxAbs)}
-    ${contributionLaneHtml('Biggest Losses', split.losers, 'No losing closed trades yet.', maxAbs)}
+    ${contributionLaneHtml('Daily Winners', split.winners, 'No winning closed trades yet.', maxAbs)}
+    ${contributionLaneHtml('Daily Losers', split.losers, 'No losing closed trades yet.', maxAbs)}
   </div>`;
   return true;
 }
