@@ -530,5 +530,7 @@ def test_b_class_fm_health_writer_uses_canonical_workspace_path() -> None:
     assert "[int]$IntervalMinutes = 15" in installer_text
     assert "eta_engine\\.venv\\Scripts\\python.exe" in installer_text
     assert "-RepetitionInterval $interval" in installer_text
+    assert "RepetitionDuration (New-TimeSpan -Days 3650)" in installer_text
+    assert "[TimeSpan]::MaxValue" not in installer_text
     # The legacy in-repo path is gone from the installer's write target.
     assert "'eta_engine\\state\\fm_health.json'" not in installer_text
