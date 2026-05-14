@@ -520,6 +520,20 @@ class TestStatusPage:
         assert "ops-priority-section .card" in html
         assert "mobile-card-table" in html
 
+    def test_status_page_surfaces_broker_truth_freshness(self):
+        root = Path(__file__).resolve().parent.parent / "deploy" / "status_page"
+        html = (root / "index.html").read_text(encoding="utf-8")
+
+        assert "function brokerTruthStateLabel" in html
+        assert "function brokerTruthChipMarkup" in html
+        assert "broker-truth-chip" in html
+        assert "broker_snapshot_state" in html
+        assert "fresh IBKR read" in html
+        assert "cached IBKR" in html
+        assert "last-good IBKR" in html
+        assert "last probe issue" in html
+        assert "brokerTruthChipMarkup(liveBroker)" in html
+
     def test_status_page_uses_position_exposure_close_evidence(self):
         root = Path(__file__).resolve().parent.parent / "deploy" / "status_page"
         html = (root / "index.html").read_text(encoding="utf-8")

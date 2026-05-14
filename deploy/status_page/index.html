@@ -115,6 +115,9 @@ body:after{content:"";position:fixed;inset:-8%;pointer-events:none;background:li
 .hero-chip,.allocation-pill{border:1px solid rgba(255,255,255,.11);border-radius:999px;padding:.38rem .62rem;background:linear-gradient(145deg,rgba(255,255,255,.065),rgba(255,255,255,.03));font-size:.67rem;color:#d3dfeb;font-weight:600;box-shadow:inset 0 1px 0 rgba(255,255,255,.04);transition:border-color .24s ease,transform .24s ease,background .24s ease}
 .hero-chip:hover,.allocation-pill:hover{border-color:rgba(100,215,255,.28);transform:translateY(-1px)}
 .hero-chip strong,.allocation-pill strong{color:#f7fbff;letter-spacing:.01em}
+.broker-truth-chip.live{border-color:rgba(54,240,162,.28);background:linear-gradient(145deg,rgba(54,240,162,.12),rgba(255,255,255,.035))}
+.broker-truth-chip.cache{border-color:rgba(100,215,255,.24);background:linear-gradient(145deg,rgba(100,215,255,.11),rgba(255,255,255,.03))}
+.broker-truth-chip.warn{border-color:rgba(255,209,102,.34);background:linear-gradient(145deg,rgba(255,209,102,.13),rgba(255,255,255,.035))}
 .portfolio-orb{min-height:100%;padding:.9rem .9rem .98rem;display:grid;place-items:center;text-align:center;row-gap:.45rem}
 @keyframes orb-glow{0%,100%{box-shadow:0 0 0 1px rgba(255,255,255,.06),0 0 28px rgba(230,184,92,.22),0 0 88px rgba(100,215,255,.18)}50%{box-shadow:0 0 0 1px rgba(255,255,255,.08),0 0 42px rgba(230,184,92,.28),0 0 110px rgba(100,215,255,.24)}}
 @keyframes orb-spin{from{transform:rotate(0deg) scale(1)}to{transform:rotate(360deg) scale(1.02)}}
@@ -558,16 +561,49 @@ function formatAgeSeconds(value) {
   return Math.round(n / 3600) + 'h ago';
 }
 
+function brokerTruthStateLabel(liveBroker = null) {
+  const ibkr = liveBroker?.ibkr && typeof liveBroker.ibkr === 'object' ? liveBroker.ibkr : {};
+  const source = String(liveBroker?.broker_snapshot_source || liveBroker?.source || '').toLowerCase();
+  const state = String(liveBroker?.broker_snapshot_state || liveBroker?.ibkr_cache_state || '').toLowerCase();
+  const lastProbeIssue = String(ibkr.last_probe_error || '').trim();
+  const currentError = String(ibkr.error || '').trim();
+  const hasProbeIssue = Boolean(lastProbeIssue || (ibkr.ready === false && currentError));
+  const persisted = state.includes('persisted') || ibkr.persisted_cache === true;
+  const liveRead = source.includes('live') && !liveBroker?.probe_skipped && !persisted;
+  if (liveRead && !hasProbeIssue) {
+    return {label: 'fresh IBKR read', tone: 'live', suffix: ''};
+  }
+  if (persisted) {
+    return {label: 'last-good IBKR', tone: hasProbeIssue ? 'warn' : 'cache', suffix: hasProbeIssue ? 'last probe issue' : ''};
+  }
+  return {label: 'cached IBKR', tone: hasProbeIssue ? 'warn' : 'cache', suffix: hasProbeIssue ? 'last probe issue' : ''};
+}
+
 function brokerSnapshotAgeText(liveBroker = null) {
   const age = finiteNumber(
     liveBroker?.broker_snapshot_age_s
     ?? liveBroker?.ibkr_cache_age_s
     ?? liveBroker?.ibkr?.cache_age_s
   );
-  const source = String(liveBroker?.broker_snapshot_source || liveBroker?.source || '').toLowerCase();
-  if (age == null) return liveBroker?.probe_skipped ? 'cached snapshot age unknown' : 'fresh broker read';
-  if (age < 2 && !liveBroker?.probe_skipped && source.includes('live')) return 'fresh broker read';
-  return `IBKR snapshot ${formatAgeSeconds(age)}`;
+  const truth = brokerTruthStateLabel(liveBroker);
+  if (age == null) return truth.suffix ? `${truth.label} | ${truth.suffix}` : truth.label;
+  if (age < 2 && truth.label === 'fresh IBKR read') return truth.label;
+  const text = `${truth.label} ${formatAgeSeconds(age)}`;
+  return truth.suffix ? `${text} | ${truth.suffix}` : text;
+}
+
+function brokerTruthChipMarkup(liveBroker = null) {
+  if (!liveBroker || typeof liveBroker !== 'object') return '';
+  const truth = brokerTruthStateLabel(liveBroker);
+  const age = finiteNumber(
+    liveBroker?.broker_snapshot_age_s
+    ?? liveBroker?.ibkr_cache_age_s
+    ?? liveBroker?.ibkr?.cache_age_s
+  );
+  const ageText = age == null ? 'age unknown' : formatAgeSeconds(age);
+  const suffix = truth.suffix ? ` | ${truth.suffix}` : '';
+  const tone = ['live', 'cache', 'warn'].includes(truth.tone) ? truth.tone : 'cache';
+  return `<span class="hero-chip broker-truth-chip ${tone}"><strong>${esc(truth.label)}</strong> ${esc(ageText + suffix)}</span>`;
 }
 
 function formatDurationSeconds(value) {
@@ -2155,6 +2191,7 @@ function renderPortfolioCommand(bots, hiddenCount, liveBroker, summary, d, today
       `<span class="hero-chip"><strong>${brokerPositions.length}</strong> open</span>`,
       `<span class="hero-chip"><strong>${formatMoney(portfolioExposure ?? openExposure, 0)}</strong> risk</span>`,
       ...brokerVenueChipMarkup(focusPolicy, liveBroker),
+      brokerTruthChipMarkup(liveBroker),
       cellarCount > 0 ? `<span class="hero-chip"><strong>${cellarCount}</strong> parked</span>` : '',
     ].filter(Boolean).join('');
   }
