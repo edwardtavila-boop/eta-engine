@@ -359,6 +359,38 @@ def test_missing_ibc_credentials_blocks_trading_gate_without_red_runtime() -> No
     assert any("set_ibc_credentials.ps1" in action for action in report["next_actions"])
 
 
+def test_non_authoritative_gateway_host_points_operator_to_vps_not_local_repair() -> None:
+    ports = _listening_ports()
+    ports[4002] = {"port": 4002, "listening": False, "owners": []}
+
+    report = audit.build_report(
+        services=_running_services(),
+        ports=ports,
+        endpoints=_healthy_endpoints(),
+        broker_bracket_audit={"summary": {"status": "PASS", "ready_for_prop_dry_run": True}},
+        promotion_audit={"summary": {"status": "PASS", "ready_for_live": True}},
+        service_config={"fm_status_server": {"matches_expected": True}},
+        tasks=_healthy_tasks(),
+        ibgateway_reauth={
+            "status": "non_authoritative_gateway_host",
+            "reason": "Refusing IBKR Gateway recovery on this host because the VPS is the 24/7 Gateway authority.",
+            "gateway_authority": {
+                "allowed": False,
+                "source": "missing_marker",
+                "computer_name": "ETA",
+            },
+        },
+    )
+
+    assert report["summary"]["status"] == "YELLOW_SAFETY_BLOCKED"
+    assert report["summary"]["runtime_ready"] is True
+    assert report["summary"]["trading_gate_ready"] is False
+    assert report["broker_runtime"]["ibgateway"]["non_authoritative_host"] is True
+    assert report["broker_runtime"]["ibgateway"]["gateway_authority"]["source"] == "missing_marker"
+    assert any("Do not enable local desktop Gateway tasks" in action for action in report["next_actions"])
+    assert not any("Gateway API port 4002 is listening" in action for action in report["next_actions"])
+
+
 def test_admin_ai_warn_blocks_green_without_marking_runtime_red() -> None:
     report = audit.build_report(
         services=_running_services(),

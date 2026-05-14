@@ -433,6 +433,7 @@ def _ibgateway_summary(
     status = str(ibgateway_reauth.get("status") or ibgateway_reauth.get("artifact_status") or "UNKNOWN")
     port_listening = bool(_as_dict(ports.get(4002)).get("listening"))
     ready = status == "healthy" and port_listening
+    authority = _as_dict(ibgateway_reauth.get("gateway_authority"))
     return {
         "status": status,
         "ready": ready,
@@ -440,6 +441,9 @@ def _ibgateway_summary(
         "port_listening": port_listening,
         "reason": ibgateway_reauth.get("reason"),
         "checked_at": ibgateway_reauth.get("checked_at"),
+        "gateway_authority": authority,
+        "non_authoritative_host": status == "non_authoritative_gateway_host"
+        or authority.get("allowed") is False,
     }
 
 
@@ -547,6 +551,11 @@ def build_report(
             next_actions.append(
                 "Seed IBC credentials with deploy\\scripts\\set_ibc_credentials.ps1 "
                 "-PromptForPassword; keep IBKR read-only until 127.0.0.1:4002 listens"
+            )
+        elif ibgateway_gate["status"] == "non_authoritative_gateway_host":
+            next_actions.append(
+                "Do not enable local desktop Gateway tasks; verify the VPS authority marker and Gateway recovery lane "
+                "on the 24/7 server."
             )
         elif not ibgateway_gate["port_listening"]:
             next_actions.append(
