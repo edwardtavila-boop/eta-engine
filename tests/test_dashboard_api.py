@@ -1167,6 +1167,105 @@ class TestDashboardAPI:
         assert status["safe_to_mutate_live"] is False
         assert status["bots"][0]["bot_id"] == "mes_orb"
 
+    def test_dashboard_bootstrap_uses_cached_broker_state_without_live_probe(self, app_client, monkeypatch):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        def fail_live_probe() -> dict:
+            raise AssertionError("dashboard bootstrap must not block on fresh broker probe")
+
+        monkeypatch.setattr(mod, "_live_broker_state_payload", fail_live_probe)
+        monkeypatch.setattr(
+            mod,
+            "_cached_live_broker_state_for_diagnostics",
+            lambda: {
+                "ready": True,
+                "source": "cached_live_broker_state_for_diagnostics",
+                "probe_skipped": True,
+                "broker_snapshot_source": "ibkr_probe_cache",
+                "broker_snapshot_age_s": 8.5,
+                "today_actual_fills": 2,
+                "today_realized_pnl": 42.0,
+                "total_unrealized_pnl": 0.0,
+                "open_position_count": 0,
+            },
+        )
+
+        r = app_client.get("/api/dashboard")
+
+        assert r.status_code == 200
+        live = r.json()["live_broker_state"]
+        assert live["probe_skipped"] is True
+        assert live["broker_snapshot_source"] == "ibkr_probe_cache"
+        assert live["broker_snapshot_age_s"] == 8.5
+
+    def test_dashboard_ibkr_probe_defaults_are_fast_first_paint(self, monkeypatch):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        monkeypatch.delenv("ETA_DASHBOARD_IBKR_CLIENT_ID", raising=False)
+        monkeypatch.delenv("ETA_DASHBOARD_IBKR_CLIENT_ID_BASE", raising=False)
+        monkeypatch.delenv("ETA_DASHBOARD_IBKR_CLIENT_ID_SPAN", raising=False)
+        monkeypatch.delenv("ETA_DASHBOARD_IBKR_TIMEOUT_S", raising=False)
+
+        assert mod._dashboard_ibkr_client_id_candidates() == [1842]
+        assert mod._dashboard_ibkr_connect_timeout_s() == 4.0
+
+        monkeypatch.setenv("ETA_DASHBOARD_IBKR_TIMEOUT_S", "0.25")
+        assert mod._dashboard_ibkr_connect_timeout_s() == 1.0
+
+        monkeypatch.setenv("ETA_DASHBOARD_IBKR_TIMEOUT_S", "99")
+        assert mod._dashboard_ibkr_connect_timeout_s() == 12.0
+
+    def test_live_broker_state_endpoint_defaults_to_cached_state(self, app_client, monkeypatch):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        def fail_live_probe() -> dict:
+            raise AssertionError("default broker endpoint must not open a fresh probe")
+
+        monkeypatch.setattr(mod, "_live_broker_state_payload", fail_live_probe)
+        monkeypatch.setattr(
+            mod,
+            "_cached_live_broker_state_for_diagnostics",
+            lambda: {
+                "ready": True,
+                "source": "cached_live_broker_state_for_diagnostics",
+                "probe_skipped": True,
+                "broker_snapshot_source": "ibkr_probe_cache",
+                "broker_snapshot_age_s": 3.0,
+            },
+        )
+
+        r = app_client.get("/api/live/broker_state")
+
+        assert r.status_code == 200
+        assert r.json()["probe_skipped"] is True
+        assert r.json()["broker_snapshot_source"] == "ibkr_probe_cache"
+        assert "no-store" in r.headers["Cache-Control"]
+
+    def test_live_broker_state_endpoint_refresh_runs_live_probe(self, app_client, monkeypatch):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        monkeypatch.setattr(
+            mod,
+            "_live_broker_state_payload",
+            lambda: {
+                "ready": True,
+                "source": "live_broker_rest",
+                "probe_skipped": False,
+                "broker_snapshot_source": "live_broker_rest",
+            },
+        )
+        monkeypatch.setattr(
+            mod,
+            "_cached_live_broker_state_for_diagnostics",
+            lambda: {"ready": False, "source": "cached_live_broker_state_for_diagnostics"},
+        )
+
+        r = app_client.get("/api/live/broker_state?refresh=1")
+
+        assert r.status_code == 200
+        assert r.json()["source"] == "live_broker_rest"
+        assert r.json()["probe_skipped"] is False
+
     def test_dashboard_card_health_contract_has_no_dead_or_stale_cards(self, app_client):
         r = app_client.get("/api/dashboard/card-health")
         assert r.status_code == 200

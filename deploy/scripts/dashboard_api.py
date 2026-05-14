@@ -4048,16 +4048,17 @@ def dashboard_payload(response: Response) -> dict:
     payload["diamond_retune_status"] = _load_diamond_retune_status()
     payload["strategy_supercharge_manifest"] = _strategy_supercharge_manifest_payload()
     payload["strategy_supercharge_results"] = _strategy_supercharge_results_payload()
-    # Additive: live broker reality (futures focus plus Alpaca/spot cellar) so the panel can show
-    # broker-side fills/PnL alongside supervisor-journal counts. Wraps in
-    # try/except — a degraded broker must never tank the whole payload
-    # since /api/dashboard is the front page bootstrap.
+    # Additive: cached broker reality for first paint. Fresh IBKR probes can
+    # stall when Gateway is wedged, so /api/dashboard must not block on them.
+    # A degraded cached read must never tank the front-page bootstrap.
     try:
-        payload["live_broker_state"] = _live_broker_state_payload()
+        payload["live_broker_state"] = _cached_live_broker_state_for_diagnostics()
     except Exception as exc:  # noqa: BLE001
         payload["live_broker_state"] = {
             "ready": False,
             "error": f"live_broker_state_failed: {exc}",
+            "probe_skipped": True,
+            "broker_snapshot_source": "cached_live_broker_state_failed",
             "today_actual_fills": 0,
             "today_realized_pnl": 0.0,
             "total_unrealized_pnl": 0.0,
@@ -9010,12 +9011,21 @@ def _dashboard_ibkr_client_id_candidates() -> list[int]:
     except ValueError:
         base = 1842
     try:
-        span = int(os.environ.get("ETA_DASHBOARD_IBKR_CLIENT_ID_SPAN", "2"))
+        span = int(os.environ.get("ETA_DASHBOARD_IBKR_CLIENT_ID_SPAN", "1"))
     except ValueError:
-        span = 2
+        span = 1
     span = max(1, min(span, 8))
     offset = os.getpid() % span
     return [base + ((offset + idx) % span) for idx in range(span)]
+
+
+def _dashboard_ibkr_connect_timeout_s() -> float:
+    """Bound dashboard IBKR probes so first paint never waits on a wedged gateway."""
+    try:
+        timeout_s = float(os.environ.get("ETA_DASHBOARD_IBKR_TIMEOUT_S", "4"))
+    except ValueError:
+        timeout_s = 4.0
+    return max(1.0, min(timeout_s, 12.0))
 
 
 def _ibkr_client_id_retryable_error(exc: BaseException) -> bool:
@@ -9430,7 +9440,7 @@ def _ibkr_live_state_snapshot(*, today_start_utc: datetime) -> dict:
     # 5s wasn't enough under load — IBG is slow to handshake when the
     # supervisor is also pumping market data. Bump to 12s; the dashboard
     # endpoint only takes that hit when the gateway is actually slow.
-    connect_timeout = float(os.environ.get("ETA_DASHBOARD_IBKR_TIMEOUT_S", "12"))
+    connect_timeout = _dashboard_ibkr_connect_timeout_s()
     ib = None
     try:
         last_connect_exc: Exception | None = None
@@ -9750,18 +9760,21 @@ def _live_broker_state_payload() -> dict:
 
 
 @app.get("/api/live/broker_state")
-def live_broker_state(response: Response) -> dict:
-    """Live broker truth (Alpaca + IBKR) for dashboard reality-check panels.
+def live_broker_state(response: Response, refresh: bool = False) -> dict:
+    """Broker truth for dashboard reality-check panels.
 
     Added 2026-05-06. Sits alongside ``/api/dashboard`` (supervisor-journal
     truth) and ``/api/equity`` (per-bot heartbeat-derived equity). The
     dashboard payload also embeds this rollup under ``live_broker_state``
     so the front end can render reality-vs-journal side by side without
-    a second round trip.
+    a second round trip. Defaults to cached broker truth for fast operator
+    first paint; pass ``refresh=1`` when explicitly requesting a fresh probe.
     """
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     response.headers["Pragma"] = "no-cache"
     response.headers["Expires"] = "0"
+    if not refresh:
+        return _cached_live_broker_state_for_diagnostics()
     return _live_broker_state_payload()
 
 
