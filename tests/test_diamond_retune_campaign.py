@@ -277,3 +277,52 @@ def test_runner_rotates_targets_with_cursor_state(tmp_path) -> None:
     assert cursor["last_rank"] == 2
     assert cursor["next_rank"] == 3
     assert cursor["safe_to_mutate_live"] is False
+
+
+def test_runner_appends_attempt_history_without_live_mutation(tmp_path) -> None:
+    from eta_engine.scripts import diamond_retune_runner as runner
+
+    campaign = {
+        "generated_at_utc": "2026-05-14T20:00:00+00:00",
+        "targets": [
+            {
+                "rank": 1,
+                "bot_id": "mnq_futures_sage",
+                "symbol": "MNQ1",
+                "asset_sleeve": "equity_index",
+                "priority_score": 1061.81,
+                "next_command": (
+                    "python -m eta_engine.scripts.run_research_grid "
+                    "--source registry --bots mnq_futures_sage --report-policy runtime"
+                ),
+                "promotion_block": "broker_proof_required",
+                "live_mutation_policy": "paper_only_advisory",
+                "safe_to_mutate_live": False,
+            },
+        ],
+    }
+    history_path = tmp_path / "history.jsonl"
+
+    def fake_executor(args: list[str], *, timeout_seconds: int) -> runner.CommandResult:
+        return runner.CommandResult(returncode=1, stdout="still weak", stderr="")
+
+    first = runner.run_campaign_once(
+        campaign,
+        out_path=tmp_path / "first.json",
+        history_path=history_path,
+        executor=fake_executor,
+    )
+    second = runner.run_campaign_once(
+        campaign,
+        out_path=tmp_path / "second.json",
+        history_path=history_path,
+        executor=fake_executor,
+    )
+
+    rows = [json.loads(line) for line in history_path.read_text(encoding="utf-8").splitlines()]
+    assert first["run_id"] != second["run_id"]
+    assert [row["bot_id"] for row in rows] == ["mnq_futures_sage", "mnq_futures_sage"]
+    assert [row["status"] for row in rows] == ["research_failed_keep_retuning", "research_failed_keep_retuning"]
+    assert all(row["safe_to_mutate_live"] is False for row in rows)
+    assert all(row["live_mutation_policy"] == "paper_only_advisory" for row in rows)
+    assert all(row["promotion_block"] == "broker_proof_required" for row in rows)

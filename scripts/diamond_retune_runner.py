@@ -13,6 +13,7 @@ import json
 import shlex
 import subprocess
 import sys
+import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -30,6 +31,7 @@ PYTHON_EXE = sys.executable
 DEFAULT_CAMPAIGN_PATH = workspace_roots.ETA_RUNTIME_STATE_DIR / "diamond_retune_campaign_latest.json"
 OUT_LATEST = workspace_roots.ETA_RUNTIME_STATE_DIR / "diamond_retune_runner_latest.json"
 DEFAULT_CURSOR_PATH = workspace_roots.ETA_RUNTIME_STATE_DIR / "diamond_retune_runner_cursor.json"
+DEFAULT_HISTORY_PATH = workspace_roots.ETA_RUNTIME_STATE_DIR / "diamond_retune_runner_history.jsonl"
 ALLOWED_MODULE = "eta_engine.scripts.run_research_grid"
 
 
@@ -115,6 +117,35 @@ def _next_rank_after(campaign: dict[str, Any], selected_rank: int) -> int | None
     return ranks[(idx + 1) % len(ranks)]
 
 
+def _history_row(receipt: dict[str, Any]) -> dict[str, Any]:
+    target = receipt.get("selected_target") if isinstance(receipt.get("selected_target"), dict) else {}
+    return {
+        "run_id": receipt.get("run_id"),
+        "generated_at_utc": receipt.get("generated_at_utc"),
+        "campaign_generated_at_utc": receipt.get("campaign_generated_at_utc"),
+        "bot_id": target.get("bot_id"),
+        "rank": target.get("rank"),
+        "symbol": target.get("symbol"),
+        "asset_sleeve": target.get("asset_sleeve"),
+        "priority_score": target.get("priority_score"),
+        "status": receipt.get("status"),
+        "exit_code": receipt.get("exit_code"),
+        "duration_seconds": receipt.get("duration_seconds"),
+        "promotion_block": receipt.get("promotion_block"),
+        "live_mutation_policy": receipt.get("live_mutation_policy"),
+        "safe_to_mutate_live": False,
+    }
+
+
+def _append_history(path: Path | None, receipt: dict[str, Any]) -> None:
+    if path is None:
+        return
+    workspace_roots.ensure_parent(path)
+    row = _history_row(receipt)
+    with path.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(row, sort_keys=True) + "\n")
+
+
 def command_args_for_target(target: dict[str, Any]) -> list[str]:
     if target.get("safe_to_mutate_live") is not False:
         raise ValueError("target must explicitly be safe_to_mutate_live=false")
@@ -170,6 +201,7 @@ def run_campaign_once(
     bot_id: str | None = None,
     rank: int | None = None,
     cursor_path: Path | None = None,
+    history_path: Path | None = None,
     timeout_seconds: int = 1800,
     executor: Callable[[list[str]], CommandResult] | None = None,
 ) -> dict[str, Any]:
@@ -185,6 +217,7 @@ def run_campaign_once(
     finished = datetime.now(UTC)
     receipt = {
         "kind": "eta_diamond_retune_runner",
+        "run_id": str(uuid.uuid4()),
         "generated_at_utc": finished.isoformat(),
         "campaign_generated_at_utc": campaign.get("generated_at_utc"),
         "selected_target": {
@@ -222,6 +255,7 @@ def run_campaign_once(
         }
         workspace_roots.ensure_parent(cursor_path)
         cursor_path.write_text(json.dumps(cursor, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    _append_history(history_path, receipt)
     return receipt
 
 
@@ -230,6 +264,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--campaign-path", type=Path, default=DEFAULT_CAMPAIGN_PATH)
     parser.add_argument("--out-path", type=Path, default=OUT_LATEST)
     parser.add_argument("--cursor-path", type=Path, default=DEFAULT_CURSOR_PATH)
+    parser.add_argument("--history-path", type=Path, default=DEFAULT_HISTORY_PATH)
     parser.add_argument("--bot", default=None)
     parser.add_argument("--rank", type=int, default=None)
     parser.add_argument("--timeout-seconds", type=int, default=1800)
@@ -241,6 +276,7 @@ def main(argv: list[str] | None = None) -> int:
         bot_id=args.bot,
         rank=args.rank,
         cursor_path=args.cursor_path,
+        history_path=args.history_path,
         timeout_seconds=args.timeout_seconds,
     )
     if args.json:
