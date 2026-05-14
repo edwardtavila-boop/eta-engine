@@ -1310,6 +1310,7 @@ def _diamond_retune_status_unknown(path: Path, *, reason: str) -> dict[str, obje
             "n_targets": 0,
             "n_attempted_bots": 0,
             "n_unattempted_targets": 0,
+            "n_low_sample_keep_collecting": 0,
             "n_research_passed_broker_proof_required": 0,
             "n_stuck_research_failing": 0,
             "n_timeout_retry": 0,
@@ -1335,6 +1336,7 @@ def _load_diamond_retune_status() -> dict[str, object]:
         "n_targets": int(summary.get("n_targets") or len(bots)),
         "n_attempted_bots": int(summary.get("n_attempted_bots") or 0),
         "n_unattempted_targets": int(summary.get("n_unattempted_targets") or 0),
+        "n_low_sample_keep_collecting": int(summary.get("n_low_sample_keep_collecting") or 0),
         "n_research_passed_broker_proof_required": int(
             summary.get("n_research_passed_broker_proof_required") or 0
         ),
@@ -1374,6 +1376,7 @@ def _diamond_retune_diagnostic_payload(snapshot: dict[str, Any]) -> dict[str, ob
         "n_targets": int(summary.get("n_targets") or len(bots)),
         "n_attempted_bots": int(summary.get("n_attempted_bots") or 0),
         "n_unattempted_targets": int(summary.get("n_unattempted_targets") or 0),
+        "n_low_sample_keep_collecting": int(summary.get("n_low_sample_keep_collecting") or 0),
         "n_research_passed_broker_proof_required": int(
             summary.get("n_research_passed_broker_proof_required") or 0
         ),
