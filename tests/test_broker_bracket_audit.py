@@ -96,6 +96,50 @@ def test_bracket_audit_loads_local_bot_fleet_fallback_when_primary_fetch_empty(m
     ]
 
 
+def test_bracket_audit_prefers_local_broker_truth_over_public_paper_watch(monkeypatch) -> None:
+    calls: list[tuple[str, float]] = []
+
+    public_payload = {
+        "target_exit_summary": {
+            "broker_open_position_count": 0,
+            "supervisor_local_position_count": 10,
+            "status": "paper_watching",
+        },
+    }
+    local_payload = {
+        "target_exit_summary": {
+            "broker_open_position_count": 4,
+            "broker_bracket_required_position_count": 4,
+            "broker_bracket_count": 4,
+            "missing_bracket_count": 0,
+            "supervisor_local_position_count": 6,
+            "status": "watching",
+        },
+        "live_broker_state": {
+            "ibkr": {
+                "open_positions": [{"symbol": "MNQM6", "secType": "FUT", "position": 1}],
+                "open_orders": [{"symbol": "MNQM6", "action": "SELL", "order_type": "LMT", "qty": 1}],
+            },
+        },
+    }
+
+    def _fake_fetch(url: str, timeout_s: float = 10.0, attempts: int = 2) -> dict[str, object]:
+        calls.append((url, timeout_s))
+        if url == audit.DEFAULT_FLEET_URL:
+            return public_payload
+        return local_payload
+
+    monkeypatch.setattr(audit, "_fetch_json", _fake_fetch)
+
+    payload = audit.load_fleet_payload()
+
+    assert payload is local_payload
+    assert calls == [
+        (audit.DEFAULT_FLEET_URL, 10.0),
+        ("http://127.0.0.1:8420/api/bot-fleet", 5.0),
+    ]
+
+
 def test_bracket_audit_operator_action_uses_singular_for_unknown_exposure() -> None:
     report = audit.build_bracket_audit(
         fleet={
@@ -492,6 +536,42 @@ def test_bracket_audit_accepts_ibkr_open_order_oco_evidence(monkeypatch) -> None
     assert report["position_summary"]["broker_oco_verified_symbols"] == ["MNQM6"]
     assert report["broker_oco_verified_positions"][0]["coverage_status"] == "broker_oco_verified"
     assert report["unprotected_positions"] == []
+    assert report["operator_actions"] == []
+
+
+def test_bracket_audit_does_not_block_bracketed_broker_exposure_on_paper_watches(monkeypatch) -> None:
+    monkeypatch.setattr(
+        audit,
+        "_adapter_support",
+        lambda: {
+            "ibkr_futures_server_oco": True,
+            "alpaca_equity_server_bracket": True,
+            "tradovate_order_payload_brackets": True,
+        },
+    )
+
+    report = audit.build_bracket_audit(
+        fleet={
+            "target_exit_summary": {
+                "status": "watching",
+                "broker_open_position_count": 4,
+                "broker_bracket_required_position_count": 4,
+                "broker_bracket_count": 4,
+                "missing_bracket_count": 0,
+                "supervisor_local_position_count": 6,
+                "stale_position_status": "force_flatten_due",
+            },
+        },
+    )
+
+    assert report["summary"] == "READY_OPEN_EXPOSURE_BRACKETED"
+    assert report["ready_for_prop_dry_run"] is True
+    assert report["operator_action_required"] is False
+    assert report["position_summary"]["broker_open_position_count"] == 4
+    assert report["position_summary"]["broker_bracket_count"] == 4
+    assert report["position_summary"]["missing_bracket_count"] == 0
+    assert report["position_summary"]["supervisor_local_position_count"] == 6
+    assert report["stale_position_status"] == "force_flatten_due"
     assert report["operator_actions"] == []
 
 

@@ -291,14 +291,48 @@ def _fetch_json(url: str, timeout_s: float = 10.0, attempts: int = 2) -> dict[st
     return {}
 
 
+def _broker_truth_score(fleet: dict[str, Any]) -> int:
+    """Prefer payloads carrying concrete broker position/order evidence."""
+    if not fleet:
+        return 0
+    score = 0
+    target_exit_summary = _as_dict(fleet.get("target_exit_summary"))
+    score += _as_int(target_exit_summary.get("broker_open_position_count")) * 4
+    score += _as_int(target_exit_summary.get("broker_bracket_required_position_count")) * 3
+    score += _as_int(target_exit_summary.get("broker_bracket_count")) * 3
+    score += _as_int(target_exit_summary.get("broker_open_order_verified_bracket_count")) * 3
+    summary = _as_dict(fleet.get("summary"))
+    score += _as_int(summary.get("broker_open_position_count")) * 4
+    score += _as_int(summary.get("broker_bracket_count")) * 3
+    live_broker_state = _as_dict(fleet.get("live_broker_state"))
+    score += _as_int(live_broker_state.get("open_position_count")) * 4
+    score += len(_as_list(_as_dict(live_broker_state.get("position_exposure")).get("open_positions"))) * 4
+    score += len(_as_list(fleet.get("open_orders")))
+    score += len(_as_list(fleet.get("broker_open_orders")))
+    for venue in ("ibkr", "tastytrade", "tasty"):
+        venue_state = _as_dict(live_broker_state.get(venue))
+        score += len(_as_list(venue_state.get("open_positions"))) * 4
+        score += len(_as_list(venue_state.get("open_orders")))
+        score += len(_as_list(venue_state.get("open_trades")))
+    return score
+
+
 def load_fleet_payload(url: str = DEFAULT_FLEET_URL) -> dict[str, Any]:
-    """Load bot-fleet truth, falling back to local Command Center when public ops is slow."""
+    """Load bot-fleet truth, preferring VPS-local broker evidence over stale public ops snapshots."""
     primary = _fetch_json(url, timeout_s=10.0)
-    if _fleet_has_position_truth(primary):
+    primary_has_truth = _fleet_has_position_truth(primary)
+    if primary_has_truth and _broker_truth_score(primary) > 0:
         return primary
     if url == DEFAULT_LOCAL_FLEET_URL:
         return primary
-    local = _fetch_json(DEFAULT_LOCAL_FLEET_URL, timeout_s=20.0)
+    local_timeout = 5.0 if primary_has_truth else 20.0
+    local = _fetch_json(DEFAULT_LOCAL_FLEET_URL, timeout_s=local_timeout)
+    if _fleet_has_position_truth(local) and (
+        not primary_has_truth or _broker_truth_score(local) > _broker_truth_score(primary)
+    ):
+        return local
+    if primary_has_truth:
+        return primary
     if _fleet_has_position_truth(local):
         return local
     return primary or local
@@ -775,7 +809,6 @@ def build_bracket_audit(
     open_count = position_summary["broker_open_position_count"]
     bracket_required = position_summary["broker_bracket_required_position_count"]
     missing_brackets = position_summary["missing_bracket_count"]
-    supervisor_local = position_summary["supervisor_local_position_count"]
     target_exit_summary = _as_dict(fleet.get("target_exit_summary"))
     candidate_unprotected_positions = _unprotected_positions(
         fleet,
@@ -834,11 +867,11 @@ def build_bracket_audit(
 
     if not fleet_truth_present:
         summary = "BLOCKED_FLEET_TRUTH_UNAVAILABLE"
-    elif open_count == 0 and supervisor_local == 0 and adapter_ok:
+    elif open_count == 0 and adapter_ok:
         summary = "READY_NO_OPEN_EXPOSURE"
     elif manual_oco_verified_positions and missing_brackets == 0 and not unprotected_positions and adapter_ok:
         summary = "READY_OPEN_EXPOSURE_MANUAL_OCO_VERIFIED"
-    elif bracket_required > 0 and missing_brackets == 0 and supervisor_local == 0 and adapter_ok:
+    elif bracket_required > 0 and missing_brackets == 0 and adapter_ok:
         summary = "READY_OPEN_EXPOSURE_BRACKETED"
     elif not adapter_ok:
         summary = "BLOCKED_ADAPTER_SUPPORT"
