@@ -9825,6 +9825,41 @@ def _live_broker_state_payload() -> dict:
     return payload
 
 
+def _ibkr_refresh_probe_error(payload: dict) -> str:
+    """Return the IBKR probe error that makes a manual refresh unsafe to trust."""
+    if not isinstance(payload, dict):
+        return ""
+    ibkr = payload.get("ibkr") if isinstance(payload.get("ibkr"), dict) else {}
+    error = str(ibkr.get("error") or payload.get("error") or "").strip()
+    if not error:
+        return ""
+    if ibkr.get("ready") is False and error.startswith("ibkr_probe_failed:"):
+        return error
+    return ""
+
+
+def _last_good_broker_state_after_failed_refresh(live_payload: dict) -> dict:
+    """Prefer last-good broker truth when an explicit IBKR refresh times out."""
+    error = _ibkr_refresh_probe_error(live_payload)
+    if not error:
+        return live_payload
+    try:
+        cached = _cached_live_broker_state_for_diagnostics()
+    except Exception:  # noqa: BLE001 - direct broker endpoint must fail soft.
+        cached = {}
+    if not isinstance(cached, dict) or cached.get("error") or cached.get("ready") is not True:
+        out = dict(live_payload)
+        out["refresh_probe_failed"] = True
+        out["refresh_probe_error"] = error
+        return out
+    out = dict(cached)
+    out["refresh_requested"] = True
+    out["refresh_probe_failed"] = True
+    out["refresh_probe_error"] = error
+    out["refresh_probe_source"] = live_payload.get("broker_snapshot_source") or live_payload.get("source")
+    return out
+
+
 @app.get("/api/live/broker_state")
 def live_broker_state(response: Response, refresh: bool = False) -> dict:
     """Broker truth for dashboard reality-check panels.
@@ -9841,7 +9876,7 @@ def live_broker_state(response: Response, refresh: bool = False) -> dict:
     response.headers["Expires"] = "0"
     if not refresh:
         return _cached_live_broker_state_for_diagnostics()
-    return _live_broker_state_payload()
+    return _last_good_broker_state_after_failed_refresh(_live_broker_state_payload())
 
 
 @app.get("/api/live/position_exposure")
@@ -11299,7 +11334,7 @@ def force_multiplier_public_status() -> JSONResponse:
     try:
         from eta_engine.brain.multi_model import force_multiplier_status
 
-        payload = dict(force_multiplier_status())
+        payload = dict(force_multiplier_status(probe=False))
         payload["status"] = "ok"
     except Exception as exc:  # noqa: BLE001 - public ops should fail soft
         payload = {

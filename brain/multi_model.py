@@ -882,9 +882,9 @@ def _classify_cli_failure(resp: CLIResponse) -> str | None:
 # ---------------------------------------------------------------------------
 
 
-def force_multiplier_status() -> dict[str, Any]:
+def force_multiplier_status(*, probe: bool = True) -> dict[str, Any]:
     """Return a status dict for dashboards and health checks."""
-    cli_status = cli_provider_status()
+    cli_status = cli_provider_status(probe=probe)
     api_status = native_provider_info()
 
     return {

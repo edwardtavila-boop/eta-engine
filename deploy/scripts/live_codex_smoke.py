@@ -29,7 +29,6 @@ from eta_engine.brain.cli_provider import call_codex, check_codex_available, cli
 from eta_engine.brain.multi_model import _classify_cli_failure
 from eta_engine.scripts import workspace_roots
 
-
 DEFAULT_MODEL = "gpt-5.5"
 SMOKE_FILE = "live_codex_smoke.json"
 
@@ -46,7 +45,7 @@ def _write_artifact(payload: dict[str, object], *, state_dir: Path | None = None
 
 
 def _base_payload(*, live: bool) -> dict[str, object]:
-    status = cli_provider_status()
+    status = cli_provider_status(probe=live)
     return {
         "ts": datetime.now(UTC).isoformat(),
         "lane": "codex",
@@ -62,6 +61,27 @@ def run_smoke(*, live: bool, state_dir: Path | None = None) -> tuple[int, dict[s
     load_dotenv()
     payload = _base_payload(live=live)
 
+    if not live:
+        if not payload["codex_available"]:
+            payload.update(
+                {
+                    "ok": False,
+                    "status": "codex_cli_missing",
+                    "message": (
+                        "Codex CLI entrypoint is not discoverable; install @openai/codex and run codex login."
+                    ),
+                }
+            )
+            return 2, payload, _write_artifact(payload, state_dir=state_dir)
+        payload.update(
+            {
+                "ok": True,
+                "status": "policy_ready",
+                "message": "Codex is the active architect/review lane; live round trip skipped.",
+            }
+        )
+        return 0, payload, _write_artifact(payload, state_dir=state_dir)
+
     if not check_codex_available():
         payload.update(
             {
@@ -71,16 +91,6 @@ def run_smoke(*, live: bool, state_dir: Path | None = None) -> tuple[int, dict[s
             }
         )
         return 2, payload, _write_artifact(payload, state_dir=state_dir)
-
-    if not live:
-        payload.update(
-            {
-                "ok": True,
-                "status": "policy_ready",
-                "message": "Codex is the active architect/review lane; live round trip skipped.",
-            }
-        )
-        return 0, payload, _write_artifact(payload, state_dir=state_dir)
 
     model = os.environ.get("ETA_CODEX_DEFAULT_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL
     response = call_codex(

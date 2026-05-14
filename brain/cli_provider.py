@@ -128,6 +128,25 @@ def _subprocess_env() -> dict[str, str]:
     return env
 
 
+def _command_discoverable(cmd_list: list[str]) -> bool:
+    """Return True when the command entrypoint exists without executing it.
+
+    This is intentionally weaker than ``cmd --version``. It is used by
+    non-live health snapshots where the status plane must never hang behind a
+    subscription CLI, npx bootstrap, OAuth prompt, or child-process leak.
+    """
+    if not cmd_list:
+        return False
+    exe = cmd_list[0]
+    try:
+        path = Path(exe)
+        if path.is_absolute() or any(sep and sep in exe for sep in (os.sep, os.altsep)):
+            return path.is_file()
+    except OSError:
+        return False
+    return shutil.which(exe) is not None
+
+
 # ---------------------------------------------------------------------------
 # Claude (Anthropic) - disabled legacy subscription CLI
 # ---------------------------------------------------------------------------
@@ -425,12 +444,21 @@ def check_codex_available() -> bool:
     return _check_cli_available(_codex_command(), "codex")
 
 
-def cli_provider_status() -> dict[str, Any]:
+def cli_provider_status(*, probe: bool = True) -> dict[str, Any]:
+    claude_cmd = _claude_command()
+    codex_cmd = _codex_command()
+    if probe:
+        claude_available = _env_truthy("ETA_ENABLE_CLAUDE_CLI") and _check_cli_available(claude_cmd, "claude")
+        codex_available = _check_cli_available(codex_cmd, "codex")
+    else:
+        claude_available = _env_truthy("ETA_ENABLE_CLAUDE_CLI") and _command_discoverable(claude_cmd)
+        codex_available = _command_discoverable(codex_cmd)
     return {
-        "claude_available": check_claude_available(),
-        "claude_command": " ".join(_claude_command()),
+        "claude_available": claude_available,
+        "claude_command": " ".join(claude_cmd),
         "claude_disabled_by_policy": not _env_truthy("ETA_ENABLE_CLAUDE_CLI"),
-        "codex_available": check_codex_available(),
-        "codex_command": " ".join(_codex_command()),
+        "codex_available": codex_available,
+        "codex_command": " ".join(codex_cmd),
+        "availability_probe": "version" if probe else "path",
         "timeout_sec": DEFAULT_TIMEOUT_SEC,
     }

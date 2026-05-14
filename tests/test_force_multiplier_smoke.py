@@ -47,6 +47,47 @@ def test_cli_health_check():
     assert status["claude_disabled_by_policy"] is True
 
 
+def test_cli_health_check_can_skip_version_probe(monkeypatch):
+    from eta_engine.brain import cli_provider
+
+    def fail_version_probe(*_args, **_kwargs):
+        raise AssertionError("version probe should not run for path-only status")
+
+    monkeypatch.setattr(cli_provider, "_check_cli_available", fail_version_probe)
+    monkeypatch.setattr(cli_provider, "_codex_command", lambda: [sys.executable])
+    monkeypatch.setattr(cli_provider, "_claude_command", lambda: [sys.executable])
+
+    status = cli_provider.cli_provider_status(probe=False)
+
+    assert status["codex_available"] is True
+    assert status["claude_available"] is False
+    assert status["availability_probe"] == "path"
+
+
+def test_force_multiplier_health_non_live_codex_probe_is_path_only(monkeypatch):
+    from eta_engine.scripts import force_multiplier_health
+
+    def fail_version_probe():
+        raise AssertionError("non-live FM health should not run codex --version")
+
+    monkeypatch.setattr(force_multiplier_health, "check_codex_available", fail_version_probe)
+    monkeypatch.setattr(
+        force_multiplier_health,
+        "cli_provider_status",
+        lambda *, probe=True: {
+            "codex_available": True,
+            "codex_command": "codex",
+            "availability_probe": "path" if not probe else "version",
+        },
+    )
+
+    ok, message = force_multiplier_health.probe_codex(live=False)
+
+    assert ok is True
+    assert "path discovered" in message
+    assert "skipped live call" in message
+
+
 def test_force_multiplier_status():
     from eta_engine.brain.multi_model import force_multiplier_status
 
@@ -136,7 +177,7 @@ def test_live_codex_smoke_dry_run_writes_canonical_artifact(monkeypatch, tmp_pat
     monkeypatch.setattr(
         live_codex_smoke,
         "cli_provider_status",
-        lambda: {
+        lambda *, probe=True: {
             "codex_available": True,
             "codex_command": "codex",
             "claude_disabled_by_policy": True,
@@ -151,6 +192,32 @@ def test_live_codex_smoke_dry_run_writes_canonical_artifact(monkeypatch, tmp_pat
     assert payload["ok"] is True
     assert out == tmp_path / "live_codex_smoke.json"
     assert out.exists()
+
+
+def test_live_codex_smoke_dry_run_is_path_only(monkeypatch, tmp_path):
+    from eta_engine.deploy.scripts import live_codex_smoke
+
+    probes: list[bool] = []
+
+    def fake_status(*, probe=True):
+        probes.append(probe)
+        return {
+            "codex_available": True,
+            "codex_command": "codex",
+            "claude_disabled_by_policy": True,
+        }
+
+    def fail_version_probe():
+        raise AssertionError("dry-run smoke should not run codex --version")
+
+    monkeypatch.setattr(live_codex_smoke, "cli_provider_status", fake_status)
+    monkeypatch.setattr(live_codex_smoke, "check_codex_available", fail_version_probe)
+
+    rc, payload, _out = live_codex_smoke.run_smoke(live=False, state_dir=tmp_path)
+
+    assert rc == 0
+    assert payload["ok"] is True
+    assert probes == [False]
 
 
 def test_legacy_claude_smoke_delegates_to_codex(monkeypatch):

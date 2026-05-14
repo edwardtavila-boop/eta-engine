@@ -537,6 +537,22 @@ class TestDashboardAPI:
         assert payload["health_snapshot"]["payload"]["pass_count"] == 2
         assert "no-store" in r.headers["Cache-Control"]
 
+    def test_force_multiplier_status_endpoint_uses_path_only_probe(self, app_client, monkeypatch):
+        from eta_engine.brain import multi_model
+
+        calls: list[bool] = []
+
+        def fake_status(*, probe: bool = True):
+            calls.append(probe)
+            return {"mode": "force_multiplier", "providers": {}, "routing_table": {}}
+
+        monkeypatch.setattr(multi_model, "force_multiplier_status", fake_status)
+
+        r = app_client.get("/api/fm/status")
+
+        assert r.status_code == 200
+        assert calls == [False]
+
     def test_heartbeat(self, app_client):
         r = app_client.get("/api/heartbeat")
         assert r.status_code == 200
@@ -1289,6 +1305,51 @@ class TestDashboardAPI:
         assert r.status_code == 200
         assert r.json()["source"] == "live_broker_rest"
         assert r.json()["probe_skipped"] is False
+
+    def test_live_broker_state_refresh_falls_back_to_last_good_after_ibkr_timeout(self, app_client, monkeypatch):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        monkeypatch.setattr(
+            mod,
+            "_live_broker_state_payload",
+            lambda: {
+                "source": "live_broker_rest",
+                "broker_snapshot_source": "live_broker_rest",
+                "broker_snapshot_state": "fresh",
+                "today_actual_fills": 0,
+                "today_realized_pnl": 0.0,
+                "open_position_count": 0,
+                "ibkr": {
+                    "ready": False,
+                    "error": "ibkr_probe_failed:TimeoutError: TimeoutError()",
+                },
+            },
+        )
+        monkeypatch.setattr(
+            mod,
+            "_cached_live_broker_state_for_diagnostics",
+            lambda: {
+                "ready": True,
+                "source": "cached_live_broker_state_for_diagnostics",
+                "probe_skipped": True,
+                "broker_snapshot_source": "ibkr_probe_cache",
+                "broker_snapshot_state": "persisted",
+                "today_actual_fills": 17,
+                "today_realized_pnl": -321.25,
+                "open_position_count": 3,
+                "ibkr": {"ready": True},
+            },
+        )
+
+        r = app_client.get("/api/live/broker_state?refresh=1")
+
+        assert r.status_code == 200
+        payload = r.json()
+        assert payload["broker_snapshot_state"] == "persisted"
+        assert payload["today_actual_fills"] == 17
+        assert payload["open_position_count"] == 3
+        assert payload["refresh_probe_failed"] is True
+        assert "TimeoutError" in payload["refresh_probe_error"]
 
     def test_dashboard_card_health_contract_has_no_dead_or_stale_cards(self, app_client):
         r = app_client.get("/api/dashboard/card-health")

@@ -122,11 +122,13 @@ def probe_claude(*, live: bool) -> tuple[bool, str]:
 
 
 def probe_codex(*, live: bool) -> tuple[bool, str]:
+    if not live:
+        status = cli_provider_status(probe=False)
+        if not status.get("codex_available"):
+            return False, "codex CLI entrypoint not found - run: npm install -g @openai/codex"
+        return True, f"path discovered: {status['codex_command']} (skipped live call)"
     if not check_codex_available():
         return False, "codex CLI not installed — run: npm install -g @openai/codex"
-    status = cli_provider_status()
-    if not live:
-        return True, f"installed: {status['codex_command']} (skipped live call)"
     resp = call_codex(
         user_message="Reply only with the word: READY",
         model=os.environ.get("ETA_CODEX_DEFAULT_MODEL", "gpt-5.5").strip() or "gpt-5.5",
