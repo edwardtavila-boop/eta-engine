@@ -759,12 +759,32 @@ def _op19_ibgateway_1046_runtime() -> OpItem:
     tws_healthy = tws.get("healthy") is True
     handshake_ok = (tws.get("details") or {}).get("handshake_ok") is True
     credential_status = reauth.get("credential_status") if isinstance(reauth.get("credential_status"), dict) else {}
+    gateway_authority = reauth.get("gateway_authority") if isinstance(reauth.get("gateway_authority"), dict) else {}
+    non_authoritative_gateway_host = (
+        reauth.get("status") == "non_authoritative_gateway_host"
+        or gateway_authority.get("allowed") is False
+    )
     missing_ibc_credentials = reauth.get("status") == "missing_ibc_credentials" or (
         credential_status and credential_status.get("ready") is False and reauth.get("operator_action_required")
     )
 
     next_commands: list[str]
-    if gateway_exe and task_canonical and tws_healthy and handshake_ok:
+    if non_authoritative_gateway_host:
+        item.verdict = VERDICT_BLOCKED
+        item.detail = (
+            "This host is not the VPS Gateway authority; do not repair, start, or reauth "
+            "IB Gateway from this desktop. Verify the VPS authority marker and recovery lane "
+            "on the 24/7 server."
+        )
+        next_commands = [
+            (
+                "On the VPS only: powershell.exe -NoProfile -ExecutionPolicy Bypass -File "
+                ".\\eta_engine\\deploy\\scripts\\set_gateway_authority.ps1 -Apply -Role vps"
+            ),
+            "On the VPS only: python -m eta_engine.scripts.ibgateway_reauth_controller --execute",
+        ]
+        severity = "red"
+    elif gateway_exe and task_canonical and tws_healthy and handshake_ok:
         item.verdict = VERDICT_DONE
         item.detail = "IB Gateway, recovery tasks, and TWS API 4002 handshake are healthy."
         next_commands = ["python -m eta_engine.scripts.ibkr_surface_status --skip-client-portal"]
@@ -841,6 +861,8 @@ def _op19_ibgateway_1046_runtime() -> OpItem:
         "install": install,
         "repair": repair,
         "reauth": reauth,
+        "gateway_authority": gateway_authority,
+        "non_authoritative_gateway_host": non_authoritative_gateway_host,
         "credential_status": credential_status,
         "tws_watchdog": tws,
         "allow_unsigned_requires_source_confirmation": True,
@@ -855,6 +877,8 @@ def _op19_ibgateway_1046_runtime() -> OpItem:
                     "task_update_result": eta_gateway_task_result,
                     "tws_healthy": tws_healthy,
                     "handshake_ok": handshake_ok,
+                    "non_authoritative_gateway_host": non_authoritative_gateway_host,
+                    "gateway_authority": gateway_authority,
                     "allow_unsigned_requires_source_confirmation": True,
                 },
             },

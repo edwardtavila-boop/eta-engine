@@ -671,6 +671,46 @@ class TestVpsFailoverProbeUnderSyntheticState:
 
 
 class TestIbGateway1046RuntimeProbe:
+    def test_gateway_runtime_blocks_local_desktop_recovery_when_host_is_not_gateway_authority(
+        self, monkeypatch
+    ) -> None:
+        from eta_engine.scripts import operator_action_queue
+
+        states = {
+            "ibgateway_install.json": {"installed": True},
+            "ibgateway_repair.json": {
+                "single_source": {
+                    "gateway_task_canonical": False,
+                    "task_states": {"ETA-IBGateway": "Disabled"},
+                },
+            },
+            "ibgateway_reauth.json": {
+                "status": "non_authoritative_gateway_host",
+                "gateway_authority": {
+                    "allowed": False,
+                    "computer_name": "ETA",
+                    "reason": "authority_marker_missing",
+                },
+            },
+            "tws_watchdog.json": {
+                "healthy": False,
+                "details": {"handshake_ok": False},
+            },
+        }
+        monkeypatch.setattr(operator_action_queue, "_read_runtime_state", lambda name: states.get(name, {}))
+        monkeypatch.setattr(operator_action_queue, "_gateway_exe_present", lambda: True)
+
+        item = operator_action_queue._op19_ibgateway_1046_runtime()
+
+        assert item.verdict == VERDICT_BLOCKED
+        assert item.evidence["overall_severity"] == "red"
+        assert item.evidence["non_authoritative_gateway_host"] is True
+        assert item.evidence["gateway_authority"]["allowed"] is False
+        assert "not the VPS Gateway authority" in item.detail
+        next_commands = item.evidence["blockers"][0]["next_commands"]
+        assert all(command.startswith("On the VPS only:") for command in next_commands)
+        assert not any("repair_ibgateway_vps.ps1" in command for command in next_commands)
+
     def test_gateway_runtime_prioritizes_missing_ibc_credentials(self, monkeypatch, tmp_path) -> None:
         from eta_engine.scripts import operator_action_queue
 
