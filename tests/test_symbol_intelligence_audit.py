@@ -50,7 +50,10 @@ def test_run_audit_surfaces_missing_components(tmp_path):
 
     payload = run_audit(symbols=["MNQ1"], store=store, now=datetime(2026, 5, 14, 15, 0, tzinfo=UTC))
 
+    assert payload["schema"] == "eta.symbol_intelligence.audit.v1"
     assert payload["overall_status"] == "red"
+    assert payload["status"] == "RED"
+    assert payload["average_score_pct"] == 40
     assert payload["symbols"][0]["status"] == "red"
     assert payload["symbols"][0]["missing_required"] == ["events", "outcomes", "quality"]
 

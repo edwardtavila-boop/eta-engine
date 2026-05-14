@@ -134,11 +134,16 @@ def run_audit(
     now = now or datetime.now(tz=UTC)
     store = store or SymbolIntelStore()
     rows = [inspect_symbol(symbol, store=store, now=now) for symbol in symbols]
+    overall_status = _overall_status(rows)
+    average_score_pct = round(100 * sum(row.score for row in rows) / len(rows)) if rows else 0
     return {
+        "schema": "eta.symbol_intelligence.audit.v1",
         "kind": "eta_symbol_intelligence_audit",
         "generated_at_utc": now.isoformat(),
         "data_lake_root": str(store.root),
-        "overall_status": _overall_status(rows),
+        "overall_status": overall_status,
+        "status": overall_status.upper(),
+        "average_score_pct": average_score_pct,
         "required_components": list(REQUIRED_COMPONENTS),
         "optional_components": list(OPTIONAL_COMPONENTS),
         "symbols": [row.to_dict() for row in rows],
