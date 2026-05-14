@@ -267,6 +267,7 @@ if (-not $SkipETATasks) {
     $proxy8421TaskScript = "$EtaEngineDir\deploy\scripts\register_proxy8421_bridge_task.ps1"
     $dashboardProxyWatchdogTaskScript = "$EtaEngineDir\deploy\scripts\register_dashboard_proxy_watchdog_task.ps1"
     $paperLiveTransitionTaskScript = "$EtaEngineDir\deploy\scripts\register_paper_live_transition_check_task.ps1"
+    $etaReadinessSnapshotTaskScript = "$EtaEngineDir\deploy\scripts\register_eta_readiness_snapshot_task.ps1"
     $vpsOpsHardeningTaskScript = "$EtaEngineDir\deploy\scripts\register_vps_ops_hardening_audit_task.ps1"
     $symbolIntelCollectorTaskScript = "$EtaEngineDir\deploy\scripts\register_symbol_intelligence_collector_task.ps1"
     $operatorQueueHeartbeatTaskScript = "$EtaEngineDir\deploy\scripts\register_operator_queue_heartbeat_task.ps1"
@@ -316,6 +317,15 @@ if (-not $SkipETATasks) {
         }
     } else {
         Write-Host "  register_paper_live_transition_check_task.ps1 not found at $paperLiveTransitionTaskScript" -ForegroundColor Yellow
+    }
+
+    if (Test-Path $etaReadinessSnapshotTaskScript) {
+        Write-Host "  Registering ETA readiness snapshot refresher task (every 5m, read-only)..." -ForegroundColor Gray
+        if (-not $WhatIf) {
+            & $pwshPath -ExecutionPolicy Bypass -File $etaReadinessSnapshotTaskScript -Start
+        }
+    } else {
+        Write-Host "  register_eta_readiness_snapshot_task.ps1 not found at $etaReadinessSnapshotTaskScript" -ForegroundColor Yellow
     }
 
     if (Test-Path $vpsOpsHardeningTaskScript) {

@@ -5,6 +5,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 RUNNER = ROOT / "deploy" / "scripts" / "run_paper_live_transition_check.cmd"
 REGISTRAR = ROOT / "deploy" / "scripts" / "register_paper_live_transition_check_task.ps1"
+READINESS_RUNNER = ROOT / "deploy" / "scripts" / "run_eta_readiness_snapshot.cmd"
+READINESS_REGISTRAR = ROOT / "deploy" / "scripts" / "register_eta_readiness_snapshot_task.ps1"
 BOOTSTRAP = ROOT / "deploy" / "vps_bootstrap.ps1"
 RUNBOOK = ROOT / "docs" / "live_launch_runbook.md"
 
@@ -65,7 +67,10 @@ def test_paper_live_transition_task_is_wired_into_bootstrap_and_runbook() -> Non
 
 
 def test_paper_live_transition_task_scripts_do_not_use_legacy_write_paths() -> None:
-    combined = "\n".join(path.read_text(encoding="utf-8") for path in (RUNNER, REGISTRAR))
+    combined = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in (RUNNER, REGISTRAR, READINESS_RUNNER, READINESS_REGISTRAR)
+    )
 
     assert "OneDrive" not in combined
     assert "LOCALAPPDATA" not in combined
@@ -73,3 +78,38 @@ def test_paper_live_transition_task_scripts_do_not_use_legacy_write_paths() -> N
     assert "crypto_data" not in combined
     assert "TheFirm" not in combined
     assert "The_Firm" not in combined
+
+
+def test_eta_readiness_snapshot_runner_refreshes_canonical_ops_receipt_without_order_actions() -> None:
+    text = READINESS_RUNNER.read_text(encoding="utf-8")
+
+    assert r"ETA_ROOT=C:\EvolutionaryTradingAlgo" in text
+    assert r"ETA_OPS_DIR=%ETA_ROOT%\var\ops" in text
+    assert r"ETA_LOG_DIR=%ETA_ROOT%\logs\eta_engine" in text
+    assert r"%ETA_ROOT%\scripts\eta-readiness-snapshot.ps1" in text
+    assert '-StatusPath "%ETA_OPS_DIR%\\eta_readiness_snapshot_latest.json"' in text
+    assert "-Json" in text
+    assert "eta_readiness_snapshot.stdout.log" in text
+    assert "eta_readiness_snapshot.stderr.log" in text
+    assert "eta_readiness_snapshot.task.log" in text
+    assert "exit_code=%SNAPSHOT_RC%" in text
+    assert "never submits" not in text.lower()
+    assert "exit /b %SNAPSHOT_RC%" in text
+
+
+def test_eta_readiness_snapshot_registrar_is_wired_into_bootstrap() -> None:
+    registrar = READINESS_REGISTRAR.read_text(encoding="utf-8")
+    bootstrap = BOOTSTRAP.read_text(encoding="utf-8")
+
+    assert "ETA-Readiness-Snapshot" in registrar
+    assert '$WorkspaceRoot = "C:\\EvolutionaryTradingAlgo"' in registrar
+    assert "Assert-CanonicalEtaPath" in registrar
+    assert "run_eta_readiness_snapshot.cmd" in registrar
+    assert "eta_readiness_snapshot_latest.json" in registrar
+    assert "-RepetitionInterval (New-TimeSpan -Minutes 5)" in registrar
+    assert "-ExecutionTimeLimit (New-TimeSpan -Minutes 3)" in registrar
+    assert "-MultipleInstances IgnoreNew" in registrar
+    assert '-UserId "NT AUTHORITY\\SYSTEM"' in registrar
+    assert "Order action: never submits, cancels, flattens, or promotes" in registrar
+    assert "register_eta_readiness_snapshot_task.ps1" in bootstrap
+    assert "ETA readiness snapshot refresher task" in bootstrap
