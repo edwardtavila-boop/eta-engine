@@ -241,6 +241,7 @@ def test_runtime_helpers_drop_localappdata_eta_state_paths() -> None:
         "eta_engine/scripts/operator_queue_snapshot.py",
         "eta_engine/scripts/runtime_log_smoke.py",
         "eta_engine/scripts/vps_failover_summary.py",
+        "eta_engine/deploy/scripts/live_codex_smoke.py",
         "eta_engine/deploy/scripts/live_claude_smoke.py",
         "eta_engine/deploy/scripts/avengers_daemon.py",
         "eta_engine/deploy/scripts/register_dashboard_proxy_watchdog_task.ps1",
@@ -257,6 +258,7 @@ def test_runtime_helpers_drop_localappdata_eta_state_paths() -> None:
         assert "LOCALAPPDATA" not in text
         assert r"AppData\Local\eta_engine" not in text
 
+    assert "workspace_roots.ETA_RUNTIME_STATE_DIR" in _read("eta_engine/deploy/scripts/live_codex_smoke.py")
     assert "workspace_roots.ETA_RUNTIME_STATE_DIR" in _read("eta_engine/deploy/scripts/live_claude_smoke.py")
     assert "ETA_RUNTIME_ALERTS_LOG_PATH" in _read("eta_engine/scripts/alerts_log_smoke.py")
     assert "ETA_DRIFT_WATCHDOG_LOG_PATH" in _read("eta_engine/scripts/drift_watchdog_smoke.py")

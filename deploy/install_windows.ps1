@@ -111,19 +111,21 @@ if (-not (Test-Path $envPath)) {
 }
 
 $envContent = Get-Content $envPath -Raw
-if ($envContent -notmatch "ANTHROPIC_API_KEY=") {
+if ($envContent -notmatch "ETA_LLM_PROVIDER=") {
     @"
 
 
 # ---------------------------------------------------------------------------
-# claude_layer / Avengers (appended by install_windows.ps1)
+# Force Multiplier / Avengers (appended by install_windows.ps1)
 # ---------------------------------------------------------------------------
-ANTHROPIC_API_KEY=
+ETA_LLM_PROVIDER=deepseek
+ETA_ENABLE_CLAUDE_CLI=0
+DEEPSEEK_API_KEY=
 JARVIS_HOURLY_USD_BUDGET=1.00
 JARVIS_DAILY_USD_BUDGET=10.00
 JARVIS_DISTILL_SKIP_THRESHOLD=0.92
 "@ | Add-Content $envPath
-    Write-OK "appended claude_layer stanza to .env"
+    Write-OK "appended Force Multiplier stanza to .env"
 }
 
 # ----------------------------------------------------------------------------

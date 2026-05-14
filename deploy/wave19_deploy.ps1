@@ -77,7 +77,7 @@ if (-not $SkipCLIInstall) {
 
     Write-Host ""
     Write-Host "  ACTION REQUIRED:" -ForegroundColor Yellow
-    Write-Host "    Run: claude login" -ForegroundColor Yellow
+    Write-Host "    Claude disabled by policy; run Codex health instead." -ForegroundColor Yellow
     Write-Host "    Run: codex login" -ForegroundColor Yellow
     Write-Host "  (Open browser windows will appear for OAuth)" -ForegroundColor Gray
     Write-Host ""

@@ -30,7 +30,9 @@ param(
         "TASTYTRADE_USERNAME",
         "TASTYTRADE_PASSWORD",
         "IBKR_USERNAME",
-        "ANTHROPIC_API_KEY"
+        "DEEPSEEK_API_KEY",
+        "ETA_CODEX_CLI",
+        "ETA_LLM_PROVIDER"
     ),
     [switch]$DryRun
 )

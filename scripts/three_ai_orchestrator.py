@@ -116,7 +116,7 @@ def _system_prompt_for(cat: TaskCategory, provider: ForceProvider) -> str:
 
 def print_parallel_report(tasks: list[ParallelTask]) -> None:
     print(f"\n{'=' * 70}")
-    print("  THREE-AI PARALLEL ORCHESTRATION REPORT")
+    print("  FORCE MULTIPLIER ORCHESTRATION REPORT")
     print(f"{'=' * 70}")
     for t in tasks:
         status = "✓" if t.success else "✗"
@@ -151,8 +151,8 @@ def daemon_mode(interval_sec: int = 300) -> None:
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description="Three-AI Parallel Orchestrator")
-    parser.add_argument("--task", type=str, help="Goal to dispatch across all three AIs")
+    parser = argparse.ArgumentParser(description="Codex + DeepSeek Force Multiplier Orchestrator")
+    parser.add_argument("--task", type=str, help="Goal to dispatch across the active AI lanes")
     parser.add_argument("--mode", choices=["once", "daemon"], default="once")
     parser.add_argument("--interval", type=int, default=300, help="Daemon interval in seconds")
     parser.add_argument("--categories", nargs="*", default=None, help="Specific categories (default: one per provider)")

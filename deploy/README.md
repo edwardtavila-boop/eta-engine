@@ -91,10 +91,12 @@ Use `--skip-systemd` if running BEFORE `install_vps.sh` completes.
 
 ## Required `.env` variables
 
-The install script appends a Claude layer stanza to `.env`. Fill these at minimum:
+The install script appends a Force Multiplier stanza to `.env`. Fill these at minimum:
 
 ```
-ANTHROPIC_API_KEY=sk-ant-...
+ETA_LLM_PROVIDER=deepseek
+ETA_ENABLE_CLAUDE_CLI=0
+DEEPSEEK_API_KEY=sk-...
 JARVIS_HOURLY_USD_BUDGET=1.00
 JARVIS_DAILY_USD_BUDGET=10.00
 JARVIS_DISTILL_SKIP_THRESHOLD=0.92
@@ -184,7 +186,7 @@ systemctl --user restart jarvis-live avengers-fleet eta-dashboard
 - systemd hardening: `NoNewPrivileges`, `PrivateTmp`, `ProtectSystem=strict`,
   `ProtectHome=read-only`, `ReadWritePaths` whitelist, `MemoryDenyWriteExecute`.
 - Hardening details in `obs/vps_hardening.py` (UFW + SSHD + fail2ban configs).
-- ANTHROPIC_API_KEY only read by the avengers-fleet service (never by bots).
+- Codex uses subscription CLI auth (`codex login`); no Anthropic key is required.
 
 ---
 
@@ -202,9 +204,10 @@ systemctl --user restart jarvis-live avengers-fleet eta-dashboard
 with a minimal env. The cronfile sets `PATH` explicitly — if you edited it,
 ensure `/usr/local/bin` + `/usr/bin` are still in the list.
 
-**ANTHROPIC_API_KEY set but no Claude calls**
-→ Check `avengers_heartbeat.json`. If `quota_state == FREEZE`, burn ceiling hit.
-Bump `JARVIS_HOURLY_USD_BUDGET` in `.env` and restart the service.
+**Codex or DeepSeek not ready**
+-> Run `python eta_engine/scripts/force_multiplier_health.py --live`. It should
+show 2/2 allowed providers ready: Codex + DeepSeek. Claude is intentionally
+disabled by operator policy.
 
 **Dashboard not loading**
 → `curl http://127.0.0.1:8000/health`. If that works but browser doesn't,

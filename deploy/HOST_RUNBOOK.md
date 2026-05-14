@@ -163,14 +163,16 @@ From here, follow `deploy/README.md`. Condensed:
 sudo apt install -y git python3.14 python3.14-venv cron build-essential
 git clone <your-fork> ~/eta_engine
 cd ~/eta_engine && ./deploy/install_vps.sh
-$EDITOR .env     # ANTHROPIC_API_KEY, active broker keys, PUSHOVER_*, TELEGRAM_*
+$EDITOR .env     # DEEPSEEK_API_KEY, active broker keys, PUSHOVER_*, TELEGRAM_*
 ```
 
 ### 3.1 .env minimum
 
 ```ini
 ETA_MODE=PAPER                 # start PAPER; flip to LIVE only after smoke
-ANTHROPIC_API_KEY=sk-ant-...
+ETA_LLM_PROVIDER=deepseek
+ETA_ENABLE_CLAUDE_CLI=0
+DEEPSEEK_API_KEY=sk-...
 IBKR_ACCOUNT_ID=DU...
 TASTY_ACCOUNT_NUMBER=...
 

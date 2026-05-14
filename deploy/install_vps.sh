@@ -155,19 +155,21 @@ else
   ok ".env exists (not touching)"
 fi
 
-# Append claude_layer + anthropic keys stanza if missing
-if ! grep -q "^ANTHROPIC_API_KEY=" .env; then
+# Append Force Multiplier stanza if missing
+if ! grep -q "^ETA_LLM_PROVIDER=" .env; then
   cat >> .env <<'ENV_APPEND'
 
 # ---------------------------------------------------------------------------
-# claude_layer / Avengers (appended by install_vps.sh)
+# Force Multiplier / Avengers (appended by install_vps.sh)
 # ---------------------------------------------------------------------------
-ANTHROPIC_API_KEY=                  # sk-ant-... (for BATMAN/ALFRED/ROBIN calls)
+ETA_LLM_PROVIDER=deepseek
+ETA_ENABLE_CLAUDE_CLI=0
+DEEPSEEK_API_KEY=
 JARVIS_HOURLY_USD_BUDGET=1.00
 JARVIS_DAILY_USD_BUDGET=10.00
 JARVIS_DISTILL_SKIP_THRESHOLD=0.92
 ENV_APPEND
-  ok "appended claude_layer stanza to .env"
+  ok "appended Force Multiplier stanza to .env"
 fi
 
 # ----------------------------------------------------------------------------

@@ -86,19 +86,14 @@ if (-not $SkipForceMultiplier) {
 
     $hasNpx = Get-Command npx -ErrorAction SilentlyContinue
     if ($hasNpx) {
-        Write-Host "  Claude CLI: npx available (Lead Architect)" -ForegroundColor Green
-    } else {
-        Write-Host "  Claude CLI: MISSING -- install: npm install -g @anthropic-ai/claude-code" -ForegroundColor Yellow
-    }
-    if ($hasNpx) {
-        Write-Host "  Codex CLI:  npx available (Systems Expert)" -ForegroundColor Green
+        Write-Host "  Codex CLI:  available (Lead Architect + Systems Expert)" -ForegroundColor Green
     } else {
         Write-Host "  Codex CLI:  MISSING -- install: npm install -g @openai/codex" -ForegroundColor Yellow
     }
 
     $codexCheck = (Get-Command codex -ErrorAction SilentlyContinue) -or (Get-Command npx -ErrorAction SilentlyContinue)
     if ($codexCheck) {
-        Write-Host "  Codex CLI:            npx available (Systems Expert)" -ForegroundColor Green
+        Write-Host "  Codex CLI:            available (Lead Architect + Systems Expert)" -ForegroundColor Green
     } else {
         Write-Host "  Codex CLI:            MISSING -- install: npm install -g @openai/codex" -ForegroundColor Yellow
     }
@@ -112,7 +107,7 @@ if (-not $SkipForceMultiplier) {
         }
     }
 
-    Write-Host "  NOTE: Run 'claude login' and 'codex login' on VPS if not yet authenticated" -ForegroundColor Gray
+    Write-Host "  NOTE: Run 'codex login' on VPS if not yet authenticated; Claude is disabled" -ForegroundColor Gray
 }
 
 # -- Verify secrets ----------------------------------------
@@ -580,13 +575,13 @@ Write-Host "  secrets/telegram_chat_id.txt      -- for Hermes Telegram push" -Fo
 Write-Host "  secrets/quantum_creds.json        -- for cloud quantum (D-Wave/IBM)" -ForegroundColor Gray
 Write-Host ""
 Write-Host "Force Multiplier (Wave-19):" -ForegroundColor White
-Write-Host "  Claude CLI: install + 'claude login' for Lead Architect tasks" -ForegroundColor Gray
-Write-Host "  Codex CLI:  install + 'codex login' for Systems Expert tasks" -ForegroundColor Gray
+Write-Host "  Codex CLI:  install + 'codex login' for Lead Architect + Systems Expert tasks" -ForegroundColor Gray
 Write-Host "  DeepSeek:   API key in .env for Worker Bee tasks (auto-fallback)" -ForegroundColor Gray
+Write-Host "  Claude:     disabled legacy lane; do not seed Anthropic keys" -ForegroundColor Gray
 Write-Host ""
 Write-Host "Next steps:" -ForegroundColor White
 Write-Host "  1. Fill in secrets files at $secretsDir" -ForegroundColor Gray
-Write-Host "  2. Authenticate CLIs: claude login && codex login" -ForegroundColor Gray
+Write-Host "  2. Authenticate Codex CLI: codex login" -ForegroundColor Gray
 Write-Host "  3. Start services: Get-Service Firm* | Start-Service" -ForegroundColor Gray
 Write-Host "  4. Verify tasks:   Get-ScheduledTask ETA-* | Select TaskName, State" -ForegroundColor Gray
 Write-Host "  5. Monitor health: tail -f $InstallRoot\firm_command_center\var\health\current_health.json" -ForegroundColor Gray

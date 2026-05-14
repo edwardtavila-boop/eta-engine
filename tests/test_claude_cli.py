@@ -1,21 +1,27 @@
-"""Quick validation — Claude CLI via npx (non-interactive)."""
+"""Legacy Claude lane policy tests.
+
+Claude/Anthropic is intentionally disabled. Codex owns the architect/review
+lane, so this module verifies the old Claude helper fails closed instead of
+making a live Anthropic call during pytest collection.
+"""
+
+from __future__ import annotations
 
 import sys
 
 sys.path.insert(0, r"C:\EvolutionaryTradingAlgo")
-from eta_engine.brain.cli_provider import call_claude, check_claude_available
 
-print(f"Claude available: {check_claude_available()}")
 
-print("Calling Claude (sonnet) — short test...")
-resp = call_claude(
-    system_prompt="Reply with exactly one sentence. Be concise.",
-    user_message="What is 2+2? Answer in one sentence.",
-    model="sonnet",
-    max_tokens=100,
-    timeout=60,
-)
+def test_claude_cli_disabled_by_default() -> None:
+    from eta_engine.brain.cli_provider import call_claude, check_claude_available
 
-print(f"  exit_code: {resp.exit_code}")
-print(f"  elapsed: {resp.elapsed_ms:.0f}ms")
-print(f"  text: {resp.text[:300]}")
+    assert check_claude_available() is False
+    response = call_claude(
+        system_prompt="Do not call external services.",
+        user_message="This should be blocked by policy.",
+        model="sonnet",
+        timeout=1,
+    )
+    assert response.provider == "claude"
+    assert response.exit_code == -3
+    assert "claude disabled by operator policy" in response.text.lower()

@@ -127,3 +127,42 @@ def test_fm_status_marks_policy_disabled_claude_as_skip(monkeypatch, capsys):
     out = capsys.readouterr().out
     assert "[SKIP]" in out
     assert "[FAIL] claude" not in out
+
+
+def test_live_codex_smoke_dry_run_writes_canonical_artifact(monkeypatch, tmp_path):
+    from eta_engine.deploy.scripts import live_codex_smoke
+
+    monkeypatch.setattr(live_codex_smoke, "check_codex_available", lambda: True)
+    monkeypatch.setattr(
+        live_codex_smoke,
+        "cli_provider_status",
+        lambda: {
+            "codex_available": True,
+            "codex_command": "codex",
+            "claude_disabled_by_policy": True,
+        },
+    )
+
+    rc, payload, out = live_codex_smoke.run_smoke(live=False, state_dir=tmp_path)
+
+    assert rc == 0
+    assert payload["lane"] == "codex"
+    assert payload["legacy_claude_policy"] == "disabled"
+    assert payload["ok"] is True
+    assert out == tmp_path / "live_codex_smoke.json"
+    assert out.exists()
+
+
+def test_legacy_claude_smoke_delegates_to_codex(monkeypatch):
+    from eta_engine.deploy.scripts import live_claude_smoke
+
+    called = {}
+
+    def fake_codex_main(argv=None):
+        called["argv"] = argv
+        return 0
+
+    monkeypatch.setattr(live_claude_smoke, "codex_main", fake_codex_main)
+
+    assert live_claude_smoke.main(["--json"]) == 0
+    assert called["argv"] == ["--json"]

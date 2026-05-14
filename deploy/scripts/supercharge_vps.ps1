@@ -161,7 +161,7 @@ function eta-dashboard { Get-Content "`$global:ETA_STATE\dashboard_payload.json"
 function ETA-tasks     { Get-ScheduledTask -TaskName "ETA-*" | Select-Object TaskName, State | Format-Table -AutoSize }
 function ETA-logs      { param(`$n = 50) Get-Content "`$global:ETA_LOGS\avengers-fleet.log" -Tail `$n -Wait }
 function ETA-restart   { Stop-ScheduledTask "ETA-Jarvis-Live","ETA-Avengers-Fleet","ETA-Dashboard" -ErrorAction SilentlyContinue; Start-Sleep -Seconds 2; Start-ScheduledTask "ETA-Jarvis-Live"; Start-ScheduledTask "ETA-Avengers-Fleet"; Start-ScheduledTask "ETA-Dashboard" }
-function ETA-test      { & `$global:ETA_PY -m deploy.scripts.live_claude_smoke }
+function ETA-test      { & `$global:ETA_PY -m deploy.scripts.live_codex_smoke }
 function ETA-task      { param([string]`$Task) & `$global:ETA_PY -m deploy.scripts.run_task `$Task --state-dir "`$global:ETA_STATE" --log-dir "`$global:ETA_LOGS" }
 function ETA-health    { Invoke-RestMethod http://127.0.0.1:8000/health }
 # --- END ETA aliases ---

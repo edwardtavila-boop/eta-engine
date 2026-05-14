@@ -1,8 +1,8 @@
 """
-Three-AI Coordination Sync — automated trigger for parallel AI cooperation.
+Force Multiplier Coordination Sync - automated Codex + DeepSeek cooperation.
 
-Runs Claude (architect), DeepSeek (worker), and Codex (verifier) in sequence
-on the current roadmap state. Each AI processes its lane and hands off to the next.
+Runs Codex architecture review, DeepSeek worker planning, and Codex verification
+against the current roadmap state. Claude/Anthropic is a disabled legacy lane.
 
 Intended to run as a scheduled task every 4 hours.
 """
@@ -30,24 +30,25 @@ def default_lock_path(state_root: Path | None = None) -> Path:
 
 
 def run_coordination_cycle(*, state_root: Path | None = None) -> dict[str, object]:
-    """One full coordination cycle across all three AIs."""
+    """One full coordination cycle across the active AI lanes."""
     from eta_engine.brain.model_policy import TaskCategory
     from eta_engine.brain.multi_model import force_multiplier_status, route_and_execute
 
     report = {
         "cycle_id": f"CYC-{datetime.now(UTC).strftime('%Y%m%dT%H%M%S')}",
         "ts": datetime.now(UTC).isoformat(),
+        "policy": "codex_lead_deepseek_worker_claude_disabled",
         "phases": {},
     }
 
-    # Phase 1: Claude reviews current state
+    # Phase 1: Codex reviews current state.
     t0 = time.perf_counter()
     status = force_multiplier_status()
     try:
         resp = route_and_execute(
             category=TaskCategory.ARCHITECTURE_DECISION,
             system_prompt=(
-                "You are Claude, Lead Architect. Review the current system "
+                "You are Codex, Lead Architect and Systems Expert. Review the current system "
                 "state and identify the highest-leverage next action."
             ),
             user_message=(
@@ -57,16 +58,16 @@ def run_coordination_cycle(*, state_root: Path | None = None) -> dict[str, objec
             ),
             max_tokens=500,
         )
-        report["phases"]["claude_review"] = {
+        report["phases"]["codex_architect_review"] = {
             "provider": resp.provider.value,
             "text": resp.text[:500],
             "elapsed_ms": (time.perf_counter() - t0) * 1000,
             "fallback": resp.fallback_used,
         }
     except Exception as e:
-        report["phases"]["claude_review"] = {"error": str(e)}
+        report["phases"]["codex_architect_review"] = {"error": str(e)}
 
-    # Phase 2: DeepSeek generates implementation
+    # Phase 2: DeepSeek generates implementation plan.
     t0 = time.perf_counter()
     try:
         resp = route_and_execute(
@@ -84,7 +85,7 @@ def run_coordination_cycle(*, state_root: Path | None = None) -> dict[str, objec
     except Exception as e:
         report["phases"]["deepseek_plan"] = {"error": str(e)}
 
-    # Phase 3: Codex verifies
+    # Phase 3: Codex verifies.
     t0 = time.perf_counter()
     try:
         resp = route_and_execute(
@@ -102,11 +103,11 @@ def run_coordination_cycle(*, state_root: Path | None = None) -> dict[str, objec
     except Exception as e:
         report["phases"]["codex_verify"] = {"error": str(e)}
 
-    # Write report
+    # Write report.
     state_root = state_root or workspace_roots.ETA_RUNTIME_STATE_DIR
     report_path = state_root / "three_ai_coordination.jsonl"
     report_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(report_path, "a") as f:
+    with open(report_path, "a", encoding="utf-8") as f:
         f.write(json.dumps(report, default=str) + "\n")
 
     return report
@@ -124,20 +125,20 @@ def main(argv: list[str] | None = None) -> int:
         effective_lock_path = args.lock_file or default_lock_path(args.state_root)
         lock = ProcessSingletonLock(effective_lock_path, name="three_ai_sync")
         if not lock.acquire():
-            print(f"Three-AI Coordination Sync already running; skip lock={effective_lock_path}")
+            print(f"Force Multiplier Coordination Sync already running; skip lock={effective_lock_path}")
             write_singleton_skip_report(state_root=args.state_root, lock_path=effective_lock_path, name="three_ai_sync")
             return 0
 
-    print("Three-AI Coordination Sync")
+    print("Force Multiplier Coordination Sync")
     print("=" * 50)
     if lock is not None:
         print(f"Lock: {lock.path}")
     report = run_coordination_cycle(state_root=args.state_root)
     for phase, data in report["phases"].items():
         if "error" in data:
-            print(f"  {phase}: ERROR — {data['error'][:80]}")
+            print(f"  {phase}: ERROR - {data['error'][:80]}")
         else:
-            print(f"  {phase}: {data['provider']} ({data['elapsed_ms']:.0f}ms) — {data['text'][:80]}...")
+            print(f"  {phase}: {data['provider']} ({data['elapsed_ms']:.0f}ms) - {data['text'][:80]}...")
     print(f"  Report: {report['cycle_id']}")
     print("=" * 50)
     if lock is not None:
