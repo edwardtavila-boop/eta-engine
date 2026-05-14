@@ -461,34 +461,46 @@ if (-not $SkipIbkrGateway) {
     $gatewayAuthorityScript = "$EtaEngineDir\deploy\scripts\set_gateway_authority.ps1"
     $twsWatchdogScript = "$EtaEngineDir\deploy\scripts\register_tws_watchdog_task.ps1"
     $ibkrRecoveryScript = "$EtaEngineDir\deploy\scripts\register_ibgateway_reauth_task.ps1"
+    $gatewayAuthorityReady = $false
 
     if (Test-Path $gatewayAuthorityScript) {
         if (-not $WhatIf) {
-            & $pwshPath -ExecutionPolicy Bypass -File $gatewayAuthorityScript -Apply -Role vps
-            Write-Host "  Marked: this VPS is the IBKR Gateway authority host" -ForegroundColor Green
+            $authorityOutput = & $pwshPath -ExecutionPolicy Bypass -File $gatewayAuthorityScript -Apply -Role vps 2>&1
+            if ($LASTEXITCODE -eq 0) {
+                $gatewayAuthorityReady = $true
+                Write-Host "  Marked: this VPS is the IBKR Gateway authority host" -ForegroundColor Green
+            } else {
+                Write-Host "  Skipping IBKR Gateway task registration: this host was not accepted as Gateway authority" -ForegroundColor Yellow
+                if ($authorityOutput) {
+                    Write-Host "    $authorityOutput" -ForegroundColor DarkYellow
+                }
+            }
         } else {
+            $gatewayAuthorityReady = $true
             Write-Host "  WOULD MARK: this VPS as the IBKR Gateway authority host" -ForegroundColor Gray
         }
     } else {
         Write-Host "  set_gateway_authority.ps1 not found - Gateway launch guard will remain unmarked" -ForegroundColor Yellow
     }
 
-    if (Test-Path $twsWatchdogScript) {
-        if (-not $WhatIf) {
-            & $pwshPath -ExecutionPolicy Bypass -File $twsWatchdogScript -Start
-            Write-Host "  Registered: ETA-TWS-Watchdog (startup + every 60s, release-guard freshness)" -ForegroundColor Green
+    if ($gatewayAuthorityReady) {
+        if (Test-Path $twsWatchdogScript) {
+            if (-not $WhatIf) {
+                & $pwshPath -ExecutionPolicy Bypass -File $twsWatchdogScript -Start
+                Write-Host "  Registered: ETA-TWS-Watchdog (startup + every 60s, release-guard freshness)" -ForegroundColor Green
+            }
+        } else {
+            Write-Host "  register_tws_watchdog_task.ps1 not found - skipping" -ForegroundColor Yellow
         }
-    } else {
-        Write-Host "  register_tws_watchdog_task.ps1 not found - skipping" -ForegroundColor Yellow
-    }
 
-    if (Test-Path $ibkrRecoveryScript) {
-        if (-not $WhatIf) {
-            & $pwshPath -ExecutionPolicy Bypass -File $ibkrRecoveryScript -Start
-            Write-Host "  Registered: ETA-IBGateway-Reauth (startup + every 5m, canonical recovery lane)" -ForegroundColor Green
+        if (Test-Path $ibkrRecoveryScript) {
+            if (-not $WhatIf) {
+                & $pwshPath -ExecutionPolicy Bypass -File $ibkrRecoveryScript -Start
+                Write-Host "  Registered: ETA-IBGateway-Reauth (startup + every 5m, canonical recovery lane)" -ForegroundColor Green
+            }
+        } else {
+            Write-Host "  register_ibgateway_reauth_task.ps1 not found - skipping" -ForegroundColor Yellow
         }
-    } else {
-        Write-Host "  register_ibgateway_reauth_task.ps1 not found - skipping" -ForegroundColor Yellow
     }
 }
 

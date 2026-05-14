@@ -206,6 +206,10 @@ def test_gateway_authority_helpers_block_workstation_ownership_and_clean_local_t
     assert "gateway_authority.json" in authority_text
     assert "$gatewayAuthorityScript = \"$EtaEngineDir\\deploy\\scripts\\set_gateway_authority.ps1\"" in bootstrap_text
     assert "-File $gatewayAuthorityScript -Apply -Role vps" in bootstrap_text
+    assert "$gatewayAuthorityReady = $false" in bootstrap_text
+    assert 'if ($LASTEXITCODE -eq 0)' in bootstrap_text
+    assert "Skipping IBKR Gateway task registration" in bootstrap_text
+    assert "if ($gatewayAuthorityReady)" in bootstrap_text
     assert bootstrap_text.index("set_gateway_authority.ps1") < bootstrap_text.index("register_tws_watchdog_task.ps1")
 
     assert "disable_non_authoritative_gateway_tasks.ps1" in disable_text
