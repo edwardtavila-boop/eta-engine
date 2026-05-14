@@ -1,5 +1,5 @@
 # EVOLUTIONARY TRADING ALGO // register_dashboard_proxy_watchdog_task.ps1
-# Registers a long-running watchdog for the public dashboard proxy bridge.
+# Registers a bounded watchdog tick for the public dashboard proxy bridge.
 #
 # The bridge task can exit cleanly while Cloudflare still depends on port 8421.
 # This watchdog probes 127.0.0.1:8421 and starts ETA-Proxy-8421 when the
@@ -10,6 +10,7 @@ param(
     [string]$TaskName = "ETA-Dashboard-Proxy-Watchdog",
     [string]$Root = "C:\EvolutionaryTradingAlgo",
     [string]$PythonExe = "",
+    # Retained for backward-compatible callers; Task Scheduler owns cadence.
     [int]$IntervalSeconds = 60,
     [int]$RecoveryIntervalMinutes = 5,
     [switch]$Start,
@@ -93,7 +94,7 @@ if ($existing) {
     Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
 }
 
-$arguments = "-m eta_engine.scripts.dashboard_proxy_watchdog --interval-s $IntervalSeconds"
+$arguments = "-m eta_engine.scripts.dashboard_proxy_watchdog --once --json"
 $action = New-ScheduledTaskAction -Execute $Python -Argument $arguments -WorkingDirectory $RootFull
 $recoveryTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes $RecoveryIntervalMinutes) -RepetitionDuration (New-TimeSpan -Days 3650)
 $triggers = @(
@@ -108,7 +109,7 @@ $settings = New-ScheduledTaskSettingsSet `
     -AllowStartIfOnBatteries `
     -DontStopIfGoingOnBatteries `
     -StartWhenAvailable `
-    -ExecutionTimeLimit ([TimeSpan]::Zero)
+    -ExecutionTimeLimit (New-TimeSpan -Minutes 2)
 $principal = New-ScheduledTaskPrincipal `
     -UserId "NT AUTHORITY\SYSTEM" `
     -LogonType ServiceAccount `

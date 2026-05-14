@@ -218,7 +218,9 @@ def test_dashboard_proxy_watchdog_task_registration_is_canonical() -> None:
     assert "RepetitionInterval (New-TimeSpan -Minutes $RecoveryIntervalMinutes)" in text
     assert "RepetitionDuration (New-TimeSpan -Days 3650)" in text
     assert "RestartCount 999" in text
-    assert "ExecutionTimeLimit ([TimeSpan]::Zero)" in text
+    assert "--once --json" in text
+    assert "--interval-s" not in text
+    assert "ExecutionTimeLimit (New-TimeSpan -Minutes 2)" in text
     assert "Start-ScheduledTask -TaskName $TaskName" in text
     assert "dashboard_proxy_watchdog" in text
 
