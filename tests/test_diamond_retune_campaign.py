@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 
 def test_campaign_turns_retune_queue_into_safe_ranked_worklist() -> None:
     from eta_engine.scripts import diamond_retune_campaign as campaign
@@ -218,3 +220,60 @@ def test_runner_records_timeout_as_keep_retuning(tmp_path) -> None:
     assert receipt["exit_code"] == 124
     assert receipt["status"] == "research_timeout_keep_retuning"
     assert receipt["safe_to_mutate_live"] is False
+
+
+def test_runner_rotates_targets_with_cursor_state(tmp_path) -> None:
+    from eta_engine.scripts import diamond_retune_runner as runner
+
+    def target(rank: int, bot_id: str) -> dict[str, object]:
+        return {
+            "rank": rank,
+            "bot_id": bot_id,
+            "symbol": "MNQ1",
+            "asset_sleeve": "equity_index",
+            "priority_score": 1000.0 - rank,
+            "next_command": (
+                "python -m eta_engine.scripts.run_research_grid "
+                f"--source registry --bots {bot_id} --report-policy runtime"
+            ),
+            "promotion_block": "broker_proof_required",
+            "live_mutation_policy": "paper_only_advisory",
+            "safe_to_mutate_live": False,
+        }
+
+    campaign = {
+        "generated_at_utc": "2026-05-14T20:00:00+00:00",
+        "targets": [
+            target(1, "mnq_futures_sage"),
+            target(2, "nq_futures_sage"),
+            target(3, "eur_sweep_reclaim"),
+        ],
+    }
+    cursor_path = tmp_path / "cursor.json"
+    seen: list[str] = []
+
+    def fake_executor(args: list[str], *, timeout_seconds: int) -> runner.CommandResult:
+        seen.append(args[args.index("--bots") + 1])
+        return runner.CommandResult(returncode=1, stdout="keep tuning", stderr="")
+
+    first = runner.run_campaign_once(
+        campaign,
+        out_path=tmp_path / "first.json",
+        cursor_path=cursor_path,
+        executor=fake_executor,
+    )
+    second = runner.run_campaign_once(
+        campaign,
+        out_path=tmp_path / "second.json",
+        cursor_path=cursor_path,
+        executor=fake_executor,
+    )
+
+    cursor = json.loads(cursor_path.read_text(encoding="utf-8"))
+    assert seen == ["mnq_futures_sage", "nq_futures_sage"]
+    assert first["selected_target"]["bot_id"] == "mnq_futures_sage"
+    assert second["selected_target"]["bot_id"] == "nq_futures_sage"
+    assert cursor["last_bot"] == "nq_futures_sage"
+    assert cursor["last_rank"] == 2
+    assert cursor["next_rank"] == 3
+    assert cursor["safe_to_mutate_live"] is False

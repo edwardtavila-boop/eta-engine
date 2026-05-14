@@ -29,6 +29,7 @@ from eta_engine.scripts import workspace_roots  # noqa: E402
 PYTHON_EXE = sys.executable
 DEFAULT_CAMPAIGN_PATH = workspace_roots.ETA_RUNTIME_STATE_DIR / "diamond_retune_campaign_latest.json"
 OUT_LATEST = workspace_roots.ETA_RUNTIME_STATE_DIR / "diamond_retune_runner_latest.json"
+DEFAULT_CURSOR_PATH = workspace_roots.ETA_RUNTIME_STATE_DIR / "diamond_retune_runner_cursor.json"
 ALLOWED_MODULE = "eta_engine.scripts.run_research_grid"
 
 
@@ -74,6 +75,44 @@ def select_target(
         msg = f"rank out of range: {rank}"
         raise ValueError(msg)
     return ordered[rank - 1]
+
+
+def _ordered_targets(campaign: dict[str, Any]) -> list[dict[str, Any]]:
+    targets_raw = campaign.get("targets")
+    targets = [row for row in targets_raw if isinstance(row, dict)] if isinstance(targets_raw, list) else []
+    return sorted(targets, key=lambda row: int(_as_float(row.get("rank"), 999999)))
+
+
+def _load_cursor(path: Path | None) -> dict[str, Any]:
+    if path is None or not path.exists():
+        return {}
+    try:
+        loaded = _load_json(path)
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return loaded if isinstance(loaded, dict) else {}
+
+
+def _cursor_rank(campaign: dict[str, Any], cursor: dict[str, Any]) -> int:
+    ordered = _ordered_targets(campaign)
+    if not ordered:
+        raise ValueError("retune campaign has no targets")
+    requested = int(_as_float(cursor.get("next_rank"), 1))
+    ranks = [int(_as_float(row.get("rank"), i + 1)) for i, row in enumerate(ordered)]
+    if requested in ranks:
+        return requested
+    return ranks[0]
+
+
+def _next_rank_after(campaign: dict[str, Any], selected_rank: int) -> int | None:
+    ranks = [int(_as_float(row.get("rank"), i + 1)) for i, row in enumerate(_ordered_targets(campaign))]
+    if not ranks:
+        return None
+    try:
+        idx = ranks.index(selected_rank)
+    except ValueError:
+        return ranks[0]
+    return ranks[(idx + 1) % len(ranks)]
 
 
 def command_args_for_target(target: dict[str, Any]) -> list[str]:
@@ -129,11 +168,13 @@ def run_campaign_once(
     *,
     out_path: Path = OUT_LATEST,
     bot_id: str | None = None,
-    rank: int = 1,
+    rank: int | None = None,
+    cursor_path: Path | None = None,
     timeout_seconds: int = 1800,
     executor: Callable[[list[str]], CommandResult] | None = None,
 ) -> dict[str, Any]:
-    target = select_target(campaign, bot_id=bot_id, rank=rank)
+    effective_rank = rank if rank is not None else _cursor_rank(campaign, _load_cursor(cursor_path))
+    target = select_target(campaign, bot_id=bot_id, rank=effective_rank)
     args = command_args_for_target(target)
     started = datetime.now(UTC)
     run = executor or _subprocess_executor
@@ -167,6 +208,20 @@ def run_campaign_once(
     }
     workspace_roots.ensure_parent(out_path)
     out_path.write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    if cursor_path is not None and bot_id is None and rank is None:
+        selected_rank = int(_as_float(target.get("rank"), effective_rank))
+        cursor = {
+            "kind": "eta_diamond_retune_runner_cursor",
+            "updated_at_utc": finished.isoformat(),
+            "campaign_generated_at_utc": campaign.get("generated_at_utc"),
+            "last_bot": target.get("bot_id"),
+            "last_rank": selected_rank,
+            "next_rank": _next_rank_after(campaign, selected_rank),
+            "n_targets": len(_ordered_targets(campaign)),
+            "safe_to_mutate_live": False,
+        }
+        workspace_roots.ensure_parent(cursor_path)
+        cursor_path.write_text(json.dumps(cursor, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return receipt
 
 
@@ -174,8 +229,9 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--campaign-path", type=Path, default=DEFAULT_CAMPAIGN_PATH)
     parser.add_argument("--out-path", type=Path, default=OUT_LATEST)
+    parser.add_argument("--cursor-path", type=Path, default=DEFAULT_CURSOR_PATH)
     parser.add_argument("--bot", default=None)
-    parser.add_argument("--rank", type=int, default=1)
+    parser.add_argument("--rank", type=int, default=None)
     parser.add_argument("--timeout-seconds", type=int, default=1800)
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)
@@ -184,6 +240,7 @@ def main(argv: list[str] | None = None) -> int:
         out_path=args.out_path,
         bot_id=args.bot,
         rank=args.rank,
+        cursor_path=args.cursor_path,
         timeout_seconds=args.timeout_seconds,
     )
     if args.json:
