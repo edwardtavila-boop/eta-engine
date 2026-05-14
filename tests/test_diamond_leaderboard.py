@@ -190,6 +190,35 @@ def test_spot_bot_disqualified_from_prop_ready_wave16() -> None:
     assert by_id["eur_sweep_reclaim"].prop_ready
 
 
+def test_broker_truth_disqualifies_prop_ready_wave26() -> None:
+    """A bot cannot be PROP_READY if broker PnL contradicts its score."""
+    from eta_engine.scripts import diamond_leaderboard as lb
+
+    good = _entry("met_sweep_reclaim", n=200, avg_r=0.6, composite=8.0)
+    good.sources.update(
+        {
+            "promotion_verdict": "PROMOTE",
+            "broker_total_realized_pnl": 250.0,
+            "broker_profit_factor": 1.8,
+        },
+    )
+    phantom = _entry("mnq_futures_sage", n=200, avg_r=0.8, composite=12.0)
+    phantom.sources.update(
+        {
+            "promotion_verdict": "REJECT",
+            "broker_total_realized_pnl": -7662.0,
+            "broker_profit_factor": 0.52,
+        },
+    )
+
+    lb._evaluate_prop_ready([phantom, good])
+    assert not phantom.prop_ready
+    assert any("promotion gate REJECT" in d for d in phantom.prop_ready_disqualified_for)
+    assert any("broker PnL<=0" in d for d in phantom.prop_ready_disqualified_for)
+    assert any("broker profit factor<" in d for d in phantom.prop_ready_disqualified_for)
+    assert good.prop_ready
+
+
 def test_ibkr_futures_eligible_helper() -> None:
     """Sanity check on the upstream helper: futures bots pass, spot bots fail."""
     from eta_engine.feeds.capital_allocator import is_ibkr_futures_eligible

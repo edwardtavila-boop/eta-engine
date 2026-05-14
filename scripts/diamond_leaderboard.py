@@ -88,6 +88,8 @@ MIN_PROP_READY_N = 100
 
 #: Minimum avg_r for PROP_READY eligibility.
 MIN_PROP_READY_AVG_R = 0.20
+MIN_PROP_READY_PROFIT_FACTOR = 1.10
+MIN_PROP_READY_REALIZED_PNL = 0.0
 
 #: Sample-size cap so a 5,000-trade noise bot doesn't sneak past a
 #: 200-trade strong-edge bot just on √n.
@@ -218,6 +220,7 @@ def _build_entry(
     sizing: dict[str, Any] | None,
     watchdog: dict[str, Any] | None,
     direction: dict[str, Any] | None,
+    promotion: dict[str, Any] | None = None,
 ) -> LeaderboardEntry:
     e = LeaderboardEntry(bot_id=bot_id)
 
@@ -293,6 +296,20 @@ def _build_entry(
         "watchdog_classification_r": (watchdog or {}).get("classification_r"),
         "direction_verdict": (direction or {}).get("verdict"),
     }
+    if promotion is not None:
+        e.n_days = int(promotion.get("n_calendar_days") or 0)
+        e.temporal_mul = _temporal_multiplier(e.n_days)
+        e.sources.update(
+            {
+                "promotion_verdict": promotion.get("verdict"),
+                "promotion_rationale": promotion.get("rationale"),
+                "broker_trade_count": promotion.get("n_trades"),
+                "broker_total_realized_pnl": promotion.get("total_realized_pnl"),
+                "broker_profit_factor": promotion.get("profit_factor"),
+                "broker_gross_profit": promotion.get("gross_profit"),
+                "broker_gross_loss": promotion.get("gross_loss"),
+            },
+        )
     return e
 
 
@@ -334,6 +351,25 @@ def _evaluate_prop_ready(entries: list[LeaderboardEntry]) -> None:
             disqual.append("watchdog CRITICAL")
         if e.sources.get("sizing_verdict") == "SIZING_BREACHED":
             disqual.append("sizing BREACHED")
+        promotion_verdict = e.sources.get("promotion_verdict")
+        if promotion_verdict and promotion_verdict != "PROMOTE":
+            disqual.append(f"promotion gate {promotion_verdict}")
+        broker_pnl = e.sources.get("broker_total_realized_pnl")
+        if broker_pnl is not None:
+            try:
+                if float(broker_pnl) <= MIN_PROP_READY_REALIZED_PNL:
+                    disqual.append(f"broker PnL<=0 (have ${float(broker_pnl):+.2f})")
+            except (TypeError, ValueError):
+                disqual.append("broker PnL unavailable")
+        broker_pf = e.sources.get("broker_profit_factor")
+        if broker_pf is not None:
+            try:
+                if float(broker_pf) < MIN_PROP_READY_PROFIT_FACTOR:
+                    disqual.append(
+                        f"broker profit factor<{MIN_PROP_READY_PROFIT_FACTOR:.2f} (have {float(broker_pf):.2f})",
+                    )
+            except (TypeError, ValueError):
+                disqual.append("broker profit factor unavailable")
         # Wave-16: IBKR-futures-only mandate — spot bots can't go prop
         if not is_ibkr_futures_eligible(e.bot_id):
             disqual.append(
@@ -359,7 +395,7 @@ def run() -> dict[str, Any]:
         DIAMOND_BOTS,
     )
 
-    sizing, watchdog, direction, _promotion = _gather_signals()
+    sizing, watchdog, direction, promotion = _gather_signals()
 
     entries: list[LeaderboardEntry] = []
     for bot_id in sorted(DIAMOND_BOTS):
@@ -368,6 +404,7 @@ def run() -> dict[str, Any]:
             sizing.get(bot_id),
             watchdog.get(bot_id),
             direction.get(bot_id),
+            promotion.get(bot_id),
         )
         # Symmetry bonus from direction verdict
         e.symmetry_bonus = _symmetry_bonus(
@@ -384,7 +421,8 @@ def run() -> dict[str, Any]:
         # is high we assume reasonable temporal coverage. A real n_days
         # lookup would come from promotion_gate; this is a safe approximation.
         # For now, full credit.
-        e.temporal_mul = 1.0 if e.n_trades >= 100 else (e.n_trades / 100.0)
+        if not e.n_days:
+            e.temporal_mul = 1.0 if e.n_trades >= 100 else (e.n_trades / 100.0)
         composite *= e.temporal_mul
         e.composite_score = round(composite, 4)
         # Build a one-line rationale

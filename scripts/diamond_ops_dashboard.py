@@ -79,6 +79,10 @@ class DiamondSynthesis:
     cum_usd: float | None = None
     n_trades: int | None = None
     promotion_verdict: str | None = None
+    promotion_rationale: str | None = None
+    broker_total_realized_pnl: float | None = None
+    broker_profit_factor: float | None = None
+    broker_trade_count: int | None = None
     sizing_verdict: str | None = None
     watchdog_classification: str | None = None
     watchdog_classification_usd: str | None = None
@@ -169,6 +173,13 @@ _PRIORITY_ORDER = {
 }
 
 
+def _float_or_none(value: Any) -> float | None:  # noqa: ANN401
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def _synthesize(
     bot_id: str,
     enrolled: bool,
@@ -202,6 +213,13 @@ def _synthesize(
         syn.watchdog_classification_r = watchdog.get("classification_r")
     if promotion is not None:
         syn.promotion_verdict = promotion.get("verdict")
+        syn.promotion_rationale = promotion.get("rationale")
+        syn.broker_total_realized_pnl = _float_or_none(promotion.get("total_realized_pnl"))
+        syn.broker_profit_factor = _float_or_none(promotion.get("profit_factor"))
+        try:
+            syn.broker_trade_count = int(promotion.get("n_trades") or 0)
+        except (TypeError, ValueError):
+            syn.broker_trade_count = None
     if feed_sanity is not None:
         syn.feed_sanity_verdict = feed_sanity.get("verdict")
         syn.feed_sanity_flags = list(feed_sanity.get("flags") or [])
@@ -210,6 +228,8 @@ def _synthesize(
     cls = syn.watchdog_classification or "INCONCLUSIVE"
     sz = syn.sizing_verdict or "INSUFFICIENT_DATA"
     fs = syn.feed_sanity_verdict or "INSUFFICIENT_DATA"
+    broker_pnl_failed = syn.broker_total_realized_pnl is not None and syn.broker_total_realized_pnl <= 0
+    broker_pf_failed = syn.broker_profit_factor is not None and syn.broker_profit_factor < 1.10
 
     if fs == "FLAGGED" and any("STUCK_PRICE" in f or "ZERO_PNL_ACTIVITY" in f for f in syn.feed_sanity_flags):
         # Wave-17: feed-sanity FLAGGED with stuck-price or zero-PnL is a
@@ -244,6 +264,16 @@ def _synthesize(
                 "sizing BREACHED — single stopout breaches USD floor; halve risk_per_trade_pct in the preset",
             )
         syn.recommended_action = " | ".join(actions)
+    elif broker_pnl_failed or broker_pf_failed:
+        syn.priority = "P1_REVIEW"
+        pnl = syn.broker_total_realized_pnl
+        pf = syn.broker_profit_factor
+        pnl_s = f"${pnl:+.2f}" if pnl is not None else "unavailable"
+        pf_s = f"{pf:.2f}" if pf is not None else "unavailable"
+        syn.recommended_action = (
+            f"broker proof failed (PnL {pnl_s}, PF {pf_s}) - keep paper-only; "
+            "retune the setup or demote until real closes prove edge"
+        )
     elif sz == "SIZING_FRAGILE" or cls == "WARN":
         syn.priority = "P1_REVIEW"
         if sz == "SIZING_FRAGILE":

@@ -31,6 +31,8 @@ Hard gates (any FAIL → REJECT, do not promote):
   H3. ``win_rate_pct >= 45``    (mechanic not entirely lopsided)
   H4. ``n_calendar_days >= 5``  (regime / day-of-week diversity)
   H5. ``n_sessions_positive >= 2`` (not session-concentrated)
+  H6. ``total_realized_pnl > 0`` (broker-dollar proof, not just R-score)
+  H7. ``profit_factor >= 1.10``  (wins must outweigh losses in dollars)
 
 Soft gates (any FAIL → NEEDS_MORE_DATA, recheck next cycle):
 
@@ -94,6 +96,8 @@ INTERNAL_BOT_IDS = frozenset({"t1", "propagate_bot"})
 
 # Minimum sample size before a bot is even considered a candidate.
 MIN_SAMPLE_FOR_CONSIDERATION = 50
+MIN_TOTAL_REALIZED_PNL = 0.0
+MIN_PROFIT_FACTOR = 1.10
 
 
 # ────────────────────────────────────────────────────────────────────
@@ -115,6 +119,8 @@ HARD_GATES = (
     Gate("H3_win_rate", "win_rate_pct >= 45", 45.0, "hard"),
     Gate("H4_calendar_days", "n_calendar_days >= 5", 5, "hard"),
     Gate("H5_sessions_positive", "n_sessions_positive >= 2", 2, "hard"),
+    Gate("H6_total_realized_pnl", "total_realized_pnl > $0", MIN_TOTAL_REALIZED_PNL, "hard"),
+    Gate("H7_profit_factor", "profit_factor >= 1.10", MIN_PROFIT_FACTOR, "hard"),
 )
 
 SOFT_GATES = (
@@ -136,6 +142,10 @@ class BotScorecard:
     n_calendar_days: int = 0
     n_sessions_positive: int = 0
     max_single_day_share: float = 0.0
+    total_realized_pnl: float = 0.0
+    gross_profit: float = 0.0
+    gross_loss: float = 0.0
+    profit_factor: float | None = None
     first_day: str = ""
     last_day: str = ""
     sessions_summary: dict[str, dict[str, float]] = field(default_factory=dict)
@@ -144,6 +154,15 @@ class BotScorecard:
     verdict: str = "REJECT"
     is_existing_diamond: bool = False
     rationale: str = ""
+
+
+def _realized_pnl(row: dict[str, Any]) -> float:
+    extra = row.get("extra") if isinstance(row.get("extra"), dict) else {}
+    raw = row.get("realized_pnl", extra.get("realized_pnl"))
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return 0.0
 
 
 # ────────────────────────────────────────────────────────────────────
@@ -186,9 +205,11 @@ def _score_bot(bot_id: str, trades: list[dict[str, Any]]) -> BotScorecard:
     from eta_engine.brain.jarvis_v3 import trade_close_sanitizer  # noqa: PLC0415
 
     rs: list[float] = []
+    pnl_values: list[float] = []
     days: Counter = Counter()
     per_session: dict[str, list[float]] = defaultdict(list)
     for t in trades:
+        pnl_values.append(_realized_pnl(t))
         status, value = trade_close_sanitizer.classify(t)
         if status == "suspect" or status == "none" or value is None:
             continue
@@ -207,6 +228,10 @@ def _score_bot(bot_id: str, trades: list[dict[str, Any]]) -> BotScorecard:
     chk.cumulative_r = round(sum(rs), 4)
     chk.avg_r = round(sum(rs) / len(rs), 4)
     chk.win_rate_pct = round(100.0 * sum(1 for r in rs if r > 0) / len(rs), 2)
+    chk.total_realized_pnl = round(sum(pnl_values), 2)
+    chk.gross_profit = round(sum(max(pnl, 0.0) for pnl in pnl_values), 2)
+    chk.gross_loss = round(abs(sum(min(pnl, 0.0) for pnl in pnl_values)), 2)
+    chk.profit_factor = round(chk.gross_profit / chk.gross_loss, 4) if chk.gross_loss > 0 else None
     chk.n_calendar_days = len(days)
     chk.n_sessions_positive = sum(1 for srs in per_session.values() if srs and sum(srs) / len(srs) > 0)
     chk.max_single_day_share = round(
@@ -235,6 +260,9 @@ def _score_bot(bot_id: str, trades: list[dict[str, Any]]) -> BotScorecard:
         "H3_win_rate": chk.win_rate_pct >= 45.0,
         "H4_calendar_days": chk.n_calendar_days >= 5,
         "H5_sessions_positive": chk.n_sessions_positive >= 2,
+        "H6_total_realized_pnl": chk.total_realized_pnl > MIN_TOTAL_REALIZED_PNL,
+        "H7_profit_factor": chk.gross_profit > 0
+        and (chk.gross_loss == 0 or (chk.profit_factor is not None and chk.profit_factor >= MIN_PROFIT_FACTOR)),
     }
     chk.soft_gate_results = {
         "S1_n_trades_high": chk.n_trades >= 500,

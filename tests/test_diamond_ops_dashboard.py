@@ -260,3 +260,33 @@ def test_safe_run_swallows_exceptions() -> None:
 
     out = dd._safe_run("crashy_audit", _raises)
     assert out == {}
+
+
+def test_broker_truth_failure_is_human_visible_review_action() -> None:
+    from eta_engine.scripts import diamond_ops_dashboard as dash
+
+    syn = dash._synthesize(
+        "mnq_futures_sage",
+        enrolled=True,
+        promotion={
+            "verdict": "REJECT",
+            "rationale": "hard gates failed: H6_total_realized_pnl, H7_profit_factor",
+            "n_trades": 126,
+            "total_realized_pnl": -1000.5,
+            "profit_factor": 0.5,
+        },
+        sizing={"cum_r": 126.2, "cum_usd": -1000.5, "n_trades_with_pnl": 126, "verdict": "SIZING_OK"},
+        watchdog={
+            "classification": "HEALTHY",
+            "classification_usd": "HEALTHY",
+            "classification_r": "HEALTHY",
+        },
+        direction={"verdict": "SHORT_DOMINANT", "long": {"avg_r": -0.2}, "short": {"avg_r": 0.4}},
+        feed_sanity={"verdict": "OK", "flags": []},
+    )
+
+    assert syn.priority == "P1_REVIEW"
+    assert syn.broker_total_realized_pnl == -1000.5
+    assert syn.broker_profit_factor == 0.5
+    assert "broker proof failed" in syn.recommended_action
+    assert "keep paper-only" in syn.recommended_action

@@ -26,6 +26,7 @@ def _write_jsonl(path: Path, rows: list[dict]) -> None:
             # gate's logic on real production-grade records.
             tagged = dict(r)
             tagged.setdefault("data_source", "live")
+            tagged.setdefault("realized_pnl", float(tagged.get("realized_r") or 0.0) * 100.0)
             fh.write(json.dumps(tagged) + "\n")
 
 
@@ -155,6 +156,31 @@ def test_low_avg_r_fails_H2(tmp_path: Path, monkeypatch: object) -> None:
     cards = {c["bot_id"]: c for c in summary["candidates"]}
     assert cards["noise_bot"]["verdict"] == "REJECT"
     assert "H2_avg_r" in cards["noise_bot"]["rationale"]
+
+
+def test_positive_r_but_negative_broker_pnl_fails_hard_gate(
+    tmp_path: Path,
+    monkeypatch: object,
+) -> None:
+    """Broker-dollar truth wins over a pretty R curve."""
+    rows = []
+    sessions = ("overnight", "morning", "afternoon", "close")
+    for i in range(300):
+        rows.append(
+            {
+                "bot_id": "phantom_edge",
+                "signal_id": f"p{i}",
+                "realized_r": 0.5,
+                "realized_pnl": -10.0,
+                "ts": _ts(days_ago=i % 16),
+                "session": sessions[i % 4],
+            }
+        )
+    summary = _run_with_data(rows, [], tmp_path, monkeypatch)
+    cards = {c["bot_id"]: c for c in summary["candidates"]}
+    assert cards["phantom_edge"]["verdict"] == "REJECT"
+    assert cards["phantom_edge"]["total_realized_pnl"] < 0
+    assert "H6_total_realized_pnl" in cards["phantom_edge"]["rationale"]
 
 
 def test_under_min_consideration_sample_is_dropped(
