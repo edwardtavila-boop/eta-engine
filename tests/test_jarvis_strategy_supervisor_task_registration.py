@@ -66,6 +66,10 @@ def test_supervisor_task_runner_sets_env_and_redirects_logs() -> None:
     assert "ETA_FLEET_POSITION_CAP_BTC=" in text
     assert "ETA_FLEET_POSITION_CAP_ETH=" in text
     assert "ETA_SUPERVISOR_STARTING_CASH=50000" in text
+    assert "ETA_KILLSWITCH_TIMEZONE=America/New_York" in text
+    assert "ETA_KILLSWITCH_EQUITY_USD=50000" in text
+    assert "ETA_KILLSWITCH_DAILY_LIMIT_USD=-1000" in text
+    assert "ETA_KILLSWITCH_DISABLED=1" not in text
     assert "scripts\\jarvis_strategy_supervisor.py" in text
     assert "jarvis_strategy_supervisor.stdout.log" in text
     assert "jarvis_strategy_supervisor.stderr.log" in text

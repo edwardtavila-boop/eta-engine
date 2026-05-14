@@ -181,6 +181,13 @@ rem route. broker_router uses configs\bot_broker_routing.yaml as source of
 rem truth, so Alpaca crypto is not accidentally filtered by the futures list.
 set "ETA_PAPER_LIVE_ALLOWED_SYMBOLS=MNQ,MNQ1,NQ,NQ1,ES,ES1,MES,MES1,RTY,RTY1,M2K,M2K1,MYM,MYM1,YM,YM1,GC,GC1,MGC,MGC1,CL,CL1,MCL,MCL1,NG,NG1,ZN,ZN1,6E,6E1,M6E,M6E1"
 set "ETA_SUPERVISOR_STARTING_CASH=50000"
+rem Paper-live soak risk profile: keep the daily kill switch enabled,
+rem but align it to the $50k paper/prop-prep account and the operator's
+rem Atlanta/New-York trading day instead of daily_loss_killswitch.py's
+rem fallback $5k/-$300 defaults.
+set "ETA_KILLSWITCH_TIMEZONE=America/New_York"
+set "ETA_KILLSWITCH_EQUITY_USD=50000"
+set "ETA_KILLSWITCH_DAILY_LIMIT_USD=-1000"
 set "ETA_BROKER_ROUTER_PENDING_DIR=%ETA_ROOT%\var\eta_engine\state\router\pending"
 rem IBKR Gateway can take several seconds to promote bracket legs from PendingSubmit.
 set "ETA_IBKR_SUBMIT_CONFIRM_SECONDS=10"

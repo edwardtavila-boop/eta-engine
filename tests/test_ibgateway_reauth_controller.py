@@ -86,6 +86,8 @@ def test_ibc_recovery_task_without_credentials_requires_operator_action(tmp_path
     password_file.write_text("REAL_IBKR_PASSWORD_HERE\n", encoding="utf-8")
     credential_json.write_text(json.dumps({"username": "paper_user"}), encoding="utf-8")
     started: list[str] = []
+    for env_name in ("ETA_IBC_LOGIN_ID", "ETA_IBC_PASSWORD"):
+        monkeypatch.delenv(env_name, raising=False)
     monkeypatch.setattr(controller, "_scheduled_task_exists", lambda _task_name: True)
     monkeypatch.setattr(controller, "_scheduled_task_is_runnable", lambda _task_name: True)
     monkeypatch.setattr(controller, "_scheduled_task_uses_ibc", lambda _task_name: True)
