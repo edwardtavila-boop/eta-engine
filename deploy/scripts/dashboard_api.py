@@ -115,14 +115,6 @@ DASHBOARD_CARD_REGISTRY = (
         "stale_after_s": 60,
     },
     {
-        "id": "cc-strategy-supercharge-results",
-        "title": "Strategy Supercharge Results",
-        "source": "endpoint",
-        "endpoint": "/api/jarvis/strategy_supercharge_results",
-        "required": True,
-        "stale_after_s": 60,
-    },
-    {
         "id": "cc-diamond-retune-status",
         "title": "Diamond Retune Status",
         "source": "endpoint",
@@ -4046,8 +4038,6 @@ def dashboard_payload(response: Response) -> dict:
     payload["bot_strategy_readiness"] = _bot_strategy_readiness_payload()
     payload["symbol_intelligence"] = _load_symbol_intelligence_snapshot()
     payload["diamond_retune_status"] = _load_diamond_retune_status()
-    payload["strategy_supercharge_manifest"] = _strategy_supercharge_manifest_payload()
-    payload["strategy_supercharge_results"] = _strategy_supercharge_results_payload()
     # Additive: cached broker reality for first paint. Fresh IBKR probes can
     # stall when Gateway is wedged, so /api/dashboard must not block on them.
     # A degraded cached read must never tank the front-page bootstrap.

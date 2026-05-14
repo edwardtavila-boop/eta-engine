@@ -218,6 +218,9 @@ class TestStatusPage:
         assert "Retune Factory" in html
         assert "need broker proof" in html
         assert "/api/jarvis/diamond_retune_status" in html
+        assert 'data-panel-id="cc-strategy-supercharge-results"' not in html
+        assert 'id="strategyNearMisses"' not in html
+        assert 'id="strategyRetuneQueue"' not in html
         assert "target_exit_summary" in html
         assert "broker_bracket_audit" in html
         assert "primary_unprotected_position" in html
@@ -403,12 +406,13 @@ class TestStatusPage:
         assert "setAttribute('data-readiness', blockedData > 0 ? 'blocked' : 'ready')" in js
         assert "setAttribute('data-readiness', 'degraded')" in js
 
-    def test_command_center_renders_strategy_supercharge_panel(self):
+    def test_command_center_keeps_supercharge_modules_out_of_static_dashboard(self):
         root = Path(__file__).resolve().parent.parent / "deploy" / "status_page"
         html = (root / "index.html").read_text(encoding="utf-8")
         js = (root / "js" / "command_center.js").read_text(encoding="utf-8")
         panels = (root / "js" / "panels.js").read_text(encoding="utf-8")
 
+        # Direct research modules remain available for explicit operator use.
         assert "StrategySuperchargeManifestPanel" in js
         assert "/api/jarvis/strategy_supercharge_manifest" in js
         assert "next_batch" in js
@@ -419,10 +423,9 @@ class TestStatusPage:
         assert "near_misses" in js
         assert "retune_queue" in js
         assert "commandCenterContractAnchors" in html
-        assert "cc-strategy-supercharge-results" in html
-        # The supercharge panel is rendered by JS at runtime; the static HTML
-        # keeps only hidden contract anchors while FastAPI serves the JS files
-        # separately. Validate both the runtime JS and the static anchor.
+        assert "cc-strategy-supercharge-results" not in html
+        assert 'id="strategyNearMisses"' not in html
+        assert 'id="strategyRetuneQueue"' not in html
         assert "id.includes('supercharge')" in panels
 
     def test_status_page_mobile_fleet_and_equity_contracts(self):

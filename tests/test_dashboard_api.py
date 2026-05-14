@@ -549,7 +549,31 @@ class TestDashboardAPI:
         assert "operator_queue" in r.json()
         assert "paper_live_transition" in r.json()
         assert "symbol_intelligence" in r.json()
+        assert "strategy_supercharge_manifest" not in r.json()
+        assert "strategy_supercharge_results" not in r.json()
         assert "no-store" in r.headers["Cache-Control"]
+
+    def test_dashboard_first_paint_does_not_build_heavy_supercharge_artifacts(
+        self,
+        app_client,
+        monkeypatch,
+    ):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        def fail_manifest() -> dict:
+            raise AssertionError("dashboard bootstrap must not build heavy manifest")
+
+        def fail_results() -> dict:
+            raise AssertionError("dashboard bootstrap must not build heavy results")
+
+        monkeypatch.setattr(mod, "_strategy_supercharge_manifest_payload", fail_manifest)
+        monkeypatch.setattr(mod, "_strategy_supercharge_results_payload", fail_results)
+
+        r = app_client.get("/api/dashboard")
+
+        assert r.status_code == 200
+        assert "strategy_supercharge_manifest" not in r.json()
+        assert "strategy_supercharge_results" not in r.json()
 
     def test_dashboard_includes_symbol_intelligence_snapshot(self, app_client, tmp_path):
         state = tmp_path / "state"
@@ -1279,14 +1303,13 @@ class TestDashboardAPI:
 
         cards = {card["id"]: card for card in data["cards"]}
         assert "cc-verdict-stream" in cards
-        assert "cc-strategy-supercharge-results" in cards
         assert "cc-paper-live-transition" in cards
         assert "fl-roster" in cards
         assert "fl-controls" in cards
         assert "fl-equity-curve" in cards
         assert cards["cc-verdict-stream"]["source"] == "sse"
         assert cards["cc-paper-live-transition"]["endpoint"] == "/api/jarvis/paper_live_transition"
-        assert cards["cc-strategy-supercharge-results"]["endpoint"] == "/api/jarvis/strategy_supercharge_results"
+        assert "cc-strategy-supercharge-results" not in cards
         assert cards["cc-diamond-retune-status"]["endpoint"] == "/api/jarvis/diamond_retune_status"
         assert cards["fl-controls"]["source"] == "client"
         assert cards["fl-roster"]["endpoint"] == "/api/bot-fleet?since_days=1"
