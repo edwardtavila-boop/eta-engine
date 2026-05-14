@@ -24,9 +24,38 @@ WORKSPACE_ROOT = Path(r"C:\EvolutionaryTradingAlgo")
 ELITE_DASHBOARD_PATH = WORKSPACE_ROOT / "firm_command_center" / "var" / "elite_dashboard.html"
 SOAK_DASHBOARD_PATH = STATUS_PAGE_DIR / "soak_dashboard.html"
 HTML_PATHS = (ELITE_DASHBOARD_PATH, SOAK_DASHBOARD_PATH)
+OPS_DASHBOARD_ROUTE = "Ops Dashboard: use the 8421 operator route for broker-backed IBKR/Tradovate PnL."
 
 app = FastAPI(title="ETA Paper Soak Dashboard")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+
+
+def _route_context_banner(source: Path) -> str:
+    """Small trust banner so the soak page is not mistaken for the ops deck."""
+    return (
+        '<div style="position:sticky;top:0;z-index:9999;'
+        "display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:wrap;"
+        "padding:10px 14px;background:rgba(2,6,14,.92);"
+        "border-bottom:1px solid rgba(96,165,250,.32);"
+        "box-shadow:0 12px 34px rgba(0,0,0,.28);"
+        "font:700 12px/1.35 Segoe UI,system-ui,sans-serif;"
+        'letter-spacing:.03em;color:#dbeafe;text-align:center">'
+        '<span style="color:#67e8f9;text-transform:uppercase">Paper Soak / Diamond Factory</span>'
+        '<span style="color:#94a3b8">broker-backed ops truth lives on the 8421 operator route</span>'
+        f'<span style="color:#64748b">source: {source.name}</span>'
+        "</div>"
+    )
+
+
+def _decorate_dashboard_html(html: str, source: Path) -> str:
+    banner = _route_context_banner(source)
+    lower = html.lower()
+    body_idx = lower.find("<body")
+    if body_idx >= 0:
+        body_close = html.find(">", body_idx)
+        if body_close >= 0:
+            return html[: body_close + 1] + banner + html[body_close + 1 :]
+    return banner + html
 
 
 def read_registry_map() -> dict[str, dict[str, str]]:
@@ -148,8 +177,13 @@ async def soak_data() -> dict[str, object]:
 async def index() -> HTMLResponse:
     for html_path in HTML_PATHS:
         if html_path.exists():
-            return HTMLResponse(content=html_path.read_text(encoding="utf-8"))
-    return HTMLResponse(content="<h1>Dashboard not found</h1>", status_code=404)
+            return HTMLResponse(
+                content=_decorate_dashboard_html(
+                    html_path.read_text(encoding="utf-8"),
+                    html_path,
+                )
+            )
+    return HTMLResponse(content=f"<h1>Dashboard not found</h1><p>{OPS_DASHBOARD_ROUTE}</p>", status_code=404)
 
 
 @app.get("/health")

@@ -31,6 +31,9 @@ def test_soak_status_prefers_elite_dashboard(tmp_path, monkeypatch) -> None:
     assert response.status_code == 200
     assert "elite dashboard" in response.text
     assert "legacy soak" not in response.text
+    assert "Paper Soak / Diamond Factory" in response.text
+    assert "8421 operator route" in response.text
+    assert "source: elite_dashboard.html" in response.text
 
 
 def test_soak_status_falls_back_to_legacy_dashboard(tmp_path, monkeypatch) -> None:
@@ -44,6 +47,8 @@ def test_soak_status_falls_back_to_legacy_dashboard(tmp_path, monkeypatch) -> No
 
     assert response.status_code == 200
     assert "legacy soak" in response.text
+    assert "Paper Soak / Diamond Factory" in response.text
+    assert "source: soak_dashboard.html" in response.text
 
 
 def test_soak_status_404_when_no_dashboard_exists(tmp_path, monkeypatch) -> None:
@@ -58,3 +63,4 @@ def test_soak_status_404_when_no_dashboard_exists(tmp_path, monkeypatch) -> None
 
     assert response.status_code == 404
     assert "Dashboard not found" in response.text
+    assert "8421 operator route" in response.text
