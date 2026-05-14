@@ -98,7 +98,7 @@ def test_retune_queue_carries_broker_led_experiment_plan() -> None:
     assert queue_item["strategy_kind"] == "confluence_scorecard"
     assert queue_item["worst_session"] == "afternoon"
     assert queue_item["best_session"] == "overnight"
-    assert "--only-bot mcl_sweep_reclaim" in queue_item["retune_command"]
+    assert "run_research_grid --source registry --bots mcl_sweep_reclaim" in queue_item["retune_command"]
     assert queue_item["live_mutation_policy"] == "paper_only_advisory"
     assert "event/session gate" in queue_item["parameter_focus"]
     assert "broker closes" in queue_item["paper_only_next_step"]

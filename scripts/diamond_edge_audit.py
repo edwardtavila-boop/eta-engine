@@ -276,7 +276,10 @@ def _primary_experiment(row: dict[str, Any]) -> str:
 
 
 def _retune_command(bot_id: str) -> str:
-    return f"python -m eta_engine.scripts.fleet_strategy_optimizer --only-bot {bot_id}"
+    return (
+        "python -m eta_engine.scripts.run_research_grid "
+        f"--source registry --bots {bot_id} --report-policy runtime"
+    )
 
 
 def _paper_only_next_step(bot_id: str) -> str:
