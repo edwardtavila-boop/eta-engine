@@ -5167,12 +5167,17 @@ def bot_fleet_roster(
     if isinstance(live_broker_state, dict):
         live_broker_state["position_exposure"] = _position_exposure_payload(
             live_broker_state,
+            close_history=(
+                live_broker_state.get("close_history")
+                if isinstance(live_broker_state.get("close_history"), dict)
+                else None
+            ),
             target_exit_summary=target_exit_summary,
         )
     close_history = (
         live_broker_state.get("close_history") if isinstance(live_broker_state.get("close_history"), dict) else {}
     )
-    close_history = _normalize_close_history_count_alias(close_history)
+    close_history = _limit_close_history_recent_rows(_normalize_close_history_count_alias(close_history))
     live_broker_state["close_history"] = close_history
     close_windows = close_history.get("windows") if isinstance(close_history.get("windows"), dict) else {}
     default_close_history_window = str(close_history.get("default_window") or "mtd")
@@ -5205,6 +5210,7 @@ def bot_fleet_roster(
         if isinstance(default_close_window_payload.get("recent_outcomes"), list)
         else []
     )
+    default_close_rows = default_close_rows[:_DASHBOARD_POSITION_EXPOSURE_CLOSE_ROW_LIMIT]
     close_history_window = {
         "window": default_close_history_window,
         "label": default_close_window_payload.get("label") or default_close_history_window.upper(),
@@ -5460,6 +5466,93 @@ def bot_fleet_roster(
         "vps_root_reconciliation": vps_root_reconciliation,
         "window_since_days": since_days,
         **truth,
+    }
+
+
+@app.get("/api/dashboard/live-summary")
+def dashboard_live_summary(
+    response: Response,
+    since_days: int = 1,
+) -> dict:
+    """Fast first-paint dashboard payload using cached broker truth only.
+
+    The public ops page should not wait on a fresh broker probe before it can
+    display the current book. This route keeps the same top-level shape as
+    ``/api/bot-fleet`` but forces the broker path through the cached diagnostic
+    snapshot and compact close-history rows.
+    """
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    payload = bot_fleet_roster(Response(), since_days=since_days, live_broker_probe=False)
+    payload["source"] = "dashboard_live_summary_cached_broker"
+    payload["fast_summary"] = True
+    summary = payload.get("summary") if isinstance(payload.get("summary"), dict) else {}
+    summary["dashboard_payload_tier"] = "live_summary"
+    summary["live_broker_probe_mode"] = "cached_diagnostics"
+    payload["summary"] = summary
+    live_broker_state = payload.get("live_broker_state")
+    if isinstance(live_broker_state, dict):
+        live_broker_state["fast_summary"] = True
+        live_broker_state.setdefault("probe_skipped", True)
+        live_broker_state["close_history"] = _limit_close_history_recent_rows(
+            _normalize_close_history_count_alias(live_broker_state.get("close_history") or {}),
+        )
+        position_exposure = live_broker_state.get("position_exposure")
+        if isinstance(position_exposure, dict):
+            position_exposure["recent_closes"] = (
+                position_exposure.get("recent_closes")
+                if isinstance(position_exposure.get("recent_closes"), list)
+                else []
+            )[:_DASHBOARD_POSITION_EXPOSURE_CLOSE_ROW_LIMIT]
+            position_exposure["close_history"] = _limit_close_history_recent_rows(
+                _normalize_close_history_count_alias(position_exposure.get("close_history") or {}),
+            )
+    return payload
+
+
+@app.get("/api/dashboard/close-history")
+def dashboard_close_history(
+    response: Response,
+    window: str = "mtd",
+    limit: int = 6,
+) -> dict:
+    """Lazy close-history rows for expanded dashboard panels."""
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    window = str(window or "mtd").lower()
+    if window not in {"today", "wtd", "mtd", "ytd", "all"}:
+        raise HTTPException(status_code=400, detail={"error_code": "invalid_close_history_window"})
+    limit = max(1, min(int(limit), _DASHBOARD_LAZY_CLOSE_HISTORY_MAX_LIMIT))
+    now_utc = datetime.now(UTC)
+    all_trade_closes = _recent_trade_closes(limit=5000)
+    focus_trade_closes = [row for row in all_trade_closes if not _trade_close_is_cellar(row)]
+    close_history = _normalize_close_history_count_alias(_close_history_windows(focus_trade_closes, now=now_utc))
+    windows = close_history.get("windows") if isinstance(close_history.get("windows"), dict) else {}
+    selected = windows.get(window) if isinstance(windows.get(window), dict) else {}
+    selected = dict(selected)
+    rows = selected.get("recent_outcomes") if isinstance(selected.get("recent_outcomes"), list) else []
+    selected["recent_outcomes"] = rows[:limit]
+    selected["count"] = _close_window_count(selected)
+    return {
+        "source": "trade_close_ledger",
+        "window": window,
+        "timezone": DASHBOARD_LOCAL_TIME_ZONE_NAME,
+        "server_ts": time.time(),
+        "close_history": close_history,
+        "close_history_window": selected,
+        "close_history_rows": selected["recent_outcomes"],
+        "close_history_row_count": len(selected["recent_outcomes"]),
+        "history_window_pnl": {
+            "label": selected.get("label") or window.upper(),
+            "pnl": _float_value(selected.get("realized_pnl")),
+            "count": _close_window_count(selected),
+            "closed_outcome_count": int(selected.get("closed_outcome_count") or 0),
+            "evaluated_outcome_count": int(selected.get("evaluated_outcome_count") or 0),
+            "win_rate": _float_value(selected.get("win_rate")),
+            "source": selected.get("source") or "trade_close_ledger",
+        },
     }
 
 
@@ -6595,6 +6688,64 @@ def _ibkr_net_liquidation_mtd_snapshot(
     return out
 
 
+def _ibkr_cached_mtd_tracker_snapshot(now_utc: datetime | None = None) -> dict[str, Any]:
+    """Read persisted IBKR MTD without opening a broker session."""
+    tracker_path = _ibkr_mtd_tracker_state_path()
+    if not tracker_path.exists():
+        return {}
+    now_utc = now_utc.astimezone(UTC) if now_utc is not None else datetime.now(UTC)
+    month_key = _utc_month_key(now_utc)
+    try:
+        payload = json.loads(tracker_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    accounts = payload.get("accounts") if isinstance(payload, dict) else {}
+    if not isinstance(accounts, dict):
+        return {}
+
+    candidates: list[tuple[datetime, dict[str, Any]]] = []
+    for account_id, account_state in accounts.items():
+        if not isinstance(account_state, dict):
+            continue
+        month_state = account_state.get(month_key)
+        if not isinstance(month_state, dict):
+            continue
+        baseline = _float_value(month_state.get("baseline_net_liquidation"))
+        last_net_liq = _float_value(month_state.get("last_net_liquidation"))
+        if baseline is None or last_net_liq is None:
+            continue
+        baseline_origin = str(month_state.get("baseline_origin") or "").lower()
+        source = (
+            "ibkr_net_liquidation_month_manual_override"
+            if baseline_origin == "manual_override"
+            else "ibkr_net_liquidation_month_tracker"
+        )
+        checked_at = str(month_state.get("last_seen_at") or payload.get("updated_at") or "").strip()
+        checked_dt = _parse_fill_dt(checked_at) or datetime.min.replace(tzinfo=UTC)
+        mtd_pnl = round(float(last_net_liq) - float(baseline), 2)
+        snapshot: dict[str, Any] = {
+            "ready": False,
+            "account_id": str(account_id),
+            "net_liquidation": round(float(last_net_liq), 2),
+            "account_mtd_pnl": mtd_pnl,
+            "account_mtd_return_pct": (
+                round(((float(last_net_liq) / float(baseline)) - 1.0) * 100.0, 2)
+                if float(baseline) not in {0.0, -0.0}
+                else None
+            ),
+            "account_mtd_source": source,
+            "account_mtd_baseline_set_at": str(month_state.get("baseline_set_at") or ""),
+            "account_mtd_checked_at": checked_at,
+            "account_mtd_error": "",
+            "source": "ibkr_net_liquidation_month_tracker_cache",
+        }
+        candidates.append((checked_dt, snapshot))
+    if not candidates:
+        return {}
+    candidates.sort(key=lambda item: item[0], reverse=True)
+    return candidates[0][1]
+
+
 def _recent_trade_closes(limit: int = 25) -> list[dict]:
     """Return the newest Jarvis trade-close ledger rows without heavy reads.
 
@@ -6997,6 +7148,26 @@ def _dashboard_local_day_start_utc(now: datetime | None = None) -> datetime:
     return _dashboard_local_window_starts_utc(now)["today"]
 
 
+def _limit_close_history_recent_rows(
+    close_history: dict,
+    *,
+    row_limit: int | None = None,
+) -> dict:
+    """Keep close-window totals intact while capping browser-facing row lists."""
+    if not isinstance(close_history, dict):
+        return {}
+    if row_limit is None:
+        row_limit = _DASHBOARD_CLOSE_HISTORY_RECENT_ROW_LIMIT
+    windows = close_history.get("windows") if isinstance(close_history.get("windows"), dict) else {}
+    for window in windows.values():
+        if not isinstance(window, dict):
+            continue
+        rows = window.get("recent_outcomes")
+        if isinstance(rows, list) and len(rows) > row_limit:
+            window["recent_outcomes"] = rows[:row_limit]
+    return close_history
+
+
 def _close_history_windows(
     closes: list[dict],
     *,
@@ -7012,11 +7183,11 @@ def _close_history_windows(
     month_start = window_starts["mtd"]
     year_start = window_starts["ytd"]
     windows = [
-        ("today", "Today", today_start, 120),
-        ("wtd", "WTD", week_start, 250),
-        ("mtd", "MTD", month_start, 500),
-        ("ytd", "YTD", year_start, 750),
-        ("all", "All", None, 1000),
+        ("today", "Today", today_start, _DASHBOARD_CLOSE_HISTORY_RECENT_ROW_LIMIT),
+        ("wtd", "WTD", week_start, _DASHBOARD_CLOSE_HISTORY_RECENT_ROW_LIMIT),
+        ("mtd", "MTD", month_start, _DASHBOARD_CLOSE_HISTORY_RECENT_ROW_LIMIT),
+        ("ytd", "YTD", year_start, _DASHBOARD_CLOSE_HISTORY_RECENT_ROW_LIMIT),
+        ("all", "All", None, _DASHBOARD_CLOSE_HISTORY_RECENT_ROW_LIMIT),
     ]
     out: dict[str, object] = {
         "source": "trade_close_ledger",
@@ -7044,7 +7215,7 @@ def _close_history_windows(
             },
         )
         out["windows"][key] = summary
-    return out
+    return _limit_close_history_recent_rows(out)
 
 
 def _broker_summary_fields(live_broker_state: dict) -> dict:
@@ -7058,6 +7229,8 @@ def _broker_summary_fields(live_broker_state: dict) -> dict:
         return {}
     realized = _float_value(live_broker_state.get("today_realized_pnl"))
     unrealized = _float_value(live_broker_state.get("total_unrealized_pnl"))
+    broker_mtd = _float_value(live_broker_state.get("broker_mtd_pnl"))
+    broker_mtd_return_pct = _float_value(live_broker_state.get("broker_mtd_return_pct"))
     fills = _float_value(live_broker_state.get("today_actual_fills"))
     open_positions = _float_value(live_broker_state.get("open_position_count"))
     win_rate = _float_value(live_broker_state.get("win_rate_30d"))
@@ -7074,6 +7247,12 @@ def _broker_summary_fields(live_broker_state: dict) -> dict:
         out["broker_total_unrealized_pnl"] = round(unrealized, 2)
     if realized is not None or unrealized is not None:
         out["broker_net_pnl"] = round((realized or 0.0) + (unrealized or 0.0), 2)
+    if broker_mtd is not None:
+        sources = live_broker_state.get("sources") if isinstance(live_broker_state.get("sources"), dict) else {}
+        out["broker_mtd_pnl"] = round(broker_mtd, 2)
+        out["broker_mtd_source"] = str(sources.get("broker_mtd_pnl") or "")
+    if broker_mtd_return_pct is not None:
+        out["broker_mtd_return_pct"] = broker_mtd_return_pct
     if fills is not None:
         out["broker_today_actual_fills"] = int(fills)
     if open_positions is not None:
@@ -7171,6 +7350,9 @@ _ACTIVE_FOCUS_BROKERS = _PRIMARY_FOCUS_BROKERS + _STANDBY_FOCUS_BROKERS
 _PENDING_FOCUS_BROKERS: tuple[str, ...] = ()
 _DORMANT_FOCUS_BROKERS = ("tradovate",)
 _PAUSED_CELLAR_BROKERS = ("alpaca",)
+_DASHBOARD_CLOSE_HISTORY_RECENT_ROW_LIMIT = 20
+_DASHBOARD_POSITION_EXPOSURE_CLOSE_ROW_LIMIT = 12
+_DASHBOARD_LAZY_CLOSE_HISTORY_MAX_LIMIT = 100
 
 
 def _tradovate_auth_status_path() -> Path:
@@ -7639,8 +7821,18 @@ def _cached_live_broker_state_for_gateway_reconcile() -> dict:
     with _IBKR_PROBE_LOCK:
         cached = _IBKR_PROBE_CACHE.get("snapshot")
         cached_ts = float(_IBKR_PROBE_CACHE.get("ts") or 0.0)
-        if isinstance(cached, dict) and (time.time() - cached_ts) < (_IBKR_PROBE_CACHE_TTL_S * 2):
-            return {"ibkr": dict(cached)}
+        age_s = max(0.0, time.time() - cached_ts) if cached_ts > 0 else None
+        if isinstance(cached, dict) and age_s is not None and age_s < (_IBKR_PROBE_CACHE_TTL_S * 2):
+            ibkr = dict(cached)
+            ibkr.setdefault("cache_ts", cached_ts)
+            ibkr.setdefault("cache_age_s", round(age_s, 1))
+            ibkr.setdefault("last_known", True)
+            return {
+                "ibkr": ibkr,
+                "ibkr_cache_state": "warm",
+                "ibkr_cache_ts": cached_ts,
+                "ibkr_cache_age_s": round(age_s, 1),
+            }
     return {}
 
 
@@ -7648,21 +7840,42 @@ def _cached_live_broker_state_for_diagnostics() -> dict:
     """Fast broker state for diagnostics; never opens a broker connection."""
     state = _cached_live_broker_state_for_gateway_reconcile()
     ibkr = state.get("ibkr") if isinstance(state.get("ibkr"), dict) else {}
+    cached_mtd = _ibkr_cached_mtd_tracker_snapshot()
+    if cached_mtd:
+        ibkr = {**cached_mtd, **ibkr}
+        if _float_value(ibkr.get("account_mtd_pnl")) is None:
+            ibkr["account_mtd_pnl"] = cached_mtd.get("account_mtd_pnl")
+        if _float_value(ibkr.get("account_mtd_return_pct")) is None:
+            ibkr["account_mtd_return_pct"] = cached_mtd.get("account_mtd_return_pct")
+        if not ibkr.get("account_mtd_source"):
+            ibkr["account_mtd_source"] = cached_mtd.get("account_mtd_source")
+        if not ibkr.get("account_mtd_baseline_set_at"):
+            ibkr["account_mtd_baseline_set_at"] = cached_mtd.get("account_mtd_baseline_set_at")
+        state = {**state, "ibkr": ibkr}
     open_position_count = int(_float_value(ibkr.get("open_position_count")) or 0)
     unrealized = round(float(_float_value(ibkr.get("unrealized_pnl")) or 0.0), 2)
     today_realized = round(float(_float_value(ibkr.get("today_realized_pnl")) or 0.0), 2)
     today_fills = int(_float_value(ibkr.get("today_executions")) or 0)
+    broker_mtd_pnl = _float_value(ibkr.get("account_mtd_pnl"))
+    broker_mtd_return_pct = _float_value(ibkr.get("account_mtd_return_pct"))
     trade_closes = _recent_trade_closes(limit=5000)
     focus_trade_closes = [row for row in trade_closes if not _trade_close_is_cellar(row)]
     close_history = _close_history_windows(focus_trade_closes, now=datetime.now(UTC))
+    cache_age_s = _float_value(state.get("ibkr_cache_age_s") or ibkr.get("cache_age_s"))
+    ibkr_snapshot_ready = bool(state.get("ibkr_cache_state") == "warm" or ibkr.get("ready") is True)
     return {
         **state,
-        "ready": bool(ibkr) and "error" not in ibkr,
+        "ready": ibkr_snapshot_ready and "error" not in ibkr,
         "source": "cached_live_broker_state_for_diagnostics",
         "probe_skipped": True,
+        "broker_snapshot_source": "ibkr_probe_cache" if ibkr else "missing_ibkr_probe_cache",
+        "broker_snapshot_age_s": cache_age_s,
+        "broker_snapshot_state": str(state.get("ibkr_cache_state") or "missing"),
         "server_ts": time.time(),
         "today_actual_fills": today_fills,
         "today_realized_pnl": today_realized,
+        "broker_mtd_pnl": broker_mtd_pnl,
+        "broker_mtd_return_pct": broker_mtd_return_pct,
         "total_unrealized_pnl": unrealized,
         "open_position_count": open_position_count,
         "all_venue_today_actual_fills": today_fills,
@@ -7682,6 +7895,11 @@ def _cached_live_broker_state_for_diagnostics() -> dict:
         "close_history": close_history,
         "all_venue_close_history": close_history,
         "focus_policy": _dashboard_focus_policy_payload(),
+        "sources": {
+            "session_pnl": "ibkr_probe_cache",
+            "broker_mtd_pnl": str(ibkr.get("account_mtd_source") or "unavailable"),
+            "focus_mtd_closed_pnl": "trade_close_ledger",
+        },
     }
 
 
@@ -7988,7 +8206,7 @@ def _position_exposure_payload(
 
     if close_history is None:
         close_history = _close_history_windows(_recent_trade_closes(limit=5000))
-    close_history = _normalize_close_history_count_alias(close_history)
+    close_history = _limit_close_history_recent_rows(_normalize_close_history_count_alias(close_history))
     default_close_window = str(close_history.get("default_window") or "mtd")
     close_windows = close_history.get("windows") if isinstance(close_history.get("windows"), dict) else {}
     default_window_payload = (
@@ -7997,6 +8215,7 @@ def _position_exposure_payload(
     if recent_closes is None:
         default_window_rows = default_window_payload.get("recent_outcomes")
         recent_closes = default_window_rows if isinstance(default_window_rows, list) else _recent_trade_closes(limit=25)
+    recent_closes = recent_closes[:_DASHBOARD_POSITION_EXPOSURE_CLOSE_ROW_LIMIT]
     normalized_closes: list[dict] = []
     cellar_closes: list[dict] = []
     for row in recent_closes:
@@ -9099,6 +9318,21 @@ def _live_broker_state_payload() -> dict:
     today_realized_pnl = round(float(ibkr.get("today_realized_pnl") or 0.0), 2)
     broker_mtd_pnl = _float_value(ibkr.get("account_mtd_pnl"))
     broker_mtd_return_pct = _float_value(ibkr.get("account_mtd_return_pct"))
+    if broker_mtd_pnl is None:
+        cached_mtd = _ibkr_cached_mtd_tracker_snapshot(now_utc)
+        if cached_mtd:
+            broker_mtd_pnl = _float_value(cached_mtd.get("account_mtd_pnl"))
+            broker_mtd_return_pct = _float_value(cached_mtd.get("account_mtd_return_pct"))
+            for key in (
+                "account_mtd_pnl",
+                "account_mtd_return_pct",
+                "account_mtd_source",
+                "account_mtd_baseline_set_at",
+                "account_mtd_checked_at",
+                "account_mtd_error",
+            ):
+                if ibkr.get(key) in (None, "") and cached_mtd.get(key) not in (None, ""):
+                    ibkr[key] = cached_mtd[key]
     total_unrealized_pnl = round(float(ibkr.get("unrealized_pnl") or 0.0), 2)
     open_position_count = int(ibkr.get("open_position_count") or 0)
     all_venue_today_actual_fills = today_actual_fills + cellar_today_actual_fills
@@ -9111,8 +9345,8 @@ def _live_broker_state_payload() -> dict:
     all_trade_closes = _recent_trade_closes(limit=5000)
     recent_trade_closes = [row for row in all_trade_closes if not _trade_close_is_cellar(row)]
     cellar_trade_closes = [row for row in all_trade_closes if _trade_close_is_cellar(row)]
-    close_history = _close_history_windows(recent_trade_closes, now=now_utc)
-    all_venue_close_history = _close_history_windows(all_trade_closes, now=now_utc)
+    close_history = _limit_close_history_recent_rows(_close_history_windows(recent_trade_closes, now=now_utc))
+    all_venue_close_history = _limit_close_history_recent_rows(_close_history_windows(all_trade_closes, now=now_utc))
     close_outcomes_today = _closed_outcomes_from_trade_closes(
         recent_trade_closes,
         since=today_start_utc,
@@ -9193,6 +9427,9 @@ def _live_broker_state_payload() -> dict:
         "alpaca": alpaca,
         "ibkr": ibkr,
         "per_bot_alpaca": per_bot_alpaca,
+        "broker_snapshot_source": "live_broker_rest",
+        "broker_snapshot_age_s": 0.0,
+        "broker_snapshot_state": "fresh",
         "sources": {
             "session_pnl": "ibkr_live_broker_state",
             "broker_mtd_pnl": str(ibkr.get("account_mtd_source") or "unavailable"),

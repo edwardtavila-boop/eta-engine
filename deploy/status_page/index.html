@@ -248,6 +248,7 @@ tr:hover td{background:rgba(100,215,255,.055)}
 @media(max-width:860px){.header{padding:.95rem 1rem;flex-direction:column;align-items:flex-start;gap:.75rem}.controls{width:100%;justify-content:stretch;gap:.55rem}.controls button{flex:1 1 0}.status-bar{padding:.72rem 1rem .42rem;flex-direction:column;align-items:flex-start;gap:.35rem}.ops-truth-wrap{grid-template-columns:1fr}.panel-head{flex-direction:column;align-items:flex-start}.hero-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.contribution-row{grid-template-columns:1fr;gap:.45rem}}
 @media(max-width:860px){.contribution-split{grid-template-columns:1fr}.contribution-lane-head{align-items:flex-start;flex-direction:column;gap:.16rem}}
 @media(max-width:640px){body{background:radial-gradient(ellipse 104vw 48vh at 50% -8%,rgba(100,215,255,.2),transparent 68%),radial-gradient(ellipse 92vw 42vh at 78% 10%,rgba(230,184,92,.14),transparent 72%),linear-gradient(155deg,#02050a,#07111c 46%,#02050a);background-size:100vw 100dvh,100vw 100dvh,auto;background-position:center top,center top,center top;background-attachment:scroll}body:before,body:after{left:0;right:0;width:100vw;max-width:100vw;overflow:hidden}body:after{inset:0;background-size:38px 38px,38px 38px,auto;mask-image:linear-gradient(180deg,#000 0%,rgba(0,0,0,.82) 48%,transparent 96%);animation:techPulse 18s ease-in-out infinite}.portfolio-hero:after,.premium-panel:after{inset:auto 0 -36% 0;height:140px}.header{align-items:stretch}.header>div:first-child{width:100%;text-align:center}.header .meta{display:flex;justify-content:center;flex-wrap:wrap;gap:.25rem;text-align:center}.controls{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));width:100%;gap:.55rem}.controls button{width:100%;max-width:none;min-width:0}.status-bar{padding:.72rem .9rem .45rem;align-items:center;justify-content:center;text-align:center}.status-bar>span{width:100%;max-width:100%;overflow-wrap:anywhere}.portfolio-command{gap:.78rem;padding:1rem .9rem .45rem;justify-items:center}.portfolio-hero,.premium-panel,.collapsible-section,.card,.wide-card{width:100%;max-width:100%;margin-left:auto;margin-right:auto;min-width:0}.portfolio-hero{padding:1rem .95rem .95rem;text-align:center}.portfolio-hero h2{font-size:clamp(1.22rem,7vw,1.72rem)}.portfolio-narrative{font-size:.79rem;line-height:1.48}.hero-chips,.truth-summary,.allocation-pills{gap:.35rem;justify-content:center}.hero-chip,.truth-chip,.allocation-pill{max-width:100%;padding:.4rem .58rem;font-size:.67rem;text-align:center;white-space:normal;justify-content:center}.hero-metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:.45rem}.hero-metric{padding:.54rem;text-align:center}.hero-metric span,.hero-metric strong,.hero-metric small{white-space:normal;overflow-wrap:anywhere;text-align:center}.portfolio-orb{padding:.92rem .82rem 1rem;align-items:center}.orb-ring{width:min(188px,66vw);margin-inline:auto}.orb-sub{font-size:.64rem;max-width:146px}.orb-allocation-pills{grid-template-columns:repeat(2,minmax(0,1fr));width:100%;max-width:100%}.ops-truth-wrap,.position-list,.router-tape,.close-history-list,.truth-summary,.hero-metrics,.grid{width:100%;max-width:100%;min-width:0}.grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:.65rem;padding:.8rem .9rem 1.1rem}.card{padding:.85rem}.position-card,.tape-row,.close-row{width:100%;max-width:100%;min-width:0}.position-head,.tape-head,.allocation-group-head,.vps-root-step-top,.close-history-heading,.close-row-top{flex-direction:column;align-items:flex-start}.position-meta,.tape-meta{grid-template-columns:repeat(2,minmax(0,1fr))}.position-meta span,.tape-meta span,.close-row-meta span,.close-row-title strong{min-width:0;white-space:normal;overflow-wrap:anywhere}.close-row-pnl{text-align:left}.table-wrap{padding:0 .9rem 1.2rem;max-width:100%}.collapsible-section{margin:0 .9rem .9rem;max-width:calc(100vw - 1.8rem)}.collapsible-summary{display:block;position:relative;padding:.9rem 3rem .85rem .95rem;text-align:left}.collapsible-summary small{display:block;margin:.25rem 0 0}.collapsible-summary:after{position:absolute;top:.8rem;right:.95rem}}
+@media(max-width:640px){html,body{width:100%;max-width:100%;min-width:0}body>*{max-width:100vw}.header,.status-bar,.portfolio-command,.portfolio-analytics,.allocation-sections,.vps-root-detail-wrap,.table-wrap{overflow-x:hidden}.card .stat{font-size:clamp(1.05rem,7vw,1.4rem);overflow-wrap:anywhere}.hero-metric small{font-size:.58rem;line-height:1.28}.contribution-value{text-align:left}.contribution-name strong,.allocation-group-title,.mini-bot-card strong{white-space:normal;overflow-wrap:anywhere}.table-wrap table{min-width:760px}.table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}}
 @media(max-width:420px){.hero-metrics{grid-template-columns:1fr}.orb-ring{width:min(184px,74vw)}.status-bar{font-size:.72rem}.controls{grid-template-columns:1fr}.controls button{min-height:38px}.position-meta,.tape-meta{grid-template-columns:1fr}.close-row-meta{display:grid;grid-template-columns:1fr;gap:.18rem}}
 @media (prefers-reduced-motion:reduce){.card,.portfolio-hero,.premium-panel,.orb-ring,.orb-ring::before,.orb-inner{animation:none;transition:none;transform:none}}
 </style>
@@ -436,6 +437,8 @@ tr:hover td{background:rgba(100,215,255,.055)}
 let autoRefresh = true, refreshTimer;
 const API = '/api/bot-fleet';
 const API_ALT = 'https://jarvis.evolutionarytradingalgo.com/api/bot-fleet';
+const LIVE_SUMMARY_API = '/api/dashboard/live-summary';
+const LIVE_BROKER_STATE_API = '/api/live/broker_state';
 const OPERATOR_QUEUE_API = '/api/jarvis/operator_queue';
 const PAPER_LIVE_API = '/api/jarvis/paper_live_transition';
 const DASHBOARD_DIAGNOSTICS_API = '/api/dashboard/diagnostics';
@@ -444,7 +447,9 @@ const FLEET_EQUITY_API = '/api/fleet-equity?range=all&normalize=1&since_days=7';
 const API_ALT_ROOT = 'https://jarvis.evolutionarytradingalgo.com';
 const DASHBOARD_TIME_ZONE = 'America/New_York';
 const DASHBOARD_TIME_ZONE_LABEL = 'Atlanta ET';
+const FAST_FETCH_TIMEOUT_MS = 5000;
 const FETCH_TIMEOUT_MS = 12000;
+const DETAIL_FETCH_TIMEOUT_MS = 12000;
 const AUX_FETCH_TIMEOUT_MS = 2500;
 const DASHBOARD_DIAGNOSTICS_TIMEOUT_MS = 10000;
 const VPS_ROOT_RECONCILIATION_TIMEOUT_MS = 5000;
@@ -522,6 +527,18 @@ function formatAgeSeconds(value) {
   if (n < 60) return Math.round(n) + 's ago';
   if (n < 3600) return Math.round(n / 60) + 'm ago';
   return Math.round(n / 3600) + 'h ago';
+}
+
+function brokerSnapshotAgeText(liveBroker = null) {
+  const age = finiteNumber(
+    liveBroker?.broker_snapshot_age_s
+    ?? liveBroker?.ibkr_cache_age_s
+    ?? liveBroker?.ibkr?.cache_age_s
+  );
+  const source = String(liveBroker?.broker_snapshot_source || liveBroker?.source || '').toLowerCase();
+  if (age == null) return liveBroker?.probe_skipped ? 'cached snapshot age unknown' : 'fresh broker read';
+  if (age < 2 && !liveBroker?.probe_skipped && source.includes('live')) return 'fresh broker read';
+  return `IBKR snapshot ${formatAgeSeconds(age)}`;
 }
 
 function formatDurationSeconds(value) {
@@ -786,13 +803,14 @@ function tradovateVenueText(liveBroker = null) {
 
 function brokerSessionSourceLabel(liveBroker = null) {
   const raw = String(liveBroker?.sources?.session_pnl || '').toLowerCase();
-  if (raw.includes('tradovate')) return 'Tradovate session';
-  if (raw.includes('ibkr')) return 'IBKR session';
-  return 'Broker session';
+  const ageText = brokerSnapshotAgeText(liveBroker);
+  if (raw.includes('tradovate')) return `Tradovate session | ${ageText}`;
+  if (raw.includes('ibkr') || liveBroker?.ibkr) return `IBKR session | ${ageText}`;
+  return `Broker session | ${ageText}`;
 }
 
 function brokerMtdSourceLabel(liveBroker = null) {
-  const raw = String(liveBroker?.sources?.broker_mtd_pnl || '').toLowerCase();
+  const raw = String(liveBroker?.sources?.broker_mtd_pnl || liveBroker?.ibkr?.account_mtd_source || '').toLowerCase();
   if (raw.includes('pa_performance')) return 'IBKR portfolio MTD';
   if (raw.includes('manual_override')) return 'IBKR seeded MTD';
   if (raw.includes('net_liquidation_month_tracker')) return 'IBKR tracked MTD';
@@ -804,35 +822,36 @@ function brokerMtdEvidence(liveBroker = null) {
   const value = finiteNumber(liveBroker?.broker_mtd_pnl ?? liveBroker?.ibkr?.account_mtd_pnl);
   const returnPct = finiteNumber(liveBroker?.broker_mtd_return_pct ?? liveBroker?.ibkr?.account_mtd_return_pct);
   const baselineDate = formatCalendarDate(liveBroker?.ibkr?.account_mtd_baseline_set_at);
-  const rawSource = String(liveBroker?.sources?.broker_mtd_pnl || '').toLowerCase();
+  const rawSource = String(liveBroker?.sources?.broker_mtd_pnl || liveBroker?.ibkr?.account_mtd_source || '').toLowerCase();
   const error = String(liveBroker?.ibkr?.account_mtd_error || '').trim();
   if (value == null) {
     return {
       value: null,
       label: 'Broker MTD',
-      source: error ? 'IBKR portfolio MTD unavailable' : 'IBKR portfolio MTD pending'
+      source: `${error ? 'IBKR portfolio MTD unavailable' : 'IBKR portfolio MTD pending'} | ${brokerSnapshotAgeText(liveBroker)}`
     };
   }
   if (rawSource.includes('manual_override')) {
     return {
       value,
       label: 'Broker MTD',
-      source: baselineDate ? `IBKR seeded MTD | start ${baselineDate}` : 'IBKR seeded MTD'
+      source: `${baselineDate ? `IBKR seeded MTD | start ${baselineDate}` : 'IBKR seeded MTD'} | ${brokerSnapshotAgeText(liveBroker)}`
     };
   }
   if (rawSource.includes('net_liquidation_month_tracker')) {
     return {
       value,
       label: 'Broker MTD',
-      source: baselineDate ? `IBKR tracked MTD | start ${baselineDate}` : 'IBKR tracked MTD'
+      source: `${baselineDate ? `IBKR tracked MTD | start ${baselineDate}` : 'IBKR tracked MTD'} | ${brokerSnapshotAgeText(liveBroker)}`
     };
   }
+  const sourceLabel = returnPct == null
+    ? brokerMtdSourceLabel(liveBroker)
+    : `${brokerMtdSourceLabel(liveBroker)} | ${returnPct.toFixed(2)}%`;
   return {
     value,
     label: 'Broker MTD',
-    source: returnPct == null
-      ? brokerMtdSourceLabel(liveBroker)
-      : `${brokerMtdSourceLabel(liveBroker)} | ${returnPct.toFixed(2)}%`
+    source: `${sourceLabel} | ${brokerSnapshotAgeText(liveBroker)}`
   };
 }
 
@@ -1984,7 +2003,10 @@ function renderPortfolioCommand(bots, hiddenCount, liveBroker, summary, d, today
       {label: brokerMtd?.label || 'Broker MTD', value: brokerMtdValue == null ? 'n/a' : formatMoney(brokerMtdValue, 0), sub: brokerMtd?.source || 'IBKR portfolio MTD pending'},
       {label: 'Open Risk', value: formatMoney(portfolioExposure ?? openExposure, 0), sub: `${brokerPositions.length} open on book`},
       {label: 'Readiness', value: readinessText, sub: readinessSub}
-    ].map(item => `<div class="hero-metric"><span>${esc(item.label)}</span><strong>${esc(item.value)}</strong><small>${esc(compactText(item.sub, 38))}</small></div>`).join('');
+    ].map(item => {
+      const metricSubMax = typeof window !== 'undefined' && window.matchMedia('(max-width: 640px)').matches ? 46 : 72;
+      return `<div class="hero-metric"><span>${esc(item.label)}</span><strong>${esc(item.value)}</strong><small>${esc(compactText(item.sub, metricSubMax))}</small></div>`;
+    }).join('');
   }
 }
 
@@ -2142,39 +2164,91 @@ function payloadFleetScore(result, index = 0) {
 }
 
 async function fetchBestFleetData() {
-  const urls = [API, API_ALT];
-  const settled = await Promise.allSettled(urls.map(url => fetchJsonOnce(url, FETCH_TIMEOUT_MS)));
-  const candidates = settled
-    .map((entry, index) => entry.status === 'fulfilled' ? {...entry.value, index} : null)
-    .filter(Boolean);
-  if (!candidates.length) return null;
-  candidates.sort((a, b) => payloadFleetScore(b, b.index) - payloadFleetScore(a, a.index));
-  return candidates[0];
+  return fetchJson(endpointCandidates(API + '?live_broker_probe=false'), DETAIL_FETCH_TIMEOUT_MS);
+}
+
+function isFallbackSource(source) {
+  return String(source || '').startsWith(API_ALT_ROOT);
+}
+
+function emptyAuxPayloads() {
+  return [{payload: {}}, {payload: {}}, {payload: {}}, {payload: {}}, {payload: {}}];
+}
+
+function mergeLiveBrokerPayload(payload, liveBroker) {
+  if (!payload || !liveBroker || typeof liveBroker !== 'object') return payload;
+  const merged = {...payload, live_broker_state: liveBroker, fast_summary: false, broker_live_detail: true};
+  const summary = {...(payload.summary || {})};
+  const brokerMtd = finiteNumber(liveBroker.broker_mtd_pnl ?? liveBroker.ibkr?.account_mtd_pnl);
+  const brokerMtdReturn = finiteNumber(liveBroker.broker_mtd_return_pct ?? liveBroker.ibkr?.account_mtd_return_pct);
+  if (brokerMtd != null) {
+    summary.broker_mtd_pnl = brokerMtd;
+    summary.broker_mtd_source = liveBroker.sources?.broker_mtd_pnl || liveBroker.ibkr?.account_mtd_source || '';
+  }
+  if (brokerMtdReturn != null) summary.broker_mtd_return_pct = brokerMtdReturn;
+  merged.summary = summary;
+  return merged;
 }
 
 async function fetchData() {
   if (loadInFlight) return;
   loadInFlight = true;
   try {
-    const [data, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity] = await Promise.all([
-      fetchBestFleetData(),
+    let auxPayloads = emptyAuxPayloads();
+    let latestPayload = null;
+    let latestSource = null;
+    const renderCurrent = (payload, source, auxItems = auxPayloads) => {
+      latestPayload = payload;
+      latestSource = source;
+      render(
+        payload,
+        auxItems[0]?.payload || {},
+        auxItems[1]?.payload || {},
+        auxItems[2]?.payload || {},
+        auxItems[3]?.payload || {},
+        auxItems[4]?.payload || {},
+        source
+      );
+      hasRendered = true;
+    };
+    const auxPromise = Promise.all([
       fetchJson(endpointCandidates(OPERATOR_QUEUE_API), AUX_FETCH_TIMEOUT_MS),
       fetchJson(endpointCandidates(PAPER_LIVE_API), AUX_FETCH_TIMEOUT_MS),
       fetchJson(endpointCandidates(DASHBOARD_DIAGNOSTICS_API), DASHBOARD_DIAGNOSTICS_TIMEOUT_MS),
       fetchJson(endpointCandidates(VPS_ROOT_RECONCILIATION_API), VPS_ROOT_RECONCILIATION_TIMEOUT_MS),
       fetchJson(endpointCandidates(FLEET_EQUITY_API), AUX_FETCH_TIMEOUT_MS)
-    ]);
-    if (!data) { showOffline(!hasRendered); return; }
-    render(
-      data.payload,
-      operatorQueue ? operatorQueue.payload : {},
-      paperLive ? paperLive.payload : {},
-      diagnostics ? diagnostics.payload : {},
-      vpsRoot ? vpsRoot.payload : {},
-      fleetEquity ? fleetEquity.payload : {},
-      data.source
-    );
-    hasRendered = true;
+    ]).then((items) => {
+      auxPayloads = items.map(item => item || {payload: {}});
+      return auxPayloads;
+    });
+    const liveBrokerPromise = fetchJson(endpointCandidates(LIVE_BROKER_STATE_API), DETAIL_FETCH_TIMEOUT_MS);
+
+    const fastData = await fetchJson(endpointCandidates(LIVE_SUMMARY_API), FAST_FETCH_TIMEOUT_MS);
+    if (fastData) {
+      renderCurrent(fastData.payload, fastData.source, [
+        {payload: {}},
+        {payload: fastData.payload?.paper_live_transition || {}},
+        {payload: {}},
+        {payload: {}},
+        {payload: {}}
+      ]);
+      auxPromise.then((items) => {
+        if (!loadInFlight || !latestPayload) return;
+        renderCurrent(latestPayload, latestSource, items);
+      });
+    }
+
+    const data = await fetchBestFleetData();
+    if (!data) {
+      if (!fastData) showOffline(!hasRendered);
+      return;
+    }
+    auxPayloads = await auxPromise;
+    renderCurrent(data.payload, data.source, auxPayloads);
+    const liveBroker = await liveBrokerPromise;
+    if (liveBroker?.payload && latestPayload) {
+      renderCurrent(mergeLiveBrokerPayload(latestPayload, liveBroker.payload), liveBroker.source, auxPayloads);
+    }
   } finally {
     loadInFlight = false;
   }
@@ -2498,7 +2572,7 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
   const confirmed = d.confirmed_bots || 0;
   const truthStatus = String(d.truth_status || 'unknown').toLowerCase();
   const stale = ['stale', 'empty', 'runtime_stopped'].includes(truthStatus);
-  const usingFallback = dataSource === API_ALT;
+  const usingFallback = isFallbackSource(dataSource);
 
   const active = bots.filter(isRuntimeActiveBot).length;
   const staged = Math.max(0, bots.length - active);
@@ -2509,7 +2583,7 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
       : stale
         ? 'Feed stale'
         : `${bots.length} live | ${active} active`;
-  document.getElementById('apiSourceText').textContent = usingFallback ? 'Focus sync | fallback' : 'Focus sync...';
+  document.getElementById('apiSourceText').textContent = usingFallback ? 'Focus sync | mirror' : 'Focus sync...';
   document.getElementById('totalBots').textContent = bots.length;
 
   document.getElementById('activeBots').textContent = active;
@@ -2528,9 +2602,11 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
   const liveBrokerReady = liveBroker && (liveBroker.ready || liveBroker.ibkr?.ready || liveBroker.tastytrade?.ready || liveBroker.tradovate?.ready);
   const liveBrokerPnlReady = liveBrokerReady && brokerHasPnlTruth(liveBroker);
   const venueFocusText = brokerVenueFocusSummary(liveBroker?.focus_policy || {}, liveBroker);
+  const brokerAgeText = liveBroker ? brokerSnapshotAgeText(liveBroker) : '';
+  const sourceTierText = d.fast_summary ? 'fast summary' : 'live detail';
   document.getElementById('apiSourceText').textContent = venueFocusText
-    ? 'Focus: ' + venueFocusText + (usingFallback ? ' | fallback' : '')
-    : 'Source: ' + sourceLabel(dataSource) + (usingFallback ? ' | fallback' : '');
+    ? 'Focus: ' + venueFocusText + (brokerAgeText ? ' | ' + brokerAgeText : '') + ` | ${sourceTierText}` + (usingFallback ? ' | mirror' : '')
+    : 'Source: ' + sourceLabel(dataSource) + ` | ${sourceTierText}` + (usingFallback ? ' | mirror' : '');
   const availableCloseWindows = closeHistoryWindowPayload(liveBroker, selectedCloseHistoryWindow, d);
   const rootCloseHistory = d.close_history || {};
   if (!availableCloseWindows.payload && (liveBroker?.position_exposure?.close_history?.default_window || rootCloseHistory.default_window)) {

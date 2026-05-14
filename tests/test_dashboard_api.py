@@ -4794,6 +4794,143 @@ class TestDashboardAPI:
         assert payload["summary"]["close_history_closed_outcome_count"] == 320
         assert payload["summary"]["close_history_win_rate"] == 0.5181
 
+    def test_close_history_windows_cap_rows_without_changing_totals(self):
+        from datetime import UTC, datetime
+
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        now = datetime.now(UTC)
+        rows = [
+            {
+                "ts": now.isoformat(),
+                "bot_id": f"mnq_bot_{idx}",
+                "symbol": "MNQ1",
+                "realized_pnl": 10.0 if idx % 2 else -5.0,
+            }
+            for idx in range(35)
+        ]
+
+        history = mod._close_history_windows(rows, now=now)
+        mtd = history["windows"]["mtd"]
+
+        assert mtd["count"] == 35
+        assert mtd["closed_outcome_count"] == 35
+        assert len(mtd["recent_outcomes"]) == mod._DASHBOARD_CLOSE_HISTORY_RECENT_ROW_LIMIT
+
+    def test_dashboard_close_history_endpoint_limits_rows(self, app_client, monkeypatch):
+        from datetime import UTC, datetime
+
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        now = datetime.now(UTC)
+        rows = [
+            {
+                "ts": now.isoformat(),
+                "bot_id": f"mnq_bot_{idx}",
+                "symbol": "MNQ1",
+                "realized_pnl": 10.0 if idx % 2 else -5.0,
+            }
+            for idx in range(24)
+        ]
+        monkeypatch.setattr(mod, "_recent_trade_closes", lambda limit=5000: rows)
+
+        r = app_client.get("/api/dashboard/close-history?window=mtd&limit=3")
+
+        assert r.status_code == 200
+        payload = r.json()
+        assert payload["window"] == "mtd"
+        assert payload["close_history_window"]["count"] == 24
+        assert payload["close_history_row_count"] == 3
+        assert len(payload["close_history_rows"]) == 3
+
+    def test_dashboard_live_summary_uses_cached_broker_without_live_probe(
+        self,
+        app_client,
+        monkeypatch,
+    ):
+        from datetime import UTC, datetime
+
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        def fail_live_probe():
+            raise AssertionError("live summary must not open the broker probe")
+
+        monkeypatch.setattr(mod, "_live_broker_state_payload", fail_live_probe)
+        monkeypatch.setattr(
+            mod,
+            "_cached_live_broker_state_for_diagnostics",
+            lambda: {
+                "ready": True,
+                "source": "cached_live_broker_state_for_diagnostics",
+                "probe_skipped": True,
+                "broker_snapshot_source": "ibkr_probe_cache",
+                "broker_snapshot_age_s": 7.5,
+                "today_actual_fills": 2,
+                "today_realized_pnl": 88.0,
+                "total_unrealized_pnl": -5.0,
+                "open_position_count": 0,
+                "focus_policy": mod._dashboard_focus_policy_payload(),
+                "close_history": mod._close_history_windows([], now=datetime.now(UTC)),
+            },
+        )
+
+        r = app_client.get("/api/dashboard/live-summary")
+
+        assert r.status_code == 200
+        payload = r.json()
+        assert payload["fast_summary"] is True
+        assert payload["summary"]["dashboard_payload_tier"] == "live_summary"
+        assert payload["summary"]["live_broker_probe_mode"] == "cached_diagnostics"
+        assert payload["live_broker_state"]["probe_skipped"] is True
+        assert payload["live_broker_state"]["broker_snapshot_age_s"] == 7.5
+
+    def test_cached_diagnostics_uses_persisted_ibkr_mtd_without_probe_cache(
+        self,
+        app_client,
+        tmp_path,
+        monkeypatch,
+    ):
+        from datetime import UTC, datetime
+
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        monkeypatch.setattr(mod, "_recent_trade_closes", lambda limit=5000: [])
+        with mod._IBKR_PROBE_LOCK:
+            mod._IBKR_PROBE_CACHE.clear()
+        tracker_dir = tmp_path / "state" / "broker_mtd"
+        tracker_dir.mkdir(parents=True)
+        month_key = datetime.now(UTC).strftime("%Y-%m")
+        (tracker_dir / "ibkr_net_liq_month_tracker.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "updated_at": "2026-05-14T16:20:18+00:00",
+                    "accounts": {
+                        "DU123": {
+                            month_key: {
+                                "month": month_key,
+                                "baseline_net_liquidation": 1_000_000.0,
+                                "baseline_origin": "manual_override",
+                                "baseline_set_at": "2026-05-01T00:00:00+00:00",
+                                "last_net_liquidation": 1_024_387.0,
+                                "last_seen_at": "2026-05-14T16:20:18+00:00",
+                            },
+                        },
+                    },
+                },
+            ),
+            encoding="utf-8",
+        )
+
+        live = mod._cached_live_broker_state_for_diagnostics()
+
+        assert live["probe_skipped"] is True
+        assert live["ready"] is False
+        assert live["broker_mtd_pnl"] == 24387.0
+        assert live["broker_mtd_return_pct"] == 2.44
+        assert live["sources"]["broker_mtd_pnl"] == "ibkr_net_liquidation_month_manual_override"
+        assert live["ibkr"]["account_mtd_baseline_set_at"] == "2026-05-01T00:00:00+00:00"
+
     def test_derive_ibkr_today_realized_pnl_prefers_futures_bucket(self):
         import eta_engine.deploy.scripts.dashboard_api as mod
 
@@ -5053,6 +5190,70 @@ class TestDashboardAPI:
         assert live["sources"]["broker_mtd_pnl"] == "ibkr_client_portal_pa_performance_mtd"
         assert live["alpaca"]["today_realized_pnl"] == -15.03
         assert live["alpaca"]["policy_status"] == "paused_backburner"
+
+    def test_live_broker_state_uses_persisted_mtd_when_broker_mtd_missing(
+        self,
+        tmp_path,
+        monkeypatch,
+    ):
+        from datetime import UTC, datetime
+
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        monkeypatch.setenv("ETA_STATE_DIR", str(tmp_path / "state"))
+        month_key = datetime.now(UTC).strftime("%Y-%m")
+        tracker_path = tmp_path / "state" / "broker_mtd" / "ibkr_net_liq_month_tracker.json"
+        tracker_path.parent.mkdir(parents=True, exist_ok=True)
+        tracker_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "updated_at": "2026-05-14T16:20:18+00:00",
+                    "accounts": {
+                        "DU123": {
+                            month_key: {
+                                "month": month_key,
+                                "baseline_net_liquidation": 1_000_000.0,
+                                "baseline_origin": "manual_override",
+                                "baseline_set_at": "2026-05-01T00:00:00+00:00",
+                                "last_net_liquidation": 1_024_387.0,
+                                "last_seen_at": "2026-05-14T16:20:18+00:00",
+                            },
+                        },
+                    },
+                },
+            ),
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(
+            mod,
+            "_alpaca_live_state_snapshot",
+            lambda **kwargs: {"today_filled_orders": 0, "today_realized_pnl": 0.0, "unrealized_pnl": 0.0},
+        )
+        monkeypatch.setattr(
+            mod,
+            "_ibkr_live_state_snapshot",
+            lambda **kwargs: {
+                "today_executions": 0,
+                "today_realized_pnl": 0.0,
+                "account_mtd_pnl": None,
+                "account_mtd_return_pct": None,
+                "account_mtd_source": "",
+                "unrealized_pnl": 0.0,
+                "open_position_count": 0,
+                "ready": True,
+            },
+        )
+        monkeypatch.setattr(mod, "_alpaca_per_bot_pnl_cached", lambda **kwargs: {"ready": True, "per_bot": {}})
+        monkeypatch.setattr(mod, "_recent_live_fill_rows", lambda: [])
+        monkeypatch.setattr(mod, "_recent_trade_closes", lambda limit=25: [])
+
+        live = mod._live_broker_state_payload()
+
+        assert live["broker_mtd_pnl"] == 24387.0
+        assert live["broker_mtd_return_pct"] == 2.44
+        assert live["ibkr"]["account_mtd_source"] == "ibkr_net_liquidation_month_manual_override"
+        assert live["sources"]["broker_mtd_pnl"] == "ibkr_net_liquidation_month_manual_override"
 
     def test_live_broker_state_uses_trade_close_ledger_for_win_rate_when_fills_lack_pnl(
         self,
