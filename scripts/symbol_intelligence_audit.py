@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import csv
 import json
 import sys
 from dataclasses import asdict, dataclass, field
@@ -29,6 +30,8 @@ from eta_engine.scripts import workspace_roots  # noqa: E402
 PRIORITY_SYMBOLS = ("MNQ1", "NQ1", "ES1", "MES1", "YM1", "MYM1")
 REQUIRED_COMPONENTS = ("bars", "events", "decisions", "outcomes", "quality")
 OPTIONAL_COMPONENTS = ("news", "book")
+FUTURE_RECORD_TOLERANCE_SECONDS = 300
+SCHEDULED_FUTURE_RECORD_TYPES = frozenset({"macro_event"})
 _COMPONENT_RECORD_TYPES = {
     "bars": "bar",
     "events": "macro_event",
@@ -50,6 +53,8 @@ class SymbolIntelCoverage:
     missing_required: list[str] = field(default_factory=list)
     missing_optional: list[str] = field(default_factory=list)
     latest_record_utc: str | None = None
+    future_record_count: int = 0
+    future_record_types: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -61,9 +66,23 @@ def _latest_record_time(records: list[SymbolIntelRecord]) -> datetime | None:
     return max(rec.ts_utc for rec in records)
 
 
-def _has_record(store: SymbolIntelStore, *, record_type: str, symbol: str) -> tuple[bool, datetime | None]:
+def _is_future_record(rec: SymbolIntelRecord, *, now: datetime) -> bool:
+    return (rec.ts_utc - now).total_seconds() > FUTURE_RECORD_TOLERANCE_SECONDS
+
+
+def _records_for_component(
+    store: SymbolIntelStore,
+    *,
+    record_type: str,
+    symbol: str,
+    now: datetime,
+) -> tuple[bool, datetime | None, int]:
     rows = list(store.iter_records(record_type=record_type, symbol=symbol))
-    return bool(rows), _latest_record_time(rows)
+    future_rows = [rec for rec in rows if _is_future_record(rec, now=now)]
+    valid_rows = [rec for rec in rows if not _is_future_record(rec, now=now)]
+    component_rows = rows if record_type in SCHEDULED_FUTURE_RECORD_TYPES else valid_rows
+    anomaly_count = 0 if record_type in SCHEDULED_FUTURE_RECORD_TYPES else len(future_rows)
+    return bool(component_rows), _latest_record_time(valid_rows), anomaly_count
 
 
 def inspect_symbol(
@@ -72,22 +91,42 @@ def inspect_symbol(
     store: SymbolIntelStore | None = None,
     now: datetime | None = None,
 ) -> SymbolIntelCoverage:
-    del now  # Reserved for freshness windows once live providers are enabled.
+    now = (now or datetime.now(tz=UTC)).astimezone(UTC)
     symbol = symbol.upper().strip()
     store = store or SymbolIntelStore()
 
     latest: list[datetime] = []
     components: dict[str, bool] = {}
+    future_record_count = 0
+    future_record_types: list[str] = []
     for component in REQUIRED_COMPONENTS:
-        ok, ts = _has_record(store, record_type=_COMPONENT_RECORD_TYPES[component], symbol=symbol)
+        record_type = _COMPONENT_RECORD_TYPES[component]
+        ok, ts, future_count = _records_for_component(
+            store,
+            record_type=record_type,
+            symbol=symbol,
+            now=now,
+        )
         components[component] = ok
+        if future_count:
+            future_record_count += future_count
+            future_record_types.append(record_type)
         if ts is not None:
             latest.append(ts)
 
     optional_components: dict[str, bool] = {}
     for component in OPTIONAL_COMPONENTS:
-        ok, ts = _has_record(store, record_type=_COMPONENT_RECORD_TYPES[component], symbol=symbol)
+        record_type = _COMPONENT_RECORD_TYPES[component]
+        ok, ts, future_count = _records_for_component(
+            store,
+            record_type=record_type,
+            symbol=symbol,
+            now=now,
+        )
         optional_components[component] = ok
+        if future_count:
+            future_record_count += future_count
+            future_record_types.append(record_type)
         if ts is not None:
             latest.append(ts)
 
@@ -111,6 +150,8 @@ def inspect_symbol(
         missing_required=missing_required,
         missing_optional=missing_optional,
         latest_record_utc=latest_ts,
+        future_record_count=future_record_count,
+        future_record_types=sorted(set(future_record_types)),
     )
 
 
@@ -182,6 +223,54 @@ def _iter_trade_rows(raw: object) -> list[dict[str, Any]]:
     return []
 
 
+def _iter_trade_rows_from_path(path: Path) -> list[dict[str, Any]]:
+    if not path.exists():
+        return []
+    if path.suffix.lower() == ".jsonl":
+        rows: list[dict[str, Any]] = []
+        with path.open("r", encoding="utf-8") as fh:
+            for line in fh:
+                if not line.strip():
+                    continue
+                with contextlib.suppress(json.JSONDecodeError):
+                    row = json.loads(line)
+                    if isinstance(row, dict):
+                        rows.append(row)
+        return rows
+    return _iter_trade_rows(json.loads(path.read_text(encoding="utf-8")))
+
+
+def _row_scopes(row: dict[str, Any]) -> list[dict[str, Any]]:
+    scopes = [row]
+    for key in ("extra", "payload", "metadata"):
+        value = row.get(key)
+        if isinstance(value, dict):
+            scopes.append(value)
+    return scopes
+
+
+def _first_row_value(row: dict[str, Any], *keys: str) -> object | None:
+    for scope in _row_scopes(row):
+        for key in keys:
+            value = scope.get(key)
+            if value is not None and value != "":
+                return value
+    return None
+
+
+def _row_bot_ids(row: dict[str, Any]) -> set[str]:
+    bot_ids: set[str] = set()
+    for scope in _row_scopes(row):
+        for key in ("bot", "bot_id", "subsystem", "strategy", "bot_a", "bot_b"):
+            value = scope.get(key)
+            if value:
+                bot_ids.add(str(value))
+    for link in row.get("links") or []:
+        if isinstance(link, str) and link.startswith("bot:"):
+            bot_ids.add(link.split(":", 1)[1])
+    return bot_ids
+
+
 def _load_yaml_events(path: Path) -> list[dict[str, Any]]:
     if not path.exists():
         return []
@@ -219,6 +308,29 @@ def _existing_payload_values(store: SymbolIntelStore, *, record_type: str, paylo
     }
 
 
+def _latest_csv_bar_timestamp(path: Path) -> datetime | None:
+    try:
+        with path.open("r", encoding="utf-8", newline="") as fh:
+            rows = list(csv.DictReader(fh))
+    except Exception:
+        return None
+    parsed: list[datetime] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        raw = (
+            row.get("ts")
+            or row.get("timestamp")
+            or row.get("datetime")
+            or row.get("date")
+            or row.get("time")
+        )
+        if raw:
+            with contextlib.suppress(Exception):
+                parsed.append(_parse_ts(raw))
+    return max(parsed) if parsed else None
+
+
 def backfill_bars_from_history(
     *,
     history_root: Path = workspace_roots.MNQ_HISTORY_ROOT,
@@ -237,7 +349,8 @@ def backfill_bars_from_history(
                 continue
             timeframe = path.stem.removeprefix(f"{symbol.upper()}_")
             stat = path.stat()
-            ts = datetime.fromtimestamp(stat.st_mtime, tz=UTC)
+            file_modified_ts = datetime.fromtimestamp(stat.st_mtime, tz=UTC)
+            ts = _latest_csv_bar_timestamp(path) or file_modified_ts
             rec = SymbolIntelRecord(
                 record_type="bar",
                 ts_utc=ts,
@@ -247,7 +360,8 @@ def backfill_bars_from_history(
                     "dataset_path": dataset_path,
                     "timeframe": timeframe,
                     "bytes": stat.st_size,
-                    "last_modified_utc": ts.isoformat(),
+                    "bar_ts_utc": ts.isoformat(),
+                    "last_modified_utc": file_modified_ts.isoformat(),
                 },
                 quality=SymbolIntelQuality(confidence=0.75, is_reconciled=True),
             )
@@ -308,23 +422,11 @@ def default_bot_symbol_map() -> dict[str, str]:
 
 def _decision_symbols(row: dict[str, Any], bot_symbol_map: dict[str, str]) -> set[str]:
     symbols: set[str] = set()
-    for key in ("symbol", "ticker", "contract"):
-        if row.get(key):
-            symbols.add(str(row[key]).upper().strip())
-    metadata = row.get("metadata") if isinstance(row.get("metadata"), dict) else {}
-    for key in ("symbol", "ticker", "contract"):
-        if metadata.get(key):
-            symbols.add(str(metadata[key]).upper().strip())
-    bot_ids: set[str] = set()
-    for key in ("bot", "bot_id", "bot_a", "bot_b"):
-        if metadata.get(key):
-            bot_ids.add(str(metadata[key]))
-        if row.get(key):
-            bot_ids.add(str(row[key]))
-    for link in row.get("links") or []:
-        if isinstance(link, str) and link.startswith("bot:"):
-            bot_ids.add(link.split(":", 1)[1])
-    for bot_id in bot_ids:
+    for scope in _row_scopes(row):
+        for key in ("symbol", "ticker", "contract", "root_symbol", "instrument"):
+            if scope.get(key):
+                symbols.add(str(scope[key]).upper().strip())
+    for bot_id in _row_bot_ids(row):
         mapped = bot_symbol_map.get(bot_id)
         if mapped:
             symbols.add(mapped)
@@ -423,22 +525,26 @@ def bootstrap_existing_truth_surfaces(
         "bars": backfill_bars_from_history(store=store, symbols=symbols),
         "events": backfill_events_from_calendar(store=store, symbols=symbols),
         "decisions": backfill_decisions_from_journal(store=store, symbols=symbols),
-        "outcomes": backfill_outcomes_from_closed_trade_ledger(store=store),
+        "outcomes": backfill_outcomes_from_closed_trade_ledger(store=store, symbols=symbols),
     }
     counts["quality"] = backfill_quality_from_audit(store=store, symbols=symbols)
     return counts
 
 
-def _row_symbol(row: dict[str, Any]) -> str | None:
-    symbol = row.get("symbol") or row.get("contract") or row.get("ticker")
+def _row_symbol(row: dict[str, Any], *, bot_symbol_map: dict[str, str] | None = None) -> str | None:
+    symbol = _first_row_value(row, "symbol", "contract", "ticker", "root_symbol", "instrument")
+    if not symbol and bot_symbol_map:
+        for bot_id in _row_bot_ids(row):
+            symbol = bot_symbol_map.get(bot_id)
+            if symbol:
+                break
     return str(symbol).upper().strip() if symbol else None
 
 
 def _dedupe_key(row: dict[str, Any]) -> str:
     return "|".join(
         str(
-            row.get(key)
-            or row.get(key.replace("_", ""))
+            _first_row_value(row, key, key.replace("_", ""))
             or ""
         )
         for key in ("bot_id", "bot", "symbol", "signal_id", "close_ts", "exit_time_utc", "ts", "fill_price")
@@ -448,50 +554,60 @@ def _dedupe_key(row: dict[str, Any]) -> str:
 def backfill_outcomes_from_closed_trade_ledger(
     *,
     source_path: Path = workspace_roots.ETA_CLOSED_TRADE_LEDGER_PATH,
+    source_paths: list[Path] | tuple[Path, ...] | None = None,
     store: SymbolIntelStore | None = None,
+    symbols: list[str] | tuple[str, ...] | None = None,
+    bot_symbol_map: dict[str, str] | None = None,
 ) -> int:
-    if not source_path.exists():
-        return 0
     store = store or SymbolIntelStore()
-    raw = json.loads(source_path.read_text(encoding="utf-8"))
+    bot_symbol_map = bot_symbol_map or default_bot_symbol_map()
+    target_symbols = {symbol.upper().strip() for symbol in symbols} if symbols else None
+    if source_paths is not None:
+        paths = list(source_paths)
+    elif source_path == workspace_roots.ETA_CLOSED_TRADE_LEDGER_PATH:
+        paths = [source_path, workspace_roots.ETA_JARVIS_TRADE_CLOSES_PATH]
+    else:
+        paths = [source_path]
     existing = {
         str(rec.payload.get("dedupe_key"))
         for rec in store.iter_records(record_type="outcome")
         if rec.payload.get("dedupe_key")
     }
     count = 0
-    for row in _iter_trade_rows(raw):
-        symbol = _row_symbol(row)
-        if not symbol:
-            continue
-        dedupe_key = _dedupe_key(row)
-        if dedupe_key in existing:
-            continue
-        ts = _parse_ts(row.get("exit_time_utc") or row.get("close_ts") or row.get("ts") or row.get("time"))
-        payload = {
-            "dedupe_key": dedupe_key,
-            "bot": row.get("bot") or row.get("bot_id"),
-            "side": row.get("side"),
-            "qty": row.get("qty"),
-            "entry_price": row.get("entry_price"),
-            "exit_price": row.get("exit_price") or row.get("fill_price"),
-            "fill_price": row.get("fill_price"),
-            "realized_pnl": row.get("realized_pnl"),
-            "r_multiple": row.get("r_multiple") or row.get("realized_r"),
-            "signal_id": row.get("signal_id"),
-            "data_source": row.get("data_source"),
-        }
-        rec = SymbolIntelRecord(
-            record_type="outcome",
-            ts_utc=ts,
-            symbol=symbol,
-            source="broker_ledger",
-            payload={key: value for key, value in payload.items() if value is not None},
-            quality=SymbolIntelQuality(confidence=0.85, is_reconciled=True),
-        )
-        store.append(rec)
-        existing.add(dedupe_key)
-        count += 1
+    for path in paths:
+        for row in _iter_trade_rows_from_path(path):
+            symbol = _row_symbol(row, bot_symbol_map=bot_symbol_map)
+            if not symbol or (target_symbols is not None and symbol not in target_symbols):
+                continue
+            dedupe_key = f"{path.name}|{_dedupe_key(row)}|{symbol}"
+            if dedupe_key in existing:
+                continue
+            ts = _parse_ts(_first_row_value(row, "exit_time_utc", "close_ts", "ts", "time"))
+            payload = {
+                "dedupe_key": dedupe_key,
+                "source_path": str(path),
+                "bot": _first_row_value(row, "bot", "bot_id", "subsystem"),
+                "side": _first_row_value(row, "side", "direction"),
+                "qty": _first_row_value(row, "qty", "quantity"),
+                "entry_price": _first_row_value(row, "entry_price", "entry"),
+                "exit_price": _first_row_value(row, "exit_price", "fill_price"),
+                "fill_price": _first_row_value(row, "fill_price"),
+                "realized_pnl": _first_row_value(row, "realized_pnl", "pnl"),
+                "r_multiple": _first_row_value(row, "r_multiple", "realized_r"),
+                "signal_id": _first_row_value(row, "signal_id"),
+                "data_source": _first_row_value(row, "data_source"),
+            }
+            rec = SymbolIntelRecord(
+                record_type="outcome",
+                ts_utc=ts,
+                symbol=symbol,
+                source="broker_ledger",
+                payload={key: value for key, value in payload.items() if value is not None},
+                quality=SymbolIntelQuality(confidence=0.85, is_reconciled=True),
+            )
+            store.append(rec)
+            existing.add(dedupe_key)
+            count += 1
     return count
 
 

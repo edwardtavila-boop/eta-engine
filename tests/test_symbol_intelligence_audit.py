@@ -58,6 +58,68 @@ def test_run_audit_surfaces_missing_components(tmp_path):
     assert payload["symbols"][0]["missing_required"] == ["events", "outcomes", "quality"]
 
 
+def test_inspect_symbol_ignores_future_records_for_required_coverage(tmp_path):
+    store = SymbolIntelStore(root=tmp_path)
+    store.append(
+        SymbolIntelRecord(
+            record_type="bar",
+            ts_utc=datetime(2026, 5, 15, 14, 30, tzinfo=UTC),
+            symbol="MNQ1",
+            source="test",
+            payload={"future": True},
+        )
+    )
+    for record_type in ("macro_event", "decision", "outcome", "quality"):
+        store.append(_record(record_type))
+
+    coverage = inspect_symbol("MNQ1", store=store, now=datetime(2026, 5, 14, 15, 0, tzinfo=UTC))
+
+    assert coverage.components["bars"] is False
+    assert coverage.missing_required == ["bars"]
+    assert coverage.future_record_count == 1
+    assert coverage.future_record_types == ["bar"]
+    assert coverage.latest_record_utc == "2026-05-14T14:30:00+00:00"
+
+
+def test_backfill_bars_prefers_csv_timestamp_over_future_file_mtime(tmp_path):
+    store = SymbolIntelStore(root=tmp_path / "lake")
+    history = tmp_path / "history"
+    history.mkdir()
+    bar_file = history / "MNQ1_5m.csv"
+    bar_file.write_text("ts,open,high,low,close\n2026-05-14T14:35:00Z,1,2,0,1\n", encoding="utf-8")
+
+    assert backfill_bars_from_history(history_root=history, store=store, symbols=["MNQ1"]) == 1
+
+    coverage = inspect_symbol("MNQ1", store=store, now=datetime(2026, 5, 14, 15, 0, tzinfo=UTC))
+    records = list(store.iter_records(record_type="bar", symbol="MNQ1"))
+
+    assert coverage.components["bars"] is True
+    assert coverage.future_record_count == 0
+    assert records[0].payload["bar_ts_utc"] == "2026-05-14T14:35:00+00:00"
+
+
+def test_future_macro_events_count_as_scheduled_coverage_not_anomalies(tmp_path):
+    store = SymbolIntelStore(root=tmp_path)
+    for record_type in ("bar", "decision", "outcome", "quality"):
+        store.append(_record(record_type))
+    store.append(
+        SymbolIntelRecord(
+            record_type="macro_event",
+            ts_utc=datetime(2026, 5, 15, 14, 30, tzinfo=UTC),
+            symbol="MNQ1",
+            source="calendar",
+            payload={"scheduled": True},
+        )
+    )
+
+    coverage = inspect_symbol("MNQ1", store=store, now=datetime(2026, 5, 14, 15, 0, tzinfo=UTC))
+
+    assert coverage.components["events"] is True
+    assert coverage.future_record_count == 0
+    assert coverage.status == "green"
+    assert coverage.latest_record_utc == "2026-05-14T14:30:00+00:00"
+
+
 def test_backfill_outcomes_from_closed_trade_ledger(tmp_path):
     store = SymbolIntelStore(root=tmp_path / "lake")
     ledger = tmp_path / "closed_trades.json"
@@ -91,6 +153,80 @@ def test_backfill_outcomes_from_closed_trade_ledger(tmp_path):
     assert rows[0].payload["bot"] == "volume_profile_mnq"
     assert rows[0].payload["entry_price"] == 29200.0
     assert rows[0].payload["exit_price"] == 29224.5
+
+
+def test_backfill_outcomes_from_live_close_stream_nested_payload(tmp_path):
+    store = SymbolIntelStore(root=tmp_path / "lake")
+    trade_closes = tmp_path / "trade_closes.jsonl"
+    trade_closes.write_text(
+        json.dumps(
+            {
+                "bot_id": "mes_sweep_reclaim",
+                "signal_id": "mes_sweep_reclaim_093c3b2b",
+                "ts": "2026-05-13T06:30:55.276560+00:00",
+                "realized_r": -1.0,
+                "data_source": "live",
+                "extra": {
+                    "symbol": "MES1",
+                    "side": "BUY",
+                    "qty": 5.0,
+                    "fill_price": 52.25,
+                    "realized_pnl": -37.5,
+                    "close_ts": "2026-05-13T06:30:55.127312+00:00",
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    count = backfill_outcomes_from_closed_trade_ledger(
+        source_paths=[trade_closes],
+        store=store,
+        symbols=["MES1"],
+        bot_symbol_map={"mes_sweep_reclaim": "MES1"},
+    )
+    rows = list(store.iter_records(record_type="outcome", symbol="MES1"))
+
+    assert count == 1
+    assert len(rows) == 1
+    assert rows[0].payload["bot"] == "mes_sweep_reclaim"
+    assert rows[0].payload["fill_price"] == 52.25
+    assert rows[0].payload["realized_pnl"] == -37.5
+    assert rows[0].payload["r_multiple"] == -1.0
+
+
+def test_backfill_outcomes_infers_symbol_from_bot_map(tmp_path):
+    store = SymbolIntelStore(root=tmp_path / "lake")
+    trade_closes = tmp_path / "trade_closes.jsonl"
+    trade_closes.write_text(
+        json.dumps(
+            {
+                "bot_id": "nq_futures_sage",
+                "signal_id": "nq_futures_sage_abc123",
+                "ts": "2026-05-13T06:30:55+00:00",
+                "side": "SELL",
+                "qty": 1,
+                "fill_price": 21150.25,
+                "realized_pnl": 82.0,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    count = backfill_outcomes_from_closed_trade_ledger(
+        source_paths=[trade_closes],
+        store=store,
+        symbols=["NQ1"],
+        bot_symbol_map={"nq_futures_sage": "NQ1"},
+    )
+    rows = list(store.iter_records(record_type="outcome", symbol="NQ1"))
+
+    assert count == 1
+    assert len(rows) == 1
+    assert rows[0].payload["bot"] == "nq_futures_sage"
+    assert rows[0].payload["exit_price"] == 21150.25
 
 
 def test_write_snapshot_creates_parent_and_payload(tmp_path):
