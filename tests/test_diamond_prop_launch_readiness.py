@@ -57,6 +57,35 @@ def test_R2_DRAWDOWN_NO_GO_when_signal_HALT() -> None:
     assert g.status == "NO_GO"
 
 
+def test_R2_DRAWDOWN_detail_preserves_guard_checks() -> None:
+    """R2 must carry the actual guard math so stale/blocking states are debuggable."""
+    from eta_engine.scripts import diamond_prop_launch_readiness as lr
+
+    guard = {
+        "ts": "2026-05-13T23:00:00+00:00",
+        "signal": "HALT",
+        "rationale": "HALT - consistency breached",
+        "prop_ready_bots": ["m2k_sweep_reclaim"],
+        "daily_pnl_usd": 0.0,
+        "total_pnl_usd": 1200.0,
+        "consistency_ratio": 0.8333,
+        "consistency_check": {
+            "name": "consistency",
+            "status": "HALT",
+            "used_usd": 83.33,
+            "limit_usd": 30.0,
+            "rationale": "BREACHED - best day ratio 83.33% >= 30% limit",
+        },
+    }
+    g = lr._check_R2_drawdown(guard)
+
+    assert g.status == "NO_GO"
+    assert g.detail["receipt_ts"] == "2026-05-13T23:00:00+00:00"
+    assert g.detail["total_pnl_usd"] == 1200.0
+    assert g.detail["consistency_check"]["status"] == "HALT"
+    assert "BREACHED" in g.detail["consistency_check"]["rationale"]
+
+
 def test_R3_FEED_SANITY_NO_GO_when_prop_ready_bot_flagged() -> None:
     """If a PROP_READY bot has feed-sanity FLAGGED, hard NO_GO."""
     from eta_engine.scripts import diamond_prop_launch_readiness as lr

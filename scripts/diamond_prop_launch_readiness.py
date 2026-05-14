@@ -167,26 +167,61 @@ def _check_R2_drawdown(guard: dict | None) -> GateResult:
             rationale="drawdown guard receipt missing — cron not firing",
         )
     sig = guard.get("signal", "UNKNOWN")
+    detail = _drawdown_guard_detail(guard)
     if sig == "OK":
         return GateResult(
             "R2_DRAWDOWN_OK",
             "GO",
             rationale="prop drawdown guard: OK across all rules",
-            detail={"signal": sig},
+            detail=detail,
         )
     if sig == "WATCH":
         return GateResult(
             "R2_DRAWDOWN_OK",
             "HOLD",
             rationale=f"prop drawdown guard: WATCH — {guard.get('rationale', '')}",
-            detail={"signal": sig},
+            detail=detail,
         )
     return GateResult(
         "R2_DRAWDOWN_OK",
         "NO_GO",
         rationale=f"prop drawdown guard: HALT — {guard.get('rationale', '')}",
-        detail={"signal": sig, "guard_rationale": guard.get("rationale", "")},
+        detail=detail,
     )
+
+
+def _drawdown_check_detail(check: object) -> dict[str, Any] | None:
+    """Return operator-useful fields from a drawdown guard sub-check."""
+    if not isinstance(check, dict):
+        return None
+    keys = (
+        "name",
+        "status",
+        "rationale",
+        "limit_usd",
+        "used_usd",
+        "buffer_usd",
+        "buffer_pct_of_limit",
+    )
+    return {k: check.get(k) for k in keys if k in check}
+
+
+def _drawdown_guard_detail(guard: dict[str, Any]) -> dict[str, Any]:
+    """Preserve enough drawdown context for dashboards and eta_status."""
+    detail: dict[str, Any] = {
+        "signal": guard.get("signal", "UNKNOWN"),
+        "guard_rationale": guard.get("rationale", ""),
+        "receipt_ts": guard.get("ts"),
+        "prop_ready_bots": guard.get("prop_ready_bots") or [],
+        "daily_pnl_usd": guard.get("daily_pnl_usd"),
+        "total_pnl_usd": guard.get("total_pnl_usd"),
+        "consistency_ratio": guard.get("consistency_ratio"),
+    }
+    for key in ("daily_dd_check", "static_dd_check", "consistency_check"):
+        check_detail = _drawdown_check_detail(guard.get(key))
+        if check_detail is not None:
+            detail[key] = check_detail
+    return detail
 
 
 def _check_R3_feed_sanity(feed: dict | None, prop_ready: set[str]) -> GateResult:

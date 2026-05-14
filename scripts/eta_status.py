@@ -30,6 +30,7 @@ LAUNCH_READINESS = STATE_DIR / "diamond_prop_launch_readiness_latest.json"
 KAIZEN_LATEST = STATE_DIR / "kaizen_latest.json"
 EVENTS_LOG = STATE_DIR / "eta_events.jsonl"
 QUANTUM_DIR = STATE_DIR / "quantum"
+LAUNCH_READINESS_MAX_AGE_SECONDS = 30 * 60
 
 
 def _load_json(path: Path) -> dict[str, Any]:
@@ -67,6 +68,44 @@ def _latest_quantum_rebalance() -> dict[str, Any]:
     return _load_json(candidates[-1])
 
 
+def _parse_iso_ts(ts: object) -> datetime | None:
+    if not isinstance(ts, str) or not ts.strip():
+        return None
+    try:
+        dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=UTC)
+    return dt.astimezone(UTC)
+
+
+def _age_seconds(ts: object) -> float | None:
+    dt = _parse_iso_ts(ts)
+    if dt is None:
+        return None
+    return round((datetime.now(UTC) - dt).total_seconds(), 1)
+
+
+def _gate_details(gates: list[Any], status: str | None = None) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for gate in gates:
+        if not isinstance(gate, dict):
+            continue
+        if status is not None and gate.get("status") != status:
+            continue
+        detail = gate.get("detail")
+        out.append(
+            {
+                "name": gate.get("name"),
+                "status": gate.get("status"),
+                "rationale": gate.get("rationale"),
+                "detail": detail if isinstance(detail, dict) else {},
+            },
+        )
+    return out
+
+
 def gather() -> dict[str, Any]:
     hb = _load_json(HEARTBEAT_PATH)
     lb = _load_json(LEADERBOARD)
@@ -88,6 +127,9 @@ def gather() -> dict[str, Any]:
     qm_results = qm.get("results") or []
     qm_with_signals = [r for r in qm_results if r.get("selected_bots")]
     qm_with_hedges = [r for r in qm_with_signals if (r.get("hedge_recommendation") or {}).get("hedges_selected")]
+    lr_gates = lr.get("gates") or []
+    lr_age = _age_seconds(lr.get("ts"))
+    lr_stale = lr_age is None or lr_age > LAUNCH_READINESS_MAX_AGE_SECONDS
 
     return {
         "ts": datetime.now(UTC).isoformat(),
@@ -116,10 +158,25 @@ def gather() -> dict[str, Any]:
             "prop_ready_bots": lb.get("prop_ready_bots"),
         },
         "launch_readiness": {
+            "ts": lr.get("ts"),
+            "age_seconds": lr_age,
+            "stale": lr_stale,
+            "max_age_seconds": LAUNCH_READINESS_MAX_AGE_SECONDS,
             "verdict": lr.get("overall_verdict"),
             "summary": lr.get("summary"),
-            "failing_gates": [g["name"] for g in (lr.get("gates") or []) if g.get("status") == "NO_GO"],
-            "warning_gates": [g["name"] for g in (lr.get("gates") or []) if g.get("status") not in ("GO", "NO_GO")],
+            "gates": _gate_details(lr_gates),
+            "failing_gates": [g["name"] for g in lr_gates if isinstance(g, dict) and g.get("status") == "NO_GO"],
+            "warning_gates": [
+                g["name"]
+                for g in lr_gates
+                if isinstance(g, dict) and g.get("status") not in ("GO", "NO_GO")
+            ],
+            "failing_gate_details": _gate_details(lr_gates, "NO_GO"),
+            "warning_gate_details": [
+                g
+                for g in _gate_details(lr_gates)
+                if g.get("status") not in ("GO", "NO_GO")
+            ],
             "launch_date": lr.get("launch_date"),
             "days_until_launch": lr.get("days_until_launch"),
         },
@@ -178,10 +235,20 @@ def render_text(state: dict[str, Any]) -> str:
         f"Launch verdict  : {launch.get('verdict')}  "
         f"({launch.get('days_until_launch')}d to {launch.get('launch_date')})"
     )
+    lr_age = launch.get("age_seconds")
+    if lr_age is not None:
+        stale_tag = "STALE" if launch.get("stale") else "fresh"
+        lines.append(f"  freshness    : {stale_tag}  age={lr_age:.0f}s  receipt={launch.get('ts')}")
+    elif launch.get("stale"):
+        lines.append("  freshness    : STALE  receipt timestamp missing/unparseable")
     if launch.get("failing_gates"):
         lines.append(f"  NO_GO gates   : {', '.join(launch['failing_gates'])}")
+        for gate in launch.get("failing_gate_details") or []:
+            lines.append(f"    - {gate.get('name')}: {gate.get('rationale')}")
     if launch.get("warning_gates"):
         lines.append(f"  WARN gates    : {', '.join(launch['warning_gates'])}")
+        for gate in launch.get("warning_gate_details") or []:
+            lines.append(f"    - {gate.get('name')}: {gate.get('rationale')}")
     if launch.get("summary"):
         lines.append(f"  summary       : {launch['summary']}")
 
