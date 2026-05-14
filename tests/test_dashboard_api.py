@@ -594,6 +594,46 @@ class TestDashboardAPI:
         assert direct.json()["symbol_count"] == 2
         assert "no-store" in direct.headers["Cache-Control"]
 
+    def test_dashboard_includes_diamond_retune_status(self, app_client, tmp_path):
+        state = tmp_path / "state"
+        (state / "diamond_retune_status_latest.json").write_text(
+            json.dumps(
+                {
+                    "kind": "eta_diamond_retune_status",
+                    "generated_at_utc": "2026-05-14T21:05:43+00:00",
+                    "summary": {
+                        "n_targets": 2,
+                        "n_attempted_bots": 1,
+                        "n_unattempted_targets": 1,
+                        "n_research_passed_broker_proof_required": 1,
+                        "n_stuck_research_failing": 0,
+                        "n_timeout_retry": 0,
+                        "safe_to_mutate_live": False,
+                    },
+                    "bots": [
+                        {
+                            "bot_id": "nq_futures_sage",
+                            "retune_state": "PASS_AWAITING_BROKER_PROOF",
+                            "next_action": "review research artifact",
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        dashboard = app_client.get("/api/dashboard")
+        retune_status = dashboard.json()["diamond_retune_status"]
+        assert retune_status["status"] == "ready"
+        assert retune_status["contract_ok"] is True
+        assert retune_status["summary"]["n_attempted_bots"] == 1
+        assert retune_status["summary"]["safe_to_mutate_live"] is False
+
+        direct = app_client.get("/api/jarvis/diamond_retune_status")
+        assert direct.status_code == 200
+        assert direct.json()["summary"]["n_research_passed_broker_proof_required"] == 1
+        assert "no-store" in direct.headers["Cache-Control"]
+
     def test_dashboard_diagnostics_summarizes_symbol_intelligence(self, app_client, tmp_path):
         state = tmp_path / "state"
         (state / "symbol_intelligence_latest.json").write_text(
@@ -617,6 +657,44 @@ class TestDashboardAPI:
         assert data["contract_ok"] is True
         assert data["symbol_count"] == 1
 
+    def test_dashboard_diagnostics_summarizes_diamond_retune_status(self, app_client, tmp_path):
+        state = tmp_path / "state"
+        (state / "diamond_retune_status_latest.json").write_text(
+            json.dumps(
+                {
+                    "kind": "eta_diamond_retune_status",
+                    "summary": {
+                        "n_targets": 3,
+                        "n_attempted_bots": 2,
+                        "n_unattempted_targets": 1,
+                        "n_research_passed_broker_proof_required": 1,
+                        "n_stuck_research_failing": 1,
+                        "n_timeout_retry": 0,
+                        "safe_to_mutate_live": False,
+                    },
+                    "bots": [
+                        {
+                            "bot_id": "mnq_futures_sage",
+                            "retune_state": "STUCK_RESEARCH_FAILING",
+                            "next_action": "pause repeated attempts",
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/dashboard/diagnostics")
+
+        assert r.status_code == 200
+        data = r.json()["diamond_retune_status"]
+        assert data["status"] == "ready"
+        assert data["ready"] is True
+        assert data["contract_ok"] is True
+        assert data["n_targets"] == 3
+        assert data["n_stuck_research_failing"] == 1
+        assert data["top_bot_id"] == "mnq_futures_sage"
+
     def test_dashboard_cold_start_still_exposes_operator_queue(self, tmp_path, app_client):
         state = tmp_path / "state"
         (state / "dashboard_payload.json").unlink()
@@ -627,6 +705,7 @@ class TestDashboardAPI:
         assert r.json()["_warning"] == "no_data"
         assert "operator_queue" in r.json()
         assert r.json()["symbol_intelligence"]["status"] == "UNKNOWN"
+        assert r.json()["diamond_retune_status"]["status"] == "missing"
 
     def test_dashboard_uses_operator_queue_summary(self, app_client, monkeypatch):
         from eta_engine.scripts import jarvis_status
@@ -1021,6 +1100,73 @@ class TestDashboardAPI:
         assert data["near_misses"] == []
         assert data["retune_queue"] == []
 
+    def test_jarvis_diamond_retune_status_endpoint_reads_latest_snapshot(self, app_client, tmp_path):
+        state = tmp_path / "state"
+        (state / "diamond_retune_status_latest.json").write_text(
+            json.dumps(
+                {
+                    "kind": "eta_diamond_retune_status",
+                    "status": "ready",
+                    "generated_at": "2026-05-14T20:00:00+00:00",
+                    "summary": {
+                        "n_targets": 5,
+                        "n_attempted_bots": 2,
+                        "n_unattempted_targets": 3,
+                        "n_stuck_research_failing": 1,
+                        "n_research_passed_broker_proof_required": 1,
+                        "safe_to_mutate_live": False,
+                    },
+                    "bots": [
+                        {"bot_id": "mnq_futures_sage", "stage": "stuck_research_failing"},
+                        {"bot_id": "mcl_sweep_reclaim", "stage": "research_passed_broker_proof_required"},
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/jarvis/diamond_retune_status")
+
+        assert r.status_code == 200
+        data = r.json()
+        assert data["status"] == "ready"
+        assert data["summary"]["n_targets"] == 5
+        assert data["summary"]["n_stuck_research_failing"] == 1
+        assert data["summary"]["safe_to_mutate_live"] is False
+        assert data["safe_to_mutate_live"] is False
+        assert data["bots"][0]["bot_id"] == "mnq_futures_sage"
+        assert data["source_path"].endswith("diamond_retune_status_latest.json")
+        assert "no-store" in r.headers["Cache-Control"]
+
+    def test_dashboard_includes_diamond_retune_status_snapshot(self, app_client, tmp_path):
+        state = tmp_path / "state"
+        (state / "diamond_retune_status_latest.json").write_text(
+            json.dumps(
+                {
+                    "kind": "eta_diamond_retune_status",
+                    "status": "ready",
+                    "summary": {
+                        "n_targets": 4,
+                        "n_attempted_bots": 4,
+                        "n_unattempted_targets": 0,
+                        "n_stuck_research_failing": 0,
+                        "safe_to_mutate_live": False,
+                    },
+                    "bots": [{"bot_id": "mes_orb", "stage": "complete"}],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/dashboard")
+
+        assert r.status_code == 200
+        status = r.json()["diamond_retune_status"]
+        assert status["summary"]["n_targets"] == 4
+        assert status["summary"]["n_attempted_bots"] == 4
+        assert status["safe_to_mutate_live"] is False
+        assert status["bots"][0]["bot_id"] == "mes_orb"
+
     def test_dashboard_card_health_contract_has_no_dead_or_stale_cards(self, app_client):
         r = app_client.get("/api/dashboard/card-health")
         assert r.status_code == 200
@@ -1042,6 +1188,7 @@ class TestDashboardAPI:
         assert cards["cc-verdict-stream"]["source"] == "sse"
         assert cards["cc-paper-live-transition"]["endpoint"] == "/api/jarvis/paper_live_transition"
         assert cards["cc-strategy-supercharge-results"]["endpoint"] == "/api/jarvis/strategy_supercharge_results"
+        assert cards["cc-diamond-retune-status"]["endpoint"] == "/api/jarvis/diamond_retune_status"
         assert cards["fl-controls"]["source"] == "client"
         assert cards["fl-roster"]["endpoint"] == "/api/bot-fleet?since_days=1"
         assert cards["fl-equity-curve"]["endpoint"].startswith("/api/fleet-equity?")

@@ -173,6 +173,8 @@ class TestStatusPage:
             'id="cumulativeRSub"',
             'id="dataIntelligenceStatus"',
             'id="dataIntelligenceSub"',
+            'id="retuneFactoryStatus"',
+            'id="retuneFactorySub"',
             'id="activeBots"',
             'id="activeBotsSub"',
             'id="totalBots"',
@@ -211,6 +213,11 @@ class TestStatusPage:
         assert "/api/bot-fleet" in html
         assert "const API = '/api/bot-fleet';" in html
         assert "symbol_intelligence" in html
+        assert "diamond_retune_status" in html
+        assert "renderRetuneFactory" in html
+        assert "Retune Factory" in html
+        assert "need broker proof" in html
+        assert "/api/jarvis/diamond_retune_status" in html
         assert "target_exit_summary" in html
         assert "broker_bracket_audit" in html
         assert "primary_unprotected_position" in html

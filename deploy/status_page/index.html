@@ -169,6 +169,9 @@ body:after{content:"";position:fixed;inset:-8%;pointer-events:none;background:li
 .allocation-doctrine{margin-top:.35rem;color:#9fb1c5;font-size:.72rem;line-height:1.4;max-width:980px}
 .exit-watch-card{border-color:rgba(54,240,162,.28);background:linear-gradient(145deg,rgba(8,23,22,.84),rgba(3,8,14,.9))}
 .exit-watch-card .sub{line-height:1.35}
+.retune-factory-card{border-color:rgba(100,215,255,.26);background:radial-gradient(circle at 10% 0%,rgba(100,215,255,.14),transparent 38%),linear-gradient(145deg,rgba(7,21,34,.84),rgba(3,8,14,.92))}
+.retune-factory-card .stat{letter-spacing:-.03em}
+.retune-factory-card .sub{font-weight:750;color:#aebfd1}
 .vps-root-card{border-color:rgba(255,209,102,.34);background:linear-gradient(145deg,rgba(36,27,10,.82),rgba(3,8,14,.9));cursor:pointer}
 .vps-root-card:hover{box-shadow:0 0 0 1px rgba(255,209,102,.28),0 18px 38px rgba(0,0,0,.2);transform:translateY(-1px)}
 .vps-root-card .sub{line-height:1.35}
@@ -367,6 +370,9 @@ tr:hover td{background:rgba(100,215,255,.055)}
     <span id="strategyNearMisses"></span>
     <span id="strategyRetuneQueue"></span>
   </div>
+  <div data-panel-id="cc-diamond-retune-status" data-endpoint="/api/jarvis/diamond_retune_status">
+    <span id="diamondRetuneStatusAnchor"></span>
+  </div>
 </section>
 
 <div class="grid">
@@ -379,6 +385,7 @@ tr:hover td{background:rgba(100,215,255,.055)}
   <div class="card"><h3>Win Rate</h3><div class="stat blue" id="winRate">--</div><div class="sub" id="winRateDetail"></div></div>
   <div class="card"><h3>Trade-Ready</h3><div class="stat green" id="approvedCount">--</div><div class="sub">approved or conditional</div></div>
   <div class="card"><h3>Data Coverage</h3><div class="stat" id="dataIntelligenceStatus">--</div><div class="sub" id="dataIntelligenceSub">symbols + evidence</div></div>
+  <div class="card retune-factory-card"><h3>Retune Factory</h3><div class="stat" id="retuneFactoryStatus">--</div><div class="sub" id="retuneFactorySub">paper retunes pending</div></div>
   <div class="card"><h3>Policy Mode</h3><div class="stat yellow" id="jarvisMode">--</div></div>
   <div class="card"><h3>AI Ops</h3><div class="stat" id="adminAiStatus">-</div><div class="sub" id="adminAiSub">Jarvis + Hermes</div></div>
   <div class="card"><h3>IBKR Connection</h3><div class="stat" id="gatewayStatus">--</div><div class="sub" id="gatewayStatusSub"></div></div>
@@ -2419,7 +2426,7 @@ function showOffline(clearDashboard = true) {
     updateClock();
     return;
   }
-  ['totalBots','activeBots','todayPnl','totalPnl','cumulativeR','totalTrades','winRate','approvedCount','dataIntelligenceStatus','jarvisMode','adminAiStatus','gatewayStatus','brokerRouterStatus','bracketAuditStatus','paperLiveStatus','operatorQueueStatus','signalCadenceStatus','opsProxyStatus','opsWatchdogStatus','vpsRootStatus','riskLevel'].forEach(id => {
+  ['totalBots','activeBots','todayPnl','totalPnl','cumulativeR','totalTrades','winRate','approvedCount','dataIntelligenceStatus','retuneFactoryStatus','jarvisMode','adminAiStatus','gatewayStatus','brokerRouterStatus','bracketAuditStatus','paperLiveStatus','operatorQueueStatus','signalCadenceStatus','opsProxyStatus','opsWatchdogStatus','vpsRootStatus','riskLevel'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.textContent = '--';
   });
@@ -2437,6 +2444,8 @@ function showOffline(clearDashboard = true) {
   if (operatorQueueSub) operatorQueueSub.textContent = '';
   const dataIntelligenceSub = document.getElementById('dataIntelligenceSub');
   if (dataIntelligenceSub) dataIntelligenceSub.textContent = 'symbols + evidence';
+  const retuneFactorySub = document.getElementById('retuneFactorySub');
+  if (retuneFactorySub) retuneFactorySub.textContent = 'paper retunes pending';
   const signalCadenceSub = document.getElementById('signalCadenceSub');
   if (signalCadenceSub) signalCadenceSub.textContent = '';
   const opsProxySub = document.getElementById('opsProxySub');
@@ -2658,6 +2667,60 @@ function renderDataIntelligence(snapshot) {
   const subEl = document.getElementById('dataIntelligenceSub');
   if (!statusEl || !subEl) return;
   const readout = dataIntelligenceReadout(snapshot);
+  statusEl.textContent = readout.label;
+  statusEl.className = 'stat ' + readout.className;
+  subEl.textContent = readout.sub;
+}
+
+function retuneFactoryReadout(snapshot) {
+  const payload = snapshot && typeof snapshot === 'object' ? snapshot : {};
+  const summary = payload.summary && typeof payload.summary === 'object' ? payload.summary : payload;
+  const bots = Array.isArray(payload.bots) ? payload.bots : [];
+  const targets = finiteNumber(summary.n_targets) ?? bots.length ?? 0;
+  const attempted = finiteNumber(summary.n_attempted_bots) ?? 0;
+  const unattempted = finiteNumber(summary.n_unattempted_targets) ?? Math.max(0, targets - attempted);
+  const stuck = finiteNumber(summary.n_stuck_research_failing) ?? 0;
+  const proof = finiteNumber(summary.n_research_passed_broker_proof_required) ?? 0;
+  const timeout = finiteNumber(summary.n_timeout_retry) ?? 0;
+  const status = String(payload.status || '').toLowerCase();
+  const topBot = payload.top_bot_id || bots.find(bot => bot && typeof bot === 'object')?.bot_id || '';
+  let label = 'Waiting';
+  let className = 'dim';
+  if (status === 'missing' || targets <= 0) {
+    label = 'Waiting';
+    className = 'dim';
+  } else if (stuck > 0) {
+    label = 'Debug';
+    className = 'red';
+  } else if (proof > 0) {
+    label = 'Proof';
+    className = 'yellow';
+  } else if (unattempted > 0 || timeout > 0) {
+    label = 'Tuning';
+    className = 'blue';
+  } else {
+    label = 'Rotating';
+    className = 'green';
+  }
+  const subParts = [
+    `${attempted}/${targets} tried`,
+    `${stuck} stuck`,
+    `${proof} need broker proof`,
+    timeout > 0 ? `${timeout} retry` : '',
+    topBot ? `top ${topBot}` : '',
+  ].filter(Boolean);
+  return {
+    label,
+    className,
+    sub: compactText(subParts.join(' | '), 96),
+  };
+}
+
+function renderRetuneFactory(snapshot) {
+  const statusEl = document.getElementById('retuneFactoryStatus');
+  const subEl = document.getElementById('retuneFactorySub');
+  if (!statusEl || !subEl) return;
+  const readout = retuneFactoryReadout(snapshot);
   statusEl.textContent = readout.label;
   statusEl.className = 'stat ' + readout.className;
   subEl.textContent = readout.sub;
@@ -3350,6 +3413,7 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
   );
 
   renderDataIntelligence(d.symbol_intelligence || diagnostics?.symbol_intelligence || {});
+  renderRetuneFactory(d.diamond_retune_status || diagnostics?.diamond_retune_status || {});
 
   const proxyWatchdog = diagnostics?.dashboard_proxy_watchdog || {};
   const proxyStatus = String(proxyWatchdog.status || 'unknown').toLowerCase();

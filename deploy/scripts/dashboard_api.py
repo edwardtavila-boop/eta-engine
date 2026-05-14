@@ -123,6 +123,14 @@ DASHBOARD_CARD_REGISTRY = (
         "stale_after_s": 60,
     },
     {
+        "id": "cc-diamond-retune-status",
+        "title": "Diamond Retune Status",
+        "source": "endpoint",
+        "endpoint": "/api/jarvis/diamond_retune_status",
+        "required": True,
+        "stale_after_s": 3600,
+    },
+    {
         "id": "cc-v22-toggle",
         "title": "V22 Modulation",
         "source": "endpoint",
@@ -904,6 +912,7 @@ def _dashboard_diagnostics_payload() -> dict:
     paper_live_transition = _paper_live_transition_payload(refresh=False)
     readiness = _bot_strategy_readiness_payload()
     symbol_intelligence = _load_symbol_intelligence_snapshot()
+    diamond_retune_status = _load_diamond_retune_status()
     roster_bots = roster.get("bots") if isinstance(roster.get("bots"), list) else []
     roster_summary = roster.get("summary") if isinstance(roster.get("summary"), dict) else {}
     equity_series = equity.get("series") if isinstance(equity.get("series"), list) else []
@@ -1039,6 +1048,7 @@ def _dashboard_diagnostics_payload() -> dict:
             "error": readiness.get("error"),
         },
         "symbol_intelligence": _symbol_intelligence_diagnostic_payload(symbol_intelligence),
+        "diamond_retune_status": _diamond_retune_diagnostic_payload(diamond_retune_status),
         "operator_queue": {
             "blocked": int(operator_summary.get("BLOCKED") or 0),
             "observed": int(operator_summary.get("OBSERVED") or 0),
@@ -1092,6 +1102,7 @@ def _dashboard_diagnostics_payload() -> dict:
             "equity_contract": "series" in equity,
             "bot_strategy_readiness_contract": readiness.get("status") == "ready" and not readiness.get("error"),
             "symbol_intelligence_contract": bool(symbol_intelligence.get("contract_ok")),
+            "diamond_retune_status_contract": bool(diamond_retune_status.get("contract_ok")),
             "operator_queue_contract": isinstance(operator_queue, dict) and "summary" in operator_queue,
             "paper_live_transition_contract": isinstance(paper_live_transition, dict)
             and "status" in paper_live_transition,
@@ -1284,6 +1295,107 @@ def _symbol_intelligence_snapshot_path() -> Path:
     if override:
         return Path(override)
     return _state_dir() / "symbol_intelligence_latest.json"
+
+
+def _diamond_retune_status_path() -> Path:
+    override = os.environ.get("ETA_DIAMOND_RETUNE_STATUS_PATH", "").strip()
+    if override:
+        return Path(override)
+    return _state_dir() / "diamond_retune_status_latest.json"
+
+
+def _diamond_retune_status_unknown(path: Path, *, reason: str) -> dict[str, object]:
+    return {
+        "kind": "eta_diamond_retune_status",
+        "source": reason,
+        "path": str(path),
+        "source_path": str(path),
+        "status": "missing",
+        "ready": False,
+        "contract_ok": False,
+        "safe_to_mutate_live": False,
+        "summary": {
+            "n_targets": 0,
+            "n_attempted_bots": 0,
+            "n_unattempted_targets": 0,
+            "n_research_passed_broker_proof_required": 0,
+            "n_stuck_research_failing": 0,
+            "n_timeout_retry": 0,
+            "safe_to_mutate_live": False,
+        },
+        "bots": [],
+        "notes": ["diamond retune status has not been generated"],
+    }
+
+
+def _load_diamond_retune_status() -> dict[str, object]:
+    path = _diamond_retune_status_path()
+    payload = _read_json_file(path)
+    if not payload:
+        return _diamond_retune_status_unknown(path, reason="missing_snapshot")
+
+    summary = payload.get("summary") if isinstance(payload.get("summary"), dict) else {}
+    bots = payload.get("bots") if isinstance(payload.get("bots"), list) else []
+    kind_ok = payload.get("kind") == "eta_diamond_retune_status"
+    contract_ok = kind_ok and isinstance(summary, dict) and isinstance(bots, list)
+    status = str(payload.get("status") or ("ready" if contract_ok else "invalid"))
+    normalized_summary = {
+        "n_targets": int(summary.get("n_targets") or len(bots)),
+        "n_attempted_bots": int(summary.get("n_attempted_bots") or 0),
+        "n_unattempted_targets": int(summary.get("n_unattempted_targets") or 0),
+        "n_research_passed_broker_proof_required": int(
+            summary.get("n_research_passed_broker_proof_required") or 0
+        ),
+        "n_stuck_research_failing": int(summary.get("n_stuck_research_failing") or 0),
+        "n_timeout_retry": int(summary.get("n_timeout_retry") or 0),
+        "safe_to_mutate_live": False,
+    }
+    normalized: dict[str, object] = dict(payload)
+    normalized.update(
+        {
+            "kind": str(payload.get("kind") or "eta_diamond_retune_status"),
+            "source": str(payload.get("source") or "diamond_retune_status_latest"),
+            "path": str(path),
+            "source_path": str(path),
+            "status": status,
+            "ready": contract_ok,
+            "contract_ok": contract_ok,
+            "safe_to_mutate_live": False,
+            "writes_live_routing": False,
+            "summary": normalized_summary,
+            "bots": bots,
+        }
+    )
+    return normalized
+
+
+def _diamond_retune_diagnostic_payload(snapshot: dict[str, Any]) -> dict[str, object]:
+    path = Path(str(snapshot.get("path") or _diamond_retune_status_path()))
+    mtime = _safe_mtime(path)
+    summary = snapshot.get("summary") if isinstance(snapshot.get("summary"), dict) else {}
+    bots = snapshot.get("bots") if isinstance(snapshot.get("bots"), list) else []
+    first_bot = bots[0] if bots and isinstance(bots[0], dict) else {}
+    return {
+        "status": str(snapshot.get("status") or "missing"),
+        "ready": bool(snapshot.get("ready")),
+        "contract_ok": bool(snapshot.get("contract_ok")),
+        "n_targets": int(summary.get("n_targets") or len(bots)),
+        "n_attempted_bots": int(summary.get("n_attempted_bots") or 0),
+        "n_unattempted_targets": int(summary.get("n_unattempted_targets") or 0),
+        "n_research_passed_broker_proof_required": int(
+            summary.get("n_research_passed_broker_proof_required") or 0
+        ),
+        "n_stuck_research_failing": int(summary.get("n_stuck_research_failing") or 0),
+        "n_timeout_retry": int(summary.get("n_timeout_retry") or 0),
+        "safe_to_mutate_live": bool(summary.get("safe_to_mutate_live") is True),
+        "top_bot_id": str(first_bot.get("bot_id") or ""),
+        "top_retune_state": str(first_bot.get("retune_state") or ""),
+        "top_next_action": str(first_bot.get("next_action") or ""),
+        "path": str(path),
+        "source": str(snapshot.get("source") or "diamond_retune_status_latest"),
+        "updated_at": datetime.fromtimestamp(mtime, UTC).isoformat() if mtime is not None else None,
+        "age_s": max(0, int(time.time() - mtime)) if mtime is not None else None,
+    }
 
 
 def _symbol_intelligence_unknown(path: Path, *, reason: str) -> dict[str, object]:
@@ -3738,6 +3850,15 @@ def api_symbol_intelligence_status(response: Response) -> dict[str, object]:
     return _load_symbol_intelligence_snapshot()
 
 
+@app.get("/api/jarvis/diamond_retune_status")
+def api_diamond_retune_status(response: Response) -> dict[str, object]:
+    """Latest paper-only retune campaign progress for the ops dashboard."""
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return _load_diamond_retune_status()
+
+
 def _data_capture_task_status() -> list[dict]:
     """Return Windows scheduled-task state for the data-capture tasks
     (ETA-CaptureDepth, ETA-CaptureTicks, ETA-Data-Inventory,
@@ -3924,6 +4045,7 @@ def dashboard_payload(response: Response) -> dict:
     payload["paper_live_transition"] = _paper_live_transition_payload(refresh=False)
     payload["bot_strategy_readiness"] = _bot_strategy_readiness_payload()
     payload["symbol_intelligence"] = _load_symbol_intelligence_snapshot()
+    payload["diamond_retune_status"] = _load_diamond_retune_status()
     payload["strategy_supercharge_manifest"] = _strategy_supercharge_manifest_payload()
     payload["strategy_supercharge_results"] = _strategy_supercharge_results_payload()
     # Additive: live broker reality (futures focus plus Alpaca/spot cellar) so the panel can show
