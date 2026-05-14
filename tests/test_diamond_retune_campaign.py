@@ -215,6 +215,7 @@ def test_runner_records_research_failure_as_keep_retuning(tmp_path) -> None:
     receipt = runner.run_campaign_once(
         campaign,
         out_path=tmp_path / "receipt.json",
+        rank=1,
         executor=fake_executor,
     )
 
@@ -269,6 +270,57 @@ def test_runner_classifies_promising_single_window_as_low_sample(tmp_path) -> No
     assert receipt["research_signal"]["windows"] == 1
     assert receipt["research_signal"]["agg_oos"] == 6.803
     assert receipt["research_signal"]["pass_frac_pct"] == 100.0
+    assert receipt["promotion_block"] == "broker_proof_required"
+    assert receipt["safe_to_mutate_live"] is False
+
+
+def test_runner_classifies_positive_multi_window_failure_as_near_miss_tune(tmp_path) -> None:
+    from eta_engine.scripts import diamond_retune_runner as runner
+
+    campaign = {
+        "targets": [
+            {
+                "rank": 6,
+                "bot_id": "met_sweep_reclaim",
+                "symbol": "MET1",
+                "asset_sleeve": "metals_energy",
+                "priority_score": 88.4,
+                "next_command": (
+                    "python -m eta_engine.scripts.run_research_grid "
+                    "--source registry --bots met_sweep_reclaim --report-policy runtime"
+                ),
+                "promotion_block": "broker_proof_required",
+                "live_mutation_policy": "paper_only_advisory",
+                "safe_to_mutate_live": False,
+            },
+        ],
+    }
+
+    def fake_executor(args: list[str], *, timeout_seconds: int) -> runner.CommandResult:
+        return runner.CommandResult(
+            returncode=1,
+            stdout=(
+                "[research_grid] running 6 cells\n"
+                "  - met_sweep_reclaim: MET1/5m ...\n"
+                "      -> windows=6 agg_OOS=+0.044 pass_frac=66.7% verdict=FAIL\n"
+            ),
+            stderr="",
+        )
+
+    receipt = runner.run_campaign_once(
+        campaign,
+        out_path=tmp_path / "receipt.json",
+        bot_id="met_sweep_reclaim",
+        executor=fake_executor,
+    )
+
+    assert receipt["exit_code"] == 1
+    assert receipt["status"] == "research_near_miss_keep_tuning"
+    assert receipt["research_signal"]["classification"] == "NEAR_MISS_TUNE"
+    assert receipt["research_signal"]["windows"] == 6
+    assert receipt["research_signal"]["agg_oos"] == 0.044
+    assert receipt["research_signal"]["pass_frac_pct"] == 66.7
+    assert "focused tuning" in receipt["research_signal"]["operator_note"]
     assert receipt["promotion_block"] == "broker_proof_required"
     assert receipt["safe_to_mutate_live"] is False
 

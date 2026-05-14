@@ -224,6 +224,18 @@ def _research_signal(result: CommandResult) -> dict[str, Any]:
             "Positive OOS on too few windows: keep paper-collecting broker closes; "
             "do not promote or mutate live routing."
         )
+    if (
+        result.returncode != 0
+        and int(signal.get("windows") or 0) >= 5
+        and float(signal.get("agg_oos") or 0.0) > 0
+        and 60.0 <= float(signal.get("pass_frac_pct") or 0.0) < 75.0
+    ):
+        signal["classification"] = "NEAR_MISS_TUNE"
+        signal["operator_note"] = (
+            "Positive OOS across multiple windows but below the pass floor: "
+            "use focused tuning on session, confluence, and risk filters; "
+            "do not promote or mutate live routing."
+        )
     return signal
 
 
@@ -234,6 +246,8 @@ def _status_for_result(result: CommandResult, signal: dict[str, Any]) -> str:
         return "research_passed_broker_proof_required"
     if signal.get("classification") == "LOW_SAMPLE_PROMISING":
         return "research_low_sample_keep_collecting"
+    if signal.get("classification") == "NEAR_MISS_TUNE":
+        return "research_near_miss_keep_tuning"
     return "research_failed_keep_retuning"
 
 

@@ -75,6 +75,8 @@ def _retune_state(*, attempts: int, latest_status: str) -> str:
         return "PASS_AWAITING_BROKER_PROOF"
     if latest_status == "research_low_sample_keep_collecting":
         return "COLLECT_MORE_SAMPLE"
+    if latest_status == "research_near_miss_keep_tuning":
+        return "NEAR_MISS_RETUNE"
     if latest_status == "research_timeout_keep_retuning":
         return "TIMEOUT_RETRY"
     if attempts >= STUCK_ATTEMPT_FLOOR:
@@ -89,6 +91,8 @@ def _next_action(state: str, bot_id: str) -> str:
         return "review research artifact, then require fresh broker closes before any promotion"
     if state == "COLLECT_MORE_SAMPLE":
         return "collect more paper closes before promotion; no live changes"
+    if state == "NEAR_MISS_RETUNE":
+        return "apply focused tuning to the highest-impact filters, rerun paper research, no live changes"
     if state == "TIMEOUT_RETRY":
         return "retry with normal timeout or smaller max-bars smoke; no live changes"
     if state == "STUCK_RESEARCH_FAILING":
@@ -146,6 +150,7 @@ def build_status(*, campaign: dict[str, Any], history_rows: list[dict[str, Any]]
                 1 for row in bot_rows if row["retune_state"] == "PASS_AWAITING_BROKER_PROOF"
             ),
             "n_low_sample_keep_collecting": sum(1 for row in bot_rows if row["retune_state"] == "COLLECT_MORE_SAMPLE"),
+            "n_near_miss_keep_tuning": sum(1 for row in bot_rows if row["retune_state"] == "NEAR_MISS_RETUNE"),
             "n_stuck_research_failing": sum(1 for row in bot_rows if row["retune_state"] == "STUCK_RESEARCH_FAILING"),
             "n_timeout_retry": sum(1 for row in bot_rows if row["retune_state"] == "TIMEOUT_RETRY"),
             "safe_to_mutate_live": False,

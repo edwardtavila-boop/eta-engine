@@ -112,3 +112,51 @@ def test_status_summarizes_attempts_and_next_actions() -> None:
     assert report["bots"][1]["safe_to_mutate_live"] is False
     assert report["bots"][2]["bot_id"] == "mcl_sweep_reclaim"
     assert report["bots"][2]["retune_state"] == "NOT_ATTEMPTED"
+
+
+def test_status_surfaces_near_miss_tuning_without_live_mutation() -> None:
+    from eta_engine.scripts import diamond_retune_status as status
+
+    campaign = {
+        "generated_at_utc": "2026-05-14T20:00:00+00:00",
+        "targets": [
+            {
+                "rank": 1,
+                "bot_id": "met_sweep_reclaim",
+                "symbol": "MET1",
+                "asset_sleeve": "metals_energy",
+                "priority_score": 88.4,
+                "promotion_block": "broker_proof_required",
+                "safe_to_mutate_live": False,
+            },
+        ],
+    }
+    history_rows = [
+        {
+            "run_id": "near-miss",
+            "generated_at_utc": "2026-05-14T23:01:00+00:00",
+            "bot_id": "met_sweep_reclaim",
+            "rank": 1,
+            "status": "research_near_miss_keep_tuning",
+            "exit_code": 1,
+            "research_signal": {
+                "classification": "NEAR_MISS_TUNE",
+                "windows": 6,
+                "agg_oos": 0.044,
+                "pass_frac_pct": 66.7,
+            },
+            "safe_to_mutate_live": False,
+            "live_mutation_policy": "paper_only_advisory",
+            "promotion_block": "broker_proof_required",
+        },
+    ]
+
+    report = status.build_status(campaign=campaign, history_rows=history_rows)
+
+    assert report["summary"]["n_near_miss_keep_tuning"] == 1
+    assert report["summary"]["safe_to_mutate_live"] is False
+    assert report["bots"][0]["retune_state"] == "NEAR_MISS_RETUNE"
+    assert "focused tuning" in report["bots"][0]["next_action"]
+    assert "no live changes" in report["bots"][0]["next_action"]
+    assert report["bots"][0]["research_signal"]["classification"] == "NEAR_MISS_TUNE"
+    assert report["bots"][0]["safe_to_mutate_live"] is False
