@@ -304,6 +304,7 @@ tr:hover td{background:rgba(100,215,255,.055)}
       <div class="hero-metric"><span>Broker MTD</span><strong>--</strong><small>IBKR portfolio pending</small></div>
       <div class="hero-metric"><span>Open Risk</span><strong>--</strong><small>live open book</small></div>
       <div class="hero-metric"><span>Readiness</span><strong>--</strong><small>paper | live</small></div>
+      <div class="hero-metric"><span>Data Coverage</span><strong>--</strong><small>symbols + evidence</small></div>
     </div>
   </div>
   <div class="premium-panel portfolio-orb">
@@ -2152,11 +2153,13 @@ function renderPortfolioCommand(bots, hiddenCount, liveBroker, summary, d, today
       : readinessStatus === 'ready'
         ? `${paperReady} ready | ${active} live`
         : `${active} live now`;
+    const dataReadout = dataIntelligenceReadout(d.symbol_intelligence || diagnostics?.symbol_intelligence || {});
     heroMetrics.innerHTML = [
       {label: 'Session Net', value: formatMoney(todaysPnl, 0), sub: `${sessionSourceText} | ${formatMoneyOrUnavailable(realized, 2)} realized | ${formatMoneyOrUnavailable(unrealized, 2)} open`},
       {label: brokerMtd?.label || 'Broker MTD', value: brokerMtdValue == null ? 'n/a' : formatMoney(brokerMtdValue, 0), sub: brokerMtd?.source || 'IBKR portfolio MTD pending'},
       {label: 'Open Risk', value: formatMoney(portfolioExposure ?? openExposure, 0), sub: `${brokerPositions.length} open on book`},
-      {label: 'Readiness', value: readinessText, sub: readinessSub}
+      {label: 'Readiness', value: readinessText, sub: readinessSub},
+      {label: 'Data Coverage', value: dataReadout.label, sub: dataReadout.sub}
     ].map(item => {
       const metricSubMax = typeof window !== 'undefined' && window.matchMedia('(max-width: 640px)').matches ? 46 : 72;
       return `<div class="hero-metric"><span>${esc(item.label)}</span><strong>${esc(item.value)}</strong><small>${esc(compactText(item.sub, metricSubMax))}</small></div>`;
@@ -2629,10 +2632,7 @@ function renderVpsRootReview(vpsRoot) {
     : `${artifactStale ? 'needs refresh; ' : ''}${ageText}; risk ${risk}; protected deletions ${sourceDeleted}; repo drift ${submoduleDrift}; uncommitted repos ${dirtyRepos}; new files ${generatedArtifacts}; inactive modules ${dormantSubmodules}; cleanup ${cleanupAllowed ? 'allowed' : 'locked'}`;
 }
 
-function renderDataIntelligence(snapshot) {
-  const statusEl = document.getElementById('dataIntelligenceStatus');
-  const subEl = document.getElementById('dataIntelligenceSub');
-  if (!statusEl || !subEl) return;
+function dataIntelligenceReadout(snapshot) {
   const payload = snapshot && typeof snapshot === 'object' ? snapshot : {};
   const status = String(payload.status || payload.overall_status || 'UNKNOWN').toUpperCase();
   const score = finiteNumber(payload.average_score_pct);
@@ -2643,13 +2643,24 @@ function renderDataIntelligence(snapshot) {
   const optionalGaps = finiteNumber(payload.optional_gap_count) ?? 0;
   const contractOk = payload.contract_ok !== false && status !== 'UNKNOWN';
   const label = score == null ? status.charAt(0) + status.slice(1).toLowerCase() : `${Math.round(score)}%`;
-  statusEl.textContent = label;
-  statusEl.className = 'stat ' + (
-    status === 'GREEN' ? 'green' : status === 'AMBER' ? 'yellow' : status === 'RED' ? 'red' : 'dim'
-  );
-  subEl.textContent = contractOk
-    ? `${status} | ${greenCount}/${symbolCount} clean | ${requiredGaps} required gaps | ${optionalGaps} optional`
-    : 'snapshot pending; run symbol intelligence audit';
+  const className = status === 'GREEN' ? 'green' : status === 'AMBER' ? 'yellow' : status === 'RED' ? 'red' : 'dim';
+  return {
+    label,
+    className,
+    sub: contractOk
+      ? `${status} | ${greenCount}/${symbolCount} clean | ${requiredGaps} required gaps | ${optionalGaps} optional`
+      : 'snapshot pending; run symbol intelligence audit',
+  };
+}
+
+function renderDataIntelligence(snapshot) {
+  const statusEl = document.getElementById('dataIntelligenceStatus');
+  const subEl = document.getElementById('dataIntelligenceSub');
+  if (!statusEl || !subEl) return;
+  const readout = dataIntelligenceReadout(snapshot);
+  statusEl.textContent = readout.label;
+  statusEl.className = 'stat ' + readout.className;
+  subEl.textContent = readout.sub;
 }
 
 function focusVpsRootDetails() {
