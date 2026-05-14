@@ -21,6 +21,7 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT.parent) not in sys.path:
@@ -35,7 +36,11 @@ from eta_engine.scripts import (  # noqa: E402
 
 _DEFAULT_OUT = workspace_roots.ETA_RUNTIME_STATE_DIR / "paper_live_transition_check.json"
 _IBKR_SUBSCRIPTION_LOG = workspace_roots.ETA_RUNTIME_LOG_DIR / "ibkr_subscription_status.jsonl"
+_TRADE_CLOSES_PATH = workspace_roots.ETA_JARVIS_TRADE_CLOSES_PATH
 _LAUNCH_COMMAND = "$env:ETA_SUPERVISOR_MODE='paper_live'; python eta_engine/scripts/jarvis_strategy_supervisor.py"
+_LOCAL_TZ = ZoneInfo("America/New_York")
+_CADENCE_WATCH_START_MINUTE_ET = 10 * 60
+_CADENCE_WATCH_END_MINUTE_ET = 16 * 60 + 15
 _NON_AUTHORITATIVE_GATEWAY_STATUSES = {
     "blocked_non_authoritative_gateway_host",
     "non_authoritative_gateway_host",
@@ -235,13 +240,151 @@ def _first_launch_detail(snapshot: dict[str, Any]) -> str:
     return ""
 
 
+def _parse_datetime(value: object) -> datetime | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    raw = value.strip()
+    try:
+        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
+
+
+def _close_timestamp(row: dict[str, Any]) -> datetime | None:
+    extra = row.get("extra") if isinstance(row.get("extra"), dict) else {}
+    for key in ("ts", "closed_at", "exit_ts", "timestamp", "time"):
+        parsed = _parse_datetime(row.get(key))
+        if parsed is not None:
+            return parsed
+    if isinstance(extra, dict):
+        for key in ("ts", "closed_at", "exit_ts", "timestamp", "time"):
+            parsed = _parse_datetime(extra.get(key))
+            if parsed is not None:
+                return parsed
+    return None
+
+
+def _load_trade_closes_for_local_day(path: Path, *, now: datetime) -> tuple[int, datetime | None, bool]:
+    local_day = now.astimezone(_LOCAL_TZ).date()
+    count = 0
+    latest: datetime | None = None
+    exists = path.exists()
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeDecodeError):
+        return 0, None, exists
+
+    for line in lines:
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(row, dict):
+            continue
+        ts = _close_timestamp(row)
+        if ts is None or ts.astimezone(_LOCAL_TZ).date() != local_day:
+            continue
+        count += 1
+        if latest is None or ts > latest:
+            latest = ts
+    return count, latest, exists
+
+
+def _cadence_watch_window(now: datetime) -> dict[str, Any]:
+    local_now = now.astimezone(_LOCAL_TZ)
+    minute = local_now.hour * 60 + local_now.minute
+    active = (
+        local_now.weekday() < 5
+        and _CADENCE_WATCH_START_MINUTE_ET <= minute <= _CADENCE_WATCH_END_MINUTE_ET
+    )
+    return {
+        "active": active,
+        "timezone": "America/New_York",
+        "local_date": local_now.date().isoformat(),
+        "local_time": local_now.strftime("%H:%M"),
+        "start": "10:00",
+        "end": "16:15",
+    }
+
+
+def _paper_live_cadence_payload(
+    *,
+    ready_for_cadence_watch: bool,
+    now: datetime,
+    trade_closes_path: Path,
+    min_daily_closes: int = 1,
+) -> dict[str, Any]:
+    watch_window = _cadence_watch_window(now)
+    today_count, latest_close_ts, ledger_exists = _load_trade_closes_for_local_day(trade_closes_path, now=now)
+    payload: dict[str, Any] = {
+        "status": "not_ready",
+        "passed": True,
+        "critical": False,
+        "today_close_count": today_count,
+        "min_daily_closes": int(min_daily_closes),
+        "ledger_exists": ledger_exists,
+        "trade_closes_path": str(trade_closes_path),
+        "watch_window": watch_window,
+        "latest_close_ts": latest_close_ts.isoformat() if latest_close_ts else None,
+        "detail": "cadence watch waits until paper-live readiness is green",
+        "next_action": "",
+    }
+    if not ready_for_cadence_watch:
+        return payload
+    if not watch_window["active"]:
+        payload.update(
+            {
+                "status": "outside_watch_window",
+                "detail": (
+                    "paper-live cadence watch is outside the Atlanta/ET session window "
+                    f"({watch_window['start']}-{watch_window['end']})"
+                ),
+            }
+        )
+        return payload
+    if today_count >= min_daily_closes:
+        payload.update(
+            {
+                "status": "cadence_ok",
+                "detail": f"{today_count} paper close event(s) recorded today",
+            }
+        )
+        return payload
+
+    payload.update(
+        {
+            "status": "idle_warning",
+            "passed": False,
+            "detail": (
+                f"{today_count} paper close events today during the Atlanta/ET watch window; "
+                "paper-live is ready, so inspect supervisor heartbeat, signal cadence, feed health, "
+                "and broker/router rejects before the session drifts."
+            ),
+            "next_action": (
+                "Inspect supervisor heartbeat and daily close cadence: "
+                "python -m eta_engine.scripts.supervisor_heartbeat_check --json; "
+                "python -m eta_engine.scripts.bot_scoreboard --since-days 1 --include-close-only --json"
+            ),
+        }
+    )
+    return payload
+
+
 def build_transition_check(
     *,
     check_client_portal: bool = False,
     max_watchdog_age_s: int = 180,
     limit: int = 5,
+    now: datetime | None = None,
+    trade_closes_path: Path = _TRADE_CLOSES_PATH,
 ) -> dict[str, Any]:
     """Return a read-only paper-live transition verdict."""
+    now = now or datetime.now(UTC)
     ibkr_status = ibkr_surface_status.build_status(
         check_client_portal=check_client_portal,
     )
@@ -333,6 +476,22 @@ def build_transition_check(
                 ),
             ),
         )
+    base_critical_ready = all(gate["passed"] for gate in gates if gate["critical"])
+    ready_for_cadence_watch = base_critical_ready and effective_launch_blockers == 0
+    cadence = _paper_live_cadence_payload(
+        ready_for_cadence_watch=ready_for_cadence_watch,
+        now=now,
+        trade_closes_path=trade_closes_path,
+    )
+    gates.append(
+        _gate(
+            "paper_live_close_cadence",
+            passed=bool(cadence.get("passed")),
+            critical=False,
+            detail=str(cadence.get("detail") or ""),
+            next_action=str(cadence.get("next_action") or ""),
+        )
+    )
     critical_ready = all(gate["passed"] for gate in gates if gate["critical"])
     status = "ready_to_launch_paper_live" if critical_ready and effective_launch_blockers == 0 else "blocked"
 
@@ -357,6 +516,7 @@ def build_transition_check(
         ),
         "non_authoritative_gateway_host": non_authoritative_host,
         "paper_ready_bots": paper_ready,
+        "paper_live_cadence": cadence,
         "gates": gates,
         "ibkr_surface_status": ibkr_status,
         "release_guard": release_guard,
@@ -379,6 +539,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-watchdog-age-s", type=int, default=180)
     parser.add_argument("--limit", type=int, default=5)
     parser.add_argument("--out", type=Path, default=_DEFAULT_OUT)
+    parser.add_argument("--trade-closes-path", type=Path, default=_TRADE_CLOSES_PATH)
     parser.add_argument("--no-write", action="store_true")
     return parser
 
@@ -389,6 +550,7 @@ def main(argv: list[str] | None = None) -> int:
         check_client_portal=args.check_client_portal,
         max_watchdog_age_s=args.max_watchdog_age_s,
         limit=max(1, args.limit),
+        trade_closes_path=args.trade_closes_path,
     )
     if not args.no_write:
         write_transition_check(payload, args.out)

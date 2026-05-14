@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 
 
@@ -102,6 +103,7 @@ def test_transition_check_blocks_when_gateway_op19_is_top_blocker(monkeypatch) -
         "ibgateway_release_guard",
         "op19_gateway_runtime",
         "paper_ready_bots",
+        "paper_live_close_cadence",
     ]
     op19_gate = next(gate for gate in result["gates"] if gate["name"] == "op19_gateway_runtime")
     assert op19_gate["detail"] == "install gateway blocker"
@@ -354,6 +356,99 @@ def test_transition_check_accepts_already_released_guard(monkeypatch) -> None:
 
     assert release_gate["passed"] is True
     assert result["critical_ready"] is True
+
+
+def test_transition_check_warns_when_ready_but_no_daily_closes_during_watch_window(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from eta_engine.scripts import paper_live_transition_check as mod
+
+    monkeypatch.setattr(mod.ibkr_surface_status, "build_status", lambda **_kwargs: _surface(ready=True))
+    monkeypatch.setattr(mod.ibgateway_release_guard, "run_guard", lambda **_kwargs: _release(ready=True))
+    monkeypatch.setattr(
+        mod.operator_queue_snapshot,
+        "build_snapshot",
+        lambda **_kwargs: _queue(first_op=None, blocked=0, paper_ready=10),
+    )
+    monkeypatch.setattr(mod, "_latest_order_api_status", lambda: None)
+
+    result = mod.build_transition_check(
+        now=datetime(2026, 5, 14, 15, 0, tzinfo=UTC),
+        trade_closes_path=tmp_path / "missing_trade_closes.jsonl",
+    )
+
+    assert result["status"] == "ready_to_launch_paper_live"
+    assert result["critical_ready"] is True
+    assert result["paper_live_cadence"]["status"] == "idle_warning"
+    cadence_gate = next(gate for gate in result["gates"] if gate["name"] == "paper_live_close_cadence")
+    assert cadence_gate["critical"] is False
+    assert cadence_gate["passed"] is False
+    assert "0 paper close events" in cadence_gate["detail"]
+    assert "supervisor heartbeat" in cadence_gate["next_action"]
+
+
+def test_transition_check_suppresses_close_cadence_warning_outside_watch_window(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from eta_engine.scripts import paper_live_transition_check as mod
+
+    monkeypatch.setattr(mod.ibkr_surface_status, "build_status", lambda **_kwargs: _surface(ready=True))
+    monkeypatch.setattr(mod.ibgateway_release_guard, "run_guard", lambda **_kwargs: _release(ready=True))
+    monkeypatch.setattr(
+        mod.operator_queue_snapshot,
+        "build_snapshot",
+        lambda **_kwargs: _queue(first_op=None, blocked=0, paper_ready=10),
+    )
+    monkeypatch.setattr(mod, "_latest_order_api_status", lambda: None)
+
+    result = mod.build_transition_check(
+        now=datetime(2026, 5, 14, 12, 0, tzinfo=UTC),
+        trade_closes_path=tmp_path / "missing_trade_closes.jsonl",
+    )
+
+    assert result["paper_live_cadence"]["status"] == "outside_watch_window"
+    cadence_gate = next(gate for gate in result["gates"] if gate["name"] == "paper_live_close_cadence")
+    assert cadence_gate["passed"] is True
+    assert cadence_gate["critical"] is False
+
+
+def test_transition_check_accepts_daily_close_cadence(tmp_path: Path, monkeypatch) -> None:
+    from eta_engine.scripts import paper_live_transition_check as mod
+
+    monkeypatch.setattr(mod.ibkr_surface_status, "build_status", lambda **_kwargs: _surface(ready=True))
+    monkeypatch.setattr(mod.ibgateway_release_guard, "run_guard", lambda **_kwargs: _release(ready=True))
+    monkeypatch.setattr(
+        mod.operator_queue_snapshot,
+        "build_snapshot",
+        lambda **_kwargs: _queue(first_op=None, blocked=0, paper_ready=10),
+    )
+    monkeypatch.setattr(mod, "_latest_order_api_status", lambda: None)
+    closes = tmp_path / "trade_closes.jsonl"
+    closes.write_text(
+        json.dumps(
+            {
+                "ts": "2026-05-14T14:45:00+00:00",
+                "bot_id": "mnq_futures_sage",
+                "symbol": "MNQ1",
+                "realized_pnl": 20.0,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    result = mod.build_transition_check(
+        now=datetime(2026, 5, 14, 15, 0, tzinfo=UTC),
+        trade_closes_path=closes,
+    )
+
+    assert result["paper_live_cadence"]["status"] == "cadence_ok"
+    assert result["paper_live_cadence"]["today_close_count"] == 1
+    cadence_gate = next(gate for gate in result["gates"] if gate["name"] == "paper_live_close_cadence")
+    assert cadence_gate["passed"] is True
+    assert cadence_gate["critical"] is False
 
 
 def test_transition_check_writes_canonical_payload(tmp_path: Path, monkeypatch) -> None:
