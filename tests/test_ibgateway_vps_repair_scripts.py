@@ -85,7 +85,8 @@ def test_ibgateway_starter_supports_ibc_managed_launch() -> None:
     assert '"/TwsSettingsPath:$GatewayDir"' in text
     assert '"/Mode:$($IbcTradingMode.ToLowerInvariant())"' in text
     assert '"/On2FATimeout:$($IbcTwoFactorTimeoutAction.ToLowerInvariant())"' in text
-    assert '[string]$IbcExistingSessionDetectedAction = "primaryoverride"' in text
+    assert '[ValidateSet("manual", "primary", "primaryoverride", "secondary")]' in text
+    assert '[string]$IbcExistingSessionDetectedAction = "primary"' in text
     assert '[string]$IbcAcceptIncomingConnectionAction = "accept"' in text
     assert '"ExistingSessionDetectedAction=$ExistingSessionDetectedAction"' in text
     assert '"AcceptIncomingConnectionAction=$AcceptIncomingConnectionAction"' in text

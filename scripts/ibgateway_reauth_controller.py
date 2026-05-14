@@ -13,6 +13,7 @@ import argparse
 import json
 import logging
 import os
+import re
 import subprocess
 import time
 from datetime import UTC, datetime, timedelta
@@ -34,17 +35,24 @@ DEFAULT_REAUTH_STATE_PATH = workspace_roots.ETA_RUNTIME_STATE_DIR / "ibgateway_r
 DEFAULT_IBC_PASSWORD_FILE = workspace_roots.ETA_RUNTIME_STATE_DIR / "ibkr_pw.txt"
 DEFAULT_IBKR_CREDENTIAL_JSON_PATH = workspace_roots.ETA_ENGINE_ROOT / "secrets" / "ibkr_credentials.json"
 DEFAULT_DOTENV_PATH = workspace_roots.ETA_ENGINE_ROOT / ".env"
+DEFAULT_JTS_GATEWAY_ROOT = Path(r"C:\Jts\ibgateway")
 _DEFAULT_TWS_STATUS_PATH = DEFAULT_TWS_STATUS_PATH
 _DEFAULT_STATE_PATH = DEFAULT_REAUTH_STATE_PATH
 _DEFAULT_GATEWAY_TASK = GATEWAY_TASK_NAME
 _DEFAULT_RUN_NOW_TASK = RUN_NOW_TASK_NAME
 _DEFAULT_RESTART_TASK = RESTART_TASK_NAME
 _DEFAULT_FAILURE_THRESHOLD = 3
+_DEFAULT_START_COOLDOWN_MINUTES = 3
 _DEFAULT_COOLDOWN_MINUTES = 20
 _DEFAULT_MAX_RESTART_ATTEMPTS = 3
+_DEFAULT_COMPETITION_LOOKBACK_MINUTES = 20
 _DEFAULT_REPAIR_COMMAND = (
     r"deploy\scripts\repair_ibgateway_vps.ps1 -RepairTasks "
     r"-ApplyJtsIni -ApplyVmOptions -EnforceSingleSource"
+)
+_COMPETITION_RE = re.compile(
+    r"Competition detected:\s+from IP=(?P<ip>\S+)\s+logged at=(?P<logged_at>\S+)",
+    re.IGNORECASE,
 )
 
 
@@ -197,8 +205,94 @@ def _parse_time(value: object) -> datetime | None:
     return parsed.astimezone(UTC)
 
 
+def _parse_ibkr_competition_time(value: str) -> datetime | None:
+    text = value.strip()
+    if not text:
+        return None
+    for fmt in ("%Y-%m-%dT%H:%M:%S.%f%z", "%Y-%m-%dT%H:%M:%S%z"):
+        try:
+            return datetime.strptime(text, fmt).astimezone(UTC)
+        except ValueError:
+            continue
+    return _parse_time(text)
+
+
 def _iso(now: datetime) -> str:
     return now.astimezone(UTC).isoformat()
+
+
+def _mask_ip(value: str) -> str:
+    text = value.strip()
+    if not text:
+        return ""
+    parts = text.split(".")
+    if len(parts) == 4 and all(part.isdigit() for part in parts):
+        return f"{parts[0]}.{parts[1]}.x.x"
+    if ":" in text:
+        head = text.split(":", 2)
+        return f"{head[0]}:{head[1]}::" if len(head) > 1 else "***"
+    return "***"
+
+
+def _read_tail_text(path: Path, *, max_bytes: int = 200_000) -> str:
+    try:
+        with path.open("rb") as handle:
+            handle.seek(0, os.SEEK_END)
+            size = handle.tell()
+            handle.seek(max(0, size - max_bytes))
+            data = handle.read()
+    except OSError:
+        return ""
+    return data.decode("utf-8", errors="replace")
+
+
+def latest_ibkr_competing_session(
+    *,
+    gateway_root: Path = DEFAULT_JTS_GATEWAY_ROOT,
+    now: datetime | None = None,
+    lookback_minutes: int = _DEFAULT_COMPETITION_LOOKBACK_MINUTES,
+) -> JsonDict:
+    """Return the newest recent IBKR competing-session signal from JTS logs.
+
+    IBKR only allows one trading login per username. When another TWS/Gateway
+    session is active, IBC can enter an override tug-of-war. Detecting that
+    explicitly lets the recovery controller fail safe instead of repeatedly
+    killing/restarting the Gateway.
+    """
+    effective_now = now or datetime.now(UTC)
+    cutoff = effective_now - timedelta(minutes=max(1, lookback_minutes))
+    newest: tuple[datetime, JsonDict] | None = None
+    try:
+        logs = sorted(
+            gateway_root.glob("*/launcher.log"),
+            key=lambda path: path.stat().st_mtime,
+            reverse=True,
+        )
+    except OSError:
+        logs = []
+    for path in logs[:5]:
+        text = _read_tail_text(path)
+        if not text:
+            continue
+        for match in _COMPETITION_RE.finditer(text):
+            logged_at = _parse_ibkr_competition_time(match.group("logged_at"))
+            if logged_at is None:
+                continue
+            if logged_at > effective_now + timedelta(minutes=5):
+                continue
+            if logged_at < cutoff:
+                continue
+            payload: JsonDict = {
+                "detected": True,
+                "remote_ip_masked": _mask_ip(match.group("ip")),
+                "logged_at_utc": _iso(logged_at),
+                "age_seconds": int(max(0.0, (effective_now - logged_at).total_seconds())),
+                "source": str(path),
+                "lookback_minutes": lookback_minutes,
+            }
+            if newest is None or logged_at > newest[0]:
+                newest = (logged_at, payload)
+    return newest[1] if newest is not None else {"detected": False, "lookback_minutes": lookback_minutes}
 
 
 def recovery_lane_metadata(
@@ -240,6 +334,7 @@ def _base_decision(
         "consecutive_failures": _int_value(tws_status.get("consecutive_failures"), 0),
         "restart_attempts": _int_value(prior_state.get("restart_attempts"), 0),
         "last_restart_at": str(prior_state.get("last_restart_at") or ""),
+        "last_start_at": str(prior_state.get("last_start_at") or ""),
         "operator_action_required": operator_action_required,
         "operator_action": operator_action,
     }
@@ -251,8 +346,10 @@ def decide_reauth_action(
     *,
     now: datetime | None = None,
     failure_threshold: int = _DEFAULT_FAILURE_THRESHOLD,
+    start_cooldown_minutes: int = _DEFAULT_START_COOLDOWN_MINUTES,
     cooldown_minutes: int = _DEFAULT_COOLDOWN_MINUTES,
     max_restart_attempts: int = _DEFAULT_MAX_RESTART_ATTEMPTS,
+    competition_status: JsonDict | None = None,
 ) -> JsonDict:
     """Choose the next safe Gateway recovery action from watchdog state."""
     effective_now = now or datetime.now(UTC)
@@ -282,10 +379,44 @@ def decide_reauth_action(
         return decision
 
     details = _json_dict(tws_status.get("details"))
+    competition = competition_status if isinstance(competition_status, dict) else {}
+    if competition.get("detected"):
+        decision = _base_decision(
+            status="competing_session_detected",
+            action="none",
+            now=effective_now,
+            tws_status=tws_status,
+            prior_state=prior_state,
+            operator_action_required=True,
+            operator_action=(
+                "IBKR reports another active TWS/Gateway login for this username. "
+                "Log out the other session or use a dedicated paper username, then start the Gateway once."
+            ),
+            reason="Recent IBKR competing-session event detected; auto-recovery is paused to avoid a login tug-of-war.",
+        )
+        decision["competing_session"] = competition
+        return decision
+
     socket_ok = _bool_value(details.get("socket_ok"))
     gateway_process = _json_dict(details.get("gateway_process"))
     process_running = _bool_value(gateway_process.get("running"))
     if not process_running and not socket_ok:
+        last_start_at = _parse_time(prior_state.get("last_start_at"))
+        start_cooldown = timedelta(minutes=start_cooldown_minutes)
+        if last_start_at is not None and effective_now - last_start_at < start_cooldown:
+            decision = _base_decision(
+                status="start_cooldown",
+                action="none",
+                now=effective_now,
+                tws_status=tws_status,
+                prior_state=prior_state,
+                operator_action_required=False,
+                reason=(
+                    "IB Gateway was started recently and is still inside the process-down start cooldown."
+                ),
+            )
+            decision["last_start_at"] = _iso(last_start_at)
+            return decision
         return _base_decision(
             status="started_gateway",
             action="start_gateway",
@@ -536,8 +667,10 @@ def run_controller(
     execute: bool = False,
     now: datetime | None = None,
     failure_threshold: int = _DEFAULT_FAILURE_THRESHOLD,
+    start_cooldown_minutes: int = _DEFAULT_START_COOLDOWN_MINUTES,
     cooldown_minutes: int = _DEFAULT_COOLDOWN_MINUTES,
     max_restart_attempts: int = _DEFAULT_MAX_RESTART_ATTEMPTS,
+    competition_lookback_minutes: int = _DEFAULT_COMPETITION_LOOKBACK_MINUTES,
     check_ibc_credentials: bool = False,
     ibc_password_file: Path = DEFAULT_IBC_PASSWORD_FILE,
     ibc_credential_json_path: Path = DEFAULT_IBKR_CREDENTIAL_JSON_PATH,
@@ -554,13 +687,19 @@ def run_controller(
     )
     tws_status = _read_json(tws_status_path)
     prior_state = _read_json(state_path)
+    competition_status = latest_ibkr_competing_session(
+        now=effective_now,
+        lookback_minutes=competition_lookback_minutes,
+    )
     decision = decide_reauth_action(
         tws_status,
         prior_state,
         now=effective_now,
         failure_threshold=failure_threshold,
+        start_cooldown_minutes=start_cooldown_minutes,
         cooldown_minutes=cooldown_minutes,
         max_restart_attempts=max_restart_attempts,
+        competition_status=competition_status,
     )
 
     task_name = ""
@@ -676,8 +815,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--run-now-task", default=_DEFAULT_RUN_NOW_TASK)
     parser.add_argument("--restart-task", default=_DEFAULT_RESTART_TASK)
     parser.add_argument("--failure-threshold", type=int, default=_DEFAULT_FAILURE_THRESHOLD)
+    parser.add_argument("--start-cooldown-minutes", type=int, default=_DEFAULT_START_COOLDOWN_MINUTES)
     parser.add_argument("--cooldown-minutes", type=int, default=_DEFAULT_COOLDOWN_MINUTES)
     parser.add_argument("--max-restart-attempts", type=int, default=_DEFAULT_MAX_RESTART_ATTEMPTS)
+    parser.add_argument("--competition-lookback-minutes", type=int, default=_DEFAULT_COMPETITION_LOOKBACK_MINUTES)
     parser.add_argument(
         "--skip-ibc-credential-check",
         action="store_true",
@@ -697,8 +838,10 @@ def main(argv: list[str] | None = None) -> int:
         restart_task=args.restart_task,
         execute=args.execute,
         failure_threshold=args.failure_threshold,
+        start_cooldown_minutes=args.start_cooldown_minutes,
         cooldown_minutes=args.cooldown_minutes,
         max_restart_attempts=args.max_restart_attempts,
+        competition_lookback_minutes=args.competition_lookback_minutes,
         check_ibc_credentials=not args.skip_ibc_credential_check,
     )
     print(json.dumps(state, indent=2, sort_keys=True))

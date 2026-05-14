@@ -580,6 +580,9 @@ def main(argv: list[str] | None = None) -> int:
             "handshake_detail": handshake_detail,
         },
     }
+    recent_competition = ibgateway_reauth_controller.latest_ibkr_competing_session()
+    if recent_competition.get("detected"):
+        status["details"]["competing_session"] = recent_competition
     gateway_crash = None if healthy else _latest_gateway_crash(Path(args.crash_log_dir))
     if gateway_crash is not None:
         status["details"]["gateway_crash"] = gateway_crash

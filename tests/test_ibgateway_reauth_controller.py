@@ -101,6 +101,67 @@ def test_process_down_starts_gateway_without_waiting_for_failure_threshold(tmp_p
     assert started == ["ETA-IBGateway-RunNow"]
 
 
+def test_recent_competing_session_pauses_gateway_autostart() -> None:
+    from eta_engine.scripts import ibgateway_reauth_controller as controller
+
+    decision = controller.decide_reauth_action(
+        _unhealthy_status(failures=1, process_running=False),
+        {},
+        now=datetime(2026, 5, 5, 13, 40, tzinfo=UTC),
+        competition_status={
+            "detected": True,
+            "remote_ip_masked": "93.120.x.x",
+            "logged_at_utc": "2026-05-05T13:39:30+00:00",
+        },
+    )
+
+    assert decision["status"] == "competing_session_detected"
+    assert decision["action"] == "none"
+    assert decision["operator_action_required"] is True
+    assert "another active TWS/Gateway login" in decision["operator_action"]
+
+
+def test_process_down_start_cooldown_prevents_restart_storm() -> None:
+    from eta_engine.scripts import ibgateway_reauth_controller as controller
+
+    decision = controller.decide_reauth_action(
+        _unhealthy_status(failures=1, process_running=False),
+        {"last_start_at": "2026-05-05T13:39:00+00:00"},
+        now=datetime(2026, 5, 5, 13, 40, tzinfo=UTC),
+        start_cooldown_minutes=3,
+    )
+
+    assert decision["status"] == "start_cooldown"
+    assert decision["action"] == "none"
+    assert decision["operator_action_required"] is False
+
+
+def test_latest_competing_session_masks_ip_and_applies_lookback(tmp_path: Path) -> None:
+    from eta_engine.scripts import ibgateway_reauth_controller as controller
+
+    gateway_dir = tmp_path / "ibgateway" / "1037"
+    gateway_dir.mkdir(parents=True)
+    (gateway_dir / "launcher.log").write_text(
+        "\n".join(
+            [
+                "2026-05-05 09:38:51.551 [AF] INFO - Competition detected: "
+                "from IP=93.120.38.156 logged at=2026-05-05T09:38:25.000-0400",
+            ],
+        ),
+        encoding="utf-8",
+    )
+
+    result = controller.latest_ibkr_competing_session(
+        gateway_root=tmp_path / "ibgateway",
+        now=datetime(2026, 5, 5, 13, 40, tzinfo=UTC),
+        lookback_minutes=5,
+    )
+
+    assert result["detected"] is True
+    assert result["remote_ip_masked"] == "93.120.x.x"
+    assert result["logged_at_utc"] == "2026-05-05T13:38:25+00:00"
+
+
 def test_ibc_recovery_task_without_credentials_requires_operator_action(tmp_path: Path, monkeypatch) -> None:
     from eta_engine.scripts import ibgateway_reauth_controller as controller
 

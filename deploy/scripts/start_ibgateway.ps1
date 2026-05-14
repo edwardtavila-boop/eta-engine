@@ -16,7 +16,8 @@ param(
     [string]$IbcTradingMode = "paper",
     [string]$IbcTwoFactorTimeoutAction = "exit",
     [string]$IbcAutoRestartTime = "",
-    [string]$IbcExistingSessionDetectedAction = "primaryoverride",
+    [ValidateSet("manual", "primary", "primaryoverride", "secondary")]
+    [string]$IbcExistingSessionDetectedAction = "primary",
     [string]$IbcAcceptIncomingConnectionAction = "accept",
     [int]$IbcLoginDialogDisplayTimeoutSeconds = 180,
     [switch]$IbcMinimizeMainWindow,
@@ -722,6 +723,7 @@ try {
             -LoginDialogDisplayTimeoutSeconds $IbcLoginDialogDisplayTimeoutSeconds `
             -MinimizeMainWindow:$IbcMinimizeMainWindow
 
+        Write-LogLine "IBC session ownership action=$IbcExistingSessionDetectedAction api_port=$ApiPort"
         $gatewayVersion = Split-Path -Leaf $GatewayDir
         $twsRootDir = Resolve-TwsRootDir -ResolvedGatewayDir $GatewayDir
         $arguments = @(

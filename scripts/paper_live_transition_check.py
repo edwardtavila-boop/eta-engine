@@ -209,11 +209,13 @@ def build_transition_check(
     )
     first_op = _first_op_id(queue)
     first_launch_op = _first_launch_op_id(queue)
-    op19_clear = first_launch_op != "OP-19"
     op19_detail = _first_launch_detail(queue)
     paper_ready = _paper_ready_count(queue)
     blockers = _blocked_count(queue)
     launch_blockers = _launch_blocked_count(queue)
+    stale_op19_cleared = first_launch_op == "OP-19" and paper_live_ready and release_ready
+    effective_launch_blockers = max(launch_blockers - 1, 0) if stale_op19_cleared else launch_blockers
+    op19_clear = first_launch_op != "OP-19" or stale_op19_cleared
     op19_next_action = _op19_next_action(queue, release_guard)
 
     gates = [
@@ -234,10 +236,12 @@ def build_transition_check(
             passed=op19_clear,
             detail=(
                 "OP-19 is clear"
-                if op19_clear
+                if first_launch_op != "OP-19"
+                else "OP-19 stale: IB Gateway/API 4002 and the release guard are healthy"
+                if stale_op19_cleared
                 else (op19_detail or "OP-19 is still the top blocker: IB Gateway 10.46/API 4002 is not recovered")
             ),
-            next_action=op19_next_action,
+            next_action="" if stale_op19_cleared else op19_next_action,
         ),
         _gate(
             "paper_ready_bots",
@@ -262,22 +266,26 @@ def build_transition_check(
             ),
         )
     critical_ready = all(gate["passed"] for gate in gates if gate["critical"])
-    status = "ready_to_launch_paper_live" if critical_ready and launch_blockers == 0 else "blocked"
+    status = "ready_to_launch_paper_live" if critical_ready and effective_launch_blockers == 0 else "blocked"
 
     return {
         "schema_version": 1,
         "generated_at": _utc_now_iso(),
         "status": status,
         "critical_ready": critical_ready,
-        "launch_command": _LAUNCH_COMMAND if critical_ready and launch_blockers == 0 else "",
+        "launch_command": _LAUNCH_COMMAND if critical_ready and effective_launch_blockers == 0 else "",
         "operator_queue_blocked_count": blockers,
         "operator_queue_first_blocker_op_id": first_op or None,
         "operator_queue_first_next_action": queue.get("first_next_action"),
         "operator_queue_launch_blocked_count": launch_blockers,
+        "operator_queue_effective_launch_blocked_count": effective_launch_blockers,
+        "operator_queue_stale_op19_cleared": stale_op19_cleared,
         "operator_queue_warning_blocked_count": max(blockers - launch_blockers, 0),
-        "operator_queue_first_launch_blocker_op_id": first_launch_op or None,
+        "operator_queue_first_launch_blocker_op_id": (first_launch_op or None) if not stale_op19_cleared else None,
         "operator_queue_first_launch_next_action": (
-            op19_next_action or queue.get("first_launch_next_action") if launch_blockers > 0 else None
+            None
+            if effective_launch_blockers == 0
+            else op19_next_action or queue.get("first_launch_next_action")
         ),
         "paper_ready_bots": paper_ready,
         "gates": gates,

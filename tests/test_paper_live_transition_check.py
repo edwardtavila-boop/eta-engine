@@ -136,7 +136,7 @@ def test_transition_check_prioritizes_visible_gateway_login_hold(monkeypatch) ->
 def test_transition_check_reads_op19_detail_from_snapshot_top_launch_blockers(monkeypatch) -> None:
     from eta_engine.scripts import paper_live_transition_check as mod
 
-    monkeypatch.setattr(mod.ibkr_surface_status, "build_status", lambda **_kwargs: _surface(ready=True))
+    monkeypatch.setattr(mod.ibkr_surface_status, "build_status", lambda **_kwargs: _surface(ready=False))
     monkeypatch.setattr(mod.ibgateway_release_guard, "run_guard", lambda **_kwargs: _release(ready=True))
     monkeypatch.setattr(
         mod.operator_queue_snapshot,
@@ -165,6 +165,37 @@ def test_transition_check_reads_op19_detail_from_snapshot_top_launch_blockers(mo
     op19_gate = next(gate for gate in result["gates"] if gate["name"] == "op19_gateway_runtime")
 
     assert op19_gate["detail"] == "live IBC is healthy but boot-task drift remains"
+
+
+def test_transition_check_clears_stale_op19_when_gateway_runtime_is_healthy(monkeypatch) -> None:
+    from eta_engine.scripts import paper_live_transition_check as mod
+
+    monkeypatch.setattr(mod.ibkr_surface_status, "build_status", lambda **_kwargs: _surface(ready=True))
+    monkeypatch.setattr(mod.ibgateway_release_guard, "run_guard", lambda **_kwargs: _release(ready=True))
+    monkeypatch.setattr(
+        mod.operator_queue_snapshot,
+        "build_snapshot",
+        lambda **_kwargs: _queue(
+            first_op="OP-19",
+            blocked=1,
+            paper_ready=10,
+            launch_blocked=1,
+            first_launch_op="OP-19",
+            first_launch_detail="stale Gateway blocker from the previous recovery tick",
+        ),
+    )
+
+    result = mod.build_transition_check()
+    op19_gate = next(gate for gate in result["gates"] if gate["name"] == "op19_gateway_runtime")
+
+    assert result["status"] == "ready_to_launch_paper_live"
+    assert result["critical_ready"] is True
+    assert result["operator_queue_stale_op19_cleared"] is True
+    assert result["operator_queue_launch_blocked_count"] == 1
+    assert result["operator_queue_effective_launch_blocked_count"] == 0
+    assert result["operator_queue_first_launch_blocker_op_id"] is None
+    assert op19_gate["passed"] is True
+    assert "OP-19 stale" in op19_gate["detail"]
 
 
 def test_transition_check_ready_when_only_non_launch_operator_warnings_remain(monkeypatch) -> None:
