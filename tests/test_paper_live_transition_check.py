@@ -133,6 +133,63 @@ def test_transition_check_prioritizes_visible_gateway_login_hold(monkeypatch) ->
     assert "tws_watchdog" in op19_gate["next_action"]
 
 
+def test_transition_check_scopes_gateway_actions_to_vps_when_host_is_not_authority(monkeypatch) -> None:
+    from eta_engine.scripts import paper_live_transition_check as mod
+
+    monkeypatch.setattr(mod.ibkr_surface_status, "build_status", lambda **_kwargs: _surface(ready=False))
+    monkeypatch.setattr(
+        mod.ibgateway_release_guard,
+        "run_guard",
+        lambda **_kwargs: {
+            "status": "blocked_non_authoritative_gateway_host",
+            "operator_action_required": True,
+            "reason": "fresh watchdog exists, but this host is not the VPS Gateway authority",
+            "gateway_authority": {"allowed": False, "computer_name": "ETA"},
+            "hold": {
+                "active": True,
+                "reason": "ibgateway_waiting_for_manual_login_or_2fa",
+                "scope": "ibkr",
+            },
+        },
+    )
+    monkeypatch.setattr(
+        mod.operator_queue_snapshot,
+        "build_snapshot",
+        lambda **_kwargs: {
+            "blocked_count": 1,
+            "first_blocker_op_id": "OP-19",
+            "first_next_action": "install gateway",
+            "launch_blocked_count": 1,
+            "first_launch_blocker_op_id": "OP-19",
+            "first_launch_next_action": "install gateway",
+            "bot_strategy_paper_ready": 10,
+            "operator_queue": {
+                "top_launch_blockers": [
+                    {
+                        "op_id": "OP-19",
+                        "detail": "This host is not the VPS Gateway authority",
+                        "evidence": {
+                            "non_authoritative_gateway_host": True,
+                            "gateway_authority": {"allowed": False},
+                        },
+                        "next_actions": ["install gateway"],
+                    }
+                ]
+            },
+        },
+    )
+
+    result = mod.build_transition_check()
+    gates = {gate["name"]: gate for gate in result["gates"]}
+
+    assert result["non_authoritative_gateway_host"] is True
+    assert result["operator_queue_first_launch_next_action"].startswith("On the VPS only:")
+    assert gates["tws_api_4002"]["next_action"].startswith("On the VPS only:")
+    assert gates["ibgateway_release_guard"]["next_action"].startswith("On the VPS only:")
+    assert gates["op19_gateway_runtime"]["next_action"].startswith("On the VPS only:")
+    assert "visible IBKR Gateway login" not in gates["op19_gateway_runtime"]["next_action"]
+
+
 def test_transition_check_reads_op19_detail_from_snapshot_top_launch_blockers(monkeypatch) -> None:
     from eta_engine.scripts import paper_live_transition_check as mod
 

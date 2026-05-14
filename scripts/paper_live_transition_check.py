@@ -36,6 +36,15 @@ from eta_engine.scripts import (  # noqa: E402
 _DEFAULT_OUT = workspace_roots.ETA_RUNTIME_STATE_DIR / "paper_live_transition_check.json"
 _IBKR_SUBSCRIPTION_LOG = workspace_roots.ETA_RUNTIME_LOG_DIR / "ibkr_subscription_status.jsonl"
 _LAUNCH_COMMAND = "$env:ETA_SUPERVISOR_MODE='paper_live'; python eta_engine/scripts/jarvis_strategy_supervisor.py"
+_NON_AUTHORITATIVE_GATEWAY_STATUSES = {
+    "blocked_non_authoritative_gateway_host",
+    "non_authoritative_gateway_host",
+}
+_VPS_TWS_WATCHDOG_ACTION = (
+    "On the VPS only: python -m eta_engine.scripts.tws_watchdog --host 127.0.0.1 --port 4002"
+)
+_VPS_RELEASE_GUARD_ACTION = "On the VPS only: python -m eta_engine.scripts.ibgateway_release_guard"
+_VPS_REAUTH_ACTION = "On the VPS only: python -m eta_engine.scripts.ibgateway_reauth_controller --execute"
 
 
 def _utc_now_iso() -> str:
@@ -132,6 +141,57 @@ def _launch_blocked_count(snapshot: dict[str, Any]) -> int:
         return _blocked_count(snapshot)
 
 
+def _iter_queue_items(snapshot: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return visible operator queue items from all known snapshot shapes."""
+    queue = snapshot.get("operator_queue")
+    groups: list[Any] = []
+    if isinstance(queue, list):
+        groups.append(queue)
+    elif isinstance(queue, dict):
+        groups.extend([queue.get("top_launch_blockers"), queue.get("top_blockers")])
+
+    items: list[dict[str, Any]] = []
+    seen: set[int] = set()
+    for group in groups:
+        if not isinstance(group, list):
+            continue
+        for item in group:
+            if not isinstance(item, dict):
+                continue
+            marker = id(item)
+            if marker in seen:
+                continue
+            seen.add(marker)
+            items.append(item)
+    return items
+
+
+def _gateway_authority_is_blocked(payload: object) -> bool:
+    if not isinstance(payload, dict):
+        return False
+    if payload.get("non_authoritative_gateway_host") is True:
+        return True
+    if str(payload.get("status") or "") in _NON_AUTHORITATIVE_GATEWAY_STATUSES:
+        return True
+    authority = payload.get("gateway_authority")
+    return isinstance(authority, dict) and authority.get("allowed") is False
+
+
+def _non_authoritative_gateway_host(queue: dict[str, Any], release_guard: dict[str, Any]) -> bool:
+    """Return true when recovery guidance must be scoped to the 24/7 VPS."""
+    if _gateway_authority_is_blocked(release_guard):
+        return True
+    for item in _iter_queue_items(queue):
+        if _gateway_authority_is_blocked(item):
+            return True
+        evidence = item.get("evidence")
+        if _gateway_authority_is_blocked(evidence):
+            return True
+        if isinstance(evidence, dict) and _gateway_authority_is_blocked(evidence.get("reauth")):
+            return True
+    return False
+
+
 def _paper_ready_count(snapshot: dict[str, Any]) -> int:
     try:
         return int(snapshot.get("bot_strategy_paper_ready") or 0)
@@ -139,11 +199,18 @@ def _paper_ready_count(snapshot: dict[str, Any]) -> int:
         return 0
 
 
-def _op19_next_action(queue: dict[str, Any], release_guard: dict[str, Any]) -> str:
+def _op19_next_action(
+    queue: dict[str, Any],
+    release_guard: dict[str, Any],
+    *,
+    non_authoritative_gateway_host: bool = False,
+) -> str:
     """Return the most actionable OP-19 recovery step for the operator."""
     queue_action = str(queue.get("first_launch_next_action") or queue.get("first_next_action") or "")
     if _first_launch_op_id(queue) != "OP-19":
         return ""
+    if non_authoritative_gateway_host:
+        return queue_action if queue_action.startswith("On the VPS only:") else _VPS_REAUTH_ACTION
 
     hold = release_guard.get("hold") if isinstance(release_guard, dict) else {}
     hold_payload = hold if isinstance(hold, dict) else {}
@@ -162,21 +229,9 @@ def _first_launch_detail(snapshot: dict[str, Any]) -> str:
     launch_op_id = _first_launch_op_id(snapshot)
     if not launch_op_id:
         return ""
-    queue = snapshot.get("operator_queue")
-    candidate_groups: list[Any] = []
-    if isinstance(queue, list):
-        candidate_groups.append(queue)
-    elif isinstance(queue, dict):
-        candidate_groups.append(queue.get("top_launch_blockers"))
-        candidate_groups.append(queue.get("top_blockers"))
-    for group in candidate_groups:
-        if not isinstance(group, list):
-            continue
-        for item in group:
-            if not isinstance(item, dict):
-                continue
-            if str(item.get("op_id") or "") == launch_op_id:
-                return str(item.get("detail") or "")
+    for item in _iter_queue_items(snapshot):
+        if str(item.get("op_id") or "") == launch_op_id:
+            return str(item.get("detail") or "")
     return ""
 
 
@@ -213,23 +268,36 @@ def build_transition_check(
     paper_ready = _paper_ready_count(queue)
     blockers = _blocked_count(queue)
     launch_blockers = _launch_blocked_count(queue)
+    non_authoritative_host = _non_authoritative_gateway_host(queue, release_guard)
     stale_op19_cleared = first_launch_op == "OP-19" and paper_live_ready and release_ready
     effective_launch_blockers = max(launch_blockers - 1, 0) if stale_op19_cleared else launch_blockers
     op19_clear = first_launch_op != "OP-19" or stale_op19_cleared
-    op19_next_action = _op19_next_action(queue, release_guard)
+    op19_next_action = _op19_next_action(
+        queue,
+        release_guard,
+        non_authoritative_gateway_host=non_authoritative_host,
+    )
 
     gates = [
         _gate(
             "tws_api_4002",
             passed=paper_live_ready,
             detail=str(ibkr_status.get("summary", {}).get("operator_action") or ""),
-            next_action="python -m eta_engine.scripts.tws_watchdog --host 127.0.0.1 --port 4002",
+            next_action=(
+                _VPS_TWS_WATCHDOG_ACTION
+                if non_authoritative_host
+                else "python -m eta_engine.scripts.tws_watchdog --host 127.0.0.1 --port 4002"
+            ),
         ),
         _gate(
             "ibgateway_release_guard",
             passed=release_ready,
             detail=str(release_guard.get("reason") or release_guard.get("status") or ""),
-            next_action="python -m eta_engine.scripts.ibgateway_release_guard",
+            next_action=(
+                _VPS_RELEASE_GUARD_ACTION
+                if non_authoritative_host
+                else "python -m eta_engine.scripts.ibgateway_release_guard"
+            ),
         ),
         _gate(
             "op19_gateway_runtime",
@@ -287,6 +355,7 @@ def build_transition_check(
             if effective_launch_blockers == 0
             else op19_next_action or queue.get("first_launch_next_action")
         ),
+        "non_authoritative_gateway_host": non_authoritative_host,
         "paper_ready_bots": paper_ready,
         "gates": gates,
         "ibkr_surface_status": ibkr_status,
