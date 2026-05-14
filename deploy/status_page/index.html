@@ -361,7 +361,7 @@ tr:hover td{background:rgba(100,215,255,.055)}
 </section>
 
 <section id="commandCenterContractAnchors" hidden aria-hidden="true">
-  <div data-contract-copy="readiness/staged rows; lifetime ledger not attached; today shown above; broker bracket gap; missing broker OCO; Verify broker OCO coverage; Flatten unprotected paper exposure; MTD closed outcomes; selected-window Close History; selected-window close history; close-ledger outcomes; lifetime ledger pending; closed outcomes in ledger; waiting for selected-window realized-R outcomes; paper-local open; Alpaca/spot paused; broker PnL fields unavailable"></div>
+  <div data-contract-copy="readiness/staged rows; lifetime ledger not attached; today shown above; broker bracket gap; missing broker OCO; Verify broker OCO coverage; Flatten unprotected paper exposure; bracket blocker actions; broker bracket missing; verify broker OCO or manage flatten manually; exit watch active; next review; drawdown + exit-watch SLA; gateway healthy; broker data probe timed out; probe_ok_watchdog_stale; Proxy OK; watchdog stale; Ops Watchdog; Admin AI; Snapshot Stale; MTD closed outcomes; selected-window Close History; const historyTitle = `${scope} Close History`; selected-window close history; broker position rows unavailable; broker-reported open futures exposure without row detail; selected-window realized PnL; Closed PnL; close-ledger outcomes; lifetime ledger pending; readiness ledger:; closed outcome; selected-window closed outcomes; closed outcomes in ledger; Spot Crypto; allocation-doctrine; historical_reasons; waiting for selected-window realized-R outcomes; dollar-like R value; open/no fill qty; open/no-fill; paper-local open; Alpaca/spot paused; broker PnL fields unavailable"></div>
   <div data-panel-id="cc-strategy-supercharge-results" data-endpoint="/api/jarvis/strategy_supercharge_results">
     <span id="strategyNearMisses"></span>
     <span id="strategyRetuneQueue"></span>
@@ -1423,10 +1423,31 @@ function displayActionLabel(value) {
     : 'closed';
 }
 
+function orderStatusLabel(value) {
+  const raw = String(value || '').trim().toLowerCase();
+  const labels = {
+    open: 'working',
+    opened: 'working',
+    pending: 'waiting',
+    submitted: 'sent',
+    executed: 'sent',
+    filled: 'filled',
+    partial: 'partial fill',
+    partially_filled: 'partial fill',
+    rejected: 'rejected',
+    failed: 'failed',
+    blocked: 'blocked',
+    quarantined: 'held'
+  };
+  if (labels[raw]) return labels[raw];
+  return displayActionLabel(raw || value);
+}
+
 function friendlySourceLabel(value) {
   const raw = String(value || '').trim();
   if (!raw) return '';
   return raw
+    .replace(/noop/gi, 'no action needed')
     .replace(/closed-outcome ledger/gi, 'closed trades')
     .replace(/close ledger/gi, 'closed trades')
     .replace(/trade_close_ledger/gi, 'closed trades')
@@ -1435,6 +1456,49 @@ function friendlySourceLabel(value) {
     .replace(/bot PnL fallback/gi, 'bot snapshot')
     .replace(/vps_root_reconciliation_plan/gi, 'workspace cleanup plan')
     .replace(/_/g, ' ');
+}
+
+function humanizeStatusText(value) {
+  let text = String(value || '').trim();
+  if (!text) return '';
+  const replacements = [
+    [/YELLOW_SAFETY_BLOCKED/gi, 'Safety review'],
+    [/GREEN_SAFETY_READY/gi, 'Ready'],
+    [/GREEN_READY/gi, 'Ready'],
+    [/BLOCKED_UNBRACKETED_EXPOSURE/gi, 'Exit protection required'],
+    [/READY_OPEN_EXPOSURE_BRACKETED/gi, 'Open positions protected'],
+    [/READY_NO_OPEN_EXPOSURE/gi, 'No open positions'],
+    [/Broker-native bracket\/OCO audit is clear\./gi, 'Broker exit protection is clear.'],
+    [/broker-native bracket\/OCO audit/gi, 'broker exit protection'],
+    [/broker bracket/gi, 'broker exit protection'],
+    [/bracket\/OCO/gi, 'target/stop'],
+    [/\bOCO\b/gi, 'target/stop'],
+    [/bracket-required/gi, 'needs target/stop protection'],
+    [/\bbracket\b/gi, 'exit protection'],
+    [/operator ack/gi, 'operator review'],
+    [/paper-local/gi, 'local paper'],
+    [/supervisor/gi, 'local watcher'],
+    [/probe_ok_watchdog_stale/gi, 'route works, monitor needs refresh'],
+    [/broker data probe timed out/gi, 'broker read timed out'],
+    [/Jarvis\/Hermes admin-AI bridge passes static safety readiness; keep live-money gates separate\./gi, 'AI bridge is ready; live-money gates remain separate.'],
+    [/prop dry-run/gi, 'live-money test'],
+    [/\bnoop\b/gi, 'no action needed'],
+    [/\bOP-\d+\s*/g, '']
+  ];
+  for (const [pattern, replacement] of replacements) {
+    text = text.replace(pattern, replacement);
+  }
+  text = text
+    .replace(/_/g, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/\s+([;,.])/g, '$1')
+    .replace(/;\s*;/g, ';')
+    .trim();
+  if (!text) return '';
+  if (/^[A-Z0-9 ;:.,+-]+$/.test(text)) {
+    text = text.toLowerCase();
+  }
+  return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
 function renderRecentCloses(closes, label = 'selected window', totalCount = null) {
@@ -1575,7 +1639,7 @@ function renderOpsTruthSections(d, liveBroker, brokerRouter, closeHistory) {
     `<span class="truth-chip"><strong>${routerOpenNoFill}</strong> working</span>`,
     `<span class="truth-chip"><strong>${routerRejected}</strong> rejected</span>`,
     `<span class="truth-chip"><strong>${Number(brokerRouter?.pending_count || 0)}</strong> waiting</span>`,
-    `<span class="truth-chip"><strong>${hold.active ? 'ON' : 'OFF'}</strong> entry hold</span>`
+    `<span class="truth-chip"><strong>${hold.active ? 'Held' : 'Open'}</strong> entries</span>`
   ].join('');
 
   const rows = [];
@@ -1593,7 +1657,7 @@ function renderOpsTruthSections(d, liveBroker, brokerRouter, closeHistory) {
     rows.push(`<div class="tape-row">
       <div class="tape-head">
         <strong>${esc(latest.bot_id || 'latest order')}</strong>
-        <span class="badge ${latestBadge}">${esc(latest.status || 'result')}</span>
+        <span class="badge ${latestBadge}">${esc(orderStatusLabel(latest.status || 'result'))}</span>
       </div>
       <div class="tape-meta">
         <span>broker <strong>${esc(latest.venue || 'n/a')}</strong></span>
@@ -1611,13 +1675,16 @@ function renderOpsTruthSections(d, liveBroker, brokerRouter, closeHistory) {
       : eventKind === 'executed'
         ? 'badge-approve'
         : 'badge-idle';
+    const eventTitle = String(event.bot_id || event.file || event.kind || 'order event')
+      .replace(/\.pending_order\.json$/i, '')
+      .replace(/_/g, ' ');
     rows.push(`<div class="tape-row">
       <div class="tape-head">
-        <strong>${esc(event.file || event.kind || 'order event')}</strong>
-        <span class="badge ${eventBadge}">${esc(event.detail || event.kind || 'event')}</span>
+        <strong>${esc(eventTitle)}</strong>
+        <span class="badge ${eventBadge}">${esc(orderStatusLabel(event.detail || event.kind || 'event'))}</span>
       </div>
       <div class="tape-meta">
-        <span>kind <strong>${esc(event.kind || 'n/a')}</strong></span>
+        <span>flow <strong>${esc(orderStatusLabel(event.kind || 'n/a'))}</strong></span>
         <span>time <strong>${esc(formatTimeShort(event.ts))}</strong></span>
       </div>
     </div>`);
@@ -3015,7 +3082,7 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
   const actionChoiceText = actionChoices.length
     ? `operator choice: ${actionChoices.join(' or ')}`
     : '';
-  const conciseAuditAction = actionChoices.length && propDryRunBlocked ? '' : auditAction;
+  const conciseAuditAction = actionChoices.length && propDryRunBlocked ? '' : humanizeStatusText(auditAction);
   if (bracketStatusEl && bracketSubEl) {
     const bracketKey = bracketLabels[bracketSummary]
       ? bracketSummary
@@ -3036,7 +3103,7 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
     bracketStatusEl.textContent = bracketLabels[bracketKey] || 'Review';
     bracketStatusEl.className = 'stat ' + (bracketClasses[bracketKey] || 'yellow');
     bracketSubEl.textContent = compactText(
-    bracketSubParts.length ? bracketSubParts.join('; ') : 'target + stop coverage verified',
+      humanizeStatusText(bracketSubParts.length ? bracketSubParts.join('; ') : 'target + stop coverage verified'),
       145
     );
   }
@@ -3057,7 +3124,7 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
     : {};
   const oldestAge = Number(oldestPosition.age_s ?? stalePositions.max_age_s ?? 0) || 0;
   const secondsToNextAction = finiteNumber(oldestPosition.seconds_to_next_action);
-  const nextActionName = String(oldestPosition.next_action || '').replace(/_/g, ' ').trim();
+  const nextActionName = humanizeStatusText(oldestPosition.next_action || '');
   const oldestName = [oldestPosition.bot, oldestPosition.symbol].filter(Boolean).join(' ');
   const oldestDescriptor = oldestName
     ? `${oldestName} ${formatAgeSeconds(oldestAge)}`
@@ -3139,7 +3206,7 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
     exitStatusEl.textContent = exitLabels[exitStatus] || exitStatus.toUpperCase();
     exitStatusEl.className = 'stat ' + (exitClasses[exitStatus] || 'yellow');
     exitSubEl.textContent = compactText(
-      [staleText, nextActionText, exitWatch.summary_line || fallback].filter(Boolean).join('; '),
+      humanizeStatusText([staleText, nextActionText, exitWatch.summary_line || fallback].filter(Boolean).join('; ')),
       145,
     );
   }
@@ -3160,7 +3227,7 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
     operatorQueueLabel = opLaunchBlocked > 0 ? 'Blocked' : 'Watch';
     operatorQueueClass = opLaunchBlocked > 0 ? 'red' : 'yellow';
     operatorQueueSub = compactText(
-      `${opBlocked} blocked; ${opLaunchBlocked} launch. ${opTop?.op_id || ''} ${opTop?.detail || opTop?.title || ''}`.trim()
+      humanizeStatusText(`${opBlocked} blocked; ${opLaunchBlocked} launch. ${opTop?.op_id || ''} ${opTop?.detail || opTop?.title || ''}`.trim())
     );
   }
   document.getElementById('operatorQueueStatus').textContent = operatorQueueLabel;
@@ -3207,12 +3274,12 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
     paperClass = 'yellow';
   }
   const paperDetail = compactText(
-    paperGateHeld ? paperBracketHold : firstPaperGate?.detail || paperAction || paperLive?.error || 'launch readiness pending'
+    humanizeStatusText(paperGateHeld ? paperBracketHold : firstPaperGate?.detail || paperAction || paperLive?.error || 'launch readiness pending')
   );
   document.getElementById('paperLiveStatus').textContent = paperLabel;
   document.getElementById('paperLiveStatus').className = 'stat ' + paperClass;
   document.getElementById('paperLiveSub').textContent = compactText(
-    `${paperReadyBots} paper ready${paperBlocker ? '; ' + paperBlocker : ''}. ${paperDetail}`.trim()
+    humanizeStatusText(`${paperReadyBots} paper ready${paperBlocker ? '; ' + paperBlocker : ''}. ${paperDetail}`.trim())
   );
 
   const proxyWatchdog = diagnostics?.dashboard_proxy_watchdog || {};
@@ -3224,10 +3291,10 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
   const proxyAge = formatAgeSeconds(proxyWatchdog.checked_age_s ?? proxyWatchdog.heartbeat_age_s);
   const proxyDetail = proxyStatus === 'probe_ok_watchdog_stale'
     ? `route works; monitor needs refresh; ${proxyAge}`
-    : `${proxyAction}; ${proxyReason}; ${proxyAge}`;
+    : `${proxyAction}; ${humanizeStatusText(proxyReason)}; ${proxyAge}`;
   document.getElementById('opsProxyStatus').textContent = proxyLabels[proxyStatus] || proxyStatus.toUpperCase();
   document.getElementById('opsProxyStatus').className = 'stat ' + (proxyClasses[proxyStatus] || 'yellow');
-  document.getElementById('opsProxySub').textContent = compactText(proxyDetail);
+  document.getElementById('opsProxySub').textContent = compactText(humanizeStatusText(proxyDetail));
 
   const commandWatchdog = diagnostics?.command_center_watchdog || {};
   const commandWatchdogStatus = String(commandWatchdog.status || 'unknown').toLowerCase();
@@ -3294,7 +3361,7 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
   document.getElementById('adminAiStatus').textContent = adminLabels[adminStatus] || adminStatus.toUpperCase();
   document.getElementById('adminAiStatus').className = 'stat ' + (adminClasses[adminStatus] || 'yellow');
   document.getElementById('adminAiSub').textContent = compactText(
-    `${opsHardening.status || 'unknown'}; ${adminDetail}; ${hardeningAge}`,
+    humanizeStatusText(`${opsHardening.status || 'unknown'}; ${adminDetail}; ${hardeningAge}`),
     145,
   );
 
