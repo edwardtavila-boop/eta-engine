@@ -318,7 +318,8 @@ function Resolve-IbcCredentials {
         [string]$ExplicitUserId,
         [string]$ExplicitPassword,
         [string]$PasswordFile,
-        [string]$CredentialJsonPath
+        [string]$CredentialJsonPath,
+        [string]$DefaultUserId
     )
 
     $dotEnv = Read-DotEnvMap -Path "C:\EvolutionaryTradingAlgo\eta_engine\.env"
@@ -337,7 +338,8 @@ function Resolve-IbcCredentials {
         $jsonCreds["user"],
         $jsonCreds["login"],
         $jsonCreds["ib_login_id"],
-        $jsonCreds["user_id"]
+        $jsonCreds["user_id"],
+        $DefaultUserId
     )
 
     $password = Get-FirstNonEmptyValue -Candidates @(
@@ -702,9 +704,10 @@ try {
             -ExplicitUserId $IbcUserId `
             -ExplicitPassword $IbcPassword `
             -PasswordFile $IbcPasswordFile `
-            -CredentialJsonPath $IbcCredentialJsonPath
+            -CredentialJsonPath $IbcCredentialJsonPath `
+            -DefaultUserId $LoginProfile
         if ([string]::IsNullOrWhiteSpace($ibcCreds.user_id) -or [string]::IsNullOrWhiteSpace($ibcCreds.password)) {
-            throw "IBC launch requires IBKR credentials. Seed ETA_IBC_LOGIN_ID and ETA_IBC_PASSWORD (or pass -IbcUserId / -IbcPassword / -IbcPasswordFile) before using -UseIbc."
+            throw "IBC launch requires IBKR credentials. Seed ETA_IBC_LOGIN_ID and ETA_IBC_PASSWORD (or pass -IbcUserId / -LoginProfile / -IbcPassword / -IbcPasswordFile) before using -UseIbc."
         }
 
         Write-IbcConfig `

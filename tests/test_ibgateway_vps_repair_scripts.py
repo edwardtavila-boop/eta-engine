@@ -73,6 +73,9 @@ def test_ibgateway_starter_supports_ibc_managed_launch() -> None:
     assert r"C:\EvolutionaryTradingAlgo\eta_engine\secrets\ibkr_credentials.json" in text
     assert "Resolve-IbcInstallDir" in text
     assert "Resolve-IbcCredentials" in text
+    assert "[string]$DefaultUserId" in text
+    assert "$DefaultUserId" in text
+    assert "-DefaultUserId $LoginProfile" in text
     assert "Write-IbcConfig" in text
     assert "StartIBC.bat" in text
     assert '"/Gateway"' in text
@@ -88,6 +91,7 @@ def test_ibgateway_starter_supports_ibc_managed_launch() -> None:
     assert '"AcceptIncomingConnectionAction=$AcceptIncomingConnectionAction"' in text
     assert "OverrideTwsApiPort=$ApiPort" in text
     assert "IBC launch requires IBKR credentials" in text
+    assert "-IbcUserId / -LoginProfile / -IbcPassword / -IbcPasswordFile" in text
     assert "Test-IbcSecretSentinel" in text
     assert "REAL_IBKR_PASSWORD" in text
     assert "Get-UsableIbcSecret" in text
@@ -222,10 +226,18 @@ def test_ibc_credentials_helper_seeds_machine_env_without_logging_values() -> No
     text = IBC_CREDENTIALS.read_text(encoding="utf-8")
 
     assert r"C:\EvolutionaryTradingAlgo\eta_engine\secrets\ibkr_credentials.json" in text
+    assert r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\ibkr_pw.txt" in text
     assert "PromptForPassword" in text
+    assert "PasswordFilePath" in text
+    assert "SkipPasswordFile" in text
     assert "Resolve-JsonLoginId" in text
+    assert "Write-PasswordFile" in text
+    assert "Protect-SecretFilePath" in text
+    assert "Set-Content -LiteralPath $Path -Value $Secret -Encoding UTF8 -NoNewline" in text
     assert 'SetEnvironmentVariable("ETA_IBC_LOGIN_ID"' in text
     assert 'SetEnvironmentVariable("ETA_IBC_PASSWORD"' in text
     assert "ETA_IBC_LOGIN_ID=seeded" in text
     assert "ETA_IBC_PASSWORD=seeded" in text
+    assert "IBC_PASSWORD_FILE=seeded" in text
     assert "Missing IBKR password" in text
+    assert "Write-Output $resolvedPassword" not in text
