@@ -36,7 +36,7 @@ CRITICAL_SERVICES = (
     "FmStatusServer",
 )
 OPTIONAL_SERVICES = ("HermesJarvisTelegram",)
-REQUIRED_PORTS = (8000, 8420, 8421, 8422)
+REQUIRED_PORTS = (8000, 8421, 8422)
 BROKER_PORTS = (4002,)
 DASHBOARD_DURABLE_TASKS = (
     "ETA-Dashboard-API",
@@ -66,12 +66,6 @@ ENDPOINTS = (
         "name": "local_fm_status",
         "url": "http://127.0.0.1:8422/api/fm/status",
         "critical": True,
-    },
-    {
-        "name": "local_command_center_master",
-        "url": "http://127.0.0.1:8420/api/master/status",
-        "critical": False,
-        "timeout_s": 15.0,
     },
     {
         "name": "public_ops_bot_fleet",

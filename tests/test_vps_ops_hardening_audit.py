@@ -10,7 +10,6 @@ def _running_services() -> dict[str, dict[str, object]]:
 def _listening_ports() -> dict[int, dict[str, object]]:
     return {
         8000: {"port": 8000, "listening": True, "owners": ["dashboard_api"]},
-        8420: {"port": 8420, "listening": True, "owners": ["FirmCommandCenter"]},
         8421: {"port": 8421, "listening": True, "owners": ["reverse_proxy_bridge"]},
         8422: {"port": 8422, "listening": True, "owners": ["FmStatusServer"]},
         4002: {"port": 4002, "listening": True, "owners": ["IbcGateway"]},
@@ -22,7 +21,6 @@ def _healthy_endpoints() -> dict[str, dict[str, object]]:
         "local_dashboard_api_diagnostics": {"ok": True, "status_code": 200},
         "local_dashboard_proxy_diagnostics": {"ok": True, "status_code": 200},
         "local_fm_status": {"ok": True, "status_code": 200},
-        "local_command_center_master": {"ok": True, "status_code": 200},
         "public_ops_bot_fleet": {"ok": True, "status_code": 200},
     }
 
@@ -120,6 +118,26 @@ def test_missing_critical_service_or_port_is_red_runtime_degraded() -> None:
     assert report["summary"]["runtime_ready"] is False
     assert "FmStatusServer" in report["runtime"]["services"]["down"]
     assert 8422 in report["runtime"]["ports"]["missing"]
+
+
+def test_legacy_8420_listener_is_not_required_for_runtime_ready() -> None:
+    ports = _listening_ports()
+    ports[8420] = {"port": 8420, "listening": False, "owners": []}
+
+    report = audit.build_report(
+        services=_running_services(),
+        ports=ports,
+        endpoints=_healthy_endpoints(),
+        broker_bracket_audit={"summary": {"status": "PASS", "ready_for_prop_dry_run": True}},
+        promotion_audit={"summary": {"status": "PASS", "ready_for_live": True}},
+        service_config={"fm_status_server": {"matches_expected": True}},
+        tasks=_healthy_tasks(),
+        ibgateway_reauth={"status": "healthy"},
+    )
+
+    assert 8420 not in report["runtime"]["ports"]["required"]
+    assert 8420 not in report["runtime"]["ports"]["missing"]
+    assert report["summary"]["runtime_ready"] is True
 
 
 def test_service_config_drift_requires_restart_before_green() -> None:
