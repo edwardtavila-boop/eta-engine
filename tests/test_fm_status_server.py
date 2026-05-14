@@ -44,6 +44,7 @@ def test_fm_status_server_exposes_cached_health_snapshot(tmp_path, monkeypatch):
 def test_fm_status_server_xml_uses_existing_command_center_runtime():
     xml = (Path(__file__).resolve().parents[1] / "deploy" / "FmStatusServer.xml").read_text(encoding="utf-8")
 
-    assert r"C:\Python314\python.exe" in xml
+    assert r"C:\EvolutionaryTradingAlgo\eta_engine\.venv\Scripts\python.exe" in xml
+    assert r"C:\Python314\python.exe" not in xml
     assert "-m uvicorn eta_engine.deploy.fm_status_server:app" in xml
     assert "--host 127.0.0.1 --port 8422" in xml

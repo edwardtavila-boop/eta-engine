@@ -281,17 +281,6 @@ def decide_reauth_action(
         decision["last_restart_at"] = ""
         return decision
 
-    failures = _int_value(tws_status.get("consecutive_failures"), 0)
-    if failures < failure_threshold:
-        return _base_decision(
-            status="waiting_for_failures",
-            action="none",
-            now=effective_now,
-            tws_status=tws_status,
-            prior_state=prior_state,
-            reason=f"Waiting for {failure_threshold} consecutive failures before recovery action.",
-        )
-
     details = _json_dict(tws_status.get("details"))
     socket_ok = _bool_value(details.get("socket_ok"))
     gateway_process = _json_dict(details.get("gateway_process"))
@@ -304,6 +293,17 @@ def decide_reauth_action(
             tws_status=tws_status,
             prior_state=prior_state,
             reason="IB Gateway process is not running; start the canonical run-now task.",
+        )
+
+    failures = _int_value(tws_status.get("consecutive_failures"), 0)
+    if failures < failure_threshold:
+        return _base_decision(
+            status="waiting_for_failures",
+            action="none",
+            now=effective_now,
+            tws_status=tws_status,
+            prior_state=prior_state,
+            reason=f"Waiting for {failure_threshold} consecutive failures before recovery action.",
         )
 
     restart_attempts = _int_value(prior_state.get("restart_attempts"), 0)

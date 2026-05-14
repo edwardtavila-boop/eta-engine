@@ -197,6 +197,10 @@ def test_vps_bootstrap_installs_canonical_command_center_service_template() -> N
         assert 'Name="FirmCommandCenter"' in text
         assert 'Xml="FirmCommandCenter.xml"' in text
         assert "$svc.XmlPath" in text
+        if path.name == "vps_bootstrap.ps1":
+            assert "$serviceExe = \"$svcDir\\$($svc.Name).exe\"" in text
+            assert "Copy-Item $winswExe $serviceExe -Force" in text
+            assert '& "$svcDir\\winsw.exe" install' not in text
 
 
 def test_dashboard_proxy_watchdog_task_registration_is_canonical() -> None:

@@ -50,7 +50,10 @@ def _stale_dashboard_schema_endpoints() -> dict[str, dict[str, object]]:
 def _healthy_tasks() -> dict[str, dict[str, object]]:
     return {
         name: {"task_name": name, "state": "Ready", "last_task_result": 0}
-        for name in audit.DASHBOARD_DURABLE_TASKS + audit.IBGATEWAY_TASKS
+        for name in audit.DASHBOARD_DURABLE_TASKS
+        + audit.PAPER_LIVE_DURABLE_TASKS
+        + audit.DATA_PIPELINE_TASKS
+        + audit.IBGATEWAY_TASKS
     }
 
 
@@ -95,6 +98,33 @@ def test_runtime_ok_but_trading_gates_blocked_is_yellow_not_red() -> None:
     assert any("MNQM6, NQM6" in action for action in report["next_actions"])
 
 
+def test_task_first_runtime_does_not_require_legacy_firm_services() -> None:
+    services = {
+        "FmStatusServer": {"name": "FmStatusServer", "status": "Running", "start_type": "Automatic"},
+        "FirmCommandCenter": {"name": "FirmCommandCenter", "status": "Missing", "start_type": None},
+        "FirmCommandCenterTunnel": {"name": "FirmCommandCenterTunnel", "status": "Missing", "start_type": None},
+        "FirmCore": {"name": "FirmCore", "status": "Missing", "start_type": None},
+        "FirmWatchdog": {"name": "FirmWatchdog", "status": "Missing", "start_type": None},
+        "ETAJarvisSupervisor": {"name": "ETAJarvisSupervisor", "status": "Missing", "start_type": None},
+    }
+
+    report = audit.build_report(
+        services=services,
+        ports=_listening_ports(),
+        endpoints=_healthy_endpoints(),
+        broker_bracket_audit=_blocked_bracket_gate(),
+        promotion_audit=_blocked_promotion_gate(),
+        service_config={"fm_status_server": {"matches_expected": True}},
+        tasks=_healthy_tasks(),
+        ibgateway_reauth={"status": "healthy"},
+    )
+
+    assert report["summary"]["runtime_ready"] is True
+    assert report["summary"]["status"] == "YELLOW_SAFETY_BLOCKED"
+    assert "FirmCore" in report["runtime"]["services"]["legacy_compatibility"]
+    assert not any("FirmCore" in action for action in report["next_actions"])
+
+
 def test_missing_critical_service_or_port_is_red_runtime_degraded() -> None:
     services = _running_services()
     services["FmStatusServer"] = {
@@ -118,6 +148,27 @@ def test_missing_critical_service_or_port_is_red_runtime_degraded() -> None:
     assert report["summary"]["runtime_ready"] is False
     assert "FmStatusServer" in report["runtime"]["services"]["down"]
     assert 8422 in report["runtime"]["ports"]["missing"]
+
+
+def test_missing_paper_live_durable_task_is_red_runtime_degraded() -> None:
+    tasks = _healthy_tasks()
+    tasks["ETA-TWS-Watchdog"] = {"task_name": "ETA-TWS-Watchdog", "state": "Missing", "last_task_result": None}
+
+    report = audit.build_report(
+        services=_running_services(),
+        ports=_listening_ports(),
+        endpoints=_healthy_endpoints(),
+        broker_bracket_audit=_blocked_bracket_gate(),
+        promotion_audit=_blocked_promotion_gate(),
+        service_config={"fm_status_server": {"matches_expected": True}},
+        tasks=tasks,
+        ibgateway_reauth={"status": "healthy"},
+    )
+
+    assert report["summary"]["status"] == "RED_RUNTIME_DEGRADED"
+    assert report["summary"]["runtime_ready"] is False
+    assert report["runtime"]["tasks"]["missing_paper_live_durable"] == ["ETA-TWS-Watchdog"]
+    assert any("paper-live scheduled task lane" in action for action in report["next_actions"])
 
 
 def test_legacy_8420_listener_is_not_required_for_runtime_ready() -> None:
@@ -150,7 +201,7 @@ def test_service_config_drift_requires_restart_before_green() -> None:
         service_config={
             "fm_status_server": {
                 "matches_expected": False,
-                "expected_executable": r"C:\Python314\python.exe",
+                "expected_executable": r"C:\EvolutionaryTradingAlgo\eta_engine\.venv\Scripts\python.exe",
                 "installed_executable": r"C:\OldPython\python.exe",
             }
         },
@@ -232,6 +283,9 @@ def test_ready_no_open_exposure_counts_as_bracket_ready() -> None:
 
 
 def test_dashboard_ports_live_but_durable_tasks_missing_is_yellow_gap() -> None:
+    tasks = _healthy_tasks()
+    for name in audit.DASHBOARD_DURABLE_TASKS:
+        tasks[name] = {"task_name": name, "state": "Missing"}
     report = audit.build_report(
         services=_running_services(),
         ports=_listening_ports(),
@@ -239,7 +293,7 @@ def test_dashboard_ports_live_but_durable_tasks_missing_is_yellow_gap() -> None:
         broker_bracket_audit={"summary": {"status": "PASS", "ready_for_prop_dry_run": True}},
         promotion_audit={"summary": {"status": "PASS", "ready_for_live": True}},
         service_config={"fm_status_server": {"matches_expected": True}},
-        tasks={name: {"task_name": name, "state": "Missing"} for name in audit.DASHBOARD_DURABLE_TASKS},
+        tasks=tasks,
         ibgateway_reauth={"status": "healthy"},
     )
 
@@ -251,6 +305,32 @@ def test_dashboard_ports_live_but_durable_tasks_missing_is_yellow_gap() -> None:
     assert "ETA-OperatorQueueHeartbeat" in report["runtime"]["tasks"]["missing_dashboard_durable"]
     assert "ETA-PaperLiveTransitionCheck" in report["runtime"]["tasks"]["missing_dashboard_durable"]
     assert any("repair_dashboard_durability_admin.cmd" in action for action in report["next_actions"])
+
+
+def test_missing_symbol_intelligence_collector_degrades_runtime() -> None:
+    tasks = _healthy_tasks()
+    tasks["ETA-SymbolIntelCollector"] = {
+        "task_name": "ETA-SymbolIntelCollector",
+        "state": "Missing",
+        "last_task_result": None,
+    }
+
+    report = audit.build_report(
+        services=_running_services(),
+        ports=_listening_ports(),
+        endpoints=_healthy_endpoints(),
+        broker_bracket_audit={"summary": {"status": "PASS", "ready_for_prop_dry_run": True}},
+        promotion_audit={"summary": {"status": "PASS", "ready_for_live": True}},
+        service_config={"fm_status_server": {"matches_expected": True}},
+        tasks=tasks,
+        ibgateway_reauth={"status": "healthy"},
+    )
+
+    assert report["summary"]["status"] == "RED_RUNTIME_DEGRADED"
+    assert report["summary"]["runtime_ready"] is False
+    assert report["runtime"]["tasks"]["data_pipeline"] == ["ETA-SymbolIntelCollector"]
+    assert report["runtime"]["tasks"]["missing_data_pipeline"] == ["ETA-SymbolIntelCollector"]
+    assert any("data-pipeline" in action for action in report["next_actions"])
 
 
 def test_missing_ibc_credentials_blocks_trading_gate_without_red_runtime() -> None:

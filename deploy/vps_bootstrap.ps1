@@ -206,12 +206,13 @@ if (-not $SkipWinSW) {
                 if (-not (Test-Path $svcDir)) { New-Item -ItemType Directory -Force -Path $svcDir | Out-Null }
 
                 Copy-Item $xmlPath "$svcDir\$($svc.Xml)" -Force
-                Copy-Item $winswExe "$svcDir\winsw.exe" -Force
+                $serviceExe = "$svcDir\$($svc.Name).exe"
+                Copy-Item $winswExe $serviceExe -Force
 
                 if (-not $WhatIf) {
-                    & "$svcDir\winsw.exe" status 2>&1 | Out-Null
+                    & $serviceExe status 2>&1 | Out-Null
                     if ($LASTEXITCODE -ne 0) {
-                        & "$svcDir\winsw.exe" install 2>&1 | Out-Null
+                        & $serviceExe install 2>&1 | Out-Null
                         Write-Host "  $($svc.Name): INSTALLED" -ForegroundColor Green
                     } else {
                         Write-Host "  $($svc.Name): ALREADY INSTALLED" -ForegroundColor Gray
@@ -267,6 +268,7 @@ if (-not $SkipETATasks) {
     $dashboardProxyWatchdogTaskScript = "$EtaEngineDir\deploy\scripts\register_dashboard_proxy_watchdog_task.ps1"
     $paperLiveTransitionTaskScript = "$EtaEngineDir\deploy\scripts\register_paper_live_transition_check_task.ps1"
     $vpsOpsHardeningTaskScript = "$EtaEngineDir\deploy\scripts\register_vps_ops_hardening_audit_task.ps1"
+    $symbolIntelCollectorTaskScript = "$EtaEngineDir\deploy\scripts\register_symbol_intelligence_collector_task.ps1"
     $operatorQueueHeartbeatTaskScript = "$EtaEngineDir\deploy\scripts\register_operator_queue_heartbeat_task.ps1"
     $cloudflareTunnelTaskScript = "$EtaEngineDir\deploy\scripts\register_cloudflare_named_tunnel_task.ps1"
     $etaWatchdogTaskScript = "$EtaEngineDir\deploy\scripts\register_eta_watchdog_task.ps1"
@@ -323,6 +325,15 @@ if (-not $SkipETATasks) {
         }
     } else {
         Write-Host "  register_vps_ops_hardening_audit_task.ps1 not found at $vpsOpsHardeningTaskScript" -ForegroundColor Yellow
+    }
+
+    if (Test-Path $symbolIntelCollectorTaskScript) {
+        Write-Host "  Registering symbol intelligence collector task (every 5m)..." -ForegroundColor Gray
+        if (-not $WhatIf) {
+            & $pwshPath -ExecutionPolicy Bypass -File $symbolIntelCollectorTaskScript -Start
+        }
+    } else {
+        Write-Host "  register_symbol_intelligence_collector_task.ps1 not found at $symbolIntelCollectorTaskScript" -ForegroundColor Yellow
     }
 
     if (Test-Path $operatorQueueHeartbeatTaskScript) {
@@ -513,6 +524,7 @@ Write-Host "  ETA-Cloudflare-Tunnel            -- boot/logon named tunnel" -Fore
 Write-Host "  ETA-Dashboard-Proxy-Watchdog     -- boot/logon 8421 self-heal" -ForegroundColor Gray
 Write-Host "  ETA-PaperLiveTransitionCheck     -- boot/logon + every 5m" -ForegroundColor Gray
 Write-Host "  ETA-VpsOpsHardeningAudit         -- boot/logon + every 5m read-only audit" -ForegroundColor Gray
+Write-Host "  ETA-SymbolIntelCollector         -- boot/logon + every 5m data lake refresh" -ForegroundColor Gray
 Write-Host "  ETA-OperatorQueueHeartbeat       -- boot/logon + every 5m read-only queue snapshot" -ForegroundColor Gray
 Write-Host "  ETA-Watchdog                     -- boot/logon runtime watchdog" -ForegroundColor Gray
 Write-Host "  ETA-TWS-Watchdog                 -- startup + every 60s TWS health" -ForegroundColor Gray

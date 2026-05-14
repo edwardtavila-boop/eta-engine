@@ -74,6 +74,33 @@ def test_process_down_starts_existing_trader_owned_run_now_task(tmp_path: Path, 
     assert state["recovery_lane"]["restart_task"] == "ETA-IBGateway-DailyRestart"
 
 
+def test_process_down_starts_gateway_without_waiting_for_failure_threshold(tmp_path: Path, monkeypatch) -> None:
+    from eta_engine.scripts import ibgateway_reauth_controller as controller
+
+    tws_status = tmp_path / "tws_watchdog.json"
+    state_path = tmp_path / "ibgateway_reauth.json"
+    tws_status.write_text(
+        json.dumps(_unhealthy_status(failures=1, process_running=False)),
+        encoding="utf-8",
+    )
+    started: list[str] = []
+    monkeypatch.setattr(controller, "_scheduled_task_exists", lambda _task_name: True)
+    monkeypatch.setattr(controller, "_start_scheduled_task", lambda task_name: started.append(task_name) or 0)
+
+    result = controller.run_controller(
+        tws_status_path=tws_status,
+        state_path=state_path,
+        execute=True,
+        now=datetime(2026, 5, 5, 13, 40, tzinfo=UTC),
+    )
+
+    assert result["status"] == "started_gateway"
+    assert result["action"] == "start_gateway"
+    assert result["last_task_name"] == "ETA-IBGateway-RunNow"
+    assert result["consecutive_failures"] == 1
+    assert started == ["ETA-IBGateway-RunNow"]
+
+
 def test_ibc_recovery_task_without_credentials_requires_operator_action(tmp_path: Path, monkeypatch) -> None:
     from eta_engine.scripts import ibgateway_reauth_controller as controller
 
@@ -320,4 +347,7 @@ def test_bootstrap_registers_canonical_ibgateway_reauth_lane() -> None:
     assert "-Start" in bootstrap_text
     assert "register_ibkr_gateway_watchdog_task.ps1" not in bootstrap_text
     assert "[switch]$Start" in registrar_text
+    assert "[int]$IntervalSeconds = 60" in registrar_text
+    assert "New-TimeSpan -Seconds $IntervalSeconds" in registrar_text
+    assert "every 5 minutes" not in registrar_text
     assert "Start-ScheduledTask -TaskName $TaskName" in registrar_text

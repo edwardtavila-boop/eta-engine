@@ -6,7 +6,10 @@
 [CmdletBinding()]
 param(
     [switch]$DryRun,
-    [switch]$Start
+    [switch]$Start,
+    [switch]$CurrentUser,
+    [ValidateRange(30, 300)]
+    [int]$IntervalSeconds = 60
 )
 
 $ErrorActionPreference = "Stop"
@@ -29,8 +32,13 @@ if ($DryRun) {
     Write-Host "  Python      : $PythonExe"
     Write-Host "  State dir   : $StateDir"
     Write-Host "  Cmd line    : cmd.exe $cmdLine"
-    Write-Host "  Principal   : NT AUTHORITY\SYSTEM (Highest)"
-    Write-Host "  Triggers    : AtStartup + every 5 minutes"
+    if ($CurrentUser) {
+        Write-Host "  Principal   : current user (Interactive/Limited)"
+        Write-Host "  Triggers    : AtLogOn + every $IntervalSeconds seconds"
+    } else {
+        Write-Host "  Principal   : NT AUTHORITY\SYSTEM (Highest), with current-user fallback"
+        Write-Host "  Triggers    : AtStartup + every $IntervalSeconds seconds"
+    }
     Write-Host "  Start now   : $($Start.IsPresent)"
     exit 0
 }
@@ -46,23 +54,50 @@ if ($existing) {
 
 $action = New-ScheduledTaskAction -Execute "cmd.exe" -Argument $cmdLine -WorkingDirectory $WorkingDir
 $heartbeat = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) `
-    -RepetitionInterval (New-TimeSpan -Minutes 5) `
+    -RepetitionInterval (New-TimeSpan -Seconds $IntervalSeconds) `
     -RepetitionDuration (New-TimeSpan -Days 3650)
 $triggers = @((New-ScheduledTaskTrigger -AtStartup), $heartbeat)
 $settings = New-ScheduledTaskSettingsSet `
     -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable `
     -RestartCount 2 -RestartInterval (New-TimeSpan -Minutes 1) `
     -ExecutionTimeLimit (New-TimeSpan -Minutes 4)
-$principal = New-ScheduledTaskPrincipal `
-    -UserId "NT AUTHORITY\SYSTEM" -LogonType ServiceAccount -RunLevel Highest
+$description = "Canonical IB Gateway recovery controller: reads watchdog health and starts the canonical Gateway tasks when safe."
+$registeredPrincipal = "SYSTEM"
+if ($CurrentUser) {
+    $currentUserName = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+    $principal = New-ScheduledTaskPrincipal `
+        -UserId $currentUserName -LogonType Interactive -RunLevel Limited
+    $triggers = @((New-ScheduledTaskTrigger -AtLogOn -User $currentUserName), $heartbeat)
+    $description = "$description Current-user fallback requested by operator."
+    $registeredPrincipal = "current_user:$currentUserName"
+} else {
+    $principal = New-ScheduledTaskPrincipal `
+        -UserId "NT AUTHORITY\SYSTEM" -LogonType ServiceAccount -RunLevel Highest
+}
 
-Register-ScheduledTask `
-    -TaskName $TaskName `
-    -Description "Canonical IB Gateway recovery controller: reads watchdog health and starts the canonical Gateway tasks when safe." `
-    -Action $action -Trigger $triggers -Settings $settings -Principal $principal `
-    -Force | Out-Null
+try {
+    Register-ScheduledTask `
+        -TaskName $TaskName `
+        -Description $description `
+        -Action $action -Trigger $triggers -Settings $settings -Principal $principal `
+        -Force | Out-Null
+} catch {
+    if ($CurrentUser) {
+        throw
+    }
+    $currentUserName = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+    $fallbackPrincipal = New-ScheduledTaskPrincipal `
+        -UserId $currentUserName -LogonType Interactive -RunLevel Limited
+    $fallbackTriggers = @((New-ScheduledTaskTrigger -AtLogOn -User $currentUserName), $heartbeat)
+    Register-ScheduledTask `
+        -TaskName $TaskName `
+        -Description "$description Current-user fallback because SYSTEM registration was unavailable." `
+        -Action $action -Trigger $fallbackTriggers -Settings $settings -Principal $fallbackPrincipal `
+        -Force | Out-Null
+    $registeredPrincipal = "current_user:$currentUserName"
+}
 
-Write-Host "OK: Registered '$TaskName' as SYSTEM, AtStartup plus every 5 minutes."
+Write-Host "OK: Registered '$TaskName' as $registeredPrincipal, startup/logon plus every $IntervalSeconds seconds."
 if ($Start) {
     Start-ScheduledTask -TaskName $TaskName
     Write-Host "    Started '$TaskName' immediately."

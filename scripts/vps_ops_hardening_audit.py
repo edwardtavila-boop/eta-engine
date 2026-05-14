@@ -26,16 +26,16 @@ from eta_engine.scripts import jarvis_hermes_admin_audit, workspace_roots  # noq
 
 DEFAULT_OUT = workspace_roots.ETA_VPS_OPS_HARDENING_AUDIT_PATH
 CURRENT_JARVIS_HERMES_BRIDGE_TASK_COUNT = 8
-CRITICAL_SERVICES = (
+CRITICAL_SERVICES = ("FmStatusServer",)
+LEGACY_COMPAT_SERVICES = (
     "FirmCommandCenter",
     "FirmCommandCenterEdge",
     "FirmCommandCenterTunnel",
     "FirmCore",
     "FirmWatchdog",
     "ETAJarvisSupervisor",
-    "FmStatusServer",
 )
-OPTIONAL_SERVICES = ("HermesJarvisTelegram",)
+OPTIONAL_SERVICES = ("HermesJarvisTelegram",) + LEGACY_COMPAT_SERVICES
 REQUIRED_PORTS = (8000, 8421, 8422)
 BROKER_PORTS = (4002,)
 DASHBOARD_DURABLE_TASKS = (
@@ -44,6 +44,14 @@ DASHBOARD_DURABLE_TASKS = (
     "ETA-Dashboard-Proxy-Watchdog",
     "ETA-OperatorQueueHeartbeat",
     "ETA-PaperLiveTransitionCheck",
+)
+PAPER_LIVE_DURABLE_TASKS = (
+    "ETA-PaperLive-Supervisor",
+    "ETA-TWS-Watchdog",
+    "ETA-IBGateway-Reauth",
+)
+DATA_PIPELINE_TASKS = (
+    "ETA-SymbolIntelCollector",
 )
 IBGATEWAY_TASKS = (
     "ETA-IBGateway",
@@ -180,7 +188,13 @@ $results | ConvertTo-Json -Depth 4
 
 def collect_task_status() -> dict[str, dict[str, Any]]:
     """Collect expected scheduled-task status without modifying Task Scheduler."""
-    names = list(DASHBOARD_DURABLE_TASKS + IBGATEWAY_TASKS + ("ETA-Autopilot",))
+    names = list(
+        DASHBOARD_DURABLE_TASKS
+        + PAPER_LIVE_DURABLE_TASKS
+        + DATA_PIPELINE_TASKS
+        + IBGATEWAY_TASKS
+        + ("ETA-Autopilot",)
+    )
     quoted = ", ".join(f"'{name}'" for name in names)
     command = f"""
 $names = @({quoted})
@@ -306,6 +320,22 @@ def _missing_dashboard_tasks(tasks: dict[str, dict[str, Any]]) -> list[str]:
     return [
         name
         for name in DASHBOARD_DURABLE_TASKS
+        if str(_as_dict(tasks.get(name)).get("state") or "").lower() == "missing"
+    ]
+
+
+def _missing_paper_live_tasks(tasks: dict[str, dict[str, Any]]) -> list[str]:
+    return [
+        name
+        for name in PAPER_LIVE_DURABLE_TASKS
+        if str(_as_dict(tasks.get(name)).get("state") or "").lower() == "missing"
+    ]
+
+
+def _missing_data_pipeline_tasks(tasks: dict[str, dict[str, Any]]) -> list[str]:
+    return [
+        name
+        for name in DATA_PIPELINE_TASKS
         if str(_as_dict(tasks.get(name)).get("state") or "").lower() == "missing"
     ]
 
@@ -465,6 +495,8 @@ def build_report(
     service_down = _service_down(services)
     missing_ports = _missing_ports(ports)
     missing_dashboard_tasks = _missing_dashboard_tasks(tasks)
+    missing_paper_live_tasks = _missing_paper_live_tasks(tasks)
+    missing_data_pipeline_tasks = _missing_data_pipeline_tasks(tasks)
     endpoint_failures = _critical_endpoint_failures(endpoints)
     dashboard_schema_drift = _dashboard_schema_drift(endpoints)
     drifted_configs = _config_drift(service_config)
@@ -472,7 +504,13 @@ def build_report(
     promotion_gate = _promotion_gate_summary(promotion_audit)
     ibgateway_gate = _ibgateway_summary(ibgateway_reauth, ports)
     admin_ai_gate = _jarvis_hermes_admin_summary(jarvis_hermes_admin)
-    runtime_ready = not service_down and not missing_ports and not endpoint_failures
+    runtime_ready = (
+        not service_down
+        and not missing_ports
+        and not endpoint_failures
+        and not missing_paper_live_tasks
+        and not missing_data_pipeline_tasks
+    )
     dashboard_durable = not missing_dashboard_tasks
     trading_gate_ready = bool(broker_gate["ready"] and promotion_gate["ready"] and ibgateway_gate["ready"])
     next_actions: list[str] = []
@@ -488,6 +526,14 @@ def build_report(
             "Run elevated dashboard durability repair: "
             "eta_engine\\deploy\\scripts\\repair_dashboard_durability_admin.cmd "
             "(registers " + ", ".join(missing_dashboard_tasks) + ")"
+        )
+    if missing_paper_live_tasks:
+        next_actions.append(
+            "Repair paper-live scheduled task lane: " + ", ".join(missing_paper_live_tasks)
+        )
+    if missing_data_pipeline_tasks:
+        next_actions.append(
+            "Repair data-pipeline scheduled task lane: " + ", ".join(missing_data_pipeline_tasks)
         )
     if dashboard_schema_drift:
         next_actions.append(
@@ -560,6 +606,7 @@ def build_report(
             "services": {
                 "critical": list(CRITICAL_SERVICES),
                 "optional": list(OPTIONAL_SERVICES),
+                "legacy_compatibility": list(LEGACY_COMPAT_SERVICES),
                 "down": service_down,
                 "observed": services,
             },
@@ -575,8 +622,12 @@ def build_report(
             },
             "tasks": {
                 "dashboard_durable": list(DASHBOARD_DURABLE_TASKS),
+                "paper_live_durable": list(PAPER_LIVE_DURABLE_TASKS),
+                "data_pipeline": list(DATA_PIPELINE_TASKS),
                 "ibgateway": list(IBGATEWAY_TASKS),
                 "missing_dashboard_durable": missing_dashboard_tasks,
+                "missing_paper_live_durable": missing_paper_live_tasks,
+                "missing_data_pipeline": missing_data_pipeline_tasks,
                 "observed": tasks,
             },
         },
