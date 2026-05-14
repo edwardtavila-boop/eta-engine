@@ -151,6 +151,7 @@ body:after{content:"";position:fixed;inset:-8%;pointer-events:none;background:li
 .contribution-lane{display:grid;gap:.48rem;min-width:0}
 .contribution-lane-head{display:flex;align-items:center;justify-content:space-between;gap:.5rem;color:#f5f9ff;font-size:.75rem;font-weight:800;text-transform:uppercase;letter-spacing:1.2px}
 .contribution-lane-head span{color:var(--dim);font-size:.64rem;font-weight:600;text-transform:none;letter-spacing:.02em}
+.mobile-card-table{width:100%;max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;border-radius:16px}
 .allocation-sections{display:grid;gap:1rem;padding:0 2rem 1.5rem}
 .allocation-group{border:1px solid var(--border);border-radius:20px;background:linear-gradient(145deg,rgba(12,19,30,.72),rgba(3,8,14,.76));padding:1rem}
 .allocation-group-head{display:flex;align-items:center;justify-content:space-between;gap:.75rem;margin-bottom:.8rem}
@@ -213,6 +214,9 @@ tr:hover td{background:rgba(100,215,255,.055)}
 .card .sub{font-size:.66rem;line-height:1.35}
 .collapsible-section{margin:0 2rem 1rem;border:1px solid var(--border);border-radius:20px;background:linear-gradient(145deg,rgba(8,14,22,.78),rgba(3,8,14,.88));box-shadow:0 14px 44px rgba(0,0,0,.18);overflow:hidden}
 .ops-priority-section{border-color:rgba(100,215,255,.24);box-shadow:0 18px 54px rgba(0,0,0,.22),0 0 0 1px rgba(100,215,255,.04)}
+.ops-priority-section .card{background:linear-gradient(145deg,rgba(10,19,30,.88),rgba(2,7,13,.92));border-color:rgba(100,215,255,.14);box-shadow:inset 0 1px 0 rgba(255,255,255,.055),0 16px 38px rgba(0,0,0,.20)}
+.ops-priority-section .truth-chip{font-weight:800;color:#dcecff;background:linear-gradient(145deg,rgba(100,215,255,.08),rgba(255,255,255,.035));border-color:rgba(100,215,255,.13)}
+.ops-priority-section .truth-chip strong{font-size:.78rem;color:#fff}
 .collapsible-summary{list-style:none;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:1rem 1.05rem;color:#f7fbff;font-weight:800;letter-spacing:.01em;background:linear-gradient(90deg,rgba(100,215,255,.075),rgba(255,255,255,.018) 44%,rgba(230,184,92,.055));border-bottom:1px solid rgba(255,255,255,.05)}
 .collapsible-summary::-webkit-details-marker{display:none}
 .collapsible-summary:hover{background:linear-gradient(90deg,rgba(100,215,255,.115),rgba(255,255,255,.026) 44%,rgba(230,184,92,.08))}
@@ -329,10 +333,10 @@ tr:hover td{background:rgba(100,215,255,.055)}
 </section>
 
 <details class="collapsible-section ops-priority-section" id="opsTruthSection" open>
-  <summary class="collapsible-summary"><span class="summary-copy"><span class="summary-title">Positions, Exits, and Orders</span><small id="opsTruthSummaryLine">Checking the live book...</small></span></summary>
+  <summary class="collapsible-summary"><span class="summary-copy"><span class="summary-title">Live Book + Exits</span><small id="opsTruthSummaryLine">Open risk, closed PnL, and order flow</small></span></summary>
 <div class="ops-truth-wrap">
   <div class="card">
-    <h3>Positions &amp; Exit Protection</h3>
+    <h3>Live Book &amp; Exit Cover</h3>
     <div class="truth-summary" id="positionSummary"></div>
     <div class="bracket-action-strip" id="bracketActionStrip"></div>
     <div class="position-list" id="openPositionsPanel">
@@ -340,7 +344,7 @@ tr:hover td{background:rgba(100,215,255,.055)}
     </div>
   </div>
   <div class="card">
-    <h3>Order Log</h3>
+    <h3>Router Flow</h3>
     <div class="truth-summary" id="routerTapeSummary"></div>
     <div class="router-tape" id="routerTapePanel">
       <div class="empty-panel">Loading order flow...</div>
@@ -376,7 +380,7 @@ tr:hover td{background:rgba(100,215,255,.055)}
   <div class="card"><h3>Active</h3><div class="stat blue" id="activeBots">--</div><div class="sub" id="activeBotsSub">live runtime</div></div>
   <div class="card"><h3>Session Net</h3><div class="stat dim" id="todayPnl">--</div><div class="sub" id="todayPnlSub"></div></div>
   <div class="card"><h3 id="totalPnlLabel">Broker MTD</h3><div class="stat dim" id="totalPnl">--</div><div class="sub" id="totalPnlSub">IBKR portfolio pending</div></div>
-  <div class="card"><h3 id="cumulativeRLabel">MTD Risk Units</h3><div class="stat dim" id="cumulativeR">--</div><div class="sub" id="cumulativeRSub">risk-unit score pending</div></div>
+  <div class="card"><h3 id="cumulativeRLabel">Trade Quality</h3><div class="stat dim" id="cumulativeR">--</div><div class="sub" id="cumulativeRSub">R score pending</div></div>
   <div class="card"><h3 id="totalTradesLabel">MTD Closed Trades</h3><div class="stat blue" id="totalTrades">--</div><div class="sub" id="totalTradesSub"></div></div>
   <div class="card"><h3>Win Rate</h3><div class="stat blue" id="winRate">--</div><div class="sub" id="winRateDetail"></div></div>
   <div class="card"><h3>Trade-Ready</h3><div class="stat green" id="approvedCount">--</div><div class="sub">approved or conditional</div></div>
@@ -1891,6 +1895,25 @@ function aggregateContributionRows(rows) {
     .sort((a, b) => (b.value - a.value) || (a.label > b.label ? 1 : -1));
 }
 
+function impactIdentity(row) {
+  const symbol = String(row?.symbol || '').trim().toLowerCase();
+  const label = String(row?.label || '').trim().toLowerCase();
+  return symbol || label || 'unknown';
+}
+
+function distinctImpactRows(rows, limit = 5) {
+  const selected = [];
+  const seen = new Set();
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const key = impactIdentity(row);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    selected.push(row);
+    if (selected.length >= limit) break;
+  }
+  return selected;
+}
+
 function pickTopImpactRows(rows, limit = 5) {
   const ranked = Array.isArray(rows) ? rows.slice() : [];
   if (!ranked.length || limit <= 0) return [];
@@ -1914,22 +1937,22 @@ function pickTopImpactRows(rows, limit = 5) {
     pushUnique(row);
   }
 
-  return selected
+  return distinctImpactRows(selected
     .sort((a, b) => (b.value - a.value) || (a.label > b.label ? 1 : -1))
-    .slice(0, limit);
+    .slice(0, limit * 2), limit);
 }
 
 function pickWinnerLoserRows(rows, limit = 5) {
   const ranked = Array.isArray(rows) ? rows.slice() : [];
   return {
-    winners: ranked
+    winners: distinctImpactRows(ranked
       .filter(row => row.pnl > 0)
       .sort((a, b) => (b.pnl - a.pnl) || (b.value - a.value) || (a.label > b.label ? 1 : -1))
-      .slice(0, limit),
-    losers: ranked
+      .slice(0, limit * 2), limit),
+    losers: distinctImpactRows(ranked
       .filter(row => row.pnl < 0)
       .sort((a, b) => (a.pnl - b.pnl) || (b.value - a.value) || (a.label > b.label ? 1 : -1))
-      .slice(0, limit)
+      .slice(0, limit * 2), limit)
   };
 }
 
@@ -1980,7 +2003,7 @@ function renderContributionGraph(bots, liveBroker, portfolioSummary, todayCloseH
   const sub = document.getElementById('contributionSub');
   if (!el) return;
 
-  const dailyMapRows = pnlMapContributionRows(todayCloseHistory?.pnlMap || portfolioSummary?.pnl_map);
+  const dailyMapRows = aggregateContributionRows(pnlMapContributionRows(todayCloseHistory?.pnlMap || portfolioSummary?.pnl_map));
   const dailyRows = dailyMapRows.length
     ? dailyMapRows
     : aggregateContributionRows(closeHistoryContributionRows(todayCloseHistory));
@@ -2003,7 +2026,7 @@ function renderContributionGraph(bots, liveBroker, portfolioSummary, todayCloseH
   const topRows = pickTopImpactRows(rankedRows, 5);
   if (source) source.textContent = sourceLabelText;
   if (sub) sub.textContent = topRows.length
-    ? `Showing ${topRows.length} biggest PnL movers`
+    ? `Top 5 distinct PnL movers - showing ${topRows.length}`
     : 'Waiting for closed trades, open positions, or PnL';
   if (!topRows.length) {
     el.innerHTML = '<div class="empty-panel">No PnL movers yet. This fills from broker positions first, then bot PnL if needed.</div>';
@@ -2934,7 +2957,7 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
   const selectedWindowLabel = closeHistory.label || selectedCloseHistoryWindow.toUpperCase();
   const selectedWindowCount = Number(closeHistory.count || 0);
   const rLabel = document.getElementById('cumulativeRLabel');
-  if (rLabel) rLabel.textContent = `${selectedWindowLabel} Risk Units`;
+  if (rLabel) rLabel.textContent = `${selectedWindowLabel} Trade Quality`;
   const cumR = finiteNumber(closeHistory.realizedR);
   const rEl = document.getElementById('cumulativeR');
   const rSub = document.getElementById('cumulativeRSub');
@@ -2942,17 +2965,17 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
     rEl.textContent = '--';
     rEl.className = 'stat dim';
     if (rSub) rSub.textContent = closeRows.length
-      ? `${selectedWindowLabel} closed trades present | risk-unit score hidden`
-      : `${selectedWindowLabel} risk-unit score pending`;
+      ? `${selectedWindowLabel} closes found | R score hidden`
+      : `${selectedWindowLabel} R score pending`;
   } else {
     rEl.textContent = cumR >= 0 ? '+' + cumR.toFixed(2) + 'R' : cumR.toFixed(2) + 'R';
     rEl.className = 'stat ' + (cumR > 0 ? 'green' : cumR < 0 ? 'red' : 'dim');
     if (rSub) {
       const rCount = Number(closeHistory.realizedRCount || 0);
       const hiddenText = Number(closeHistory.suppressedRCount || 0) > 0
-        ? `; ${closeHistory.suppressedRCount} invalid risk-unit value${Number(closeHistory.suppressedRCount) === 1 ? '' : 's'} hidden`
+        ? `; ${closeHistory.suppressedRCount} invalid R value${Number(closeHistory.suppressedRCount) === 1 ? '' : 's'} hidden`
         : '';
-      rSub.textContent = `${rCount || selectedWindowCount} risk-scored closed trade${(rCount || selectedWindowCount) === 1 ? '' : 's'}${hiddenText}`;
+      rSub.textContent = `${rCount || selectedWindowCount} R-scored close${(rCount || selectedWindowCount) === 1 ? '' : 's'}${hiddenText}`;
     }
   }
 

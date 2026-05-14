@@ -497,12 +497,28 @@ class TestStatusPage:
         assert "Daily strategy winners/losers" in html
         assert "function closeHistoryContributionRows" in html
         assert "type: 'daily_close_realized'" in html
+        assert "aggregateContributionRows(pnlMapContributionRows" in html
+        assert "function distinctImpactRows" in html
         assert "function pickWinnerLoserRows" in html
         assert "Daily Winners" in html
         assert "Daily Losers" in html
         assert "top 5 winners and top 5 losers" in html
         assert "renderContributionGraph(bots, liveBroker, portfolioSummary, todayCloseHistory)" in html
         assert "Daily close history pending | showing" in html
+        assert "Top 5 distinct PnL movers" in html
+
+    def test_status_page_bottom_half_uses_finished_operator_language(self):
+        root = Path(__file__).resolve().parent.parent / "deploy" / "status_page"
+        html = (root / "index.html").read_text(encoding="utf-8")
+
+        assert "Live Book + Exits" in html
+        assert "Open risk, closed PnL, and order flow" in html
+        assert "Live Book &amp; Exit Cover" in html
+        assert "Router Flow" in html
+        assert "Trade Quality" in html
+        assert "R score" in html
+        assert "ops-priority-section .card" in html
+        assert "mobile-card-table" in html
 
     def test_status_page_uses_position_exposure_close_evidence(self):
         root = Path(__file__).resolve().parent.parent / "deploy" / "status_page"
