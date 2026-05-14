@@ -50,6 +50,63 @@ ASSET_PLAYBOOKS = {
     "unknown": "Prove symbol, broker route, and session edge before any size increase.",
 }
 
+PARAMETER_FOCUS_BY_ASSET = {
+    "equity_index": [
+        "session predicate",
+        "opening range boundary",
+        "VWAP reclaim confirmation",
+        "min_volume_z",
+        "rr_target",
+        "atr_stop_mult",
+        "max_trades_per_day",
+    ],
+    "metals_energy": [
+        "event/session gate",
+        "min_wick_pct",
+        "min_volume_z",
+        "atr_stop_mult",
+        "reclaim_window",
+        "min_bars_between_trades",
+        "max_trades_per_day",
+    ],
+    "rates_fx": [
+        "London/NY overlap gate",
+        "calendar-event block",
+        "level_lookback",
+        "min_wick_pct",
+        "reclaim_window",
+        "atr_stop_mult",
+    ],
+    "cme_crypto": [
+        "CME session liquidity gate",
+        "volatility expansion gate",
+        "trend regime filter",
+        "reclaim_window",
+        "rr_target",
+        "max_trades_per_day",
+    ],
+    "unknown": ["symbol mapping", "broker route", "session predicate", "sample size"],
+}
+
+PARAMETER_FOCUS_BY_STRATEGY = {
+    "fx_range": [
+        "range width",
+        "RSI extreme threshold",
+        "volume confirmation",
+        "London/NY overlap gate",
+        "calendar-event block",
+        "daily loss stop",
+    ],
+    "orb_sage_gated": [
+        "opening range minutes",
+        "retest window",
+        "sage_min_conviction",
+        "sage_min_alignment",
+        "min_volume_z",
+        "overnight block",
+    ],
+}
+
 
 def _as_float(value: Any, default: float = 0.0) -> float:  # noqa: ANN401
     try:
@@ -186,6 +243,49 @@ def _recommendation(
     return f"keep paper-only; retune {strategy_kind or 'strategy'} with broker PnL as the score; {playbook}"
 
 
+def _session_name(session: dict[str, Any] | None) -> str:
+    if not session:
+        return "unknown"
+    return str(session.get("session") or "unknown")
+
+
+def _parameter_focus(asset_sleeve: str, strategy_kind: str) -> list[str]:
+    focus = list(PARAMETER_FOCUS_BY_ASSET.get(asset_sleeve, PARAMETER_FOCUS_BY_ASSET["unknown"]))
+    for item in PARAMETER_FOCUS_BY_STRATEGY.get(strategy_kind, []):
+        if item not in focus:
+            focus.append(item)
+    return focus
+
+
+def _primary_experiment(row: dict[str, Any]) -> str:
+    worst = row.get("worst_session") if isinstance(row.get("worst_session"), dict) else None
+    best = row.get("best_session") if isinstance(row.get("best_session"), dict) else None
+    worst_name = _session_name(worst)
+    best_name = _session_name(best)
+    worst_pnl = float((worst or {}).get("total_realized_pnl") or 0.0)
+    best_pnl = float((best or {}).get("total_realized_pnl") or 0.0)
+    if worst_pnl < 0 < best_pnl and worst_name != best_name:
+        return (
+            f"Paper-test blocking {worst_name} entries while concentrating fresh sample around "
+            f"{best_name}; graduate only if broker closed-trade PnL and PF both improve."
+        )
+    return (
+        "Paper-test a narrow parameter grid around the listed focus knobs; keep the incumbent "
+        "routing unchanged until fresh broker closes prove a better variant."
+    )
+
+
+def _retune_command(bot_id: str) -> str:
+    return f"python -m eta_engine.scripts.fleet_strategy_optimizer --only-bot {bot_id}"
+
+
+def _paper_only_next_step(bot_id: str) -> str:
+    return (
+        f"Run {_retune_command(bot_id)}; compare fresh broker closes, profit factor, avg R, "
+        "and session split before any promotion."
+    )
+
+
 def _retune_priority(row: dict[str, Any]) -> float:
     pnl = float(row.get("total_realized_pnl") or 0.0)
     pf = row.get("profit_factor")
@@ -240,10 +340,19 @@ def build_edge_audit(
     retune_queue = [
         {
             "bot_id": row["bot_id"],
+            "symbol": row["symbol"],
+            "strategy_kind": row["strategy_kind"],
             "asset_sleeve": row["asset_sleeve"],
             "priority_score": _retune_priority(row),
             "issue_code": _issue_code(row),
+            "best_session": _session_name(row.get("best_session")),
+            "worst_session": _session_name(row.get("worst_session")),
+            "parameter_focus": _parameter_focus(str(row["asset_sleeve"]), str(row["strategy_kind"])),
+            "primary_experiment": _primary_experiment(row),
+            "retune_command": _retune_command(str(row["bot_id"])),
+            "paper_only_next_step": _paper_only_next_step(str(row["bot_id"])),
             "recommended_action": row["recommended_action"],
+            "live_mutation_policy": "paper_only_advisory",
             "safe_to_mutate_live": False,
         }
         for row in bot_rows
