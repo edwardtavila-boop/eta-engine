@@ -5389,6 +5389,55 @@ class TestDashboardAPI:
         assert live["open_position_count"] == 3
         assert live["broker_mtd_pnl"] == 22209.0
 
+    def test_cached_diagnostics_prefers_last_good_disk_cache_after_probe_failure(
+        self,
+        tmp_path,
+        monkeypatch,
+    ):
+        import time
+
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        monkeypatch.setenv("ETA_STATE_DIR", str(tmp_path / "state"))
+        monkeypatch.setattr(mod, "_recent_trade_closes", lambda limit=5000: [])
+        cache_path = tmp_path / "state" / "broker_cache" / "ibkr_probe_cache.json"
+        cache_path.parent.mkdir(parents=True)
+        cache_path.write_text(
+            json.dumps(
+                {
+                    "ts": time.time(),
+                    "snapshot": {
+                        "ready": True,
+                        "today_executions": 17,
+                        "today_realized_pnl": -321.25,
+                        "unrealized_pnl": 42.5,
+                        "open_position_count": 3,
+                        "account_mtd_pnl": 22209.0,
+                        "account_mtd_source": "ibkr_probe_cache_persisted",
+                    },
+                },
+            ),
+            encoding="utf-8",
+        )
+        with mod._IBKR_PROBE_LOCK:
+            mod._IBKR_PROBE_CACHE["snapshot"] = {
+                "ready": False,
+                "error": "ibkr_probe_failed:TimeoutError",
+                "today_executions": 0,
+                "today_realized_pnl": 0.0,
+                "unrealized_pnl": 0.0,
+                "open_position_count": 0,
+            }
+            mod._IBKR_PROBE_CACHE["ts"] = time.time()
+
+        live = mod._cached_live_broker_state_for_diagnostics()
+
+        assert live["broker_snapshot_state"] == "persisted"
+        assert live["today_actual_fills"] == 17
+        assert live["today_realized_pnl"] == -321.25
+        assert live["open_position_count"] == 3
+        assert live["ibkr"]["ready"] is True
+
     def test_derive_ibkr_today_realized_pnl_prefers_futures_bucket(self):
         import eta_engine.deploy.scripts.dashboard_api as mod
 

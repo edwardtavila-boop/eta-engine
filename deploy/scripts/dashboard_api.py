@@ -8117,6 +8117,7 @@ def _broker_oco_evidence_payload(live_broker_state: dict) -> dict:
 def _cached_live_broker_state_for_gateway_reconcile() -> dict:
     """Return cached IBKR live state for lightweight status-card reconciliation."""
     now_ts = time.time()
+    warm_state: dict | None = None
     with _IBKR_PROBE_LOCK:
         cached = _IBKR_PROBE_CACHE.get("snapshot")
         cached_ts = float(_IBKR_PROBE_CACHE.get("ts") or 0.0)
@@ -8126,12 +8127,23 @@ def _cached_live_broker_state_for_gateway_reconcile() -> dict:
             ibkr.setdefault("cache_ts", cached_ts)
             ibkr.setdefault("cache_age_s", round(age_s, 1))
             ibkr.setdefault("last_known", True)
-            return {
+            warm_state = {
                 "ibkr": ibkr,
                 "ibkr_cache_state": "warm",
                 "ibkr_cache_ts": cached_ts,
                 "ibkr_cache_age_s": round(age_s, 1),
             }
+    if warm_state:
+        ibkr = warm_state.get("ibkr") if isinstance(warm_state.get("ibkr"), dict) else {}
+        if ibkr.get("ready") is True and not ibkr.get("error"):
+            return warm_state
+        persisted = _load_persisted_ibkr_probe_cache(now_ts=now_ts)
+        if persisted:
+            persisted_ibkr = persisted.get("ibkr") if isinstance(persisted.get("ibkr"), dict) else {}
+            if ibkr.get("error"):
+                persisted_ibkr["last_probe_error"] = ibkr.get("error")
+            return persisted
+        return warm_state
     persisted = _load_persisted_ibkr_probe_cache(now_ts=now_ts)
     if persisted:
         return persisted
