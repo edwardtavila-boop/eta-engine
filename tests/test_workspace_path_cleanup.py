@@ -526,5 +526,9 @@ def test_b_class_fm_health_writer_uses_canonical_workspace_path() -> None:
     # Help text and installer point at the canonical var/ path.
     assert "var/eta_engine/state/fm_health.json" in probe_text
     assert "var\\eta_engine\\state\\fm_health.json" in installer_text
+    assert "[string]$TaskName = 'ETA-FM-HealthProbe'" in installer_text
+    assert "[int]$IntervalMinutes = 15" in installer_text
+    assert "eta_engine\\.venv\\Scripts\\python.exe" in installer_text
+    assert "-RepetitionInterval $interval" in installer_text
     # The legacy in-repo path is gone from the installer's write target.
     assert "'eta_engine\\state\\fm_health.json'" not in installer_text

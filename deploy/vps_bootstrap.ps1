@@ -107,6 +107,18 @@ if (-not $SkipForceMultiplier) {
         }
     }
 
+    $fmHealthTaskInstaller = "$EtaEngineDir\scripts\install_fm_health_task.ps1"
+    if (Test-Path $fmHealthTaskInstaller) {
+        Write-Host "  Registering ETA-FM-HealthProbe scheduled refresh..." -ForegroundColor Gray
+        if (-not $WhatIf) {
+            & $pwshPath -ExecutionPolicy Bypass -File $fmHealthTaskInstaller `
+                -Workspace $InstallRoot `
+                -PythonExe $pythonExe `
+                -TaskName "ETA-FM-HealthProbe" `
+                -IntervalMinutes 15 2>&1 | Select-Object -Last 6
+        }
+    }
+
     Write-Host "  NOTE: Run 'codex login' on VPS if not yet authenticated; Claude is disabled" -ForegroundColor Gray
 }
 
@@ -555,6 +567,7 @@ Write-Host "  ETA-PaperLiveTransitionCheck     -- boot/logon + every 5m" -Foregr
 Write-Host "  ETA-VpsOpsHardeningAudit         -- boot/logon + every 5m read-only audit" -ForegroundColor Gray
 Write-Host "  ETA-SymbolIntelCollector         -- boot/logon + every 5m data lake refresh" -ForegroundColor Gray
 Write-Host "  ETA-OperatorQueueHeartbeat       -- boot/logon + every 5m read-only queue snapshot" -ForegroundColor Gray
+Write-Host "  ETA-FM-HealthProbe               -- every 15m cached Force Multiplier health" -ForegroundColor Gray
 Write-Host "  ETA-Watchdog                     -- boot/logon runtime watchdog" -ForegroundColor Gray
 Write-Host "  ETA-TWS-Watchdog                 -- startup + every 60s TWS health" -ForegroundColor Gray
 Write-Host "  ETA-IBGateway-Reauth             -- startup + every 5m" -ForegroundColor Gray

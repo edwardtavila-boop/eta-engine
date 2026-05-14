@@ -186,6 +186,9 @@ def test_vps_bootstrap_summaries_name_active_dashboard_topology() -> None:
         assert "127.0.0.1:8000 canonical API" in text
         assert "ETA-Proxy-8421" in text
         assert "127.0.0.1:8421 -> 8000" in text
+        assert "ETA-FM-HealthProbe" in text
+        assert "every 15m cached Force Multiplier health" in text
+        assert "install_fm_health_task.ps1" in text
         assert "dashboard on port 8420" not in text
         assert "dashboard (127.0.0.1:8420)" not in text
 
