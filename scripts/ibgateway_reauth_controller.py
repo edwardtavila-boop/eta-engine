@@ -35,12 +35,14 @@ DEFAULT_REAUTH_STATE_PATH = workspace_roots.ETA_RUNTIME_STATE_DIR / "ibgateway_r
 DEFAULT_IBC_PASSWORD_FILE = workspace_roots.ETA_RUNTIME_STATE_DIR / "ibkr_pw.txt"
 DEFAULT_IBKR_CREDENTIAL_JSON_PATH = workspace_roots.ETA_ENGINE_ROOT / "secrets" / "ibkr_credentials.json"
 DEFAULT_DOTENV_PATH = workspace_roots.ETA_ENGINE_ROOT / ".env"
+DEFAULT_GATEWAY_AUTHORITY_PATH = workspace_roots.ETA_RUNTIME_STATE_DIR / "gateway_authority.json"
 DEFAULT_JTS_GATEWAY_ROOT = Path(r"C:\Jts\ibgateway")
 _DEFAULT_TWS_STATUS_PATH = DEFAULT_TWS_STATUS_PATH
 _DEFAULT_STATE_PATH = DEFAULT_REAUTH_STATE_PATH
 _DEFAULT_GATEWAY_TASK = GATEWAY_TASK_NAME
 _DEFAULT_RUN_NOW_TASK = RUN_NOW_TASK_NAME
 _DEFAULT_RESTART_TASK = RESTART_TASK_NAME
+_DEFAULT_GATEWAY_AUTHORITY_PATH = DEFAULT_GATEWAY_AUTHORITY_PATH
 _DEFAULT_FAILURE_THRESHOLD = 3
 _DEFAULT_START_COOLDOWN_MINUTES = 3
 _DEFAULT_COOLDOWN_MINUTES = 20
@@ -179,6 +181,65 @@ def _read_json(path: Path) -> JsonDict:
 def _write_json(path: Path, data: JsonDict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
+
+
+def _truthy_text(value: object) -> bool:
+    return str(value or "").strip().lower() in {"1", "true", "yes", "y", "vps", "authority"}
+
+
+def _current_computer_name() -> str:
+    return str(os.environ.get("COMPUTERNAME") or os.environ.get("HOSTNAME") or "").strip()
+
+
+def gateway_authority_status(
+    *,
+    authority_path: Path = DEFAULT_GATEWAY_AUTHORITY_PATH,
+    allow_non_authoritative_host: bool = False,
+) -> JsonDict:
+    """Return whether this host may execute IBKR Gateway recovery.
+
+    The VPS owns the 24/7 Gateway session. Local desktops may inspect state,
+    but they must not execute recovery tasks that could steal the IBKR login.
+    """
+    computer_name = _current_computer_name()
+    if allow_non_authoritative_host:
+        return {
+            "allowed": True,
+            "source": "override",
+            "computer_name": computer_name,
+            "path": str(authority_path),
+        }
+
+    env_value = os.environ.get("ETA_IBKR_GATEWAY_AUTHORITY", "")
+    if _truthy_text(env_value):
+        return {
+            "allowed": True,
+            "source": "environment",
+            "computer_name": computer_name,
+            "path": str(authority_path),
+        }
+
+    payload = _read_json(authority_path)
+    enabled = _bool_value(payload.get("enabled"))
+    role = str(payload.get("role") or "").strip().lower()
+    marker_computer = str(payload.get("computer_name") or "").strip()
+    role_ok = role in {"vps", "gateway_authority"}
+    host_ok = not marker_computer or not computer_name or marker_computer.lower() == computer_name.lower()
+    allowed = enabled and role_ok and host_ok
+    return {
+        "allowed": allowed,
+        "source": "marker" if payload else "missing_marker",
+        "path": str(authority_path),
+        "computer_name": computer_name,
+        "marker_computer_name": marker_computer,
+        "role": role,
+        "enabled": enabled,
+        "reason": (
+            "Gateway authority marker accepted."
+            if allowed
+            else "This host is not marked as the ETA IBKR Gateway authority."
+        ),
+    }
 
 
 def _int_value(value: object, default: int = 0) -> int:
@@ -675,6 +736,8 @@ def run_controller(
     ibc_password_file: Path = DEFAULT_IBC_PASSWORD_FILE,
     ibc_credential_json_path: Path = DEFAULT_IBKR_CREDENTIAL_JSON_PATH,
     dotenv_path: Path = DEFAULT_DOTENV_PATH,
+    gateway_authority_path: Path = DEFAULT_GATEWAY_AUTHORITY_PATH,
+    allow_non_authoritative_host: bool = False,
 ) -> JsonDict:
     """Run one controller tick and persist the operator-facing state."""
     effective_now = now or datetime.now(UTC)
@@ -731,6 +794,28 @@ def run_controller(
     state["tws_status_path"] = str(tws_status_path)
     state["recovery_lane"] = lane
     state["execute"] = execute
+    authority = gateway_authority_status(
+        authority_path=gateway_authority_path,
+        allow_non_authoritative_host=allow_non_authoritative_host,
+    )
+    state["gateway_authority"] = authority
+    if task_name and action in {"start_gateway", "restart_gateway"} and not authority.get("allowed"):
+        state.update(
+            {
+                "status": "non_authoritative_gateway_host",
+                "action": "none",
+                "reason": (
+                    "Refusing IBKR Gateway recovery on this host because the VPS is the 24/7 Gateway authority."
+                ),
+                "operator_action_required": True,
+                "operator_action": (
+                    "Run Gateway recovery on the VPS, or mark the VPS with "
+                    "deploy\\scripts\\set_gateway_authority.ps1 -Apply -Role vps."
+                ),
+            },
+        )
+        _write_json(state_path, state)
+        return state
     if task_name:
         state["last_task_name"] = task_name
         state["recovery_lane"]["next_task"] = task_name
@@ -814,6 +899,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--gateway-task", default=_DEFAULT_GATEWAY_TASK)
     parser.add_argument("--run-now-task", default=_DEFAULT_RUN_NOW_TASK)
     parser.add_argument("--restart-task", default=_DEFAULT_RESTART_TASK)
+    parser.add_argument("--gateway-authority-path", type=Path, default=_DEFAULT_GATEWAY_AUTHORITY_PATH)
+    parser.add_argument(
+        "--allow-non-authoritative-host",
+        action="store_true",
+        help="Break-glass diagnostics only: allow Gateway recovery from a host without the VPS authority marker.",
+    )
     parser.add_argument("--failure-threshold", type=int, default=_DEFAULT_FAILURE_THRESHOLD)
     parser.add_argument("--start-cooldown-minutes", type=int, default=_DEFAULT_START_COOLDOWN_MINUTES)
     parser.add_argument("--cooldown-minutes", type=int, default=_DEFAULT_COOLDOWN_MINUTES)
@@ -843,6 +934,8 @@ def main(argv: list[str] | None = None) -> int:
         max_restart_attempts=args.max_restart_attempts,
         competition_lookback_minutes=args.competition_lookback_minutes,
         check_ibc_credentials=not args.skip_ibc_credential_check,
+        gateway_authority_path=args.gateway_authority_path,
+        allow_non_authoritative_host=args.allow_non_authoritative_host,
     )
     print(json.dumps(state, indent=2, sort_keys=True))
     return 0

@@ -61,6 +61,7 @@ def test_process_down_starts_existing_trader_owned_run_now_task(tmp_path: Path, 
         tws_status_path=tws_status,
         state_path=state_path,
         execute=True,
+        allow_non_authoritative_host=True,
         now=datetime(2026, 5, 5, 13, 40, tzinfo=UTC),
     )
 
@@ -93,6 +94,7 @@ def test_process_down_starts_gateway_without_waiting_for_failure_threshold(tmp_p
         tws_status_path=tws_status,
         state_path=state_path,
         execute=True,
+        allow_non_authoritative_host=True,
         now=datetime(2026, 5, 5, 13, 40, tzinfo=UTC),
     )
 
@@ -101,6 +103,35 @@ def test_process_down_starts_gateway_without_waiting_for_failure_threshold(tmp_p
     assert result["last_task_name"] == "ETA-IBGateway-RunNow"
     assert result["consecutive_failures"] == 1
     assert started == ["ETA-IBGateway-RunNow"]
+
+
+def test_process_down_blocks_recovery_on_non_authoritative_host(tmp_path: Path, monkeypatch) -> None:
+    from eta_engine.scripts import ibgateway_reauth_controller as controller
+
+    tws_status = tmp_path / "tws_watchdog.json"
+    state_path = tmp_path / "ibgateway_reauth.json"
+    authority_path = tmp_path / "gateway_authority.json"
+    tws_status.write_text(json.dumps(_unhealthy_status(process_running=False)), encoding="utf-8")
+    started: list[str] = []
+    monkeypatch.delenv("ETA_IBKR_GATEWAY_AUTHORITY", raising=False)
+    monkeypatch.setattr(controller, "_scheduled_task_exists", lambda _task_name: True)
+    monkeypatch.setattr(controller, "_scheduled_task_is_runnable", lambda _task_name: True)
+    monkeypatch.setattr(controller, "_start_scheduled_task", lambda task_name: started.append(task_name) or 0)
+
+    result = controller.run_controller(
+        tws_status_path=tws_status,
+        state_path=state_path,
+        gateway_authority_path=authority_path,
+        execute=True,
+        now=datetime(2026, 5, 5, 13, 40, tzinfo=UTC),
+    )
+
+    assert result["status"] == "non_authoritative_gateway_host"
+    assert result["action"] == "none"
+    assert result["gateway_authority"]["allowed"] is False
+    assert result["gateway_authority"]["source"] == "missing_marker"
+    assert "VPS is the 24/7 Gateway authority" in result["reason"]
+    assert started == []
 
 
 def test_recent_competing_session_pauses_gateway_autostart() -> None:
@@ -187,6 +218,7 @@ def test_ibc_recovery_task_without_credentials_requires_operator_action(tmp_path
         tws_status_path=tws_status,
         state_path=state_path,
         execute=True,
+        allow_non_authoritative_host=True,
         now=datetime(2026, 5, 5, 13, 40, tzinfo=UTC),
         check_ibc_credentials=True,
         ibc_password_file=password_file,
@@ -227,6 +259,7 @@ def test_process_down_falls_back_to_gateway_task_when_run_now_missing(tmp_path: 
         tws_status_path=tws_status,
         state_path=state_path,
         execute=True,
+        allow_non_authoritative_host=True,
         now=datetime(2026, 5, 5, 13, 40, tzinfo=UTC),
     )
 
@@ -258,6 +291,7 @@ def test_process_down_falls_back_to_gateway_task_when_run_now_disabled(tmp_path:
         tws_status_path=tws_status,
         state_path=state_path,
         execute=True,
+        allow_non_authoritative_host=True,
         now=datetime(2026, 5, 5, 13, 40, tzinfo=UTC),
     )
 
@@ -281,6 +315,7 @@ def test_process_down_missing_run_now_task_requires_operator_action(tmp_path: Pa
         tws_status_path=tws_status,
         state_path=state_path,
         execute=True,
+        allow_non_authoritative_host=True,
         now=datetime(2026, 5, 5, 13, 40, tzinfo=UTC),
     )
 
@@ -304,11 +339,18 @@ def test_stuck_running_gateway_restarts_once_then_waits_for_ibkr_login(tmp_path:
     monkeypatch.setattr(controller, "_restart_scheduled_task", lambda task_name: restarted.append(task_name) or 0)
     now = datetime(2026, 5, 5, 13, 40, tzinfo=UTC)
 
-    first = controller.run_controller(tws_status_path=tws_status, state_path=state_path, execute=True, now=now)
+    first = controller.run_controller(
+        tws_status_path=tws_status,
+        state_path=state_path,
+        execute=True,
+        allow_non_authoritative_host=True,
+        now=now,
+    )
     second = controller.run_controller(
         tws_status_path=tws_status,
         state_path=state_path,
         execute=True,
+        allow_non_authoritative_host=True,
         now=now + timedelta(minutes=5),
     )
 
@@ -340,6 +382,7 @@ def test_wedged_api_listener_restarts_even_when_process_snapshot_missing(tmp_pat
         tws_status_path=tws_status,
         state_path=state_path,
         execute=True,
+        allow_non_authoritative_host=True,
         now=datetime(2026, 5, 5, 13, 40, tzinfo=UTC),
     )
 

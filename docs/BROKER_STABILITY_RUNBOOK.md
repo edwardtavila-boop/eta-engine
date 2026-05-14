@@ -56,6 +56,11 @@ To clean a workstation that accidentally has Gateway tasks:
 powershell -ExecutionPolicy Bypass -File C:\EvolutionaryTradingAlgo\eta_engine\deploy\scripts\disable_non_authoritative_gateway_tasks.ps1 -Apply -StopGatewayProcesses
 ```
 
+If `ibgateway_reauth.json` reports `status=non_authoritative_gateway_host`, the
+controller refused to start Gateway because the current machine is not the VPS
+authority host. Do not re-enable local desktop Gateway tasks; run recovery on
+the VPS or fix the VPS authority marker.
+
 ## Competing Session Response
 
 If `ibgateway_reauth.json` reports `status=competing_session_detected`, do not
