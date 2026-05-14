@@ -574,19 +574,19 @@ const SLEEVE_LABELS = {
   crypto: 'Crypto',
   digital_assets: 'Crypto',
   cellar_spot_crypto: 'Backburner: Spot Paused',
-  equity_index: 'Equity Index',
-  equity_index_futures: 'Equity Index',
-  index_futures: 'Equity Index',
-  cme_crypto_futures: 'Crypto',
-  crypto_futures: 'Crypto',
+  equity_index: 'Equity Index Futures',
+  equity_index_futures: 'Equity Index Futures',
+  index_futures: 'Equity Index Futures',
+  cme_crypto_futures: 'CME Crypto Futures',
+  crypto_futures: 'CME Crypto Futures',
   spot_crypto: 'Crypto',
-  'metals_&_energy': 'Metals & Energy',
-  metals_energy: 'Metals & Energy',
-  metals_and_energy: 'Metals & Energy',
-  commodities: 'Metals & Energy',
-  'rates_&_fx': 'Rates & FX',
-  rates_fx: 'Rates & FX',
-  rates_and_fx: 'Rates & FX',
+  'metals_&_energy': 'Metals and Energy',
+  metals_energy: 'Metals and Energy',
+  metals_and_energy: 'Metals and Energy',
+  commodities: 'Metals and Energy',
+  'rates_&_fx': 'Rates and FX',
+  rates_fx: 'Rates and FX',
+  rates_and_fx: 'Rates and FX',
   research_other: 'Other',
   research_and_other: 'Other'
 };
@@ -728,11 +728,11 @@ function isDisplayableBot(bot) {
 
 function assetBucket(symbol) {
   const s = String(symbol || '').toUpperCase();
-  if (['MBT','MET'].some(x => s.startsWith(x))) return 'Crypto';
+  if (['MBT','MET'].some(x => s.startsWith(x))) return 'CME Crypto Futures';
   if (isSpotCryptoSymbol(s)) return 'Backburner: Spot Paused';
-  if (['MNQ','NQ','MES','ES','M2K','RTY','YM'].some(x => s.startsWith(x))) return 'Equity Index';
-  if (['GC','MGC','SI','CL','MCL','NG'].some(x => s.startsWith(x))) return 'Metals & Energy';
-  if (['ZN','ZB','ZT','ZF','6E','EUR','DX'].some(x => s.startsWith(x))) return 'Rates & FX';
+  if (['MNQ','NQ','MES','ES','M2K','RTY','YM'].some(x => s.startsWith(x))) return 'Equity Index Futures';
+  if (['GC','MGC','SI','CL','MCL','NG'].some(x => s.startsWith(x))) return 'Metals and Energy';
+  if (['ZN','ZB','ZT','ZF','6E','EUR','DX'].some(x => s.startsWith(x))) return 'Rates and FX';
   return 'Other';
 }
 
