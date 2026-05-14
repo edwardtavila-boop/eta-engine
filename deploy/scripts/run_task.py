@@ -263,6 +263,13 @@ def _task_prompt_warmup(state_dir: Path) -> dict:
     """
     import os
 
+    if not os.environ.get("ETA_ENABLE_LEGACY_PROMPT_WARMUP"):
+        return {
+            "skipped": True,
+            "reason": "prompt_warmup_retired_codex_deepseek_policy",
+            "est_cost_usd": 0.0,
+        }
+
     # Check skip condition FIRST, before any dotenv side-effects.
     # This task INTENTIONALLY targets the Anthropic prompt cache (see the
     # function docstring). DeepSeek doesn't share that cache, so the

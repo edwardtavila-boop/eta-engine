@@ -5231,6 +5231,7 @@ def bot_fleet_roster(
         rows,
         live_broker_state,
         hidden_disabled_count=hidden_disabled_count,
+        close_history=close_history,
     )
     broker_gateway = _reconcile_broker_gateway_with_live_state(
         _broker_gateway_snapshot(),
@@ -7041,6 +7042,63 @@ def _closed_outcomes_from_filled_orders(orders: list[dict]) -> dict:
     }
 
 
+def _close_outcome_pnl_map(outcomes: list[dict[str, object]], *, limit: int = 5) -> dict[str, object]:
+    """Aggregate closed outcomes into distinct winner/loser PnL impact rows."""
+    grouped: dict[str, dict[str, object]] = {}
+    for row in outcomes:
+        if not isinstance(row, dict):
+            continue
+        pnl = _float_value(row.get("realized_pnl"))
+        if pnl is None or pnl == 0:
+            continue
+        bot_id = str(row.get("bot_id") or "").strip()
+        symbol = str(row.get("symbol") or "").strip()
+        key_value = bot_id or symbol
+        if not key_value:
+            continue
+        key = f"{'bot' if bot_id else 'symbol'}:{key_value.lower()}"
+        bucket = grouped.setdefault(
+            key,
+            {
+                "bot_id": bot_id or None,
+                "symbol": symbol,
+                "sleeve": _portfolio_sleeve_for_symbol(symbol),
+                "closes": 0,
+                "realized_pnl": 0.0,
+            },
+        )
+        bucket["closes"] = int(bucket.get("closes") or 0) + 1
+        bucket["realized_pnl"] = float(bucket.get("realized_pnl") or 0.0) + pnl
+        if symbol and not bucket.get("symbol"):
+            bucket["symbol"] = symbol
+            bucket["sleeve"] = _portfolio_sleeve_for_symbol(symbol)
+
+    rows: list[dict[str, object]] = []
+    for row in grouped.values():
+        realized = round(float(row.get("realized_pnl") or 0.0), 2)
+        rows.append(
+            {
+                **row,
+                "realized_pnl": realized,
+                "impact_value": round(abs(realized), 2),
+                "source": "trade_close_ledger",
+            }
+        )
+    winners = sorted(
+        (row for row in rows if float(row.get("realized_pnl") or 0.0) > 0),
+        key=lambda row: (-float(row.get("realized_pnl") or 0.0), str(row.get("bot_id") or row.get("symbol") or "")),
+    )[:limit]
+    losers = sorted(
+        (row for row in rows if float(row.get("realized_pnl") or 0.0) < 0),
+        key=lambda row: (float(row.get("realized_pnl") or 0.0), str(row.get("bot_id") or row.get("symbol") or "")),
+    )[:limit]
+    return {
+        "limit": limit,
+        "top_winners": winners,
+        "top_losers": losers,
+    }
+
+
 def _closed_outcomes_from_trade_closes(
     closes: list[dict],
     *,
@@ -7080,6 +7138,7 @@ def _closed_outcomes_from_trade_closes(
         "losing_outcomes": losses,
         "win_rate": round(wins / evaluated, 4) if evaluated else None,
         "realized_pnl": round(realized_total, 2),
+        "pnl_map": _close_outcome_pnl_map(outcomes, limit=5),
         "recent_outcomes": outcomes[:row_limit] if row_limit is not None else outcomes,
     }
 
@@ -7591,10 +7650,12 @@ def _portfolio_summary_payload(
     live_broker_state: dict,
     *,
     hidden_disabled_count: int = 0,
+    close_history: dict | None = None,
 ) -> dict:
     """API-level allocation and PnL truth for premium dashboard graphs."""
     rows = [row for row in rows if isinstance(row, dict)]
     live_broker_state = live_broker_state if isinstance(live_broker_state, dict) else {}
+    close_history = close_history if isinstance(close_history, dict) else {}
     broker_summary = _broker_summary_fields(live_broker_state)
     exposure = (
         live_broker_state.get("position_exposure")
@@ -7705,6 +7766,9 @@ def _portfolio_summary_payload(
         for pos in exposure.get("open_positions") or []
         if isinstance(pos, dict)
     )
+    close_windows = close_history.get("windows") if isinstance(close_history.get("windows"), dict) else {}
+    today_window = close_windows.get("today") if isinstance(close_windows.get("today"), dict) else {}
+    today_pnl_map = today_window.get("pnl_map") if isinstance(today_window.get("pnl_map"), dict) else {}
 
     return {
         "schema_version": 1,
@@ -7712,6 +7776,15 @@ def _portfolio_summary_payload(
         "focus_policy": _dashboard_focus_policy_payload(),
         "allocation_sleeves": allocation_sleeves,
         "pnl_contributors": contributors[:12],
+        "pnl_map": {
+            "window": "today",
+            "label": today_window.get("label") or "Today",
+            "source": today_window.get("source") or close_history.get("source") or "trade_close_ledger",
+            "closed_outcome_count": int(today_window.get("closed_outcome_count") or 0),
+            "realized_pnl": _float_value(today_window.get("realized_pnl")),
+            "top_winners": today_pnl_map.get("top_winners") if isinstance(today_pnl_map.get("top_winners"), list) else [],
+            "top_losers": today_pnl_map.get("top_losers") if isinstance(today_pnl_map.get("top_losers"), list) else [],
+        },
         "hidden_disabled_count": int(hidden_disabled_count),
         "unassigned_broker_position_count": len(unassigned_broker_symbols),
         "unassigned_broker_symbols": sorted(unassigned_broker_symbols),

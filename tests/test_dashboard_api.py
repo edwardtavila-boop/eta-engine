@@ -4817,6 +4817,82 @@ class TestDashboardAPI:
         assert mtd["closed_outcome_count"] == 35
         assert len(mtd["recent_outcomes"]) == mod._DASHBOARD_CLOSE_HISTORY_RECENT_ROW_LIMIT
 
+    def test_close_history_pnl_map_aggregates_full_window_not_capped(self):
+        from datetime import UTC, datetime
+
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        now = datetime.now(UTC)
+        rows = [
+            {
+                "ts": now.isoformat(),
+                "bot_id": "mnq_futures_sage",
+                "symbol": "MNQ1",
+                "realized_pnl": -25.0,
+            }
+            for _idx in range(24)
+        ]
+        rows.extend(
+            [
+                {
+                    "ts": now.isoformat(),
+                    "bot_id": "ng_sweep_reclaim",
+                    "symbol": "NG1",
+                    "realized_pnl": 100.0,
+                },
+                {
+                    "ts": now.isoformat(),
+                    "bot_id": "ng_sweep_reclaim",
+                    "symbol": "NG1",
+                    "realized_pnl": 75.0,
+                },
+            ],
+        )
+
+        history = mod._close_history_windows(rows, now=now)
+        today = history["windows"]["today"]
+
+        assert len(today["recent_outcomes"]) == mod._DASHBOARD_CLOSE_HISTORY_RECENT_ROW_LIMIT
+        assert today["closed_outcome_count"] == 26
+        assert today["pnl_map"]["top_losers"][0]["bot_id"] == "mnq_futures_sage"
+        assert today["pnl_map"]["top_losers"][0]["closes"] == 24
+        assert today["pnl_map"]["top_losers"][0]["realized_pnl"] == -600.0
+        assert today["pnl_map"]["top_winners"][0]["bot_id"] == "ng_sweep_reclaim"
+        assert today["pnl_map"]["top_winners"][0]["realized_pnl"] == 175.0
+
+    def test_portfolio_summary_exposes_daily_pnl_map(self):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        portfolio = mod._portfolio_summary_payload(
+            [],
+            {},
+            close_history={
+                "source": "trade_close_ledger",
+                "windows": {
+                    "today": {
+                        "label": "Today",
+                        "source": "trade_close_ledger",
+                        "closed_outcome_count": 2,
+                        "realized_pnl": -425.0,
+                        "pnl_map": {
+                            "top_winners": [
+                                {"bot_id": "ng_sweep_reclaim", "symbol": "NG1", "closes": 1, "realized_pnl": 175.0},
+                            ],
+                            "top_losers": [
+                                {"bot_id": "mnq_futures_sage", "symbol": "MNQ1", "closes": 1, "realized_pnl": -600.0},
+                            ],
+                        },
+                    },
+                },
+            },
+        )
+
+        assert portfolio["pnl_map"]["window"] == "today"
+        assert portfolio["pnl_map"]["closed_outcome_count"] == 2
+        assert portfolio["pnl_map"]["realized_pnl"] == -425.0
+        assert portfolio["pnl_map"]["top_winners"][0]["bot_id"] == "ng_sweep_reclaim"
+        assert portfolio["pnl_map"]["top_losers"][0]["bot_id"] == "mnq_futures_sage"
+
     def test_dashboard_close_history_endpoint_limits_rows(self, app_client, monkeypatch):
         from datetime import UTC, datetime
 

@@ -636,7 +636,7 @@ def _run_local_background_task(task: BackgroundTask) -> dict:
             "warmed": 3,
             "failed": 0,
             "est_cost_usd": 0.0123,
-            "billing_mode": "anthropic_api",
+            "billing_mode": "deepseek_api",
             "billable_usd": 0.0123,
         }
     return {"written": f"{task.value.lower()}.json"}

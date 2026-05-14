@@ -8,11 +8,13 @@ by symbol/time without caring which provider produced the source payload.
 from __future__ import annotations
 
 import json
-from collections.abc import Iterable
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+    from pathlib import Path
 
 from eta_engine.scripts import workspace_roots
 
@@ -53,7 +55,7 @@ class SymbolIntelQuality:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, raw: dict[str, Any] | None) -> "SymbolIntelQuality":
+    def from_dict(cls, raw: dict[str, Any] | None) -> SymbolIntelQuality:
         data = raw or {}
         latency_raw = data.get("latency_ms")
         return cls(
@@ -99,7 +101,7 @@ class SymbolIntelRecord:
         }
 
     @classmethod
-    def from_dict(cls, raw: dict[str, Any]) -> "SymbolIntelRecord":
+    def from_dict(cls, raw: dict[str, Any]) -> SymbolIntelRecord:
         if raw.get("schema") != SCHEMA_VERSION:
             raise ValueError(f"unsupported symbol-intel schema: {raw.get('schema')}")
         ts_raw = str(raw["ts_utc"]).replace("Z", "+00:00")

@@ -50,13 +50,13 @@ class TestMetaUpgrade:
 
 
 class TestPromptWarmup:
-    def test_skips_without_api_key(self, tmp_path, monkeypatch):
-        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    def test_skips_retired_prompt_cache_lane(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("ETA_ENABLE_LEGACY_PROMPT_WARMUP", raising=False)
         from eta_engine.deploy.scripts.run_task import _task_prompt_warmup
 
         out = _task_prompt_warmup(tmp_path)
         assert out.get("skipped") is True
-        assert "no API key" in out.get("reason", "")
+        assert "retired_codex_deepseek_policy" in out.get("reason", "")
 
 
 # ---------------------------------------------------------------------------

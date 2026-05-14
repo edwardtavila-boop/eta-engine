@@ -389,7 +389,7 @@ tr:hover td{background:rgba(100,215,255,.055)}
   <div class="card"><h3>Signal Timing</h3><div class="stat" id="signalCadenceStatus">-</div><div class="sub" id="signalCadenceSub">signal spacing</div></div>
   <div class="card"><h3>Web Proxy</h3><div class="stat" id="opsProxyStatus">-</div><div class="sub" id="opsProxySub">public dashboard route</div></div>
   <div class="card"><h3>Dashboard Watch</h3><div class="stat" id="opsWatchdogStatus">-</div><div class="sub" id="opsWatchdogSub">health monitor</div></div>
-  <div class="card vps-root-card" role="button" tabindex="0" onclick="focusVpsRootDetails()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();focusVpsRootDetails();}"><h3>System Cleanup</h3><div class="stat" id="vpsRootStatus">-</div><div class="sub" id="vpsRootSub">workspace review</div></div>
+  <div class="card vps-root-card" role="button" tabindex="0" onclick="focusVpsRootDetails()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();focusVpsRootDetails();}"><h3>VPS Root Review</h3><div class="stat" id="vpsRootStatus">-</div><div class="sub" id="vpsRootSub">workspace review</div></div>
 </div>
 
 <div class="compat-anchors" style="display:none" aria-hidden="true">
@@ -407,11 +407,11 @@ tr:hover td{background:rgba(100,215,255,.055)}
 </div>
 
 <details class="collapsible-section vps-root-detail-wrap" id="vpsRootDetailsWrap">
-  <summary class="collapsible-summary"><span class="summary-copy"><span class="summary-title">System Cleanup Plan</span><small id="vpsRootSummaryLine">Workspace health and cleanup safety checks</small></span></summary>
+  <summary class="collapsible-summary"><span class="summary-copy"><span class="summary-title">VPS Root Review</span><small id="vpsRootSummaryLine">Workspace health and cleanup safety checks</small></span></summary>
   <div class="card vps-root-detail-card">
     <div class="panel-head">
       <div>
-        <h3>System Cleanup Details</h3>
+        <h3>VPS Root Review Details</h3>
         <div class="panel-kicker" id="vpsRootDetailKicker">read-only safety check</div>
       </div>
       <div class="truth-chip" id="vpsRootDetailStatus">waiting for plan</div>
@@ -984,6 +984,7 @@ function closeEvidenceSummary(liveBroker, portfolioSummary, windowKey = selected
       losses: Number(payload.losing_outcomes ?? 0),
       winRatePct: winRate == null ? null : winRate * 100,
       realizedPnl: finiteNumber(payload.realized_pnl),
+      pnlMap: payload.pnl_map,
       realizedR: rStats.value,
       realizedRCount: rStats.count,
       suppressedRCount: rStats.suppressed,
@@ -1755,6 +1756,31 @@ function closeHistoryContributionRows(closeHistory) {
   }).filter(Boolean);
 }
 
+function pnlMapContributionRows(pnlMap) {
+  const rows = [
+    ...(Array.isArray(pnlMap?.top_winners) ? pnlMap.top_winners : []),
+    ...(Array.isArray(pnlMap?.top_losers) ? pnlMap.top_losers : [])
+  ];
+  return rows.map((row) => {
+    const pnl = finiteNumber(row?.realized_pnl ?? row?.pnl);
+    if (pnl == null) return null;
+    const symbol = String(row?.symbol || '').trim();
+    const botId = String(row?.bot_id || row?.botId || row?.strategy_id || row?.strategy || '').trim();
+    const closes = Number(row?.closes ?? row?.close_count ?? 0) || 0;
+    return {
+      label: botId || symbol || 'daily close',
+      symbol,
+      botId,
+      type: 'daily_pnl_map',
+      closeCount: closes,
+      sub: `${symbol || 'trade'} ${closes} close${closes === 1 ? '' : 's'}`,
+      bucket: sleeveLabel(row?.sleeve || assetBucket(symbol)),
+      pnl,
+      value: Math.abs(finiteNumber(row?.impact_value) ?? pnl)
+    };
+  }).filter(Boolean);
+}
+
 function portfolioContributionRows(portfolioSummary) {
   const contributors = Array.isArray(portfolioSummary?.pnl_contributors)
     ? portfolioSummary.pnl_contributors
@@ -1949,7 +1975,10 @@ function renderContributionGraph(bots, liveBroker, portfolioSummary, todayCloseH
   const sub = document.getElementById('contributionSub');
   if (!el) return;
 
-  const dailyRows = aggregateContributionRows(closeHistoryContributionRows(todayCloseHistory));
+  const dailyMapRows = pnlMapContributionRows(todayCloseHistory?.pnlMap || portfolioSummary?.pnl_map);
+  const dailyRows = dailyMapRows.length
+    ? dailyMapRows
+    : aggregateContributionRows(closeHistoryContributionRows(todayCloseHistory));
   if (dailyRows.length || String(todayCloseHistory?.window || '').toLowerCase() === 'today') {
     renderDailyContributionGraph(el, source, sub, dailyRows, todayCloseHistory);
     return;
@@ -2633,7 +2662,7 @@ function renderVpsRootDetails(vpsRoot) {
     : artifactStale
       ? 'Needs refresh'
     : rootClean
-      ? 'Workspace clean'
+      ? 'Root clean'
     : cleanupAllowed
       ? 'Cleanup allowed'
       : 'Cleanup locked';
@@ -2654,9 +2683,9 @@ function renderVpsRootDetails(vpsRoot) {
     ['Unknown deletions', finiteNumber(summary.unknown_deleted) ?? 0],
     ['Repo drift', submoduleDrift],
     ['Uncommitted repos', dirtyRepos],
-    ['New files', generatedArtifacts],
+    ['Lab artifacts', generatedArtifacts],
     ['Git status rows', statusRows],
-    ['Inactive modules', dormantSubmodules],
+    ['Dormant submodules', dormantSubmodules],
     ['Review steps', steps.length]
   ];
   summaryEl.innerHTML = metrics.map(([label, value]) => `
@@ -3082,7 +3111,8 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
   const actionChoiceText = actionChoices.length
     ? `operator choice: ${actionChoices.join(' or ')}`
     : '';
-  const conciseAuditAction = actionChoices.length && propDryRunBlocked ? '' : humanizeStatusText(auditAction);
+  const rawAuditAction = actionChoices.length && propDryRunBlocked ? '' : auditAction;
+  const conciseAuditAction = humanizeStatusText(rawAuditAction);
   if (bracketStatusEl && bracketSubEl) {
     const bracketKey = bracketLabels[bracketSummary]
       ? bracketSummary
@@ -3250,8 +3280,8 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
   const paperLaunchBlocked = paperStatus === 'blocked' || paperTransitionLaunchBlocked > 0 || opLaunchBlocked > 0;
   const paperGateHeld = propDryRunBlocked && paperReady;
   const paperBracketHold = actionChoices.length
-    ? `held by Exit Protection: ${actionChoices.join(' or ')}`
-    : 'held by Exit Protection';
+    ? `held by Bracket Audit: ${actionChoices.join(' or ')}`
+    : 'held by Bracket Audit';
   let paperLabel = 'Unknown';
   let paperClass = 'yellow';
   if (paperLaunchBlocked) {

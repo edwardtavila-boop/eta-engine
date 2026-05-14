@@ -155,7 +155,7 @@ def write_snapshot(
     return path
 
 
-def _parse_ts(raw: Any) -> datetime:
+def _parse_ts(raw: object) -> datetime:
     if not raw:
         return datetime.now(tz=UTC)
     value = str(raw).replace("Z", "+00:00")
@@ -165,7 +165,7 @@ def _parse_ts(raw: Any) -> datetime:
     return parsed.astimezone(UTC)
 
 
-def _iter_trade_rows(raw: Any) -> list[dict[str, Any]]:
+def _iter_trade_rows(raw: object) -> list[dict[str, Any]]:
     if isinstance(raw, list):
         return [row for row in raw if isinstance(row, dict)]
     if not isinstance(raw, dict):
@@ -509,7 +509,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--json", action="store_true", help="print JSON instead of text")
     parser.add_argument("--write", action="store_true", help="write the canonical snapshot")
     parser.add_argument("--backfill-outcomes", action="store_true", help="backfill outcomes from closed trade ledger")
-    parser.add_argument("--bootstrap-existing", action="store_true", help="backfill existing bars, events, decisions, outcomes")
+    parser.add_argument(
+        "--bootstrap-existing",
+        action="store_true",
+        help="backfill existing bars, events, decisions, outcomes",
+    )
     parser.add_argument("--symbol", action="append", dest="symbols", help="symbol to audit, repeatable")
     args = parser.parse_args(argv)
 
@@ -517,7 +521,10 @@ def main(argv: list[str] | None = None) -> int:
     backfilled = 0
     bootstrap_counts: dict[str, int] | None = None
     if args.bootstrap_existing:
-        bootstrap_counts = bootstrap_existing_truth_surfaces(store=store, symbols=args.symbols or list(PRIORITY_SYMBOLS))
+        bootstrap_counts = bootstrap_existing_truth_surfaces(
+            store=store,
+            symbols=args.symbols or list(PRIORITY_SYMBOLS),
+        )
         backfilled = sum(bootstrap_counts.values())
     elif args.backfill_outcomes:
         backfilled = backfill_outcomes_from_closed_trade_ledger(store=store)

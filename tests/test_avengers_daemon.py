@@ -369,7 +369,7 @@ class TestTick:
                     "warmed": 3,
                     "failed": 0,
                     "est_cost_usd": 0.0123,
-                    "billing_mode": "anthropic_api",
+                    "billing_mode": "deepseek_api",
                     "billable_usd": 0.0123,
                 }
                 if task is BackgroundTask.PROMPT_WARMUP
@@ -390,7 +390,7 @@ class TestTick:
         rec = json.loads(tmp_journal.read_text(encoding="utf-8").splitlines()[-2])
         result = rec["result"]
         assert result["provider"] == "local_handler"
-        assert result["billing_mode"] == "anthropic_api"
+        assert result["billing_mode"] == "deepseek_api"
         assert result["billable_usd"] == 0.0123
 
 

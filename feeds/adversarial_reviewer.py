@@ -1,8 +1,9 @@
-"""Adversarial Strategy Reviewer — Claude API pre-mortem reports.
+"""Adversarial Strategy Reviewer - DeepSeek pre-mortem reports.
 
 Takes a strategy YAML + backtest results, produces structured failure-mode analysis.
-Uses the Claude API (``ANTHROPIC_API_KEY`` env) for deep pre-mortem when available,
-falling back to heuristic-only analysis when no key is configured.
+Uses the eta_engine DeepSeek provider for deep pre-mortem when available,
+falling back to heuristic-only analysis when no key is configured. Codex owns
+subscription architect/review work outside this API path.
 
 Output: ``reports/strategy_reviews/{strategy_id}_review.json``.
 """
@@ -13,7 +14,6 @@ import json
 import logging
 import os
 import re
-import urllib.request
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -38,12 +38,11 @@ for _ep in _ENV_PATHS:
 
 log = logging.getLogger("adversarial_reviewer")
 
-_ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "").strip()
-_ANTHROPIC_BASE_URL = os.environ.get("ANTHROPIC_BASE_URL", "https://api.anthropic.com").strip()
+_DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "").strip()
 
 
 def _extract_json(text: str) -> dict | None:
-    """Extract a JSON object from a Claude response that may contain markdown fences."""
+    """Extract a JSON object from an LLM response that may contain markdown fences."""
     m = re.search(r"```(?:json)?\s*(\{.*\})\s*```", text, re.DOTALL)
     if m:
         text = m.group(1)
@@ -84,47 +83,48 @@ class AdversarialStrategyReviewer:
             "sample_size_warnings": self._check_sample_size(backtest_results),
             "slippage_fee_sanity": self._slippage_fee_check(strategy_yaml),
         }
-        claude_analysis = self._claude_review(strategy_id, strategy_yaml, backtest_results)
+        ai_analysis = self._ai_review(strategy_id, strategy_yaml, backtest_results)
         recommendations: list[str] = []
         for mode in heuristic["failure_modes"]:
             if mode["severity"] in ("high", "critical"):
                 recommendations.append(f"Fix {mode['name']}: {mode['mitigation']}")
-        if claude_analysis and claude_analysis.get("recommendations"):
-            recommendations.extend(claude_analysis["recommendations"])
+        if ai_analysis and ai_analysis.get("recommendations"):
+            recommendations.extend(ai_analysis["recommendations"])
         report = {
             "strategy_id": strategy_id,
             "reviewed_at": datetime.now(UTC).isoformat(),
             "reviewer": "AdversarialStrategyReviewer v2",
-            "ai_enhanced": bool(claude_analysis),
+            "ai_enhanced": bool(ai_analysis),
+            "ai_provider": "deepseek" if ai_analysis else "heuristic",
             "failure_modes": heuristic["failure_modes"],
             "regime_sensitivity": heuristic["regime_sensitivity"],
             "overfitting_flags": heuristic["overfitting_flags"],
             "sample_size_warnings": heuristic["sample_size_warnings"],
             "slippage_fee_sanity": heuristic["slippage_fee_sanity"],
-            "claude_premortem": claude_analysis.get("premortem") if claude_analysis else None,
-            "claude_edge_cases": claude_analysis.get("edge_cases") if claude_analysis else None,
+            "ai_premortem": ai_analysis.get("premortem") if ai_analysis else None,
+            "ai_edge_cases": ai_analysis.get("edge_cases") if ai_analysis else None,
             "recommendations": recommendations,
         }
         self._write(report)
         return report
 
-    def _claude_review(
+    def _ai_review(
         self,
         strategy_id: str,
         yaml_text: str,
         results: dict | None,
     ) -> dict | None:
-        if not _ANTHROPIC_API_KEY:
+        if not _DEEPSEEK_API_KEY:
             return None
-        if not os.environ.get("ETA_USE_CLAUDE_API"):
-            return None  # kill-switch: must be explicitly enabled
         try:
-            return self._call_claude(strategy_id, yaml_text, results)
-        except Exception as exc:  # noqa: BLE001 — network/parse errors degrade to heuristic-only
-            log.warning("Claude API call failed for %s: %s", strategy_id, exc)
+            return self._call_deepseek(strategy_id, yaml_text, results)
+        except Exception as exc:  # noqa: BLE001 - network/parse errors degrade to heuristic-only
+            log.warning("DeepSeek pre-mortem failed for %s: %s", strategy_id, exc)
             return None
 
-    def _call_claude(self, strategy_id: str, yaml_text: str, results: dict | None) -> dict:
+    def _call_deepseek(self, strategy_id: str, yaml_text: str, results: dict | None) -> dict:
+        from eta_engine.brain.llm_provider import ModelTier, Provider, chat_completion
+
         result_summary = json.dumps(results or {}, indent=2, default=str)[:2000]
         prompt = (
             "You are an adversarial trading strategy reviewer. "
@@ -140,35 +140,28 @@ class AdversarialStrategyReviewer:
             '{"premortem": ["scenario1", ...], "edge_cases": ["case1", ...], '
             '"recommendations": ["rec1", ...]}'
         )
-        req = urllib.request.Request(  # noqa: S310 — fixed-scheme HTTPS to a configured base URL
-            f"{_ANTHROPIC_BASE_URL.rstrip('/')}/v1/messages",
-            data=json.dumps(
-                {
-                    "model": "claude-sonnet-4-6",
-                    "max_tokens": 1024,
-                    "messages": [{"role": "user", "content": prompt}],
-                }
-            ).encode(),
-            headers={
-                "Content-Type": "application/json",
-                "x-api-key": _ANTHROPIC_API_KEY,
-                "anthropic-version": "2023-06-01",
-            },
+        response = chat_completion(
+            tier=ModelTier.OPUS,
+            system_prompt="Return concise JSON only. No markdown.",
+            user_message=prompt,
+            max_tokens=1024,
+            temperature=0.2,
+            provider=Provider.DEEPSEEK,
         )
-        with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310
-            body = json.loads(resp.read())
-            content = body["content"][0]["text"]
-            try:
-                return json.loads(content)
-            except json.JSONDecodeError:
-                parsed = _extract_json(content)
-                if parsed:
-                    return parsed
-                return {
-                    "premortem": [content[:800]],
-                    "edge_cases": [],
-                    "recommendations": [],
-                }
+        content = response.text.strip()
+        if not content:
+            return {}
+        try:
+            return json.loads(content)
+        except json.JSONDecodeError:
+            parsed = _extract_json(content)
+            if parsed:
+                return parsed
+            return {
+                "premortem": [content[:800]],
+                "edge_cases": [],
+                "recommendations": [],
+            }
 
     def _analyze_failure_modes(self, yaml_text: str, results: dict | None) -> list[dict]:
         modes: list[dict] = []
