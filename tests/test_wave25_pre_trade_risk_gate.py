@@ -15,6 +15,7 @@ It composes three checks:
 from __future__ import annotations
 
 import json
+from datetime import date
 from pathlib import Path
 
 
@@ -49,6 +50,10 @@ def _write_guard_state(
         ),
         encoding="utf-8",
     )
+
+
+def _set_live_capital_today(monkeypatch: object, ca: object, iso_day: str) -> None:
+    monkeypatch.setattr(ca, "_utc_today", lambda: date.fromisoformat(iso_day))
 
 
 # ────────────────────────────────────────────────────────────────────
@@ -296,6 +301,26 @@ def test_target_eval_paper_lifecycle_routes_paper(
     assert "eval_paper" in reason
 
 
+def test_target_eval_live_before_july_8_routes_paper_by_calendar(
+    tmp_path: Path,
+    monkeypatch: object,
+) -> None:
+    """Staged live labels must stay paper-routed before the operator's date floor."""
+    from eta_engine.feeds import capital_allocator as ca
+
+    lp = tmp_path / "lifecycle.json"
+    gp = tmp_path / "guard.json"
+    monkeypatch.setattr(ca, "BOT_LIFECYCLE_STATE_PATH", lp)
+    monkeypatch.setattr(ca, "PROP_DRAWDOWN_GUARD_RECEIPT", gp)
+    _set_live_capital_today(monkeypatch, ca, "2026-05-21")
+    _write_guard_state(gp, daily_buffer=1500.0)
+    ca.set_bot_lifecycle("m2k", ca.LIFECYCLE_EVAL_LIVE)
+
+    target, reason = ca.resolve_execution_target("m2k", prospective_loss_usd=100.0)
+    assert target == "paper"
+    assert "live_capital_calendar_hold_until_2026-07-08" in reason
+
+
 def test_target_eval_live_with_safe_buffer_routes_live(
     tmp_path: Path,
     monkeypatch: object,
@@ -306,6 +331,7 @@ def test_target_eval_live_with_safe_buffer_routes_live(
     gp = tmp_path / "guard.json"
     monkeypatch.setattr(ca, "BOT_LIFECYCLE_STATE_PATH", lp)
     monkeypatch.setattr(ca, "PROP_DRAWDOWN_GUARD_RECEIPT", gp)
+    _set_live_capital_today(monkeypatch, ca, "2026-07-08")
     _write_guard_state(gp, daily_buffer=1500.0)
     ca.set_bot_lifecycle("m2k", ca.LIFECYCLE_EVAL_LIVE)
 
@@ -325,6 +351,7 @@ def test_target_eval_live_with_soft_breach_routes_paper(
     gp = tmp_path / "guard.json"
     monkeypatch.setattr(ca, "BOT_LIFECYCLE_STATE_PATH", lp)
     monkeypatch.setattr(ca, "PROP_DRAWDOWN_GUARD_RECEIPT", gp)
+    _set_live_capital_today(monkeypatch, ca, "2026-07-08")
     _write_guard_state(gp, daily_buffer=1500.0, daily_limit=1500.0)
     ca.set_bot_lifecycle("m2k", ca.LIFECYCLE_EVAL_LIVE)
 
@@ -343,6 +370,7 @@ def test_target_eval_live_with_hard_breach_rejects(
     gp = tmp_path / "guard.json"
     monkeypatch.setattr(ca, "BOT_LIFECYCLE_STATE_PATH", lp)
     monkeypatch.setattr(ca, "PROP_DRAWDOWN_GUARD_RECEIPT", gp)
+    _set_live_capital_today(monkeypatch, ca, "2026-07-08")
     _write_guard_state(gp, daily_buffer=400.0)
     ca.set_bot_lifecycle("m2k", ca.LIFECYCLE_EVAL_LIVE)
 

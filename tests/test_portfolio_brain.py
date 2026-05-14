@@ -121,7 +121,7 @@ def test_snapshot_returns_PortfolioContext(monkeypatch) -> None:  # noqa: N802 -
         ctx.fleet_kill_active = True  # type: ignore[misc]
 
 
-def test_snapshot_handles_missing_modules(monkeypatch) -> None:
+def test_snapshot_handles_missing_modules(monkeypatch, tmp_path) -> None:
     """If a wired module raises ImportError, snapshot() returns defaults."""
 
     def _explode(name: str, *_a, **_kw):
@@ -129,6 +129,7 @@ def test_snapshot_handles_missing_modules(monkeypatch) -> None:
 
     # Patch portfolio_brain's internal import helpers so each wire fails.
     monkeypatch.setattr(portfolio_brain, "_safe_import", _explode)
+    monkeypatch.setattr(portfolio_brain, "_FLEET_STATE_PATH", tmp_path / "missing_fleet_state.json")
     ctx = snapshot()
     assert isinstance(ctx, PortfolioContext)
     assert ctx.fleet_kill_active is False

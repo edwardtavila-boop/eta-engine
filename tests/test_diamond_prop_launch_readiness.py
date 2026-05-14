@@ -215,6 +215,41 @@ def test_aggregate_GO_when_all_pass() -> None:
     assert "safe to cut over" in summary
 
 
+def test_default_launch_date_matches_operator_july_8_floor() -> None:
+    from eta_engine.scripts import diamond_prop_launch_readiness as lr
+
+    assert lr.DEFAULT_LAUNCH_DATE == "2026-07-08"
+
+
+def test_R0_calendar_holds_before_live_capital_date() -> None:
+    from datetime import date
+
+    from eta_engine.scripts import diamond_prop_launch_readiness as lr
+
+    g = lr._check_R0_live_capital_calendar(
+        date(2026, 7, 8),
+        today=date(2026, 5, 21),
+    )
+
+    assert g.status == "HOLD"
+    assert g.detail["paper_live_required"] is True
+    assert "2026-07-08" in g.rationale
+
+
+def test_R0_calendar_go_on_live_capital_date() -> None:
+    from datetime import date
+
+    from eta_engine.scripts import diamond_prop_launch_readiness as lr
+
+    g = lr._check_R0_live_capital_calendar(
+        date(2026, 7, 8),
+        today=date(2026, 7, 8),
+    )
+
+    assert g.status == "GO"
+    assert g.detail["paper_live_required"] is False
+
+
 # ────────────────────────────────────────────────────────────────────
 # Days-until-launch math
 # ────────────────────────────────────────────────────────────────────

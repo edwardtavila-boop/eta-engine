@@ -6,7 +6,7 @@ state and decides whether a signal goes to ``live``, ``paper``, or
 
 Default behaviour for any bot NOT in the lifecycle file is
 ``EVAL_PAPER`` (conservative). To opt a bot into live trading on the
-prop-fund eval account, run::
+prop-fund eval account after the live-capital calendar floor, run::
 
     python -m eta_engine.scripts.manage_lifecycle set m2k_sweep_reclaim EVAL_LIVE
 
@@ -22,7 +22,10 @@ To retire a bot (refuse all signals)::
 
     python -m eta_engine.scripts.manage_lifecycle set foo_bot RETIRED
 
-Pre-Monday recommended setup::
+Before 2026-07-08, keep staged prop-firm candidates in paper routing. Runtime
+policy forces ``EVAL_LIVE`` / ``FUNDED_LIVE`` back to paper until that date.
+
+Legacy pre-cutover example::
 
     # Most conservative: paper only
     python -m eta_engine.scripts.manage_lifecycle set m2k_sweep_reclaim EVAL_LIVE
@@ -69,7 +72,7 @@ def _print_table(state_path: Path) -> None:
         print(f"  {bot_id:<32} {state:<14} {marker}{flag}")
     print()
     print(f"  Default for unlisted bots: {LIFECYCLE_EVAL_PAPER}")
-    print("  States that route LIVE: EVAL_LIVE, FUNDED_LIVE (* marked)")
+    print("  States that can route LIVE after calendar/date gates: EVAL_LIVE, FUNDED_LIVE (* marked)")
     print()
 
 

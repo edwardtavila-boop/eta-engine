@@ -25,6 +25,7 @@ Within each pool, capital is allocated by multi-session performance:
 import json
 import os
 from dataclasses import dataclass, field
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -354,7 +355,7 @@ def prop_entry_size_multiplier(bot_id: str) -> float:
 #   2. get_bot_lifecycle() / set_bot_lifecycle(): per-bot state
 #      machine that controls whether live execution is permitted
 #      at all. States:
-#        - EVAL_LIVE     -- trades on the prop-firm eval account
+#        - EVAL_LIVE     -- prop-firm eval candidate after calendar/date gates
 #        - EVAL_PAPER    -- paper-traded only (kaizen-only learning)
 #        - FUNDED_LIVE   -- post-eval, on the funded account
 #        - RETIRED       -- no entries, audit-only
@@ -377,11 +378,72 @@ LIFECYCLE_EVAL_PAPER = "EVAL_PAPER"
 LIFECYCLE_FUNDED_LIVE = "FUNDED_LIVE"
 LIFECYCLE_RETIRED = "RETIRED"
 
+# Operator directive (2026-05-14): run broker-backed paper-live only until
+# 2026-07-08. EVAL_LIVE/FUNDED_LIVE states may be staged for dry-run visibility,
+# but runtime routing must fall back to paper until this date floor is reached.
+LIVE_CAPITAL_NOT_BEFORE = date(2026, 7, 8)
+LIVE_CAPITAL_NOT_BEFORE_ENV = "ETA_LIVE_CAPITAL_NOT_BEFORE"
+
 # When the prospective loss would consume more than this fraction of
 # today's daily-DD buffer, the trade is routed to paper instead of
 # live. 0.5 = "if a single trade would burn through half of today's
 # remaining buffer, don't risk it."
 SOFT_DAILY_DD_FRACTION = 0.5
+
+
+def _utc_today() -> date:
+    return datetime.now(UTC).date()
+
+
+def _parse_iso_date(raw: object) -> date | None:
+    if not raw:
+        return None
+    try:
+        return date.fromisoformat(str(raw))
+    except ValueError:
+        return None
+
+
+def live_capital_not_before_date() -> date:
+    """Return the effective live-capital date floor.
+
+    Operators may push the floor later with ETA_LIVE_CAPITAL_NOT_BEFORE, but an
+    earlier env value is ignored so local config cannot accidentally override
+    the July 8 paper-only mandate.
+    """
+    env_date = _parse_iso_date(os.environ.get(LIVE_CAPITAL_NOT_BEFORE_ENV))
+    if env_date and env_date > LIVE_CAPITAL_NOT_BEFORE:
+        return env_date
+    return LIVE_CAPITAL_NOT_BEFORE
+
+
+def live_capital_calendar_gate(today: date | None = None) -> tuple[bool, str]:
+    """Return whether live-capital routing is allowed by calendar policy."""
+    observed = today or _utc_today()
+    not_before = live_capital_not_before_date()
+    if observed < not_before:
+        days = (not_before - observed).days
+        return (
+            False,
+            f"live_capital_calendar_hold_until_{not_before.isoformat()}: "
+            f"paper_live only for {days} more day(s)",
+        )
+    return (True, f"live_capital_calendar_ok_after_{not_before.isoformat()}")
+
+
+def build_live_capital_calendar_status(today: date | None = None) -> dict[str, Any]:
+    """Machine-readable calendar policy receipt for dashboards and launch checks."""
+    observed = today or _utc_today()
+    not_before = live_capital_not_before_date()
+    allowed, reason = live_capital_calendar_gate(today=observed)
+    return {
+        "today": observed.isoformat(),
+        "not_before": not_before.isoformat(),
+        "live_capital_allowed_by_date": allowed,
+        "days_until_live_capital": max((not_before - observed).days, 0),
+        "reason": reason,
+        "paper_live_required": not allowed,
+    }
 
 
 def _read_drawdown_guard_state() -> dict[str, Any]:
@@ -555,7 +617,7 @@ def resolve_execution_target(
 
     Returns (target, reason). ``target`` is one of:
       - "live"      -- submit to the live broker
-      - "paper"     -- route to the paper-trading sim
+      - "paper"     -- route to the paper-trading sim or broker-backed paper lane
       - "reject"    -- refuse the signal entirely
 
     Order of precedence:
@@ -571,6 +633,10 @@ def resolve_execution_target(
         return ("reject", "lifecycle_retired")
     if lifecycle == LIFECYCLE_EVAL_PAPER:
         return ("paper", "lifecycle_eval_paper")
+
+    calendar_ok, calendar_reason = live_capital_calendar_gate()
+    if not calendar_ok:
+        return ("paper", calendar_reason)
 
     if should_block_prop_entry(bot_id):
         return ("reject", "prop_guard_halt")

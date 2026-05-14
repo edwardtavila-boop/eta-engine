@@ -11,6 +11,11 @@ HIGH / MED / SMELL / INFO. This doc tracks which landed in code (✓)
 vs which are documented for future work (○) vs which require operator
 decisions (★).
 
+**2026-05-14 operator override:** no live capital before **2026-07-08**.
+Until then, `paper_live`/`paper_sim` execution remains the operating lane; any
+`EVAL_LIVE`/`FUNDED_LIVE` staging is dry-run visibility only and must route to
+paper by runtime policy.
+
 ## Test status after fixes
 
 - **Ruff lint:** CLEAN (exit 0) across full codebase
@@ -190,6 +195,10 @@ scale-out (`enable_scale_out=True, rr_partial=1.5, partial_qty_frac=0.5`)
 in addition to the supervisor's partial-profit. Both mechanisms emit
 qty=0.5 records on winners. The qty=0.5 cohort is the union of two
 independent partial mechanisms, both filtered to profitable trades.
+
+Dormancy reminder: Tradovate remains DORMANT until the operator explicitly
+un-dormants it in code and docs together; IBKR is still the active futures
+route for paper-live work.
 
 ## What we did NOT fix (and why)
 

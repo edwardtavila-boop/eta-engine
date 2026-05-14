@@ -189,3 +189,72 @@ def test_strict_candidate_wins_over_filter_candidate(monkeypatch) -> None:
     assert result["n_candidates"] == 1
     assert result["n_filter_candidates"] == 0  # mutually exclusive
     assert result["candidates"][0]["vol_regime_filter_candidate"] is False
+
+
+def _minimal_action_inputs() -> dict:
+    return {
+        "dryrun": {"sections": []},
+        "lifecycle": {
+            "counts": {
+                "EVAL_LIVE": 0,
+                "EVAL_PAPER": 10,
+                "FUNDED_LIVE": 0,
+                "RETIRED": 0,
+            },
+            "by_state": {},
+        },
+        "leaderboard": {"n_prop_ready": 2},
+        "channels": {"telegram": True, "discord": False, "generic": False},
+        "drawdown": {"signal": "OK"},
+        "supervisor": {"missing": False, "age_seconds": 1},
+        "candidates": {"n_candidates": 1, "filter_candidates": [], "rejected_top5": []},
+    }
+
+
+def test_action_list_blocks_live_promotion_before_july_8() -> None:
+    """Before the date floor, prop_launch_check must recommend paper-only drills."""
+    inputs = _minimal_action_inputs()
+
+    actions = mod._build_action_list(
+        inputs["dryrun"],
+        inputs["lifecycle"],
+        inputs["leaderboard"],
+        inputs["channels"],
+        inputs["drawdown"],
+        supervisor=inputs["supervisor"],
+        candidates=inputs["candidates"],
+        live_capital_calendar={
+            "live_capital_allowed_by_date": False,
+            "not_before": "2026-07-08",
+            "days_until_live_capital": 48,
+        },
+    )
+
+    joined = "\n".join(actions)
+    assert "NO LIVE CAPITAL BEFORE 2026-07-08" in joined
+    assert "Do not promote bots to EVAL_LIVE/FUNDED_LIVE" in joined
+    assert "Promote at least one PROP_READY bot to EVAL_LIVE" not in joined
+
+
+def test_action_list_allows_live_promotion_after_calendar_floor() -> None:
+    """After the date floor, the old lifecycle action can reappear if gates allow."""
+    inputs = _minimal_action_inputs()
+
+    actions = mod._build_action_list(
+        inputs["dryrun"],
+        inputs["lifecycle"],
+        inputs["leaderboard"],
+        inputs["channels"],
+        inputs["drawdown"],
+        supervisor=inputs["supervisor"],
+        candidates=inputs["candidates"],
+        live_capital_calendar={
+            "live_capital_allowed_by_date": True,
+            "not_before": "2026-07-08",
+            "days_until_live_capital": 0,
+        },
+    )
+
+    joined = "\n".join(actions)
+    assert "NO LIVE CAPITAL BEFORE" not in joined
+    assert "Promote at least one PROP_READY bot to EVAL_LIVE" in joined

@@ -126,6 +126,13 @@ def _check_drawdown_guard() -> dict:
     }
 
 
+def _check_live_capital_calendar() -> dict:
+    """Calendar policy: live capital is blocked until the operator-set floor."""
+    from eta_engine.feeds.capital_allocator import build_live_capital_calendar_status  # noqa: PLC0415
+
+    return build_live_capital_calendar_status()
+
+
 def _check_launch_candidates() -> dict:
     """Scan every diamond bot for the launch-candidate profile.
 
@@ -311,9 +318,21 @@ def _build_action_list(
     drawdown: dict,
     supervisor: dict | None = None,
     candidates: dict | None = None,
+    live_capital_calendar: dict | None = None,
 ) -> list[str]:
     """Translate HOLD / NO_GO sections into operator-actionable steps."""
     actions: list[str] = []
+
+    calendar_allows_live = True
+    if live_capital_calendar is not None:
+        calendar_allows_live = bool(live_capital_calendar.get("live_capital_allowed_by_date"))
+        if not calendar_allows_live:
+            actions.append(
+                "NO LIVE CAPITAL BEFORE "
+                f"{live_capital_calendar.get('not_before', '2026-07-08')}. "
+                "Keep the supervisor in paper_live/paper_sim, keep order routing paper-only, "
+                "and use the next week for prop-firm readiness drills only.",
+            )
 
     # Launch-candidate scan — if no bot meets the safety profile, that's the
     # #1 reason not to launch live. Surface this prominently.
@@ -389,10 +408,22 @@ def _build_action_list(
     # Lifecycle: any bots in live?
     n_live = lifecycle["counts"].get("EVAL_LIVE", 0) + lifecycle["counts"].get("FUNDED_LIVE", 0)
     if n_live == 0:
+        if calendar_allows_live:
+            actions.append(
+                "Promote at least one PROP_READY bot to EVAL_LIVE: "
+                "`python -m eta_engine.scripts.manage_lifecycle set <bot_id> EVAL_LIVE`. "
+                "Currently EVERY bot is EVAL_PAPER - no live execution will occur.",
+            )
+        else:
+            actions.append(
+                "Do not promote bots to EVAL_LIVE/FUNDED_LIVE during the paper-only window. "
+                "Use paper_live execution plus daily prop_launch_check evidence instead.",
+            )
+    elif not calendar_allows_live:
         actions.append(
-            "Promote at least one PROP_READY bot to EVAL_LIVE: "
-            "`python -m eta_engine.scripts.manage_lifecycle set <bot_id> EVAL_LIVE`. "
-            "Currently EVERY bot is EVAL_PAPER — no live execution will occur.",
+            f"{n_live} bot(s) are marked EVAL_LIVE/FUNDED_LIVE, but runtime routing is "
+            "calendar-held to paper until the live-capital date floor. Treat these as "
+            "dry-run labels, not permission to route capital.",
         )
 
     # Leaderboard: enough PROP_READY?
@@ -470,6 +501,18 @@ def _print_human(report: dict) -> None:
             f"feed={supervisor.get('feed')} n_bots={supervisor.get('n_bots')} "
             f"live_money={supervisor.get('live_money_enabled')}",
         )
+
+    # Live-capital calendar
+    calendar = report.get("live_capital_calendar", {})
+    _print_section_header("Live-capital calendar")
+    if calendar:
+        status = "allowed" if calendar.get("live_capital_allowed_by_date") else "paper-only"
+        print(
+            f"  status={status} today={calendar.get('today')} "
+            f"not_before={calendar.get('not_before')} "
+            f"days_until={calendar.get('days_until_live_capital')}",
+        )
+        print(f"  {calendar.get('reason', '')}")
 
     # Launch candidates
     candidates = report.get("launch_candidates", {})
@@ -608,6 +651,7 @@ def main(argv: list[str] | None = None) -> int:
     drawdown = _check_drawdown_guard()
     supervisor = _check_supervisor()
     candidates = _check_launch_candidates()
+    live_capital_calendar = _check_live_capital_calendar()
     actions = _build_action_list(
         dryrun,
         lifecycle,
@@ -616,6 +660,7 @@ def main(argv: list[str] | None = None) -> int:
         drawdown,
         supervisor=supervisor,
         candidates=candidates,
+        live_capital_calendar=live_capital_calendar,
     )
 
     report = {
@@ -626,6 +671,7 @@ def main(argv: list[str] | None = None) -> int:
         "alert_channels": channels,
         "drawdown_guard": drawdown,
         "supervisor": supervisor,
+        "live_capital_calendar": live_capital_calendar,
         "launch_candidates": candidates,
         "actions": actions,
     }

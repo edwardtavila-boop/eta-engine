@@ -1,13 +1,14 @@
 """
 EVOLUTIONARY TRADING ALGO  //  scripts.diamond_prop_launch_readiness
 ======================================================================
-Pre-launch GO/NO-GO gate for the Monday 2026-05-18 prop-fund cutover.
+Pre-launch GO/NO-GO gate for the 2026-07-08 prop-fund cutover.
 
-Operator goal (2026-05-12)
+Operator goal (updated 2026-05-14)
 --------------------------
-Monday 2026-05-18: PROP_READY top-3 go LIVE on the $50K prop firm.
-Until then (5 paper-live days), this gate runs every cron cycle and
-tells the operator exactly what's blocking a clean Monday launch.
+2026-07-08: earliest operator-approved live-capital date for the $50K
+prop firm. Until then, this gate runs every cron cycle and tells the
+operator exactly what's blocking a clean launch while the fleet remains
+paper-live only.
 
 NO single signal is enough — a clean launch requires every gate to
 say GO simultaneously.  This script aggregates all of them.
@@ -44,7 +45,7 @@ Run
 
     python -m eta_engine.scripts.diamond_prop_launch_readiness
     python -m eta_engine.scripts.diamond_prop_launch_readiness --json
-    python -m eta_engine.scripts.diamond_prop_launch_readiness --launch-date 2026-05-18
+    python -m eta_engine.scripts.diamond_prop_launch_readiness --launch-date 2026-07-08
 """
 
 from __future__ import annotations
@@ -72,17 +73,10 @@ LEDGER_PATH = STATE_DIR / "closed_trade_ledger_latest.json"
 OUT_LATEST = STATE_DIR / "diamond_prop_launch_readiness_latest.json"
 
 #: Default operator-set launch target.
-#: wave-25q post-review: pushed from 2026-05-18 (the original BluSky
-#: cutover target — NO_GO per wave-25n) to 2026-07-15. The quant review
-#: of the launch-candidate gate flagged that 2026-06-01 was statistically
-#: incoherent given the per-bot production-tagged trade cadence; only
-#: mnq_futures_sage could plausibly reach n>=50 in that window, and a
-#: NULL result would be a sample-size inference, not a strategy-quality
-#: inference. 2026-07-15 gives the fleet ~9 weeks to accumulate n>=150
-#: per top bot (the actual statistical confidence floor for detecting a
-#: +0.2R edge with σ≈1R at α=0.05, power=0.8). Operators override with
-#: --launch-date when a specific eval is purchased.
-DEFAULT_LAUNCH_DATE = "2026-07-15"
+#: Operator directive (2026-05-14): no live capital before 2026-07-08.
+#: Paper-live readiness and prop-firm dry-runs can proceed before then, but
+#: EVAL_LIVE/FUNDED_LIVE routing remains calendar-held until this date floor.
+DEFAULT_LAUNCH_DATE = "2026-07-08"
 
 #: Receipts older than this are stale (cron isn't firing).
 AGE_LIMIT_HOURS = 2.0
@@ -127,6 +121,38 @@ def _file_age_hours(path: Path) -> float | None:
 
 def _parse_launch_date(s: str) -> date:
     return datetime.strptime(s, "%Y-%m-%d").replace(tzinfo=UTC).date()
+
+
+def _check_R0_live_capital_calendar(launch: date, today: date | None = None) -> GateResult:
+    """Calendar gate: before launch day, stay paper-live only."""
+    observed = today or datetime.now(UTC).date()
+    days_until = (launch - observed).days
+    if days_until > 0:
+        return GateResult(
+            "R0_LIVE_CAPITAL_CALENDAR",
+            "HOLD",
+            rationale=(
+                f"live capital is calendar-held until {launch.isoformat()} "
+                f"({days_until}d); keep paper_live/paper_sim execution only"
+            ),
+            detail={
+                "today": observed.isoformat(),
+                "not_before": launch.isoformat(),
+                "days_until": days_until,
+                "paper_live_required": True,
+            },
+        )
+    return GateResult(
+        "R0_LIVE_CAPITAL_CALENDAR",
+        "GO",
+        rationale=f"calendar date reached for live-capital consideration: {launch.isoformat()}",
+        detail={
+            "today": observed.isoformat(),
+            "not_before": launch.isoformat(),
+            "days_until": max(days_until, 0),
+            "paper_live_required": False,
+        },
+    )
 
 
 # ────────────────────────────────────────────────────────────────────
@@ -406,8 +432,15 @@ def run(launch_date_str: str = DEFAULT_LAUNCH_DATE) -> dict[str, Any]:
     feed = _load_json(FEED_SANITY_PATH)
 
     prop_ready = set(leaderboard.get("prop_ready_bots") or [])
+    today = datetime.now(UTC).date()
+    try:
+        launch = _parse_launch_date(launch_date_str)
+    except ValueError:
+        launch = today + timedelta(days=7)
+        launch_date_str = launch.isoformat()
 
     gates = [
+        _check_R0_live_capital_calendar(launch, today=today),
         _check_R1_prop_ready_designated(leaderboard),
         _check_R2_drawdown(drawdown),
         _check_R3_feed_sanity(feed, prop_ready),
@@ -418,11 +451,6 @@ def run(launch_date_str: str = DEFAULT_LAUNCH_DATE) -> dict[str, Any]:
     ]
 
     verdict, summary = _aggregate_verdict(gates)
-    today = datetime.now(UTC).date()
-    try:
-        launch = _parse_launch_date(launch_date_str)
-    except ValueError:
-        launch = today + timedelta(days=7)
     days_until = (launch - today).days
 
     receipt = LaunchReadinessReceipt(
