@@ -17,6 +17,9 @@
 #   ETA-Diamond-RetuneCampaignHourly   - paper-only retune mission cards from broker truth
 #   ETA-Diamond-FeedSanityHourly       - STUCK_PRICE + ZERO_PNL detection
 #
+# 4-hour cadence:
+#   ETA-Diamond-RetuneRunnerEvery4Hours - runs one paper-only registry research mission
+#
 # Daily cadence (06:00 ET = 11:00 UTC):
 #   ETA-Diamond-PromotionGateDaily     - promotion eligibility per bot
 #   ETA-Diamond-SizingAuditDaily       - $/R per bot vs USD floor
@@ -169,6 +172,21 @@ $hourlyTasks = @(
 
 foreach ($t in $hourlyTasks) {
     Register-DiamondTask -Name $t.Name -TaskArgs $t.Args -Desc $t.Desc -Trigger $hourlyTrigger
+}
+
+# -- 4-HOUR CADENCE -- paper-only retune research runner --
+$every4HourTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date) `
+    -RepetitionInterval (New-TimeSpan -Hours 4) `
+    -RepetitionDuration (New-TimeSpan -Days 365)
+
+$every4HourTasks = @(
+    @{ Name = "ETA-Diamond-RetuneRunnerEvery4Hours"
+        Args = "-m eta_engine.scripts.diamond_retune_runner --timeout-seconds 1800"
+        Desc = "Diamond: runs one paper-only registry research mission from diamond_retune_campaign_latest.json; writes receipt, never places broker orders or mutates live routing" }
+)
+
+foreach ($t in $every4HourTasks) {
+    Register-DiamondTask -Name $t.Name -TaskArgs $t.Args -Desc $t.Desc -Trigger $every4HourTrigger
 }
 
 # -- DAILY CADENCE -- promotion + sizing + direction + demotion advisories --
