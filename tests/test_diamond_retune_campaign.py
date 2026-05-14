@@ -325,6 +325,57 @@ def test_runner_classifies_positive_multi_window_failure_as_near_miss_tune(tmp_p
     assert receipt["safe_to_mutate_live"] is False
 
 
+def test_runner_classifies_positive_but_unstable_multi_window_failure(tmp_path) -> None:
+    from eta_engine.scripts import diamond_retune_runner as runner
+
+    campaign = {
+        "targets": [
+            {
+                "rank": 7,
+                "bot_id": "ng_sweep_reclaim",
+                "symbol": "NG1",
+                "asset_sleeve": "metals_energy",
+                "priority_score": 78.2,
+                "next_command": (
+                    "python -m eta_engine.scripts.run_research_grid "
+                    "--source registry --bots ng_sweep_reclaim --report-policy runtime"
+                ),
+                "promotion_block": "broker_proof_required",
+                "live_mutation_policy": "paper_only_advisory",
+                "safe_to_mutate_live": False,
+            },
+        ],
+    }
+
+    def fake_executor(args: list[str], *, timeout_seconds: int) -> runner.CommandResult:
+        return runner.CommandResult(
+            returncode=1,
+            stdout=(
+                "[research_grid] running 12 cells\n"
+                "  - ng_sweep_reclaim: NG1/5m ...\n"
+                "      -> windows=12 agg_OOS=+0.734 pass_frac=41.7% verdict=FAIL\n"
+            ),
+            stderr="",
+        )
+
+    receipt = runner.run_campaign_once(
+        campaign,
+        out_path=tmp_path / "receipt.json",
+        bot_id="ng_sweep_reclaim",
+        executor=fake_executor,
+    )
+
+    assert receipt["exit_code"] == 1
+    assert receipt["status"] == "research_unstable_positive_keep_tuning"
+    assert receipt["research_signal"]["classification"] == "UNSTABLE_POSITIVE_TUNE"
+    assert receipt["research_signal"]["windows"] == 12
+    assert receipt["research_signal"]["agg_oos"] == 0.734
+    assert receipt["research_signal"]["pass_frac_pct"] == 41.7
+    assert "consistency" in receipt["research_signal"]["operator_note"]
+    assert receipt["promotion_block"] == "broker_proof_required"
+    assert receipt["safe_to_mutate_live"] is False
+
+
 def test_runner_records_timeout_as_keep_retuning(tmp_path) -> None:
     from eta_engine.scripts import diamond_retune_runner as runner
 

@@ -647,6 +647,7 @@ class TestDashboardAPI:
                         "n_unattempted_targets": 1,
                         "n_low_sample_keep_collecting": 1,
                         "n_near_miss_keep_tuning": 1,
+                        "n_unstable_positive_keep_tuning": 1,
                         "n_research_passed_broker_proof_required": 1,
                         "n_stuck_research_failing": 0,
                         "n_timeout_retry": 0,
@@ -671,12 +672,14 @@ class TestDashboardAPI:
         assert retune_status["summary"]["n_attempted_bots"] == 1
         assert retune_status["summary"]["n_low_sample_keep_collecting"] == 1
         assert retune_status["summary"]["n_near_miss_keep_tuning"] == 1
+        assert retune_status["summary"]["n_unstable_positive_keep_tuning"] == 1
         assert retune_status["summary"]["safe_to_mutate_live"] is False
 
         direct = app_client.get("/api/jarvis/diamond_retune_status")
         assert direct.status_code == 200
         assert direct.json()["summary"]["n_low_sample_keep_collecting"] == 1
         assert direct.json()["summary"]["n_near_miss_keep_tuning"] == 1
+        assert direct.json()["summary"]["n_unstable_positive_keep_tuning"] == 1
         assert direct.json()["summary"]["n_research_passed_broker_proof_required"] == 1
         assert "no-store" in direct.headers["Cache-Control"]
 
@@ -715,6 +718,7 @@ class TestDashboardAPI:
                         "n_unattempted_targets": 1,
                         "n_low_sample_keep_collecting": 1,
                         "n_near_miss_keep_tuning": 1,
+                        "n_unstable_positive_keep_tuning": 1,
                         "n_research_passed_broker_proof_required": 1,
                         "n_stuck_research_failing": 1,
                         "n_timeout_retry": 0,
@@ -742,6 +746,7 @@ class TestDashboardAPI:
         assert data["n_targets"] == 3
         assert data["n_low_sample_keep_collecting"] == 1
         assert data["n_near_miss_keep_tuning"] == 1
+        assert data["n_unstable_positive_keep_tuning"] == 1
         assert data["n_stuck_research_failing"] == 1
         assert data["top_bot_id"] == "mnq_futures_sage"
 
@@ -1164,6 +1169,7 @@ class TestDashboardAPI:
                         "n_unattempted_targets": 3,
                         "n_low_sample_keep_collecting": 1,
                         "n_near_miss_keep_tuning": 1,
+                        "n_unstable_positive_keep_tuning": 1,
                         "n_stuck_research_failing": 1,
                         "n_research_passed_broker_proof_required": 1,
                         "safe_to_mutate_live": False,
@@ -1185,6 +1191,7 @@ class TestDashboardAPI:
         assert data["summary"]["n_targets"] == 5
         assert data["summary"]["n_low_sample_keep_collecting"] == 1
         assert data["summary"]["n_near_miss_keep_tuning"] == 1
+        assert data["summary"]["n_unstable_positive_keep_tuning"] == 1
         assert data["summary"]["n_stuck_research_failing"] == 1
         assert data["summary"]["safe_to_mutate_live"] is False
         assert data["safe_to_mutate_live"] is False
@@ -1205,6 +1212,7 @@ class TestDashboardAPI:
                         "n_unattempted_targets": 0,
                         "n_low_sample_keep_collecting": 2,
                         "n_near_miss_keep_tuning": 1,
+                        "n_unstable_positive_keep_tuning": 1,
                         "n_stuck_research_failing": 0,
                         "safe_to_mutate_live": False,
                     },
@@ -1222,6 +1230,7 @@ class TestDashboardAPI:
         assert status["summary"]["n_attempted_bots"] == 4
         assert status["summary"]["n_low_sample_keep_collecting"] == 2
         assert status["summary"]["n_near_miss_keep_tuning"] == 1
+        assert status["summary"]["n_unstable_positive_keep_tuning"] == 1
         assert status["safe_to_mutate_live"] is False
         assert status["bots"][0]["bot_id"] == "mes_orb"
 

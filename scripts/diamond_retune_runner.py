@@ -236,6 +236,17 @@ def _research_signal(result: CommandResult) -> dict[str, Any]:
             "use focused tuning on session, confluence, and risk filters; "
             "do not promote or mutate live routing."
         )
+    if (
+        result.returncode != 0
+        and int(signal.get("windows") or 0) >= 5
+        and float(signal.get("agg_oos") or 0.0) > 0
+        and float(signal.get("pass_frac_pct") or 0.0) < 60.0
+    ):
+        signal["classification"] = "UNSTABLE_POSITIVE_TUNE"
+        signal["operator_note"] = (
+            "Positive aggregate OOS, but window consistency is too weak: "
+            "tighten regime, session, and volatility filters; do not promote or mutate live routing."
+        )
     return signal
 
 
@@ -248,6 +259,8 @@ def _status_for_result(result: CommandResult, signal: dict[str, Any]) -> str:
         return "research_low_sample_keep_collecting"
     if signal.get("classification") == "NEAR_MISS_TUNE":
         return "research_near_miss_keep_tuning"
+    if signal.get("classification") == "UNSTABLE_POSITIVE_TUNE":
+        return "research_unstable_positive_keep_tuning"
     return "research_failed_keep_retuning"
 
 

@@ -160,3 +160,51 @@ def test_status_surfaces_near_miss_tuning_without_live_mutation() -> None:
     assert "no live changes" in report["bots"][0]["next_action"]
     assert report["bots"][0]["research_signal"]["classification"] == "NEAR_MISS_TUNE"
     assert report["bots"][0]["safe_to_mutate_live"] is False
+
+
+def test_status_surfaces_unstable_positive_tuning_without_live_mutation() -> None:
+    from eta_engine.scripts import diamond_retune_status as status
+
+    campaign = {
+        "generated_at_utc": "2026-05-14T20:00:00+00:00",
+        "targets": [
+            {
+                "rank": 1,
+                "bot_id": "ng_sweep_reclaim",
+                "symbol": "NG1",
+                "asset_sleeve": "metals_energy",
+                "priority_score": 78.2,
+                "promotion_block": "broker_proof_required",
+                "safe_to_mutate_live": False,
+            },
+        ],
+    }
+    history_rows = [
+        {
+            "run_id": "unstable",
+            "generated_at_utc": "2026-05-14T23:12:00+00:00",
+            "bot_id": "ng_sweep_reclaim",
+            "rank": 1,
+            "status": "research_unstable_positive_keep_tuning",
+            "exit_code": 1,
+            "research_signal": {
+                "classification": "UNSTABLE_POSITIVE_TUNE",
+                "windows": 12,
+                "agg_oos": 0.734,
+                "pass_frac_pct": 41.7,
+            },
+            "safe_to_mutate_live": False,
+            "live_mutation_policy": "paper_only_advisory",
+            "promotion_block": "broker_proof_required",
+        },
+    ]
+
+    report = status.build_status(campaign=campaign, history_rows=history_rows)
+
+    assert report["summary"]["n_unstable_positive_keep_tuning"] == 1
+    assert report["summary"]["safe_to_mutate_live"] is False
+    assert report["bots"][0]["retune_state"] == "UNSTABLE_POSITIVE_RETUNE"
+    assert "consistency" in report["bots"][0]["next_action"]
+    assert "no live changes" in report["bots"][0]["next_action"]
+    assert report["bots"][0]["research_signal"]["classification"] == "UNSTABLE_POSITIVE_TUNE"
+    assert report["bots"][0]["safe_to_mutate_live"] is False
