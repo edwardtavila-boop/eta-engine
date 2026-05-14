@@ -16,7 +16,7 @@ import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
 
-from eta_engine.scripts import workspace_roots
+from eta_engine.scripts import ibgateway_reauth_controller, workspace_roots
 from eta_engine.scripts.runtime_order_hold import load_order_entry_hold, write_order_entry_hold
 
 logger = logging.getLogger(__name__)
@@ -27,6 +27,7 @@ type JsonDict = dict[str, JsonValue]
 _DEFAULT_TWS_STATUS_PATH = workspace_roots.ETA_RUNTIME_STATE_DIR / "tws_watchdog.json"
 _DEFAULT_HOLD_PATH = workspace_roots.ETA_ORDER_ENTRY_HOLD_PATH
 _DEFAULT_REAUTH_STATE_PATH = workspace_roots.ETA_RUNTIME_STATE_DIR / "ibgateway_reauth.json"
+_DEFAULT_GATEWAY_AUTHORITY_PATH = workspace_roots.ETA_RUNTIME_STATE_DIR / "gateway_authority.json"
 _DEFAULT_MAX_WATCHDOG_AGE_S = 180
 _CLEAR_REASON = "ibgateway_manual_login_verified_healthy"
 _IBGATEWAY_HOLD_PREFIX = "ibgateway_"
@@ -147,6 +148,8 @@ def run_guard(
     tws_status_path: Path = _DEFAULT_TWS_STATUS_PATH,
     hold_path: Path = _DEFAULT_HOLD_PATH,
     reauth_state_path: Path = _DEFAULT_REAUTH_STATE_PATH,
+    gateway_authority_path: Path = _DEFAULT_GATEWAY_AUTHORITY_PATH,
+    allow_non_authoritative_host: bool = False,
     execute: bool = False,
     now: datetime | None = None,
     max_watchdog_age_s: int = _DEFAULT_MAX_WATCHDOG_AGE_S,
@@ -208,6 +211,26 @@ def run_guard(
         )
         return state
 
+    authority = ibgateway_reauth_controller.gateway_authority_status(
+        authority_path=Path(gateway_authority_path),
+        allow_non_authoritative_host=allow_non_authoritative_host,
+    )
+    if not authority.get("allowed"):
+        state = _base_state(
+            status="blocked_non_authoritative_gateway_host",
+            action="none",
+            now=effective_now,
+            reason="fresh healthy watchdog, but this host is not the VPS Gateway authority",
+            operator_action_required=True,
+            operator_action=(
+                "Run the IB Gateway release guard on the VPS. Do not enable local desktop Gateway recovery tasks."
+            ),
+        )
+        state["watchdog_age_s"] = age_s
+        state["hold"] = hold.to_dict()
+        state["gateway_authority"] = authority
+        return state
+
     task_results: list[JsonDict] = []
     if execute:
         write_order_entry_hold(active=False, reason=_CLEAR_REASON, path=Path(hold_path))
@@ -231,6 +254,7 @@ def run_guard(
             "watchdog_age_s": age_s,
             "tws_status_path": str(tws_status_path),
             "hold_path": str(hold_path),
+            "gateway_authority": authority,
             "task_results": task_results,
         },
     )
@@ -247,6 +271,7 @@ def run_guard(
                 "reason": "IB Gateway watchdog was freshly healthy; paper-live release guard cleared ETA order hold.",
                 "task_results": task_results,
                 "tws_status_path": str(tws_status_path),
+                "gateway_authority": authority,
             },
         )
     return state
@@ -258,6 +283,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--tws-status", type=Path, default=_DEFAULT_TWS_STATUS_PATH)
     parser.add_argument("--hold-path", type=Path, default=_DEFAULT_HOLD_PATH)
     parser.add_argument("--reauth-state", type=Path, default=_DEFAULT_REAUTH_STATE_PATH)
+    parser.add_argument("--gateway-authority-path", type=Path, default=_DEFAULT_GATEWAY_AUTHORITY_PATH)
+    parser.add_argument(
+        "--allow-non-authoritative-host",
+        action="store_true",
+        help="Break-glass diagnostics only: allow release from a host without the VPS authority marker.",
+    )
     parser.add_argument("--max-watchdog-age-s", type=int, default=_DEFAULT_MAX_WATCHDOG_AGE_S)
     return parser
 
@@ -269,6 +300,8 @@ def main(argv: list[str] | None = None) -> int:
         tws_status_path=args.tws_status,
         hold_path=args.hold_path,
         reauth_state_path=args.reauth_state,
+        gateway_authority_path=args.gateway_authority_path,
+        allow_non_authoritative_host=args.allow_non_authoritative_host,
         execute=args.execute,
         max_watchdog_age_s=args.max_watchdog_age_s,
     )

@@ -52,6 +52,7 @@ def test_unhealthy_watchdog_refuses_to_clear_order_hold(tmp_path: Path) -> None:
         tws_status_path=watchdog,
         hold_path=hold,
         reauth_state_path=state,
+        allow_non_authoritative_host=True,
         execute=True,
         now=now,
     )
@@ -78,6 +79,7 @@ def test_execute_clears_ibkr_hold_and_restarts_release_tasks(tmp_path: Path, mon
         tws_status_path=watchdog,
         hold_path=hold,
         reauth_state_path=state,
+        allow_non_authoritative_host=True,
         execute=True,
         now=now,
     )
@@ -94,6 +96,39 @@ def test_execute_clears_ibkr_hold_and_restarts_release_tasks(tmp_path: Path, mon
         ("Start-ScheduledTask", "ETA-Broker-Router"),
         ("Start-ScheduledTask", "ETA-Jarvis-Strategy-Supervisor"),
     ]
+
+
+def test_execute_refuses_to_enable_reauth_on_non_authoritative_host(tmp_path: Path, monkeypatch) -> None:
+    from eta_engine.scripts import ibgateway_release_guard as guard
+
+    now = datetime(2026, 5, 6, 9, 45, tzinfo=UTC)
+    watchdog = tmp_path / "tws_watchdog.json"
+    hold = tmp_path / "order_entry_hold.json"
+    state = tmp_path / "ibgateway_reauth.json"
+    _write_watchdog(watchdog, healthy=True, checked_at=now - timedelta(seconds=10))
+    _write_hold(hold, active=True, reason="ibgateway_waiting_for_manual_login_or_2fa")
+    calls: list[tuple[str, str]] = []
+    monkeypatch.delenv("ETA_IBKR_GATEWAY_AUTHORITY", raising=False)
+    monkeypatch.setattr(guard, "_run_task_command", lambda verb, task: calls.append((verb, task)) or 0)
+
+    result = guard.run_guard(
+        tws_status_path=watchdog,
+        hold_path=hold,
+        reauth_state_path=state,
+        gateway_authority_path=tmp_path / "missing_gateway_authority.json",
+        execute=True,
+        now=now,
+    )
+
+    hold_payload = json.loads(hold.read_text(encoding="utf-8"))
+    assert result["status"] == "blocked_non_authoritative_gateway_host"
+    assert result["action"] == "none"
+    assert result["operator_action_required"] is True
+    assert result["gateway_authority"]["allowed"] is False
+    assert "Do not enable local desktop Gateway recovery tasks" in result["operator_action"]
+    assert hold_payload["active"] is True
+    assert not state.exists()
+    assert calls == []
 
 
 def test_dry_run_reports_already_released_when_hold_is_clear(tmp_path: Path, monkeypatch) -> None:
