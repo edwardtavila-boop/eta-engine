@@ -5,6 +5,9 @@ IBKR username, and all automated recovery pauses when IBKR reports a competing
 TWS/Gateway session. This prevents the VPS, home desktop, and manual logins from
 knocking each other offline.
 
+The VPS is the only 24/7 IBKR Gateway deployment authority. A local/home desktop
+opening Gateway is a defect, not a fallback.
+
 ## Active Broker Policy
 
 - IBKR is the primary futures broker and owns the Gateway API on `127.0.0.1:4002`.
@@ -29,6 +32,29 @@ The scheduled task lane is:
 IBC is configured with `ExistingSessionDetectedAction=primary` by default. This
 makes the ETA broker host the stable primary owner once it is logged in, instead
 of repeatedly overriding other sessions.
+
+The Gateway launcher refuses to start unless the host is explicitly marked as
+the authority in:
+
+- `C:\EvolutionaryTradingAlgo\var\eta_engine\state\gateway_authority.json`
+
+The VPS bootstrap creates this marker automatically on Windows Server hosts:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File C:\EvolutionaryTradingAlgo\eta_engine\deploy\vps_bootstrap.ps1
+```
+
+Manual authority marking, only on the VPS:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File C:\EvolutionaryTradingAlgo\eta_engine\deploy\scripts\set_gateway_authority.ps1 -Apply -Role vps
+```
+
+To clean a workstation that accidentally has Gateway tasks:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File C:\EvolutionaryTradingAlgo\eta_engine\deploy\scripts\disable_non_authoritative_gateway_tasks.ps1 -Apply -StopGatewayProcesses
+```
 
 ## Competing Session Response
 

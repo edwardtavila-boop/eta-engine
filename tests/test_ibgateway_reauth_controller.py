@@ -54,6 +54,7 @@ def test_process_down_starts_existing_trader_owned_run_now_task(tmp_path: Path, 
     tws_status.write_text(json.dumps(_unhealthy_status(process_running=False)), encoding="utf-8")
     started: list[str] = []
     monkeypatch.setattr(controller, "_scheduled_task_exists", lambda _task_name: True)
+    monkeypatch.setattr(controller, "_scheduled_task_is_runnable", lambda _task_name: True)
     monkeypatch.setattr(controller, "_start_scheduled_task", lambda task_name: started.append(task_name) or 0)
 
     result = controller.run_controller(
@@ -85,6 +86,7 @@ def test_process_down_starts_gateway_without_waiting_for_failure_threshold(tmp_p
     )
     started: list[str] = []
     monkeypatch.setattr(controller, "_scheduled_task_exists", lambda _task_name: True)
+    monkeypatch.setattr(controller, "_scheduled_task_is_runnable", lambda _task_name: True)
     monkeypatch.setattr(controller, "_start_scheduled_task", lambda task_name: started.append(task_name) or 0)
 
     result = controller.run_controller(
@@ -214,6 +216,11 @@ def test_process_down_falls_back_to_gateway_task_when_run_now_missing(tmp_path: 
         "_scheduled_task_exists",
         lambda task_name: task_name == controller.GATEWAY_TASK_NAME,
     )
+    monkeypatch.setattr(
+        controller,
+        "_scheduled_task_is_runnable",
+        lambda task_name: task_name == controller.GATEWAY_TASK_NAME,
+    )
     monkeypatch.setattr(controller, "_start_scheduled_task", lambda task_name: started.append(task_name) or 0)
 
     result = controller.run_controller(
@@ -293,6 +300,7 @@ def test_stuck_running_gateway_restarts_once_then_waits_for_ibkr_login(tmp_path:
     tws_status.write_text(json.dumps(_unhealthy_status(failures=4)), encoding="utf-8")
     restarted: list[str] = []
     monkeypatch.setattr(controller, "_scheduled_task_exists", lambda _task_name: True)
+    monkeypatch.setattr(controller, "_scheduled_task_is_runnable", lambda _task_name: True)
     monkeypatch.setattr(controller, "_restart_scheduled_task", lambda task_name: restarted.append(task_name) or 0)
     now = datetime(2026, 5, 5, 13, 40, tzinfo=UTC)
 

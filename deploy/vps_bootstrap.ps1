@@ -458,8 +458,20 @@ if (-not $SkipCodexOperator) {
 
 if (-not $SkipIbkrGateway) {
     Write-Host ""; Write-Host "=== IBKR Gateway Recovery ===" -ForegroundColor Green
+    $gatewayAuthorityScript = "$EtaEngineDir\deploy\scripts\set_gateway_authority.ps1"
     $twsWatchdogScript = "$EtaEngineDir\deploy\scripts\register_tws_watchdog_task.ps1"
     $ibkrRecoveryScript = "$EtaEngineDir\deploy\scripts\register_ibgateway_reauth_task.ps1"
+
+    if (Test-Path $gatewayAuthorityScript) {
+        if (-not $WhatIf) {
+            & $pwshPath -ExecutionPolicy Bypass -File $gatewayAuthorityScript -Apply -Role vps
+            Write-Host "  Marked: this VPS is the IBKR Gateway authority host" -ForegroundColor Green
+        } else {
+            Write-Host "  WOULD MARK: this VPS as the IBKR Gateway authority host" -ForegroundColor Gray
+        }
+    } else {
+        Write-Host "  set_gateway_authority.ps1 not found - Gateway launch guard will remain unmarked" -ForegroundColor Yellow
+    }
 
     if (Test-Path $twsWatchdogScript) {
         if (-not $WhatIf) {

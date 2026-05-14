@@ -5,6 +5,7 @@ param(
     [string]$LogDir = "C:\EvolutionaryTradingAlgo\var\eta_engine\logs\ibgateway",
     [string]$StateDir = "C:\EvolutionaryTradingAlgo\var\eta_engine\state",
     [string]$HealthStatusPath = "C:\EvolutionaryTradingAlgo\var\eta_engine\state\tws_watchdog.json",
+    [string]$GatewayAuthorityPath = "C:\EvolutionaryTradingAlgo\var\eta_engine\state\gateway_authority.json",
     [switch]$UseIbc,
     [string]$IbcInstallRoot = "C:\EvolutionaryTradingAlgo\var\eta_engine\tools\ibc",
     [string]$IbcInstallStatePath = "C:\EvolutionaryTradingAlgo\var\eta_engine\state\ibc_install.json",
@@ -24,7 +25,8 @@ param(
     [int]$ApiPort = 4002,
     [int]$StartupTimeoutSeconds = 600,
     [switch]$ForceRestart,
-    [switch]$AllowHealthyRestart
+    [switch]$AllowHealthyRestart,
+    [switch]$AllowNonVpsGatewayStart
 )
 
 $ErrorActionPreference = "Stop"
@@ -46,6 +48,74 @@ function Write-LogLine {
     param([string]$Message)
     $stamp = (Get-Date).ToUniversalTime().ToString("o")
     Add-Content -LiteralPath (Join-Path $LogDir "start_ibgateway.log") -Value "$stamp $Message"
+}
+
+function Test-TruthyText {
+    param([string]$Value)
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        return $false
+    }
+    return @("1", "true", "yes", "y", "vps", "authority") -contains $Value.Trim().ToLowerInvariant()
+}
+
+function Get-AuthorityPayload {
+    param([string]$Path)
+
+    try {
+        if (-not $Path -or -not (Test-Path -LiteralPath $Path)) {
+            return $null
+        }
+        return Get-Content -LiteralPath $Path -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+    } catch {
+        Write-LogLine "WARNING unable to read Gateway authority marker: $($_.Exception.Message)"
+        return $null
+    }
+}
+
+function Assert-GatewayAuthority {
+    param([string]$Path)
+
+    if ($AllowNonVpsGatewayStart) {
+        Write-LogLine "WARNING AllowNonVpsGatewayStart override accepted on host=$env:COMPUTERNAME"
+        return
+    }
+
+    if (Test-TruthyText -Value $env:ETA_IBKR_GATEWAY_AUTHORITY) {
+        Write-LogLine "Gateway authority accepted from ETA_IBKR_GATEWAY_AUTHORITY on host=$env:COMPUTERNAME"
+        return
+    }
+
+    $payload = Get-AuthorityPayload -Path $Path
+    $role = if ($null -ne $payload -and $null -ne $payload.role) {
+        [string]$payload.role
+    } else {
+        ""
+    }
+    $enabled = $false
+    if ($null -ne $payload -and $null -ne $payload.enabled) {
+        $enabled = [bool]$payload.enabled
+    }
+    $markerComputer = if ($null -ne $payload -and $null -ne $payload.computer_name) {
+        [string]$payload.computer_name
+    } else {
+        ""
+    }
+
+    $roleOk = @("vps", "gateway_authority") -contains $role.Trim().ToLowerInvariant()
+    $hostOk = [string]::IsNullOrWhiteSpace($markerComputer) -or $markerComputer.Equals($env:COMPUTERNAME, [System.StringComparison]::OrdinalIgnoreCase)
+    if ($enabled -and $roleOk -and $hostOk) {
+        Write-LogLine "Gateway authority marker accepted role=$role host=$env:COMPUTERNAME"
+        return
+    }
+
+    $message = (
+        "Refusing to start IBKR Gateway on non-authoritative host '$env:COMPUTERNAME'. " +
+        "ETA policy: the VPS is the 24/7 Gateway deployment source. " +
+        "Mark the VPS with deploy\scripts\set_gateway_authority.ps1 -Apply -Role vps, " +
+        "or pass -AllowNonVpsGatewayStart only for one-off manual diagnostics."
+    )
+    Write-LogLine "ERROR $message"
+    throw $message
 }
 
 function Get-GatewayExecutableCandidates {
@@ -618,6 +688,7 @@ function Get-ListenerHealthState {
 
 New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 New-Item -ItemType Directory -Force -Path $StateDir | Out-Null
+Assert-GatewayAuthority -Path $GatewayAuthorityPath
 
 $resolvedGatewayDir = Resolve-GatewayDir -RequestedPath $GatewayDir
 if ((Normalize-PathString -Path $resolvedGatewayDir) -ne (Normalize-PathString -Path $GatewayDir)) {

@@ -6,6 +6,9 @@ REPAIR = ROOT / "deploy" / "scripts" / "repair_ibgateway_vps.ps1"
 INSTALL = ROOT / "deploy" / "scripts" / "install_ibgateway_1046.ps1"
 IBC_INSTALL = ROOT / "deploy" / "scripts" / "install_ibc.ps1"
 IBC_CREDENTIALS = ROOT / "deploy" / "scripts" / "set_ibc_credentials.ps1"
+GATEWAY_AUTHORITY = ROOT / "deploy" / "scripts" / "set_gateway_authority.ps1"
+DISABLE_LOCAL_GATEWAY = ROOT / "deploy" / "scripts" / "disable_non_authoritative_gateway_tasks.ps1"
+VPS_BOOTSTRAP = ROOT / "deploy" / "vps_bootstrap.ps1"
 
 
 def test_ibgateway_starter_uses_canonical_logs_and_verified_direct_start() -> None:
@@ -38,6 +41,18 @@ def test_ibgateway_starter_uses_canonical_logs_and_verified_direct_start() -> No
     assert "$existingGateway = @(Get-GatewayProcesses)" in text
     assert "gateway process running without API listener" in text
     assert "existing gateway process running; no start needed" in text
+
+
+def test_ibgateway_starter_requires_explicit_vps_authority() -> None:
+    text = STARTER.read_text(encoding="utf-8")
+
+    assert r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\gateway_authority.json" in text
+    assert "[switch]$AllowNonVpsGatewayStart" in text
+    assert "function Assert-GatewayAuthority" in text
+    assert "ETA policy: the VPS is the 24/7 Gateway deployment source" in text
+    assert "deploy\\scripts\\set_gateway_authority.ps1 -Apply -Role vps" in text
+    assert "Assert-GatewayAuthority -Path $GatewayAuthorityPath" in text
+    assert "ETA_IBKR_GATEWAY_AUTHORITY" in text
 
 
 def test_ibgateway_scripts_treat_ibc_renamed_executable_as_canonical_runtime() -> None:
@@ -178,6 +193,27 @@ def test_ibgateway_repair_scripts_do_not_reintroduce_legacy_workspace_paths() ->
     assert "crypto_data" not in combined
     assert "TheFirm" not in combined
     assert "The_Firm" not in combined
+
+
+def test_gateway_authority_helpers_block_workstation_ownership_and_clean_local_tasks() -> None:
+    authority_text = GATEWAY_AUTHORITY.read_text(encoding="utf-8")
+    disable_text = DISABLE_LOCAL_GATEWAY.read_text(encoding="utf-8")
+    bootstrap_text = VPS_BOOTSTRAP.read_text(encoding="utf-8")
+
+    assert "[switch]$AllowDesktopHost" in authority_text
+    assert "ProductType -eq 1" in authority_text
+    assert "Refusing to mark workstation host" in authority_text
+    assert "gateway_authority.json" in authority_text
+    assert "$gatewayAuthorityScript = \"$EtaEngineDir\\deploy\\scripts\\set_gateway_authority.ps1\"" in bootstrap_text
+    assert "-File $gatewayAuthorityScript -Apply -Role vps" in bootstrap_text
+    assert bootstrap_text.index("set_gateway_authority.ps1") < bootstrap_text.index("register_tws_watchdog_task.ps1")
+
+    assert "disable_non_authoritative_gateway_tasks.ps1" in disable_text
+    assert "ETA-IBGateway-RunNow" in disable_text
+    assert "ETA-IBGateway-Reauth" in disable_text
+    assert "ETA-TWS-Watchdog" in disable_text
+    assert "EtaIbkrBbo1mCapture" in disable_text
+    assert "Non-authoritative Windows workstation" in disable_text
 
 
 def test_ibgateway_installer_helper_is_canonical_audited_and_guarded() -> None:
