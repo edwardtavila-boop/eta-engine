@@ -45,7 +45,7 @@ def test_bootstrap_json_output_never_emits_values(monkeypatch, tmp_path, capsys)
         "\n".join(
             [
                 "ETA_MODE=PAPER",
-                "ANTHROPIC_API_KEY=secret-token",
+                "DEEPSEEK_API_KEY=secret-token",
                 "JARVIS_HOURLY_USD_BUDGET=5",
                 "JARVIS_DAILY_USD_BUDGET=25",
                 "IBKR_VENUE_TYPE=paper",

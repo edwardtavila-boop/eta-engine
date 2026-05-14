@@ -32,6 +32,9 @@ def test_ibgateway_starter_uses_canonical_logs_and_verified_direct_start() -> No
     assert "gateway API listener ready" in text
     assert "StartupTimeoutSeconds" in text
     assert "[int]$StartupTimeoutSeconds = 600" in text
+    assert "Update-GatewayApiSettings -GatewayInstallDir $GatewayDir" in text
+    assert 'Set-OrAppendLine -Lines $lines -Pattern \'^UseSSL=\' -Replacement "UseSSL=false"' in text
+    assert "use_ssl=false" in text
     assert 'Get-Process -Name "ibgateway", "ibgateway1" -ErrorAction SilentlyContinue' in text
     assert "function Get-IbcManagedGatewayProcesses" in text
     assert "ibcalpha.ibc.ibcgateway" in text
@@ -143,6 +146,8 @@ def test_ibgateway_repair_profile_is_low_memory_and_backed_up() -> None:
     assert "api_port_configured" in text
     assert "trusted_localhost" in text
     assert "api_only_enabled" in text
+    assert 'Set-OrAppendLine -Lines $lines -Pattern \'^UseSSL=\' -Replacement "UseSSL=false"' in text
+    assert "use_ssl_disabled" in text
     assert "low_memory_profile_configured" in text
     assert "gateway_config" in text
 

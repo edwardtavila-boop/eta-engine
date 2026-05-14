@@ -259,6 +259,45 @@ function Read-FirstLineValue {
     }
 }
 
+function Set-OrAppendLine {
+    param(
+        [string[]]$Lines,
+        [string]$Pattern,
+        [string]$Replacement
+    )
+    $found = $false
+    $updated = foreach ($line in $Lines) {
+        if ($line -match $Pattern) {
+            $found = $true
+            $Replacement
+        } else {
+            $line
+        }
+    }
+    if (-not $found) {
+        $updated += $Replacement
+    }
+    return @($updated)
+}
+
+function Update-GatewayApiSettings {
+    param([string]$GatewayInstallDir)
+
+    $jtsIniPath = Join-Path $GatewayInstallDir "jts.ini"
+    if (-not (Test-Path -LiteralPath $jtsIniPath)) {
+        Write-LogLine "WARNING missing IB Gateway jts.ini; cannot enforce API settings: $jtsIniPath"
+        return
+    }
+
+    $lines = @(Get-Content -LiteralPath $jtsIniPath)
+    $lines = Set-OrAppendLine -Lines $lines -Pattern '^LocalServerPort=' -Replacement "LocalServerPort=$ApiPort"
+    $lines = Set-OrAppendLine -Lines $lines -Pattern '^TrustedIPs=' -Replacement "TrustedIPs=127.0.0.1"
+    $lines = Set-OrAppendLine -Lines $lines -Pattern '^ApiOnly=' -Replacement "ApiOnly=true"
+    $lines = Set-OrAppendLine -Lines $lines -Pattern '^UseSSL=' -Replacement "UseSSL=false"
+    Set-Content -LiteralPath $jtsIniPath -Value $lines -Encoding ASCII
+    Write-LogLine "enforced IB Gateway API settings port=$ApiPort trusted=127.0.0.1 api_only=true use_ssl=false"
+}
+
 function Test-IbcSecretSentinel {
     param([string]$Value)
 
@@ -764,6 +803,8 @@ try {
             throw "Timed out waiting for IB Gateway API listener to exit. remaining_pid=$($remainingListener.OwningProcess)"
         }
     }
+
+    Update-GatewayApiSettings -GatewayInstallDir $GatewayDir
 
     if ($UseIbc) {
         $ibcInstallDir = Resolve-IbcInstallDir -InstallRoot $IbcInstallRoot -StatePath $IbcInstallStatePath

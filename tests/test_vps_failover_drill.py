@@ -15,7 +15,7 @@ def test_check_secrets_present_accepts_direct_ibkr_without_client_portal_fields(
         "\n".join(
             [
                 "ETA_MODE=PAPER",
-                "ANTHROPIC_API_KEY=test-key",
+                "DEEPSEEK_API_KEY=test-key",
                 "JARVIS_HOURLY_USD_BUDGET=0.5",
                 "JARVIS_DAILY_USD_BUDGET=5.0",
                 "IBKR_VENUE_TYPE=paper",
@@ -44,7 +44,7 @@ def test_check_secrets_present_requires_client_portal_fields_for_non_direct_rout
         "\n".join(
             [
                 "ETA_MODE=PAPER",
-                "ANTHROPIC_API_KEY=test-key",
+                "DEEPSEEK_API_KEY=test-key",
                 "JARVIS_HOURLY_USD_BUDGET=0.5",
                 "JARVIS_DAILY_USD_BUDGET=5.0",
                 "IBKR_VENUE_TYPE=paper",

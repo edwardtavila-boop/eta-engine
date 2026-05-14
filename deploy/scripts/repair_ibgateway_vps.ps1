@@ -455,6 +455,7 @@ function Update-JtsIni {
     $lines = Set-OrAppendLine -Lines $lines -Pattern '^LocalServerPort=' -Replacement "LocalServerPort=$ApiPort"
     $lines = Set-OrAppendLine -Lines $lines -Pattern '^TrustedIPs=' -Replacement "TrustedIPs=127.0.0.1"
     $lines = Set-OrAppendLine -Lines $lines -Pattern '^ApiOnly=' -Replacement "ApiOnly=true"
+    $lines = Set-OrAppendLine -Lines $lines -Pattern '^UseSSL=' -Replacement "UseSSL=false"
     Set-Content -LiteralPath $Path -Value $lines -Encoding ASCII
 }
 
@@ -499,8 +500,10 @@ function Get-JtsIniSnapshot {
     $localServerPort = Get-KeyValueSetting -Lines $lines -Key "LocalServerPort"
     $trustedIps = Get-KeyValueSetting -Lines $lines -Key "TrustedIPs"
     $apiOnly = Get-KeyValueSetting -Lines $lines -Key "ApiOnly"
+    $useSsl = Get-KeyValueSetting -Lines $lines -Key "UseSSL"
     $trustedLocalhost = @(($trustedIps -split ",") | Where-Object { $_.Trim() -eq "127.0.0.1" }).Count -gt 0
     $apiOnlyEnabled = @("true", "yes", "1").Contains($apiOnly.ToLowerInvariant())
+    $useSslDisabled = @("false", "no", "0", "").Contains($useSsl.ToLowerInvariant())
     $apiPortConfigured = ($localServerPort -eq [string]$ApiPort)
     return [ordered]@{
         path = $Path
@@ -508,10 +511,12 @@ function Get-JtsIniSnapshot {
         local_server_port = $localServerPort
         trusted_ips = $trustedIps
         api_only = $apiOnly
+        use_ssl = $useSsl
         api_port_configured = $apiPortConfigured
         trusted_localhost = $trustedLocalhost
         api_only_enabled = $apiOnlyEnabled
-        configured = ($apiPortConfigured -and $trustedLocalhost -and $apiOnlyEnabled)
+        use_ssl_disabled = $useSslDisabled
+        configured = ($apiPortConfigured -and $trustedLocalhost -and $apiOnlyEnabled -and $useSslDisabled)
     }
 }
 
