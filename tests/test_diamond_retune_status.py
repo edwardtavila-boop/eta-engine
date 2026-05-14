@@ -78,8 +78,14 @@ def test_status_summarizes_attempts_and_next_actions() -> None:
             "generated_at_utc": "2026-05-14T23:01:00+00:00",
             "bot_id": "nq_futures_sage",
             "rank": 2,
-            "status": "research_passed_broker_proof_required",
-            "exit_code": 0,
+            "status": "research_low_sample_keep_collecting",
+            "exit_code": 1,
+            "research_signal": {
+                "classification": "LOW_SAMPLE_PROMISING",
+                "windows": 1,
+                "agg_oos": 6.803,
+                "pass_frac_pct": 100.0,
+            },
             "safe_to_mutate_live": False,
             "live_mutation_policy": "paper_only_advisory",
             "promotion_block": "broker_proof_required",
@@ -92,14 +98,17 @@ def test_status_summarizes_attempts_and_next_actions() -> None:
     assert report["summary"]["n_targets"] == 3
     assert report["summary"]["n_attempted_bots"] == 2
     assert report["summary"]["n_unattempted_targets"] == 1
-    assert report["summary"]["n_research_passed_broker_proof_required"] == 1
+    assert report["summary"]["n_research_passed_broker_proof_required"] == 0
+    assert report["summary"]["n_low_sample_keep_collecting"] == 1
     assert report["summary"]["safe_to_mutate_live"] is False
     assert report["bots"][0]["bot_id"] == "mnq_futures_sage"
     assert report["bots"][0]["retune_state"] == "STUCK_RESEARCH_FAILING"
     assert report["bots"][0]["attempts"] == 3
     assert "new hypothesis" in report["bots"][0]["next_action"]
     assert report["bots"][1]["bot_id"] == "nq_futures_sage"
-    assert report["bots"][1]["retune_state"] == "PASS_AWAITING_BROKER_PROOF"
+    assert report["bots"][1]["retune_state"] == "COLLECT_MORE_SAMPLE"
+    assert "more paper closes" in report["bots"][1]["next_action"]
+    assert report["bots"][1]["research_signal"]["classification"] == "LOW_SAMPLE_PROMISING"
     assert report["bots"][1]["safe_to_mutate_live"] is False
     assert report["bots"][2]["bot_id"] == "mcl_sweep_reclaim"
     assert report["bots"][2]["retune_state"] == "NOT_ATTEMPTED"

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import shlex
 import subprocess
 import sys
@@ -133,6 +134,7 @@ def _history_row(receipt: dict[str, Any]) -> dict[str, Any]:
         "duration_seconds": receipt.get("duration_seconds"),
         "promotion_block": receipt.get("promotion_block"),
         "live_mutation_policy": receipt.get("live_mutation_policy"),
+        "research_signal": receipt.get("research_signal") if isinstance(receipt.get("research_signal"), dict) else {},
         "safe_to_mutate_live": False,
     }
 
@@ -194,6 +196,47 @@ def _status_for_returncode(returncode: int) -> str:
     return "research_failed_keep_retuning"
 
 
+def _research_signal(result: CommandResult) -> dict[str, Any]:
+    text = "\n".join(part for part in [result.stdout, result.stderr] if part)
+    if not text:
+        return {}
+    windows_match = re.search(r"\bwindows=(\d+)\b", text)
+    agg_match = re.search(r"\bagg_OOS=([+-]?\d+(?:\.\d+)?)\b", text)
+    pass_match = re.search(r"\bpass_frac=(\d+(?:\.\d+)?)%", text)
+    verdict_match = re.search(r"\bverdict=([A-Z_]+)\b", text)
+    signal: dict[str, Any] = {}
+    if windows_match:
+        signal["windows"] = int(windows_match.group(1))
+    if agg_match:
+        signal["agg_oos"] = round(float(agg_match.group(1)), 4)
+    if pass_match:
+        signal["pass_frac_pct"] = round(float(pass_match.group(1)), 2)
+    if verdict_match:
+        signal["research_verdict"] = verdict_match.group(1)
+    if (
+        result.returncode != 0
+        and int(signal.get("windows") or 0) <= 1
+        and float(signal.get("agg_oos") or 0.0) > 0
+        and float(signal.get("pass_frac_pct") or 0.0) >= 75.0
+    ):
+        signal["classification"] = "LOW_SAMPLE_PROMISING"
+        signal["operator_note"] = (
+            "Positive OOS on too few windows: keep paper-collecting broker closes; "
+            "do not promote or mutate live routing."
+        )
+    return signal
+
+
+def _status_for_result(result: CommandResult, signal: dict[str, Any]) -> str:
+    if result.returncode == 124:
+        return "research_timeout_keep_retuning"
+    if result.returncode == 0:
+        return "research_passed_broker_proof_required"
+    if signal.get("classification") == "LOW_SAMPLE_PROMISING":
+        return "research_low_sample_keep_collecting"
+    return "research_failed_keep_retuning"
+
+
 def run_campaign_once(
     campaign: dict[str, Any],
     *,
@@ -215,6 +258,7 @@ def run_campaign_once(
     except (subprocess.TimeoutExpired, TimeoutError) as exc:
         result = CommandResult(returncode=124, stdout="", stderr=f"{type(exc).__name__}: {exc}")
     finished = datetime.now(UTC)
+    signal = _research_signal(result)
     receipt = {
         "kind": "eta_diamond_retune_runner",
         "run_id": str(uuid.uuid4()),
@@ -232,7 +276,8 @@ def run_campaign_once(
         "finished_at_utc": finished.isoformat(),
         "duration_seconds": round((finished - started).total_seconds(), 3),
         "exit_code": result.returncode,
-        "status": _status_for_returncode(result.returncode),
+        "status": _status_for_result(result, signal),
+        "research_signal": signal,
         "stdout_tail": result.stdout[-4000:],
         "stderr_tail": result.stderr[-4000:],
         "promotion_block": "broker_proof_required",

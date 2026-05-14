@@ -73,6 +73,8 @@ def _retune_state(*, attempts: int, latest_status: str) -> str:
         return "NOT_ATTEMPTED"
     if latest_status == "research_passed_broker_proof_required":
         return "PASS_AWAITING_BROKER_PROOF"
+    if latest_status == "research_low_sample_keep_collecting":
+        return "COLLECT_MORE_SAMPLE"
     if latest_status == "research_timeout_keep_retuning":
         return "TIMEOUT_RETRY"
     if attempts >= STUCK_ATTEMPT_FLOOR:
@@ -85,6 +87,8 @@ def _next_action(state: str, bot_id: str) -> str:
         return "run the next scheduled paper-research attempt; no live changes"
     if state == "PASS_AWAITING_BROKER_PROOF":
         return "review research artifact, then require fresh broker closes before any promotion"
+    if state == "COLLECT_MORE_SAMPLE":
+        return "collect more paper closes before promotion; no live changes"
     if state == "TIMEOUT_RETRY":
         return "retry with normal timeout or smaller max-bars smoke; no live changes"
     if state == "STUCK_RESEARCH_FAILING":
@@ -105,6 +109,7 @@ def build_status(*, campaign: dict[str, Any], history_rows: list[dict[str, Any]]
         rows = grouped.get(bot_id, [])
         latest = _latest(rows) or {}
         latest_status = str(latest.get("status") or "")
+        research_signal = latest.get("research_signal") if isinstance(latest.get("research_signal"), dict) else {}
         attempts = len(rows)
         state = _retune_state(attempts=attempts, latest_status=latest_status)
         bot_rows.append(
@@ -119,6 +124,7 @@ def build_status(*, campaign: dict[str, Any], history_rows: list[dict[str, Any]]
                 "last_status": latest_status or None,
                 "last_exit_code": latest.get("exit_code"),
                 "last_attempt_at_utc": latest.get("generated_at_utc"),
+                "research_signal": research_signal,
                 "retune_state": state,
                 "next_action": _next_action(state, bot_id),
                 "promotion_block": "broker_proof_required",
@@ -139,6 +145,7 @@ def build_status(*, campaign: dict[str, Any], history_rows: list[dict[str, Any]]
             "n_research_passed_broker_proof_required": sum(
                 1 for row in bot_rows if row["retune_state"] == "PASS_AWAITING_BROKER_PROOF"
             ),
+            "n_low_sample_keep_collecting": sum(1 for row in bot_rows if row["retune_state"] == "COLLECT_MORE_SAMPLE"),
             "n_stuck_research_failing": sum(1 for row in bot_rows if row["retune_state"] == "STUCK_RESEARCH_FAILING"),
             "n_timeout_retry": sum(1 for row in bot_rows if row["retune_state"] == "TIMEOUT_RETRY"),
             "safe_to_mutate_live": False,

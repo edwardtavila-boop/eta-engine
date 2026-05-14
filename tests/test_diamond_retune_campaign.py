@@ -186,6 +186,55 @@ def test_runner_records_research_failure_as_keep_retuning(tmp_path) -> None:
     assert receipt["safe_to_mutate_live"] is False
 
 
+def test_runner_classifies_promising_single_window_as_low_sample(tmp_path) -> None:
+    from eta_engine.scripts import diamond_retune_runner as runner
+
+    campaign = {
+        "targets": [
+            {
+                "rank": 1,
+                "bot_id": "mnq_futures_sage",
+                "symbol": "MNQ1",
+                "asset_sleeve": "equity_index",
+                "priority_score": 1061.81,
+                "next_command": (
+                    "python -m eta_engine.scripts.run_research_grid "
+                    "--source registry --bots mnq_futures_sage --report-policy runtime"
+                ),
+                "promotion_block": "broker_proof_required",
+                "live_mutation_policy": "paper_only_advisory",
+                "safe_to_mutate_live": False,
+            },
+        ],
+    }
+
+    def fake_executor(args: list[str], *, timeout_seconds: int) -> runner.CommandResult:
+        return runner.CommandResult(
+            returncode=1,
+            stdout=(
+                "[research_grid] running 1 cells\n"
+                "  - mnq_futures_sage: MNQ1/5m ...\n"
+                "      -> windows=1 agg_OOS=+6.803 pass_frac=100.0% verdict=FAIL\n"
+            ),
+            stderr="",
+        )
+
+    receipt = runner.run_campaign_once(
+        campaign,
+        out_path=tmp_path / "receipt.json",
+        executor=fake_executor,
+    )
+
+    assert receipt["exit_code"] == 1
+    assert receipt["status"] == "research_low_sample_keep_collecting"
+    assert receipt["research_signal"]["classification"] == "LOW_SAMPLE_PROMISING"
+    assert receipt["research_signal"]["windows"] == 1
+    assert receipt["research_signal"]["agg_oos"] == 6.803
+    assert receipt["research_signal"]["pass_frac_pct"] == 100.0
+    assert receipt["promotion_block"] == "broker_proof_required"
+    assert receipt["safe_to_mutate_live"] is False
+
+
 def test_runner_records_timeout_as_keep_retuning(tmp_path) -> None:
     from eta_engine.scripts import diamond_retune_runner as runner
 
