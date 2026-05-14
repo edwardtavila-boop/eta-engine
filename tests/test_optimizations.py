@@ -171,6 +171,8 @@ class TestStatusPage:
             'id="cumulativeR"',
             'id="cumulativeRLabel"',
             'id="cumulativeRSub"',
+            'id="dataIntelligenceStatus"',
+            'id="dataIntelligenceSub"',
             'id="activeBots"',
             'id="activeBotsSub"',
             'id="totalBots"',
@@ -208,6 +210,7 @@ class TestStatusPage:
         # Live data fetch contract: dashboard pulls from /api/bot-fleet
         assert "/api/bot-fleet" in html
         assert "const API = '/api/bot-fleet';" in html
+        assert "symbol_intelligence" in html
         assert "target_exit_summary" in html
         assert "broker_bracket_audit" in html
         assert "primary_unprotected_position" in html

@@ -548,7 +548,74 @@ class TestDashboardAPI:
         assert r.json()["regime"] == "NEUTRAL"
         assert "operator_queue" in r.json()
         assert "paper_live_transition" in r.json()
+        assert "symbol_intelligence" in r.json()
         assert "no-store" in r.headers["Cache-Control"]
+
+    def test_dashboard_includes_symbol_intelligence_snapshot(self, app_client, tmp_path):
+        state = tmp_path / "state"
+        (state / "symbol_intelligence_latest.json").write_text(
+            json.dumps(
+                {
+                    "schema": "eta.symbol_intelligence.audit.v1",
+                    "kind": "eta_symbol_intelligence_audit",
+                    "status": "AMBER",
+                    "overall_status": "amber",
+                    "average_score_pct": 83,
+                    "symbols": [
+                        {
+                            "symbol": "MNQ1",
+                            "status": "green",
+                            "missing_required": [],
+                            "missing_optional": ["news"],
+                        },
+                        {
+                            "symbol": "ES1",
+                            "status": "amber",
+                            "missing_required": ["decisions"],
+                            "missing_optional": ["book"],
+                        },
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        dashboard = app_client.get("/api/dashboard")
+        symbol_intelligence = dashboard.json()["symbol_intelligence"]
+        assert symbol_intelligence["status"] == "AMBER"
+        assert symbol_intelligence["average_score_pct"] == 83
+        assert symbol_intelligence["symbol_count"] == 2
+        assert symbol_intelligence["status_counts"]["green"] == 1
+        assert symbol_intelligence["required_gap_count"] == 1
+        assert symbol_intelligence["optional_gap_count"] == 2
+
+        direct = app_client.get("/api/data/symbol-intelligence")
+        assert direct.status_code == 200
+        assert direct.json()["symbol_count"] == 2
+        assert "no-store" in direct.headers["Cache-Control"]
+
+    def test_dashboard_diagnostics_summarizes_symbol_intelligence(self, app_client, tmp_path):
+        state = tmp_path / "state"
+        (state / "symbol_intelligence_latest.json").write_text(
+            json.dumps(
+                {
+                    "schema": "eta.symbol_intelligence.audit.v1",
+                    "status": "GREEN",
+                    "average_score_pct": 100,
+                    "symbols": [{"symbol": "MNQ1", "status": "green"}],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/dashboard/diagnostics")
+
+        assert r.status_code == 200
+        data = r.json()["symbol_intelligence"]
+        assert data["status"] == "GREEN"
+        assert data["ready"] is True
+        assert data["contract_ok"] is True
+        assert data["symbol_count"] == 1
 
     def test_dashboard_cold_start_still_exposes_operator_queue(self, tmp_path, app_client):
         state = tmp_path / "state"
@@ -559,6 +626,7 @@ class TestDashboardAPI:
         assert r.status_code == 200
         assert r.json()["_warning"] == "no_data"
         assert "operator_queue" in r.json()
+        assert r.json()["symbol_intelligence"]["status"] == "UNKNOWN"
 
     def test_dashboard_uses_operator_queue_summary(self, app_client, monkeypatch):
         from eta_engine.scripts import jarvis_status

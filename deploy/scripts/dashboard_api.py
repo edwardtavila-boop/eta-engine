@@ -903,6 +903,7 @@ def _dashboard_diagnostics_payload() -> dict:
     operator_queue = _operator_queue_payload(prefer_cache=True, server_ts=server_ts)
     paper_live_transition = _paper_live_transition_payload(refresh=False)
     readiness = _bot_strategy_readiness_payload()
+    symbol_intelligence = _load_symbol_intelligence_snapshot()
     roster_bots = roster.get("bots") if isinstance(roster.get("bots"), list) else []
     roster_summary = roster.get("summary") if isinstance(roster.get("summary"), dict) else {}
     equity_series = equity.get("series") if isinstance(equity.get("series"), list) else []
@@ -1037,6 +1038,7 @@ def _dashboard_diagnostics_payload() -> dict:
             "top_action_count": len(readiness.get("top_actions") or []),
             "error": readiness.get("error"),
         },
+        "symbol_intelligence": _symbol_intelligence_diagnostic_payload(symbol_intelligence),
         "operator_queue": {
             "blocked": int(operator_summary.get("BLOCKED") or 0),
             "observed": int(operator_summary.get("OBSERVED") or 0),
@@ -1089,6 +1091,7 @@ def _dashboard_diagnostics_payload() -> dict:
             "bot_fleet_contract": isinstance(roster.get("bots"), list),
             "equity_contract": "series" in equity,
             "bot_strategy_readiness_contract": readiness.get("status") == "ready" and not readiness.get("error"),
+            "symbol_intelligence_contract": bool(symbol_intelligence.get("contract_ok")),
             "operator_queue_contract": isinstance(operator_queue, dict) and "summary" in operator_queue,
             "paper_live_transition_contract": isinstance(paper_live_transition, dict)
             and "status" in paper_live_transition,
@@ -1274,6 +1277,104 @@ def _state_dir() -> Path:
     if _DEFAULT_STATE.exists() or not _LEGACY_STATE.exists():
         return _DEFAULT_STATE
     return _LEGACY_STATE
+
+
+def _symbol_intelligence_snapshot_path() -> Path:
+    override = os.environ.get("ETA_SYMBOL_INTELLIGENCE_SNAPSHOT_PATH", "").strip()
+    if override:
+        return Path(override)
+    return _state_dir() / "symbol_intelligence_latest.json"
+
+
+def _symbol_intelligence_unknown(path: Path, *, reason: str) -> dict[str, object]:
+    return {
+        "schema": "eta.symbol_intelligence.audit.v1",
+        "kind": "eta_symbol_intelligence_audit",
+        "source": reason,
+        "path": str(path),
+        "status": "UNKNOWN",
+        "overall_status": "unknown",
+        "ready": False,
+        "contract_ok": False,
+        "average_score_pct": None,
+        "symbol_count": 0,
+        "status_counts": {"green": 0, "amber": 0, "red": 0, "unknown": 0},
+        "required_gap_count": 0,
+        "optional_gap_count": 0,
+        "symbols": [],
+        "notes": ["symbol intelligence snapshot has not been generated"],
+    }
+
+
+def _symbol_intelligence_diagnostic_payload(snapshot: dict[str, Any]) -> dict[str, object]:
+    path = Path(str(snapshot.get("path") or _symbol_intelligence_snapshot_path()))
+    mtime = _safe_mtime(path)
+    return {
+        "status": str(snapshot.get("status") or "UNKNOWN").upper(),
+        "ready": bool(snapshot.get("ready")),
+        "contract_ok": bool(snapshot.get("contract_ok")),
+        "average_score_pct": snapshot.get("average_score_pct"),
+        "symbol_count": int(snapshot.get("symbol_count") or 0),
+        "status_counts": snapshot.get("status_counts") if isinstance(snapshot.get("status_counts"), dict) else {},
+        "required_gap_count": int(snapshot.get("required_gap_count") or 0),
+        "optional_gap_count": int(snapshot.get("optional_gap_count") or 0),
+        "path": str(path),
+        "source": str(snapshot.get("source") or "symbol_intelligence_latest"),
+        "updated_at": datetime.fromtimestamp(mtime, UTC).isoformat() if mtime is not None else None,
+        "age_s": max(0, int(time.time() - mtime)) if mtime is not None else None,
+    }
+
+
+def _load_symbol_intelligence_snapshot() -> dict[str, object]:
+    path = _symbol_intelligence_snapshot_path()
+    payload = _read_json_file(path)
+    if not payload:
+        return _symbol_intelligence_unknown(path, reason="missing_snapshot")
+
+    symbols = payload.get("symbols") if isinstance(payload.get("symbols"), list) else []
+    counts = {"green": 0, "amber": 0, "red": 0, "unknown": 0}
+    required_gap_count = 0
+    optional_gap_count = 0
+    for row in symbols:
+        if not isinstance(row, dict):
+            counts["unknown"] += 1
+            continue
+        row_status = str(row.get("status") or row.get("overall_status") or "unknown").strip().lower()
+        if row_status not in counts:
+            row_status = "unknown"
+        counts[row_status] += 1
+        required = row.get("missing_required") if isinstance(row.get("missing_required"), list) else []
+        optional = row.get("missing_optional") if isinstance(row.get("missing_optional"), list) else []
+        required_gap_count += len(required)
+        optional_gap_count += len(optional)
+
+    status = str(payload.get("status") or payload.get("overall_status") or "UNKNOWN").strip().upper()
+    if status not in {"GREEN", "AMBER", "RED", "UNKNOWN"}:
+        status = "UNKNOWN"
+    score_raw = payload.get("average_score_pct")
+    if score_raw is None:
+        score_raw = payload.get("average_score")
+    score = _float_value(score_raw)
+    normalized: dict[str, object] = dict(payload)
+    normalized.update(
+        {
+            "schema": str(payload.get("schema") or "eta.symbol_intelligence.audit.v1"),
+            "kind": str(payload.get("kind") or "eta_symbol_intelligence_audit"),
+            "source": str(payload.get("source") or "symbol_intelligence_latest"),
+            "path": str(path),
+            "status": status,
+            "overall_status": status.lower(),
+            "ready": status == "GREEN",
+            "contract_ok": payload.get("schema") == "eta.symbol_intelligence.audit.v1" and isinstance(symbols, list),
+            "average_score_pct": round(score, 2) if score is not None else None,
+            "symbol_count": len(symbols),
+            "status_counts": counts,
+            "required_gap_count": required_gap_count,
+            "optional_gap_count": optional_gap_count,
+            "symbols": symbols,
+        }
+    )
+    return normalized
 
 
 def _log_dir() -> Path:
@@ -3623,8 +3724,18 @@ def api_data_status() -> dict:
 
     # 3. Capture tasks — query schtasks for the data feeds
     out["capture_tasks"] = _data_capture_task_status()
+    out["symbol_intelligence"] = _symbol_intelligence_diagnostic_payload(_load_symbol_intelligence_snapshot())
 
     return out
+
+
+@app.get("/api/data/symbol-intelligence")
+def api_symbol_intelligence_status(response: Response) -> dict[str, object]:
+    """Latest symbol-intelligence audit snapshot for the data pipeline card."""
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return _load_symbol_intelligence_snapshot()
 
 
 def _data_capture_task_status() -> list[dict]:
@@ -3812,6 +3923,7 @@ def dashboard_payload(response: Response) -> dict:
     payload["operator_queue"] = _operator_queue_payload()
     payload["paper_live_transition"] = _paper_live_transition_payload(refresh=False)
     payload["bot_strategy_readiness"] = _bot_strategy_readiness_payload()
+    payload["symbol_intelligence"] = _load_symbol_intelligence_snapshot()
     payload["strategy_supercharge_manifest"] = _strategy_supercharge_manifest_payload()
     payload["strategy_supercharge_results"] = _strategy_supercharge_results_payload()
     # Additive: live broker reality (futures focus plus Alpaca/spot cellar) so the panel can show
