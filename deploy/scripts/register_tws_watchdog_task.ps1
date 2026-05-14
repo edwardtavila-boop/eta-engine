@@ -8,8 +8,10 @@ param(
     [string]$Root = "C:\EvolutionaryTradingAlgo",
     [string]$PythonExe = "",
     [int]$IntervalSeconds = 60,
+    [string]$GatewayAuthorityPath = "C:\EvolutionaryTradingAlgo\var\eta_engine\state\gateway_authority.json",
     [switch]$DryRun,
-    [switch]$Start
+    [switch]$Start,
+    [switch]$AllowNonVpsGatewayTaskRegistration
 )
 
 $ErrorActionPreference = "Stop"
@@ -26,6 +28,46 @@ function Assert-CanonicalEtaPath {
     return $resolved
 }
 
+function Test-TruthyText {
+    param([string]$Value)
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        return $false
+    }
+    return @("1", "true", "yes", "y", "vps", "authority") -contains $Value.Trim().ToLowerInvariant()
+}
+
+function Assert-GatewayAuthority {
+    param([string]$Path)
+
+    if ($AllowNonVpsGatewayTaskRegistration) {
+        Write-Host "WARNING: AllowNonVpsGatewayTaskRegistration accepted on host=$env:COMPUTERNAME" -ForegroundColor Yellow
+        return
+    }
+
+    if (Test-TruthyText -Value $env:ETA_IBKR_GATEWAY_AUTHORITY) {
+        return
+    }
+
+    $payload = $null
+    if ($Path -and (Test-Path -LiteralPath $Path)) {
+        $payload = Get-Content -LiteralPath $Path -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+    }
+    $role = if ($null -ne $payload -and $null -ne $payload.role) { [string]$payload.role } else { "" }
+    $enabled = if ($null -ne $payload -and $null -ne $payload.enabled) { [bool]$payload.enabled } else { $false }
+    $markerComputer = if ($null -ne $payload -and $null -ne $payload.computer_name) { [string]$payload.computer_name } else { "" }
+    $roleOk = @("vps", "gateway_authority") -contains $role.Trim().ToLowerInvariant()
+    $hostOk = [string]::IsNullOrWhiteSpace($markerComputer) -or $markerComputer.Equals($env:COMPUTERNAME, [System.StringComparison]::OrdinalIgnoreCase)
+    if ($enabled -and $roleOk -and $hostOk) {
+        return
+    }
+
+    throw (
+        "Refusing to register ETA-TWS-Watchdog on non-authoritative host '$env:COMPUTERNAME'. " +
+        "The VPS is the 24/7 IBKR Gateway deployment source. Mark the VPS with " +
+        "set_gateway_authority.ps1 -Apply -Role vps."
+    )
+}
+
 if ($IntervalSeconds -lt 30 -or $IntervalSeconds -gt 120) {
     throw "IntervalSeconds must stay between 30 and 120 so the 180-second release guard cannot flicker stale."
 }
@@ -35,6 +77,7 @@ $WorkingDir = Assert-CanonicalEtaPath -Path (Join-Path $RootFull "eta_engine")
 $StateDir = Assert-CanonicalEtaPath -Path (Join-Path $RootFull "var\eta_engine\state")
 $LogDir = Assert-CanonicalEtaPath -Path (Join-Path $RootFull "logs\eta_engine")
 $WatchdogScript = Assert-CanonicalEtaPath -Path (Join-Path $WorkingDir "scripts\tws_watchdog.py")
+$GatewayAuthorityPath = Assert-CanonicalEtaPath -Path $GatewayAuthorityPath
 $VenvPython = Join-Path $WorkingDir ".venv\Scripts\python.exe"
 $Python = if ($PythonExe) { $PythonExe } elseif (Test-Path -LiteralPath $VenvPython) { $VenvPython } else { "python.exe" }
 
@@ -61,6 +104,7 @@ if ($DryRun) {
     exit 0
 }
 
+Assert-GatewayAuthority -Path $GatewayAuthorityPath
 New-Item -ItemType Directory -Force -Path $StateDir, $LogDir | Out-Null
 
 $existing = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue

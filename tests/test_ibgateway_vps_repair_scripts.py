@@ -8,6 +8,8 @@ IBC_INSTALL = ROOT / "deploy" / "scripts" / "install_ibc.ps1"
 IBC_CREDENTIALS = ROOT / "deploy" / "scripts" / "set_ibc_credentials.ps1"
 GATEWAY_AUTHORITY = ROOT / "deploy" / "scripts" / "set_gateway_authority.ps1"
 DISABLE_LOCAL_GATEWAY = ROOT / "deploy" / "scripts" / "disable_non_authoritative_gateway_tasks.ps1"
+REAUTH_REGISTRAR = ROOT / "deploy" / "scripts" / "register_ibgateway_reauth_task.ps1"
+TWS_REGISTRAR = ROOT / "deploy" / "scripts" / "register_tws_watchdog_task.ps1"
 VPS_BOOTSTRAP = ROOT / "deploy" / "vps_bootstrap.ps1"
 
 
@@ -198,7 +200,10 @@ def test_ibgateway_repair_scripts_do_not_reintroduce_legacy_workspace_paths() ->
 def test_gateway_authority_helpers_block_workstation_ownership_and_clean_local_tasks() -> None:
     authority_text = GATEWAY_AUTHORITY.read_text(encoding="utf-8")
     disable_text = DISABLE_LOCAL_GATEWAY.read_text(encoding="utf-8")
+    reauth_registrar_text = REAUTH_REGISTRAR.read_text(encoding="utf-8")
+    tws_registrar_text = TWS_REGISTRAR.read_text(encoding="utf-8")
     bootstrap_text = VPS_BOOTSTRAP.read_text(encoding="utf-8")
+    repair_text = REPAIR.read_text(encoding="utf-8")
 
     assert "[switch]$AllowDesktopHost" in authority_text
     assert "ProductType -eq 1" in authority_text
@@ -218,6 +223,18 @@ def test_gateway_authority_helpers_block_workstation_ownership_and_clean_local_t
     assert "ETA-TWS-Watchdog" in disable_text
     assert "EtaIbkrBbo1mCapture" in disable_text
     assert "Non-authoritative Windows workstation" in disable_text
+
+    for text in (reauth_registrar_text, tws_registrar_text):
+        assert "GatewayAuthorityPath" in text
+        assert "AllowNonVpsGatewayTaskRegistration" in text
+        assert "Assert-GatewayAuthority -Path $GatewayAuthorityPath" in text
+        assert "Refusing to register" in text
+        assert "The VPS is the 24/7 IBKR Gateway deployment source" in text
+
+    assert "AllowNonVpsGatewayRepair" in repair_text
+    assert "Assert-GatewayRepairAuthority -Path $GatewayAuthorityPath" in repair_text
+    assert "non_authoritative_gateway_host" in repair_text
+    assert "Refusing IBKR Gateway repair on non-authoritative host" in repair_text
 
 
 def test_ibgateway_installer_helper_is_canonical_audited_and_guarded() -> None:

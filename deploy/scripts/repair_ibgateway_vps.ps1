@@ -12,13 +12,15 @@ param(
     [int]$ConcGCThreads = 1,
     [int]$ApiPort = 4002,
     [string]$IbcPasswordFile = "C:\EvolutionaryTradingAlgo\var\eta_engine\state\ibkr_pw.txt",
+    [string]$GatewayAuthorityPath = "C:\EvolutionaryTradingAlgo\var\eta_engine\state\gateway_authority.json",
     [switch]$ApplyVmOptions,
     [switch]$ApplyJtsIni,
     [switch]$RepairTasks,
     [switch]$EnforceSingleSource,
     [switch]$StopLegacyIbkrProcesses,
     [switch]$UseIbc,
-    [switch]$RestartGateway
+    [switch]$RestartGateway,
+    [switch]$AllowNonVpsGatewayRepair
 )
 
 $ErrorActionPreference = "Stop"
@@ -33,6 +35,83 @@ function Assert-CanonicalEtaPath {
     if (-not $resolved.StartsWith("C:\EvolutionaryTradingAlgo\", [System.StringComparison]::OrdinalIgnoreCase)) {
         throw "Refusing non-canonical ETA path: $Path"
     }
+}
+
+function Test-TruthyText {
+    param([string]$Value)
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        return $false
+    }
+    return @("1", "true", "yes", "y", "vps", "authority") -contains $Value.Trim().ToLowerInvariant()
+}
+
+function Get-GatewayAuthorityStatus {
+    param([string]$Path)
+
+    if ($AllowNonVpsGatewayRepair) {
+        return [ordered]@{
+            allowed = $true
+            source = "override"
+            computer_name = $env:COMPUTERNAME
+            path = $Path
+        }
+    }
+
+    if (Test-TruthyText -Value $env:ETA_IBKR_GATEWAY_AUTHORITY) {
+        return [ordered]@{
+            allowed = $true
+            source = "environment"
+            computer_name = $env:COMPUTERNAME
+            path = $Path
+        }
+    }
+
+    $payload = $null
+    if ($Path -and (Test-Path -LiteralPath $Path)) {
+        $payload = Get-Content -LiteralPath $Path -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+    }
+    $role = if ($null -ne $payload -and $null -ne $payload.role) { [string]$payload.role } else { "" }
+    $enabled = if ($null -ne $payload -and $null -ne $payload.enabled) { [bool]$payload.enabled } else { $false }
+    $markerComputer = if ($null -ne $payload -and $null -ne $payload.computer_name) { [string]$payload.computer_name } else { "" }
+    $roleOk = @("vps", "gateway_authority") -contains $role.Trim().ToLowerInvariant()
+    $hostOk = [string]::IsNullOrWhiteSpace($markerComputer) -or $markerComputer.Equals($env:COMPUTERNAME, [System.StringComparison]::OrdinalIgnoreCase)
+    return [ordered]@{
+        allowed = ($enabled -and $roleOk -and $hostOk)
+        source = if ($null -ne $payload) { "marker" } else { "missing_marker" }
+        computer_name = $env:COMPUTERNAME
+        marker_computer_name = $markerComputer
+        role = $role
+        enabled = $enabled
+        path = $Path
+    }
+}
+
+function Assert-GatewayRepairAuthority {
+    param([string]$Path)
+
+    $status = Get-GatewayAuthorityStatus -Path $Path
+    if ([bool]$status.allowed) {
+        return $status
+    }
+
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $StatePath) | Out-Null
+    $payload = [ordered]@{
+        generated_at_utc = (Get-Date).ToUniversalTime().ToString("o")
+        status = "non_authoritative_gateway_host"
+        gateway_authority = $status
+        operator_action_required = $true
+        operator_action = "Run IBKR Gateway repair on the VPS, or mark the VPS with set_gateway_authority.ps1 -Apply -Role vps."
+        requested_actions = [ordered]@{
+            apply_vmoptions = [bool]$ApplyVmOptions
+            apply_jts_ini = [bool]$ApplyJtsIni
+            repair_tasks = [bool]$RepairTasks
+            enforce_single_source = [bool]$EnforceSingleSource
+            stop_legacy_processes = [bool]$StopLegacyIbkrProcesses
+            restart_gateway = [bool]$RestartGateway
+        }
+    }
+    ($payload | ConvertTo-Json -Depth 5) | Set-Content -LiteralPath $StatePath -Encoding ASCII
+    throw "Refusing IBKR Gateway repair on non-authoritative host '$env:COMPUTERNAME'. The VPS is the 24/7 Gateway deployment source."
 }
 
 function Normalize-PathString {
@@ -555,6 +634,20 @@ function Set-TaskActionIfPresent {
 Assert-CanonicalEtaPath -Path $EtaEngineDir
 Assert-CanonicalEtaPath -Path $BackupDir
 Assert-CanonicalEtaPath -Path $StatePath
+Assert-CanonicalEtaPath -Path $GatewayAuthorityPath
+$gatewayMutationRequested = (
+    $ApplyVmOptions -or
+    $ApplyJtsIni -or
+    $RepairTasks -or
+    $EnforceSingleSource -or
+    $StopLegacyIbkrProcesses -or
+    $RestartGateway
+)
+$gatewayAuthority = if ($gatewayMutationRequested) {
+    Assert-GatewayRepairAuthority -Path $GatewayAuthorityPath
+} else {
+    Get-GatewayAuthorityStatus -Path $GatewayAuthorityPath
+}
 $requestedGatewayDir = $GatewayDir
 $requestedGatewayVersion = $CanonicalGatewayVersion
 $GatewayDir = Resolve-GatewayDir -RequestedPath $GatewayDir -GatewayRoot $JtsGatewayRoot -RequestedVersion $CanonicalGatewayVersion
@@ -579,6 +672,7 @@ $result = [ordered]@{
     parallel_gc_threads = $ParallelGCThreads
     conc_gc_threads = $ConcGCThreads
     launcher_mode = if ($UseIbc) { "ibc" } else { "direct" }
+    gateway_authority = $gatewayAuthority
     backups = @{}
     tasks = @{}
     gateway_config = [ordered]@{
