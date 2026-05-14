@@ -29,8 +29,10 @@ param(
     [string]$JarvisIdentityDir = "C:\EvolutionaryTradingAlgo\jarvis_identity",
     [string]$Python = "C:\Python314\python.exe",
     [string]$VenvPython = "C:\EvolutionaryTradingAlgo\mnq_backtest\.venv\Scripts\python.exe",
+    [string]$GatewayAuthorityPath = "C:\EvolutionaryTradingAlgo\var\eta_engine\state\gateway_authority.json",
     [switch]$KeepDisabled,
     [switch]$DryRun,
+    [switch]$AllowNonVpsIbkrTaskRegistration,
     [string]$OnlyTask = ""
 )
 
@@ -42,6 +44,43 @@ function Resolve-VenvPython {
     return $Python
 }
 $VenvPy = Resolve-VenvPython
+
+function Test-TruthyText {
+    param([string]$Value)
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        return $false
+    }
+    return @("1", "true", "yes", "y", "vps", "authority") -contains $Value.Trim().ToLowerInvariant()
+}
+
+function Assert-GatewayAuthorityForIbkrTasks {
+    if ($AllowNonVpsIbkrTaskRegistration) {
+        Write-Host "WARNING: AllowNonVpsIbkrTaskRegistration accepted on host=$env:COMPUTERNAME" -ForegroundColor Yellow
+        return
+    }
+
+    if (Test-TruthyText -Value $env:ETA_IBKR_GATEWAY_AUTHORITY) {
+        return
+    }
+
+    $payload = $null
+    if ($GatewayAuthorityPath -and (Test-Path -LiteralPath $GatewayAuthorityPath)) {
+        $payload = Get-Content -LiteralPath $GatewayAuthorityPath -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+    }
+    $role = if ($null -ne $payload -and $null -ne $payload.role) { [string]$payload.role } else { "" }
+    $enabled = if ($null -ne $payload -and $null -ne $payload.enabled) { [bool]$payload.enabled } else { $false }
+    $markerComputer = if ($null -ne $payload -and $null -ne $payload.computer_name) { [string]$payload.computer_name } else { "" }
+    $roleOk = @("vps", "gateway_authority") -contains $role.Trim().ToLowerInvariant()
+    $hostOk = [string]::IsNullOrWhiteSpace($markerComputer) -or $markerComputer.Equals($env:COMPUTERNAME, [System.StringComparison]::OrdinalIgnoreCase)
+    if ($enabled -and $roleOk -and $hostOk) {
+        return
+    }
+
+    throw (
+        "Refusing to register IBKR operator task(s) on non-authoritative host '$env:COMPUTERNAME'. " +
+        "The VPS is the 24/7 IBKR Gateway and market-data capture source."
+    )
+}
 
 # --- task spec table --------------------------------------------------
 # Triggers:
@@ -69,6 +108,7 @@ $tasks = @(
         Cwd        = $MnqBacktestDir
         Trigger    = "Every5Min"
         Notes      = "IBKR L1+BBO 1-min data capture"
+        RequiresGatewayAuthority = $true
     },
     @{
         Name       = "EtaTier2SnapshotSync"
@@ -418,8 +458,12 @@ Write-Host ""
 
 $registered = 0
 $skipped = 0
-foreach ($t in $tasks) {
-    if ($OnlyTask -and ($t.Name -ne $OnlyTask)) { $skipped++; continue }
+$selectedTasks = @($tasks | Where-Object { -not $OnlyTask -or $_.Name -eq $OnlyTask })
+$skipped = $tasks.Count - $selectedTasks.Count
+if (-not $DryRun -and @($selectedTasks | Where-Object { $_.RequiresGatewayAuthority }).Count -gt 0) {
+    Assert-GatewayAuthorityForIbkrTasks
+}
+foreach ($t in $selectedTasks) {
     Register-EtaOpTask -t $t
     $registered++
 }

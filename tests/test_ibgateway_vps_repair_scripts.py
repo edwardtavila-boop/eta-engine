@@ -10,6 +10,7 @@ GATEWAY_AUTHORITY = ROOT / "deploy" / "scripts" / "set_gateway_authority.ps1"
 DISABLE_LOCAL_GATEWAY = ROOT / "deploy" / "scripts" / "disable_non_authoritative_gateway_tasks.ps1"
 REAUTH_REGISTRAR = ROOT / "deploy" / "scripts" / "register_ibgateway_reauth_task.ps1"
 TWS_REGISTRAR = ROOT / "deploy" / "scripts" / "register_tws_watchdog_task.ps1"
+OPERATOR_TASKS = ROOT / "deploy" / "scripts" / "register_operator_tasks.ps1"
 VPS_BOOTSTRAP = ROOT / "deploy" / "vps_bootstrap.ps1"
 
 
@@ -235,6 +236,19 @@ def test_gateway_authority_helpers_block_workstation_ownership_and_clean_local_t
     assert "Assert-GatewayRepairAuthority -Path $GatewayAuthorityPath" in repair_text
     assert "non_authoritative_gateway_host" in repair_text
     assert "Refusing IBKR Gateway repair on non-authoritative host" in repair_text
+
+
+def test_ibkr_operator_capture_task_requires_vps_gateway_authority() -> None:
+    text = OPERATOR_TASKS.read_text(encoding="utf-8")
+
+    assert "EtaIbkrBbo1mCapture" in text
+    assert "RequiresGatewayAuthority = $true" in text
+    assert "AllowNonVpsIbkrTaskRegistration" in text
+    assert "Assert-GatewayAuthorityForIbkrTasks" in text
+    assert "Refusing to register IBKR operator task(s) on non-authoritative host" in text
+    assert "The VPS is the 24/7 IBKR Gateway and market-data capture source" in text
+    assert "$selectedTasks = @($tasks | Where-Object { -not $OnlyTask -or $_.Name -eq $OnlyTask })" in text
+    assert "Assert-GatewayAuthorityForIbkrTasks" in text.split("foreach ($t in $selectedTasks)")[0]
 
 
 def test_ibgateway_installer_helper_is_canonical_audited_and_guarded() -> None:
