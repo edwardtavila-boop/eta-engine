@@ -13,6 +13,7 @@
 # Hourly cadence:
 #   ETA-Diamond-LeaderboardHourly      - composite scoring + PROP_READY top-3
 #   ETA-Diamond-OpsDashboardHourly     - unified status surface
+#   ETA-Diamond-EdgeAuditHourly        - broker-led retune queue + asset playbooks
 #   ETA-Diamond-FeedSanityHourly       - STUCK_PRICE + ZERO_PNL detection
 #
 # Daily cadence (06:00 ET = 11:00 UTC):
@@ -148,6 +149,9 @@ $hourlyTasks = @(
     @{ Name = "ETA-Diamond-OpsDashboardHourly"
         Args = "-m eta_engine.scripts.diamond_ops_dashboard"
         Desc = "Diamond: unified ops status (joins promotion + sizing + watchdog + direction + feed-sanity)" }
+    @{ Name = "ETA-Diamond-EdgeAuditHourly"
+        Args = "-m eta_engine.scripts.diamond_edge_audit"
+        Desc = "Diamond: broker-led edge audit + retune queue (asset-specific playbooks; never mutates live routing)" }
     @{ Name = "ETA-Diamond-FeedSanityHourly"
         Args = "-m eta_engine.scripts.diamond_feed_sanity_audit"
         Desc = "Diamond: detect STUCK_PRICE / ZERO_PNL_ACTIVITY / MISSING_PNL/SIDE_FIELD pollution (catches MBT-style bugs)" }
