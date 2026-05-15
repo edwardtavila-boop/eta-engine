@@ -2243,7 +2243,7 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "edge_config": {
                 "enable_session_gate": True,
                 "is_crypto": False,
-                "strategy_mode": "mean_reversion",
+                "strategy_mode": "trend",
                 "enable_structural_stops": True,
                 "enable_vol_sizing": True,
             },

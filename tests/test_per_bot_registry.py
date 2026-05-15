@@ -160,6 +160,15 @@ def test_known_bots_present() -> None:
         assert get_for_bot(required) is not None, f"{required} missing from registry"
 
 
+def test_mbt_overnight_gap_registry_matches_continuation_thesis() -> None:
+    assignment = get_for_bot("mbt_overnight_gap")
+
+    assert assignment is not None
+    assert assignment.strategy_kind == "mbt_overnight_gap"
+    assert "CONTINUATION" in assignment.rationale.upper()
+    assert assignment.extras["edge_config"]["strategy_mode"] == "trend"
+
+
 def test_btc_etf_assignments_use_canonical_history_root() -> None:
     expected = str(workspace_roots.MNQ_HISTORY_ROOT / "BTC_ETF_FLOWS.csv")
     for bot_id in ("btc_sage_daily_etf", "btc_ensemble_2of3", "btc_regime_trend_etf"):
