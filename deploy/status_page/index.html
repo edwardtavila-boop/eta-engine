@@ -2303,6 +2303,7 @@ function renderPortfolioCommand(bots, hiddenCount, liveBroker, summary, d, today
   const unassignedBrokerPositions = Math.max(0, finiteNumber(portfolioSummary?.unassigned_broker_position_count) || 0);
   const paperReady = finiteNumber(paperLive?.paper_ready_bots) ?? bots.filter(bot => bot.can_paper_trade).length;
   const venueHeadlineText = brokerVenueHeadline(focusPolicy, liveBroker);
+  const brokerAgeText = liveBroker ? brokerSnapshotAgeText(liveBroker) : '';
   const sessionSourceText = brokerSessionSourceLabel(liveBroker);
   const orb = document.getElementById('portfolioNetOrb');
   const orbSub = document.getElementById('portfolioNetOrbSub');
