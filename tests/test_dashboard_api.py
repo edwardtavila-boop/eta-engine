@@ -4345,6 +4345,42 @@ class TestDashboardAPI:
         assert payload["live_checkout"]["submodule"]["state_label"] == "aligned"
         assert "submodule aligned" in payload["live_checkout"]["summary_line"]
 
+    def test_workspace_checkout_payload_uncached_preserves_aligned_submodule_marker(self, monkeypatch, tmp_path):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        workspace = tmp_path / "workspace"
+        eta_root = workspace / "eta_engine"
+        eta_root.mkdir(parents=True, exist_ok=True)
+
+        def fake_git_command(repo_path, *args):
+            if args == ("rev-parse", "--show-toplevel"):
+                return 0, str(repo_path), ""
+            if args == ("rev-parse", "HEAD"):
+                if Path(repo_path) == workspace:
+                    return 0, "e063e40abcdef1234567890", ""
+                return 0, "9cfb7d8abcdef1234567890", ""
+            if args == ("branch", "--show-current"):
+                if Path(repo_path) == workspace:
+                    return 0, "codex/vps-data-pipeline-hardening", ""
+                return 0, "codex/symbol-intel-data-spine", ""
+            if args == ("status", "--porcelain=v1"):
+                return 0, "", ""
+            if args == ("submodule", "status", "eta_engine"):
+                return 0, " 9cfb7d8abcdef1234567890 eta_engine (heads/codex/symbol-intel-data-spine)", ""
+            raise AssertionError(f"unexpected git args: {args!r}")
+
+        monkeypatch.setattr(mod, "_WORKSPACE_ROOT", workspace)
+        monkeypatch.setattr(mod, "_REPO_ROOT", eta_root)
+        monkeypatch.setattr(mod, "_git_command", fake_git_command)
+
+        payload = mod._workspace_checkout_payload_uncached()
+
+        assert payload["status"] == "clean"
+        assert payload["submodule"]["status"] == "aligned"
+        assert payload["submodule"]["state"] == " "
+        assert payload["submodule"]["state_label"] == "aligned"
+        assert payload["submodule"]["expected_short"] == "9cfb7d8"
+
     def test_master_status_vps_root_card_warns_on_live_checkout_review(self, app_client, tmp_path, monkeypatch):
         import eta_engine.deploy.scripts.dashboard_api as mod
 
