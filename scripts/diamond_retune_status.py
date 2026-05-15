@@ -195,6 +195,75 @@ def _next_action(state: str, bot_id: str, *, broker_evidence: dict[str, Any] | N
     return "keep rotating through paper research; no live changes"
 
 
+def _broker_truth_focus(bot_rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """Return the single operator-focus line for broker-proven retune truth."""
+
+    def _evidence(row: dict[str, Any]) -> dict[str, Any]:
+        evidence = row.get("broker_close_evidence")
+        return evidence if isinstance(evidence, dict) else {}
+
+    def _impact(row: dict[str, Any]) -> float:
+        evidence = _evidence(row)
+        return abs(_as_float(evidence.get("total_realized_pnl"), 0.0))
+
+    negative_edge_rows = [
+        row for row in bot_rows if str(_evidence(row).get("edge_status") or "") == "sample_met_negative_edge"
+    ]
+    proof_ready_rows = [
+        row
+        for row in bot_rows
+        if bool(_evidence(row).get("has_required_sample")) and bool(_evidence(row).get("has_positive_edge"))
+    ]
+    focus = (
+        sorted(negative_edge_rows, key=_impact, reverse=True)[0]
+        if negative_edge_rows
+        else sorted(proof_ready_rows, key=_impact, reverse=True)[0]
+        if proof_ready_rows
+        else bot_rows[0]
+        if bot_rows
+        else {}
+    )
+    evidence = _evidence(focus)
+    bot_id = str(focus.get("bot_id") or "")
+    edge_status = str(evidence.get("edge_status") or "")
+    closed = int(_as_float(evidence.get("closed_trade_count"), 0.0))
+    required = int(_as_float(evidence.get("required_closed_trade_count"), BROKER_PROOF_CLOSE_TARGET))
+    remaining = int(_as_float(evidence.get("remaining_closed_trade_count"), max(0, required - closed)))
+    pnl = _as_float(evidence.get("total_realized_pnl"), 0.0)
+    profit_factor = _as_float(evidence.get("profit_factor"), 0.0)
+
+    if not bot_id:
+        line = "No broker retune target is available; keep live mutation disabled."
+    elif edge_status == "sample_met_negative_edge":
+        line = (
+            f"{bot_id}: sample met ({closed}/{required}) but broker edge is negative "
+            f"(PnL ${pnl:,.2f}, PF {profit_factor:.2f}); retune or demote before promotion."
+        )
+    elif edge_status == "broker_edge_ready":
+        line = (
+            f"{bot_id}: broker sample is positive ({closed}/{required}, "
+            f"PnL ${pnl:,.2f}, PF {profit_factor:.2f}); human review still required before promotion."
+        )
+    else:
+        line = (
+            f"{bot_id}: needs {remaining} more broker closes ({closed}/{required}) before promotion proof; "
+            "no live changes."
+        )
+
+    return {
+        "broker_truth_focus_bot_id": bot_id,
+        "broker_truth_focus_state": str(focus.get("retune_state") or ""),
+        "broker_truth_focus_edge_status": edge_status,
+        "broker_truth_focus_closed_trade_count": closed,
+        "broker_truth_focus_required_closed_trade_count": required,
+        "broker_truth_focus_remaining_closed_trade_count": remaining,
+        "broker_truth_focus_total_realized_pnl": round(pnl, 2),
+        "broker_truth_focus_profit_factor": round(profit_factor, 4),
+        "broker_truth_focus_next_action": str(focus.get("next_action") or ""),
+        "broker_truth_summary_line": line,
+    }
+
+
 def _research_backlog_row(target: dict[str, Any]) -> dict[str, Any]:
     return {
         "rank": target.get("rank"),
@@ -265,6 +334,7 @@ def build_status(
     proof_gaps = [int(_as_float(row.get("remaining_closed_trade_count"), 0.0)) for row in broker_proof_rows]
     broker_sample_ready = [row for row in broker_proof_rows if bool(row.get("has_required_sample"))]
     broker_edge_ready = [row for row in broker_proof_rows if bool(row.get("has_positive_edge"))]
+    broker_truth_focus = _broker_truth_focus(bot_rows)
     return {
         "kind": "eta_diamond_retune_status",
         "generated_at_utc": datetime.now(UTC).isoformat(),
@@ -293,6 +363,7 @@ def build_status(
             "largest_broker_proof_gap": max(proof_gaps, default=0),
             "total_broker_proof_gap": sum(proof_gaps),
             "safe_to_mutate_live": False,
+            **broker_truth_focus,
         },
         "bots": bot_rows,
         "research_backlog": research_backlog,

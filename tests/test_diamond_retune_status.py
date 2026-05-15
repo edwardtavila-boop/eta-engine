@@ -350,6 +350,14 @@ def test_status_distinguishes_research_window_gap_from_broker_close_gap() -> Non
     assert report["summary"]["n_broker_proof_ready"] == 0
     assert report["summary"]["n_broker_sample_ready_negative_edge"] == 1
     assert report["summary"]["n_broker_proof_shortfall"] == 0
+    assert report["summary"]["broker_truth_focus_bot_id"] == "mnq_futures_sage"
+    assert report["summary"]["broker_truth_focus_edge_status"] == "sample_met_negative_edge"
+    assert report["summary"]["broker_truth_focus_closed_trade_count"] == 126
+    assert report["summary"]["broker_truth_focus_remaining_closed_trade_count"] == 0
+    assert report["summary"]["broker_truth_focus_total_realized_pnl"] == 0.0
+    assert "mnq_futures_sage: sample met (126/100) but broker edge is negative" in report["summary"][
+        "broker_truth_summary_line"
+    ]
     assert report["bots"][0]["broker_close_evidence"]["remaining_closed_trade_count"] == 0
     assert report["bots"][0]["broker_close_evidence"]["edge_status"] == "sample_met_negative_edge"
     assert report["bots"][0]["broker_close_evidence"]["has_positive_edge"] is False
@@ -409,5 +417,9 @@ def test_status_counts_broker_proof_ready_only_when_sample_is_profitable() -> No
     assert report["summary"]["n_broker_edge_ready"] == 1
     assert report["summary"]["n_broker_proof_ready"] == 1
     assert report["summary"]["n_broker_sample_ready_negative_edge"] == 0
+    assert report["summary"]["broker_truth_focus_bot_id"] == "mbt_funding_basis"
+    assert report["summary"]["broker_truth_focus_edge_status"] == "broker_edge_ready"
+    assert report["summary"]["broker_truth_focus_total_realized_pnl"] == 275.5
+    assert "broker sample is positive" in report["summary"]["broker_truth_summary_line"]
     assert report["bots"][0]["broker_close_evidence"]["edge_status"] == "broker_edge_ready"
     assert report["bots"][0]["broker_close_evidence"]["has_positive_edge"] is True

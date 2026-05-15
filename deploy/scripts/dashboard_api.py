@@ -1018,10 +1018,7 @@ def _dashboard_diagnostics_payload() -> dict:
         "green",
     }:
         paper_live_effective_status = "held_by_daily_loss_stop"
-        paper_live_effective_detail = (
-            str(daily_loss_killswitch.get("reason") or "")
-            or "Daily-loss soft stop is active; new entries are held until the next trading day."
-        )
+        paper_live_effective_detail = _daily_loss_hold_detail(daily_loss_killswitch)
 
     return {
         **_dashboard_contract(),
@@ -1550,6 +1547,16 @@ def _diamond_retune_status_unknown(path: Path, *, reason: str) -> dict[str, obje
             "n_broker_proof_shortfall": 0,
             "largest_broker_proof_gap": 0,
             "total_broker_proof_gap": 0,
+            "broker_truth_focus_bot_id": "",
+            "broker_truth_focus_state": "",
+            "broker_truth_focus_edge_status": "",
+            "broker_truth_focus_closed_trade_count": 0,
+            "broker_truth_focus_required_closed_trade_count": 100,
+            "broker_truth_focus_remaining_closed_trade_count": 0,
+            "broker_truth_focus_total_realized_pnl": 0.0,
+            "broker_truth_focus_profit_factor": 0.0,
+            "broker_truth_focus_next_action": "",
+            "broker_truth_summary_line": "",
             "safe_to_mutate_live": False,
         },
         "bots": [],
@@ -1591,6 +1598,20 @@ def _load_diamond_retune_status() -> dict[str, object]:
         "n_broker_proof_shortfall": int(summary.get("n_broker_proof_shortfall") or 0),
         "largest_broker_proof_gap": int(summary.get("largest_broker_proof_gap") or 0),
         "total_broker_proof_gap": int(summary.get("total_broker_proof_gap") or 0),
+        "broker_truth_focus_bot_id": str(summary.get("broker_truth_focus_bot_id") or ""),
+        "broker_truth_focus_state": str(summary.get("broker_truth_focus_state") or ""),
+        "broker_truth_focus_edge_status": str(summary.get("broker_truth_focus_edge_status") or ""),
+        "broker_truth_focus_closed_trade_count": int(summary.get("broker_truth_focus_closed_trade_count") or 0),
+        "broker_truth_focus_required_closed_trade_count": int(
+            summary.get("broker_truth_focus_required_closed_trade_count") or 100
+        ),
+        "broker_truth_focus_remaining_closed_trade_count": int(
+            summary.get("broker_truth_focus_remaining_closed_trade_count") or 0
+        ),
+        "broker_truth_focus_total_realized_pnl": float(summary.get("broker_truth_focus_total_realized_pnl") or 0.0),
+        "broker_truth_focus_profit_factor": float(summary.get("broker_truth_focus_profit_factor") or 0.0),
+        "broker_truth_focus_next_action": str(summary.get("broker_truth_focus_next_action") or ""),
+        "broker_truth_summary_line": str(summary.get("broker_truth_summary_line") or ""),
         "safe_to_mutate_live": False,
     }
     normalized: dict[str, object] = dict(payload)
@@ -1646,6 +1667,20 @@ def _diamond_retune_diagnostic_payload(snapshot: dict[str, Any]) -> dict[str, ob
         "n_broker_proof_shortfall": int(summary.get("n_broker_proof_shortfall") or 0),
         "largest_broker_proof_gap": int(summary.get("largest_broker_proof_gap") or 0),
         "total_broker_proof_gap": int(summary.get("total_broker_proof_gap") or 0),
+        "broker_truth_focus_bot_id": str(summary.get("broker_truth_focus_bot_id") or ""),
+        "broker_truth_focus_state": str(summary.get("broker_truth_focus_state") or ""),
+        "broker_truth_focus_edge_status": str(summary.get("broker_truth_focus_edge_status") or ""),
+        "broker_truth_focus_closed_trade_count": int(summary.get("broker_truth_focus_closed_trade_count") or 0),
+        "broker_truth_focus_required_closed_trade_count": int(
+            summary.get("broker_truth_focus_required_closed_trade_count") or 100
+        ),
+        "broker_truth_focus_remaining_closed_trade_count": int(
+            summary.get("broker_truth_focus_remaining_closed_trade_count") or 0
+        ),
+        "broker_truth_focus_total_realized_pnl": float(summary.get("broker_truth_focus_total_realized_pnl") or 0.0),
+        "broker_truth_focus_profit_factor": float(summary.get("broker_truth_focus_profit_factor") or 0.0),
+        "broker_truth_focus_next_action": str(summary.get("broker_truth_focus_next_action") or ""),
+        "broker_truth_summary_line": str(summary.get("broker_truth_summary_line") or ""),
         "safe_to_mutate_live": bool(summary.get("safe_to_mutate_live") is True),
         "top_bot_id": str(first_bot.get("bot_id") or ""),
         "top_retune_state": str(first_bot.get("retune_state") or ""),
@@ -3158,6 +3193,23 @@ def _daily_loss_killswitch_snapshot() -> dict:
     return out
 
 
+def _daily_loss_hold_detail(snapshot: dict) -> str:
+    """Human-readable daily-loss hold detail with local reset context."""
+    reason = str(snapshot.get("reason") or "").strip()
+    reset_display = str(snapshot.get("reset_display") or "").strip()
+    reset_at = str(snapshot.get("reset_at") or "").strip()
+    timezone_name = str(snapshot.get("timezone") or DASHBOARD_LOCAL_TIME_ZONE_NAME).strip()
+    if reset_display:
+        reset_hint = f"resets automatically at {reset_display} ({timezone_name})"
+    elif reset_at:
+        reset_hint = f"resets automatically at {reset_at} ({timezone_name})"
+    else:
+        reset_hint = f"resets automatically at the next {timezone_name} trading day"
+    if reason:
+        return f"{reason}; {reset_hint}"
+    return f"Daily-loss soft stop is active; new entries are held until reset; {reset_hint}"
+
+
 def _iso_age_s(value: object, *, server_ts: float) -> int | None:
     dt = _parse_fill_dt(value)
     if dt is None:
@@ -3758,10 +3810,7 @@ def _paper_live_transition_with_effective_holds(payload: dict) -> dict:
     )
     if held_by_daily_loss_stop and effective_status in {"ready", "ready_to_launch_paper_live", "green"}:
         effective_status = "held_by_daily_loss_stop"
-        effective_detail = (
-            str(daily_loss_killswitch.get("reason") or "")
-            or "Daily-loss soft stop is active; new entries are held until the next trading day."
-        )
+        effective_detail = _daily_loss_hold_detail(daily_loss_killswitch)
 
     out["raw_status"] = raw_status
     out["effective_status"] = effective_status
@@ -6222,10 +6271,7 @@ def bot_fleet_roster(
         "green",
     }:
         paper_live_effective_status = "held_by_daily_loss_stop"
-        paper_live_effective_detail = (
-            str(daily_loss_killswitch.get("reason") or "")
-            or "Daily-loss soft stop is active; new entries are held until the next trading day."
-        )
+        paper_live_effective_detail = _daily_loss_hold_detail(daily_loss_killswitch)
     vps_root_reconciliation = _vps_root_reconciliation_payload()
     vps_root_summary = (
         vps_root_reconciliation.get("summary") if isinstance(vps_root_reconciliation.get("summary"), dict) else {}
@@ -12308,10 +12354,7 @@ def _local_master_status_payload() -> dict[str, object]:
         "green",
     }:
         paper_live_effective_status = "held_by_daily_loss_stop"
-        paper_live_effective_detail = (
-            str(daily_loss_killswitch.get("reason") or "")
-            or "Daily-loss soft stop is active; new entries are held until the next trading day."
-        )
+        paper_live_effective_detail = _daily_loss_hold_detail(daily_loss_killswitch)
     paper_live.update(
         {
             "raw_status": str(paper.get("status") or "unknown"),

@@ -44,6 +44,15 @@ def test_serve_js_module(client, tmp_path, monkeypatch) -> None:
     assert "export const x" in r.text
 
 
+def test_status_page_contains_blocker_topline_anchors(client) -> None:
+    """The served status page keeps the blocker banner/card surface wired in."""
+    r = client.get("/")
+    assert r.status_code == 200
+    assert 'id="blockerStatusText"' in r.text
+    assert 'id="heldBots"' in r.text
+    assert "function blockedFleetRollup" in r.text
+
+
 def test_service_worker_cleanup_unregisters_stale_clients(client) -> None:
     """Stale browser service-worker registrations should get a cleanup script."""
     r = client.get("/service-worker.js")

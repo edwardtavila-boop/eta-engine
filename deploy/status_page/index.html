@@ -50,6 +50,7 @@ tr:nth-child(even) td{background:rgba(255,255,255,.01)}
 .status-bar{display:flex;gap:1.5rem;align-items:center;font-size:.75rem;padding:.75rem 2rem;color:var(--dim);flex-wrap:wrap}
 .status-dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:.5rem}
 .status-dot.live{background:var(--green);animation:pulse 1.5s infinite}
+.status-dot.blocked{background:var(--yellow);animation:pulse 1.8s infinite}
 .status-dot.stale{background:var(--yellow)}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
 @keyframes dataSweep{0%{transform:translateX(-120%)}100%{transform:translateX(140%)}}
@@ -115,6 +116,8 @@ body:after{content:"";position:fixed;inset:-8%;pointer-events:none;background:li
 .hero-chip,.allocation-pill{border:1px solid rgba(255,255,255,.11);border-radius:999px;padding:.38rem .62rem;background:linear-gradient(145deg,rgba(255,255,255,.065),rgba(255,255,255,.03));font-size:.67rem;color:#d3dfeb;font-weight:600;box-shadow:inset 0 1px 0 rgba(255,255,255,.04);transition:border-color .24s ease,transform .24s ease,background .24s ease}
 .hero-chip:hover,.allocation-pill:hover{border-color:rgba(100,215,255,.28);transform:translateY(-1px)}
 .hero-chip strong,.allocation-pill strong{color:#f7fbff;letter-spacing:.01em}
+.hero-chip.blocked-chip{border-color:rgba(255,209,102,.34);background:linear-gradient(145deg,rgba(255,209,102,.14),rgba(255,255,255,.035));color:#fff1c7}
+.hero-chip.blocked-chip strong{color:#fff7de}
 .broker-truth-chip.live{border-color:rgba(54,240,162,.28);background:linear-gradient(145deg,rgba(54,240,162,.12),rgba(255,255,255,.035))}
 .broker-truth-chip.cache{border-color:rgba(100,215,255,.24);background:linear-gradient(145deg,rgba(100,215,255,.11),rgba(255,255,255,.03))}
 .broker-truth-chip.warn{border-color:rgba(255,209,102,.34);background:linear-gradient(145deg,rgba(255,209,102,.13),rgba(255,255,255,.035))}
@@ -298,6 +301,7 @@ tr:hover td{background:rgba(100,215,255,.055)}
   <span><span class="status-dot" id="statusDot"></span><span id="statusText">Syncing live book...</span></span>
   <span id="clockText"></span>
   <span id="apiSourceText"></span>
+  <span id="blockerStatusText">Held: checking live entry gates...</span>
   <span id="lastTradeText"></span>
 </div>
 
@@ -381,6 +385,7 @@ tr:hover td{background:rgba(100,215,255,.055)}
 <div class="grid">
   <div class="card"><h3>Focus Bots</h3><div class="stat green" id="totalBots">--</div></div>
   <div class="card"><h3>Active</h3><div class="stat blue" id="activeBots">--</div><div class="sub" id="activeBotsSub">live runtime</div></div>
+  <div class="card"><h3>Held Bots</h3><div class="stat dim" id="heldBots">--</div><div class="sub" id="heldBotsSub">checking live entry holds</div></div>
   <div class="card"><h3>Session Net</h3><div class="stat dim" id="todayPnl">--</div><div class="sub" id="todayPnlSub"></div></div>
   <div class="card"><h3 id="totalPnlLabel">Broker MTD</h3><div class="stat dim" id="totalPnl">--</div><div class="sub" id="totalPnlSub">IBKR portfolio pending</div></div>
   <div class="card"><h3 id="cumulativeRLabel">Trade Quality</h3><div class="stat dim" id="cumulativeR">--</div><div class="sub" id="cumulativeRSub">R score pending</div></div>
@@ -521,6 +526,45 @@ function endpointCandidates(path) {
 function compactText(value, maxLen = 120) {
   const text = String(value || '').replace(/\s+/g, ' ').trim();
   return text.length > maxLen ? text.slice(0, maxLen - 3) + '...' : text;
+}
+
+function prettifyBlockKind(kind) {
+  return String(kind || '')
+    .replace(/_/g, ' ')
+    .trim();
+}
+
+function blockedKindsSummary(kinds = {}) {
+  const rows = Object.entries(kinds || {})
+    .map(([kind, count]) => ({
+      label: prettifyBlockKind(kind),
+      count: Number(count) || 0
+    }))
+    .filter(row => row.label && row.count > 0)
+    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+  return rows.map(row => `${row.count} ${row.label}`).join(' | ');
+}
+
+function blockedFleetRollup(summary = {}, diagnostics = {}) {
+  const diagFleet = diagnostics?.bot_fleet && typeof diagnostics.bot_fleet === 'object'
+    ? diagnostics.bot_fleet
+    : {};
+  const count = Number(diagFleet.current_blocked_bots ?? summary.current_blocked_bots ?? 0) || 0;
+  const kinds = diagFleet.current_blocked_kinds && typeof diagFleet.current_blocked_kinds === 'object'
+    ? diagFleet.current_blocked_kinds
+    : (summary.current_blocked_kinds && typeof summary.current_blocked_kinds === 'object'
+      ? summary.current_blocked_kinds
+      : {});
+  const summaryLine = String(
+    diagFleet.current_blocked_summary_line
+    || summary.current_blocked_summary_line
+    || ''
+  ).trim();
+  const kindsLine = blockedKindsSummary(kinds);
+  const statusLine = count > 0
+    ? `Held: ${count} bot${count === 1 ? '' : 's'}${kindsLine ? ` | ${kindsLine}` : ''}`
+    : 'Held: none';
+  return {count, kinds, summaryLine, kindsLine, statusLine};
 }
 
 function finiteNumber(value) {
@@ -2121,6 +2165,9 @@ function allocationBuckets(bots, liveBroker, portfolioSummary) {
 function renderPortfolioCommand(bots, hiddenCount, liveBroker, summary, d, todaysPnl, portfolioSummary, brokerMtd, paperLive, diagnostics, todayCloseHistory) {
   const brokerPositions = buildBrokerPositions(liveBroker);
   const active = bots.filter(isRuntimeActiveBot).length;
+  const blockedRollup = blockedFleetRollup(summary, diagnostics || {});
+  const blockedBots = blockedRollup.count;
+  const blockedLine = blockedRollup.summaryLine || blockedRollup.statusLine;
   const realized = finiteNumber(liveBroker?.today_realized_pnl);
   const unrealized = finiteNumber(liveBroker?.total_unrealized_pnl);
   const focusPolicy = liveBroker?.focus_policy && typeof liveBroker.focus_policy === 'object'
@@ -2175,9 +2222,11 @@ function renderPortfolioCommand(bots, hiddenCount, liveBroker, summary, d, today
     const scopeLine = [
       `${bots.length} focus`,
       `${paperReady} ready`,
-      active > 0 ? `${active} active` : 'flat'
-    ].join(' | ');
-    const narrativeParts = [scopeLine, venueFocusText, truthLine];
+      active > 0 ? `${active} active` : 'flat',
+      blockedBots > 0 ? `${blockedBots} held` : ''
+    ].filter(Boolean).join(' | ');
+    const blockerLine = blockedBots > 0 ? compactText(blockedLine, isMobileNarrow ? 54 : 78) : '';
+    const narrativeParts = [scopeLine, blockerLine, venueFocusText, truthLine];
     narrative.textContent = compactText(
       narrativeParts.filter(Boolean).join(' | '),
       isMobileNarrow ? 92 : 168
@@ -2188,6 +2237,7 @@ function renderPortfolioCommand(bots, hiddenCount, liveBroker, summary, d, today
       `<span class="hero-chip"><strong>${bots.length}</strong> focus</span>`,
       `<span class="hero-chip"><strong>${active}</strong> live</span>`,
       `<span class="hero-chip"><strong>${paperReady}</strong> ready</span>`,
+      blockedBots > 0 ? `<span class="hero-chip blocked-chip"><strong>${blockedBots}</strong> held</span>` : '',
       `<span class="hero-chip"><strong>${brokerPositions.length}</strong> open</span>`,
       `<span class="hero-chip"><strong>${formatMoney(portfolioExposure ?? openExposure, 0)}</strong> risk</span>`,
       ...brokerVenueChipMarkup(focusPolicy, liveBroker),
@@ -2216,12 +2266,15 @@ function renderPortfolioCommand(bots, hiddenCount, liveBroker, summary, d, today
       : readinessStatus === 'ready'
         ? `${paperReady} ready | ${active} live`
         : `${active} live now`;
+    const readinessSubWithBlocks = blockedBots > 0
+      ? compactText(`${blockedBots} held | ${blockedRollup.kindsLine || blockedLine}`, 86)
+      : readinessSub;
     const dataReadout = dataIntelligenceReadout(d.symbol_intelligence || diagnostics?.symbol_intelligence || {});
     heroMetrics.innerHTML = [
       {label: 'Session Net', value: formatMoney(todaysPnl, 0), sub: `${sessionSourceText} | ${formatMoneyOrUnavailable(realized, 2)} realized | ${formatMoneyOrUnavailable(unrealized, 2)} open`},
       {label: brokerMtd?.label || 'Broker MTD', value: brokerMtdValue == null ? 'n/a' : formatMoney(brokerMtdValue, 0), sub: brokerMtd?.source || 'IBKR portfolio MTD pending'},
       {label: 'Open Risk', value: formatMoney(portfolioExposure ?? openExposure, 0), sub: `${brokerPositions.length} open on book`},
-      {label: 'Readiness', value: readinessText, sub: readinessSub},
+      {label: 'Readiness', value: readinessText, sub: readinessSubWithBlocks},
       {label: 'Data Coverage', value: dataReadout.label, sub: dataReadout.sub}
     ].map(item => {
       const metricSubMax = typeof window !== 'undefined' && window.matchMedia('(max-width: 640px)').matches ? 46 : 72;
@@ -2922,17 +2975,26 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
   const truthStatus = String(d.truth_status || 'unknown').toLowerCase();
   const stale = ['stale', 'empty', 'runtime_stopped'].includes(truthStatus);
   const usingFallback = isFallbackSource(dataSource);
+  const blockedRollup = blockedFleetRollup(summary, diagnostics || {});
+  const blockedBots = blockedRollup.count;
+  const blockedSummaryLine = blockedRollup.summaryLine || blockedRollup.statusLine;
 
   const active = bots.filter(isRuntimeActiveBot).length;
   const staged = Math.max(0, bots.length - active);
-  document.getElementById('statusDot').className = 'status-dot ' + (stale ? 'stale' : 'live');
+  document.getElementById('statusDot').className = 'status-dot ' + (stale ? 'stale' : blockedBots > 0 ? 'blocked' : 'live');
   document.getElementById('statusText').textContent =
     truthStatus === 'working'
-      ? `${bots.length} live | ${active} active`
+      ? `${bots.length} live | ${active} active${blockedBots > 0 ? ` | ${blockedBots} held` : ''}`
       : stale
-        ? 'Feed stale'
-        : `${bots.length} live | ${active} active`;
+        ? `Feed stale${blockedBots > 0 ? ` | ${blockedBots} held` : ''}`
+        : `${bots.length} live | ${active} active${blockedBots > 0 ? ` | ${blockedBots} held` : ''}`;
   document.getElementById('apiSourceText').textContent = usingFallback ? 'Focus sync | mirror' : 'Focus sync...';
+  const blockerStatusText = document.getElementById('blockerStatusText');
+  if (blockerStatusText) {
+    blockerStatusText.textContent = blockedBots > 0
+      ? compactText(blockedSummaryLine, 118)
+      : 'Held: none';
+  }
   document.getElementById('totalBots').textContent = bots.length;
 
   document.getElementById('activeBots').textContent = active;
@@ -2941,6 +3003,20 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
   if (activeSub) activeSub.textContent = hiddenCount > 0
     ? `${staged} staged | ${cellarCount} parked | ${hiddenCount} hidden`
     : staged > 0 ? `${staged} staged` : 'runtime-active';
+  const heldBotsEl = document.getElementById('heldBots');
+  const heldBotsSub = document.getElementById('heldBotsSub');
+  if (heldBotsEl) {
+    heldBotsEl.textContent = blockedBots;
+    const dailyKillSwitchCount = Number(blockedRollup.kinds.daily_kill_switch || 0);
+    heldBotsEl.className = 'stat ' + (
+      blockedBots <= 0 ? 'green' : dailyKillSwitchCount > 0 ? 'red' : 'yellow'
+    );
+  }
+  if (heldBotsSub) {
+    heldBotsSub.textContent = blockedBots > 0
+      ? compactText(blockedSummaryLine, 78)
+      : 'no current entry holds';
+  }
 
   // Live broker truth (Alpaca + IBKR REST). When present, this is the
   // authoritative source for "Today PnL" and "Actual Trades" -- broker

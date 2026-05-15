@@ -1021,6 +1021,16 @@ class TestDashboardAPI:
                         "n_broker_proof_shortfall": 1,
                         "largest_broker_proof_gap": 91,
                         "total_broker_proof_gap": 91,
+                        "broker_truth_focus_bot_id": "mnq_futures_sage",
+                        "broker_truth_focus_edge_status": "sample_met_negative_edge",
+                        "broker_truth_focus_closed_trade_count": 126,
+                        "broker_truth_focus_required_closed_trade_count": 100,
+                        "broker_truth_focus_remaining_closed_trade_count": 0,
+                        "broker_truth_focus_total_realized_pnl": -1939.75,
+                        "broker_truth_focus_profit_factor": 0.3951,
+                        "broker_truth_summary_line": (
+                            "mnq_futures_sage: sample met (126/100) but broker edge is negative"
+                        ),
                         "safe_to_mutate_live": False,
                     },
                     "bots": [
@@ -1069,6 +1079,13 @@ class TestDashboardAPI:
         assert data["top_broker_has_positive_edge"] is False
         assert data["top_broker_total_realized_pnl"] == -125.25
         assert data["top_broker_profit_factor"] == 0.72
+        assert data["broker_truth_focus_bot_id"] == "mnq_futures_sage"
+        assert data["broker_truth_focus_edge_status"] == "sample_met_negative_edge"
+        assert data["broker_truth_focus_closed_trade_count"] == 126
+        assert data["broker_truth_focus_remaining_closed_trade_count"] == 0
+        assert data["broker_truth_focus_total_realized_pnl"] == -1939.75
+        assert data["broker_truth_focus_profit_factor"] == 0.3951
+        assert data["broker_truth_summary_line"].startswith("mnq_futures_sage: sample met")
 
     def test_dashboard_cold_start_still_exposes_operator_queue(self, tmp_path, app_client):
         state = tmp_path / "state"
@@ -1200,6 +1217,8 @@ class TestDashboardAPI:
                 "today_pnl_usd": -925.50,
                 "limit_usd": -900.0,
                 "reason": "day_pnl=$-925.50 <= limit=$-900.00 (date=2026-05-15)",
+                "timezone": "America/New_York",
+                "reset_display": "2026-05-16 00:00 EDT",
             },
         )
         (tmp_path / "state" / "paper_live_transition_check.json").write_text(
@@ -1225,7 +1244,9 @@ class TestDashboardAPI:
         assert data["effective_status"] == "held_by_daily_loss_stop"
         assert data["held_by_daily_loss_stop"] is True
         assert "day_pnl=$-925.50" in data["effective_detail"]
+        assert "resets automatically at 2026-05-16 00:00 EDT" in data["effective_detail"]
         assert data["daily_loss_killswitch"]["status"] == "tripped"
+        assert data["daily_loss_killswitch"]["timezone"] == "America/New_York"
 
     def test_jarvis_paper_live_transition_endpoint_refreshes_on_demand(self, app_client, monkeypatch):
         from eta_engine.scripts import paper_live_transition_check

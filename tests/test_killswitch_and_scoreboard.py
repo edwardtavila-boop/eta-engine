@@ -113,10 +113,11 @@ def test_killswitch_disabled_env_short_circuits(tmp_closes: Path) -> None:
     assert reason == "disabled"
 
 
-def test_killswitch_status_returns_full_snapshot(tmp_closes: Path) -> None:
+def test_killswitch_status_returns_full_snapshot(tmp_closes: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from eta_engine.scripts.daily_loss_killswitch import killswitch_status
 
     _write_close(tmp_closes, ts=_today_iso() + "T09:00:00+00:00", pnl=-100.0)
+    monkeypatch.delenv("ETA_KILLSWITCH_TIMEZONE", raising=False)
     os.environ["ETA_KILLSWITCH_DAILY_LIMIT_USD"] = "-300"
     try:
         s = killswitch_status()
@@ -126,6 +127,11 @@ def test_killswitch_status_returns_full_snapshot(tmp_closes: Path) -> None:
     assert "limit_usd" in s
     assert "today_pnl_usd" in s
     assert "date" in s
+    assert s["timezone"] == "America/New_York"
+    assert s["reset_at"]
+    assert s["reset_at_utc"]
+    assert s["reset_display"].endswith(("EST", "EDT"))
+    assert isinstance(s["reset_in_s"], int)
 
 
 # ─── Bot scoreboard ─────────────────────────────────────────────
@@ -180,11 +186,51 @@ def test_scoreboard_pnl_map_shows_distinct_winners_and_losers() -> None:
     from eta_engine.scripts.bot_scoreboard import _pnl_map
 
     rows = [
-        {"bot_id": "winner_a", "symbol": "MNQ1", "asset": "futures", "closes": 3, "realized_pnl": 150.0, "win_rate": 1.0, "avg_r": 1.2},
-        {"bot_id": "winner_b", "symbol": "NG1", "asset": "futures", "closes": 2, "realized_pnl": 50.0, "win_rate": 0.5, "avg_r": 0.2},
-        {"bot_id": "flat", "symbol": "NQ1", "asset": "futures", "closes": 0, "realized_pnl": 0.0, "win_rate": 0.0, "avg_r": 0.0},
-        {"bot_id": "loser_a", "symbol": "MCL1", "asset": "futures", "closes": 4, "realized_pnl": -25.0, "win_rate": 0.25, "avg_r": -0.4},
-        {"bot_id": "loser_b", "symbol": "MNQ1", "asset": "futures", "closes": 5, "realized_pnl": -200.0, "win_rate": 0.2, "avg_r": -1.1},
+        {
+            "bot_id": "winner_a",
+            "symbol": "MNQ1",
+            "asset": "futures",
+            "closes": 3,
+            "realized_pnl": 150.0,
+            "win_rate": 1.0,
+            "avg_r": 1.2,
+        },
+        {
+            "bot_id": "winner_b",
+            "symbol": "NG1",
+            "asset": "futures",
+            "closes": 2,
+            "realized_pnl": 50.0,
+            "win_rate": 0.5,
+            "avg_r": 0.2,
+        },
+        {
+            "bot_id": "flat",
+            "symbol": "NQ1",
+            "asset": "futures",
+            "closes": 0,
+            "realized_pnl": 0.0,
+            "win_rate": 0.0,
+            "avg_r": 0.0,
+        },
+        {
+            "bot_id": "loser_a",
+            "symbol": "MCL1",
+            "asset": "futures",
+            "closes": 4,
+            "realized_pnl": -25.0,
+            "win_rate": 0.25,
+            "avg_r": -0.4,
+        },
+        {
+            "bot_id": "loser_b",
+            "symbol": "MNQ1",
+            "asset": "futures",
+            "closes": 5,
+            "realized_pnl": -200.0,
+            "win_rate": 0.2,
+            "avg_r": -1.1,
+        },
     ]
 
     result = _pnl_map(rows, limit=2)
@@ -198,7 +244,15 @@ def test_scoreboard_daily_window_includes_close_only_bots() -> None:
     from eta_engine.scripts.bot_scoreboard import _append_close_only_rows
 
     rows = [
-        {"bot_id": "active_bot", "symbol": "MNQ1", "asset": "futures", "closes": 1, "realized_pnl": 50.0, "win_rate": 1.0, "avg_r": 0.5},
+        {
+            "bot_id": "active_bot",
+            "symbol": "MNQ1",
+            "asset": "futures",
+            "closes": 1,
+            "realized_pnl": 50.0,
+            "win_rate": 1.0,
+            "avg_r": 0.5,
+        },
     ]
     closes = [
         {"bot_id": "active_bot", "symbol": "MNQ1", "realized_r": 0.5, "realized_pnl": 50.0},

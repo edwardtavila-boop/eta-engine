@@ -8,16 +8,16 @@ are unaffected (they exit via brackets / supervisor exit logic
 normally).
 
 Loss is computed across the trade_closes.jsonl stream filtered to
-"today" in the operator's local timezone (defaults to UTC; override
-via ETA_KILLSWITCH_TIMEZONE). Reset is automatic at the next
-midnight tick.
+"today" in the operator's local timezone (defaults to America/New_York
+for Atlanta/ET operations; override via ETA_KILLSWITCH_TIMEZONE). Reset
+is automatic at the next local midnight tick.
 
 Env knobs:
   ETA_KILLSWITCH_DAILY_LIMIT_USD      default -300.0  (halt at -$300 day)
   ETA_KILLSWITCH_DAILY_LIMIT_PCT      default None   (alt spec as %% of equity)
   ETA_KILLSWITCH_EQUITY_USD           default 5000.0 (denominator for %% spec)
   ETA_KILLSWITCH_DISABLED             default unset (set to "1" to disable)
-  ETA_KILLSWITCH_TIMEZONE             default "UTC"
+  ETA_KILLSWITCH_TIMEZONE             default "America/New_York"
 """
 
 from __future__ import annotations
@@ -25,25 +25,42 @@ from __future__ import annotations
 import json
 import logging
 import os
-from datetime import UTC, datetime
+from datetime import UTC, datetime, time, timedelta, tzinfo
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)
 
 _TRADE_CLOSES_PATH = Path(r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\jarvis_intel\trade_closes.jsonl")
+_DEFAULT_TIMEZONE = "America/New_York"
+
+
+def _operator_timezone_name() -> str:
+    return os.getenv("ETA_KILLSWITCH_TIMEZONE", _DEFAULT_TIMEZONE).strip() or _DEFAULT_TIMEZONE
+
+
+def _operator_timezone() -> tzinfo:
+    tz_name = _operator_timezone_name()
+    if tz_name == "UTC":
+        return UTC
+    try:
+        return ZoneInfo(tz_name)
+    except Exception:  # noqa: BLE001
+        return UTC
+
+
+def _operator_now() -> datetime:
+    return datetime.now(_operator_timezone())
+
+
+def _next_reset_at(now: datetime | None = None) -> datetime:
+    local_now = now or _operator_now()
+    return datetime.combine(local_now.date() + timedelta(days=1), time.min, tzinfo=local_now.tzinfo)
 
 
 def _today_utc_date_str() -> str:
-    """Operator-tz "today" as YYYY-MM-DD. Default UTC."""
-    tz_name = os.getenv("ETA_KILLSWITCH_TIMEZONE", "UTC")
-    if tz_name == "UTC":
-        return datetime.now(UTC).date().isoformat()
-    try:
-        from zoneinfo import ZoneInfo
-
-        return datetime.now(ZoneInfo(tz_name)).date().isoformat()
-    except Exception:  # noqa: BLE001
-        return datetime.now(UTC).date().isoformat()
+    """Operator-tz "today" as YYYY-MM-DD."""
+    return _operator_now().date().isoformat()
 
 
 def _is_today(ts_str: str) -> bool:
@@ -139,12 +156,20 @@ def is_killswitch_tripped() -> tuple[bool, str]:
 def killswitch_status() -> dict:
     """Snapshot for dashboards / heartbeat."""
     tripped, reason = is_killswitch_tripped()
+    now = _operator_now()
+    reset_at = _next_reset_at(now)
+    tz_name = _operator_timezone_name()
     return {
         "tripped": tripped,
         "reason": reason,
         "limit_usd": _resolve_limit_usd(),
         "today_pnl_usd": _today_realized_pnl_usd(),
-        "date": _today_utc_date_str(),
+        "date": now.date().isoformat(),
+        "timezone": tz_name,
+        "reset_at": reset_at.isoformat(),
+        "reset_at_utc": reset_at.astimezone(UTC).isoformat(),
+        "reset_display": reset_at.strftime("%Y-%m-%d %H:%M %Z"),
+        "reset_in_s": max(0, int((reset_at - now).total_seconds())),
         "disabled": os.getenv("ETA_KILLSWITCH_DISABLED", "").lower() in {"1", "true", "yes", "on"},
     }
 
