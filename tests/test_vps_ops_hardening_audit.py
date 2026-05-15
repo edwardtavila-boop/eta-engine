@@ -335,6 +335,34 @@ def test_paper_live_gate_ready_when_only_prop_promotion_is_blocked() -> None:
     assert report["summary"]["status"] == "YELLOW_SAFETY_BLOCKED"
 
 
+def test_stale_flat_open_orders_block_paper_live_gate_with_symbol_action() -> None:
+    report = audit.build_report(
+        services=_running_services(),
+        ports=_listening_ports(),
+        endpoints=_healthy_endpoints(),
+        broker_bracket_audit={
+            "summary": "BLOCKED_STALE_FLAT_OPEN_ORDERS",
+            "ready_for_prop_dry_run": False,
+            "position_summary": {
+                "missing_bracket_count": 0,
+                "stale_flat_open_order_count": 2,
+                "stale_flat_open_order_symbols": ["MCLM6", "MYMM6"],
+            },
+        },
+        promotion_audit={"summary": {"status": "PASS", "ready_for_live": True}},
+        service_config={"fm_status_server": {"matches_expected": True}},
+        tasks=_healthy_tasks(),
+        ibgateway_reauth={"status": "healthy"},
+    )
+
+    assert report["summary"]["paper_live_gate_ready"] is False
+    assert report["summary"]["trading_gate_ready"] is False
+    assert report["safety_gates"]["broker_brackets"]["ready"] is False
+    assert report["safety_gates"]["broker_brackets"]["stale_flat_open_order_count"] == 2
+    assert report["safety_gates"]["broker_brackets"]["stale_flat_open_order_symbols"] == ["MCLM6", "MYMM6"]
+    assert any("Cancel stale broker open orders for MCLM6, MYMM6" in action for action in report["next_actions"])
+
+
 def test_task_first_runtime_does_not_require_legacy_firm_services() -> None:
     services = {
         "FmStatusServer": {"name": "FmStatusServer", "status": "Running", "start_type": "Automatic"},

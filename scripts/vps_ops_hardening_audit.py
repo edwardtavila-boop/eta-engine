@@ -468,6 +468,14 @@ def _broker_gate_summary(broker_bracket_audit: dict[str, Any]) -> dict[str, Any]
             for raw_item in _as_list(broker_bracket_audit.get("unprotected_positions"))
             if (item := _as_dict(raw_item)).get("symbol")
         ]
+    stale_flat_symbols = [
+        str(symbol)
+        for symbol in (
+            _as_list(summary.get("stale_flat_open_order_symbols"))
+            or _as_list(position_summary.get("stale_flat_open_order_symbols"))
+        )
+        if str(symbol)
+    ]
     ready = bool(
         summary.get("ready_for_prop_dry_run")
         or broker_bracket_audit.get("ready_for_prop_dry_run")
@@ -480,6 +488,12 @@ def _broker_gate_summary(broker_bracket_audit: dict[str, Any]) -> dict[str, Any]
             summary.get("missing_bracket_count") or position_summary.get("missing_bracket_count") or 0
         ),
         "missing_bracket_symbols": symbols,
+        "stale_flat_open_order_count": int(
+            summary.get("stale_flat_open_order_count")
+            or position_summary.get("stale_flat_open_order_count")
+            or 0
+        ),
+        "stale_flat_open_order_symbols": stale_flat_symbols,
     }
 
 
@@ -1105,6 +1119,14 @@ def build_report(
         else:
             next_actions.append("Repair IBKR Gateway readiness state before any broker promotion")
     missing_symbols = ", ".join(broker_gate["missing_bracket_symbols"])
+    stale_flat_symbols = ", ".join(broker_gate["stale_flat_open_order_symbols"])
+    if stale_flat_symbols:
+        next_actions.append(f"Cancel stale broker open orders for {stale_flat_symbols} before clearing paper-live")
+    elif broker_gate["stale_flat_open_order_count"]:
+        next_actions.append(
+            "Cancel stale broker open orders for "
+            f"{broker_gate['stale_flat_open_order_count']} flat-symbol order(s) before clearing paper-live"
+        )
     if missing_symbols:
         next_actions.append(f"Do not promote: verify native broker brackets/OCO protection for {missing_symbols}")
     elif broker_gate["missing_bracket_count"]:

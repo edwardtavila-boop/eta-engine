@@ -575,6 +575,54 @@ def test_bracket_audit_does_not_block_bracketed_broker_exposure_on_paper_watches
     assert report["operator_actions"] == []
 
 
+def test_bracket_audit_blocks_active_open_orders_for_flat_symbols(monkeypatch) -> None:
+    monkeypatch.setattr(
+        audit,
+        "_adapter_support",
+        lambda: {
+            "ibkr_futures_server_oco": True,
+            "alpaca_equity_server_bracket": True,
+            "tradovate_order_payload_brackets": True,
+        },
+    )
+
+    report = audit.build_bracket_audit(
+        fleet={
+            "target_exit_summary": {
+                "status": "watching",
+                "broker_open_position_count": 2,
+                "broker_bracket_required_position_count": 2,
+                "broker_bracket_count": 2,
+                "missing_bracket_count": 0,
+                "supervisor_local_position_count": 2,
+            },
+            "live_broker_state": {
+                "ibkr": {
+                    "open_positions": [
+                        {"symbol": "MNQM6", "secType": "FUT", "position": 1, "broker_bracket_required": True},
+                        {"symbol": "MBTK6", "secType": "FUT", "position": 1, "broker_bracket_required": True},
+                    ],
+                    "open_orders": [
+                        {"symbol": "MNQM6", "action": "SELL", "order_type": "LMT", "qty": 1, "status": "Submitted"},
+                        {"symbol": "MCLM6", "action": "BUY", "order_type": "LMT", "qty": 1, "status": "Submitted"},
+                        {"symbol": "MYMM6", "action": "SELL", "order_type": "STP", "qty": 1, "status": "PreSubmitted"},
+                    ],
+                },
+            },
+        },
+    )
+
+    assert report["summary"] == "BLOCKED_STALE_FLAT_OPEN_ORDERS"
+    assert report["ready_for_prop_dry_run"] is False
+    assert report["operator_action_required"] is True
+    assert report["position_summary"]["stale_flat_open_order_count"] == 2
+    assert report["position_summary"]["stale_flat_open_order_symbols"] == ["MCLM6", "MYMM6"]
+    assert [row["symbol"] for row in report["stale_flat_open_orders"]] == ["MCLM6", "MYMM6"]
+    assert report["operator_actions"][0]["id"] == "cancel_stale_flat_open_orders"
+    assert report["operator_actions"][0]["order_action"] is True
+    assert "MCLM6, MYMM6" in report["next_action"]
+
+
 def test_bracket_audit_keeps_incomplete_ibkr_open_order_coverage_blocked(monkeypatch) -> None:
     monkeypatch.setattr(
         audit,

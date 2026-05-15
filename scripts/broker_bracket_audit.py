@@ -89,6 +89,14 @@ def _clean_symbol(value: object) -> str:
     return str(value or "").strip().upper().replace("/", "").replace("-", "")
 
 
+def _futures_root(symbol: object) -> str:
+    cleaned = _clean_symbol(symbol)
+    for root in sorted(FUTURES_MULTIPLIERS, key=len, reverse=True):
+        if cleaned.startswith(root):
+            return root
+    return cleaned
+
+
 def _open_order_symbol(order: dict[str, Any]) -> str:
     contract = _as_dict(order.get("contract"))
     for key in ("local_symbol", "localSymbol", "contract_symbol", "contractSymbol", "symbol"):
@@ -154,6 +162,50 @@ def _open_order_leg_kind(order: dict[str, Any]) -> str:
     if order_type in {"LMT", "LIMIT"} or "LIMIT" in order_type:
         return "target"
     return ""
+
+
+def _stale_flat_open_orders(
+    fleet: dict[str, Any],
+    *,
+    open_positions: list[dict[str, Any]],
+    broker_open_position_count: int,
+) -> list[dict[str, Any]]:
+    """Return active broker orders attached to symbols with no open position."""
+    normalized_orders = [
+        order
+        for order in (_normalize_open_order(raw) for raw in _open_orders_from_fleet(fleet))
+        if order
+    ]
+    if not normalized_orders:
+        return []
+    position_symbols = {_clean_symbol(position.get("symbol")) for position in open_positions if position.get("symbol")}
+    position_roots = {_futures_root(symbol) for symbol in position_symbols if symbol}
+    if broker_open_position_count > 0 and not position_symbols:
+        return []
+
+    stale_orders: list[dict[str, Any]] = []
+    for order in normalized_orders:
+        symbol = _clean_symbol(order.get("symbol"))
+        if not symbol:
+            continue
+        root = _futures_root(symbol)
+        if symbol in position_symbols or root in position_roots:
+            continue
+        stale_orders.append(
+            {
+                "symbol": symbol,
+                "root": root,
+                "action": order.get("action"),
+                "order_type": order.get("order_type"),
+                "qty": order.get("qty"),
+                "status": order.get("status"),
+                "order_id": order.get("order_id"),
+                "perm_id": order.get("perm_id"),
+                "parent_id": order.get("parent_id"),
+                "oca_group": order.get("oca_group"),
+            },
+        )
+    return sorted(stale_orders, key=lambda item: (str(item.get("symbol") or ""), str(item.get("order_id") or "")))
 
 
 def _normalize_open_order(raw_order: object) -> dict[str, Any]:
@@ -728,7 +780,12 @@ def _append_detail_once(message: str, detail: str) -> str:
     return f"{message}{separator}{detail}"
 
 
-def _operator_actions(summary: str, positions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _operator_actions(
+    summary: str,
+    positions: list[dict[str, Any]],
+    *,
+    stale_flat_open_orders: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
     if summary == "BLOCKED_FLEET_TRUTH_UNAVAILABLE":
         return [
             {
@@ -739,6 +796,28 @@ def _operator_actions(summary: str, positions: list[dict[str, Any]]) -> list[dic
                 "blocks_prop_dry_run": True,
                 "symbol": None,
                 "detail": "Restore /api/bot-fleet position truth before treating broker exposure as flat.",
+            },
+        ]
+    if summary == "BLOCKED_STALE_FLAT_OPEN_ORDERS":
+        stale_orders = stale_flat_open_orders or []
+        symbols = sorted(
+            {
+                str(order.get("symbol") or "").strip().upper()
+                for order in stale_orders
+                if str(order.get("symbol") or "").strip()
+            },
+        )
+        descriptor = ", ".join(symbols) if symbols else "flat-symbol broker orders"
+        return [
+            {
+                "id": "cancel_stale_flat_open_orders",
+                "label": "Cancel stale flat-symbol orders",
+                "manual": True,
+                "order_action": True,
+                "blocks_prop_dry_run": True,
+                "symbol": symbols[0] if symbols else None,
+                "symbols": symbols,
+                "detail": f"Cancel active broker orders for {descriptor}; no matching broker position is open.",
             },
         ]
     if summary != "BLOCKED_UNBRACKETED_EXPOSURE":
@@ -822,9 +901,15 @@ def build_bracket_audit(
     bracket_required = position_summary["broker_bracket_required_position_count"]
     missing_brackets = position_summary["missing_bracket_count"]
     target_exit_summary = _as_dict(fleet.get("target_exit_summary"))
+    candidate_open_positions = _candidate_open_positions(fleet)
     candidate_unprotected_positions = _unprotected_positions(
         fleet,
         missing_brackets=missing_brackets,
+    )
+    stale_flat_open_orders = _stale_flat_open_orders(
+        fleet,
+        open_positions=candidate_open_positions,
+        broker_open_position_count=open_count,
     )
     broker_oco_evidence = build_broker_oco_evidence(
         candidate_unprotected_positions,
@@ -866,6 +951,11 @@ def build_bracket_audit(
     position_summary["broker_oco_verified_symbols"] = sorted(
         {str(position.get("symbol") or "") for position in broker_oco_verified_positions if position.get("symbol")},
     )
+    if stale_flat_open_orders:
+        position_summary["stale_flat_open_order_count"] = len(stale_flat_open_orders)
+        position_summary["stale_flat_open_order_symbols"] = sorted(
+            {str(order.get("symbol") or "") for order in stale_flat_open_orders if order.get("symbol")},
+        )
 
     if unprotected_positions:
         position_summary = dict(position_summary)
@@ -879,6 +969,8 @@ def build_bracket_audit(
 
     if not fleet_truth_present:
         summary = "BLOCKED_FLEET_TRUTH_UNAVAILABLE"
+    elif stale_flat_open_orders and not unprotected_positions:
+        summary = "BLOCKED_STALE_FLAT_OPEN_ORDERS"
     elif open_count == 0 and adapter_ok:
         summary = "READY_NO_OPEN_EXPOSURE"
     elif manual_oco_verified_positions and missing_brackets == 0 and not unprotected_positions and adapter_ok:
@@ -902,6 +994,15 @@ def build_bracket_audit(
         )
     elif summary == "BLOCKED_UNBRACKETED_EXPOSURE":
         next_action = "Wait for or flatten current paper exposure before prop dry-run."
+    elif summary == "BLOCKED_STALE_FLAT_OPEN_ORDERS":
+        symbols = ", ".join(
+            sorted({str(order.get("symbol") or "") for order in stale_flat_open_orders if order.get("symbol")}),
+        )
+        descriptor = symbols or "flat-symbol broker orders"
+        next_action = (
+            f"Cancel stale active broker order(s) for {descriptor}; "
+            "they have no matching broker open position and can create surprise exposure."
+        )
     elif summary == "READY_OPEN_EXPOSURE_MANUAL_OCO_VERIFIED":
         next_action = "Broker-native bracket/OCO audit is clear via manual OCO verification."
     else:
@@ -949,13 +1050,18 @@ def build_bracket_audit(
         "broker_oco_evidence": broker_oco_evidence,
         "broker_oco_verified_positions": broker_oco_verified_positions,
         "manual_oco_verified_positions": manual_oco_verified_positions,
+        "stale_flat_open_orders": stale_flat_open_orders,
         "unprotected_positions": unprotected_positions,
         "primary_unprotected_position": unprotected_positions[0] if unprotected_positions else None,
         "adapter_support": adapter_support,
         "ready_for_prop_dry_run": ready_for_prop_dry_run,
         "operator_action_required": not ready_for_prop_dry_run,
         "operator_action": next_action,
-        "operator_actions": _operator_actions(summary, unprotected_positions),
+        "operator_actions": _operator_actions(
+            summary,
+            unprotected_positions,
+            stale_flat_open_orders=stale_flat_open_orders,
+        ),
         "next_action": next_action,
     }
 
