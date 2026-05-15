@@ -113,6 +113,13 @@ _ib_log_level = os.getenv("ETA_IBKR_LOG_LEVEL", "WARNING").upper()
 for _ib_logger in ("ib_insync", "ib_insync.client", "ib_insync.wrapper", "ib_insync.ib", "eventkit"):
     logging.getLogger(_ib_logger).setLevel(_ib_log_level)
 
+# HTTP client libraries log full request URLs at INFO. Provider URLs can embed
+# bearer-like path tokens (Telegram bot URLs are the concrete VPS case), so keep
+# them at WARNING unless an operator explicitly enables verbose diagnostics.
+_http_client_log_level = os.getenv("ETA_HTTP_CLIENT_LOG_LEVEL", "WARNING").upper()
+for _http_logger in ("httpx", "httpcore"):
+    logging.getLogger(_http_logger).setLevel(_http_client_log_level)
+
 
 # ─── Configuration ────────────────────────────────────────────────
 

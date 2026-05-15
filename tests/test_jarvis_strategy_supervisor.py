@@ -134,6 +134,15 @@ def test_env_file_loader_tolerates_non_utf8_bytes(tmp_path: Path) -> None:
     assert _read_env_file_lines(env_path)[0] == "ETA_SUPERVISOR_FEED=composite"
 
 
+def test_supervisor_mutes_http_client_info_logs_by_default() -> None:
+    import logging
+
+    import eta_engine.scripts.jarvis_strategy_supervisor  # noqa: F401
+
+    assert logging.getLogger("httpx").level >= logging.WARNING
+    assert logging.getLogger("httpcore").level >= logging.WARNING
+
+
 def test_router_submit_entry_paper_sim(tmp_path: Path) -> None:
     from eta_engine.scripts.jarvis_strategy_supervisor import (
         BotInstance,
