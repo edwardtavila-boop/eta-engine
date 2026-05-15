@@ -512,6 +512,36 @@ def _promotion_gate_action(gate: dict[str, Any]) -> str:
         label = f"{runner_id} ({runner_symbol})" if runner_symbol else runner_id
         close_evidence = _as_dict(runner.get("broker_close_evidence"))
         if int(close_evidence.get("closed_trade_count") or 0) <= 0:
+            outcome_evidence = _as_dict(runner.get("shadow_outcome_evidence"))
+            outcome_count = int(outcome_evidence.get("evaluated_count") or 0)
+            outcome_signal_count = int(outcome_evidence.get("shadow_signal_count") or 0)
+            missing_bars = int(outcome_evidence.get("missing_bars") or 0)
+            missing_context = int(outcome_evidence.get("missing_context") or 0)
+            insufficient_future_bars = int(outcome_evidence.get("insufficient_future_bars") or 0)
+            outcome_verdict = str(outcome_evidence.get("verdict") or "")
+            if outcome_count <= 0 and outcome_signal_count > 0:
+                if missing_context > 0:
+                    return (
+                        f"Capture fresh bracket-context shadow signals for runner-up {label}; "
+                        f"{missing_context} older shadow signals lack planned entry/risk context"
+                    )
+                if missing_bars > 0:
+                    return (
+                        f"Repair bar freshness/source mapping for runner-up {label}; "
+                        f"{missing_bars} shadow signals cannot replay into outcomes"
+                    )
+                if insufficient_future_bars > 0:
+                    return f"Wait for enough future bars for runner-up {label}; replay window is incomplete"
+                return f"Repair shadow outcome replay for runner-up {label}; signals exist but no outcomes evaluated"
+            if outcome_count > 0:
+                if outcome_verdict == "POSITIVE_COUNTERFACTUAL_EDGE":
+                    return (
+                        f"Move runner-up {label} into broker-paper close capture; "
+                        "shadow replay is positive but not broker proof"
+                    )
+                if outcome_verdict in {"NO_COUNTERFACTUAL_EDGE", "WEAK_OR_NEGATIVE_COUNTERFACTUAL"}:
+                    return f"Retune runner-up {label}; shadow replay is weak and broker-backed closes are missing"
+                return f"Keep replaying runner-up {label} shadow outcomes until the sample is decisive"
             signal_evidence = _as_dict(runner.get("shadow_signal_evidence"))
             if int(signal_evidence.get("signal_count") or 0) > 0:
                 return (

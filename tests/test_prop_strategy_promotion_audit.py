@@ -107,6 +107,85 @@ def _shadow_signals(*, bot_id: str = "volume_profile_nq", count: int = 2) -> lis
     ]
 
 
+def _shadow_outcome_report(
+    *,
+    bot_id: str = "volume_profile_nq",
+    evaluated_count: int = 33,
+    shadow_signal_count: int | None = None,
+    missing_bars: int = 0,
+    missing_context: int = 0,
+    verdict: str = "POSITIVE_COUNTERFACTUAL_EDGE",
+) -> dict[str, object]:
+    shadow_signal_count = evaluated_count if shadow_signal_count is None else shadow_signal_count
+    return {
+        "summary": {
+            "status": "COUNTERFACTUAL_EDGE_SEEN",
+            "broker_backed": False,
+            "promotion_proof": False,
+            "truth_note": "Counterfactual shadow replay only; not broker-backed closed-trade PnL.",
+        },
+        "per_bot": {
+            bot_id: {
+                "bot_id": bot_id,
+                "shadow_signal_count": shadow_signal_count,
+                "evaluated_count": evaluated_count,
+                "missing_bars": missing_bars,
+                "missing_context": missing_context,
+                "avg_r": 0.18,
+                "total_r": 5.94,
+                "profit_factor": 1.62,
+                "win_rate_pct": 57.58,
+                "verdict": verdict,
+                "broker_backed": False,
+                "promotion_proof": False,
+            },
+        },
+    }
+
+
+def test_runner_up_candidate_names_missing_shadow_context_when_old_signals_cannot_replay() -> None:
+    candidate = {
+        **_candidate(launch_lane="deactivated", blockers=["bot row is deactivated via kaizen_sidecar"]),
+        "active": False,
+        "data_status": "deactivated",
+        "promotion_status": "deactivated",
+        "deactivation_source": "kaizen_sidecar",
+    }
+
+    report = audit.build_promotion_audit_report(
+        gate_report={
+            "summary": "BLOCKED",
+            "primary_bot": "volume_profile_mnq",
+            "checks": [
+                _check("primary_ladder", "BLOCKED", primary_candidate=candidate),
+                _check("prop_readiness", "PASS"),
+                _check("broker_native_brackets", "PASS"),
+                _check("closed_trade_ledger", "PASS", closed_trade_count=43000),
+                _check("live_bot_gate", "BLOCKED", "volume_profile_mnq is deactivated"),
+            ],
+        },
+        ladder_report={
+            "summary": {"automation_mode": "FULLY_AUTOMATED_PAPER_PROP_HELD"},
+            "candidates": [candidate, _runner_candidate()],
+        },
+        closed_trade_ledger=_closed_trade_ledger(),
+        supervisor_heartbeat=_supervisor_heartbeat(last_signal_at=""),
+        shadow_signals=_shadow_signals(count=40),
+        shadow_outcome_report=_shadow_outcome_report(
+            evaluated_count=0,
+            shadow_signal_count=40,
+            missing_context=40,
+            verdict="NO_EVALUATED_SIGNALS",
+        ),
+    )
+
+    evidence = report["next_runner_candidate"]["shadow_outcome_evidence"]
+
+    assert evidence["missing_context"] == 40
+    assert "fresh bracket-context shadow signals" in report["next_runner_candidate"]["next_action"]
+    assert "older shadow signals lack planned entry/risk context" in report["next_runner_candidate"]["operator_note"]
+
+
 def test_promotion_audit_explains_paper_soak_hold_with_required_evidence() -> None:
     report = audit.build_promotion_audit_report(
         gate_report={
@@ -398,6 +477,136 @@ def test_runner_up_candidate_surfaces_shadow_signals_without_closes() -> None:
     assert evidence["route_targets"] == {"paper": 3}
     assert report["next_runner_candidate"]["next_action"].startswith("Convert volume_profile_nq shadow signals")
     assert "closed outcomes" in report["next_runner_candidate"]["operator_note"]
+
+
+def test_runner_up_candidate_surfaces_shadow_outcomes_without_promoting() -> None:
+    candidate = {
+        **_candidate(launch_lane="deactivated", blockers=["bot row is deactivated via kaizen_sidecar"]),
+        "active": False,
+        "data_status": "deactivated",
+        "promotion_status": "deactivated",
+        "deactivation_source": "kaizen_sidecar",
+    }
+
+    report = audit.build_promotion_audit_report(
+        gate_report={
+            "summary": "BLOCKED",
+            "primary_bot": "volume_profile_mnq",
+            "checks": [
+                _check("primary_ladder", "BLOCKED", primary_candidate=candidate),
+                _check("prop_readiness", "PASS"),
+                _check("broker_native_brackets", "PASS"),
+                _check("closed_trade_ledger", "PASS", closed_trade_count=43000),
+                _check("live_bot_gate", "BLOCKED", "volume_profile_mnq is deactivated"),
+            ],
+        },
+        ladder_report={
+            "summary": {"automation_mode": "FULLY_AUTOMATED_PAPER_PROP_HELD"},
+            "candidates": [candidate, _runner_candidate()],
+        },
+        closed_trade_ledger=_closed_trade_ledger(),
+        supervisor_heartbeat=_supervisor_heartbeat(last_signal_at=""),
+        shadow_signals=_shadow_signals(count=40),
+        shadow_outcome_report=_shadow_outcome_report(),
+    )
+
+    evidence = report["next_runner_candidate"]["shadow_outcome_evidence"]
+
+    assert evidence["evaluated_count"] == 33
+    assert evidence["verdict"] == "POSITIVE_COUNTERFACTUAL_EDGE"
+    assert evidence["broker_backed"] is False
+    assert evidence["promotion_proof"] is False
+    assert report["next_runner_candidate"]["broker_close_evidence"]["closed_trade_count"] == 0
+    assert "broker-paper close capture" in report["next_runner_candidate"]["next_action"]
+    assert "not broker proof" in report["next_runner_candidate"]["operator_note"]
+
+
+def test_runner_up_candidate_names_bar_freshness_when_shadow_outcome_replay_cannot_evaluate() -> None:
+    candidate = {
+        **_candidate(launch_lane="deactivated", blockers=["bot row is deactivated via kaizen_sidecar"]),
+        "active": False,
+        "data_status": "deactivated",
+        "promotion_status": "deactivated",
+        "deactivation_source": "kaizen_sidecar",
+    }
+
+    report = audit.build_promotion_audit_report(
+        gate_report={
+            "summary": "BLOCKED",
+            "primary_bot": "volume_profile_mnq",
+            "checks": [
+                _check("primary_ladder", "BLOCKED", primary_candidate=candidate),
+                _check("prop_readiness", "PASS"),
+                _check("broker_native_brackets", "PASS"),
+                _check("closed_trade_ledger", "PASS", closed_trade_count=43000),
+                _check("live_bot_gate", "BLOCKED", "volume_profile_mnq is deactivated"),
+            ],
+        },
+        ladder_report={
+            "summary": {"automation_mode": "FULLY_AUTOMATED_PAPER_PROP_HELD"},
+            "candidates": [candidate, _runner_candidate()],
+        },
+        closed_trade_ledger=_closed_trade_ledger(),
+        supervisor_heartbeat=_supervisor_heartbeat(last_signal_at=""),
+        shadow_signals=_shadow_signals(count=40),
+        shadow_outcome_report=_shadow_outcome_report(
+            evaluated_count=0,
+            shadow_signal_count=40,
+            missing_bars=40,
+            verdict="NO_EVALUATED_SIGNALS",
+        ),
+    )
+
+    evidence = report["next_runner_candidate"]["shadow_outcome_evidence"]
+
+    assert evidence["shadow_signal_count"] == 40
+    assert evidence["evaluated_count"] == 0
+    assert evidence["missing_bars"] == 40
+    assert "Repair bar freshness" in report["next_runner_candidate"]["next_action"]
+    assert "cannot replay" in report["next_runner_candidate"]["operator_note"]
+
+
+def test_runner_up_candidate_names_missing_shadow_context_before_replay() -> None:
+    candidate = {
+        **_candidate(launch_lane="deactivated", blockers=["bot row is deactivated via kaizen_sidecar"]),
+        "active": False,
+        "data_status": "deactivated",
+        "promotion_status": "deactivated",
+        "deactivation_source": "kaizen_sidecar",
+    }
+
+    report = audit.build_promotion_audit_report(
+        gate_report={
+            "summary": "BLOCKED",
+            "primary_bot": "volume_profile_mnq",
+            "checks": [
+                _check("primary_ladder", "BLOCKED", primary_candidate=candidate),
+                _check("prop_readiness", "PASS"),
+                _check("broker_native_brackets", "PASS"),
+                _check("closed_trade_ledger", "PASS", closed_trade_count=43000),
+                _check("live_bot_gate", "BLOCKED", "volume_profile_mnq is deactivated"),
+            ],
+        },
+        ladder_report={
+            "summary": {"automation_mode": "FULLY_AUTOMATED_PAPER_PROP_HELD"},
+            "candidates": [candidate, _runner_candidate()],
+        },
+        closed_trade_ledger=_closed_trade_ledger(),
+        supervisor_heartbeat=_supervisor_heartbeat(last_signal_at=""),
+        shadow_signals=_shadow_signals(count=40),
+        shadow_outcome_report=_shadow_outcome_report(
+            evaluated_count=0,
+            shadow_signal_count=40,
+            missing_context=40,
+            verdict="NO_EVALUATED_SIGNALS",
+        ),
+    )
+
+    evidence = report["next_runner_candidate"]["shadow_outcome_evidence"]
+
+    assert evidence["missing_context"] == 40
+    assert "fresh bracket-context shadow signals" in report["next_runner_candidate"]["next_action"]
+    assert "older shadow signals lack planned entry/risk context" in report["next_runner_candidate"]["operator_note"]
 
 
 def test_promotion_audit_prefers_live_gate_deactivation_over_stale_ladder_candidate() -> None:

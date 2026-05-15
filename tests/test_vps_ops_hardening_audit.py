@@ -139,6 +139,106 @@ def test_promotion_blocker_points_to_runner_up_when_primary_is_retired() -> None
     assert any("shadow signals into paper-close outcomes" in action for action in report["next_actions"])
 
 
+def test_promotion_blocker_points_to_broker_paper_capture_after_positive_shadow_outcomes() -> None:
+    report = audit.build_report(
+        services=_running_services(),
+        ports=_listening_ports(),
+        endpoints=_healthy_endpoints(),
+        broker_bracket_audit=_ready_bracket_gate(),
+        promotion_audit={
+            "summary": "BLOCKED_KAIZEN_RETIRED",
+            "ready_for_prop_dry_run_review": False,
+            "next_runner_candidate": {
+                "bot_id": "volume_profile_nq",
+                "symbol": "NQ1",
+                "broker_close_evidence": {"closed_trade_count": 0},
+                "supervisor_watch_evidence": {"verdict": "WATCHING_NO_SIGNAL_YET"},
+                "shadow_signal_evidence": {"signal_count": 40},
+                "shadow_outcome_evidence": {
+                    "evaluated_count": 33,
+                    "verdict": "POSITIVE_COUNTERFACTUAL_EDGE",
+                    "broker_backed": False,
+                    "promotion_proof": False,
+                },
+            },
+        },
+        service_config={"fm_status_server": {"matches_expected": True}},
+        tasks=_healthy_tasks(),
+        ibgateway_reauth={"status": "healthy"},
+    )
+
+    assert any("broker-paper close capture" in action for action in report["next_actions"])
+    assert not any("shadow signals into paper-close outcomes" in action for action in report["next_actions"])
+
+
+def test_promotion_blocker_points_to_fresh_shadow_context_when_replay_lacks_context() -> None:
+    report = audit.build_report(
+        services=_running_services(),
+        ports=_listening_ports(),
+        endpoints=_healthy_endpoints(),
+        broker_bracket_audit=_ready_bracket_gate(),
+        promotion_audit={
+            "summary": "BLOCKED_KAIZEN_RETIRED",
+            "ready_for_prop_dry_run_review": False,
+            "next_runner_candidate": {
+                "bot_id": "volume_profile_nq",
+                "symbol": "NQ1",
+                "broker_close_evidence": {"closed_trade_count": 0},
+                "supervisor_watch_evidence": {"verdict": "WATCHING_NO_SIGNAL_YET"},
+                "shadow_signal_evidence": {"signal_count": 40},
+                "shadow_outcome_evidence": {
+                    "shadow_signal_count": 40,
+                    "evaluated_count": 0,
+                    "missing_context": 40,
+                    "verdict": "NO_EVALUATED_SIGNALS",
+                    "broker_backed": False,
+                    "promotion_proof": False,
+                },
+            },
+        },
+        service_config={"fm_status_server": {"matches_expected": True}},
+        tasks=_healthy_tasks(),
+        ibgateway_reauth={"status": "healthy"},
+    )
+
+    assert any("fresh bracket-context shadow signals" in action for action in report["next_actions"])
+    assert not any("Repair bar freshness" in action for action in report["next_actions"])
+
+
+def test_promotion_blocker_points_to_bar_freshness_after_failed_shadow_replay() -> None:
+    report = audit.build_report(
+        services=_running_services(),
+        ports=_listening_ports(),
+        endpoints=_healthy_endpoints(),
+        broker_bracket_audit=_ready_bracket_gate(),
+        promotion_audit={
+            "summary": "BLOCKED_KAIZEN_RETIRED",
+            "ready_for_prop_dry_run_review": False,
+            "next_runner_candidate": {
+                "bot_id": "volume_profile_nq",
+                "symbol": "NQ1",
+                "broker_close_evidence": {"closed_trade_count": 0},
+                "supervisor_watch_evidence": {"verdict": "WATCHING_NO_SIGNAL_YET"},
+                "shadow_signal_evidence": {"signal_count": 40},
+                "shadow_outcome_evidence": {
+                    "shadow_signal_count": 40,
+                    "evaluated_count": 0,
+                    "missing_bars": 40,
+                    "verdict": "NO_EVALUATED_SIGNALS",
+                    "broker_backed": False,
+                    "promotion_proof": False,
+                },
+            },
+        },
+        service_config={"fm_status_server": {"matches_expected": True}},
+        tasks=_healthy_tasks(),
+        ibgateway_reauth={"status": "healthy"},
+    )
+
+    assert any("bar freshness" in action for action in report["next_actions"])
+    assert not any("shadow signals into paper-close outcomes" in action for action in report["next_actions"])
+
+
 def test_paper_live_gate_ready_when_only_prop_promotion_is_blocked() -> None:
     report = audit.build_report(
         services=_running_services(),

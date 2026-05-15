@@ -64,6 +64,7 @@ ETA_JARVIS_SUPERVISOR_RECONCILE_PATH = ETA_JARVIS_SUPERVISOR_STATE_DIR / "reconc
 ETA_ORDER_ENTRY_HOLD_PATH = ETA_RUNTIME_STATE_DIR / "order_entry_hold.json"
 ETA_JARVIS_TRADE_CLOSES_PATH = ETA_RUNTIME_STATE_DIR / "jarvis_intel" / "trade_closes.jsonl"
 ETA_JARVIS_SHADOW_SIGNALS_PATH = ETA_RUNTIME_STATE_DIR / "jarvis_intel" / "shadow_signals.jsonl"
+ETA_JARVIS_SHADOW_SIGNAL_OUTCOMES_PATH = ETA_RUNTIME_STATE_DIR / "jarvis_intel" / "shadow_signal_outcomes_latest.json"
 ETA_CLOSED_TRADE_LEDGER_PATH = ETA_RUNTIME_STATE_DIR / "closed_trade_ledger_latest.json"
 ETA_BROKER_BRACKET_AUDIT_PATH = ETA_RUNTIME_STATE_DIR / "broker_bracket_audit_latest.json"
 ETA_BROKER_BRACKET_MANUAL_ACK_PATH = ETA_RUNTIME_STATE_DIR / "broker_bracket_manual_oco_ack.json"

@@ -320,17 +320,92 @@ def _shadow_signal_evidence(shadow_signals: list[Any], bot_id: str) -> dict[str,
     }
 
 
+def _shadow_outcome_evidence(shadow_outcome_report: dict[str, Any], bot_id: str) -> dict[str, Any]:
+    report = _as_dict(shadow_outcome_report)
+    per_bot = _as_dict(report.get("per_bot"))
+    stats = _as_dict(per_bot.get(bot_id))
+    if not stats:
+        return {
+            "source": "shadow_signal_outcomes",
+            "has_shadow_outcomes": False,
+            "evaluated_count": 0,
+            "verdict": "NO_SHADOW_OUTCOMES",
+            "broker_backed": False,
+            "promotion_proof": False,
+        }
+    return {
+        "source": "shadow_signal_outcomes",
+        "has_shadow_outcomes": int(stats.get("evaluated_count") or 0) > 0,
+        "shadow_signal_count": int(stats.get("shadow_signal_count") or 0),
+        "evaluated_count": int(stats.get("evaluated_count") or 0),
+        "missing_bars": int(stats.get("missing_bars") or 0),
+        "missing_context": int(stats.get("missing_context") or 0),
+        "insufficient_future_bars": int(stats.get("insufficient_future_bars") or 0),
+        "skipped_bad_signals": int(stats.get("skipped_bad_signals") or 0),
+        "win_rate_pct": stats.get("win_rate_pct") or 0.0,
+        "avg_r": stats.get("avg_r") or 0.0,
+        "total_r": stats.get("total_r") or 0.0,
+        "profit_factor": stats.get("profit_factor") or 0.0,
+        "latest_signal_ts": stats.get("latest_signal_ts") or "",
+        "latest_evaluated_ts": stats.get("latest_evaluated_ts") or "",
+        "verdict": stats.get("verdict") or "UNKNOWN_SHADOW_OUTCOME",
+        "broker_backed": bool(stats.get("broker_backed")),
+        "promotion_proof": bool(stats.get("promotion_proof")),
+        "truth_note": _as_dict(report.get("summary")).get("truth_note")
+        or "Counterfactual replay only; not broker proof.",
+    }
+
+
 def _runner_next_action(
     candidate: dict[str, Any],
     broker_evidence: dict[str, Any],
     watch_evidence: dict[str, Any],
     signal_evidence: dict[str, Any],
+    outcome_evidence: dict[str, Any],
 ) -> str:
     bot_id = str(candidate.get("bot_id") or "runner").strip()
     close_count = int(broker_evidence.get("closed_trade_count") or 0)
     if _is_deactivated(candidate):
         return f"Keep {bot_id} deactivated until fresh paper-soak evidence repairs the retirement case"
     if close_count <= 0:
+        outcome_count = int(outcome_evidence.get("evaluated_count") or 0)
+        outcome_signal_count = int(outcome_evidence.get("shadow_signal_count") or 0)
+        missing_bars = int(outcome_evidence.get("missing_bars") or 0)
+        missing_context = int(outcome_evidence.get("missing_context") or 0)
+        insufficient_future_bars = int(outcome_evidence.get("insufficient_future_bars") or 0)
+        outcome_verdict = str(outcome_evidence.get("verdict") or "")
+        if outcome_count <= 0 and outcome_signal_count > 0:
+            if missing_context > 0:
+                return (
+                    f"Restart shadow context logging to capture fresh bracket-context shadow signals for {bot_id}; "
+                    f"{missing_context} older shadow signals lack planned entry/risk/stop context"
+                )
+            if missing_bars > 0:
+                return (
+                    f"Repair bar freshness/source mapping for {bot_id}; {missing_bars} shadow signals "
+                    "cannot replay into paper-close outcomes"
+                )
+            if insufficient_future_bars > 0:
+                return (
+                    f"Wait for enough future bars or extend capture for {bot_id}; shadow replay has "
+                    "signals but no complete outcome window yet"
+                )
+            return f"Repair shadow outcome replay for {bot_id}; signals exist but no outcomes evaluated"
+        if outcome_count > 0:
+            if outcome_verdict == "POSITIVE_COUNTERFACTUAL_EDGE":
+                return (
+                    f"Move {bot_id} from shadow-only replay into broker-paper close capture; "
+                    "counterfactual edge is positive, but not broker proof yet"
+                )
+            if outcome_verdict in {"NO_COUNTERFACTUAL_EDGE", "WEAK_OR_NEGATIVE_COUNTERFACTUAL"}:
+                return (
+                    f"Retune {bot_id} before broker-paper capture; shadow replay is weak or negative "
+                    "and broker-backed closes are still missing"
+                )
+            return (
+                f"Keep replaying {bot_id} shadow outcomes until the sample is decisive; "
+                "broker-backed closes are still missing"
+            )
         if int(signal_evidence.get("signal_count") or 0) > 0:
             return (
                 f"Convert {bot_id} shadow signals into paper-close outcomes; signals fire, "
@@ -361,8 +436,29 @@ def _runner_operator_note(
     broker_evidence: dict[str, Any],
     watch_evidence: dict[str, Any],
     signal_evidence: dict[str, Any],
+    outcome_evidence: dict[str, Any],
 ) -> str:
     if int(broker_evidence.get("closed_trade_count") or 0) <= 0:
+        outcome_count = int(outcome_evidence.get("evaluated_count") or 0)
+        outcome_signal_count = int(outcome_evidence.get("shadow_signal_count") or 0)
+        if outcome_count <= 0 and outcome_signal_count > 0:
+            if int(outcome_evidence.get("missing_context") or 0) > 0:
+                return (
+                    "Outcome audit ran, but older shadow signals lack planned entry/risk context; "
+                    "wait for fresh bracket-context shadow signals before judging replay edge."
+                )
+            return (
+                "Outcome audit ran, but the signals cannot replay into outcomes yet; repair bar "
+                "freshness/source mapping before judging edge."
+            )
+        if outcome_count > 0:
+            verdict = str(outcome_evidence.get("verdict") or "")
+            if verdict == "POSITIVE_COUNTERFACTUAL_EDGE":
+                return (
+                    "Counterfactual shadow replay is positive, but not broker proof; next gap is "
+                    "broker-paper closed outcomes."
+                )
+            return "Shadow replay exists, but it is not broker proof; use it for retune triage only."
         if int(signal_evidence.get("signal_count") or 0) > 0:
             return "Signals are firing in paper/shadow mode; next proof gap is closed outcomes, not signal wiring."
         if watch_evidence.get("verdict") == "WATCHING_NO_SIGNAL_YET":
@@ -381,6 +477,7 @@ def _runner_summary(
     closed_trade_ledger: dict[str, Any],
     supervisor_heartbeat: dict[str, Any],
     shadow_signals: list[Any],
+    shadow_outcome_report: dict[str, Any],
 ) -> dict[str, Any]:
     bot_id = str(candidate.get("bot_id") or "").strip()
     broker_evidence = _broker_close_evidence(
@@ -389,6 +486,7 @@ def _runner_summary(
     )
     watch_evidence = _supervisor_watch_evidence(supervisor_heartbeat, bot_id)
     signal_evidence = _shadow_signal_evidence(shadow_signals, bot_id)
+    outcome_evidence = _shadow_outcome_evidence(shadow_outcome_report, bot_id)
     return {
         "bot_id": candidate.get("bot_id") or "",
         "role": candidate.get("role") or "runner",
@@ -406,9 +504,22 @@ def _runner_summary(
         "broker_close_evidence": broker_evidence,
         "supervisor_watch_evidence": watch_evidence,
         "shadow_signal_evidence": signal_evidence,
+        "shadow_outcome_evidence": outcome_evidence,
         "ladder_blockers": [str(item) for item in _as_list(candidate.get("blockers"))],
-        "next_action": _runner_next_action(candidate, broker_evidence, watch_evidence, signal_evidence),
-        "operator_note": _runner_operator_note(candidate, broker_evidence, watch_evidence, signal_evidence),
+        "next_action": _runner_next_action(
+            candidate,
+            broker_evidence,
+            watch_evidence,
+            signal_evidence,
+            outcome_evidence,
+        ),
+        "operator_note": _runner_operator_note(
+            candidate,
+            broker_evidence,
+            watch_evidence,
+            signal_evidence,
+            outcome_evidence,
+        ),
     }
 
 
@@ -444,10 +555,12 @@ def build_promotion_audit_report(
     closed_trade_ledger: dict[str, Any] | None = None,
     supervisor_heartbeat: dict[str, Any] | None = None,
     shadow_signals: list[Any] | None = None,
+    shadow_outcome_report: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     closed_trade_ledger = _as_dict(closed_trade_ledger)
     supervisor_heartbeat = _as_dict(supervisor_heartbeat)
     shadow_signals = _as_list(shadow_signals)
+    shadow_outcome_report = _as_dict(shadow_outcome_report)
     candidate = _with_live_deactivation(
         _primary_candidate(gate_report=gate_report, ladder_report=ladder_report),
         gate_report,
@@ -455,11 +568,11 @@ def build_promotion_audit_report(
     runners = _runner_candidates(ladder_report)
     next_runner = _next_runner_candidate(runners)
     runner_summaries = [
-        _runner_summary(runner, closed_trade_ledger, supervisor_heartbeat, shadow_signals)
+        _runner_summary(runner, closed_trade_ledger, supervisor_heartbeat, shadow_signals, shadow_outcome_report)
         for runner in runners
     ]
     next_runner_summary = (
-        _runner_summary(next_runner, closed_trade_ledger, supervisor_heartbeat, shadow_signals)
+        _runner_summary(next_runner, closed_trade_ledger, supervisor_heartbeat, shadow_signals, shadow_outcome_report)
         if next_runner
         else {}
     )
@@ -572,6 +685,16 @@ def _current_shadow_signals() -> list[Any]:
         return []
 
 
+def _current_shadow_outcome_report() -> dict[str, Any]:
+    path = workspace_roots.ETA_JARVIS_SHADOW_SIGNAL_OUTCOMES_PATH
+    if not path.exists():
+        return {}
+    try:
+        return _as_dict(json.loads(path.read_text(encoding="utf-8")))
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
 def _print_human(report: dict[str, Any], out_path: Path | None = None) -> None:
     print()
     print("EVOLUTIONARY TRADING ALGO -- Prop Strategy Promotion Audit")
@@ -603,6 +726,7 @@ def main(argv: list[str] | None = None) -> int:
         closed_trade_ledger=_current_closed_trade_ledger(),
         supervisor_heartbeat=_current_supervisor_heartbeat(),
         shadow_signals=_current_shadow_signals(),
+        shadow_outcome_report=_current_shadow_outcome_report(),
     )
     out_path = None if args.no_write else write_report(report, args.out)
     if args.json:
