@@ -789,17 +789,23 @@ function initCommandCenterDiagnostics() {
     const adminAi = opsHardening.jarvis_hermes_admin_ai || {};
     const service = latest.service || {};
     const paths = latest.paths || {};
+    const blockedBots = Number(botFleet.current_blocked_bots || 0);
+    const blockedSummary = String(botFleet.current_blocked_summary_line || '').trim();
     body.innerHTML = [
       row('api_build', `${apiBuild.dashboard_version || '?'} ${apiBuild.release_stage || '?'} pid:${service.pid || apiBuild.pid || '?'}`),
       row('service', `${service.status || 'unknown'} uptime:${Math.round(Number(service.uptime_s || 0))}s`),
       row('cards', `${cards.total || 0} total / ${cards.dead || 0} dead / ${cards.stale || 0} stale`),
-      row('bot_fleet', `${botFleet.confirmed_bots || 0}/${botFleet.bot_total || 0} confirmed - ${botFleet.truth_status || 'unknown'}`),
+      row(
+        'bot_fleet',
+        `${botFleet.confirmed_bots || 0}/${botFleet.bot_total || 0} confirmed - ${botFleet.truth_status || 'unknown'}${blockedBots > 0 ? ` - blocked ${blockedBots}` : ''}`,
+      ),
+      blockedSummary ? row('bot_blockers', blockedSummary) : '',
       row('equity', `${equity.source || 'unknown'} points:${equity.point_count || 0} age:${equity.source_age_s ?? 'n/a'}s`),
       row('vps_ops', `${opsHardening.status || 'unknown'} age:${opsHardening.age_s ?? 'n/a'}s`),
       row('admin_ai', `${adminAi.status || 'unknown'} ready:${adminAi.ready === true ? 'yes' : 'no'}`),
       row('state_dir', paths.state_dir || 'unknown'),
       row('generated', latest.generated_at || 'unknown'),
-    ].join('');
+    ].filter(Boolean).join('');
   };
 
   const publish = (payload) => {
@@ -810,10 +816,15 @@ function initCommandCenterDiagnostics() {
     const ok = checks.api_contract && checks.card_contract && checks.bot_fleet_contract && checks.equity_contract;
     const botTotal = Number(botFleet.bot_total || 0);
     const confirmed = Number(botFleet.confirmed_bots || 0);
+    const blockedBots = Number(botFleet.current_blocked_bots || 0);
     const label = ok
       ? `diagnostics: live ${confirmed}/${botTotal}`
       : 'diagnostics: degraded';
-    setChip(label, ok ? 'ok' : 'degraded', `${botFleet.truth_status || 'unknown'} / ${equity.source || 'unknown'}`);
+    setChip(
+      label,
+      ok ? 'ok' : 'degraded',
+      `${botFleet.truth_status || 'unknown'}${blockedBots > 0 ? ` / blocked ${blockedBots}` : ''} / ${equity.source || 'unknown'}`,
+    );
     render();
     window.dispatchEvent(new CustomEvent('eta-command-center-diagnostics', {
       detail: {

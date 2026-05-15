@@ -1070,6 +1070,18 @@ def _dashboard_diagnostics_payload() -> dict:
             "truth_summary_line": str(
                 roster.get("truth_summary_line") or roster_summary.get("truth_summary_line") or "",
             ),
+            "current_blocked_bots": int(roster_summary.get("current_blocked_bots") or 0),
+            "current_blocked_kinds": (
+                roster_summary.get("current_blocked_kinds")
+                if isinstance(roster_summary.get("current_blocked_kinds"), dict)
+                else {}
+            ),
+            "current_blocked_summary_line": str(roster_summary.get("current_blocked_summary_line") or ""),
+            "current_blocked_preview": (
+                roster_summary.get("current_blocked_preview")
+                if isinstance(roster_summary.get("current_blocked_preview"), list)
+                else []
+            ),
             "live_broker_probe_mode": str(roster_summary.get("live_broker_probe_mode") or "unknown"),
             "source_of_truth": str(roster.get("source_of_truth") or _state_dir()),
             "error": roster.get("_error"),
@@ -3726,17 +3738,50 @@ def _paper_live_transition_cache_payload() -> dict:
     return payload
 
 
+def _paper_live_transition_with_effective_holds(payload: dict) -> dict:
+    """Annotate raw paper-live readiness with runtime holds that suppress entries."""
+    out = dict(payload) if isinstance(payload, dict) else {}
+    raw_status = str(out.get("status") or "unknown")
+    effective_status = str(out.get("effective_status") or raw_status)
+    effective_detail = str(out.get("effective_detail") or "")
+    launch_blocked_raw = out.get("operator_queue_launch_blocked_count")
+    if launch_blocked_raw is None:
+        launch_blocked_raw = out.get("operator_queue_blocked_count")
+    try:
+        launch_blocked = int(launch_blocked_raw or 0)
+    except (TypeError, ValueError):
+        launch_blocked = 0
+
+    daily_loss_killswitch = _daily_loss_killswitch_snapshot()
+    held_by_daily_loss_stop = bool(daily_loss_killswitch.get("tripped")) and bool(out.get("critical_ready")) and (
+        launch_blocked == 0
+    )
+    if held_by_daily_loss_stop and effective_status in {"ready", "ready_to_launch_paper_live", "green"}:
+        effective_status = "held_by_daily_loss_stop"
+        effective_detail = (
+            str(daily_loss_killswitch.get("reason") or "")
+            or "Daily-loss soft stop is active; new entries are held until the next trading day."
+        )
+
+    out["raw_status"] = raw_status
+    out["effective_status"] = effective_status
+    out["effective_detail"] = effective_detail
+    out["held_by_daily_loss_stop"] = held_by_daily_loss_stop
+    out["daily_loss_killswitch"] = daily_loss_killswitch
+    return out
+
+
 def _paper_live_transition_payload(*, refresh: bool = False) -> dict:
     """Return paper-live launch readiness without blocking the Command Center."""
     if not refresh:
-        return _paper_live_transition_cache_payload()
+        return _paper_live_transition_with_effective_holds(_paper_live_transition_cache_payload())
 
     try:
         from eta_engine.scripts.paper_live_transition_check import build_transition_check
 
         payload = build_transition_check()
     except Exception as exc:  # noqa: BLE001 -- broker probes must fail soft in UI
-        return {
+        return _paper_live_transition_with_effective_holds({
             "source": "paper_live_transition_check",
             "error": str(exc),
             "status": "unreadable",
@@ -3747,11 +3792,11 @@ def _paper_live_transition_payload(*, refresh: bool = False) -> dict:
             "operator_queue_first_next_action": None,
             "paper_ready_bots": 0,
             "gates": [],
-        }
+        })
     if isinstance(payload, dict):
         payload.setdefault("source", "paper_live_transition_check")
-        return payload
-    return {
+        return _paper_live_transition_with_effective_holds(payload)
+    return _paper_live_transition_with_effective_holds({
         "source": "paper_live_transition_check",
         "error": "paper-live transition check returned a non-object payload",
         "status": "unreadable",
@@ -3762,7 +3807,7 @@ def _paper_live_transition_payload(*, refresh: bool = False) -> dict:
         "operator_queue_first_next_action": None,
         "paper_ready_bots": 0,
         "gates": [],
-    }
+    })
 
 
 def _first_failed_gate(payload: dict) -> dict:
@@ -5965,11 +6010,7 @@ def bot_fleet_roster(
     confirmed_bots = sum(
         1 for r in rows if r.get("source") == "jarvis_strategy_supervisor" or r.get("confirmed") is True
     )
-    blocked_rows = [r for r in rows if str(r.get("current_block_reason") or "").strip()]
-    blocked_kinds: dict[str, int] = {}
-    for row in blocked_rows:
-        kind = str(row.get("current_block_kind") or "unknown").strip() or "unknown"
-        blocked_kinds[kind] = blocked_kinds.get(kind, 0) + 1
+    blocked_rollup = _blocked_bot_rollup(rows)
     active_bots = sum(1 for r in rows if _is_runtime_active_bot_row(r))
     staged_bots = max(0, len(rows) - active_bots)
     running_bots = sum(1 for r in rows if str(r.get("status") or "").lower() == "running")
@@ -6219,8 +6260,10 @@ def bot_fleet_roster(
             "running_bots": running_bots,
             "staged_bots": staged_bots,
             "readiness_staged_bots": staged_bots,
-            "current_blocked_bots": len(blocked_rows),
-            "current_blocked_kinds": blocked_kinds,
+            "current_blocked_bots": int(blocked_rollup["count"]),
+            "current_blocked_kinds": blocked_rollup["kinds"],
+            "current_blocked_summary_line": str(blocked_rollup["summary_line"] or ""),
+            "current_blocked_preview": blocked_rollup["preview"],
             "live_broker_probe_mode": "live" if live_broker_probe else "cached_diagnostics",
             "mnq_total": len(mnq_runtime_rows),
             "mnq_runtime_total": len(mnq_runtime_rows),
@@ -6593,6 +6636,69 @@ def _current_bot_block_state(status: Any) -> dict[str, str]:
         "current_block_reason": "",
         "current_block_summary": "",
         "current_block_at": "",
+    }
+
+
+def _blocked_bot_rollup(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    blocked_rows = [row for row in rows if str(row.get("current_block_reason") or "").strip()]
+    blocked_kinds: dict[str, int] = {}
+    if not blocked_rows:
+        return {
+            "count": 0,
+            "kinds": blocked_kinds,
+            "summary_line": "",
+            "preview": [],
+        }
+
+    priority = {
+        "daily_kill_switch": 0,
+        "fleet_position_cap": 1,
+        "prop_sleeve_cap": 1,
+        "gate_reject": 2,
+        "gate_size_collapsed": 2,
+        "session_gate": 3,
+        "regime_block": 4,
+        "consult_exception": 4,
+        "jarvis_not_bootstrapped": 5,
+        "route_paper": 6,
+    }
+
+    for row in blocked_rows:
+        kind = str(row.get("current_block_kind") or "unknown").strip() or "unknown"
+        blocked_kinds[kind] = blocked_kinds.get(kind, 0) + 1
+
+    def _sort_key(row: dict[str, Any]) -> tuple[int, str, str]:
+        kind = str(row.get("current_block_kind") or "unknown").strip() or "unknown"
+        bot_id = str(row.get("name") or row.get("id") or row.get("bot_id") or "").strip()
+        at = str(row.get("current_block_at") or "").strip()
+        return (priority.get(kind, 99), bot_id, at)
+
+    preview_rows = sorted(blocked_rows, key=_sort_key)[:5]
+    preview = [
+        {
+            "bot_id": str(row.get("name") or row.get("id") or row.get("bot_id") or "").strip(),
+            "symbol": str(row.get("symbol") or "").strip(),
+            "kind": str(row.get("current_block_kind") or "").strip(),
+            "summary": str(row.get("current_block_summary") or "").strip(),
+            "at": str(row.get("current_block_at") or "").strip(),
+        }
+        for row in preview_rows
+    ]
+    kind_parts = [
+        f"{count} {kind.replace('_', ' ')}"
+        for kind, count in sorted(blocked_kinds.items(), key=lambda item: (priority.get(item[0], 99), item[0]))
+    ]
+    top_names = [entry["bot_id"] for entry in preview if entry["bot_id"]]
+    summary_line = (
+        f"Current blockers: {len(blocked_rows)} bot(s) held"
+        + (f" - {', '.join(kind_parts)}" if kind_parts else "")
+        + (f". Top: {', '.join(top_names)}." if top_names else ".")
+    )
+    return {
+        "count": len(blocked_rows),
+        "kinds": blocked_kinds,
+        "summary_line": summary_line,
+        "preview": preview,
     }
 
 

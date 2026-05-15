@@ -1176,6 +1176,57 @@ class TestDashboardAPI:
         assert data["source_age_s"] >= 0
         assert "no-store" in r.headers["Cache-Control"]
 
+    def test_jarvis_paper_live_transition_endpoint_surfaces_daily_loss_hold(
+        self,
+        app_client,
+        monkeypatch,
+        tmp_path,
+    ):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+        from eta_engine.scripts import paper_live_transition_check
+
+        def boom(**_kwargs):
+            raise RuntimeError("live probe should not run")
+
+        monkeypatch.setattr(paper_live_transition_check, "build_transition_check", boom)
+        monkeypatch.setattr(
+            mod,
+            "_daily_loss_killswitch_snapshot",
+            lambda: {
+                "source": "daily_loss_killswitch",
+                "status": "tripped",
+                "tripped": True,
+                "disabled": False,
+                "today_pnl_usd": -925.50,
+                "limit_usd": -900.0,
+                "reason": "day_pnl=$-925.50 <= limit=$-900.00 (date=2026-05-15)",
+            },
+        )
+        (tmp_path / "state" / "paper_live_transition_check.json").write_text(
+            json.dumps(
+                {
+                    "generated_at": datetime.now(UTC).isoformat(),
+                    "status": "ready_to_launch_paper_live",
+                    "critical_ready": True,
+                    "operator_queue_launch_blocked_count": 0,
+                    "paper_ready_bots": 9,
+                    "gates": [],
+                },
+            ),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/jarvis/paper_live_transition")
+
+        assert r.status_code == 200
+        data = r.json()
+        assert data["status"] == "ready_to_launch_paper_live"
+        assert data["raw_status"] == "ready_to_launch_paper_live"
+        assert data["effective_status"] == "held_by_daily_loss_stop"
+        assert data["held_by_daily_loss_stop"] is True
+        assert "day_pnl=$-925.50" in data["effective_detail"]
+        assert data["daily_loss_killswitch"]["status"] == "tripped"
+
     def test_jarvis_paper_live_transition_endpoint_refreshes_on_demand(self, app_client, monkeypatch):
         from eta_engine.scripts import paper_live_transition_check
 
@@ -1749,6 +1800,10 @@ class TestDashboardAPI:
         assert data["bot_fleet"]["runtime_active_bots"] == 0
         assert data["bot_fleet"]["running_bots"] == 0
         assert data["bot_fleet"]["staged_bots"] == 0
+        assert data["bot_fleet"]["current_blocked_bots"] == 0
+        assert data["bot_fleet"]["current_blocked_kinds"] == {}
+        assert data["bot_fleet"]["current_blocked_summary_line"] == ""
+        assert data["bot_fleet"]["current_blocked_preview"] == []
         assert data["bot_fleet"]["truth_status"] in {"empty", "runtime_stopped", "stale", "live", "working"}
         if data["bot_fleet"]["bot_total"]:
             assert data["bot_fleet"]["truth_summary_line"]
@@ -2082,6 +2137,63 @@ class TestDashboardAPI:
         assert readiness["paper_ready"] == 10
         assert readiness["can_live_any"] is False
         assert readiness["launch_lanes"]["live_preflight"] == 6
+
+    def test_dashboard_diagnostics_carries_bot_blocker_rollup(self, app_client, monkeypatch):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        monkeypatch.setattr(
+            mod,
+            "bot_fleet_roster",
+            lambda *_args, **_kwargs: {
+                "bots": [],
+                "confirmed_bots": 4,
+                "summary": {
+                    "bot_total": 6,
+                    "confirmed_bots": 4,
+                    "active_bots": 2,
+                    "runtime_active_bots": 2,
+                    "running_bots": 2,
+                    "staged_bots": 4,
+                    "truth_status": "working",
+                    "truth_summary_line": "Live ETA truth: 4/6 bot heartbeat(s) are fresh.",
+                    "current_blocked_bots": 3,
+                    "current_blocked_kinds": {"daily_kill_switch": 1, "session_gate": 2},
+                    "current_blocked_summary_line": (
+                        "Current blockers: 3 bot(s) held - 1 daily kill switch, 2 session gate. "
+                        "Top: mnq_futures_sage, volume_profile_nq."
+                    ),
+                    "current_blocked_preview": [
+                        {
+                            "bot_id": "mnq_futures_sage",
+                            "symbol": "MNQ1",
+                            "kind": "daily_kill_switch",
+                            "summary": "Entries halted by daily kill switch: day_pnl=$-925.50 <= limit=$-900.00",
+                            "at": "2026-05-15T13:15:02+00:00",
+                        },
+                        {
+                            "bot_id": "volume_profile_nq",
+                            "symbol": "NQ1",
+                            "kind": "session_gate",
+                            "summary": "Entries paused by session gate: outside_rth",
+                            "at": "2026-05-15T13:15:04+00:00",
+                        },
+                    ],
+                    "live_broker_probe_mode": "cached_diagnostics",
+                },
+                "truth_status": "working",
+                "source_of_truth": "canonical_state",
+            },
+        )
+
+        r = app_client.get("/api/dashboard/diagnostics")
+
+        assert r.status_code == 200
+        data = r.json()
+        assert data["bot_fleet"]["current_blocked_bots"] == 3
+        assert data["bot_fleet"]["current_blocked_kinds"] == {"daily_kill_switch": 1, "session_gate": 2}
+        assert data["bot_fleet"]["current_blocked_summary_line"].startswith("Current blockers: 3 bot(s) held")
+        assert data["bot_fleet"]["current_blocked_preview"][0]["bot_id"] == "mnq_futures_sage"
+        assert data["bot_fleet"]["current_blocked_preview"][1]["summary"] == "Entries paused by session gate: outside_rth"
 
     def test_dashboard_diagnostics_includes_operator_and_paper_live_rollups(
         self,
@@ -7140,6 +7252,18 @@ class TestDashboardAPI:
         assert nq["readiness_next_action"].startswith("Run per-bot promotion")
         assert data["summary"]["current_blocked_bots"] == 1
         assert data["summary"]["current_blocked_kinds"] == {"session_gate": 1}
+        assert data["summary"]["current_blocked_summary_line"] == (
+            "Current blockers: 1 bot(s) held - 1 session gate. Top: volume_profile_nq."
+        )
+        assert data["summary"]["current_blocked_preview"] == [
+            {
+                "bot_id": "volume_profile_nq",
+                "symbol": "NQ1",
+                "kind": "session_gate",
+                "summary": "Entries paused by session gate: outside_rth",
+                "at": "2026-04-28T12:00:00+00:00",
+            },
+        ]
 
     def test_bot_fleet_surfaces_tws_gateway_health(self, app_client):
         """The public roster reports broker execution health separately from bot liveness."""

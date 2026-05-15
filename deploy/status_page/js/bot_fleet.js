@@ -275,7 +275,19 @@ class RosterPanel extends Panel {
     const liveLine = `server ${srvTs} | fills 1h ${live.fills_1h ?? 0} | fills 24h ${live.fills_24h ?? 0} | last fill ${formatTime(live.last_fill_ts)}`;
     const blockedBots = Number(data.summary?.current_blocked_bots || 0);
     const blockedLabel = blockedBots > 0 ? ` | blocked ${blockedBots}` : '';
-    this.body.innerHTML = `<div class="dashboard-freshness-line text-[10px] text-zinc-500 mb-1" data-quality="${escapeHtml(String(quality))}">${escapeHtml(version || 'v1 pre_beta')} | live roster | ${escapeHtml(liveLine)} | age ${dataAge ?? 'n/a'}s | confirmed ${Number(data.confirmed_bots || 0)}${escapeHtml(blockedLabel)} | window yesterday-&gt;now</div><table class="mobile-card-table w-full text-xs"><thead class="text-zinc-500">
+    const blockedSummaryLine = String(data.summary?.current_blocked_summary_line || '').trim();
+    const blockedPreview = Array.isArray(data.summary?.current_blocked_preview) ? data.summary.current_blocked_preview : [];
+    const blockersStrip = blockedBots > 0 ? `
+      <div class="rounded border border-amber-500/30 bg-amber-500/10 px-3 py-2 mb-2">
+        <div class="text-[11px] text-amber-200">${escapeHtml(blockedSummaryLine || `Current blockers: ${blockedBots} bot(s) held.`)}</div>
+        ${blockedPreview.length ? `<div class="flex flex-wrap gap-1 mt-2">${blockedPreview.slice(0, 5).map(entry => {
+          const botId = String(entry?.bot_id || '').trim();
+          const kind = String(entry?.kind || '').trim().replace(/_/g, ' ');
+          const label = [botId, kind].filter(Boolean).join(' | ');
+          return `<span class="px-2 py-1 rounded bg-zinc-950/60 border border-amber-500/20 text-[10px] text-zinc-200">${escapeHtml(label)}</span>`;
+        }).join('')}</div>` : ''}
+      </div>` : '';
+    this.body.innerHTML = `<div class="dashboard-freshness-line text-[10px] text-zinc-500 mb-1" data-quality="${escapeHtml(String(quality))}">${escapeHtml(version || 'v1 pre_beta')} | live roster | ${escapeHtml(liveLine)} | age ${dataAge ?? 'n/a'}s | confirmed ${Number(data.confirmed_bots || 0)}${escapeHtml(blockedLabel)} | window yesterday-&gt;now</div>${blockersStrip}<table class="mobile-card-table w-full text-xs"><thead class="text-zinc-500">
       <tr><th class="text-left">Bot</th><th class="text-left">Symbol</th><th class="text-left">Tier</th><th class="text-left">Venue</th><th class="text-left">Readiness</th><th class="text-left">Status</th><th class="text-left">Position</th><th class="text-right">Day PnL</th><th class="text-left">Last Trade</th><th class="text-left">Age</th><th class="text-right">R</th></tr>
       </thead><tbody>${bots.map(b => {
         const statusCls = b.status === 'running' ? 'text-emerald-400'
