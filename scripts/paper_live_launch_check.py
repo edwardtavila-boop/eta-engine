@@ -55,6 +55,8 @@ sys.path.insert(0, str(ROOT.parent))
 
 from eta_engine.scripts import workspace_roots  # noqa: E402
 
+_LATEST_RESEARCH_REPORTS_CACHE: dict[str, dict[str, object]] | None = None
+
 # Strategy kinds we know how to resolve at runtime
 _RESOLVABLE_KINDS: frozenset[str] = frozenset(
     {
@@ -433,25 +435,61 @@ def _fmt_metric(value: object, *, pct: bool = False) -> str | None:
     return f"{float(value):+.3f}"
 
 
-def _research_evidence(extras: dict[str, object]) -> dict[str, object]:
-    tune = extras.get("research_tune")
-    if not isinstance(tune, dict):
-        return {}
+def _latest_runtime_research_report(bot_id: str) -> dict[str, object] | None:
+    """Return the newest runtime research-grid row for this bot, if present."""
+    global _LATEST_RESEARCH_REPORTS_CACHE
 
-    evidence: dict[str, object] = {
-        k: tune[k]
-        for k in (
-            "scope",
-            "source_artifact",
-            "strict_gate",
-            "candidate_agg_is_sharpe",
-            "candidate_agg_oos_sharpe",
-            "candidate_dsr_pass_fraction",
-            "candidate_degradation",
-            "provider_backed",
-        )
-        if k in tune
+    if _LATEST_RESEARCH_REPORTS_CACHE is None:
+        try:
+            from eta_engine.scripts.strategy_supercharge_results import _latest_reports_by_bot
+
+            _LATEST_RESEARCH_REPORTS_CACHE = _latest_reports_by_bot(
+                workspace_roots.ETA_RESEARCH_GRID_RUNTIME_DIR,
+            )
+        except Exception:  # noqa: BLE001 - launch checks should degrade to registry evidence.
+            _LATEST_RESEARCH_REPORTS_CACHE = {}
+    report = _LATEST_RESEARCH_REPORTS_CACHE.get(bot_id)
+    return report if isinstance(report, dict) else None
+
+
+def _runtime_research_smoke(report: dict[str, object]) -> dict[str, object]:
+    """Normalize a parsed research-grid row into launch-check evidence."""
+    smoke: dict[str, object] = {
+        "source_artifact": report.get("report_path", ""),
+        "windows": report.get("windows", 0),
+        "agg_is_sharpe": report.get("is_sharpe", 0.0),
+        "agg_oos_sharpe": report.get("oos_sharpe", 0.0),
+        "dsr_pass_fraction": report.get("dsr_pass_fraction", 0.0),
+        "strict_gate": str(report.get("verdict") or "").upper() == "PASS",
     }
+    degradation_pct = report.get("degradation_pct")
+    if isinstance(degradation_pct, (int, float)):
+        smoke["degradation"] = float(degradation_pct) / 100.0
+    return smoke
+
+
+def _research_evidence(extras: dict[str, object], bot_id: str | None = None) -> dict[str, object]:
+    tune = extras.get("research_tune")
+    evidence: dict[str, object] = {}
+    if not isinstance(tune, dict):
+        tune = {}
+
+    evidence.update(
+        {
+            k: tune[k]
+            for k in (
+                "scope",
+                "source_artifact",
+                "strict_gate",
+                "candidate_agg_is_sharpe",
+                "candidate_agg_oos_sharpe",
+                "candidate_dsr_pass_fraction",
+                "candidate_degradation",
+                "provider_backed",
+            )
+            if k in tune
+        },
+    )
     full_history = tune.get("full_history_smoke")
     if isinstance(full_history, dict):
         evidence["full_history_smoke"] = {
@@ -469,11 +507,26 @@ def _research_evidence(extras: dict[str, object]) -> dict[str, object]:
             )
             if k in full_history
         }
+    if bot_id:
+        runtime_report = _latest_runtime_research_report(bot_id)
+        if runtime_report is not None:
+            current_smoke = evidence.get("full_history_smoke")
+            if isinstance(current_smoke, dict):
+                current_artifact = current_smoke.get("source_artifact")
+                if isinstance(current_artifact, str) and current_artifact:
+                    evidence["registry_full_history_source_artifact"] = current_artifact
+            evidence["full_history_smoke"] = _runtime_research_smoke(runtime_report)
+            evidence["runtime_research_grid"] = {
+                "artifact_class": runtime_report.get("artifact_class", "unknown"),
+                "report_mtime": runtime_report.get("report_mtime", 0.0),
+                "result_status": runtime_report.get("result_status", ""),
+                "verdict": runtime_report.get("verdict", ""),
+            }
     return evidence
 
 
-def _research_warning(extras: dict[str, object]) -> str:
-    evidence = _research_evidence(extras)
+def _research_warning(extras: dict[str, object], bot_id: str | None = None) -> str:
+    evidence = _research_evidence(extras, bot_id)
     source = evidence.get("full_history_smoke")
     if not isinstance(source, dict):
         source = evidence
@@ -589,8 +642,8 @@ def _audit_bot(assignment: Any) -> dict:  # noqa: ANN401
     # 4. Promotion-status check (research_candidate is its own warning)
     promo_status = extras.get("promotion_status")
     if promo_status == "research_candidate":
-        evidence.update(_research_evidence(extras))
-        warnings.append(_research_warning(extras))
+        evidence.update(_research_evidence(extras, assignment.bot_id))
+        warnings.append(_research_warning(extras, assignment.bot_id))
     elif promo_status in _SHADOW_ONLY_STATUSES:
         evidence["launch_role"] = "shadow_only"
         shadow_reason = extras.get("shadow_reason")

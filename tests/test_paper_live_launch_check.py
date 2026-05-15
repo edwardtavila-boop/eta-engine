@@ -21,6 +21,7 @@ def _neutral_data_freshness(monkeypatch) -> None:
         "_check_critical_data_requirements",
         lambda *_args, **_kwargs: {"issues": [], "warnings": [], "evidence": []},
     )
+    monkeypatch.setattr(mod, "_latest_runtime_research_report", lambda *_args, **_kwargs: None)
 
 
 def test_deactivated_bot_is_warn_even_when_data_is_absent(monkeypatch) -> None:
@@ -113,6 +114,64 @@ def test_research_candidate_surfaces_registry_evidence(monkeypatch) -> None:
     assert result["evidence"]["candidate_agg_is_sharpe"] == -0.306
     assert result["evidence"]["candidate_degradation"] == 0.191
     assert result["evidence"]["full_history_smoke"]["windows"] == 83
+
+
+def test_research_candidate_prefers_latest_runtime_grid_evidence(monkeypatch) -> None:
+    assignment = SimpleNamespace(
+        bot_id="mes_sweep_reclaim_v2",
+        strategy_id="mes_sweep_reclaim_v2",
+        strategy_kind="sweep_reclaim",
+        symbol="MES1",
+        timeframe="5m",
+        extras={
+            "promotion_status": "research_candidate",
+            "research_tune": {
+                "source_artifact": "old_registry.md",
+                "strict_gate": False,
+                "candidate_agg_oos_sharpe": -1.0,
+                "full_history_smoke": {
+                    "source_artifact": "old_full_history.md",
+                    "windows": 4,
+                    "agg_oos_sharpe": -1.0,
+                    "dsr_pass_fraction": 0.0,
+                    "strict_gate": False,
+                },
+            },
+        },
+    )
+    monkeypatch.setattr(mod, "_check_data_available", lambda *_: True)
+    monkeypatch.setattr(mod, "_check_bot_dir_exists", lambda *_: True)
+    monkeypatch.setattr(mod, "_load_baseline_entry", lambda *_: {"strategy_id": "mes_sweep_reclaim_v2"})
+    monkeypatch.setattr(
+        mod,
+        "_latest_runtime_research_report",
+        lambda bot_id: {
+            "report_path": "fresh_runtime.md",
+            "windows": 11,
+            "is_sharpe": -0.059,
+            "oos_sharpe": 0.499,
+            "dsr_pass_fraction": 0.273,
+            "degradation_pct": 27.7,
+            "verdict": "FAIL",
+            "result_status": "fail",
+            "artifact_class": "low_signal",
+            "report_mtime": 1778830399.3842053,
+        }
+        if bot_id == "mes_sweep_reclaim_v2"
+        else None,
+    )
+
+    result = mod._audit_bot(assignment)
+
+    assert result["status"] == "WARN"
+    assert result["warnings"] == [
+        "research_candidate (strict gate failed; OOS +0.499; IS -0.059; "
+        "DSR pass 27.3%; degradation 27.7%; evidence fresh_runtime.md)",
+    ]
+    assert result["evidence"]["registry_full_history_source_artifact"] == "old_full_history.md"
+    assert result["evidence"]["full_history_smoke"]["source_artifact"] == "fresh_runtime.md"
+    assert result["evidence"]["full_history_smoke"]["windows"] == 11
+    assert result["evidence"]["runtime_research_grid"]["artifact_class"] == "low_signal"
 
 
 def test_shadow_benchmark_is_ready_with_shadow_evidence(monkeypatch) -> None:
@@ -210,6 +269,48 @@ def test_research_candidate_without_tune_keeps_generic_warning(monkeypatch) -> N
     assert result["status"] == "WARN"
     assert result["warnings"] == ["research_candidate (gate not fully passed)"]
     assert result["evidence"]["baseline_summary"] == "BTC compression strict gate FAIL."
+
+
+def test_research_candidate_without_registry_tune_uses_runtime_grid(monkeypatch) -> None:
+    assignment = SimpleNamespace(
+        bot_id="mes_sweep_reclaim",
+        strategy_id="mes_sweep_reclaim_v1",
+        strategy_kind="confluence_scorecard",
+        symbol="MES1",
+        timeframe="1h",
+        extras={"promotion_status": "research_candidate"},
+    )
+    monkeypatch.setattr(mod, "_check_data_available", lambda *_: True)
+    monkeypatch.setattr(mod, "_check_bot_dir_exists", lambda *_: True)
+    monkeypatch.setattr(mod, "_load_baseline_entry", lambda *_: None)
+    monkeypatch.setattr(
+        mod,
+        "_latest_runtime_research_report",
+        lambda bot_id: {
+            "report_path": "fresh_sparse_runtime.md",
+            "windows": 26,
+            "is_sharpe": 1.895,
+            "oos_sharpe": -4.46,
+            "dsr_pass_fraction": 0.385,
+            "degradation_pct": 55.5,
+            "verdict": "FAIL",
+            "result_status": "fail",
+            "artifact_class": "low_signal",
+            "report_mtime": 1778831124.384267,
+        }
+        if bot_id == "mes_sweep_reclaim"
+        else None,
+    )
+
+    result = mod._audit_bot(assignment)
+
+    assert result["warnings"] == [
+        "research_candidate (strict gate failed; OOS -4.460; IS +1.895; "
+        "DSR pass 38.5%; degradation 55.5%; evidence fresh_sparse_runtime.md)",
+        "baseline not in strategy_baselines.json",
+    ]
+    assert result["evidence"]["full_history_smoke"]["source_artifact"] == "fresh_sparse_runtime.md"
+    assert result["evidence"]["runtime_research_grid"]["result_status"] == "fail"
 
 
 def test_stale_launch_data_warns_without_blocking(monkeypatch) -> None:
