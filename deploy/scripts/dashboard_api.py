@@ -7540,6 +7540,7 @@ def _broker_summary_fields(live_broker_state: dict) -> dict:
     broker_mtd_return_pct = _float_value(live_broker_state.get("broker_mtd_return_pct"))
     fills = _float_value(live_broker_state.get("today_actual_fills"))
     open_positions = _float_value(live_broker_state.get("open_position_count"))
+    snapshot_age_s = _float_value(live_broker_state.get("broker_snapshot_age_s"))
     win_rate = _float_value(live_broker_state.get("win_rate_30d"))
     win_rate_today = _float_value(live_broker_state.get("win_rate_today"))
     closed_outcomes_today = _float_value(live_broker_state.get("closed_outcome_count_today"))
@@ -7547,7 +7548,18 @@ def _broker_summary_fields(live_broker_state: dict) -> dict:
     recent_close_realized_pnl_30d = _float_value(live_broker_state.get("recent_close_realized_pnl_30d"))
     out: dict[str, object] = {
         "pnl_summary_source": "live_broker_state",
+        "broker_ready": bool(live_broker_state.get("ready")),
+        "broker_probe_skipped": bool(live_broker_state.get("probe_skipped")),
+        "broker_refresh_probe_failed": bool(live_broker_state.get("refresh_probe_failed")),
+        "broker_snapshot_source": str(live_broker_state.get("broker_snapshot_source") or live_broker_state.get("source") or ""),
+        "broker_snapshot_state": str(live_broker_state.get("broker_snapshot_state") or ""),
     }
+    if snapshot_age_s is not None:
+        out["broker_snapshot_age_s"] = round(snapshot_age_s, 1)
+    if live_broker_state.get("refresh_probe_error"):
+        out["broker_refresh_probe_error"] = str(live_broker_state.get("refresh_probe_error") or "")
+    if live_broker_state.get("refresh_probe_source"):
+        out["broker_refresh_probe_source"] = str(live_broker_state.get("refresh_probe_source") or "")
     if realized is not None:
         out["broker_today_realized_pnl"] = round(realized, 2)
     if unrealized is not None:

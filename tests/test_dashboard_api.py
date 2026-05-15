@@ -5115,6 +5115,11 @@ class TestDashboardAPI:
             "_cached_live_broker_state_for_diagnostics",
             lambda: {
                 "ready": True,
+                "source": "cached_live_broker_state_for_diagnostics",
+                "probe_skipped": True,
+                "broker_snapshot_source": "ibkr_probe_cache",
+                "broker_snapshot_age_s": 6.4,
+                "broker_snapshot_state": "warm",
                 "today_actual_fills": 12,
                 "today_realized_pnl": 125.5,
                 "total_unrealized_pnl": 42.25,
@@ -5128,6 +5133,11 @@ class TestDashboardAPI:
         assert r.status_code == 200
         payload = r.json()
         assert payload["summary"]["live_broker_probe_mode"] == "cached_diagnostics"
+        assert payload["summary"]["broker_snapshot_source"] == "ibkr_probe_cache"
+        assert payload["summary"]["broker_snapshot_age_s"] == 6.4
+        assert payload["summary"]["broker_snapshot_state"] == "warm"
+        assert payload["summary"]["broker_probe_skipped"] is True
+        assert payload["summary"]["broker_refresh_probe_failed"] is False
         live_broker = payload["live_broker_state"]
         assert live_broker["ready"] is True
         assert live_broker["today_actual_fills"] == 12
@@ -5143,6 +5153,9 @@ class TestDashboardAPI:
                 "ready": True,
                 "source": "live_broker_rest",
                 "probe_skipped": False,
+                "broker_snapshot_source": "live_broker_rest",
+                "broker_snapshot_age_s": 0.0,
+                "broker_snapshot_state": "fresh",
                 "today_actual_fills": 12,
                 "today_realized_pnl": 125.5,
                 "total_unrealized_pnl": 42.25,
@@ -5156,6 +5169,10 @@ class TestDashboardAPI:
         assert r.status_code == 200
         payload = r.json()
         assert payload["summary"]["live_broker_probe_mode"] == "live"
+        assert payload["summary"]["broker_snapshot_source"] == "live_broker_rest"
+        assert payload["summary"]["broker_snapshot_age_s"] == 0.0
+        assert payload["summary"]["broker_snapshot_state"] == "fresh"
+        assert payload["summary"]["broker_probe_skipped"] is False
         assert payload["live_broker_state"]["source"] == "live_broker_rest"
         assert payload["live_broker_state"]["today_actual_fills"] == 12
         assert payload["live_broker_state"]["open_position_count"] == 3
@@ -5204,6 +5221,9 @@ class TestDashboardAPI:
         assert summary["broker_today_actual_fills"] == 17
         assert summary["broker_open_position_count"] == 3
         assert summary["broker_today_realized_pnl"] == -321.25
+        assert summary["broker_refresh_probe_failed"] is True
+        assert summary["broker_refresh_probe_error"].startswith("ibkr_probe_failed:TimeoutError")
+        assert summary["broker_refresh_probe_source"] == "live_broker_rest"
         assert live_broker["broker_snapshot_state"] == "persisted"
         assert live_broker["refresh_probe_failed"] is True
         assert live_broker["refresh_probe_error"].startswith("ibkr_probe_failed:TimeoutError")
@@ -5237,6 +5257,8 @@ class TestDashboardAPI:
         payload = r.json()
         assert payload["summary"]["broker_today_actual_fills"] == 22
         assert payload["summary"]["broker_open_position_count"] == 4
+        assert payload["summary"]["broker_refresh_probe_failed"] is True
+        assert payload["summary"]["broker_refresh_probe_source"] == "bot_fleet_live_probe_exception"
         assert payload["live_broker_state"]["refresh_probe_failed"] is True
         assert payload["live_broker_state"]["refresh_probe_source"] == "bot_fleet_live_probe_exception"
 
@@ -5625,6 +5647,12 @@ class TestDashboardAPI:
         assert live["evaluated_outcome_count_today"] == 3
         assert live["win_rate_today"] == 0.6667
         assert live["win_rate_source"] == "trade_close_ledger_today"
+        assert summary["broker_ready"] is True
+        assert summary["broker_probe_skipped"] is True
+        assert summary["broker_refresh_probe_failed"] is False
+        assert summary["broker_snapshot_source"] == "ibkr_probe_cache"
+        assert summary["broker_snapshot_state"] == "warm"
+        assert summary["broker_snapshot_age_s"] == 3.0
         assert summary["broker_closed_outcomes_today"] == 3
         assert summary["broker_win_rate_today"] == 0.6667
 
