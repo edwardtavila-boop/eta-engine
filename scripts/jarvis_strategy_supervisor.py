@@ -5089,7 +5089,21 @@ class JarvisStrategySupervisor:
                 requested_delta=est_qty,
                 fleet_cap=resolve_fleet_cap(sym_root_for_cap),
             )
-            if str(getattr(bot, "capital_gate_scope", "") or "") == "prop_live":
+            capital_gate_scope = str(getattr(bot, "capital_gate_scope", "") or "")
+            prop_sleeve_gate_active = capital_gate_scope == "prop_live"
+            if capital_gate_scope != "shadow_observe" and not prop_sleeve_gate_active:
+                with contextlib.suppress(Exception):
+                    from eta_engine.feeds.capital_allocator import (  # noqa: PLC0415
+                        LIFECYCLE_EVAL_LIVE,
+                        LIFECYCLE_FUNDED_LIVE,
+                        get_bot_lifecycle,
+                    )
+
+                    prop_sleeve_gate_active = get_bot_lifecycle(bot.bot_id) in {
+                        LIFECYCLE_EVAL_LIVE,
+                        LIFECYCLE_FUNDED_LIVE,
+                    }
+            if prop_sleeve_gate_active:
                 self._cross_bot_tracker.assert_prop_sleeve_cap(
                     symbol_root=sym_root_for_cap,
                     side=order_side,
