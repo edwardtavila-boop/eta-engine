@@ -47,6 +47,9 @@ class _FakeIB:
     def openTrades(self) -> list[_FakeTrade]:  # noqa: N802
         return self.trades
 
+    def reqAllOpenOrders(self) -> list[_FakeTrade]:  # noqa: N802
+        return self.trades
+
     def cancelOrder(self, order: _FakeOrder) -> None:  # noqa: N802
         self.cancelled.append(order.orderId)
 

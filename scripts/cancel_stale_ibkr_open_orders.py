@@ -224,6 +224,8 @@ def cancel_stale_ibkr_open_orders(
     results: list[CancelResult] = []
     try:
         ib.connect(host, port, clientId=client_id, timeout=10)
+        ib.reqAllOpenOrders()
+        ib.sleep(1.0)
         open_trades = list(ib.openTrades())
         target_keys = _target_keys(stale_flat_open_orders=stale_orders, symbols=symbols)
         candidates = select_cancel_candidates(

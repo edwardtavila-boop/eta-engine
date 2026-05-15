@@ -265,6 +265,8 @@ def _validate_stale_flat_open_orders_live(
         ib = IB()
         try:
             ib.connect(host, port, clientId=client_id, timeout=10)
+            ib.reqAllOpenOrders()
+            ib.sleep(1.0)
             open_trades = list(ib.openTrades())
             open_orders = list(ib.openOrders())
         finally:
