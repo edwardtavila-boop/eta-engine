@@ -390,7 +390,7 @@ _PAPER_LIVE_TRANSITION_CACHE_MAX_AGE_S = _positive_int_env(
 )
 _DASHBOARD_DIAGNOSTICS_CACHE_TTL_S = _positive_int_env(
     "ETA_DASHBOARD_DIAGNOSTICS_CACHE_TTL_S",
-    8,
+    30,
 )
 _DASHBOARD_DIAGNOSTICS_CACHE_LOCK = threading.Lock()
 _DASHBOARD_DIAGNOSTICS_CACHE: dict[str, Any] = {"ts": 0.0, "payload": None}
@@ -1260,9 +1260,10 @@ def _dashboard_diagnostics_cached_payload(*, refresh: bool = False) -> dict[str,
             return fallback
         raise
 
+    completed_ts = time.time()
     with _DASHBOARD_DIAGNOSTICS_CACHE_LOCK:
         _DASHBOARD_DIAGNOSTICS_CACHE["payload"] = fresh_payload
-        _DASHBOARD_DIAGNOSTICS_CACHE["ts"] = now_ts
+        _DASHBOARD_DIAGNOSTICS_CACHE["ts"] = completed_ts
     return _dashboard_diagnostics_with_cache_meta(fresh_payload, status="miss", age_s=0.0)
 
 

@@ -1933,6 +1933,40 @@ class TestDashboardAPI:
         assert refreshed.json()["generated_at"] == "call-2"
         assert refreshed.json()["diagnostics_cache"]["status"] == "miss"
 
+    def test_dashboard_diagnostics_cache_age_starts_after_slow_build(self, monkeypatch):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        calls: list[int] = []
+        clock = [100.0]
+
+        def fake_time() -> float:
+            return clock[0]
+
+        def fake_payload() -> dict:
+            calls.append(1)
+            clock[0] += 15.0
+            return {
+                "dashboard_version": "v1",
+                "source_of_truth": "dashboard_diagnostics",
+                "generated_at": f"call-{len(calls)}",
+            }
+
+        with mod._DASHBOARD_DIAGNOSTICS_CACHE_LOCK:
+            mod._DASHBOARD_DIAGNOSTICS_CACHE["payload"] = None
+            mod._DASHBOARD_DIAGNOSTICS_CACHE["ts"] = 0.0
+        monkeypatch.setattr(mod, "_DASHBOARD_DIAGNOSTICS_CACHE_TTL_S", 10)
+        monkeypatch.setattr(mod, "_dashboard_diagnostics_payload", fake_payload)
+        monkeypatch.setattr(mod.time, "time", fake_time)
+
+        first = mod._dashboard_diagnostics_cached_payload()
+        second = mod._dashboard_diagnostics_cached_payload()
+
+        assert len(calls) == 1
+        assert first["diagnostics_cache"]["status"] == "miss"
+        assert second["generated_at"] == "call-1"
+        assert second["diagnostics_cache"]["status"] == "hit"
+        assert second["diagnostics_cache"]["age_s"] == 0.0
+
     def test_dashboard_diagnostics_includes_vps_ops_admin_ai(self, app_client, tmp_path):
         state = tmp_path / "state"
         generated_at = datetime.now(UTC).isoformat()
