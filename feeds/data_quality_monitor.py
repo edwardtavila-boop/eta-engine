@@ -15,10 +15,16 @@ from __future__ import annotations
 import json
 import logging
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+from eta_engine.core.control_plane import (
+    gate_state_from_feed_status,
+    overall_status_from_gate_states,
+    quality_tier_from_feed_status,
+)
 
 log = logging.getLogger("data_quality_monitor")
 
@@ -34,9 +40,12 @@ class FeedHealth:
     feed_name: str
     symbol: str
     status: str  # healthy / stale / gap / anomaly
+    quality_tier: str
+    gate_state: str
     last_timestamp: str | None
     age_seconds: float | None
     anomaly_detail: str = ""
+    reason_codes: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -78,13 +87,7 @@ class DataQualityMonitor:
         # Cross-exchange drift check
         self._check_cross_exchange_drift(feeds, alerts)
 
-        statuses = [f["status"] for f in feeds]
-        if "critical" in statuses:
-            overall = "critical"
-        elif "stale" in statuses or "anomaly" in statuses:
-            overall = "degraded"
-        else:
-            overall = "healthy"
+        overall = overall_status_from_gate_states([f["gate_state"] for f in feeds])
 
         snapshot = DataHealthSnapshot(
             timestamp=datetime.now(UTC).isoformat(),
@@ -95,6 +98,31 @@ class DataQualityMonitor:
         self._write(snapshot)
         log.info("Data health: %s (%d feeds, %d alerts)", overall, len(feeds), len(alerts))
         return snapshot
+
+    def _feed_record(
+        self,
+        *,
+        feed_name: str,
+        symbol: str,
+        status: str,
+        last_timestamp: str | None,
+        age_seconds: float | None,
+        anomaly_detail: str = "",
+        reason_codes: list[str] | None = None,
+    ) -> dict[str, Any]:
+        return asdict(
+            FeedHealth(
+                feed_name=feed_name,
+                symbol=symbol,
+                status=status,
+                quality_tier=quality_tier_from_feed_status(status),
+                gate_state=gate_state_from_feed_status(status),
+                last_timestamp=last_timestamp,
+                age_seconds=age_seconds,
+                anomaly_detail=anomaly_detail,
+                reason_codes=list(reason_codes or []),
+            )
+        )
 
     def _check_all_feeds(self) -> list[dict[str, Any]]:
         feeds: list[dict[str, Any]] = []
@@ -127,29 +155,31 @@ class DataQualityMonitor:
                 mtime = datetime.fromtimestamp(path.stat().st_mtime, tz=UTC)
                 age = (now - mtime).total_seconds()
                 if age > _STALENESS_THRESHOLD_MINUTES * 60:
-                    return {
-                        "feed_name": "bar_csv",
-                        "symbol": symbol,
-                        "status": "stale",
-                        "last_timestamp": mtime.isoformat(),
-                        "age_seconds": round(age, 0),
-                        "anomaly_detail": f"No update for {age / 60:.0f}m",
-                    }
-                return {
-                    "feed_name": "bar_csv",
-                    "symbol": symbol,
-                    "status": "healthy",
-                    "last_timestamp": mtime.isoformat(),
-                    "age_seconds": round(age, 0),
-                }
-        return {
-            "feed_name": "bar_csv",
-            "symbol": symbol,
-            "status": "missing",
-            "last_timestamp": None,
-            "age_seconds": None,
-            "anomaly_detail": "No bar file found",
-        }
+                    return self._feed_record(
+                        feed_name="bar_csv",
+                        symbol=symbol,
+                        status="stale",
+                        last_timestamp=mtime.isoformat(),
+                        age_seconds=round(age, 0),
+                        anomaly_detail=f"No update for {age / 60:.0f}m",
+                        reason_codes=["feed_stale"],
+                    )
+                return self._feed_record(
+                    feed_name="bar_csv",
+                    symbol=symbol,
+                    status="healthy",
+                    last_timestamp=mtime.isoformat(),
+                    age_seconds=round(age, 0),
+                )
+        return self._feed_record(
+            feed_name="bar_csv",
+            symbol=symbol,
+            status="missing",
+            last_timestamp=None,
+            age_seconds=None,
+            anomaly_detail="No bar file found",
+            reason_codes=["bar_file_missing"],
+        )
 
     def _check_ibkr_feed(self, now: datetime) -> dict[str, Any]:
         """Check IBKR Gateway health via TWS connection."""
@@ -158,22 +188,23 @@ class DataQualityMonitor:
 
             s = socket.create_connection(("127.0.0.1", 4002), timeout=3)
             s.close()
-            return {
-                "feed_name": "ibkr_tws",
-                "symbol": "MNQ",
-                "status": "healthy",
-                "last_timestamp": now.isoformat(),
-                "age_seconds": 0,
-            }
+            return self._feed_record(
+                feed_name="ibkr_tws",
+                symbol="MNQ",
+                status="healthy",
+                last_timestamp=now.isoformat(),
+                age_seconds=0,
+            )
         except Exception:
-            return {
-                "feed_name": "ibkr_tws",
-                "symbol": "MNQ",
-                "status": "critical",
-                "last_timestamp": None,
-                "age_seconds": None,
-                "anomaly_detail": "Cannot connect to IB Gateway port 4002",
-            }
+            return self._feed_record(
+                feed_name="ibkr_tws",
+                symbol="MNQ",
+                status="critical",
+                last_timestamp=None,
+                age_seconds=None,
+                anomaly_detail="Cannot connect to IB Gateway port 4002",
+                reason_codes=["ibkr_unreachable"],
+            )
 
     def _check_crypto_feed(self, exchange: str, symbol: str, now: datetime) -> dict[str, Any]:
         """Simplified crypto feed check (ping API)."""
@@ -191,27 +222,29 @@ class DataQualityMonitor:
                     mtime = datetime.fromtimestamp(latest, tz=UTC)
                     age = (now - mtime).total_seconds()
                     if age > _STALENESS_THRESHOLD_MINUTES * 60:
-                        return {
-                            "feed_name": f"{exchange}_crypto",
-                            "symbol": symbol,
-                            "status": "stale",
-                            "last_timestamp": mtime.isoformat(),
-                            "age_seconds": round(age, 0),
-                        }
-                    return {
-                        "feed_name": f"{exchange}_crypto",
-                        "symbol": symbol,
-                        "status": "healthy",
-                        "last_timestamp": mtime.isoformat(),
-                        "age_seconds": round(age, 0),
-                    }
-        return {
-            "feed_name": f"{exchange}_crypto",
-            "symbol": symbol,
-            "status": "missing",
-            "last_timestamp": None,
-            "age_seconds": None,
-        }
+                        return self._feed_record(
+                            feed_name=f"{exchange}_crypto",
+                            symbol=symbol,
+                            status="stale",
+                            last_timestamp=mtime.isoformat(),
+                            age_seconds=round(age, 0),
+                            reason_codes=["crypto_feed_stale"],
+                        )
+                    return self._feed_record(
+                        feed_name=f"{exchange}_crypto",
+                        symbol=symbol,
+                        status="healthy",
+                        last_timestamp=mtime.isoformat(),
+                        age_seconds=round(age, 0),
+                    )
+        return self._feed_record(
+            feed_name=f"{exchange}_crypto",
+            symbol=symbol,
+            status="missing",
+            last_timestamp=None,
+            age_seconds=None,
+            reason_codes=["crypto_feed_missing"],
+        )
 
     def _check_cross_exchange_drift(self, feeds: list[dict], alerts: list[str]) -> None:
         """Detect price drift between exchanges (placeholder — needs price data)."""
