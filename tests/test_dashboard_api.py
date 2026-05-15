@@ -5590,6 +5590,44 @@ class TestDashboardAPI:
         assert live["open_position_count"] == 3
         assert live["broker_mtd_pnl"] == 22209.0
 
+    def test_cached_diagnostics_carries_today_close_ledger_counts(self, monkeypatch):
+        from datetime import UTC, datetime
+
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        now = datetime.now(UTC)
+        rows = [
+            {"ts": now.isoformat(), "bot_id": "mnq_anchor_sweep", "symbol": "MNQ1", "realized_pnl": 120.0},
+            {"ts": now.isoformat(), "bot_id": "mnq_anchor_sweep", "symbol": "MNQ1", "realized_pnl": -40.0},
+            {"ts": now.isoformat(), "bot_id": "volume_profile_mnq", "symbol": "MNQ1", "realized_pnl": 20.0},
+        ]
+        monkeypatch.setattr(
+            mod,
+            "_cached_live_broker_state_for_gateway_reconcile",
+            lambda: {
+                "ibkr": {
+                    "ready": True,
+                    "today_executions": 7,
+                    "today_realized_pnl": 100.0,
+                    "open_position_count": 2,
+                },
+                "ibkr_cache_state": "warm",
+                "ibkr_cache_age_s": 3.0,
+            },
+        )
+        monkeypatch.setattr(mod, "_ibkr_cached_mtd_tracker_snapshot", lambda *args, **kwargs: {})
+        monkeypatch.setattr(mod, "_recent_trade_closes", lambda limit=5000: rows)
+
+        live = mod._cached_live_broker_state_for_diagnostics()
+        summary = mod._broker_summary_fields(live)
+
+        assert live["closed_outcome_count_today"] == 3
+        assert live["evaluated_outcome_count_today"] == 3
+        assert live["win_rate_today"] == 0.6667
+        assert live["win_rate_source"] == "trade_close_ledger_today"
+        assert summary["broker_closed_outcomes_today"] == 3
+        assert summary["broker_win_rate_today"] == 0.6667
+
     def test_cached_diagnostics_prefers_last_good_disk_cache_after_probe_failure(
         self,
         tmp_path,

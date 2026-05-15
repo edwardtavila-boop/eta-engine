@@ -8201,6 +8201,12 @@ def _cached_live_broker_state_for_diagnostics() -> dict:
     trade_closes = _recent_trade_closes(limit=5000)
     focus_trade_closes = [row for row in trade_closes if not _trade_close_is_cellar(row)]
     close_history = _close_history_windows(focus_trade_closes, now=now_utc)
+    close_windows = close_history.get("windows") if isinstance(close_history.get("windows"), dict) else {}
+    today_window = close_windows.get("today") if isinstance(close_windows.get("today"), dict) else {}
+    closed_outcome_count_today = int(today_window.get("closed_outcome_count") or 0)
+    evaluated_outcome_count_today = int(today_window.get("evaluated_outcome_count") or 0)
+    win_rate_today = _float_value(today_window.get("win_rate"))
+    win_rate_source = "trade_close_ledger_today" if evaluated_outcome_count_today > 0 else ""
     cache_age_s = _float_value(state.get("ibkr_cache_age_s") or ibkr.get("cache_age_s"))
     ibkr_snapshot_ready = bool(state.get("ibkr_cache_state") == "warm" or ibkr.get("ready") is True)
     return {
@@ -8221,6 +8227,10 @@ def _cached_live_broker_state_for_diagnostics() -> dict:
         "broker_mtd_return_pct": broker_mtd_return_pct,
         "total_unrealized_pnl": unrealized,
         "open_position_count": open_position_count,
+        "win_rate_today": win_rate_today,
+        "closed_outcome_count_today": closed_outcome_count_today,
+        "evaluated_outcome_count_today": evaluated_outcome_count_today,
+        "win_rate_source": win_rate_source,
         "all_venue_today_actual_fills": today_fills,
         "all_venue_today_realized_pnl": today_realized,
         "all_venue_total_unrealized_pnl": unrealized,
@@ -8231,10 +8241,6 @@ def _cached_live_broker_state_for_diagnostics() -> dict:
         "cellar_open_position_count": 0,
         "win_rate_30d": None,
         "win_rate_30d_source": "",
-        "win_rate_today": None,
-        "closed_outcome_count_today": 0,
-        "evaluated_outcome_count_today": 0,
-        "win_rate_source": "",
         "close_history": close_history,
         "all_venue_close_history": close_history,
         "focus_policy": _dashboard_focus_policy_payload(),
