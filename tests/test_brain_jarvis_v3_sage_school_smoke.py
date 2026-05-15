@@ -10,6 +10,8 @@ from eta_engine.brain.jarvis_v3.sage.schools.gann import GannSchool
 from eta_engine.brain.jarvis_v3.sage.schools.neowave import NEoWaveSchool
 from eta_engine.brain.jarvis_v3.sage.schools.options_greeks import OptionsGreeksSchool
 from eta_engine.brain.jarvis_v3.sage.schools.order_flow import OrderFlowSchool
+from eta_engine.brain.jarvis_v3.sage.schools.sentiment_pressure import SentimentPressureSchool
+from eta_engine.brain.jarvis_v3.sentiment_pressure import summarize_pressure
 
 
 def _trend_bars(n: int = 36) -> list[dict[str, float]]:
@@ -112,3 +114,39 @@ def test_options_greeks_school_skips_without_options_payload() -> None:
     assert verdict.bias == Bias.NEUTRAL
     assert verdict.conviction == 0.0
     assert verdict.signals == {"missing": ["ctx.options"]}
+
+
+def test_sentiment_pressure_school_reads_macro_risk_off_context() -> None:
+    asset_summaries = [
+        {
+            "asset": "macro",
+            "fear_greed": 0.1,
+            "social_volume_z": 0.0,
+            "active_topics": ["inflation", "geopolitics"],
+        },
+    ]
+    ctx = MarketContext(
+        bars=_trend_bars(),
+        side="long",
+        symbol="MNQ1",
+        instrument_class="futures",
+        sentiment={
+            "asset_summaries": asset_summaries,
+            "pressure": summarize_pressure(asset_summaries),
+        },
+    )
+
+    verdict = SentimentPressureSchool().analyze(ctx)
+
+    assert verdict.bias == Bias.SHORT
+    assert verdict.aligned_with_entry is False
+    assert verdict.conviction > 0.0
+    assert "inflation" in verdict.signals["macro_topics"]
+
+
+def test_sentiment_pressure_school_skips_without_sentiment_context() -> None:
+    verdict = SentimentPressureSchool().analyze(MarketContext(bars=_trend_bars(), side="long"))
+
+    assert verdict.bias == Bias.NEUTRAL
+    assert verdict.conviction == 0.0
+    assert verdict.signals == {"missing": ["ctx.sentiment"]}

@@ -52,10 +52,13 @@ class MarketContext:
     stop_distance_pct: float | None = None  # for risk school
     detected_regime: str | None = None  # one of {trending, ranging, volatile, quiet}
     instrument_class: str | None = None  # one of {equity, crypto, futures, fx, options}
+    price: float | None = None  # current or entry-adjacent price for risk schools
     onchain: dict[str, Any] | None = None  # for OnChainSchool (BTC/ETH metrics)
     funding: dict[str, Any] | None = None  # for FundingBasisSchool (perp funding + basis)
     options: dict[str, Any] | None = None  # for OptionsGreeksSchool (IV / skew / GEX)
     peer_returns: dict[str, list[float]] | None = None  # for CrossAssetCorrelationSchool
+    sentiment: dict[str, Any] | None = None  # for SentimentPressureSchool
+    liquidation: dict[str, Any] | None = None  # for RiskManagementSchool cascade checks
     _cached: dict[str, Any] = field(default_factory=dict, repr=False, compare=False)
 
     @property
@@ -122,10 +125,13 @@ class MarketContext:
             stop_distance_pct=self.stop_distance_pct,
             detected_regime=self.detected_regime,
             instrument_class=self.instrument_class,
+            price=self.price,
             onchain=self.onchain,
             funding=self.funding,
             options=self.options,
             peer_returns=self.peer_returns,
+            sentiment=self.sentiment,
+            liquidation=self.liquidation,
         )
 
     def with_regime(self, regime: str) -> MarketContext:

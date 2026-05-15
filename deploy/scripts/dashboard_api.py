@@ -48,6 +48,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, StreamingResponse
 from pydantic import BaseModel
 
+from eta_engine.brain.jarvis_v3.sentiment_pressure import summarize_pressure, unknown_pressure
 from eta_engine.deploy.scripts.dashboard_services import ensure_dir_writable, read_jsonl_tail, run_background_task
 
 if TYPE_CHECKING:
@@ -1626,169 +1627,10 @@ def _sentiment_snapshot_unknown(path: Path, *, reason: str) -> dict[str, object]
         "asset_summaries": [],
         "macro_headlines": [],
         "lead_headlines": [],
-        "pressure": {
-            "status": "unknown",
-            "score": 0.0,
-            "crypto_score": None,
-            "macro_score": None,
-            "lead_positive_asset": "",
-            "lead_positive_score": None,
-            "lead_negative_asset": "",
-            "lead_negative_score": None,
-            "macro_topics": [],
-            "summary_line": "Sentiment pressure unavailable.",
-        },
+        "pressure": unknown_pressure(),
         "updated_at": None,
         "age_s": None,
         "results": {},
-    }
-
-
-_POSITIVE_SENTIMENT_TOPICS = {"fomo", "squeeze", "jobs"}
-_NEGATIVE_SENTIMENT_TOPICS = {
-    "capitulation",
-    "earnings_blowup",
-    "geopolitics",
-    "hack",
-    "inflation",
-    "regulation",
-    "tariffs",
-}
-
-
-def _clamp(value: float, lower: float, upper: float) -> float:
-    return max(lower, min(upper, float(value)))
-
-
-def _sentiment_asset_pressure_score(asset_summary: dict[str, object]) -> float:
-    fear_greed = _float_value(asset_summary.get("fear_greed"))
-    social_volume_z = _float_value(asset_summary.get("social_volume_z"))
-    fear_score = _clamp(((fear_greed or 0.5) - 0.5) * 2.0, -1.0, 1.0)
-    volume_score = _clamp((social_volume_z or 0.0) / 3.0, -1.0, 1.0)
-    active_topics = (
-        asset_summary.get("active_topics") if isinstance(asset_summary.get("active_topics"), list) else []
-    )
-    topic_adjustment = 0.0
-    for topic in active_topics:
-        topic_name = str(topic).strip().lower()
-        if topic_name in _POSITIVE_SENTIMENT_TOPICS:
-            topic_adjustment += 0.05
-        elif topic_name in _NEGATIVE_SENTIMENT_TOPICS:
-            topic_adjustment -= 0.05
-    return round(_clamp(0.4 * fear_score + 0.6 * volume_score + topic_adjustment, -1.0, 1.0), 4)
-
-
-def _sentiment_pressure_summary(asset_summaries: list[dict[str, object]]) -> dict[str, object]:
-    if not asset_summaries:
-        return {
-            "status": "unknown",
-            "score": 0.0,
-            "crypto_score": None,
-            "macro_score": None,
-            "lead_positive_asset": "",
-            "lead_positive_score": None,
-            "lead_negative_asset": "",
-            "lead_negative_score": None,
-            "macro_topics": [],
-            "summary_line": "Sentiment pressure unavailable.",
-        }
-
-    scored_rows: list[dict[str, object]] = []
-    for row in asset_summaries:
-        asset_name = str(row.get("asset") or "").strip()
-        score = _sentiment_asset_pressure_score(row)
-        enriched = dict(row)
-        enriched["asset"] = asset_name
-        enriched["pressure_score"] = score
-        scored_rows.append(enriched)
-
-    crypto_rows = [row for row in scored_rows if str(row.get("asset") or "").lower() != "macro"]
-    macro_row = next((row for row in scored_rows if str(row.get("asset") or "").lower() == "macro"), None)
-    crypto_score = (
-        round(sum(float(row["pressure_score"]) for row in crypto_rows) / len(crypto_rows), 4) if crypto_rows else None
-    )
-    macro_score = float(macro_row["pressure_score"]) if macro_row is not None else None
-
-    weighted_total = 0.0
-    weighted_count = 0.0
-    for row in scored_rows:
-        asset_name = str(row.get("asset") or "").lower()
-        weight = 1.25 if asset_name == "macro" else 1.0
-        weighted_total += float(row["pressure_score"]) * weight
-        weighted_count += weight
-    composite_score = round(weighted_total / weighted_count, 4) if weighted_count > 0 else 0.0
-
-    lead_positive = max(scored_rows, key=lambda row: float(row.get("pressure_score") or 0.0))
-    lead_negative = min(scored_rows, key=lambda row: float(row.get("pressure_score") or 0.0))
-    lead_positive_score = float(lead_positive.get("pressure_score") or 0.0)
-    lead_negative_score = float(lead_negative.get("pressure_score") or 0.0)
-    macro_topics = macro_row.get("active_topics") if isinstance(macro_row, dict) and isinstance(macro_row.get("active_topics"), list) else []
-    macro_topic_label = ""
-    for topic in macro_topics:
-        topic_name = str(topic).strip()
-        if topic_name.lower() in _NEGATIVE_SENTIMENT_TOPICS:
-            macro_topic_label = topic_name
-            break
-    if not macro_topic_label and macro_topics:
-        macro_topic_label = str(macro_topics[0]).strip()
-
-    if lead_positive_score >= 0.45 and composite_score >= 0.05 and (macro_score is None or macro_score > -0.2):
-        status = "risk_on"
-    elif lead_negative_score <= -0.45 and composite_score <= -0.05 and (macro_score is None or macro_score < 0.2):
-        status = "risk_off"
-    elif (
-        crypto_score is not None
-        and macro_score is not None
-        and ((crypto_score > 0.1 and macro_score < -0.05) or (crypto_score < -0.1 and macro_score > 0.05))
-    ):
-        status = "mixed"
-    elif abs(composite_score) < 0.1:
-        status = "neutral"
-    else:
-        status = "risk_on" if composite_score > 0 else "risk_off"
-
-    if status == "risk_on":
-        if macro_topic_label:
-            summary_line = (
-                f"Risk-on narrative: {lead_positive.get('asset') or 'the lead asset'} is drawing the strongest upside "
-                f"attention, while macro headlines still flag {macro_topic_label}."
-            )
-        else:
-            summary_line = (
-                f"Risk-on narrative: {lead_positive.get('asset') or 'the lead asset'} is drawing the strongest upside attention."
-            )
-    elif status == "risk_off":
-        if macro_topic_label:
-            summary_line = (
-                f"Risk-off narrative: {lead_negative.get('asset') or 'the weakest asset'} is under the heaviest pressure, "
-                f"with macro headlines leaning toward {macro_topic_label}."
-            )
-        else:
-            summary_line = (
-                f"Risk-off narrative: {lead_negative.get('asset') or 'the weakest asset'} is under the heaviest pressure."
-            )
-    elif status == "mixed":
-        summary_line = (
-            f"Mixed narrative: {lead_positive.get('asset') or 'the lead asset'} has the strongest upside heat while "
-            f"{lead_negative.get('asset') or 'the weakest asset'} carries the deepest negative pressure."
-        )
-    else:
-        summary_line = (
-            f"Balanced narrative: no single lane dominates, though {lead_positive.get('asset') or 'the lead asset'} "
-            f"has the strongest attention."
-        )
-
-    return {
-        "status": status,
-        "score": composite_score,
-        "crypto_score": crypto_score,
-        "macro_score": round(macro_score, 4) if macro_score is not None else None,
-        "lead_positive_asset": str(lead_positive.get("asset") or "") if lead_positive_score > 0.05 else "",
-        "lead_positive_score": round(lead_positive_score, 4) if lead_positive_score > 0.05 else None,
-        "lead_negative_asset": str(lead_negative.get("asset") or "") if lead_negative_score < -0.05 else "",
-        "lead_negative_score": round(lead_negative_score, 4) if lead_negative_score < -0.05 else None,
-        "macro_topics": [str(topic) for topic in macro_topics[:3]],
-        "summary_line": summary_line,
     }
 
 
@@ -1875,7 +1717,7 @@ def _load_sentiment_snapshot_status() -> dict[str, object]:
     status = str(payload.get("status") or ("ok" if ok_count >= len(requested_assets) else "partial"))
     mtime = _safe_mtime(path)
     normalized: dict[str, object] = dict(payload)
-    pressure = _sentiment_pressure_summary(asset_summaries)
+    pressure = summarize_pressure(asset_summaries)
     normalized.update(
         {
             "kind": str(payload.get("kind") or "eta_sentiment_snapshot_collector"),

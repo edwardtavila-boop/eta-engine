@@ -160,9 +160,11 @@ def _infer_instrument_class(symbol: str) -> str | None:
         s.startswith(p) for p in _CRYPTO_PREFIXES
     ):
         return "crypto"
-    # CME-style micro / standard futures (no USD suffix)
+    # CME-style micro / standard futures (including continuous/suffixed roots like MNQ1).
+    root = s.rstrip("0123456789")
     if any(
         s == p
+        or root == p
         or s.startswith(p + "!")
         or s.startswith(p + "Z")
         or s.startswith(p + "H")

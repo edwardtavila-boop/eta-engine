@@ -38,6 +38,7 @@ from eta_engine.brain.jarvis_v3.sage.schools.order_flow import OrderFlowSchool
 from eta_engine.brain.jarvis_v3.sage.schools.red_team import RedTeamSchool
 from eta_engine.brain.jarvis_v3.sage.schools.risk_management import RiskManagementSchool
 from eta_engine.brain.jarvis_v3.sage.schools.seasonality import SeasonalitySchool
+from eta_engine.brain.jarvis_v3.sage.schools.sentiment_pressure import SentimentPressureSchool
 from eta_engine.brain.jarvis_v3.sage.schools.smc_ict import SmcIctSchool
 from eta_engine.brain.jarvis_v3.sage.schools.stat_significance import StatSignificanceSchool
 from eta_engine.brain.jarvis_v3.sage.schools.support_resistance import SupportResistanceSchool
@@ -86,6 +87,7 @@ SCHOOLS: dict[str, SchoolBase] = {
         FundingBasisSchool(),
         OnChainSchool(),
         CrossAssetCorrelationSchool(),
+        SentimentPressureSchool(),
         MLSchool(),
     )
 }
@@ -124,6 +126,8 @@ def _cache_key(ctx: MarketContext, enabled: frozenset[str] | None) -> str:
         ctx.funding,
         ctx.options,
         ctx.peer_returns,
+        ctx.sentiment,
+        ctx.liquidation,
         sorted(enabled) if enabled else None,
     )
     encoded = json.dumps(

@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from eta_engine.brain.jarvis_admin import ActionRequest, JarvisAdmin
@@ -43,6 +43,110 @@ if TYPE_CHECKING:
     from eta_engine.brain.jarvis_v3.thesis_tracker import ThesisTracker
 
 logger = logging.getLogger(__name__)
+
+
+def _float_or_default(value: object, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _normalize_sentiment_context(
+    payload: dict[str, Any],
+    *,
+    symbol: str,
+    instrument_class: str | None,
+) -> dict[str, Any] | None:
+    try:
+        from eta_engine.brain.jarvis_v3.sentiment_pressure import (
+            build_sentiment_context,
+            primary_asset_for_symbol,
+            summarize_pressure,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("sentiment helpers unavailable (non-fatal): %s", exc)
+        return None
+
+    for candidate_key in ("sentiment_context", "sentiment_overlay", "sentiment"):
+        candidate = payload.get(candidate_key)
+        if not isinstance(candidate, dict):
+            continue
+        if isinstance(candidate.get("pressure"), dict) or isinstance(candidate.get("asset_summaries"), list):
+            return candidate
+        if any(key in candidate for key in ("fear_greed", "social_volume_z", "topic_flags", "active_topics")):
+            topic_flags = candidate.get("topic_flags") if isinstance(candidate.get("topic_flags"), dict) else {}
+            active_topics = candidate.get("active_topics") if isinstance(candidate.get("active_topics"), list) else []
+            if not active_topics:
+                active_topics = [
+                    str(topic).strip()
+                    for topic, enabled in topic_flags.items()
+                    if enabled and str(topic).strip()
+                ]
+            macro_only = "macro" if instrument_class in {"futures", "equity", "fx"} else ""
+            asset_name = primary_asset_for_symbol(symbol) or macro_only
+            asset_summary = {
+                "asset": asset_name or str(candidate.get("asset") or ""),
+                "fear_greed": candidate.get("fear_greed"),
+                "social_volume_z": candidate.get("social_volume_z"),
+                "active_topics": active_topics,
+                "headline_count": int(candidate.get("headline_count") or 0),
+                "headlines": candidate.get("headlines") if isinstance(candidate.get("headlines"), list) else [],
+                "query": str(candidate.get("query") or ""),
+                "raw_source": str(candidate.get("raw_source") or ""),
+            }
+            asset_summaries = [asset_summary] if asset_summary["asset"] else []
+            return {
+                "asset_summaries": asset_summaries,
+                "active_topics": active_topics,
+                "lead_asset": asset_summary["asset"],
+                "pressure": summarize_pressure(asset_summaries),
+            }
+
+    pressure = payload.get("sentiment_pressure")
+    if isinstance(pressure, dict):
+        asset_summaries = payload.get("sentiment_assets") if isinstance(payload.get("sentiment_assets"), list) else []
+        return {
+            "asset_summaries": asset_summaries,
+            "active_topics": pressure.get("macro_topics") if isinstance(pressure.get("macro_topics"), list) else [],
+            "lead_asset": str(pressure.get("lead_positive_asset") or pressure.get("lead_negative_asset") or ""),
+            "pressure": pressure,
+        }
+
+    try:
+        return build_sentiment_context(symbol, instrument_class=instrument_class)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("build_sentiment_context failed (non-fatal): %s", exc)
+        return None
+
+
+def _resolve_onchain_payload(
+    symbol: str,
+    payload: dict[str, Any],
+    instrument_class: str | None,
+) -> dict[str, Any] | None:
+    onchain = payload.get("onchain")
+    if isinstance(onchain, dict) and onchain:
+        return onchain
+    if instrument_class != "crypto":
+        return None
+    try:
+        from eta_engine.brain.jarvis_v3.sage.onchain_fetcher import _CACHE
+
+        cache_key = str(symbol or "").upper()[:3]
+        entry = _CACHE.get(cache_key)
+        if entry is not None and hasattr(entry, "value") and isinstance(entry.value, dict) and entry.value:
+            return entry.value
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        from eta_engine.brain.jarvis_v3.sage.onchain_fetcher import fetch_onchain
+
+        fetched = fetch_onchain(symbol)
+        return fetched if isinstance(fetched, dict) and fetched else None
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("fetch_onchain raised %s (non-fatal)", exc)
+        return None
 
 
 @dataclass
@@ -591,43 +695,42 @@ class JarvisFull:
         if not sage_bars or not isinstance(sage_bars, list) or len(sage_bars) < 30:
             return None
         try:
+            from eta_engine.brain.jarvis_v3.policies.v22_sage_confluence import _infer_instrument_class
             from eta_engine.brain.jarvis_v3.sage import MarketContext, consult_sage
 
-            side = payload.get("side", "long")
-            entry_price = float(payload.get("entry_price", 0))
-            symbol = payload.get("symbol", "")
+            side = str(payload.get("side", "long"))
+            entry_price = _float_or_default(payload.get("entry_price"), 0.0)
+            symbol = str(payload.get("symbol", ""))
+            instrument_class = payload.get("instrument_class") or _infer_instrument_class(symbol)
+            funding = payload.get("funding") or payload.get("funding_basis")
+            options = payload.get("options") or payload.get("options_greeks")
+            sentiment = _normalize_sentiment_context(payload, symbol=symbol, instrument_class=instrument_class)
+            liquidation = payload.get("liquidation") if isinstance(payload.get("liquidation"), dict) else None
+            peer_returns = payload.get("peer_returns") if isinstance(payload.get("peer_returns"), dict) else None
+            session_phase = payload.get("session_phase") or payload.get("session")
+            price = _float_or_default(payload.get("price"), _float_or_default(sage_bars[-1].get("close"), entry_price))
             ctx = MarketContext(
                 bars=sage_bars,
                 side=side,
                 entry_price=entry_price,
                 symbol=symbol,
+                bars_by_tf=payload.get("sage_bars_by_tf") if isinstance(payload.get("sage_bars_by_tf"), dict) else None,
+                order_book_imbalance=payload.get("order_book_imbalance"),
+                cumulative_delta=payload.get("cumulative_delta"),
+                realized_vol=payload.get("realized_vol"),
+                session_phase=str(session_phase) if session_phase else None,
+                account_equity_usd=payload.get("account_equity_usd"),
+                risk_per_trade_pct=payload.get("risk_per_trade_pct"),
+                stop_distance_pct=payload.get("stop_distance_pct"),
+                instrument_class=instrument_class,
+                price=price,
+                onchain=_resolve_onchain_payload(symbol, payload, instrument_class),
+                funding=funding if isinstance(funding, dict) else None,
+                options=options if isinstance(options, dict) else None,
+                peer_returns=peer_returns,
+                sentiment=sentiment,
+                liquidation=liquidation,
             )
-            # Populate telemetry for sage schools when available
-            telem = payload if isinstance(payload, dict) else {}
-            if telem.get("funding") or telem.get("onchain") or telem.get("liquidation"):
-                ctx.funding = telem.get("funding")
-                ctx.onchain = telem.get("onchain")
-                ctx.options = telem.get("options")
-                ctx.liquidation = telem.get("liquidation")
-            else:
-                # Seed synthetic telemetry so sage schools produce non-flatline results
-                ctx.funding = {
-                    "funding_rate_bps": 3.2,
-                    "perp_spot_basis_pct": 0.15,
-                    "cross_exchange_spread_bps": 0.8,
-                    "annualized_yield_pct": 8.5,
-                }
-                ctx.onchain = {
-                    "sopr": 1.05,
-                    "mvrv": 2.1,
-                    "nupl": 0.45,
-                    "exchange_netflow": -350,
-                    "dormancy": 0.3,
-                    "stablecoin_supply_ratio": 0.12,
-                    "global_m2_growth_pct": 5.2,
-                    "btc_etf_flow_24h_btc": 2800,
-                    "whale_concentration_pct": 8.2,
-                }
             return consult_sage(ctx)
         except Exception as exc:  # noqa: BLE001
             logger.debug("_consult_sage_for_request failed (non-fatal): %s", exc)

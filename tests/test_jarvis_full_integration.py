@@ -165,3 +165,84 @@ def test_jarvis_full_health_helper_returns_dict() -> None:
     full = JarvisFull(intelligence=intel)
     h = full.health()
     assert "overall_status" in h
+
+
+def test_consult_sage_for_request_builds_immutable_context_with_live_telemetry(monkeypatch) -> None:
+    import eta_engine.brain.jarvis_v3.sage as sage_pkg
+    from eta_engine.brain.jarvis_v3.intelligence import JarvisIntelligence
+    from eta_engine.brain.jarvis_v3.jarvis_full import JarvisFull
+    from eta_engine.brain.jarvis_v3.sage.base import Bias, SageReport, SchoolVerdict
+
+    captured: dict[str, object] = {}
+
+    def fake_consult(ctx):
+        captured["ctx"] = ctx
+        return SageReport(
+            per_school={
+                "sentiment_pressure": SchoolVerdict(
+                    school="sentiment_pressure",
+                    bias=Bias.LONG,
+                    conviction=0.5,
+                    aligned_with_entry=True,
+                    rationale="risk-on",
+                ),
+            },
+            composite_bias=Bias.LONG,
+            conviction=0.5,
+            schools_consulted=1,
+            schools_aligned_with_entry=1,
+            schools_disagreeing_with_entry=0,
+            schools_neutral=0,
+            rationale="ok",
+        )
+
+    monkeypatch.setattr(sage_pkg, "consult_sage", fake_consult)
+
+    admin = MagicMock()
+    intel = JarvisIntelligence(admin=admin, memory=None)
+    full = JarvisFull(intelligence=intel)
+    bars = [
+        {
+            "open": 100.0 + i,
+            "high": 101.0 + i,
+            "low": 99.0 + i,
+            "close": 100.5 + i,
+            "volume": 1000.0 + i,
+        }
+        for i in range(40)
+    ]
+    req = _stub_request(
+        payload={
+            "symbol": "BTCUSDT",
+            "side": "long",
+            "entry_price": 140.5,
+            "sage_bars": bars,
+            "funding_basis": {"funding_rate_bps": 2.5},
+            "options_greeks": {"iv_25d_skew": 0.04},
+            "onchain": {"sopr": 1.02},
+            "sentiment": {
+                "asset_summaries": [
+                    {
+                        "asset": "BTC",
+                        "fear_greed": 0.75,
+                        "social_volume_z": 1.4,
+                        "active_topics": ["fomo"],
+                    }
+                ],
+                "pressure": {"status": "risk_on", "score": 0.3},
+            },
+            "liquidation": {"levels": [{"price": 135.0, "total_size_usd": 25000.0}]},
+        },
+    )
+
+    report = full._consult_sage_for_request(req)
+
+    assert report is not None
+    ctx = captured["ctx"]
+    assert ctx.instrument_class == "crypto"
+    assert ctx.price == bars[-1]["close"]
+    assert ctx.funding == {"funding_rate_bps": 2.5}
+    assert ctx.options == {"iv_25d_skew": 0.04}
+    assert ctx.onchain == {"sopr": 1.02}
+    assert ctx.sentiment["pressure"]["status"] == "risk_on"
+    assert ctx.liquidation == {"levels": [{"price": 135.0, "total_size_usd": 25000.0}]}

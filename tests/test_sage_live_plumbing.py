@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 import pytest
@@ -360,9 +361,12 @@ def test_v22_infer_instrument_class_futures() -> None:
     )
 
     assert _infer_instrument_class("MNQ") == "futures"
+    assert _infer_instrument_class("MNQ1") == "futures"
     assert _infer_instrument_class("NQ") == "futures"
+    assert _infer_instrument_class("NQ1") == "futures"
     assert _infer_instrument_class("ES") == "futures"
     assert _infer_instrument_class("MBT") == "futures"
+    assert _infer_instrument_class("MBT1") == "futures"
     assert _infer_instrument_class("MET") == "futures"
 
 
@@ -375,20 +379,134 @@ def test_v22_infer_instrument_class_unknown() -> None:
     assert _infer_instrument_class("") is None
 
 
-def test_market_context_accepts_onchain_funding_options() -> None:
+def test_market_context_accepts_non_price_payload_fields() -> None:
     """Wave-6 pre-live: MarketContext must accept the scaffold-school payload fields."""
     from eta_engine.brain.jarvis_v3.sage.base import MarketContext
 
     ctx = MarketContext(
         bars=[{"open": 1, "high": 1, "low": 1, "close": 1}],
         side="long",
+        price=1.0,
         onchain={"sopr": 1.05, "mvrv": 2.5},
         funding={"funding_rate_8h": 0.0001},
         options={"iv_25d_skew": 0.05},
+        sentiment={"pressure": {"status": "risk_on", "score": 0.2}},
+        liquidation={"levels": [{"price": 1.0, "total_size_usd": 5000.0}]},
     )
+    assert ctx.price == 1.0
     assert ctx.onchain == {"sopr": 1.05, "mvrv": 2.5}
     assert ctx.funding == {"funding_rate_8h": 0.0001}
     assert ctx.options == {"iv_25d_skew": 0.05}
+    assert ctx.sentiment == {"pressure": {"status": "risk_on", "score": 0.2}}
+    assert ctx.liquidation == {"levels": [{"price": 1.0, "total_size_usd": 5000.0}]}
+
+
+def test_sentiment_pressure_school_reads_ctx_sentiment() -> None:
+    """Sage should convert warmed narrative telemetry into a directional school vote."""
+    from eta_engine.brain.jarvis_v3.sage.base import Bias, MarketContext
+    from eta_engine.brain.jarvis_v3.sage.schools.sentiment_pressure import SentimentPressureSchool
+
+    ctx = MarketContext(
+        bars=[{"open": 1, "high": 1, "low": 1, "close": 1}],
+        side="long",
+        symbol="MBT1",
+        instrument_class="futures",
+        sentiment={
+            "asset_summaries": [
+                {
+                    "asset": "BTC",
+                    "fear_greed": 0.76,
+                    "social_volume_z": 2.4,
+                    "active_topics": ["fomo"],
+                },
+                {
+                    "asset": "macro",
+                    "fear_greed": 0.52,
+                    "social_volume_z": 0.1,
+                    "active_topics": [],
+                },
+            ],
+            "pressure": {
+                "status": "risk_on",
+                "score": 0.48,
+                "lead_positive_asset": "BTC",
+                "lead_negative_asset": "",
+                "macro_topics": [],
+            },
+        },
+    )
+
+    verdict = SentimentPressureSchool().analyze(ctx)
+
+    assert verdict.bias == Bias.LONG
+    assert verdict.aligned_with_entry is True
+    assert verdict.conviction >= 0.45
+    assert verdict.signals["lead_positive_asset"] == "BTC"
+
+
+def test_jarvis_full_sage_context_receives_sentiment_pressure(monkeypatch) -> None:
+    """JarvisFull should pass warmed sentiment pressure into the Sage consult context."""
+    from eta_engine.brain.jarvis_v3 import sage as sage_pkg
+    from eta_engine.brain.jarvis_v3.jarvis_full import JarvisFull
+    from eta_engine.brain.jarvis_v3.sage import SageReport, SchoolVerdict
+    from eta_engine.brain.jarvis_v3.sage.base import Bias
+
+    captured: dict[str, object] = {}
+
+    def fake_consult(ctx):
+        captured["ctx"] = ctx
+        return SageReport(
+            per_school={
+                "sentiment_pressure": SchoolVerdict(
+                    school="sentiment_pressure",
+                    bias=Bias.SHORT,
+                    conviction=0.7,
+                    aligned_with_entry=True,
+                    rationale="risk-off narrative led by BTC",
+                ),
+            },
+            composite_bias=Bias.SHORT,
+            conviction=0.7,
+            schools_consulted=1,
+            schools_aligned_with_entry=1,
+            schools_disagreeing_with_entry=0,
+            schools_neutral=0,
+            rationale="sentiment short",
+        )
+
+    monkeypatch.setattr(sage_pkg, "consult_sage", fake_consult)
+    bars = [{"open": 1.0, "high": 1.1, "low": 0.9, "close": 1.0} for _ in range(40)]
+    req = SimpleNamespace(
+        payload={
+            "symbol": "MBT1",
+            "side": "short",
+            "entry_price": 1.0,
+            "sage_bars": bars,
+            "sentiment_pressure": {
+                "status": "risk_off",
+                "score": -0.52,
+                "lead_positive_asset": "",
+                "lead_negative_asset": "BTC",
+                "macro_topics": ["inflation"],
+            },
+            "sentiment_assets": [
+                {
+                    "asset": "BTC",
+                    "fear_greed": 0.24,
+                    "social_volume_z": -2.1,
+                    "active_topics": ["capitulation"],
+                }
+            ],
+        }
+    )
+
+    report = JarvisFull._consult_sage_for_request(object(), req)  # type: ignore[arg-type]
+    ctx = captured["ctx"]
+
+    assert report is not None
+    assert ctx.instrument_class == "futures"
+    assert ctx.sentiment["pressure"]["status"] == "risk_off"
+    assert ctx.sentiment["pressure"]["lead_negative_asset"] == "BTC"
 
 
 def test_onchain_school_reads_ctx_onchain() -> None:
