@@ -186,6 +186,20 @@ function formatVerdictSentiment(verdict) {
   return tokens.join(' / ');
 }
 
+function formatCurrentBlockSummary(data, status) {
+  const payload = data && typeof data === 'object' ? data : {};
+  const state = status && typeof status === 'object' ? status : {};
+  const summary = String(payload.current_block_summary || '').trim();
+  if (summary) return summary;
+  const raw = String(payload.current_block_reason || state.last_aggregation_reject_reason || state.last_jarvis_verdict_reason || '').trim();
+  if (!raw) return '';
+  return raw
+    .replace(/^daily_kill_switch:/, 'Entries halted by daily kill switch: ')
+    .replace(/^session_gate:/, 'Entries paused by session gate: ')
+    .replace(/^gate_reject:/, 'Entries rejected by composite gate: ')
+    .replace(/^route_paper:/, 'Entries routed to paper lane: ');
+}
+
 // --- 1. Roster table ---
 class RosterPanel extends Panel {
   constructor() {
@@ -305,6 +319,9 @@ class DrilldownPanel extends Panel {
     const status = data.status || {};
     const fills = data.recent_fills || [];
     const verdicts = data.recent_verdicts || [];
+    const blockSummary = formatCurrentBlockSummary(data, status);
+    const blockAt = String(data.current_block_at || status.last_aggregation_reject_at || '').trim();
+    const blockMeta = [data.current_block_source, blockAt ? formatTime(blockAt) : ''].filter(Boolean).join(' | ');
     const latest = fills[0] || null;
     let latestDur = Number(latest?.hold_seconds || latest?.duration_s || latest?.time_in_trade_s || 0);
     if (!latestDur && Number(status.open_positions || 0) > 0 && status.last_signal_ts) {
@@ -317,6 +334,19 @@ class DrilldownPanel extends Panel {
     const readiness = formatBotStrategyReadiness(status);
     const readinessAction = readiness.nextAction || readiness.laneLabel;
     const positionDetail = renderPositionDetail(status);
+    const blockDetail = blockSummary ? `
+      <div class="metric-card p-2 mb-3 border-amber-500/30 bg-amber-500/10">
+        <div class="metric-label">Current Blocker</div>
+        <div class="text-sm text-amber-200">${escapeHtml(blockSummary)}</div>
+        ${blockMeta ? `<div class="text-[10px] text-zinc-500 mt-1">${escapeHtml(blockMeta)}</div>` : ''}
+      </div>` : '';
+    const verdictRows = verdicts.slice(0, 5).map(v => {
+      const verdictLabel = String(v.verdict_label || v.verdict || 'UNKNOWN');
+      const extras = [String(v.sage_modulation || '').trim(), formatVerdictSentiment(v)].filter(Boolean).join(' | ');
+      return `<div><span class="text-emerald-400">${escapeHtml(verdictLabel)}</span>${extras ? ` <span class="text-zinc-400">${escapeHtml(extras)}</span>` : ''}</div>`;
+    }).join('') || (blockSummary
+      ? `<div class="text-amber-300">No fresh verdicts while blocked. ${escapeHtml(blockSummary)}</div>`
+      : '<div class="text-zinc-600">none</div>');
     this.body.innerHTML = `
       <div class="strategy-readiness-detail mb-3" data-readiness-state="${escapeHtml(readiness.state)}">
         <div class="strategy-readiness-detail-title">Strategy Readiness</div>
@@ -326,6 +356,7 @@ class DrilldownPanel extends Panel {
         </div>
         <div class="strategy-readiness-action">Next: ${escapeHtml(readinessAction)}</div>
       </div>
+      ${blockDetail}
       ${positionDetail}
       <div class="grid grid-cols-4 gap-2 mb-3 text-xs">
         <div class="metric-card p-2"><div class="metric-label">Last Side</div><div class="metric-value">${escapeHtml(String(latest?.side || '—').toUpperCase())}</div></div>
@@ -338,11 +369,7 @@ class DrilldownPanel extends Panel {
         `<div>${formatTime(f.ts)} ${escapeHtml(f.side)} ${formatNumber(f.price)} qty=${f.qty} ${formatR(f.realized_r)}</div>`
       ).join('') || '<div class="text-zinc-600">none</div>'}</div>
       <div class="text-xs text-zinc-500 mb-1">Recent Verdicts</div>
-      <div class="space-y-1 text-xs">${verdicts.slice(0, 5).map(v => {
-        const verdictLabel = String(v.verdict_label || v.verdict || 'UNKNOWN');
-        const extras = [String(v.sage_modulation || '').trim(), formatVerdictSentiment(v)].filter(Boolean).join(' | ');
-        return `<div><span class="text-emerald-400">${escapeHtml(verdictLabel)}</span>${extras ? ` <span class="text-zinc-400">${escapeHtml(extras)}</span>` : ''}</div>`;
-      }).join('') || '<div class="text-zinc-600">none</div>'}</div>`;
+      <div class="space-y-1 text-xs">${verdictRows}</div>`;
   }
 }
 

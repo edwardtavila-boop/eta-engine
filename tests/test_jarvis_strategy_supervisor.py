@@ -1086,6 +1086,103 @@ def test_daily_kill_switch_block_is_visible_on_bot_heartbeat(
     assert bot.last_aggregation_reject_at
 
 
+def test_session_gate_block_is_visible_on_bot_heartbeat(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from eta_engine.scripts import supervisor_session_wiring
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        BotInstance,
+        JarvisStrategySupervisor,
+        SupervisorConfig,
+    )
+
+    monkeypatch.setattr(
+        supervisor_session_wiring,
+        "evaluate_pre_entry_gate",
+        lambda *_args, **_kwargs: (False, "outside_rth"),
+    )
+
+    cfg = SupervisorConfig()
+    cfg.mode = "paper_live"
+    cfg.data_feed = "unit"
+    cfg.state_dir = tmp_path / "state"
+    sup = JarvisStrategySupervisor(cfg=cfg)
+
+    bot = BotInstance(
+        bot_id="mnq_futures_sage",
+        symbol="MNQ1",
+        strategy_kind="orb_sage_gated",
+        direction="long",
+        cash=50_000.0,
+    )
+
+    sup._maybe_enter(
+        bot,
+        {
+            "ts": "2026-05-15T01:00:00+00:00",
+            "open": 100.0,
+            "high": 101.0,
+            "low": 99.0,
+            "close": 100.0,
+            "volume": 10,
+        },
+    )
+
+    assert bot.last_aggregation_reject_reason == "session_gate:outside_rth"
+    assert bot.last_aggregation_reject_at
+
+
+def test_session_gate_reason_clears_when_reallowed(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from eta_engine.scripts import supervisor_session_wiring
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        BotInstance,
+        JarvisStrategySupervisor,
+        SupervisorConfig,
+    )
+
+    monkeypatch.setattr(
+        supervisor_session_wiring,
+        "evaluate_pre_entry_gate",
+        lambda *_args, **_kwargs: (True, ""),
+    )
+
+    cfg = SupervisorConfig()
+    cfg.mode = "paper_live"
+    cfg.data_feed = "unit"
+    cfg.state_dir = tmp_path / "state"
+    sup = JarvisStrategySupervisor(cfg=cfg)
+    monkeypatch.setattr(sup, "_enforce_daily_loss_cap", lambda _bot, now: True)
+
+    bot = BotInstance(
+        bot_id="mnq_futures_sage",
+        symbol="MNQ1",
+        strategy_kind="orb_sage_gated",
+        direction="long",
+        cash=50_000.0,
+        last_aggregation_reject_reason="session_gate:outside_rth",
+        last_aggregation_reject_at="2026-05-15T01:00:00+00:00",
+    )
+
+    sup._maybe_enter(
+        bot,
+        {
+            "ts": "2026-05-15T01:05:00+00:00",
+            "open": 100.0,
+            "high": 101.0,
+            "low": 99.0,
+            "close": 100.0,
+            "volume": 10,
+        },
+    )
+
+    assert bot.last_aggregation_reject_reason == ""
+    assert bot.last_aggregation_reject_at == ""
+
+
 def test_paper_live_killswitch_advisory_allows_paper_soak_entry(
     tmp_path: Path,
     monkeypatch,

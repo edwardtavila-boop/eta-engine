@@ -294,9 +294,109 @@ def test_bot_fleet_drilldown_falls_back_to_canonical_verdict_log(client, tmp_pat
     verdict = r.json()["recent_verdicts"][0]
     assert verdict["verdict_label"] == "APPROVED"
     assert verdict["bot_id"] == "mnq_futures_sage"
+    assert verdict["subsystem"] == "bot.mnq_futures_sage"
+    assert verdict["source_subsystem"] == "bot.es"
+    assert verdict["verdict_match_source"] == "request_id"
     assert verdict["sentiment_pressure_status"] == "risk_off"
     assert verdict["sentiment_modulation"] == "headwind_strong"
     assert verdict["sentiment_summary"] == "risk_off / headwind_strong / lead=macro"
+
+
+def test_bot_fleet_drilldown_surfaces_current_block_summary(
+    client,
+    tmp_path,
+    monkeypatch,
+) -> None:
+    import json
+
+    from eta_engine.scripts import workspace_roots
+
+    monkeypatch.setenv("ETA_STATE_DIR", str(tmp_path))
+    monkeypatch.setattr(workspace_roots, "ETA_JARVIS_VERDICTS_PATH", tmp_path / "missing_verdicts.jsonl")
+    monkeypatch.setattr(
+        workspace_roots,
+        "ETA_LEGACY_JARVIS_VERDICTS_PATH",
+        tmp_path / "missing_legacy_verdicts.jsonl",
+    )
+    bot_dir = tmp_path / "bots" / "mnq_futures_sage"
+    bot_dir.mkdir(parents=True)
+    (bot_dir / "status.json").write_text(
+        json.dumps(
+            {
+                "name": "mnq_futures_sage",
+                "symbol": "MNQ1",
+                "last_aggregation_reject_reason": "daily_kill_switch:day_pnl=-925.50 <= limit=-900.00",
+                "last_aggregation_reject_at": "2026-05-15T12:43:05+00:00",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    r = client.get("/api/bot-fleet/mnq_futures_sage")
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body["recent_verdicts"] == []
+    assert body["current_block_source"] == "aggregation"
+    assert body["current_block_kind"] == "daily_kill_switch"
+    assert body["current_block_reason"] == "daily_kill_switch:day_pnl=-925.50 <= limit=-900.00"
+    assert body["current_block_summary"] == "Entries halted by daily kill switch: day_pnl=-925.50 <= limit=-900.00"
+    assert body["current_block_at"] == "2026-05-15T12:43:05+00:00"
+
+
+def test_bot_fleet_drilldown_surfaces_supervisor_block_summary(
+    client,
+    tmp_path,
+    monkeypatch,
+) -> None:
+    import json
+    import time
+
+    from eta_engine.deploy.scripts import dashboard_api
+    from eta_engine.scripts import workspace_roots
+
+    monkeypatch.setenv("ETA_STATE_DIR", str(tmp_path))
+    monkeypatch.setattr(workspace_roots, "ETA_JARVIS_VERDICTS_PATH", tmp_path / "missing_verdicts.jsonl")
+    monkeypatch.setattr(
+        workspace_roots,
+        "ETA_LEGACY_JARVIS_VERDICTS_PATH",
+        tmp_path / "missing_legacy_verdicts.jsonl",
+    )
+    bot_dir = tmp_path / "bots" / "volume_profile_nq"
+    bot_dir.mkdir(parents=True)
+    (bot_dir / "status.json").write_text(
+        json.dumps({"name": "volume_profile_nq", "symbol": "NQ1"}),
+        encoding="utf-8",
+    )
+    supervisor_row = dashboard_api._sup_bot_to_roster_row(
+        {
+            "id": "volume_profile_nq",
+            "name": "volume_profile_nq",
+            "symbol": "NQ1",
+            "status": "idle",
+            "strategy": "confluence_scorecard",
+            "heartbeat_ts": "2026-05-15T12:57:54+00:00",
+            "last_bar_ts": "2026-05-15T12:57:52+00:00",
+            "last_aggregation_reject_reason": "session_gate:outside_rth",
+            "last_aggregation_reject_at": "2026-05-15T12:57:52+00:00",
+        },
+        time.time(),
+    )
+    monkeypatch.setattr(
+        dashboard_api,
+        "_supervisor_roster_rows",
+        lambda now_ts, bot=None: [supervisor_row] if bot in (None, "volume_profile_nq") else [],
+    )
+
+    r = client.get("/api/bot-fleet/volume_profile_nq")
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body["current_block_source"] == "aggregation"
+    assert body["current_block_kind"] == "session_gate"
+    assert body["current_block_reason"] == "session_gate:outside_rth"
+    assert body["current_block_summary"] == "Entries paused by session gate: outside_rth"
+    assert body["current_block_at"] == "2026-05-15T12:57:52+00:00"
 
 
 def test_bot_fleet_drilldown_rejects_conflicting_verdict_request_id(client, tmp_path, monkeypatch) -> None:

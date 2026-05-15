@@ -995,6 +995,12 @@ def _dashboard_diagnostics_payload() -> dict:
     paper_live_held_by_bracket_audit = bool(
         roster_summary.get("paper_live_held_by_bracket_audit") or paper_live_transition.get("held_by_bracket_audit")
     )
+    daily_loss_killswitch = _daily_loss_killswitch_snapshot()
+    paper_live_held_by_daily_loss_stop = bool(
+        roster_summary.get("paper_live_held_by_daily_loss_stop")
+        or paper_live_transition.get("held_by_daily_loss_stop")
+        or daily_loss_killswitch.get("tripped")
+    )
     if transition_launch_blocked > 0 and paper_live_effective_status in {
         "ready",
         "ready_to_launch_paper_live",
@@ -1005,6 +1011,16 @@ def _dashboard_diagnostics_payload() -> dict:
             transition_first_launch_next_action
             or str(first_launch_blocker.get("detail") or first_launch_blocker.get("title") or "")
             or "Fresh operator queue has a launch blocker."
+        )
+    if paper_live_held_by_daily_loss_stop and paper_live_effective_status in {
+        "ready",
+        "ready_to_launch_paper_live",
+        "green",
+    }:
+        paper_live_effective_status = "held_by_daily_loss_stop"
+        paper_live_effective_detail = (
+            str(daily_loss_killswitch.get("reason") or "")
+            or "Daily-loss soft stop is active; new entries are held until the next trading day."
         )
 
     return {
@@ -1077,6 +1093,7 @@ def _dashboard_diagnostics_payload() -> dict:
         },
         "symbol_intelligence": _symbol_intelligence_diagnostic_payload(symbol_intelligence),
         "diamond_retune_status": _diamond_retune_diagnostic_payload(diamond_retune_status),
+        "daily_loss_killswitch": daily_loss_killswitch,
         "live_broker_state": live_broker_diagnostics,
         "operator_queue": {
             "blocked": int(operator_summary.get("BLOCKED") or 0),
@@ -1107,6 +1124,7 @@ def _dashboard_diagnostics_payload() -> dict:
             "effective_status": paper_live_effective_status,
             "effective_detail": paper_live_effective_detail,
             "held_by_bracket_audit": paper_live_held_by_bracket_audit,
+            "held_by_daily_loss_stop": paper_live_held_by_daily_loss_stop,
             "broker_bracket_missing_count": int(roster_summary.get("broker_bracket_missing_count") or 0),
             "broker_bracket_primary_symbol": str(roster_summary.get("broker_bracket_primary_symbol") or ""),
             "broker_bracket_primary_venue": str(roster_summary.get("broker_bracket_primary_venue") or ""),
@@ -1139,6 +1157,8 @@ def _dashboard_diagnostics_payload() -> dict:
             "bot_strategy_readiness_contract": readiness.get("status") == "ready" and not readiness.get("error"),
             "symbol_intelligence_contract": bool(symbol_intelligence.get("contract_ok")),
             "diamond_retune_status_contract": bool(diamond_retune_status.get("contract_ok")),
+            "daily_loss_killswitch_contract": daily_loss_killswitch.get("status")
+            in {"clear", "tripped", "disabled", "unknown"},
             "live_broker_state_contract": isinstance(live_broker_diagnostics, dict)
             and "ready" in live_broker_diagnostics
             and "broker_snapshot_source" in live_broker_diagnostics,
@@ -3098,6 +3118,32 @@ def _broker_router_snapshot() -> dict:
         "latest_result": latest_result,
         "latest_failure": _latest_router_failure(failed_dir),
     }
+
+
+def _daily_loss_killswitch_snapshot() -> dict:
+    """Return the shared daily-loss soft-stop state for dashboard consumers."""
+    try:
+        from eta_engine.scripts.daily_loss_killswitch import killswitch_status
+
+        payload = killswitch_status()
+    except Exception as exc:  # noqa: BLE001 - dashboard must fail soft.
+        return {
+            "source": "daily_loss_killswitch",
+            "status": "unknown",
+            "tripped": False,
+            "reason": f"daily_loss_killswitch_unavailable:{type(exc).__name__}:{exc}",
+            "error": str(exc),
+        }
+
+    out = dict(payload) if isinstance(payload, dict) else {}
+    tripped = bool(out.get("tripped"))
+    disabled = bool(out.get("disabled"))
+    out.setdefault("source", "daily_loss_killswitch")
+    out["tripped"] = tripped
+    out["disabled"] = disabled
+    out["status"] = "disabled" if disabled else "tripped" if tripped else "clear"
+    out["reason"] = str(out.get("reason") or "")
+    return out
 
 
 def _iso_age_s(value: object, *, server_ts: float) -> int | None:
@@ -5706,6 +5752,9 @@ def _sup_bot_to_roster_row(sup: dict, now_ts: float) -> dict:
         "confirmed": True,
         "mode": str(sup.get("mode") or ""),
         "last_jarvis_verdict": str(sup.get("last_jarvis_verdict") or ""),
+        "last_jarvis_verdict_reason": str(sup.get("last_jarvis_verdict_reason") or ""),
+        "last_aggregation_reject_reason": str(sup.get("last_aggregation_reject_reason") or ""),
+        "last_aggregation_reject_at": str(sup.get("last_aggregation_reject_at") or ""),
         "strategy_readiness": strategy_readiness,
         "open_position": open_pos,
         "open_positions": open_positions,
@@ -6118,6 +6167,18 @@ def bot_fleet_roster(
             if broker_bracket_action_labels
             else "held by Bracket Audit"
         )
+    daily_loss_killswitch = _daily_loss_killswitch_snapshot()
+    paper_live_held_by_daily_loss_stop = bool(daily_loss_killswitch.get("tripped"))
+    if paper_live_held_by_daily_loss_stop and paper_live_effective_status in {
+        "ready",
+        "ready_to_launch_paper_live",
+        "green",
+    }:
+        paper_live_effective_status = "held_by_daily_loss_stop"
+        paper_live_effective_detail = (
+            str(daily_loss_killswitch.get("reason") or "")
+            or "Daily-loss soft stop is active; new entries are held until the next trading day."
+        )
     vps_root_reconciliation = _vps_root_reconciliation_payload()
     vps_root_summary = (
         vps_root_reconciliation.get("summary") if isinstance(vps_root_reconciliation.get("summary"), dict) else {}
@@ -6219,6 +6280,8 @@ def bot_fleet_roster(
             "paper_live_effective_status": paper_live_effective_status,
             "paper_live_effective_detail": paper_live_effective_detail,
             "paper_live_held_by_bracket_audit": paper_live_held_by_bracket_audit,
+            "paper_live_held_by_daily_loss_stop": paper_live_held_by_daily_loss_stop,
+            "daily_loss_killswitch": daily_loss_killswitch,
             "paper_live_critical_ready": paper_live_critical_ready,
             "paper_live_ready_bots": int(paper_live_transition.get("paper_ready_bots") or 0),
             "paper_live_launch_blocked_count": int(
@@ -6452,6 +6515,84 @@ def _normalize_recent_verdict_rows(rows: Any) -> list[dict]:
     return out
 
 
+def _humanize_current_block(reason: str, *, source: str) -> tuple[str, str]:
+    raw = str(reason or "").strip()
+    if not raw:
+        return "", ""
+    kind, detail = (raw.split(":", 1) + [""])[:2] if ":" in raw else (raw, "")
+    kind = str(kind or "").strip()
+    detail = str(detail or "").strip()
+    if kind == "daily_kill_switch":
+        return kind, f"Entries halted by daily kill switch: {detail or 'limit breached'}"
+    if kind == "session_gate":
+        return kind, f"Entries paused by session gate: {detail or 'blocked'}"
+    if kind == "gate_reject":
+        return kind, f"Entries rejected by composite gate: {detail or 'rule blocked'}"
+    if kind == "route_paper":
+        return kind, f"Entries routed to paper lane: {detail or 'paper routing active'}"
+    if kind == "fleet_position_cap":
+        return kind, f"Entries blocked by fleet position cap: {detail or raw}"
+    if kind == "prop_sleeve_cap":
+        return kind, f"Entries blocked by prop sleeve cap: {detail or raw}"
+    if kind == "gate_size_collapsed":
+        return kind, f"Entries blocked after sizing collapsed: {detail or raw}"
+    if kind == "regime_block":
+        return kind, f"Jarvis regime gate blocked consult: {detail or raw}"
+    if kind == "consult_exception":
+        return kind, f"Jarvis consult raised: {detail or raw}"
+    if kind == "jarvis_not_bootstrapped":
+        return kind, "Jarvis consult unavailable: bot is not bootstrapped yet"
+    if kind.startswith("consolidated_with_"):
+        return "signal_aggregation", f"Entry consolidated with {kind.removeprefix('consolidated_with_')}"
+    label = kind.replace("_", " ").strip() or source.replace("_", " ").strip() or "block"
+    if detail:
+        return kind, f"{label.capitalize()}: {detail}"
+    return kind, label.capitalize()
+
+
+def _current_bot_block_state(status: Any) -> dict[str, str]:
+    if not isinstance(status, dict):
+        return {
+            "current_block_source": "",
+            "current_block_kind": "",
+            "current_block_reason": "",
+            "current_block_summary": "",
+            "current_block_at": "",
+        }
+    aggregation_reason = str(status.get("last_aggregation_reject_reason") or "").strip()
+    jarvis_reason = str(status.get("last_jarvis_verdict_reason") or "").strip()
+    if aggregation_reason:
+        kind, summary = _humanize_current_block(aggregation_reason, source="aggregation")
+        return {
+            "current_block_source": "aggregation",
+            "current_block_kind": kind,
+            "current_block_reason": aggregation_reason,
+            "current_block_summary": summary,
+            "current_block_at": str(status.get("last_aggregation_reject_at") or "").strip(),
+        }
+    if jarvis_reason:
+        kind, summary = _humanize_current_block(jarvis_reason, source="jarvis")
+        return {
+            "current_block_source": "jarvis",
+            "current_block_kind": kind,
+            "current_block_reason": jarvis_reason,
+            "current_block_summary": summary,
+            "current_block_at": "",
+        }
+    return {
+        "current_block_source": "",
+        "current_block_kind": "",
+        "current_block_reason": "",
+        "current_block_summary": "",
+        "current_block_at": "",
+    }
+
+
+def _augment_bot_drilldown_payload(payload: dict[str, Any], *, status: Any) -> dict[str, Any]:
+    payload.update(_current_bot_block_state(status))
+    return payload
+
+
 def _candidate_verdict_subsystems(bot_id: str, status: dict | None = None) -> set[str]:
     bot_lower = str(bot_id or "").strip().lower()
     candidates: set[str] = set()
@@ -6543,6 +6684,18 @@ def _coerce_recent_verdict_row(record: dict, *, bot_id: str) -> dict:
         or record.get("signal_id")
         or ""
     )
+    source_subsystem = str(record.get("subsystem") or request.get("subsystem") or consolidated.get("subsystem") or "")
+    request_bot_id = _extract_bot_id_from_client_order_id(str(request_id or ""))
+    direct_bot = str(record.get("bot_id") or record.get("bot") or "").strip()
+    if request_bot_id == bot_id:
+        display_subsystem = f"bot.{bot_id}"
+        match_source = "request_id"
+    elif direct_bot == bot_id:
+        display_subsystem = f"bot.{bot_id}"
+        match_source = "bot_id"
+    else:
+        display_subsystem = source_subsystem
+        match_source = "subsystem"
     verdict = (
         record.get("verdict")
         or record.get("final_verdict")
@@ -6558,7 +6711,9 @@ def _coerce_recent_verdict_row(record: dict, *, bot_id: str) -> dict:
         "verdict": verdict,
         "reason": record.get("base_reason") or response.get("reason") or record.get("reason") or "",
         "reason_code": record.get("reason_code") or response.get("reason_code") or "",
-        "subsystem": record.get("subsystem") or request.get("subsystem") or consolidated.get("subsystem") or "",
+        "subsystem": display_subsystem,
+        "source_subsystem": source_subsystem,
+        "verdict_match_source": match_source,
         "action": record.get("action") or request.get("action") or consolidated.get("action") or "",
         "size_cap_mult": response.get("size_cap_mult"),
         "final_size_multiplier": (
@@ -6674,6 +6829,9 @@ def bot_fleet_drilldown(bot_id: str) -> dict:
         "readiness_next_action",
         "mode",
         "last_jarvis_verdict",
+        "last_jarvis_verdict_reason",
+        "last_aggregation_reject_reason",
+        "last_aggregation_reject_at",
         "heartbeat_age_s",
         "source",
     )
@@ -6689,7 +6847,7 @@ def bot_fleet_drilldown(bot_id: str) -> dict:
         strategy_readiness = {}
     if not bot_dir.exists():
         if supervisor_status is not None:
-            return {
+            return _augment_bot_drilldown_payload({
                 "status": supervisor_status,
                 "recent_fills": [],
                 "recent_verdicts": _load_recent_verdict_rows(
@@ -6710,14 +6868,14 @@ def bot_fleet_drilldown(bot_id: str) -> dict:
                 "readiness_next_action": str(
                     supervisor_status.get("readiness_next_action") or strategy_readiness.get("next_action") or "",
                 ),
-            }
+            }, status=supervisor_status)
         readiness = _lookup_bot_strategy_readiness(readiness_rows, {}, bot_id)
         if readiness:
             status = _readiness_only_roster_row(readiness, now_ts=time.time())
             strategy_readiness = (
                 status.get("strategy_readiness") if isinstance(status.get("strategy_readiness"), dict) else {}
             )
-            return {
+            return _augment_bot_drilldown_payload({
                 "status": status,
                 "recent_fills": [],
                 "recent_verdicts": _load_recent_verdict_rows(
@@ -6734,14 +6892,14 @@ def bot_fleet_drilldown(bot_id: str) -> dict:
                 "readiness_next_action": str(
                     status.get("readiness_next_action") or strategy_readiness.get("next_action") or "",
                 ),
-            }
-        return {
+            }, status=status)
+        return _augment_bot_drilldown_payload({
             "_warning": "no_data",
             "status": {"_warning": "no_data"},
             "recent_fills": [],
             "recent_verdicts": _load_recent_verdict_rows(bot_id=bot_id, status={}, bot_dir=bot_dir, limit=50),
             "sage_effects": {"_warning": "no_data"},
-        }
+        }, status={})
     status = read_json_safe(bot_dir / "status.json")
     if supervisor_status is not None:
         for key in supervisor_overlay_keys:
@@ -6785,7 +6943,7 @@ def bot_fleet_drilldown(bot_id: str) -> dict:
         bot_dir=bot_dir,
         limit=50,
     )
-    return {
+    return _augment_bot_drilldown_payload({
         "status": status,
         "recent_fills": merged_fills[:50],
         "recent_verdicts": recent_verdicts,
@@ -6797,7 +6955,7 @@ def bot_fleet_drilldown(bot_id: str) -> dict:
         "readiness_next_action": str(
             status.get("readiness_next_action") or strategy_readiness.get("next_action") or "",
         ),
-    }
+    }, status=status)
 
 
 @app.get("/api/live/fills")
@@ -11958,6 +12116,7 @@ def _local_master_status_payload() -> dict[str, object]:
     broker_bracket_prop_dry_run_blocked = bool(broker_bracket_audit.get("operator_action_required")) and not bool(
         broker_bracket_audit.get("ready_for_prop_dry_run")
     )
+    daily_loss_killswitch = _daily_loss_killswitch_snapshot()
     vps_root_reconciliation = _vps_root_reconciliation_payload()
 
     def _gateway_card_status(status: str) -> str:
@@ -12018,6 +12177,7 @@ def _local_master_status_payload() -> dict[str, object]:
         }
     )
     paper_held_by_bracket_audit = broker_bracket_prop_dry_run_blocked and paper_ready and launch_blocked == 0
+    paper_held_by_daily_loss_stop = bool(daily_loss_killswitch.get("tripped")) and paper_ready and launch_blocked == 0
     paper_live_effective_status = (
         "held_by_bracket_audit" if paper_held_by_bracket_audit else str(paper.get("status") or "unknown")
     )
@@ -12028,16 +12188,34 @@ def _local_master_status_payload() -> dict[str, object]:
             if broker_bracket_action_labels
             else "held by Bracket Audit"
         )
+    if paper_held_by_daily_loss_stop and paper_live_effective_status in {
+        "ready",
+        "ready_to_launch_paper_live",
+        "green",
+    }:
+        paper_live_effective_status = "held_by_daily_loss_stop"
+        paper_live_effective_detail = (
+            str(daily_loss_killswitch.get("reason") or "")
+            or "Daily-loss soft stop is active; new entries are held until the next trading day."
+        )
     paper_live.update(
         {
             "raw_status": str(paper.get("status") or "unknown"),
             "effective_status": paper_live_effective_status,
             "effective_detail": paper_live_effective_detail,
             "held_by_bracket_audit": paper_held_by_bracket_audit,
+            "held_by_daily_loss_stop": paper_held_by_daily_loss_stop,
+            "daily_loss_killswitch": daily_loss_killswitch,
         }
     )
     paper_card_status = (
-        "RED" if launch_blocked else "YELLOW" if paper_held_by_bracket_audit else "GREEN" if paper_ready else "YELLOW"
+        "RED"
+        if launch_blocked
+        else "YELLOW"
+        if paper_held_by_bracket_audit or paper_held_by_daily_loss_stop
+        else "GREEN"
+        if paper_ready
+        else "YELLOW"
     )
     router_card_status = _router_card_status(router_status)
     broker_card_status = _worst_card_status(router_card_status, target_exit_card_status)
@@ -12061,6 +12239,7 @@ def _local_master_status_payload() -> dict[str, object]:
             "paper_live_ready": paper_ready,
             "operator_queue_blocked_count": blocked,
             "operator_queue_launch_blocked_count": launch_blocked,
+            "paper_live_held_by_daily_loss_stop": paper_held_by_daily_loss_stop,
         },
         "paper": {
             "mode": runtime_mode,
@@ -12152,6 +12331,8 @@ def _local_master_status_payload() -> dict[str, object]:
                 "effective_status": paper_live_effective_status,
                 "effective_detail": paper_live_effective_detail,
                 "held_by_bracket_audit": paper_held_by_bracket_audit,
+                "held_by_daily_loss_stop": paper_held_by_daily_loss_stop,
+                "daily_loss_killswitch": daily_loss_killswitch,
                 "operator_queue_blocked_count": blocked,
                 "operator_queue_launch_blocked_count": launch_blocked,
             },
@@ -12162,7 +12343,13 @@ def _local_master_status_payload() -> dict[str, object]:
                 "checked_at": generated_at,
             },
         },
-        "daily": {},
+        "daily": {
+            "daily_loss_killswitch": daily_loss_killswitch,
+            "soft_stop_active": bool(daily_loss_killswitch.get("tripped")),
+            "today_pnl_usd": daily_loss_killswitch.get("today_pnl_usd"),
+            "limit_usd": daily_loss_killswitch.get("limit_usd"),
+            "reason": daily_loss_killswitch.get("reason"),
+        },
     }
 
 
@@ -12195,6 +12382,7 @@ def runtime_status() -> dict[str, object]:
     if isinstance(paper_live, dict):
         runtime_payload["paper_live_effective_status"] = paper_live.get("effective_status")
         runtime_payload["paper_live_held_by_bracket_audit"] = bool(paper_live.get("held_by_bracket_audit"))
+        runtime_payload["paper_live_held_by_daily_loss_stop"] = bool(paper_live.get("held_by_daily_loss_stop"))
     return {
         "paper": paper,
         "paper_live": paper_live,
@@ -12203,6 +12391,9 @@ def runtime_status() -> dict[str, object]:
         "effective_status": (paper_live.get("effective_status") if isinstance(paper_live, dict) else None),
         "held_by_bracket_audit": bool(
             paper_live.get("held_by_bracket_audit") if isinstance(paper_live, dict) else False
+        ),
+        "held_by_daily_loss_stop": bool(
+            paper_live.get("held_by_daily_loss_stop") if isinstance(paper_live, dict) else False
         ),
     }
 

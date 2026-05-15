@@ -1767,6 +1767,8 @@ class TestDashboardAPI:
         assert "paper_live_transition" in data
         assert data["checks"]["operator_queue_contract"] is True
         assert data["checks"]["paper_live_transition_contract"] is True
+        assert data["daily_loss_killswitch"]["status"] in {"clear", "tripped", "disabled", "unknown"}
+        assert data["checks"]["daily_loss_killswitch_contract"] is True
         assert data["dashboard_proxy_watchdog"]["status"] in {
             "ok",
             "missing",
@@ -2413,6 +2415,117 @@ class TestDashboardAPI:
         assert paper["broker_bracket_primary_sec_type"] == "FUT"
         assert paper["effective_detail"].startswith("paper transition ready")
 
+    def test_dashboard_diagnostics_surfaces_daily_loss_soft_stop_hold(
+        self,
+        app_client,
+        monkeypatch,
+        tmp_path,
+    ):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        monkeypatch.setattr(
+            mod,
+            "_operator_queue_payload",
+            lambda **_kwargs: {"summary": {"BLOCKED": 0, "OBSERVED": 0, "UNKNOWN": 0}, "launch_blocked_count": 0},
+        )
+        monkeypatch.setattr(
+            mod,
+            "bot_fleet_roster",
+            lambda *_args, **_kwargs: {
+                "bots": [],
+                "confirmed_bots": 0,
+                "summary": {
+                    "bot_total": 9,
+                    "active_bots": 0,
+                    "runtime_active_bots": 0,
+                    "running_bots": 0,
+                    "staged_bots": 9,
+                    "truth_status": "runtime_stopped",
+                },
+            },
+        )
+        monkeypatch.setattr(
+            mod,
+            "_daily_loss_killswitch_snapshot",
+            lambda: {
+                "source": "daily_loss_killswitch",
+                "status": "tripped",
+                "tripped": True,
+                "disabled": False,
+                "today_pnl_usd": -925.50,
+                "limit_usd": -900.0,
+                "reason": "day_pnl=$-925.50 <= limit=$-900.00 (date=2026-05-15)",
+            },
+        )
+        (tmp_path / "state" / "paper_live_transition_check.json").write_text(
+            json.dumps(
+                {
+                    "generated_at": datetime.now(UTC).isoformat(),
+                    "status": "ready_to_launch_paper_live",
+                    "effective_status": "ready_to_launch_paper_live",
+                    "critical_ready": True,
+                    "paper_ready_bots": 9,
+                    "operator_queue_launch_blocked_count": 0,
+                    "gates": [],
+                },
+            ),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/dashboard/diagnostics")
+
+        assert r.status_code == 200
+        payload = r.json()
+        assert payload["daily_loss_killswitch"]["status"] == "tripped"
+        assert payload["daily_loss_killswitch"]["today_pnl_usd"] == -925.50
+        paper = payload["paper_live_transition"]
+        assert paper["status"] == "ready_to_launch_paper_live"
+        assert paper["effective_status"] == "held_by_daily_loss_stop"
+        assert paper["held_by_daily_loss_stop"] is True
+        assert "day_pnl=$-925.50" in paper["effective_detail"]
+        assert payload["checks"]["daily_loss_killswitch_contract"] is True
+
+    def test_daily_loss_killswitch_snapshot_normalizes_status(self, monkeypatch):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+        from eta_engine.scripts import daily_loss_killswitch
+
+        monkeypatch.setattr(
+            daily_loss_killswitch,
+            "killswitch_status",
+            lambda: {
+                "tripped": True,
+                "disabled": False,
+                "reason": "day_pnl=$-925.50 <= limit=$-900.00",
+                "today_pnl_usd": -925.50,
+                "limit_usd": -900.0,
+            },
+        )
+
+        snapshot = mod._daily_loss_killswitch_snapshot()
+
+        assert snapshot["source"] == "daily_loss_killswitch"
+        assert snapshot["status"] == "tripped"
+        assert snapshot["tripped"] is True
+        assert snapshot["disabled"] is False
+        assert snapshot["today_pnl_usd"] == -925.50
+        assert snapshot["limit_usd"] == -900.0
+
+    def test_current_bot_block_state_humanizes_session_gate(self):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        state = mod._current_bot_block_state(
+            {
+                "last_aggregation_reject_reason": "session_gate:outside_rth",
+                "last_aggregation_reject_at": "2026-05-15T12:00:00+00:00",
+            }
+        )
+
+        assert state["current_block_source"] == "aggregation"
+        assert state["current_block_kind"] == "session_gate"
+        assert state["current_block_reason"] == "session_gate:outside_rth"
+        assert state["current_block_summary"] == "Entries paused by session gate: outside_rth"
+        assert state["current_block_at"] == "2026-05-15T12:00:00+00:00"
+
     def test_dashboard_diagnostics_includes_proxy_watchdog_rollup(
         self,
         app_client,
@@ -2975,6 +3088,61 @@ class TestDashboardAPI:
         assert payload["systems"]["paper_live"]["status"] == "GREEN"
         assert payload["systems"]["ibkr"]["source"] == "broker_gateway"
         assert payload["systems"]["broker"]["source"] == "broker_router"
+
+    def test_master_status_surfaces_daily_loss_soft_stop_hold(self, app_client, tmp_path, monkeypatch):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        monkeypatch.setattr(
+            mod,
+            "_operator_queue_payload",
+            lambda: {"summary": {"BLOCKED": 0}, "launch_blocked_count": 0},
+        )
+        monkeypatch.setattr(
+            mod,
+            "_daily_loss_killswitch_snapshot",
+            lambda: {
+                "source": "daily_loss_killswitch",
+                "status": "tripped",
+                "tripped": True,
+                "disabled": False,
+                "today_pnl_usd": -925.50,
+                "limit_usd": -900.0,
+                "reason": "day_pnl=$-925.50 <= limit=$-900.00 (date=2026-05-15)",
+            },
+        )
+        (tmp_path / "state" / "paper_live_transition_check.json").write_text(
+            json.dumps(
+                {
+                    "generated_at": "2026-05-15T12:40:00+00:00",
+                    "status": "ready_to_launch_paper_live",
+                    "critical_ready": True,
+                    "paper_ready_bots": 9,
+                    "operator_queue_blocked_count": 0,
+                    "operator_queue_launch_blocked_count": 0,
+                    "gates": [],
+                },
+            ),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/master/status")
+
+        assert r.status_code == 200
+        payload = r.json()
+        assert payload["systems"]["paper_live"]["status"] == "YELLOW"
+        assert payload["systems"]["paper_live"]["detail"] == "held_by_daily_loss_stop"
+        assert payload["systems"]["paper_live"]["held_by_daily_loss_stop"] is True
+        assert payload["paper_live"]["effective_status"] == "held_by_daily_loss_stop"
+        assert payload["paper_live"]["held_by_daily_loss_stop"] is True
+        assert payload["paper_live"]["daily_loss_killswitch"]["status"] == "tripped"
+        assert payload["daily"]["soft_stop_active"] is True
+        assert payload["daily"]["today_pnl_usd"] == -925.50
+
+        runtime = app_client.get("/api/runtime-status")
+        assert runtime.status_code == 200
+        runtime_payload = runtime.json()
+        assert runtime_payload["runtime"]["paper_live_held_by_daily_loss_stop"] is True
+        assert runtime_payload["held_by_daily_loss_stop"] is True
 
     def test_master_status_reconciles_cached_ibkr_live_positions(
         self,

@@ -4192,6 +4192,8 @@ class JarvisStrategySupervisor:
 
         allowed, reason = evaluate_pre_entry_gate(bot.session_state, now=now)
         if not allowed:
+            bot.last_aggregation_reject_reason = f"session_gate:{reason}"
+            bot.last_aggregation_reject_at = now.isoformat()
             key = (bot.bot_id, reason)
             if not self._gate_block_logged.get(key):
                 logger.info(
@@ -4205,6 +4207,9 @@ class JarvisStrategySupervisor:
         # Clear the dedup cache for this bot when re-allowed so the
         # next future block emits a fresh log line.
         self._gate_block_logged = {k: v for k, v in self._gate_block_logged.items() if k[0] != bot.bot_id}
+        if str(bot.last_aggregation_reject_reason or "").startswith("session_gate:"):
+            bot.last_aggregation_reject_reason = ""
+            bot.last_aggregation_reject_at = ""
 
         # ── Per-bot daily-loss cap (registry: daily_loss_limit_pct) ───
         # Halts new entries when realized PnL since the session anchor
