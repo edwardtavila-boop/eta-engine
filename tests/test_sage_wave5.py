@@ -155,6 +155,25 @@ def test_options_greeks_applies_only_with_payload() -> None:
     )
 
 
+def test_cross_asset_correlation_applies_only_with_peer_payload() -> None:
+    from eta_engine.brain.jarvis_v3.sage import MarketContext
+    from eta_engine.brain.jarvis_v3.sage.schools.cross_asset_correlation import CrossAssetCorrelationSchool
+
+    school = CrossAssetCorrelationSchool()
+    assert school.applies_to(MarketContext(bars=_bars(50), side="long", symbol="MNQ1")) is False
+    assert (
+        school.applies_to(
+            MarketContext(
+                bars=_bars(50),
+                side="long",
+                symbol="MNQ1",
+                peer_returns={"NQ1": [0.01] * 30},
+            )
+        )
+        is True
+    )
+
+
 # ─── regime detector ─────────────────────────────────────────────
 
 

@@ -5720,6 +5720,7 @@ class JarvisStrategySupervisor:
 
     def _load_onchain_payload(self, bot: BotInstance) -> dict[str, Any] | None:
         family = _symbol_family(bot.symbol)
+        root = bot.symbol.upper().lstrip("/").strip().rstrip("0123456789")
         if family not in {"BTC", "ETH"}:
             return None
 
@@ -5748,9 +5749,13 @@ class JarvisStrategySupervisor:
         try:
             from eta_engine.brain.jarvis_v3.sage.onchain_fetcher import fetch_onchain  # noqa: PLC0415
 
-            fetched = fetch_onchain(bot.symbol) or {}
-            for key, value in fetched.items():
-                payload.setdefault(key, value)
+            for candidate in (bot.symbol, root, family, f"{family}USDT"):
+                fetched = fetch_onchain(candidate) or {}
+                if not fetched:
+                    continue
+                for key, value in fetched.items():
+                    payload.setdefault(key, value)
+                break
         except Exception:  # noqa: BLE001
             pass
 

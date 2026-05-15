@@ -46,6 +46,12 @@ class CrossAssetCorrelationSchool(SchoolBase):
         "down = sustainable divergence)."
     )
 
+    def applies_to(self, ctx: MarketContext) -> bool:
+        if not super().applies_to(ctx):
+            return False
+        peer_returns = getattr(ctx, "peer_returns", None)
+        return isinstance(peer_returns, dict) and bool(peer_returns)
+
     def analyze(self, ctx: MarketContext) -> SchoolVerdict:
         peer_returns = getattr(ctx, "peer_returns", None)
         if not peer_returns or not isinstance(peer_returns, dict):

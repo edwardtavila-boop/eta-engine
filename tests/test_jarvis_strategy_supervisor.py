@@ -2410,6 +2410,46 @@ def test_supervisor_builds_sage_context_with_crypto_telemetry(tmp_path: Path, mo
     assert ctx.kwargs["funding"]["annualized_yield_pct"] == 11.0
 
 
+def test_supervisor_load_onchain_payload_uses_contract_alias_fallback(tmp_path: Path, monkeypatch) -> None:
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        BotInstance,
+        JarvisStrategySupervisor,
+        SupervisorConfig,
+    )
+
+    cfg = SupervisorConfig()
+    cfg.state_dir = tmp_path / "state"
+    sup = JarvisStrategySupervisor(cfg=cfg)
+    bot = BotInstance(
+        bot_id="mbt_basis",
+        symbol="MBT1",
+        strategy_kind="x",
+        direction="long",
+        cash=50_000.0,
+    )
+
+    calls: list[str] = []
+
+    def fake_fetch(symbol: str) -> dict[str, object]:
+        calls.append(symbol)
+        if symbol == "MBT":
+            return {"sopr": 0.99}
+        return {}
+
+    import eta_engine.brain.jarvis_v3.sage.onchain_fetcher as fetcher
+
+    monkeypatch.setattr(fetcher, "fetch_onchain", fake_fetch)
+    monkeypatch.setattr(
+        "eta_engine.brain.jarvis_v3.onchain_enricher.current_snapshot",
+        lambda *args, **kwargs: None,
+    )
+
+    payload = sup._load_onchain_payload(bot)
+
+    assert payload == {"sopr": 0.99}
+    assert calls[:2] == ["MBT1", "MBT"]
+
+
 def test_supervisor_peer_returns_supply_30_return_window(tmp_path: Path) -> None:
     from eta_engine.scripts.jarvis_strategy_supervisor import (
         BotInstance,
