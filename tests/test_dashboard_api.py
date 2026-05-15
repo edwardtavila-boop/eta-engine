@@ -1759,6 +1759,13 @@ class TestDashboardAPI:
         assert data["summary"]["broker_truth_focus_next_command"].endswith(
             "--bots mnq_futures_sage --report-policy runtime"
         )
+        assert data["focus_bot"] == "mnq_futures_sage"
+        assert data["focus_issue"] == "broker_pnl_negative"
+        assert data["focus_state"] == "stuck_research_failing"
+        assert data["focus_strategy_kind"] == "orb_sage_gated"
+        assert data["focus_worst_session"] == "overnight"
+        assert data["focus_parameter_focus"] == ["session predicate", "rr_target"]
+        assert data["focus_command"].endswith("--bots mnq_futures_sage --report-policy runtime")
         assert data["summary"]["safe_to_mutate_live"] is False
         assert data["safe_to_mutate_live"] is False
         assert data["bots"][0]["bot_id"] == "mnq_futures_sage"

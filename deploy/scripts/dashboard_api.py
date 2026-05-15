@@ -1702,6 +1702,7 @@ def _load_diamond_retune_status() -> dict[str, object]:
     summary = payload.get("summary") if isinstance(payload.get("summary"), dict) else {}
     bots = payload.get("bots") if isinstance(payload.get("bots"), list) else []
     research_backlog = payload.get("research_backlog") if isinstance(payload.get("research_backlog"), list) else []
+    first_bot = bots[0] if bots and isinstance(bots[0], dict) else {}
     kind_ok = payload.get("kind") == "eta_diamond_retune_status"
     contract_ok = kind_ok and isinstance(summary, dict) and isinstance(bots, list)
     status = str(payload.get("status") or ("ready" if contract_ok else "invalid"))
@@ -1754,6 +1755,10 @@ def _load_diamond_retune_status() -> dict[str, object]:
         "broker_truth_summary_line": str(summary.get("broker_truth_summary_line") or ""),
         "safe_to_mutate_live": False,
     }
+    focus_bot = normalized_summary["broker_truth_focus_bot_id"] or str(first_bot.get("bot_id") or "")
+    focus_state = normalized_summary["broker_truth_focus_state"] or str(
+        first_bot.get("retune_state") or first_bot.get("stage") or ""
+    )
     normalized: dict[str, object] = dict(payload)
     normalized.update(
         {
@@ -1769,6 +1774,16 @@ def _load_diamond_retune_status() -> dict[str, object]:
             "summary": normalized_summary,
             "bots": bots,
             "research_backlog": research_backlog,
+            # Backward-compatible top-level aliases for dashboard/tooling reads.
+            "focus_bot": focus_bot,
+            "focus_state": focus_state,
+            "focus_issue": normalized_summary["broker_truth_focus_issue_code"],
+            "focus_strategy_kind": normalized_summary["broker_truth_focus_strategy_kind"],
+            "focus_best_session": normalized_summary["broker_truth_focus_best_session"],
+            "focus_worst_session": normalized_summary["broker_truth_focus_worst_session"],
+            "focus_parameter_focus": list(normalized_summary["broker_truth_focus_parameter_focus"]),
+            "focus_command": normalized_summary["broker_truth_focus_next_command"],
+            "focus_next_action": normalized_summary["broker_truth_focus_next_action"],
         }
     )
     return normalized
