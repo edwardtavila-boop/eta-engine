@@ -712,52 +712,61 @@ def _supervisor_code_summary(
     supervisor_heartbeat: dict[str, Any] | None,
     repo_revision: dict[str, Any] | None,
 ) -> dict[str, Any]:
+    """Fail closed when the running supervisor is older than deployed code."""
     if repo_revision is None:
         return {
-            "status": "not_collected",
+            "status": "NOT_COLLECTED",
             "ready": True,
-            "heartbeat_head": "",
-            "repo_head": "",
-        }
-    heartbeat_revision = _as_dict(_as_dict(supervisor_heartbeat).get("code_revision"))
+    }
+    heartbeat = supervisor_heartbeat if isinstance(supervisor_heartbeat, dict) else {}
+    heartbeat_revision = _as_dict(heartbeat.get("code_revision"))
     heartbeat_head = str(heartbeat_revision.get("head") or "").strip()
     repo_head = str(repo_revision.get("head") or "").strip()
-    if not heartbeat_head:
-        return {
-            "status": "MISSING_SUPERVISOR_CODE_REVISION",
-            "ready": False,
-            "heartbeat_head": "",
-            "repo_head": repo_head,
-            "repo_head_short": str(repo_revision.get("head_short") or repo_head[:12]),
-        }
-    if repo_head and heartbeat_head != repo_head:
-        return {
-            "status": "STALE_SUPERVISOR_CODE",
-            "ready": False,
-            "heartbeat_head": heartbeat_head,
-            "repo_head": repo_head,
-            "heartbeat_head_short": str(heartbeat_revision.get("head_short") or heartbeat_head[:12]),
-            "repo_head_short": str(repo_revision.get("head_short") or repo_head[:12]),
-        }
+    heartbeat_head_short = str(heartbeat_revision.get("head_short") or heartbeat_head[:7])
+    repo_head_short = str(repo_revision.get("head_short") or repo_head[:7])
+    ready = bool(repo_head and heartbeat_head and heartbeat_head == repo_head)
+    if not repo_head:
+        status = "REPO_REVISION_UNKNOWN"
+    elif heartbeat.get("artifact_status") in {"missing", "unreadable", "invalid"}:
+        status = "MISSING_SUPERVISOR_HEARTBEAT"
+    elif not heartbeat_head:
+        status = "MISSING_SUPERVISOR_CODE_REVISION"
+    elif heartbeat_head != repo_head:
+        status = "STALE_SUPERVISOR_CODE"
+    else:
+        status = "PASS"
     return {
-        "status": "PASS",
-        "ready": True,
+        "status": status,
+        "ready": ready,
         "heartbeat_head": heartbeat_head,
         "repo_head": repo_head,
-        "heartbeat_head_short": str(heartbeat_revision.get("head_short") or heartbeat_head[:12]),
-        "repo_head_short": str(repo_revision.get("head_short") or repo_head[:12]),
+        "heartbeat_head_short": heartbeat_head_short,
+        "repo_head_short": repo_head_short,
+        "heartbeat_repo_root": heartbeat_revision.get("repo_root"),
+        "repo_root": repo_revision.get("repo_root"),
+        "heartbeat_captured_at": heartbeat_revision.get("captured_at"),
+        "repo_captured_at": repo_revision.get("captured_at"),
+        "heartbeat_dirty": heartbeat_revision.get("dirty"),
+        "repo_dirty": repo_revision.get("dirty"),
+        "heartbeat_ts": heartbeat.get("ts"),
     }
 
 
 def _supervisor_code_action(gate: dict[str, Any]) -> str:
     status = str(gate.get("status") or "unknown")
-    if status == "MISSING_SUPERVISOR_CODE_REVISION":
-        return "Restart ETA-Jarvis-Strategy-Supervisor after deploying code so the heartbeat reports its code revision"
     if status == "STALE_SUPERVISOR_CODE":
         return (
-            "Restart ETA-Jarvis-Strategy-Supervisor: running "
-            f"{gate.get('heartbeat_head')} but repo is {gate.get('repo_head')}"
+            "Restart ETA-Jarvis-Strategy-Supervisor so paper-live supervisor loads deployed code "
+            f"({gate.get('heartbeat_head_short') or gate.get('heartbeat_head')} -> "
+            f"{gate.get('repo_head_short') or gate.get('repo_head')})"
         )
+    if status == "MISSING_SUPERVISOR_CODE_REVISION":
+        return (
+            "Restart ETA-Jarvis-Strategy-Supervisor so heartbeat includes code_revision "
+            "before clearing paper-live trading gates"
+        )
+    if status == "MISSING_SUPERVISOR_HEARTBEAT":
+        return "Start or repair ETA-Jarvis-Strategy-Supervisor; canonical supervisor heartbeat is missing"
     return f"Review supervisor code revision gate: {status}"
 
 
@@ -845,69 +854,6 @@ def _supervisor_reconcile_action(gate: dict[str, Any]) -> str:
     if status == "STALE_RECONCILE_SNAPSHOT":
         return "Refresh supervisor broker reconciliation before clearing the supervisor entry halt"
     return f"Repair supervisor broker reconciliation safety gate: {status}"
-
-
-def _supervisor_code_revision_summary(
-    *,
-    supervisor_heartbeat: dict[str, Any] | None,
-    repo_revision: dict[str, Any] | None,
-) -> dict[str, Any]:
-    """Fail closed when the running supervisor is older than deployed code."""
-    if repo_revision is None:
-        return {
-            "status": "NOT_COLLECTED",
-            "ready": True,
-        }
-    repo_head = str(repo_revision.get("head") or "")
-    repo_head_short = str(repo_revision.get("head_short") or repo_head[:7])
-    heartbeat = supervisor_heartbeat if isinstance(supervisor_heartbeat, dict) else {}
-    code_revision = _as_dict(heartbeat.get("code_revision"))
-    heartbeat_head = str(code_revision.get("head") or "")
-    heartbeat_head_short = str(code_revision.get("head_short") or heartbeat_head[:7])
-    ready = bool(repo_head and heartbeat_head and heartbeat_head == repo_head)
-    if not repo_head:
-        status = "REPO_REVISION_UNKNOWN"
-    elif heartbeat.get("artifact_status") in {"missing", "unreadable", "invalid"}:
-        status = "MISSING_SUPERVISOR_HEARTBEAT"
-    elif not heartbeat_head:
-        status = "MISSING_SUPERVISOR_CODE_REVISION"
-    elif heartbeat_head != repo_head:
-        status = "STALE_SUPERVISOR_CODE"
-    else:
-        status = "PASS"
-    return {
-        "status": status,
-        "ready": ready,
-        "repo_head": repo_head,
-        "repo_head_short": repo_head_short,
-        "repo_root": repo_revision.get("repo_root"),
-        "repo_captured_at": repo_revision.get("captured_at"),
-        "repo_dirty": repo_revision.get("dirty"),
-        "heartbeat_head": heartbeat_head,
-        "heartbeat_head_short": heartbeat_head_short,
-        "heartbeat_repo_root": code_revision.get("repo_root"),
-        "heartbeat_captured_at": code_revision.get("captured_at"),
-        "heartbeat_dirty": code_revision.get("dirty"),
-        "heartbeat_ts": heartbeat.get("ts"),
-    }
-
-
-def _supervisor_code_revision_action(gate: dict[str, Any]) -> str:
-    status = str(gate.get("status") or "unknown")
-    if status == "STALE_SUPERVISOR_CODE":
-        return (
-            "Restart ETA-Jarvis-Strategy-Supervisor so paper-live supervisor loads deployed code "
-            f"({gate.get('heartbeat_head_short') or gate.get('heartbeat_head')} -> "
-            f"{gate.get('repo_head_short') or gate.get('repo_head')})"
-        )
-    if status == "MISSING_SUPERVISOR_CODE_REVISION":
-        return (
-            "Restart ETA-Jarvis-Strategy-Supervisor so heartbeat includes code_revision "
-            "before clearing paper-live trading gates"
-        )
-    if status == "MISSING_SUPERVISOR_HEARTBEAT":
-        return "Start or repair ETA-Jarvis-Strategy-Supervisor; canonical supervisor heartbeat is missing"
-    return f"Repair supervisor deployed-code safety gate: {status}"
 
 
 def _jarvis_hermes_admin_summary(
@@ -1105,6 +1051,7 @@ def build_report(
             "admin_ai_status": admin_ai_gate["status"],
             "supervisor_reconcile_ready": supervisor_reconcile_gate["ready"],
             "supervisor_code_ready": supervisor_code_gate["ready"],
+            "supervisor_code_current": supervisor_code_gate["ready"],
             "promotion_allowed": promotion_allowed,
             "order_action_allowed": False,
         },
@@ -1180,6 +1127,7 @@ def collect_live_report() -> dict[str, Any]:
         supervisor_reconcile=_read_json(workspace_roots.ETA_JARVIS_SUPERVISOR_RECONCILE_PATH),
         supervisor_heartbeat=_read_json(workspace_roots.ETA_JARVIS_SUPERVISOR_HEARTBEAT_PATH),
         live_broker_state=live_broker_state,
+        repo_revision=collect_repo_revision(),
     )
 
 
@@ -1189,6 +1137,7 @@ def _print_human(report: dict[str, Any]) -> None:
     print(f"Runtime ready: {summary.get('runtime_ready')}")
     print(f"Dashboard durable: {summary.get('dashboard_durable')}")
     print(f"Trading gate ready: {summary.get('trading_gate_ready')}")
+    print(f"Supervisor code current: {summary.get('supervisor_code_current')}")
     print(f"Admin AI ready: {summary.get('admin_ai_ready')} ({summary.get('admin_ai_status')})")
     print(f"Promotion allowed: {summary.get('promotion_allowed')}")
     print("Order action allowed: False")
