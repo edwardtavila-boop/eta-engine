@@ -3278,6 +3278,11 @@ class JarvisStrategySupervisor:
                     bot.bot_id,
                     exc,
                 )
+            # Long composite ticks can legitimately span multiple minutes when
+            # several bots fall through slow broker/data paths. Refresh the
+            # main heartbeat after each bot so the watchdog can distinguish
+            # "slow but progressing" from a genuinely wedged tick loop.
+            self._write_heartbeat(tick_count)
         self._run_background_sage_health_probes(now=datetime.now(UTC))
         # L2 supercharge: persist supervisor's open-positions belief to
         # disk so l2_reconciliation (cron) can compare against broker

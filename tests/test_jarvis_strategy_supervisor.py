@@ -1851,6 +1851,42 @@ def test_tick_once_runs_background_sage_health_probe_from_latest_real_mark(
     assert bot.bot_id in sup._sage_health_probe_last_ts
 
 
+def test_tick_once_refreshes_main_heartbeat_between_bots(tmp_path: Path, monkeypatch) -> None:
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        BotInstance,
+        JarvisStrategySupervisor,
+        SupervisorConfig,
+    )
+
+    cfg = SupervisorConfig()
+    cfg.state_dir = tmp_path / "state"
+    sup = JarvisStrategySupervisor(cfg=cfg)
+
+    heartbeat_ticks: list[int] = []
+    monkeypatch.setattr(sup, "_write_heartbeat", lambda tick_count: heartbeat_ticks.append(tick_count))
+    monkeypatch.setattr(sup, "_run_background_sage_health_probes", lambda *, now: None)
+    monkeypatch.setattr("eta_engine.scripts.jarvis_strategy_supervisor.persist_open_positions", lambda _rows: None)
+
+    sup.bots.extend(
+        [
+            BotInstance(bot_id="bot_a", symbol="MNQ1", strategy_kind="x", direction="long", cash=50_000.0),
+            BotInstance(bot_id="bot_b", symbol="NQ1", strategy_kind="x", direction="long", cash=50_000.0),
+        ]
+    )
+
+    seen: list[str] = []
+
+    def fake_tick_bot(bot, _tick_count):
+        seen.append(bot.bot_id)
+
+    monkeypatch.setattr(sup, "_tick_bot", fake_tick_bot)
+
+    sup._tick_once(7)
+
+    assert seen == ["bot_a", "bot_b"]
+    assert heartbeat_ticks == [7, 7]
+
+
 def test_supervisor_heartbeat_embeds_strategy_readiness(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
     import json
 
