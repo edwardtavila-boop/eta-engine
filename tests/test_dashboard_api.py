@@ -2037,6 +2037,10 @@ class TestDashboardAPI:
         assert data["bot_fleet"]["active_bots"] == 0
         assert data["bot_fleet"]["runtime_active_bots"] == 0
         assert data["bot_fleet"]["running_bots"] == 0
+        assert data["bot_fleet"]["live_attached_bots"] == 0
+        assert data["bot_fleet"]["live_in_trade_bots"] == 0
+        assert data["bot_fleet"]["idle_live_bots"] == 0
+        assert data["bot_fleet"]["inactive_runtime_bots"] == 0
         assert data["bot_fleet"]["staged_bots"] == 0
         assert data["bot_fleet"]["current_blocked_bots"] == 0
         assert data["bot_fleet"]["current_blocked_kinds"] == {}
@@ -2502,6 +2506,10 @@ class TestDashboardAPI:
                     "active_bots": 2,
                     "runtime_active_bots": 2,
                     "running_bots": 2,
+                    "live_attached_bots": 2,
+                    "live_in_trade_bots": 2,
+                    "idle_live_bots": 0,
+                    "inactive_runtime_bots": 0,
                     "staged_bots": 4,
                     "truth_status": "working",
                     "truth_summary_line": "Live ETA truth: 4/6 bot heartbeat(s) are fresh.",
@@ -2545,6 +2553,10 @@ class TestDashboardAPI:
         assert data["bot_fleet"]["current_blocked_preview"][1]["summary"] == (
             "Entries paused by session gate: outside_rth"
         )
+        assert data["bot_fleet"]["live_attached_bots"] == 2
+        assert data["bot_fleet"]["live_in_trade_bots"] == 2
+        assert data["bot_fleet"]["idle_live_bots"] == 0
+        assert data["bot_fleet"]["inactive_runtime_bots"] == 0
 
     def test_dashboard_diagnostics_flags_session_gate_signal_violations(self, app_client, monkeypatch, tmp_path):
         import eta_engine.deploy.scripts.dashboard_api as mod
@@ -4346,6 +4358,8 @@ class TestDashboardAPI:
         assert "submodule aligned" in payload["live_checkout"]["summary_line"]
 
     def test_workspace_checkout_payload_uncached_preserves_aligned_submodule_marker(self, monkeypatch, tmp_path):
+        from pathlib import Path
+
         import eta_engine.deploy.scripts.dashboard_api as mod
 
         workspace = tmp_path / "workspace"
@@ -5348,6 +5362,142 @@ class TestDashboardAPI:
         assert drill_data["strategy_readiness"]["launch_lane"] == "live_preflight"
         assert "_warning" not in drill_data
 
+    def test_bot_fleet_counts_fresh_idle_supervisor_rows_as_attached_not_staged(
+        self,
+        app_client,
+        tmp_path,
+        monkeypatch,
+    ):
+        """Fresh shadow-paper bots can be flat/idle without being mislabeled as staged."""
+        import json
+        import os
+        from datetime import UTC, datetime
+        from pathlib import Path
+
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        monkeypatch.setattr(
+            mod,
+            "_cached_live_broker_state_for_diagnostics",
+            lambda: {
+                "ready": True,
+                "today_actual_fills": 0,
+                "today_realized_pnl": 0.0,
+                "total_unrealized_pnl": 0.0,
+                "open_position_count": 0,
+                "win_rate_30d": None,
+                "alpaca": {"ready": True, "open_positions": [], "open_position_count": 0},
+                "ibkr": {"ready": True, "open_positions": [], "open_position_count": 0},
+            },
+        )
+
+        state = Path(os.environ["ETA_STATE_DIR"])
+        (state / "bots").mkdir(parents=True, exist_ok=True)
+        readiness = tmp_path / "bot_strategy_readiness_latest.json"
+        readiness.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "generated_at": "2026-05-15T12:00:00+00:00",
+                    "source": "bot_strategy_readiness",
+                    "summary": {"total_bots": 1, "launch_lanes": {"paper_soak": 1}},
+                    "rows": [
+                        {
+                            "bot_id": "eth_sage_daily",
+                            "strategy_id": "eth_sage_daily_v1",
+                            "strategy_kind": "confluence_scorecard",
+                            "symbol": "ETH",
+                            "timeframe": "1d",
+                            "active": True,
+                            "promotion_status": "paper_ready",
+                            "baseline_status": "baseline_present",
+                            "data_status": "ready",
+                            "launch_lane": "paper_soak",
+                            "can_paper_trade": True,
+                            "can_live_trade": False,
+                            "next_action": "Wait for supervisor attachment.",
+                        },
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("ETA_BOT_STRATEGY_READINESS_SNAPSHOT_PATH", str(readiness))
+
+        now = datetime.now(UTC).isoformat()
+        sup_dir = state / "jarvis_intel" / "supervisor"
+        sup_dir.mkdir(parents=True, exist_ok=True)
+        (sup_dir / "heartbeat.json").write_text(
+            json.dumps(
+                {
+                    "ts": now,
+                    "mode": "paper_live",
+                    "bots": [
+                        {
+                            "bot_id": "mnq_futures_sage",
+                            "symbol": "MNQ1",
+                            "strategy_kind": "orb",
+                            "status": "idle",
+                            "direction": "long",
+                            "n_entries": 1,
+                            "n_exits": 1,
+                            "realized_pnl": 0.0,
+                            "open_position": None,
+                            "last_bar_ts": now,
+                        },
+                        {
+                            "bot_id": "ng_sweep_reclaim",
+                            "symbol": "NG1",
+                            "strategy_kind": "sweep",
+                            "status": "running",
+                            "direction": "long",
+                            "n_entries": 1,
+                            "n_exits": 0,
+                            "realized_pnl": 0.0,
+                            "open_position": {
+                                "side": "BUY",
+                                "qty": 1,
+                                "entry_price": 3.25,
+                                "entry_ts": now,
+                                "mark_price": 3.3,
+                                "bracket_stop": 3.1,
+                                "bracket_target": 3.45,
+                                "last_bar_high": 3.31,
+                                "last_bar_low": 3.22,
+                                "broker_bracket": False,
+                                "bracket_src": "supervisor_local",
+                            },
+                            "last_bar_ts": now,
+                        },
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/bot-fleet")
+        assert r.status_code == 200
+        data = r.json()
+        summary = data["summary"]
+        assert summary["active_bots"] == 2
+        assert summary["runtime_active_bots"] == 2
+        assert summary["running_bots"] == 1
+        assert summary["live_attached_bots"] == 2
+        assert summary["live_in_trade_bots"] == 1
+        assert summary["idle_live_bots"] == 1
+        assert summary["inactive_runtime_bots"] == 0
+        assert summary["staged_bots"] == 1
+        assert data["active_bots"] == 2
+        assert data["live_attached_bots"] == 2
+        assert data["live_in_trade_bots"] == 1
+        assert data["idle_live_bots"] == 1
+        assert data["inactive_runtime_bots"] == 0
+        assert data["staged_bots"] == 1
+        assert data["truth_summary_line"].startswith(
+            "Live ETA truth: 2/3 bot heartbeat(s) are fresh; 2 attached, 1 in trade, 1 flat/idle."
+        )
+        assert "1 readiness-only inventory row(s) remain staged." in data["truth_summary_line"]
+
     def test_mnq_runtime_summary_excludes_readiness_only_inventory(self, app_client, tmp_path, monkeypatch):
         """MNQ runtime headline should not imply snapshot-only rows are down bots."""
         import json
@@ -6016,9 +6166,17 @@ class TestDashboardAPI:
         assert data["summary"]["active_bot_count"] == 2
         assert data["summary"]["runtime_active_bots"] == 2
         assert data["summary"]["running_bots"] == 2
+        assert data["summary"]["live_attached_bots"] == 2
+        assert data["summary"]["live_in_trade_bots"] == 1
+        assert data["summary"]["idle_live_bots"] == 1
+        assert data["summary"]["inactive_runtime_bots"] == 0
         assert data["summary"]["staged_bots"] == 0
         assert data["active_bots"] == 2
         assert data["runtime_active_bots"] == 2
+        assert data["live_attached_bots"] == 2
+        assert data["live_in_trade_bots"] == 1
+        assert data["idle_live_bots"] == 1
+        assert data["inactive_runtime_bots"] == 0
         assert data["staged_bots"] == 0
 
         drill = app_client.get("/api/bot-fleet/mnq_futures_sage")
@@ -8940,7 +9098,10 @@ class TestDashboardAPI:
         assert data["data_ts"] <= data["server_ts"]
         assert data["data_ts"] > data["server_ts"] - 5
         assert data["session_truth_status"] == "live"
-        assert data["truth_summary_line"] == "Live ETA truth: 2/2 bot heartbeat(s) are fresh."
+        assert (
+            data["truth_summary_line"]
+            == "Live ETA truth: 2/2 bot heartbeat(s) are fresh; 2 attached, 0 in trade, 2 flat/idle."
+        )
 
     def test_normalize_trade_close_sanitizes_r69_tick_leak(self):
         """REGRESSION: operator saw mnq_futures_sage MNQ1 r=69.0 on $17.25 PnL.
