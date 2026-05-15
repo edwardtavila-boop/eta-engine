@@ -556,6 +556,63 @@ class TestDashboardAPI:
         assert stale["oldest_position"]["level"] == "FORCE_FLATTEN"
         assert summary["stale_position_status"] == "force_flatten_due"
 
+    def test_target_exit_summary_skips_force_flatten_for_broker_managed_bracket_watch(self):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        server_dt = datetime(2026, 4, 28, 12, 0, 0, tzinfo=UTC)
+        summary = mod._target_exit_summary(
+            [
+                {
+                    "name": "ng_sweep_reclaim",
+                    "symbol": "NG1",
+                    "open_positions": 1,
+                    "position_state": {
+                        "state": "open",
+                        "opened_at": "2026-04-28T09:50:00+00:00",
+                        "bracket_stop": 2.72,
+                        "bracket_target": 2.94,
+                        "broker_bracket": True,
+                        "target_exit_visibility": {
+                            "status": "broker_bracket_watch",
+                            "owner": "broker",
+                            "target_distance_points": 0.08,
+                            "stop_distance_points": 0.015,
+                        },
+                    },
+                },
+            ],
+            broker_open_position_count=1,
+            broker_bracket_required_position_count=1,
+            server_ts=server_dt.timestamp(),
+        )
+
+        stale = summary["position_staleness"]
+        assert summary["status"] == "watching"
+        assert summary["missing_bracket_count"] == 0
+        assert stale["status"] == "broker_managed_watch"
+        assert stale["broker_managed_open_count"] == 1
+        assert stale["force_flatten_due_count"] == 0
+
+    def test_target_exit_card_status_marks_bracketed_broker_watch_yellow(self):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        status = mod._target_exit_card_status(
+            {
+                "status": "watching",
+                "missing_bracket_count": 0,
+                "broker_open_position_count": 4,
+                "broker_bracket_count": 4,
+                "supervisor_local_position_count": 0,
+                "position_staleness": {
+                    "status": "broker_managed_watch",
+                    "force_flatten_due_count": 0,
+                },
+                "stale_position_status": "broker_managed_watch",
+            }
+        )
+
+        assert status == "YELLOW"
+
     def test_target_exit_summary_marks_already_tightened_positions(self):
         import eta_engine.deploy.scripts.dashboard_api as mod
 

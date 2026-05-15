@@ -3927,6 +3927,18 @@ def _position_opened_age_s(row: dict, *, server_ts: float) -> int | None:
     return _iso_age_s(opened_at, server_ts=server_ts)
 
 
+def _row_is_broker_managed_open_exposure(row: dict) -> bool:
+    """True when an open row is broker-managed rather than supervisor-local."""
+    if not isinstance(row, dict) or not _row_has_open_exposure(row):
+        return False
+    state = row.get("position_state") if isinstance(row.get("position_state"), dict) else {}
+    visibility = (
+        state.get("target_exit_visibility") if isinstance(state.get("target_exit_visibility"), dict) else {}
+    )
+    owner = str(visibility.get("owner") or "").strip().lower()
+    return bool(row.get("broker_bracket") or state.get("broker_bracket") or owner == "broker")
+
+
 def _position_watchdog_snapshot(row: dict, *, server_ts: float) -> dict:
     """Read-only projection of the stale-position watchdog SLA for one row."""
     thresholds = _watchdog_policy_thresholds()
@@ -3990,9 +4002,13 @@ def _position_staleness_summary(rows: list[dict], *, server_ts: float) -> dict:
     """Aggregate open-position stale/never-close risk for operator cards."""
     thresholds = _watchdog_policy_thresholds()
     open_items: list[dict] = []
+    broker_managed_count = 0
     unknown_age_count = 0
     for row in rows:
         if not isinstance(row, dict) or not _row_has_open_exposure(row):
+            continue
+        if _row_is_broker_managed_open_exposure(row):
+            broker_managed_count += 1
             continue
         watchdog = _position_watchdog_snapshot(row, server_ts=server_ts)
         if watchdog["age_s"] is None:
@@ -4021,6 +4037,8 @@ def _position_staleness_summary(rows: list[dict], *, server_ts: float) -> dict:
         status = "unknown_age"
     elif open_items:
         status = "fresh"
+    elif broker_managed_count:
+        status = "broker_managed_watch"
     else:
         status = "flat"
 
@@ -4036,6 +4054,7 @@ def _position_staleness_summary(rows: list[dict], *, server_ts: float) -> dict:
     return {
         "status": status,
         "open_position_count": len(open_items),
+        "broker_managed_open_count": broker_managed_count,
         "unknown_age_count": unknown_age_count,
         "require_ack_count": len(require_ack),
         "tighten_stop_due_count": len(tighten),
@@ -10779,6 +10798,9 @@ def _target_exit_card_status(summary: dict) -> str:
         summary.get("position_staleness") if isinstance(summary.get("position_staleness"), dict) else {}
     )
     force_flatten_due = int(position_staleness.get("force_flatten_due_count") or 0)
+    broker_open_count = int(summary.get("broker_open_position_count") or 0)
+    broker_bracket_count = int(summary.get("broker_bracket_count") or 0)
+    supervisor_local_count = int(summary.get("supervisor_local_position_count") or 0)
     missing_brackets = int(summary.get("missing_bracket_count") or 0)
     if status == "alert" or force_flatten_due > 0:
         return "RED"
@@ -10786,6 +10808,13 @@ def _target_exit_card_status(summary: dict) -> str:
         status in {"missing_brackets", "unknown"}
         or missing_brackets > 0
         or staleness in {"ack_due", "tighten_stop_due", "tightened_watch"}
+    ):
+        return "YELLOW"
+    if (
+        status == "watching"
+        and broker_open_count > 0
+        and broker_bracket_count > 0
+        and supervisor_local_count == 0
     ):
         return "YELLOW"
     if status in {"flat", "paper_watching", "watching"}:
