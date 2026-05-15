@@ -181,6 +181,9 @@ body:after{content:"";position:fixed;inset:-8%;pointer-events:none;background:li
 .retune-factory-card{border-color:rgba(100,215,255,.26);background:radial-gradient(circle at 10% 0%,rgba(100,215,255,.14),transparent 38%),linear-gradient(145deg,rgba(7,21,34,.84),rgba(3,8,14,.92))}
 .retune-factory-card .stat{letter-spacing:-.03em}
 .retune-factory-card .sub{font-weight:750;color:#aebfd1}
+.session-discipline-card{border-color:rgba(84,255,194,.26);background:radial-gradient(circle at 10% 0%,rgba(84,255,194,.14),transparent 38%),linear-gradient(145deg,rgba(6,23,21,.84),rgba(3,8,14,.92))}
+.session-discipline-card .stat{letter-spacing:-.03em}
+.session-discipline-card .sub{font-weight:750;color:#b7d7cf}
 .vps-root-card{border-color:rgba(255,209,102,.34);background:linear-gradient(145deg,rgba(36,27,10,.82),rgba(3,8,14,.9));cursor:pointer}
 .vps-root-card:hover{box-shadow:0 0 0 1px rgba(255,209,102,.28),0 18px 38px rgba(0,0,0,.2);transform:translateY(-1px)}
 .vps-root-card .sub{line-height:1.35}
@@ -405,7 +408,7 @@ tr:hover td{background:rgba(100,215,255,.055)}
   <div class="card"><h3>Paper Live</h3><div class="stat" id="paperLiveStatus">--</div><div class="sub" id="paperLiveSub"></div></div>
   <div class="card"><h3>Operator Holds</h3><div class="stat" id="operatorQueueStatus">--</div><div class="sub" id="operatorQueueSub"></div></div>
   <div class="card"><h3>Risk Level</h3><div class="stat yellow" id="riskLevel">--</div><div class="risk-bar"><div class="risk-fill" id="riskBar" style="width:0%"></div></div><div class="sub" id="riskSub">drawdown + exit timing</div></div>
-  <div class="card"><h3>Signal Timing</h3><div class="stat" id="signalCadenceStatus">-</div><div class="sub" id="signalCadenceSub">signal spacing</div></div>
+  <div class="card session-discipline-card"><h3>Session Discipline</h3><div class="stat" id="signalCadenceStatus">-</div><div class="sub" id="signalCadenceSub">session-window audit</div></div>
   <div class="card"><h3>Web Proxy</h3><div class="stat" id="opsProxyStatus">-</div><div class="sub" id="opsProxySub">public dashboard route</div></div>
   <div class="card"><h3>Dashboard Watch</h3><div class="stat" id="opsWatchdogStatus">-</div><div class="sub" id="opsWatchdogSub">health monitor</div></div>
   <div class="card vps-root-card" role="button" tabindex="0" onclick="focusVpsRootDetails()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();focusVpsRootDetails();}"><h3>VPS Root Review</h3><div class="stat" id="vpsRootStatus">-</div><div class="sub" id="vpsRootSub">workspace review</div></div>
@@ -2582,7 +2585,7 @@ function showOffline(clearDashboard = true) {
   const retuneFactorySub = document.getElementById('retuneFactorySub');
   if (retuneFactorySub) retuneFactorySub.textContent = 'paper retunes pending';
   const signalCadenceSub = document.getElementById('signalCadenceSub');
-  if (signalCadenceSub) signalCadenceSub.textContent = '';
+  if (signalCadenceSub) signalCadenceSub.textContent = 'session audit pending';
   const opsProxySub = document.getElementById('opsProxySub');
   if (opsProxySub) opsProxySub.textContent = '';
   const vpsRootSub = document.getElementById('vpsRootSub');
@@ -3015,11 +3018,27 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
         ? `Feed stale${blockedBots > 0 ? ` | ${blockedBots} held` : ''}`
         : `${bots.length} live | ${active} active${blockedBots > 0 ? ` | ${blockedBots} held` : ''}`;
   document.getElementById('apiSourceText').textContent = usingFallback ? 'Focus sync | mirror' : 'Focus sync...';
+  const sessionAudit = diagnostics?.session_gate_signal_audit || {};
+  const sessionAuditStatus = String(sessionAudit.status || 'unknown').toLowerCase();
+  const sessionAuditViolations = Number(sessionAudit.violations_count || 0);
+  const latestSessionViolation = Array.isArray(sessionAudit.recent_violations) && sessionAudit.recent_violations.length
+    ? sessionAudit.recent_violations[0]
+    : null;
   const blockerStatusText = document.getElementById('blockerStatusText');
   if (blockerStatusText) {
-    blockerStatusText.textContent = blockedBots > 0
-      ? compactText(blockedSummaryLine, 118)
-      : 'Held: none';
+    if (blockedBots > 0) {
+      blockerStatusText.textContent = compactText(blockedSummaryLine, 118);
+    } else if (sessionAuditStatus === 'warn' && sessionAuditViolations > 0 && latestSessionViolation) {
+      const reasonText = String(latestSessionViolation.reason || 'outside session')
+        .replace(/_/g, ' ')
+        .replace(/\brth\b/gi, 'RTH');
+      blockerStatusText.textContent = compactText(
+        `Signal audit: ${sessionAuditViolations} off-session send${sessionAuditViolations === 1 ? '' : 's'} | ${latestSessionViolation.bot_id || 'latest bot'} ${reasonText}`,
+        118,
+      );
+    } else {
+      blockerStatusText.textContent = 'Held: none';
+    }
   }
   document.getElementById('totalBots').textContent = bots.length;
 
@@ -3239,9 +3258,39 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
   const cadenceDetail = cadence.detail || `${signalCount} signal updates across ${uniqueSeconds || '?'} seconds`;
   const cadenceLatest = cadence.latest_signal_ts || d.latest_signal_ts || summary.latest_signal_ts || '';
   const cadenceAge = cadenceLatest ? '; latest ' + formatAgeSeconds(cadence.latest_signal_age_s) : '';
-  document.getElementById('signalCadenceStatus').textContent = cadenceLabels[cadenceStatus] || cadenceStatus.toUpperCase();
-  document.getElementById('signalCadenceStatus').className = 'stat ' + (cadenceClasses[cadenceStatus] || 'yellow');
-  document.getElementById('signalCadenceSub').textContent = compactText(`${cadenceDetail}; max ${maxSameSecond}/sec${cadenceAge}`);
+  const auditStatus = String(sessionAudit.status || 'unknown').toLowerCase();
+  const auditLabels = {ok: 'Clean', warn: 'Off-Session', missing: 'No Tape', unreadable: 'Degraded', unknown: 'Unknown'};
+  const auditClasses = {ok: 'green', warn: 'red', missing: 'yellow', unreadable: 'yellow', unknown: 'yellow'};
+  const auditScanned = Number(sessionAudit.session_gated_records_scanned || 0);
+  const latestAuditViolation = Array.isArray(sessionAudit.recent_violations) && sessionAudit.recent_violations.length
+    ? sessionAudit.recent_violations[0]
+    : null;
+  let disciplineLabel = auditLabels[auditStatus] || auditStatus.toUpperCase();
+  let disciplineClass = auditClasses[auditStatus] || 'yellow';
+  let disciplineDetail = sessionAudit.summary_line || 'session audit pending';
+  if (auditStatus === 'warn' && latestAuditViolation) {
+    const violationReason = String(latestAuditViolation.reason || 'outside session')
+      .replace(/_/g, ' ')
+      .replace(/\brth\b/gi, 'RTH');
+    const violationTime = latestAuditViolation.sent_at_local ? ` at ${latestAuditViolation.sent_at_local}` : '';
+    disciplineDetail = `${sessionAuditViolations} off-session send${sessionAuditViolations === 1 ? '' : 's'} | ${latestAuditViolation.bot_id || 'latest bot'} ${violationReason}${violationTime}`;
+  } else if (auditStatus === 'ok' && auditScanned > 0) {
+    const cadenceTag = cadenceStatus && cadenceStatus !== 'unknown' && cadenceStatus !== 'no_signals'
+      ? ` | cadence ${String(cadenceLabels[cadenceStatus] || cadenceStatus).toLowerCase()}`
+      : '';
+    disciplineDetail = `${auditScanned} gated sends clean${cadenceTag}`;
+  } else if (auditStatus === 'missing') {
+    disciplineDetail = 'waiting for recent signal tape';
+  } else if (auditStatus === 'unreadable') {
+    disciplineDetail = sessionAudit.summary_line || 'session audit unavailable';
+  } else if (auditStatus === 'unknown') {
+    disciplineLabel = cadenceLabels[cadenceStatus] || cadenceStatus.toUpperCase();
+    disciplineClass = cadenceClasses[cadenceStatus] || 'yellow';
+    disciplineDetail = `${cadenceDetail}; max ${maxSameSecond}/sec${cadenceAge}`;
+  }
+  document.getElementById('signalCadenceStatus').textContent = disciplineLabel;
+  document.getElementById('signalCadenceStatus').className = 'stat ' + disciplineClass;
+  document.getElementById('signalCadenceSub').textContent = compactText(disciplineDetail, 118);
 
   // IBKR gateway: prefer the live REST probe (live_broker_state.ibkr.ready)
   // when present -- that is the same probe the supervisor uses, so it
