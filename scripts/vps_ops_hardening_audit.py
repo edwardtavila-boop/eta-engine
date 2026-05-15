@@ -42,6 +42,7 @@ DASHBOARD_DURABLE_TASKS = (
     "ETA-Dashboard-API",
     "ETA-Proxy-8421",
     "ETA-Dashboard-Proxy-Watchdog",
+    "ETA-BrokerStateRefreshHeartbeat",
     "ETA-OperatorQueueHeartbeat",
     "ETA-PaperLiveTransitionCheck",
 )

@@ -28,13 +28,17 @@ Register the every-5-minute VPS audit task:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File eta_engine\deploy\scripts\register_vps_ops_hardening_audit_task.ps1 -Start
+powershell -ExecutionPolicy Bypass -File eta_engine\deploy\scripts\register_broker_state_refresh_task.ps1 -Start
 powershell -ExecutionPolicy Bypass -File eta_engine\deploy\scripts\register_operator_queue_heartbeat_task.ps1 -Start
 ```
 
-`ETA-VpsOpsHardeningAudit` refreshes the safety-gate audit. `ETA-OperatorQueueHeartbeat`
-refreshes the read-only operator queue snapshot that dashboard diagnostics use
-for blocker counts and stale-state detection. It never submits, cancels,
-flattens, or promotes orders.
+`ETA-VpsOpsHardeningAudit` refreshes the safety-gate audit.
+`ETA-BrokerStateRefreshHeartbeat` warms the read-only IBKR broker-state cache
+used for current PnL, MTD, fills, open positions, and EST reporting. It writes
+`broker_state_refresh_heartbeat.json`. `ETA-OperatorQueueHeartbeat` refreshes
+the read-only operator queue snapshot that dashboard diagnostics use for blocker
+counts and stale-state detection. These tasks never submit, cancel, flatten, or
+promote orders.
 
 The VPS bootstrap now registers the same task:
 
@@ -59,3 +63,9 @@ If the bracket audit reports `READY_NO_OPEN_EXPOSURE` but the dashboard still
 shows stale operator blockers, refresh `ETA-OperatorQueueHeartbeat` before
 debugging the UI. A stale queue snapshot is a truth-surface problem, not
 permission to bypass broker, paper-soak, or prop drawdown gates.
+
+If the dashboard shows stale broker PnL or `broker_snapshot_state=stale_persisted`,
+start `ETA-BrokerStateRefreshHeartbeat` or run
+`python -m eta_engine.scripts.broker_state_refresh_heartbeat --json`. This is a
+read-only cache refresh against `/api/live/broker_state?refresh=1`; it must never
+be used as an order-entry path.

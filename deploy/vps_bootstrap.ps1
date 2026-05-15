@@ -277,6 +277,7 @@ if (-not $SkipETATasks) {
     $etaReadinessSnapshotTaskScript = "$EtaEngineDir\deploy\scripts\register_eta_readiness_snapshot_task.ps1"
     $vpsOpsHardeningTaskScript = "$EtaEngineDir\deploy\scripts\register_vps_ops_hardening_audit_task.ps1"
     $symbolIntelCollectorTaskScript = "$EtaEngineDir\deploy\scripts\register_symbol_intelligence_collector_task.ps1"
+    $brokerStateRefreshTaskScript = "$EtaEngineDir\deploy\scripts\register_broker_state_refresh_task.ps1"
     $operatorQueueHeartbeatTaskScript = "$EtaEngineDir\deploy\scripts\register_operator_queue_heartbeat_task.ps1"
     $cloudflareTunnelTaskScript = "$EtaEngineDir\deploy\scripts\register_cloudflare_named_tunnel_task.ps1"
     $etaWatchdogTaskScript = "$EtaEngineDir\deploy\scripts\register_eta_watchdog_task.ps1"
@@ -351,6 +352,15 @@ if (-not $SkipETATasks) {
         }
     } else {
         Write-Host "  register_symbol_intelligence_collector_task.ps1 not found at $symbolIntelCollectorTaskScript" -ForegroundColor Yellow
+    }
+
+    if (Test-Path $brokerStateRefreshTaskScript) {
+        Write-Host "  Registering broker-state refresh heartbeat task (every 5m, read-only)..." -ForegroundColor Gray
+        if (-not $WhatIf) {
+            & $pwshPath -ExecutionPolicy Bypass -File $brokerStateRefreshTaskScript -Start
+        }
+    } else {
+        Write-Host "  register_broker_state_refresh_task.ps1 not found at $brokerStateRefreshTaskScript" -ForegroundColor Yellow
     }
 
     if (Test-Path $operatorQueueHeartbeatTaskScript) {
@@ -566,6 +576,7 @@ Write-Host "  ETA-Dashboard-Proxy-Watchdog     -- boot/logon 8421 self-heal" -Fo
 Write-Host "  ETA-PaperLiveTransitionCheck     -- boot/logon + every 5m" -ForegroundColor Gray
 Write-Host "  ETA-VpsOpsHardeningAudit         -- boot/logon + every 5m read-only audit" -ForegroundColor Gray
 Write-Host "  ETA-SymbolIntelCollector         -- boot/logon + every 5m data lake refresh" -ForegroundColor Gray
+Write-Host "  ETA-BrokerStateRefreshHeartbeat  -- boot/logon + every 5m read-only broker cache refresh" -ForegroundColor Gray
 Write-Host "  ETA-OperatorQueueHeartbeat       -- boot/logon + every 5m read-only queue snapshot" -ForegroundColor Gray
 Write-Host "  ETA-FM-HealthProbe               -- every 15m cached Force Multiplier health" -ForegroundColor Gray
 Write-Host "  ETA-Watchdog                     -- boot/logon runtime watchdog" -ForegroundColor Gray

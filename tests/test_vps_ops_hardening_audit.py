@@ -368,8 +368,13 @@ def test_dashboard_ports_live_but_durable_tasks_missing_is_yellow_gap() -> None:
     assert report["summary"]["promotion_allowed"] is False
     assert "ETA-Dashboard-API" in report["runtime"]["tasks"]["missing_dashboard_durable"]
     assert "ETA-OperatorQueueHeartbeat" in report["runtime"]["tasks"]["missing_dashboard_durable"]
+    assert "ETA-BrokerStateRefreshHeartbeat" in report["runtime"]["tasks"]["missing_dashboard_durable"]
     assert "ETA-PaperLiveTransitionCheck" in report["runtime"]["tasks"]["missing_dashboard_durable"]
     assert any("repair_dashboard_durability_admin.cmd" in action for action in report["next_actions"])
+
+
+def test_broker_state_refresh_heartbeat_is_dashboard_durability_task() -> None:
+    assert "ETA-BrokerStateRefreshHeartbeat" in audit.DASHBOARD_DURABLE_TASKS
 
 
 def test_missing_symbol_intelligence_collector_degrades_runtime() -> None:

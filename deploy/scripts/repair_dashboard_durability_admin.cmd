@@ -10,6 +10,7 @@ set "REGISTER_DASHBOARD=%SCRIPTS%\register_dashboard_api_task.ps1"
 set "REGISTER_PROXY=%SCRIPTS%\register_proxy8421_bridge_task.ps1"
 set "REGISTER_WATCHDOG=%SCRIPTS%\register_dashboard_proxy_watchdog_task.ps1"
 set "REGISTER_AUDIT=%SCRIPTS%\register_vps_ops_hardening_audit_task.ps1"
+set "REGISTER_BROKER_STATE_REFRESH=%SCRIPTS%\register_broker_state_refresh_task.ps1"
 set "REGISTER_OPERATOR_QUEUE=%SCRIPTS%\register_operator_queue_heartbeat_task.ps1"
 set "REGISTER_PAPER_LIVE=%SCRIPTS%\register_paper_live_transition_check_task.ps1"
 set "DRY_RUN=0"
@@ -54,6 +55,11 @@ if not exist "%REGISTER_AUDIT%" (
     echo   %REGISTER_AUDIT%
     exit /b 3
 )
+if not exist "%REGISTER_BROKER_STATE_REFRESH%" (
+    echo Missing broker-state refresh registrar:
+    echo   %REGISTER_BROKER_STATE_REFRESH%
+    exit /b 3
+)
 if not exist "%REGISTER_OPERATOR_QUEUE%" (
     echo Missing operator queue heartbeat registrar:
     echo   %REGISTER_OPERATOR_QUEUE%
@@ -82,6 +88,10 @@ if "%DRY_RUN%"=="1" (
 
     echo === DRY RUN: validate read-only VPS ops hardening audit registrar ===
     powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%REGISTER_AUDIT%" -DryRun
+    if errorlevel 1 goto fail
+
+    echo === DRY RUN: validate read-only broker-state refresh registrar ===
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%REGISTER_BROKER_STATE_REFRESH%" -DryRun
     if errorlevel 1 goto fail
 
     echo === DRY RUN: validate read-only operator queue heartbeat registrar ===
@@ -129,6 +139,10 @@ if errorlevel 1 goto fail
 
 echo === Register read-only VPS ops hardening audit task ===
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%REGISTER_AUDIT%" -Start
+if errorlevel 1 goto fail
+
+echo === Register read-only broker-state refresh task ===
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%REGISTER_BROKER_STATE_REFRESH%" -Start
 if errorlevel 1 goto fail
 
 echo === Register read-only operator queue heartbeat task ===
