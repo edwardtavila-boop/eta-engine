@@ -1778,7 +1778,27 @@ class TestDashboardAPI:
                 "launch_blocked_count": 0,
                 "first_blocker_op_id": "OP-16",
                 "first_next_action": "continue research soak",
-                "top_blockers": [{"op_id": "OP-16", "title": "research candidate"}],
+                "top_blockers": [
+                    {
+                        "op_id": "OP-16",
+                        "title": "Research candidates need promotion proof",
+                        "detail": "4 research candidate bot(s) still below promotion gate.",
+                        "evidence": {
+                            "launch_blocker": False,
+                            "launch_role": "strategy_optimization_backlog",
+                            "blocked_bots": [
+                                "mbt_overnight_gap",
+                                "mbt_rth_orb",
+                                "mgc_sweep_reclaim",
+                                "mes_sweep_reclaim_v2",
+                            ],
+                        },
+                        "next_actions": [
+                            "python -m eta_engine.scripts.paper_live_launch_check --bots mbt_overnight_gap --json",
+                            "python -m eta_engine.scripts.paper_live_launch_check --bots mgc_sweep_reclaim --json",
+                        ],
+                    }
+                ],
                 "top_launch_blockers": [],
             },
         )
@@ -1807,6 +1827,21 @@ class TestDashboardAPI:
         assert payload["operator_queue"]["blocked"] == 1
         assert payload["operator_queue"]["launch_blocked"] == 0
         assert payload["operator_queue"]["top_blocker_op_id"] == "OP-16"
+        assert payload["operator_queue"]["top_blocker_detail"] == (
+            "4 research candidate bot(s) still below promotion gate."
+        )
+        assert payload["operator_queue"]["top_blocker_launch_blocker"] is False
+        assert payload["operator_queue"]["top_blocker_launch_role"] == "strategy_optimization_backlog"
+        assert payload["operator_queue"]["top_blocker_blocked_bots"] == [
+            "mbt_overnight_gap",
+            "mbt_rth_orb",
+            "mgc_sweep_reclaim",
+            "mes_sweep_reclaim_v2",
+        ]
+        assert payload["operator_queue"]["top_blocker_next_actions"] == [
+            "python -m eta_engine.scripts.paper_live_launch_check --bots mbt_overnight_gap --json",
+            "python -m eta_engine.scripts.paper_live_launch_check --bots mgc_sweep_reclaim --json",
+        ]
         assert payload["operator_queue"]["top_launch_blocker_op_id"] == ""
         assert payload["paper_live_transition"]["status"] == "ready_to_launch_paper_live"
         assert payload["paper_live_transition"]["critical_ready"] is True
@@ -5637,6 +5672,56 @@ class TestDashboardAPI:
         assert live["open_position_count"] == 3
         assert live["broker_mtd_pnl"] == 22209.0
 
+    def test_cached_diagnostics_keeps_stale_ibkr_probe_visible_but_not_ready(
+        self,
+        tmp_path,
+        monkeypatch,
+    ):
+        import time
+
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        monkeypatch.setenv("ETA_STATE_DIR", str(tmp_path / "state"))
+        monkeypatch.setattr(mod, "_recent_trade_closes", lambda limit=5000: [])
+        with mod._IBKR_PROBE_LOCK:
+            mod._IBKR_PROBE_CACHE.clear()
+        stale_ts = time.time() - mod._IBKR_PROBE_DISK_CACHE_MAX_AGE_S - 30
+        cache_path = tmp_path / "state" / "broker_cache" / "ibkr_probe_cache.json"
+        cache_path.parent.mkdir(parents=True)
+        cache_path.write_text(
+            json.dumps(
+                {
+                    "ts": stale_ts,
+                    "snapshot": {
+                        "ready": True,
+                        "today_executions": 115,
+                        "today_realized_pnl": -947.85,
+                        "unrealized_pnl": 108.85,
+                        "open_position_count": 3,
+                        "account_mtd_pnl": 22297.0,
+                        "account_mtd_return_pct": 2.23,
+                        "account_mtd_source": "ibkr_net_liquidation_month_manual_override",
+                    },
+                },
+            ),
+            encoding="utf-8",
+        )
+
+        live = mod._cached_live_broker_state_for_diagnostics()
+        summary = mod._broker_summary_fields(live)
+
+        assert live["ready"] is False
+        assert live["broker_snapshot_state"] == "stale_persisted"
+        assert live["today_actual_fills"] == 115
+        assert live["today_realized_pnl"] == -947.85
+        assert live["total_unrealized_pnl"] == 108.85
+        assert live["open_position_count"] == 3
+        assert live["broker_mtd_pnl"] == 22297.0
+        assert summary["broker_ready"] is False
+        assert summary["broker_today_realized_pnl"] == -947.85
+        assert summary["broker_total_unrealized_pnl"] == 108.85
+        assert summary["broker_snapshot_state"] == "stale_persisted"
+
     def test_cached_diagnostics_carries_today_close_ledger_counts(self, monkeypatch):
         from datetime import UTC, datetime
 
@@ -5964,6 +6049,7 @@ class TestDashboardAPI:
         assert live["focus_policy"]["active_venues"] == ["ibkr"]
         assert live["focus_policy"]["standby_venues"] == ["tastytrade"]
         assert live["focus_policy"]["dormant_venues"] == ["tradovate"]
+        assert live["ready"] is True
         assert live["tradovate"]["status"] in {
             "dormant",
             "dormant_auth_failed",

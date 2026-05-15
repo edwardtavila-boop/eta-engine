@@ -924,6 +924,15 @@ def _dashboard_diagnostics_payload() -> dict:
     first_launch_blocker = (
         top_launch_blockers[0] if top_launch_blockers and isinstance(top_launch_blockers[0], dict) else {}
     )
+    first_operator_evidence = (
+        first_operator_blocker.get("evidence") if isinstance(first_operator_blocker.get("evidence"), dict) else {}
+    )
+    first_operator_blocked_bots = first_operator_evidence.get("blocked_bots")
+    if not isinstance(first_operator_blocked_bots, list):
+        first_operator_blocked_bots = []
+    first_operator_next_actions = first_operator_blocker.get("next_actions")
+    if not isinstance(first_operator_next_actions, list):
+        first_operator_next_actions = []
     first_failed_gate = _first_failed_gate(paper_live_transition if isinstance(paper_live_transition, dict) else {})
     readiness_summary = readiness.get("summary") if isinstance(readiness.get("summary"), dict) else {}
     readiness_lanes = readiness_summary.get("launch_lanes") if isinstance(readiness_summary, dict) else {}
@@ -1050,6 +1059,11 @@ def _dashboard_diagnostics_payload() -> dict:
             "launch_blocked": int(operator_queue.get("launch_blocked_count") or 0),
             "top_blocker_op_id": str(first_operator_blocker.get("op_id") or ""),
             "top_blocker_title": str(first_operator_blocker.get("title") or ""),
+            "top_blocker_detail": str(first_operator_blocker.get("detail") or ""),
+            "top_blocker_launch_blocker": bool(first_operator_evidence.get("launch_blocker")),
+            "top_blocker_launch_role": str(first_operator_evidence.get("launch_role") or ""),
+            "top_blocker_blocked_bots": [str(bot) for bot in first_operator_blocked_bots],
+            "top_blocker_next_actions": [str(action) for action in first_operator_next_actions],
             "top_launch_blocker_op_id": str(first_launch_blocker.get("op_id") or ""),
             "top_launch_blocker_detail": str(
                 first_launch_blocker.get("detail") or first_launch_blocker.get("title") or ""
@@ -1196,10 +1210,12 @@ def _live_broker_diagnostic_payload() -> dict[str, object]:
         }
     cached = cached if isinstance(cached, dict) else {}
     summary = _broker_summary_fields(cached)
+    snapshot_state = str(summary.get("broker_snapshot_state") or cached.get("broker_snapshot_state") or "")
     ready = bool(cached.get("ready")) and not cached.get("error")
+    status = "ready" if ready else ("stale" if snapshot_state.startswith("stale") else "unavailable")
     return {
         "ready": ready,
-        "status": "ready" if ready else "unavailable",
+        "status": status,
         "source": str(cached.get("source") or "cached_live_broker_state_for_diagnostics"),
         "error": cached.get("error"),
         **summary,
@@ -8220,6 +8236,8 @@ def _cached_live_broker_state_for_gateway_reconcile() -> dict:
 def _cached_live_broker_state_for_diagnostics() -> dict:
     """Fast broker state for diagnostics; never opens a broker connection."""
     state = _cached_live_broker_state_for_gateway_reconcile()
+    if not state:
+        state = _load_persisted_ibkr_probe_cache(include_stale=True)
     ibkr = state.get("ibkr") if isinstance(state.get("ibkr"), dict) else {}
     cached_mtd = _ibkr_cached_mtd_tracker_snapshot()
     if cached_mtd:
@@ -8252,7 +8270,11 @@ def _cached_live_broker_state_for_diagnostics() -> dict:
     win_rate_today = _float_value(today_window.get("win_rate"))
     win_rate_source = "trade_close_ledger_today" if evaluated_outcome_count_today > 0 else ""
     cache_age_s = _float_value(state.get("ibkr_cache_age_s") or ibkr.get("cache_age_s"))
-    ibkr_snapshot_ready = bool(state.get("ibkr_cache_state") == "warm" or ibkr.get("ready") is True)
+    ibkr_cache_state = str(state.get("ibkr_cache_state") or "missing")
+    ibkr_snapshot_stale = ibkr_cache_state.startswith("stale")
+    ibkr_snapshot_ready = bool(
+        not ibkr_snapshot_stale and (ibkr_cache_state == "warm" or ibkr.get("ready") is True)
+    )
     return {
         **state,
         "ready": ibkr_snapshot_ready and "error" not in ibkr,
@@ -8260,7 +8282,7 @@ def _cached_live_broker_state_for_diagnostics() -> dict:
         "probe_skipped": True,
         "broker_snapshot_source": "ibkr_probe_cache" if ibkr else "missing_ibkr_probe_cache",
         "broker_snapshot_age_s": cache_age_s,
-        "broker_snapshot_state": str(state.get("ibkr_cache_state") or "missing"),
+        "broker_snapshot_state": ibkr_cache_state,
         "server_ts": time.time(),
         "reporting_timezone": DASHBOARD_LOCAL_TIME_ZONE_NAME,
         "today_start_utc": today_start_iso,
@@ -9098,7 +9120,7 @@ def _persist_ibkr_probe_cache(snapshot: dict, *, ts: float) -> None:
         )
 
 
-def _load_persisted_ibkr_probe_cache(*, now_ts: float | None = None) -> dict:
+def _load_persisted_ibkr_probe_cache(*, now_ts: float | None = None, include_stale: bool = False) -> dict:
     path = _ibkr_probe_cache_state_path()
     if not path.exists():
         return {}
@@ -9114,16 +9136,19 @@ def _load_persisted_ibkr_probe_cache(*, now_ts: float | None = None) -> dict:
         return {}
     now = time.time() if now_ts is None else now_ts
     age_s = max(0.0, now - cached_ts)
-    if age_s > _IBKR_PROBE_DISK_CACHE_MAX_AGE_S:
+    stale = age_s > _IBKR_PROBE_DISK_CACHE_MAX_AGE_S
+    if stale and not include_stale:
         return {}
     ibkr = dict(snapshot)
     ibkr.setdefault("cache_ts", cached_ts)
     ibkr.setdefault("cache_age_s", round(age_s, 1))
     ibkr.setdefault("last_known", True)
     ibkr["persisted_cache"] = True
+    if stale:
+        ibkr["stale_cache"] = True
     return {
         "ibkr": ibkr,
-        "ibkr_cache_state": "persisted",
+        "ibkr_cache_state": "stale_persisted" if stale else "persisted",
         "ibkr_cache_ts": cached_ts,
         "ibkr_cache_age_s": round(age_s, 1),
     }
@@ -9847,8 +9872,10 @@ def _live_broker_state_payload() -> dict:
     if win_rate_30d is None and close_outcomes_30d["win_rate"] is not None:
         win_rate_30d = _float_value(close_outcomes_30d.get("win_rate"))
         win_rate_30d_source = "trade_close_ledger_30d"
+    broker_ready = bool(ibkr.get("ready")) and not ibkr.get("error")
     payload = {
         "server_ts": time.time(),
+        "ready": broker_ready,
         "focus_policy": _dashboard_focus_policy_payload(),
         "reporting_timezone": DASHBOARD_LOCAL_TIME_ZONE_NAME,
         "today_start_utc": today_start_iso,
