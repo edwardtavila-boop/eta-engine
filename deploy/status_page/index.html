@@ -102,6 +102,8 @@ body:after{content:"";position:fixed;inset:-8%;pointer-events:none;background:li
 .status-bar{position:relative;overflow:hidden;padding:1rem 2rem .6rem;color:#9cb0c5;gap:1rem 1.5rem;border-top:1px solid rgba(255,255,255,.04);border-bottom:1px solid rgba(255,255,255,.06);background:linear-gradient(90deg,rgba(11,19,30,.74),rgba(17,31,44,.74),rgba(11,19,30,.74));backdrop-filter:blur(14px)}
 .status-bar:before{content:"";position:absolute;inset:0;background:linear-gradient(100deg,transparent 0%,rgba(100,215,255,.075) 42%,rgba(230,184,92,.06) 58%,transparent 86%);animation:dataSweep 14s linear infinite}
 .status-bar>span{position:relative;z-index:1}
+.status-bar #apiSourceText{color:#e4f0fb;font-weight:820;letter-spacing:.01em}
+.status-bar #blockerStatusText{color:#cad9e8;font-weight:720}
 .controls{padding:0;justify-content:flex-end}
 .controls button{border-radius:999px;background:rgba(255,255,255,.055);border-color:rgba(255,255,255,.12);padding:.54rem 1rem;font-size:.71rem;letter-spacing:.02em}
 .controls button.active,.controls button:hover{background:rgba(230,184,92,.16);border-color:rgba(230,184,92,.5)}
@@ -181,6 +183,11 @@ body:after{content:"";position:fixed;inset:-8%;pointer-events:none;background:li
 .retune-factory-card{border-color:rgba(100,215,255,.26);background:radial-gradient(circle at 10% 0%,rgba(100,215,255,.14),transparent 38%),linear-gradient(145deg,rgba(7,21,34,.84),rgba(3,8,14,.92))}
 .retune-factory-card .stat{letter-spacing:-.03em}
 .retune-factory-card .sub{font-weight:750;color:#aebfd1}
+.broker-truth-card{border-color:rgba(100,215,255,.28);background:radial-gradient(circle at 10% 0%,rgba(100,215,255,.16),transparent 38%),linear-gradient(145deg,rgba(8,22,34,.84),rgba(3,8,14,.92))}
+.broker-truth-card .stat{letter-spacing:-.03em}
+.broker-truth-card .sub{line-height:1.34;overflow-wrap:anywhere}
+.broker-status-meta{margin-top:.28rem;color:#edf7ff;font-size:.72rem;font-weight:820;letter-spacing:.01em}
+.broker-truth-card .sub:not(.broker-status-meta){color:#aec0d3;font-weight:700}
 .session-discipline-card{border-color:rgba(84,255,194,.26);background:radial-gradient(circle at 10% 0%,rgba(84,255,194,.14),transparent 38%),linear-gradient(145deg,rgba(6,23,21,.84),rgba(3,8,14,.92))}
 .session-discipline-card .stat{letter-spacing:-.03em}
 .session-discipline-card .sub{font-weight:750;color:#b7d7cf}
@@ -401,7 +408,7 @@ tr:hover td{background:rgba(100,215,255,.055)}
   <div class="card retune-factory-card"><h3>Retune Factory</h3><div class="stat" id="retuneFactoryStatus">--</div><div class="sub" id="retuneFactorySub">paper retunes pending</div></div>
   <div class="card"><h3>Policy Mode</h3><div class="stat yellow" id="jarvisMode">--</div></div>
   <div class="card"><h3>AI Ops</h3><div class="stat" id="adminAiStatus">-</div><div class="sub" id="adminAiSub">Jarvis + Hermes</div></div>
-  <div class="card"><h3>IBKR Connection</h3><div class="stat" id="gatewayStatus">--</div><div class="sub" id="gatewayStatusSub"></div></div>
+  <div class="card broker-truth-card"><h3>IBKR Connection</h3><div class="stat" id="gatewayStatus">--</div><div class="sub broker-status-meta" id="gatewayStatusMeta">truth pending</div><div class="sub" id="gatewayStatusSub"></div></div>
   <div class="card"><h3>Order Router</h3><div class="stat" id="brokerRouterStatus">-</div><div class="sub" id="brokerRouterSub"></div></div>
   <div class="card"><h3>Exit Protection</h3><div class="stat" id="bracketAuditStatus">-</div><div class="sub" id="bracketAuditSub">target + stop coverage</div></div>
   <div class="card exit-watch-card"><h3>Exit Watch</h3><div class="stat" id="exitWatchStatus">-</div><div class="sub" id="exitWatchSub">target | stop</div></div>
@@ -653,6 +660,31 @@ function brokerTruthChipMarkup(liveBroker = null) {
   const suffix = truth.suffix ? ` | ${truth.suffix}` : '';
   const tone = ['live', 'cache', 'warn'].includes(truth.tone) ? truth.tone : 'cache';
   return `<span class="hero-chip broker-truth-chip ${tone}"><strong>${esc(truth.label)}</strong> ${esc(ageText + suffix)}</span>`;
+}
+
+function brokerTruthHeadline(liveBroker = null) {
+  const truth = brokerTruthStateLabel(liveBroker);
+  if (truth.tone === 'live') return 'Live Now';
+  if (truth.tone === 'warn') return 'Last Good';
+  return 'Cached';
+}
+
+function brokerTruthLeadLine(liveBroker = null) {
+  const truth = brokerTruthStateLabel(liveBroker);
+  const headline = brokerTruthHeadline(liveBroker);
+  const age = finiteNumber(
+    liveBroker?.broker_snapshot_age_s
+    ?? liveBroker?.ibkr_cache_age_s
+    ?? liveBroker?.ibkr?.cache_age_s
+  );
+  const base = age == null || (truth.tone === 'live' && age < 2)
+    ? headline
+    : `${headline} ${formatAgeSeconds(age)}`;
+  return truth.suffix ? `${base} | ${truth.suffix}` : base;
+}
+
+function brokerTruthSourceLine(liveBroker = null) {
+  return friendlySourceLabel(liveBroker?.broker_snapshot_source || liveBroker?.source || '') || 'broker snapshot';
 }
 
 function formatDurationSeconds(value) {
@@ -1547,6 +1579,11 @@ function friendlySourceLabel(value) {
     .replace(/close ledger/gi, 'closed trades')
     .replace(/trade_close_ledger/gi, 'closed trades')
     .replace(/live_fill_ledger/gi, 'broker fills')
+    .replace(/ibkr_live_broker_state/gi, 'IBKR live read')
+    .replace(/ibkr_probe_cache/gi, 'IBKR probe cache')
+    .replace(/cached_live_broker_state_for_diagnostics/gi, 'ops cache')
+    .replace(/ibkr_net_liquidation_month_manual_override/gi, 'IBKR seeded MTD')
+    .replace(/ibkr_net_liquidation_month_tracker_cache/gi, 'IBKR tracked MTD')
     .replace(/portfolio API/gi, 'live portfolio')
     .replace(/bot PnL fallback/gi, 'bot snapshot')
     .replace(/vps_root_reconciliation_plan/gi, 'workspace cleanup plan')
@@ -2566,6 +2603,8 @@ function showOffline(clearDashboard = true) {
   if (bracketAuditSub) bracketAuditSub.textContent = '';
   const gatewaySub = document.getElementById('gatewayStatusSub');
   if (gatewaySub) gatewaySub.textContent = '';
+  const gatewayMeta = document.getElementById('gatewayStatusMeta');
+  if (gatewayMeta) gatewayMeta.textContent = 'truth unavailable';
   const adminAiSub = document.getElementById('adminAiSub');
   if (adminAiSub) adminAiSub.textContent = '';
   const heldBotsSub = document.getElementById('heldBotsSub');
@@ -3073,8 +3112,12 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
   const liveBrokerPnlReady = liveBrokerReady && brokerHasPnlTruth(liveBroker);
   const venueFocusText = brokerVenueFocusSummary(liveBroker?.focus_policy || {}, liveBroker);
   const brokerAgeText = liveBroker ? brokerSnapshotAgeText(liveBroker) : '';
+  const brokerTruthLead = liveBroker ? brokerTruthLeadLine(liveBroker) : '';
+  const brokerTruthSource = liveBroker ? brokerTruthSourceLine(liveBroker) : '';
   const sourceTierText = d.fast_summary ? 'fast summary' : 'live detail';
-  document.getElementById('apiSourceText').textContent = venueFocusText
+  document.getElementById('apiSourceText').textContent = brokerTruthLead
+    ? `Truth: ${brokerTruthLead}${brokerTruthSource ? ' | ' + brokerTruthSource : ''}${venueFocusText ? ' | Focus: ' + compactText(venueFocusText, 64) : ''} | ${sourceTierText}` + (usingFallback ? ' | mirror' : '')
+    : venueFocusText
     ? 'Focus: ' + venueFocusText + (brokerAgeText ? ' | ' + brokerAgeText : '') + ` | ${sourceTierText}` + (usingFallback ? ' | mirror' : '')
     : 'Source: ' + sourceLabel(dataSource) + ` | ${sourceTierText}` + (usingFallback ? ' | mirror' : '');
   const availableCloseWindows = closeHistoryWindowPayload(liveBroker, selectedCloseHistoryWindow, d);
@@ -3299,40 +3342,84 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
   const gatewayKnown = ibkrGateway.status && ibkrGateway.status !== 'unknown';
   let gatewayLabel;
   let gatewayClass;
+  let gatewayMeta;
   let gatewaySub;
   if (liveBroker && liveBroker.ibkr) {
+    const truthHeadline = brokerTruthHeadline(liveBroker);
+    const truthLeadLine = brokerTruthLeadLine(liveBroker);
+    const truthSourceLine = brokerTruthSourceLine(liveBroker);
+    const gatewayAccount = liveBroker.ibkr.preferred_account
+      || liveBroker.ibkr.account_id
+      || (Array.isArray(liveBroker.ibkr.managed_accounts) ? liveBroker.ibkr.managed_accounts[0] : '');
+    const gatewayOpenPositions = Number(
+      liveBroker.open_position_count
+      ?? liveBroker.ibkr.open_position_count
+      ?? 0
+    ) || 0;
+    const gatewayOpenOrders = Number(
+      liveBroker.ibkr.open_order_count
+      ?? (Array.isArray(liveBroker.ibkr.open_orders) ? liveBroker.ibkr.open_orders.length : 0)
+      ?? 0
+    ) || 0;
+    const gatewayFillsToday = Number(
+      liveBroker.today_actual_fills
+      ?? liveBroker.ibkr.today_executions
+      ?? 0
+    ) || 0;
+    gatewayMeta = compactText(
+      [truthLeadLine, truthSourceLine].filter(Boolean).join(' | '),
+      98,
+    );
     if (liveBroker.ibkr.ready) {
-      gatewayLabel = 'Connected';
-      gatewayClass = 'green';
-      const acct = (liveBroker.ibkr.managed_accounts || [])[0];
-      gatewaySub = acct ? 'live REST | ' + acct : 'live REST probe ok';
+      gatewayLabel = truthHeadline;
+      gatewayClass = truthHeadline === 'Live Now' ? 'green' : truthHeadline === 'Last Good' ? 'yellow' : 'blue';
+      gatewaySub = compactText(
+        [
+          gatewayAccount,
+          `${gatewayOpenPositions} open`,
+          `${gatewayOpenOrders} working`,
+          `${gatewayFillsToday} fills today`,
+        ].filter(Boolean).join(' | '),
+        112,
+      );
     } else if (ibkrGateway.status === 'connected') {
-      gatewayLabel = 'Connected';
-      gatewayClass = 'green';
+      gatewayLabel = 'Gateway Up';
+      gatewayClass = 'yellow';
       const gatewayCrash = ibkrGateway.crash || ibkrGateway.gateway_crash || {};
       gatewaySub = compactText(
-        gatewayCrash.summary
+        humanizeStatusText(
+          gatewayCrash.summary
         || ibkrGateway.detail
         || liveBroker.ibkr.error
-        || 'gateway healthy; broker data probe timed out'
+          || 'gateway healthy; broker data probe timed out'
+        ),
+        112,
       );
     } else {
       gatewayLabel = 'Down';
       gatewayClass = 'red';
-      gatewaySub = liveBroker.ibkr.error || 'live REST probe failed';
+      gatewayMeta = compactText(
+        [truthLeadLine || 'Probe failed', truthSourceLine].filter(Boolean).join(' | '),
+        98,
+      );
+      gatewaySub = compactText(humanizeStatusText(liveBroker.ibkr.error || 'live REST probe failed'), 112);
     }
   } else if (gatewayKnown) {
-    gatewayLabel = ibkrGateway.status === 'connected' ? 'Connected' : 'Down';
-    gatewayClass = ibkrGateway.status === 'connected' ? 'green' : 'red';
+    gatewayLabel = ibkrGateway.status === 'connected' ? 'Gateway Up' : 'Down';
+    gatewayClass = ibkrGateway.status === 'connected' ? 'yellow' : 'red';
     const gatewayCrash = ibkrGateway.crash || ibkrGateway.gateway_crash || {};
-    gatewaySub = gatewayCrash.summary || ibkrGateway.detail || '';
+    gatewayMeta = gatewayKnown ? 'Gateway snapshot only' : '';
+    gatewaySub = compactText(humanizeStatusText(gatewayCrash.summary || ibkrGateway.detail || ''), 112);
   } else {
     gatewayLabel = 'Unknown';
     gatewayClass = 'yellow';
+    gatewayMeta = 'truth pending';
     gatewaySub = '';
   }
   document.getElementById('gatewayStatus').textContent = gatewayLabel;
   document.getElementById('gatewayStatus').className = 'stat ' + gatewayClass;
+  const gatewayStatusMetaEl = document.getElementById('gatewayStatusMeta');
+  if (gatewayStatusMetaEl) gatewayStatusMetaEl.textContent = gatewayMeta || '';
   document.getElementById('gatewayStatusSub').textContent = gatewaySub;
 
   // Per-bot Alpaca live performance vs backtest target. Only render
