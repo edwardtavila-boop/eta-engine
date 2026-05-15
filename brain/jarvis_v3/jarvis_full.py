@@ -423,6 +423,8 @@ class JarvisFull:
         payload = getattr(req, "payload", None) or {}
         if isinstance(payload, dict):
             payload_updates: dict[str, Any] = {}
+            if bot_id and not str(payload.get("bot_id") or "").strip():
+                payload_updates["bot_id"] = str(bot_id)
             if "sage_score" not in payload and sage_conviction > 0:
                 payload_updates["sage_score"] = sage_conviction
             if sentiment_signal["status"] not in {"", "unknown"}:

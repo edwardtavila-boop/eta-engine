@@ -366,3 +366,64 @@ def test_jarvis_full_sentiment_tailwind_loosens_size(monkeypatch) -> None:
     assert verdict.sentiment_pressure_status == "risk_on"
     assert verdict.sentiment_pressure_lead_asset == "BTC"
     assert verdict.sentiment_modulation == "tailwind"
+
+
+def test_jarvis_full_persists_bot_and_sentiment_metadata_to_canonical_log(tmp_path: Path, monkeypatch) -> None:
+    import json
+
+    from eta_engine.brain.jarvis_v3.intelligence import (
+        IntelligenceConfig,
+        JarvisIntelligence,
+    )
+    from eta_engine.brain.jarvis_v3.jarvis_full import JarvisFull
+    from eta_engine.brain.jarvis_v3.sage.base import Bias, SageReport, SchoolVerdict
+
+    _identity_runtime_overrides(monkeypatch)
+    admin = MagicMock()
+    admin.request_approval.return_value = _stub_response("APPROVED")
+    verdict_log = tmp_path / "verdicts.jsonl"
+    intelligence = JarvisIntelligence(
+        admin=admin,
+        memory=None,
+        cfg=IntelligenceConfig(enable_intelligence=False),
+        verdict_log=verdict_log,
+    )
+    full = JarvisFull(intelligence=intelligence)
+    full._consult_sage_for_request = MagicMock(
+        return_value=SageReport(
+            per_school={
+                "sentiment_pressure": SchoolVerdict(
+                    school="sentiment_pressure",
+                    bias=Bias.LONG,
+                    conviction=0.62,
+                    aligned_with_entry=True,
+                    rationale="btc risk-on",
+                    signals={
+                        "status": "risk_on",
+                        "score": 0.28,
+                        "lead_positive_asset": "BTC",
+                        "selected_assets": ["BTC", "macro"],
+                    },
+                ),
+            },
+            composite_bias=Bias.NEUTRAL,
+            conviction=0.2,
+            schools_consulted=1,
+            schools_aligned_with_entry=1,
+            schools_disagreeing_with_entry=0,
+            schools_neutral=0,
+            rationale="btc risk-on",
+        ),
+    )
+
+    verdict = full.consult(_stub_request(payload={"side": "long"}), bot_id="btc_hybrid")
+
+    persisted = json.loads(verdict_log.read_text(encoding="utf-8").splitlines()[-1])
+    assert verdict.consolidated.bot_id == "btc_hybrid"
+    assert verdict.consolidated.sentiment_pressure_status == "risk_on"
+    assert verdict.consolidated.sentiment_modulation == "tailwind"
+    assert persisted["bot_id"] == "btc_hybrid"
+    assert persisted["sentiment_pressure_status"] == "risk_on"
+    assert persisted["sentiment_pressure_score"] == 0.28
+    assert persisted["sentiment_pressure_lead_asset"] == "BTC"
+    assert persisted["sentiment_modulation"] == "tailwind"

@@ -89,6 +89,11 @@ class ConsolidatedVerdict:
     # ── Base verdict (from JarvisAdmin) ──
     base_verdict: str  # APPROVED / DENIED / CONDITIONAL / DEFERRED
     base_reason: str
+    bot_id: str = ""
+    sentiment_pressure_status: str = ""
+    sentiment_pressure_score: float = 0.0
+    sentiment_pressure_lead_asset: str = ""
+    sentiment_modulation: str = ""
     base_size_cap_qty: float | None = None
 
     # ── Final adjusted verdict (after enrichment) ──
@@ -199,6 +204,25 @@ class JarvisIntelligence:
         if verdict_log is not None:
             verdict_log.parent.mkdir(parents=True, exist_ok=True)
 
+    @staticmethod
+    def _safe_float(value: object, default: float = 0.0) -> float:
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return default
+
+    def _request_metadata(self, req: ActionRequest) -> dict[str, object]:
+        payload = getattr(req, "payload", {}) or {}
+        if not isinstance(payload, dict):
+            return {}
+        return {
+            "bot_id": str(payload.get("bot_id") or "").strip(),
+            "sentiment_pressure_status": str(payload.get("sentiment_pressure_status") or "").strip(),
+            "sentiment_pressure_score": self._safe_float(payload.get("sentiment_pressure_score"), 0.0),
+            "sentiment_pressure_lead_asset": str(payload.get("sentiment_pressure_lead_asset") or "").strip(),
+            "sentiment_modulation": str(payload.get("sentiment_modulation") or "").strip(),
+        }
+
     # ── Entry point ──────────────────────────────────────────
 
     def consult(
@@ -285,6 +309,7 @@ class JarvisIntelligence:
             request_id=str(getattr(req, "request_id", "")),
             subsystem=str(getattr(req, "subsystem", "")),
             action=str(getattr(req, "action_type", "")),
+            **self._request_metadata(req),
             base_verdict="DENIED",
             base_reason=f"operator_override: {override_level}",
             final_verdict="DENIED",
@@ -311,6 +336,7 @@ class JarvisIntelligence:
             request_id=str(getattr(req, "request_id", "")),
             subsystem=str(getattr(req, "subsystem", "")),
             action=str(getattr(req, "action_type", "")),
+            **self._request_metadata(req),
             base_verdict=str(base.verdict),
             base_reason=str(getattr(base, "reason_code", "")),
             base_size_cap_qty=getattr(base, "size_cap_qty", None),
@@ -334,6 +360,7 @@ class JarvisIntelligence:
             request_id=str(getattr(req, "request_id", "")),
             subsystem=str(getattr(req, "subsystem", "")),
             action=str(getattr(req, "action_type", "")),
+            **self._request_metadata(req),
             base_verdict="DEFERRED",
             base_reason="admin_error",
             final_verdict="DEFERRED",
@@ -600,6 +627,7 @@ class JarvisIntelligence:
             request_id=str(getattr(req, "request_id", "")),
             subsystem=str(getattr(req, "subsystem", "")),
             action=str(getattr(req, "action_type", "")),
+            **self._request_metadata(req),
             base_verdict=base_verdict,
             base_reason=str(getattr(base_response, "reason_code", "")),
             base_size_cap_qty=getattr(base_response, "size_cap_qty", None),
