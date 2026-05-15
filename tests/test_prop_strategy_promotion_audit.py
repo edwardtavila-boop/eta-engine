@@ -143,6 +143,23 @@ def _shadow_outcome_report(
     }
 
 
+def _failed_research_retest(*, bot_id: str = "volume_profile_nq") -> dict[str, object]:
+    return {
+        bot_id: {
+            "source": "research_grid_runtime",
+            "bot_id": bot_id,
+            "windows": 1,
+            "positive_oos_windows": 0,
+            "oos_sharpe": -3.704,
+            "dsr_pass_fraction": 0.0,
+            "verdict": "FAIL",
+            "result_status": "fail",
+            "artifact_class": "low_signal",
+            "report_path": r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\research_grid\research_grid_fail.md",
+        },
+    }
+
+
 def test_runner_up_candidate_names_missing_shadow_context_when_old_signals_cannot_replay() -> None:
     candidate = {
         **_candidate(launch_lane="deactivated", blockers=["bot row is deactivated via kaizen_sidecar"]),
@@ -571,6 +588,59 @@ def test_runner_up_candidate_emits_safe_retune_plan_when_shadow_replay_is_weak()
     assert plan["safe_to_mutate_live"] is False
     assert plan["broker_backed"] is False
     assert plan["promotion_proof"] is False
+
+
+def test_research_retest_failure_rotates_next_runner_off_failed_candidate() -> None:
+    candidate = {
+        **_candidate(launch_lane="deactivated", blockers=["bot row is deactivated via kaizen_sidecar"]),
+        "active": False,
+        "data_status": "deactivated",
+        "promotion_status": "deactivated",
+        "deactivation_source": "kaizen_sidecar",
+    }
+
+    report = audit.build_promotion_audit_report(
+        gate_report={
+            "summary": "BLOCKED",
+            "primary_bot": "volume_profile_mnq",
+            "checks": [
+                _check("primary_ladder", "BLOCKED", primary_candidate=candidate),
+                _check("prop_readiness", "PASS"),
+                _check("broker_native_brackets", "PASS"),
+                _check("closed_trade_ledger", "PASS", closed_trade_count=43000),
+                _check("live_bot_gate", "BLOCKED", "volume_profile_mnq is deactivated"),
+            ],
+        },
+        ladder_report={
+            "summary": {"automation_mode": "FULLY_AUTOMATED_PAPER_PROP_HELD"},
+            "candidates": [
+                candidate,
+                _runner_candidate(),
+                _runner_candidate(bot_id="rsi_mr_mnq_v2", symbol="MNQ1"),
+            ],
+        },
+        closed_trade_ledger=_closed_trade_ledger(),
+        supervisor_heartbeat=_supervisor_heartbeat(last_signal_at=""),
+        shadow_signals=_shadow_signals(count=88),
+        shadow_outcome_report=_shadow_outcome_report(
+            evaluated_count=88,
+            shadow_signal_count=88,
+            verdict="WEAK_OR_NEGATIVE_COUNTERFACTUAL",
+        ),
+        research_retest_rows=_failed_research_retest(),
+    )
+
+    failed_runner = report["runner_up_candidates"][0]
+    retune_plan = failed_runner["retune_plan"]
+
+    assert failed_runner["bot_id"] == "volume_profile_nq"
+    assert failed_runner["research_retest_evidence"]["verdict"] == "FAIL"
+    assert failed_runner["research_retest_evidence"]["hard_fail"] is True
+    assert retune_plan["status"] == "PAPER_ONLY_RETUNE_FAILED"
+    assert retune_plan["safe_to_mutate_live"] is False
+    assert report["next_runner_candidate"]["bot_id"] == "rsi_mr_mnq_v2"
+    assert "volume_profile_nq" not in "\n".join(report["required_evidence"])
+    assert "focus runner-up review on rsi_mr_mnq_v2" in report["operator_note"]
 
 
 def test_runner_up_candidate_names_bar_freshness_when_shadow_outcome_replay_cannot_evaluate() -> None:

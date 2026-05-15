@@ -33,6 +33,20 @@ def _as_list(value: Any) -> list[Any]:  # noqa: ANN401
     return value if isinstance(value, list) else []
 
 
+def _safe_float(value: Any, default: float = 0.0) -> float:  # noqa: ANN401
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _safe_int(value: Any, default: int = 0) -> int:  # noqa: ANN401
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return default
+
+
 def _checks_by_name(gate_report: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return {
         str(check.get("name")): check
@@ -373,6 +387,59 @@ def _index_futures_refresh_command(symbol: str) -> str:
     return ""
 
 
+def _research_retest_evidence(research_retest_rows: dict[str, Any], bot_id: str) -> dict[str, Any]:
+    row = _as_dict(research_retest_rows.get(bot_id))
+    if not row:
+        return {
+            "source": "research_grid_runtime",
+            "has_retest": False,
+            "hard_fail": False,
+        }
+
+    verdict = str(row.get("verdict") or "").strip().upper()
+    result_status = str(row.get("result_status") or "").strip().lower()
+    windows = _safe_int(row.get("windows"))
+    oos_sharpe = _safe_float(row.get("oos_sharpe") or row.get("agg_oos_sharpe"))
+    dsr_pass_fraction = _safe_float(row.get("dsr_pass_fraction"))
+    hard_fail = result_status == "fail" and (verdict == "FAIL" or oos_sharpe <= 0.0 or dsr_pass_fraction <= 0.0)
+    return {
+        "source": "research_grid_runtime",
+        "has_retest": True,
+        "bot_id": bot_id,
+        "windows": windows,
+        "positive_oos_windows": _safe_int(row.get("positive_oos_windows")),
+        "oos_sharpe": round(oos_sharpe, 4),
+        "dsr_pass_fraction": round(dsr_pass_fraction, 4),
+        "verdict": verdict or "UNKNOWN",
+        "result_status": result_status or "unknown",
+        "artifact_class": row.get("artifact_class") or "unknown",
+        "report_path": row.get("report_path") or "",
+        "hard_fail": hard_fail,
+    }
+
+
+def _with_research_retest_status(retune_plan: dict[str, Any], research_evidence: dict[str, Any]) -> dict[str, Any]:
+    if not retune_plan:
+        return {}
+    if not bool(research_evidence.get("hard_fail")):
+        return retune_plan
+    updated = dict(retune_plan)
+    updated.update(
+        {
+            "status": "PAPER_ONLY_RETUNE_FAILED",
+            "promotion_block": "research_retest_failed",
+            "safe_to_mutate_live": False,
+            "broker_backed": False,
+            "promotion_proof": False,
+            "latest_retest_verdict": research_evidence.get("verdict") or "FAIL",
+            "latest_retest_oos_sharpe": research_evidence.get("oos_sharpe"),
+            "latest_retest_dsr_pass_fraction": research_evidence.get("dsr_pass_fraction"),
+            "latest_retest_artifact": research_evidence.get("report_path") or "",
+        },
+    )
+    return updated
+
+
 def _runner_retune_plan(
     candidate: dict[str, Any],
     broker_evidence: dict[str, Any],
@@ -434,9 +501,17 @@ def _runner_next_action(
     watch_evidence: dict[str, Any],
     signal_evidence: dict[str, Any],
     outcome_evidence: dict[str, Any],
+    research_evidence: dict[str, Any],
 ) -> str:
     bot_id = str(candidate.get("bot_id") or "runner").strip()
     close_count = int(broker_evidence.get("closed_trade_count") or 0)
+    if bool(research_evidence.get("hard_fail")):
+        oos_sharpe = research_evidence.get("oos_sharpe")
+        dsr_pass = research_evidence.get("dsr_pass_fraction")
+        return (
+            f"Keep {bot_id} research-only; latest retune failed "
+            f"(OOS Sharpe {oos_sharpe}, DSR pass {dsr_pass}) and is not promotion proof"
+        )
     if _is_deactivated(candidate):
         return f"Keep {bot_id} deactivated until fresh paper-soak evidence repairs the retirement case"
     if close_count <= 0:
@@ -509,7 +584,13 @@ def _runner_operator_note(
     watch_evidence: dict[str, Any],
     signal_evidence: dict[str, Any],
     outcome_evidence: dict[str, Any],
+    research_evidence: dict[str, Any],
 ) -> str:
+    if bool(research_evidence.get("hard_fail")):
+        return (
+            "Latest research retest failed; treat this runner as research-only and rotate the "
+            "promotion review to the next available paper candidate."
+        )
     if int(broker_evidence.get("closed_trade_count") or 0) <= 0:
         outcome_count = int(outcome_evidence.get("evaluated_count") or 0)
         outcome_signal_count = int(outcome_evidence.get("shadow_signal_count") or 0)
@@ -550,6 +631,7 @@ def _runner_summary(
     supervisor_heartbeat: dict[str, Any],
     shadow_signals: list[Any],
     shadow_outcome_report: dict[str, Any],
+    research_retest_rows: dict[str, Any],
 ) -> dict[str, Any]:
     bot_id = str(candidate.get("bot_id") or "").strip()
     broker_evidence = _broker_close_evidence(
@@ -559,7 +641,11 @@ def _runner_summary(
     watch_evidence = _supervisor_watch_evidence(supervisor_heartbeat, bot_id)
     signal_evidence = _shadow_signal_evidence(shadow_signals, bot_id)
     outcome_evidence = _shadow_outcome_evidence(shadow_outcome_report, bot_id)
-    retune_plan = _runner_retune_plan(candidate, broker_evidence, outcome_evidence)
+    research_evidence = _research_retest_evidence(research_retest_rows, bot_id)
+    retune_plan = _with_research_retest_status(
+        _runner_retune_plan(candidate, broker_evidence, outcome_evidence),
+        research_evidence,
+    )
     return {
         "bot_id": candidate.get("bot_id") or "",
         "role": candidate.get("role") or "runner",
@@ -578,6 +664,7 @@ def _runner_summary(
         "supervisor_watch_evidence": watch_evidence,
         "shadow_signal_evidence": signal_evidence,
         "shadow_outcome_evidence": outcome_evidence,
+        "research_retest_evidence": research_evidence,
         "retune_plan": retune_plan,
         "ladder_blockers": [str(item) for item in _as_list(candidate.get("blockers"))],
         "next_action": _runner_next_action(
@@ -586,6 +673,7 @@ def _runner_summary(
             watch_evidence,
             signal_evidence,
             outcome_evidence,
+            research_evidence,
         ),
         "operator_note": _runner_operator_note(
             candidate,
@@ -593,24 +681,43 @@ def _runner_summary(
             watch_evidence,
             signal_evidence,
             outcome_evidence,
+            research_evidence,
         ),
     }
 
 
-def _next_runner_candidate(runners: list[dict[str, Any]]) -> dict[str, Any]:
-    for runner in runners:
-        if runner.get("active", True) is not False and not _is_deactivated(runner):
+def _runner_available_for_review(runner_summary: dict[str, Any]) -> bool:
+    if runner_summary.get("active", True) is False:
+        return False
+    if (
+        str(runner_summary.get("launch_lane") or "").lower() == "deactivated"
+        or str(runner_summary.get("data_status") or "").lower() == "deactivated"
+        or str(runner_summary.get("promotion_status") or "").lower() == "deactivated"
+    ):
+        return False
+    if bool(_as_dict(runner_summary.get("research_retest_evidence")).get("hard_fail")):
+        return False
+    return str(_as_dict(runner_summary.get("retune_plan")).get("status") or "") != "PAPER_ONLY_RETUNE_FAILED"
+
+
+def _next_runner_summary(runner_summaries: list[dict[str, Any]]) -> dict[str, Any]:
+    for runner in runner_summaries:
+        if _runner_available_for_review(runner):
             return runner
-    return runners[0] if runners else {}
+    return runner_summaries[0] if runner_summaries else {}
 
 
-def _runner_required_evidence(next_runner: dict[str, Any], closed_trade_ledger: dict[str, Any]) -> list[str]:
+def _runner_required_evidence(next_runner: dict[str, Any]) -> list[str]:
     if not next_runner:
         return []
     bot_id = str(next_runner.get("bot_id") or "").strip()
     if not bot_id:
         return []
-    broker_evidence = _broker_close_evidence(closed_trade_ledger, bot_id)
+    if bool(_as_dict(next_runner.get("research_retest_evidence")).get("hard_fail")):
+        return [
+            f"do not promote runner-up candidate {bot_id}; latest research retest failed and needs a new variant",
+        ]
+    broker_evidence = _as_dict(next_runner.get("broker_close_evidence"))
     if int(broker_evidence.get("closed_trade_count") or 0) <= 0:
         return [
             f"collect broker-backed closes for runner-up candidate {bot_id}; strict-gate/lab evidence is not "
@@ -630,32 +737,36 @@ def build_promotion_audit_report(
     supervisor_heartbeat: dict[str, Any] | None = None,
     shadow_signals: list[Any] | None = None,
     shadow_outcome_report: dict[str, Any] | None = None,
+    research_retest_rows: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     closed_trade_ledger = _as_dict(closed_trade_ledger)
     supervisor_heartbeat = _as_dict(supervisor_heartbeat)
     shadow_signals = _as_list(shadow_signals)
     shadow_outcome_report = _as_dict(shadow_outcome_report)
+    research_retest_rows = _as_dict(research_retest_rows)
     candidate = _with_live_deactivation(
         _primary_candidate(gate_report=gate_report, ladder_report=ladder_report),
         gate_report,
     )
     runners = _runner_candidates(ladder_report)
-    next_runner = _next_runner_candidate(runners)
     runner_summaries = [
-        _runner_summary(runner, closed_trade_ledger, supervisor_heartbeat, shadow_signals, shadow_outcome_report)
+        _runner_summary(
+            runner,
+            closed_trade_ledger,
+            supervisor_heartbeat,
+            shadow_signals,
+            shadow_outcome_report,
+            research_retest_rows,
+        )
         for runner in runners
     ]
-    next_runner_summary = (
-        _runner_summary(next_runner, closed_trade_ledger, supervisor_heartbeat, shadow_signals, shadow_outcome_report)
-        if next_runner
-        else {}
-    )
+    next_runner_summary = _next_runner_summary(runner_summaries)
     statuses = _status_by_check(gate_report)
     gate_summary = str(gate_report.get("summary") or "UNKNOWN")
     required = _required_evidence(candidate=candidate, statuses=statuses, gate_summary=gate_summary)
     summary = _summary(candidate=candidate, gate_summary=gate_summary, required=required)
     if summary == "BLOCKED_KAIZEN_RETIRED":
-        required = list(dict.fromkeys(required + _runner_required_evidence(next_runner, closed_trade_ledger)))
+        required = list(dict.fromkeys(required + _runner_required_evidence(next_runner_summary)))
     return {
         "kind": "eta_prop_strategy_promotion_audit",
         "schema_version": 1,
@@ -769,6 +880,15 @@ def _current_shadow_outcome_report() -> dict[str, Any]:
         return {}
 
 
+def _current_research_retest_rows() -> dict[str, Any]:
+    try:
+        from eta_engine.scripts.strategy_supercharge_results import _latest_reports_by_bot  # noqa: PLC0415
+
+        return _as_dict(_latest_reports_by_bot(workspace_roots.ETA_RESEARCH_GRID_RUNTIME_DIR))
+    except Exception:  # noqa: BLE001
+        return {}
+
+
 def _print_human(report: dict[str, Any], out_path: Path | None = None) -> None:
     print()
     print("EVOLUTIONARY TRADING ALGO -- Prop Strategy Promotion Audit")
@@ -801,6 +921,7 @@ def main(argv: list[str] | None = None) -> int:
         supervisor_heartbeat=_current_supervisor_heartbeat(),
         shadow_signals=_current_shadow_signals(),
         shadow_outcome_report=_current_shadow_outcome_report(),
+        research_retest_rows=_current_research_retest_rows(),
     )
     out_path = None if args.no_write else write_report(report, args.out)
     if args.json:
