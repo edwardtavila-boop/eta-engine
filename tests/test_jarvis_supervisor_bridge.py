@@ -220,6 +220,42 @@ def test_supervisor_bridge_idle_status_when_no_entries_no_position(tmp_path: Pat
     assert accounts[0]["last_bar_ts"] == "2026-04-28T12:00:00+00:00"
 
 
+def test_supervisor_bridge_preserves_aggregation_reject_fields(tmp_path: Path) -> None:
+    """Supervisor heartbeat blocker fields must survive bridge normalization."""
+    from eta_engine.scripts.jarvis_supervisor_bridge import (
+        jarvis_supervisor_bot_accounts,
+    )
+
+    hb_data = {
+        "ts": "2026-05-15T12:57:54+00:00",
+        "mode": "paper_live",
+        "bots": [
+            {
+                "bot_id": "volume_profile_nq",
+                "symbol": "NQ1",
+                "strategy_kind": "confluence_scorecard",
+                "direction": "long",
+                "n_entries": 0,
+                "n_exits": 0,
+                "realized_pnl": 0.0,
+                "open_position": None,
+                "last_bar_ts": "2026-05-15T12:57:52+00:00",
+                "last_aggregation_reject_reason": "session_gate:outside_rth",
+                "last_aggregation_reject_at": "2026-05-15T12:57:52+00:00",
+            },
+        ],
+    }
+    hb = tmp_path / "heartbeat.json"
+    hb.write_text(json.dumps(hb_data), encoding="utf-8")
+
+    accounts = jarvis_supervisor_bot_accounts(heartbeat_path=hb)
+
+    assert len(accounts) == 1
+    assert accounts[0]["id"] == "volume_profile_nq"
+    assert accounts[0]["last_aggregation_reject_reason"] == "session_gate:outside_rth"
+    assert accounts[0]["last_aggregation_reject_at"] == "2026-05-15T12:57:52+00:00"
+
+
 def test_merge_returns_payload_unchanged_when_no_heartbeat(tmp_path: Path) -> None:
     """No supervisor running -> payload passes through untouched."""
     from eta_engine.scripts.jarvis_supervisor_bridge import (

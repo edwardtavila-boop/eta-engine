@@ -105,6 +105,8 @@ def jarvis_supervisor_bot_accounts(
         # supervisor when JARVIS bootstrap is down, the regime gate fires,
         # or consult() raised. Empty after a clean consult.
         last_verdict_reason = str(bot.get("last_jarvis_verdict_reason") or "")
+        last_aggregation_reject_reason = str(bot.get("last_aggregation_reject_reason") or "")
+        last_aggregation_reject_at = str(bot.get("last_aggregation_reject_at") or "")
         strategy_readiness = bot.get("strategy_readiness")
         readiness_payload = strategy_readiness if isinstance(strategy_readiness, dict) else {}
         open_position = bot.get("open_position") if isinstance(bot.get("open_position"), dict) else {}
@@ -146,6 +148,8 @@ def jarvis_supervisor_bot_accounts(
                 "direction": str(bot.get("direction") or ""),
                 "last_jarvis_verdict": last_verdict,
                 "last_jarvis_verdict_reason": last_verdict_reason,
+                "last_aggregation_reject_reason": last_aggregation_reject_reason,
+                "last_aggregation_reject_at": last_aggregation_reject_at,
                 "strategy_readiness": readiness_payload,
                 "launch_lane": readiness_payload.get("launch_lane"),
                 "can_paper_trade": bool(readiness_payload.get("can_paper_trade")),
