@@ -7,9 +7,12 @@ router.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 import pytest
 
 from eta_engine.bots.base_bot import SignalType
+from eta_engine.core.session_gate import SessionGate
 from eta_engine.strategies.engine_adapter import (
     DEFAULT_BUFFER_BARS,
     RouterAdapter,
@@ -271,6 +274,10 @@ def _bar_dict(ts: int, close: float = 100.0) -> dict[str, float]:
     }
 
 
+def _utc_ms(y: int, m: int, d: int, hh: int, mm: int) -> int:
+    return int(datetime(y, m, d, hh, mm, tzinfo=UTC).timestamp() * 1000)
+
+
 class TestRouterAdapterBasics:
     def test_init_upper_cases_asset(self) -> None:
         adapter = RouterAdapter(asset="mnq")
@@ -419,6 +426,64 @@ class TestRouterAdapterWithStubRegistry:
         # Internally the adapter assigns ts=0, 1
         ts_values = [b.ts for b in adapter.bars]
         assert ts_values == [0, 1]
+
+    def test_attached_session_gate_blocks_pre_rth_entry(self) -> None:
+        def fake_gated(_b: list[Bar], ctx: object) -> StrategySignal:
+            assert hasattr(ctx, "session_allows_entries")
+            if not ctx.session_allows_entries:
+                return StrategySignal(
+                    strategy=StrategyId.LIQUIDITY_SWEEP_DISPLACEMENT,
+                    side=Side.FLAT,
+                    rationale_tags=("session_gate_blocked",),
+                )
+            return StrategySignal(
+                strategy=StrategyId.LIQUIDITY_SWEEP_DISPLACEMENT,
+                side=Side.LONG,
+                entry=101.0,
+                stop=99.0,
+                target=105.0,
+                confidence=7.0,
+                risk_mult=1.0,
+            )
+
+        adapter = RouterAdapter(
+            asset="MNQ",
+            registry={StrategyId.LIQUIDITY_SWEEP_DISPLACEMENT: fake_gated},
+            eligibility={"MNQ": (StrategyId.LIQUIDITY_SWEEP_DISPLACEMENT,)},
+            session_gate=SessionGate(),
+        )
+        sig = adapter.push_bar(_bar_dict(_utc_ms(2026, 5, 15, 9, 0)))
+        assert sig is None
+        assert adapter.last_decision is not None
+        assert adapter.last_decision.winner.side is Side.FLAT
+
+    def test_attached_session_gate_allows_rth_entry(self) -> None:
+        def fake_gated(_b: list[Bar], ctx: object) -> StrategySignal:
+            if not ctx.session_allows_entries:
+                return StrategySignal(
+                    strategy=StrategyId.LIQUIDITY_SWEEP_DISPLACEMENT,
+                    side=Side.FLAT,
+                    rationale_tags=("session_gate_blocked",),
+                )
+            return StrategySignal(
+                strategy=StrategyId.LIQUIDITY_SWEEP_DISPLACEMENT,
+                side=Side.LONG,
+                entry=101.0,
+                stop=99.0,
+                target=105.0,
+                confidence=7.0,
+                risk_mult=1.0,
+            )
+
+        adapter = RouterAdapter(
+            asset="MNQ",
+            registry={StrategyId.LIQUIDITY_SWEEP_DISPLACEMENT: fake_gated},
+            eligibility={"MNQ": (StrategyId.LIQUIDITY_SWEEP_DISPLACEMENT,)},
+            session_gate=SessionGate(),
+        )
+        sig = adapter.push_bar(_bar_dict(_utc_ms(2026, 5, 15, 15, 0)))
+        assert sig is not None
+        assert sig.type is SignalType.LONG
 
 
 class TestRegistryKillSwitchChokepoint:

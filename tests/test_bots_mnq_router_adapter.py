@@ -8,10 +8,13 @@ without regression.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 import pytest
 
 from eta_engine.bots.base_bot import SignalType
 from eta_engine.bots.mnq.bot import MnqBot
+from eta_engine.core.session_gate import SessionGate
 from eta_engine.strategies.engine_adapter import RouterAdapter
 from eta_engine.strategies.models import Bar, Side, StrategyId, StrategySignal
 from eta_engine.venues.base import OrderRequest, OrderResult, OrderStatus
@@ -57,6 +60,16 @@ def _orb_bar_long() -> dict[str, float]:
         "atr_14": 10.0,
         "adx_14": 35.0,
     }
+
+
+def _utc_ms(y: int, m: int, d: int, hh: int, mm: int) -> int:
+    return int(datetime(y, m, d, hh, mm, tzinfo=UTC).timestamp() * 1000)
+
+
+def _orb_bar_with_ts(ts_ms: int) -> dict[str, float]:
+    bar = _orb_bar_long()
+    bar["ts"] = ts_ms
+    return bar
 
 
 # ---------------------------------------------------------------------------
@@ -178,6 +191,39 @@ class TestOnBarAdapterPriority:
         # The bot only propagates kill state to adapter when on_bar passes
         # check_risk(), so we rely on the integration flow
         assert adapter.kill_switch_active is False
+
+    @pytest.mark.asyncio
+    async def test_session_gate_blocks_adapter_signal_outside_rth(self) -> None:
+        def fake_gated(_bars: list[Bar], ctx: object) -> StrategySignal:
+            if not ctx.session_allows_entries:
+                return StrategySignal(
+                    strategy=StrategyId.LIQUIDITY_SWEEP_DISPLACEMENT,
+                    side=Side.FLAT,
+                    rationale_tags=("session_gate_blocked",),
+                )
+            return StrategySignal(
+                strategy=StrategyId.LIQUIDITY_SWEEP_DISPLACEMENT,
+                side=Side.LONG,
+                entry=25_050.0,
+                stop=25_040.0,
+                target=25_080.0,
+                confidence=8.0,
+                risk_mult=1.0,
+            )
+
+        router = _FakeRouter([])
+        adapter = RouterAdapter(
+            asset="MNQ",
+            max_bars=10,
+            registry={StrategyId.LIQUIDITY_SWEEP_DISPLACEMENT: fake_gated},
+            eligibility={"MNQ": (StrategyId.LIQUIDITY_SWEEP_DISPLACEMENT,)},
+        )
+        bot = MnqBot(router=router, strategy_adapter=adapter, session_gate=SessionGate())
+        await bot.start()
+        await bot.on_bar(_orb_bar_with_ts(_utc_ms(2026, 5, 15, 9, 0)))
+        assert router.calls == []
+        assert adapter.last_decision is None
+        await bot.stop()
 
 
 class TestOnBarAdapterWithNoSignal:

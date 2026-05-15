@@ -26,6 +26,8 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass, field
+from datetime import UTC
+from datetime import datetime as dt_datetime
 from typing import TYPE_CHECKING, Any
 
 from eta_engine.bots.base_bot import Signal, SignalType
@@ -74,6 +76,24 @@ def _first_present(d: dict[str, Any], keys: tuple[str, ...], default: Any) -> An
         if k in d:
             return d[k]
     return default
+
+
+def _bar_datetime_utc(d: dict[str, Any]) -> dt_datetime | None:
+    """Best-effort UTC datetime for a live bot bar dict.
+
+    Live bot bars conventionally carry epoch-millisecond ``ts`` values.
+    When the field is missing or malformed we return ``None`` and let the
+    caller decide whether to fail-open or fail-closed.
+    """
+    ts_raw = _first_present(d, _TS_KEYS, None)
+    try:
+        ts_ms = float(ts_raw)
+    except (TypeError, ValueError):
+        return None
+    try:
+        return dt_datetime.fromtimestamp(ts_ms / 1000.0, tz=UTC)
+    except (OverflowError, OSError, ValueError):
+        return None
 
 
 def bar_from_dict(d: dict[str, Any], *, ts_fallback: int = 0) -> Bar:
@@ -306,13 +326,8 @@ class RouterAdapter:
         # Convert the bar's epoch-millisecond ``ts`` to a UTC datetime
         # the gate expects. Fall back gracefully when ``ts`` is absent
         # or malformed -- the hot loop must never crash on a bad bar.
-        from datetime import UTC
-        from datetime import datetime as _dt
-
-        ts_raw = bar.get("ts") or bar.get("timestamp")
-        try:
-            now = _dt.fromtimestamp(float(ts_raw) / 1000.0, tz=UTC)
-        except (TypeError, ValueError):
+        now = _bar_datetime_utc(bar)
+        if now is None:
             return False, "eod_check_skipped_bad_ts"
         try:
             verdict = eod_check(now)
@@ -395,10 +410,20 @@ class RouterAdapter:
             except Exception:  # noqa: BLE001 -- never crash the hot loop
                 pass
         self._tick_scheduler_safely()
+        session_allows_entries = self.session_allows_entries
+        gate = self.session_gate
+        if gate is not None and session_allows_entries:
+            now = _bar_datetime_utc(bar_dict)
+            if now is not None:
+                try:
+                    allowed, _reason = gate.entries_allowed(now)
+                except Exception:  # noqa: BLE001 -- never crash the hot loop
+                    allowed = True
+                session_allows_entries = bool(session_allows_entries and allowed)
         ctx = context_from_dict(
             bar_dict,
             kill_switch_active=self.kill_switch_active,
-            session_allows_entries=self.session_allows_entries,
+            session_allows_entries=session_allows_entries,
         )
         effective_eligibility = self._effective_eligibility()
         effective_registry = self.registry

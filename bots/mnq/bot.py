@@ -64,6 +64,7 @@ mode" -- JARVIS gates every order. In this mode:
 from __future__ import annotations
 
 import logging
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Protocol
 
 from eta_engine.bots.base_bot import (
@@ -504,6 +505,11 @@ class MnqBot(BaseBot):
         # automation keyed off signal stream.
         if self._strategy_adapter is not None and self._session_gate is not None:
             await self._maybe_flatten_eod(bar)
+            entries_allowed, _gate_reason = self._session_entries_allowed(bar)
+            if not entries_allowed:
+                regime = self.regime_filter(bar)
+                self._tick_retrospective(regime)
+                return
         # AI-Optimized strategy stack takes priority when wired.
         if self._strategy_adapter is not None:
             # Propagate bot-state gates into the adapter context.
@@ -529,6 +535,25 @@ class MnqBot(BaseBot):
                 self._track_entry_from_signal(signal, regime)
                 await self.on_signal(signal)
                 break  # one signal per bar
+
+    def _session_entries_allowed(self, bar: dict[str, Any]) -> tuple[bool, str]:
+        """Return the live session-gate verdict for this bar.
+
+        Fail-open on malformed timestamps so a feed glitch does not hard-stop
+        the bot; the separate adapter/session-gate tests cover the normal
+        path where valid epoch-millisecond bars are enforced.
+        """
+        if self._session_gate is None:
+            return True, ""
+        ts_raw = bar.get("ts") or bar.get("timestamp")
+        try:
+            now = datetime.fromtimestamp(float(ts_raw) / 1000.0, tz=UTC)
+        except (TypeError, ValueError, OSError, OverflowError):
+            return True, "session_gate_bad_ts"
+        try:
+            return self._session_gate.entries_allowed(now)
+        except Exception:  # noqa: BLE001 -- never crash the hot loop
+            return True, "session_gate_raised"
 
     async def on_signal(self, signal: Signal) -> OrderResult | None:
         """Route a signal to the venue through JARVIS.
