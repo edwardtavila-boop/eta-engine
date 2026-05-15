@@ -2078,6 +2078,72 @@ class TestDashboardAPI:
         )
         assert payload["paper_live_transition"]["first_failed_gate"]["name"] == "tws_api_4002"
 
+    def test_dashboard_diagnostics_lets_fresh_operator_queue_block_ready_paper_status(
+        self,
+        app_client,
+        tmp_path,
+    ):
+        queue_action = (
+            "Do not unlock new entries: reconcile broker/supervisor positions "
+            "(broker-only: MCL, MYM; divergent: MNQ) before clearing the supervisor entry halt"
+        )
+        (tmp_path / "state" / "operator_queue_snapshot.json").write_text(
+            json.dumps(
+                {
+                    "generated_at": datetime.now(UTC).isoformat(),
+                    "status": "blocked",
+                    "launch_blocked_count": 1,
+                    "operator_queue": {
+                        "source": "jarvis_status.operator_queue",
+                        "summary": {"BLOCKED": 2, "OBSERVED": 11, "UNKNOWN": 0},
+                        "launch_blocked_count": 1,
+                        "top_blockers": [
+                            {
+                                "op_id": "OP-20",
+                                "title": "Reconcile broker vs supervisor open positions",
+                                "detail": "3 broker/supervisor mismatch(es): broker-only: MCL, MYM; divergent: MNQ.",
+                                "evidence": {"launch_blocker": True},
+                                "next_actions": [queue_action],
+                            }
+                        ],
+                        "top_launch_blockers": [
+                            {
+                                "op_id": "OP-20",
+                                "title": "Reconcile broker vs supervisor open positions",
+                                "detail": "3 broker/supervisor mismatch(es): broker-only: MCL, MYM; divergent: MNQ.",
+                                "next_actions": [queue_action],
+                            }
+                        ],
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        (tmp_path / "state" / "paper_live_transition_check.json").write_text(
+            json.dumps(
+                {
+                    "generated_at": datetime.now(UTC).isoformat(),
+                    "status": "ready_to_launch_paper_live",
+                    "effective_status": "ready_to_launch_paper_live",
+                    "critical_ready": True,
+                    "paper_ready_bots": 9,
+                    "gates": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/dashboard/diagnostics")
+
+        assert r.status_code == 200
+        payload = r.json()
+        assert payload["operator_queue"]["top_launch_blocker_op_id"] == "OP-20"
+        assert payload["paper_live_transition"]["status"] == "ready_to_launch_paper_live"
+        assert payload["paper_live_transition"]["effective_status"] == "blocked_by_operator_queue"
+        assert payload["paper_live_transition"]["operator_queue_launch_blocked_count"] == 1
+        assert payload["paper_live_transition"]["first_launch_blocker_op_id"] == "OP-20"
+        assert payload["paper_live_transition"]["first_launch_next_action"].startswith("Do not unlock new entries")
+
     def test_dashboard_diagnostics_surfaces_effective_bracket_audit_hold(
         self,
         app_client,

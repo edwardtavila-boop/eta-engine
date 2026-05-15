@@ -7,7 +7,7 @@ Several blockers between "code complete" and "live tick" are
 operator-only -- broker funding, credential stashing in keyring,
 alert credentials, and design-call decisions. Ancillary MCP OAuth
 re-auth is tracked separately as observed integration debt. These accumulated through
-the v0.1.64-v0.1.69 residual-risk closure work into a 17-item OP-list
+the v0.1.64-v0.1.69 residual-risk closure work into a 20-item OP-list
 captured in the session transcript. The operator wanted that list
 as a one-liner CLI so they can run it on demand without scrolling
 back through the chat.
@@ -55,6 +55,8 @@ ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = ROOT.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
+
+from eta_engine.scripts import workspace_roots  # noqa: E402
 
 #: Possible verdicts for a single OP item.
 VERDICT_DONE = "DONE"
@@ -162,6 +164,17 @@ def _read_runtime_state(name: str) -> dict[str, Any]:
         return {}
     try:
         data = json.loads(p.read_text(encoding="utf-8-sig"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _read_json_path(path: Path) -> dict[str, Any]:
+    """Return a JSON object from ``path``, or empty dict on any failure."""
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8-sig"))
     except (OSError, json.JSONDecodeError):
         return {}
     return data if isinstance(data, dict) else {}
@@ -893,6 +906,138 @@ def _op19_ibgateway_1046_runtime() -> OpItem:
     return item
 
 
+def _symbols_from_reconcile_rows(payload: dict[str, Any], key: str) -> list[str]:
+    """Extract sorted symbols from a reconcile row list."""
+    rows = payload.get(key)
+    if not isinstance(rows, list):
+        return []
+    symbols = {
+        str(row.get("symbol") or "").strip().upper()
+        for row in rows
+        if isinstance(row, dict) and str(row.get("symbol") or "").strip()
+    }
+    return sorted(symbols)
+
+
+def _symbols_from_reconcile(payload: dict[str, Any], key: str) -> list[str]:
+    """Extract symbol summaries from hardening or raw reconcile payloads."""
+    symbol_key = f"{key}_symbols"
+    symbols = payload.get(symbol_key)
+    if isinstance(symbols, list):
+        return sorted({str(symbol).strip().upper() for symbol in symbols if str(symbol).strip()})
+    return _symbols_from_reconcile_rows(payload, key)
+
+
+def _reconcile_human_summary(
+    *,
+    broker_only: list[str],
+    supervisor_only: list[str],
+    divergent: list[str],
+) -> str:
+    parts: list[str] = []
+    if broker_only:
+        parts.append(f"broker-only: {', '.join(broker_only)}")
+    if supervisor_only:
+        parts.append(f"supervisor-only: {', '.join(supervisor_only)}")
+    if divergent:
+        parts.append(f"divergent: {', '.join(divergent)}")
+    return "; ".join(parts) if parts else "no mismatches"
+
+
+def _op20_supervisor_broker_reconcile() -> OpItem:
+    item = OpItem(
+        op_id="OP-20",
+        title="Reconcile broker vs supervisor open positions",
+        where="python -m eta_engine.scripts.supervisor_broker_reconcile_heartbeat --json",
+    )
+    hardening = _read_json_path(workspace_roots.ETA_VPS_OPS_HARDENING_AUDIT_PATH)
+    gates = hardening.get("safety_gates") if isinstance(hardening.get("safety_gates"), dict) else {}
+    hardening_gate = gates.get("supervisor_reconcile") if isinstance(gates.get("supervisor_reconcile"), dict) else {}
+    raw_reconcile = _read_json_path(workspace_roots.ETA_JARVIS_SUPERVISOR_RECONCILE_PATH)
+    source = hardening_gate or raw_reconcile
+
+    if not source:
+        item.verdict = VERDICT_UNKNOWN
+        item.detail = (
+            "No current broker/supervisor reconcile artifact is available. Refresh the read-only "
+            "VPS reconcile heartbeat before using the operator queue as launch truth."
+        )
+        item.evidence = {
+            "overall_severity": "amber",
+            "launch_blocker": False,
+            "source": "missing_reconcile_artifact",
+            "hardening_path": str(workspace_roots.ETA_VPS_OPS_HARDENING_AUDIT_PATH),
+            "reconcile_path": str(workspace_roots.ETA_JARVIS_SUPERVISOR_RECONCILE_PATH),
+        }
+        return item
+
+    broker_only = _symbols_from_reconcile(source, "broker_only")
+    supervisor_only = _symbols_from_reconcile(source, "supervisor_only")
+    divergent = _symbols_from_reconcile(source, "divergent")
+    mismatch_count = int(source.get("mismatch_count") or len(broker_only) + len(supervisor_only) + len(divergent))
+    ready = source.get("ready")
+    if ready is None:
+        ready = mismatch_count == 0
+    summary = _reconcile_human_summary(
+        broker_only=broker_only,
+        supervisor_only=supervisor_only,
+        divergent=divergent,
+    )
+    action_candidates = hardening.get("next_actions") if isinstance(hardening.get("next_actions"), list) else []
+    reconcile_actions = [
+        str(action)
+        for action in action_candidates
+        if action and "reconcile" in str(action).lower()
+    ]
+    human_action = reconcile_actions[0] if reconcile_actions else (
+        f"Do not unlock new entries: reconcile broker/supervisor positions ({summary}) "
+        "before clearing the supervisor entry halt"
+    )
+
+    if ready is True and mismatch_count == 0:
+        item.verdict = VERDICT_DONE
+        item.detail = "Broker and supervisor open-position snapshots match."
+        severity = "green"
+        launch_blocker = False
+    else:
+        item.verdict = VERDICT_BLOCKED
+        item.detail = f"{mismatch_count} broker/supervisor mismatch(es): {summary}."
+        severity = "red"
+        launch_blocker = True
+
+    item.evidence = {
+        "overall_severity": severity,
+        "launch_blocker": launch_blocker,
+        "source": source.get("source") or "supervisor_reconcile",
+        "status": source.get("status"),
+        "ready": bool(ready),
+        "mismatch_count": mismatch_count,
+        "broker_only_symbols": broker_only,
+        "supervisor_only_symbols": supervisor_only,
+        "divergent_symbols": divergent,
+        "checked_at": source.get("checked_at"),
+        "age_s": source.get("age_s"),
+        "order_action_allowed": False,
+        "blockers": [
+            {
+                "name": "supervisor_broker_reconcile",
+                "summary": item.detail,
+                "next_commands": [
+                    human_action,
+                    "python -m eta_engine.scripts.supervisor_broker_reconcile_heartbeat --json",
+                ],
+                "evidence": {
+                    "broker_only_symbols": broker_only,
+                    "supervisor_only_symbols": supervisor_only,
+                    "divergent_symbols": divergent,
+                    "order_action_allowed": False,
+                },
+            }
+        ],
+    }
+    return item
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -920,6 +1065,7 @@ def collect_items() -> list[OpItem]:
     items.append(_op17_phase_advancement())
     items.append(_op18_vps_failover_readiness())
     items.append(_op19_ibgateway_1046_runtime())
+    items.append(_op20_supervisor_broker_reconcile())
     return items
 
 

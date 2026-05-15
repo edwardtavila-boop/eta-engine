@@ -960,7 +960,20 @@ def _dashboard_diagnostics_payload() -> dict:
             or paper_live_transition.get("operator_queue_first_next_action")
             or ""
         )
-        if paper_live_transition.get("cache_stale") and not operator_queue.get("cache_stale"):
+        fresh_operator_queue = not operator_queue.get("cache_stale")
+        if fresh_operator_queue and not transition_first_launch_blocker:
+            transition_first_launch_blocker = str(first_launch_blocker.get("op_id") or "")
+        if fresh_operator_queue and not transition_first_launch_next_action:
+            launch_actions = first_launch_blocker.get("next_actions")
+            if isinstance(launch_actions, list) and launch_actions:
+                transition_first_launch_next_action = str(launch_actions[0])
+            else:
+                transition_first_launch_next_action = str(
+                    first_launch_blocker.get("detail")
+                    or first_launch_blocker.get("title")
+                    or transition_first_launch_next_action
+                )
+        if paper_live_transition.get("cache_stale") and fresh_operator_queue:
             transition_first_launch_blocker = str(first_launch_blocker.get("op_id") or "")
             transition_first_launch_next_action = str(
                 first_launch_blocker.get("detail")
@@ -980,6 +993,17 @@ def _dashboard_diagnostics_payload() -> dict:
     paper_live_held_by_bracket_audit = bool(
         roster_summary.get("paper_live_held_by_bracket_audit") or paper_live_transition.get("held_by_bracket_audit")
     )
+    if transition_launch_blocked > 0 and paper_live_effective_status in {
+        "ready",
+        "ready_to_launch_paper_live",
+        "green",
+    }:
+        paper_live_effective_status = "blocked_by_operator_queue"
+        paper_live_effective_detail = (
+            transition_first_launch_next_action
+            or str(first_launch_blocker.get("detail") or first_launch_blocker.get("title") or "")
+            or "Fresh operator queue has a launch blocker."
+        )
 
     return {
         **_dashboard_contract(),
@@ -1087,6 +1111,8 @@ def _dashboard_diagnostics_payload() -> dict:
             "broker_bracket_primary_sec_type": str(roster_summary.get("broker_bracket_primary_sec_type") or ""),
             "critical_ready": bool(paper_live_transition.get("critical_ready")),
             "paper_ready_bots": int(paper_live_transition.get("paper_ready_bots") or 0),
+            "operator_queue_blocked_count": int(operator_summary.get("BLOCKED") or 0),
+            "operator_queue_launch_blocked_count": transition_launch_blocked,
             "first_launch_blocker_op_id": transition_first_launch_blocker,
             "first_launch_next_action": transition_first_launch_next_action,
             "first_failed_gate": {

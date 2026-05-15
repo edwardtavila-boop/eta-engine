@@ -33,14 +33,14 @@ if TYPE_CHECKING:
 class TestOpListShape:
     """The list size + each item's required fields."""
 
-    def test_collects_all_nineteen_op_items(self):
+    def test_collects_all_twenty_op_items(self):
         items = collect_items()
-        assert len(items) == 19
+        assert len(items) == 20
 
     def test_op_ids_are_sequential(self):
         items = collect_items()
         op_ids = [i.op_id for i in items]
-        expected = [f"OP-{n}" for n in range(1, 20)]
+        expected = [f"OP-{n}" for n in range(1, 21)]
         assert op_ids == expected
 
     def test_every_item_has_a_title(self):
@@ -128,7 +128,7 @@ class TestRenderText:
     def test_renders_each_op_id(self):
         items = collect_items()
         text = render_text(items)
-        for n in range(1, 20):
+        for n in range(1, 21):
             assert f"OP-{n}" in text
 
 
@@ -148,10 +148,10 @@ class TestJsonOutput:
         payload = json.loads(captured)
         assert "items" in payload
         assert "summary" in payload
-        assert len(payload["items"]) == 19
+        assert len(payload["items"]) == 20
         # summary counts must equal items count
         total = sum(payload["summary"].values())
-        assert total == 19
+        assert total == 20
 
     def test_json_summary_has_all_four_verdicts(
         self,
@@ -853,3 +853,80 @@ class TestIbGateway1046RuntimeProbe:
         assert "The user name or password is incorrect" in item.detail
         next_commands = item.evidence["blockers"][0]["next_commands"]
         assert "-UseIbc" in next_commands[0]
+
+
+class TestSupervisorBrokerReconcileProbe:
+    def test_mismatch_blocks_launch_with_human_next_action(self, monkeypatch) -> None:
+        from eta_engine.scripts import operator_action_queue
+
+        def fake_read(path):
+            if path == operator_action_queue.workspace_roots.ETA_VPS_OPS_HARDENING_AUDIT_PATH:
+                return {
+                    "next_actions": [
+                        (
+                            "Do not unlock new entries: reconcile broker/supervisor positions "
+                            "(broker-only: MCL, MYM; divergent: MNQ) before clearing the supervisor entry halt"
+                        )
+                    ],
+                    "safety_gates": {
+                        "supervisor_reconcile": {
+                            "ready": False,
+                            "status": "BLOCKED_BROKER_SUPERVISOR_RECONCILE",
+                            "source": "supervisor_broker_reconcile_heartbeat",
+                            "mismatch_count": 3,
+                            "broker_only_symbols": ["MCL", "MYM"],
+                            "supervisor_only_symbols": [],
+                            "divergent_symbols": ["MNQ"],
+                        }
+                    },
+                }
+            return {}
+
+        monkeypatch.setattr(operator_action_queue, "_read_json_path", fake_read)
+
+        item = operator_action_queue._op20_supervisor_broker_reconcile()
+
+        assert item.verdict == VERDICT_BLOCKED
+        assert item.evidence["overall_severity"] == "red"
+        assert item.evidence["launch_blocker"] is True
+        assert item.evidence["broker_only_symbols"] == ["MCL", "MYM"]
+        assert item.evidence["divergent_symbols"] == ["MNQ"]
+        assert item.evidence["order_action_allowed"] is False
+        first_action = item.evidence["blockers"][0]["next_commands"][0]
+        assert first_action.startswith("Do not unlock new entries")
+        assert "MNQ" in item.detail
+
+    def test_raw_reconcile_match_marks_done(self, monkeypatch) -> None:
+        from eta_engine.scripts import operator_action_queue
+
+        def fake_read(path):
+            if path == operator_action_queue.workspace_roots.ETA_JARVIS_SUPERVISOR_RECONCILE_PATH:
+                return {
+                    "source": "supervisor_broker_reconcile_heartbeat",
+                    "mismatch_count": 0,
+                    "broker_only": [],
+                    "supervisor_only": [],
+                    "divergent": [],
+                    "order_action_allowed": False,
+                }
+            return {}
+
+        monkeypatch.setattr(operator_action_queue, "_read_json_path", fake_read)
+
+        item = operator_action_queue._op20_supervisor_broker_reconcile()
+
+        assert item.verdict == VERDICT_DONE
+        assert item.evidence["overall_severity"] == "green"
+        assert item.evidence["launch_blocker"] is False
+        assert item.evidence["mismatch_count"] == 0
+
+    def test_missing_reconcile_artifact_is_unknown_not_silent(self, monkeypatch) -> None:
+        from eta_engine.scripts import operator_action_queue
+
+        monkeypatch.setattr(operator_action_queue, "_read_json_path", lambda _path: {})
+
+        item = operator_action_queue._op20_supervisor_broker_reconcile()
+
+        assert item.verdict == VERDICT_UNKNOWN
+        assert item.evidence["source"] == "missing_reconcile_artifact"
+        assert "No current broker/supervisor reconcile artifact" in item.detail
