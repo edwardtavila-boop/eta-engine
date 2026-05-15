@@ -763,6 +763,7 @@ def test_paper_live_pending_entry_does_not_update_cross_bot_exposure(
 
     from eta_engine.feeds import capital_allocator as ca
     from eta_engine.scripts import daily_loss_killswitch
+    from eta_engine.scripts import jarvis_strategy_supervisor as mod
     from eta_engine.scripts.jarvis_strategy_supervisor import (
         BotInstance,
         FillRecord,
@@ -787,6 +788,8 @@ def test_paper_live_pending_entry_does_not_update_cross_bot_exposure(
     monkeypatch.setattr(sup, "_enforce_daily_loss_cap", lambda _bot, now: False)
     monkeypatch.setattr(sup, "_consult_sage_for_bot", lambda *args, **kwargs: None)
     monkeypatch.setattr(sup, "_check_signal_aggregation", lambda **_kwargs: "")
+    persisted: list[list[dict]] = []
+    monkeypatch.setattr(mod, "persist_open_positions", lambda rows: persisted.append(rows))
 
     verdict = MagicMock()
     verdict.is_blocked.return_value = False
@@ -816,6 +819,7 @@ def test_paper_live_pending_entry_does_not_update_cross_bot_exposure(
         direction="long",
         cash=50_000.0,
     )
+    sup.bots.append(bot)
 
     sup._maybe_enter(
         bot,
@@ -833,6 +837,7 @@ def test_paper_live_pending_entry_does_not_update_cross_bot_exposure(
     assert sup._cross_bot_tracker.net_position("MNQ") == 0.0  # noqa: SLF001
     assert bot.last_aggregation_reject_reason == ""
     assert any(bot_id == "mnq_futures_sage" for bot_id, _signal_id in sup._sent_signals)  # noqa: SLF001
+    assert persisted[-1] == []
 
 
 def test_daily_kill_switch_block_is_visible_on_bot_heartbeat(

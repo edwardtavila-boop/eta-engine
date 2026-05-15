@@ -93,6 +93,32 @@ def test_clean_phantom_clears_when_broker_reports_flat(
     assert result["unreachable"] == []
 
 
+def test_phantom_clear_refreshes_supervisor_aggregate(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """After a phantom is cleared, the aggregate file must be refreshed
+    before the next full tick can leave stale exposure on dashboards."""
+    from eta_engine.scripts import jarvis_strategy_supervisor as mod
+
+    sup = _make_supervisor(tmp_path, monkeypatch)
+    bot = _make_bot()
+    sup.bots = [bot]
+    monkeypatch.setattr(
+        sup._router,
+        "_get_broker_position_qty",
+        lambda _b: 0.0,
+    )
+    persisted: list[list[dict]] = []
+    monkeypatch.setattr(mod, "persist_open_positions", lambda rows: persisted.append(rows))
+
+    result = sup._clean_phantom_open_positions()
+    sup._persist_supervisor_open_positions_belief(reason="unit_phantom_clean")  # noqa: SLF001
+
+    assert result["cleared"] == [bot.bot_id]
+    assert persisted[-1] == []
+
+
 def test_clean_phantom_keeps_when_broker_matches(
     tmp_path: Path,
     monkeypatch,

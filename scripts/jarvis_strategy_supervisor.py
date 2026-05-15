@@ -3076,6 +3076,8 @@ class JarvisStrategySupervisor:
         findings["phantoms_cleared"] = phantom_findings["cleared"]
         findings["phantoms_kept"] = phantom_findings["kept"]
         findings["phantoms_unreachable"] = phantom_findings["unreachable"]
+        if phantom_findings["cleared"]:
+            self._persist_supervisor_open_positions_belief(reason="phantom_clean")
 
         return findings
 
@@ -3381,21 +3383,39 @@ class JarvisStrategySupervisor:
         # whole snapshots, never a half-written file.  Failure here is
         # logged and ignored (the trading loop must never depend on
         # state-persistence working).
+        self._persist_supervisor_open_positions_belief(reason="tick")
+
+    def _supervisor_open_position_rows(self) -> list[dict[str, Any]]:
+        """Return the supervisor's current open-position belief rows."""
+        return [
+            {
+                "bot_id": bot.bot_id,
+                "symbol": bot.symbol,
+                "side": str(bot.open_position.get("side", "?")).upper(),
+                "qty": abs(float(bot.open_position.get("qty", 0) or 0)),
+            }
+            for bot in self.bots
+            if isinstance(bot.open_position, dict) and bot.open_position.get("qty")
+        ]
+
+    def _persist_supervisor_open_positions_belief(self, *, reason: str) -> None:
+        """Persist aggregate local exposure immediately after state changes.
+
+        The L2 aggregate file is an operator-facing truth surface. Waiting
+        until the end of a full tick can leave stale local exposure visible
+        after phantom cleanup or broker-pending rollback if the process is
+        killed before the tick completes.
+        """
         try:
-            persist_open_positions(
-                [
-                    {
-                        "bot_id": bot.bot_id,
-                        "symbol": bot.symbol,
-                        "side": str(bot.open_position.get("side", "?")).upper(),
-                        "qty": abs(float(bot.open_position.get("qty", 0) or 0)),
-                    }
-                    for bot in self.bots
-                    if isinstance(bot.open_position, dict) and bot.open_position.get("qty")
-                ],
-            )
+            result = persist_open_positions(self._supervisor_open_position_rows())
+            if not getattr(result, "ok", True):
+                logger.warning(
+                    "persist_open_positions(%s) failed: %s",
+                    reason,
+                    getattr(result, "error", "unknown"),
+                )
         except Exception as exc:  # noqa: BLE001 -- never break the loop
-            logger.debug("persist_open_positions tick failure: %s", exc)
+            logger.debug("persist_open_positions %s failure: %s", reason, exc)
 
     @staticmethod
     def _bar_float(bar: dict[str, Any], key: str) -> float | None:
@@ -4680,6 +4700,7 @@ class JarvisStrategySupervisor:
                     size_mult,
                     rec.note,
                 )
+                self._persist_supervisor_open_positions_belief(reason="broker_pending_entry")
                 return
             # Record the broker-acked entry on the cross-bot tracker.
             # ``rec`` is non-None only on broker-success branches
