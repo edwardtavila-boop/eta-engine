@@ -4180,9 +4180,11 @@ def _truth_snapshot(rows: list[dict], *, server_ts: float) -> dict:
     if order_entry_hold_active:
         warnings.append(f"order_entry_hold: {order_entry_hold_reason}")
 
-    fresh_rows = [
-        row for row in rows if row.get("heartbeat_age_s") is not None and float(row.get("heartbeat_age_s") or 0) <= 300
-    ]
+    fresh_rows = [row for row in rows if _row_has_fresh_heartbeat(row)]
+    live_attached_rows = [row for row in rows if _is_live_attached_bot_row(row)]
+    live_in_trade_rows = [row for row in live_attached_rows if _row_has_open_exposure(row)]
+    live_idle_rows = [row for row in live_attached_rows if not _row_has_open_exposure(row)]
+    readiness_only_rows = [row for row in rows if _is_readiness_only_bot_row(row)]
     if runtime.get("_warning") and fresh_rows:
         runtime = {
             "mode": "running",
@@ -4207,7 +4209,13 @@ def _truth_snapshot(rows: list[dict], *, server_ts: float) -> dict:
         warnings.append(f"missing bot status directory: {bots_dir}")
     if fresh_rows:
         status = "live"
-        line = f"Live ETA truth: {len(fresh_rows)}/{len(rows)} bot heartbeat(s) are fresh."
+        line = (
+            f"Live ETA truth: {len(fresh_rows)}/{len(rows)} bot heartbeat(s) are fresh; "
+            f"{len(live_attached_rows)} attached, {len(live_in_trade_rows)} in trade, "
+            f"{len(live_idle_rows)} flat/idle."
+        )
+        if readiness_only_rows:
+            line = f"{line} {len(readiness_only_rows)} readiness-only inventory row(s) remain staged."
     elif rows and supervisor_liveness["keepalive_fresh"]:
         status = "working"
         main_age = supervisor_liveness.get("main_heartbeat_age_s")
@@ -4244,6 +4252,11 @@ def _truth_snapshot(rows: list[dict], *, server_ts: float) -> dict:
         "supervisor_liveness": supervisor_liveness,
         "truth_status": status,
         "truth_summary_line": line,
+        "fresh_heartbeat_bots": len(fresh_rows),
+        "live_attached_bots": len(live_attached_rows),
+        "live_in_trade_bots": len(live_in_trade_rows),
+        "idle_live_bots": len(live_idle_rows),
+        "readiness_only_bots": len(readiness_only_rows),
         "truth_execution_hold": order_entry_hold if order_entry_hold_active else {},
         "truth_warnings": warnings,
         "truth_checked_at": server_ts,
@@ -7220,19 +7233,18 @@ def bot_fleet_roster(
         snapshot=daily_loss_killswitch,
         gate_mode=str((lane_rollup.get(SHADOW_PAPER_LANE) or {}).get("daily_loss_gate_mode") or ""),
     )
-    active_bots = sum(1 for r in rows if _is_runtime_active_bot_row(r))
-    staged_bots = max(0, len(rows) - active_bots)
-    running_bots = sum(1 for r in rows if str(r.get("status") or "").lower() == "running")
+    live_attached_rows = [r for r in rows if _is_live_attached_bot_row(r)]
+    live_in_trade_rows = [r for r in live_attached_rows if _row_has_open_exposure(r)]
+    live_attached_bots = len(live_attached_rows)
+    live_in_trade_bots = len(live_in_trade_rows)
+    idle_live_bots = max(0, live_attached_bots - live_in_trade_bots)
+    staged_bots = sum(1 for r in rows if _is_readiness_only_bot_row(r))
+    inactive_runtime_bots = max(0, len(rows) - live_attached_bots - staged_bots)
+    active_bots = live_attached_bots
+    running_bots = sum(1 for r in live_attached_rows if str(r.get("status") or "").lower() == "running")
     mnq_rows = [r for r in rows if str(r.get("symbol") or "").upper().startswith("MNQ")]
-
-    def _is_readiness_only_runtime_inventory(row: dict) -> bool:
-        return (
-            str(row.get("status") or "").lower() == "readiness_only"
-            or str(row.get("mode") or "").lower() == "readiness_snapshot"
-        )
-
-    mnq_readiness_only = [r for r in mnq_rows if _is_readiness_only_runtime_inventory(r)]
-    mnq_runtime_rows = [r for r in mnq_rows if not _is_readiness_only_runtime_inventory(r)]
+    mnq_readiness_only = [r for r in mnq_rows if _is_readiness_only_bot_row(r)]
+    mnq_runtime_rows = [r for r in mnq_rows if not _is_readiness_only_bot_row(r)]
     truth = _truth_snapshot(rows, server_ts=now_ts)
     signal_cadence = _signal_cadence_summary(rows, server_ts=now_ts)
     if live_broker_probe:
@@ -7471,6 +7483,10 @@ def bot_fleet_roster(
             "active_bot_count": active_bots,
             "runtime_active_bots": active_bots,
             "running_bots": running_bots,
+            "live_attached_bots": live_attached_bots,
+            "live_in_trade_bots": live_in_trade_bots,
+            "idle_live_bots": idle_live_bots,
+            "inactive_runtime_bots": inactive_runtime_bots,
             "staged_bots": staged_bots,
             "readiness_staged_bots": staged_bots,
             "current_blocked_bots": int(blocked_rollup["count"]),
@@ -7601,6 +7617,10 @@ def bot_fleet_roster(
         },
         "active_bots": active_bots,
         "runtime_active_bots": active_bots,
+        "live_attached_bots": live_attached_bots,
+        "live_in_trade_bots": live_in_trade_bots,
+        "idle_live_bots": idle_live_bots,
+        "inactive_runtime_bots": inactive_runtime_bots,
         "staged_bots": staged_bots,
         "portfolio_summary": portfolio_summary,
         "close_history": close_history,
