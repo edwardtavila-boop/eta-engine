@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
+import contextlib
 import json
 import sys
 import urllib.error
@@ -206,6 +208,108 @@ def _stale_flat_open_orders(
             },
         )
     return sorted(stale_orders, key=lambda item: (str(item.get("symbol") or ""), str(item.get("order_id") or "")))
+
+
+def _ensure_main_thread_event_loop() -> None:
+    """ib_insync/eventkit expects an event loop at import time on Python 3.14."""
+    with contextlib.suppress(RuntimeError):
+        asyncio.get_event_loop()
+        return
+    asyncio.set_event_loop(asyncio.new_event_loop())
+
+
+def _trade_status(trade: object) -> str:
+    status = getattr(trade, "orderStatus", None)
+    return str(getattr(status, "status", "") or "").strip()
+
+
+def _trade_symbol_keys(trade: object) -> set[str]:
+    contract = getattr(trade, "contract", None)
+    keys: set[str] = set()
+    for raw_symbol in (
+        getattr(contract, "symbol", "") if contract is not None else "",
+        getattr(contract, "localSymbol", "") if contract is not None else "",
+    ):
+        symbol = _clean_symbol(raw_symbol)
+        if not symbol:
+            continue
+        keys.add(symbol)
+        root = _futures_root(symbol)
+        if root:
+            keys.add(root)
+    return keys
+
+
+def _stale_order_keys(order: dict[str, Any]) -> set[str]:
+    symbol = _clean_symbol(order.get("symbol"))
+    if not symbol:
+        return set()
+    root = _futures_root(symbol)
+    return {symbol, root} if root else {symbol}
+
+
+def _validate_stale_flat_open_orders_live(
+    stale_orders: list[dict[str, Any]],
+    *,
+    host: str = "127.0.0.1",
+    port: int = 4002,
+    client_id: int = 9034,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Cross-check stale cached orders against the live TWS order socket."""
+    if not stale_orders:
+        return [], {"status": "not_needed"}
+    try:
+        _ensure_main_thread_event_loop()
+        from ib_insync import IB  # noqa: PLC0415
+
+        ib = IB()
+        try:
+            ib.connect(host, port, clientId=client_id, timeout=10)
+            open_trades = list(ib.openTrades())
+            open_orders = list(ib.openOrders())
+        finally:
+            with contextlib.suppress(Exception):
+                ib.disconnect()
+    except Exception as exc:  # noqa: BLE001 -- safety audit fails closed on socket ambiguity
+        return stale_orders, {
+            "status": "live_socket_validation_failed",
+            "detail": f"{type(exc).__name__}: {exc}",
+            "input_stale_flat_open_order_count": len(stale_orders),
+            "validated_stale_flat_open_order_count": len(stale_orders),
+        }
+
+    active_trade_keys: set[str] = set()
+    for trade in open_trades:
+        if _trade_status(trade).lower() in _OPEN_ORDER_DONE_STATUSES:
+            continue
+        active_trade_keys.update(_trade_symbol_keys(trade))
+
+    if not open_trades and not open_orders:
+        return [], {
+            "status": "live_socket_no_open_orders",
+            "live_open_trade_count": 0,
+            "live_open_order_count": 0,
+            "input_stale_flat_open_order_count": len(stale_orders),
+            "validated_stale_flat_open_order_count": 0,
+        }
+
+    if not active_trade_keys:
+        return stale_orders, {
+            "status": "live_socket_open_orders_without_trade_contracts",
+            "live_open_trade_count": len(open_trades),
+            "live_open_order_count": len(open_orders),
+            "input_stale_flat_open_order_count": len(stale_orders),
+            "validated_stale_flat_open_order_count": len(stale_orders),
+        }
+
+    validated = [order for order in stale_orders if _stale_order_keys(order) & active_trade_keys]
+    return validated, {
+        "status": "live_socket_validated",
+        "live_open_trade_count": len(open_trades),
+        "live_open_order_count": len(open_orders),
+        "input_stale_flat_open_order_count": len(stale_orders),
+        "validated_stale_flat_open_order_count": len(validated),
+    }
 
 
 def _normalize_open_order(raw_order: object) -> dict[str, Any]:
@@ -892,6 +996,7 @@ def build_bracket_audit(
     *,
     fleet: dict[str, Any] | None = None,
     manual_ack: dict[str, Any] | None = None,
+    validate_live_stale_orders: bool = False,
 ) -> dict[str, Any]:
     fleet = load_fleet_payload() if fleet is None else fleet or {}
     manual_ack = manual_ack or {}
@@ -911,6 +1016,11 @@ def build_bracket_audit(
         open_positions=candidate_open_positions,
         broker_open_position_count=open_count,
     )
+    stale_flat_open_order_validation = {"status": "not_requested"}
+    if validate_live_stale_orders and stale_flat_open_orders:
+        stale_flat_open_orders, stale_flat_open_order_validation = _validate_stale_flat_open_orders_live(
+            stale_flat_open_orders,
+        )
     broker_oco_evidence = build_broker_oco_evidence(
         candidate_unprotected_positions,
         _open_orders_from_fleet(fleet),
@@ -1051,6 +1161,7 @@ def build_bracket_audit(
         "broker_oco_verified_positions": broker_oco_verified_positions,
         "manual_oco_verified_positions": manual_oco_verified_positions,
         "stale_flat_open_orders": stale_flat_open_orders,
+        "stale_flat_open_order_validation": stale_flat_open_order_validation,
         "unprotected_positions": unprotected_positions,
         "primary_unprotected_position": unprotected_positions[0] if unprotected_positions else None,
         "adapter_support": adapter_support,
@@ -1159,6 +1270,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--confirm", action="store_true")
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--no-write", action="store_true")
+    parser.add_argument(
+        "--no-live-stale-order-validation",
+        action="store_true",
+        help="Skip TWS socket validation for cached flat-symbol open orders.",
+    )
     args = parser.parse_args(argv)
 
     if args.ack_manual_oco:
@@ -1202,7 +1318,11 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     fleet = load_fleet_payload(args.fleet_url)
-    report = build_bracket_audit(fleet=fleet, manual_ack=load_manual_oco_ack(args.manual_ack_path))
+    report = build_bracket_audit(
+        fleet=fleet,
+        manual_ack=load_manual_oco_ack(args.manual_ack_path),
+        validate_live_stale_orders=not args.no_live_stale_order_validation,
+    )
     out_path = None if args.no_write else write_report(report, args.out)
     if args.json:
         print(json.dumps(report, indent=2, sort_keys=True, default=str))
