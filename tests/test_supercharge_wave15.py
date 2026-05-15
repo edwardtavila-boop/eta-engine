@@ -106,6 +106,14 @@ def test_risk_budget_default_when_no_trades(tmp_path: Path) -> None:
     assert mult.n_trades_mtd == 0
 
 
+def test_risk_budget_default_when_snapshot_and_log_missing(tmp_path: Path) -> None:
+    from eta_engine.brain.jarvis_v3.risk_budget_allocator import current_envelope
+
+    mult = current_envelope(snapshot_path=tmp_path / "missing.json", log_path=tmp_path / "missing.jsonl")
+    assert mult.multiplier == 1.0
+    assert mult.n_trades_mtd == 0
+
+
 def test_risk_budget_full_standdown_at_max_drawdown(tmp_path: Path) -> None:
     import json
     from datetime import UTC, datetime

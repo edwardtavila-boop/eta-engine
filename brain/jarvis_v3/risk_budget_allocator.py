@@ -25,13 +25,16 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from pathlib import Path
+
+from eta_engine.scripts import workspace_roots
 
 logger = logging.getLogger(__name__)
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_TRADE_LOG = ROOT / "state" / "jarvis_intel" / "trade_closes.jsonl"
+DEFAULT_SNAPSHOT_PATH = workspace_roots.ETA_JARVIS_RISK_BUDGET_SNAPSHOT_PATH
 
 
 @dataclass
@@ -85,14 +88,80 @@ def _parse_ts(s: str | None) -> datetime | None:
         return None
 
 
-def _days_remaining_in_month(now: datetime) -> int:
-    """Days from `now` (inclusive) to last day of month."""
-    if now.month == 12:
-        next_month = now.replace(year=now.year + 1, month=1, day=1)
-    else:
-        next_month = now.replace(month=now.month + 1, day=1)
-    last_day = next_month - timedelta(days=1)
-    return max(0, (last_day.date() - now.date()).days + 1)
+def _load_snapshot(path: Path, *, bot_id: str | None = None) -> dict | None:
+    if not path.exists():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if bot_id:
+        bot_entry = payload.get("bots", {}).get(bot_id)
+        if isinstance(bot_entry, dict):
+            return bot_entry
+    fleet = payload.get("fleet")
+    return fleet if isinstance(fleet, dict) else None
+
+
+def _budget_from_summary(
+    *,
+    cfg: BudgetEnvelope,
+    mtd_r: float,
+    drawdown_r: float,
+    n_trades_mtd: int,
+    source: str,
+) -> BudgetMultiplier:
+    if n_trades_mtd <= 0:
+        return BudgetMultiplier(
+            multiplier=1.0,
+            mtd_r=0.0,
+            drawdown_r=0.0,
+            n_trades_mtd=0,
+            reason=f"no MTD trades; standard sizing [{source}]",
+        )
+
+    if mtd_r <= cfg.max_drawdown_r:
+        return BudgetMultiplier(
+            multiplier=cfg.min_multiplier,
+            mtd_r=round(mtd_r, 3),
+            drawdown_r=round(drawdown_r, 3),
+            n_trades_mtd=n_trades_mtd,
+            reason=(
+                f"MTD {mtd_r:+.2f}R <= max_drawdown_r {cfg.max_drawdown_r:+.2f}R; "
+                f"FULL STAND-DOWN [{source}]"
+            ),
+        )
+
+    if mtd_r <= cfg.soft_drawdown_r:
+        ratio = (mtd_r - cfg.max_drawdown_r) / max(cfg.soft_drawdown_r - cfg.max_drawdown_r, 1e-9)
+        mult = cfg.min_multiplier + ratio * (0.5 - cfg.min_multiplier)
+        return BudgetMultiplier(
+            multiplier=round(max(cfg.min_multiplier, min(mult, 1.0)), 3),
+            mtd_r=round(mtd_r, 3),
+            drawdown_r=round(drawdown_r, 3),
+            n_trades_mtd=n_trades_mtd,
+            reason=f"MTD {mtd_r:+.2f}R in soft drawdown [{source}]",
+        )
+
+    if mtd_r >= cfg.aggressive_threshold_r:
+        cap_at = cfg.aggressive_threshold_r * 2
+        ratio = min(1.0, (mtd_r - cfg.aggressive_threshold_r) / max(cap_at - cfg.aggressive_threshold_r, 1e-9))
+        mult = 1.0 + ratio * (cfg.max_multiplier - 1.0)
+        return BudgetMultiplier(
+            multiplier=round(max(1.0, min(mult, cfg.max_multiplier)), 3),
+            mtd_r=round(mtd_r, 3),
+            drawdown_r=round(drawdown_r, 3),
+            n_trades_mtd=n_trades_mtd,
+            reason=f"MTD {mtd_r:+.2f}R above aggressive threshold [{source}]",
+        )
+
+    return BudgetMultiplier(
+        multiplier=1.0,
+        mtd_r=round(mtd_r, 3),
+        drawdown_r=round(drawdown_r, 3),
+        n_trades_mtd=n_trades_mtd,
+        reason=f"MTD {mtd_r:+.2f}R in standard band [{source}]",
+    )
 
 
 def current_envelope(
@@ -100,6 +169,7 @@ def current_envelope(
     envelope: BudgetEnvelope | None = None,
     bot_id: str | None = None,
     log_path: Path = DEFAULT_TRADE_LOG,
+    snapshot_path: Path = DEFAULT_SNAPSHOT_PATH,
     as_of: datetime | None = None,
 ) -> BudgetMultiplier:
     """Compute the budget multiplier as of ``as_of`` (default now).
@@ -108,10 +178,18 @@ def current_envelope(
     toward the MTD P&L; otherwise all bots aggregate.
     """
     cfg = envelope or BudgetEnvelope()
+    snapshot = _load_snapshot(snapshot_path, bot_id=bot_id)
+    if snapshot is not None:
+        return _budget_from_summary(
+            cfg=cfg,
+            mtd_r=float(snapshot.get("mtd_r", 0.0)),
+            drawdown_r=float(snapshot.get("drawdown_r", 0.0)),
+            n_trades_mtd=int(snapshot.get("n_trades_mtd", 0)),
+            source="snapshot",
+        )
+
     now = as_of or datetime.now(UTC)
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-
-    # Pull MTD trades
     trades = _read_jsonl(log_path)
     mtd_trades: list[dict] = []
     for t in trades:
@@ -123,12 +201,12 @@ def current_envelope(
         mtd_trades.append(t)
 
     if not mtd_trades:
-        return BudgetMultiplier(
-            multiplier=1.0,
+        return _budget_from_summary(
+            cfg=cfg,
             mtd_r=0.0,
             drawdown_r=0.0,
             n_trades_mtd=0,
-            reason="no MTD trades; standard sizing",
+            source="log",
         )
 
     # Cumulative R + drawdown from peak
@@ -143,49 +221,12 @@ def current_envelope(
     mtd_r = cum
     drawdown_r = -max_dd  # signed: negative = drawdown depth
 
-    # Multiplier rules
-    if mtd_r <= cfg.max_drawdown_r:
-        return BudgetMultiplier(
-            multiplier=cfg.min_multiplier,
-            mtd_r=round(mtd_r, 3),
-            drawdown_r=round(drawdown_r, 3),
-            n_trades_mtd=len(mtd_trades),
-            reason=(f"MTD {mtd_r:+.2f}R <= max_drawdown_r {cfg.max_drawdown_r:+.2f}R; FULL STAND-DOWN"),
-        )
-
-    if mtd_r <= cfg.soft_drawdown_r:
-        # Linear ramp from min_multiplier (at max_drawdown) to 0.5 at soft_drawdown
-        ratio = (mtd_r - cfg.max_drawdown_r) / max(cfg.soft_drawdown_r - cfg.max_drawdown_r, 1e-9)
-        mult = cfg.min_multiplier + ratio * (0.5 - cfg.min_multiplier)
-        return BudgetMultiplier(
-            multiplier=round(max(cfg.min_multiplier, min(mult, 1.0)), 3),
-            mtd_r=round(mtd_r, 3),
-            drawdown_r=round(drawdown_r, 3),
-            n_trades_mtd=len(mtd_trades),
-            reason=(f"MTD {mtd_r:+.2f}R in soft drawdown; defensive sizing"),
-        )
-
-    if mtd_r >= cfg.aggressive_threshold_r:
-        # Linear ramp from 1.0 at aggressive_threshold to max_multiplier
-        # at 2x aggressive_threshold
-        cap_at = cfg.aggressive_threshold_r * 2
-        ratio = min(1.0, (mtd_r - cfg.aggressive_threshold_r) / max(cap_at - cfg.aggressive_threshold_r, 1e-9))
-        mult = 1.0 + ratio * (cfg.max_multiplier - 1.0)
-        return BudgetMultiplier(
-            multiplier=round(max(1.0, min(mult, cfg.max_multiplier)), 3),
-            mtd_r=round(mtd_r, 3),
-            drawdown_r=round(drawdown_r, 3),
-            n_trades_mtd=len(mtd_trades),
-            reason=(f"MTD {mtd_r:+.2f}R above aggressive threshold; aggressive sizing"),
-        )
-
-    # Standard zone
-    return BudgetMultiplier(
-        multiplier=1.0,
+    return _budget_from_summary(
+        cfg=cfg,
         mtd_r=round(mtd_r, 3),
         drawdown_r=round(drawdown_r, 3),
         n_trades_mtd=len(mtd_trades),
-        reason=f"MTD {mtd_r:+.2f}R in standard band",
+        source="log",
     )
 
 
@@ -195,6 +236,7 @@ def size_for_proposal(
     envelope: BudgetEnvelope | None = None,
     bot_id: str | None = None,
     log_path: Path = DEFAULT_TRADE_LOG,
+    snapshot_path: Path = DEFAULT_SNAPSHOT_PATH,
 ) -> tuple[float, BudgetMultiplier]:
     """Adjust a base size by the current budget envelope.
 
@@ -203,5 +245,6 @@ def size_for_proposal(
         envelope=envelope,
         bot_id=bot_id,
         log_path=log_path,
+        snapshot_path=snapshot_path,
     )
     return base_size * mult.multiplier, mult
