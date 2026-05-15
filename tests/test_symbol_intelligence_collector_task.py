@@ -37,6 +37,7 @@ def test_symbol_intelligence_collector_task_registers_24x7_vps_heartbeat():
     assert "NT AUTHORITY\\SYSTEM" in text
     assert "LogonType Interactive" in text
     assert "current_user:$currentUser" in text
+    assert "news/book/decisions/outcomes/quality plus Jarvis sentiment snapshots" in text
     assert "RetireLegacyTier2Task" in text
     assert "EtaTier2SnapshotSync" in text
 

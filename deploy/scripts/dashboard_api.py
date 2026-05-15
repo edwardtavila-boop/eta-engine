@@ -1337,6 +1337,20 @@ def _symbol_intelligence_snapshot_path() -> Path:
     return _state_dir() / "symbol_intelligence_latest.json"
 
 
+def _symbol_intelligence_collector_status_path() -> Path:
+    override = os.environ.get("ETA_SYMBOL_INTELLIGENCE_COLLECTOR_STATUS_PATH", "").strip()
+    if override:
+        return Path(override)
+    return _state_dir() / "symbol_intelligence_collector_latest.json"
+
+
+def _sentiment_snapshot_collector_status_path() -> Path:
+    override = os.environ.get("ETA_SENTIMENT_SNAPSHOT_COLLECTOR_STATUS_PATH", "").strip()
+    if override:
+        return Path(override)
+    return _state_dir() / "sentiment_snapshot_collector_latest.json"
+
+
 def _diamond_retune_status_path() -> Path:
     override = os.environ.get("ETA_DIAMOND_RETUNE_STATUS_PATH", "").strip()
     if override:
@@ -1453,6 +1467,135 @@ def _diamond_retune_diagnostic_payload(snapshot: dict[str, Any]) -> dict[str, ob
     }
 
 
+def _symbol_intelligence_collector_unknown(path: Path, *, reason: str) -> dict[str, object]:
+    return {
+        "kind": "eta_symbol_intelligence_collector",
+        "source": reason,
+        "path": str(path),
+        "status": "missing",
+        "ready": False,
+        "audit_status": "unknown",
+        "news_records": 0,
+        "book_records": 0,
+        "sentiment_snapshot_count": 0,
+        "duration_seconds": None,
+        "updated_at": None,
+        "age_s": None,
+    }
+
+
+def _load_symbol_intelligence_collector_status() -> dict[str, object]:
+    path = _symbol_intelligence_collector_status_path()
+    payload = _read_json_file(path)
+    if not payload:
+        return _symbol_intelligence_collector_unknown(path, reason="missing_snapshot")
+
+    bootstrap = payload.get("bootstrap_counts") if isinstance(payload.get("bootstrap_counts"), dict) else {}
+    audit = payload.get("audit") if isinstance(payload.get("audit"), dict) else {}
+    mtime = _safe_mtime(path)
+    status = str(payload.get("status") or "unknown")
+    normalized: dict[str, object] = dict(payload)
+    normalized.update(
+        {
+            "kind": str(payload.get("kind") or "eta_symbol_intelligence_collector"),
+            "source": str(payload.get("source") or "symbol_intelligence_collector_latest"),
+            "path": str(path),
+            "status": status,
+            "ready": status == "ok",
+            "audit_status": str(audit.get("overall_status") or "unknown"),
+            "news_records": int(bootstrap.get("news") or 0),
+            "book_records": int(bootstrap.get("book") or 0),
+            "sentiment_snapshot_count": int(bootstrap.get("sentiment_snapshots") or 0),
+            "duration_seconds": _float_value(payload.get("duration_seconds")),
+            "updated_at": datetime.fromtimestamp(mtime, UTC).isoformat() if mtime is not None else None,
+            "age_s": max(0, int(time.time() - mtime)) if mtime is not None else None,
+        }
+    )
+    return normalized
+
+
+def _sentiment_snapshot_unknown(path: Path, *, reason: str) -> dict[str, object]:
+    return {
+        "kind": "eta_sentiment_snapshot_collector",
+        "source": reason,
+        "path": str(path),
+        "status": "missing",
+        "ready": False,
+        "asset_count": 0,
+        "ok_count": 0,
+        "ok_assets": [],
+        "sources": [],
+        "active_topics": [],
+        "lead_asset": "",
+        "lead_social_volume_z": None,
+        "updated_at": None,
+        "age_s": None,
+        "results": {},
+    }
+
+
+def _load_sentiment_snapshot_status() -> dict[str, object]:
+    path = _sentiment_snapshot_collector_status_path()
+    payload = _read_json_file(path)
+    if not payload:
+        return _sentiment_snapshot_unknown(path, reason="missing_snapshot")
+
+    requested_assets_raw = payload.get("requested_assets") if isinstance(payload.get("requested_assets"), list) else []
+    requested_assets = [str(asset).strip() for asset in requested_assets_raw if str(asset).strip()]
+    results = payload.get("results") if isinstance(payload.get("results"), dict) else {}
+    ok_assets: list[str] = []
+    sources: list[str] = []
+    active_topics: list[str] = []
+    lead_asset = ""
+    lead_social_volume_z: float | None = None
+    lead_score = -1.0
+
+    for asset, row in results.items():
+        if not isinstance(row, dict):
+            continue
+        asset_name = str(asset).strip()
+        if row.get("ok") is True and asset_name:
+            ok_assets.append(asset_name)
+        raw_source = str(row.get("raw_source") or "").strip()
+        if raw_source and raw_source not in sources:
+            sources.append(raw_source)
+        topic_flags = row.get("topic_flags") if isinstance(row.get("topic_flags"), dict) else {}
+        for topic, enabled in topic_flags.items():
+            topic_name = str(topic).strip()
+            if enabled and topic_name and topic_name not in active_topics:
+                active_topics.append(topic_name)
+        social_volume_z = _float_value(row.get("social_volume_z"))
+        if social_volume_z is not None and abs(social_volume_z) > lead_score:
+            lead_score = abs(social_volume_z)
+            lead_asset = asset_name
+            lead_social_volume_z = round(social_volume_z, 4)
+
+    ok_count = int(payload.get("ok_count") or len(ok_assets))
+    status = str(payload.get("status") or ("ok" if ok_count >= len(requested_assets) else "partial"))
+    mtime = _safe_mtime(path)
+    normalized: dict[str, object] = dict(payload)
+    normalized.update(
+        {
+            "kind": str(payload.get("kind") or "eta_sentiment_snapshot_collector"),
+            "source": str(payload.get("source") or "sentiment_snapshot_collector_latest"),
+            "path": str(path),
+            "status": status,
+            "ready": status == "ok" and ok_count >= len(requested_assets),
+            "asset_count": len(requested_assets),
+            "ok_count": ok_count,
+            "ok_assets": ok_assets,
+            "sources": sources,
+            "active_topics": active_topics[:6],
+            "lead_asset": lead_asset,
+            "lead_social_volume_z": lead_social_volume_z,
+            "updated_at": datetime.fromtimestamp(mtime, UTC).isoformat() if mtime is not None else None,
+            "age_s": max(0, int(time.time() - mtime)) if mtime is not None else None,
+            "results": results,
+        }
+    )
+    return normalized
+
+
 def _symbol_intelligence_unknown(path: Path, *, reason: str) -> dict[str, object]:
     return {
         "schema": "eta.symbol_intelligence.audit.v1",
@@ -1468,6 +1611,9 @@ def _symbol_intelligence_unknown(path: Path, *, reason: str) -> dict[str, object
         "status_counts": {"green": 0, "amber": 0, "red": 0, "unknown": 0},
         "required_gap_count": 0,
         "optional_gap_count": 0,
+        "optional_component_symbol_counts": {"news": 0, "book": 0},
+        "news_ready_symbols": 0,
+        "book_ready_symbols": 0,
         "symbols": [],
         "notes": ["symbol intelligence snapshot has not been generated"],
     }
@@ -1476,6 +1622,13 @@ def _symbol_intelligence_unknown(path: Path, *, reason: str) -> dict[str, object
 def _symbol_intelligence_diagnostic_payload(snapshot: dict[str, Any]) -> dict[str, object]:
     path = Path(str(snapshot.get("path") or _symbol_intelligence_snapshot_path()))
     mtime = _safe_mtime(path)
+    optional_counts = (
+        snapshot.get("optional_component_symbol_counts")
+        if isinstance(snapshot.get("optional_component_symbol_counts"), dict)
+        else {}
+    )
+    collector = snapshot.get("collector") if isinstance(snapshot.get("collector"), dict) else {}
+    sentiment = snapshot.get("sentiment") if isinstance(snapshot.get("sentiment"), dict) else {}
     return {
         "status": str(snapshot.get("status") or "UNKNOWN").upper(),
         "ready": bool(snapshot.get("ready")),
@@ -1485,6 +1638,32 @@ def _symbol_intelligence_diagnostic_payload(snapshot: dict[str, Any]) -> dict[st
         "status_counts": snapshot.get("status_counts") if isinstance(snapshot.get("status_counts"), dict) else {},
         "required_gap_count": int(snapshot.get("required_gap_count") or 0),
         "optional_gap_count": int(snapshot.get("optional_gap_count") or 0),
+        "optional_component_symbol_counts": optional_counts,
+        "news_ready_symbols": int(optional_counts.get("news") or 0),
+        "book_ready_symbols": int(optional_counts.get("book") or 0),
+        "collector": {
+            "status": str(collector.get("status") or "missing"),
+            "ready": bool(collector.get("ready")),
+            "audit_status": str(collector.get("audit_status") or "unknown"),
+            "news_records": int(collector.get("news_records") or 0),
+            "book_records": int(collector.get("book_records") or 0),
+            "sentiment_snapshot_count": int(collector.get("sentiment_snapshot_count") or 0),
+            "updated_at": collector.get("updated_at"),
+            "age_s": collector.get("age_s"),
+        },
+        "sentiment": {
+            "status": str(sentiment.get("status") or "missing"),
+            "ready": bool(sentiment.get("ready")),
+            "asset_count": int(sentiment.get("asset_count") or 0),
+            "ok_count": int(sentiment.get("ok_count") or 0),
+            "ok_assets": sentiment.get("ok_assets") if isinstance(sentiment.get("ok_assets"), list) else [],
+            "sources": sentiment.get("sources") if isinstance(sentiment.get("sources"), list) else [],
+            "active_topics": sentiment.get("active_topics") if isinstance(sentiment.get("active_topics"), list) else [],
+            "lead_asset": str(sentiment.get("lead_asset") or ""),
+            "lead_social_volume_z": sentiment.get("lead_social_volume_z"),
+            "updated_at": sentiment.get("updated_at"),
+            "age_s": sentiment.get("age_s"),
+        },
         "path": str(path),
         "source": str(snapshot.get("source") or "symbol_intelligence_latest"),
         "updated_at": datetime.fromtimestamp(mtime, UTC).isoformat() if mtime is not None else None,
@@ -1495,13 +1674,23 @@ def _symbol_intelligence_diagnostic_payload(snapshot: dict[str, Any]) -> dict[st
 def _load_symbol_intelligence_snapshot() -> dict[str, object]:
     path = _symbol_intelligence_snapshot_path()
     payload = _read_json_file(path)
+    collector_status = _load_symbol_intelligence_collector_status()
+    sentiment_status = _load_sentiment_snapshot_status()
     if not payload:
-        return _symbol_intelligence_unknown(path, reason="missing_snapshot")
+        normalized = _symbol_intelligence_unknown(path, reason="missing_snapshot")
+        normalized["collector"] = collector_status
+        normalized["sentiment"] = sentiment_status
+        return normalized
 
     symbols = payload.get("symbols") if isinstance(payload.get("symbols"), list) else []
     counts = {"green": 0, "amber": 0, "red": 0, "unknown": 0}
     required_gap_count = 0
     optional_gap_count = 0
+    optional_component_names_raw = payload.get("optional_components") if isinstance(payload.get("optional_components"), list) else []
+    optional_component_names = [str(name).strip() for name in optional_component_names_raw if str(name).strip()]
+    if not optional_component_names:
+        optional_component_names = ["news", "book"]
+    optional_component_symbol_counts = {name: 0 for name in optional_component_names}
     for row in symbols:
         if not isinstance(row, dict):
             counts["unknown"] += 1
@@ -1512,8 +1701,12 @@ def _load_symbol_intelligence_snapshot() -> dict[str, object]:
         counts[row_status] += 1
         required = row.get("missing_required") if isinstance(row.get("missing_required"), list) else []
         optional = row.get("missing_optional") if isinstance(row.get("missing_optional"), list) else []
+        optional_components = row.get("optional_components") if isinstance(row.get("optional_components"), dict) else {}
         required_gap_count += len(required)
         optional_gap_count += len(optional)
+        for component_name in optional_component_symbol_counts:
+            if optional_components.get(component_name) is True:
+                optional_component_symbol_counts[component_name] += 1
 
     status = str(payload.get("status") or payload.get("overall_status") or "UNKNOWN").strip().upper()
     if status not in {"GREEN", "AMBER", "RED", "UNKNOWN"}:
@@ -1538,6 +1731,11 @@ def _load_symbol_intelligence_snapshot() -> dict[str, object]:
             "status_counts": counts,
             "required_gap_count": required_gap_count,
             "optional_gap_count": optional_gap_count,
+            "optional_component_symbol_counts": optional_component_symbol_counts,
+            "news_ready_symbols": int(optional_component_symbol_counts.get("news") or 0),
+            "book_ready_symbols": int(optional_component_symbol_counts.get("book") or 0),
+            "collector": collector_status,
+            "sentiment": sentiment_status,
             "symbols": symbols,
         }
     )

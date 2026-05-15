@@ -607,14 +607,64 @@ class TestDashboardAPI:
                             "status": "green",
                             "missing_required": [],
                             "missing_optional": ["news"],
+                            "optional_components": {"news": False, "book": True},
                         },
                         {
                             "symbol": "ES1",
                             "status": "amber",
                             "missing_required": ["decisions"],
                             "missing_optional": ["book"],
+                            "optional_components": {"news": True, "book": False},
                         },
                     ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        (state / "symbol_intelligence_collector_latest.json").write_text(
+            json.dumps(
+                {
+                    "kind": "eta_symbol_intelligence_collector",
+                    "status": "ok",
+                    "bootstrap_counts": {"news": 7, "book": 2, "sentiment_snapshots": 4},
+                    "audit": {"overall_status": "amber"},
+                }
+            ),
+            encoding="utf-8",
+        )
+        (state / "sentiment_snapshot_collector_latest.json").write_text(
+            json.dumps(
+                {
+                    "kind": "eta_sentiment_snapshot_collector",
+                    "status": "ok",
+                    "requested_assets": ["BTC", "ETH", "SOL", "macro"],
+                    "ok_count": 4,
+                    "results": {
+                        "BTC": {
+                            "ok": True,
+                            "raw_source": "google_news_proxy",
+                            "social_volume_z": 0.6,
+                            "topic_flags": {"regulation": True},
+                        },
+                        "ETH": {
+                            "ok": True,
+                            "raw_source": "google_news_proxy",
+                            "social_volume_z": -0.5,
+                            "topic_flags": {"regulation": True},
+                        },
+                        "SOL": {
+                            "ok": True,
+                            "raw_source": "google_news_proxy",
+                            "social_volume_z": 2.5,
+                            "topic_flags": {"fomo": True},
+                        },
+                        "macro": {
+                            "ok": True,
+                            "raw_source": "google_news_proxy",
+                            "social_volume_z": 0.8,
+                            "topic_flags": {"fomc": True, "inflation": True},
+                        },
+                    },
                 }
             ),
             encoding="utf-8",
@@ -628,10 +678,19 @@ class TestDashboardAPI:
         assert symbol_intelligence["status_counts"]["green"] == 1
         assert symbol_intelligence["required_gap_count"] == 1
         assert symbol_intelligence["optional_gap_count"] == 2
+        assert symbol_intelligence["news_ready_symbols"] == 1
+        assert symbol_intelligence["book_ready_symbols"] == 1
+        assert symbol_intelligence["collector"]["status"] == "ok"
+        assert symbol_intelligence["collector"]["sentiment_snapshot_count"] == 4
+        assert symbol_intelligence["sentiment"]["ok_count"] == 4
+        assert "fomc" in symbol_intelligence["sentiment"]["active_topics"]
 
         direct = app_client.get("/api/data/symbol-intelligence")
         assert direct.status_code == 200
         assert direct.json()["symbol_count"] == 2
+        assert direct.json()["optional_component_symbol_counts"]["news"] == 1
+        assert direct.json()["collector"]["news_records"] == 7
+        assert direct.json()["sentiment"]["lead_asset"] == "SOL"
         assert "no-store" in direct.headers["Cache-Control"]
 
     def test_dashboard_includes_diamond_retune_status(self, app_client, tmp_path):
@@ -704,7 +763,43 @@ class TestDashboardAPI:
                     "schema": "eta.symbol_intelligence.audit.v1",
                     "status": "GREEN",
                     "average_score_pct": 100,
-                    "symbols": [{"symbol": "MNQ1", "status": "green"}],
+                    "symbols": [
+                        {
+                            "symbol": "MNQ1",
+                            "status": "green",
+                            "optional_components": {"news": True, "book": True},
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        (state / "symbol_intelligence_collector_latest.json").write_text(
+            json.dumps(
+                {
+                    "kind": "eta_symbol_intelligence_collector",
+                    "status": "ok",
+                    "bootstrap_counts": {"news": 4, "book": 1, "sentiment_snapshots": 4},
+                    "audit": {"overall_status": "green"},
+                }
+            ),
+            encoding="utf-8",
+        )
+        (state / "sentiment_snapshot_collector_latest.json").write_text(
+            json.dumps(
+                {
+                    "kind": "eta_sentiment_snapshot_collector",
+                    "status": "ok",
+                    "requested_assets": ["BTC", "ETH", "SOL", "macro"],
+                    "ok_count": 4,
+                    "results": {
+                        "macro": {
+                            "ok": True,
+                            "raw_source": "google_news_proxy",
+                            "social_volume_z": 1.0,
+                            "topic_flags": {"fomc": True, "inflation": True},
+                        },
+                    },
                 }
             ),
             encoding="utf-8",
@@ -718,6 +813,13 @@ class TestDashboardAPI:
         assert data["ready"] is True
         assert data["contract_ok"] is True
         assert data["symbol_count"] == 1
+        assert data["news_ready_symbols"] == 1
+        assert data["book_ready_symbols"] == 1
+        assert data["collector"]["status"] == "ok"
+        assert data["collector"]["book_records"] == 1
+        assert data["sentiment"]["status"] == "ok"
+        assert data["sentiment"]["ok_count"] == 4
+        assert "fomc" in data["sentiment"]["active_topics"]
 
     def test_dashboard_diagnostics_summarizes_diamond_retune_status(self, app_client, tmp_path):
         state = tmp_path / "state"

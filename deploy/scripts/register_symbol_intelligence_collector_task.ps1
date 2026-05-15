@@ -88,7 +88,7 @@ $settings = New-ScheduledTaskSettingsSet `
     -ExecutionTimeLimit (New-TimeSpan -Minutes 4)
 $principal = New-ScheduledTaskPrincipal `
     -UserId "NT AUTHORITY\SYSTEM" -LogonType ServiceAccount -RunLevel Highest
-$description = "ETA symbol-intelligence collector: refreshes bars/events/decisions/outcomes/quality under C:\EvolutionaryTradingAlgo."
+$description = "ETA symbol-intelligence collector: refreshes bars/events/news/book/decisions/outcomes/quality plus Jarvis sentiment snapshots under C:\EvolutionaryTradingAlgo."
 $registeredPrincipal = "SYSTEM"
 
 try {

@@ -387,7 +387,7 @@ tr:hover td{background:rgba(100,215,255,.055)}
   <div class="card"><h3 id="totalTradesLabel">MTD Closed Trades</h3><div class="stat blue" id="totalTrades">--</div><div class="sub" id="totalTradesSub"></div></div>
   <div class="card"><h3>Win Rate</h3><div class="stat blue" id="winRate">--</div><div class="sub" id="winRateDetail"></div></div>
   <div class="card"><h3>Trade-Ready</h3><div class="stat green" id="approvedCount">--</div><div class="sub">approved or conditional</div></div>
-  <div class="card"><h3>Data Coverage</h3><div class="stat" id="dataIntelligenceStatus">--</div><div class="sub" id="dataIntelligenceSub">symbols + evidence</div></div>
+  <div class="card"><h3>Data Coverage</h3><div class="stat" id="dataIntelligenceStatus">--</div><div class="sub" id="dataIntelligenceSub">symbols + news + book + sentiment</div></div>
   <div class="card retune-factory-card"><h3>Retune Factory</h3><div class="stat" id="retuneFactoryStatus">--</div><div class="sub" id="retuneFactorySub">paper retunes pending</div></div>
   <div class="card"><h3>Policy Mode</h3><div class="stat yellow" id="jarvisMode">--</div></div>
   <div class="card"><h3>AI Ops</h3><div class="stat" id="adminAiStatus">-</div><div class="sub" id="adminAiSub">Jarvis + Hermes</div></div>
@@ -2499,7 +2499,7 @@ function showOffline(clearDashboard = true) {
   const operatorQueueSub = document.getElementById('operatorQueueSub');
   if (operatorQueueSub) operatorQueueSub.textContent = '';
   const dataIntelligenceSub = document.getElementById('dataIntelligenceSub');
-  if (dataIntelligenceSub) dataIntelligenceSub.textContent = 'symbols + evidence';
+  if (dataIntelligenceSub) dataIntelligenceSub.textContent = 'symbols + news + book + sentiment';
   const retuneFactorySub = document.getElementById('retuneFactorySub');
   if (retuneFactorySub) retuneFactorySub.textContent = 'paper retunes pending';
   const signalCadenceSub = document.getElementById('signalCadenceSub');
@@ -2703,18 +2703,52 @@ function dataIntelligenceReadout(snapshot) {
   const score = finiteNumber(payload.average_score_pct);
   const symbolCount = finiteNumber(payload.symbol_count) ?? (Array.isArray(payload.symbols) ? payload.symbols.length : 0);
   const counts = payload.status_counts && typeof payload.status_counts === 'object' ? payload.status_counts : {};
+  const optionalCounts = payload.optional_component_symbol_counts && typeof payload.optional_component_symbol_counts === 'object'
+    ? payload.optional_component_symbol_counts
+    : {};
+  const collector = payload.collector && typeof payload.collector === 'object' ? payload.collector : {};
+  const sentiment = payload.sentiment && typeof payload.sentiment === 'object' ? payload.sentiment : {};
   const greenCount = finiteNumber(counts.green) ?? 0;
   const requiredGaps = finiteNumber(payload.required_gap_count) ?? 0;
-  const optionalGaps = finiteNumber(payload.optional_gap_count) ?? 0;
+  const newsReady = finiteNumber(payload.news_ready_symbols ?? optionalCounts.news) ?? 0;
+  const bookReady = finiteNumber(payload.book_ready_symbols ?? optionalCounts.book) ?? 0;
+  const sentimentAssets = finiteNumber(sentiment.asset_count) ?? 0;
+  const sentimentOk = finiteNumber(sentiment.ok_count) ?? 0;
+  const collectorStatus = String(collector.status || '').toLowerCase();
+  const sentimentTopics = Array.isArray(sentiment.active_topics)
+    ? sentiment.active_topics.filter(Boolean).slice(0, 2)
+    : [];
   const contractOk = payload.contract_ok !== false && status !== 'UNKNOWN';
   const label = score == null ? status.charAt(0) + status.slice(1).toLowerCase() : `${Math.round(score)}%`;
   const className = status === 'GREEN' ? 'green' : status === 'AMBER' ? 'yellow' : status === 'RED' ? 'red' : 'dim';
+  const summaryBits = [];
+  if (symbolCount > 0) {
+    summaryBits.push(`${greenCount}/${symbolCount} clean`);
+    summaryBits.push(`news ${newsReady}/${symbolCount}`);
+    summaryBits.push(`book ${bookReady}/${symbolCount}`);
+  }
+  if (sentimentAssets > 0) {
+    summaryBits.push(`sent ${sentimentOk}/${sentimentAssets}`);
+  }
+  if (sentimentTopics.length) {
+    summaryBits.push(sentimentTopics.join('/'));
+  }
+  if (requiredGaps > 0) {
+    summaryBits.push(`${requiredGaps} required gaps`);
+  } else if (symbolCount > 0 && contractOk) {
+    summaryBits.push('required clean');
+  }
+  if (!summaryBits.length && collectorStatus) {
+    summaryBits.push(`collector ${collectorStatus}`);
+  }
   return {
     label,
     className,
     sub: contractOk
-      ? `${status} | ${greenCount}/${symbolCount} clean | ${requiredGaps} required gaps | ${optionalGaps} optional`
-      : 'snapshot pending; run symbol intelligence audit',
+      ? `${status} | ${summaryBits.join(' | ')}`
+      : sentimentAssets > 0
+        ? `snapshot pending; sent ${sentimentOk}/${sentimentAssets}`
+        : 'snapshot pending; run symbol intelligence audit',
   };
 }
 
