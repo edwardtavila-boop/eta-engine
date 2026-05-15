@@ -36,6 +36,7 @@ import threading
 import time
 from collections import defaultdict, deque
 from datetime import UTC, datetime, timedelta
+from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from urllib import error as urllib_error
@@ -70,6 +71,10 @@ DASHBOARD_VERSION = "v1"
 DASHBOARD_RELEASE_STAGE = "pre_beta"
 DASHBOARD_LOCAL_TIME_ZONE_NAME = "America/New_York"
 DASHBOARD_LOCAL_TIME_ZONE = ZoneInfo(DASHBOARD_LOCAL_TIME_ZONE_NAME)
+_SESSION_GATE_SIGNAL_AUDIT_TAIL_LIMIT = max(
+    20,
+    int(os.getenv("ETA_SESSION_GATE_SIGNAL_AUDIT_TAIL_LIMIT", "200") or 200),
+)
 DASHBOARD_REQUIRED_DATA = (
     "bot_fleet",
     "fleet_equity",
@@ -410,12 +415,25 @@ _PAPER_LIVE_TRANSITION_CACHE_MAX_AGE_S = _positive_int_env(
     "ETA_PAPER_LIVE_TRANSITION_CACHE_MAX_AGE_S",
     15 * 60,
 )
+_IBKR_GATEWAY_TRANSIENT_GRACE_S = _positive_int_env(
+    "ETA_IBKR_GATEWAY_TRANSIENT_GRACE_S",
+    3 * 60,
+)
 _DASHBOARD_DIAGNOSTICS_CACHE_TTL_S = _positive_int_env(
     "ETA_DASHBOARD_DIAGNOSTICS_CACHE_TTL_S",
     30,
 )
 _DASHBOARD_DIAGNOSTICS_CACHE_LOCK = threading.Lock()
 _DASHBOARD_DIAGNOSTICS_CACHE: dict[str, Any] = {"ts": 0.0, "payload": None}
+_IBKR_GATEWAY_TRANSIENT_RECOVERY_STATUSES = frozenset(
+    {
+        "waiting_for_failures",
+        "auth_pending",
+        "restart_requested",
+        "started_gateway",
+        "start_cooldown",
+    },
+)
 
 
 def _dashboard_cors_origins() -> list[str]:
@@ -920,6 +938,7 @@ def _dashboard_diagnostics_payload() -> dict:
     eta_readiness_snapshot = _eta_readiness_snapshot_payload(server_ts=server_ts)
     daily_stop_reset_audit = _daily_stop_reset_audit_payload(server_ts=server_ts)
     vps_ops_hardening = _vps_ops_hardening_payload(server_ts=server_ts)
+    session_gate_signal_audit = _session_gate_signal_audit_payload(server_ts=server_ts)
 
     try:
         roster = bot_fleet_roster(Response(), since_days=1, live_broker_probe=False)
@@ -1212,6 +1231,7 @@ def _dashboard_diagnostics_payload() -> dict:
         "daily_stop_reset_audit": daily_stop_reset_audit,
         "vps_ops_hardening": vps_ops_hardening,
         "hardening": vps_ops_hardening,
+        "session_gate_signal_audit": session_gate_signal_audit,
         "checks": {
             "api_contract": True,
             "card_contract": int(card_summary.get("dead") or 0) == 0 and int(card_summary.get("stale") or 0) == 0,
@@ -1263,6 +1283,8 @@ def _dashboard_diagnostics_payload() -> dict:
             in _DAILY_STOP_RESET_AUDIT_STATUSES,
             "vps_ops_hardening_contract": vps_ops_hardening.get("status") in _VPS_OPS_HARDENING_STATUSES,
             "hardening_contract": vps_ops_hardening.get("status") in _VPS_OPS_HARDENING_STATUSES,
+            "session_gate_signal_audit_contract": session_gate_signal_audit.get("status")
+            in {"ok", "warn", "missing", "unreadable"},
             "auth_contract": "auth_session" in DASHBOARD_REQUIRED_DATA,
         },
     }
@@ -2829,8 +2851,61 @@ def _load_tws_watchdog_payload() -> tuple[dict, str] | tuple[None, None]:
     return None, None
 
 
+def _ibkr_gateway_transient_degrade_state(
+    *,
+    healthy: bool,
+    checked_at: object,
+    last_healthy_at: object,
+    recovery: dict | None,
+    process: dict | None,
+    server_ts: float,
+) -> dict[str, object]:
+    """Return whether a fresh watchdog flap should surface as degraded, not down."""
+    if healthy:
+        return {"active": False}
+
+    recovery_payload = recovery if isinstance(recovery, dict) else {}
+    recovery_status = str(recovery_payload.get("status") or "").strip().lower()
+    if recovery_status not in _IBKR_GATEWAY_TRANSIENT_RECOVERY_STATUSES:
+        return {"active": False, "recovery_status": recovery_status}
+
+    checked_age_s = _iso_age_s(checked_at, server_ts=server_ts)
+    last_healthy_age_s = _iso_age_s(last_healthy_at, server_ts=server_ts)
+    if (
+        checked_age_s is None
+        or checked_age_s > _IBKR_GATEWAY_TRANSIENT_GRACE_S
+        or last_healthy_age_s is None
+        or last_healthy_age_s > _IBKR_GATEWAY_TRANSIENT_GRACE_S
+    ):
+        return {
+            "active": False,
+            "recovery_status": recovery_status,
+            "checked_age_s": checked_age_s,
+            "last_healthy_age_s": last_healthy_age_s,
+        }
+
+    process_payload = process if isinstance(process, dict) else {}
+    process_running = process_payload.get("running")
+    if process_running is False and recovery_status not in {"started_gateway", "start_cooldown"}:
+        return {
+            "active": False,
+            "recovery_status": recovery_status,
+            "checked_age_s": checked_age_s,
+            "last_healthy_age_s": last_healthy_age_s,
+        }
+
+    return {
+        "active": True,
+        "recovery_status": recovery_status,
+        "checked_age_s": checked_age_s,
+        "last_healthy_age_s": last_healthy_age_s,
+        "grace_s": _IBKR_GATEWAY_TRANSIENT_GRACE_S,
+    }
+
+
 def _broker_gateway_snapshot() -> dict:
     """Return broker execution gateway health, separate from bot heartbeat liveness."""
+    now_ts = time.time()
     data, key = _load_tws_watchdog_payload()
     if data is not None and key is not None:
         details = data.get("details") if isinstance(data.get("details"), dict) else {}
@@ -2872,8 +2947,24 @@ def _broker_gateway_snapshot() -> dict:
             detail = f"{detail}; recovery: {recovery['status']}" if detail else f"recovery: {recovery['status']}"
             if recovery.get("operator_action_required"):
                 detail = f"{detail}; operator action required"
+        transient = _ibkr_gateway_transient_degrade_state(
+            healthy=healthy,
+            checked_at=data.get("checked_at"),
+            last_healthy_at=data.get("last_healthy_at"),
+            recovery=recovery,
+            process=process,
+            server_ts=now_ts,
+        )
+        if transient.get("active"):
+            detail = _append_detail_once(
+                detail,
+                (
+                    "recently healthy "
+                    f"({int(transient.get('last_healthy_age_s') or 0)}s ago); self-heal grace active"
+                ),
+            )
         ibkr = {
-            "status": "connected" if healthy else "down",
+            "status": "connected" if healthy else "degraded" if transient.get("active") else "down",
             "healthy": healthy,
             "checked_at": data.get("checked_at"),
             "last_healthy_at": data.get("last_healthy_at"),
@@ -2889,6 +2980,8 @@ def _broker_gateway_snapshot() -> dict:
             "install": install,
             "recovery": recovery,
             "account_summary": account_summary,
+            "transient_self_heal_grace_active": transient.get("active") is True,
+            "last_healthy_age_s": transient.get("last_healthy_age_s"),
             "source_path": key,
         }
         return {
@@ -3933,6 +4026,172 @@ def _heartbeat_payload() -> dict:
         return legacy
 
     raise HTTPException(status_code=404, detail=f"heartbeat not found in {state_dir}")
+
+
+@lru_cache(maxsize=1)
+def _session_gate_audit_registry() -> dict[str, dict[str, Any]]:
+    """Return session-gated bot policy metadata keyed by bot id."""
+    try:
+        from eta_engine.scripts.supervisor_session_wiring import build_session_gate
+        from eta_engine.strategies.per_bot_registry import all_assignments
+    except Exception:
+        return {}
+
+    out: dict[str, dict[str, Any]] = {}
+    for assignment in all_assignments():
+        extras = assignment.extras if isinstance(assignment.extras, dict) else {}
+        try:
+            gate = build_session_gate(symbol=str(assignment.symbol or ""), extras=extras)
+        except Exception:
+            continue
+        if gate is None:
+            continue
+        cfg = getattr(gate, "config", None)
+        out[str(assignment.bot_id)] = {
+            "symbol": str(assignment.symbol or ""),
+            "strategy_kind": str(getattr(assignment, "strategy_kind", "") or ""),
+            "timezone_name": str(getattr(cfg, "timezone_name", "") or ""),
+            "rth_start_local": str(getattr(cfg, "rth_start_local", "") or ""),
+            "rth_end_local": str(getattr(cfg, "rth_end_local", "") or ""),
+            "eod_cutoff_local": str(getattr(cfg, "eod_cutoff_local", "") or ""),
+            "gate": gate,
+        }
+    return out
+
+
+def _session_gate_signal_audit_payload(*, server_ts: float | None = None) -> dict[str, object]:
+    """Audit recent sent signals for session-window violations."""
+    server_ts = server_ts or time.time()
+    checked_at = datetime.fromtimestamp(server_ts, UTC).isoformat()
+    path = _state_dir() / "jarvis_intel" / "supervisor" / "sent_signals.jsonl"
+    registry = _session_gate_audit_registry()
+    base: dict[str, object] = {
+        "status": "unknown",
+        "ready": False,
+        "source": "sent_signals.jsonl",
+        "path": str(path),
+        "checked_at": checked_at,
+        "tail_limit": _SESSION_GATE_SIGNAL_AUDIT_TAIL_LIMIT,
+        "reporting_timezone": DASHBOARD_LOCAL_TIME_ZONE_NAME,
+        "policy_scope": "session_window_only",
+        "news_blackout_checked": False,
+        "session_gated_bots_configured": len(registry),
+        "records_scanned": 0,
+        "session_gated_records_scanned": 0,
+        "session_gated_bots_seen": 0,
+        "violations_count": 0,
+        "violated_bot_count": 0,
+        "violated_bots": [],
+        "recent_violations": [],
+        "parse_errors": 0,
+        "summary_line": "",
+    }
+    if not path.exists():
+        return {
+            **base,
+            "status": "missing",
+            "summary_line": "Sent-signal ledger missing; recent session-window sends cannot be audited yet.",
+        }
+
+    try:
+        lines = read_jsonl_tail(path, _SESSION_GATE_SIGNAL_AUDIT_TAIL_LIMIT)
+    except OSError as exc:
+        return {
+            **base,
+            "status": "unreadable",
+            "error": str(exc),
+            "summary_line": f"Sent-signal ledger unreadable: {exc}",
+        }
+
+    parse_errors = 0
+    session_gated_records_scanned = 0
+    unique_gated_bots_seen: set[str] = set()
+    violations: list[dict[str, object]] = []
+    for raw in lines:
+        try:
+            rec = json.loads(raw)
+        except json.JSONDecodeError:
+            parse_errors += 1
+            continue
+        if not isinstance(rec, dict):
+            parse_errors += 1
+            continue
+        bot_id = str(rec.get("bot_id") or "").strip()
+        sent_at_utc = str(rec.get("sent_at_utc") or "").strip()
+        signal_id = str(rec.get("signal_id") or "").strip()
+        if not bot_id or not sent_at_utc:
+            continue
+        audit_cfg = registry.get(bot_id)
+        if not isinstance(audit_cfg, dict):
+            continue
+        gate = audit_cfg.get("gate")
+        if gate is None:
+            continue
+        try:
+            sent_dt = datetime.fromisoformat(sent_at_utc)
+        except ValueError:
+            parse_errors += 1
+            continue
+        if sent_dt.tzinfo is None:
+            sent_dt = sent_dt.replace(tzinfo=UTC)
+        session_gated_records_scanned += 1
+        unique_gated_bots_seen.add(bot_id)
+        try:
+            allowed, reason = gate.entries_allowed(sent_dt)
+        except Exception:
+            parse_errors += 1
+            continue
+        if allowed:
+            continue
+        sent_local = sent_dt.astimezone(DASHBOARD_LOCAL_TIME_ZONE)
+        violations.append(
+            {
+                "bot_id": bot_id,
+                "symbol": str(audit_cfg.get("symbol") or ""),
+                "strategy_kind": str(audit_cfg.get("strategy_kind") or ""),
+                "signal_id": signal_id,
+                "reason": str(reason or "blocked"),
+                "sent_at_utc": sent_dt.isoformat(),
+                "sent_at_local": sent_local.strftime("%Y-%m-%d %H:%M:%S %Z"),
+                "policy_timezone": str(audit_cfg.get("timezone_name") or ""),
+                "policy_rth_start_local": str(audit_cfg.get("rth_start_local") or ""),
+                "policy_rth_end_local": str(audit_cfg.get("rth_end_local") or ""),
+                "policy_eod_cutoff_local": str(audit_cfg.get("eod_cutoff_local") or ""),
+            }
+        )
+
+    violated_bots = sorted({str(row.get("bot_id") or "") for row in violations if row.get("bot_id")})
+    if violations:
+        latest = violations[0]
+        summary_line = (
+            f"{len(violations)} session-gate violation(s) found in recent signal tape. "
+            f"Latest: {latest['bot_id']} {latest['reason']} at {latest['sent_at_local']}."
+        )
+        status = "warn"
+    elif session_gated_records_scanned > 0:
+        summary_line = (
+            f"No recent session-gate violations found in {session_gated_records_scanned} "
+            "session-gated signal(s)."
+        )
+        status = "ok"
+    else:
+        summary_line = "No recent session-gated signals found in the scanned signal tape."
+        status = "ok"
+
+    return {
+        **base,
+        "status": status,
+        "ready": True,
+        "records_scanned": len(lines),
+        "session_gated_records_scanned": session_gated_records_scanned,
+        "session_gated_bots_seen": len(unique_gated_bots_seen),
+        "violations_count": len(violations),
+        "violated_bot_count": len(violated_bots),
+        "violated_bots": violated_bots,
+        "recent_violations": violations[:5],
+        "parse_errors": parse_errors,
+        "summary_line": summary_line,
+    }
 
 
 def _operator_queue_cache_payload(*, server_ts: float | None = None) -> dict | None:

@@ -2546,6 +2546,133 @@ class TestDashboardAPI:
             "Entries paused by session gate: outside_rth"
         )
 
+    def test_dashboard_diagnostics_flags_session_gate_signal_violations(self, app_client, monkeypatch, tmp_path):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        class _FakeGate:
+            def __init__(self, allowed: bool, reason: str) -> None:
+                self.allowed = allowed
+                self.reason = reason
+
+            def entries_allowed(self, _now):
+                return self.allowed, self.reason
+
+        supervisor_dir = tmp_path / "state" / "jarvis_intel" / "supervisor"
+        supervisor_dir.mkdir(parents=True, exist_ok=True)
+        (supervisor_dir / "sent_signals.jsonl").write_text(
+            "\n".join(
+                (
+                    json.dumps(
+                        {
+                            "bot_id": "mnq_futures_sage",
+                            "signal_id": "mnq_sig_1",
+                            "sent_at_utc": "2026-05-15T12:28:24+00:00",
+                        }
+                    ),
+                    json.dumps(
+                        {
+                            "bot_id": "met_sweep_reclaim",
+                            "signal_id": "met_sig_1",
+                            "sent_at_utc": "2026-05-15T12:29:24+00:00",
+                        }
+                    ),
+                )
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(
+            mod,
+            "_session_gate_audit_registry",
+            lambda: {
+                "mnq_futures_sage": {
+                    "symbol": "MNQ1",
+                    "strategy_kind": "orb_sage_gated",
+                    "timezone_name": "America/Chicago",
+                    "rth_start_local": "08:30:00",
+                    "rth_end_local": "16:00:00",
+                    "eod_cutoff_local": "15:59:00",
+                    "gate": _FakeGate(False, "outside_rth"),
+                },
+                "met_sweep_reclaim": {
+                    "symbol": "MET1",
+                    "strategy_kind": "confluence_scorecard",
+                    "timezone_name": "America/Chicago",
+                    "rth_start_local": "00:00:00",
+                    "rth_end_local": "23:59:59",
+                    "eod_cutoff_local": "23:59:59",
+                    "gate": _FakeGate(True, "allowed"),
+                },
+            },
+        )
+
+        r = app_client.get("/api/dashboard/diagnostics")
+
+        assert r.status_code == 200
+        data = r.json()
+        audit = data["session_gate_signal_audit"]
+        assert audit["status"] == "warn"
+        assert audit["ready"] is True
+        assert audit["session_gated_records_scanned"] == 2
+        assert audit["violations_count"] == 1
+        assert audit["violated_bots"] == ["mnq_futures_sage"]
+        assert audit["recent_violations"][0]["bot_id"] == "mnq_futures_sage"
+        assert audit["recent_violations"][0]["reason"] == "outside_rth"
+        assert audit["recent_violations"][0]["sent_at_local"] == "2026-05-15 08:28:24 EDT"
+        assert data["checks"]["session_gate_signal_audit_contract"] is True
+
+    def test_dashboard_diagnostics_session_gate_signal_audit_passes_clean_tape(
+        self,
+        app_client,
+        monkeypatch,
+        tmp_path,
+    ):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        class _FakeGate:
+            def entries_allowed(self, _now):
+                return True, "allowed"
+
+        supervisor_dir = tmp_path / "state" / "jarvis_intel" / "supervisor"
+        supervisor_dir.mkdir(parents=True, exist_ok=True)
+        (supervisor_dir / "sent_signals.jsonl").write_text(
+            json.dumps(
+                {
+                    "bot_id": "mnq_futures_sage",
+                    "signal_id": "mnq_sig_ok",
+                    "sent_at_utc": "2026-05-15T14:35:00+00:00",
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(
+            mod,
+            "_session_gate_audit_registry",
+            lambda: {
+                "mnq_futures_sage": {
+                    "symbol": "MNQ1",
+                    "strategy_kind": "orb_sage_gated",
+                    "timezone_name": "America/Chicago",
+                    "rth_start_local": "08:30:00",
+                    "rth_end_local": "16:00:00",
+                    "eod_cutoff_local": "15:59:00",
+                    "gate": _FakeGate(),
+                }
+            },
+        )
+
+        r = app_client.get("/api/dashboard/diagnostics")
+
+        assert r.status_code == 200
+        audit = r.json()["session_gate_signal_audit"]
+        assert audit["status"] == "ok"
+        assert audit["ready"] is True
+        assert audit["session_gated_records_scanned"] == 1
+        assert audit["violations_count"] == 0
+        assert audit["violated_bots"] == []
+        assert audit["summary_line"].startswith("No recent session-gate violations found")
+
     def test_dashboard_diagnostics_includes_operator_and_paper_live_rollups(
         self,
         app_client,
@@ -6174,6 +6301,59 @@ class TestDashboardAPI:
         assert ibkr["process"]["running"] is False
         assert "gateway process not running" in ibkr["detail"]
         assert "gateway process not running" in r.json()["summary"]["ibkr_gateway_detail"]
+
+    def test_bot_fleet_marks_recent_gateway_flap_degraded_during_self_heal(self, app_client):
+        """A fresh watchdog flap after recent health should not look like a dead Gateway."""
+        import json
+        import os
+        from datetime import UTC, datetime, timedelta
+        from pathlib import Path
+
+        state = Path(os.environ["ETA_STATE_DIR"])
+        state.mkdir(parents=True, exist_ok=True)
+        now = datetime.now(UTC)
+        (state / "tws_watchdog.json").write_text(
+            json.dumps(
+                {
+                    "checked_at": now.isoformat(),
+                    "healthy": False,
+                    "consecutive_failures": 1,
+                    "last_healthy_at": (now - timedelta(seconds=45)).isoformat(),
+                    "details": {
+                        "host": "127.0.0.1",
+                        "port": 4002,
+                        "socket_ok": True,
+                        "handshake_ok": False,
+                        "handshake_detail": "TimeoutError",
+                        "gateway_process": {
+                            "running": True,
+                            "gateway_dir": r"C:\Jts\ibgateway\1046",
+                            "name": "java.exe",
+                        },
+                    },
+                },
+            ),
+            encoding="utf-8",
+        )
+        (state / "ibgateway_reauth.json").write_text(
+            json.dumps(
+                {
+                    "status": "auth_pending",
+                    "operator_action_required": False,
+                },
+            ),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/bot-fleet")
+
+        assert r.status_code == 200
+        ibkr = r.json()["broker_gateway"]["ibkr"]
+        assert ibkr["status"] == "degraded"
+        assert r.json()["broker_gateway"]["status"] == "degraded"
+        assert r.json()["summary"]["ibkr_gateway_status"] == "degraded"
+        assert ibkr["transient_self_heal_grace_active"] is True
+        assert "self-heal grace active" in ibkr["detail"]
 
     def test_bot_fleet_reconciles_gateway_detail_with_live_ibkr_positions(
         self,
