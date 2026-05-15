@@ -535,6 +535,72 @@ def test_sage_health_ignores_informative_neutral_regime_school(tmp_path: Path) -
     assert snap["n_silent_neutral"] == 0
 
 
+def test_sage_health_observe_persists_first_snapshot(tmp_path: Path) -> None:
+    import json
+
+    from eta_engine.brain.jarvis_v3.sage.health import SageHealthMonitor
+
+    state_path = tmp_path / "health.json"
+    m = SageHealthMonitor(state_path=state_path)
+
+    class _Verdict:
+        def __init__(self, bias_str: str) -> None:
+            self.bias = type("_Bias", (), {"value": bias_str})()
+            self.conviction = 0.0
+            self.aligned_with_entry = False
+            self.rationale = ""
+            self.signals = {}
+
+    class _Report:
+        per_school = {
+            "trend_following": _Verdict("long"),
+            "volatility_regime": _Verdict("neutral"),
+        }
+
+    m.observe(_Report())
+
+    assert state_path.exists()
+    payload = json.loads(state_path.read_text(encoding="utf-8"))
+    assert payload["schools"]["trend_following"]["n_consultations"] == 1
+    assert payload["schools"]["volatility_regime"]["n_consultations"] == 1
+
+
+def test_sage_health_snapshot_reloads_external_state(tmp_path: Path) -> None:
+    import json
+
+    from eta_engine.brain.jarvis_v3.sage.health import SageHealthMonitor
+
+    state_path = tmp_path / "health.json"
+    m = SageHealthMonitor(state_path=state_path)
+
+    state_path.write_text(
+        json.dumps(
+            {
+                "saved_at": "2026-05-15T02:40:00+00:00",
+                "schools": {
+                    "order_flow": {
+                        "n_consultations": 12,
+                        "n_neutral": 12,
+                        "n_directional": 0,
+                        "n_silent_neutral": 0,
+                        "n_informative_neutral": 0,
+                        "n_structural_neutral": 0,
+                        "n_missing_telemetry": 12,
+                        "n_warmup": 0,
+                        "last_observed": "2026-05-15T02:39:00+00:00",
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    snap = m.snapshot()
+
+    assert snap["order_flow"]["n_consultations"] == 12
+    assert snap["order_flow"]["n_missing_telemetry"] == 12
+
+
 def test_sage_health_no_issue_below_min_observations(tmp_path: Path) -> None:
     from eta_engine.brain.jarvis_v3.sage.health import SageHealthMonitor
 

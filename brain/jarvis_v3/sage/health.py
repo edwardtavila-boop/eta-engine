@@ -27,6 +27,7 @@ from __future__ import annotations
 import json
 import logging
 import threading
+import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -99,20 +100,28 @@ class SageHealthMonitor:
     NEUTRAL_RATE_WARN: float = 0.85
     NEUTRAL_RATE_CRITICAL: float = 0.95
     MIN_OBSERVATIONS: int = 30
+    SAVE_INTERVAL_S: float = 5.0
+    SAVE_OBSERVATION_BATCH: int = 50
 
     def __init__(self, state_path: Path = DEFAULT_STATE_PATH) -> None:
         self.state_path = state_path
         self._lock = threading.Lock()
         self._health: dict[str, _SchoolHealth] = {}
+        self._dirty = False
+        self._dirty_observations = 0
+        self._last_save_monotonic = 0.0
+        self._loaded_mtime_ns: int | None = None
         self._load()
 
     def _load(self) -> None:
         if not self.state_path.exists():
+            self._loaded_mtime_ns = None
             return
         try:
             data = json.loads(self.state_path.read_text(encoding="utf-8"))
+            loaded: dict[str, _SchoolHealth] = {}
             for name, snap in data.get("schools", {}).items():
-                self._health[name] = _SchoolHealth(
+                loaded[name] = _SchoolHealth(
                     school=name,
                     n_consultations=int(snap.get("n_consultations", 0)),
                     n_neutral=int(snap.get("n_neutral", 0)),
@@ -124,6 +133,10 @@ class SageHealthMonitor:
                     n_warmup=int(snap.get("n_warmup", 0)),
                     last_observed=snap.get("last_observed", ""),
                 )
+            self._health = loaded
+            self._dirty = False
+            self._dirty_observations = 0
+            self._loaded_mtime_ns = self.state_path.stat().st_mtime_ns
         except (json.JSONDecodeError, OSError, KeyError, ValueError) as exc:
             logger.warning("sage health load failed: %s", exc)
 
@@ -156,8 +169,39 @@ class SageHealthMonitor:
                 ),
                 encoding="utf-8",
             )
+            self._dirty = False
+            self._dirty_observations = 0
+            self._last_save_monotonic = time.monotonic()
+            self._loaded_mtime_ns = self.state_path.stat().st_mtime_ns
         except OSError as exc:
             logger.warning("sage health save failed: %s", exc)
+
+    def _save_if_due(self, *, force: bool = False) -> None:
+        if not self._dirty:
+            return
+        if force:
+            self._save()
+            return
+        now = time.monotonic()
+        if self._dirty_observations >= self.SAVE_OBSERVATION_BATCH:
+            self._save()
+            return
+        if (now - self._last_save_monotonic) >= self.SAVE_INTERVAL_S:
+            self._save()
+
+    def _reload_if_changed(self) -> None:
+        if self._dirty:
+            return
+        try:
+            mtime_ns = self.state_path.stat().st_mtime_ns
+        except FileNotFoundError:
+            mtime_ns = None
+        except OSError as exc:
+            logger.debug("sage health stat failed: %s", exc)
+            return
+        if mtime_ns == self._loaded_mtime_ns:
+            return
+        self._load()
 
     def observe_consultation(
         self,
@@ -187,9 +231,8 @@ class SageHealthMonitor:
             else:
                 h.n_directional += 1
             h.last_observed = datetime.now(UTC).isoformat()
-            # Save every 10 observations so we don't thrash the disk
-            if h.n_consultations % 10 == 0:
-                self._save()
+            self._dirty = True
+            self._dirty_observations += 1
 
     def _classify_verdict(self, school: str, verdict: object) -> tuple[bool, str]:
         try:
@@ -229,6 +272,7 @@ class SageHealthMonitor:
         understand per-school iteration.
         """
         per_school = getattr(report, "per_school", None) or {}
+        observed_any = False
         for name, verdict in per_school.items():
             was_neutral, observation_kind = self._classify_verdict(name, verdict)
             self.observe_consultation(
@@ -236,11 +280,16 @@ class SageHealthMonitor:
                 was_neutral=was_neutral,
                 observation_kind=observation_kind,
             )
+            observed_any = True
+        if observed_any:
+            with self._lock:
+                self._save_if_due(force=not self.state_path.exists())
 
     def check_health(self) -> list[HealthIssue]:
         """Surface schools that are silently failing or permanently unwired."""
         issues: list[HealthIssue] = []
         with self._lock:
+            self._reload_if_changed()
             for name, h in self._health.items():
                 if h.n_consultations < self.MIN_OBSERVATIONS:
                     continue
@@ -301,6 +350,7 @@ class SageHealthMonitor:
 
     def snapshot(self) -> dict[str, dict]:
         with self._lock:
+            self._reload_if_changed()
             return {
                 name: {
                     "n_consultations": h.n_consultations,
