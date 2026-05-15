@@ -510,6 +510,9 @@ def _promotion_gate_action(gate: dict[str, Any]) -> str:
     runner_symbol = str(runner.get("symbol") or "").strip()
     if runner_id:
         label = f"{runner_id} ({runner_symbol})" if runner_symbol else runner_id
+        close_evidence = _as_dict(runner.get("broker_close_evidence"))
+        if int(close_evidence.get("closed_trade_count") or 0) <= 0:
+            return f"Collect broker-backed closes for runner-up {label} before any prop promotion"
         return f"Keep strategy lane in paper soak; evaluate runner-up {label} before any prop promotion"
     required = [str(item) for item in _as_list(gate.get("required_evidence")) if str(item).strip()]
     if required:

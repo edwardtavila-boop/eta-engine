@@ -196,10 +196,45 @@ def _summary(
     return "BLOCKED_READINESS"
 
 
-def _runner_next_action(candidate: dict[str, Any]) -> str:
+def _broker_close_evidence(closed_trade_ledger: dict[str, Any], bot_id: str) -> dict[str, Any]:
+    stats = _as_dict(_as_dict(closed_trade_ledger.get("per_bot")).get(bot_id))
+    count = int(stats.get("closed_trade_count") or 0)
+    total_pnl = float(stats.get("total_realized_pnl") or 0.0)
+    profit_factor = stats.get("profit_factor")
+    cumulative_r = float(stats.get("cumulative_r") or 0.0)
+    if count <= 0:
+        verdict = "MISSING_BROKER_CLOSES"
+    elif count < 30:
+        verdict = "SMALL_SAMPLE"
+    elif total_pnl <= 0 or (profit_factor is not None and float(profit_factor) < 1.0):
+        verdict = "NEGATIVE_OR_WEAK_BROKER_EDGE"
+    else:
+        verdict = "POSITIVE_BROKER_CLOSE_EVIDENCE"
+    return {
+        "source": "closed_trade_ledger_latest",
+        "has_broker_closes": count > 0,
+        "closed_trade_count": count,
+        "total_realized_pnl": round(total_pnl, 2),
+        "cumulative_r": round(cumulative_r, 4),
+        "profit_factor": profit_factor,
+        "win_rate_pct": stats.get("win_rate_pct"),
+        "verdict": verdict,
+    }
+
+
+def _runner_next_action(candidate: dict[str, Any], broker_evidence: dict[str, Any]) -> str:
     bot_id = str(candidate.get("bot_id") or "runner").strip()
+    close_count = int(broker_evidence.get("closed_trade_count") or 0)
     if _is_deactivated(candidate):
         return f"Keep {bot_id} deactivated until fresh paper-soak evidence repairs the retirement case"
+    if close_count <= 0:
+        return (
+            f"Collect broker-backed closes for {bot_id}; strict-gate/lab evidence is not promotion proof"
+        )
+    if close_count < 30:
+        return f"Keep {bot_id} paper-only; broker-backed sample is still too small for promotion review"
+    if broker_evidence.get("verdict") == "NEGATIVE_OR_WEAK_BROKER_EDGE":
+        return f"Retune {bot_id} before promotion; broker-backed closes do not show a positive edge yet"
     if bool(candidate.get("live_routing_allowed")) and bool(candidate.get("can_live_trade")):
         return f"Review {bot_id} for controlled promotion only after every broker/order gate is still PASS"
     return (
@@ -208,7 +243,9 @@ def _runner_next_action(candidate: dict[str, Any]) -> str:
     )
 
 
-def _runner_operator_note(candidate: dict[str, Any]) -> str:
+def _runner_operator_note(candidate: dict[str, Any], broker_evidence: dict[str, Any]) -> str:
+    if int(broker_evidence.get("closed_trade_count") or 0) <= 0:
+        return "Good lab/ladder candidate, but not broker-proven yet."
     status = _strict_gate_status(candidate)
     if status == "PASS":
         return "Strongest current runner by ladder order; still requires full broker/order gate confirmation."
@@ -217,7 +254,11 @@ def _runner_operator_note(candidate: dict[str, Any]) -> str:
     return "Runner remains blocked; useful for research, not promotion."
 
 
-def _runner_summary(candidate: dict[str, Any]) -> dict[str, Any]:
+def _runner_summary(candidate: dict[str, Any], closed_trade_ledger: dict[str, Any]) -> dict[str, Any]:
+    broker_evidence = _broker_close_evidence(
+        closed_trade_ledger,
+        str(candidate.get("bot_id") or "").strip(),
+    )
     return {
         "bot_id": candidate.get("bot_id") or "",
         "role": candidate.get("role") or "runner",
@@ -232,9 +273,10 @@ def _runner_summary(candidate: dict[str, Any]) -> dict[str, Any]:
         "evidence_grade": candidate.get("evidence_grade") or "missing_strict_gate",
         "strict_gate_status": _strict_gate_status(candidate),
         "strict_gate": _as_dict(candidate.get("strict_gate")),
+        "broker_close_evidence": broker_evidence,
         "ladder_blockers": [str(item) for item in _as_list(candidate.get("blockers"))],
-        "next_action": candidate.get("next_action") or _runner_next_action(candidate),
-        "operator_note": _runner_operator_note(candidate),
+        "next_action": _runner_next_action(candidate, broker_evidence),
+        "operator_note": _runner_operator_note(candidate, broker_evidence),
     }
 
 
@@ -245,12 +287,18 @@ def _next_runner_candidate(runners: list[dict[str, Any]]) -> dict[str, Any]:
     return runners[0] if runners else {}
 
 
-def _runner_required_evidence(next_runner: dict[str, Any]) -> list[str]:
+def _runner_required_evidence(next_runner: dict[str, Any], closed_trade_ledger: dict[str, Any]) -> list[str]:
     if not next_runner:
         return []
     bot_id = str(next_runner.get("bot_id") or "").strip()
     if not bot_id:
         return []
+    broker_evidence = _broker_close_evidence(closed_trade_ledger, bot_id)
+    if int(broker_evidence.get("closed_trade_count") or 0) <= 0:
+        return [
+            f"collect broker-backed closes for runner-up candidate {bot_id}; strict-gate/lab evidence is not "
+            "promotion proof",
+        ]
     return [
         f"evaluate runner-up candidate {bot_id} in paper soak; keep can_live_trade=false until "
         "broker-backed closes, prop readiness, and native brackets pass",
@@ -261,21 +309,23 @@ def build_promotion_audit_report(
     *,
     gate_report: dict[str, Any],
     ladder_report: dict[str, Any],
+    closed_trade_ledger: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    closed_trade_ledger = _as_dict(closed_trade_ledger)
     candidate = _with_live_deactivation(
         _primary_candidate(gate_report=gate_report, ladder_report=ladder_report),
         gate_report,
     )
     runners = _runner_candidates(ladder_report)
     next_runner = _next_runner_candidate(runners)
-    runner_summaries = [_runner_summary(runner) for runner in runners]
-    next_runner_summary = _runner_summary(next_runner) if next_runner else {}
+    runner_summaries = [_runner_summary(runner, closed_trade_ledger) for runner in runners]
+    next_runner_summary = _runner_summary(next_runner, closed_trade_ledger) if next_runner else {}
     statuses = _status_by_check(gate_report)
     gate_summary = str(gate_report.get("summary") or "UNKNOWN")
     required = _required_evidence(candidate=candidate, statuses=statuses, gate_summary=gate_summary)
     summary = _summary(candidate=candidate, gate_summary=gate_summary, required=required)
     if summary == "BLOCKED_KAIZEN_RETIRED":
-        required = list(dict.fromkeys(required + _runner_required_evidence(next_runner)))
+        required = list(dict.fromkeys(required + _runner_required_evidence(next_runner, closed_trade_ledger)))
     return {
         "kind": "eta_prop_strategy_promotion_audit",
         "schema_version": 1,
@@ -297,6 +347,10 @@ def build_promotion_audit_report(
             "evidence_grade": candidate.get("evidence_grade") or "missing_strict_gate",
             "strict_gate_status": _strict_gate_status(candidate),
             "strict_gate": _as_dict(candidate.get("strict_gate")),
+            "broker_close_evidence": _broker_close_evidence(
+                closed_trade_ledger,
+                str(candidate.get("bot_id") or PRIMARY_BOT),
+            ),
             "ladder_blockers": [str(item) for item in _as_list(candidate.get("blockers"))],
         },
         "runner_up_count": len(runner_summaries),
@@ -346,6 +400,16 @@ def _current_reports(prop_account: str) -> tuple[dict[str, Any], dict[str, Any]]
     return gate_report, _as_dict(inputs.get("ladder"))
 
 
+def _current_closed_trade_ledger() -> dict[str, Any]:
+    path = workspace_roots.ETA_CLOSED_TRADE_LEDGER_PATH
+    if not path.exists():
+        return {}
+    try:
+        return _as_dict(json.loads(path.read_text(encoding="utf-8")))
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
 def _print_human(report: dict[str, Any], out_path: Path | None = None) -> None:
     print()
     print("EVOLUTIONARY TRADING ALGO -- Prop Strategy Promotion Audit")
@@ -371,7 +435,11 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     gate_report, ladder_report = _current_reports(args.prop_account)
-    report = build_promotion_audit_report(gate_report=gate_report, ladder_report=ladder_report)
+    report = build_promotion_audit_report(
+        gate_report=gate_report,
+        ladder_report=ladder_report,
+        closed_trade_ledger=_current_closed_trade_ledger(),
+    )
     out_path = None if args.no_write else write_report(report, args.out)
     if args.json:
         print(json.dumps(report, indent=2, sort_keys=True, default=str))
