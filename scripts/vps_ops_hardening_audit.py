@@ -1290,11 +1290,17 @@ def main(argv: list[str] | None = None) -> int:
         const=str(DEFAULT_OUT),
         help="write the audit JSON; defaults to canonical var/eta_engine/state path",
     )
+    parser.add_argument(
+        "--write-latest",
+        action="store_true",
+        help="alias for --json-out using the canonical var/eta_engine/state path",
+    )
     args = parser.parse_args(argv)
 
     report = collect_live_report()
-    if args.json_out:
-        out = Path(args.json_out)
+    json_out = str(DEFAULT_OUT) if args.write_latest and not args.json_out else args.json_out
+    if json_out:
+        out = Path(json_out)
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(json.dumps(report, indent=2, sort_keys=True), encoding="utf-8")
     if args.json:

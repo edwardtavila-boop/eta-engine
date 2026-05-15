@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from eta_engine.scripts import vps_ops_hardening_audit as audit
 
 
@@ -1103,3 +1105,18 @@ def test_collect_admin_ai_uses_current_bridge_task_set(monkeypatch) -> None:
     assert report["status"] == "PASS"
     assert captured["expected_task_count"] == 8
     assert captured["probe_port"] is True
+
+
+def test_write_latest_alias_writes_canonical_json(tmp_path, monkeypatch) -> None:
+    out_path = tmp_path / "vps_ops_hardening_latest.json"
+    monkeypatch.setattr(audit, "DEFAULT_OUT", out_path)
+    monkeypatch.setattr(
+        audit,
+        "collect_live_report",
+        lambda: {"summary": {"status": "YELLOW_SAFETY_BLOCKED"}, "next_actions": []},
+    )
+
+    rc = audit.main(["--write-latest"])
+
+    assert rc == 0
+    assert json.loads(out_path.read_text(encoding="utf-8"))["summary"]["status"] == "YELLOW_SAFETY_BLOCKED"

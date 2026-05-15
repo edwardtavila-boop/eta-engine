@@ -6,6 +6,15 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+
+def test_console_help_description_is_ascii_safe() -> None:
+    from eta_engine.scripts import diamond_leaderboard as lb
+
+    sanitized = lb._console_help_description("Diamond leaderboard \u2014 PROP_READY \u2264 top three")
+
+    assert sanitized.isascii()
+    assert sanitized == "Diamond leaderboard ? PROP_READY ? top three"
+
 # ────────────────────────────────────────────────────────────────────
 # Multipliers
 # ────────────────────────────────────────────────────────────────────
@@ -318,3 +327,12 @@ def test_run_writes_json_receipt(tmp_path: Path, monkeypatch: object) -> None:
     assert "prop_ready_bots" in on_disk
     assert on_disk["n_diamonds"] == summary["n_diamonds"]
     assert on_disk["top_prop_ready_n"] == lb.TOP_PROP_READY_N
+
+
+def test_cli_help_description_is_ascii_safe() -> None:
+    from eta_engine.scripts import diamond_leaderboard as lb
+
+    text = lb._console_help_description(f"edge {chr(8730)} sample {chr(8594)} result")
+
+    assert text.isascii()
+    assert "?" in text

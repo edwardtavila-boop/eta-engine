@@ -248,6 +248,15 @@ def test_run_writes_json_receipt(tmp_path: Path, monkeypatch: object) -> None:
         assert syn["enrolled"] is True
 
 
+def test_cli_help_description_is_ascii_safe() -> None:
+    from eta_engine.scripts import diamond_ops_dashboard as dd
+
+    text = dd._console_help_description(f"asymmetry {chr(8805)} threshold {chr(8594)} review")
+
+    assert text.isascii()
+    assert "?" in text
+
+
 def test_safe_run_swallows_exceptions() -> None:
     """If a sub-audit crashes, the dashboard must not propagate the
     exception — it returns {} and prints a warning so the dashboard

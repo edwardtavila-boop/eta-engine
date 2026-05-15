@@ -94,6 +94,11 @@ OUT_LATEST = WORKSPACE_ROOT / "var" / "eta_engine" / "state" / "diamond_promotio
 # pseudo-rows). Exclude from promotion analysis.
 INTERNAL_BOT_IDS = frozenset({"t1", "propagate_bot"})
 
+
+def _console_help_description(text: str | None) -> str:
+    """Return argparse help text that is safe on Windows cp1252 consoles."""
+    return (text or "").encode("ascii", "replace").decode("ascii")
+
 # Minimum sample size before a bot is even considered a candidate.
 MIN_SAMPLE_FOR_CONSIDERATION = 50
 MIN_TOTAL_REALIZED_PNL = 0.0
@@ -393,7 +398,7 @@ def _print_report(summary: dict[str, Any]) -> None:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__)
+    ap = argparse.ArgumentParser(description=_console_help_description(__doc__))
     ap.add_argument("--json", action="store_true")
     ap.add_argument(
         "--include-existing",

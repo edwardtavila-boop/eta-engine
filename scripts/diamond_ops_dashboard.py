@@ -71,6 +71,11 @@ WORKSPACE_ROOT = ROOT.parent
 OUT_LATEST = WORKSPACE_ROOT / "var" / "eta_engine" / "state" / "diamond_ops_dashboard_latest.json"
 
 
+def _console_help_description(text: str | None) -> str:
+    """Return argparse help text that is safe on Windows cp1252 consoles."""
+    return (text or "").encode("ascii", "replace").decode("ascii")
+
+
 @dataclass
 class DiamondSynthesis:
     bot_id: str
@@ -417,7 +422,7 @@ def _print(summary: dict[str, Any]) -> None:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__)
+    ap = argparse.ArgumentParser(description=_console_help_description(__doc__))
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
     summary = run()

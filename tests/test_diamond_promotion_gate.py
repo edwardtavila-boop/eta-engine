@@ -8,6 +8,15 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 
+def test_console_help_description_is_ascii_safe() -> None:
+    from eta_engine.scripts import diamond_promotion_gate as gate
+
+    sanitized = gate._console_help_description("Promotion gate \u2014 production \u2265 paper")
+
+    assert sanitized.isascii()
+    assert sanitized == "Promotion gate ? production ? paper"
+
+
 def _ts(days_ago: int, hour: int = 14) -> str:
     """Return an ISO timestamp `days_ago` calendar days back at the given UTC
     hour. Used to scaffold per-day trade distributions in the gate tests."""
@@ -268,3 +277,12 @@ def test_writes_json_receipt(tmp_path: Path, monkeypatch: object) -> None:
     assert "n_promote" in data
     assert "n_needs_more" in data
     assert "n_reject" in data
+
+
+def test_cli_help_description_is_ascii_safe() -> None:
+    from eta_engine.scripts import diamond_promotion_gate as gate
+
+    text = gate._console_help_description(f"hard fail {chr(8594)} reject")
+
+    assert text.isascii()
+    assert "?" in text
