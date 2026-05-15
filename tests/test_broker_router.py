@@ -216,6 +216,7 @@ def _write_pending(
     stop_price: float | None = 24_900.0,
     target_price: float | None = 25_100.0,
     include_brackets: bool = True,
+    reduce_only: bool = False,
 ) -> Path:
     """Drop a pending-order JSON file into ``pending_dir``.
 
@@ -239,6 +240,8 @@ def _write_pending(
     if include_brackets:
         payload["stop_price"] = stop_price
         payload["target_price"] = target_price
+    if reduce_only:
+        payload["reduce_only"] = True
     path.write_text(json.dumps(payload), encoding="utf-8")
     return path
 
@@ -801,6 +804,82 @@ class TestLifecycle:
         meta_text = "\n".join(p.read_text(encoding="utf-8") for p in (state_root / "blocked").rglob("*_block.json"))
         assert "pending_order_sanity" in meta_text
         assert "smoke" in meta_text
+
+    def test_daily_killswitch_blocks_new_entry_before_venue_call(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Router refuses fresh entries when the daily loss floor is tripped."""
+        pending_dir = tmp_path / "pending"
+        state_root = tmp_path / "state"
+        path = _write_pending(pending_dir, signal_id="sig-kill", bot_id="alpha")
+
+        from eta_engine.scripts import daily_loss_killswitch
+
+        monkeypatch.setattr(
+            daily_loss_killswitch,
+            "is_killswitch_tripped",
+            lambda: (True, "day_pnl=$-925.50 <= limit=$-300.00"),
+        )
+        venue = _FakeVenue()
+        smart_router = _FakeSmartRouter(venue)
+        journal = _FakeJournal()
+        _stub_fetch_positions(monkeypatch, {})
+        router = _make_router(
+            pending_dir=pending_dir,
+            state_root=state_root,
+            smart_router=smart_router,
+            journal=journal,
+            gate_chain=_allow_gate_chain(),
+        )
+
+        asyncio.run(router._process_pending_file(path))
+
+        blocked_file = _find_under(state_root / "blocked", path.name)
+        assert blocked_file is not None
+        assert venue.calls == []
+        meta_text = "\n".join(p.read_text(encoding="utf-8") for p in (state_root / "blocked").rglob("*_block.json"))
+        assert "daily_loss_killswitch" in meta_text
+        assert "-925.50" in meta_text
+
+    def test_daily_killswitch_allows_reduce_only_exit(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Daily loss gate must not block exits that reduce existing risk."""
+        pending_dir = tmp_path / "pending"
+        state_root = tmp_path / "state"
+        path = _write_pending(
+            pending_dir,
+            signal_id="sig-exit",
+            bot_id="alpha",
+            side="SELL",
+            include_brackets=False,
+            reduce_only=True,
+        )
+
+        from eta_engine.scripts import daily_loss_killswitch
+
+        monkeypatch.setattr(
+            daily_loss_killswitch,
+            "is_killswitch_tripped",
+            lambda: (True, "day_pnl=$-925.50 <= limit=$-300.00"),
+        )
+        venue = _FakeVenue()
+        smart_router = _FakeSmartRouter(venue)
+        journal = _FakeJournal()
+        _stub_fetch_positions(monkeypatch, {})
+        router = _make_router(
+            pending_dir=pending_dir,
+            state_root=state_root,
+            smart_router=smart_router,
+            journal=journal,
+            gate_chain=_allow_gate_chain(),
+        )
+
+        asyncio.run(router._process_pending_file(path))
+
+        assert len(venue.calls) == 1
+        assert venue.calls[0].reduce_only is True
+        assert _find_under(state_root / "blocked", path.name) is None
 
     def test_malformed_json_quarantined(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         pending_dir = tmp_path / "pending"

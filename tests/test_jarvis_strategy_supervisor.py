@@ -269,6 +269,148 @@ def test_broker_router_pending_entry_does_not_create_local_open_position(
     assert not (cfg.state_dir / "bots" / "mbt_funding_basis" / "open_position.json").exists()
 
 
+def test_supervisor_adopts_broker_router_filled_entry(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    import json
+    from datetime import UTC, datetime
+
+    from eta_engine.scripts import jarvis_strategy_supervisor as mod
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        BotInstance,
+        JarvisStrategySupervisor,
+        SupervisorConfig,
+    )
+
+    cfg = SupervisorConfig()
+    cfg.mode = "paper_live"
+    cfg.paper_live_order_route = "broker_router"
+    cfg.state_dir = tmp_path / "state"
+    cfg.broker_router_pending_dir = tmp_path / "router" / "pending"
+    sup = JarvisStrategySupervisor(cfg=cfg)
+    bot = BotInstance(
+        bot_id="mnq_futures_sage",
+        symbol="MNQ1",
+        strategy_kind="orb_sage_gated",
+        direction="long",
+        cash=50_000.0,
+    )
+    sup.bots.append(bot)
+    monkeypatch.setattr(sup._router, "_get_broker_position_qty", lambda _bot: 1.0)  # noqa: SLF001
+    persisted: list[list[dict]] = []
+    monkeypatch.setattr(mod, "persist_open_positions", lambda rows: persisted.append(rows))
+
+    signal_id = "mnq_futures_sage_adopt"
+    fill_dir = cfg.broker_router_pending_dir.parent / "fill_results"
+    fill_dir.mkdir(parents=True, exist_ok=True)
+    (fill_dir / f"{signal_id}_result.json").write_text(
+        json.dumps(
+            {
+                "signal_id": signal_id,
+                "bot_id": bot.bot_id,
+                "venue": "ibkr",
+                "request": {
+                    "symbol": "MNQ",
+                    "side": "BUY",
+                    "qty": 1.0,
+                    "price": 29300.25,
+                    "client_order_id": signal_id,
+                    "stop_price": 29250.25,
+                    "target_price": 29400.25,
+                    "reduce_only": False,
+                },
+                "result": {
+                    "order_id": "OID-1",
+                    "status": "FILLED",
+                    "filled_qty": 1.0,
+                    "avg_price": 29300.25,
+                },
+                "ts": datetime.now(UTC).isoformat(),
+            },
+        ),
+        encoding="utf-8",
+    )
+
+    adopted = sup._adopt_broker_router_fill_if_needed(bot, now=datetime.now(UTC))  # noqa: SLF001
+
+    assert adopted is True
+    assert bot.open_position is not None
+    assert bot.open_position["signal_id"] == signal_id
+    assert bot.open_position["side"] == "BUY"
+    assert bot.open_position["qty"] == 1.0
+    assert bot.open_position["entry_price"] == 29300.25
+    assert bot.open_position["bracket_stop"] == 29250.25
+    assert bot.open_position["bracket_target"] == 29400.25
+    assert bot.open_position["broker_router_adopted"] is True
+    assert (cfg.state_dir / "bots" / bot.bot_id / "open_position.json").exists()
+    assert persisted[-1][0]["bot_id"] == bot.bot_id
+
+
+def test_supervisor_blocks_recent_filled_result_when_broker_flat(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    import json
+    from datetime import UTC, datetime
+
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        BotInstance,
+        JarvisStrategySupervisor,
+        SupervisorConfig,
+    )
+
+    cfg = SupervisorConfig()
+    cfg.mode = "paper_live"
+    cfg.paper_live_order_route = "broker_router"
+    cfg.state_dir = tmp_path / "state"
+    cfg.broker_router_pending_dir = tmp_path / "router" / "pending"
+    sup = JarvisStrategySupervisor(cfg=cfg)
+    bot = BotInstance(
+        bot_id="mnq_futures_sage",
+        symbol="MNQ1",
+        strategy_kind="orb_sage_gated",
+        direction="long",
+        cash=50_000.0,
+    )
+    monkeypatch.setattr(sup._router, "_get_broker_position_qty", lambda _bot: 0.0)  # noqa: SLF001
+
+    signal_id = "mnq_futures_sage_flat"
+    fill_dir = cfg.broker_router_pending_dir.parent / "fill_results"
+    fill_dir.mkdir(parents=True, exist_ok=True)
+    (fill_dir / f"{signal_id}_result.json").write_text(
+        json.dumps(
+            {
+                "signal_id": signal_id,
+                "bot_id": bot.bot_id,
+                "venue": "ibkr",
+                "request": {
+                    "symbol": "MNQ",
+                    "side": "BUY",
+                    "qty": 1.0,
+                    "price": 29300.25,
+                    "reduce_only": False,
+                },
+                "result": {
+                    "order_id": "OID-2",
+                    "status": "FILLED",
+                    "filled_qty": 1.0,
+                    "avg_price": 29300.25,
+                },
+                "ts": datetime.now(UTC).isoformat(),
+            },
+        ),
+        encoding="utf-8",
+    )
+
+    adopted = sup._adopt_broker_router_fill_if_needed(bot, now=datetime.now(UTC))  # noqa: SLF001
+    reason = sup._broker_router_pending_entry_block_reason(bot, now=datetime.now(UTC))  # noqa: SLF001
+
+    assert adopted is False
+    assert bot.open_position is None
+    assert reason.startswith("broker_router_filled_unadopted:")
+
+
 def test_direct_ibkr_open_without_fill_does_not_create_local_open_position(
     tmp_path: Path,
     monkeypatch,

@@ -140,6 +140,46 @@ def _gate_bootstrap_enabled() -> bool:
     return os.environ.get(_GATE_BOOTSTRAP_ENV, "").strip() == "1"
 
 
+def router_daily_loss_killswitch_denial(order: PendingOrder) -> dict[str, Any] | None:
+    """Return a router-side daily-loss denial for new entries.
+
+    The supervisor also checks this, but the router is the last process
+    before the broker. Enforcing here protects against stale pending files
+    and paper-live advisory supervisor modes. Reduce-only exits remain
+    allowed so already-open risk can still be flattened.
+    """
+    if order.reduce_only:
+        return None
+    try:
+        from eta_engine.scripts.daily_loss_killswitch import (  # noqa: PLC0415
+            is_killswitch_tripped,
+        )
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "gate": "daily_loss_killswitch",
+            "allow": False,
+            "reason": f"daily_loss_killswitch_unavailable:{type(exc).__name__}:{exc}",
+            "context": {"order": order.to_dict()},
+        }
+    try:
+        tripped, reason = is_killswitch_tripped()
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "gate": "daily_loss_killswitch",
+            "allow": False,
+            "reason": f"daily_loss_killswitch_error:{type(exc).__name__}:{exc}",
+            "context": {"order": order.to_dict()},
+        }
+    if not tripped:
+        return None
+    return {
+        "gate": "daily_loss_killswitch",
+        "allow": False,
+        "reason": str(reason),
+        "context": {"order": order.to_dict()},
+    }
+
+
 def _readiness_enforced() -> bool:
     """True iff broker routing must honor the strategy-readiness matrix."""
     return os.environ.get(_READINESS_ENFORCE_ENV, "").strip() == "1"
@@ -1231,6 +1271,22 @@ class BrokerRouter:
                 denied,
                 [denied],
                 ["-strategy_readiness"],
+            )
+            return
+
+        # 3b. Router-local daily-loss brake. This is intentionally after
+        # syntax/readiness checks but before the normal gate chain and venue
+        # resolution, because no fresh entry should reach any broker adapter
+        # once the daily floor has been crossed. Reduce-only exits bypass the
+        # helper so risk can still come down.
+        killswitch_denial = router_daily_loss_killswitch_denial(order)
+        if killswitch_denial:
+            self._handle_blocked(
+                order,
+                target,
+                killswitch_denial,
+                [killswitch_denial],
+                ["-daily_loss_killswitch"],
             )
             return
 

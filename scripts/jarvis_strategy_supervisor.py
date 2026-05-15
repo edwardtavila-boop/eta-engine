@@ -3739,13 +3739,19 @@ class JarvisStrategySupervisor:
         self._record_latest_bar_mark(bot, bar)
         self._maybe_probe_sage_health(bot, bar, now=datetime.now(UTC))
 
+        # Adopt async broker-router fills before the open_position branch.
+        # The router path clears local state while an order is pending; once
+        # a fill sidecar and broker position agree, restore local state so
+        # exits and duplicate-entry gates manage the real exposure.
+        now = datetime.now(UTC)
+        self._adopt_broker_router_fill_if_needed(bot, now=now)
+
         # ── Session-gate EoD flatten ───────────────────────────────
         # Runs BEFORE the open_position branch so a bot that entered
         # mid-session and is now past the EoD cutoff gets force-flat
         # instead of falling into _maybe_exit (which only checks
         # bracket levels). Crypto bots' gate uses a 23:59:59 cutoff
         # so this never trips spuriously for 24/7 lanes.
-        now = datetime.now(UTC)
         if bot.open_position is not None:
             self._maybe_flatten_for_eod(bot, bar, now=now)
             # Re-read open_position: a successful flatten clears it,
@@ -3902,6 +3908,171 @@ class JarvisStrategySupervisor:
         """Return the broker-router no-refire window for submitted entries."""
         return max(0.0, self._env_float("ETA_BROKER_ROUTER_PENDING_ENTRY_COOLDOWN_S", 900.0))
 
+    def _broker_router_fill_adopt_window_s(self) -> float:
+        """Return how long router fill sidecars may rehydrate local state."""
+        return max(
+            self._broker_router_pending_entry_cooldown_s(),
+            self._env_float("ETA_BROKER_ROUTER_FILL_ADOPT_WINDOW_S", 86400.0),
+        )
+
+    def _broker_router_recent_result_payloads(
+        self,
+        bot: BotInstance,
+        *,
+        now: datetime,
+        max_age_s: float,
+        limit: int = 8,
+    ) -> list[tuple[Path, dict[str, Any], dict[str, Any], dict[str, Any], float]]:
+        """Return recent broker-router fill-result payloads for one bot."""
+        fill_dir = self.cfg.broker_router_pending_dir.parent / "fill_results"
+        try:
+            result_paths = sorted(
+                fill_dir.glob(f"{bot.bot_id}_*_result.json"),
+                key=lambda path: path.stat().st_mtime,
+                reverse=True,
+            )
+        except OSError:
+            return []
+        now_utc = now.astimezone(UTC)
+        rows: list[tuple[Path, dict[str, Any], dict[str, Any], dict[str, Any], float]] = []
+        for path in result_paths[:limit]:
+            try:
+                payload = json.loads(path.read_text(encoding="utf-8"))
+                result = payload.get("result") if isinstance(payload.get("result"), dict) else {}
+                request = payload.get("request") if isinstance(payload.get("request"), dict) else {}
+                ts = self._parse_open_position_ts(payload.get("ts"))
+                mtime = datetime.fromtimestamp(path.stat().st_mtime, tz=UTC)
+            except (OSError, TypeError, ValueError, json.JSONDecodeError):
+                continue
+            age_ref = ts or mtime
+            age_s = max(0.0, (now_utc - age_ref).total_seconds())
+            if age_s > max_age_s:
+                continue
+            rows.append((path, payload, result, request, age_s))
+        return rows
+
+    def _adopt_broker_router_fill_if_needed(
+        self,
+        bot: BotInstance,
+        *,
+        now: datetime,
+    ) -> bool:
+        """Adopt a fresh router-filled entry into supervisor state.
+
+        The broker-router path is asynchronous: submit_entry writes a
+        pending order and clears local open_position until the broker proves
+        it filled. This method consumes the router's fill_result sidecar,
+        verifies the broker still has exposure, then restores the per-bot
+        open_position so exits and duplicate-entry gates can manage it.
+        """
+        if bot.open_position is not None:
+            return False
+        if str(getattr(self.cfg, "mode", "")).strip().lower() != "paper_live":
+            return False
+        route = str(getattr(self.cfg, "paper_live_order_route", "") or "").strip().lower()
+        if route not in {"broker_router", "pending_file", "pending"}:
+            return False
+
+        fill_statuses = {"FILLED", "PARTIAL", "OPEN"}
+        candidates = self._broker_router_recent_result_payloads(
+            bot,
+            now=now,
+            max_age_s=self._broker_router_fill_adopt_window_s(),
+        )
+        for path, payload, result, request, _age_s in candidates:
+            if bool(request.get("reduce_only", False)):
+                continue
+            status = str(result.get("status") or "").upper()
+            try:
+                filled_qty = abs(float(result.get("filled_qty") or 0))
+            except (TypeError, ValueError):
+                filled_qty = 0.0
+            if status not in fill_statuses or filled_qty <= 0:
+                continue
+            try:
+                broker_qty = self._router._get_broker_position_qty(bot)  # noqa: SLF001
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "broker-router fill adoption could not verify broker qty for %s: %s",
+                    bot.bot_id,
+                    exc,
+                )
+                return False
+            if broker_qty is None or abs(float(broker_qty)) <= 1e-6:
+                bot.last_aggregation_reject_reason = "broker_router_filled_but_broker_flat"
+                bot.last_aggregation_reject_at = now.astimezone(UTC).isoformat()
+                return False
+            qty = min(filled_qty, abs(float(broker_qty)))
+            try:
+                entry_price = float(result.get("avg_price") or request.get("price") or 0)
+            except (TypeError, ValueError):
+                entry_price = 0.0
+            if qty <= 0 or entry_price <= 0:
+                continue
+            side = str(request.get("side") or "").upper()
+            if side not in {"BUY", "SELL"}:
+                continue
+            signal_id = str(payload.get("signal_id") or request.get("client_order_id") or path.stem)
+            entry_ts = str(payload.get("ts") or now.astimezone(UTC).isoformat())
+            pos: dict[str, Any] = {
+                "side": side,
+                "qty": qty,
+                "entry_price": round(entry_price, 4),
+                "entry_ts": entry_ts,
+                "signal_id": signal_id,
+                "symbol": bot.symbol,
+                "broker_router_adopted": True,
+                "broker_router_result_path": str(path),
+                "broker_bracket": True,
+                "bracket_src": f"broker_router:{payload.get('venue') or 'unknown'}",
+            }
+            stop_price = request.get("stop_price")
+            target_price = request.get("target_price")
+            with contextlib.suppress(TypeError, ValueError):
+                if stop_price is not None:
+                    pos["bracket_stop"] = round(float(stop_price), 4)
+            with contextlib.suppress(TypeError, ValueError):
+                if target_price is not None:
+                    pos["bracket_target"] = round(float(target_price), 4)
+            if pos.get("bracket_stop") is not None:
+                try:
+                    from eta_engine.feeds.instrument_specs import (  # noqa: PLC0415
+                        effective_point_value,
+                    )
+
+                    point_value = float(effective_point_value(bot.symbol, route="auto") or 1.0)
+                except Exception:  # noqa: BLE001
+                    point_value = 1.0
+                initial_stop_distance = abs(float(pos["bracket_stop"]) - entry_price)
+                pos["initial_stop_distance"] = round(initial_stop_distance, 6)
+                pos["initial_risk_unit"] = round(initial_stop_distance * qty * point_value, 4)
+
+            bot.open_position = pos
+            bot.n_entries += 1
+            bot.last_signal_at = entry_ts
+            bot.consecutive_broker_rejects = 0
+            self._router._persist_open_position(bot)  # noqa: SLF001
+            with contextlib.suppress(Exception):
+                from eta_engine.safety.cross_bot_position_tracker import (  # noqa: PLC0415
+                    normalize_root,
+                    signed_delta,
+                )
+
+                self._cross_bot_tracker.resync_from_broker(
+                    by_root={normalize_root(bot.symbol): signed_delta(side, abs(float(broker_qty)))},
+                )
+            self._persist_supervisor_open_positions_belief(reason="broker_router_fill_adopted")
+            logger.warning(
+                "BROKER ROUTER FILL ADOPTED %s: side=%s qty=%.6f entry=%.4f signal_id=%s",
+                bot.bot_id,
+                side,
+                qty,
+                entry_price,
+                signal_id,
+            )
+            return True
+        return False
+
     def _broker_router_pending_entry_block_reason(
         self,
         bot: BotInstance,
@@ -3962,6 +4133,8 @@ class JarvisStrategySupervisor:
                 continue
             if status in {"OPEN", "PENDING", "SUBMITTED", "PRESUBMITTED", "PARTIAL"} and filled_qty <= 0:
                 return f"broker_router_order_open_no_fill:{age_s:.0f}s"
+            if status in {"FILLED", "PARTIAL", "OPEN"} and filled_qty > 0 and bot.open_position is None:
+                return f"broker_router_filled_unadopted:{age_s:.0f}s"
 
         last_signal_at = self._parse_open_position_ts(getattr(bot, "last_signal_at", ""))
         if last_signal_at is not None and bot.open_position is None:
