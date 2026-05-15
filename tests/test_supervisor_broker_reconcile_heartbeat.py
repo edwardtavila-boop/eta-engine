@@ -62,8 +62,44 @@ def test_reconcile_snapshot_uses_current_broker_and_supervisor_positions() -> No
     ]
     assert snapshot["matched_positions"] == [{"symbol": "MBT", "broker_qty": 1.0, "supervisor_qty": 1.0}]
     assert snapshot["mismatch_count"] == 3
+    assert snapshot["blocking_mismatch_count"] == 3
+    assert snapshot["ready"] is False
     assert snapshot["order_action_allowed"] is False
     assert [row["category"] for row in snapshot["action_plan"]] == ["broker_only", "broker_only", "divergent"]
+
+
+def test_supervisor_only_local_paper_position_is_visible_but_non_blocking() -> None:
+    supervisor = {
+        "path": r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\jarvis_intel\supervisor\heartbeat.json",
+        "heartbeat_ts": "2026-05-15T05:09:43+00:00",
+        "mode": "paper_live",
+        "rows": [
+            {
+                "bot_id": "mbt_funding_basis",
+                "symbol": "MBT1",
+                "root": "MBT",
+                "side": "BUY",
+                "qty": 1.0,
+                "signed_qty": 1.0,
+            },
+        ],
+    }
+
+    snapshot = mod.build_reconcile_snapshot(
+        supervisor=supervisor,
+        broker_rows=[],
+        checked_at=datetime(2026, 5, 15, 5, 10, tzinfo=UTC),
+        path=Path(r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\jarvis_intel\supervisor\reconcile_last.json"),
+    )
+
+    assert snapshot["broker_only"] == []
+    assert snapshot["supervisor_only"] == [{"symbol": "MBT", "supervisor_qty": 1.0}]
+    assert snapshot["divergent"] == []
+    assert snapshot["mismatch_count"] == 1
+    assert snapshot["blocking_mismatch_count"] == 0
+    assert snapshot["ready"] is True
+    assert snapshot["action_plan"][0]["safe_default"] == "local_paper_only_no_broker_exposure"
+    assert "not unknown broker exposure" in snapshot["action_plan"][0]["operator_review"]
 
 
 def test_status_surface_never_allows_order_actions() -> None:
@@ -76,10 +112,14 @@ def test_status_surface_never_allows_order_actions() -> None:
             "broker_only": [{"symbol": "MCL"}],
             "supervisor_only": [],
             "divergent": [],
+            "blocking_mismatch_count": 1,
+            "ready": False,
         },
     )
 
     assert status["ok"] is True
+    assert status["ready"] is False
+    assert status["blocking_mismatch_count"] == 1
     assert status["order_action_allowed"] is False
     assert status["broker_only_symbols"] == ["MCL"]
     assert status["supervisor_only_symbols"] == []

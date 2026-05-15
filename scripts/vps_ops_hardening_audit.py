@@ -884,6 +884,12 @@ def _supervisor_reconcile_summary(supervisor_reconcile: dict[str, Any] | None) -
     supervisor_only_symbols = _symbols_from_rows(supervisor_only)
     divergent_symbols = _symbols_from_rows(divergent)
     mismatch_count = len(broker_only) + len(supervisor_only) + len(divergent)
+    raw_blocking_count = supervisor_reconcile.get("blocking_mismatch_count")
+    blocking_mismatch_count = (
+        int(raw_blocking_count)
+        if raw_blocking_count is not None
+        else len(broker_only) + len(divergent)
+    )
 
     if artifact_status:
         status = f"{artifact_status}_reconcile_snapshot"
@@ -891,9 +897,12 @@ def _supervisor_reconcile_summary(supervisor_reconcile: dict[str, Any] | None) -
     elif age_s is None or age_s > SUPERVISOR_RECONCILE_MAX_AGE_S:
         status = "STALE_RECONCILE_SNAPSHOT"
         ready = False
-    elif mismatch_count:
+    elif blocking_mismatch_count:
         status = "BLOCKED_BROKER_SUPERVISOR_RECONCILE"
         ready = False
+    elif supervisor_only:
+        status = "PASS_SUPERVISOR_ONLY_LOCAL_PAPER"
+        ready = True
     else:
         status = "PASS"
         ready = True
@@ -915,6 +924,7 @@ def _supervisor_reconcile_summary(supervisor_reconcile: dict[str, Any] | None) -
         "supervisor_only_symbols": supervisor_only_symbols,
         "divergent_symbols": divergent_symbols,
         "mismatch_count": mismatch_count,
+        "blocking_mismatch_count": blocking_mismatch_count,
         "brokers_queried": [
             str(broker) for broker in _as_list(supervisor_reconcile.get("brokers_queried")) if str(broker)
         ],

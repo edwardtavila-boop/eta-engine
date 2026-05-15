@@ -992,9 +992,10 @@ def _op20_supervisor_broker_reconcile() -> OpItem:
     supervisor_only = _symbols_from_reconcile(source, "supervisor_only")
     divergent = _symbols_from_reconcile(source, "divergent")
     mismatch_count = int(source.get("mismatch_count") or len(broker_only) + len(supervisor_only) + len(divergent))
+    blocking_mismatch_count = len(broker_only) + len(divergent)
     ready = source.get("ready")
     if ready is None:
-        ready = mismatch_count == 0
+        ready = blocking_mismatch_count == 0
     summary = _reconcile_human_summary(
         broker_only=broker_only,
         supervisor_only=supervisor_only,
@@ -1006,28 +1007,43 @@ def _op20_supervisor_broker_reconcile() -> OpItem:
         for action in action_candidates
         if action and "reconcile" in str(action).lower()
     ]
-    human_action = reconcile_actions[0] if reconcile_actions else (
-        f"Do not unlock new entries: reconcile broker/supervisor positions ({summary}) "
-        "before clearing the supervisor entry halt"
-    )
+    if blocking_mismatch_count:
+        human_action = reconcile_actions[0] if reconcile_actions else (
+            f"Do not unlock new entries: reconcile broker/supervisor positions ({summary}) "
+            "before clearing the supervisor entry halt"
+        )
+    else:
+        human_action = (
+            f"Paper-live may continue: broker exposure is not unknown, but clean up supervisor-only "
+            f"paper state ({summary}) after confirming broker flat for the listed symbol(s)."
+        )
 
     if ready is True and mismatch_count == 0:
         item.verdict = VERDICT_DONE
         item.detail = "Broker and supervisor open-position snapshots match."
         severity = "green"
         launch_blocker = False
-    else:
+    elif blocking_mismatch_count:
         item.verdict = VERDICT_BLOCKED
         item.detail = f"{mismatch_count} broker/supervisor mismatch(es): {summary}."
         severity = "red"
         launch_blocker = True
+    else:
+        item.verdict = VERDICT_BLOCKED
+        item.detail = (
+            f"{mismatch_count} supervisor-only paper-state mismatch(es): {summary}. "
+            "No broker-only or divergent exposure was found, so this is not a paper-launch blocker."
+        )
+        severity = "amber"
+        launch_blocker = False
 
     item.evidence = {
         "overall_severity": severity,
         "launch_blocker": launch_blocker,
+        "blocking_mismatch_count": blocking_mismatch_count,
         "source": source.get("source") or "supervisor_reconcile",
         "status": source.get("status"),
-        "ready": bool(ready),
+        "ready": blocking_mismatch_count == 0,
         "mismatch_count": mismatch_count,
         "broker_only_symbols": broker_only,
         "supervisor_only_symbols": supervisor_only,

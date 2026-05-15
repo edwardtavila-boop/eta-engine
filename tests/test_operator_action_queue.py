@@ -935,6 +935,42 @@ class TestSupervisorBrokerReconcileProbe:
         assert first_action.startswith("Do not unlock new entries")
         assert "MNQ" in item.detail
 
+    def test_supervisor_only_mismatch_is_advisory_not_launch_blocker(self, monkeypatch) -> None:
+        from eta_engine.scripts import operator_action_queue
+
+        def fake_read(path):
+            if path == operator_action_queue.workspace_roots.ETA_VPS_OPS_HARDENING_AUDIT_PATH:
+                return {
+                    "safety_gates": {
+                        "supervisor_reconcile": {
+                            "ready": True,
+                            "status": "PASS_SUPERVISOR_ONLY_LOCAL_PAPER",
+                            "source": "supervisor_broker_reconcile_heartbeat",
+                            "mismatch_count": 1,
+                            "blocking_mismatch_count": 0,
+                            "broker_only_symbols": [],
+                            "supervisor_only_symbols": ["MBT"],
+                            "divergent_symbols": [],
+                        }
+                    },
+                }
+            return {}
+
+        monkeypatch.setattr(operator_action_queue, "_read_json_path", fake_read)
+
+        item = operator_action_queue._op20_supervisor_broker_reconcile()
+
+        assert item.verdict == VERDICT_BLOCKED
+        assert item.evidence["overall_severity"] == "amber"
+        assert item.evidence["launch_blocker"] is False
+        assert item.evidence["blocking_mismatch_count"] == 0
+        assert item.evidence["ready"] is True
+        assert item.evidence["supervisor_only_symbols"] == ["MBT"]
+        assert "not a paper-launch blocker" in item.detail
+        first_action = item.evidence["blockers"][0]["next_commands"][0]
+        assert first_action.startswith("Paper-live may continue")
+        assert "MBT" in first_action
+
     def test_raw_reconcile_match_marks_done(self, monkeypatch) -> None:
         from eta_engine.scripts import operator_action_queue
 

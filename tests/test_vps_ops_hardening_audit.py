@@ -613,6 +613,42 @@ def test_supervisor_broker_reconcile_mismatch_blocks_trading_gate() -> None:
     assert any("MYM" in action and "MNQ" in action for action in report["next_actions"])
 
 
+def test_supervisor_only_local_paper_reconcile_does_not_block_trading_gate() -> None:
+    report = audit.build_report(
+        services=_running_services(),
+        ports=_listening_ports(),
+        endpoints=_healthy_endpoints(),
+        broker_bracket_audit={
+            "summary": "READY_NO_OPEN_EXPOSURE",
+            "ready_for_prop_dry_run": True,
+        },
+        promotion_audit={"summary": {"status": "PASS", "ready_for_live": True}},
+        service_config={"fm_status_server": {"matches_expected": True}},
+        tasks=_healthy_tasks(),
+        ibgateway_reauth={"status": "healthy"},
+        supervisor_reconcile={
+            "checked_at": audit.datetime.now(audit.UTC).isoformat(),
+            "broker_only": [],
+            "supervisor_only": [{"symbol": "MBT", "supervisor_qty": 1.0}],
+            "divergent": [],
+            "mismatch_count": 1,
+            "blocking_mismatch_count": 0,
+            "ready": True,
+            "brokers_queried": ["ibkr"],
+        },
+    )
+
+    reconcile = report["safety_gates"]["supervisor_reconcile"]
+    assert reconcile["ready"] is True
+    assert reconcile["status"] == "PASS_SUPERVISOR_ONLY_LOCAL_PAPER"
+    assert reconcile["supervisor_only_symbols"] == ["MBT"]
+    assert reconcile["mismatch_count"] == 1
+    assert reconcile["blocking_mismatch_count"] == 0
+    assert report["summary"]["paper_live_gate_ready"] is True
+    assert report["summary"]["trading_gate_ready"] is True
+    assert not any("reconcile broker/supervisor" in action for action in report["next_actions"])
+
+
 def test_current_supervisor_reconcile_uses_heartbeat_and_live_broker_state() -> None:
     report = audit.build_report(
         services=_running_services(),

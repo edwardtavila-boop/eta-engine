@@ -68,7 +68,9 @@ def _write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
     tmp.replace(path)
 
 
-def load_supervisor_positions(heartbeat_path: Path = workspace_roots.ETA_JARVIS_SUPERVISOR_HEARTBEAT_PATH) -> dict[str, Any]:
+def load_supervisor_positions(
+    heartbeat_path: Path = workspace_roots.ETA_JARVIS_SUPERVISOR_HEARTBEAT_PATH,
+) -> dict[str, Any]:
     heartbeat = _read_json(heartbeat_path)
     rows: list[dict[str, Any]] = []
     for bot in heartbeat.get("bots", []) if isinstance(heartbeat.get("bots"), list) else []:
@@ -218,7 +220,9 @@ def build_reconcile_snapshot(
                 "symbol": row.get("symbol"),
                 "category": "divergent",
                 "safe_default": "hold_new_entries",
-                "operator_review": "broker and supervisor disagree on size; reduce excess or repair supervisor state deliberately",
+                "operator_review": (
+                    "broker and supervisor disagree on size; reduce excess or repair supervisor state deliberately"
+                ),
                 "candidate_excess_action": row.get("broker_excess_action"),
                 "candidate_excess_qty": row.get("broker_excess_qty"),
             }
@@ -228,11 +232,15 @@ def build_reconcile_snapshot(
             {
                 "symbol": row.get("symbol"),
                 "category": "supervisor_only",
-                "safe_default": "hold_new_entries",
-                "operator_review": "supervisor claims exposure broker does not show; clear stale supervisor file only after broker flat is confirmed",
+                "safe_default": "local_paper_only_no_broker_exposure",
+                "operator_review": (
+                    "supervisor has local paper exposure broker does not show; visible for cleanup/review, "
+                    "but it is not unknown broker exposure"
+                ),
             }
         )
 
+    blocking_mismatch_count = len(broker_only) + len(divergent)
     return {
         "checked_at": checked.isoformat(),
         "generated_at_utc": checked.isoformat(),
@@ -247,6 +255,8 @@ def build_reconcile_snapshot(
         "matched": len(matched_positions),
         "matched_positions": matched_positions,
         "mismatch_count": len(broker_only) + len(supervisor_only) + len(divergent),
+        "blocking_mismatch_count": blocking_mismatch_count,
+        "ready": blocking_mismatch_count == 0,
         "brokers_queried": ["ibkr"],
         "broker_positions": broker_rows,
         "supervisor_positions": supervisor_rows,
@@ -279,6 +289,8 @@ def build_status(
         "status_out": str(status_out),
         "error": error,
         "mismatch_count": int(snapshot.get("mismatch_count") or 0),
+        "blocking_mismatch_count": int(snapshot.get("blocking_mismatch_count") or 0),
+        "ready": bool(snapshot.get("ready")) if snapshot else False,
         "broker_only_symbols": [str(row.get("symbol")) for row in snapshot.get("broker_only", [])],
         "supervisor_only_symbols": [str(row.get("symbol")) for row in snapshot.get("supervisor_only", [])],
         "divergent_symbols": [str(row.get("symbol")) for row in snapshot.get("divergent", [])],
