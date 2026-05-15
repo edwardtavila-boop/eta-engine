@@ -222,12 +222,76 @@ def _broker_close_evidence(closed_trade_ledger: dict[str, Any], bot_id: str) -> 
     }
 
 
-def _runner_next_action(candidate: dict[str, Any], broker_evidence: dict[str, Any]) -> str:
+def _heartbeat_bot(supervisor_heartbeat: dict[str, Any], bot_id: str) -> dict[str, Any]:
+    for raw_bot in _as_list(supervisor_heartbeat.get("bots")):
+        bot = _as_dict(raw_bot)
+        if str(bot.get("bot_id") or "").strip() == bot_id:
+            return bot
+    return {}
+
+
+def _supervisor_watch_evidence(supervisor_heartbeat: dict[str, Any], bot_id: str) -> dict[str, Any]:
+    bot = _heartbeat_bot(supervisor_heartbeat, bot_id)
+    if not bot:
+        return {
+            "source": "jarvis_strategy_supervisor_heartbeat",
+            "watched": False,
+            "verdict": "NOT_WATCHED_BY_SUPERVISOR",
+        }
+    last_bar_ts = str(bot.get("last_bar_ts") or "").strip()
+    last_signal_at = str(bot.get("last_signal_at") or "").strip()
+    n_entries = int(bot.get("n_entries") or 0)
+    n_exits = int(bot.get("n_exits") or 0)
+    entry_enabled = bool(bot.get("entry_enabled", True))
+    broker_rejects = int(bot.get("consecutive_broker_rejects") or 0)
+    if not entry_enabled:
+        verdict = "ENTRY_DISABLED"
+    elif broker_rejects > 0:
+        verdict = "BROKER_REJECTS"
+    elif _as_dict(bot.get("open_position")):
+        verdict = "OPEN_POSITION"
+    elif n_entries or n_exits or last_signal_at:
+        verdict = "SIGNALS_OR_ENTRIES_SEEN"
+    elif last_bar_ts:
+        verdict = "WATCHING_NO_SIGNAL_YET"
+    else:
+        verdict = "WATCHED_NO_MARKET_BARS"
+    return {
+        "source": "jarvis_strategy_supervisor_heartbeat",
+        "watched": True,
+        "verdict": verdict,
+        "mode": bot.get("mode") or "",
+        "entry_enabled": entry_enabled,
+        "entry_disabled_reason": bot.get("entry_disabled_reason") or "",
+        "last_bar_ts": last_bar_ts,
+        "last_bar_close": bot.get("last_bar_close"),
+        "last_signal_at": last_signal_at,
+        "n_entries": n_entries,
+        "n_exits": n_exits,
+        "open_position": _as_dict(bot.get("open_position")),
+        "last_jarvis_verdict": bot.get("last_jarvis_verdict") or "",
+        "last_jarvis_verdict_reason": bot.get("last_jarvis_verdict_reason") or "",
+        "last_aggregation_reject_reason": bot.get("last_aggregation_reject_reason") or "",
+        "last_aggregation_reject_at": bot.get("last_aggregation_reject_at") or "",
+        "consecutive_broker_rejects": broker_rejects,
+    }
+
+
+def _runner_next_action(
+    candidate: dict[str, Any],
+    broker_evidence: dict[str, Any],
+    watch_evidence: dict[str, Any],
+) -> str:
     bot_id = str(candidate.get("bot_id") or "runner").strip()
     close_count = int(broker_evidence.get("closed_trade_count") or 0)
     if _is_deactivated(candidate):
         return f"Keep {bot_id} deactivated until fresh paper-soak evidence repairs the retirement case"
     if close_count <= 0:
+        watch_verdict = str(watch_evidence.get("verdict") or "")
+        if watch_verdict == "NOT_WATCHED_BY_SUPERVISOR":
+            return f"Wire {bot_id} into the paper-live supervisor before judging broker-close evidence"
+        if watch_verdict == "WATCHING_NO_SIGNAL_YET":
+            return f"Keep {bot_id} in paper watch; it is receiving bars but has not fired a signal yet"
         return (
             f"Collect broker-backed closes for {bot_id}; strict-gate/lab evidence is not promotion proof"
         )
@@ -243,8 +307,14 @@ def _runner_next_action(candidate: dict[str, Any], broker_evidence: dict[str, An
     )
 
 
-def _runner_operator_note(candidate: dict[str, Any], broker_evidence: dict[str, Any]) -> str:
+def _runner_operator_note(
+    candidate: dict[str, Any],
+    broker_evidence: dict[str, Any],
+    watch_evidence: dict[str, Any],
+) -> str:
     if int(broker_evidence.get("closed_trade_count") or 0) <= 0:
+        if watch_evidence.get("verdict") == "WATCHING_NO_SIGNAL_YET":
+            return "Good lab/ladder candidate; supervisor is watching it live, but no signal has fired yet."
         return "Good lab/ladder candidate, but not broker-proven yet."
     status = _strict_gate_status(candidate)
     if status == "PASS":
@@ -254,11 +324,17 @@ def _runner_operator_note(candidate: dict[str, Any], broker_evidence: dict[str, 
     return "Runner remains blocked; useful for research, not promotion."
 
 
-def _runner_summary(candidate: dict[str, Any], closed_trade_ledger: dict[str, Any]) -> dict[str, Any]:
+def _runner_summary(
+    candidate: dict[str, Any],
+    closed_trade_ledger: dict[str, Any],
+    supervisor_heartbeat: dict[str, Any],
+) -> dict[str, Any]:
+    bot_id = str(candidate.get("bot_id") or "").strip()
     broker_evidence = _broker_close_evidence(
         closed_trade_ledger,
-        str(candidate.get("bot_id") or "").strip(),
+        bot_id,
     )
+    watch_evidence = _supervisor_watch_evidence(supervisor_heartbeat, bot_id)
     return {
         "bot_id": candidate.get("bot_id") or "",
         "role": candidate.get("role") or "runner",
@@ -274,9 +350,10 @@ def _runner_summary(candidate: dict[str, Any], closed_trade_ledger: dict[str, An
         "strict_gate_status": _strict_gate_status(candidate),
         "strict_gate": _as_dict(candidate.get("strict_gate")),
         "broker_close_evidence": broker_evidence,
+        "supervisor_watch_evidence": watch_evidence,
         "ladder_blockers": [str(item) for item in _as_list(candidate.get("blockers"))],
-        "next_action": _runner_next_action(candidate, broker_evidence),
-        "operator_note": _runner_operator_note(candidate, broker_evidence),
+        "next_action": _runner_next_action(candidate, broker_evidence, watch_evidence),
+        "operator_note": _runner_operator_note(candidate, broker_evidence, watch_evidence),
     }
 
 
@@ -310,16 +387,18 @@ def build_promotion_audit_report(
     gate_report: dict[str, Any],
     ladder_report: dict[str, Any],
     closed_trade_ledger: dict[str, Any] | None = None,
+    supervisor_heartbeat: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     closed_trade_ledger = _as_dict(closed_trade_ledger)
+    supervisor_heartbeat = _as_dict(supervisor_heartbeat)
     candidate = _with_live_deactivation(
         _primary_candidate(gate_report=gate_report, ladder_report=ladder_report),
         gate_report,
     )
     runners = _runner_candidates(ladder_report)
     next_runner = _next_runner_candidate(runners)
-    runner_summaries = [_runner_summary(runner, closed_trade_ledger) for runner in runners]
-    next_runner_summary = _runner_summary(next_runner, closed_trade_ledger) if next_runner else {}
+    runner_summaries = [_runner_summary(runner, closed_trade_ledger, supervisor_heartbeat) for runner in runners]
+    next_runner_summary = _runner_summary(next_runner, closed_trade_ledger, supervisor_heartbeat) if next_runner else {}
     statuses = _status_by_check(gate_report)
     gate_summary = str(gate_report.get("summary") or "UNKNOWN")
     required = _required_evidence(candidate=candidate, statuses=statuses, gate_summary=gate_summary)
@@ -410,6 +489,16 @@ def _current_closed_trade_ledger() -> dict[str, Any]:
         return {}
 
 
+def _current_supervisor_heartbeat() -> dict[str, Any]:
+    path = workspace_roots.ETA_JARVIS_SUPERVISOR_HEARTBEAT_PATH
+    if not path.exists():
+        return {}
+    try:
+        return _as_dict(json.loads(path.read_text(encoding="utf-8")))
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
 def _print_human(report: dict[str, Any], out_path: Path | None = None) -> None:
     print()
     print("EVOLUTIONARY TRADING ALGO -- Prop Strategy Promotion Audit")
@@ -439,6 +528,7 @@ def main(argv: list[str] | None = None) -> int:
         gate_report=gate_report,
         ladder_report=ladder_report,
         closed_trade_ledger=_current_closed_trade_ledger(),
+        supervisor_heartbeat=_current_supervisor_heartbeat(),
     )
     out_path = None if args.no_write else write_report(report, args.out)
     if args.json:

@@ -122,6 +122,7 @@ def test_promotion_blocker_points_to_runner_up_when_primary_is_retired() -> None
                 "bot_id": "volume_profile_nq",
                 "symbol": "NQ1",
                 "broker_close_evidence": {"closed_trade_count": 0},
+                "supervisor_watch_evidence": {"verdict": "WATCHING_NO_SIGNAL_YET"},
             },
             "required_evidence": [
                 "evaluate runner-up candidate volume_profile_nq in paper soak; keep can_live_trade=false",
@@ -134,7 +135,7 @@ def test_promotion_blocker_points_to_runner_up_when_primary_is_retired() -> None
 
     assert report["summary"]["status"] == "YELLOW_SAFETY_BLOCKED"
     assert report["safety_gates"]["promotion"]["status"] == "BLOCKED_KAIZEN_RETIRED"
-    assert any("Collect broker-backed closes" in action for action in report["next_actions"])
+    assert any("supervisor is live but no signal has fired yet" in action for action in report["next_actions"])
 
 
 def test_paper_live_gate_ready_when_only_prop_promotion_is_blocked() -> None:

@@ -67,6 +67,30 @@ def _closed_trade_ledger(*, bot_id: str = "volume_profile_nq", closed_trade_coun
     return {"per_bot": per_bot}
 
 
+def _supervisor_heartbeat(
+    *,
+    bot_id: str = "volume_profile_nq",
+    last_bar_ts: str = "2026-05-15T03:55:45+00:00",
+    last_signal_at: str = "",
+) -> dict[str, object]:
+    return {
+        "ts": "2026-05-15T03:55:48+00:00",
+        "bots": [
+            {
+                "bot_id": bot_id,
+                "mode": "paper_live",
+                "entry_enabled": True,
+                "last_bar_ts": last_bar_ts,
+                "last_bar_close": 29565.0,
+                "last_signal_at": last_signal_at,
+                "n_entries": 0,
+                "n_exits": 0,
+                "consecutive_broker_rejects": 0,
+            },
+        ],
+    }
+
+
 def test_promotion_audit_explains_paper_soak_hold_with_required_evidence() -> None:
     report = audit.build_promotion_audit_report(
         gate_report={
@@ -225,6 +249,7 @@ def test_kaizen_retired_primary_surfaces_runner_up_candidate_without_promoting()
             "candidates": [candidate, _runner_candidate(), _runner_candidate(bot_id="rsi_mr_mnq_v2", symbol="MNQ1")],
         },
         closed_trade_ledger=_closed_trade_ledger(),
+        supervisor_heartbeat=_supervisor_heartbeat(),
     )
 
     required = "\n".join(report["required_evidence"])
@@ -236,6 +261,9 @@ def test_kaizen_retired_primary_surfaces_runner_up_candidate_without_promoting()
     assert report["next_runner_candidate"]["strict_gate_status"] == "WATCH"
     assert report["next_runner_candidate"]["broker_close_evidence"]["closed_trade_count"] == 0
     assert report["next_runner_candidate"]["broker_close_evidence"]["verdict"] == "MISSING_BROKER_CLOSES"
+    assert report["next_runner_candidate"]["supervisor_watch_evidence"]["watched"] is True
+    assert report["next_runner_candidate"]["supervisor_watch_evidence"]["verdict"] == "WATCHING_NO_SIGNAL_YET"
+    assert report["next_runner_candidate"]["next_action"].startswith("Keep volume_profile_nq in paper watch")
     assert report["runner_up_candidates"][1]["bot_id"] == "rsi_mr_mnq_v2"
     assert "collect broker-backed closes for runner-up candidate volume_profile_nq" in required
     assert "focus runner-up review on volume_profile_nq" in report["operator_note"]
@@ -276,6 +304,42 @@ def test_runner_up_candidate_includes_positive_broker_close_evidence_when_presen
     assert "evaluate runner-up candidate volume_profile_nq in paper soak" in "\n".join(
         report["required_evidence"],
     )
+
+
+def test_runner_up_candidate_surfaces_when_not_watched_by_supervisor() -> None:
+    candidate = {
+        **_candidate(launch_lane="deactivated", blockers=["bot row is deactivated via kaizen_sidecar"]),
+        "active": False,
+        "data_status": "deactivated",
+        "promotion_status": "deactivated",
+        "deactivation_source": "kaizen_sidecar",
+    }
+
+    report = audit.build_promotion_audit_report(
+        gate_report={
+            "summary": "BLOCKED",
+            "primary_bot": "volume_profile_mnq",
+            "checks": [
+                _check("primary_ladder", "BLOCKED", primary_candidate=candidate),
+                _check("prop_readiness", "PASS"),
+                _check("broker_native_brackets", "PASS"),
+                _check("closed_trade_ledger", "PASS", closed_trade_count=43000),
+                _check("live_bot_gate", "BLOCKED", "volume_profile_mnq is deactivated"),
+            ],
+        },
+        ladder_report={
+            "summary": {"automation_mode": "FULLY_AUTOMATED_PAPER_PROP_HELD"},
+            "candidates": [candidate, _runner_candidate()],
+        },
+        closed_trade_ledger=_closed_trade_ledger(),
+        supervisor_heartbeat={"bots": []},
+    )
+
+    watch = report["next_runner_candidate"]["supervisor_watch_evidence"]
+
+    assert watch["watched"] is False
+    assert watch["verdict"] == "NOT_WATCHED_BY_SUPERVISOR"
+    assert report["next_runner_candidate"]["next_action"].startswith("Wire volume_profile_nq")
 
 
 def test_promotion_audit_prefers_live_gate_deactivation_over_stale_ladder_candidate() -> None:
