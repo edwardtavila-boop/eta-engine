@@ -64,6 +64,13 @@ shows stale operator blockers, refresh `ETA-OperatorQueueHeartbeat` before
 debugging the UI. A stale queue snapshot is a truth-surface problem, not
 permission to bypass broker, paper-soak, or prop drawdown gates.
 
+If `supervisor_reconcile.status` reports
+`BLOCKED_BROKER_SUPERVISOR_RECONCILE`, the VPS runtime can be healthy while new
+entries stay intentionally halted. Treat the listed `broker_only_symbols`,
+`supervisor_only_symbols`, and `divergent_symbols` as the first human action;
+do not clear entry holds or promotion gates until IBKR/Tastytrade broker
+positions and the supervisor book agree again.
+
 If the dashboard shows stale broker PnL or `broker_snapshot_state=stale_persisted`,
 start `ETA-BrokerStateRefreshHeartbeat` or run
 `python -m eta_engine.scripts.broker_state_refresh_heartbeat --json`. This is a
