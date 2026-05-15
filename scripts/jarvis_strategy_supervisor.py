@@ -3535,6 +3535,14 @@ class JarvisStrategySupervisor:
                 self._daily_halt_logged[key] = True
         return halted
 
+    def _paper_live_killswitch_advisory_enabled(self) -> bool:
+        """Return True only for explicit paper-live soak advisory mode."""
+        mode = str(getattr(self.cfg, "mode", "")).strip().lower()
+        if mode != "paper_live" or bool(getattr(self.cfg, "live_money_enabled", False)):
+            return False
+        policy = os.getenv("ETA_PAPER_LIVE_KILLSWITCH_MODE", "enforce").strip().lower()
+        return policy in {"advisory", "warn", "warning", "observe", "soft"}
+
     def _maybe_enter(self, bot: BotInstance, bar: dict[str, Any]) -> None:
         # ── Session-gate entry check ───────────────────────────────
         # Runs before everything else so a bot blocked by RTH / EoD /
@@ -3696,7 +3704,30 @@ class JarvisStrategySupervisor:
                 exc_info=True,
             )
             return
-        if tripped:
+        if tripped and self._paper_live_killswitch_advisory_enabled():
+            if not getattr(self, "_killswitch_advisory_warned_today", False):
+                logger.warning(
+                    "DAILY KILL SWITCH ADVISORY - paper_live entries continue: %s",
+                    reason,
+                )
+                self._killswitch_advisory_warned_today = True
+                with contextlib.suppress(Exception):
+                    from eta_engine.brain.jarvis_v3.policies._v3_events import (
+                        emit_event,
+                    )
+
+                    emit_event(
+                        layer="ops",
+                        event="daily_kill_switch_advisory",
+                        bot_id=bot.bot_id,
+                        details={
+                            "reason": reason,
+                            "mode": self.cfg.mode,
+                            "live_money_enabled": self.cfg.live_money_enabled,
+                        },
+                        severity="WARNING",
+                    )
+        elif tripped:
             bot.last_aggregation_reject_reason = f"daily_kill_switch:{reason}"
             bot.last_aggregation_reject_at = datetime.now(UTC).isoformat()
             if not getattr(self, "_killswitch_warned_today", False):
@@ -5124,6 +5155,8 @@ class JarvisStrategySupervisor:
 
             _ks_tripped, _ = is_killswitch_tripped()
             kill_switch_active = bool(_ks_tripped)
+            if kill_switch_active and self._paper_live_killswitch_advisory_enabled():
+                kill_switch_active = False
         except Exception as exc:  # noqa: BLE001 — fail closed
             logger.debug(
                 "daily_loss_killswitch consult in JournalSnapshot failed; assuming active=True: %s",
