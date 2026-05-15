@@ -29,12 +29,17 @@ Register the every-5-minute VPS audit task:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File eta_engine\deploy\scripts\register_vps_ops_hardening_audit_task.ps1 -Start
+powershell -ExecutionPolicy Bypass -File eta_engine\deploy\scripts\register_crypto_dashboard_refresh_task.ps1 -Start
 powershell -ExecutionPolicy Bypass -File eta_engine\deploy\scripts\register_broker_state_refresh_task.ps1 -Start
 powershell -ExecutionPolicy Bypass -File eta_engine\deploy\scripts\register_supervisor_broker_reconcile_task.ps1 -Start
 powershell -ExecutionPolicy Bypass -File eta_engine\deploy\scripts\register_operator_queue_heartbeat_task.ps1 -Start
 ```
 
 `ETA-VpsOpsHardeningAudit` refreshes the safety-gate audit.
+`ETA-Crypto-Dashboard-Refresh` keeps the dashboard-watched
+`data\BTC_5m.csv`, `data\ETH_5m.csv`, and `data\SOL_5m.csv` files fresh every
+5 minutes via public Coinbase candles and writes
+`crypto_dashboard_refresh_latest.json`.
 `ETA-BrokerStateRefreshHeartbeat` warms the read-only IBKR broker-state cache
 used for current PnL, MTD, fills, open positions, and EST reporting. It writes
 `broker_state_refresh_heartbeat.json`. `ETA-SupervisorBrokerReconcile` refreshes
@@ -85,3 +90,10 @@ start `ETA-BrokerStateRefreshHeartbeat` or run
 `python -m eta_engine.scripts.broker_state_refresh_heartbeat --json`. This is a
 read-only cache refresh against `/api/live/broker_state?refresh=1`; it must never
 be used as an order-entry path.
+
+If the dashboard shows `BTC`, `ETH`, or `SOL` bar-feed staleness while the main
+IBKR/PAXOS accumulator is otherwise healthy, start
+`ETA-Crypto-Dashboard-Refresh` or run
+`python scripts/refresh_crypto_dashboard_bars.py --json`. That path only refreshes
+the dashboard-facing 5-minute CSVs under `C:\EvolutionaryTradingAlgo\data`; it is
+not an execution or routing path.

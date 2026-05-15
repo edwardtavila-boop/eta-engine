@@ -277,6 +277,7 @@ if (-not $SkipETATasks) {
     $etaReadinessSnapshotTaskScript = "$EtaEngineDir\deploy\scripts\register_eta_readiness_snapshot_task.ps1"
     $vpsOpsHardeningTaskScript = "$EtaEngineDir\deploy\scripts\register_vps_ops_hardening_audit_task.ps1"
     $symbolIntelCollectorTaskScript = "$EtaEngineDir\deploy\scripts\register_symbol_intelligence_collector_task.ps1"
+    $cryptoDashboardRefreshTaskScript = "$EtaEngineDir\deploy\scripts\register_crypto_dashboard_refresh_task.ps1"
     $brokerStateRefreshTaskScript = "$EtaEngineDir\deploy\scripts\register_broker_state_refresh_task.ps1"
     $supervisorBrokerReconcileTaskScript = "$EtaEngineDir\deploy\scripts\register_supervisor_broker_reconcile_task.ps1"
     $operatorQueueHeartbeatTaskScript = "$EtaEngineDir\deploy\scripts\register_operator_queue_heartbeat_task.ps1"
@@ -353,6 +354,15 @@ if (-not $SkipETATasks) {
         }
     } else {
         Write-Host "  register_symbol_intelligence_collector_task.ps1 not found at $symbolIntelCollectorTaskScript" -ForegroundColor Yellow
+    }
+
+    if (Test-Path $cryptoDashboardRefreshTaskScript) {
+        Write-Host "  Registering ETA-Crypto-Dashboard-Refresh task (every 5m, BTC/ETH/SOL)..." -ForegroundColor Gray
+        if (-not $WhatIf) {
+            & $pwshPath -ExecutionPolicy Bypass -File $cryptoDashboardRefreshTaskScript -Start
+        }
+    } else {
+        Write-Host "  register_crypto_dashboard_refresh_task.ps1 not found at $cryptoDashboardRefreshTaskScript" -ForegroundColor Yellow
     }
 
     if (Test-Path $brokerStateRefreshTaskScript) {

@@ -4223,7 +4223,7 @@ class JarvisStrategySupervisor:
         #
         # Decision matrix (per signal):
         #   target=reject  → drop the signal entirely
-        #   target=paper   → log to shadow_signals.jsonl, no broker call
+        #   target=paper   → log shadow audit, then paper-fill in paper modes
         #   target=live    → fall through to the broker submit below
         #
         # Operator design (2026-05-13): "if we cant buy the contract or
@@ -4292,11 +4292,50 @@ class JarvisStrategySupervisor:
                     self.cfg.mode,
                 )
                 # Best-effort shadow log so kaizen + dashboard see what
-                # the bot wanted to do today. Never crash on log failure.
+                # the bot wanted to do today. Include intended bracket
+                # context so shadow replay can evaluate target/stop outcomes
+                # without claiming broker-backed promotion proof.
                 try:
                     from eta_engine.scripts.shadow_signal_logger import (  # noqa: PLC0415
                         log_shadow_signal,
                     )
+
+                    shadow_extra = {
+                        "bar_ts": str(bar.get("ts")) if isinstance(bar, dict) else "",
+                        "size_mult_at_skip": float(size_mult),
+                        "prop_guard_signal": get_prop_guard_signal(),
+                        "supervisor_mode": self.cfg.mode,
+                        "entry_price": round(float(entry_price), 4),
+                    }
+                    _shadow_order_side = "BUY" if side == "long" else "SELL"
+                    try:
+                        from eta_engine.scripts.bracket_sizing import (  # noqa: PLC0415
+                            compute_bracket as _shadow_compute_bracket,
+                        )
+                        from eta_engine.scripts.bracket_sizing import (  # noqa: PLC0415
+                            lookup_bot_bracket_params as _shadow_lookup_bracket_params,
+                        )
+
+                        _shadow_stop_mult, _shadow_target_mult = _shadow_lookup_bracket_params(bot.bot_id)
+                        _shadow_stop, _shadow_target, _shadow_src = _shadow_compute_bracket(
+                            side=_shadow_order_side,
+                            entry_price=float(entry_price),
+                            bars=bot.sage_bars,
+                            stop_mult_override=_shadow_stop_mult,
+                            target_mult_override=_shadow_target_mult,
+                        )
+                        _shadow_stop = round(_round_to_tick(_shadow_stop, bot.symbol), 4)
+                        _shadow_target = round(_round_to_tick(_shadow_target, bot.symbol), 4)
+                        shadow_extra.update(
+                            {
+                                "stop_price": _shadow_stop,
+                                "target_price": _shadow_target,
+                                "risk_price": round(abs(_shadow_stop - float(entry_price)), 6),
+                                "bracket_src": f"shadow:{_shadow_src}",
+                            },
+                        )
+                    except Exception as _shadow_bracket_exc:  # noqa: BLE001
+                        shadow_extra["bracket_context_error"] = type(_shadow_bracket_exc).__name__
 
                     log_shadow_signal(
                         bot_id=bot.bot_id,
@@ -4306,18 +4345,13 @@ class JarvisStrategySupervisor:
                             or f"{bot.bot_id}_{datetime.now(UTC).isoformat()}",
                         ),
                         symbol=str(bot.symbol),
-                        side=("BUY" if side == "long" else "SELL"),
+                        side=_shadow_order_side,
                         qty_intended=1,
                         lifecycle=get_bot_lifecycle(bot.bot_id),
                         route_target="paper",
                         route_reason=target_reason,
                         prospective_loss_usd=prospective_loss_est_usd,
-                        extra={
-                            "bar_ts": str(bar.get("ts")) if isinstance(bar, dict) else "",
-                            "size_mult_at_skip": float(size_mult),
-                            "prop_guard_signal": get_prop_guard_signal(),
-                            "supervisor_mode": self.cfg.mode,
-                        },
+                        extra=shadow_extra,
                     )
                 except Exception:  # noqa: BLE001
                     logger.exception(

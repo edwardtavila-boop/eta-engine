@@ -577,9 +577,10 @@ def test_maybe_enter_routes_eval_paper_into_local_paper_sim(monkeypatch) -> None
         lambda: (False, ""),
         raising=False,
     )
+    shadow_calls: list[dict[str, Any]] = []
     monkeypatch.setattr(
         "eta_engine.scripts.shadow_signal_logger.log_shadow_signal",
-        lambda **kwargs: None,
+        lambda **kwargs: shadow_calls.append(kwargs),
     )
 
     fake_now = _ct_to_utc(2026, 5, 15, 10, 0)
@@ -592,6 +593,12 @@ def test_maybe_enter_routes_eval_paper_into_local_paper_sim(monkeypatch) -> None
     sup._maybe_enter(bot, bar)
 
     assert len(submit_called) == 1
+    assert len(shadow_calls) == 1
+    extra = shadow_calls[0]["extra"]
+    assert extra["entry_price"] == 21450.0
+    assert extra["risk_price"] > 0
+    assert extra["stop_price"] < extra["entry_price"] < extra["target_price"]
+    assert str(extra["bracket_src"]).startswith("shadow:")
 
 
 def test_maybe_flatten_for_eod_calls_submit_exit(monkeypatch) -> None:
