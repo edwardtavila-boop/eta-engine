@@ -729,3 +729,50 @@ def test_sage_health_no_issue_below_min_observations(tmp_path: Path) -> None:
     issues = m.check_health()
     # MIN_OBSERVATIONS is 30; below that we don't judge
     assert not any(i.school == "newcomer" for i in issues)
+
+
+def test_sage_health_ignores_stale_missing_telemetry_issue_when_newer_school_is_active(tmp_path: Path) -> None:
+    import json
+
+    from eta_engine.brain.jarvis_v3.sage.health import SageHealthMonitor
+
+    state_path = tmp_path / "health.json"
+    state_path.write_text(
+        json.dumps(
+            {
+                "saved_at": "2026-05-15T10:44:14+00:00",
+                "schools": {
+                    "options_greeks": {
+                        "n_consultations": 40,
+                        "n_neutral": 40,
+                        "n_directional": 0,
+                        "n_silent_neutral": 0,
+                        "n_informative_neutral": 0,
+                        "n_structural_neutral": 0,
+                        "n_missing_telemetry": 40,
+                        "n_warmup": 0,
+                        "last_observed": "2026-05-15T03:52:16+00:00",
+                    },
+                    "order_flow": {
+                        "n_consultations": 40,
+                        "n_neutral": 40,
+                        "n_directional": 0,
+                        "n_silent_neutral": 0,
+                        "n_informative_neutral": 0,
+                        "n_structural_neutral": 0,
+                        "n_missing_telemetry": 40,
+                        "n_warmup": 0,
+                        "last_observed": "2026-05-15T10:44:14+00:00",
+                    },
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    m = SageHealthMonitor(state_path=state_path)
+
+    issues = m.check_health()
+
+    assert any(issue.school == "order_flow" for issue in issues)
+    assert not any(issue.school == "options_greeks" for issue in issues)

@@ -13,6 +13,7 @@ from eta_engine.brain.jarvis_v3.sage.base import (
     SchoolBase,
     SchoolVerdict,
 )
+from eta_engine.feeds.asset_specific_config import get_schools_for_symbol
 
 
 class OrderFlowSchool(SchoolBase):
@@ -25,6 +26,14 @@ class OrderFlowSchool(SchoolBase):
         "where institutions actually transact. Modern professional + prop "
         "trader methodology requiring Level II data."
     )
+
+    def applies_to(self, ctx: MarketContext) -> bool:
+        if not super().applies_to(ctx):
+            return False
+        symbol = str(getattr(ctx, "symbol", "") or "").strip()
+        if not symbol:
+            return True
+        return self.NAME in get_schools_for_symbol(symbol)
 
     def analyze(self, ctx: MarketContext) -> SchoolVerdict:
         delta = ctx.cumulative_delta

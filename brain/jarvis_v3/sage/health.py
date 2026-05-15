@@ -96,12 +96,22 @@ _MISSING_TELEMETRY_RATIONALE_FRAGMENTS = (
 )
 
 
+def _parse_observed_ts(raw: str) -> datetime | None:
+    if not raw:
+        return None
+    try:
+        return datetime.fromisoformat(raw.replace("Z", "+00:00")).astimezone(UTC)
+    except ValueError:
+        return None
+
+
 class SageHealthMonitor:
     NEUTRAL_RATE_WARN: float = 0.85
     NEUTRAL_RATE_CRITICAL: float = 0.95
     MIN_OBSERVATIONS: int = 30
     SAVE_INTERVAL_S: float = 5.0
     SAVE_OBSERVATION_BATCH: int = 50
+    STALE_ISSUE_MAX_SKEW_S: float = 3600.0
 
     def __init__(self, state_path: Path = DEFAULT_STATE_PATH) -> None:
         self.state_path = state_path
@@ -290,8 +300,25 @@ class SageHealthMonitor:
         issues: list[HealthIssue] = []
         with self._lock:
             self._reload_if_changed()
+            freshest_observed = max(
+                (
+                    observed
+                    for observed in (
+                        _parse_observed_ts(h.last_observed) for h in self._health.values()
+                    )
+                    if observed is not None
+                ),
+                default=None,
+            )
             for name, h in self._health.items():
                 if h.n_consultations < self.MIN_OBSERVATIONS:
+                    continue
+                observed = _parse_observed_ts(h.last_observed)
+                if (
+                    freshest_observed is not None
+                    and observed is not None
+                    and (freshest_observed - observed).total_seconds() > self.STALE_ISSUE_MAX_SKEW_S
+                ):
                     continue
                 if h.silent_neutral_rate >= self.NEUTRAL_RATE_CRITICAL:
                     issues.append(

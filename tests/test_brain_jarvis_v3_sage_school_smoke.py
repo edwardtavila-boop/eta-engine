@@ -67,6 +67,27 @@ def test_order_flow_school_skips_without_telemetry() -> None:
     assert "cumulative_delta" in verdict.signals["missing"]
 
 
+def test_order_flow_school_applies_only_to_symbols_configured_for_order_flow() -> None:
+    school = OrderFlowSchool()
+
+    assert school.applies_to(
+        MarketContext(
+            bars=_trend_bars(),
+            side="long",
+            symbol="MNQ1",
+            instrument_class="futures",
+        )
+    )
+    assert not school.applies_to(
+        MarketContext(
+            bars=_trend_bars(),
+            side="long",
+            symbol="GC1",
+            instrument_class="futures",
+        )
+    )
+
+
 def test_options_greeks_school_uses_gamma_skew_and_squeeze() -> None:
     ctx = MarketContext(
         bars=_trend_bars(),
