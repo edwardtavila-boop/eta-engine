@@ -396,7 +396,7 @@ tr:hover td{background:rgba(100,215,255,.055)}
 
 <div class="grid">
   <div class="card"><h3>Focus Bots</h3><div class="stat green" id="totalBots">--</div></div>
-  <div class="card"><h3>Runtime</h3><div class="stat blue" id="activeBots">--</div><div class="sub" id="activeBotsSub">live attached | off-lane</div></div>
+  <div class="card"><h3>Runtime</h3><div class="stat blue" id="activeBots">--</div><div class="sub" id="activeBotsSub">attached | off-lane</div></div>
   <div class="card"><h3>Held Bots</h3><div class="stat dim" id="heldBots">--</div><div class="sub" id="heldBotsSub">checking live entry holds</div></div>
   <div class="card"><h3>Session Net</h3><div class="stat dim" id="todayPnl">--</div><div class="sub" id="todayPnlSub"></div></div>
   <div class="card"><h3 id="totalPnlLabel">Broker MTD</h3><div class="stat dim" id="totalPnl">--</div><div class="sub" id="totalPnlSub">IBKR portfolio pending</div></div>
@@ -871,12 +871,9 @@ function assetBucket(symbol) {
 
 function isRuntimeActiveBot(bot) {
   const status = String(bot?.status || '').trim().toLowerCase();
-  if (!status || status === 'idle' || status === 'readiness_only' || status === 'unknown') return false;
+  if (status === 'readiness_only') return false;
   if (status === 'stale' || status === 'delayed') return false;
-  return status === 'running'
-    || status === 'connected'
-    || status === 'active'
-    || status === 'live'
+  return (Boolean(status) && status !== 'unknown')
     || bot?.confirmed === true
     || bot?.source === 'jarvis_strategy_supervisor';
 }
@@ -903,13 +900,19 @@ function isLiveAttachedBot(bot) {
     || bot?.source === 'jarvis_strategy_supervisor';
 }
 
+function isLiveRuntimeBot(bot) {
+  return isRuntimeActiveBot(bot) && hasFreshBotHeartbeat(bot);
+}
+
 function focusEngagementSummary(bots) {
   const runtimeActive = bots.filter(isRuntimeActiveBot).length;
-  const liveAttached = bots.filter(isLiveAttachedBot).length;
+  const liveRuntime = bots.filter(isLiveRuntimeBot).length;
+  const attached = bots.filter(isLiveAttachedBot).length;
   return {
     runtimeActive,
-    liveAttached,
-    offLane: Math.max(0, runtimeActive - liveAttached),
+    liveRuntime,
+    attached,
+    offLane: Math.max(0, runtimeActive - liveRuntime),
     staged: Math.max(0, bots.length - runtimeActive),
   };
 }
@@ -2244,8 +2247,9 @@ function allocationBuckets(bots, liveBroker, portfolioSummary) {
 function renderPortfolioCommand(bots, hiddenCount, liveBroker, summary, d, todaysPnl, portfolioSummary, brokerMtd, paperLive, diagnostics, todayCloseHistory, engagement) {
   const brokerPositions = buildBrokerPositions(liveBroker);
   const active = engagement?.runtimeActive ?? bots.filter(isRuntimeActiveBot).length;
-  const liveAttached = engagement?.liveAttached ?? bots.filter(isLiveAttachedBot).length;
-  const offLane = engagement?.offLane ?? Math.max(0, active - liveAttached);
+  const attached = engagement?.attached ?? bots.filter(isLiveAttachedBot).length;
+  const liveRuntime = engagement?.liveRuntime ?? bots.filter(isLiveRuntimeBot).length;
+  const offLane = engagement?.offLane ?? Math.max(0, active - liveRuntime);
   const blockedRollup = blockedFleetRollup(summary, diagnostics || {});
   const blockedBots = blockedRollup.count;
   const blockedLine = blockedRollup.summaryLine || blockedRollup.statusLine;
@@ -2312,7 +2316,7 @@ function renderPortfolioCommand(bots, hiddenCount, liveBroker, summary, d, today
       `${bots.length} focus`,
       `${paperReady} paper-ready`,
       active > 0 ? `${active} runtime` : 'flat',
-      `${liveAttached} live`,
+      `${attached} attached`,
       offLane > 0 ? `${offLane} off-lane` : '',
       blockedBots > 0 ? `${blockedBots} held` : ''
     ].filter(Boolean).join(' | ');
@@ -2327,7 +2331,7 @@ function renderPortfolioCommand(bots, hiddenCount, liveBroker, summary, d, today
     chips.innerHTML = [
       `<span class="hero-chip"><strong>${bots.length}</strong> focus</span>`,
       `<span class="hero-chip"><strong>${active}</strong> runtime</span>`,
-      `<span class="hero-chip"><strong>${liveAttached}</strong> live</span>`,
+      `<span class="hero-chip"><strong>${attached}</strong> attached</span>`,
       offLane > 0 ? `<span class="hero-chip"><strong>${offLane}</strong> off-lane</span>` : '',
       `<span class="hero-chip"><strong>${paperReady}</strong> paper-ready</span>`,
       blockedBots > 0 ? `<span class="hero-chip blocked-chip"><strong>${blockedBots}</strong> held</span>` : '',
@@ -2365,7 +2369,7 @@ function renderPortfolioCommand(bots, hiddenCount, liveBroker, summary, d, today
         ? `${bracketCount} exit-protection gap | ${readinessSnapshot.prop_primary_bot || 'prop bot'} held`
         : readinessSnapshot.primary_action || readinessSnapshot.promotion_summary || 'gates blocked')
       : readinessStatus === 'ready'
-        ? `${paperReady} paper-ready | ${liveAttached} live${offLane > 0 ? ` | ${offLane} off-lane` : ''}`
+        ? `${paperReady} paper-ready | ${attached} attached${offLane > 0 ? ` | ${offLane} off-lane` : ''}`
         : `${active} runtime${offLane > 0 ? ` | ${offLane} off-lane` : ''}`;
     const readinessSubWithBlocks = blockedBots > 0
       ? compactText(`${blockedBots} held | ${blockedRollup.kindsLine || blockedLine}`, 86)
@@ -3125,10 +3129,11 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
   const blockedSummaryLine = blockedRollup.summaryLine || blockedRollup.statusLine;
   const engagement = focusEngagementSummary(bots);
   const active = engagement.runtimeActive;
-  const liveAttached = engagement.liveAttached;
+  const attached = engagement.attached;
+  const liveRuntime = engagement.liveRuntime;
   const offLane = engagement.offLane;
   const staged = engagement.staged;
-  const runtimeStatusLine = `${bots.length} focus | ${active} runtime | ${liveAttached} live${offLane > 0 ? ` | ${offLane} off-lane` : ''}`;
+  const runtimeStatusLine = `${bots.length} focus | ${active} runtime | ${attached} attached${offLane > 0 ? ` | ${offLane} off-lane` : ''}`;
   document.getElementById('statusDot').className = 'status-dot ' + (stale ? 'stale' : blockedBots > 0 ? 'blocked' : 'live');
   document.getElementById('statusText').textContent =
     truthStatus === 'working'
@@ -3166,8 +3171,9 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
   const activeSub = document.getElementById('activeBotsSub');
   if (activeSub) {
     const runtimeParts = [
-      `${liveAttached} live`,
+      `${attached} attached`,
       offLane > 0 ? `${offLane} off-lane` : '',
+      liveRuntime > 0 ? `${liveRuntime} fresh runtime` : '',
       staged > 0 ? `${staged} staged` : '',
       cellarCount > 0 ? `${cellarCount} parked` : '',
       hiddenCount > 0 ? `${hiddenCount} hidden` : '',
@@ -4065,7 +4071,7 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
     const heldText = blockedBots > 0
       ? `, ${blockedBots} held${blockedRollup.kindsLine ? ` | ${blockedRollup.kindsLine}` : ''}`
       : '';
-    botRosterSummary.textContent = `${bots.length} focus visible, ${active} runtime, ${liveAttached} live${offLane > 0 ? `, ${offLane} off-lane` : ''}, ${hiddenCount} hidden/backburner${heldText}`;
+    botRosterSummary.textContent = `${bots.length} focus visible, ${active} runtime, ${attached} attached${offLane > 0 ? `, ${offLane} off-lane` : ''}, ${hiddenCount} hidden/backburner${heldText}`;
   }
   document.getElementById('botTable').innerHTML = html || '<tr><td colspan="12" class="loading">No visible active/staged bots after disabled and removed filters.</td></tr>';
   updateClock();

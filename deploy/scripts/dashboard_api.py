@@ -2775,15 +2775,17 @@ def _is_live_attached_bot_row(row: dict) -> bool:
 
 
 def _is_runtime_active_bot_row(row: dict) -> bool:
-    """Mirror the status-page active-bot rule for API summaries and probes."""
-    if not isinstance(row, dict):
+    """Runtime-visible rows, including idle bots that are still part of the lane."""
+    if not isinstance(row, dict) or _is_readiness_only_bot_row(row):
         return False
     status = str(row.get("status") or "").strip().lower()
-    if not status or status in {"idle", "readiness_only", "unknown", "stale", "delayed"}:
+    if status in _HIDDEN_BOT_ROW_VALUES or status in {"stale", "delayed"}:
         return False
-    if status in {"running", "connected", "active", "live"}:
-        return True
-    return row.get("confirmed") is True or row.get("source") == "jarvis_strategy_supervisor"
+    return (
+        (bool(status) and status != "unknown")
+        or row.get("confirmed") is True
+        or row.get("source") == "jarvis_strategy_supervisor"
+    )
 
 
 def _read_runtime_state() -> dict:
@@ -6838,7 +6840,7 @@ def _lane_rollup(rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
             },
         )
         bucket["bot_count"] += 1
-        if _is_live_attached_bot_row(row):
+        if _is_runtime_active_bot_row(row):
             bucket["active_bots"] += 1
         if str(row.get("current_block_reason") or "").strip():
             bucket["blocked_bots"] += 1
@@ -7234,12 +7236,7 @@ def bot_fleet_roster(
         gate_mode=str((lane_rollup.get(SHADOW_PAPER_LANE) or {}).get("daily_loss_gate_mode") or ""),
     )
     live_attached_rows = [r for r in rows if _is_live_attached_bot_row(r)]
-    runtime_active_rows = [
-        r
-        for r in rows
-        if not _is_readiness_only_bot_row(r)
-        and str(r.get("status") or "").strip().lower() not in {"unknown", "stale", "delayed"}
-    ]
+    runtime_active_rows = [r for r in rows if _is_runtime_active_bot_row(r)]
     live_in_trade_rows = [r for r in live_attached_rows if _row_has_open_exposure(r)]
     live_attached_bots = len(live_attached_rows)
     live_in_trade_bots = len(live_in_trade_rows)
