@@ -47,6 +47,12 @@ class OptionsGreeksSchool(SchoolBase):
         "directional flow late in the day."
     )
 
+    def applies_to(self, ctx: MarketContext) -> bool:
+        if not super().applies_to(ctx):
+            return False
+        options = getattr(ctx, "options", None)
+        return isinstance(options, dict) and bool(options)
+
     def analyze(self, ctx: MarketContext) -> SchoolVerdict:
         # Look for options telemetry on the context (attribute or dict-key).
         options = getattr(ctx, "options", None)

@@ -120,6 +120,10 @@ def _cache_key(ctx: MarketContext, enabled: frozenset[str] | None) -> str:
         ctx.account_equity_usd,
         ctx.risk_per_trade_pct,
         ctx.stop_distance_pct,
+        ctx.onchain,
+        ctx.funding,
+        ctx.options,
+        ctx.peer_returns,
         sorted(enabled) if enabled else None,
     )
     encoded = json.dumps(

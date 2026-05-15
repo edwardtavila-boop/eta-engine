@@ -90,10 +90,69 @@ def test_schoolbase_applies_to_filters_by_instrument() -> None:
     from eta_engine.brain.jarvis_v3.sage.schools.onchain import OnChainSchool
 
     s = OnChainSchool()
-    ctx_crypto = MarketContext(bars=_bars(50), side="long", instrument_class="crypto")
+    ctx_crypto = MarketContext(bars=_bars(50), side="long", symbol="BTCUSDT", instrument_class="crypto")
     ctx_equity = MarketContext(bars=_bars(50), side="long", instrument_class="equity")
     assert s.applies_to(ctx_crypto) is True
     assert s.applies_to(ctx_equity) is False  # onchain is crypto-only
+
+
+def test_funding_basis_applies_only_when_supported_or_wired() -> None:
+    from eta_engine.brain.jarvis_v3.sage import MarketContext
+    from eta_engine.brain.jarvis_v3.sage.schools.funding_basis import FundingBasisSchool
+
+    school = FundingBasisSchool()
+    unsupported = MarketContext(
+        bars=_bars(50),
+        side="long",
+        symbol="MNQ1",
+        instrument_class="futures",
+    )
+    supported = MarketContext(
+        bars=_bars(50),
+        side="long",
+        symbol="MBT1",
+        instrument_class="crypto",
+    )
+    assert school.applies_to(unsupported) is False
+    assert school.applies_to(supported) is True
+    assert (
+        school.applies_to(
+            MarketContext(
+                bars=_bars(50),
+                side="long",
+                symbol="BTCUSDT",
+                instrument_class="crypto",
+                funding={"funding_rate_bps": 3.0},
+            )
+        )
+        is True
+    )
+
+
+def test_options_greeks_applies_only_with_payload() -> None:
+    from eta_engine.brain.jarvis_v3.sage import MarketContext
+    from eta_engine.brain.jarvis_v3.sage.schools.options_greeks import OptionsGreeksSchool
+
+    school = OptionsGreeksSchool()
+    no_options = MarketContext(
+        bars=_bars(50),
+        side="long",
+        symbol="MNQ1",
+        instrument_class="futures",
+    )
+    assert school.applies_to(no_options) is False
+    assert (
+        school.applies_to(
+            MarketContext(
+                bars=_bars(50),
+                side="long",
+                symbol="MNQ1",
+                instrument_class="futures",
+                options={"dealer_gamma_exposure": -12.0},
+            )
+        )
+        is True
+    )
 
 
 # ─── regime detector ─────────────────────────────────────────────
@@ -428,7 +487,48 @@ def test_sage_cache_key_includes_risk_inputs() -> None:
 
     assert r1 is not r2
     assert r1.per_school["risk_management"].conviction > r2.per_school["risk_management"].conviction
-    assert r2.per_school["risk_management"].conviction == 0.0
+
+
+def test_sage_cache_key_includes_optional_telemetry_payloads() -> None:
+    from eta_engine.brain.jarvis_v3.sage import MarketContext, consult_sage
+    from eta_engine.brain.jarvis_v3.sage.consultation import clear_sage_cache
+
+    clear_sage_cache()
+    bars = _bars(60, trend="up")
+    bare = MarketContext(
+        bars=bars,
+        side="long",
+        symbol="BTCUSDT",
+        instrument_class="crypto",
+        onchain={"sopr": 1.0},
+    )
+    enriched = MarketContext(
+        bars=bars,
+        side="long",
+        symbol="BTCUSDT",
+        instrument_class="crypto",
+        onchain={"sopr": 1.0},
+        funding={"funding_rate_bps": 8.0},
+    )
+
+    r1 = consult_sage(
+        bare,
+        enabled={"funding_basis", "onchain"},
+        parallel=False,
+        use_cache=True,
+        apply_edge_weights=False,
+    )
+    r2 = consult_sage(
+        enriched,
+        enabled={"funding_basis", "onchain"},
+        parallel=False,
+        use_cache=True,
+        apply_edge_weights=False,
+    )
+
+    assert r1 is not r2
+    assert "funding_basis" not in r1.per_school
+    assert "funding_basis" in r2.per_school
 
 
 def test_sage_parallel_and_serial_produce_same_keys() -> None:

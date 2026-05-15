@@ -78,6 +78,7 @@ from collections import deque
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -779,6 +780,32 @@ def _snapshot_order_book_imbalance(snapshot: dict[str, Any], *, levels: int = _D
     if total <= 0.0:
         return None
     return round(max(-1.0, min(1.0, (bid_total - ask_total) / total)), 4)
+
+
+def _snapshot_cumulative_delta(snapshot: dict[str, Any]) -> float | None:
+    for key in ("cumulative_delta", "cum_delta", "delta"):
+        raw = snapshot.get(key)
+        if raw is None:
+            continue
+        try:
+            return float(raw)
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
+def _symbol_family(symbol: str) -> str:
+    normalized = symbol.upper().lstrip("/").strip()
+    root = normalized.rstrip("0123456789")
+    if normalized.startswith("BTC") or root == "MBT":
+        return "BTC"
+    if normalized.startswith("ETH") or root == "MET":
+        return "ETH"
+    if normalized.startswith("SOL"):
+        return "SOL"
+    if normalized.startswith("XRP"):
+        return "XRP"
+    return root or normalized
 
 
 def _latest_depth_snapshot(
@@ -5675,10 +5702,10 @@ class JarvisStrategySupervisor:
                     continue
                 closes = [
                     float(bar.get("close", 0))
-                    for bar in list(peer.sage_bars)[-30:]
+                    for bar in list(peer.sage_bars)[-31:]
                     if bar.get("close") is not None
                 ]
-                if len(closes) < 5:
+                if len(closes) < 6:
                     continue
                 returns = [
                     (closes[idx] - closes[idx - 1]) / closes[idx - 1]
@@ -5690,6 +5717,97 @@ class JarvisStrategySupervisor:
         except Exception:  # noqa: BLE001
             return {}
         return peer_returns
+
+    def _load_onchain_payload(self, bot: BotInstance) -> dict[str, Any] | None:
+        family = _symbol_family(bot.symbol)
+        if family not in {"BTC", "ETH"}:
+            return None
+
+        payload: dict[str, Any] = {}
+        try:
+            from eta_engine.brain.jarvis_v3 import onchain_enricher  # noqa: PLC0415
+
+            for candidate in (bot.symbol, family, f"{family}USDT"):
+                snap = onchain_enricher.current_snapshot(candidate)
+                if snap is None or snap.is_stale:
+                    continue
+                if snap.funding_rate_8h is not None:
+                    payload["funding_rate_bps"] = round(float(snap.funding_rate_8h) * 10_000.0, 4)
+                if snap.net_exchange_flow_usd is not None:
+                    payload["exchange_netflow"] = float(snap.net_exchange_flow_usd)
+                if snap.realized_vol_30d is not None:
+                    payload["realized_vol_30d"] = float(snap.realized_vol_30d)
+                if snap.btc_dominance_pct is not None:
+                    payload["btc_dominance_pct"] = float(snap.btc_dominance_pct)
+                if snap.whale_tx_count_24h is not None:
+                    payload["whale_tx_count_24h"] = int(snap.whale_tx_count_24h)
+                break
+        except Exception:  # noqa: BLE001
+            pass
+
+        try:
+            from eta_engine.brain.jarvis_v3.sage.onchain_fetcher import fetch_onchain  # noqa: PLC0415
+
+            fetched = fetch_onchain(bot.symbol) or {}
+            for key, value in fetched.items():
+                payload.setdefault(key, value)
+        except Exception:  # noqa: BLE001
+            pass
+
+        return payload or None
+
+    def _load_funding_payload(
+        self,
+        bot: BotInstance,
+        *,
+        bars: list[dict[str, Any]],
+        entry_price: float,
+        onchain_payload: dict[str, Any] | None = None,
+    ) -> dict[str, Any] | None:
+        family = _symbol_family(bot.symbol)
+        root = bot.symbol.upper().lstrip("/").strip().rstrip("0123456789")
+        payload: dict[str, Any] = {}
+
+        if onchain_payload is not None:
+            funding_rate_bps = onchain_payload.get("funding_rate_bps")
+            if isinstance(funding_rate_bps, (int, float)):
+                payload["funding_rate_bps"] = float(funding_rate_bps)
+
+        if root in {"MBT", "MET"}:
+            try:
+                from eta_engine.obs import basis_tracker  # noqa: PLC0415
+
+                for candidate in (bot.symbol, root):
+                    snap = basis_tracker.current_snapshot(candidate)
+                    if snap is None or snap.is_stale:
+                        continue
+                    payload["perp_spot_basis_pct"] = round(float(snap.basis_pct) * 100.0, 4)
+                    payload["annualized_yield_pct"] = round(float(snap.annualized_basis) * 100.0, 4)
+                    break
+            except Exception:  # noqa: BLE001
+                pass
+
+        if root in {"MBT", "MET"} and "perp_spot_basis_pct" not in payload and bars:
+            try:
+                from eta_engine.feeds.cme_basis_provider import (  # noqa: PLC0415
+                    DEFAULT_BTC_SPOT_CSV,
+                    DEFAULT_ETH_SPOT_CSV,
+                    CMEBasisProvider,
+                )
+
+                last_bar = bars[-1] if bars else {}
+                ts = _parse_iso_utc(last_bar.get("ts"))
+                close = last_bar.get("close", entry_price)
+                if ts is not None and isinstance(close, (int, float)) and float(close) > 0:
+                    spot_csv = DEFAULT_BTC_SPOT_CSV if family == "BTC" else DEFAULT_ETH_SPOT_CSV
+                    provider = CMEBasisProvider(spot_csv)
+                    basis_bps = provider(SimpleNamespace(timestamp=ts, close=float(close)))
+                    if isinstance(basis_bps, (int, float)):
+                        payload["perp_spot_basis_pct"] = round(float(basis_bps) / 100.0, 4)
+            except Exception:  # noqa: BLE001
+                pass
+
+        return payload or None
 
     def _build_sage_context(
         self,
@@ -5703,10 +5821,19 @@ class JarvisStrategySupervisor:
         """Build a Sage MarketContext enriched with live non-price telemetry."""
         peer_returns = self._peer_returns_for_bot(bot)
         order_book_imbalance = None
+        cumulative_delta = None
         with contextlib.suppress(Exception):
             snapshot = _latest_depth_snapshot(bot.symbol)
             if snapshot is not None:
                 order_book_imbalance = _snapshot_order_book_imbalance(snapshot)
+                cumulative_delta = _snapshot_cumulative_delta(snapshot)
+        onchain = self._load_onchain_payload(bot)
+        funding = self._load_funding_payload(
+            bot,
+            bars=bars,
+            entry_price=entry_price,
+            onchain_payload=onchain,
+        )
         return market_context_cls(
             bars=bars,
             side=side,
@@ -5715,6 +5842,9 @@ class JarvisStrategySupervisor:
             instrument_class=_classify_symbol(bot.symbol),
             peer_returns=peer_returns or None,
             order_book_imbalance=order_book_imbalance,
+            cumulative_delta=cumulative_delta,
+            onchain=onchain,
+            funding=funding,
             account_equity_usd=float(bot.cash) if bot.cash > 0 else None,
         )
 

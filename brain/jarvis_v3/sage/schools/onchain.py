@@ -23,6 +23,7 @@ class OnChainSchool(SchoolBase):
     NAME = "onchain"
     WEIGHT = 1.0
     INSTRUMENTS = frozenset({"crypto"})
+    SUPPORTED_ROOTS = frozenset({"BTC", "ETH", "MBT", "MET"})
     KNOWLEDGE = (
         "On-chain school (BTC/ETH): SOPR, MVRV, NUPL, dormancy, exchange netflow. "
         "Enhanced macro suite: stablecoin supply ratio (high = buying power), "
@@ -38,6 +39,13 @@ class OnChainSchool(SchoolBase):
     HIGH_WHALE_CONC_PCT = 10.0
     HIGH_ETF_INFLOW_BTC = 5000
     HIGH_ETF_OUTFLOW_BTC = -3000
+
+    def applies_to(self, ctx: MarketContext) -> bool:
+        if not super().applies_to(ctx):
+            return False
+        symbol = (ctx.symbol or "").upper().lstrip("/").strip()
+        root = symbol.rstrip("0123456789")
+        return root in self.SUPPORTED_ROOTS or symbol.startswith("BTC") or symbol.startswith("ETH")
 
     def analyze(self, ctx: MarketContext) -> SchoolVerdict:
         onchain = getattr(ctx, "onchain", None)

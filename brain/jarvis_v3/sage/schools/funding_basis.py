@@ -20,6 +20,7 @@ class FundingBasisSchool(SchoolBase):
     NAME = "funding_basis"
     WEIGHT = 0.9
     INSTRUMENTS = frozenset({"crypto", "futures"})
+    SUPPORTED_ROOTS = frozenset({"MBT", "MET"})
     KNOWLEDGE = (
         "Funding / Basis school: for crypto perps, funding rate sign + "
         "magnitude reveals crowded positioning. Cross-exchange spread "
@@ -36,6 +37,16 @@ class FundingBasisSchool(SchoolBase):
     EXTREME_FUNDING_BPS = 15.0
     WIDE_CROSS_EXCHANGE_BPS = 3.0
     HIGH_ANNUALIZED_YIELD_PCT = 20.0
+
+    def applies_to(self, ctx: MarketContext) -> bool:
+        if not super().applies_to(ctx):
+            return False
+        telemetry = getattr(ctx, "funding", None)
+        if isinstance(telemetry, dict) and telemetry:
+            return True
+        symbol = (ctx.symbol or "").upper().lstrip("/").strip()
+        root = symbol.rstrip("0123456789")
+        return root in self.SUPPORTED_ROOTS
 
     def analyze(self, ctx: MarketContext) -> SchoolVerdict:
         telemetry = getattr(ctx, "funding", None)

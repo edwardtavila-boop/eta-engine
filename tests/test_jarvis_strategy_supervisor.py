@@ -2319,7 +2319,7 @@ def test_supervisor_builds_sage_context_with_depth_and_peer_returns(tmp_path: Pa
         direction="long",
         cash=50_000.0,
     )
-    for idx, close in enumerate([100.0, 101.0, 102.0, 103.0, 104.0], start=1):
+    for idx, close in enumerate([100.0, 101.0, 102.0, 103.0, 104.0, 105.0], start=1):
         peer.sage_bars.append({"close": close, "ts": f"p{idx}"})
         other.sage_bars.append({"close": close, "ts": f"o{idx}"})
     sup.bots.extend([bot, peer, other])
@@ -2346,6 +2346,102 @@ def test_supervisor_builds_sage_context_with_depth_and_peer_returns(tmp_path: Pa
     assert ctx.kwargs["order_book_imbalance"] == 0.25
     assert "NQ1" in ctx.kwargs["peer_returns"]
     assert "BTC" not in ctx.kwargs["peer_returns"]
+
+
+def test_supervisor_builds_sage_context_with_crypto_telemetry(tmp_path: Path, monkeypatch) -> None:
+    from eta_engine.scripts import jarvis_strategy_supervisor as mod
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        BotInstance,
+        JarvisStrategySupervisor,
+        SupervisorConfig,
+    )
+
+    class FakeMarketContext:
+        def __init__(self, **kwargs) -> None:
+            self.kwargs = kwargs
+
+    cfg = SupervisorConfig()
+    cfg.state_dir = tmp_path / "state"
+    sup = JarvisStrategySupervisor(cfg=cfg)
+    bot = BotInstance(
+        bot_id="mbt_basis",
+        symbol="MBT1",
+        strategy_kind="x",
+        direction="long",
+        cash=50_000.0,
+    )
+    sup.bots.append(bot)
+
+    monkeypatch.setattr(
+        mod,
+        "_latest_depth_snapshot",
+        lambda _symbol: {
+            "book_imbalance": 0.4,
+            "cumulative_delta": 12.5,
+        },
+    )
+    monkeypatch.setattr(
+        JarvisStrategySupervisor,
+        "_load_onchain_payload",
+        lambda self, _bot: {"sopr": 1.02, "funding_rate_bps": -3.0},
+    )
+    monkeypatch.setattr(
+        JarvisStrategySupervisor,
+        "_load_funding_payload",
+        lambda self, _bot, **_kwargs: {
+            "funding_rate_bps": -3.0,
+            "perp_spot_basis_pct": 0.45,
+            "annualized_yield_pct": 11.0,
+        },
+    )
+
+    ctx = sup._build_sage_context(
+        bot,
+        bars=[{"close": 105.0, "ts": "2026-05-15T03:00:00+00:00"}],
+        side="long",
+        entry_price=105.0,
+        market_context_cls=FakeMarketContext,
+    )
+
+    assert ctx.kwargs["order_book_imbalance"] == 0.4
+    assert ctx.kwargs["cumulative_delta"] == 12.5
+    assert ctx.kwargs["onchain"] == {"sopr": 1.02, "funding_rate_bps": -3.0}
+    assert ctx.kwargs["funding"]["perp_spot_basis_pct"] == 0.45
+    assert ctx.kwargs["funding"]["annualized_yield_pct"] == 11.0
+
+
+def test_supervisor_peer_returns_supply_30_return_window(tmp_path: Path) -> None:
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        BotInstance,
+        JarvisStrategySupervisor,
+        SupervisorConfig,
+    )
+
+    cfg = SupervisorConfig()
+    cfg.state_dir = tmp_path / "state"
+    sup = JarvisStrategySupervisor(cfg=cfg)
+    bot = BotInstance(
+        bot_id="btc_primary",
+        symbol="BTC",
+        strategy_kind="x",
+        direction="long",
+        cash=50_000.0,
+    )
+    peer = BotInstance(
+        bot_id="eth_peer",
+        symbol="ETH",
+        strategy_kind="x",
+        direction="long",
+        cash=50_000.0,
+    )
+    for idx in range(31):
+        peer.sage_bars.append({"close": 100.0 + idx, "ts": f"p{idx}"})
+    sup.bots.extend([bot, peer])
+
+    peer_returns = sup._peer_returns_for_bot(bot)
+
+    assert "ETH" in peer_returns
+    assert len(peer_returns["ETH"]) == 30
 
 
 def _reset_live_ibkr(mod) -> None:
