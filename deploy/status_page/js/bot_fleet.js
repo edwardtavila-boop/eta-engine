@@ -173,6 +173,19 @@ function renderPositionDetail(status) {
   </div>`;
 }
 
+function formatVerdictSentiment(verdict) {
+  if (!verdict || typeof verdict !== 'object') return '';
+  if (verdict.sentiment_summary) return String(verdict.sentiment_summary);
+  const tokens = [];
+  const status = String(verdict.sentiment_pressure_status || '').trim();
+  const modulation = String(verdict.sentiment_modulation || '').trim();
+  const lead = String(verdict.sentiment_pressure_lead_asset || '').trim();
+  if (status && status.toLowerCase() !== 'unknown' && status.toLowerCase() !== 'none') tokens.push(status);
+  if (modulation && modulation.toLowerCase() !== 'unknown' && modulation.toLowerCase() !== 'none') tokens.push(modulation);
+  if (lead) tokens.push(`lead=${lead}`);
+  return tokens.join(' / ');
+}
+
 // --- 1. Roster table ---
 class RosterPanel extends Panel {
   constructor() {
@@ -325,9 +338,11 @@ class DrilldownPanel extends Panel {
         `<div>${formatTime(f.ts)} ${escapeHtml(f.side)} ${formatNumber(f.price)} qty=${f.qty} ${formatR(f.realized_r)}</div>`
       ).join('') || '<div class="text-zinc-600">none</div>'}</div>
       <div class="text-xs text-zinc-500 mb-1">Recent Verdicts</div>
-      <div class="space-y-1 text-xs">${verdicts.slice(0, 5).map(v =>
-        `<div><span class="text-emerald-400">${escapeHtml(v.verdict)}</span> ${escapeHtml(v.sage_modulation || '')}</div>`
-      ).join('') || '<div class="text-zinc-600">none</div>'}</div>`;
+      <div class="space-y-1 text-xs">${verdicts.slice(0, 5).map(v => {
+        const verdictLabel = String(v.verdict_label || v.verdict || 'UNKNOWN');
+        const extras = [String(v.sage_modulation || '').trim(), formatVerdictSentiment(v)].filter(Boolean).join(' | ');
+        return `<div><span class="text-emerald-400">${escapeHtml(verdictLabel)}</span>${extras ? ` <span class="text-zinc-400">${escapeHtml(extras)}</span>` : ''}</div>`;
+      }).join('') || '<div class="text-zinc-600">none</div>'}</div>`;
   }
 }
 

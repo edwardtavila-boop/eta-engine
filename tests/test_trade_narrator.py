@@ -61,6 +61,29 @@ def test_narrate_handles_block_reason() -> None:
     assert "BLOCKED: fleet_kill_active" in line
 
 
+def test_narrate_surfaces_sentiment_pressure_summary() -> None:
+    """Recent sentiment pressure should show up in the operator journal line."""
+    from eta_engine.brain.jarvis_v3 import trade_narrator
+
+    rec = {
+        "ts": "2026-05-15T12:11:39+00:00",
+        "bot_id": "btc_hybrid",
+        "consult_id": "sent1234",
+        "verdict": {
+            "final_verdict": "PROCEED",
+            "final_size_multiplier": 1.1,
+            "sentiment_pressure_status": "risk_on",
+            "sentiment_modulation": "tailwind",
+            "sentiment_pressure_lead_asset": "BTC",
+        },
+    }
+    line = trade_narrator.narrate(rec)
+    assert "Sentiment:" in line
+    assert "risk_on" in line
+    assert "tailwind" in line
+    assert "lead=BTC" in line
+
+
 def test_narrate_never_raises_on_garbage() -> None:
     """Non-dict input → degraded placeholder, no exception."""
     from eta_engine.brain.jarvis_v3 import trade_narrator

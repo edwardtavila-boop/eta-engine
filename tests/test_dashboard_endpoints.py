@@ -225,6 +225,39 @@ def test_bot_fleet_drilldown(client, tmp_path, monkeypatch) -> None:
     assert len(body["recent_verdicts"]) == 1
 
 
+def test_bot_fleet_drilldown_enriches_sentiment_verdict_summary(client, tmp_path, monkeypatch) -> None:
+    import json
+
+    monkeypatch.setenv("ETA_STATE_DIR", str(tmp_path))
+    bot_dir = tmp_path / "bots" / "btc_hybrid"
+    bot_dir.mkdir(parents=True)
+    (bot_dir / "status.json").write_text(json.dumps({"name": "btc_hybrid"}), encoding="utf-8")
+    (bot_dir / "recent_verdicts.json").write_text(
+        json.dumps(
+            [
+                {
+                    "ts": "2026-05-15T12:11:39Z",
+                    "verdict": {
+                        "final_verdict": "PROCEED",
+                        "sentiment_pressure_status": "risk_on",
+                        "sentiment_modulation": "tailwind",
+                        "sentiment_pressure_lead_asset": "BTC",
+                    },
+                    "sage_modulation": "loosened",
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+    r = client.get("/api/bot-fleet/btc_hybrid")
+    assert r.status_code == 200
+    verdict = r.json()["recent_verdicts"][0]
+    assert verdict["verdict_label"] == "PROCEED"
+    assert verdict["sentiment_pressure_status"] == "risk_on"
+    assert verdict["sentiment_modulation"] == "tailwind"
+    assert verdict["sentiment_summary"] == "risk_on / tailwind / lead=BTC"
+
+
 def test_bot_fleet_drilldown_unknown_bot(client, tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("ETA_STATE_DIR", str(tmp_path))
     r = client.get("/api/bot-fleet/no-such-bot")

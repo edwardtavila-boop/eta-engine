@@ -6366,6 +6366,79 @@ def dashboard_close_history(
     }
 
 
+def _recent_verdict_field(row: dict, key: str) -> Any:  # noqa: ANN401
+    value = row.get(key)
+    if value not in (None, ""):
+        return value
+    nested_verdict = row.get("verdict")
+    if isinstance(nested_verdict, dict):
+        value = nested_verdict.get(key)
+        if value not in (None, ""):
+            return value
+    consolidated = row.get("consolidated")
+    if isinstance(consolidated, dict):
+        value = consolidated.get(key)
+        if value not in (None, ""):
+            return value
+    return None
+
+
+def _recent_verdict_label(row: dict) -> str:
+    value = row.get("verdict")
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    if isinstance(value, dict):
+        verdict = value.get("final_verdict") or value.get("base_verdict") or value.get("verdict")
+        if verdict:
+            return str(verdict)
+    consolidated = row.get("consolidated")
+    if isinstance(consolidated, dict):
+        verdict = consolidated.get("final_verdict") or consolidated.get("base_verdict") or consolidated.get("verdict")
+        if verdict:
+            return str(verdict)
+    action = row.get("action")
+    if action:
+        return str(action)
+    return ""
+
+
+def _recent_verdict_sentiment_summary(row: dict) -> str:
+    status = str(_recent_verdict_field(row, "sentiment_pressure_status") or "").strip()
+    modulation = str(_recent_verdict_field(row, "sentiment_modulation") or "").strip()
+    lead_asset = str(_recent_verdict_field(row, "sentiment_pressure_lead_asset") or "").strip()
+
+    tokens: list[str] = []
+    if status and status.lower() not in {"unknown", "none"}:
+        tokens.append(status)
+    if modulation and modulation.lower() not in {"unknown", "none"}:
+        tokens.append(modulation)
+    if lead_asset:
+        tokens.append(f"lead={lead_asset}")
+    return " / ".join(tokens)
+
+
+def _normalize_recent_verdict_rows(rows: Any) -> list[dict]:
+    if not isinstance(rows, list):
+        return []
+    out: list[dict] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        normalized = dict(row)
+        verdict_label = _recent_verdict_label(row)
+        if verdict_label:
+            normalized["verdict_label"] = verdict_label
+        for key in ("sentiment_pressure_status", "sentiment_modulation", "sentiment_pressure_lead_asset"):
+            value = _recent_verdict_field(row, key)
+            if value not in (None, ""):
+                normalized[key] = value
+        sentiment_summary = _recent_verdict_sentiment_summary(row)
+        if sentiment_summary:
+            normalized["sentiment_summary"] = sentiment_summary
+        out.append(normalized)
+    return out
+
+
 @app.get("/api/bot-fleet/{bot_id}")
 def bot_fleet_drilldown(bot_id: str) -> dict:
     """Per-bot drill: status + recent fills + recent verdicts + sage effects."""
@@ -6497,10 +6570,11 @@ def bot_fleet_drilldown(bot_id: str) -> dict:
         key=lambda x: str(x.get("ts") or ""),
         reverse=True,
     )
+    recent_verdicts = _normalize_recent_verdict_rows(read_json_safe(bot_dir / "recent_verdicts.json"))
     return {
         "status": status,
         "recent_fills": merged_fills[:50],
-        "recent_verdicts": read_json_safe(bot_dir / "recent_verdicts.json"),
+        "recent_verdicts": recent_verdicts,
         "sage_effects": read_json_safe(bot_dir / "sage_effects.json"),
         "strategy_readiness": strategy_readiness,
         "launch_lane": status.get("launch_lane") or strategy_readiness.get("launch_lane") or "",

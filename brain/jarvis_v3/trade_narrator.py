@@ -130,6 +130,33 @@ def _fmt_hermes_calls(rec: dict) -> str:
     return f" Hermes touched: {', '.join(sites)}."
 
 
+def _verdict_field(rec: dict, key: str) -> Any:  # noqa: ANN401
+    verdict = _safe_get(rec, "verdict", {})
+    if isinstance(verdict, dict):
+        value = verdict.get(key)
+        if value not in (None, ""):
+            return value
+    return _safe_get(rec, key)
+
+
+def _fmt_sentiment(rec: dict) -> str:
+    """Render any live sentiment-pressure signal carried on the verdict."""
+    status = str(_verdict_field(rec, "sentiment_pressure_status") or "").strip()
+    modulation = str(_verdict_field(rec, "sentiment_modulation") or "").strip()
+    lead_asset = str(_verdict_field(rec, "sentiment_pressure_lead_asset") or "").strip()
+
+    tokens: list[str] = []
+    if status and status.lower() not in {"unknown", "none"}:
+        tokens.append(status)
+    if modulation and modulation.lower() not in {"unknown", "none"}:
+        tokens.append(modulation)
+    if lead_asset:
+        tokens.append(f"lead={lead_asset}")
+    if not tokens:
+        return ""
+    return f" Sentiment: {' / '.join(tokens)}."
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -166,8 +193,12 @@ def narrate(record: dict) -> str:
     dissent = _fmt_dissent(record)
     block_reason = _fmt_block_reason(record)
     hermes = _fmt_hermes_calls(record)
+    sentiment = _fmt_sentiment(record)
 
-    return (f"[{hhmmss}] {bot}  {verdict} @ {size_pct}  consult={consult_id}.{block_reason}{dissent}{hermes}").rstrip()
+    return (
+        f"[{hhmmss}] {bot}  {verdict} @ {size_pct}  consult={consult_id}."
+        f"{block_reason}{dissent}{sentiment}{hermes}"
+    ).rstrip()
 
 
 def _atomic_append(path: Path, text: str) -> bool:
