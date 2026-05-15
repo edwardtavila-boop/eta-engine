@@ -101,6 +101,50 @@ MIN_PROP_READY_REALIZED_PNL = 0.0
 SQRT_N_CAP = 30.0  # = sqrt(900)
 
 
+def _float_or_none(value: object) -> float | None:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _broker_truth_rank_bucket(e: LeaderboardEntry) -> int:
+    """Rank broker-proven edge above lab-only optics.
+
+    Buckets, high to low:
+    3 = broker-positive and PF-proven
+    2 = broker-positive but PF unavailable
+    1 = lab-only / broker truth unavailable
+    0 = broker-rejected, broker-negative, or weak PF
+    """
+    promotion_verdict = e.sources.get("promotion_verdict")
+    broker_pnl = _float_or_none(e.sources.get("broker_total_realized_pnl"))
+    broker_pf = _float_or_none(e.sources.get("broker_profit_factor"))
+
+    if broker_pnl is not None and broker_pnl <= MIN_PROP_READY_REALIZED_PNL:
+        return 0
+    if broker_pnl is not None and broker_pnl > MIN_PROP_READY_REALIZED_PNL:
+        if broker_pf is None:
+            return 2
+        if broker_pf < MIN_PROP_READY_PROFIT_FACTOR:
+            return 0
+        return 3
+    if broker_pf is not None and broker_pf < MIN_PROP_READY_PROFIT_FACTOR:
+        return 0
+    if promotion_verdict and promotion_verdict != "PROMOTE":
+        return 0
+    return 1
+
+
+def _leaderboard_rank_key(e: LeaderboardEntry) -> tuple[int, float, int, str]:
+    return (
+        _broker_truth_rank_bucket(e),
+        e.composite_score,
+        e.n_trades,
+        e.bot_id,
+    )
+
+
 @dataclass
 class LeaderboardEntry:
     bot_id: str
@@ -333,10 +377,12 @@ def _evaluate_prop_ready(entries: list[LeaderboardEntry]) -> None:
         is_ibkr_futures_eligible,
     )
 
-    # Sort by composite descending for ranking
-    entries.sort(key=lambda e: -e.composite_score)
+    # Sort by broker truth first, then composite. This keeps a broker-losing
+    # high-R bot from looking like the strongest live candidate.
+    entries.sort(key=_leaderboard_rank_key, reverse=True)
     for i, e in enumerate(entries, start=1):
         e.rank = i
+        e.sources["broker_truth_rank_bucket"] = _broker_truth_rank_bucket(e)
 
     # Eligibility filter
     eligible: list[LeaderboardEntry] = []

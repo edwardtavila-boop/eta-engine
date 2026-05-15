@@ -228,6 +228,59 @@ def test_broker_truth_disqualifies_prop_ready_wave26() -> None:
     assert good.prop_ready
 
 
+def test_broker_truth_ranks_above_lab_only_and_broker_negative() -> None:
+    """The displayed rank must not crown a broker-losing high-R bot."""
+    from eta_engine.scripts import diamond_leaderboard as lb
+
+    good = _entry("met_sweep_reclaim", n=200, avg_r=0.4, composite=5.0)
+    good.sources.update(
+        {
+            "promotion_verdict": "PROMOTE",
+            "broker_total_realized_pnl": 125.0,
+            "broker_profit_factor": 1.5,
+        },
+    )
+    lab_only = _entry("m2k_sweep_reclaim", n=200, avg_r=0.5, composite=8.0)
+    phantom = _entry("mnq_futures_sage", n=200, avg_r=0.8, composite=12.0)
+    phantom.sources.update(
+        {
+            "promotion_verdict": "REJECT",
+            "broker_total_realized_pnl": -250.0,
+            "broker_profit_factor": 0.4,
+        },
+    )
+
+    lb._evaluate_prop_ready([phantom, lab_only, good])
+
+    assert good.rank == 1
+    assert lab_only.rank == 2
+    assert phantom.rank == 3
+    assert good.sources["broker_truth_rank_bucket"] > lab_only.sources["broker_truth_rank_bucket"]
+    assert lab_only.sources["broker_truth_rank_bucket"] > phantom.sources["broker_truth_rank_bucket"]
+
+
+def test_broker_positive_rejected_bot_still_ranks_above_lab_only() -> None:
+    """A rejected bot can be visible for broker PnL without being PROP_READY."""
+    from eta_engine.scripts import diamond_leaderboard as lb
+
+    broker_positive = _entry("met_sweep_reclaim", n=80, avg_r=0.1, composite=2.0)
+    broker_positive.sources.update(
+        {
+            "promotion_verdict": "REJECT",
+            "broker_total_realized_pnl": 125.0,
+            "broker_profit_factor": 1.5,
+        },
+    )
+    lab_only = _entry("m2k_sweep_reclaim", n=200, avg_r=0.5, composite=8.0)
+
+    lb._evaluate_prop_ready([lab_only, broker_positive])
+
+    assert broker_positive.rank == 1
+    assert lab_only.rank == 2
+    assert not broker_positive.prop_ready
+    assert any("promotion gate REJECT" in d for d in broker_positive.prop_ready_disqualified_for)
+
+
 def test_ibkr_futures_eligible_helper() -> None:
     """Sanity check on the upstream helper: futures bots pass, spot bots fail."""
     from eta_engine.feeds.capital_allocator import is_ibkr_futures_eligible
