@@ -352,7 +352,7 @@ tr:hover td{background:rgba(100,215,255,.055)}
 </section>
 
 <details class="collapsible-section ops-priority-section" id="opsTruthSection" open>
-  <summary class="collapsible-summary"><span class="summary-copy"><span class="summary-title">Live Book + Exits</span><small id="opsTruthSummaryLine">Open risk, closed PnL, and order flow</small></span></summary>
+  <summary class="collapsible-summary"><span class="summary-copy"><span class="summary-title">Live Book + Exits</span><small id="opsTruthSummaryLine">Open risk, closed PnL, order flow</small></span></summary>
 <div class="ops-truth-wrap">
   <div class="card">
     <h3>Live Book &amp; Exit Cover</h3>
@@ -377,7 +377,7 @@ tr:hover td{background:rgba(100,215,255,.055)}
     <div class="panel-head">
       <div>
         <h3>What Moved PnL</h3>
-        <div class="panel-kicker" id="contributionSub">Daily strategy winners/losers</div>
+        <div class="panel-kicker" id="contributionSub">Top winners and losers today</div>
       </div>
       <div class="truth-chip" id="contributionSource">today's closed trades</div>
     </div>
@@ -403,22 +403,22 @@ tr:hover td{background:rgba(100,215,255,.055)}
   <div class="card"><h3 id="cumulativeRLabel">Trade Quality</h3><div class="stat dim" id="cumulativeR">--</div><div class="sub" id="cumulativeRSub">R score pending</div></div>
   <div class="card"><h3 id="totalTradesLabel">MTD Closed Trades</h3><div class="stat blue" id="totalTrades">--</div><div class="sub" id="totalTradesSub"></div></div>
   <div class="card"><h3>Win Rate</h3><div class="stat blue" id="winRate">--</div><div class="sub" id="winRateDetail"></div></div>
-  <div class="card"><h3>Trade-Ready</h3><div class="stat green" id="approvedCount">--</div><div class="sub" id="approvedCountSub">approved or conditional</div></div>
+  <div class="card"><h3>Ready Now</h3><div class="stat green" id="approvedCount">--</div><div class="sub" id="approvedCountSub">ready for entry</div></div>
   <div class="card"><h3>Data Coverage</h3><div class="stat" id="dataIntelligenceStatus">--</div><div class="sub" id="dataIntelligenceSub">symbols + news + book + sentiment</div></div>
-  <div class="card retune-factory-card"><h3>Retune Factory</h3><div class="stat" id="retuneFactoryStatus">--</div><div class="sub" id="retuneFactorySub">paper retunes pending</div></div>
+  <div class="card retune-factory-card"><h3>Retune Queue</h3><div class="stat" id="retuneFactoryStatus">--</div><div class="sub" id="retuneFactorySub">next retune pending</div></div>
   <div class="card"><h3>Policy Mode</h3><div class="stat yellow" id="jarvisMode">--</div></div>
-  <div class="card"><h3>AI Ops</h3><div class="stat" id="adminAiStatus">-</div><div class="sub" id="adminAiSub">Jarvis + Hermes</div></div>
+  <div class="card"><h3>AI Bridge</h3><div class="stat" id="adminAiStatus">-</div><div class="sub" id="adminAiSub">bridge status</div></div>
   <div class="card broker-truth-card"><h3>IBKR Connection</h3><div class="stat" id="gatewayStatus">--</div><div class="sub broker-status-meta" id="gatewayStatusMeta">truth pending</div><div class="sub" id="gatewayStatusSub"></div></div>
-  <div class="card"><h3>Order Router</h3><div class="stat" id="brokerRouterStatus">-</div><div class="sub" id="brokerRouterSub"></div></div>
-  <div class="card"><h3>Exit Protection</h3><div class="stat" id="bracketAuditStatus">-</div><div class="sub" id="bracketAuditSub">target + stop coverage</div></div>
+  <div class="card"><h3>Order Flow</h3><div class="stat" id="brokerRouterStatus">-</div><div class="sub" id="brokerRouterSub"></div></div>
+  <div class="card"><h3>Exit Cover</h3><div class="stat" id="bracketAuditStatus">-</div><div class="sub" id="bracketAuditSub">target + stop on broker</div></div>
   <div class="card exit-watch-card"><h3>Exit Watch</h3><div class="stat" id="exitWatchStatus">-</div><div class="sub" id="exitWatchSub">target | stop</div></div>
   <div class="card"><h3>Paper Live</h3><div class="stat" id="paperLiveStatus">--</div><div class="sub" id="paperLiveSub"></div></div>
-  <div class="card"><h3>Operator Holds</h3><div class="stat" id="operatorQueueStatus">--</div><div class="sub" id="operatorQueueSub"></div></div>
-  <div class="card"><h3>Risk Level</h3><div class="stat yellow" id="riskLevel">--</div><div class="risk-bar"><div class="risk-fill" id="riskBar" style="width:0%"></div></div><div class="sub" id="riskSub">drawdown + exit timing</div></div>
+  <div class="card"><h3>Live Blocks</h3><div class="stat" id="operatorQueueStatus">--</div><div class="sub" id="operatorQueueSub"></div></div>
+  <div class="card"><h3>Risk</h3><div class="stat yellow" id="riskLevel">--</div><div class="risk-bar"><div class="risk-fill" id="riskBar" style="width:0%"></div></div><div class="sub" id="riskSub">drawdown + exits</div></div>
   <div class="card session-discipline-card"><h3>Session Discipline</h3><div class="stat" id="signalCadenceStatus">-</div><div class="sub" id="signalCadenceSub">session-window audit</div></div>
-  <div class="card"><h3>Web Proxy</h3><div class="stat" id="opsProxyStatus">-</div><div class="sub" id="opsProxySub">public dashboard route</div></div>
-  <div class="card"><h3>Dashboard Watch</h3><div class="stat" id="opsWatchdogStatus">-</div><div class="sub" id="opsWatchdogSub">health monitor</div></div>
-  <div class="card vps-root-card" role="button" tabindex="0" onclick="focusVpsRootDetails()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();focusVpsRootDetails();}"><h3>VPS Root Review</h3><div class="stat" id="vpsRootStatus">-</div><div class="sub" id="vpsRootSub">workspace review</div></div>
+  <div class="card"><h3>Public Route</h3><div class="stat" id="opsProxyStatus">-</div><div class="sub" id="opsProxySub">public route</div></div>
+  <div class="card"><h3>Surface Watch</h3><div class="stat" id="opsWatchdogStatus">-</div><div class="sub" id="opsWatchdogSub">surface health</div></div>
+  <div class="card vps-root-card" role="button" tabindex="0" onclick="focusVpsRootDetails()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();focusVpsRootDetails();}"><h3>VPS Review</h3><div class="stat" id="vpsRootStatus">-</div><div class="sub" id="vpsRootSub">workspace health</div></div>
 </div>
 
 <div class="compat-anchors" style="display:none" aria-hidden="true">
@@ -436,11 +436,11 @@ tr:hover td{background:rgba(100,215,255,.055)}
 </div>
 
 <details class="collapsible-section vps-root-detail-wrap" id="vpsRootDetailsWrap">
-  <summary class="collapsible-summary"><span class="summary-copy"><span class="summary-title">VPS Root Review</span><small id="vpsRootSummaryLine">Workspace health and cleanup safety checks</small></span></summary>
+  <summary class="collapsible-summary"><span class="summary-copy"><span class="summary-title">VPS Review</span><small id="vpsRootSummaryLine">Workspace health and cleanup safety checks</small></span></summary>
   <div class="card vps-root-detail-card">
     <div class="panel-head">
       <div>
-        <h3>VPS Root Review Details</h3>
+        <h3>VPS Review Details</h3>
         <div class="panel-kicker" id="vpsRootDetailKicker">read-only safety check</div>
       </div>
       <div class="truth-chip" id="vpsRootDetailStatus">waiting for plan</div>
@@ -2694,7 +2694,7 @@ function showOffline(clearDashboard = true) {
   const dataIntelligenceSub = document.getElementById('dataIntelligenceSub');
   if (dataIntelligenceSub) dataIntelligenceSub.textContent = 'symbols + news + book + sentiment';
   const retuneFactorySub = document.getElementById('retuneFactorySub');
-  if (retuneFactorySub) retuneFactorySub.textContent = 'paper retunes pending';
+  if (retuneFactorySub) retuneFactorySub.textContent = 'next retune pending';
   const signalCadenceSub = document.getElementById('signalCadenceSub');
   if (signalCadenceSub) signalCadenceSub.textContent = 'session audit pending';
   const opsProxySub = document.getElementById('opsProxySub');
@@ -3016,11 +3016,11 @@ function retuneFactoryReadout(snapshot) {
     className = 'green';
   }
   const subParts = [
-    `${attempted}/${targets} tried`,
-    `${stuck} stuck`,
-    `${proof} need broker proof`,
+    `${attempted}/${targets} tuned`,
+    stuck > 0 ? `${stuck} stuck` : '',
+    proof > 0 ? `${proof} need proof` : '',
     timeout > 0 ? `${timeout} retry` : '',
-    topBot ? `top ${topBot}` : '',
+    topBot ? topBot : '',
   ].filter(Boolean);
   return {
     label,
@@ -3371,12 +3371,12 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
       ? `${selectedWindowCount} closed trade${selectedWindowCount === 1 ? '' : 's'}`
       : '';
     document.getElementById('totalTrades').textContent = displayTrades;
-    document.getElementById('totalTradesSub').textContent = `${closeHistoryText || 'no closed trades yet'} | ${liveFills} fills today | ${openText}${watchText}`;
+    document.getElementById('totalTradesSub').textContent = `${closeHistoryText || '0 closes'} | ${liveFills} fills | ${openText}${watchText}`;
   } else {
     document.getElementById('totalTrades').textContent = selectedWindowCount || trades || fillBackedRows || 0;
     document.getElementById('totalTradesSub').textContent = selectedWindowCount
       ? `${selectedWindowCount} ${selectedWindowLabel} closed trade${selectedWindowCount === 1 ? '' : 's'}`
-      : trades ? 'closed trades' : fillBackedRows ? 'fill evidence found' : signalUpdates ? `0 fills | ${signalUpdates} signal updates` : 'waiting for fills';
+      : trades ? 'closed trades found' : fillBackedRows ? 'fill evidence found' : signalUpdates ? `0 fills | ${signalUpdates} signal updates` : 'waiting for fills';
   }
 
   // Verdicts -- APPROVED/CONDITIONAL count as approved; NONE/DEFERRED are not.
@@ -3397,12 +3397,12 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
       ? compactText(
           humanizeStatusText(
             approved > 0
-              ? `${approved} approved verdict${approved === 1 ? '' : 's'} | ${blockedKindsText}`
-              : `entries held | ${blockedKindsText}`
+              ? `${approved} ready | ${blockedKindsText}`
+              : `${blockedBots} held | ${blockedKindsText}`
           ),
-          82
+          72
         )
-      : 'approved or conditional';
+      : 'ready for entry';
   }
 
   const liveModes = [...new Set(
@@ -3626,12 +3626,12 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
   const hold = brokerRouter.order_entry_hold || {};
   document.getElementById('brokerRouterSub').textContent =
     routerStatus === 'held' && hold.reason
-      ? 'entries held: ' + hold.reason
+      ? compactText('entries held | ' + humanizeStatusText(hold.reason), 108)
         : (pending || processing)
-          ? processing + ' processing; ' + pending + ' waiting'
+          ? compactText(`${processing} sending | ${pending} waiting`, 108)
           : (results || failed)
-            ? results + ' checked; ' + actualRouterFills + ' filled; ' + openNoFill + ' working; ' + rejected + ' rejected; ' + failed + ' failed'
-      : 'No orders moving right now';
+            ? compactText(`${results} checked | ${actualRouterFills} filled | ${openNoFill} working${rejected ? ` | ${rejected} rejected` : ''}${failed ? ` | ${failed} failed` : ''}`, 108)
+      : 'no active orders';
 
   const bracketAudit = d.broker_bracket_audit || summary.broker_bracket_audit || {};
   const bracketPosition = bracketAudit.position_summary || {};
@@ -3704,10 +3704,10 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
     const primaryText = bracketPrimaryExposureText(primaryUnprotected);
     const bracketSubParts = [
       propDryRunBlocked ? 'prop dry-run blocked' : '',
-        missingOco > 0 ? `${missingOco} missing target/stop order${missingOco === 1 ? '' : 's'}` : '',
+      missingOco > 0 ? `${missingOco} missing target/stop${missingOco === 1 ? '' : 's'}` : '',
       primaryText ? `${primaryText} unprotected` : '',
       unprotectedSymbolsText && !primaryText ? `${unprotectedSymbolsText} unprotected` : '',
-        bracketRequired > 0 ? `${bracketRequired} need target/stop protection` : '',
+      bracketRequired > 0 ? `${bracketRequired} need target/stop` : '',
       auditBrokerOpen > 0 ? `${auditBrokerOpen} broker open` : '',
       actionChoiceText,
       conciseAuditAction
@@ -3839,7 +3839,8 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
     operatorQueueLabel = opLaunchBlocked > 0 ? 'Blocked' : 'Watch';
     operatorQueueClass = opLaunchBlocked > 0 ? 'red' : 'yellow';
     operatorQueueSub = compactText(
-      humanizeStatusText(`${opBlocked} blocked; ${opLaunchBlocked} launch. ${opTop?.op_id || ''} ${opTop?.detail || opTop?.title || ''}`.trim())
+      humanizeStatusText(`${opBlocked} blocked | ${opLaunchBlocked} launch blocks | ${opTop?.op_id || ''} ${opTop?.detail || opTop?.title || ''}`.trim()),
+      108
     );
   }
   document.getElementById('operatorQueueStatus').textContent = operatorQueueLabel;
@@ -3898,8 +3899,10 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
   }
   const paperDetail = compactText(
     humanizeStatusText(
-      paperCapitalHold
-        ? 'shadow live | capital held by daily stop'
+      paperDailyLossHold
+        ? paperEffectiveDetail || 'Daily-loss soft stop is active'
+        : paperCapitalHold
+          ? 'shadow live | capital held by daily stop'
         : paperGateHeld
           ? paperBracketHold
           : paperEffectiveDetail || firstPaperGate?.detail || paperAction || paperLive?.error || 'launch readiness pending'
@@ -3926,11 +3929,11 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
   const proxyAction = proxyWatchdog.action ? friendlySourceLabel(proxyWatchdog.action) : 'check route';
   const proxyAge = formatAgeSeconds(proxyWatchdog.checked_age_s ?? proxyWatchdog.heartbeat_age_s);
   const proxyDetail = proxyStatus === 'probe_ok_watchdog_stale'
-    ? `route works; monitor needs refresh; ${proxyAge}`
-    : `${proxyAction}; ${humanizeStatusText(proxyReason)}; ${proxyAge}`;
+    ? `route OK | monitor refresh due | ${proxyAge}`
+    : `${proxyAction} | ${humanizeStatusText(proxyReason)} | ${proxyAge}`;
   document.getElementById('opsProxyStatus').textContent = proxyLabels[proxyStatus] || proxyStatus.toUpperCase();
   document.getElementById('opsProxyStatus').className = 'stat ' + (proxyClasses[proxyStatus] || 'yellow');
-  document.getElementById('opsProxySub').textContent = compactText(humanizeStatusText(proxyDetail));
+  document.getElementById('opsProxySub').textContent = compactText(humanizeStatusText(proxyDetail), 108);
 
   const commandWatchdog = diagnostics?.command_center_watchdog || {};
   const commandWatchdogStatus = String(commandWatchdog.status || 'unknown').toLowerCase();
@@ -3964,7 +3967,12 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
     || `${friendlySourceLabel(commandWatchdogStep)}; ${friendlySourceLabel(commandWatchdog.failure_class || 'unknown')}; ${commandWatchdogAge}`;
   document.getElementById('opsWatchdogStatus').textContent = commandWatchdogLabels[commandWatchdogStatus] || commandWatchdogStatus.toUpperCase();
   document.getElementById('opsWatchdogStatus').className = 'stat ' + (commandWatchdogClasses[commandWatchdogStatus] || 'yellow');
-  document.getElementById('opsWatchdogSub').textContent = compactText(commandWatchdogDetail);
+  document.getElementById('opsWatchdogSub').textContent = compactText(
+    commandWatchdogStatus === 'healthy'
+      ? `surface healthy | ${commandWatchdogAge}`
+      : commandWatchdogDetail,
+    108
+  );
 
   const opsHardening = diagnostics?.vps_ops_hardening || {};
   const adminAi = opsHardening?.jarvis_hermes_admin_ai || {};
@@ -3997,8 +4005,12 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
   document.getElementById('adminAiStatus').textContent = adminLabels[adminStatus] || adminStatus.toUpperCase();
   document.getElementById('adminAiStatus').className = 'stat ' + (adminClasses[adminStatus] || 'yellow');
   document.getElementById('adminAiSub').textContent = compactText(
-    humanizeStatusText(`${opsHardening.status || 'unknown'}; ${adminDetail}; ${hardeningAge}`),
-    145,
+    humanizeStatusText(
+      adminReady
+        ? `AI bridge ready | ${hardeningAge}`
+        : `${opsHardening.status || 'unknown'} | ${adminDetail} | ${hardeningAge}`
+    ),
+    108,
   );
 
   const maxDD = Math.max(...bots.map(b => b.max_dd || 0), 0);
@@ -4008,26 +4020,26 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
     : 'drawdown quiet';
   if (forceFlattenDue > 0) {
     risk = 'High';
-    riskDetail = `${forceFlattenDue} position${forceFlattenDue === 1 ? '' : 's'} past max-hold; force flatten due`;
+    riskDetail = `${forceFlattenDue} past max-hold | flatten due`;
   } else if (targetExitStatus === 'missing_brackets' || missingBrackets > 0) {
     risk = risk === 'High' ? risk : 'Medium';
-    riskDetail = `${missingBrackets || 1} target/stop order missing; verify broker exits or manage flatten manually`;
+    riskDetail = `${missingBrackets || 1} missing target/stop`;
   } else if (tightenStopDue > 0 || requireAckDue > 0) {
     risk = risk === 'High' ? risk : 'Medium';
     const due = tightenStopDue > 0
       ? `${tightenStopDue} stop tighten due`
       : `${requireAckDue} position ack due`;
-    riskDetail = `${due}; oldest ${oldestDescriptor}`;
+    riskDetail = `${due} | oldest ${oldestDescriptor}`;
   } else if (secondsToNextAction != null && secondsToNextAction > 0 && oldestAge > 0) {
     if (secondsToNextAction <= 300) risk = risk === 'High' ? risk : 'Medium';
     riskDetail = nextActionText
-      ? `exit watch active; ${nextActionText}`
-      : 'exit watch active; next review pending';
+      ? `exit watch | ${nextActionText}`
+      : 'exit watch | next review pending';
   }
   document.getElementById('riskLevel').textContent = risk;
   document.getElementById('riskLevel').className = 'stat ' + (risk === 'Low' ? 'green' : risk === 'Medium' ? 'yellow' : 'red');
   document.getElementById('riskBar').style.width = forceFlattenDue > 0 ? '95%' : Math.min(80, maxDD / 50) + '%';
-  document.getElementById('riskSub').textContent = compactText(riskDetail);
+  document.getElementById('riskSub').textContent = compactText(riskDetail, 108);
 
   // Win rate: prefer the selected close-history window so it changes with
   // Closed PnL. JARVIS verdict counts are policy signals, not realized PnL
