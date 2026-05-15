@@ -6494,14 +6494,27 @@ def _record_matches_bot_verdict(
             if payload_bot == bot_id:
                 return True
 
+    explicit_request_bots: set[str] = set()
     for request_id in (
         record.get("request_id"),
         record.get("signal_id"),
         (record.get("consolidated") or {}).get("request_id") if isinstance(record.get("consolidated"), dict) else None,
         request.get("request_id") if isinstance(request, dict) else None,
     ):
-        if _extract_bot_id_from_client_order_id(str(request_id or "").strip()) == bot_id:
-            return True
+        extracted_bot_id = _extract_bot_id_from_client_order_id(str(request_id or "").strip())
+        if extracted_bot_id:
+            explicit_request_bots.add(extracted_bot_id)
+    if bot_id in explicit_request_bots:
+        return True
+    if explicit_request_bots:
+        return False
+
+    if direct_bot:
+        return False
+    if isinstance(request, dict):
+        payload = request.get("payload")
+        if isinstance(payload, dict) and str(payload.get("bot_id") or payload.get("bot") or "").strip():
+            return False
 
     subsystem = str(record.get("subsystem") or "").strip().lower()
     if subsystem and subsystem in subsystem_candidates:

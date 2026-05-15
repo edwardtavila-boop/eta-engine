@@ -299,6 +299,38 @@ def test_bot_fleet_drilldown_falls_back_to_canonical_verdict_log(client, tmp_pat
     assert verdict["sentiment_summary"] == "risk_off / headwind_strong / lead=macro"
 
 
+def test_bot_fleet_drilldown_rejects_conflicting_verdict_request_id(client, tmp_path, monkeypatch) -> None:
+    import json
+
+    from eta_engine.scripts import workspace_roots
+
+    monkeypatch.setenv("ETA_STATE_DIR", str(tmp_path))
+    bot_dir = tmp_path / "bots" / "mnq_futures_sage"
+    bot_dir.mkdir(parents=True)
+    (bot_dir / "status.json").write_text(json.dumps({"name": "mnq_futures_sage", "symbol": "MNQ1"}), encoding="utf-8")
+    verdict_log = tmp_path / "jarvis_intel" / "verdicts.jsonl"
+    verdict_log.parent.mkdir(parents=True, exist_ok=True)
+    verdict_log.write_text(
+        json.dumps(
+            {
+                "ts": "2026-05-15T12:28:24+00:00",
+                "request_id": "mbt_funding_basis_4ce0d708",
+                "subsystem": "bot.mnq",
+                "final_verdict": "APPROVED",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(workspace_roots, "ETA_JARVIS_VERDICTS_PATH", verdict_log)
+    monkeypatch.setattr(workspace_roots, "ETA_LEGACY_JARVIS_VERDICTS_PATH", tmp_path / "missing.jsonl")
+
+    r = client.get("/api/bot-fleet/mnq_futures_sage")
+
+    assert r.status_code == 200
+    assert r.json()["recent_verdicts"] == []
+
+
 def test_bot_fleet_drilldown_unknown_bot(client, tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("ETA_STATE_DIR", str(tmp_path))
     r = client.get("/api/bot-fleet/no-such-bot")
