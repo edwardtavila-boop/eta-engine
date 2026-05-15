@@ -18,6 +18,11 @@ from eta_engine.strategies.crypto_regime_trend_strategy import (
 from eta_engine.strategies.generic_sage_daily_gate import (
     GenericSageDailyGateStrategy,
 )
+from eta_engine.strategies.mbt_funding_basis_strategy import MBTFundingBasisStrategy
+from eta_engine.strategies.mbt_overnight_gap_strategy import MBTOvernightGapStrategy
+from eta_engine.strategies.mbt_rth_orb_strategy import MBTRTHORBStrategy
+from eta_engine.strategies.mbt_zfade_strategy import MBTZFadeStrategy
+from eta_engine.strategies.met_rth_orb_strategy import METRTHORBStrategy
 from eta_engine.strategies.orb_strategy import ORBConfig, ORBStrategy
 from eta_engine.strategies.per_bot_registry import get_for_bot
 from eta_engine.strategies.sage_daily_gated_strategy import SageDailyGatedStrategy
@@ -284,3 +289,25 @@ def test_btc_regime_trend_etf_registry_assignment_pins_macro_filter_stack() -> N
     assert strategy.cfg.base.pullback_ema == 21
     assert strategy.cfg.base.rr_target == 3.0
     assert strategy.cfg.filters.require_etf_flow_alignment is True
+
+
+def test_cme_crypto_specialists_build_actual_strategy_classes() -> None:
+    expected = {
+        "mbt_funding_basis": MBTFundingBasisStrategy,
+        "mbt_overnight_gap": MBTOvernightGapStrategy,
+        "mbt_rth_orb": MBTRTHORBStrategy,
+        "mbt_zfade": MBTZFadeStrategy,
+        "met_rth_orb": METRTHORBStrategy,
+    }
+
+    for kind, strategy_cls in expected.items():
+        strategy = _build_strategy_factory(kind, {})()
+
+        assert isinstance(strategy, strategy_cls)
+
+
+def test_cme_crypto_specialists_use_strategy_factory_in_research_grid() -> None:
+    from eta_engine.scripts import run_research_grid
+
+    for kind in ("mbt_funding_basis", "mbt_overnight_gap", "mbt_rth_orb", "mbt_zfade", "met_rth_orb"):
+        assert run_research_grid._uses_strategy_factory(kind)

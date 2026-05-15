@@ -50,6 +50,46 @@ if TYPE_CHECKING:
 
 _DAILY_SAGE_PROVIDER_CACHE: dict[tuple[str, str], object] = {}
 
+_CME_CRYPTO_STRATEGY_KINDS = frozenset(
+    {
+        "mbt_funding_basis",
+        "mbt_overnight_gap",
+        "mbt_rth_orb",
+        "mbt_zfade",
+        "met_rth_orb",
+    }
+)
+
+_FACTORY_STRATEGY_KINDS = frozenset(
+    {
+        "orb",
+        "orb_sage_gated",
+        "drb",
+        "crypto_orb",
+        "crypto_trend",
+        "crypto_meanrev",
+        "crypto_scalp",
+        "crypto_regime_trend",
+        "crypto_macro_confluence",
+        "sage_consensus",
+        "sage_daily_gated",
+        "grid",
+        "compression_breakout",
+        "sweep_reclaim",
+        "rsi_mean_reversion",
+        "vwap_reversion",
+        "volume_profile",
+        "gap_fill",
+        "cross_asset_divergence",
+        "funding_rate",
+        *_CME_CRYPTO_STRATEGY_KINDS,
+    }
+)
+
+
+def _uses_strategy_factory(kind: str) -> bool:
+    return kind in _FACTORY_STRATEGY_KINDS
+
 
 @dataclass(frozen=True)
 class ResearchCell:
@@ -905,6 +945,63 @@ def _build_strategy_factory(  # type: ignore[no-untyped-def]  # noqa: ANN202
         )
 
         return lambda: OilMacroStrategy(cl_macro_fade_preset())
+    if kind == "mbt_funding_basis":
+        from eta_engine.feeds.cme_basis_provider import build_basis_provider
+        from eta_engine.strategies.mbt_funding_basis_strategy import (
+            MBTFundingBasisConfig,
+            MBTFundingBasisStrategy,
+        )
+
+        cfg_raw = extras.get("mbt_funding_basis_config", {})
+        cfg = MBTFundingBasisConfig(**cfg_raw) if isinstance(cfg_raw, dict) and cfg_raw else MBTFundingBasisConfig()
+        provider_kind = str(extras.get("basis_provider_kind", "internal_log_return"))
+        spot_csv = extras.get("basis_spot_csv")
+        try:
+            provider = build_basis_provider(
+                provider_kind,
+                spot_csv=spot_csv if isinstance(spot_csv, str) else None,
+            )
+        except ValueError:
+            provider = None
+        return lambda: MBTFundingBasisStrategy(cfg, basis_provider=provider)
+    if kind == "mbt_overnight_gap":
+        from eta_engine.strategies.mbt_overnight_gap_strategy import (
+            MBTOvernightGapConfig,
+            MBTOvernightGapStrategy,
+        )
+
+        cfg_raw = extras.get("mbt_overnight_gap_config", {})
+        cfg = MBTOvernightGapConfig(**cfg_raw) if isinstance(cfg_raw, dict) and cfg_raw else MBTOvernightGapConfig()
+        return lambda: MBTOvernightGapStrategy(cfg)
+    if kind == "met_rth_orb":
+        from eta_engine.strategies.met_rth_orb_strategy import (
+            METRTHORBConfig,
+            METRTHORBStrategy,
+        )
+
+        cfg_raw = extras.get("met_rth_orb_config", {})
+        cfg = METRTHORBConfig(**cfg_raw) if isinstance(cfg_raw, dict) and cfg_raw else METRTHORBConfig()
+        return lambda: METRTHORBStrategy(cfg)
+    if kind == "mbt_rth_orb":
+        from eta_engine.strategies.mbt_rth_orb_strategy import (
+            MBTRTHORBConfig,
+            MBTRTHORBStrategy,
+            mbt_rth_orb_preset,
+        )
+
+        cfg_raw = extras.get("mbt_rth_orb_config", {})
+        cfg = MBTRTHORBConfig(**cfg_raw) if isinstance(cfg_raw, dict) and cfg_raw else mbt_rth_orb_preset()
+        return lambda: MBTRTHORBStrategy(cfg)
+    if kind == "mbt_zfade":
+        from eta_engine.strategies.mbt_zfade_strategy import (
+            MBTZFadeConfig,
+            MBTZFadeStrategy,
+            mbt_zfade_preset,
+        )
+
+        cfg_raw = extras.get("mbt_zfade_config", {})
+        cfg = MBTZFadeConfig(**cfg_raw) if isinstance(cfg_raw, dict) and cfg_raw else mbt_zfade_preset()
+        return lambda: MBTZFadeStrategy(cfg)
     return _build_crypto_strategy_factory(kind, extras)
 
 
@@ -1021,17 +1118,7 @@ def run_cell(cell: ResearchCell, *, max_bars: int | None = None) -> CellResult:
     wf_kwargs.update(wf_overrides)
     wf = WalkForwardConfig(**wf_kwargs)
     # Strategy-factory kinds bypass the scorer/regime/ctx path entirely.
-    if cell.strategy_kind in ("orb", "orb_sage_gated", "drb"):
-        factory = _build_strategy_factory(cell.strategy_kind, cell.extras)
-        res = WalkForwardEngine().run(
-            bars=bars,
-            pipeline=FeaturePipeline.default(),
-            config=wf,
-            base_backtest_config=base_cfg,
-            ctx_builder=lambda b, h: {},
-            strategy_factory=factory,
-        )
-    elif cell.strategy_kind == "ensemble_voting":
+    if cell.strategy_kind == "ensemble_voting":
         # Ensemble vote across named sub-strategies. Voters list comes
         # from extras["voters"]; each voter is built via the same
         # crypto factory (so "crypto_regime_trend", "regime_trend_etf",
@@ -1111,26 +1198,8 @@ def run_cell(cell: ResearchCell, *, max_bars: int | None = None) -> CellResult:
             ctx_builder=lambda b, h: {},
             strategy_factory=_ensemble_factory,
         )
-    elif cell.strategy_kind in (
-        "crypto_orb",
-        "crypto_trend",
-        "crypto_meanrev",
-        "crypto_scalp",
-        "crypto_regime_trend",
-        "crypto_macro_confluence",
-        "sage_consensus",
-        "sage_daily_gated",
-        "grid",
-        "compression_breakout",
-        "sweep_reclaim",
-        "rsi_mean_reversion",
-        "vwap_reversion",
-        "volume_profile",
-        "gap_fill",
-        "cross_asset_divergence",
-        "funding_rate",
-    ):
-        # Crypto-specific strategy variants. All share the same
+    elif _uses_strategy_factory(cell.strategy_kind):
+        # Registry-backed strategy variants. Most share the same
         # maybe_enter(bar, hist, equity, config) -> _Open|None contract
         # as ORB/DRB, so they bypass the confluence-scorer path. The
         # registry wires per-bot defaults; per-bot extras can override

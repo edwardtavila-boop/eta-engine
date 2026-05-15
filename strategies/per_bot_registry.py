@@ -2239,6 +2239,25 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             # tiny (1.0×ATR filter is restrictive); needs 540d IBKR data
             # before any conclusions can be drawn.
             "promotion_status": "research_candidate",
+            "research_tune": {
+                "scope": "full_history_specialist_grid",
+                "source_artifact": "var/eta_engine/state/research_grid/research_grid_20260515_010327_351662.md",
+                "strict_gate": False,
+                "candidate_agg_is_sharpe": 0.0,
+                "candidate_agg_oos_sharpe": 0.0,
+                "candidate_dsr_pass_fraction": 0.0,
+                "candidate_degradation": 0.0,
+                "full_history_smoke": {
+                    "source_artifact": "var/eta_engine/state/research_grid/research_grid_20260515_010327_351662.md",
+                    "tradable_bars": 110877,
+                    "windows": 1,
+                    "agg_is_sharpe": 0.0,
+                    "agg_oos_sharpe": 0.0,
+                    "dsr_pass_fraction": 0.0,
+                    "degradation": 0.0,
+                    "strict_gate": False,
+                },
+            },
             "edge_enabled": True,
             "edge_config": {
                 "enable_session_gate": True,
@@ -2327,6 +2346,25 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         ),
         extras={
             "promotion_status": "research_candidate",
+            "research_tune": {
+                "scope": "full_history_specialist_grid",
+                "source_artifact": "var/eta_engine/state/research_grid/research_grid_20260515_010327_351662.md",
+                "strict_gate": False,
+                "candidate_agg_is_sharpe": 1.292,
+                "candidate_agg_oos_sharpe": -1.158,
+                "candidate_dsr_pass_fraction": 0.0,
+                "candidate_degradation": 1.0,
+                "full_history_smoke": {
+                    "source_artifact": "var/eta_engine/state/research_grid/research_grid_20260515_010327_351662.md",
+                    "tradable_bars": 110877,
+                    "windows": 1,
+                    "agg_is_sharpe": 1.292,
+                    "agg_oos_sharpe": -1.158,
+                    "dsr_pass_fraction": 0.0,
+                    "degradation": 1.0,
+                    "strict_gate": False,
+                },
+            },
             "edge_enabled": True,
             "edge_config": {
                 "enable_session_gate": True,

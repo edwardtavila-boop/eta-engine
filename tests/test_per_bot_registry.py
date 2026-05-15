@@ -169,6 +169,24 @@ def test_mbt_overnight_gap_registry_matches_continuation_thesis() -> None:
     assert assignment.extras["edge_config"]["strategy_mode"] == "trend"
 
 
+def test_mbt_research_candidates_carry_specialist_grid_failure_evidence() -> None:
+    expected_oos = {
+        "mbt_overnight_gap": 0.0,
+        "mbt_rth_orb": -1.158,
+    }
+    for bot_id, oos_sharpe in expected_oos.items():
+        assignment = get_for_bot(bot_id)
+
+        assert assignment is not None
+        tune = assignment.extras.get("research_tune")
+        assert isinstance(tune, dict)
+        smoke = tune["full_history_smoke"]
+        assert smoke["source_artifact"] == "var/eta_engine/state/research_grid/research_grid_20260515_010327_351662.md"
+        assert smoke["strict_gate"] is False
+        assert smoke["agg_oos_sharpe"] == oos_sharpe
+        assert smoke["dsr_pass_fraction"] == 0.0
+
+
 def test_btc_etf_assignments_use_canonical_history_root() -> None:
     expected = str(workspace_roots.MNQ_HISTORY_ROOT / "BTC_ETF_FLOWS.csv")
     for bot_id in ("btc_sage_daily_etf", "btc_ensemble_2of3", "btc_regime_trend_etf"):
