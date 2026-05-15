@@ -163,3 +163,14 @@ def test_snapshot_attribution_top_structure(monkeypatch) -> None:
     assert "top_winners" in snap.attribution_top
     assert "top_losers" in snap.attribution_top
     assert snap.attribution_top["top_winners"][0]["bot_id"] == "w1"
+
+
+def test_fetch_sentiment_includes_macro_and_sol(monkeypatch) -> None:
+    from eta_engine.brain.jarvis_v3 import sentiment_overlay, zeus
+
+    monkeypatch.setattr(sentiment_overlay, "current_sentiment", lambda asset: {"asset": asset})
+
+    out = zeus._fetch_sentiment()
+
+    assert set(out) == {"BTC", "ETH", "SOL", "macro"}
+    assert out["macro"]["asset"] == "macro"

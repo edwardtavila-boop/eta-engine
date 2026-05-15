@@ -74,12 +74,18 @@ events:
         tws_watchdog_path=tmp_path / "missing_tws.json",
         ibgateway_reauth_path=tmp_path / "missing_reauth.json",
         bot_symbol_map={"volume_profile_mnq": "MNQ1"},
+        collect_public_news=False,
+        collect_depth_books=False,
+        persist_sentiment_snapshots=False,
     )
 
     assert payload["status"] == "ok"
     assert payload["audit"]["overall_status"] == "green"
     assert payload["bootstrap_counts"]["bars"] == 1
     assert payload["bootstrap_counts"]["events"] == 1
+    assert payload["bootstrap_counts"]["news"] == 0
+    assert payload["bootstrap_counts"]["book"] == 0
+    assert payload["bootstrap_counts"]["sentiment_snapshots"] == 0
     assert payload["bootstrap_counts"]["decisions"] == 1
     assert payload["bootstrap_counts"]["outcomes"] == 1
     assert json.loads(status_path.read_text(encoding="utf-8")) == payload
@@ -141,6 +147,9 @@ def test_symbol_intelligence_collector_marks_gateway_down_as_degraded(tmp_path):
         closed_trade_path=tmp_path / "missing_closes.json",
         tws_watchdog_path=tws_path,
         ibgateway_reauth_path=tmp_path / "missing_reauth.json",
+        collect_public_news=False,
+        collect_depth_books=False,
+        persist_sentiment_snapshots=False,
     )
 
     assert payload["audit"]["overall_status"] == "green"

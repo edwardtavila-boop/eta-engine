@@ -7,16 +7,36 @@ LunarCrush MCP facade. 5-min lru_cache + 10 req/min rate-limit window.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import time
+import urllib.error
+import urllib.request
 from collections import deque
 from functools import lru_cache
 
+from eta_engine.data.market_news import headline_volume_proxy
+
 log = logging.getLogger(__name__)
+_ALTERNATIVE_FNG_URL = "https://api.alternative.me/fng/?limit=1&format=json"
+_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/124 Safari/537.36"
+)
 
 
 def _five_min_bucket() -> int:
     return int(time.time() // 300)
+
+
+def _fetch_json(url: str, *, timeout: float = 20.0) -> dict | None:
+    req = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310
+            payload = json.loads(resp.read().decode("utf-8"))
+    except (urllib.error.URLError, TimeoutError, ConnectionError, OSError, json.JSONDecodeError):
+        return None
+    return payload if isinstance(payload, dict) else None
 
 
 class LunarCrushClient:
@@ -87,13 +107,24 @@ def _fetch_alt_rank_cached(asset: str, bucket: int) -> int:
 
 @lru_cache(maxsize=256)
 def _fetch_social_volume_cached(asset: str, window_h: int, bucket: int) -> dict:
-    """TODO: mcp__lunarcrush__Topic_Time_Series with window_h-hour lookback."""
+    """Fallback to a public headline-volume proxy until LunarCrush is wired."""
     _ = (asset, window_h, bucket)
-    return {"posts": 0, "interactions": 0, "contributors": 0}
+    return headline_volume_proxy(asset, window_h=window_h)
 
 
 @lru_cache(maxsize=4)
 def _fetch_fear_greed_cached(bucket: int) -> int:
-    """TODO: call a public fear-greed index or derive from sentiment."""
+    """Fetch the public Alternative.me Fear & Greed index."""
     _ = bucket
+    payload = _fetch_json(_ALTERNATIVE_FNG_URL)
+    if isinstance(payload, dict):
+        items = payload.get("data")
+        if isinstance(items, list):
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                try:
+                    return int(item["value"])
+                except (KeyError, TypeError, ValueError):
+                    continue
     return 50

@@ -24,6 +24,7 @@ if hasattr(sys.stdout, "reconfigure"):
     with contextlib.suppress(AttributeError, OSError):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
+from eta_engine.data.market_news import fetch_google_news_headlines, query_for_symbol  # noqa: E402
 from eta_engine.data.symbol_intel import SymbolIntelQuality, SymbolIntelRecord, SymbolIntelStore  # noqa: E402
 from eta_engine.scripts import workspace_roots  # noqa: E402
 
@@ -53,6 +54,25 @@ _COMPONENT_RECORD_TYPES = {
     "quality": "quality",
     "news": "news",
     "book": "book",
+}
+
+_DEPTH_ROOT_ALIASES = {
+    "MNQ1": "MNQ",
+    "NQ1": "NQ",
+    "ES1": "ES",
+    "MES1": "MES",
+    "YM1": "YM",
+    "MYM1": "MYM",
+    "6E1": "6E",
+    "CL1": "CL",
+    "MCL1": "MCL",
+    "NG1": "NG",
+    "GC1": "GC",
+    "MGC1": "MGC",
+    "BTC1": "BTC",
+    "MBT1": "MBT",
+    "ETH1": "ETH",
+    "MET1": "MET",
 }
 
 
@@ -321,6 +341,40 @@ def _existing_payload_values(store: SymbolIntelStore, *, record_type: str, paylo
     }
 
 
+def _read_last_jsonl_dict(path: Path) -> dict[str, Any] | None:
+    if not path.exists():
+        return None
+    try:
+        with path.open("rb") as fh:
+            fh.seek(0, 2)
+            size = fh.tell()
+            if size <= 0:
+                return None
+            tail_bytes = min(size, 64 * 1024)
+            fh.seek(-tail_bytes, 2)
+            chunk = fh.read().decode("utf-8", errors="ignore")
+    except OSError:
+        return None
+    for line in reversed(chunk.splitlines()):
+        if not line.strip():
+            continue
+        with contextlib.suppress(json.JSONDecodeError):
+            payload = json.loads(line)
+            if isinstance(payload, dict):
+                return payload
+        break
+    return None
+
+
+def _depth_symbol_candidates(symbol: str) -> list[str]:
+    normalized = _normalize_symbol(symbol)
+    root = _DEPTH_ROOT_ALIASES.get(normalized, normalized)
+    candidates = [root.upper()]
+    if normalized.upper() not in candidates:
+        candidates.append(normalized.upper())
+    return candidates
+
+
 def _latest_csv_bar_timestamp(path: Path) -> datetime | None:
     try:
         with path.open("r", encoding="utf-8", newline="") as fh:
@@ -421,6 +475,117 @@ def backfill_events_from_calendar(
             store.append(rec)
             existing_keys.add(event_key)
             count += 1
+    return count
+
+
+def backfill_news_from_public_feeds(
+    *,
+    store: SymbolIntelStore | None = None,
+    symbols: list[str] | tuple[str, ...] = PRIORITY_SYMBOLS,
+    now: datetime | None = None,
+    limit_per_symbol: int = 5,
+    max_age_hours: float = 48.0,
+) -> int:
+    store = store or SymbolIntelStore()
+    now = now or datetime.now(tz=UTC)
+    existing_keys = _existing_payload_values(store, record_type="news", payload_key="news_key")
+    count = 0
+    for symbol in symbols:
+        query = query_for_symbol(symbol)
+        if not query:
+            continue
+        headlines = fetch_google_news_headlines(
+            query,
+            limit=limit_per_symbol,
+            max_age_hours=max_age_hours,
+            now=now,
+        )
+        for item in headlines:
+            news_key = f"{symbol.upper().strip()}|{item.published_at_utc.isoformat()}|{item.url}"
+            if news_key in existing_keys:
+                continue
+            rec = SymbolIntelRecord(
+                record_type="news",
+                ts_utc=item.published_at_utc,
+                symbol=symbol,
+                source=item.provider,
+                payload={
+                    "news_key": news_key,
+                    "query": item.query,
+                    "headline": item.headline,
+                    "publisher": item.publisher,
+                    "url": item.url,
+                    "snippet": item.snippet,
+                    "published_at_utc": item.published_at_utc.isoformat(),
+                },
+                quality=SymbolIntelQuality(confidence=0.6, is_reconciled=True),
+            )
+            store.append(rec)
+            existing_keys.add(news_key)
+            count += 1
+    return count
+
+
+def backfill_book_from_depth_snapshots(
+    *,
+    depth_root: Path = workspace_roots.MNQ_DATA_ROOT / "depth",
+    store: SymbolIntelStore | None = None,
+    symbols: list[str] | tuple[str, ...] = PRIORITY_SYMBOLS,
+) -> int:
+    if not depth_root.exists():
+        return 0
+    store = store or SymbolIntelStore()
+    existing_keys = _existing_payload_values(store, record_type="book", payload_key="snapshot_key")
+    count = 0
+    for symbol in symbols:
+        latest_path: Path | None = None
+        for candidate in _depth_symbol_candidates(symbol):
+            paths = sorted(
+                depth_root.glob(f"{candidate}_*.jsonl"),
+                key=lambda path: path.stat().st_mtime,
+                reverse=True,
+            )
+            if paths:
+                latest_path = paths[0]
+                break
+        if latest_path is None:
+            continue
+        latest = _read_last_jsonl_dict(latest_path)
+        if latest is None:
+            continue
+        bids = latest.get("bids") if isinstance(latest.get("bids"), list) else []
+        asks = latest.get("asks") if isinstance(latest.get("asks"), list) else []
+        if not bids or not asks:
+            continue
+        ts = _parse_ts(latest.get("ts") or latest.get("timestamp"))
+        snapshot_key = f"{symbol.upper().strip()}|{latest_path.name}|{ts.isoformat()}"
+        if snapshot_key in existing_keys:
+            continue
+        best_bid = bids[0].get("price") if isinstance(bids[0], dict) else None
+        best_ask = asks[0].get("price") if isinstance(asks[0], dict) else None
+        rec = SymbolIntelRecord(
+            record_type="book",
+            ts_utc=ts,
+            symbol=symbol,
+            source="ibkr_depth_capture",
+            payload={
+                "snapshot_key": snapshot_key,
+                "snapshot_path": str(latest_path),
+                "bid_levels": len(bids),
+                "ask_levels": len(asks),
+                "best_bid": best_bid,
+                "best_ask": best_ask,
+                "spread": latest.get("spread"),
+                "mid": latest.get("mid"),
+            },
+            quality=SymbolIntelQuality(
+                confidence=0.75 if min(len(bids), len(asks)) >= 3 else 0.55,
+                is_reconciled=True,
+            ),
+        )
+        store.append(rec)
+        existing_keys.add(snapshot_key)
+        count += 1
     return count
 
 
@@ -586,6 +751,8 @@ def bootstrap_existing_truth_surfaces(
     counts = {
         "bars": backfill_bars_from_history(store=store, symbols=symbols),
         "events": backfill_events_from_calendar(store=store, symbols=symbols),
+        "news": backfill_news_from_public_feeds(store=store, symbols=symbols),
+        "book": backfill_book_from_depth_snapshots(store=store, symbols=symbols),
         "decisions": journal_decisions + shadow_decisions,
         "journal_decisions": journal_decisions,
         "shadow_decisions": shadow_decisions,
@@ -697,7 +864,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--bootstrap-existing",
         action="store_true",
-        help="backfill existing bars, events, decisions, outcomes",
+        help="backfill existing bars, events, news, book, decisions, outcomes",
     )
     parser.add_argument("--symbol", action="append", dest="symbols", help="symbol to audit, repeatable")
     args = parser.parse_args(argv)

@@ -31,12 +31,15 @@ if hasattr(sys.stdout, "reconfigure"):
 
 from eta_engine.data.symbol_intel import SymbolIntelStore  # noqa: E402
 from eta_engine.scripts import workspace_roots  # noqa: E402
+from eta_engine.scripts.sentiment_snapshot_collector import persist_runtime_sentiment_snapshots  # noqa: E402
 from eta_engine.scripts.symbol_intelligence_audit import (  # noqa: E402
     PRIORITY_SYMBOLS,
     backfill_bars_from_history,
+    backfill_book_from_depth_snapshots,
     backfill_decisions_from_journal,
     backfill_decisions_from_shadow_signals,
     backfill_events_from_calendar,
+    backfill_news_from_public_feeds,
     backfill_outcomes_from_closed_trade_ledger,
     backfill_quality_from_audit,
     run_audit,
@@ -121,6 +124,9 @@ def run_collection(
     tws_watchdog_path: Path = workspace_roots.ETA_RUNTIME_STATE_DIR / "tws_watchdog.json",
     ibgateway_reauth_path: Path = workspace_roots.ETA_RUNTIME_STATE_DIR / "ibgateway_reauth.json",
     bot_symbol_map: dict[str, str] | None = None,
+    collect_public_news: bool = True,
+    collect_depth_books: bool = True,
+    persist_sentiment_snapshots: bool = True,
 ) -> dict[str, Any]:
     started = now or datetime.now(tz=UTC)
     monotonic_start = time.monotonic()
@@ -141,11 +147,19 @@ def run_collection(
     counts = {
         "bars": backfill_bars_from_history(history_root=history_root, store=store, symbols=symbols),
         "events": backfill_events_from_calendar(calendar_path=calendar_path, store=store, symbols=symbols),
+        "news": (
+            backfill_news_from_public_feeds(store=store, symbols=symbols, now=started)
+            if collect_public_news
+            else 0
+        ),
+        "book": backfill_book_from_depth_snapshots(store=store, symbols=symbols) if collect_depth_books else 0,
         "decisions": journal_decisions + shadow_decisions,
         "journal_decisions": journal_decisions,
         "shadow_decisions": shadow_decisions,
         "outcomes": backfill_outcomes_from_closed_trade_ledger(source_path=closed_trade_path, store=store),
     }
+    sentiment_payload = persist_runtime_sentiment_snapshots(now=started) if persist_sentiment_snapshots else None
+    counts["sentiment_snapshots"] = int(sentiment_payload["ok_count"]) if sentiment_payload else 0
     counts["quality"] = backfill_quality_from_audit(store=store, symbols=symbols, now=started)
 
     audit_payload = run_audit(symbols=symbols, store=store, now=started)
@@ -169,6 +183,7 @@ def run_collection(
         "status_path": str(status_path),
         "tws_watchdog": tws_watchdog,
         "ibgateway_reauth": ibgateway_reauth,
+        "sentiment_snapshot_collector": sentiment_payload,
     }
     workspace_roots.ensure_parent(status_path)
     status_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")

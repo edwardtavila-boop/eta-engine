@@ -224,7 +224,7 @@ def _fetch_sentiment() -> dict[str, Any]:
     from eta_engine.brain.jarvis_v3 import sentiment_overlay
 
     out = {}
-    for asset in ("BTC", "ETH"):
+    for asset in ("BTC", "ETH", "SOL", "macro"):
         s = sentiment_overlay.current_sentiment(asset)
         out[asset] = s if s is not None else {"error": "no_recent_snapshot"}
     return out

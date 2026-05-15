@@ -1,12 +1,15 @@
 import json
 from datetime import UTC, datetime
 
+from eta_engine.data.market_news import NewsHeadline
 from eta_engine.data.symbol_intel import SymbolIntelRecord, SymbolIntelStore
 from eta_engine.scripts.symbol_intelligence_audit import (
     backfill_bars_from_history,
+    backfill_book_from_depth_snapshots,
     backfill_decisions_from_journal,
     backfill_decisions_from_shadow_signals,
     backfill_events_from_calendar,
+    backfill_news_from_public_feeds,
     backfill_outcomes_from_closed_trade_ledger,
     backfill_quality_from_audit,
     default_bot_symbol_map,
@@ -98,6 +101,76 @@ def test_backfill_bars_prefers_csv_timestamp_over_future_file_mtime(tmp_path):
     assert coverage.components["bars"] is True
     assert coverage.future_record_count == 0
     assert records[0].payload["bar_ts_utc"] == "2026-05-14T14:35:00+00:00"
+
+
+def test_backfill_news_from_public_feeds(tmp_path, monkeypatch):
+    store = SymbolIntelStore(root=tmp_path / "lake")
+
+    def _fake_headlines(query: str, *, limit: int, max_age_hours: float, now: datetime):
+        assert "Nasdaq" in query
+        return [
+            NewsHeadline(
+                headline="Nasdaq futures rise ahead of CPI",
+                url="https://example.com/nasdaq-cpi",
+                publisher="Reuters",
+                published_at_utc=datetime(2026, 5, 14, 14, 0, tzinfo=UTC),
+                query=query,
+                snippet="Nasdaq futures moved higher before the CPI print.",
+            )
+        ]
+
+    monkeypatch.setattr(
+        "eta_engine.scripts.symbol_intelligence_audit.fetch_google_news_headlines",
+        _fake_headlines,
+    )
+
+    count = backfill_news_from_public_feeds(
+        store=store,
+        symbols=["MNQ1"],
+        now=datetime(2026, 5, 14, 16, 0, tzinfo=UTC),
+    )
+    rows = list(store.iter_records(record_type="news", symbol="MNQ1"))
+
+    assert count == 1
+    assert len(rows) == 1
+    assert rows[0].source == "google_news_rss"
+    assert rows[0].payload["publisher"] == "Reuters"
+    assert rows[0].payload["headline"] == "Nasdaq futures rise ahead of CPI"
+
+
+def test_backfill_book_from_depth_snapshots_reads_latest_book(tmp_path):
+    store = SymbolIntelStore(root=tmp_path / "lake")
+    depth_root = tmp_path / "depth"
+    depth_root.mkdir()
+    (depth_root / "MNQ_20260514.jsonl").write_text(
+        json.dumps(
+            {
+                "ts": "2026-05-14T15:59:59+00:00",
+                "symbol": "MNQ",
+                "bids": [{"price": 21001.25, "size": 12}, {"price": 21001.0, "size": 8}],
+                "asks": [{"price": 21001.5, "size": 9}, {"price": 21001.75, "size": 7}],
+                "spread": 0.25,
+                "mid": 21001.375,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    count = backfill_book_from_depth_snapshots(
+        depth_root=depth_root,
+        store=store,
+        symbols=["MNQ1"],
+    )
+    rows = list(store.iter_records(record_type="book", symbol="MNQ1"))
+
+    assert count == 1
+    assert len(rows) == 1
+    assert rows[0].source == "ibkr_depth_capture"
+    assert rows[0].payload["bid_levels"] == 2
+    assert rows[0].payload["ask_levels"] == 2
+    assert rows[0].payload["best_bid"] == 21001.25
+    assert rows[0].payload["best_ask"] == 21001.5
 
 
 def test_future_macro_events_count_as_scheduled_coverage_not_anomalies(tmp_path):
