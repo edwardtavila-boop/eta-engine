@@ -1606,7 +1606,11 @@ class TestDashboardAPI:
                         "status": "YELLOW_SAFETY_BLOCKED",
                         "runtime_ready": True,
                         "dashboard_durable": False,
+                        "paper_live_gate_ready": True,
+                        "paper_live_status": "READY_FOR_PAPER_SOAK",
                         "trading_gate_ready": False,
+                        "prop_promotion_gate_ready": False,
+                        "live_promotion_blocked": True,
                         "admin_ai_ready": False,
                         "admin_ai_status": "WARN",
                         "promotion_allowed": False,
@@ -1635,6 +1639,10 @@ class TestDashboardAPI:
         assert data["hardening"] == hardening
         assert hardening["status"] == "YELLOW_SAFETY_BLOCKED"
         assert hardening["ready"] is False
+        assert hardening["summary"]["paper_live_gate_ready"] is True
+        assert hardening["summary"]["paper_live_status"] == "READY_FOR_PAPER_SOAK"
+        assert hardening["summary"]["prop_promotion_gate_ready"] is False
+        assert hardening["summary"]["live_promotion_blocked"] is True
         assert hardening["summary"]["admin_ai_status"] == "WARN"
         assert hardening["summary"]["promotion_allowed"] is False
         assert hardening["summary"]["order_action_allowed"] is False

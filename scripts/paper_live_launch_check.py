@@ -25,7 +25,7 @@ every promoted bot in the registry and checks:
 
 Output is a per-bot status table:
   ✅ READY = clear to launch paper-live
-  ⚠️  WARN = launchable but with caveats
+  ⚠️  WARN = not launch-ready yet, or intentionally excluded without blocking the fleet
   ❌ BLOCK = cannot launch (missing data / unresolved kind)
 
 Usage
@@ -155,6 +155,39 @@ def _assignment_in_scope(
         return status in _SHADOW_ONLY_STATUSES or status in _NON_EDGE_STATUSES
     msg = f"unknown paper-live launch scope: {scope!r}"
     raise ValueError(msg)
+
+
+def _deactivation_evidence(assignment: Any) -> dict[str, object]:  # noqa: ANN401
+    """Return evidence when a registry row is intentionally not launchable."""
+    from eta_engine.strategies.per_bot_registry import is_active, kaizen_deactivation_record
+
+    try:
+        active = is_active(assignment)
+    except Exception:  # noqa: BLE001
+        extras = assignment.extras or {}
+        active = not bool(extras.get("deactivated"))
+    if active:
+        return {}
+
+    extras = assignment.extras or {}
+    kaizen_record = kaizen_deactivation_record(assignment.bot_id)
+    source = "kaizen_sidecar" if kaizen_record else "registry"
+    reason = (
+        kaizen_record.get("reason")
+        or kaizen_record.get("deactivation_reason")
+        or extras.get("deactivation_reason")
+        or "bot is explicitly deactivated"
+    )
+    evidence: dict[str, object] = {
+        "launch_role": "deactivated",
+        "registry_deactivated": bool(extras.get("deactivated")),
+        "kaizen_deactivated": bool(kaizen_record),
+        "deactivation_source": source,
+        "deactivation_reason": str(reason),
+    }
+    if kaizen_record:
+        evidence["kaizen_record"] = kaizen_record
+    return evidence
 
 
 def _check_data_available(symbol: str, timeframe: str) -> bool:
@@ -489,12 +522,11 @@ def _audit_bot(assignment: Any) -> dict:  # noqa: ANN401
 
     Logic:
     * Issues → BLOCK (cannot launch)
-    * Warnings → WARN (launchable with caveats)
+    * Warnings → WARN (not launch-ready yet, or intentionally excluded)
     * Neither → READY
 
-    A bot is fully READY if it has BOTH a baseline AND a warmup_policy
-    (or has been explicitly marked deactivated). The two gates cover
-    different concerns:
+    A bot is fully READY if it has BOTH a baseline AND a warmup_policy.
+    The two gates cover different concerns:
     * baseline → drift watchdog has a reference for live PnL comparison
     * warmup_policy → sizing discipline during the first N days post-
       promotion; protects from regime-shift outliers blowing the eval
@@ -504,7 +536,8 @@ def _audit_bot(assignment: Any) -> dict:  # noqa: ANN401
     extras = assignment.extras or {}
     evidence: dict[str, object] = {}
 
-    if bool(extras.get("deactivated")):
+    deactivation = _deactivation_evidence(assignment)
+    if deactivation:
         return {
             "bot_id": assignment.bot_id,
             "strategy_id": assignment.strategy_id,
@@ -512,9 +545,10 @@ def _audit_bot(assignment: Any) -> dict:  # noqa: ANN401
             "symbol": assignment.symbol,
             "timeframe": assignment.timeframe,
             "promotion_status": "deactivated",
-            "status": "READY",
+            "status": "WARN",
             "issues": [],
-            "warnings": [],
+            "warnings": ["deactivated; excluded from launch"],
+            "evidence": deactivation,
         }
 
     # 1. Strategy kind resolvable
@@ -568,7 +602,6 @@ def _audit_bot(assignment: Any) -> dict:  # noqa: ANN401
         if isinstance(non_edge_reason, str) and non_edge_reason:
             evidence["non_edge_reason"] = non_edge_reason
     elif promo_status == "deactivated":
-        # Deactivated bots aren't warnings — they're explicitly off
         return {
             "bot_id": assignment.bot_id,
             "strategy_id": assignment.strategy_id,
@@ -576,9 +609,17 @@ def _audit_bot(assignment: Any) -> dict:  # noqa: ANN401
             "symbol": assignment.symbol,
             "timeframe": assignment.timeframe,
             "promotion_status": "deactivated",
-            "status": "READY",  # explicitly off = not a launch blocker
+            "status": "WARN",
             "issues": [],
-            "warnings": [],
+            "warnings": ["deactivated; excluded from launch"],
+            "evidence": deactivation
+            or {
+                "launch_role": "deactivated",
+                "registry_deactivated": False,
+                "kaizen_deactivated": False,
+                "deactivation_source": "promotion_status",
+                "deactivation_reason": "promotion_status=deactivated",
+            },
         }
 
     # 5. Baseline + warmup_policy.

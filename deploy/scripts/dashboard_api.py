@@ -1902,7 +1902,11 @@ def _vps_ops_hardening_payload(*, server_ts: float) -> dict:
         "summary": {
             "runtime_ready": bool(summary.get("runtime_ready")),
             "dashboard_durable": bool(summary.get("dashboard_durable")),
+            "paper_live_gate_ready": bool(summary.get("paper_live_gate_ready")),
+            "paper_live_status": str(summary.get("paper_live_status") or "unknown"),
             "trading_gate_ready": bool(summary.get("trading_gate_ready")),
+            "prop_promotion_gate_ready": bool(summary.get("prop_promotion_gate_ready")),
+            "live_promotion_blocked": bool(summary.get("live_promotion_blocked")),
             "admin_ai_ready": bool(summary.get("admin_ai_ready")),
             "admin_ai_status": str(summary.get("admin_ai_status") or "unknown"),
             "supervisor_reconcile_ready": bool(summary.get("supervisor_reconcile_ready")),

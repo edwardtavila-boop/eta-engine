@@ -23,7 +23,7 @@ def _neutral_data_freshness(monkeypatch) -> None:
     )
 
 
-def test_deactivated_bot_is_ready_even_when_data_is_absent(monkeypatch) -> None:
+def test_deactivated_bot_is_warn_even_when_data_is_absent(monkeypatch) -> None:
     assignment = SimpleNamespace(
         bot_id="xrp_perp",
         strategy_id="xrp_DEACTIVATED",
@@ -38,10 +38,38 @@ def test_deactivated_bot_is_ready_even_when_data_is_absent(monkeypatch) -> None:
 
     result = mod._audit_bot(assignment)
 
-    assert result["status"] == "READY"
+    assert result["status"] == "WARN"
     assert result["promotion_status"] == "deactivated"
     assert result["issues"] == []
-    assert result["warnings"] == []
+    assert result["warnings"] == ["deactivated; excluded from launch"]
+    assert result["evidence"]["launch_role"] == "deactivated"
+    assert result["evidence"]["deactivation_source"] == "registry"
+
+
+def test_kaizen_sidecar_deactivation_is_warn_not_ready(monkeypatch) -> None:
+    assignment = SimpleNamespace(
+        bot_id="volume_profile_mnq",
+        strategy_id="volume_profile_mnq_v1",
+        strategy_kind="confluence_scorecard",
+        symbol="MNQ1",
+        timeframe="5m",
+        extras={"promotion_status": "production_candidate"},
+    )
+    monkeypatch.setattr(mod, "_check_data_available", lambda *_: True)
+    monkeypatch.setattr(mod, "_check_bot_dir_exists", lambda *_: True)
+    monkeypatch.setattr(mod, "_check_baseline_persisted", lambda *_: True)
+    monkeypatch.setattr(
+        "eta_engine.strategies.per_bot_registry.kaizen_deactivation_record",
+        lambda bot_id: {"reason": "negative expectancy", "tier": "DECAY"} if bot_id == "volume_profile_mnq" else {},
+    )
+
+    result = mod._audit_bot(assignment)
+
+    assert result["status"] == "WARN"
+    assert result["promotion_status"] == "deactivated"
+    assert result["warnings"] == ["deactivated; excluded from launch"]
+    assert result["evidence"]["kaizen_deactivated"] is True
+    assert result["evidence"]["deactivation_source"] == "kaizen_sidecar"
 
 
 def test_research_candidate_surfaces_registry_evidence(monkeypatch) -> None:
