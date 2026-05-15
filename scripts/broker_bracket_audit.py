@@ -6,6 +6,7 @@ import argparse
 import asyncio
 import contextlib
 import json
+import os
 import sys
 import urllib.error
 import urllib.request
@@ -55,6 +56,17 @@ _OPEN_ORDER_DONE_STATUSES = {
     "filled",
     "inactive",
 }
+
+
+def _default_live_validation_timeout_s() -> float:
+    raw = (
+        os.getenv("ETA_BROKER_BRACKET_AUDIT_CONNECT_TIMEOUT_S", "").strip()
+        or os.getenv("ETA_CANCEL_STALE_IBKR_CONNECT_TIMEOUT_S", "").strip()
+    )
+    if raw:
+        with contextlib.suppress(ValueError):
+            return max(5.0, float(raw))
+    return 30.0
 
 
 def _as_dict(value: Any) -> dict[str, Any]:  # noqa: ANN401
@@ -270,6 +282,7 @@ def _validate_stale_flat_open_orders_live(
     host: str = "127.0.0.1",
     port: int = 4002,
     client_id: int = 9034,
+    connect_timeout_s: float | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Cross-check stale cached orders against the live TWS order socket."""
     if not stale_orders:
@@ -280,7 +293,8 @@ def _validate_stale_flat_open_orders_live(
 
         ib = IB()
         try:
-            ib.connect(host, port, clientId=client_id, timeout=10)
+            timeout_s = connect_timeout_s if connect_timeout_s is not None else _default_live_validation_timeout_s()
+            ib.connect(host, port, clientId=client_id, timeout=max(5.0, float(timeout_s)))
             ib.reqAllOpenOrders()
             ib.sleep(1.0)
             open_trades = list(ib.openTrades())

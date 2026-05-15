@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import sys
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 
 from eta_engine.scripts import broker_bracket_audit as audit
 
@@ -701,6 +703,45 @@ def test_bracket_audit_clears_stale_flat_orders_when_live_socket_has_none(monkey
     assert report["ready_for_prop_dry_run"] is True
     assert report["stale_flat_open_orders"] == []
     assert report["stale_flat_open_order_validation"]["status"] == "live_socket_no_open_orders"
+
+
+def test_live_stale_order_validation_uses_configured_timeout(monkeypatch) -> None:
+    seen: dict[str, float] = {}
+
+    class _FakeIB:
+        def connect(self, _host: str, _port: int, *, clientId: int, timeout: float) -> None:
+            seen["client_id"] = float(clientId)
+            seen["timeout"] = timeout
+
+        @staticmethod
+        def reqAllOpenOrders() -> None:
+            return None
+
+        @staticmethod
+        def sleep(_seconds: float) -> None:
+            return None
+
+        @staticmethod
+        def openTrades() -> list[object]:
+            return []
+
+        @staticmethod
+        def openOrders() -> list[object]:
+            return []
+
+        @staticmethod
+        def disconnect() -> None:
+            return None
+
+    monkeypatch.setenv("ETA_BROKER_BRACKET_AUDIT_CONNECT_TIMEOUT_S", "45")
+    monkeypatch.setattr(audit, "_ensure_main_thread_event_loop", lambda: None)
+    monkeypatch.setitem(sys.modules, "ib_insync", SimpleNamespace(IB=_FakeIB))
+
+    validated, details = audit._validate_stale_flat_open_orders_live([{"symbol": "MBTK6"}])  # noqa: SLF001
+
+    assert validated == []
+    assert details["status"] == "live_socket_no_open_orders"
+    assert seen["timeout"] == 45.0
 
 
 def test_bracket_audit_keeps_incomplete_ibkr_open_order_coverage_blocked(monkeypatch) -> None:
