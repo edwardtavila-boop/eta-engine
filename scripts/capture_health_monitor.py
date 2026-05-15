@@ -35,6 +35,8 @@ Run
     python -m eta_engine.scripts.capture_health_monitor --json
     python -m eta_engine.scripts.capture_health_monitor \
         --symbols MNQ NQ M2K 6E MCL MYM NG MBT
+    python -m eta_engine.scripts.capture_health_monitor \
+        --tick-symbols MNQ NQ M2K 6E MCL --depth-symbols MNQ NQ M2K
 """
 
 from __future__ import annotations
@@ -58,7 +60,8 @@ ALERT_LOG = LOG_DIR / "alerts_log.jsonl"
 SUB_STATUS_LOG = LOG_DIR / "ibkr_subscription_status.jsonl"
 TICK_STATUS_FILE = STATE_DIR / "capture_tick_status.json"
 
-DEFAULT_SYMBOLS = ["MNQ", "NQ", "M2K", "6E", "MCL", "MYM", "NG", "MBT"]
+DEFAULT_TICK_SYMBOLS = ["MNQ", "NQ", "M2K", "6E", "MCL"]
+DEFAULT_DEPTH_SYMBOLS = ["MNQ", "NQ", "M2K"]
 
 TICK_STALE_SECONDS = 30 * 60  # ticks should land within 30min during RTH
 DEPTH_STALE_SECONDS = 5 * 60  # depth snapshots are 1Hz, very fresh expected
@@ -214,15 +217,20 @@ def _emit_alert(level: str, message: str, payload: dict) -> None:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--symbols", nargs="+", default=DEFAULT_SYMBOLS, help="symbols to check (default: pinned-bot set)")
+    ap.add_argument("--symbols", nargs="+", default=None, help="legacy override: check same symbols for ticks/depth")
+    ap.add_argument("--tick-symbols", nargs="+", default=None, help="tick symbols to check")
+    ap.add_argument("--depth-symbols", nargs="+", default=None, help="depth symbols to check")
     ap.add_argument("--json", action="store_true", help="JSON output (machine-readable)")
     args = ap.parse_args()
+    tick_symbols = list(args.symbols or args.tick_symbols or DEFAULT_TICK_SYMBOLS)
+    depth_symbols = list(args.symbols or args.depth_symbols or DEFAULT_DEPTH_SYMBOLS)
 
     today = datetime.now(UTC).date()
     tick_results: list[dict] = []
     depth_results: list[dict] = []
-    for sym in args.symbols:
+    for sym in tick_symbols:
         tick_results.append(_check_capture_file(TICKS_DIR, sym, today, TICK_STALE_SECONDS, TICK_MIN_SIZE_BYTES))
+    for sym in depth_symbols:
         depth_entry = _check_capture_file(DEPTH_DIR, sym, today, DEPTH_STALE_SECONDS, DEPTH_MIN_SIZE_BYTES)
         depth_entry.update(_check_depth_book_quality(sym, today))
         depth_results.append(depth_entry)
@@ -270,7 +278,9 @@ def main() -> int:
     digest = {
         "ts": datetime.now(UTC).isoformat(),
         "today": str(today),
-        "n_symbols": len(args.symbols),
+        "n_symbols": len(set(tick_symbols) | set(depth_symbols)),
+        "tick_symbols": tick_symbols,
+        "depth_symbols": depth_symbols,
         "verdict": verdict,
         "issues": issues,
         "ticks": tick_results,

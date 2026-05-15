@@ -2,6 +2,8 @@ param(
     [string]$PythonPath = "",
     [string]$WorkspaceRoot = "C:\EvolutionaryTradingAlgo",
     [string]$TaskUser = "",
+    [string[]]$TickSymbols = @("MNQ", "NQ", "M2K", "6E", "MCL"),
+    [string[]]$DepthSymbols = @("MNQ", "NQ", "M2K"),
     [switch]$StartNow
 )
 
@@ -36,6 +38,8 @@ Write-Host "--- Registering Phase 1 capture daemons on VPS ---"
 Write-Host "  python : $PythonPath"
 Write-Host "  cwd    : $WorkspaceRoot"
 Write-Host "  user   : $TaskUser"
+Write-Host "  ticks  : $($TickSymbols -join ' ')"
+Write-Host "  depth  : $($DepthSymbols -join ' ')"
 Write-Host ""
 
 if (-not (Test-Path $PythonPath)) {
@@ -61,6 +65,8 @@ foreach ($name in @("ETA-CaptureTicks", "ETA-CaptureDepth")) {
     } else {
         "eta_engine.scripts.capture_depth_snapshots"
     }
+    $symbols = if ($name -eq "ETA-CaptureTicks") { $TickSymbols } else { $DepthSymbols }
+    $symbolArgs = ($symbols | ForEach-Object { $_.Trim() } | Where-Object { $_ }) -join " "
 
     Write-Host "TASK: $name"
 
@@ -73,7 +79,7 @@ foreach ($name in @("ETA-CaptureTicks", "ETA-CaptureDepth")) {
 
     $action = New-ScheduledTaskAction `
         -Execute $PythonPath `
-        -Argument "-m $script --port 4002" `
+        -Argument "-m $script --port 4002 --symbols $symbolArgs" `
         -WorkingDirectory $WorkspaceRoot
 
     Register-ScheduledTask -TaskName $name `

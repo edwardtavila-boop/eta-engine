@@ -97,15 +97,12 @@ _DEFAULT_PORT: int = 4002
 _DEFAULT_CLIENT_ID: int = 132
 _CONNECT_TIMEOUT_S: float = 20.0
 
+# Core always-on depth set. VPS evidence showed these CME books producing real
+# bid/ask levels; broader venues stay manual until depth subscriptions catch up.
 _DEFAULT_SYMBOLS: tuple[str, ...] = (
     "MNQ",
     "NQ",
     "M2K",
-    "6E",
-    "MCL",
-    "MYM",
-    "NG",
-    "MBT",
 )
 
 _FUTURES_MAP: dict[str, tuple[str, str, str]] = {

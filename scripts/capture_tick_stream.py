@@ -108,17 +108,16 @@ _DEFAULT_PORT: int = 4002
 _DEFAULT_CLIENT_ID: int = 131
 _CONNECT_TIMEOUT_S: float = 20.0
 
-# Pinned-bot symbol set (matches the 12-bot active pin as of 2026-05-08).
-# Crypto SOL is on Alpaca, not IBKR -- excluded here.
+# Core always-on set. The VPS hit IBKR Error 10190 when the daemon requested
+# the larger 8-symbol tick-by-tick set, so the default stays inside the five
+# symbols that were confirmed to stream. Wider runs remain available via
+# ``--symbols`` after more slots/data are provisioned.
 _DEFAULT_SYMBOLS: tuple[str, ...] = (
     "MNQ",
     "NQ",
     "M2K",
     "6E",
     "MCL",
-    "MYM",
-    "NG",
-    "MBT",
 )
 
 # Symbol -> (root, exchange, currency). Mirrors fetch_tws_historical_bars.
