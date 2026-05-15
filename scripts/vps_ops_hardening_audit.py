@@ -562,7 +562,8 @@ def _promotion_gate_action(gate: dict[str, Any]) -> str:
         return f"Keep strategy lane in paper soak; evaluate runner-up {label} before any prop promotion"
     required = [str(item) for item in _as_list(gate.get("required_evidence")) if str(item).strip()]
     if required:
-        return "Keep strategy lane in paper soak: " + required[0]
+        runner_required = next((item for item in required if "runner-up candidate" in item), "")
+        return "Keep strategy lane in paper soak: " + (runner_required or required[0])
     return "Keep strategy lane in paper soak until prop promotion audit is PASS/READY"
 
 

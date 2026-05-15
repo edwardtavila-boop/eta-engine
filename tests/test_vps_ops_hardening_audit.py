@@ -284,6 +284,34 @@ def test_promotion_blocker_points_to_bar_freshness_after_failed_shadow_replay() 
     assert not any("shadow signals into paper-close outcomes" in action for action in report["next_actions"])
 
 
+def test_promotion_blocker_prioritizes_no_reviewable_runner_over_primary_retirement() -> None:
+    report = audit.build_report(
+        services=_running_services(),
+        ports=_listening_ports(),
+        endpoints=_healthy_endpoints(),
+        broker_bracket_audit=_ready_bracket_gate(),
+        promotion_audit={
+            "summary": "BLOCKED_KAIZEN_RETIRED",
+            "ready_for_prop_dry_run_review": False,
+            "next_runner_candidate": {},
+            "required_evidence": [
+                "review Kaizen retirement evidence for volume_profile_mnq",
+                "document deactivation reason: tier=DECAY",
+                "no runner-up candidate is promotion-reviewable; keep all candidates paper/research-only",
+            ],
+        },
+        service_config={"fm_status_server": {"matches_expected": True}},
+        tasks=_healthy_tasks(),
+        ibgateway_reauth={"status": "healthy"},
+    )
+
+    assert any("no runner-up candidate is promotion-reviewable" in action for action in report["next_actions"])
+    assert not any(
+        action.endswith("review Kaizen retirement evidence for volume_profile_mnq")
+        for action in report["next_actions"]
+    )
+
+
 def test_paper_live_gate_ready_when_only_prop_promotion_is_blocked() -> None:
     report = audit.build_report(
         services=_running_services(),
