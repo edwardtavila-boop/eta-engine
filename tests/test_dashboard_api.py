@@ -2193,7 +2193,9 @@ class TestDashboardAPI:
         assert data["bot_fleet"]["current_blocked_kinds"] == {"daily_kill_switch": 1, "session_gate": 2}
         assert data["bot_fleet"]["current_blocked_summary_line"].startswith("Current blockers: 3 bot(s) held")
         assert data["bot_fleet"]["current_blocked_preview"][0]["bot_id"] == "mnq_futures_sage"
-        assert data["bot_fleet"]["current_blocked_preview"][1]["summary"] == "Entries paused by session gate: outside_rth"
+        assert data["bot_fleet"]["current_blocked_preview"][1]["summary"] == (
+            "Entries paused by session gate: outside_rth"
+        )
 
     def test_dashboard_diagnostics_includes_operator_and_paper_live_rollups(
         self,
