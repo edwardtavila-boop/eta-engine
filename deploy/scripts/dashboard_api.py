@@ -4855,6 +4855,31 @@ def _paper_live_daily_loss_state(
     }
 
 
+def _shadow_paper_runtime_overlay_state() -> dict[str, Any]:
+    """Return whether the live supervisor currently has attached shadow-paper bots.
+
+    This is intentionally narrower than paper-live launch readiness: we use it to
+    tell the operator that the observation lane is already running even when the
+    raw launch audit remains blocked for capital-routing reasons.
+    """
+    try:
+        rows = _supervisor_roster_rows(time.time())
+    except Exception:
+        rows = []
+    live_attached_rows = [row for row in rows if _is_live_attached_bot_row(row)]
+    shadow_paper_rows = [row for row in live_attached_rows if _row_execution_lane(row) == SHADOW_PAPER_LANE]
+    attached_count = len(shadow_paper_rows)
+    return {
+        "attached_count": attached_count,
+        "active": attached_count > 0,
+        "detail": (
+            f"live shadow paper lane active on {attached_count} attached bot(s)"
+            if attached_count > 0
+            else ""
+        ),
+    }
+
+
 def _paper_live_transition_with_effective_holds(payload: dict) -> dict:
     """Annotate raw paper-live readiness with runtime holds that suppress entries."""
     out = dict(payload) if isinstance(payload, dict) else {}
@@ -4883,6 +4908,11 @@ def _paper_live_transition_with_effective_holds(payload: dict) -> dict:
     elif held_by_daily_loss_stop and effective_status in {"ready", "ready_to_launch_paper_live", "green"}:
         effective_status = "held_by_daily_loss_stop"
         effective_detail = _daily_loss_hold_detail(daily_loss_killswitch)
+
+    shadow_runtime = _shadow_paper_runtime_overlay_state()
+    if bool(shadow_runtime.get("active")) and effective_status != "held_by_daily_loss_stop":
+        effective_status = "shadow_paper_active"
+        effective_detail = str(shadow_runtime.get("detail") or effective_detail)
 
     out["raw_status"] = raw_status
     out["effective_status"] = effective_status
@@ -7238,6 +7268,7 @@ def bot_fleet_roster(
     live_attached_rows = [r for r in rows if _is_live_attached_bot_row(r)]
     runtime_active_rows = [r for r in rows if _is_runtime_active_bot_row(r)]
     live_in_trade_rows = [r for r in live_attached_rows if _row_has_open_exposure(r)]
+    shadow_paper_attached_count = sum(1 for r in live_attached_rows if _row_execution_lane(r) == SHADOW_PAPER_LANE)
     live_attached_bots = len(live_attached_rows)
     live_in_trade_bots = len(live_in_trade_rows)
     idle_live_bots = max(0, live_attached_bots - live_in_trade_bots)
@@ -7454,6 +7485,14 @@ def bot_fleet_roster(
     }:
         paper_live_effective_status = "held_by_daily_loss_stop"
         paper_live_effective_detail = _daily_loss_hold_detail(daily_loss_killswitch)
+    if shadow_paper_attached_count > 0 and paper_live_effective_status not in {
+        "held_by_bracket_audit",
+        "held_by_daily_loss_stop",
+    }:
+        paper_live_effective_status = "shadow_paper_active"
+        paper_live_effective_detail = (
+            f"live shadow paper lane active on {shadow_paper_attached_count} attached bot(s)"
+        )
     vps_root_reconciliation = _vps_root_reconciliation_payload()
     vps_root_summary = (
         vps_root_reconciliation.get("summary") if isinstance(vps_root_reconciliation.get("summary"), dict) else {}
@@ -13655,6 +13694,10 @@ def _local_master_status_payload() -> dict[str, object]:
     }:
         paper_live_effective_status = "held_by_daily_loss_stop"
         paper_live_effective_detail = _daily_loss_hold_detail(daily_loss_killswitch)
+    shadow_runtime = _shadow_paper_runtime_overlay_state()
+    if bool(shadow_runtime.get("active")) and paper_live_effective_status != "held_by_daily_loss_stop":
+        paper_live_effective_status = "shadow_paper_active"
+        paper_live_effective_detail = str(shadow_runtime.get("detail") or paper_live_effective_detail)
     paper_live.update(
         {
             "raw_status": str(paper.get("status") or "unknown"),
@@ -13679,6 +13722,8 @@ def _local_master_status_payload() -> dict[str, object]:
         if paper_ready
         else "YELLOW"
     )
+    if bool(shadow_runtime.get("active")):
+        paper_card_status = "YELLOW"
     router_card_status = _router_card_status(router_status)
     broker_card_status = _worst_card_status(router_card_status, target_exit_card_status)
     broker_detail = router_status

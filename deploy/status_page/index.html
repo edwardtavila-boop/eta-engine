@@ -352,7 +352,7 @@ tr:hover td{background:rgba(100,215,255,.055)}
 </section>
 
 <details class="collapsible-section ops-priority-section" id="opsTruthSection" open>
-  <summary class="collapsible-summary"><span class="summary-copy"><span class="summary-title">Live Book + Exits</span><small id="opsTruthSummaryLine">Open risk, closed PnL, order flow</small></span></summary>
+  <summary class="collapsible-summary"><span class="summary-copy"><span class="summary-title">Live Book + Exits</span><small id="opsTruthSummaryLine">Open risk, closed PnL, and order flow</small></span></summary>
 <div class="ops-truth-wrap">
   <div class="card">
     <h3>Live Book &amp; Exit Cover</h3>
@@ -376,7 +376,7 @@ tr:hover td{background:rgba(100,215,255,.055)}
   <div class="card wide-card">
     <div class="panel-head">
       <div>
-        <h3>What Moved PnL</h3>
+        <h3>Daily strategy winners/losers</h3>
         <div class="panel-kicker" id="contributionSub">Top winners and losers today</div>
       </div>
       <div class="truth-chip" id="contributionSource">today's closed trades</div>
@@ -405,11 +405,11 @@ tr:hover td{background:rgba(100,215,255,.055)}
   <div class="card"><h3>Win Rate</h3><div class="stat blue" id="winRate">--</div><div class="sub" id="winRateDetail"></div></div>
   <div class="card"><h3>Ready Now</h3><div class="stat green" id="approvedCount">--</div><div class="sub" id="approvedCountSub">ready for entry</div></div>
   <div class="card"><h3>Data Coverage</h3><div class="stat" id="dataIntelligenceStatus">--</div><div class="sub" id="dataIntelligenceSub">symbols + news + book + sentiment</div></div>
-  <div class="card retune-factory-card"><h3>Retune Queue</h3><div class="stat" id="retuneFactoryStatus">--</div><div class="sub" id="retuneFactorySub">next retune pending</div></div>
+  <div class="card retune-factory-card"><h3>Retune Factory</h3><div class="stat" id="retuneFactoryStatus">--</div><div class="sub" id="retuneFactorySub">need broker proof</div></div>
   <div class="card"><h3>Policy Mode</h3><div class="stat yellow" id="jarvisMode">--</div></div>
   <div class="card"><h3>AI Bridge</h3><div class="stat" id="adminAiStatus">-</div><div class="sub" id="adminAiSub">bridge status</div></div>
   <div class="card broker-truth-card"><h3>IBKR Connection</h3><div class="stat" id="gatewayStatus">--</div><div class="sub broker-status-meta" id="gatewayStatusMeta">truth pending</div><div class="sub" id="gatewayStatusSub"></div></div>
-  <div class="card"><h3>Order Flow</h3><div class="stat" id="brokerRouterStatus">-</div><div class="sub" id="brokerRouterSub"></div></div>
+  <div class="card"><h3>Router Flow</h3><div class="stat" id="brokerRouterStatus">-</div><div class="sub" id="brokerRouterSub"></div></div>
   <div class="card"><h3>Exit Cover</h3><div class="stat" id="bracketAuditStatus">-</div><div class="sub" id="bracketAuditSub">target + stop on broker</div></div>
   <div class="card exit-watch-card"><h3>Exit Watch</h3><div class="stat" id="exitWatchStatus">-</div><div class="sub" id="exitWatchSub">target | stop</div></div>
   <div class="card"><h3>Paper Live</h3><div class="stat" id="paperLiveStatus">--</div><div class="sub" id="paperLiveSub"></div></div>
@@ -418,7 +418,7 @@ tr:hover td{background:rgba(100,215,255,.055)}
   <div class="card session-discipline-card"><h3>Session Discipline</h3><div class="stat" id="signalCadenceStatus">-</div><div class="sub" id="signalCadenceSub">session-window audit</div></div>
   <div class="card"><h3>Public Route</h3><div class="stat" id="opsProxyStatus">-</div><div class="sub" id="opsProxySub">public route</div></div>
   <div class="card"><h3>Surface Watch</h3><div class="stat" id="opsWatchdogStatus">-</div><div class="sub" id="opsWatchdogSub">surface health</div></div>
-  <div class="card vps-root-card" role="button" tabindex="0" onclick="focusVpsRootDetails()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();focusVpsRootDetails();}"><h3>VPS Review</h3><div class="stat" id="vpsRootStatus">-</div><div class="sub" id="vpsRootSub">workspace health</div></div>
+  <div class="card vps-root-card" role="button" tabindex="0" onclick="focusVpsRootDetails()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();focusVpsRootDetails();}"><h3>VPS Root Review</h3><div class="stat" id="vpsRootStatus">-</div><div class="sub" id="vpsRootSub">workspace health</div></div>
 </div>
 
 <div class="compat-anchors" style="display:none" aria-hidden="true">
@@ -436,11 +436,11 @@ tr:hover td{background:rgba(100,215,255,.055)}
 </div>
 
 <details class="collapsible-section vps-root-detail-wrap" id="vpsRootDetailsWrap">
-  <summary class="collapsible-summary"><span class="summary-copy"><span class="summary-title">VPS Review</span><small id="vpsRootSummaryLine">Workspace health and cleanup safety checks</small></span></summary>
+  <summary class="collapsible-summary"><span class="summary-copy"><span class="summary-title">VPS Root Review</span><small id="vpsRootSummaryLine">Workspace health and cleanup safety checks</small></span></summary>
   <div class="card vps-root-detail-card">
     <div class="panel-head">
       <div>
-        <h3>VPS Review Details</h3>
+        <h3>VPS Root Review Details</h3>
         <div class="panel-kicker" id="vpsRootDetailKicker">read-only safety check</div>
       </div>
       <div class="truth-chip" id="vpsRootDetailStatus">waiting for plan</div>
@@ -2694,7 +2694,7 @@ function showOffline(clearDashboard = true) {
   const dataIntelligenceSub = document.getElementById('dataIntelligenceSub');
   if (dataIntelligenceSub) dataIntelligenceSub.textContent = 'symbols + news + book + sentiment';
   const retuneFactorySub = document.getElementById('retuneFactorySub');
-  if (retuneFactorySub) retuneFactorySub.textContent = 'next retune pending';
+  if (retuneFactorySub) retuneFactorySub.textContent = 'need broker proof';
   const signalCadenceSub = document.getElementById('signalCadenceSub');
   if (signalCadenceSub) signalCadenceSub.textContent = 'session audit pending';
   const opsProxySub = document.getElementById('opsProxySub');

@@ -1407,6 +1407,63 @@ class TestDashboardAPI:
         assert data["daily_loss_advisory_active"] is False
         assert data["capital_lanes_held_by_daily_loss_stop"] is True
 
+    def test_jarvis_paper_live_transition_endpoint_marks_live_shadow_runtime_active(
+        self,
+        app_client,
+        tmp_path,
+    ):
+        now_iso = datetime.now(UTC).isoformat()
+        state = tmp_path / "state"
+        sup_dir = state / "jarvis_intel" / "supervisor"
+        sup_dir.mkdir(parents=True, exist_ok=True)
+        (sup_dir / "heartbeat.json").write_text(
+            json.dumps(
+                {
+                    "ts": now_iso,
+                    "mode": "paper_live",
+                    "feed": "composite",
+                    "bots": [
+                        {
+                            "bot_id": "volume_profile_mnq",
+                            "symbol": "MNQ1",
+                            "strategy_kind": "confluence_scorecard",
+                            "execution_lane": "shadow_paper",
+                            "last_bar_ts": now_iso,
+                            "open_position": {},
+                            "n_entries": 0,
+                            "n_exits": 0,
+                            "realized_pnl": 0.0,
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        (state / "paper_live_transition_check.json").write_text(
+            json.dumps(
+                {
+                    "generated_at": now_iso,
+                    "status": "blocked",
+                    "critical_ready": False,
+                    "paper_ready_bots": 11,
+                    "operator_queue_blocked_count": 5,
+                    "operator_queue_launch_blocked_count": 1,
+                    "operator_queue_first_launch_blocker_op_id": "OP-19",
+                    "gates": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/jarvis/paper_live_transition")
+
+        assert r.status_code == 200
+        data = r.json()
+        assert data["status"] == "blocked"
+        assert data["raw_status"] == "blocked"
+        assert data["effective_status"] == "shadow_paper_active"
+        assert data["effective_detail"] == "live shadow paper lane active on 1 attached bot(s)"
+
     def test_jarvis_paper_live_transition_endpoint_refreshes_on_demand(self, app_client, monkeypatch):
         from eta_engine.scripts import paper_live_transition_check
 
@@ -3756,6 +3813,68 @@ class TestDashboardAPI:
         assert runtime_payload["held_by_daily_loss_stop"] is False
         assert runtime_payload["daily_loss_advisory_active"] is True
 
+    def test_master_status_marks_live_shadow_runtime_active(self, app_client, tmp_path, monkeypatch):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        monkeypatch.setattr(
+            mod,
+            "_operator_queue_payload",
+            lambda: {"summary": {"BLOCKED": 1}, "launch_blocked_count": 1},
+        )
+        state = tmp_path / "state"
+        now_iso = datetime.now(UTC).isoformat()
+        sup_dir = state / "jarvis_intel" / "supervisor"
+        sup_dir.mkdir(parents=True, exist_ok=True)
+        (sup_dir / "heartbeat.json").write_text(
+            json.dumps(
+                {
+                    "ts": now_iso,
+                    "mode": "paper_live",
+                    "feed": "composite",
+                    "bots": [
+                        {
+                            "bot_id": "volume_profile_mnq",
+                            "symbol": "MNQ1",
+                            "strategy_kind": "confluence_scorecard",
+                            "execution_lane": "shadow_paper",
+                            "last_bar_ts": now_iso,
+                            "open_position": {},
+                            "n_entries": 0,
+                            "n_exits": 0,
+                            "realized_pnl": 0.0,
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        (state / "paper_live_transition_check.json").write_text(
+            json.dumps(
+                {
+                    "generated_at": now_iso,
+                    "status": "blocked",
+                    "critical_ready": False,
+                    "paper_ready_bots": 11,
+                    "operator_queue_blocked_count": 5,
+                    "operator_queue_launch_blocked_count": 1,
+                    "operator_queue_first_launch_blocker_op_id": "OP-19",
+                    "gates": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/master/status")
+
+        assert r.status_code == 200
+        payload = r.json()
+        assert payload["paper_live"]["status"] == "blocked"
+        assert payload["paper_live"]["raw_status"] == "blocked"
+        assert payload["paper_live"]["effective_status"] == "shadow_paper_active"
+        assert payload["paper_live"]["effective_detail"] == "live shadow paper lane active on 1 attached bot(s)"
+        assert payload["systems"]["paper_live"]["status"] == "YELLOW"
+        assert payload["systems"]["paper_live"]["detail"] == "shadow_paper_active"
+
     def test_master_status_reconciles_cached_ibkr_live_positions(
         self,
         app_client,
@@ -5716,6 +5835,125 @@ class TestDashboardAPI:
         assert payload["summary"]["paper_live_critical_ready"] is True
         assert payload["summary"]["paper_live_ready_bots"] == 12
         assert payload["summary"]["paper_live_launch_blocked_count"] == 0
+
+    def test_bot_fleet_marks_shadow_paper_active_when_attached_runtime_is_live(self, app_client, tmp_path):
+        """Fresh attached shadow-paper rows should override a stale launch label in the summary."""
+        now_iso = datetime.now(UTC).isoformat()
+        state = tmp_path / "state"
+        sup_dir = state / "jarvis_intel" / "supervisor"
+        sup_dir.mkdir(parents=True, exist_ok=True)
+        (sup_dir / "heartbeat.json").write_text(
+            json.dumps(
+                {
+                    "ts": now_iso,
+                    "mode": "paper_live",
+                    "feed": "composite",
+                    "bots": [
+                        {
+                            "bot_id": "mnq_futures_sage",
+                            "symbol": "MNQ1",
+                            "strategy_kind": "orb_sage_gated",
+                            "execution_lane": "shadow_paper",
+                            "last_bar_ts": now_iso,
+                            "open_position": {},
+                            "n_entries": 0,
+                            "n_exits": 0,
+                            "realized_pnl": 0.0,
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        (state / "paper_live_transition_check.json").write_text(
+            json.dumps(
+                {
+                    "generated_at": now_iso,
+                    "status": "blocked",
+                    "critical_ready": False,
+                    "paper_ready_bots": 11,
+                    "operator_queue_launch_blocked_count": 1,
+                    "operator_queue_first_launch_blocker_op_id": "OP-19",
+                    "operator_queue_first_launch_next_action": "apply authority on VPS",
+                    "gates": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/bot-fleet")
+
+        assert r.status_code == 200
+        payload = r.json()
+        assert payload["summary"]["paper_live_status"] == "blocked"
+        assert payload["summary"]["paper_live_effective_status"] == "shadow_paper_active"
+        assert "live shadow paper lane active on 1 attached bot(s)" in payload["summary"]["paper_live_effective_detail"]
+        assert payload["summary"]["live_attached_bots"] == 1
+        assert payload["summary"]["idle_live_bots"] == 1
+
+    def test_bot_fleet_keeps_bracket_audit_hold_over_shadow_runtime(self, app_client, tmp_path, monkeypatch):
+        """Active shadow-paper bots must not mask an explicit bracket-audit hold."""
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        now_iso = datetime.now(UTC).isoformat()
+        state = tmp_path / "state"
+        sup_dir = state / "jarvis_intel" / "supervisor"
+        sup_dir.mkdir(parents=True, exist_ok=True)
+        monkeypatch.setattr(
+            mod,
+            "_broker_bracket_audit_payload",
+            lambda **_: {
+                "summary": "BLOCKED_UNBRACKETED_EXPOSURE",
+                "ready_for_prop_dry_run": False,
+                "operator_action_required": True,
+                "operator_actions": [{"id": "verify_manual_broker_oco", "label": "Verify broker OCO coverage"}],
+                "position_summary": {},
+            },
+        )
+        (sup_dir / "heartbeat.json").write_text(
+            json.dumps(
+                {
+                    "ts": now_iso,
+                    "mode": "paper_live",
+                    "feed": "composite",
+                    "bots": [
+                        {
+                            "bot_id": "mnq_futures_sage",
+                            "symbol": "MNQ1",
+                            "strategy_kind": "orb_sage_gated",
+                            "execution_lane": "shadow_paper",
+                            "last_bar_ts": now_iso,
+                            "open_position": {},
+                            "n_entries": 0,
+                            "n_exits": 0,
+                            "realized_pnl": 0.0,
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        (state / "paper_live_transition_check.json").write_text(
+            json.dumps(
+                {
+                    "generated_at": now_iso,
+                    "status": "ready_to_launch_paper_live",
+                    "critical_ready": True,
+                    "paper_ready_bots": 11,
+                    "operator_queue_launch_blocked_count": 0,
+                    "gates": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/bot-fleet")
+
+        assert r.status_code == 200
+        payload = r.json()
+        assert payload["summary"]["paper_live_effective_status"] == "held_by_bracket_audit"
+        assert payload["summary"]["paper_live_held_by_bracket_audit"] is True
+        assert payload["summary"]["paper_live_effective_detail"].startswith("held by Bracket Audit")
 
     def test_global_daily_loss_stop_dominates_bot_fleet_block_rollup(self):
         import eta_engine.deploy.scripts.dashboard_api as mod
