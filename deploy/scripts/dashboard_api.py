@@ -1623,6 +1623,9 @@ def _sentiment_snapshot_unknown(path: Path, *, reason: str) -> dict[str, object]
         "active_topics": [],
         "lead_asset": "",
         "lead_social_volume_z": None,
+        "asset_summaries": [],
+        "macro_headlines": [],
+        "lead_headlines": [],
         "updated_at": None,
         "age_s": None,
         "results": {},
@@ -1641,11 +1644,16 @@ def _load_sentiment_snapshot_status() -> dict[str, object]:
     ok_assets: list[str] = []
     sources: list[str] = []
     active_topics: list[str] = []
+    asset_summaries: list[dict[str, object]] = []
+    macro_headlines: list[dict[str, object]] = []
     lead_asset = ""
     lead_social_volume_z: float | None = None
     lead_score = -1.0
+    ordered_assets = [asset for asset in requested_assets if asset in results]
+    ordered_assets.extend(asset for asset in results if asset not in ordered_assets)
 
-    for asset, row in results.items():
+    for asset in ordered_assets:
+        row = results.get(asset)
         if not isinstance(row, dict):
             continue
         asset_name = str(asset).strip()
@@ -1655,15 +1663,53 @@ def _load_sentiment_snapshot_status() -> dict[str, object]:
         if raw_source and raw_source not in sources:
             sources.append(raw_source)
         topic_flags = row.get("topic_flags") if isinstance(row.get("topic_flags"), dict) else {}
+        enabled_topics: list[str] = []
         for topic, enabled in topic_flags.items():
             topic_name = str(topic).strip()
-            if enabled and topic_name and topic_name not in active_topics:
+            if not enabled or not topic_name:
+                continue
+            enabled_topics.append(topic_name)
+            if topic_name not in active_topics:
                 active_topics.append(topic_name)
         social_volume_z = _float_value(row.get("social_volume_z"))
         if social_volume_z is not None and abs(social_volume_z) > lead_score:
             lead_score = abs(social_volume_z)
             lead_asset = asset_name
             lead_social_volume_z = round(social_volume_z, 4)
+        headlines_raw = row.get("headlines") if isinstance(row.get("headlines"), list) else []
+        headlines: list[dict[str, object]] = []
+        for item in headlines_raw[:3]:
+            if not isinstance(item, dict):
+                continue
+            headlines.append(
+                {
+                    "headline": str(item.get("headline") or ""),
+                    "publisher": str(item.get("publisher") or ""),
+                    "published_at_utc": str(item.get("published_at_utc") or ""),
+                    "url": str(item.get("url") or ""),
+                }
+            )
+        if asset_name.lower() == "macro":
+            macro_headlines = headlines
+        asset_summaries.append(
+            {
+                "asset": asset_name,
+                "ok": row.get("ok") is True,
+                "source": raw_source,
+                "fear_greed": _float_value(row.get("fear_greed")),
+                "social_volume_z": social_volume_z,
+                "headline_count": int(row.get("headline_count") or 0),
+                "active_topics": enabled_topics,
+                "headlines": headlines,
+                "query": str(row.get("query") or ""),
+            }
+        )
+
+    lead_headlines: list[dict[str, object]] = []
+    for summary in asset_summaries:
+        if str(summary.get("asset") or "") == lead_asset:
+            lead_headlines = summary.get("headlines") if isinstance(summary.get("headlines"), list) else []
+            break
 
     ok_count = int(payload.get("ok_count") or len(ok_assets))
     status = str(payload.get("status") or ("ok" if ok_count >= len(requested_assets) else "partial"))
@@ -1683,6 +1729,9 @@ def _load_sentiment_snapshot_status() -> dict[str, object]:
             "active_topics": active_topics[:6],
             "lead_asset": lead_asset,
             "lead_social_volume_z": lead_social_volume_z,
+            "asset_summaries": asset_summaries,
+            "macro_headlines": macro_headlines,
+            "lead_headlines": lead_headlines,
             "updated_at": datetime.fromtimestamp(mtime, UTC).isoformat() if mtime is not None else None,
             "age_s": max(0, int(time.time() - mtime)) if mtime is not None else None,
             "results": results,
@@ -1733,6 +1782,15 @@ def _symbol_intelligence_diagnostic_payload(snapshot: dict[str, Any]) -> dict[st
     sentiment_active_topics = (
         sentiment.get("active_topics") if isinstance(sentiment.get("active_topics"), list) else []
     )
+    sentiment_asset_summaries = (
+        sentiment.get("asset_summaries") if isinstance(sentiment.get("asset_summaries"), list) else []
+    )
+    sentiment_macro_headlines = (
+        sentiment.get("macro_headlines") if isinstance(sentiment.get("macro_headlines"), list) else []
+    )
+    sentiment_lead_headlines = (
+        sentiment.get("lead_headlines") if isinstance(sentiment.get("lead_headlines"), list) else []
+    )
     return {
         "status": str(snapshot.get("status") or "UNKNOWN").upper(),
         "ready": bool(snapshot.get("ready")),
@@ -1771,6 +1829,9 @@ def _symbol_intelligence_diagnostic_payload(snapshot: dict[str, Any]) -> dict[st
             "active_topics": sentiment_active_topics,
             "lead_asset": str(sentiment.get("lead_asset") or ""),
             "lead_social_volume_z": sentiment.get("lead_social_volume_z"),
+            "asset_summaries": sentiment_asset_summaries,
+            "macro_headlines": sentiment_macro_headlines,
+            "lead_headlines": sentiment_lead_headlines,
             "updated_at": sentiment.get("updated_at"),
             "age_s": sentiment.get("age_s"),
         },
@@ -4471,6 +4532,13 @@ def dashboard_payload(response: Response) -> dict:
     payload["sentiment_active_topics"] = [str(topic) for topic in sentiment.get("active_topics") or []]
     payload["sentiment_lead_asset"] = str(sentiment.get("lead_asset") or "")
     payload["sentiment_lead_social_volume_z"] = sentiment.get("lead_social_volume_z")
+    payload["sentiment_assets"] = sentiment.get("asset_summaries") if isinstance(sentiment.get("asset_summaries"), list) else []
+    payload["sentiment_macro_headlines"] = (
+        sentiment.get("macro_headlines") if isinstance(sentiment.get("macro_headlines"), list) else []
+    )
+    payload["sentiment_lead_headlines"] = (
+        sentiment.get("lead_headlines") if isinstance(sentiment.get("lead_headlines"), list) else []
+    )
     payload["diamond_retune_status"] = _load_diamond_retune_status()
     # Additive: cached broker reality for first paint. Fresh IBKR probes can
     # stall when Gateway is wedged, so /api/dashboard must not block on them.

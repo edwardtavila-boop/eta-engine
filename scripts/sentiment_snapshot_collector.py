@@ -185,12 +185,19 @@ def persist_runtime_sentiment_snapshots(
     ok_count = 0
     for asset, snapshot in built.items():
         ok = sentiment_overlay.write_sentiment_snapshot(asset, snapshot, cache_dir=cache_dir)
+        extras = snapshot.get("extras") if isinstance(snapshot.get("extras"), dict) else {}
+        headlines = extras.get("headlines") if isinstance(extras.get("headlines"), list) else []
         results[asset] = {
             "ok": ok,
             "fear_greed": snapshot.get("fear_greed"),
             "social_volume_z": snapshot.get("social_volume_z"),
             "raw_source": snapshot.get("raw_source"),
             "topic_flags": snapshot.get("topic_flags"),
+            "headline_count": int(extras.get("headline_count") or 0),
+            "headlines": headlines[:3],
+            "query": str(extras.get("query") or ""),
+            "social_volume": int(extras.get("social_volume") or 0),
+            "social_volume_baseline": int(extras.get("social_volume_baseline") or 0),
         }
         if ok:
             ok_count += 1

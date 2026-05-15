@@ -714,26 +714,59 @@ class TestDashboardAPI:
                         "BTC": {
                             "ok": True,
                             "raw_source": "google_news_proxy",
+                            "fear_greed": 0.43,
                             "social_volume_z": 0.6,
                             "topic_flags": {"regulation": True},
+                            "headline_count": 2,
+                            "headlines": [
+                                {
+                                    "headline": "Bitcoin ETF flows stay positive",
+                                    "publisher": "Reuters",
+                                    "published_at_utc": "2026-05-14T15:00:00+00:00",
+                                    "url": "https://example.com/btc",
+                                }
+                            ],
                         },
                         "ETH": {
                             "ok": True,
                             "raw_source": "google_news_proxy",
+                            "fear_greed": 0.41,
                             "social_volume_z": -0.5,
                             "topic_flags": {"regulation": True},
+                            "headline_count": 1,
+                            "headlines": [],
                         },
                         "SOL": {
                             "ok": True,
                             "raw_source": "google_news_proxy",
+                            "fear_greed": 0.72,
                             "social_volume_z": 2.5,
                             "topic_flags": {"fomo": True},
+                            "headline_count": 1,
+                            "headlines": [
+                                {
+                                    "headline": "Solana breakout lifts alt sentiment",
+                                    "publisher": "Bloomberg",
+                                    "published_at_utc": "2026-05-14T15:30:00+00:00",
+                                    "url": "https://example.com/sol",
+                                }
+                            ],
                         },
                         "macro": {
                             "ok": True,
                             "raw_source": "google_news_proxy",
+                            "fear_greed": 0.36,
                             "social_volume_z": 0.8,
                             "topic_flags": {"fomc": True, "inflation": True},
+                            "headline_count": 2,
+                            "headlines": [
+                                {
+                                    "headline": "Fed officials keep inflation in focus",
+                                    "publisher": "WSJ",
+                                    "published_at_utc": "2026-05-14T16:00:00+00:00",
+                                    "url": "https://example.com/fed",
+                                }
+                            ],
                         },
                     },
                 }
@@ -754,6 +787,10 @@ class TestDashboardAPI:
         assert dashboard.json()["sentiment_ok_count"] == 4
         assert dashboard.json()["sentiment_lead_asset"] == "SOL"
         assert "fomc" in dashboard.json()["sentiment_active_topics"]
+        assert dashboard.json()["sentiment_assets"][0]["asset"] == "BTC"
+        assert dashboard.json()["sentiment_assets"][0]["headline_count"] == 2
+        assert dashboard.json()["sentiment_macro_headlines"][0]["publisher"] == "WSJ"
+        assert dashboard.json()["sentiment_lead_headlines"][0]["headline"] == "Solana breakout lifts alt sentiment"
         assert symbol_intelligence["status"] == "AMBER"
         assert symbol_intelligence["average_score_pct"] == 83
         assert symbol_intelligence["symbol_count"] == 2
@@ -772,6 +809,8 @@ class TestDashboardAPI:
         assert symbol_intelligence["collector"]["sentiment_snapshot_count"] == 4
         assert symbol_intelligence["sentiment"]["ok_count"] == 4
         assert "fomc" in symbol_intelligence["sentiment"]["active_topics"]
+        assert symbol_intelligence["sentiment"]["asset_summaries"][2]["asset"] == "SOL"
+        assert symbol_intelligence["sentiment"]["lead_headlines"][0]["publisher"] == "Bloomberg"
 
         direct = app_client.get("/api/data/symbol-intelligence")
         assert direct.status_code == 200
@@ -779,6 +818,7 @@ class TestDashboardAPI:
         assert direct.json()["optional_component_symbol_counts"]["news"] == 1
         assert direct.json()["collector"]["news_records"] == 7
         assert direct.json()["sentiment"]["lead_asset"] == "SOL"
+        assert direct.json()["sentiment"]["macro_headlines"][0]["headline"] == "Fed officials keep inflation in focus"
         assert "no-store" in direct.headers["Cache-Control"]
 
     def test_dashboard_includes_diamond_retune_status(self, app_client, tmp_path):
@@ -884,8 +924,18 @@ class TestDashboardAPI:
                         "macro": {
                             "ok": True,
                             "raw_source": "google_news_proxy",
+                            "fear_greed": 0.38,
                             "social_volume_z": 1.0,
                             "topic_flags": {"fomc": True, "inflation": True},
+                            "headline_count": 1,
+                            "headlines": [
+                                {
+                                    "headline": "Inflation stays sticky ahead of the Fed",
+                                    "publisher": "CNBC",
+                                    "published_at_utc": "2026-05-14T14:00:00+00:00",
+                                    "url": "https://example.com/macro",
+                                }
+                            ],
                         },
                     },
                 }
@@ -911,6 +961,7 @@ class TestDashboardAPI:
         assert data["sentiment"]["status"] == "ok"
         assert data["sentiment"]["ok_count"] == 4
         assert "fomc" in data["sentiment"]["active_topics"]
+        assert data["sentiment"]["macro_headlines"][0]["publisher"] == "CNBC"
 
     def test_dashboard_diagnostics_summarizes_diamond_retune_status(self, app_client, tmp_path):
         state = tmp_path / "state"

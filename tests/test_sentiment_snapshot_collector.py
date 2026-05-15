@@ -51,8 +51,11 @@ def test_persist_runtime_sentiment_snapshots_writes_crypto_and_macro(monkeypatch
     assert payload["ok_count"] == 2
     assert payload["results"]["BTC"]["fear_greed"] == 0.43
     assert payload["results"]["BTC"]["social_volume_z"] == 1.0
+    assert payload["results"]["BTC"]["headline_count"] == 1
+    assert payload["results"]["BTC"]["headlines"][0]["publisher"] == "Reuters"
     assert payload["results"]["macro"]["raw_source"] == "google_news_proxy"
     assert payload["results"]["macro"]["topic_flags"]["fomc"] is True
+    assert payload["results"]["macro"]["headlines"][0]["headline"].startswith("stock market OR Federal Reserve")
     assert (tmp_path / "lunarcrush_btc.json").exists()
     assert (tmp_path / "macro_sentiment.json").exists()
 
