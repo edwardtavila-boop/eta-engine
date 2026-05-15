@@ -10089,6 +10089,7 @@ def _broker_bracket_audit_payload(
                 "target_exit_summary": target_exit_summary or {},
                 "live_broker_state": live_broker_state or {},
             },
+            validate_live_stale_orders=True,
         )
         return _enrich_broker_bracket_audit_with_positions(
             report,
@@ -11055,6 +11056,12 @@ def _alpaca_per_bot_pnl_cached(*, today_start_iso: str) -> dict:
 def _ibkr_open_order_snapshot(trade: object) -> dict:
     """Return a sanitized read-only IBKR open-order row for OCO evidence."""
     if isinstance(trade, dict):
+        owner_client_id = (
+            trade.get("owner_client_id")
+            or trade.get("ownerClientId")
+            or trade.get("client_id")
+            or trade.get("clientId")
+        )
         return {
             "symbol": trade.get("symbol") or trade.get("local_symbol") or trade.get("localSymbol"),
             "local_symbol": trade.get("local_symbol") or trade.get("localSymbol"),
@@ -11069,10 +11076,13 @@ def _ibkr_open_order_snapshot(trade: object) -> dict:
             "oca_group": trade.get("oca_group") or trade.get("ocaGroup"),
             "order_id": trade.get("order_id") or trade.get("orderId"),
             "perm_id": trade.get("perm_id") or trade.get("permId"),
+            "owner_client_id": owner_client_id,
+            "client_id": owner_client_id,
         }
     order = getattr(trade, "order", None)
     contract = getattr(trade, "contract", None)
     status = getattr(trade, "orderStatus", None)
+    owner_client_id = getattr(order, "clientId", None)
     return {
         "symbol": getattr(contract, "localSymbol", None) or getattr(contract, "symbol", None),
         "local_symbol": getattr(contract, "localSymbol", None),
@@ -11087,6 +11097,8 @@ def _ibkr_open_order_snapshot(trade: object) -> dict:
         "oca_group": getattr(order, "ocaGroup", None),
         "order_id": getattr(order, "orderId", None),
         "perm_id": getattr(order, "permId", None) or getattr(status, "permId", None),
+        "owner_client_id": owner_client_id,
+        "client_id": owner_client_id,
     }
 
 

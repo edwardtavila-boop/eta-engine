@@ -604,8 +604,24 @@ def test_bracket_audit_blocks_active_open_orders_for_flat_symbols(monkeypatch) -
                     ],
                     "open_orders": [
                         {"symbol": "MNQM6", "action": "SELL", "order_type": "LMT", "qty": 1, "status": "Submitted"},
-                        {"symbol": "MCLM6", "action": "BUY", "order_type": "LMT", "qty": 1, "status": "Submitted"},
-                        {"symbol": "MYMM6", "action": "SELL", "order_type": "STP", "qty": 1, "status": "PreSubmitted"},
+                        {
+                            "symbol": "MCLM6",
+                            "action": "BUY",
+                            "order_type": "LMT",
+                            "qty": 1,
+                            "status": "Submitted",
+                            "order_id": 1404,
+                            "client_id": 188,
+                        },
+                        {
+                            "symbol": "MYMM6",
+                            "action": "SELL",
+                            "order_type": "STP",
+                            "qty": 1,
+                            "status": "PreSubmitted",
+                            "order_id": 1405,
+                            "client_id": 188,
+                        },
                     ],
                 },
             },
@@ -618,8 +634,17 @@ def test_bracket_audit_blocks_active_open_orders_for_flat_symbols(monkeypatch) -
     assert report["position_summary"]["stale_flat_open_order_count"] == 2
     assert report["position_summary"]["stale_flat_open_order_symbols"] == ["MCLM6", "MYMM6"]
     assert [row["symbol"] for row in report["stale_flat_open_orders"]] == ["MCLM6", "MYMM6"]
-    assert report["operator_actions"][0]["id"] == "cancel_stale_flat_open_orders"
-    assert report["operator_actions"][0]["order_action"] is True
+    action = report["operator_actions"][0]
+    assert action["id"] == "cancel_stale_flat_open_orders"
+    assert action["order_action"] is True
+    assert action["order_ids"] == [1404, 1405]
+    assert action["owner_client_ids"] == [188]
+    assert action["confirm_requires_operator_approval"] is True
+    assert action["confirm_requires_matching_owner_client_id"] is True
+    assert action["no_global_cancel"] is True
+    assert "--client-id 9031 --symbols MCLM6,MYMM6" in action["dry_run_command"]
+    assert "--client-id 188 --symbols MCLM6,MYMM6 --confirm" in action["confirm_command_template"]
+    assert "Owner IBKR clientId(s): 188" in action["detail"]
     assert "MCLM6, MYMM6" in report["next_action"]
 
 

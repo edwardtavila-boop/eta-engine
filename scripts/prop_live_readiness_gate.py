@@ -620,6 +620,7 @@ def _build_current_broker_bracket_audit(fleet: dict[str, Any]) -> dict[str, Any]
         return broker_bracket_audit.build_bracket_audit(
             fleet=fleet,
             manual_ack=broker_bracket_audit.load_manual_oco_ack(),
+            validate_live_stale_orders=True,
         )
     except Exception:  # noqa: BLE001
         return {}

@@ -292,6 +292,47 @@ class TestDashboardAPI:
         assert payload["operator_actions"][0]["label"] == "Verify broker OCO coverage"
         assert payload["target_exit_summary"]["missing_bracket_count"] == 1
 
+    def test_broker_bracket_audit_endpoint_enables_live_stale_order_validation(self, app_client, monkeypatch):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+        from eta_engine.scripts import broker_bracket_audit
+
+        calls: dict[str, object] = {}
+
+        monkeypatch.setattr(mod, "_supervisor_roster_rows", lambda _now_ts: [])
+        monkeypatch.setattr(
+            mod,
+            "_live_broker_state_payload",
+            lambda: {
+                "ready": True,
+                "open_position_count": 0,
+                "ibkr": {
+                    "ready": True,
+                    "open_position_count": 0,
+                    "open_positions": [],
+                    "open_orders": [],
+                },
+            },
+        )
+
+        def _fake_build_bracket_audit(*, fleet, validate_live_stale_orders=False):
+            calls["fleet"] = fleet
+            calls["validate_live_stale_orders"] = validate_live_stale_orders
+            return {
+                "summary": "READY_NO_OPEN_EXPOSURE",
+                "ready_for_prop_dry_run": True,
+                "operator_action_required": False,
+                "operator_actions": [],
+                "position_summary": {"broker_open_position_count": 0},
+                "stale_flat_open_orders": [],
+            }
+
+        monkeypatch.setattr(broker_bracket_audit, "build_bracket_audit", _fake_build_bracket_audit)
+
+        r = app_client.get("/api/jarvis/broker_bracket_audit")
+
+        assert r.status_code == 200
+        assert calls["validate_live_stale_orders"] is True
+
     def test_live_broker_summary_is_compact_and_data_only(self, app_client, monkeypatch):
         import eta_engine.deploy.scripts.dashboard_api as mod
 
@@ -1768,6 +1809,41 @@ class TestDashboardAPI:
 
         monkeypatch.setenv("ETA_DASHBOARD_IBKR_TIMEOUT_S", "99")
         assert mod._dashboard_ibkr_connect_timeout_s() == 12.0
+
+    def test_ibkr_open_order_snapshot_preserves_owner_client_id(self):
+        from types import SimpleNamespace
+
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        trade = SimpleNamespace(
+            order=SimpleNamespace(
+                action="BUY",
+                orderType="LMT",
+                totalQuantity=1,
+                parentId=0,
+                ocaGroup="",
+                orderId=1404,
+                permId=581506499,
+                clientId=188,
+            ),
+            contract=SimpleNamespace(
+                symbol="NG",
+                localSymbol="NGM26",
+                secType="FUT",
+                exchange="NYMEX",
+            ),
+            orderStatus=SimpleNamespace(
+                status="Submitted",
+                remaining=1,
+                permId=581506499,
+            ),
+        )
+
+        row = mod._ibkr_open_order_snapshot(trade)
+
+        assert row["symbol"] == "NGM26"
+        assert row["owner_client_id"] == 188
+        assert row["client_id"] == 188
 
     def test_live_broker_state_endpoint_defaults_to_cached_state(self, app_client, monkeypatch):
         import eta_engine.deploy.scripts.dashboard_api as mod

@@ -72,6 +72,13 @@ def _as_int(value: Any) -> int:  # noqa: ANN401
         return 0
 
 
+def _as_optional_int(value: Any) -> int | None:  # noqa: ANN401
+    try:
+        return int(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
 def _as_float(value: Any) -> float | None:  # noqa: ANN401
     try:
         return float(value)
@@ -166,6 +173,13 @@ def _open_order_leg_kind(order: dict[str, Any]) -> str:
     return ""
 
 
+def _first_present(*values: Any) -> Any:  # noqa: ANN401
+    for value in values:
+        if value is not None and value != "":
+            return value
+    return None
+
+
 def _stale_flat_open_orders(
     fleet: dict[str, Any],
     *,
@@ -203,6 +217,8 @@ def _stale_flat_open_orders(
                 "status": order.get("status"),
                 "order_id": order.get("order_id"),
                 "perm_id": order.get("perm_id"),
+                "owner_client_id": order.get("owner_client_id"),
+                "client_id": order.get("client_id"),
                 "parent_id": order.get("parent_id"),
                 "oca_group": order.get("oca_group"),
             },
@@ -321,6 +337,14 @@ def _normalize_open_order(raw_order: object) -> dict[str, Any]:
     symbol = _open_order_symbol(order)
     if not symbol:
         return {}
+    owner_client_id = _as_optional_int(
+        _first_present(
+            order.get("owner_client_id"),
+            order.get("ownerClientId"),
+            order.get("client_id"),
+            order.get("clientId"),
+        ),
+    )
     normalized = {
         "symbol": symbol,
         "action": _open_order_action(order),
@@ -331,6 +355,8 @@ def _normalize_open_order(raw_order: object) -> dict[str, Any]:
         "oca_group": str(order.get("oca_group") or order.get("ocaGroup") or "").strip(),
         "order_id": order.get("order_id") or order.get("orderId"),
         "perm_id": order.get("perm_id") or order.get("permId"),
+        "owner_client_id": owner_client_id,
+        "client_id": owner_client_id,
     }
     normalized["linkage_key"] = _open_order_linkage_key(normalized)
     normalized["leg_kind"] = _open_order_leg_kind(normalized)
@@ -886,6 +912,25 @@ def _append_detail_once(message: str, detail: str) -> str:
     return f"{message}{separator}{detail}"
 
 
+def _stale_cancel_command(
+    symbols: list[str],
+    *,
+    client_id: int | str = 9031,
+    confirm: bool = False,
+) -> str:
+    command = (
+        "cd /d C:\\EvolutionaryTradingAlgo && "
+        "eta_engine\\.venv\\Scripts\\python.exe "
+        "-m eta_engine.scripts.cancel_stale_ibkr_open_orders "
+        f"--host 127.0.0.1 --port 4002 --client-id {client_id}"
+    )
+    if symbols:
+        command = f"{command} --symbols {','.join(symbols)}"
+    if confirm:
+        command = f"{command} --confirm"
+    return command
+
+
 def _operator_actions(
     summary: str,
     positions: list[dict[str, Any]],
@@ -913,7 +958,25 @@ def _operator_actions(
                 if str(order.get("symbol") or "").strip()
             },
         )
+        owner_client_id_values = (
+            _as_optional_int(_first_present(order.get("owner_client_id"), order.get("client_id")))
+            for order in stale_orders
+        )
+        owner_client_ids = sorted({client_id for client_id in owner_client_id_values if client_id is not None})
+        order_ids = sorted(
+            {
+                order_id
+                for order_id in (_as_optional_int(order.get("order_id")) for order in stale_orders)
+                if order_id is not None
+            },
+        )
         descriptor = ", ".join(symbols) if symbols else "flat-symbol broker orders"
+        owner_detail = (
+            f" Owner IBKR clientId(s): {', '.join(str(client_id) for client_id in owner_client_ids)}."
+            if owner_client_ids
+            else " Run the dry-run command to discover the owner IBKR clientId(s)."
+        )
+        confirm_client_id: int | str = owner_client_ids[0] if len(owner_client_ids) == 1 else "<owner-client-id>"
         return [
             {
                 "id": "cancel_stale_flat_open_orders",
@@ -923,7 +986,21 @@ def _operator_actions(
                 "blocks_prop_dry_run": True,
                 "symbol": symbols[0] if symbols else None,
                 "symbols": symbols,
-                "detail": f"Cancel active broker orders for {descriptor}; no matching broker position is open.",
+                "order_ids": order_ids,
+                "owner_client_ids": owner_client_ids,
+                "dry_run_command": _stale_cancel_command(symbols),
+                "confirm_command_template": _stale_cancel_command(
+                    symbols,
+                    client_id=confirm_client_id,
+                    confirm=True,
+                ),
+                "confirm_requires_operator_approval": True,
+                "confirm_requires_matching_owner_client_id": True,
+                "no_global_cancel": True,
+                "detail": (
+                    f"Cancel active broker orders for {descriptor}; no matching broker position is open."
+                    f"{owner_detail} Dry-run first; submit --confirm only after explicit operator approval."
+                ),
             },
         ]
     if summary != "BLOCKED_UNBRACKETED_EXPOSURE":

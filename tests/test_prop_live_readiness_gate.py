@@ -65,6 +65,27 @@ def test_prop_live_gate_ready_when_every_surface_is_green() -> None:
     assert all(check["status"] == "PASS" for check in report["checks"])
 
 
+def test_build_current_broker_bracket_audit_enables_live_stale_order_validation(monkeypatch) -> None:
+    from eta_engine.scripts import broker_bracket_audit
+
+    calls: dict[str, object] = {}
+
+    monkeypatch.setattr(broker_bracket_audit, "load_manual_oco_ack", lambda: {"entries": []})
+
+    def _fake_build_bracket_audit(*, fleet, manual_ack, validate_live_stale_orders=False):
+        calls["fleet"] = fleet
+        calls["manual_ack"] = manual_ack
+        calls["validate_live_stale_orders"] = validate_live_stale_orders
+        return {"summary": "READY_NO_OPEN_EXPOSURE"}
+
+    monkeypatch.setattr(broker_bracket_audit, "build_bracket_audit", _fake_build_bracket_audit)
+
+    report = gate._build_current_broker_bracket_audit({"summary": {"broker_open_position_count": 0}})
+
+    assert report["summary"] == "READY_NO_OPEN_EXPOSURE"
+    assert calls["validate_live_stale_orders"] is True
+
+
 def test_prop_live_gate_blocks_dirty_router_and_missing_ledger() -> None:
     payloads = _ready_payloads()
     payloads["fleet"]["broker_router"]["active_blocker_count"] = 1
