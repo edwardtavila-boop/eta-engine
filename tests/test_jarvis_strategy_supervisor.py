@@ -547,6 +547,56 @@ def test_paper_live_calendar_route_clears_pseudo_reject_after_submit(
     assert bot.last_aggregation_reject_at == ""
 
 
+def test_daily_kill_switch_block_is_visible_on_bot_heartbeat(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from eta_engine.scripts import daily_loss_killswitch
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        BotInstance,
+        JarvisStrategySupervisor,
+        SupervisorConfig,
+    )
+
+    monkeypatch.setattr(
+        daily_loss_killswitch,
+        "is_killswitch_tripped",
+        lambda: (True, "day_pnl=-1214.75 <= limit=-1000.00"),
+    )
+
+    cfg = SupervisorConfig()
+    cfg.mode = "paper_live"
+    cfg.data_feed = "unit"
+    cfg.state_dir = tmp_path / "state"
+    sup = JarvisStrategySupervisor(cfg=cfg)
+    monkeypatch.setattr(sup, "_strategy_readiness_allows_entry", lambda _bot: True)
+    monkeypatch.setattr(sup, "_enforce_daily_loss_cap", lambda _bot, now: False)
+    monkeypatch.setattr(sup, "_consult_jarvis", lambda **_kwargs: (_ for _ in ()).throw(AssertionError))
+
+    bot = BotInstance(
+        bot_id="mnq_futures_sage",
+        symbol="MNQ1",
+        strategy_kind="orb_sage_gated",
+        direction="long",
+        cash=50_000.0,
+    )
+
+    sup._maybe_enter(
+        bot,
+        {
+            "ts": "2026-05-15T01:00:00+00:00",
+            "open": 100.0,
+            "high": 101.0,
+            "low": 99.0,
+            "close": 100.0,
+            "volume": 10,
+        },
+    )
+
+    assert bot.last_aggregation_reject_reason == "daily_kill_switch:day_pnl=-1214.75 <= limit=-1000.00"
+    assert bot.last_aggregation_reject_at
+
+
 def test_router_paper_live_direct_route_skips_pending_by_default(tmp_path: Path) -> None:
     from eta_engine.scripts.jarvis_strategy_supervisor import (
         BotInstance,

@@ -3697,6 +3697,8 @@ class JarvisStrategySupervisor:
             )
             return
         if tripped:
+            bot.last_aggregation_reject_reason = f"daily_kill_switch:{reason}"
+            bot.last_aggregation_reject_at = datetime.now(UTC).isoformat()
             if not getattr(self, "_killswitch_warned_today", False):
                 logger.warning(
                     "DAILY KILL SWITCH TRIPPED — entries halted: %s",
