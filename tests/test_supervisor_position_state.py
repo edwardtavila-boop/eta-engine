@@ -225,21 +225,23 @@ def test_consecutive_broker_rejects_counter_increments_and_resets(
     )
     assert bot.consecutive_broker_rejects == 2
 
-    # Now a success — counter must reset.
-    open_result = OrderResult(
+    # Now a broker-confirmed fill — counter must reset.
+    filled_result = OrderResult(
         order_id="sig",
-        status=OrderStatus.OPEN,
+        status=OrderStatus.FILLED,
+        filled_qty=1.0,
+        avg_price=28250.0,
         raw={"ibkr_order_id": 99, "reason": ""},
     )
 
-    def _open_counter(_coro, **_kw):
+    def _filled_counter(_coro, **_kw):
         _close_coro(_coro)
-        return open_result
+        return filled_result
 
     monkeypatch.setattr(
         supervisor,
         "_run_on_live_ibkr_loop",
-        _open_counter,
+        _filled_counter,
     )
     rec = router.submit_entry(
         bot=bot,

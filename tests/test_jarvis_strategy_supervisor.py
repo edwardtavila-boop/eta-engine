@@ -226,6 +226,104 @@ def test_micro_dow_entry_uses_whole_contract_pending_order(
     assert pending["qty"] == 1.0
 
 
+def test_broker_router_pending_entry_does_not_create_local_open_position(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        BotInstance,
+        ExecutionRouter,
+        SupervisorConfig,
+    )
+
+    monkeypatch.setenv("ETA_PAPER_FUTURES_FLOOR", "1")
+
+    cfg = SupervisorConfig()
+    cfg.mode = "paper_live"
+    cfg.paper_live_order_route = "broker_router"
+    cfg.state_dir = tmp_path / "state"
+    cfg.broker_router_pending_dir = tmp_path / "pending"
+    router = ExecutionRouter(cfg=cfg, bf_dir=cfg.broker_router_pending_dir)
+    bot = BotInstance(
+        bot_id="mbt_funding_basis",
+        symbol="MBT1",
+        strategy_kind="mbt_funding_basis",
+        direction="long",
+        cash=50_000.0,
+    )
+
+    rec = router.submit_entry(
+        bot=bot,
+        signal_id="mbt_funding_basis_test",
+        side="BUY",
+        bar={"close": 80650.0, "high": 80700.0, "low": 80600.0, "open": 80630.0},
+        size_mult=1.0,
+    )
+
+    assert rec is not None
+    assert "broker_router_pending_order" in rec.note
+    assert (cfg.broker_router_pending_dir / "mbt_funding_basis.pending_order.json").exists()
+    assert bot.open_position is None
+    assert bot.n_entries == 0
+    assert bot.consecutive_broker_rejects == 0
+    assert not (cfg.state_dir / "bots" / "mbt_funding_basis" / "open_position.json").exists()
+
+
+def test_direct_ibkr_open_without_fill_does_not_create_local_open_position(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from types import SimpleNamespace
+
+    from eta_engine.scripts import jarvis_strategy_supervisor as mod
+
+    monkeypatch.setenv("ETA_PAPER_FUTURES_FLOOR", "1")
+    monkeypatch.setattr(mod.l2hooks, "pre_trade_check", lambda *_args, **_kwargs: True)
+
+    class FakeVenue:
+        def place_order(self, _request):
+            return object()
+
+    fake_result = SimpleNamespace(
+        status=SimpleNamespace(value="OPEN"),
+        raw={"ibkr_order_id": 1467},
+        filled_qty=0.0,
+        avg_price=0.0,
+        order_id="mbt_funding_basis_test",
+        fees=0.0,
+    )
+    monkeypatch.setattr(mod, "_get_live_ibkr_venue", lambda: FakeVenue())
+    monkeypatch.setattr(mod, "_run_on_live_ibkr_loop", lambda _awaitable, timeout=30.0: fake_result)
+
+    cfg = mod.SupervisorConfig()
+    cfg.mode = "paper_live"
+    cfg.paper_live_order_route = "direct_ibkr"
+    cfg.state_dir = tmp_path / "state"
+    router = mod.ExecutionRouter(cfg=cfg, bf_dir=tmp_path / "pending")
+    bot = mod.BotInstance(
+        bot_id="mnq_futures_sage",
+        symbol="MNQ1",
+        strategy_kind="orb_sage_gated",
+        direction="long",
+        cash=50_000.0,
+    )
+
+    rec = router.submit_entry(
+        bot=bot,
+        signal_id="mnq_futures_sage_test",
+        side="BUY",
+        bar={"close": 29350.0, "high": 29360.0, "low": 29340.0, "open": 29345.0},
+        size_mult=1.0,
+    )
+
+    assert rec is not None
+    assert "direct_ibkr_pending_order" in rec.note
+    assert bot.open_position is None
+    assert bot.n_entries == 0
+    assert bot.consecutive_broker_rejects == 0
+    assert not (cfg.state_dir / "bots" / "mnq_futures_sage" / "open_position.json").exists()
+
+
 def test_env_file_loader_tolerates_non_utf8_bytes(tmp_path: Path) -> None:
     from eta_engine.scripts.jarvis_strategy_supervisor import _read_env_file_lines
 
@@ -655,6 +753,86 @@ def test_paper_live_calendar_route_clears_pseudo_reject_after_submit(
     assert submit_entry.called
     assert bot.last_aggregation_reject_reason == ""
     assert bot.last_aggregation_reject_at == ""
+
+
+def test_paper_live_pending_entry_does_not_update_cross_bot_exposure(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from unittest.mock import MagicMock
+
+    from eta_engine.feeds import capital_allocator as ca
+    from eta_engine.scripts import daily_loss_killswitch
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        BotInstance,
+        FillRecord,
+        JarvisStrategySupervisor,
+        SupervisorConfig,
+    )
+
+    monkeypatch.setattr(daily_loss_killswitch, "is_killswitch_tripped", lambda: (False, "clear"))
+    monkeypatch.setattr(ca, "prop_entry_size_multiplier", lambda _bot_id: 1.0)
+    monkeypatch.setattr(ca, "get_prop_guard_signal", lambda: "GO")
+    monkeypatch.setattr(ca, "get_bot_lifecycle", lambda _bot_id: ca.LIFECYCLE_EVAL_PAPER)
+    monkeypatch.setattr(ca, "resolve_execution_target", lambda _bot_id, prospective_loss_usd: ("paper", "unit"))
+
+    cfg = SupervisorConfig()
+    cfg.mode = "paper_live"
+    cfg.paper_live_order_route = "broker_router"
+    cfg.data_feed = "unit"
+    cfg.state_dir = tmp_path / "state"
+    cfg.broker_router_pending_dir = tmp_path / "pending"
+    sup = JarvisStrategySupervisor(cfg=cfg)
+    monkeypatch.setattr(sup, "_strategy_readiness_allows_entry", lambda _bot: True)
+    monkeypatch.setattr(sup, "_enforce_daily_loss_cap", lambda _bot, now: False)
+    monkeypatch.setattr(sup, "_consult_sage_for_bot", lambda *args, **kwargs: None)
+    monkeypatch.setattr(sup, "_check_signal_aggregation", lambda **_kwargs: "")
+
+    verdict = MagicMock()
+    verdict.is_blocked.return_value = False
+    verdict.consolidated.final_verdict = "APPROVED"
+    verdict.consolidated.confidence = 0.95
+    verdict.final_size_multiplier = 1.0
+    monkeypatch.setattr(sup, "_consult_jarvis", lambda **_kwargs: verdict)
+
+    fill = FillRecord(
+        bot_id="mnq_futures_sage",
+        signal_id="sig-paper",
+        side="BUY",
+        symbol="MNQ1",
+        qty=1.0,
+        fill_price=100.0,
+        fill_ts="2026-05-15T01:00:00+00:00",
+        paper=True,
+        note="mode=paper_live;broker_router_pending_order",
+    )
+    submit_entry = MagicMock(return_value=fill)
+    monkeypatch.setattr(sup._router, "submit_entry", submit_entry)
+
+    bot = BotInstance(
+        bot_id="mnq_futures_sage",
+        symbol="MNQ1",
+        strategy_kind="orb_sage_gated",
+        direction="long",
+        cash=50_000.0,
+    )
+
+    sup._maybe_enter(
+        bot,
+        {
+            "ts": "2026-05-15T01:00:00+00:00",
+            "open": 100.0,
+            "high": 101.0,
+            "low": 99.0,
+            "close": 100.0,
+            "volume": 10,
+        },
+    )
+
+    assert submit_entry.called
+    assert sup._cross_bot_tracker.net_position("MNQ") == 0.0  # noqa: SLF001
+    assert bot.last_aggregation_reject_reason == ""
+    assert any(bot_id == "mnq_futures_sage" for bot_id, _signal_id in sup._sent_signals)  # noqa: SLF001
 
 
 def test_daily_kill_switch_block_is_visible_on_bot_heartbeat(
@@ -1384,13 +1562,11 @@ def test_write_pending_order_includes_brackets_when_available(
     # Schema must now carry the bracket fields.
     assert "stop_price" in payload
     assert "target_price" in payload
-    # When the supervisor's bracket-compute path succeeded these mirror
-    # bot.open_position; if it fell through to the warn-once branch the
-    # writer still emits the keys (with null values) so the venue can
-    # fail-closed downstream rather than the supervisor dropping them.
-    pos = bot.open_position or {}
-    assert payload["stop_price"] == pos.get("bracket_stop")
-    assert payload["target_price"] == pos.get("bracket_target")
+    # Broker-router pending mode must carry bracket fields in the wire JSON
+    # while leaving bot.open_position empty until broker fill evidence arrives.
+    assert payload["stop_price"] is not None
+    assert payload["target_price"] is not None
+    assert bot.open_position is None
 
 
 def test_router_live_blocked_without_env(tmp_path: Path) -> None:

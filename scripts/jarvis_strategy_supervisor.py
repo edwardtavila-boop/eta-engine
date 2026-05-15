@@ -1298,6 +1298,23 @@ class ExecutionRouter:
                 bot.consecutive_broker_rejects,
             )
 
+        def _clear_recorded_entry_without_reject(reason: str) -> None:
+            """Undo optimistic local-open state for broker-pending entries."""
+            if bot.open_position is not None and bot.open_position.get("signal_id") == rec.signal_id:
+                bot.open_position = None
+                self._clear_persisted_open_position(bot)
+            bot.n_entries = max(0, bot.n_entries - 1)
+            logger.info(
+                "BROKER PENDING %s: local open_position cleared until fill evidence arrives "
+                "(reason=%s symbol=%s side=%s qty=%.6f signal_id=%s)",
+                bot.bot_id,
+                reason,
+                rec.symbol,
+                rec.side,
+                rec.qty,
+                rec.signal_id,
+            )
+
         if self.cfg.mode == "paper_live":
             _route = (self.cfg.paper_live_order_route or "direct_ibkr").strip().lower()
             # broker_router route bypasses ETA_PAPER_LIVE_ALLOWED_SYMBOLS
@@ -1309,6 +1326,8 @@ class ExecutionRouter:
             # not in the allowlist that's curated for IBKR futures.
             if _route in {"broker_router", "pending_file", "pending"}:
                 self._write_pending_order(bot, rec)
+                rec.note = f"{rec.note};broker_router_pending_order"
+                _clear_recorded_entry_without_reject("broker_router_pending_order")
                 return rec
             # ── direct_ibkr path ──────────────────────────────────
             # Now the allowlist applies — direct_ibkr only handles the
@@ -1453,13 +1472,16 @@ class ExecutionRouter:
                 # of double-exiting via supervisor-side logic. The flag
                 # is read in _maybe_exit; if True, only an emergency
                 # stop (drawdown beyond 2x the bracket stop) overrides.
-                # The set of broker statuses that mean "supervisor MAY
-                # keep bot.open_position": OPEN, PARTIAL, FILLED. Any
-                # other status (REJECTED, CANCELLED, EXPIRED, UNKNOWN)
-                # forces an immediate rollback so phantom positions
-                # cannot leak through.
-                _ok_statuses = {"OPEN", "PARTIAL", "FILLED"}
-                if _result.status.value in _ok_statuses and bot.open_position is not None:
+                # Only broker-confirmed fills may become supervisor-local
+                # exposure. ``OPEN`` with filled_qty=0 means the order is
+                # working at the broker, not that the account holds a
+                # position. Keeping it in bot.open_position creates phantom
+                # exposure and can resurrect stale brackets after an operator
+                # cancel/flatten.
+                _filled_qty = float(getattr(_result, "filled_qty", 0) or 0)
+                _filled_statuses = {"PARTIAL", "FILLED"}
+                if _result.status.value in _filled_statuses and _filled_qty > 0 and bot.open_position is not None:
+                    bot.open_position["qty"] = min(abs(float(bot.open_position.get("qty", 0) or 0)), _filled_qty)
                     bot.open_position["broker_bracket"] = True
                     bot.open_position["bracket_stop"] = round(_round_to_tick(_stop, rec.symbol), 4)
                     bot.open_position["bracket_target"] = round(_round_to_tick(_target, rec.symbol), 4)
@@ -1477,7 +1499,7 @@ class ExecutionRouter:
                     # have here.  Bracket EXITS (TARGET/STOP) still
                     # require a separate IBKR fill handler — see
                     # docs/L2_SUPERVISOR_WIRING.md step 4.
-                    if _result.status.value == "FILLED" and float(getattr(_result, "filled_qty", 0) or 0) > 0:
+                    if _result.status.value == "FILLED" and _filled_qty > 0:
                         l2hooks.record_fill(
                             signal_id=rec.signal_id,
                             broker_exec_id=str(
@@ -1491,9 +1513,12 @@ class ExecutionRouter:
                             intended_price=float(_ref),
                             tick_size=0.25,  # MNQ default; per-symbol lookup TBD
                         )
-                elif _result.status.value not in _ok_statuses:
+                elif _result.status.value == "OPEN" and _filled_qty <= 0:
+                    rec.note = f"{rec.note};direct_ibkr_pending_order"
+                    _clear_recorded_entry_without_reject("direct_ibkr_open_without_fill")
+                else:
                     _rollback_recorded_entry(
-                        f"broker_result={_result.status.value}; reason={_reason}",
+                        f"broker_result={_result.status.value}; filled_qty={_filled_qty}; reason={_reason}",
                     )
                     return None
             except Exception as _exc:
@@ -3853,6 +3878,78 @@ class JarvisStrategySupervisor:
         policy = os.getenv("ETA_PAPER_LIVE_KILLSWITCH_MODE", "enforce").strip().lower()
         return policy in {"advisory", "warn", "warning", "observe", "soft"}
 
+    def _broker_router_pending_entry_cooldown_s(self) -> float:
+        """Return the broker-router no-refire window for submitted entries."""
+        return max(0.0, self._env_float("ETA_BROKER_ROUTER_PENDING_ENTRY_COOLDOWN_S", 900.0))
+
+    def _broker_router_pending_entry_block_reason(
+        self,
+        bot: BotInstance,
+        *,
+        now: datetime,
+    ) -> str:
+        """Return a reason to block duplicate broker-router entries.
+
+        The broker-router lane is asynchronous: the supervisor writes a
+        pending_order JSON and the router later submits it to IBKR. A working
+        bracket with filled_qty=0 is an order, not an account position. This
+        guard keeps the bot from firing another entry while that order is
+        still fresh without pretending it is open exposure.
+        """
+        if str(getattr(self.cfg, "mode", "")).strip().lower() != "paper_live":
+            return ""
+        route = str(getattr(self.cfg, "paper_live_order_route", "") or "").strip().lower()
+        if route not in {"broker_router", "pending_file", "pending"}:
+            return ""
+        cooldown_s = self._broker_router_pending_entry_cooldown_s()
+        if cooldown_s <= 0:
+            return ""
+        now_utc = now.astimezone(UTC)
+        pending_dir = self.cfg.broker_router_pending_dir
+        for folder_name in ("", "processing"):
+            folder = pending_dir if not folder_name else pending_dir.parent / folder_name
+            path = folder / f"{bot.bot_id}.pending_order.json"
+            try:
+                mtime = datetime.fromtimestamp(path.stat().st_mtime, tz=UTC)
+            except OSError:
+                continue
+            age_s = max(0.0, (now_utc - mtime).total_seconds())
+            if age_s <= cooldown_s:
+                return f"broker_router_pending_file:{age_s:.0f}s"
+
+        fill_dir = pending_dir.parent / "fill_results"
+        try:
+            result_paths = sorted(
+                fill_dir.glob(f"{bot.bot_id}_*_result.json"),
+                key=lambda path: path.stat().st_mtime,
+                reverse=True,
+            )
+        except OSError:
+            result_paths = []
+        for path in result_paths[:5]:
+            try:
+                payload = json.loads(path.read_text(encoding="utf-8"))
+                result = payload.get("result") if isinstance(payload.get("result"), dict) else {}
+                status = str(result.get("status") or "").upper()
+                filled_qty = float(result.get("filled_qty") or 0)
+                ts = self._parse_open_position_ts(payload.get("ts"))
+                mtime = datetime.fromtimestamp(path.stat().st_mtime, tz=UTC)
+            except (OSError, TypeError, ValueError, json.JSONDecodeError):
+                continue
+            age_ref = ts or mtime
+            age_s = max(0.0, (now_utc - age_ref).total_seconds())
+            if age_s > cooldown_s:
+                continue
+            if status in {"OPEN", "PENDING", "SUBMITTED", "PRESUBMITTED", "PARTIAL"} and filled_qty <= 0:
+                return f"broker_router_order_open_no_fill:{age_s:.0f}s"
+
+        last_signal_at = self._parse_open_position_ts(getattr(bot, "last_signal_at", ""))
+        if last_signal_at is not None and bot.open_position is None:
+            age_s = max(0.0, (now_utc - last_signal_at).total_seconds())
+            if age_s <= cooldown_s:
+                return f"broker_router_signal_cooldown:{age_s:.0f}s"
+        return ""
+
     def _maybe_enter(self, bot: BotInstance, bar: dict[str, Any]) -> None:
         # ── Session-gate entry check ───────────────────────────────
         # Runs before everything else so a bot blocked by RTH / EoD /
@@ -3891,6 +3988,12 @@ class JarvisStrategySupervisor:
             return
 
         if self._stale_flatten_cooldown_active(bot, now=now):
+            return
+
+        pending_reason = self._broker_router_pending_entry_block_reason(bot, now=now)
+        if pending_reason:
+            bot.last_aggregation_reject_reason = pending_reason
+            bot.last_aggregation_reject_at = now.astimezone(UTC).isoformat()
             return
 
         if not bot.entry_enabled:
@@ -4554,6 +4657,7 @@ class JarvisStrategySupervisor:
             size_mult=size_mult,
         )
         if rec:
+            broker_pending = "pending_order" in str(getattr(rec, "note", "") or "")
             # A successful entry supersedes any earlier per-signal route note
             # or stale reject reason. In paper_live, target="paper" means
             # "route to the paper broker", not "reject the signal".
@@ -4565,11 +4669,23 @@ class JarvisStrategySupervisor:
             # set so even within this session we don't re-issue.
             self._sent_signals.add((bot.bot_id, signal_id))
             self._record_sent_signal(bot.bot_id, signal_id, rec.fill_ts)
+            if broker_pending:
+                logger.info(
+                    "PENDING %s %s %.4f @ %.4f (verdict=%s size_mult=%.2f note=%s)",
+                    bot.bot_id,
+                    order_side,
+                    rec.qty,
+                    rec.fill_price,
+                    verdict.consolidated.final_verdict,
+                    size_mult,
+                    rec.note,
+                )
+                return
             # Record the broker-acked entry on the cross-bot tracker.
             # ``rec`` is non-None only on broker-success branches
-            # (paper_sim, paper_live OK/PARTIAL/FILLED, broker_router
-            # pending). The rollback path returns None, so this stays
-            # bounded by broker truth.
+            # (paper_sim or broker-confirmed paper_live fills). Pending
+            # broker-router/direct-IBKR orders are deliberately excluded:
+            # submitted-but-unfilled orders are not account exposure yet.
             try:
                 from eta_engine.safety.cross_bot_position_tracker import (
                     normalize_root as _cbpt_normalize_root,
