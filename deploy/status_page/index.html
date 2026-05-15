@@ -396,7 +396,7 @@ tr:hover td{background:rgba(100,215,255,.055)}
 
 <div class="grid">
   <div class="card"><h3>Focus Bots</h3><div class="stat green" id="totalBots">--</div></div>
-  <div class="card"><h3>Runtime</h3><div class="stat blue" id="activeBots">--</div><div class="sub" id="activeBotsSub">attached | off-lane</div></div>
+  <div class="card"><h3>Runtime</h3><div class="stat blue" id="activeBots">--</div><div class="sub" id="activeBotsSub">connected | stale</div></div>
   <div class="card"><h3>Held Bots</h3><div class="stat dim" id="heldBots">--</div><div class="sub" id="heldBotsSub">checking live entry holds</div></div>
   <div class="card"><h3>Session Net</h3><div class="stat dim" id="todayPnl">--</div><div class="sub" id="todayPnlSub"></div></div>
   <div class="card"><h3 id="totalPnlLabel">Broker MTD</h3><div class="stat dim" id="totalPnl">--</div><div class="sub" id="totalPnlSub">IBKR portfolio pending</div></div>
@@ -915,6 +915,23 @@ function focusEngagementSummary(bots) {
     offLane: Math.max(0, runtimeActive - liveRuntime),
     staged: Math.max(0, bots.length - runtimeActive),
   };
+}
+
+function connectedFleetLine(totalBots, engagement, {includeFocus = true} = {}) {
+  const parts = [];
+  if (includeFocus && totalBots > 0) parts.push(`${totalBots} focus`);
+  if ((engagement?.offLane || 0) > 0) {
+    parts.push(`${engagement.runtimeActive} runtime`);
+    parts.push(`${engagement.attached} connected`);
+    parts.push(`${engagement.offLane} stale`);
+  } else if ((engagement?.attached || 0) > 0) {
+    parts.push(`${engagement.attached} connected`);
+  } else if ((engagement?.runtimeActive || 0) > 0) {
+    parts.push(`${engagement.runtimeActive} runtime`);
+  } else {
+    parts.push('flat');
+  }
+  return parts.join(' | ');
 }
 
 function formatMoney(value, digits = 2) {
@@ -2315,9 +2332,7 @@ function renderPortfolioCommand(bots, hiddenCount, liveBroker, summary, d, today
     const scopeLine = [
       `${bots.length} focus`,
       `${paperReady} paper-ready`,
-      active > 0 ? `${active} runtime` : 'flat',
-      `${attached} attached`,
-      offLane > 0 ? `${offLane} off-lane` : '',
+      connectedFleetLine(0, {runtimeActive: active, attached, offLane}),
       blockedBots > 0 ? `${blockedBots} held` : ''
     ].filter(Boolean).join(' | ');
     const blockerLine = blockedBots > 0 ? compactText(blockedLine, isMobileNarrow ? 54 : 78) : '';
@@ -2330,9 +2345,9 @@ function renderPortfolioCommand(bots, hiddenCount, liveBroker, summary, d, today
   if (chips) {
     chips.innerHTML = [
       `<span class="hero-chip"><strong>${bots.length}</strong> focus</span>`,
-      `<span class="hero-chip"><strong>${active}</strong> runtime</span>`,
-      `<span class="hero-chip"><strong>${attached}</strong> attached</span>`,
-      offLane > 0 ? `<span class="hero-chip"><strong>${offLane}</strong> off-lane</span>` : '',
+      offLane > 0 ? `<span class="hero-chip"><strong>${active}</strong> runtime</span>` : '',
+      `<span class="hero-chip"><strong>${attached}</strong> connected</span>`,
+      offLane > 0 ? `<span class="hero-chip"><strong>${offLane}</strong> stale</span>` : '',
       `<span class="hero-chip"><strong>${paperReady}</strong> paper-ready</span>`,
       blockedBots > 0 ? `<span class="hero-chip blocked-chip"><strong>${blockedBots}</strong> held</span>` : '',
       `<span class="hero-chip"><strong>${brokerPositions.length}</strong> open</span>`,
@@ -2361,7 +2376,7 @@ function renderPortfolioCommand(bots, hiddenCount, liveBroker, summary, d, today
           : `${paperReady} paper-ready`;
     const bracketCount = Number(readinessSnapshot.broker_missing_bracket_count || 0);
     const readinessSub = paperDailyLossHold
-      ? `${paperReady} paper-ready | daily-loss hold active`
+      ? `${paperReady} paper-ready | capital held by daily stop`
       : paperLaunchBlocked
         ? `${paperReady} paper-ready | launch blocked`
       : readinessStatus === 'blocked'
@@ -2369,8 +2384,8 @@ function renderPortfolioCommand(bots, hiddenCount, liveBroker, summary, d, today
         ? `${bracketCount} exit-protection gap | ${readinessSnapshot.prop_primary_bot || 'prop bot'} held`
         : readinessSnapshot.primary_action || readinessSnapshot.promotion_summary || 'gates blocked')
       : readinessStatus === 'ready'
-        ? `${paperReady} paper-ready | ${attached} attached${offLane > 0 ? ` | ${offLane} off-lane` : ''}`
-        : `${active} runtime${offLane > 0 ? ` | ${offLane} off-lane` : ''}`;
+        ? `${paperReady} paper-ready | ${attached} connected${offLane > 0 ? ` | ${offLane} stale` : ''}`
+        : connectedFleetLine(0, {runtimeActive: active, attached, offLane});
     const readinessSubWithBlocks = blockedBots > 0
       ? compactText(`${blockedBots} held | ${blockedRollup.kindsLine || blockedLine}`, 86)
       : readinessSub;
@@ -3133,7 +3148,7 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
   const liveRuntime = engagement.liveRuntime;
   const offLane = engagement.offLane;
   const staged = engagement.staged;
-  const runtimeStatusLine = `${bots.length} focus | ${active} runtime | ${attached} attached${offLane > 0 ? ` | ${offLane} off-lane` : ''}`;
+  const runtimeStatusLine = connectedFleetLine(bots.length, engagement);
   document.getElementById('statusDot').className = 'status-dot ' + (stale ? 'stale' : blockedBots > 0 ? 'blocked' : 'live');
   document.getElementById('statusText').textContent =
     truthStatus === 'working'
@@ -3171,9 +3186,8 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
   const activeSub = document.getElementById('activeBotsSub');
   if (activeSub) {
     const runtimeParts = [
-      `${attached} attached`,
-      offLane > 0 ? `${offLane} off-lane` : '',
-      liveRuntime > 0 ? `${liveRuntime} fresh runtime` : '',
+      `${attached} connected`,
+      offLane > 0 ? `${offLane} stale` : '',
       staged > 0 ? `${staged} staged` : '',
       cellarCount > 0 ? `${cellarCount} parked` : '',
       hiddenCount > 0 ? `${hiddenCount} hidden` : '',
@@ -3854,7 +3868,7 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
   const paperDetail = compactText(
     humanizeStatusText(
       paperDailyLossHold
-        ? paperEffectiveDetail || 'Daily-loss soft stop is active; entries resume after the automatic reset.'
+        ? 'shadow live | capital held by daily stop'
         : paperGateHeld
           ? paperBracketHold
           : paperEffectiveDetail || firstPaperGate?.detail || paperAction || paperLive?.error || 'launch readiness pending'
@@ -3863,7 +3877,11 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
   document.getElementById('paperLiveStatus').textContent = paperLabel;
   document.getElementById('paperLiveStatus').className = 'stat ' + paperClass;
   document.getElementById('paperLiveSub').textContent = compactText(
-    humanizeStatusText(`${paperReadyBots} paper ready${paperBlocker ? '; ' + paperBlocker : ''}. ${paperDetail}`.trim())
+    humanizeStatusText(
+      paperDailyLossHold
+        ? `${paperReadyBots} paper-ready | shadow live | capital held by daily stop`
+        : `${paperReadyBots} paper-ready${paperBlocker ? ' | ' + paperBlocker : ''} | ${paperDetail}`
+    )
   );
 
   renderDataIntelligence(d.symbol_intelligence || diagnostics?.symbol_intelligence || {});
@@ -4071,7 +4089,7 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
     const heldText = blockedBots > 0
       ? `, ${blockedBots} held${blockedRollup.kindsLine ? ` | ${blockedRollup.kindsLine}` : ''}`
       : '';
-    botRosterSummary.textContent = `${bots.length} focus visible, ${active} runtime, ${attached} attached${offLane > 0 ? `, ${offLane} off-lane` : ''}, ${hiddenCount} hidden/backburner${heldText}`;
+    botRosterSummary.textContent = `${bots.length} focus visible, ${attached} connected${offLane > 0 ? `, ${offLane} stale` : ''}, ${hiddenCount} hidden/backburner${heldText}`;
   }
   document.getElementById('botTable').innerHTML = html || '<tr><td colspan="12" class="loading">No visible active/staged bots after disabled and removed filters.</td></tr>';
   updateClock();
