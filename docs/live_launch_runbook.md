@@ -370,6 +370,10 @@ cd C:\EvolutionaryTradingAlgo
 # first so the readiness endpoint and transition card agree. It never clears holds or submits orders.
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\eta_engine\deploy\scripts\register_paper_live_transition_check_task.ps1 -Start
 
+# Public first-paint speed. Keeps /api/dashboard/diagnostics warm from the VPS
+# loopback so the ops website does not pay the cold diagnostics build on load.
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\eta_engine\deploy\scripts\register_dashboard_diagnostics_cache_warm_task.ps1 -Start
+
 # Daily-loss reset receipt. Keeps daily_stop_reset_audit_latest.json fresh so
 # the VPS proves whether the midnight reset cleared and whether another gate
 # still blocks paper_live. It never submits, cancels, flattens, or promotes.

@@ -7,6 +7,8 @@ RUNNER = ROOT / "deploy" / "scripts" / "run_paper_live_transition_check.cmd"
 REGISTRAR = ROOT / "deploy" / "scripts" / "register_paper_live_transition_check_task.ps1"
 RESET_AUDIT_RUNNER = ROOT / "deploy" / "scripts" / "run_daily_stop_reset_audit_task.cmd"
 RESET_AUDIT_REGISTRAR = ROOT / "deploy" / "scripts" / "register_daily_stop_reset_audit_task.ps1"
+DIAGNOSTICS_CACHE_WARM_RUNNER = ROOT / "deploy" / "scripts" / "run_dashboard_diagnostics_cache_warm.ps1"
+DIAGNOSTICS_CACHE_WARM_REGISTRAR = ROOT / "deploy" / "scripts" / "register_dashboard_diagnostics_cache_warm_task.ps1"
 READINESS_RUNNER = ROOT / "deploy" / "scripts" / "run_eta_readiness_snapshot.cmd"
 READINESS_REGISTRAR = ROOT / "deploy" / "scripts" / "register_eta_readiness_snapshot_task.ps1"
 BOOTSTRAP = ROOT / "deploy" / "vps_bootstrap.ps1"
@@ -76,6 +78,8 @@ def test_paper_live_transition_task_scripts_do_not_use_legacy_write_paths() -> N
             REGISTRAR,
             RESET_AUDIT_RUNNER,
             RESET_AUDIT_REGISTRAR,
+            DIAGNOSTICS_CACHE_WARM_RUNNER,
+            DIAGNOSTICS_CACHE_WARM_REGISTRAR,
             READINESS_RUNNER,
             READINESS_REGISTRAR,
         )
@@ -121,6 +125,31 @@ def test_daily_stop_reset_audit_registrar_is_wired_into_bootstrap() -> None:
     assert "register_daily_stop_reset_audit_task.ps1" in bootstrap
     assert "daily stop reset audit task" in bootstrap
     assert "register_daily_stop_reset_audit_task.ps1 -Start" in RUNBOOK.read_text(encoding="utf-8")
+
+
+def test_dashboard_diagnostics_cache_warmer_is_wired_into_bootstrap() -> None:
+    runner = DIAGNOSTICS_CACHE_WARM_RUNNER.read_text(encoding="utf-8")
+    registrar = DIAGNOSTICS_CACHE_WARM_REGISTRAR.read_text(encoding="utf-8")
+    bootstrap = BOOTSTRAP.read_text(encoding="utf-8")
+    runbook = RUNBOOK.read_text(encoding="utf-8")
+
+    assert "http://127.0.0.1:8421/api/dashboard/diagnostics?refresh=1" in runner
+    assert "dashboard_diagnostics_cache_warm.task.log" in runner
+    assert "Iterations = 3" in runner
+    assert "SleepSeconds = 20" in runner
+    assert "exit 0" in runner
+    assert "ETA-DashboardDiagnosticsCacheWarm" in registrar
+    assert '$WorkspaceRoot = "C:\\EvolutionaryTradingAlgo"' in registrar
+    assert "Assert-CanonicalEtaPath" in registrar
+    assert "run_dashboard_diagnostics_cache_warm.ps1" in registrar
+    assert "-RepetitionInterval (New-TimeSpan -Minutes 1)" in registrar
+    assert "-ExecutionTimeLimit (New-TimeSpan -Seconds 75)" in registrar
+    assert "-MultipleInstances IgnoreNew" in registrar
+    assert '-UserId "NT AUTHORITY\\SYSTEM"' in registrar
+    assert "Order action: never submits, cancels, flattens, or promotes" in registrar
+    assert "register_dashboard_diagnostics_cache_warm_task.ps1" in bootstrap
+    assert "dashboard diagnostics cache warmer task" in bootstrap
+    assert "register_dashboard_diagnostics_cache_warm_task.ps1 -Start" in runbook
 
 
 def test_eta_readiness_snapshot_runner_refreshes_canonical_ops_receipt_without_order_actions() -> None:
