@@ -8,6 +8,11 @@ set "ETA_BROKER_ROUTER_INTERVAL_S=5"
 set "ETA_BROKER_ROUTER_PENDING_DIR=%ETA_ROOT%\var\eta_engine\state\router\pending"
 set "ETA_BROKER_ROUTER_STATE_ROOT=%ETA_ROOT%\var\eta_engine\state\router"
 set "ETA_BROKER_ROUTER_ENFORCE_READINESS=1"
+rem Keep router and supervisor daily-loss math identical. This is a soft stop
+rem in front of a $1k prop-style daily wall.
+set "ETA_KILLSWITCH_TIMEZONE=America/New_York"
+set "ETA_KILLSWITCH_EQUITY_USD=50000"
+set "ETA_KILLSWITCH_DAILY_LIMIT_USD=-900"
 rem Keep router IBKR sessions isolated from the supervisor and machine env.
 set "ETA_IBKR_CLIENT_ID=188"
 set "ETA_IBKR_SUBMIT_CONFIRM_SECONDS=10"

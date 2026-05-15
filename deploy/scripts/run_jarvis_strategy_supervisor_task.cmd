@@ -189,7 +189,9 @@ rem Atlanta/New-York trading day instead of daily_loss_killswitch.py's
 rem fallback $5k/-$300 defaults.
 set "ETA_KILLSWITCH_TIMEZONE=America/New_York"
 set "ETA_KILLSWITCH_EQUITY_USD=50000"
-set "ETA_KILLSWITCH_DAILY_LIMIT_USD=-1000"
+rem Soft-stop before a $1k prop-style daily wall so slippage/reject retries
+rem do not turn a warning into an avoidable rule break.
+set "ETA_KILLSWITCH_DAILY_LIMIT_USD=-900"
 rem Hardened prop-prep default: once the daily floor trips, paper_live stops
 rem producing fresh entry intents. The broker router also enforces this as a
 rem last-mile brake, but the supervisor should not keep filling pending/.

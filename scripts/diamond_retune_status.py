@@ -116,6 +116,18 @@ def _broker_close_evidence(
     close_count = int(_as_float(stats.get("closed_trade_count"), 0.0))
     remaining = max(0, required_closes - close_count)
     progress_pct = round(min(100.0, (close_count / required_closes) * 100.0), 2) if required_closes > 0 else 100.0
+    total_realized_pnl = round(_as_float(stats.get("total_realized_pnl")), 2)
+    profit_factor = _as_float(stats.get("profit_factor"), 0.0)
+    has_required_sample = remaining <= 0
+    has_positive_edge = has_required_sample and total_realized_pnl > 0.0 and profit_factor > 1.0
+    if has_positive_edge:
+        edge_status = "broker_edge_ready"
+    elif has_required_sample:
+        edge_status = "sample_met_negative_edge"
+    elif payload:
+        edge_status = "needs_more_broker_closes"
+    else:
+        edge_status = "missing_closed_trade_ledger"
     return {
         "source": "closed_trade_ledger_latest" if payload else "missing_closed_trade_ledger",
         "source_generated_at_utc": payload.get("generated_at_utc"),
@@ -126,8 +138,10 @@ def _broker_close_evidence(
         "required_closed_trade_count": required_closes,
         "remaining_closed_trade_count": remaining,
         "sample_progress_pct": progress_pct,
-        "has_required_sample": remaining <= 0,
-        "total_realized_pnl": round(_as_float(stats.get("total_realized_pnl")), 2),
+        "has_required_sample": has_required_sample,
+        "has_positive_edge": has_positive_edge,
+        "edge_status": edge_status,
+        "total_realized_pnl": total_realized_pnl,
         "cumulative_r": round(_as_float(stats.get("cumulative_r")), 4),
         "profit_factor": stats.get("profit_factor"),
         "win_rate_pct": stats.get("win_rate_pct"),
@@ -139,6 +153,15 @@ def _next_action(state: str, bot_id: str, *, broker_evidence: dict[str, Any] | N
     closed_trade_count = int(_as_float(broker_evidence.get("closed_trade_count"), 0.0))
     required_closes = int(_as_float(broker_evidence.get("required_closed_trade_count"), BROKER_PROOF_CLOSE_TARGET))
     remaining = int(_as_float(broker_evidence.get("remaining_closed_trade_count"), 0.0))
+    has_required_sample = bool(broker_evidence.get("has_required_sample"))
+    has_positive_edge = bool(broker_evidence.get("has_positive_edge"))
+    broker_pnl = _as_float(broker_evidence.get("total_realized_pnl"), 0.0)
+    broker_pf = _as_float(broker_evidence.get("profit_factor"), 0.0)
+    if has_required_sample and not has_positive_edge:
+        edge_note = f"sample met ({closed_trade_count}/{required_closes}) but broker edge is negative"
+        if broker_pnl or broker_pf:
+            edge_note += f" (PnL ${broker_pnl:,.2f}, PF {broker_pf:.2f})"
+        return f"{edge_note}; retune or demote before any promotion; no live changes"
     if state == "NOT_ATTEMPTED":
         return "run the next scheduled paper-research attempt; no live changes"
     if state == "PASS_AWAITING_BROKER_PROOF":
@@ -240,6 +263,8 @@ def build_status(
         row.get("broker_close_evidence") for row in bot_rows if isinstance(row.get("broker_close_evidence"), dict)
     ]
     proof_gaps = [int(_as_float(row.get("remaining_closed_trade_count"), 0.0)) for row in broker_proof_rows]
+    broker_sample_ready = [row for row in broker_proof_rows if bool(row.get("has_required_sample"))]
+    broker_edge_ready = [row for row in broker_proof_rows if bool(row.get("has_positive_edge"))]
     return {
         "kind": "eta_diamond_retune_status",
         "generated_at_utc": datetime.now(UTC).isoformat(),
@@ -260,7 +285,10 @@ def build_status(
             "n_stuck_research_failing": sum(1 for row in bot_rows if row["retune_state"] == "STUCK_RESEARCH_FAILING"),
             "n_timeout_retry": sum(1 for row in bot_rows if row["retune_state"] == "TIMEOUT_RETRY"),
             "broker_proof_required_closes": BROKER_PROOF_CLOSE_TARGET,
-            "n_broker_proof_ready": sum(1 for row in broker_proof_rows if bool(row.get("has_required_sample"))),
+            "n_broker_sample_ready": len(broker_sample_ready),
+            "n_broker_edge_ready": len(broker_edge_ready),
+            "n_broker_proof_ready": len(broker_edge_ready),
+            "n_broker_sample_ready_negative_edge": len(broker_sample_ready) - len(broker_edge_ready),
             "n_broker_proof_shortfall": sum(1 for gap in proof_gaps if gap > 0),
             "largest_broker_proof_gap": max(proof_gaps, default=0),
             "total_broker_proof_gap": sum(proof_gaps),

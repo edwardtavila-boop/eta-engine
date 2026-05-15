@@ -43,6 +43,60 @@ def test_mock_feed_handles_unknown_symbol() -> None:
     assert bar["close"] > 0
 
 
+def test_supervisor_persists_recent_verdict_sidecar(tmp_path, monkeypatch) -> None:
+    import json
+    from types import SimpleNamespace
+
+    from eta_engine.scripts import jarvis_strategy_supervisor as mod
+
+    runtime_state = tmp_path / "runtime_state"
+    supervisor_state = tmp_path / "supervisor_state"
+    monkeypatch.setattr(mod.workspace_roots, "ETA_RUNTIME_STATE_DIR", runtime_state)
+
+    cfg = mod.SupervisorConfig()
+    cfg.state_dir = supervisor_state
+    sup = mod.JarvisStrategySupervisor(cfg=cfg)
+    bot = mod.BotInstance(bot_id="mnq_futures_sage", symbol="MNQ1", strategy_kind="orb_sage_gated")
+
+    consolidated = SimpleNamespace(
+        ts="2026-05-15T12:20:55+00:00",
+        request_id="mnq_futures_sage_d7a207fd",
+        final_verdict="APPROVED",
+        base_reason="trade_ok",
+        subsystem="bot.mnq",
+        action="ORDER_PLACE",
+    )
+    verdict = SimpleNamespace(
+        consolidated=consolidated,
+        sentiment_pressure_status="risk_on",
+        sentiment_modulation="tailwind",
+        sentiment_pressure_lead_asset="BTC",
+        to_dict=lambda: {
+            "consolidated": {
+                "ts": consolidated.ts,
+                "request_id": consolidated.request_id,
+                "final_verdict": consolidated.final_verdict,
+                "subsystem": consolidated.subsystem,
+                "action": consolidated.action,
+            },
+            "sentiment_pressure_status": "risk_on",
+            "sentiment_modulation": "tailwind",
+            "sentiment_pressure_lead_asset": "BTC",
+        },
+    )
+
+    sup._persist_recent_verdict(bot, verdict, signal_id="mnq_futures_sage_d7a207fd")  # noqa: SLF001
+    sup._persist_recent_verdict(bot, verdict, signal_id="mnq_futures_sage_d7a207fd")  # noqa: SLF001
+
+    verdict_path = runtime_state / "bots" / "mnq_futures_sage" / "recent_verdicts.json"
+    payload = json.loads(verdict_path.read_text(encoding="utf-8"))
+    assert len(payload) == 1
+    assert payload[0]["bot_id"] == "mnq_futures_sage"
+    assert payload[0]["verdict"] == "APPROVED"
+    assert payload[0]["sentiment_modulation"] == "tailwind"
+    assert payload[0]["sentiment_pressure_lead_asset"] == "BTC"
+
+
 def test_consult_sage_for_bot_enriches_context_with_live_book_imbalance(tmp_path, monkeypatch) -> None:
     import json
     from datetime import UTC, datetime, timedelta

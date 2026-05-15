@@ -258,6 +258,47 @@ def test_bot_fleet_drilldown_enriches_sentiment_verdict_summary(client, tmp_path
     assert verdict["sentiment_summary"] == "risk_on / tailwind / lead=BTC"
 
 
+def test_bot_fleet_drilldown_falls_back_to_canonical_verdict_log(client, tmp_path, monkeypatch) -> None:
+    import json
+
+    from eta_engine.scripts import workspace_roots
+
+    monkeypatch.setenv("ETA_STATE_DIR", str(tmp_path))
+    bot_dir = tmp_path / "bots" / "mnq_futures_sage"
+    bot_dir.mkdir(parents=True)
+    (bot_dir / "status.json").write_text(json.dumps({"name": "mnq_futures_sage", "symbol": "MNQ1"}), encoding="utf-8")
+    verdict_log = tmp_path / "jarvis_intel" / "verdicts.jsonl"
+    verdict_log.parent.mkdir(parents=True, exist_ok=True)
+    verdict_log.write_text(
+        json.dumps(
+            {
+                "ts": "2026-05-15T12:20:55+00:00",
+                "request_id": "mnq_futures_sage_d7a207fd",
+                "subsystem": "bot.es",
+                "final_verdict": "APPROVED",
+                "final_size_multiplier": 0.75,
+                "base_reason": "trade_ok",
+                "sentiment_pressure_status": "risk_off",
+                "sentiment_modulation": "headwind_strong",
+                "sentiment_pressure_lead_asset": "macro",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(workspace_roots, "ETA_JARVIS_VERDICTS_PATH", verdict_log)
+    monkeypatch.setattr(workspace_roots, "ETA_LEGACY_JARVIS_VERDICTS_PATH", tmp_path / "missing.jsonl")
+
+    r = client.get("/api/bot-fleet/mnq_futures_sage")
+    assert r.status_code == 200
+    verdict = r.json()["recent_verdicts"][0]
+    assert verdict["verdict_label"] == "APPROVED"
+    assert verdict["bot_id"] == "mnq_futures_sage"
+    assert verdict["sentiment_pressure_status"] == "risk_off"
+    assert verdict["sentiment_modulation"] == "headwind_strong"
+    assert verdict["sentiment_summary"] == "risk_off / headwind_strong / lead=macro"
+
+
 def test_bot_fleet_drilldown_unknown_bot(client, tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("ETA_STATE_DIR", str(tmp_path))
     r = client.get("/api/bot-fleet/no-such-bot")

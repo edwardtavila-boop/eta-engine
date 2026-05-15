@@ -2297,6 +2297,41 @@ class JarvisStrategySupervisor:
 
     # ── Bot loading ──────────────────────────────────────────
 
+    def _recent_verdicts_path(self, bot_id: str) -> Path:
+        return workspace_roots.ETA_RUNTIME_STATE_DIR / "bots" / bot_id / "recent_verdicts.json"
+
+    def _persist_recent_verdict(self, bot: BotInstance, verdict: object, *, signal_id: str) -> None:
+        """Persist a rolling rich verdict history for dashboard drill-downs."""
+        path = self._recent_verdicts_path(bot.bot_id)
+        consolidated = getattr(verdict, "consolidated", None)
+        request_id = str(getattr(consolidated, "request_id", "") or signal_id)
+        to_dict = getattr(verdict, "to_dict", None)
+        row = dict(to_dict()) if callable(to_dict) else {}
+        row.update(
+            {
+                "ts": str(getattr(consolidated, "ts", "") or ""),
+                "bot_id": bot.bot_id,
+                "request_id": request_id,
+                "signal_id": signal_id,
+                "verdict": str(getattr(consolidated, "final_verdict", "") or ""),
+                "reason": str(getattr(consolidated, "base_reason", "") or ""),
+                "subsystem": str(getattr(consolidated, "subsystem", "") or ""),
+                "action": str(getattr(consolidated, "action", "") or ""),
+            }
+        )
+        existing: list[dict] = []
+        if path.exists():
+            with contextlib.suppress(Exception):
+                payload = json.loads(path.read_text(encoding="utf-8"))
+                if isinstance(payload, list):
+                    existing = [entry for entry in payload if isinstance(entry, dict)]
+        deduped = [
+            entry
+            for entry in existing
+            if str(entry.get("request_id") or (entry.get("consolidated") or {}).get("request_id") or "") != request_id
+        ]
+        _atomic_write_text(path, json.dumps([row, *deduped[:24]], indent=2, default=str))
+
     def load_bots(self) -> int:
         """Load active bots from per_bot_registry."""
         try:
@@ -5555,6 +5590,8 @@ class JarvisStrategySupervisor:
                 current_narrative=narrative,
                 bot_id=bot.bot_id,
             )
+            with contextlib.suppress(Exception):
+                self._persist_recent_verdict(bot, verdict, signal_id=signal_id)
             # consult() succeeded; clear any prior diagnostic reason
             # so a recovered bot doesn't keep showing a stale block tag
             # on the heartbeat after the regime gate clears.

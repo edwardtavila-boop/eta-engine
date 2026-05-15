@@ -70,7 +70,7 @@ def test_supervisor_task_runner_sets_env_and_redirects_logs() -> None:
     assert "ETA_SUPERVISOR_STARTING_CASH=50000" in text
     assert "ETA_KILLSWITCH_TIMEZONE=America/New_York" in text
     assert "ETA_KILLSWITCH_EQUITY_USD=50000" in text
-    assert "ETA_KILLSWITCH_DAILY_LIMIT_USD=-1000" in text
+    assert "ETA_KILLSWITCH_DAILY_LIMIT_USD=-900" in text
     assert "ETA_PAPER_LIVE_KILLSWITCH_MODE=enforce" in text
     assert "ETA_KILLSWITCH_DISABLED=1" not in text
     assert "scripts\\jarvis_strategy_supervisor.py" in text
@@ -87,6 +87,7 @@ def test_supervisor_env_helper_matches_broker_router_paper_live_route() -> None:
     assert 'ETA_SUPERVISOR_FEED", "composite"' in text
     assert 'ETA_PAPER_LIVE_ORDER_ROUTE", "broker_router"' in text
     assert 'ETA_PAPER_LIVE_ALLOWED_SYMBOLS", "MNQ,MNQ1,NQ,NQ1' in text
+    assert 'ETA_KILLSWITCH_DAILY_LIMIT_USD", "-900"' in text
     assert 'ETA_PAPER_LIVE_KILLSWITCH_MODE", "enforce"' in text
     assert "direct_ibkr" not in text
 

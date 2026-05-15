@@ -852,7 +852,10 @@ class TestDashboardAPI:
                         "n_stuck_research_failing": 0,
                         "n_timeout_retry": 0,
                         "broker_proof_required_closes": 100,
+                        "n_broker_sample_ready": 0,
+                        "n_broker_edge_ready": 0,
                         "n_broker_proof_ready": 0,
+                        "n_broker_sample_ready_negative_edge": 0,
                         "n_broker_proof_shortfall": 1,
                         "largest_broker_proof_gap": 64,
                         "total_broker_proof_gap": 64,
@@ -893,6 +896,8 @@ class TestDashboardAPI:
         assert retune_status["summary"]["n_low_sample_keep_collecting"] == 1
         assert retune_status["summary"]["n_near_miss_keep_tuning"] == 1
         assert retune_status["summary"]["n_unstable_positive_keep_tuning"] == 1
+        assert retune_status["summary"]["n_broker_sample_ready"] == 0
+        assert retune_status["summary"]["n_broker_edge_ready"] == 0
         assert retune_status["summary"]["n_broker_proof_shortfall"] == 1
         assert retune_status["summary"]["largest_broker_proof_gap"] == 64
         assert retune_status["summary"]["safe_to_mutate_live"] is False
@@ -1009,7 +1014,10 @@ class TestDashboardAPI:
                         "n_stuck_research_failing": 1,
                         "n_timeout_retry": 0,
                         "broker_proof_required_closes": 100,
+                        "n_broker_sample_ready": 0,
+                        "n_broker_edge_ready": 0,
                         "n_broker_proof_ready": 0,
+                        "n_broker_sample_ready_negative_edge": 0,
                         "n_broker_proof_shortfall": 1,
                         "largest_broker_proof_gap": 91,
                         "total_broker_proof_gap": 91,
@@ -1025,6 +1033,10 @@ class TestDashboardAPI:
                                 "required_closed_trade_count": 100,
                                 "remaining_closed_trade_count": 91,
                                 "sample_progress_pct": 9.0,
+                                "edge_status": "needs_more_broker_closes",
+                                "has_positive_edge": False,
+                                "total_realized_pnl": -125.25,
+                                "profit_factor": 0.72,
                             },
                         }
                     ],
@@ -1045,12 +1057,18 @@ class TestDashboardAPI:
         assert data["n_near_miss_keep_tuning"] == 1
         assert data["n_unstable_positive_keep_tuning"] == 1
         assert data["n_stuck_research_failing"] == 1
+        assert data["n_broker_sample_ready"] == 0
+        assert data["n_broker_edge_ready"] == 0
         assert data["n_broker_proof_shortfall"] == 1
         assert data["largest_broker_proof_gap"] == 91
         assert data["total_broker_proof_gap"] == 91
         assert data["top_bot_id"] == "mnq_futures_sage"
         assert data["top_remaining_closed_trade_count"] == 91
         assert data["top_sample_progress_pct"] == 9.0
+        assert data["top_broker_edge_status"] == "needs_more_broker_closes"
+        assert data["top_broker_has_positive_edge"] is False
+        assert data["top_broker_total_realized_pnl"] == -125.25
+        assert data["top_broker_profit_factor"] == 0.72
 
     def test_dashboard_cold_start_still_exposes_operator_queue(self, tmp_path, app_client):
         state = tmp_path / "state"

@@ -119,7 +119,10 @@ def test_status_summarizes_attempts_and_next_actions() -> None:
     assert report["summary"]["n_research_passed_broker_proof_required"] == 0
     assert report["summary"]["n_low_sample_keep_collecting"] == 1
     assert report["summary"]["broker_proof_required_closes"] == 100
+    assert report["summary"]["n_broker_sample_ready"] == 0
+    assert report["summary"]["n_broker_edge_ready"] == 0
     assert report["summary"]["n_broker_proof_ready"] == 0
+    assert report["summary"]["n_broker_sample_ready_negative_edge"] == 0
     assert report["summary"]["n_broker_proof_shortfall"] == 3
     assert report["summary"]["largest_broker_proof_gap"] == 100
     assert report["summary"]["total_broker_proof_gap"] == 264
@@ -342,8 +345,69 @@ def test_status_distinguishes_research_window_gap_from_broker_close_gap() -> Non
         closed_trade_ledger=closed_trade_ledger,
     )
 
-    assert report["summary"]["n_broker_proof_ready"] == 1
+    assert report["summary"]["n_broker_sample_ready"] == 1
+    assert report["summary"]["n_broker_edge_ready"] == 0
+    assert report["summary"]["n_broker_proof_ready"] == 0
+    assert report["summary"]["n_broker_sample_ready_negative_edge"] == 1
     assert report["summary"]["n_broker_proof_shortfall"] == 0
     assert report["bots"][0]["broker_close_evidence"]["remaining_closed_trade_count"] == 0
-    assert "broker close sample met (126/100)" in report["bots"][0]["next_action"]
-    assert "independent research windows" in report["bots"][0]["next_action"]
+    assert report["bots"][0]["broker_close_evidence"]["edge_status"] == "sample_met_negative_edge"
+    assert report["bots"][0]["broker_close_evidence"]["has_positive_edge"] is False
+    assert "sample met (126/100) but broker edge is negative" in report["bots"][0]["next_action"]
+    assert "retune or demote" in report["bots"][0]["next_action"]
+
+
+def test_status_counts_broker_proof_ready_only_when_sample_is_profitable() -> None:
+    from eta_engine.scripts import diamond_retune_status as status
+
+    campaign = {
+        "generated_at_utc": "2026-05-14T20:00:00+00:00",
+        "targets": [
+            {
+                "rank": 1,
+                "bot_id": "mbt_funding_basis",
+                "symbol": "MBT",
+                "asset_sleeve": "crypto",
+                "priority_score": 1000.0,
+                "promotion_block": "broker_proof_required",
+                "safe_to_mutate_live": False,
+            },
+        ],
+    }
+    history_rows = [
+        {
+            "run_id": "positive-sample",
+            "generated_at_utc": "2026-05-14T23:01:00+00:00",
+            "bot_id": "mbt_funding_basis",
+            "rank": 1,
+            "status": "research_low_sample_keep_collecting",
+            "exit_code": 1,
+            "safe_to_mutate_live": False,
+            "live_mutation_policy": "paper_only_advisory",
+            "promotion_block": "broker_proof_required",
+        },
+    ]
+    closed_trade_ledger = {
+        "generated_at_utc": "2026-05-14T23:30:00+00:00",
+        "data_sources_filter": ["live", "paper"],
+        "per_bot": {
+            "mbt_funding_basis": {
+                "closed_trade_count": 126,
+                "total_realized_pnl": 275.50,
+                "profit_factor": 1.42,
+            }
+        },
+    }
+
+    report = status.build_status(
+        campaign=campaign,
+        history_rows=history_rows,
+        closed_trade_ledger=closed_trade_ledger,
+    )
+
+    assert report["summary"]["n_broker_sample_ready"] == 1
+    assert report["summary"]["n_broker_edge_ready"] == 1
+    assert report["summary"]["n_broker_proof_ready"] == 1
+    assert report["summary"]["n_broker_sample_ready_negative_edge"] == 0
+    assert report["bots"][0]["broker_close_evidence"]["edge_status"] == "broker_edge_ready"
+    assert report["bots"][0]["broker_close_evidence"]["has_positive_edge"] is True

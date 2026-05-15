@@ -49,6 +49,8 @@ def test_register_task_uses_eta_engine_pending_inbox() -> None:
     text = script.read_text(encoding="utf-8")
     assert r'"ETA_BROKER_ROUTER_PENDING_DIR" = "C:\EvolutionaryTradingAlgo\var\eta_engine\state\router\pending"' in text
     assert r'"ETA_BROKER_ROUTER_PENDING_DIR" = "C:\EvolutionaryTradingAlgo\docs\btc_live\broker_fleet"' not in text
+    assert r'"ETA_KILLSWITCH_DAILY_LIMIT_USD" = "-900"' in text
+    assert r'"ETA_IBKR_CLIENT_ID" = "188"' in text
     assert r"docs\btc_live\broker_fleet" not in text
 
 

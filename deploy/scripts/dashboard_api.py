@@ -1511,7 +1511,10 @@ def _diamond_retune_status_unknown(path: Path, *, reason: str) -> dict[str, obje
             "n_stuck_research_failing": 0,
             "n_timeout_retry": 0,
             "broker_proof_required_closes": 100,
+            "n_broker_sample_ready": 0,
+            "n_broker_edge_ready": 0,
             "n_broker_proof_ready": 0,
+            "n_broker_sample_ready_negative_edge": 0,
             "n_broker_proof_shortfall": 0,
             "largest_broker_proof_gap": 0,
             "total_broker_proof_gap": 0,
@@ -1549,7 +1552,10 @@ def _load_diamond_retune_status() -> dict[str, object]:
         "n_stuck_research_failing": int(summary.get("n_stuck_research_failing") or 0),
         "n_timeout_retry": int(summary.get("n_timeout_retry") or 0),
         "broker_proof_required_closes": int(summary.get("broker_proof_required_closes") or 100),
+        "n_broker_sample_ready": int(summary.get("n_broker_sample_ready") or 0),
+        "n_broker_edge_ready": int(summary.get("n_broker_edge_ready") or 0),
         "n_broker_proof_ready": int(summary.get("n_broker_proof_ready") or 0),
+        "n_broker_sample_ready_negative_edge": int(summary.get("n_broker_sample_ready_negative_edge") or 0),
         "n_broker_proof_shortfall": int(summary.get("n_broker_proof_shortfall") or 0),
         "largest_broker_proof_gap": int(summary.get("largest_broker_proof_gap") or 0),
         "total_broker_proof_gap": int(summary.get("total_broker_proof_gap") or 0),
@@ -1601,7 +1607,10 @@ def _diamond_retune_diagnostic_payload(snapshot: dict[str, Any]) -> dict[str, ob
         "n_stuck_research_failing": int(summary.get("n_stuck_research_failing") or 0),
         "n_timeout_retry": int(summary.get("n_timeout_retry") or 0),
         "broker_proof_required_closes": int(summary.get("broker_proof_required_closes") or 100),
+        "n_broker_sample_ready": int(summary.get("n_broker_sample_ready") or 0),
+        "n_broker_edge_ready": int(summary.get("n_broker_edge_ready") or 0),
         "n_broker_proof_ready": int(summary.get("n_broker_proof_ready") or 0),
+        "n_broker_sample_ready_negative_edge": int(summary.get("n_broker_sample_ready_negative_edge") or 0),
         "n_broker_proof_shortfall": int(summary.get("n_broker_proof_shortfall") or 0),
         "largest_broker_proof_gap": int(summary.get("largest_broker_proof_gap") or 0),
         "total_broker_proof_gap": int(summary.get("total_broker_proof_gap") or 0),
@@ -1613,6 +1622,10 @@ def _diamond_retune_diagnostic_payload(snapshot: dict[str, Any]) -> dict[str, ob
         "top_required_closed_trade_count": int(broker_evidence.get("required_closed_trade_count") or 0),
         "top_remaining_closed_trade_count": int(broker_evidence.get("remaining_closed_trade_count") or 0),
         "top_sample_progress_pct": float(broker_evidence.get("sample_progress_pct") or 0.0),
+        "top_broker_edge_status": str(broker_evidence.get("edge_status") or ""),
+        "top_broker_has_positive_edge": bool(broker_evidence.get("has_positive_edge") is True),
+        "top_broker_total_realized_pnl": float(broker_evidence.get("total_realized_pnl") or 0.0),
+        "top_broker_profit_factor": float(broker_evidence.get("profit_factor") or 0.0),
         "path": str(path),
         "source": str(snapshot.get("source") or "diamond_retune_status_latest"),
         "updated_at": datetime.fromtimestamp(mtime, UTC).isoformat() if mtime is not None else None,
@@ -6439,6 +6452,179 @@ def _normalize_recent_verdict_rows(rows: Any) -> list[dict]:
     return out
 
 
+def _candidate_verdict_subsystems(bot_id: str, status: dict | None = None) -> set[str]:
+    bot_lower = str(bot_id or "").strip().lower()
+    candidates: set[str] = set()
+    if bot_lower:
+        candidates.add(f"bot.{bot_lower}")
+        first_token = bot_lower.split("_", 1)[0]
+        if first_token:
+            candidates.add(f"bot.{first_token}")
+    symbol = str((status or {}).get("symbol") or "").upper().strip()
+    if symbol:
+        root = symbol.lstrip("/").replace("USDT", "").replace("USD", "").rstrip("0123456789").lower()
+        if root:
+            candidates.add(f"bot.{root}")
+            if root in {"btc", "mbt"}:
+                candidates.update({"bot.btc", "bot.btc_hybrid"})
+            elif root in {"eth", "met"}:
+                candidates.update({"bot.eth", "bot.eth_perp"})
+            elif root == "sol":
+                candidates.update({"bot.sol", "bot.sol_perp"})
+            elif root == "xrp":
+                candidates.update({"bot.xrp", "bot.xrp_perp"})
+    return {candidate for candidate in candidates if candidate}
+
+
+def _record_matches_bot_verdict(
+    record: dict,
+    *,
+    bot_id: str,
+    subsystem_candidates: set[str],
+) -> bool:
+    direct_bot = str(record.get("bot_id") or record.get("bot") or "").strip()
+    if direct_bot == bot_id:
+        return True
+
+    request = record.get("request")
+    if isinstance(request, dict):
+        payload = request.get("payload")
+        if isinstance(payload, dict):
+            payload_bot = str(payload.get("bot_id") or payload.get("bot") or "").strip()
+            if payload_bot == bot_id:
+                return True
+
+    for request_id in (
+        record.get("request_id"),
+        record.get("signal_id"),
+        (record.get("consolidated") or {}).get("request_id") if isinstance(record.get("consolidated"), dict) else None,
+        request.get("request_id") if isinstance(request, dict) else None,
+    ):
+        if _extract_bot_id_from_client_order_id(str(request_id or "").strip()) == bot_id:
+            return True
+
+    subsystem = str(record.get("subsystem") or "").strip().lower()
+    if subsystem and subsystem in subsystem_candidates:
+        return True
+    if isinstance(request, dict):
+        request_subsystem = str(request.get("subsystem") or "").strip().lower()
+        if request_subsystem and request_subsystem in subsystem_candidates:
+            return True
+    return False
+
+
+def _coerce_recent_verdict_row(record: dict, *, bot_id: str) -> dict:
+    consolidated = record.get("consolidated") if isinstance(record.get("consolidated"), dict) else {}
+    request = record.get("request") if isinstance(record.get("request"), dict) else {}
+    response = record.get("response") if isinstance(record.get("response"), dict) else {}
+    ts = (
+        record.get("ts")
+        or consolidated.get("ts")
+        or request.get("ts")
+        or ""
+    )
+    request_id = (
+        record.get("request_id")
+        or consolidated.get("request_id")
+        or request.get("request_id")
+        or record.get("signal_id")
+        or ""
+    )
+    verdict = (
+        record.get("verdict")
+        or record.get("final_verdict")
+        or consolidated.get("final_verdict")
+        or response.get("verdict")
+        or ""
+    )
+    row: dict[str, Any] = {
+        "ts": ts,
+        "bot_id": bot_id,
+        "request_id": request_id,
+        "signal_id": record.get("signal_id") or request_id,
+        "verdict": verdict,
+        "reason": record.get("base_reason") or response.get("reason") or record.get("reason") or "",
+        "reason_code": record.get("reason_code") or response.get("reason_code") or "",
+        "subsystem": record.get("subsystem") or request.get("subsystem") or consolidated.get("subsystem") or "",
+        "action": record.get("action") or request.get("action") or consolidated.get("action") or "",
+        "size_cap_mult": response.get("size_cap_mult"),
+        "final_size_multiplier": (
+            record.get("final_size_multiplier")
+            if record.get("final_size_multiplier") is not None
+            else consolidated.get("final_size_multiplier")
+        ),
+        "confidence": record.get("confidence") or consolidated.get("confidence"),
+    }
+    for key in (
+        "sage_modulation",
+        "sentiment_pressure_status",
+        "sentiment_pressure_score",
+        "sentiment_pressure_lead_asset",
+        "sentiment_modulation",
+    ):
+        value = _recent_verdict_field(record, key)
+        if value not in (None, ""):
+            row[key] = value
+    if consolidated:
+        row["consolidated"] = consolidated
+    return row
+
+
+def _recent_verdict_rows_from_log(
+    *,
+    bot_id: str,
+    status: dict | None = None,
+    limit: int = 20,
+) -> list[dict]:
+    from eta_engine.scripts import workspace_roots
+
+    subsystem_candidates = _candidate_verdict_subsystems(bot_id, status)
+    paths = [
+        _state_dir() / "jarvis_audit.jsonl",
+        workspace_roots.ETA_JARVIS_VERDICTS_PATH,
+        workspace_roots.ETA_LEGACY_JARVIS_VERDICTS_PATH,
+    ]
+    rows: list[dict] = []
+    seen: set[str] = set()
+    for path in paths:
+        for raw in read_jsonl_tail(path, max(limit * 50, 200)):
+            try:
+                record = json.loads(raw)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(record, dict):
+                continue
+            if not _record_matches_bot_verdict(record, bot_id=bot_id, subsystem_candidates=subsystem_candidates):
+                continue
+            row = _coerce_recent_verdict_row(record, bot_id=bot_id)
+            dedup_key = str(row.get("request_id") or row.get("signal_id") or f"{row.get('ts')}:{row.get('verdict')}")
+            if dedup_key in seen:
+                continue
+            seen.add(dedup_key)
+            rows.append(row)
+            if len(rows) >= limit:
+                return rows
+    return rows
+
+
+def _load_recent_verdict_rows(
+    *,
+    bot_id: str,
+    status: dict | None = None,
+    bot_dir: Path | None = None,
+    limit: int = 20,
+) -> list[dict]:
+    if bot_dir is not None:
+        from eta_engine.deploy.scripts.dashboard_state import read_json_safe
+
+        persisted = _normalize_recent_verdict_rows(read_json_safe(bot_dir / "recent_verdicts.json"))
+        if persisted:
+            return persisted[:limit]
+    return _normalize_recent_verdict_rows(
+        _recent_verdict_rows_from_log(bot_id=bot_id, status=status, limit=limit),
+    )
+
+
 @app.get("/api/bot-fleet/{bot_id}")
 def bot_fleet_drilldown(bot_id: str) -> dict:
     """Per-bot drill: status + recent fills + recent verdicts + sage effects."""
@@ -6493,7 +6679,12 @@ def bot_fleet_drilldown(bot_id: str) -> dict:
             return {
                 "status": supervisor_status,
                 "recent_fills": [],
-                "recent_verdicts": [],
+                "recent_verdicts": _load_recent_verdict_rows(
+                    bot_id=bot_id,
+                    status=supervisor_status,
+                    bot_dir=bot_dir,
+                    limit=50,
+                ),
                 "sage_effects": {},
                 "strategy_readiness": strategy_readiness,
                 "launch_lane": supervisor_status.get("launch_lane") or strategy_readiness.get("launch_lane") or "",
@@ -6516,7 +6707,12 @@ def bot_fleet_drilldown(bot_id: str) -> dict:
             return {
                 "status": status,
                 "recent_fills": [],
-                "recent_verdicts": [],
+                "recent_verdicts": _load_recent_verdict_rows(
+                    bot_id=bot_id,
+                    status=status,
+                    bot_dir=bot_dir,
+                    limit=50,
+                ),
                 "sage_effects": {},
                 "strategy_readiness": strategy_readiness,
                 "launch_lane": status.get("launch_lane") or strategy_readiness.get("launch_lane") or "",
@@ -6530,7 +6726,7 @@ def bot_fleet_drilldown(bot_id: str) -> dict:
             "_warning": "no_data",
             "status": {"_warning": "no_data"},
             "recent_fills": [],
-            "recent_verdicts": [],
+            "recent_verdicts": _load_recent_verdict_rows(bot_id=bot_id, status={}, bot_dir=bot_dir, limit=50),
             "sage_effects": {"_warning": "no_data"},
         }
     status = read_json_safe(bot_dir / "status.json")
@@ -6570,7 +6766,12 @@ def bot_fleet_drilldown(bot_id: str) -> dict:
         key=lambda x: str(x.get("ts") or ""),
         reverse=True,
     )
-    recent_verdicts = _normalize_recent_verdict_rows(read_json_safe(bot_dir / "recent_verdicts.json"))
+    recent_verdicts = _load_recent_verdict_rows(
+        bot_id=bot_id,
+        status=status,
+        bot_dir=bot_dir,
+        limit=50,
+    )
     return {
         "status": status,
         "recent_fills": merged_fills[:50],
