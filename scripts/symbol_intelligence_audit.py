@@ -41,6 +41,14 @@ FUTURES_ROOT_ALIASES = {
     "MYM": "MYM1",
     "YM": "YM1",
 }
+_SIBLING_SYMBOL_ALIASES = {
+    "MNQ1": ("NQ1",),
+    "NQ1": ("MNQ1",),
+    "MES1": ("ES1",),
+    "ES1": ("MES1",),
+    "MYM1": ("YM1",),
+    "YM1": ("MYM1",),
+}
 LEGACY_BOT_SYMBOL_FALLBACKS = {
     # Historical close streams predate the registry entry but still carry
     # valid paper outcomes that should inform coverage audits.
@@ -604,16 +612,23 @@ def _normalize_symbol(raw: object) -> str:
     return FUTURES_ROOT_ALIASES.get(symbol, symbol)
 
 
+def _symbol_with_siblings(raw: object) -> set[str]:
+    symbol = _normalize_symbol(raw)
+    if not symbol:
+        return set()
+    return {symbol, *_SIBLING_SYMBOL_ALIASES.get(symbol, ())}
+
+
 def _decision_symbols(row: dict[str, Any], bot_symbol_map: dict[str, str]) -> set[str]:
     symbols: set[str] = set()
     for scope in _row_scopes(row):
         for key in ("symbol", "ticker", "contract", "root_symbol", "instrument"):
             if scope.get(key):
-                symbols.add(_normalize_symbol(scope[key]))
+                symbols.update(_symbol_with_siblings(scope[key]))
     for bot_id in _row_bot_ids(row):
         mapped = bot_symbol_map.get(bot_id)
         if mapped:
-            symbols.add(mapped)
+            symbols.update(_symbol_with_siblings(mapped))
     return symbols
 
 
@@ -808,37 +823,44 @@ def backfill_outcomes_from_closed_trade_ledger(
     for path in paths:
         for row in _iter_trade_rows_from_path(path):
             symbol = _row_symbol(row, bot_symbol_map=bot_symbol_map)
-            if not symbol or (target_symbols is not None and symbol not in target_symbols):
+            if not symbol:
                 continue
-            dedupe_key = f"{path.name}|{_dedupe_key(row)}|{symbol}"
-            if dedupe_key in existing:
-                continue
-            ts = _parse_ts(_first_row_value(row, "exit_time_utc", "close_ts", "ts", "time"))
-            payload = {
-                "dedupe_key": dedupe_key,
-                "source_path": str(path),
-                "bot": _first_row_value(row, "bot", "bot_id", "subsystem"),
-                "side": _first_row_value(row, "side", "direction"),
-                "qty": _first_row_value(row, "qty", "quantity"),
-                "entry_price": _first_row_value(row, "entry_price", "entry"),
-                "exit_price": _first_row_value(row, "exit_price", "fill_price"),
-                "fill_price": _first_row_value(row, "fill_price"),
-                "realized_pnl": _first_row_value(row, "realized_pnl", "pnl"),
-                "r_multiple": _first_row_value(row, "r_multiple", "realized_r"),
-                "signal_id": _first_row_value(row, "signal_id"),
-                "data_source": _first_row_value(row, "data_source"),
-            }
-            rec = SymbolIntelRecord(
-                record_type="outcome",
-                ts_utc=ts,
-                symbol=symbol,
-                source="broker_ledger",
-                payload={key: value for key, value in payload.items() if value is not None},
-                quality=SymbolIntelQuality(confidence=0.85, is_reconciled=True),
-            )
-            store.append(rec)
-            existing.add(dedupe_key)
-            count += 1
+            base_symbol = symbol
+            row_symbols = _symbol_with_siblings(base_symbol) if target_symbols is not None else {base_symbol}
+            for symbol in sorted(row_symbols):
+                if target_symbols is not None and symbol not in target_symbols:
+                    continue
+                dedupe_key = f"{path.name}|{_dedupe_key(row)}|{symbol}"
+                if dedupe_key in existing:
+                    continue
+                ts = _parse_ts(_first_row_value(row, "exit_time_utc", "close_ts", "ts", "time"))
+                payload = {
+                    "dedupe_key": dedupe_key,
+                    "source_path": str(path),
+                    "bot": _first_row_value(row, "bot", "bot_id", "subsystem"),
+                    "side": _first_row_value(row, "side", "direction"),
+                    "qty": _first_row_value(row, "qty", "quantity"),
+                    "entry_price": _first_row_value(row, "entry_price", "entry"),
+                    "exit_price": _first_row_value(row, "exit_price", "fill_price"),
+                    "fill_price": _first_row_value(row, "fill_price"),
+                    "realized_pnl": _first_row_value(row, "realized_pnl", "pnl"),
+                    "r_multiple": _first_row_value(row, "r_multiple", "realized_r"),
+                    "signal_id": _first_row_value(row, "signal_id"),
+                    "data_source": _first_row_value(row, "data_source"),
+                    "source_symbol": base_symbol,
+                    "symbol_alias_reason": "sibling_contract_equivalence" if symbol != base_symbol else None,
+                }
+                rec = SymbolIntelRecord(
+                    record_type="outcome",
+                    ts_utc=ts,
+                    symbol=symbol,
+                    source="broker_ledger",
+                    payload={key: value for key, value in payload.items() if value is not None},
+                    quality=SymbolIntelQuality(confidence=0.85, is_reconciled=True),
+                )
+                store.append(rec)
+                existing.add(dedupe_key)
+                count += 1
     return count
 
 

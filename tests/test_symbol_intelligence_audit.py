@@ -407,6 +407,82 @@ def test_backfill_outcomes_normalizes_root_symbol_aliases(tmp_path):
     assert rows[0].payload["realized_pnl"] == 125.0
 
 
+def test_backfill_decisions_bridges_mes_to_es_sibling_contract(tmp_path):
+    store = SymbolIntelStore(root=tmp_path / "lake")
+    journal = tmp_path / "decision_journal.jsonl"
+    journal.write_text(
+        json.dumps(
+            {
+                "ts": "2026-05-14T14:31:00Z",
+                "actor": "JARVIS",
+                "intent": "approve mes sweep reclaim",
+                "outcome": "APPROVED",
+                "links": ["bot:mes_sweep_reclaim"],
+                "symbol": "MES1",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    count = backfill_decisions_from_journal(
+        journal_path=journal,
+        store=store,
+        symbols=["ES1", "MES1"],
+        bot_symbol_map={"mes_sweep_reclaim": "MES1"},
+    )
+    es_rows = list(store.iter_records(record_type="decision", symbol="ES1"))
+    mes_rows = list(store.iter_records(record_type="decision", symbol="MES1"))
+
+    assert count == 2
+    assert len(es_rows) == 1
+    assert len(mes_rows) == 1
+    assert es_rows[0].payload["decision_key"].endswith("|ES1")
+    assert mes_rows[0].payload["decision_key"].endswith("|MES1")
+
+
+def test_backfill_outcomes_bridges_mes_to_es_sibling_contract(tmp_path):
+    store = SymbolIntelStore(root=tmp_path / "lake")
+    trade_closes = tmp_path / "trade_closes.jsonl"
+    trade_closes.write_text(
+        json.dumps(
+            {
+                "bot_id": "mes_sweep_reclaim",
+                "signal_id": "mes_sweep_reclaim_093c3b2b",
+                "ts": "2026-05-13T06:30:55.276560+00:00",
+                "realized_r": -1.0,
+                "data_source": "live",
+                "extra": {
+                    "symbol": "MES1",
+                    "side": "BUY",
+                    "qty": 5.0,
+                    "fill_price": 52.25,
+                    "realized_pnl": -37.5,
+                    "close_ts": "2026-05-13T06:30:55.127312+00:00",
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    count = backfill_outcomes_from_closed_trade_ledger(
+        source_paths=[trade_closes],
+        store=store,
+        symbols=["ES1", "MES1"],
+        bot_symbol_map={"mes_sweep_reclaim": "MES1"},
+    )
+    es_rows = list(store.iter_records(record_type="outcome", symbol="ES1"))
+    mes_rows = list(store.iter_records(record_type="outcome", symbol="MES1"))
+
+    assert count == 2
+    assert len(es_rows) == 1
+    assert len(mes_rows) == 1
+    assert es_rows[0].payload["source_symbol"] == "MES1"
+    assert es_rows[0].payload["symbol_alias_reason"] == "sibling_contract_equivalence"
+    assert mes_rows[0].payload["source_symbol"] == "MES1"
+
+
 def test_write_snapshot_creates_parent_and_payload(tmp_path):
     path = tmp_path / "state" / "symbol_intelligence_latest.json"
     payload = {"overall_status": "amber", "symbols": []}
