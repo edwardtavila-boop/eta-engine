@@ -3080,6 +3080,25 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         ),
         extras={
             "promotion_status": "research_candidate",
+            "research_tune": {
+                "scope": "full_history_research_grid",
+                "source_artifact": "var/eta_engine/state/research_grid/research_grid_20260515_010001_138053.md",
+                "strict_gate": False,
+                "candidate_agg_is_sharpe": 0.0,
+                "candidate_agg_oos_sharpe": 0.0,
+                "candidate_dsr_pass_fraction": 0.0,
+                "candidate_degradation": 0.0,
+                "full_history_smoke": {
+                    "source_artifact": "var/eta_engine/state/research_grid/research_grid_20260515_010001_138053.md",
+                    "tradable_bars": 14092,
+                    "windows": 12,
+                    "agg_is_sharpe": 0.0,
+                    "agg_oos_sharpe": 0.0,
+                    "dsr_pass_fraction": 0.0,
+                    "degradation": 0.0,
+                    "strict_gate": False,
+                },
+            },
             "sub_strategy_kind": "sweep_reclaim",
             "sub_strategy_extras": {
                 "sweep_preset": "mgc",
@@ -3215,6 +3234,25 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         ),
         extras={
             "promotion_status": "research_candidate",
+            "research_tune": {
+                "scope": "full_history_research_grid",
+                "source_artifact": "var/eta_engine/state/research_grid/research_grid_20260515_010013_637374.md",
+                "strict_gate": False,
+                "candidate_agg_is_sharpe": -0.059,
+                "candidate_agg_oos_sharpe": 0.499,
+                "candidate_dsr_pass_fraction": 0.273,
+                "candidate_degradation": 0.277,
+                "full_history_smoke": {
+                    "source_artifact": "var/eta_engine/state/research_grid/research_grid_20260515_010013_637374.md",
+                    "tradable_bars": 87157,
+                    "windows": 11,
+                    "agg_is_sharpe": -0.059,
+                    "agg_oos_sharpe": 0.499,
+                    "dsr_pass_fraction": 0.273,
+                    "degradation": 0.277,
+                    "strict_gate": False,
+                },
+            },
             "sub_strategy_kind": "sweep_reclaim",
             "sub_strategy_extras": {
                 "sweep_preset": "mes_v2",

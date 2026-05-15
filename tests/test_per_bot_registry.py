@@ -169,22 +169,40 @@ def test_mbt_overnight_gap_registry_matches_continuation_thesis() -> None:
     assert assignment.extras["edge_config"]["strategy_mode"] == "trend"
 
 
-def test_mbt_research_candidates_carry_specialist_grid_failure_evidence() -> None:
-    expected_oos = {
-        "mbt_overnight_gap": 0.0,
-        "mbt_rth_orb": -1.158,
+def test_op16_research_candidates_carry_latest_failure_evidence() -> None:
+    expected = {
+        "mbt_overnight_gap": {
+            "source_artifact": "var/eta_engine/state/research_grid/research_grid_20260515_010327_351662.md",
+            "agg_oos_sharpe": 0.0,
+            "dsr_pass_fraction": 0.0,
+        },
+        "mbt_rth_orb": {
+            "source_artifact": "var/eta_engine/state/research_grid/research_grid_20260515_010327_351662.md",
+            "agg_oos_sharpe": -1.158,
+            "dsr_pass_fraction": 0.0,
+        },
+        "mgc_sweep_reclaim": {
+            "source_artifact": "var/eta_engine/state/research_grid/research_grid_20260515_010001_138053.md",
+            "agg_oos_sharpe": 0.0,
+            "dsr_pass_fraction": 0.0,
+        },
+        "mes_sweep_reclaim_v2": {
+            "source_artifact": "var/eta_engine/state/research_grid/research_grid_20260515_010013_637374.md",
+            "agg_oos_sharpe": 0.499,
+            "dsr_pass_fraction": 0.273,
+        },
     }
-    for bot_id, oos_sharpe in expected_oos.items():
+    for bot_id, expected_smoke in expected.items():
         assignment = get_for_bot(bot_id)
 
         assert assignment is not None
         tune = assignment.extras.get("research_tune")
         assert isinstance(tune, dict)
         smoke = tune["full_history_smoke"]
-        assert smoke["source_artifact"] == "var/eta_engine/state/research_grid/research_grid_20260515_010327_351662.md"
+        assert smoke["source_artifact"] == expected_smoke["source_artifact"]
         assert smoke["strict_gate"] is False
-        assert smoke["agg_oos_sharpe"] == oos_sharpe
-        assert smoke["dsr_pass_fraction"] == 0.0
+        assert smoke["agg_oos_sharpe"] == expected_smoke["agg_oos_sharpe"]
+        assert smoke["dsr_pass_fraction"] == expected_smoke["dsr_pass_fraction"]
 
 
 def test_btc_etf_assignments_use_canonical_history_root() -> None:
