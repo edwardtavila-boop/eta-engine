@@ -2274,6 +2274,10 @@ function renderPortfolioCommand(bots, hiddenCount, liveBroker, summary, d, today
   const paperEffectiveStatus = String(paperLive?.effective_status || paperLive?.status || 'unknown').toLowerCase();
   const paperDailyLossHold = paperLive?.held_by_daily_loss_stop === true
     || paperEffectiveStatus === 'held_by_daily_loss_stop';
+  const paperCapitalHold = paperDailyLossHold
+    || paperLive?.capital_lanes_held_by_daily_loss_stop === true
+    || paperLive?.daily_loss_advisory_active === true
+    || (paperEffectiveStatus === 'shadow_paper_active' && paperLive?.daily_loss_killswitch?.tripped === true);
   const paperTransitionLaunchBlocked = Number(
     paperLive?.operator_queue_launch_blocked_count ?? (paperLive?.operator_queue_first_launch_blocker_op_id ? 1 : 0)
   );
@@ -2363,7 +2367,7 @@ function renderPortfolioCommand(bots, hiddenCount, liveBroker, summary, d, today
       ? diagnostics.eta_readiness_snapshot
       : {};
     const readinessStatus = String(readinessSnapshot.status || '').toLowerCase();
-    const readinessText = paperDailyLossHold
+    const readinessText = paperCapitalHold
       ? 'Held'
       : paperLaunchBlocked
         ? 'Blocked'
@@ -2375,7 +2379,7 @@ function renderPortfolioCommand(bots, hiddenCount, liveBroker, summary, d, today
           ? 'Snapshot Stale'
           : `${paperReady} paper-ready`;
     const bracketCount = Number(readinessSnapshot.broker_missing_bracket_count || 0);
-    const readinessSub = paperDailyLossHold
+    const readinessSub = paperCapitalHold
       ? `${paperReady} paper-ready | capital held by daily stop`
       : paperLaunchBlocked
         ? `${paperReady} paper-ready | launch blocked`
@@ -3824,6 +3828,10 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
   const paperEffectiveDetail = String(paperLive?.effective_detail || '').trim();
   const paperDailyLossHold = paperLive?.held_by_daily_loss_stop === true
     || paperEffectiveStatus === 'held_by_daily_loss_stop';
+  const paperCapitalHold = paperDailyLossHold
+    || paperLive?.capital_lanes_held_by_daily_loss_stop === true
+    || paperLive?.daily_loss_advisory_active === true
+    || (paperEffectiveStatus === 'shadow_paper_active' && paperLive?.daily_loss_killswitch?.tripped === true);
   const paperReady = !!paperLive?.critical_ready;
   const firstPaperGate = Array.isArray(paperLive?.gates) ? paperLive.gates.find((gate) => gate && gate.passed === false) : null;
   const paperTransitionLaunchBlocked = Number(
@@ -3846,7 +3854,7 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
   if (paperLaunchBlocked) {
     paperLabel = 'Blocked';
     paperClass = 'red';
-  } else if (paperDailyLossHold) {
+  } else if (paperCapitalHold) {
     paperLabel = 'Held';
     paperClass = 'red';
   } else if (paperGateHeld) {
@@ -3867,7 +3875,7 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
   }
   const paperDetail = compactText(
     humanizeStatusText(
-      paperDailyLossHold
+      paperCapitalHold
         ? 'shadow live | capital held by daily stop'
         : paperGateHeld
           ? paperBracketHold
@@ -3878,7 +3886,7 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
   document.getElementById('paperLiveStatus').className = 'stat ' + paperClass;
   document.getElementById('paperLiveSub').textContent = compactText(
     humanizeStatusText(
-      paperDailyLossHold
+      paperCapitalHold
         ? `${paperReadyBots} paper-ready | shadow live | capital held by daily stop`
         : `${paperReadyBots} paper-ready${paperBlocker ? ' | ' + paperBlocker : ''} | ${paperDetail}`
     )
