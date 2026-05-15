@@ -349,6 +349,22 @@ class TestDashboardAPI:
                 },
             },
         )
+        monkeypatch.setattr(
+            mod,
+            "_daily_loss_killswitch_snapshot",
+            lambda: {
+                "source": "daily_loss_killswitch",
+                "status": "tripped",
+                "tripped": True,
+                "disabled": False,
+                "today_pnl_usd": -925.50,
+                "limit_usd": -900.0,
+                "reason": "day_pnl=$-925.50 <= limit=$-900.00 (date=2026-05-15)",
+                "timezone": "America/New_York",
+                "reset_at": "2026-05-16T00:00:00-04:00",
+                "reset_display": "2026-05-16 00:00 EDT",
+            },
+        )
 
         response = app_client.get("/api/live/broker_summary")
 
@@ -356,6 +372,11 @@ class TestDashboardAPI:
         payload = response.json()
         assert payload["ready"] is True
         assert payload["order_action_allowed"] is False
+        assert payload["order_action_status"] == "held_by_daily_loss_stop"
+        assert "day_pnl=$-925.50" in payload["order_action_reason"]
+        assert "resets automatically at 2026-05-16 00:00 EDT" in payload["order_action_reason"]
+        assert payload["order_action_reset_display"] == "2026-05-16 00:00 EDT"
+        assert payload["daily_loss_killswitch"]["timezone"] == "America/New_York"
         assert payload["broker"]["broker_mtd_pnl"] == 20521.0
         assert payload["broker"]["broker_today_realized_pnl"] == -123.45
         assert payload["pnl_reconciliation"]["status"] == "different_scopes"

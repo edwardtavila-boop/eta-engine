@@ -2535,7 +2535,7 @@ function showOffline(clearDashboard = true) {
     updateClock();
     return;
   }
-  ['totalBots','activeBots','todayPnl','totalPnl','cumulativeR','totalTrades','winRate','approvedCount','dataIntelligenceStatus','retuneFactoryStatus','jarvisMode','adminAiStatus','gatewayStatus','brokerRouterStatus','bracketAuditStatus','paperLiveStatus','operatorQueueStatus','signalCadenceStatus','opsProxyStatus','opsWatchdogStatus','vpsRootStatus','riskLevel'].forEach(id => {
+  ['totalBots','activeBots','heldBots','todayPnl','totalPnl','cumulativeR','totalTrades','winRate','approvedCount','dataIntelligenceStatus','retuneFactoryStatus','jarvisMode','adminAiStatus','gatewayStatus','brokerRouterStatus','bracketAuditStatus','paperLiveStatus','operatorQueueStatus','signalCadenceStatus','opsProxyStatus','opsWatchdogStatus','vpsRootStatus','riskLevel'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.textContent = '--';
   });
@@ -2547,6 +2547,10 @@ function showOffline(clearDashboard = true) {
   if (gatewaySub) gatewaySub.textContent = '';
   const adminAiSub = document.getElementById('adminAiSub');
   if (adminAiSub) adminAiSub.textContent = '';
+  const heldBotsSub = document.getElementById('heldBotsSub');
+  if (heldBotsSub) heldBotsSub.textContent = 'checking live entry holds';
+  const blockerStatusText = document.getElementById('blockerStatusText');
+  if (blockerStatusText) blockerStatusText.textContent = 'Held: source unavailable';
   const paperLiveSub = document.getElementById('paperLiveSub');
   if (paperLiveSub) paperLiveSub.textContent = '';
   const operatorQueueSub = document.getElementById('operatorQueueSub');
@@ -3531,6 +3535,10 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
   document.getElementById('operatorQueueSub').textContent = operatorQueueSub;
 
   const paperStatus = String(paperLive?.status || 'unknown');
+  const paperEffectiveStatus = String(paperLive?.effective_status || paperStatus);
+  const paperEffectiveDetail = String(paperLive?.effective_detail || '').trim();
+  const paperDailyLossHold = paperLive?.held_by_daily_loss_stop === true
+    || paperEffectiveStatus === 'held_by_daily_loss_stop';
   const paperReady = !!paperLive?.critical_ready;
   const firstPaperGate = Array.isArray(paperLive?.gates) ? paperLive.gates.find((gate) => gate && gate.passed === false) : null;
   const paperTransitionLaunchBlocked = Number(
@@ -3553,6 +3561,9 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
   if (paperLaunchBlocked) {
     paperLabel = 'Blocked';
     paperClass = 'red';
+  } else if (paperDailyLossHold) {
+    paperLabel = 'Held';
+    paperClass = 'red';
   } else if (paperGateHeld) {
     paperLabel = 'Held';
     paperClass = 'yellow';
@@ -3570,7 +3581,13 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
     paperClass = 'yellow';
   }
   const paperDetail = compactText(
-    humanizeStatusText(paperGateHeld ? paperBracketHold : firstPaperGate?.detail || paperAction || paperLive?.error || 'launch readiness pending')
+    humanizeStatusText(
+      paperDailyLossHold
+        ? paperEffectiveDetail || 'Daily-loss soft stop is active; entries resume after the automatic reset.'
+        : paperGateHeld
+          ? paperBracketHold
+          : paperEffectiveDetail || firstPaperGate?.detail || paperAction || paperLive?.error || 'launch readiness pending'
+    )
   );
   document.getElementById('paperLiveStatus').textContent = paperLabel;
   document.getElementById('paperLiveStatus').className = 'stat ' + paperClass;

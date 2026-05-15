@@ -1347,12 +1347,27 @@ def _live_broker_summary_payload(*, refresh: bool = False) -> dict[str, object]:
     close_history = live_state.get("close_history") if isinstance(live_state.get("close_history"), dict) else {}
     windows = close_history.get("windows") if isinstance(close_history.get("windows"), dict) else {}
     focus_policy = live_state.get("focus_policy") if isinstance(live_state.get("focus_policy"), dict) else {}
+    daily_loss_killswitch = _daily_loss_killswitch_snapshot()
+    if daily_loss_killswitch.get("tripped"):
+        order_action_status = "held_by_daily_loss_stop"
+        order_action_reason = _daily_loss_hold_detail(daily_loss_killswitch)
+    else:
+        order_action_status = "read_only_monitoring"
+        order_action_reason = (
+            "Broker summary is read-only; supervised order routing remains behind JARVIS, "
+            "broker-router, and safety gates."
+        )
     return {
         "source": "live_broker_summary",
         "ready": bool(live_state.get("ready")) and not live_state.get("error"),
         "refresh_requested": bool(refresh),
         "order_action_allowed": False,
+        "order_action_status": order_action_status,
+        "order_action_reason": order_action_reason,
+        "order_action_reset_at": daily_loss_killswitch.get("reset_at"),
+        "order_action_reset_display": daily_loss_killswitch.get("reset_display"),
         "live_money_gate_bypassed": False,
+        "daily_loss_killswitch": daily_loss_killswitch,
         "reporting_timezone": str(live_state.get("reporting_timezone") or DASHBOARD_LOCAL_TIME_ZONE_NAME),
         "today_start_utc": live_state.get("today_start_utc"),
         "broker": _broker_summary_fields(live_state),
