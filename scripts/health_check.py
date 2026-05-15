@@ -18,6 +18,7 @@ Exit codes: 0 = healthy, 1 = warning, 2 = critical
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import sys
 from dataclasses import dataclass, field
@@ -30,6 +31,12 @@ if str(ROOT.parent) not in sys.path:
     sys.path.insert(0, str(ROOT.parent))
 
 from eta_engine.scripts.diamond_artifact_surface_check import build_diamond_artifact_surface_report  # noqa: E402
+from eta_engine.scripts.diamond_retune_truth_check import (  # noqa: E402
+    build_diamond_retune_truth_report,
+    write_diamond_retune_truth_report,
+    write_public_broker_close_truth_cache,
+    write_public_retune_truth_cache,
+)
 from eta_engine.scripts.supervisor_heartbeat_check import build_supervisor_heartbeat_report  # noqa: E402
 from eta_engine.scripts.workspace_roots import (  # noqa: E402
     ETA_LEGACY_QUANTUM_CURRENT_ALLOCATION_PATH,
@@ -40,6 +47,7 @@ from eta_engine.scripts.workspace_roots import (  # noqa: E402
 )
 
 _STATE_DIR = ETA_RUNTIME_STATE_DIR
+DEFAULT_OUTPUT_DIR = ETA_RUNTIME_STATE_DIR / "health"
 
 
 @dataclass
@@ -283,6 +291,94 @@ def _check_diamond_artifact_surface() -> HealthComponent:
     return HealthComponent("diamond_artifact_surface", False, status, detail, score)
 
 
+def _check_diamond_retune_truth(*, allow_remote_retune_truth: bool = False) -> HealthComponent:
+    try:
+        report = build_diamond_retune_truth_report(state_root=_STATE_DIR)
+    except Exception:
+        return HealthComponent("diamond_retune_truth", False, "critical", "retune truth diagnostic failed", 0.0)
+
+    with contextlib.suppress(Exception):
+        write_diamond_retune_truth_report(report)
+
+    public_surface = report.get("public_surface")
+    if isinstance(public_surface, dict):
+        with contextlib.suppress(Exception):
+            write_public_retune_truth_cache(public_surface)
+    public_broker_close_truth = report.get("public_broker_close_truth")
+    if isinstance(public_broker_close_truth, dict):
+        with contextlib.suppress(Exception):
+            write_public_broker_close_truth_cache(public_broker_close_truth)
+
+    diagnosis = str(report.get("diagnosis", "unknown"))
+    mismatch_count = int(report.get("mismatch_count") or 0)
+    detail = f"{diagnosis}; mismatches={mismatch_count}"
+    warnings = report.get("warnings") if isinstance(report.get("warnings"), list) else []
+    action_items = report.get("action_items") if isinstance(report.get("action_items"), list) else []
+    provenance_gap = (
+        report.get("public_focus_provenance_gap")
+        if isinstance(report.get("public_focus_provenance_gap"), dict)
+        else {}
+    )
+
+    def _preferred_message(messages: list[object], *needles: str) -> str:
+        text_messages = [str(item) for item in messages if str(item).strip()]
+        for needle in needles:
+            for message in text_messages:
+                if needle in message:
+                    return message
+        return text_messages[0] if text_messages else ""
+
+    provenance_warning = str(provenance_gap.get("warning") or "")
+    provenance_action = str(provenance_gap.get("action") or "")
+    if str(provenance_gap.get("status") or "") == "material_gap":
+        public_closes = int(provenance_gap.get("public_focus_closed_trade_count") or 0)
+        canonical_rows = int(provenance_gap.get("canonical_bot_row_count") or 0)
+        legacy_rows = int(provenance_gap.get("legacy_bot_row_count") or 0)
+        detail = (
+            f"{detail}; provenance: public_closes={public_closes} "
+            f"canonical_rows={canonical_rows} legacy_rows={legacy_rows}"
+        )
+
+    warning_text = _preferred_message(
+        [provenance_warning, *warnings],
+        "Public broker-backed close sample materially exceeds",
+        "trade_closes source is thin",
+        "blind reclassification is unsafe",
+    )
+    if warning_text:
+        detail = f"{detail}; warning: {warning_text}"
+    action_text = _preferred_message(
+        [provenance_action, *action_items],
+        "canonical trade_closes writer",
+        "Do not blindly reclassify",
+    )
+    if action_text:
+        detail = f"{detail}; action: {action_text}"
+
+    if report.get("healthy"):
+        return HealthComponent("diamond_retune_truth", True, "healthy", detail, 1.0)
+
+    if allow_remote_retune_truth and isinstance(public_surface, dict):
+        public_ready = bool(public_surface.get("available")) and bool(public_surface.get("readable"))
+        if public_ready and diagnosis in {
+            "public_local_focus_mismatch",
+            "public_focus_provenance_gap",
+            "local_retune_receipt_invalid",
+            "local_retune_receipt_missing",
+        }:
+            return HealthComponent(
+                "diamond_retune_truth",
+                True,
+                "remote_retune_truth",
+                f"{detail}; local retune check satisfied by public ops truth",
+                0.8,
+            )
+
+    status = str(report.get("status", "warning"))
+    score = 0.2 if status == "critical" else 0.6
+    return HealthComponent("diamond_retune_truth", False, status, detail, score)
+
+
 def _check_repo_health() -> HealthComponent:
     import subprocess
 
@@ -320,6 +416,7 @@ def run_health_check(
     *,
     output_dir: Path | None = None,
     allow_remote_supervisor_truth: bool = False,
+    allow_remote_retune_truth: bool = False,
 ) -> VpsHealthReport:
     components = [
         _check_disk_space(),
@@ -328,6 +425,7 @@ def run_health_check(
         _check_hermes_connectivity(),
         _check_supervisor_heartbeat(),
         _check_diamond_artifact_surface(),
+        _check_diamond_retune_truth(allow_remote_retune_truth=allow_remote_retune_truth),
         _check_repo_health(),
     ]
     if allow_remote_supervisor_truth:
@@ -374,7 +472,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--output-dir",
         type=Path,
-        default=_STATE_DIR / "health",
+        default=DEFAULT_OUTPUT_DIR,
         help="Directory where health snapshots should be written.",
     )
     parser.add_argument(
@@ -385,6 +483,14 @@ def build_parser() -> argparse.ArgumentParser:
             "live ops probe. Intended for project_kaizen_closeout --live only."
         ),
     )
+    parser.add_argument(
+        "--allow-remote-retune-truth",
+        action="store_true",
+        help=(
+            "Treat local diamond retune receipt drift as satisfied when the public "
+            "ops truth surface is readable. Intended for project_kaizen_closeout --live only."
+        ),
+    )
     return parser
 
 
@@ -393,6 +499,7 @@ def main(argv: list[str] | None = None) -> int:
     report = run_health_check(
         output_dir=args.output_dir,
         allow_remote_supervisor_truth=args.allow_remote_supervisor_truth,
+        allow_remote_retune_truth=args.allow_remote_retune_truth,
     )
     print(json.dumps(report.to_dict(), indent=2))
     if report.action_items:
