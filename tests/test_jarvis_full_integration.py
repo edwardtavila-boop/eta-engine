@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
@@ -246,3 +247,122 @@ def test_consult_sage_for_request_builds_immutable_context_with_live_telemetry(m
     assert ctx.onchain == {"sopr": 1.02}
     assert ctx.sentiment["pressure"]["status"] == "risk_on"
     assert ctx.liquidation == {"levels": [{"price": 135.0, "total_size_usd": 25000.0}]}
+
+
+def _identity_runtime_overrides(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "eta_engine.brain.jarvis_v3.risk_budget_allocator.current_envelope",
+        lambda bot_id=None: SimpleNamespace(multiplier=1.0, reason=""),
+    )
+    monkeypatch.setattr(
+        "eta_engine.brain.jarvis_v3.jarvis_conductor.build_school_inputs_from_sage",
+        lambda report: {},
+    )
+    monkeypatch.setattr(
+        "eta_engine.brain.jarvis_v3.jarvis_conductor.orchestrate",
+        lambda req, base_size, school_inputs: SimpleNamespace(final_size=base_size, block_reason=None),
+    )
+    monkeypatch.setattr(
+        "eta_engine.brain.jarvis_v3.llm_narrative.llm_narrative",
+        lambda consolidated, verbosity="terse", force_template=False: f"{verbosity}-narrative",
+    )
+
+
+def _fake_consolidated(final_size_multiplier: float = 1.0):
+    consolidated = MagicMock()
+    consolidated.final_size_multiplier = final_size_multiplier
+    consolidated.intelligence_enabled = False
+    consolidated.operator_override_level = ""
+    consolidated.base_reason = ""
+    consolidated.final_verdict = "PROCEED"
+    consolidated.confidence = 0.0
+    consolidated.is_blocked.return_value = False
+    return consolidated
+
+
+def test_jarvis_full_sentiment_headwind_tightens_size(monkeypatch) -> None:
+    from eta_engine.brain.jarvis_v3.jarvis_full import JarvisFull
+    from eta_engine.brain.jarvis_v3.sage.base import Bias, SageReport, SchoolVerdict
+
+    _identity_runtime_overrides(monkeypatch)
+    intelligence = MagicMock()
+    intelligence.consult.return_value = _fake_consolidated(1.0)
+    full = JarvisFull(intelligence=intelligence)
+    full._consult_sage_for_request = MagicMock(
+        return_value=SageReport(
+            per_school={
+                "sentiment_pressure": SchoolVerdict(
+                    school="sentiment_pressure",
+                    bias=Bias.SHORT,
+                    conviction=0.35,
+                    aligned_with_entry=False,
+                    rationale="macro risk-off",
+                    signals={
+                        "status": "risk_off",
+                        "score": -0.32,
+                        "lead_negative_asset": "macro",
+                        "selected_assets": ["macro"],
+                    },
+                ),
+            },
+            composite_bias=Bias.NEUTRAL,
+            conviction=0.2,
+            schools_consulted=1,
+            schools_aligned_with_entry=0,
+            schools_disagreeing_with_entry=1,
+            schools_neutral=0,
+            rationale="macro risk-off",
+        ),
+    )
+
+    verdict = full.consult(_stub_request(payload={"side": "long"}))
+
+    assert verdict.final_size_multiplier == 0.75
+    assert verdict.sentiment_pressure_status == "risk_off"
+    assert verdict.sentiment_modulation == "headwind_strong"
+    consulted_req = intelligence.consult.call_args.args[0]
+    assert consulted_req.payload["sentiment_pressure_status"] == "risk_off"
+    assert consulted_req.payload["sentiment_modulation"] == "headwind_strong"
+
+
+def test_jarvis_full_sentiment_tailwind_loosens_size(monkeypatch) -> None:
+    from eta_engine.brain.jarvis_v3.jarvis_full import JarvisFull
+    from eta_engine.brain.jarvis_v3.sage.base import Bias, SageReport, SchoolVerdict
+
+    _identity_runtime_overrides(monkeypatch)
+    intelligence = MagicMock()
+    intelligence.consult.return_value = _fake_consolidated(1.0)
+    full = JarvisFull(intelligence=intelligence)
+    full._consult_sage_for_request = MagicMock(
+        return_value=SageReport(
+            per_school={
+                "sentiment_pressure": SchoolVerdict(
+                    school="sentiment_pressure",
+                    bias=Bias.LONG,
+                    conviction=0.62,
+                    aligned_with_entry=True,
+                    rationale="btc risk-on",
+                    signals={
+                        "status": "risk_on",
+                        "score": 0.28,
+                        "lead_positive_asset": "BTC",
+                        "selected_assets": ["BTC", "macro"],
+                    },
+                ),
+            },
+            composite_bias=Bias.NEUTRAL,
+            conviction=0.2,
+            schools_consulted=1,
+            schools_aligned_with_entry=1,
+            schools_disagreeing_with_entry=0,
+            schools_neutral=0,
+            rationale="btc risk-on",
+        ),
+    )
+
+    verdict = full.consult(_stub_request(payload={"side": "long"}))
+
+    assert verdict.final_size_multiplier == 1.1
+    assert verdict.sentiment_pressure_status == "risk_on"
+    assert verdict.sentiment_pressure_lead_asset == "BTC"
+    assert verdict.sentiment_modulation == "tailwind"
