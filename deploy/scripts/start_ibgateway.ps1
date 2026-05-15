@@ -520,6 +520,7 @@ function Write-IbcConfig {
         "IbLoginId=$UserId",
         "IbPassword=$Password",
         "TradingMode=$mode",
+        "AcceptNonBrokerageAccountWarning=yes",
         "ReloginAfterSecondFactorAuthenticationTimeout=$restartOnTwoFactorTimeout",
         "LoginDialogDisplayTimeout=$LoginDialogDisplayTimeoutSeconds",
         "IbDir=",

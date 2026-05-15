@@ -111,6 +111,7 @@ def test_ibgateway_starter_supports_ibc_managed_launch() -> None:
     assert '[string]$IbcAcceptIncomingConnectionAction = "accept"' in text
     assert '"ExistingSessionDetectedAction=$ExistingSessionDetectedAction"' in text
     assert '"AcceptIncomingConnectionAction=$AcceptIncomingConnectionAction"' in text
+    assert '"AcceptNonBrokerageAccountWarning=yes"' in text
     assert "OverrideTwsApiPort=$ApiPort" in text
     assert "IBC launch requires IBKR credentials" in text
     assert "-IbcUserId / -LoginProfile / -IbcPassword / -IbcPasswordFile" in text
