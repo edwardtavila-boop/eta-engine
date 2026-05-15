@@ -2450,6 +2450,33 @@ def test_supervisor_load_onchain_payload_uses_contract_alias_fallback(tmp_path: 
     assert calls[:2] == ["MBT1", "MBT"]
 
 
+def test_preferred_basis_spot_csv_prefers_freshest_workspace_feed(tmp_path: Path, monkeypatch) -> None:
+    from eta_engine.scripts import jarvis_strategy_supervisor as mod
+
+    workspace_root = tmp_path / "workspace"
+    dashboard_dir = workspace_root / "data"
+    history_dir = workspace_root / "data" / "crypto" / "history"
+    dashboard_dir.mkdir(parents=True, exist_ok=True)
+    history_dir.mkdir(parents=True, exist_ok=True)
+
+    dashboard = dashboard_dir / "BTC_5m.csv"
+    history = history_dir / "BTC_5m.csv"
+    dashboard.write_text("dashboard", encoding="utf-8")
+    history.write_text("history", encoding="utf-8")
+
+    import os
+    import time
+
+    now = time.time()
+    os.utime(history, (now - 3600, now - 3600))
+    os.utime(dashboard, (now, now))
+
+    monkeypatch.setattr(mod.workspace_roots, "WORKSPACE_ROOT", workspace_root)
+    monkeypatch.setattr(mod.workspace_roots, "CRYPTO_HISTORY_ROOT", history_dir)
+
+    assert mod._preferred_basis_spot_csv("BTC") == dashboard
+
+
 def test_supervisor_peer_returns_supply_30_return_window(tmp_path: Path) -> None:
     from eta_engine.scripts.jarvis_strategy_supervisor import (
         BotInstance,

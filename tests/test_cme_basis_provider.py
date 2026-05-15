@@ -79,6 +79,14 @@ def _write_spot_csv(path: Path, rows: list[tuple[int, float]]) -> None:
             w.writerow([ts, close, close, close, close, 1.0])
 
 
+def _write_dashboard_style_spot_csv(path: Path, rows: list[tuple[datetime, float]]) -> None:
+    with path.open("w", newline="") as fh:
+        w = csv.writer(fh)
+        w.writerow(["timestamp", "open", "high", "low", "close", "volume"])
+        for ts, close in rows:
+            w.writerow([ts.astimezone(UTC).isoformat(), close, close, close, close, 1.0])
+
+
 def test_cme_basis_provider_reads_csv_and_computes_basis(tmp_path: Path) -> None:
     """Two MBT closes against two known BTC spots — verify bps math."""
     spot_csv = tmp_path / "BTC_spot.csv"
@@ -100,6 +108,17 @@ def test_cme_basis_provider_reads_csv_and_computes_basis(tmp_path: Path) -> None
     # Bar 2: MBT close = 60_500 vs BTC = 60_500 -> 0 bps (parity)
     bar2 = _bar(ts2, close=60_500.0)
     assert provider(bar2) == pytest.approx(0.0, abs=1e-9)
+
+
+def test_cme_basis_provider_reads_dashboard_style_iso_timestamps(tmp_path: Path) -> None:
+    spot_csv = tmp_path / "BTC_spot_dashboard.csv"
+    ts = datetime(2026, 6, 15, 10, 0, tzinfo=UTC)
+    _write_dashboard_style_spot_csv(spot_csv, [(ts, 60_000.0)])
+
+    provider = CMEBasisProvider(spot_csv)
+    bar = _bar(ts, close=60_300.0)
+
+    assert provider(bar) == pytest.approx(50.0, rel=1e-9)
 
 
 def test_cme_basis_provider_callable_spot_source() -> None:

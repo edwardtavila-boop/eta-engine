@@ -153,6 +153,15 @@ class CMEBasisProvider:
                     continue
                 try:
                     t = int(float(t_raw))
+                except (TypeError, ValueError):
+                    try:
+                        parsed = datetime.fromisoformat(str(t_raw).replace("Z", "+00:00"))
+                    except ValueError:
+                        continue
+                    if parsed.tzinfo is None:
+                        parsed = parsed.replace(tzinfo=UTC)
+                    t = int(parsed.astimezone(UTC).timestamp())
+                try:
                     c = float(c_raw)
                 except (TypeError, ValueError):
                     continue

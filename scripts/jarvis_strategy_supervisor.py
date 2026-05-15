@@ -808,6 +808,19 @@ def _symbol_family(symbol: str) -> str:
     return root or normalized
 
 
+def _preferred_basis_spot_csv(family: str) -> Path | None:
+    family = family.upper()
+    if family not in {"BTC", "ETH"}:
+        return None
+
+    dashboard_path = workspace_roots.WORKSPACE_ROOT / "data" / f"{family}_5m.csv"
+    history_path = workspace_roots.CRYPTO_HISTORY_ROOT / f"{family}_5m.csv"
+    existing = [path for path in (dashboard_path, history_path) if path.exists()]
+    if not existing:
+        return None
+    return max(existing, key=lambda path: path.stat().st_mtime)
+
+
 def _latest_depth_snapshot(
     symbol: str,
     *,
@@ -5795,8 +5808,6 @@ class JarvisStrategySupervisor:
         if root in {"MBT", "MET"} and "perp_spot_basis_pct" not in payload and bars:
             try:
                 from eta_engine.feeds.cme_basis_provider import (  # noqa: PLC0415
-                    DEFAULT_BTC_SPOT_CSV,
-                    DEFAULT_ETH_SPOT_CSV,
                     CMEBasisProvider,
                 )
 
@@ -5804,8 +5815,10 @@ class JarvisStrategySupervisor:
                 ts = _parse_iso_utc(last_bar.get("ts"))
                 close = last_bar.get("close", entry_price)
                 if ts is not None and isinstance(close, (int, float)) and float(close) > 0:
-                    spot_csv = DEFAULT_BTC_SPOT_CSV if family == "BTC" else DEFAULT_ETH_SPOT_CSV
-                    provider = CMEBasisProvider(spot_csv)
+                    spot_csv = _preferred_basis_spot_csv(family)
+                    if spot_csv is None:
+                        raise FileNotFoundError(f"no spot CSV available for {family}")
+                    provider = CMEBasisProvider(spot_csv, max_lookup_skew_seconds=600)
                     basis_bps = provider(SimpleNamespace(timestamp=ts, close=float(close)))
                     if isinstance(basis_bps, (int, float)):
                         payload["perp_spot_basis_pct"] = round(float(basis_bps) / 100.0, 4)
