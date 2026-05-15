@@ -347,6 +347,39 @@ def test_ready_no_open_exposure_counts_as_bracket_ready() -> None:
     assert report["summary"]["status"] == "GREEN_READY_FOR_SOAK"
 
 
+def test_supervisor_broker_reconcile_mismatch_blocks_trading_gate() -> None:
+    report = audit.build_report(
+        services=_running_services(),
+        ports=_listening_ports(),
+        endpoints=_healthy_endpoints(),
+        broker_bracket_audit={
+            "summary": "READY_NO_OPEN_EXPOSURE",
+            "ready_for_prop_dry_run": True,
+        },
+        promotion_audit={"summary": {"status": "PASS", "ready_for_live": True}},
+        service_config={"fm_status_server": {"matches_expected": True}},
+        tasks=_healthy_tasks(),
+        ibgateway_reauth={"status": "healthy"},
+        supervisor_reconcile={
+            "checked_at": audit.datetime.now(audit.UTC).isoformat(),
+            "broker_only": [{"symbol": "MYM", "broker_qty": 1.0}],
+            "supervisor_only": [],
+            "divergent": [{"symbol": "MNQ", "broker_qty": 3.0, "supervisor_qty": 1.0}],
+            "brokers_queried": ["ibkr"],
+        },
+    )
+
+    reconcile = report["safety_gates"]["supervisor_reconcile"]
+    assert report["summary"]["runtime_ready"] is True
+    assert report["summary"]["trading_gate_ready"] is False
+    assert report["summary"]["status"] == "YELLOW_SAFETY_BLOCKED"
+    assert reconcile["ready"] is False
+    assert reconcile["status"] == "BLOCKED_BROKER_SUPERVISOR_RECONCILE"
+    assert reconcile["broker_only_symbols"] == ["MYM"]
+    assert reconcile["divergent_symbols"] == ["MNQ"]
+    assert any("MYM" in action and "MNQ" in action for action in report["next_actions"])
+
+
 def test_dashboard_ports_live_but_durable_tasks_missing_is_yellow_gap() -> None:
     tasks = _healthy_tasks()
     for name in audit.DASHBOARD_DURABLE_TASKS:

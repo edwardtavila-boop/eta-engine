@@ -1709,6 +1709,106 @@ def test_tick_once_preserves_fractional_qty_for_l2_persist(tmp_path: Path, monke
     assert captured["positions"][0]["qty"] == 0.125
 
 
+def test_tick_bot_runs_sage_health_probe_without_caching_last_report(tmp_path: Path, monkeypatch) -> None:
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        BotInstance,
+        JarvisStrategySupervisor,
+        SupervisorConfig,
+    )
+
+    class OneBarFeed:
+        def get_bar(self, _symbol: str) -> dict:
+            return {
+                "ts": "2026-05-08T00:00:00+00:00",
+                "open": 100.0,
+                "high": 101.0,
+                "low": 99.0,
+                "close": 100.5,
+                "volume": 10,
+            }
+
+    cfg = SupervisorConfig()
+    cfg.state_dir = tmp_path / "state"
+    sup = JarvisStrategySupervisor(cfg=cfg)
+    sup.feed = OneBarFeed()
+    monkeypatch.setenv("ETA_SAGE_HEALTH_PROBE_INTERVAL_S", "60")
+    monkeypatch.setattr(JarvisStrategySupervisor, "_IS_REAL_BAR_FN", lambda _bar: True)
+    monkeypatch.setattr(sup, "_maybe_enter", lambda _bot, _bar: None)
+    monkeypatch.setattr(sup, "_maybe_exit", lambda _bot, _bar: None)
+
+    calls: list[bool] = []
+
+    def fake_consult(_bot, _bar, _side, _entry_price, *, cache_last=True):
+        calls.append(cache_last)
+        return object()
+
+    monkeypatch.setattr(sup, "_consult_sage_for_bot", fake_consult)
+    bot = BotInstance(
+        bot_id="mnq_probe",
+        symbol="MNQ1",
+        strategy_kind="orb_sage_gated",
+        direction="long",
+        cash=50_000.0,
+    )
+    sup.bots.append(bot)
+
+    sup._tick_bot(bot, 1)
+
+    assert calls == [False]
+    assert bot.bot_id in sup._sage_health_probe_last_ts
+
+
+def test_tick_bot_sage_health_probe_respects_interval(tmp_path: Path, monkeypatch) -> None:
+    from datetime import UTC, datetime
+
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        BotInstance,
+        JarvisStrategySupervisor,
+        SupervisorConfig,
+    )
+
+    class OneBarFeed:
+        def get_bar(self, _symbol: str) -> dict:
+            return {
+                "ts": "2026-05-08T00:00:00+00:00",
+                "open": 100.0,
+                "high": 101.0,
+                "low": 99.0,
+                "close": 100.5,
+                "volume": 10,
+            }
+
+    cfg = SupervisorConfig()
+    cfg.state_dir = tmp_path / "state"
+    sup = JarvisStrategySupervisor(cfg=cfg)
+    sup.feed = OneBarFeed()
+    monkeypatch.setenv("ETA_SAGE_HEALTH_PROBE_INTERVAL_S", "300")
+    monkeypatch.setattr(JarvisStrategySupervisor, "_IS_REAL_BAR_FN", lambda _bar: True)
+    monkeypatch.setattr(sup, "_maybe_enter", lambda _bot, _bar: None)
+    monkeypatch.setattr(sup, "_maybe_exit", lambda _bot, _bar: None)
+
+    calls: list[bool] = []
+
+    def fake_consult(_bot, _bar, _side, _entry_price, *, cache_last=True):
+        calls.append(cache_last)
+        return object()
+
+    monkeypatch.setattr(sup, "_consult_sage_for_bot", fake_consult)
+    bot = BotInstance(
+        bot_id="mnq_probe",
+        symbol="MNQ1",
+        strategy_kind="orb_sage_gated",
+        direction="long",
+        cash=50_000.0,
+    )
+    sup._sage_health_probe_last_ts[bot.bot_id] = datetime.now(UTC)
+    sup.bots.append(bot)
+
+    sup._tick_bot(bot, 1)
+
+    assert calls == []
+
+
 def test_supervisor_heartbeat_embeds_strategy_readiness(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
     import json
 

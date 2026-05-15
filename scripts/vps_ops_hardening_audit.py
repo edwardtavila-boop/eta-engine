@@ -66,6 +66,7 @@ WATCHDOG_OBSERVED_TASKS = (
 )
 CANONICAL_SUPERVISOR_TASK = "ETA-Jarvis-Strategy-Supervisor"
 LEGACY_PAPERLIVE_SUPERVISOR_TASK = "ETA-PaperLive-Supervisor"
+SUPERVISOR_RECONCILE_MAX_AGE_S = 15 * 60
 ENDPOINTS = (
     {
         "name": "local_dashboard_api_diagnostics",
@@ -96,6 +97,18 @@ def _as_dict(value: Any) -> dict[str, Any]:  # noqa: ANN401
 
 def _as_list(value: Any) -> list[Any]:  # noqa: ANN401
     return value if isinstance(value, list) else []
+
+
+def _iso_age_seconds(value: object, *, now: datetime | None = None) -> float | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return max(0.0, ((now or datetime.now(UTC)) - parsed).total_seconds())
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -472,6 +485,100 @@ def _ibgateway_summary(
     }
 
 
+def _symbols_from_rows(rows: list[Any]) -> list[str]:
+    symbols: list[str] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        symbol = str(row.get("symbol") or "").strip()
+        if symbol:
+            symbols.append(symbol)
+    return sorted(dict.fromkeys(symbols))
+
+
+def _supervisor_reconcile_summary(supervisor_reconcile: dict[str, Any] | None) -> dict[str, Any]:
+    """Summarize broker-vs-supervisor position reconciliation as a safety gate."""
+    if supervisor_reconcile is None:
+        return {
+            "status": "not_collected",
+            "ready": True,
+            "checked_at": None,
+            "age_s": None,
+            "max_age_s": SUPERVISOR_RECONCILE_MAX_AGE_S,
+            "broker_only_symbols": [],
+            "supervisor_only_symbols": [],
+            "divergent_symbols": [],
+            "mismatch_count": 0,
+            "brokers_queried": [],
+        }
+
+    artifact_status = str(supervisor_reconcile.get("artifact_status") or "").strip()
+    checked_at = supervisor_reconcile.get("checked_at") or supervisor_reconcile.get("generated_at_utc")
+    age_s = _iso_age_seconds(checked_at)
+    broker_only = _as_list(supervisor_reconcile.get("broker_only"))
+    supervisor_only = _as_list(supervisor_reconcile.get("supervisor_only"))
+    divergent = _as_list(supervisor_reconcile.get("divergent"))
+    broker_only_symbols = _symbols_from_rows(broker_only)
+    supervisor_only_symbols = _symbols_from_rows(supervisor_only)
+    divergent_symbols = _symbols_from_rows(divergent)
+    mismatch_count = len(broker_only) + len(supervisor_only) + len(divergent)
+
+    if artifact_status:
+        status = f"{artifact_status}_reconcile_snapshot"
+        ready = False
+    elif age_s is None or age_s > SUPERVISOR_RECONCILE_MAX_AGE_S:
+        status = "STALE_RECONCILE_SNAPSHOT"
+        ready = False
+    elif mismatch_count:
+        status = "BLOCKED_BROKER_SUPERVISOR_RECONCILE"
+        ready = False
+    else:
+        status = "PASS"
+        ready = True
+
+    return {
+        "status": status,
+        "ready": ready,
+        "path": supervisor_reconcile.get("path"),
+        "checked_at": checked_at,
+        "age_s": round(age_s, 1) if age_s is not None else None,
+        "max_age_s": SUPERVISOR_RECONCILE_MAX_AGE_S,
+        "broker_only": broker_only,
+        "supervisor_only": supervisor_only,
+        "divergent": divergent,
+        "broker_only_symbols": broker_only_symbols,
+        "supervisor_only_symbols": supervisor_only_symbols,
+        "divergent_symbols": divergent_symbols,
+        "mismatch_count": mismatch_count,
+        "brokers_queried": [
+            str(broker) for broker in _as_list(supervisor_reconcile.get("brokers_queried")) if str(broker)
+        ],
+    }
+
+
+def _supervisor_reconcile_action(gate: dict[str, Any]) -> str:
+    status = str(gate.get("status") or "unknown")
+    if status == "BLOCKED_BROKER_SUPERVISOR_RECONCILE":
+        parts: list[str] = []
+        broker_only = ", ".join(str(symbol) for symbol in _as_list(gate.get("broker_only_symbols")))
+        supervisor_only = ", ".join(str(symbol) for symbol in _as_list(gate.get("supervisor_only_symbols")))
+        divergent = ", ".join(str(symbol) for symbol in _as_list(gate.get("divergent_symbols")))
+        if broker_only:
+            parts.append(f"broker-only: {broker_only}")
+        if supervisor_only:
+            parts.append(f"supervisor-only: {supervisor_only}")
+        if divergent:
+            parts.append(f"divergent: {divergent}")
+        detail = "; ".join(parts) if parts else f"{int(gate.get('mismatch_count') or 0)} mismatch(es)"
+        return (
+            "Do not unlock new entries: reconcile broker/supervisor positions "
+            f"({detail}) before clearing the supervisor entry halt"
+        )
+    if status == "STALE_RECONCILE_SNAPSHOT":
+        return "Refresh supervisor broker reconciliation before clearing the supervisor entry halt"
+    return f"Repair supervisor broker reconciliation safety gate: {status}"
+
+
 def _jarvis_hermes_admin_summary(
     admin_audit: dict[str, Any] | None,
 ) -> dict[str, Any]:
@@ -518,6 +625,7 @@ def build_report(
     tasks: dict[str, dict[str, Any]] | None = None,
     ibgateway_reauth: dict[str, Any] | None = None,
     jarvis_hermes_admin: dict[str, Any] | None = None,
+    supervisor_reconcile: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build the deterministic hardening report from collected inputs."""
     tasks = tasks or {}
@@ -534,6 +642,7 @@ def build_report(
     promotion_gate = _promotion_gate_summary(promotion_audit)
     ibgateway_gate = _ibgateway_summary(ibgateway_reauth, ports)
     admin_ai_gate = _jarvis_hermes_admin_summary(jarvis_hermes_admin)
+    supervisor_reconcile_gate = _supervisor_reconcile_summary(supervisor_reconcile)
     runtime_ready = (
         not service_down
         and not missing_ports
@@ -543,7 +652,12 @@ def build_report(
         and not stale_restart_hooks
     )
     dashboard_durable = not missing_dashboard_tasks
-    trading_gate_ready = bool(broker_gate["ready"] and promotion_gate["ready"] and ibgateway_gate["ready"])
+    trading_gate_ready = bool(
+        broker_gate["ready"]
+        and promotion_gate["ready"]
+        and ibgateway_gate["ready"]
+        and supervisor_reconcile_gate["ready"]
+    )
     next_actions: list[str] = []
 
     for name in service_down:
@@ -605,6 +719,8 @@ def build_report(
             "Do not promote: verify native broker brackets/OCO protection for "
             f"{broker_gate['missing_bracket_count']} unprotected broker position(s)"
         )
+    if not supervisor_reconcile_gate["ready"]:
+        next_actions.append(_supervisor_reconcile_action(supervisor_reconcile_gate))
     if not promotion_gate["ready"]:
         next_actions.append("Keep strategy lane in paper soak until prop promotion audit is PASS/READY")
     if not admin_ai_gate["ready"]:
@@ -641,6 +757,7 @@ def build_report(
             "trading_gate_ready": trading_gate_ready,
             "admin_ai_ready": admin_ai_gate["ready"],
             "admin_ai_status": admin_ai_gate["status"],
+            "supervisor_reconcile_ready": supervisor_reconcile_gate["ready"],
             "promotion_allowed": promotion_allowed,
             "order_action_allowed": False,
         },
@@ -681,6 +798,7 @@ def build_report(
         "safety_gates": {
             "broker_brackets": broker_gate,
             "promotion": promotion_gate,
+            "supervisor_reconcile": supervisor_reconcile_gate,
             "jarvis_hermes_admin_ai": admin_ai_gate,
         },
         "service_config": service_config,
@@ -709,6 +827,7 @@ def collect_live_report() -> dict[str, Any]:
         tasks=collect_task_status(),
         ibgateway_reauth=_read_json(workspace_roots.ETA_RUNTIME_STATE_DIR / "ibgateway_reauth.json"),
         jarvis_hermes_admin=collect_jarvis_hermes_admin_status(),
+        supervisor_reconcile=_read_json(workspace_roots.ETA_JARVIS_SUPERVISOR_RECONCILE_PATH),
     )
 
 

@@ -1645,6 +1645,55 @@ class TestDashboardAPI:
         assert data["checks"]["vps_ops_hardening_contract"] is True
         assert data["checks"]["hardening_contract"] is True
 
+    def test_dashboard_diagnostics_includes_supervisor_reconcile_gate(self, app_client, tmp_path):
+        state = tmp_path / "state"
+        generated_at = datetime.now(UTC).isoformat()
+        (state / "vps_ops_hardening_latest.json").write_text(
+            json.dumps(
+                {
+                    "generated_at_utc": generated_at,
+                    "summary": {
+                        "status": "YELLOW_SAFETY_BLOCKED",
+                        "runtime_ready": True,
+                        "dashboard_durable": True,
+                        "trading_gate_ready": False,
+                        "admin_ai_ready": True,
+                        "admin_ai_status": "PASS",
+                        "supervisor_reconcile_ready": False,
+                        "promotion_allowed": False,
+                        "order_action_allowed": False,
+                    },
+                    "safety_gates": {
+                        "supervisor_reconcile": {
+                            "status": "BLOCKED_BROKER_SUPERVISOR_RECONCILE",
+                            "ready": False,
+                            "broker_only_symbols": ["MCL", "MYM"],
+                            "divergent_symbols": ["MNQ"],
+                            "age_s": 12,
+                            "max_age_s": 900,
+                        }
+                    },
+                    "next_actions": [
+                        "Do not unlock new entries: reconcile broker/supervisor positions "
+                        "(broker-only: MCL, MYM; divergent: MNQ)."
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/dashboard/diagnostics")
+
+        assert r.status_code == 200
+        data = r.json()
+        reconcile = data["vps_ops_hardening"]["supervisor_reconcile"]
+        assert data["vps_ops_hardening"]["summary"]["supervisor_reconcile_ready"] is False
+        assert reconcile["status"] == "BLOCKED_BROKER_SUPERVISOR_RECONCILE"
+        assert reconcile["ready"] is False
+        assert reconcile["broker_only_symbols"] == ["MCL", "MYM"]
+        assert reconcile["divergent_symbols"] == ["MNQ"]
+        assert data["checks"]["vps_ops_hardening_contract"] is True
+
     def test_dashboard_diagnostics_uses_fast_cached_truth(self, app_client, tmp_path, monkeypatch):
         import eta_engine.deploy.scripts.dashboard_api as mod
 

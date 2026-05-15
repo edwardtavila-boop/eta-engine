@@ -2173,6 +2173,10 @@ class JarvisStrategySupervisor:
         self._strategy_readiness_mtime_ns: int | None = None
         self._strategy_readiness_by_bot: dict[str, dict[str, Any]] = {}
         self._strategy_readiness_block_logged: set[tuple[str, str]] = set()
+        # Low-frequency Sage diagnostics so the health surface keeps
+        # seeing real consultations even when the live lane is session-
+        # gated or simply managing existing positions.
+        self._sage_health_probe_last_ts: dict[str, datetime] = {}
         # Anti-churn guard: when a stale supervisor-local paper position is
         # force-flattened, keep the same bot from immediately re-opening on the
         # next tick against the same exhausted setup.
@@ -3543,6 +3547,7 @@ class JarvisStrategySupervisor:
                 logger.debug("_is_real_bar(%s) raised: %s", bot.symbol, exc)
 
         self._record_latest_bar_mark(bot, bar)
+        self._maybe_probe_sage_health(bot, bar, now=datetime.now(UTC))
 
         # ── Session-gate EoD flatten ───────────────────────────────
         # Runs BEFORE the open_position branch so a bot that entered
@@ -3566,6 +3571,46 @@ class JarvisStrategySupervisor:
             self._maybe_enter(bot, bar)
         else:
             self._maybe_exit(bot, bar)
+
+    def _sage_health_probe_interval_s(self) -> float:
+        """Return the background Sage probe cadence for operator health."""
+        return max(0.0, self._env_float("ETA_SAGE_HEALTH_PROBE_INTERVAL_S", 60.0))
+
+    def _maybe_probe_sage_health(
+        self,
+        bot: BotInstance,
+        bar: dict[str, Any],
+        *,
+        now: datetime,
+    ) -> None:
+        """Run a low-frequency Sage consult for health visibility only.
+
+        The live lane can spend long stretches session-gated or managing
+        already-open positions, which means no entry/close path may touch
+        Sage even while bars and non-price telemetry are flowing. This
+        probe keeps the health surface honest by consulting Sage on the
+        current bar buffer at a slow cadence, without seeding the
+        last-report cache used by trade attribution.
+        """
+        interval_s = self._sage_health_probe_interval_s()
+        if interval_s <= 0:
+            return
+        last_probe = self._sage_health_probe_last_ts.get(bot.bot_id)
+        if last_probe is not None and (now - last_probe).total_seconds() < interval_s:
+            return
+        entry_price = self._bar_float(bar, "close")
+        if entry_price is None:
+            return
+        side = "long" if bot.direction == "long" else "short"
+        report = self._consult_sage_for_bot(
+            bot,
+            bar,
+            side,
+            entry_price,
+            cache_last=False,
+        )
+        if report is not None:
+            self._sage_health_probe_last_ts[bot.bot_id] = now
 
     def _maybe_flatten_for_eod(
         self,
@@ -4824,7 +4869,15 @@ class JarvisStrategySupervisor:
 
     # ── JARVIS consultation ─────────────────────────────────
 
-    def _consult_sage_for_bot(self, bot: BotInstance, bar: dict, side: str, entry_price: float) -> object | None:
+    def _consult_sage_for_bot(
+        self,
+        bot: BotInstance,
+        bar: dict,
+        side: str,
+        entry_price: float,
+        *,
+        cache_last: bool = True,
+    ) -> object | None:
         """Consult Sage schools with the bot's accumulated bar buffer.
 
         Returns a SageReport or None when the buffer is too short or
@@ -4858,10 +4911,11 @@ class JarvisStrategySupervisor:
                 market_context_cls=MarketContext,
             )
             report = consult_sage(ctx)
-            with contextlib.suppress(Exception):
-                from eta_engine.brain.jarvis_v3.sage.last_report_cache import set_last
+            if cache_last:
+                with contextlib.suppress(Exception):
+                    from eta_engine.brain.jarvis_v3.sage.last_report_cache import set_last
 
-                set_last(bot.symbol, side, report)
+                    set_last(bot.symbol, side, report)
             return report
         except Exception as exc:  # noqa: BLE001
             logger.debug("sage consultation for %s failed (non-fatal): %s", bot.bot_id, exc)

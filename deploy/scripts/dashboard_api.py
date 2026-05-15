@@ -1851,6 +1851,16 @@ def _vps_ops_hardening_payload(*, server_ts: float) -> dict:
             "ready": bool(summary.get("admin_ai_ready")),
             "next_actions": [],
         }
+    supervisor_reconcile_gate = gates.get("supervisor_reconcile")
+    if not isinstance(supervisor_reconcile_gate, dict):
+        supervisor_reconcile_gate = {
+            "status": str(summary.get("supervisor_reconcile_status") or "unknown"),
+            "ready": bool(summary.get("supervisor_reconcile_ready")),
+            "broker_only_symbols": [],
+            "supervisor_only_symbols": [],
+            "divergent_symbols": [],
+            "mismatch_count": 0,
+        }
     generated_at = payload.get("generated_at_utc") or payload.get("generated_at")
     return {
         "status": str(summary.get("status") or payload.get("status") or "unknown"),
@@ -1869,6 +1879,7 @@ def _vps_ops_hardening_payload(*, server_ts: float) -> dict:
             "trading_gate_ready": bool(summary.get("trading_gate_ready")),
             "admin_ai_ready": bool(summary.get("admin_ai_ready")),
             "admin_ai_status": str(summary.get("admin_ai_status") or "unknown"),
+            "supervisor_reconcile_ready": bool(summary.get("supervisor_reconcile_ready")),
             "promotion_allowed": bool(summary.get("promotion_allowed")),
             "order_action_allowed": bool(summary.get("order_action_allowed")),
         },
@@ -1878,6 +1889,34 @@ def _vps_ops_hardening_payload(*, server_ts: float) -> dict:
             "blocked": int(admin_gate.get("blocked") or 0),
             "warned": int(admin_gate.get("warned") or 0),
             "next_actions": admin_gate.get("next_actions") if isinstance(admin_gate.get("next_actions"), list) else [],
+        },
+        "supervisor_reconcile": {
+            "status": str(supervisor_reconcile_gate.get("status") or "unknown"),
+            "ready": bool(supervisor_reconcile_gate.get("ready")),
+            "checked_at": supervisor_reconcile_gate.get("checked_at"),
+            "age_s": supervisor_reconcile_gate.get("age_s"),
+            "max_age_s": supervisor_reconcile_gate.get("max_age_s"),
+            "broker_only_symbols": (
+                supervisor_reconcile_gate.get("broker_only_symbols")
+                if isinstance(supervisor_reconcile_gate.get("broker_only_symbols"), list)
+                else []
+            ),
+            "supervisor_only_symbols": (
+                supervisor_reconcile_gate.get("supervisor_only_symbols")
+                if isinstance(supervisor_reconcile_gate.get("supervisor_only_symbols"), list)
+                else []
+            ),
+            "divergent_symbols": (
+                supervisor_reconcile_gate.get("divergent_symbols")
+                if isinstance(supervisor_reconcile_gate.get("divergent_symbols"), list)
+                else []
+            ),
+            "mismatch_count": int(supervisor_reconcile_gate.get("mismatch_count") or 0),
+            "brokers_queried": (
+                supervisor_reconcile_gate.get("brokers_queried")
+                if isinstance(supervisor_reconcile_gate.get("brokers_queried"), list)
+                else []
+            ),
         },
         "next_actions": payload.get("next_actions") if isinstance(payload.get("next_actions"), list) else [],
     }
