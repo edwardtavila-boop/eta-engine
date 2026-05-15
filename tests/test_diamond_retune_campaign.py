@@ -184,6 +184,75 @@ def test_campaign_surfaces_research_backlog_separately_from_broker_retunes() -> 
     }
 
 
+def test_campaign_adds_prop_runner_retune_targets_to_runner_worklist() -> None:
+    from eta_engine.scripts import diamond_retune_campaign as campaign
+    from eta_engine.scripts import diamond_retune_runner as runner
+
+    audit = {
+        "summary": {
+            "n_bots": 14,
+            "n_retune": 1,
+            "safe_to_mutate_live": False,
+            "scoring_basis": "broker_closed_trade_pnl_first",
+        },
+        "retune_queue": [
+            {
+                "bot_id": "mnq_futures_sage",
+                "symbol": "MNQ1",
+                "asset_sleeve": "equity_index",
+                "priority_score": 1061.81,
+                "issue_code": "broker_pnl_negative",
+                "retune_command": (
+                    "python -m eta_engine.scripts.run_research_grid "
+                    "--source registry --bots mnq_futures_sage --report-policy runtime"
+                ),
+                "live_mutation_policy": "paper_only_advisory",
+                "safe_to_mutate_live": False,
+            },
+        ],
+    }
+    prop_runner_candidates = [
+        {
+            "bot_id": "volume_profile_nq",
+            "symbol": "NQ1",
+            "next_action": "Retune volume_profile_nq before broker-paper promotion review",
+            "retune_plan": {
+                "status": "PAPER_ONLY_RETUNE_FAILED",
+                "trigger": "weak_shadow_replay",
+                "retune_command": (
+                    "python -m eta_engine.scripts.run_research_grid "
+                    "--source registry --bots volume_profile_nq --report-policy runtime"
+                ),
+                "promotion_block": "research_retest_failed",
+                "safe_to_mutate_live": False,
+                "promotion_proof": False,
+                "latest_retest_artifact": (
+                    r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\research_grid"
+                    r"\research_grid_20260515_104540_457605.md"
+                ),
+            },
+        }
+    ]
+
+    report = campaign.build_campaign(
+        audit,
+        limit=1,
+        prop_runner_candidates=prop_runner_candidates,
+    )
+
+    assert report["summary"]["n_selected_targets"] == 2
+    assert report["summary"]["n_prop_runner_targets"] == 1
+    prop_target = runner.select_target(report, bot_id="volume_profile_nq")
+    assert prop_target["rank"] == 2
+    assert prop_target["source"] == "prop_strategy_promotion_audit"
+    assert prop_target["symbol"] == "NQ1"
+    assert prop_target["issue_code"] == "weak_shadow_replay"
+    assert prop_target["promotion_block"] == "research_retest_failed"
+    assert prop_target["live_mutation_policy"] == "paper_only_advisory"
+    assert prop_target["safe_to_mutate_live"] is False
+    assert prop_target["next_command"].endswith("--bots volume_profile_nq --report-policy runtime")
+
+
 def test_runner_executes_allowed_registry_research_and_keeps_live_locked(tmp_path) -> None:
     from eta_engine.scripts import diamond_retune_runner as runner
 

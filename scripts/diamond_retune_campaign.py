@@ -23,6 +23,7 @@ if str(WORKSPACE_ROOT) not in sys.path:
 from eta_engine.scripts import workspace_roots  # noqa: E402
 
 DEFAULT_AUDIT_PATH = workspace_roots.ETA_RUNTIME_STATE_DIR / "diamond_edge_audit_latest.json"
+DEFAULT_PROMOTION_AUDIT_PATH = workspace_roots.ETA_PROP_STRATEGY_PROMOTION_AUDIT_PATH
 OUT_LATEST = workspace_roots.ETA_RUNTIME_STATE_DIR / "diamond_retune_campaign_latest.json"
 
 SAFETY_RAILS = [
@@ -114,6 +115,31 @@ def _research_target(row: dict[str, Any], rank: int) -> dict[str, Any]:
     }
 
 
+def _prop_runner_target(row: dict[str, Any], rank: int) -> dict[str, Any]:
+    plan = row.get("retune_plan") if isinstance(row.get("retune_plan"), dict) else {}
+    bot_id = str(row.get("bot_id") or plan.get("bot_id") or "unknown")
+    return {
+        "rank": rank,
+        "bot_id": bot_id,
+        "symbol": str(row.get("symbol") or plan.get("symbol") or ""),
+        "asset_sleeve": str(row.get("asset_sleeve") or "equity_index"),
+        "strategy_kind": str(row.get("strategy_kind") or "prop_runner_retest"),
+        "issue_code": str(plan.get("trigger") or "prop_runner_retune_required"),
+        "priority_score": 0.0,
+        "worst_session": "unknown",
+        "best_session": "unknown",
+        "parameter_focus": _as_list(plan.get("parameter_focus")),
+        "primary_experiment": str(row.get("next_action") or plan.get("reason") or ""),
+        "next_command": str(plan.get("retune_command") or ""),
+        "promotion_block": str(plan.get("promotion_block") or "broker_proof_required"),
+        "live_mutation_policy": "paper_only_advisory",
+        "safe_to_mutate_live": False,
+        "source": "prop_strategy_promotion_audit",
+        "retune_status": str(plan.get("status") or ""),
+        "latest_retest_artifact": str(plan.get("latest_retest_artifact") or ""),
+    }
+
+
 def _load_op16_research_backlog() -> list[dict[str, Any]]:
     try:
         from eta_engine.scripts import operator_action_queue
@@ -126,17 +152,56 @@ def _load_op16_research_backlog() -> list[dict[str, Any]]:
     return [row for row in blockers if isinstance(row, dict)] if isinstance(blockers, list) else []
 
 
+def _load_prop_runner_candidates(path: Path = DEFAULT_PROMOTION_AUDIT_PATH) -> list[dict[str, Any]]:
+    if not path.exists():
+        return []
+    try:
+        report = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    rows: list[dict[str, Any]] = []
+    next_runner = report.get("next_runner_candidate")
+    if isinstance(next_runner, dict):
+        rows.append(next_runner)
+    runner_ups = report.get("runner_up_candidates")
+    if isinstance(runner_ups, list):
+        rows.extend(row for row in runner_ups if isinstance(row, dict))
+
+    seen: set[str] = set()
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        plan = row.get("retune_plan") if isinstance(row.get("retune_plan"), dict) else {}
+        command = str(plan.get("retune_command") or "")
+        bot_id = str(row.get("bot_id") or plan.get("bot_id") or "")
+        if not bot_id or not command or bot_id in seen:
+            continue
+        if plan.get("safe_to_mutate_live") is True or plan.get("promotion_proof") is True:
+            continue
+        seen.add(bot_id)
+        out.append(row)
+    return out
+
+
 def build_campaign(
     audit: dict[str, Any],
     *,
     limit: int = 0,
     research_backlog: list[dict[str, Any]] | None = None,
+    prop_runner_candidates: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     queue_raw = audit.get("retune_queue")
     queue = [row for row in queue_raw if isinstance(row, dict)] if isinstance(queue_raw, list) else []
     ranked = _sort_queue(queue)
     selected = ranked[:limit] if limit > 0 else ranked
     targets = [_target(row, rank=i + 1) for i, row in enumerate(selected)]
+    seen_target_bots = {str(target.get("bot_id") or "") for target in targets}
+    prop_rows = prop_runner_candidates or []
+    for row in prop_rows:
+        bot_id = str(row.get("bot_id") or "")
+        if not bot_id or bot_id in seen_target_bots:
+            continue
+        targets.append(_prop_runner_target(row, rank=len(targets) + 1))
+        seen_target_bots.add(bot_id)
     top = targets[0] if targets else {}
     backlog_raw = research_backlog or []
     backlog_targets = [_research_target(row, rank=i + 1) for i, row in enumerate(backlog_raw)]
@@ -149,6 +214,7 @@ def build_campaign(
             "n_bots_in_audit": int(_as_float(audit_summary.get("n_bots"))),
             "n_available_targets": len(ranked),
             "n_selected_targets": len(targets),
+            "n_prop_runner_targets": len(prop_rows),
             "n_research_backlog_targets": len(backlog_targets),
             "top_bot": top.get("bot_id"),
             "top_priority_score": top.get("priority_score"),
@@ -168,7 +234,12 @@ def load_audit(path: Path = DEFAULT_AUDIT_PATH) -> dict[str, Any]:
 
 
 def run(*, audit_path: Path = DEFAULT_AUDIT_PATH, out_path: Path = OUT_LATEST, limit: int = 0) -> dict[str, Any]:
-    report = build_campaign(load_audit(audit_path), limit=limit, research_backlog=_load_op16_research_backlog())
+    report = build_campaign(
+        load_audit(audit_path),
+        limit=limit,
+        research_backlog=_load_op16_research_backlog(),
+        prop_runner_candidates=_load_prop_runner_candidates(),
+    )
     workspace_roots.ensure_parent(out_path)
     out_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return report
