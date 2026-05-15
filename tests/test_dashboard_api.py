@@ -1112,6 +1112,19 @@ class TestDashboardAPI:
                         "broker_truth_focus_remaining_closed_trade_count": 0,
                         "broker_truth_focus_total_realized_pnl": -1939.75,
                         "broker_truth_focus_profit_factor": 0.3951,
+                        "broker_truth_focus_issue_code": "broker_pnl_negative",
+                        "broker_truth_focus_priority_score": 1061.81,
+                        "broker_truth_focus_strategy_kind": "orb_sage_gated",
+                        "broker_truth_focus_best_session": "close",
+                        "broker_truth_focus_worst_session": "overnight",
+                        "broker_truth_focus_parameter_focus": ["session predicate", "rr_target"],
+                        "broker_truth_focus_primary_experiment": (
+                            "Bias fresh sample toward close and block overnight."
+                        ),
+                        "broker_truth_focus_next_command": (
+                            "python -m eta_engine.scripts.run_research_grid "
+                            "--source registry --bots mnq_futures_sage --report-policy runtime"
+                        ),
                         "broker_truth_summary_line": (
                             "mnq_futures_sage: sample met (126/100) but broker edge is negative"
                         ),
@@ -1169,6 +1182,16 @@ class TestDashboardAPI:
         assert data["broker_truth_focus_remaining_closed_trade_count"] == 0
         assert data["broker_truth_focus_total_realized_pnl"] == -1939.75
         assert data["broker_truth_focus_profit_factor"] == 0.3951
+        assert data["broker_truth_focus_issue_code"] == "broker_pnl_negative"
+        assert data["broker_truth_focus_priority_score"] == 1061.81
+        assert data["broker_truth_focus_strategy_kind"] == "orb_sage_gated"
+        assert data["broker_truth_focus_best_session"] == "close"
+        assert data["broker_truth_focus_worst_session"] == "overnight"
+        assert data["broker_truth_focus_parameter_focus"] == ["session predicate", "rr_target"]
+        assert data["broker_truth_focus_primary_experiment"] == "Bias fresh sample toward close and block overnight."
+        assert data["broker_truth_focus_next_command"].endswith(
+            "--bots mnq_futures_sage --report-policy runtime"
+        )
         assert data["broker_truth_summary_line"].startswith("mnq_futures_sage: sample met")
 
     def test_dashboard_cold_start_still_exposes_operator_queue(self, tmp_path, app_client):
@@ -1700,6 +1723,14 @@ class TestDashboardAPI:
                         "n_unstable_positive_keep_tuning": 1,
                         "n_stuck_research_failing": 1,
                         "n_research_passed_broker_proof_required": 1,
+                        "broker_truth_focus_issue_code": "broker_pnl_negative",
+                        "broker_truth_focus_strategy_kind": "orb_sage_gated",
+                        "broker_truth_focus_worst_session": "overnight",
+                        "broker_truth_focus_parameter_focus": ["session predicate", "rr_target"],
+                        "broker_truth_focus_next_command": (
+                            "python -m eta_engine.scripts.run_research_grid "
+                            "--source registry --bots mnq_futures_sage --report-policy runtime"
+                        ),
                         "safe_to_mutate_live": False,
                     },
                     "bots": [
@@ -1721,6 +1752,13 @@ class TestDashboardAPI:
         assert data["summary"]["n_near_miss_keep_tuning"] == 1
         assert data["summary"]["n_unstable_positive_keep_tuning"] == 1
         assert data["summary"]["n_stuck_research_failing"] == 1
+        assert data["summary"]["broker_truth_focus_issue_code"] == "broker_pnl_negative"
+        assert data["summary"]["broker_truth_focus_strategy_kind"] == "orb_sage_gated"
+        assert data["summary"]["broker_truth_focus_worst_session"] == "overnight"
+        assert data["summary"]["broker_truth_focus_parameter_focus"] == ["session predicate", "rr_target"]
+        assert data["summary"]["broker_truth_focus_next_command"].endswith(
+            "--bots mnq_futures_sage --report-policy runtime"
+        )
         assert data["summary"]["safe_to_mutate_live"] is False
         assert data["safe_to_mutate_live"] is False
         assert data["bots"][0]["bot_id"] == "mnq_futures_sage"

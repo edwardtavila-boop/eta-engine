@@ -1675,6 +1675,14 @@ def _diamond_retune_status_unknown(path: Path, *, reason: str) -> dict[str, obje
             "broker_truth_focus_remaining_closed_trade_count": 0,
             "broker_truth_focus_total_realized_pnl": 0.0,
             "broker_truth_focus_profit_factor": 0.0,
+            "broker_truth_focus_issue_code": "",
+            "broker_truth_focus_priority_score": 0.0,
+            "broker_truth_focus_strategy_kind": "",
+            "broker_truth_focus_best_session": "",
+            "broker_truth_focus_worst_session": "",
+            "broker_truth_focus_parameter_focus": [],
+            "broker_truth_focus_primary_experiment": "",
+            "broker_truth_focus_next_command": "",
             "broker_truth_focus_next_action": "",
             "broker_truth_summary_line": "",
             "safe_to_mutate_live": False,
@@ -1730,6 +1738,18 @@ def _load_diamond_retune_status() -> dict[str, object]:
         ),
         "broker_truth_focus_total_realized_pnl": float(summary.get("broker_truth_focus_total_realized_pnl") or 0.0),
         "broker_truth_focus_profit_factor": float(summary.get("broker_truth_focus_profit_factor") or 0.0),
+        "broker_truth_focus_issue_code": str(summary.get("broker_truth_focus_issue_code") or ""),
+        "broker_truth_focus_priority_score": float(summary.get("broker_truth_focus_priority_score") or 0.0),
+        "broker_truth_focus_strategy_kind": str(summary.get("broker_truth_focus_strategy_kind") or ""),
+        "broker_truth_focus_best_session": str(summary.get("broker_truth_focus_best_session") or ""),
+        "broker_truth_focus_worst_session": str(summary.get("broker_truth_focus_worst_session") or ""),
+        "broker_truth_focus_parameter_focus": (
+            [str(item) for item in summary.get("broker_truth_focus_parameter_focus")]
+            if isinstance(summary.get("broker_truth_focus_parameter_focus"), list)
+            else []
+        ),
+        "broker_truth_focus_primary_experiment": str(summary.get("broker_truth_focus_primary_experiment") or ""),
+        "broker_truth_focus_next_command": str(summary.get("broker_truth_focus_next_command") or ""),
         "broker_truth_focus_next_action": str(summary.get("broker_truth_focus_next_action") or ""),
         "broker_truth_summary_line": str(summary.get("broker_truth_summary_line") or ""),
         "safe_to_mutate_live": False,
@@ -1799,6 +1819,18 @@ def _diamond_retune_diagnostic_payload(snapshot: dict[str, Any]) -> dict[str, ob
         ),
         "broker_truth_focus_total_realized_pnl": float(summary.get("broker_truth_focus_total_realized_pnl") or 0.0),
         "broker_truth_focus_profit_factor": float(summary.get("broker_truth_focus_profit_factor") or 0.0),
+        "broker_truth_focus_issue_code": str(summary.get("broker_truth_focus_issue_code") or ""),
+        "broker_truth_focus_priority_score": float(summary.get("broker_truth_focus_priority_score") or 0.0),
+        "broker_truth_focus_strategy_kind": str(summary.get("broker_truth_focus_strategy_kind") or ""),
+        "broker_truth_focus_best_session": str(summary.get("broker_truth_focus_best_session") or ""),
+        "broker_truth_focus_worst_session": str(summary.get("broker_truth_focus_worst_session") or ""),
+        "broker_truth_focus_parameter_focus": (
+            [str(item) for item in summary.get("broker_truth_focus_parameter_focus")]
+            if isinstance(summary.get("broker_truth_focus_parameter_focus"), list)
+            else []
+        ),
+        "broker_truth_focus_primary_experiment": str(summary.get("broker_truth_focus_primary_experiment") or ""),
+        "broker_truth_focus_next_command": str(summary.get("broker_truth_focus_next_command") or ""),
         "broker_truth_focus_next_action": str(summary.get("broker_truth_focus_next_action") or ""),
         "broker_truth_summary_line": str(summary.get("broker_truth_summary_line") or ""),
         "safe_to_mutate_live": bool(summary.get("safe_to_mutate_live") is True),

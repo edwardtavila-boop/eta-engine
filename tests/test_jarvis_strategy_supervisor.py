@@ -499,6 +499,73 @@ def test_broker_router_stale_fill_reject_clears_without_recent_candidate(
     assert bot.last_aggregation_reject_at == ""
 
 
+def test_broker_router_old_filled_flat_sidecar_does_not_reblock(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    import json
+    from datetime import UTC, datetime, timedelta
+
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        BotInstance,
+        JarvisStrategySupervisor,
+        SupervisorConfig,
+    )
+
+    cfg = SupervisorConfig()
+    cfg.mode = "paper_live"
+    cfg.paper_live_order_route = "broker_router"
+    cfg.state_dir = tmp_path / "state"
+    cfg.broker_router_pending_dir = tmp_path / "router" / "pending"
+    sup = JarvisStrategySupervisor(cfg=cfg)
+    monkeypatch.setattr(sup._router, "_get_broker_position_qty", lambda _bot: 0.0)  # noqa: SLF001
+
+    bot = BotInstance(
+        bot_id="mym_sweep_reclaim",
+        symbol="MYM1",
+        strategy_kind="confluence_scorecard",
+        direction="long",
+        cash=50_000.0,
+    )
+    bot.last_aggregation_reject_reason = "broker_router_filled_but_broker_flat"
+    bot.last_aggregation_reject_at = datetime.now(UTC).isoformat()
+
+    signal_id = "mym_sweep_reclaim_old"
+    fill_dir = cfg.broker_router_pending_dir.parent / "fill_results"
+    fill_dir.mkdir(parents=True, exist_ok=True)
+    stale_ts = (datetime.now(UTC) - timedelta(seconds=1800)).isoformat()
+    (fill_dir / f"{signal_id}_result.json").write_text(
+        json.dumps(
+            {
+                "signal_id": signal_id,
+                "bot_id": bot.bot_id,
+                "venue": "ibkr",
+                "request": {
+                    "symbol": "MYM",
+                    "side": "BUY",
+                    "qty": 1.0,
+                    "price": 50147.0,
+                    "reduce_only": False,
+                },
+                "result": {
+                    "order_id": "OID-OLD",
+                    "status": "FILLED",
+                    "filled_qty": 1.0,
+                    "avg_price": 50147.0,
+                },
+                "ts": stale_ts,
+            },
+        ),
+        encoding="utf-8",
+    )
+
+    adopted = sup._adopt_broker_router_fill_if_needed(bot, now=datetime.now(UTC))  # noqa: SLF001
+
+    assert adopted is False
+    assert bot.last_aggregation_reject_reason == ""
+    assert bot.last_aggregation_reject_at == ""
+
+
 def test_direct_ibkr_open_without_fill_does_not_create_local_open_position(
     tmp_path: Path,
     monkeypatch,

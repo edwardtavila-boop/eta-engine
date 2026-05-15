@@ -4273,12 +4273,13 @@ class JarvisStrategySupervisor:
             return False
 
         fill_statuses = {"FILLED", "PARTIAL", "OPEN"}
+        flat_broker_block_max_age_s = self._broker_router_pending_entry_cooldown_s()
         candidates = self._broker_router_recent_result_payloads(
             bot,
             now=now,
             max_age_s=self._broker_router_fill_adopt_window_s(),
         )
-        for path, payload, result, request, _age_s in candidates:
+        for path, payload, result, request, age_s in candidates:
             if bool(request.get("reduce_only", False)):
                 continue
             status = str(result.get("status") or "").upper()
@@ -4298,6 +4299,8 @@ class JarvisStrategySupervisor:
                 )
                 return False
             if broker_qty is None or abs(float(broker_qty)) <= 1e-6:
+                if age_s > flat_broker_block_max_age_s:
+                    continue
                 bot.last_aggregation_reject_reason = "broker_router_filled_but_broker_flat"
                 bot.last_aggregation_reject_at = now.astimezone(UTC).isoformat()
                 return False
