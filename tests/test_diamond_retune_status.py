@@ -92,7 +92,25 @@ def test_status_summarizes_attempts_and_next_actions() -> None:
         },
     ]
 
-    report = status.build_status(campaign=campaign, history_rows=history_rows)
+    closed_trade_ledger = {
+        "generated_at_utc": "2026-05-14T23:30:00+00:00",
+        "data_sources_filter": ["live", "paper"],
+        "per_bot": {
+            "nq_futures_sage": {
+                "closed_trade_count": 36,
+                "total_realized_pnl": -782.32,
+                "cumulative_r": -1.25,
+                "profit_factor": 0.92,
+                "win_rate_pct": 48.0,
+            }
+        },
+    }
+
+    report = status.build_status(
+        campaign=campaign,
+        history_rows=history_rows,
+        closed_trade_ledger=closed_trade_ledger,
+    )
 
     assert report["kind"] == "eta_diamond_retune_status"
     assert report["summary"]["n_targets"] == 3
@@ -100,6 +118,11 @@ def test_status_summarizes_attempts_and_next_actions() -> None:
     assert report["summary"]["n_unattempted_targets"] == 1
     assert report["summary"]["n_research_passed_broker_proof_required"] == 0
     assert report["summary"]["n_low_sample_keep_collecting"] == 1
+    assert report["summary"]["broker_proof_required_closes"] == 100
+    assert report["summary"]["n_broker_proof_ready"] == 0
+    assert report["summary"]["n_broker_proof_shortfall"] == 3
+    assert report["summary"]["largest_broker_proof_gap"] == 100
+    assert report["summary"]["total_broker_proof_gap"] == 264
     assert report["summary"]["safe_to_mutate_live"] is False
     assert report["bots"][0]["bot_id"] == "mnq_futures_sage"
     assert report["bots"][0]["retune_state"] == "STUCK_RESEARCH_FAILING"
@@ -107,8 +130,11 @@ def test_status_summarizes_attempts_and_next_actions() -> None:
     assert "new hypothesis" in report["bots"][0]["next_action"]
     assert report["bots"][1]["bot_id"] == "nq_futures_sage"
     assert report["bots"][1]["retune_state"] == "COLLECT_MORE_SAMPLE"
-    assert "more paper closes" in report["bots"][1]["next_action"]
+    assert "collect 64 more paper/broker closes (36/100)" in report["bots"][1]["next_action"]
     assert report["bots"][1]["research_signal"]["classification"] == "LOW_SAMPLE_PROMISING"
+    assert report["bots"][1]["broker_close_evidence"]["closed_trade_count"] == 36
+    assert report["bots"][1]["broker_close_evidence"]["remaining_closed_trade_count"] == 64
+    assert report["bots"][1]["broker_close_evidence"]["sample_progress_pct"] == 36.0
     assert report["bots"][1]["safe_to_mutate_live"] is False
     assert report["bots"][2]["bot_id"] == "mcl_sweep_reclaim"
     assert report["bots"][2]["retune_state"] == "NOT_ATTEMPTED"

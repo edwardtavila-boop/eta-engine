@@ -1510,6 +1510,11 @@ def _diamond_retune_status_unknown(path: Path, *, reason: str) -> dict[str, obje
             "n_research_passed_broker_proof_required": 0,
             "n_stuck_research_failing": 0,
             "n_timeout_retry": 0,
+            "broker_proof_required_closes": 100,
+            "n_broker_proof_ready": 0,
+            "n_broker_proof_shortfall": 0,
+            "largest_broker_proof_gap": 0,
+            "total_broker_proof_gap": 0,
             "safe_to_mutate_live": False,
         },
         "bots": [],
@@ -1543,6 +1548,11 @@ def _load_diamond_retune_status() -> dict[str, object]:
         ),
         "n_stuck_research_failing": int(summary.get("n_stuck_research_failing") or 0),
         "n_timeout_retry": int(summary.get("n_timeout_retry") or 0),
+        "broker_proof_required_closes": int(summary.get("broker_proof_required_closes") or 100),
+        "n_broker_proof_ready": int(summary.get("n_broker_proof_ready") or 0),
+        "n_broker_proof_shortfall": int(summary.get("n_broker_proof_shortfall") or 0),
+        "largest_broker_proof_gap": int(summary.get("largest_broker_proof_gap") or 0),
+        "total_broker_proof_gap": int(summary.get("total_broker_proof_gap") or 0),
         "safe_to_mutate_live": False,
     }
     normalized: dict[str, object] = dict(payload)
@@ -1571,6 +1581,9 @@ def _diamond_retune_diagnostic_payload(snapshot: dict[str, Any]) -> dict[str, ob
     summary = snapshot.get("summary") if isinstance(snapshot.get("summary"), dict) else {}
     bots = snapshot.get("bots") if isinstance(snapshot.get("bots"), list) else []
     first_bot = bots[0] if bots and isinstance(bots[0], dict) else {}
+    broker_evidence = (
+        first_bot.get("broker_close_evidence") if isinstance(first_bot.get("broker_close_evidence"), dict) else {}
+    )
     return {
         "status": str(snapshot.get("status") or "missing"),
         "ready": bool(snapshot.get("ready")),
@@ -1587,10 +1600,19 @@ def _diamond_retune_diagnostic_payload(snapshot: dict[str, Any]) -> dict[str, ob
         ),
         "n_stuck_research_failing": int(summary.get("n_stuck_research_failing") or 0),
         "n_timeout_retry": int(summary.get("n_timeout_retry") or 0),
+        "broker_proof_required_closes": int(summary.get("broker_proof_required_closes") or 100),
+        "n_broker_proof_ready": int(summary.get("n_broker_proof_ready") or 0),
+        "n_broker_proof_shortfall": int(summary.get("n_broker_proof_shortfall") or 0),
+        "largest_broker_proof_gap": int(summary.get("largest_broker_proof_gap") or 0),
+        "total_broker_proof_gap": int(summary.get("total_broker_proof_gap") or 0),
         "safe_to_mutate_live": bool(summary.get("safe_to_mutate_live") is True),
         "top_bot_id": str(first_bot.get("bot_id") or ""),
         "top_retune_state": str(first_bot.get("retune_state") or ""),
         "top_next_action": str(first_bot.get("next_action") or ""),
+        "top_closed_trade_count": int(broker_evidence.get("closed_trade_count") or 0),
+        "top_required_closed_trade_count": int(broker_evidence.get("required_closed_trade_count") or 0),
+        "top_remaining_closed_trade_count": int(broker_evidence.get("remaining_closed_trade_count") or 0),
+        "top_sample_progress_pct": float(broker_evidence.get("sample_progress_pct") or 0.0),
         "path": str(path),
         "source": str(snapshot.get("source") or "diamond_retune_status_latest"),
         "updated_at": datetime.fromtimestamp(mtime, UTC).isoformat() if mtime is not None else None,

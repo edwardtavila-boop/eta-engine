@@ -851,13 +851,24 @@ class TestDashboardAPI:
                         "n_research_passed_broker_proof_required": 1,
                         "n_stuck_research_failing": 0,
                         "n_timeout_retry": 0,
+                        "broker_proof_required_closes": 100,
+                        "n_broker_proof_ready": 0,
+                        "n_broker_proof_shortfall": 1,
+                        "largest_broker_proof_gap": 64,
+                        "total_broker_proof_gap": 64,
                         "safe_to_mutate_live": False,
                     },
                     "bots": [
                         {
                             "bot_id": "nq_futures_sage",
                             "retune_state": "PASS_AWAITING_BROKER_PROOF",
-                            "next_action": "review research artifact",
+                            "next_action": "review research artifact, then collect 64 more paper/broker closes",
+                            "broker_close_evidence": {
+                                "closed_trade_count": 36,
+                                "required_closed_trade_count": 100,
+                                "remaining_closed_trade_count": 64,
+                                "sample_progress_pct": 36.0,
+                            },
                         }
                     ],
                     "research_backlog": [
@@ -882,7 +893,10 @@ class TestDashboardAPI:
         assert retune_status["summary"]["n_low_sample_keep_collecting"] == 1
         assert retune_status["summary"]["n_near_miss_keep_tuning"] == 1
         assert retune_status["summary"]["n_unstable_positive_keep_tuning"] == 1
+        assert retune_status["summary"]["n_broker_proof_shortfall"] == 1
+        assert retune_status["summary"]["largest_broker_proof_gap"] == 64
         assert retune_status["summary"]["safe_to_mutate_live"] is False
+        assert retune_status["bots"][0]["broker_close_evidence"]["remaining_closed_trade_count"] == 64
         assert retune_status["research_backlog"][0]["bot_id"] == "mes_sweep_reclaim_v2"
 
         direct = app_client.get("/api/jarvis/diamond_retune_status")
@@ -893,6 +907,7 @@ class TestDashboardAPI:
         assert direct.json()["summary"]["n_near_miss_keep_tuning"] == 1
         assert direct.json()["summary"]["n_unstable_positive_keep_tuning"] == 1
         assert direct.json()["summary"]["n_research_passed_broker_proof_required"] == 1
+        assert direct.json()["summary"]["total_broker_proof_gap"] == 64
         assert "no-store" in direct.headers["Cache-Control"]
 
     def test_dashboard_diagnostics_summarizes_symbol_intelligence(self, app_client, tmp_path):
@@ -993,6 +1008,11 @@ class TestDashboardAPI:
                         "n_research_passed_broker_proof_required": 1,
                         "n_stuck_research_failing": 1,
                         "n_timeout_retry": 0,
+                        "broker_proof_required_closes": 100,
+                        "n_broker_proof_ready": 0,
+                        "n_broker_proof_shortfall": 1,
+                        "largest_broker_proof_gap": 91,
+                        "total_broker_proof_gap": 91,
                         "safe_to_mutate_live": False,
                     },
                     "bots": [
@@ -1000,6 +1020,12 @@ class TestDashboardAPI:
                             "bot_id": "mnq_futures_sage",
                             "retune_state": "STUCK_RESEARCH_FAILING",
                             "next_action": "pause repeated attempts",
+                            "broker_close_evidence": {
+                                "closed_trade_count": 9,
+                                "required_closed_trade_count": 100,
+                                "remaining_closed_trade_count": 91,
+                                "sample_progress_pct": 9.0,
+                            },
                         }
                     ],
                 }
@@ -1019,7 +1045,12 @@ class TestDashboardAPI:
         assert data["n_near_miss_keep_tuning"] == 1
         assert data["n_unstable_positive_keep_tuning"] == 1
         assert data["n_stuck_research_failing"] == 1
+        assert data["n_broker_proof_shortfall"] == 1
+        assert data["largest_broker_proof_gap"] == 91
+        assert data["total_broker_proof_gap"] == 91
         assert data["top_bot_id"] == "mnq_futures_sage"
+        assert data["top_remaining_closed_trade_count"] == 91
+        assert data["top_sample_progress_pct"] == 9.0
 
     def test_dashboard_cold_start_still_exposes_operator_queue(self, tmp_path, app_client):
         state = tmp_path / "state"
