@@ -4343,6 +4343,132 @@ def _paper_live_transition_cache_payload() -> dict:
     return payload
 
 
+_PAPER_LIVE_GATEWAY_RECOVERABLE_GATE_NAMES = frozenset(
+    {
+        "tws_api_4002",
+        "ibgateway_release_guard",
+        "op19_gateway_runtime",
+    },
+)
+_PAPER_LIVE_GATEWAY_RECOVERABLE_BLOCKER_IDS = frozenset({"OP-19"})
+
+
+def _paper_live_transition_cache_gateway_reconciled(payload: dict) -> dict:
+    """Clear stale cached OP-19/TWS blockers when the current gateway is healthy.
+
+    The scheduled paper-live transition receipt can lag behind a recovered
+    ``tws_watchdog`` beat by a few minutes. When that cache only blocks on the
+    gateway/TWS handshake family and the current gateway truth is healthy, use
+    the live watchdog truth so bot-fleet and paper-live cards do not stay
+    falsely blocked until the next transition task run.
+    """
+
+    out = dict(payload) if isinstance(payload, dict) else {}
+    if str(out.get("source") or "") != "paper_live_transition_check_cache":
+        return out
+
+    gates = out.get("gates") if isinstance(out.get("gates"), list) else []
+    failed_critical_gates = [
+        gate
+        for gate in gates
+        if isinstance(gate, dict) and gate.get("critical") is True and gate.get("passed") is False
+    ]
+    failed_critical_gate_names = {
+        str(gate.get("name") or "").strip()
+        for gate in failed_critical_gates
+        if str(gate.get("name") or "").strip()
+    }
+    if failed_critical_gate_names and not failed_critical_gate_names.issubset(_PAPER_LIVE_GATEWAY_RECOVERABLE_GATE_NAMES):
+        return out
+
+    launch_blocked_raw = out.get("operator_queue_launch_blocked_count")
+    if launch_blocked_raw is None:
+        launch_blocked_raw = out.get("operator_queue_blocked_count")
+    try:
+        launch_blocked = int(launch_blocked_raw or 0)
+    except (TypeError, ValueError):
+        launch_blocked = 0
+
+    first_blocker_op_id = str(out.get("operator_queue_first_blocker_op_id") or "").strip().upper()
+    first_launch_blocker_op_id = str(out.get("operator_queue_first_launch_blocker_op_id") or "").strip().upper()
+    gateway_only_cache_block = bool(failed_critical_gate_names) or launch_blocked > 0
+    if not gateway_only_cache_block:
+        return out
+    if (
+        first_blocker_op_id
+        and first_blocker_op_id not in _PAPER_LIVE_GATEWAY_RECOVERABLE_BLOCKER_IDS
+        and launch_blocked > 0
+    ):
+        return out
+    if (
+        first_launch_blocker_op_id
+        and first_launch_blocker_op_id not in _PAPER_LIVE_GATEWAY_RECOVERABLE_BLOCKER_IDS
+    ):
+        return out
+
+    broker_gateway = _reconcile_broker_gateway_with_live_state(
+        _broker_gateway_snapshot(),
+        _cached_live_broker_state_for_gateway_reconcile(),
+    )
+    gateway_status = str(broker_gateway.get("status") or "").strip().lower()
+    gateway_ibkr = broker_gateway.get("ibkr") if isinstance(broker_gateway.get("ibkr"), dict) else {}
+    gateway_ibkr_status = str(gateway_ibkr.get("status") or "").strip().lower()
+    if gateway_status != "connected" and gateway_ibkr_status != "connected":
+        return out
+
+    healed_gates: list[dict[str, Any]] = []
+    for gate in gates:
+        if not isinstance(gate, dict):
+            healed_gates.append(gate)
+            continue
+        gate_name = str(gate.get("name") or "").strip()
+        if gate_name in _PAPER_LIVE_GATEWAY_RECOVERABLE_GATE_NAMES and gate.get("passed") is False:
+            healed_gate = dict(gate)
+            healed_gate["passed"] = True
+            healed_gate["detail"] = (
+                "current broker gateway is healthy; cleared cached gateway/TWS blocker"
+            )
+            healed_gate["next_action"] = ""
+            healed_gate["cache_gateway_reconciled"] = True
+            healed_gates.append(healed_gate)
+            continue
+        healed_gates.append(gate)
+    if healed_gates:
+        out["gates"] = healed_gates
+
+    warning_blocked_raw = out.get("operator_queue_warning_blocked_count")
+    blocked_count_raw = out.get("operator_queue_blocked_count")
+    try:
+        warning_blocked = int(warning_blocked_raw or 0)
+    except (TypeError, ValueError):
+        warning_blocked = 0
+    try:
+        blocked_count = int(blocked_count_raw or 0)
+    except (TypeError, ValueError):
+        blocked_count = 0
+
+    out["critical_ready"] = not any(
+        isinstance(gate, dict) and gate.get("critical") is True and gate.get("passed") is False
+        for gate in out.get("gates", [])
+    )
+    out["operator_queue_launch_blocked_count"] = 0
+    out["operator_queue_effective_launch_blocked_count"] = 0
+    out["operator_queue_blocked_count"] = max(warning_blocked, blocked_count - launch_blocked)
+    if first_launch_blocker_op_id in _PAPER_LIVE_GATEWAY_RECOVERABLE_BLOCKER_IDS or launch_blocked > 0:
+        out["operator_queue_first_launch_blocker_op_id"] = None
+        out["operator_queue_first_launch_next_action"] = None
+    if first_blocker_op_id in _PAPER_LIVE_GATEWAY_RECOVERABLE_BLOCKER_IDS:
+        out["operator_queue_first_blocker_op_id"] = None
+        out["operator_queue_first_next_action"] = None
+    out["operator_queue_stale_op19_cleared"] = True
+    out["cache_gateway_reconciled"] = True
+    out["cache_gateway_reconciled_at"] = datetime.now(UTC).isoformat()
+    out["cache_gateway_reconciled_detail"] = "current broker gateway is healthy; cleared cached OP-19/TWS blocker"
+    if out.get("critical_ready") is True and str(out.get("status") or "").strip().lower() == "blocked":
+        out["status"] = "ready_to_launch_paper_live"
+    return out
+
+
 def _paper_live_daily_loss_gate_mode() -> str:
     lane = execution_lane_from_fields(
         mode="paper_live",
@@ -4429,7 +4555,9 @@ def _paper_live_transition_with_effective_holds(payload: dict) -> dict:
 def _paper_live_transition_payload(*, refresh: bool = False) -> dict:
     """Return paper-live launch readiness without blocking the Command Center."""
     if not refresh:
-        return _paper_live_transition_with_effective_holds(_paper_live_transition_cache_payload())
+        return _paper_live_transition_with_effective_holds(
+            _paper_live_transition_cache_gateway_reconciled(_paper_live_transition_cache_payload())
+        )
 
     try:
         from eta_engine.scripts.paper_live_transition_check import build_transition_check

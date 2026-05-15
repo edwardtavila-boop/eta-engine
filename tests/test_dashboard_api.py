@@ -3809,6 +3809,80 @@ class TestDashboardAPI:
         assert "positions=0 open" in detail
         assert "live broker exposure: 1 IBKR open (MNQM6)" in detail
 
+    def test_master_status_marks_recent_gateway_flap_yellow_during_self_heal(
+        self,
+        app_client,
+        tmp_path,
+        monkeypatch,
+    ):
+        from datetime import UTC, datetime, timedelta
+
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        monkeypatch.setattr(
+            mod,
+            "_operator_queue_payload",
+            lambda: {"summary": {"BLOCKED": 0}, "launch_blocked_count": 0},
+        )
+        now = datetime.now(UTC)
+        (tmp_path / "state" / "paper_live_transition_check.json").write_text(
+            json.dumps(
+                {
+                    "generated_at": now.isoformat(),
+                    "status": "ready_to_launch_paper_live",
+                    "critical_ready": True,
+                    "paper_ready_bots": 5,
+                    "operator_queue_blocked_count": 0,
+                    "operator_queue_launch_blocked_count": 0,
+                    "gates": [],
+                },
+            ),
+            encoding="utf-8",
+        )
+        (tmp_path / "state" / "tws_watchdog.json").write_text(
+            json.dumps(
+                {
+                    "checked_at": now.isoformat(),
+                    "healthy": False,
+                    "consecutive_failures": 1,
+                    "last_healthy_at": (now - timedelta(seconds=45)).isoformat(),
+                    "details": {
+                        "host": "127.0.0.1",
+                        "port": 4002,
+                        "socket_ok": True,
+                        "handshake_ok": False,
+                        "handshake_detail": "attempt 1 clientId=9011: TimeoutError()",
+                        "gateway_process": {
+                            "running": True,
+                            "gateway_dir": r"C:\Jts\ibgateway\1046",
+                            "name": "java.exe",
+                        },
+                    },
+                },
+            ),
+            encoding="utf-8",
+        )
+        (tmp_path / "state" / "ibgateway_reauth.json").write_text(
+            json.dumps(
+                {
+                    "status": "waiting_for_failures",
+                    "operator_action_required": False,
+                },
+            ),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/master/status")
+
+        assert r.status_code == 200
+        payload = r.json()
+        assert payload["paper_live"]["status"] == "ready_to_launch_paper_live"
+        assert payload["paper_live"]["critical_ready"] is True
+        assert payload["systems"]["ibkr"]["status"] == "YELLOW"
+        assert payload["systems"]["ibkr"]["raw_status"] == "degraded"
+        assert "recovery: waiting_for_failures" in payload["systems"]["ibkr"]["detail"]
+        assert "self-heal grace active" in payload["systems"]["ibkr"]["detail"]
+
     def test_master_status_surfaces_target_exit_missing_bracket_risk(
         self,
         app_client,
@@ -6350,9 +6424,12 @@ class TestDashboardAPI:
         assert r.status_code == 200
         ibkr = r.json()["broker_gateway"]["ibkr"]
         assert ibkr["status"] == "degraded"
+        assert ibkr["healthy"] is False
         assert r.json()["broker_gateway"]["status"] == "degraded"
         assert r.json()["summary"]["ibkr_gateway_status"] == "degraded"
         assert ibkr["transient_self_heal_grace_active"] is True
+        assert 0 <= float(ibkr["last_healthy_age_s"]) <= 180
+        assert "recovery: auth_pending" in ibkr["detail"]
         assert "self-heal grace active" in ibkr["detail"]
 
     def test_bot_fleet_reconciles_gateway_detail_with_live_ibkr_positions(
