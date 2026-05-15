@@ -16,6 +16,7 @@ import argparse
 import asyncio
 import contextlib
 import json
+import os
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -26,6 +27,14 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
 _DONE_STATUSES = {"apicancelled", "cancelled", "filled", "inactive"}
+
+
+def _default_connect_timeout_s() -> float:
+    raw = os.getenv("ETA_CANCEL_STALE_IBKR_CONNECT_TIMEOUT_S", "").strip()
+    if raw:
+        with contextlib.suppress(ValueError):
+            return max(1.0, float(raw))
+    return 30.0
 
 
 def _ensure_main_thread_event_loop() -> None:
@@ -218,6 +227,7 @@ def cancel_stale_ibkr_open_orders(
     port: int,
     client_id: int,
     confirm: bool,
+    connect_timeout_s: float = 30.0,
     audit_path: Path = broker_bracket_audit.DEFAULT_OUT,
     symbols: set[str] | None = None,
     ib_factory: Callable[[], Any] = _default_ib_factory,
@@ -226,7 +236,7 @@ def cancel_stale_ibkr_open_orders(
     stale_orders = _stale_flat_open_orders_from_audit(Path(audit_path))
     results: list[CancelResult] = []
     try:
-        ib.connect(host, port, clientId=client_id, timeout=10)
+        ib.connect(host, port, clientId=client_id, timeout=max(1.0, float(connect_timeout_s)))
         ib.reqAllOpenOrders()
         ib.sleep(1.0)
         open_trades = list(ib.openTrades())
@@ -285,6 +295,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=4002)
     parser.add_argument("--client-id", type=int, default=9031)
+    parser.add_argument("--connect-timeout-s", type=float, default=_default_connect_timeout_s())
     parser.add_argument("--audit-path", type=Path, default=broker_bracket_audit.DEFAULT_OUT)
     parser.add_argument(
         "--symbols",
@@ -305,6 +316,7 @@ def main(argv: list[str] | None = None) -> int:
             port=ns.port,
             client_id=ns.client_id,
             confirm=ns.confirm,
+            connect_timeout_s=ns.connect_timeout_s,
             audit_path=ns.audit_path,
             symbols=symbols,
         )

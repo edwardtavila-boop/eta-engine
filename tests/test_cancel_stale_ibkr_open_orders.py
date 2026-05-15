@@ -39,9 +39,11 @@ class _FakeIB:
         self.cancelled: list[int] = []
         self.connected = False
         self.disconnected = False
+        self.connect_timeout: float | int | None = None
 
     def connect(self, _host: str, _port: int, *, clientId: int, timeout: int) -> None:  # noqa: N803
         self.connected = True
+        self.connect_timeout = timeout
         assert clientId >= 0
         assert timeout > 0
 
@@ -107,7 +109,30 @@ def test_cancel_stale_orders_dry_run_does_not_call_cancel(tmp_path: Path) -> Non
 
     assert [row.status for row in results] == ["dry_run"]
     assert fake_ib.cancelled == []
+    assert fake_ib.connect_timeout == 30.0
     assert fake_ib.disconnected is True
+
+
+def test_cancel_stale_orders_uses_configurable_connect_timeout(tmp_path: Path) -> None:
+    fake_ib = _FakeIB([_trade("MCL", 102, local_symbol="MCLM6")])
+    audit_path = tmp_path / "audit.json"
+    audit_path.write_text(
+        '{"stale_flat_open_orders":[{"symbol":"MCLM6"}]}',
+        encoding="utf-8",
+    )
+
+    results = cancel_stale.cancel_stale_ibkr_open_orders(
+        host="127.0.0.1",
+        port=4002,
+        client_id=9031,
+        confirm=False,
+        connect_timeout_s=45.0,
+        audit_path=audit_path,
+        ib_factory=lambda: fake_ib,
+    )
+
+    assert [row.status for row in results] == ["dry_run"]
+    assert fake_ib.connect_timeout == 45.0
 
 
 def test_cancel_stale_orders_confirm_cancels_only_candidates(tmp_path: Path) -> None:
