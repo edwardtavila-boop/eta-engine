@@ -69,7 +69,7 @@ def _ensure_policies_registry_populated() -> None:
     if "v17" in list_candidates():
         return
     prefix = "eta_engine.brain.jarvis_v3.policies"
-    for name in [k for k in sys.modules if k == prefix or k.startswith(prefix + ".")]:
+    for name in [k for k in list(sys.modules) if k == prefix or k.startswith(prefix + ".")]:
         del sys.modules[name]
     import eta_engine.brain.jarvis_v3.policies  # noqa: F401
 

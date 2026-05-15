@@ -791,6 +791,10 @@ class TestDashboardAPI:
         assert dashboard.json()["sentiment_assets"][0]["headline_count"] == 2
         assert dashboard.json()["sentiment_macro_headlines"][0]["publisher"] == "WSJ"
         assert dashboard.json()["sentiment_lead_headlines"][0]["headline"] == "Solana breakout lifts alt sentiment"
+        assert dashboard.json()["sentiment_pressure_status"] == "risk_on"
+        assert dashboard.json()["sentiment_pressure"]["lead_positive_asset"] == "SOL"
+        assert dashboard.json()["sentiment_pressure"]["lead_negative_asset"] == "ETH"
+        assert "inflation" in dashboard.json()["sentiment_pressure_summary"]
         assert symbol_intelligence["status"] == "AMBER"
         assert symbol_intelligence["average_score_pct"] == 83
         assert symbol_intelligence["symbol_count"] == 2
@@ -811,6 +815,8 @@ class TestDashboardAPI:
         assert "fomc" in symbol_intelligence["sentiment"]["active_topics"]
         assert symbol_intelligence["sentiment"]["asset_summaries"][2]["asset"] == "SOL"
         assert symbol_intelligence["sentiment"]["lead_headlines"][0]["publisher"] == "Bloomberg"
+        assert symbol_intelligence["sentiment"]["pressure"]["status"] == "risk_on"
+        assert symbol_intelligence["sentiment"]["pressure"]["lead_positive_asset"] == "SOL"
 
         direct = app_client.get("/api/data/symbol-intelligence")
         assert direct.status_code == 200
@@ -819,6 +825,7 @@ class TestDashboardAPI:
         assert direct.json()["collector"]["news_records"] == 7
         assert direct.json()["sentiment"]["lead_asset"] == "SOL"
         assert direct.json()["sentiment"]["macro_headlines"][0]["headline"] == "Fed officials keep inflation in focus"
+        assert direct.json()["sentiment"]["pressure"]["lead_negative_asset"] == "ETH"
         assert "no-store" in direct.headers["Cache-Control"]
 
     def test_dashboard_includes_diamond_retune_status(self, app_client, tmp_path):
@@ -962,6 +969,8 @@ class TestDashboardAPI:
         assert data["sentiment"]["ok_count"] == 4
         assert "fomc" in data["sentiment"]["active_topics"]
         assert data["sentiment"]["macro_headlines"][0]["publisher"] == "CNBC"
+        assert data["sentiment"]["pressure"]["status"] == "neutral"
+        assert "macro" in data["sentiment"]["pressure"]["lead_positive_asset"].lower()
 
     def test_dashboard_diagnostics_summarizes_diamond_retune_status(self, app_client, tmp_path):
         state = tmp_path / "state"
