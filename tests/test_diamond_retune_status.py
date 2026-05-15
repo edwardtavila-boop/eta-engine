@@ -15,7 +15,17 @@ def test_status_summarizes_attempts_and_next_actions() -> None:
                 "bot_id": "mnq_futures_sage",
                 "symbol": "MNQ1",
                 "asset_sleeve": "equity_index",
+                "strategy_kind": "orb_sage_gated",
+                "issue_code": "broker_pnl_negative",
                 "priority_score": 1000.0,
+                "best_session": "close",
+                "worst_session": "overnight",
+                "parameter_focus": ["session predicate", "rr_target"],
+                "primary_experiment": "Bias fresh sample toward close and block overnight.",
+                "next_command": (
+                    "python -m eta_engine.scripts.run_research_grid "
+                    "--source registry --bots mnq_futures_sage --report-policy runtime"
+                ),
                 "promotion_block": "broker_proof_required",
                 "safe_to_mutate_live": False,
             },
@@ -127,8 +137,28 @@ def test_status_summarizes_attempts_and_next_actions() -> None:
     assert report["summary"]["largest_broker_proof_gap"] == 100
     assert report["summary"]["total_broker_proof_gap"] == 264
     assert report["summary"]["safe_to_mutate_live"] is False
+    assert report["summary"]["broker_truth_focus_issue_code"] == "broker_pnl_negative"
+    assert report["summary"]["broker_truth_focus_strategy_kind"] == "orb_sage_gated"
+    assert report["summary"]["broker_truth_focus_best_session"] == "close"
+    assert report["summary"]["broker_truth_focus_worst_session"] == "overnight"
+    assert report["summary"]["broker_truth_focus_parameter_focus"] == ["session predicate", "rr_target"]
+    assert report["summary"]["broker_truth_focus_primary_experiment"] == (
+        "Bias fresh sample toward close and block overnight."
+    )
+    assert report["summary"]["broker_truth_focus_next_command"].endswith(
+        "--bots mnq_futures_sage --report-policy runtime"
+    )
     assert report["bots"][0]["bot_id"] == "mnq_futures_sage"
     assert report["bots"][0]["retune_state"] == "STUCK_RESEARCH_FAILING"
+    assert report["bots"][0]["issue_code"] == "broker_pnl_negative"
+    assert report["bots"][0]["strategy_kind"] == "orb_sage_gated"
+    assert report["bots"][0]["best_session"] == "close"
+    assert report["bots"][0]["worst_session"] == "overnight"
+    assert report["bots"][0]["parameter_focus"] == ["session predicate", "rr_target"]
+    assert report["bots"][0]["primary_experiment"] == "Bias fresh sample toward close and block overnight."
+    assert report["bots"][0]["next_command"].endswith(
+        "--bots mnq_futures_sage --report-policy runtime"
+    )
     assert report["bots"][0]["attempts"] == 3
     assert "new hypothesis" in report["bots"][0]["next_action"]
     assert report["bots"][1]["bot_id"] == "nq_futures_sage"
@@ -154,7 +184,17 @@ def test_status_surfaces_research_backlog_without_mixing_broker_targets() -> Non
                 "bot_id": "mnq_futures_sage",
                 "symbol": "MNQ1",
                 "asset_sleeve": "equity_index",
+                "strategy_kind": "orb_sage_gated",
+                "issue_code": "broker_pnl_negative",
                 "priority_score": 1000.0,
+                "best_session": "close",
+                "worst_session": "overnight",
+                "parameter_focus": ["session predicate", "opening range boundary", "sage_min_alignment"],
+                "primary_experiment": "Concentrate paper sample around close and block overnight entries.",
+                "next_command": (
+                    "python -m eta_engine.scripts.run_research_grid "
+                    "--source registry --bots mnq_futures_sage --report-policy runtime"
+                ),
                 "promotion_block": "broker_proof_required",
                 "safe_to_mutate_live": False,
             },
@@ -308,7 +348,17 @@ def test_status_distinguishes_research_window_gap_from_broker_close_gap() -> Non
                 "bot_id": "mnq_futures_sage",
                 "symbol": "MNQ1",
                 "asset_sleeve": "equity_index",
+                "strategy_kind": "orb_sage_gated",
+                "issue_code": "broker_pnl_negative",
                 "priority_score": 1000.0,
+                "best_session": "close",
+                "worst_session": "overnight",
+                "parameter_focus": ["session predicate", "opening range boundary", "sage_min_alignment"],
+                "primary_experiment": "Concentrate paper sample around close and block overnight entries.",
+                "next_command": (
+                    "python -m eta_engine.scripts.run_research_grid "
+                    "--source registry --bots mnq_futures_sage --report-policy runtime"
+                ),
                 "promotion_block": "broker_proof_required",
                 "safe_to_mutate_live": False,
             },
@@ -355,12 +405,36 @@ def test_status_distinguishes_research_window_gap_from_broker_close_gap() -> Non
     assert report["summary"]["broker_truth_focus_closed_trade_count"] == 126
     assert report["summary"]["broker_truth_focus_remaining_closed_trade_count"] == 0
     assert report["summary"]["broker_truth_focus_total_realized_pnl"] == 0.0
+    assert report["summary"]["broker_truth_focus_issue_code"] == "broker_pnl_negative"
+    assert report["summary"]["broker_truth_focus_strategy_kind"] == "orb_sage_gated"
+    assert report["summary"]["broker_truth_focus_best_session"] == "close"
+    assert report["summary"]["broker_truth_focus_worst_session"] == "overnight"
+    assert report["summary"]["broker_truth_focus_parameter_focus"] == [
+        "session predicate",
+        "opening range boundary",
+        "sage_min_alignment",
+    ]
+    assert report["summary"]["broker_truth_focus_primary_experiment"] == (
+        "Concentrate paper sample around close and block overnight entries."
+    )
+    assert report["summary"]["broker_truth_focus_next_command"].endswith(
+        "--bots mnq_futures_sage --report-policy runtime"
+    )
     assert "mnq_futures_sage: sample met (126/100) but broker edge is negative" in report["summary"][
         "broker_truth_summary_line"
     ]
     assert report["bots"][0]["broker_close_evidence"]["remaining_closed_trade_count"] == 0
     assert report["bots"][0]["broker_close_evidence"]["edge_status"] == "sample_met_negative_edge"
     assert report["bots"][0]["broker_close_evidence"]["has_positive_edge"] is False
+    assert report["bots"][0]["issue_code"] == "broker_pnl_negative"
+    assert report["bots"][0]["parameter_focus"] == [
+        "session predicate",
+        "opening range boundary",
+        "sage_min_alignment",
+    ]
+    assert report["bots"][0]["next_command"].endswith(
+        "--bots mnq_futures_sage --report-policy runtime"
+    )
     assert "sample met (126/100) but broker edge is negative" in report["bots"][0]["next_action"]
     assert "retune or demote" in report["bots"][0]["next_action"]
 

@@ -259,6 +259,14 @@ def _broker_truth_focus(bot_rows: list[dict[str, Any]]) -> dict[str, Any]:
         "broker_truth_focus_remaining_closed_trade_count": remaining,
         "broker_truth_focus_total_realized_pnl": round(pnl, 2),
         "broker_truth_focus_profit_factor": round(profit_factor, 4),
+        "issue_code": str(focus.get("issue_code") or ""),
+        "priority_score": focus.get("priority_score"),
+        "strategy_kind": str(focus.get("strategy_kind") or ""),
+        "best_session": str(focus.get("best_session") or ""),
+        "worst_session": str(focus.get("worst_session") or ""),
+        "parameter_focus": focus.get("parameter_focus") if isinstance(focus.get("parameter_focus"), list) else [],
+        "primary_experiment": str(focus.get("primary_experiment") or ""),
+        "next_command": str(focus.get("next_command") or ""),
         "broker_truth_focus_next_action": str(focus.get("next_action") or ""),
         "broker_truth_summary_line": line,
     }
@@ -280,6 +288,13 @@ def _research_backlog_row(target: dict[str, Any]) -> dict[str, Any]:
         "live_mutation_policy": "paper_only_advisory",
         "safe_to_mutate_live": False,
     }
+
+
+def _parameter_focus(target: dict[str, Any]) -> list[str]:
+    raw = target.get("parameter_focus")
+    if not isinstance(raw, list):
+        return []
+    return [str(item) for item in raw if str(item or "").strip()]
 
 
 def build_status(
@@ -310,7 +325,14 @@ def build_status(
                 "rank": target.get("rank"),
                 "symbol": target.get("symbol"),
                 "asset_sleeve": target.get("asset_sleeve"),
+                "strategy_kind": str(target.get("strategy_kind") or ""),
+                "issue_code": str(target.get("issue_code") or ""),
                 "priority_score": target.get("priority_score"),
+                "best_session": str(target.get("best_session") or ""),
+                "worst_session": str(target.get("worst_session") or ""),
+                "parameter_focus": _parameter_focus(target),
+                "primary_experiment": str(target.get("primary_experiment") or ""),
+                "next_command": str(target.get("next_command") or ""),
                 "attempts": attempts,
                 "last_run_id": latest.get("run_id"),
                 "last_status": latest_status or None,
@@ -363,6 +385,18 @@ def build_status(
             "largest_broker_proof_gap": max(proof_gaps, default=0),
             "total_broker_proof_gap": sum(proof_gaps),
             "safe_to_mutate_live": False,
+            "broker_truth_focus_issue_code": str(broker_truth_focus.get("issue_code") or ""),
+            "broker_truth_focus_priority_score": broker_truth_focus.get("priority_score"),
+            "broker_truth_focus_strategy_kind": str(broker_truth_focus.get("strategy_kind") or ""),
+            "broker_truth_focus_best_session": str(broker_truth_focus.get("best_session") or ""),
+            "broker_truth_focus_worst_session": str(broker_truth_focus.get("worst_session") or ""),
+            "broker_truth_focus_parameter_focus": broker_truth_focus.get("parameter_focus")
+            if isinstance(broker_truth_focus.get("parameter_focus"), list)
+            else [],
+            "broker_truth_focus_primary_experiment": str(
+                broker_truth_focus.get("primary_experiment") or "",
+            ),
+            "broker_truth_focus_next_command": str(broker_truth_focus.get("next_command") or ""),
             **broker_truth_focus,
         },
         "bots": bot_rows,
