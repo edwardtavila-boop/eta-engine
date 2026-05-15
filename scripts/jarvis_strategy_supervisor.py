@@ -4177,6 +4177,11 @@ class JarvisStrategySupervisor:
             size_mult=size_mult,
         )
         if rec:
+            # A successful entry supersedes any earlier per-signal route note
+            # or stale reject reason. In paper_live, target="paper" means
+            # "route to the paper broker", not "reject the signal".
+            bot.last_aggregation_reject_reason = ""
+            bot.last_aggregation_reject_at = ""
             # Persist the signal_id to the dedup ledger so a crash
             # immediately after this point cannot result in the same
             # signal_id being reused on restart. Also seed the in-memory

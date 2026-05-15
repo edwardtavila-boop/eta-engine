@@ -451,6 +451,102 @@ def test_stale_force_flatten_blocks_immediate_reentry(
     assert bot.last_aggregation_reject_at
 
 
+def test_paper_live_calendar_route_clears_pseudo_reject_after_submit(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """A successful paper-live route must not look blocked in heartbeat.
+
+    The live-capital calendar returns target="paper" before 2026-07-08.
+    That is a routing decision, not an entry rejection. If the broker-router
+    submit succeeds, the heartbeat reject field must be cleared so operators
+    do not read a successful paper order as "calendar blocked".
+    """
+    from unittest.mock import MagicMock
+
+    from eta_engine.feeds import capital_allocator as ca
+    from eta_engine.scripts import daily_loss_killswitch
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        BotInstance,
+        FillRecord,
+        JarvisStrategySupervisor,
+        SupervisorConfig,
+    )
+
+    monkeypatch.setattr(
+        daily_loss_killswitch,
+        "is_killswitch_tripped",
+        lambda: (False, "clear"),
+    )
+    monkeypatch.setattr(ca, "prop_entry_size_multiplier", lambda _bot_id: 1.0)
+    monkeypatch.setattr(ca, "get_prop_guard_signal", lambda: "GO")
+    monkeypatch.setattr(ca, "get_bot_lifecycle", lambda _bot_id: ca.LIFECYCLE_EVAL_PAPER)
+    monkeypatch.setattr(
+        ca,
+        "resolve_execution_target",
+        lambda _bot_id, prospective_loss_usd: (
+            "paper",
+            "live_capital_calendar_hold_until_2026-07-08: paper_live only",
+        ),
+    )
+
+    cfg = SupervisorConfig()
+    cfg.mode = "paper_live"
+    cfg.data_feed = "unit"
+    cfg.state_dir = tmp_path / "state"
+    cfg.broker_router_pending_dir = tmp_path / "pending"
+    sup = JarvisStrategySupervisor(cfg=cfg)
+    monkeypatch.setattr(sup, "_strategy_readiness_allows_entry", lambda _bot: True)
+    monkeypatch.setattr(sup, "_enforce_daily_loss_cap", lambda _bot, now: False)
+    monkeypatch.setattr(sup, "_consult_sage_for_bot", lambda *args, **kwargs: None)
+    monkeypatch.setattr(sup, "_check_signal_aggregation", lambda **_kwargs: "")
+
+    verdict = MagicMock()
+    verdict.is_blocked.return_value = False
+    verdict.consolidated.final_verdict = "APPROVED"
+    verdict.consolidated.confidence = 0.95
+    verdict.final_size_multiplier = 1.0
+    monkeypatch.setattr(sup, "_consult_jarvis", lambda **_kwargs: verdict)
+
+    fill = FillRecord(
+        bot_id="mnq_futures_sage",
+        signal_id="sig-paper",
+        side="BUY",
+        symbol="MNQ1",
+        qty=1.0,
+        fill_price=100.0,
+        fill_ts="2026-05-15T01:00:00+00:00",
+        paper=True,
+        note="mode=paper_live",
+    )
+    submit_entry = MagicMock(return_value=fill)
+    monkeypatch.setattr(sup._router, "submit_entry", submit_entry)
+
+    bot = BotInstance(
+        bot_id="mnq_futures_sage",
+        symbol="MNQ1",
+        strategy_kind="orb_sage_gated",
+        direction="long",
+        cash=50_000.0,
+    )
+
+    sup._maybe_enter(
+        bot,
+        {
+            "ts": "2026-05-15T01:00:00+00:00",
+            "open": 100.0,
+            "high": 101.0,
+            "low": 99.0,
+            "close": 100.0,
+            "volume": 10,
+        },
+    )
+
+    assert submit_entry.called
+    assert bot.last_aggregation_reject_reason == ""
+    assert bot.last_aggregation_reject_at == ""
+
+
 def test_router_paper_live_direct_route_skips_pending_by_default(tmp_path: Path) -> None:
     from eta_engine.scripts.jarvis_strategy_supervisor import (
         BotInstance,
