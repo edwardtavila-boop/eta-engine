@@ -1358,6 +1358,7 @@ def _diamond_retune_status_unknown(path: Path, *, reason: str) -> dict[str, obje
             "n_targets": 0,
             "n_attempted_bots": 0,
             "n_unattempted_targets": 0,
+            "n_research_backlog_targets": 0,
             "n_low_sample_keep_collecting": 0,
             "n_near_miss_keep_tuning": 0,
             "n_unstable_positive_keep_tuning": 0,
@@ -1367,6 +1368,7 @@ def _diamond_retune_status_unknown(path: Path, *, reason: str) -> dict[str, obje
             "safe_to_mutate_live": False,
         },
         "bots": [],
+        "research_backlog": [],
         "notes": ["diamond retune status has not been generated"],
     }
 
@@ -1379,6 +1381,7 @@ def _load_diamond_retune_status() -> dict[str, object]:
 
     summary = payload.get("summary") if isinstance(payload.get("summary"), dict) else {}
     bots = payload.get("bots") if isinstance(payload.get("bots"), list) else []
+    research_backlog = payload.get("research_backlog") if isinstance(payload.get("research_backlog"), list) else []
     kind_ok = payload.get("kind") == "eta_diamond_retune_status"
     contract_ok = kind_ok and isinstance(summary, dict) and isinstance(bots, list)
     status = str(payload.get("status") or ("ready" if contract_ok else "invalid"))
@@ -1386,6 +1389,7 @@ def _load_diamond_retune_status() -> dict[str, object]:
         "n_targets": int(summary.get("n_targets") or len(bots)),
         "n_attempted_bots": int(summary.get("n_attempted_bots") or 0),
         "n_unattempted_targets": int(summary.get("n_unattempted_targets") or 0),
+        "n_research_backlog_targets": int(summary.get("n_research_backlog_targets") or len(research_backlog)),
         "n_low_sample_keep_collecting": int(summary.get("n_low_sample_keep_collecting") or 0),
         "n_near_miss_keep_tuning": int(summary.get("n_near_miss_keep_tuning") or 0),
         "n_unstable_positive_keep_tuning": int(summary.get("n_unstable_positive_keep_tuning") or 0),
@@ -1410,6 +1414,7 @@ def _load_diamond_retune_status() -> dict[str, object]:
             "writes_live_routing": False,
             "summary": normalized_summary,
             "bots": bots,
+            "research_backlog": research_backlog,
         }
     )
     return normalized
@@ -1428,6 +1433,7 @@ def _diamond_retune_diagnostic_payload(snapshot: dict[str, Any]) -> dict[str, ob
         "n_targets": int(summary.get("n_targets") or len(bots)),
         "n_attempted_bots": int(summary.get("n_attempted_bots") or 0),
         "n_unattempted_targets": int(summary.get("n_unattempted_targets") or 0),
+        "n_research_backlog_targets": int(summary.get("n_research_backlog_targets") or 0),
         "n_low_sample_keep_collecting": int(summary.get("n_low_sample_keep_collecting") or 0),
         "n_near_miss_keep_tuning": int(summary.get("n_near_miss_keep_tuning") or 0),
         "n_unstable_positive_keep_tuning": int(summary.get("n_unstable_positive_keep_tuning") or 0),
