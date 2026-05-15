@@ -62,6 +62,12 @@ def _targets(campaign: dict[str, Any]) -> list[dict[str, Any]]:
     return sorted(rows, key=lambda row: int(_as_float(row.get("rank"), 999999)))
 
 
+def _research_backlog(campaign: dict[str, Any]) -> list[dict[str, Any]]:
+    raw = campaign.get("research_backlog")
+    rows = [row for row in raw if isinstance(row, dict)] if isinstance(raw, list) else []
+    return sorted(rows, key=lambda row: int(_as_float(row.get("rank"), 999999)))
+
+
 def _latest(rows: list[dict[str, Any]]) -> dict[str, Any] | None:
     if not rows:
         return None
@@ -104,6 +110,24 @@ def _next_action(state: str, bot_id: str) -> str:
     return "keep rotating through paper research; no live changes"
 
 
+def _research_backlog_row(target: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "rank": target.get("rank"),
+        "bot_id": str(target.get("bot_id") or ""),
+        "strategy_id": str(target.get("strategy_id") or target.get("bot_id") or ""),
+        "issue_code": str(target.get("issue_code") or "research_gate_failed"),
+        "summary": str(target.get("summary") or "research candidate gate not fully passed"),
+        "research_signal": target.get("research_signal") if isinstance(target.get("research_signal"), dict) else {},
+        "next_command": str(target.get("next_command") or ""),
+        "verification_command": str(target.get("verification_command") or ""),
+        "retune_state": "RESEARCH_GATE_FAILED",
+        "next_action": "rerun runtime-only research grid, then launch-check; no live changes",
+        "promotion_block": "research_gate_required",
+        "live_mutation_policy": "paper_only_advisory",
+        "safe_to_mutate_live": False,
+    }
+
+
 def build_status(*, campaign: dict[str, Any], history_rows: list[dict[str, Any]]) -> dict[str, Any]:
     grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in history_rows:
@@ -141,6 +165,7 @@ def build_status(*, campaign: dict[str, Any], history_rows: list[dict[str, Any]]
             }
         )
 
+    research_backlog = [_research_backlog_row(target) for target in _research_backlog(campaign)]
     attempted = {row["bot_id"] for row in bot_rows if int(row["attempts"]) > 0}
     return {
         "kind": "eta_diamond_retune_status",
@@ -150,6 +175,7 @@ def build_status(*, campaign: dict[str, Any], history_rows: list[dict[str, Any]]
             "n_targets": len(bot_rows),
             "n_attempted_bots": len(attempted),
             "n_unattempted_targets": sum(1 for row in bot_rows if int(row["attempts"]) == 0),
+            "n_research_backlog_targets": len(research_backlog),
             "n_research_passed_broker_proof_required": sum(
                 1 for row in bot_rows if row["retune_state"] == "PASS_AWAITING_BROKER_PROOF"
             ),
@@ -163,6 +189,7 @@ def build_status(*, campaign: dict[str, Any], history_rows: list[dict[str, Any]]
             "safe_to_mutate_live": False,
         },
         "bots": bot_rows,
+        "research_backlog": research_backlog,
     }
 
 
@@ -193,6 +220,15 @@ def _print(report: dict[str, Any]) -> None:
             f"#{row['rank']} {row['bot_id']:<24} {row['retune_state']:<28} "
             f"attempts={row['attempts']:<3} action={row['next_action']}",
         )
+    backlog = report.get("research_backlog") if isinstance(report.get("research_backlog"), list) else []
+    if backlog:
+        print("-" * 112)
+        print(f" RESEARCH BACKLOG  targets={len(backlog)}")
+        for row in backlog:
+            print(
+                f"#{row['rank']} {row['bot_id']:<24} {row['retune_state']:<24} "
+                f"action={row['next_action']}",
+            )
 
 
 def main(argv: list[str] | None = None) -> int:

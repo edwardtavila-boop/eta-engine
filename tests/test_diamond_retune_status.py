@@ -114,6 +114,64 @@ def test_status_summarizes_attempts_and_next_actions() -> None:
     assert report["bots"][2]["retune_state"] == "NOT_ATTEMPTED"
 
 
+def test_status_surfaces_research_backlog_without_mixing_broker_targets() -> None:
+    from eta_engine.scripts import diamond_retune_status as status
+
+    campaign = {
+        "generated_at_utc": "2026-05-14T20:00:00+00:00",
+        "targets": [
+            {
+                "rank": 1,
+                "bot_id": "mnq_futures_sage",
+                "symbol": "MNQ1",
+                "asset_sleeve": "equity_index",
+                "priority_score": 1000.0,
+                "promotion_block": "broker_proof_required",
+                "safe_to_mutate_live": False,
+            },
+        ],
+        "research_backlog": [
+            {
+                "rank": 1,
+                "bot_id": "mes_sweep_reclaim_v2",
+                "strategy_id": "mes_sweep_reclaim_v2",
+                "issue_code": "research_gate_failed",
+                "summary": "research_candidate (strict gate failed; OOS +0.499)",
+                "research_signal": {
+                    "agg_oos_sharpe": 0.499,
+                    "dsr_pass_fraction": 0.273,
+                    "strict_gate": False,
+                    "windows": 11,
+                },
+                "next_command": (
+                    "python -m eta_engine.scripts.run_research_grid "
+                    "--source registry --bots mes_sweep_reclaim_v2 --report-policy runtime"
+                ),
+                "verification_command": (
+                    "python -m eta_engine.scripts.paper_live_launch_check "
+                    "--bots mes_sweep_reclaim_v2 --json"
+                ),
+                "promotion_block": "research_gate_required",
+                "live_mutation_policy": "paper_only_advisory",
+                "safe_to_mutate_live": False,
+            },
+        ],
+    }
+
+    report = status.build_status(campaign=campaign, history_rows=[])
+
+    assert report["summary"]["n_targets"] == 1
+    assert report["summary"]["n_research_backlog_targets"] == 1
+    assert report["bots"][0]["bot_id"] == "mnq_futures_sage"
+    assert report["research_backlog"][0]["bot_id"] == "mes_sweep_reclaim_v2"
+    assert report["research_backlog"][0]["promotion_block"] == "research_gate_required"
+    assert report["research_backlog"][0]["retune_state"] == "RESEARCH_GATE_FAILED"
+    assert report["research_backlog"][0]["next_action"] == (
+        "rerun runtime-only research grid, then launch-check; no live changes"
+    )
+    assert report["research_backlog"][0]["safe_to_mutate_live"] is False
+
+
 def test_status_surfaces_near_miss_tuning_without_live_mutation() -> None:
     from eta_engine.scripts import diamond_retune_status as status
 

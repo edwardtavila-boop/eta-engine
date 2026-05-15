@@ -645,6 +645,7 @@ class TestDashboardAPI:
                         "n_targets": 2,
                         "n_attempted_bots": 1,
                         "n_unattempted_targets": 1,
+                        "n_research_backlog_targets": 1,
                         "n_low_sample_keep_collecting": 1,
                         "n_near_miss_keep_tuning": 1,
                         "n_unstable_positive_keep_tuning": 1,
@@ -660,6 +661,14 @@ class TestDashboardAPI:
                             "next_action": "review research artifact",
                         }
                     ],
+                    "research_backlog": [
+                        {
+                            "bot_id": "mes_sweep_reclaim_v2",
+                            "retune_state": "RESEARCH_GATE_FAILED",
+                            "next_action": "rerun runtime-only research grid, then launch-check; no live changes",
+                            "safe_to_mutate_live": False,
+                        }
+                    ],
                 }
             ),
             encoding="utf-8",
@@ -670,13 +679,17 @@ class TestDashboardAPI:
         assert retune_status["status"] == "ready"
         assert retune_status["contract_ok"] is True
         assert retune_status["summary"]["n_attempted_bots"] == 1
+        assert retune_status["summary"]["n_research_backlog_targets"] == 1
         assert retune_status["summary"]["n_low_sample_keep_collecting"] == 1
         assert retune_status["summary"]["n_near_miss_keep_tuning"] == 1
         assert retune_status["summary"]["n_unstable_positive_keep_tuning"] == 1
         assert retune_status["summary"]["safe_to_mutate_live"] is False
+        assert retune_status["research_backlog"][0]["bot_id"] == "mes_sweep_reclaim_v2"
 
         direct = app_client.get("/api/jarvis/diamond_retune_status")
         assert direct.status_code == 200
+        assert direct.json()["summary"]["n_research_backlog_targets"] == 1
+        assert direct.json()["research_backlog"][0]["retune_state"] == "RESEARCH_GATE_FAILED"
         assert direct.json()["summary"]["n_low_sample_keep_collecting"] == 1
         assert direct.json()["summary"]["n_near_miss_keep_tuning"] == 1
         assert direct.json()["summary"]["n_unstable_positive_keep_tuning"] == 1

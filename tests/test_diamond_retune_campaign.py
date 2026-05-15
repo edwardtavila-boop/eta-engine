@@ -109,6 +109,81 @@ def test_campaign_default_covers_full_retune_queue_without_live_mutation() -> No
     assert all(target["live_mutation_policy"] == "paper_only_advisory" for target in report["targets"])
 
 
+def test_campaign_surfaces_research_backlog_separately_from_broker_retunes() -> None:
+    from eta_engine.scripts import diamond_retune_campaign as campaign
+
+    audit = {
+        "summary": {
+            "n_bots": 14,
+            "n_retune": 1,
+            "safe_to_mutate_live": False,
+            "scoring_basis": "broker_closed_trade_pnl_first",
+        },
+        "retune_queue": [
+            {
+                "bot_id": "mnq_futures_sage",
+                "symbol": "MNQ1",
+                "asset_sleeve": "equity_index",
+                "priority_score": 1061.81,
+                "issue_code": "broker_pnl_negative",
+                "retune_command": (
+                    "python -m eta_engine.scripts.run_research_grid "
+                    "--source registry --bots mnq_futures_sage --report-policy runtime"
+                ),
+                "live_mutation_policy": "paper_only_advisory",
+                "safe_to_mutate_live": False,
+            },
+        ],
+    }
+    research_backlog = [
+        {
+            "name": "mes_sweep_reclaim_v2",
+            "strategy_id": "mes_sweep_reclaim_v2",
+            "summary": "research_candidate (strict gate failed; OOS +0.499; DSR pass 27.3%)",
+            "next_commands": [
+                (
+                    "python -m eta_engine.scripts.run_research_grid "
+                    "--source registry --bots mes_sweep_reclaim_v2 --report-policy runtime"
+                ),
+                "python -m eta_engine.scripts.paper_live_launch_check --bots mes_sweep_reclaim_v2 --json",
+            ],
+            "evidence": {
+                "full_history_smoke": {
+                    "agg_oos_sharpe": 0.499,
+                    "dsr_pass_fraction": 0.273,
+                    "strict_gate": False,
+                    "windows": 11,
+                },
+                "baseline_present": False,
+            },
+        },
+    ]
+
+    report = campaign.build_campaign(audit, limit=1, research_backlog=research_backlog)
+
+    assert report["summary"]["n_available_targets"] == 1
+    assert report["summary"]["n_research_backlog_targets"] == 1
+    assert report["summary"]["top_bot"] == "mnq_futures_sage"
+    assert report["summary"]["top_research_backlog_bot"] == "mes_sweep_reclaim_v2"
+    assert [target["bot_id"] for target in report["targets"]] == ["mnq_futures_sage"]
+
+    backlog_target = report["research_backlog"][0]
+    assert backlog_target["bot_id"] == "mes_sweep_reclaim_v2"
+    assert backlog_target["promotion_block"] == "research_gate_required"
+    assert backlog_target["live_mutation_policy"] == "paper_only_advisory"
+    assert backlog_target["safe_to_mutate_live"] is False
+    assert backlog_target["next_command"].endswith(
+        "--bots mes_sweep_reclaim_v2 --report-policy runtime",
+    )
+    assert backlog_target["verification_command"].endswith("--bots mes_sweep_reclaim_v2 --json")
+    assert backlog_target["research_signal"] == {
+        "agg_oos_sharpe": 0.499,
+        "dsr_pass_fraction": 0.273,
+        "strict_gate": False,
+        "windows": 11,
+    }
+
+
 def test_runner_executes_allowed_registry_research_and_keeps_live_locked(tmp_path) -> None:
     from eta_engine.scripts import diamond_retune_runner as runner
 
