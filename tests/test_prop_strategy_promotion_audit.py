@@ -91,6 +91,22 @@ def _supervisor_heartbeat(
     }
 
 
+def _shadow_signals(*, bot_id: str = "volume_profile_nq", count: int = 2) -> list[dict[str, object]]:
+    return [
+        {
+            "ts": f"2026-05-15T03:5{i}:00+00:00",
+            "bot_id": bot_id,
+            "signal_id": f"{bot_id}_{i}",
+            "symbol": "NQ1",
+            "side": "BUY" if i % 2 else "SELL",
+            "lifecycle": "EVAL_PAPER",
+            "route_target": "paper",
+            "route_reason": "lifecycle_eval_paper",
+        }
+        for i in range(count)
+    ]
+
+
 def test_promotion_audit_explains_paper_soak_hold_with_required_evidence() -> None:
     report = audit.build_promotion_audit_report(
         gate_report={
@@ -250,6 +266,7 @@ def test_kaizen_retired_primary_surfaces_runner_up_candidate_without_promoting()
         },
         closed_trade_ledger=_closed_trade_ledger(),
         supervisor_heartbeat=_supervisor_heartbeat(),
+        shadow_signals=[],
     )
 
     required = "\n".join(report["required_evidence"])
@@ -263,6 +280,7 @@ def test_kaizen_retired_primary_surfaces_runner_up_candidate_without_promoting()
     assert report["next_runner_candidate"]["broker_close_evidence"]["verdict"] == "MISSING_BROKER_CLOSES"
     assert report["next_runner_candidate"]["supervisor_watch_evidence"]["watched"] is True
     assert report["next_runner_candidate"]["supervisor_watch_evidence"]["verdict"] == "WATCHING_NO_SIGNAL_YET"
+    assert report["next_runner_candidate"]["shadow_signal_evidence"]["signal_count"] == 0
     assert report["next_runner_candidate"]["next_action"].startswith("Keep volume_profile_nq in paper watch")
     assert report["runner_up_candidates"][1]["bot_id"] == "rsi_mr_mnq_v2"
     assert "collect broker-backed closes for runner-up candidate volume_profile_nq" in required
@@ -333,6 +351,7 @@ def test_runner_up_candidate_surfaces_when_not_watched_by_supervisor() -> None:
         },
         closed_trade_ledger=_closed_trade_ledger(),
         supervisor_heartbeat={"bots": []},
+        shadow_signals=[],
     )
 
     watch = report["next_runner_candidate"]["supervisor_watch_evidence"]
@@ -340,6 +359,45 @@ def test_runner_up_candidate_surfaces_when_not_watched_by_supervisor() -> None:
     assert watch["watched"] is False
     assert watch["verdict"] == "NOT_WATCHED_BY_SUPERVISOR"
     assert report["next_runner_candidate"]["next_action"].startswith("Wire volume_profile_nq")
+
+
+def test_runner_up_candidate_surfaces_shadow_signals_without_closes() -> None:
+    candidate = {
+        **_candidate(launch_lane="deactivated", blockers=["bot row is deactivated via kaizen_sidecar"]),
+        "active": False,
+        "data_status": "deactivated",
+        "promotion_status": "deactivated",
+        "deactivation_source": "kaizen_sidecar",
+    }
+
+    report = audit.build_promotion_audit_report(
+        gate_report={
+            "summary": "BLOCKED",
+            "primary_bot": "volume_profile_mnq",
+            "checks": [
+                _check("primary_ladder", "BLOCKED", primary_candidate=candidate),
+                _check("prop_readiness", "PASS"),
+                _check("broker_native_brackets", "PASS"),
+                _check("closed_trade_ledger", "PASS", closed_trade_count=43000),
+                _check("live_bot_gate", "BLOCKED", "volume_profile_mnq is deactivated"),
+            ],
+        },
+        ladder_report={
+            "summary": {"automation_mode": "FULLY_AUTOMATED_PAPER_PROP_HELD"},
+            "candidates": [candidate, _runner_candidate()],
+        },
+        closed_trade_ledger=_closed_trade_ledger(),
+        supervisor_heartbeat=_supervisor_heartbeat(last_signal_at=""),
+        shadow_signals=_shadow_signals(count=3),
+    )
+
+    evidence = report["next_runner_candidate"]["shadow_signal_evidence"]
+
+    assert evidence["signal_count"] == 3
+    assert evidence["verdict"] == "SHADOW_PAPER_SIGNALS_SEEN"
+    assert evidence["route_targets"] == {"paper": 3}
+    assert report["next_runner_candidate"]["next_action"].startswith("Convert volume_profile_nq shadow signals")
+    assert "closed outcomes" in report["next_runner_candidate"]["operator_note"]
 
 
 def test_promotion_audit_prefers_live_gate_deactivation_over_stale_ladder_candidate() -> None:

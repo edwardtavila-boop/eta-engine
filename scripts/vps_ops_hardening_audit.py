@@ -512,6 +512,12 @@ def _promotion_gate_action(gate: dict[str, Any]) -> str:
         label = f"{runner_id} ({runner_symbol})" if runner_symbol else runner_id
         close_evidence = _as_dict(runner.get("broker_close_evidence"))
         if int(close_evidence.get("closed_trade_count") or 0) <= 0:
+            signal_evidence = _as_dict(runner.get("shadow_signal_evidence"))
+            if int(signal_evidence.get("signal_count") or 0) > 0:
+                return (
+                    f"Convert runner-up {label} shadow signals into paper-close outcomes; "
+                    "broker-backed closes are still missing"
+                )
             watch_evidence = _as_dict(runner.get("supervisor_watch_evidence"))
             if watch_evidence.get("verdict") == "WATCHING_NO_SIGNAL_YET":
                 return f"Keep runner-up {label} in paper watch; supervisor is live but no signal has fired yet"

@@ -277,16 +277,65 @@ def _supervisor_watch_evidence(supervisor_heartbeat: dict[str, Any], bot_id: str
     }
 
 
+def _shadow_signal_evidence(shadow_signals: list[Any], bot_id: str) -> dict[str, Any]:
+    rows = [
+        _as_dict(raw)
+        for raw in shadow_signals
+        if str(_as_dict(raw).get("bot_id") or "").strip() == bot_id
+    ]
+    if not rows:
+        return {
+            "source": "shadow_signals",
+            "has_shadow_signals": False,
+            "signal_count": 0,
+            "verdict": "NO_SHADOW_SIGNALS",
+        }
+    route_targets: dict[str, int] = {}
+    route_reasons: dict[str, int] = {}
+    lifecycles: dict[str, int] = {}
+    for row in rows:
+        target = str(row.get("route_target") or "unknown")
+        reason = str(row.get("route_reason") or "unknown")
+        lifecycle = str(row.get("lifecycle") or "unknown")
+        route_targets[target] = route_targets.get(target, 0) + 1
+        route_reasons[reason] = route_reasons.get(reason, 0) + 1
+        lifecycles[lifecycle] = lifecycles.get(lifecycle, 0) + 1
+    latest = rows[-1]
+    paper_count = int(route_targets.get("paper") or 0)
+    verdict = "SHADOW_PAPER_SIGNALS_SEEN" if paper_count else "SHADOW_SIGNALS_SEEN"
+    return {
+        "source": "shadow_signals",
+        "has_shadow_signals": True,
+        "signal_count": len(rows),
+        "latest_ts": latest.get("ts") or "",
+        "latest_signal_id": latest.get("signal_id") or "",
+        "latest_side": latest.get("side") or "",
+        "latest_route_target": latest.get("route_target") or "",
+        "latest_route_reason": latest.get("route_reason") or "",
+        "latest_lifecycle": latest.get("lifecycle") or "",
+        "route_targets": dict(sorted(route_targets.items())),
+        "route_reasons": dict(sorted(route_reasons.items())),
+        "lifecycles": dict(sorted(lifecycles.items())),
+        "verdict": verdict,
+    }
+
+
 def _runner_next_action(
     candidate: dict[str, Any],
     broker_evidence: dict[str, Any],
     watch_evidence: dict[str, Any],
+    signal_evidence: dict[str, Any],
 ) -> str:
     bot_id = str(candidate.get("bot_id") or "runner").strip()
     close_count = int(broker_evidence.get("closed_trade_count") or 0)
     if _is_deactivated(candidate):
         return f"Keep {bot_id} deactivated until fresh paper-soak evidence repairs the retirement case"
     if close_count <= 0:
+        if int(signal_evidence.get("signal_count") or 0) > 0:
+            return (
+                f"Convert {bot_id} shadow signals into paper-close outcomes; signals fire, "
+                "but broker-backed closes are still missing"
+            )
         watch_verdict = str(watch_evidence.get("verdict") or "")
         if watch_verdict == "NOT_WATCHED_BY_SUPERVISOR":
             return f"Wire {bot_id} into the paper-live supervisor before judging broker-close evidence"
@@ -311,8 +360,11 @@ def _runner_operator_note(
     candidate: dict[str, Any],
     broker_evidence: dict[str, Any],
     watch_evidence: dict[str, Any],
+    signal_evidence: dict[str, Any],
 ) -> str:
     if int(broker_evidence.get("closed_trade_count") or 0) <= 0:
+        if int(signal_evidence.get("signal_count") or 0) > 0:
+            return "Signals are firing in paper/shadow mode; next proof gap is closed outcomes, not signal wiring."
         if watch_evidence.get("verdict") == "WATCHING_NO_SIGNAL_YET":
             return "Good lab/ladder candidate; supervisor is watching it live, but no signal has fired yet."
         return "Good lab/ladder candidate, but not broker-proven yet."
@@ -328,6 +380,7 @@ def _runner_summary(
     candidate: dict[str, Any],
     closed_trade_ledger: dict[str, Any],
     supervisor_heartbeat: dict[str, Any],
+    shadow_signals: list[Any],
 ) -> dict[str, Any]:
     bot_id = str(candidate.get("bot_id") or "").strip()
     broker_evidence = _broker_close_evidence(
@@ -335,6 +388,7 @@ def _runner_summary(
         bot_id,
     )
     watch_evidence = _supervisor_watch_evidence(supervisor_heartbeat, bot_id)
+    signal_evidence = _shadow_signal_evidence(shadow_signals, bot_id)
     return {
         "bot_id": candidate.get("bot_id") or "",
         "role": candidate.get("role") or "runner",
@@ -351,9 +405,10 @@ def _runner_summary(
         "strict_gate": _as_dict(candidate.get("strict_gate")),
         "broker_close_evidence": broker_evidence,
         "supervisor_watch_evidence": watch_evidence,
+        "shadow_signal_evidence": signal_evidence,
         "ladder_blockers": [str(item) for item in _as_list(candidate.get("blockers"))],
-        "next_action": _runner_next_action(candidate, broker_evidence, watch_evidence),
-        "operator_note": _runner_operator_note(candidate, broker_evidence, watch_evidence),
+        "next_action": _runner_next_action(candidate, broker_evidence, watch_evidence, signal_evidence),
+        "operator_note": _runner_operator_note(candidate, broker_evidence, watch_evidence, signal_evidence),
     }
 
 
@@ -388,17 +443,26 @@ def build_promotion_audit_report(
     ladder_report: dict[str, Any],
     closed_trade_ledger: dict[str, Any] | None = None,
     supervisor_heartbeat: dict[str, Any] | None = None,
+    shadow_signals: list[Any] | None = None,
 ) -> dict[str, Any]:
     closed_trade_ledger = _as_dict(closed_trade_ledger)
     supervisor_heartbeat = _as_dict(supervisor_heartbeat)
+    shadow_signals = _as_list(shadow_signals)
     candidate = _with_live_deactivation(
         _primary_candidate(gate_report=gate_report, ladder_report=ladder_report),
         gate_report,
     )
     runners = _runner_candidates(ladder_report)
     next_runner = _next_runner_candidate(runners)
-    runner_summaries = [_runner_summary(runner, closed_trade_ledger, supervisor_heartbeat) for runner in runners]
-    next_runner_summary = _runner_summary(next_runner, closed_trade_ledger, supervisor_heartbeat) if next_runner else {}
+    runner_summaries = [
+        _runner_summary(runner, closed_trade_ledger, supervisor_heartbeat, shadow_signals)
+        for runner in runners
+    ]
+    next_runner_summary = (
+        _runner_summary(next_runner, closed_trade_ledger, supervisor_heartbeat, shadow_signals)
+        if next_runner
+        else {}
+    )
     statuses = _status_by_check(gate_report)
     gate_summary = str(gate_report.get("summary") or "UNKNOWN")
     required = _required_evidence(candidate=candidate, statuses=statuses, gate_summary=gate_summary)
@@ -499,6 +563,15 @@ def _current_supervisor_heartbeat() -> dict[str, Any]:
         return {}
 
 
+def _current_shadow_signals() -> list[Any]:
+    try:
+        from eta_engine.scripts.shadow_signal_logger import read_shadow_signals  # noqa: PLC0415
+
+        return read_shadow_signals(path=workspace_roots.ETA_JARVIS_SHADOW_SIGNALS_PATH)
+    except Exception:  # noqa: BLE001
+        return []
+
+
 def _print_human(report: dict[str, Any], out_path: Path | None = None) -> None:
     print()
     print("EVOLUTIONARY TRADING ALGO -- Prop Strategy Promotion Audit")
@@ -529,6 +602,7 @@ def main(argv: list[str] | None = None) -> int:
         ladder_report=ladder_report,
         closed_trade_ledger=_current_closed_trade_ledger(),
         supervisor_heartbeat=_current_supervisor_heartbeat(),
+        shadow_signals=_current_shadow_signals(),
     )
     out_path = None if args.no_write else write_report(report, args.out)
     if args.json:
