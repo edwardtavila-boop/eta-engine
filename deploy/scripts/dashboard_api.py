@@ -1274,6 +1274,39 @@ def _compact_close_window(window: object) -> dict[str, object]:
     }
 
 
+def _pnl_reconciliation_payload(
+    live_state: dict[str, object],
+    close_history: dict[str, object],
+    windows: dict[str, object],
+) -> dict[str, object]:
+    """Explain why broker MTD and strategy close-ledger MTD can disagree."""
+    sources = live_state.get("sources") if isinstance(live_state.get("sources"), dict) else {}
+    mtd_window = windows.get("mtd") if isinstance(windows.get("mtd"), dict) else {}
+    broker_mtd = _float_value(live_state.get("broker_mtd_pnl"))
+    close_mtd = _float_value(mtd_window.get("realized_pnl"))
+    difference = None if broker_mtd is None or close_mtd is None else round(broker_mtd - close_mtd, 2)
+    if broker_mtd is None:
+        status = "broker_mtd_unavailable"
+    elif close_mtd is None:
+        status = "close_history_mtd_unavailable"
+    elif abs(difference or 0.0) <= 0.01:
+        status = "aligned"
+    else:
+        status = "different_scopes"
+    return {
+        "status": status,
+        "broker_mtd_pnl": round(broker_mtd, 2) if broker_mtd is not None else None,
+        "broker_mtd_source": str(sources.get("broker_mtd_pnl") or ""),
+        "close_history_mtd_realized_pnl": round(close_mtd, 2) if close_mtd is not None else None,
+        "close_history_source": str(sources.get("focus_mtd_closed_pnl") or close_history.get("source") or ""),
+        "difference": difference,
+        "display_rule": (
+            "Broker MTD is account-level net-liq. Close MTD is realized strategy closes only. "
+            "Use Broker MTD for portfolio truth and Close MTD for bot attribution."
+        ),
+    }
+
+
 def _live_broker_summary_payload(*, refresh: bool = False) -> dict[str, object]:
     """Small live-broker payload for watches that do not need full trade rows."""
     live_state = (
@@ -1316,6 +1349,7 @@ def _live_broker_summary_payload(*, refresh: bool = False) -> dict[str, object]:
             "today": _compact_close_window(windows.get("today")),
             "mtd": _compact_close_window(windows.get("mtd")),
         },
+        "pnl_reconciliation": _pnl_reconciliation_payload(live_state, close_history, windows),
     }
 
 

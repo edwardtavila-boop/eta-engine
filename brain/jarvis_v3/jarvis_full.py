@@ -149,6 +149,67 @@ def _resolve_onchain_payload(
         return None
 
 
+def _sentiment_signal_from_sage(sage_report: object) -> dict[str, Any]:
+    default = {
+        "status": "unknown",
+        "score": 0.0,
+        "lead_asset": "",
+        "selected_assets": [],
+        "modulation": "none",
+        "multiplier": 1.0,
+    }
+    if sage_report is None or not hasattr(sage_report, "per_school"):
+        return default
+    verdict = getattr(sage_report, "per_school", {}).get("sentiment_pressure")
+    if verdict is None:
+        return default
+
+    signals = verdict.signals if isinstance(getattr(verdict, "signals", None), dict) else {}
+    status = str(signals.get("status") or "unknown").strip().lower()
+    score = _float_or_default(signals.get("score"), 0.0)
+    selected_assets = [
+        str(asset).strip()
+        for asset in (signals.get("selected_assets") if isinstance(signals.get("selected_assets"), list) else [])
+        if str(asset).strip()
+    ]
+    macro_only = len(selected_assets) == 1 and selected_assets[0].lower() == "macro"
+    lead_positive = str(signals.get("lead_positive_asset") or "").strip()
+    lead_negative = str(signals.get("lead_negative_asset") or "").strip()
+    lead_asset = lead_positive or lead_negative
+    multiplier = 1.0
+    modulation = "none"
+
+    if status == "mixed" and (getattr(verdict, "conviction", 0.0) >= 0.2 or abs(score) >= 0.05):
+        multiplier = 0.9
+        modulation = "mixed_caution"
+    elif status not in {"unknown", "neutral"} and getattr(verdict, "bias", None) is not None:
+        aligned = bool(getattr(verdict, "aligned_with_entry", False))
+        conviction = _float_or_default(getattr(verdict, "conviction", 0.0), 0.0)
+        if aligned:
+            if conviction >= 0.6 or abs(score) >= 0.2:
+                multiplier = 1.05 if macro_only else 1.1
+                modulation = "tailwind"
+            elif conviction >= 0.35 and abs(score) >= 0.1:
+                multiplier = 1.025 if macro_only else 1.05
+                modulation = "tailwind_light"
+        else:
+            if conviction >= 0.6 or abs(score) >= 0.2:
+                multiplier = 0.75 if macro_only else 0.65
+                modulation = "headwind_strong"
+            elif conviction >= 0.35 or abs(score) >= 0.1:
+                multiplier = 0.85 if macro_only else 0.8
+                modulation = "headwind"
+
+    return {
+        "status": status,
+        "score": round(score, 4),
+        "lead_asset": lead_asset,
+        "selected_assets": selected_assets,
+        "modulation": modulation,
+        "multiplier": round(multiplier, 4),
+    }
+
+
 @dataclass
 class FullJarvisVerdict:
     """The fully-augmented verdict the operator's bots consume."""
@@ -172,6 +233,10 @@ class FullJarvisVerdict:
     sage_schools_aligned: int = 0
     sage_schools_consulted: int = 0
     sage_modulation: str = ""
+    sentiment_pressure_status: str = ""
+    sentiment_pressure_score: float = 0.0
+    sentiment_pressure_lead_asset: str = ""
+    sentiment_modulation: str = "none"
     # Wave-17 quantum fields
     quantum_recommended_symbols: list[str] = field(default_factory=list)
     quantum_objective: float = 0.0
@@ -206,6 +271,10 @@ class FullJarvisVerdict:
             "sage_schools_aligned": self.sage_schools_aligned,
             "sage_schools_consulted": self.sage_schools_consulted,
             "sage_modulation": self.sage_modulation,
+            "sentiment_pressure_status": self.sentiment_pressure_status,
+            "sentiment_pressure_score": self.sentiment_pressure_score,
+            "sentiment_pressure_lead_asset": self.sentiment_pressure_lead_asset,
+            "sentiment_modulation": self.sentiment_modulation,
             "quantum_recommended_symbols": self.quantum_recommended_symbols,
             "quantum_objective": self.quantum_objective,
             "quantum_contribution": self.quantum_contribution,
@@ -305,6 +374,14 @@ class JarvisFull:
         sage_aligned = 0
         sage_consulted = 0
         sage_modulation = "none"
+        sentiment_signal = {
+            "status": "unknown",
+            "score": 0.0,
+            "lead_asset": "",
+            "selected_assets": [],
+            "modulation": "none",
+            "multiplier": 1.0,
+        }
         sage_report = None
         try:
             sage_report = self._consult_sage_for_request(req)
@@ -314,6 +391,7 @@ class JarvisFull:
                 sage_alignment = sage_report.alignment_score
                 sage_aligned = sage_report.schools_aligned_with_entry
                 sage_consulted = sage_report.schools_consulted
+                sentiment_signal = _sentiment_signal_from_sage(sage_report)
                 # Infer modulation from conviction + alignment
                 if sage_conviction >= 0.65 and sage_alignment >= 0.70:
                     sage_modulation = "loosened"
@@ -343,11 +421,21 @@ class JarvisFull:
 
         # 1. Core intelligence layer (enriched with sage score)
         payload = getattr(req, "payload", None) or {}
-        if isinstance(payload, dict) and "sage_score" not in payload and sage_conviction > 0:
+        if isinstance(payload, dict):
+            payload_updates: dict[str, Any] = {}
+            if "sage_score" not in payload and sage_conviction > 0:
+                payload_updates["sage_score"] = sage_conviction
+            if sentiment_signal["status"] not in {"", "unknown"}:
+                payload_updates.setdefault("sentiment_pressure_status", sentiment_signal["status"])
+                payload_updates.setdefault("sentiment_pressure_score", sentiment_signal["score"])
+                payload_updates.setdefault("sentiment_modulation", sentiment_signal["modulation"])
+                if sentiment_signal["lead_asset"]:
+                    payload_updates.setdefault("sentiment_pressure_lead_asset", sentiment_signal["lead_asset"])
             import contextlib as _cl
 
-            with _cl.suppress(Exception):  # frozen or immutable request
-                object.__setattr__(req, "payload", {**payload, "sage_score": sage_conviction})
+            if payload_updates:
+                with _cl.suppress(Exception):  # frozen or immutable request
+                    object.__setattr__(req, "payload", {**payload, **payload_updates})
         consolidated = self.intelligence.consult(
             req,
             ctx=ctx,
@@ -513,6 +601,9 @@ class JarvisFull:
         # multiplier.
         if sage_modulation == "tightened_by_dissent":
             final_size *= 0.5
+        sentiment_multiplier = _float_or_default(sentiment_signal.get("multiplier"), 1.0)
+        if sentiment_multiplier != 1.0:
+            final_size *= sentiment_multiplier
         # Curated school-disagreement patterns (Wave-5 #5). Catalog like
         # "dow_long + wyckoff_short = structural uptrend topping → defer"
         # was wired into v22_sage_confluence policy only — and that policy
@@ -662,6 +753,10 @@ class JarvisFull:
             sage_schools_aligned=sage_aligned,
             sage_schools_consulted=sage_consulted,
             sage_modulation=sage_modulation,
+            sentiment_pressure_status=str(sentiment_signal["status"]),
+            sentiment_pressure_score=round(_float_or_default(sentiment_signal["score"]), 4),
+            sentiment_pressure_lead_asset=str(sentiment_signal["lead_asset"]),
+            sentiment_modulation=str(sentiment_signal["modulation"]),
             quantum_recommended_symbols=quantum_rec_symbols,
             quantum_objective=round(quantum_obj, 4),
             quantum_contribution=quantum_contrib,

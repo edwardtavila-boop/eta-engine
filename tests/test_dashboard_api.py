@@ -358,6 +358,11 @@ class TestDashboardAPI:
         assert payload["order_action_allowed"] is False
         assert payload["broker"]["broker_mtd_pnl"] == 20521.0
         assert payload["broker"]["broker_today_realized_pnl"] == -123.45
+        assert payload["pnl_reconciliation"]["status"] == "different_scopes"
+        assert payload["pnl_reconciliation"]["broker_mtd_pnl"] == 20521.0
+        assert payload["pnl_reconciliation"]["close_history_mtd_realized_pnl"] == -100.0
+        assert payload["pnl_reconciliation"]["difference"] == 20621.0
+        assert payload["pnl_reconciliation"]["display_rule"].startswith("Broker MTD is account-level")
         assert payload["close_history"]["today"]["closed_outcome_count"] == 2
         assert payload["close_history"]["today"]["pnl_map"]["top_losers"][0]["bot_id"] == "mnq"
         assert "recent_outcomes" not in payload["close_history"]["today"]
