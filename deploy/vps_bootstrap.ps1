@@ -278,6 +278,7 @@ if (-not $SkipETATasks) {
     $vpsOpsHardeningTaskScript = "$EtaEngineDir\deploy\scripts\register_vps_ops_hardening_audit_task.ps1"
     $symbolIntelCollectorTaskScript = "$EtaEngineDir\deploy\scripts\register_symbol_intelligence_collector_task.ps1"
     $cryptoDashboardRefreshTaskScript = "$EtaEngineDir\deploy\scripts\register_crypto_dashboard_refresh_task.ps1"
+    $indexFuturesBarRefreshTaskScript = "$EtaEngineDir\deploy\scripts\register_index_futures_bar_refresh_task.ps1"
     $brokerStateRefreshTaskScript = "$EtaEngineDir\deploy\scripts\register_broker_state_refresh_task.ps1"
     $supervisorBrokerReconcileTaskScript = "$EtaEngineDir\deploy\scripts\register_supervisor_broker_reconcile_task.ps1"
     $operatorQueueHeartbeatTaskScript = "$EtaEngineDir\deploy\scripts\register_operator_queue_heartbeat_task.ps1"
@@ -363,6 +364,15 @@ if (-not $SkipETATasks) {
         }
     } else {
         Write-Host "  register_crypto_dashboard_refresh_task.ps1 not found at $cryptoDashboardRefreshTaskScript" -ForegroundColor Yellow
+    }
+
+    if (Test-Path $indexFuturesBarRefreshTaskScript) {
+        Write-Host "  Registering ETA-IndexFutures-Bar-Refresh task (every 10m, NQ/MNQ)..." -ForegroundColor Gray
+        if (-not $WhatIf) {
+            & $pwshPath -ExecutionPolicy Bypass -File $indexFuturesBarRefreshTaskScript -Start
+        }
+    } else {
+        Write-Host "  register_index_futures_bar_refresh_task.ps1 not found at $indexFuturesBarRefreshTaskScript" -ForegroundColor Yellow
     }
 
     if (Test-Path $brokerStateRefreshTaskScript) {
@@ -596,6 +606,7 @@ Write-Host "  ETA-Dashboard-Proxy-Watchdog     -- boot/logon 8421 self-heal" -Fo
 Write-Host "  ETA-PaperLiveTransitionCheck     -- boot/logon + every 5m" -ForegroundColor Gray
 Write-Host "  ETA-VpsOpsHardeningAudit         -- boot/logon + every 5m read-only audit" -ForegroundColor Gray
 Write-Host "  ETA-SymbolIntelCollector         -- boot/logon + every 5m data lake refresh" -ForegroundColor Gray
+Write-Host "  ETA-IndexFutures-Bar-Refresh     -- boot/logon + every 10m NQ/MNQ bar refresh" -ForegroundColor Gray
 Write-Host "  ETA-BrokerStateRefreshHeartbeat  -- boot/logon + every 5m read-only broker cache refresh" -ForegroundColor Gray
 Write-Host "  ETA-SupervisorBrokerReconcile    -- boot/logon + every 5m read-only broker/supervisor reconcile" -ForegroundColor Gray
 Write-Host "  ETA-OperatorQueueHeartbeat       -- boot/logon + every 5m read-only queue snapshot" -ForegroundColor Gray

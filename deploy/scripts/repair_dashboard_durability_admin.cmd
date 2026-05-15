@@ -11,6 +11,7 @@ set "REGISTER_PROXY=%SCRIPTS%\register_proxy8421_bridge_task.ps1"
 set "REGISTER_WATCHDOG=%SCRIPTS%\register_dashboard_proxy_watchdog_task.ps1"
 set "REGISTER_AUDIT=%SCRIPTS%\register_vps_ops_hardening_audit_task.ps1"
 set "REGISTER_CRYPTO_REFRESH=%SCRIPTS%\register_crypto_dashboard_refresh_task.ps1"
+set "REGISTER_INDEX_FUTURES_REFRESH=%SCRIPTS%\register_index_futures_bar_refresh_task.ps1"
 set "REGISTER_BROKER_STATE_REFRESH=%SCRIPTS%\register_broker_state_refresh_task.ps1"
 set "REGISTER_SUPERVISOR_BROKER_RECONCILE=%SCRIPTS%\register_supervisor_broker_reconcile_task.ps1"
 set "REGISTER_OPERATOR_QUEUE=%SCRIPTS%\register_operator_queue_heartbeat_task.ps1"
@@ -62,6 +63,11 @@ if not exist "%REGISTER_CRYPTO_REFRESH%" (
     echo   %REGISTER_CRYPTO_REFRESH%
     exit /b 3
 )
+if not exist "%REGISTER_INDEX_FUTURES_REFRESH%" (
+    echo Missing index futures bar refresh registrar:
+    echo   %REGISTER_INDEX_FUTURES_REFRESH%
+    exit /b 3
+)
 if not exist "%REGISTER_BROKER_STATE_REFRESH%" (
     echo Missing broker-state refresh registrar:
     echo   %REGISTER_BROKER_STATE_REFRESH%
@@ -106,6 +112,10 @@ if "%DRY_RUN%"=="1" (
     powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%REGISTER_CRYPTO_REFRESH%" -DryRun
     if errorlevel 1 goto fail
 
+    echo === DRY RUN: validate index futures bar refresh registrar ===
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%REGISTER_INDEX_FUTURES_REFRESH%" -DryRun
+    if errorlevel 1 goto fail
+
     echo === DRY RUN: validate read-only broker-state refresh registrar ===
     powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%REGISTER_BROKER_STATE_REFRESH%" -DryRun
     if errorlevel 1 goto fail
@@ -138,7 +148,7 @@ if errorlevel 1 (
         exit /b 5
     )
     echo Requesting Administrator approval to repair ETA dashboard durability.
-    echo This registers dashboard self-heal, crypto bar refresh, operator queue heartbeat, supervisor-broker reconcile, and paper-live cache tasks only; it never places, cancels, flattens, or promotes orders.
+    echo This registers dashboard self-heal, crypto/index-futures bar refresh, operator queue heartbeat, supervisor-broker reconcile, and paper-live cache tasks only; it never places, cancels, flattens, or promotes orders.
     powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath '%~f0' -WorkingDirectory '%ETA_ROOT%' -Verb RunAs -WindowStyle Normal"
     exit /b 0
 )
@@ -163,6 +173,10 @@ if errorlevel 1 goto fail
 
 echo === Register crypto dashboard bar refresh task ===
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%REGISTER_CRYPTO_REFRESH%" -Start
+if errorlevel 1 goto fail
+
+echo === Register index futures bar refresh task ===
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%REGISTER_INDEX_FUTURES_REFRESH%" -Start
 if errorlevel 1 goto fail
 
 echo === Register read-only broker-state refresh task ===

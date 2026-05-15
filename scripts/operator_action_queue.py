@@ -561,6 +561,9 @@ def _op15_crypto_seed() -> OpItem:
     )
     issues = result.get("issues") or []
     warnings = result.get("warnings") or []
+    audit_promotion_status = result.get("promotion_status")
+    registry_deactivated = bool(extras.get("deactivated"))
+    audit_deactivated = audit_promotion_status == "deactivated" or launch_role == "deactivated"
     if result.get("status") == "READY" and registry_non_edge and not issues and not warnings:
         item.verdict = VERDICT_DONE
         item.detail = (
@@ -573,9 +576,23 @@ def _op15_crypto_seed() -> OpItem:
             enriched_evidence["registry_promotion_status"] = registry_promotion_status
         if bool(extras.get("deactivated")):
             enriched_evidence["registry_deactivated"] = True
-        if result.get("promotion_status"):
-            enriched_evidence["audit_promotion_status"] = result.get("promotion_status")
+        if audit_promotion_status:
+            enriched_evidence["audit_promotion_status"] = audit_promotion_status
         item.evidence = {**result, "evidence": enriched_evidence}
+        return item
+    if audit_deactivated and not issues:
+        item.verdict = VERDICT_BLOCKED
+        item.detail = (
+            "crypto_seed is deactivated/excluded from launch; keep it visible for BTC exposure review, "
+            "but do not block paper_live launch for active paper-ready bots."
+        )
+        item.evidence = {
+            **result,
+            "launch_blocker": False,
+            "launch_role": "deactivated",
+            "registry_deactivated": registry_deactivated,
+            "audit_promotion_status": audit_promotion_status,
+        }
         return item
 
     item.verdict = VERDICT_BLOCKED

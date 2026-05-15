@@ -56,6 +56,7 @@ PAPER_LIVE_DURABLE_TASKS = (
 )
 DATA_PIPELINE_TASKS = (
     "ETA-SymbolIntelCollector",
+    "ETA-IndexFutures-Bar-Refresh",
 )
 IBGATEWAY_TASKS = (
     "ETA-IBGateway",
@@ -540,7 +541,13 @@ def _promotion_gate_action(gate: dict[str, Any]) -> str:
                         "shadow replay is positive but not broker proof"
                     )
                 if outcome_verdict in {"NO_COUNTERFACTUAL_EDGE", "WEAK_OR_NEGATIVE_COUNTERFACTUAL"}:
-                    return f"Retune runner-up {label}; shadow replay is weak and broker-backed closes are missing"
+                    retune_plan = _as_dict(runner.get("retune_plan"))
+                    retune_command = str(retune_plan.get("retune_command") or "").strip()
+                    command_hint = f"; next: {retune_command}" if retune_command else ""
+                    return (
+                        f"Retune runner-up {label}; shadow replay is weak and "
+                        f"broker-backed closes are missing{command_hint}"
+                    )
                 return f"Keep replaying runner-up {label} shadow outcomes until the sample is decisive"
             signal_evidence = _as_dict(runner.get("shadow_signal_evidence"))
             if int(signal_evidence.get("signal_count") or 0) > 0:

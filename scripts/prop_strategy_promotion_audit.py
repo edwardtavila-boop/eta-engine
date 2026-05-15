@@ -356,6 +356,78 @@ def _shadow_outcome_evidence(shadow_outcome_report: dict[str, Any], bot_id: str)
     }
 
 
+def _registry_research_command(bot_id: str) -> str:
+    return (
+        "python -m eta_engine.scripts.run_research_grid "
+        f"--source registry --bots {bot_id} --report-policy runtime"
+    )
+
+
+def _index_futures_refresh_command(symbol: str) -> str:
+    root = "".join(ch for ch in symbol.upper() if ch.isalpha())
+    if root in {"NQ", "MNQ"}:
+        return (
+            "python eta_engine\\scripts\\refresh_index_futures_bars.py "
+            "--symbols NQ MNQ --json --write-default-status"
+        )
+    return ""
+
+
+def _runner_retune_plan(
+    candidate: dict[str, Any],
+    broker_evidence: dict[str, Any],
+    outcome_evidence: dict[str, Any],
+) -> dict[str, Any]:
+    bot_id = str(candidate.get("bot_id") or "").strip()
+    if not bot_id or _is_deactivated(candidate):
+        return {}
+
+    close_count = int(broker_evidence.get("closed_trade_count") or 0)
+    outcome_count = int(outcome_evidence.get("evaluated_count") or 0)
+    outcome_verdict = str(outcome_evidence.get("verdict") or "")
+    broker_verdict = str(broker_evidence.get("verdict") or "")
+    reason = ""
+    trigger = ""
+    if close_count <= 0 and outcome_count > 0 and outcome_verdict in {
+        "NO_COUNTERFACTUAL_EDGE",
+        "WEAK_OR_NEGATIVE_COUNTERFACTUAL",
+    }:
+        reason = "shadow replay is weak or negative while broker-backed closes are missing"
+        trigger = "weak_shadow_replay"
+    elif close_count >= 30 and broker_verdict == "NEGATIVE_OR_WEAK_BROKER_EDGE":
+        reason = "broker-backed closes do not show a positive edge"
+        trigger = "weak_broker_closes"
+    if not reason:
+        return {}
+
+    symbol = str(candidate.get("symbol") or "").strip()
+    bar_refresh_command = _index_futures_refresh_command(symbol)
+    plan = {
+        "status": "PAPER_ONLY_RETUNE_REQUIRED",
+        "trigger": trigger,
+        "reason": reason,
+        "bot_id": bot_id,
+        "symbol": symbol,
+        "retune_command": _registry_research_command(bot_id),
+        "promotion_block": "broker_proof_required",
+        "live_mutation_policy": "paper_only_advisory",
+        "safe_to_mutate_live": False,
+        "broker_backed": False,
+        "promotion_proof": False,
+    }
+    if bar_refresh_command:
+        plan.update(
+            {
+                "bar_refresh_task": "ETA-IndexFutures-Bar-Refresh",
+                "bar_refresh_command": bar_refresh_command,
+                "data_dependency": (
+                    "fresh NQ/MNQ 5-minute replay bars before judging the next shadow outcome sample"
+                ),
+            },
+        )
+    return plan
+
+
 def _runner_next_action(
     candidate: dict[str, Any],
     broker_evidence: dict[str, Any],
@@ -487,6 +559,7 @@ def _runner_summary(
     watch_evidence = _supervisor_watch_evidence(supervisor_heartbeat, bot_id)
     signal_evidence = _shadow_signal_evidence(shadow_signals, bot_id)
     outcome_evidence = _shadow_outcome_evidence(shadow_outcome_report, bot_id)
+    retune_plan = _runner_retune_plan(candidate, broker_evidence, outcome_evidence)
     return {
         "bot_id": candidate.get("bot_id") or "",
         "role": candidate.get("role") or "runner",
@@ -505,6 +578,7 @@ def _runner_summary(
         "supervisor_watch_evidence": watch_evidence,
         "shadow_signal_evidence": signal_evidence,
         "shadow_outcome_evidence": outcome_evidence,
+        "retune_plan": retune_plan,
         "ladder_blockers": [str(item) for item in _as_list(candidate.get("blockers"))],
         "next_action": _runner_next_action(
             candidate,

@@ -171,6 +171,51 @@ def test_promotion_blocker_points_to_broker_paper_capture_after_positive_shadow_
     assert not any("shadow signals into paper-close outcomes" in action for action in report["next_actions"])
 
 
+def test_promotion_blocker_includes_retune_command_after_weak_shadow_outcomes() -> None:
+    report = audit.build_report(
+        services=_running_services(),
+        ports=_listening_ports(),
+        endpoints=_healthy_endpoints(),
+        broker_bracket_audit=_ready_bracket_gate(),
+        promotion_audit={
+            "summary": "BLOCKED_KAIZEN_RETIRED",
+            "ready_for_prop_dry_run_review": False,
+            "next_runner_candidate": {
+                "bot_id": "volume_profile_nq",
+                "symbol": "NQ1",
+                "broker_close_evidence": {"closed_trade_count": 0},
+                "supervisor_watch_evidence": {"verdict": "WATCHING_NO_SIGNAL_YET"},
+                "shadow_signal_evidence": {"signal_count": 88},
+                "shadow_outcome_evidence": {
+                    "shadow_signal_count": 88,
+                    "evaluated_count": 88,
+                    "verdict": "WEAK_OR_NEGATIVE_COUNTERFACTUAL",
+                    "broker_backed": False,
+                    "promotion_proof": False,
+                },
+                "retune_plan": {
+                    "status": "PAPER_ONLY_RETUNE_REQUIRED",
+                    "retune_command": (
+                        "python -m eta_engine.scripts.run_research_grid "
+                        "--source registry --bots volume_profile_nq --report-policy runtime"
+                    ),
+                    "safe_to_mutate_live": False,
+                },
+            },
+        },
+        service_config={"fm_status_server": {"matches_expected": True}},
+        tasks=_healthy_tasks(),
+        ibgateway_reauth={"status": "healthy"},
+    )
+
+    assert any("Retune runner-up volume_profile_nq" in action for action in report["next_actions"])
+    assert any(
+        "run_research_grid --source registry --bots volume_profile_nq" in action
+        for action in report["next_actions"]
+    )
+    assert not any("broker-paper close capture" in action for action in report["next_actions"])
+
+
 def test_promotion_blocker_points_to_fresh_shadow_context_when_replay_lacks_context() -> None:
     report = audit.build_report(
         services=_running_services(),
@@ -800,9 +845,16 @@ def test_missing_symbol_intelligence_collector_degrades_runtime() -> None:
 
     assert report["summary"]["status"] == "RED_RUNTIME_DEGRADED"
     assert report["summary"]["runtime_ready"] is False
-    assert report["runtime"]["tasks"]["data_pipeline"] == ["ETA-SymbolIntelCollector"]
+    assert report["runtime"]["tasks"]["data_pipeline"] == [
+        "ETA-SymbolIntelCollector",
+        "ETA-IndexFutures-Bar-Refresh",
+    ]
     assert report["runtime"]["tasks"]["missing_data_pipeline"] == ["ETA-SymbolIntelCollector"]
     assert any("data-pipeline" in action for action in report["next_actions"])
+
+
+def test_index_futures_bar_refresh_is_data_pipeline_task() -> None:
+    assert "ETA-IndexFutures-Bar-Refresh" in audit.DATA_PIPELINE_TASKS
 
 
 def test_missing_ibc_credentials_blocks_trading_gate_without_red_runtime() -> None:

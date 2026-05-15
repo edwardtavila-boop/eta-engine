@@ -30,6 +30,7 @@ Register the every-5-minute VPS audit task:
 ```powershell
 powershell -ExecutionPolicy Bypass -File eta_engine\deploy\scripts\register_vps_ops_hardening_audit_task.ps1 -Start
 powershell -ExecutionPolicy Bypass -File eta_engine\deploy\scripts\register_crypto_dashboard_refresh_task.ps1 -Start
+powershell -ExecutionPolicy Bypass -File eta_engine\deploy\scripts\register_index_futures_bar_refresh_task.ps1 -Start
 powershell -ExecutionPolicy Bypass -File eta_engine\deploy\scripts\register_broker_state_refresh_task.ps1 -Start
 powershell -ExecutionPolicy Bypass -File eta_engine\deploy\scripts\register_supervisor_broker_reconcile_task.ps1 -Start
 powershell -ExecutionPolicy Bypass -File eta_engine\deploy\scripts\register_operator_queue_heartbeat_task.ps1 -Start
@@ -40,6 +41,11 @@ powershell -ExecutionPolicy Bypass -File eta_engine\deploy\scripts\register_oper
 `data\BTC_5m.csv`, `data\ETH_5m.csv`, and `data\SOL_5m.csv` files fresh every
 5 minutes via public Coinbase candles and writes
 `crypto_dashboard_refresh_latest.json`.
+`ETA-IndexFutures-Bar-Refresh` keeps the shadow-replay canonical
+`mnq_data\history\NQ1_5m.csv` and `mnq_data\history\MNQ1_5m.csv` files fresh
+every 10 minutes via the public yfinance fallback and writes
+`index_futures_bar_refresh_latest.json`. This is market-data plumbing only; it
+does not prove broker PnL or strategy edge.
 `ETA-BrokerStateRefreshHeartbeat` warms the read-only IBKR broker-state cache
 used for current PnL, MTD, fills, open positions, and EST reporting. It writes
 `broker_state_refresh_heartbeat.json`. `ETA-SupervisorBrokerReconcile` refreshes
@@ -97,3 +103,10 @@ IBKR/PAXOS accumulator is otherwise healthy, start
 `python scripts/refresh_crypto_dashboard_bars.py --json`. That path only refreshes
 the dashboard-facing 5-minute CSVs under `C:\EvolutionaryTradingAlgo\data`; it is
 not an execution or routing path.
+
+If shadow replay or the dashboard reports stale `NQ1_5m.csv` or `MNQ1_5m.csv`,
+start `ETA-IndexFutures-Bar-Refresh` or run
+`python eta_engine\scripts\refresh_index_futures_bars.py --json`. This refreshes
+only canonical replay bars under `C:\EvolutionaryTradingAlgo\mnq_data\history`
+and writes `index_futures_bar_refresh_latest.json`; it is not broker-backed PnL
+proof and must not be used to clear promotion/order-entry gates by itself.

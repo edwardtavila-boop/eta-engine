@@ -548,6 +548,45 @@ class TestCryptoSeedProbeUnderSyntheticState:
         assert item.verdict == VERDICT_BLOCKED
         assert item.evidence["missing_assignment"] is True
 
+    def test_deactivated_crypto_seed_does_not_block_paper_live_launch(self, monkeypatch) -> None:
+        from types import SimpleNamespace
+
+        from eta_engine.scripts import operator_action_queue
+
+        assignment = SimpleNamespace(
+            bot_id="crypto_seed",
+            extras={
+                "promotion_status": "deactivated",
+                "deactivated": True,
+            },
+        )
+        monkeypatch.setattr(
+            "eta_engine.strategies.per_bot_registry.get_for_bot",
+            lambda bot_id: assignment if bot_id == "crypto_seed" else None,
+        )
+        monkeypatch.setattr(
+            "eta_engine.scripts.paper_live_launch_check._audit_bot",
+            lambda _assignment: {
+                "bot_id": "crypto_seed",
+                "status": "WARN",
+                "promotion_status": "deactivated",
+                "warnings": ["deactivated; excluded from launch"],
+                "issues": [],
+                "evidence": {
+                    "launch_role": "deactivated",
+                    "registry_deactivated": True,
+                    "deactivation_source": "registry",
+                },
+            },
+        )
+
+        item = operator_action_queue._op15_crypto_seed()
+
+        assert item.verdict == VERDICT_BLOCKED
+        assert item.evidence["launch_blocker"] is False
+        assert item.evidence["launch_role"] == "deactivated"
+        assert "do not block paper_live launch" in item.detail
+
 
 class TestTradovateDormancyPolicy:
     def test_tradovate_dormant_is_policy_done(self, monkeypatch) -> None:

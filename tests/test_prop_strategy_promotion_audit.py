@@ -521,6 +521,58 @@ def test_runner_up_candidate_surfaces_shadow_outcomes_without_promoting() -> Non
     assert "not broker proof" in report["next_runner_candidate"]["operator_note"]
 
 
+def test_runner_up_candidate_emits_safe_retune_plan_when_shadow_replay_is_weak() -> None:
+    candidate = {
+        **_candidate(launch_lane="deactivated", blockers=["bot row is deactivated via kaizen_sidecar"]),
+        "active": False,
+        "data_status": "deactivated",
+        "promotion_status": "deactivated",
+        "deactivation_source": "kaizen_sidecar",
+    }
+
+    report = audit.build_promotion_audit_report(
+        gate_report={
+            "summary": "BLOCKED",
+            "primary_bot": "volume_profile_mnq",
+            "checks": [
+                _check("primary_ladder", "BLOCKED", primary_candidate=candidate),
+                _check("prop_readiness", "PASS"),
+                _check("broker_native_brackets", "PASS"),
+                _check("closed_trade_ledger", "PASS", closed_trade_count=43000),
+                _check("live_bot_gate", "BLOCKED", "volume_profile_mnq is deactivated"),
+            ],
+        },
+        ladder_report={
+            "summary": {"automation_mode": "FULLY_AUTOMATED_PAPER_PROP_HELD"},
+            "candidates": [candidate, _runner_candidate()],
+        },
+        closed_trade_ledger=_closed_trade_ledger(),
+        supervisor_heartbeat=_supervisor_heartbeat(last_signal_at=""),
+        shadow_signals=_shadow_signals(count=88),
+        shadow_outcome_report=_shadow_outcome_report(
+            evaluated_count=88,
+            shadow_signal_count=88,
+            verdict="WEAK_OR_NEGATIVE_COUNTERFACTUAL",
+        ),
+    )
+
+    runner = report["next_runner_candidate"]
+    plan = runner["retune_plan"]
+
+    assert runner["next_action"].startswith("Retune volume_profile_nq")
+    assert plan["status"] == "PAPER_ONLY_RETUNE_REQUIRED"
+    assert plan["trigger"] == "weak_shadow_replay"
+    assert plan["retune_command"] == (
+        "python -m eta_engine.scripts.run_research_grid "
+        "--source registry --bots volume_profile_nq --report-policy runtime"
+    )
+    assert plan["bar_refresh_task"] == "ETA-IndexFutures-Bar-Refresh"
+    assert "refresh_index_futures_bars.py" in plan["bar_refresh_command"]
+    assert plan["safe_to_mutate_live"] is False
+    assert plan["broker_backed"] is False
+    assert plan["promotion_proof"] is False
+
+
 def test_runner_up_candidate_names_bar_freshness_when_shadow_outcome_replay_cannot_evaluate() -> None:
     candidate = {
         **_candidate(launch_lane="deactivated", blockers=["bot row is deactivated via kaizen_sidecar"]),
