@@ -59,6 +59,12 @@ IBGATEWAY_TASKS = (
     "ETA-IBGateway-DailyRestart",
     "ETA-IBGateway-RunNow",
 )
+WATCHDOG_OBSERVED_TASKS = (
+    "ETA-Watchdog",
+    "ETA-Watchdog-Restart",
+)
+CANONICAL_SUPERVISOR_TASK = "ETA-Jarvis-Strategy-Supervisor"
+LEGACY_PAPERLIVE_SUPERVISOR_TASK = "ETA-PaperLive-Supervisor"
 ENDPOINTS = (
     {
         "name": "local_dashboard_api_diagnostics",
@@ -136,7 +142,7 @@ $results = foreach ($name in $names) {{
 }}
 $results | ConvertTo-Json -Depth 4
 """
-    payload = _run_powershell_json(command)
+    payload = _run_powershell_json(command, timeout_s=30)
     if isinstance(payload, dict) and "error" in payload:
         return {name: {"name": name, "status": "Unknown", "error": payload["error"]} for name in names}
     rows = payload if isinstance(payload, list) else [payload]
@@ -165,7 +171,7 @@ $results = foreach ($port in $ports) {{
 }}
 $results | ConvertTo-Json -Depth 4
 """
-    payload = _run_powershell_json(command)
+    payload = _run_powershell_json(command, timeout_s=30)
     if isinstance(payload, dict) and "error" in payload:
         return {
             port: {"port": port, "listening": False, "error": payload["error"], "owners": []} for port in REQUIRED_PORTS
@@ -193,6 +199,7 @@ def collect_task_status() -> dict[str, dict[str, Any]]:
         + PAPER_LIVE_DURABLE_TASKS
         + DATA_PIPELINE_TASKS
         + IBGATEWAY_TASKS
+        + WATCHDOG_OBSERVED_TASKS
         + ("ETA-Autopilot",)
     )
     quoted = ", ".join(f"'{name}'" for name in names)
@@ -204,18 +211,20 @@ $results = foreach ($name in $names) {{
     [pscustomobject]@{{TaskName=$name;State='Missing';LastTaskResult=$null;LastRunTime=$null;NextRunTime=$null}}
   }} else {{
     $info = Get-ScheduledTaskInfo -TaskName $name -ErrorAction SilentlyContinue
+    $actions = (($task.Actions | ForEach-Object {{ "$($_.Execute) $($_.Arguments)" }}) -join " || ")
     [pscustomobject]@{{
       TaskName=$task.TaskName
       State=[string]$task.State
       LastTaskResult=$info.LastTaskResult
       LastRunTime=$info.LastRunTime
       NextRunTime=$info.NextRunTime
+      Actions=$actions
     }}
   }}
 }}
 $results | ConvertTo-Json -Depth 4
 """
-    payload = _run_powershell_json(command)
+    payload = _run_powershell_json(command, timeout_s=30)
     if isinstance(payload, dict) and "error" in payload:
         return {name: {"task_name": name, "state": "Unknown", "error": payload["error"]} for name in names}
     rows = payload if isinstance(payload, list) else [payload]
@@ -230,6 +239,7 @@ $results | ConvertTo-Json -Depth 4
                 "last_task_result": item.get("LastTaskResult"),
                 "last_run_time": item.get("LastRunTime"),
                 "next_run_time": item.get("NextRunTime"),
+                "actions": str(item.get("Actions") or ""),
             }
     return tasks
 
@@ -338,6 +348,20 @@ def _missing_data_pipeline_tasks(tasks: dict[str, dict[str, Any]]) -> list[str]:
         for name in DATA_PIPELINE_TASKS
         if str(_as_dict(tasks.get(name)).get("state") or "").lower() == "missing"
     ]
+
+
+def _stale_supervisor_restart_hooks(tasks: dict[str, dict[str, Any]]) -> list[str]:
+    stale: list[str] = []
+    task = _as_dict(tasks.get("ETA-Watchdog-Restart"))
+    state = str(task.get("state") or "").lower()
+    if state in {"", "missing", "disabled"}:
+        return stale
+    actions = str(task.get("actions") or "")
+    if not actions:
+        return stale
+    if LEGACY_PAPERLIVE_SUPERVISOR_TASK in actions or CANONICAL_SUPERVISOR_TASK not in actions:
+        stale.append("ETA-Watchdog-Restart")
+    return stale
 
 
 def _critical_endpoint_failures(endpoints: dict[str, dict[str, Any]]) -> list[str]:
@@ -501,6 +525,7 @@ def build_report(
     missing_dashboard_tasks = _missing_dashboard_tasks(tasks)
     missing_paper_live_tasks = _missing_paper_live_tasks(tasks)
     missing_data_pipeline_tasks = _missing_data_pipeline_tasks(tasks)
+    stale_restart_hooks = _stale_supervisor_restart_hooks(tasks)
     endpoint_failures = _critical_endpoint_failures(endpoints)
     dashboard_schema_drift = _dashboard_schema_drift(endpoints)
     drifted_configs = _config_drift(service_config)
@@ -514,6 +539,7 @@ def build_report(
         and not endpoint_failures
         and not missing_paper_live_tasks
         and not missing_data_pipeline_tasks
+        and not stale_restart_hooks
     )
     dashboard_durable = not missing_dashboard_tasks
     trading_gate_ready = bool(broker_gate["ready"] and promotion_gate["ready"] and ibgateway_gate["ready"])
@@ -538,6 +564,12 @@ def build_report(
     if missing_data_pipeline_tasks:
         next_actions.append(
             "Repair data-pipeline scheduled task lane: " + ", ".join(missing_data_pipeline_tasks)
+        )
+    if stale_restart_hooks:
+        next_actions.append(
+            "Disable or repair stale supervisor restart hook(s): "
+            + ", ".join(stale_restart_hooks)
+            + f"; target {CANONICAL_SUPERVISOR_TASK} only"
         )
     if dashboard_schema_drift:
         next_actions.append(
@@ -634,9 +666,11 @@ def build_report(
                 "paper_live_durable": list(PAPER_LIVE_DURABLE_TASKS),
                 "data_pipeline": list(DATA_PIPELINE_TASKS),
                 "ibgateway": list(IBGATEWAY_TASKS),
+                "watchdog_observed": list(WATCHDOG_OBSERVED_TASKS),
                 "missing_dashboard_durable": missing_dashboard_tasks,
                 "missing_paper_live_durable": missing_paper_live_tasks,
                 "missing_data_pipeline": missing_data_pipeline_tasks,
+                "stale_supervisor_restart_hooks": stale_restart_hooks,
                 "observed": tasks,
             },
         },

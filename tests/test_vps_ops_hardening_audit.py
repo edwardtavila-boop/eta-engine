@@ -171,6 +171,71 @@ def test_missing_paper_live_durable_task_is_red_runtime_degraded() -> None:
     assert any("paper-live scheduled task lane" in action for action in report["next_actions"])
 
 
+def test_stale_watchdog_restart_hook_to_disabled_paperlive_is_runtime_risk() -> None:
+    tasks = _healthy_tasks()
+    tasks["ETA-Watchdog-Restart"] = {
+        "task_name": "ETA-Watchdog-Restart",
+        "state": "Ready",
+        "last_task_result": 1,
+        "actions": "cmd.exe /c schtasks /run /tn ETA-PaperLive-Supervisor",
+    }
+
+    report = audit.build_report(
+        services=_running_services(),
+        ports=_listening_ports(),
+        endpoints=_healthy_endpoints(),
+        broker_bracket_audit=_blocked_bracket_gate(),
+        promotion_audit=_blocked_promotion_gate(),
+        service_config={"fm_status_server": {"matches_expected": True}},
+        tasks=tasks,
+        ibgateway_reauth={"status": "healthy"},
+    )
+
+    assert report["summary"]["status"] == "RED_RUNTIME_DEGRADED"
+    assert report["summary"]["runtime_ready"] is False
+    assert report["runtime"]["tasks"]["stale_supervisor_restart_hooks"] == ["ETA-Watchdog-Restart"]
+    assert any("ETA-Jarvis-Strategy-Supervisor" in action for action in report["next_actions"])
+
+
+def test_unknown_watchdog_restart_hook_without_actions_is_not_called_stale() -> None:
+    tasks = _healthy_tasks()
+    tasks["ETA-Watchdog-Restart"] = {
+        "task_name": "ETA-Watchdog-Restart",
+        "state": "Unknown",
+        "error": "scheduler probe timeout",
+    }
+
+    report = audit.build_report(
+        services=_running_services(),
+        ports=_listening_ports(),
+        endpoints=_healthy_endpoints(),
+        broker_bracket_audit=_blocked_bracket_gate(),
+        promotion_audit=_blocked_promotion_gate(),
+        service_config={"fm_status_server": {"matches_expected": True}},
+        tasks=tasks,
+        ibgateway_reauth={"status": "healthy"},
+    )
+
+    assert report["summary"]["status"] == "YELLOW_SAFETY_BLOCKED"
+    assert report["summary"]["runtime_ready"] is True
+    assert report["runtime"]["tasks"]["stale_supervisor_restart_hooks"] == []
+
+
+def test_collect_task_status_allows_scheduler_probe_warmup(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_run_powershell_json(command: str, *, timeout_s: int = 10) -> list[dict[str, object]]:
+        captured["command"] = command
+        captured["timeout_s"] = timeout_s
+        return []
+
+    monkeypatch.setattr(audit, "_run_powershell_json", fake_run_powershell_json)
+
+    audit.collect_task_status()
+
+    assert captured["timeout_s"] >= 30
+
+
 def test_legacy_8420_listener_is_not_required_for_runtime_ready() -> None:
     ports = _listening_ports()
     ports[8420] = {"port": 8420, "listening": False, "owners": []}

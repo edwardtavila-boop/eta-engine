@@ -52,6 +52,25 @@ if (-not (Test-Path $WorkspaceRoot)) {
     throw "Workspace root not found at $WorkspaceRoot"
 }
 
+# Kill stale/manual capture workers so the fresh task registration does not
+# inherit duplicate IBKR sessions or burn the 3-book depth budget.
+$staleCaptureWorkers = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
+    $_.Name -match '^python(\.exe)?$' -and
+    $_.CommandLine -and
+    (
+        $_.CommandLine -match 'eta_engine\.scripts\.capture_tick_stream' -or
+        $_.CommandLine -match 'eta_engine\.scripts\.capture_depth_snapshots'
+    )
+}
+foreach ($worker in $staleCaptureWorkers) {
+    try {
+        Write-Host "  stopping stale worker PID $($worker.ProcessId): $($worker.CommandLine)"
+        Stop-Process -Id $worker.ProcessId -Force -ErrorAction Stop
+    } catch {
+        Write-Host "  WARN could not stop stale worker PID $($worker.ProcessId): $($_.Exception.Message)"
+    }
+}
+
 # Common task settings: long-running, restart on failure, no time limit
 $settings = New-ScheduledTaskSettingsSet `
     -RestartCount 5 -RestartInterval (New-TimeSpan -Minutes 2) `
@@ -70,6 +89,15 @@ foreach ($name in @("ETA-CaptureTicks", "ETA-CaptureDepth")) {
     }
     $symbols = if ($name -eq "ETA-CaptureTicks") { $TickSymbols } else { $DepthSymbols }
     $symbolArgs = ($symbols | ForEach-Object { $_.Trim() } | Where-Object { $_ }) -join " "
+    $extraArgs = if ($name -eq "ETA-CaptureDepth") {
+        "--max-active-depth-requests 3 --rotation-seconds 20"
+    } else {
+        ""
+    }
+    $taskArgs = "-m $script --port 4002 --symbols $symbolArgs"
+    if ($extraArgs) {
+        $taskArgs = "$taskArgs $extraArgs"
+    }
 
     Write-Host "TASK: $name"
 
@@ -82,7 +110,7 @@ foreach ($name in @("ETA-CaptureTicks", "ETA-CaptureDepth")) {
 
     $action = New-ScheduledTaskAction `
         -Execute $PythonPath `
-        -Argument "-m $script --port 4002 --symbols $symbolArgs" `
+        -Argument $taskArgs `
         -WorkingDirectory $WorkspaceRoot
 
     Register-ScheduledTask -TaskName $name `

@@ -29,6 +29,8 @@ def test_depth_capture_returns_0_on_connection_refused(monkeypatch) -> None:
         client_id=99,
         depth_rows=5,
         snapshot_interval_ms=1000,
+        max_active_depth_requests=3,
+        rotation_seconds=20.0,
         log_level="WARNING",
     )
     rc = mod._run_capture(args)
@@ -52,6 +54,8 @@ def test_depth_capture_returns_0_on_missing_subscription(monkeypatch) -> None:
         client_id=99,
         depth_rows=5,
         snapshot_interval_ms=1000,
+        max_active_depth_requests=3,
+        rotation_seconds=20.0,
         log_level="WARNING",
     )
     rc = mod._run_capture(args)
@@ -75,6 +79,8 @@ def test_depth_capture_returns_1_on_unexpected_error(monkeypatch) -> None:
         client_id=99,
         depth_rows=5,
         snapshot_interval_ms=1000,
+        max_active_depth_requests=3,
+        rotation_seconds=20.0,
         log_level="WARNING",
     )
     rc = mod._run_capture(args)

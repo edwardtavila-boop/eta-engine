@@ -96,11 +96,14 @@ _DEFAULT_PORT: int = 4002
 # in 200-300 if the chosen one is somehow still in use.
 _DEFAULT_CLIENT_ID: int = 132
 _CONNECT_TIMEOUT_S: float = 20.0
+_DEFAULT_MAX_ACTIVE_DEPTH_REQUESTS: int = 3
+_DEFAULT_ROTATION_SECONDS: float = 20.0
 
-# Core always-on depth set for the current index-futures lane. The May 14, 2026
-# IBKR entitlement refresh added CME/CBOT depth coverage, so the default book
-# capture now matches the symbol-intelligence audit surface instead of only the
-# original MNQ/NQ pilot roots. M2K stays included for Russell context.
+# Core always-on depth set for the current index-futures lane. On 2026-05-14 the
+# operator enabled the bundled US futures depth entitlements, but live probing
+# on the VPS showed IBKR still caps this session at 3 concurrent reqMktDepth
+# streams (Error 309). The collector therefore rotates these symbols in 3-book
+# batches instead of pretending all books can stay live simultaneously.
 _DEFAULT_SYMBOLS: tuple[str, ...] = (
     "MNQ",
     "NQ",
@@ -194,6 +197,8 @@ class DepthSnapshotCapture:
         client_id: int,
         depth_rows: int,
         snapshot_interval_ms: int,
+        max_active_depth_requests: int,
+        rotation_seconds: float,
     ) -> None:
         self.symbols = symbols
         self.host = host
@@ -201,13 +206,29 @@ class DepthSnapshotCapture:
         self.client_id = client_id
         self.depth_rows = depth_rows
         self.snapshot_interval_s = snapshot_interval_ms / 1000.0
+        self.max_active_depth_requests = max(1, max_active_depth_requests)
+        self.rotation_seconds = max(1.0, rotation_seconds)
         self.writers: dict[str, DepthWriter] = {s: DepthWriter(s, DEPTH_ROOT) for s in symbols}
+        self._contracts: dict[str, Any] = {}
         self._tickers: dict[str, Any] = {}
         self._last_update_ts: dict[str, float] = {}
         self._snapshot_count: dict[str, int] = {}
         self._stuck_flagged: set[str] = set()
+        self._batches = self._subscription_batches()
+        self._active_symbols: list[str] = []
+        self._active_batch_index = 0
+        self._active_batch_started = 0.0
         self._ib: Any = None
         self._stop = threading.Event()
+
+    def _subscription_batches(self) -> list[list[str]]:
+        if not self.symbols:
+            return []
+        batch_size = max(1, min(self.max_active_depth_requests, len(self.symbols)))
+        return [
+            self.symbols[idx: idx + batch_size]
+            for idx in range(0, len(self.symbols), batch_size)
+        ]
 
     def connect(self) -> None:
         """Connect to IBKR gateway with clientId-collision retry.
@@ -294,25 +315,77 @@ class DepthSnapshotCapture:
             raise RuntimeError(f"{sym}: no non-expired contracts found")
         return candidates[0]
 
+    def _subscribe_symbol(self, sym: str) -> bool:
+        try:
+            contract = self._resolve(sym)
+        except Exception:
+            log.exception("resolve failed for %s; skipping", sym)
+            return False
+        try:
+            ticker = self._ib.reqMktDepth(
+                contract,
+                numRows=self.depth_rows,
+                isSmartDepth=False,
+            )
+        except Exception:
+            log.exception("reqMktDepth failed for %s; skipping", sym)
+            return False
+        self._contracts[sym] = contract
+        self._tickers[sym] = ticker
+        ticker.updateEvent += lambda t, s=sym: self._on_book_update(s, t)
+        log.info(
+            "subscribed %s -> %s.%s (depth=%d)",
+            sym,
+            contract.exchange,
+            contract.localSymbol,
+            self.depth_rows,
+        )
+        return True
+
+    def _unsubscribe_symbol(self, sym: str) -> None:
+        contract = self._contracts.pop(sym, None)
+        self._tickers.pop(sym, None)
+        self._last_update_ts.pop(sym, None)
+        if contract is None or self._ib is None or not self._ib.isConnected():
+            return
+        try:
+            self._ib.cancelMktDepth(contract, isSmartDepth=False)
+        except Exception:
+            log.debug("cancelMktDepth failed for %s", sym)
+
+    def _activate_batch(self, batch_index: int) -> None:
+        if not self._batches:
+            return
+        batch = self._batches[batch_index]
+        active: list[str] = []
+        for sym in batch:
+            if self._subscribe_symbol(sym):
+                active.append(sym)
+        self._active_batch_index = batch_index
+        self._active_symbols = active
+        self._active_batch_started = time.monotonic()
+        log.info(
+            "active depth batch %d/%d: %s",
+            batch_index + 1,
+            len(self._batches),
+            " ".join(batch),
+        )
+
+    def _rotate_if_due(self) -> None:
+        if len(self._batches) <= 1:
+            return
+        if (time.monotonic() - self._active_batch_started) < self.rotation_seconds:
+            return
+        prior_symbols = list(self._active_symbols)
+        for sym in prior_symbols:
+            self._unsubscribe_symbol(sym)
+        next_index = (self._active_batch_index + 1) % len(self._batches)
+        self._activate_batch(next_index)
+
     def subscribe(self) -> None:
-        for sym in self.symbols:
-            try:
-                contract = self._resolve(sym)
-            except Exception:
-                log.exception("resolve failed for %s; skipping", sym)
-                continue
-            try:
-                ticker = self._ib.reqMktDepth(
-                    contract,
-                    numRows=self.depth_rows,
-                    isSmartDepth=False,
-                )
-            except Exception:
-                log.exception("reqMktDepth failed for %s; skipping", sym)
-                continue
-            self._tickers[sym] = ticker
-            ticker.updateEvent += lambda t, s=sym: self._on_book_update(s, t)
-            log.info("subscribed %s -> %s.%s (depth=%d)", sym, contract.exchange, contract.localSymbol, self.depth_rows)
+        if not self._batches:
+            return
+        self._activate_batch(0)
 
     def _on_book_update(self, sym: str, _ticker: Any) -> None:
         self._last_update_ts[sym] = time.monotonic()
@@ -385,7 +458,8 @@ class DepthSnapshotCapture:
     def snapshot_loop(self) -> None:
         log.info("entering snapshot loop at %.2fs cadence", self.snapshot_interval_s)
         while not self._stop.is_set():
-            for sym in self.symbols:
+            active_symbols = self._active_symbols or self.symbols
+            for sym in active_symbols:
                 snap = self._snapshot(sym)
                 if snap is None:
                     continue
@@ -396,11 +470,14 @@ class DepthSnapshotCapture:
                 self._ib.sleep(self.snapshot_interval_s)
             else:
                 self._stop.wait(self.snapshot_interval_s)
+            self._rotate_if_due()
         log.info("snapshot loop exited; final counts: %s", self._snapshot_count)
 
     def stop(self) -> None:
         self._stop.set()
         if self._ib is not None and self._ib.isConnected():
+            for sym in list(self._contracts):
+                self._unsubscribe_symbol(sym)
             self._ib.disconnect()
 
     def close_writers(self) -> None:
@@ -424,6 +501,8 @@ def _run_capture(args: argparse.Namespace) -> int:
         client_id=args.client_id,
         depth_rows=args.depth_rows,
         snapshot_interval_ms=args.snapshot_interval_ms,
+        max_active_depth_requests=args.max_active_depth_requests,
+        rotation_seconds=args.rotation_seconds,
     )
 
     def _shutdown(_signum: int, _frame: Any) -> None:
@@ -488,6 +567,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--client-id", type=int, default=_DEFAULT_CLIENT_ID)
     parser.add_argument("--depth-rows", type=int, default=5, help="depth-of-book rows per side (default 5)")
     parser.add_argument("--snapshot-interval-ms", type=int, default=1000, help="ms between snapshots (default 1000)")
+    parser.add_argument(
+        "--max-active-depth-requests",
+        type=int,
+        default=_DEFAULT_MAX_ACTIVE_DEPTH_REQUESTS,
+        help="max simultaneous reqMktDepth subscriptions before rotating (default 3)",
+    )
+    parser.add_argument(
+        "--rotation-seconds",
+        type=float,
+        default=_DEFAULT_ROTATION_SECONDS,
+        help="seconds to hold one depth batch before rotating to the next (default 20)",
+    )
     parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
     args = parser.parse_args(argv)
     _setup_logging(args.log_level)
