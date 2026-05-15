@@ -543,7 +543,7 @@ def test_stale_critical_support_feed_warns_with_evidence(monkeypatch) -> None:
     assert result["evidence"]["critical_data_requirements"] == support_evidence
 
 
-def test_critical_requirement_helper_reports_missing_non_primary_feeds(tmp_path: Path) -> None:
+def test_critical_requirement_helper_reports_missing_non_primary_feeds(monkeypatch, tmp_path: Path) -> None:
     """When only the primary dataset is seeded, the helper must report
     every OTHER critical requirement as missing.
 
@@ -554,9 +554,10 @@ def test_critical_requirement_helper_reports_missing_non_primary_feeds(tmp_path:
     - Now ``mnq_anchor_sweep`` (2 critical reqs: MNQ1/5m + MNQ1/1h) —
       gate-cleared all 5 lights, promoted to paper_soak.  With MNQ1/5m
       as the primary launch dataset, the helper should report 1 missing
-      critical feed (MNQ1/1h).  ES1/5m correlation is critical=False
-      for this bot so it doesn't surface as an issue.
+    critical feed (MNQ1/1h).  ES1/5m correlation is critical=False
+    for this bot so it doesn't surface as an issue.
     """
+    monkeypatch.setattr("eta_engine.strategies.per_bot_registry.is_active", lambda _assignment: True)
     history = tmp_path / "history"
     history.mkdir()
     with (history / "MNQ1_5m.csv").open("w", encoding="utf-8", newline="") as fh:
@@ -578,7 +579,7 @@ def test_critical_requirement_helper_reports_missing_non_primary_feeds(tmp_path:
     ]
 
 
-def test_critical_requirement_evidence_includes_resolution_metadata(tmp_path: Path) -> None:
+def test_critical_requirement_evidence_includes_resolution_metadata(monkeypatch, tmp_path: Path) -> None:
     """Evidence entries for non-primary CRITICAL feeds must include
     resolution metadata so the operator can see exactly how the helper
     resolved each dataset.
@@ -591,6 +592,7 @@ def test_critical_requirement_evidence_includes_resolution_metadata(tmp_path: Pa
     library); if a future feed is promoted to critical AND uses
     synthetic resolution, add an assertion for it here.
     """
+    monkeypatch.setattr("eta_engine.strategies.per_bot_registry.is_active", lambda _assignment: True)
     history = tmp_path / "history"
     history.mkdir()
     # Seed every CRITICAL volume_profile_mnq feed: bars MNQ1 5m, 1h, D.
