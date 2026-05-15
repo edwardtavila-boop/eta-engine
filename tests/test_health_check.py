@@ -34,6 +34,7 @@ def _patch_baseline_components(monkeypatch) -> None:
     monkeypatch.setattr(health_check, "_check_kaizen_state", _healthy_component("kaizen_engine"))
     monkeypatch.setattr(health_check, "_check_quantum_freshness", _healthy_component("quantum_rebalance"))
     monkeypatch.setattr(health_check, "_check_hermes_connectivity", _healthy_component("hermes_bridge"))
+    monkeypatch.setattr(health_check, "_check_diamond_artifact_surface", _healthy_component("diamond_artifact_surface"))
     monkeypatch.setattr(health_check, "_check_repo_health", _healthy_component("repo_health"))
 
 
@@ -129,3 +130,59 @@ def test_remote_supervisor_truth_suppresses_local_heartbeat_action_item(monkeypa
     assert supervisor.healthy is True
     assert supervisor.status == "remote_supervisor_truth"
     assert report.action_items == []
+
+
+def test_diamond_artifact_surface_warning_stays_healthy_but_visible(monkeypatch) -> None:
+    monkeypatch.setattr(
+        health_check,
+        "build_diamond_artifact_surface_report",
+        lambda state_root: {
+            "healthy": True,
+            "status": "surface_warning",
+            "diagnosis": "canonical_ready_root_var_missing",
+            "warning_count": 2,
+            "critical_count": 0,
+            "action_items": ["Update local watch surfaces to read var/eta_engine/state first."],
+        },
+    )
+
+    component = health_check._check_diamond_artifact_surface()
+
+    assert component.name == "diamond_artifact_surface"
+    assert component.healthy is True
+    assert component.status == "warning"
+    assert component.score == 0.8
+    assert "canonical_ready_root_var_missing" in component.detail
+    assert "action: Update local watch surfaces to read var/eta_engine/state first." in component.detail
+
+
+def test_diamond_artifact_surface_critical_adds_action_item(monkeypatch) -> None:
+    monkeypatch.setattr(
+        health_check,
+        "build_diamond_artifact_surface_report",
+        lambda state_root: {
+            "healthy": False,
+            "status": "critical",
+            "diagnosis": "canonical_artifacts_unhealthy",
+            "warning_count": 1,
+            "critical_count": 4,
+            "action_items": ["Refresh or repair closed_trade_ledger_latest.json."],
+        },
+    )
+    monkeypatch.setattr(health_check, "_check_disk_space", _healthy_component("disk_space"))
+    monkeypatch.setattr(health_check, "_check_kaizen_state", _healthy_component("kaizen_engine"))
+    monkeypatch.setattr(health_check, "_check_quantum_freshness", _healthy_component("quantum_rebalance"))
+    monkeypatch.setattr(health_check, "_check_hermes_connectivity", _healthy_component("hermes_bridge"))
+    monkeypatch.setattr(health_check, "_check_supervisor_heartbeat", _healthy_component("supervisor_heartbeat"))
+    monkeypatch.setattr(health_check, "_check_repo_health", _healthy_component("repo_health"))
+
+    component = health_check._check_diamond_artifact_surface()
+    report = health_check.run_health_check(output_dir=None)
+
+    assert component.name == "diamond_artifact_surface"
+    assert component.healthy is False
+    assert component.status == "critical"
+    assert component.score == 0.2
+    assert report.overall_status == "warning"
+    assert report.exit_code == 1
+    assert any("diamond_artifact_surface" in item for item in report.action_items)

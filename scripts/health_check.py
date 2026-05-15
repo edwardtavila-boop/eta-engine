@@ -6,7 +6,8 @@ Checks:
   3. Quantum rebalance freshness.
   4. Hermes bridge queue health.
   5. Jarvis strategy supervisor heartbeat freshness.
-  6. Git repo drift.
+  6. Diamond artifact surface freshness.
+  7. Git repo drift.
 
 Run daily via: schtasks /Create /TN "ETA-VPS-HealthCheck" /TR ".../health_check.py" /SC DAILY /ST 08:00
 Or invoke directly from any automation: python eta_engine/scripts/health_check.py
@@ -28,6 +29,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT.parent) not in sys.path:
     sys.path.insert(0, str(ROOT.parent))
 
+from eta_engine.scripts.diamond_artifact_surface_check import build_diamond_artifact_surface_report  # noqa: E402
 from eta_engine.scripts.supervisor_heartbeat_check import build_supervisor_heartbeat_report  # noqa: E402
 from eta_engine.scripts.workspace_roots import (  # noqa: E402
     ETA_LEGACY_QUANTUM_CURRENT_ALLOCATION_PATH,
@@ -257,6 +259,30 @@ def _check_supervisor_heartbeat() -> HealthComponent:
     return HealthComponent("supervisor_heartbeat", False, status, detail, score)
 
 
+def _check_diamond_artifact_surface() -> HealthComponent:
+    try:
+        report = build_diamond_artifact_surface_report(state_root=_STATE_DIR)
+    except Exception:
+        return HealthComponent("diamond_artifact_surface", False, "critical", "artifact surface diagnostic failed", 0.0)
+
+    diagnosis = str(report.get("diagnosis", "unknown"))
+    warning_count = int(report.get("warning_count") or 0)
+    critical_count = int(report.get("critical_count") or 0)
+    detail = f"{diagnosis}; warnings={warning_count} critical={critical_count}"
+    action_items = report.get("action_items") if isinstance(report.get("action_items"), list) else []
+    if action_items:
+        detail = f"{detail}; action: {str(action_items[0])}"
+
+    if report.get("healthy"):
+        if report.get("status") == "surface_warning":
+            return HealthComponent("diamond_artifact_surface", True, "warning", detail, 0.8)
+        return HealthComponent("diamond_artifact_surface", True, "healthy", detail, 1.0)
+
+    status = str(report.get("status", "critical"))
+    score = 0.2 if status == "critical" else 0.4
+    return HealthComponent("diamond_artifact_surface", False, status, detail, score)
+
+
 def _check_repo_health() -> HealthComponent:
     import subprocess
 
@@ -301,6 +327,7 @@ def run_health_check(
         _check_quantum_freshness(),
         _check_hermes_connectivity(),
         _check_supervisor_heartbeat(),
+        _check_diamond_artifact_surface(),
         _check_repo_health(),
     ]
     if allow_remote_supervisor_truth:
@@ -315,7 +342,7 @@ def run_health_check(
     if critical_count >= 2 or overall < 0.3:
         status = "critical"
         exit_code = 2
-    elif warning_count >= 2 or overall < 0.6:
+    elif critical_count >= 1 or warning_count >= 2 or overall < 0.6:
         status = "warning"
         exit_code = 1
     else:

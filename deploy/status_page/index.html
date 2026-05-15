@@ -3826,7 +3826,17 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
   const opSummary = operatorQueue?.summary || {};
   const opBlocked = Number(opSummary.BLOCKED || 0);
   const opLaunchBlocked = Number(operatorQueue?.launch_blocked_count || 0);
+  const opAdvisoryCount = Number(
+    operatorQueue?.advisory_count
+    ?? operatorQueue?.non_launch_blocked_count
+    ?? Math.max(0, opBlocked - opLaunchBlocked)
+  );
   const opTopLaunch = Array.isArray(operatorQueue?.top_launch_blockers) ? operatorQueue.top_launch_blockers[0] : null;
+  const opTopAdvisory = Array.isArray(operatorQueue?.top_non_launch_blockers)
+    ? operatorQueue.top_non_launch_blockers[0]
+    : (Array.isArray(operatorQueue?.top_blockers)
+      ? operatorQueue.top_blockers.find(item => item?.evidence?.launch_blocker === false) || null
+      : null);
   const opTop = opTopLaunch || (Array.isArray(operatorQueue?.top_blockers) ? operatorQueue.top_blockers[0] : null);
   let operatorQueueLabel = 'Clear';
   let operatorQueueClass = 'green';
@@ -3836,10 +3846,14 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
     operatorQueueClass = 'yellow';
     operatorQueueSub = compactText(operatorQueue.error);
   } else if (opBlocked > 0) {
-    operatorQueueLabel = opLaunchBlocked > 0 ? 'Blocked' : 'Watch';
+    operatorQueueLabel = opLaunchBlocked > 0 ? 'Blocked' : (opAdvisoryCount > 0 ? 'Advisory' : 'Watch');
     operatorQueueClass = opLaunchBlocked > 0 ? 'red' : 'yellow';
+    const queueFocus = opLaunchBlocked > 0 ? opTopLaunch || opTop : opTopAdvisory || opTop;
+    const queueSummary = opLaunchBlocked > 0
+      ? `${opBlocked} blocked | ${opLaunchBlocked} launch blocks | ${queueFocus?.detail || queueFocus?.title || ''}`.trim()
+      : `launch clear | ${opAdvisoryCount || opBlocked} advisory | ${queueFocus?.detail || queueFocus?.title || ''}`.trim();
     operatorQueueSub = compactText(
-      humanizeStatusText(`${opBlocked} blocked | ${opLaunchBlocked} launch blocks | ${opTop?.op_id || ''} ${opTop?.detail || opTop?.title || ''}`.trim()),
+      humanizeStatusText(queueSummary),
       108
     );
   }

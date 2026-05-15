@@ -1304,6 +1304,57 @@ class TestDashboardAPI:
         assert r.json()["summary"]["BLOCKED"] == 0
         assert "no-store" in r.headers["Cache-Control"]
 
+    def test_jarvis_operator_queue_endpoint_derives_non_launch_advisory_fields(self, app_client, monkeypatch):
+        from eta_engine.scripts import jarvis_status
+
+        monkeypatch.setattr(
+            jarvis_status,
+            "build_operator_queue_summary",
+            lambda **_kwargs: {
+                "source": "operator_action_queue",
+                "error": None,
+                "summary": {"BLOCKED": 2, "OBSERVED": 0, "UNKNOWN": 0},
+                "launch_blocked_count": 1,
+                "top_blockers": [
+                    {
+                        "op_id": "OP-19",
+                        "title": "Recover IBKR Gateway API 4002",
+                        "detail": "Seed the gateway credentials and reauth on the VPS.",
+                        "next_actions": ["run tws_watchdog"],
+                    },
+                    {
+                        "op_id": "OP-16",
+                        "title": "Research backlog still needs promotion proof",
+                        "detail": "4 research candidate bot(s) still below promotion gate.",
+                        "evidence": {
+                            "launch_blocker": False,
+                            "launch_role": "strategy_optimization_backlog",
+                        },
+                        "next_actions": ["continue research soak"],
+                    },
+                ],
+                "top_launch_blockers": [
+                    {
+                        "op_id": "OP-19",
+                        "detail": "Seed the gateway credentials and reauth on the VPS.",
+                    }
+                ],
+            },
+        )
+
+        r = app_client.get("/api/jarvis/operator_queue")
+
+        assert r.status_code == 200
+        payload = r.json()
+        assert payload["launch_blocked_count"] == 1
+        assert payload["non_launch_blocked_count"] == 1
+        assert payload["advisory_count"] == 1
+        assert payload["advisory_only"] is False
+        assert payload["first_non_launch_blocker_op_id"] == "OP-16"
+        assert payload["first_non_launch_next_action"] == "continue research soak"
+        assert payload["top_non_launch_blockers"][0]["op_id"] == "OP-16"
+        assert payload["non_launch_next_actions"] == ["continue research soak"]
+
     def test_jarvis_operator_queue_endpoint_fails_soft(self, app_client, monkeypatch):
         from eta_engine.scripts import jarvis_status
 
@@ -2937,6 +2988,23 @@ class TestDashboardAPI:
             "mes_sweep_reclaim_v2",
         ]
         assert payload["operator_queue"]["top_blocker_next_actions"] == [
+            "python -m eta_engine.scripts.paper_live_launch_check --bots mbt_overnight_gap --json",
+            "python -m eta_engine.scripts.paper_live_launch_check --bots mgc_sweep_reclaim --json",
+        ]
+        assert payload["operator_queue"]["advisory_count"] == 1
+        assert payload["operator_queue"]["advisory_only"] is True
+        assert payload["operator_queue"]["top_advisory_op_id"] == "OP-16"
+        assert payload["operator_queue"]["top_advisory_detail"] == (
+            "4 research candidate bot(s) still below promotion gate."
+        )
+        assert payload["operator_queue"]["top_advisory_launch_role"] == "strategy_optimization_backlog"
+        assert payload["operator_queue"]["top_advisory_blocked_bots"] == [
+            "mbt_overnight_gap",
+            "mbt_rth_orb",
+            "mgc_sweep_reclaim",
+            "mes_sweep_reclaim_v2",
+        ]
+        assert payload["operator_queue"]["top_advisory_next_actions"] == [
             "python -m eta_engine.scripts.paper_live_launch_check --bots mbt_overnight_gap --json",
             "python -m eta_engine.scripts.paper_live_launch_check --bots mgc_sweep_reclaim --json",
         ]

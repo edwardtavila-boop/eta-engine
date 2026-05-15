@@ -1034,6 +1034,21 @@ def _dashboard_diagnostics_payload() -> dict:
     first_operator_next_actions = first_operator_blocker.get("next_actions")
     if not isinstance(first_operator_next_actions, list):
         first_operator_next_actions = []
+    top_operator_advisories = (
+        operator_queue.get("top_non_launch_blockers") if isinstance(operator_queue.get("top_non_launch_blockers"), list) else []
+    )
+    first_operator_advisory = (
+        top_operator_advisories[0] if top_operator_advisories and isinstance(top_operator_advisories[0], dict) else {}
+    )
+    first_operator_advisory_evidence = (
+        first_operator_advisory.get("evidence") if isinstance(first_operator_advisory.get("evidence"), dict) else {}
+    )
+    first_operator_advisory_blocked_bots = first_operator_advisory_evidence.get("blocked_bots")
+    if not isinstance(first_operator_advisory_blocked_bots, list):
+        first_operator_advisory_blocked_bots = []
+    first_operator_advisory_next_actions = first_operator_advisory.get("next_actions")
+    if not isinstance(first_operator_advisory_next_actions, list):
+        first_operator_advisory_next_actions = []
     first_failed_gate = _first_failed_gate(paper_live_transition if isinstance(paper_live_transition, dict) else {})
     readiness_summary = readiness.get("summary") if isinstance(readiness.get("summary"), dict) else {}
     readiness_lanes = readiness_summary.get("launch_lanes") if isinstance(readiness_summary, dict) else {}
@@ -1041,6 +1056,15 @@ def _dashboard_diagnostics_payload() -> dict:
     readiness_blocked_data = int(
         readiness_summary.get("blocked_data") or readiness_lane_counts.get("blocked_data") or 0
     )
+    operator_advisory_count_raw = operator_queue.get("advisory_count")
+    if operator_advisory_count_raw is None:
+        operator_advisory_count_raw = operator_queue.get("non_launch_blocked_count")
+    if operator_advisory_count_raw is None:
+        operator_advisory_count_raw = max(0, int(operator_summary.get("BLOCKED") or 0))
+    try:
+        operator_advisory_count = int(operator_advisory_count_raw or 0)
+    except (TypeError, ValueError):
+        operator_advisory_count = 0
     transition_launch_blocked_raw = paper_live_transition.get("operator_queue_launch_blocked_count")
     if transition_launch_blocked_raw is None:
         transition_launch_blocked_raw = operator_queue.get("launch_blocked_count")
@@ -1228,6 +1252,10 @@ def _dashboard_diagnostics_payload() -> dict:
             "observed": int(operator_summary.get("OBSERVED") or 0),
             "unknown": int(operator_summary.get("UNKNOWN") or 0),
             "launch_blocked": int(operator_queue.get("launch_blocked_count") or 0),
+            "advisory_count": operator_advisory_count,
+            "advisory_only": bool(operator_queue.get("advisory_only")) or (
+                operator_advisory_count > 0 and int(operator_queue.get("launch_blocked_count") or 0) == 0
+            ),
             "top_blocker_op_id": str(first_operator_blocker.get("op_id") or ""),
             "top_blocker_title": str(first_operator_blocker.get("title") or ""),
             "top_blocker_detail": str(first_operator_blocker.get("detail") or ""),
@@ -1239,6 +1267,12 @@ def _dashboard_diagnostics_payload() -> dict:
             "top_launch_blocker_detail": str(
                 first_launch_blocker.get("detail") or first_launch_blocker.get("title") or ""
             ),
+            "top_advisory_op_id": str(first_operator_advisory.get("op_id") or ""),
+            "top_advisory_title": str(first_operator_advisory.get("title") or ""),
+            "top_advisory_detail": str(first_operator_advisory.get("detail") or ""),
+            "top_advisory_launch_role": str(first_operator_advisory_evidence.get("launch_role") or ""),
+            "top_advisory_blocked_bots": [str(bot) for bot in first_operator_advisory_blocked_bots],
+            "top_advisory_next_actions": [str(action) for action in first_operator_advisory_next_actions],
             "source": str(operator_queue.get("source") or "unknown"),
             "cache_status": str(operator_queue.get("cache_status") or ""),
             "cache_age_s": operator_queue.get("cache_age_s"),
@@ -4590,6 +4624,78 @@ def _operator_queue_cache_payload(*, server_ts: float | None = None) -> dict | N
     return payload
 
 
+def _operator_queue_with_advisories(payload: dict[str, Any]) -> dict[str, Any]:
+    """Backfill advisory-only operator queue fields for legacy and live payloads."""
+    out = dict(payload) if isinstance(payload, dict) else {}
+    summary = out.get("summary") if isinstance(out.get("summary"), dict) else {}
+    try:
+        blocked_count = int(summary.get("BLOCKED") or out.get("blocked_count") or 0)
+    except (TypeError, ValueError):
+        blocked_count = 0
+    try:
+        launch_blocked_count = int(out.get("launch_blocked_count") or 0)
+    except (TypeError, ValueError):
+        launch_blocked_count = 0
+
+    top_blockers = out.get("top_blockers") if isinstance(out.get("top_blockers"), list) else []
+    non_launch_blockers = (
+        out.get("top_non_launch_blockers") if isinstance(out.get("top_non_launch_blockers"), list) else []
+    )
+    if not non_launch_blockers:
+        non_launch_blockers = [
+            dict(blocker)
+            for blocker in top_blockers
+            if isinstance(blocker, dict)
+            and isinstance(blocker.get("evidence"), dict)
+            and blocker["evidence"].get("launch_blocker") is False
+        ]
+
+    non_launch_next_actions = (
+        out.get("non_launch_next_actions") if isinstance(out.get("non_launch_next_actions"), list) else []
+    )
+    if not non_launch_next_actions:
+        seen_actions: set[str] = set()
+        deduped_actions: list[str] = []
+        for blocker in non_launch_blockers:
+            actions = blocker.get("next_actions") if isinstance(blocker, dict) else []
+            if not isinstance(actions, list):
+                continue
+            for action in actions:
+                text = str(action or "").strip()
+                if not text or text in seen_actions:
+                    continue
+                seen_actions.add(text)
+                deduped_actions.append(text)
+        non_launch_next_actions = deduped_actions
+
+    try:
+        non_launch_blocked_count = int(
+            out.get("non_launch_blocked_count") or out.get("warning_blocked_count") or 0
+        )
+    except (TypeError, ValueError):
+        non_launch_blocked_count = 0
+    if non_launch_blocked_count <= 0 and blocked_count > launch_blocked_count:
+        non_launch_blocked_count = blocked_count - launch_blocked_count
+
+    first_non_launch = (
+        non_launch_blockers[0] if non_launch_blockers and isinstance(non_launch_blockers[0], dict) else {}
+    )
+    first_non_launch_next_action = str(out.get("first_non_launch_next_action") or "").strip()
+    if not first_non_launch_next_action and non_launch_next_actions:
+        first_non_launch_next_action = str(non_launch_next_actions[0])
+
+    out["top_non_launch_blockers"] = non_launch_blockers
+    out["non_launch_next_actions"] = non_launch_next_actions
+    out["non_launch_blocked_count"] = max(0, non_launch_blocked_count)
+    out["advisory_count"] = int(out["non_launch_blocked_count"])
+    out["advisory_only"] = bool(out["advisory_count"] > 0 and blocked_count > 0 and launch_blocked_count <= 0)
+    out["first_non_launch_blocker_op_id"] = str(
+        out.get("first_non_launch_blocker_op_id") or first_non_launch.get("op_id") or ""
+    )
+    out["first_non_launch_next_action"] = first_non_launch_next_action
+    return out
+
+
 def _operator_queue_payload(*, prefer_cache: bool = False, server_ts: float | None = None) -> dict:
     """Return JARVIS/operator blockers without letting status probes break the dashboard."""
     stale_cached: dict | None = None
@@ -4597,7 +4703,7 @@ def _operator_queue_payload(*, prefer_cache: bool = False, server_ts: float | No
         cached = _operator_queue_cache_payload(server_ts=server_ts)
         if cached is not None:
             if not cached.get("cache_stale"):
-                return cached
+                return _operator_queue_with_advisories(cached)
             stale_cached = cached
     try:
         from eta_engine.scripts.jarvis_status import build_operator_queue_summary
@@ -4609,13 +4715,13 @@ def _operator_queue_payload(*, prefer_cache: bool = False, server_ts: float | No
             fallback["cache_status"] = "stale_fallback_error"
             fallback["cache_stale"] = True
             fallback["error"] = str(exc)
-            return fallback
-        return {
+            return _operator_queue_with_advisories(fallback)
+        return _operator_queue_with_advisories({
             "source": "jarvis_status",
             "error": str(exc),
             "summary": {},
             "top_blockers": [],
-        }
+        })
     if isinstance(payload, dict):
         if stale_cached is not None:
             payload = dict(payload)
@@ -4623,19 +4729,19 @@ def _operator_queue_payload(*, prefer_cache: bool = False, server_ts: float | No
             payload["cache_stale"] = False
             payload["stale_cache_age_s"] = stale_cached.get("cache_age_s")
             payload["stale_cache_path"] = stale_cached.get("cache_path")
-        return payload
+        return _operator_queue_with_advisories(payload)
     if stale_cached is not None:
         fallback = dict(stale_cached)
         fallback["cache_status"] = "stale_fallback_error"
         fallback["cache_stale"] = True
         fallback["error"] = "operator queue summary returned a non-object payload"
-        return fallback
-    return {
+        return _operator_queue_with_advisories(fallback)
+    return _operator_queue_with_advisories({
         "source": "jarvis_status",
         "error": "operator queue summary returned a non-object payload",
         "summary": {},
         "top_blockers": [],
-    }
+    })
 
 
 def _paper_live_transition_cache_payload() -> dict:
