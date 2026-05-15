@@ -2302,7 +2302,7 @@ function renderPortfolioCommand(bots, hiddenCount, liveBroker, summary, d, today
     : 0;
   const unassignedBrokerPositions = Math.max(0, finiteNumber(portfolioSummary?.unassigned_broker_position_count) || 0);
   const paperReady = finiteNumber(paperLive?.paper_ready_bots) ?? bots.filter(bot => bot.can_paper_trade).length;
-  const venueFocusText = brokerVenueFocusSummary(focusPolicy, liveBroker);
+  const venueHeadlineText = brokerVenueHeadline(focusPolicy, liveBroker);
   const sessionSourceText = brokerSessionSourceLabel(liveBroker);
   const orb = document.getElementById('portfolioNetOrb');
   const orbSub = document.getElementById('portfolioNetOrbSub');
@@ -2332,18 +2332,23 @@ function renderPortfolioCommand(bots, hiddenCount, liveBroker, summary, d, today
   if (narrative) {
     const isMobileNarrow = typeof window !== 'undefined' && window.matchMedia('(max-width: 640px)').matches;
     const truth = d.truth_summary_line || summary.truth_summary_line || 'truth syncing';
-    const truthLine = compactText(String(truth).replace(/^Live ETA truth:\s*/i, ''), isMobileNarrow ? 54 : 82);
+    const truthLine = compactText(String(truth).replace(/^Live ETA truth:\s*/i, ''), isMobileNarrow ? 44 : 68);
+    const readinessLine = paperCapitalHold
+      ? 'capital held'
+      : paperLaunchBlocked
+        ? 'launch blocked'
+        : blockedBots > 0
+          ? `${blockedBots} held`
+          : `${paperReady} ready`;
     const scopeLine = [
       `${bots.length} focus`,
-      `${paperReady} paper-ready`,
       connectedFleetLine(0, {runtimeActive: active, attached, offLane}),
-      blockedBots > 0 ? `${blockedBots} held` : ''
+      readinessLine
     ].filter(Boolean).join(' | ');
-    const blockerLine = blockedBots > 0 ? compactText(blockedLine, isMobileNarrow ? 54 : 78) : '';
-    const narrativeParts = [scopeLine, blockerLine, venueFocusText, truthLine];
+    const narrativeParts = [scopeLine, venueHeadlineText, brokerAgeText || truthLine];
     narrative.textContent = compactText(
       narrativeParts.filter(Boolean).join(' | '),
-      isMobileNarrow ? 92 : 168
+      isMobileNarrow ? 72 : 124
     );
   }
   if (chips) {
@@ -2743,6 +2748,15 @@ function brokerVenueFocusSummary(focusPolicy = {}, liveBroker = null) {
     parts.push('Alpaca parked');
   }
   return parts.join(' | ');
+}
+
+function brokerVenueHeadline(focusPolicy = {}, liveBroker = null) {
+  const summary = brokerVenueFocusSummary(focusPolicy, liveBroker);
+  if (!summary) return '';
+  const parts = summary.split('|').map(part => part.trim()).filter(Boolean);
+  const ibkrLine = parts.find(part => /^IBKR\b/i.test(part));
+  if (ibkrLine) return ibkrLine;
+  return parts[0] || '';
 }
 
 function brokerVenueChipMarkup(focusPolicy = {}, liveBroker = null) {
@@ -3221,16 +3235,24 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
   const liveBroker = d.live_broker_state || null;
   const liveBrokerReady = liveBroker && (liveBroker.ready || liveBroker.ibkr?.ready || liveBroker.tastytrade?.ready || liveBroker.tradovate?.ready);
   const liveBrokerPnlReady = liveBrokerReady && brokerHasPnlTruth(liveBroker);
-  const venueFocusText = brokerVenueFocusSummary(liveBroker?.focus_policy || {}, liveBroker);
+  const venueHeadlineText = brokerVenueHeadline(liveBroker?.focus_policy || {}, liveBroker);
   const brokerAgeText = liveBroker ? brokerSnapshotAgeText(liveBroker) : '';
   const brokerTruthLead = liveBroker ? brokerTruthLeadLine(liveBroker) : '';
   const brokerTruthSource = liveBroker ? brokerTruthSourceLine(liveBroker) : '';
-  const sourceTierText = d.fast_summary ? 'fast summary' : 'live detail';
   document.getElementById('apiSourceText').textContent = brokerTruthLead
-    ? `Truth: ${brokerTruthLead}${brokerTruthSource ? ' | ' + brokerTruthSource : ''}${venueFocusText ? ' | Focus: ' + compactText(venueFocusText, 64) : ''} | ${sourceTierText}` + (usingFallback ? ' | mirror' : '')
-    : venueFocusText
-    ? 'Focus: ' + venueFocusText + (brokerAgeText ? ' | ' + brokerAgeText : '') + ` | ${sourceTierText}` + (usingFallback ? ' | mirror' : '')
-    : 'Source: ' + sourceLabel(dataSource) + ` | ${sourceTierText}` + (usingFallback ? ' | mirror' : '');
+    ? compactText(
+      `Truth: ${brokerTruthLead}${brokerTruthSource ? ' | ' + brokerTruthSource : ''}${venueHeadlineText ? ' | ' + venueHeadlineText : ''}` + (usingFallback ? ' | mirror' : ''),
+      118
+    )
+    : venueHeadlineText
+    ? compactText(
+      `${venueHeadlineText}${brokerAgeText ? ' | ' + brokerAgeText : ''}` + (usingFallback ? ' | mirror' : ''),
+      118
+    )
+    : compactText(
+      'Source: ' + sourceLabel(dataSource) + (usingFallback ? ' | mirror' : ''),
+      118
+    );
   const availableCloseWindows = closeHistoryWindowPayload(liveBroker, selectedCloseHistoryWindow, d);
   const rootCloseHistory = d.close_history || {};
   if (!availableCloseWindows.payload && (liveBroker?.position_exposure?.close_history?.default_window || rootCloseHistory.default_window)) {
