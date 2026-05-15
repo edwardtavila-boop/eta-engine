@@ -47,6 +47,8 @@ def test_supervisor_task_runner_sets_env_and_redirects_logs() -> None:
     text = RUNNER.read_text(encoding="utf-8")
 
     assert r"C:\EvolutionaryTradingAlgo" in text
+    assert "ETA_MODE=PAPER" in text
+    assert "ETA_LIVE_MONEY=0" in text
     assert "ETA_SUPERVISOR_MODE=paper_live" in text
     assert "ETA_SUPERVISOR_FEED=composite" in text
     assert "ETA_SUPERVISOR_BOTS=" in text

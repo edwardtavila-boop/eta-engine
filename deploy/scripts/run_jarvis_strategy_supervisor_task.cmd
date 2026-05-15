@@ -4,6 +4,8 @@ setlocal
 set "ETA_ROOT=C:\EvolutionaryTradingAlgo"
 set "ETA_ENGINE=%ETA_ROOT%\eta_engine"
 set "ETA_LOG_DIR=%ETA_ROOT%\logs\eta_engine"
+set "ETA_MODE=PAPER"
+set "ETA_LIVE_MONEY=0"
 set "ETA_SUPERVISOR_MODE=paper_live"
 set "ETA_SUPERVISOR_FEED=composite"
 rem Crypto + futures paper-live lane (Alpaca for crypto, IBKR for
