@@ -4706,6 +4706,37 @@ class TestDashboardAPI:
         assert payload["summary"]["paper_live_ready_bots"] == 12
         assert payload["summary"]["paper_live_launch_blocked_count"] == 0
 
+    def test_global_daily_loss_stop_dominates_bot_fleet_block_rollup(self):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        rows = [
+            {
+                "name": "mnq_futures_sage",
+                "symbol": "MNQ1",
+                "current_block_kind": "broker_router_filled_but_broker_flat",
+                "current_block_reason": "broker_router_filled_but_broker_flat",
+                "current_block_summary": "Broker router filled but broker flat",
+                "current_block_at": "2026-05-15T13:57:34+00:00",
+            }
+        ]
+
+        mod._apply_global_daily_loss_killswitch_to_roster_rows(
+            rows,
+            {
+                "tripped": True,
+                "reason": "day_pnl=$-925.50 <= limit=$-900.00 (date=2026-05-15)",
+                "timezone": "America/New_York",
+                "reset_display": "2026-05-16 00:00 EDT",
+                "checked_at": "2026-05-15T14:00:00+00:00",
+            },
+        )
+        rollup = mod._blocked_bot_rollup(rows)
+
+        assert rows[0]["current_block_kind"] == "daily_kill_switch"
+        assert rows[0]["current_block_secondary_kind"] == "broker_router_filled_but_broker_flat"
+        assert rollup["kinds"] == {"daily_kill_switch": 1}
+        assert rollup["summary_line"].startswith("Current blockers: 1 bot(s) held - 1 daily kill switch")
+
     def test_bot_fleet_embeds_vps_root_reconciliation_summary(self, app_client, tmp_path):
         """Bot-fleet consumers need the root dirty-tree review state without another probe."""
         (tmp_path / "state" / "vps_root_reconciliation_plan.json").write_text(

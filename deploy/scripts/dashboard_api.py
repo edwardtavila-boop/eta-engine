@@ -6129,6 +6129,8 @@ def bot_fleet_roster(
     confirmed_bots = sum(
         1 for r in rows if r.get("source") == "jarvis_strategy_supervisor" or r.get("confirmed") is True
     )
+    daily_loss_killswitch = _daily_loss_killswitch_snapshot()
+    _apply_global_daily_loss_killswitch_to_roster_rows(rows, daily_loss_killswitch)
     blocked_rollup = _blocked_bot_rollup(rows)
     active_bots = sum(1 for r in rows if _is_runtime_active_bot_row(r))
     staged_bots = max(0, len(rows) - active_bots)
@@ -6333,7 +6335,6 @@ def bot_fleet_roster(
             if broker_bracket_action_labels
             else "held by Bracket Audit"
         )
-    daily_loss_killswitch = _daily_loss_killswitch_snapshot()
     paper_live_held_by_daily_loss_stop = bool(daily_loss_killswitch.get("tripped"))
     if paper_live_held_by_daily_loss_stop and paper_live_effective_status in {
         "ready",
@@ -6753,6 +6754,33 @@ def _current_bot_block_state(status: Any) -> dict[str, str]:
         "current_block_summary": "",
         "current_block_at": "",
     }
+
+
+def _apply_global_daily_loss_killswitch_to_roster_rows(rows: list[dict[str, Any]], snapshot: dict[str, Any]) -> None:
+    """Let the fleet daily stop dominate row-level entry blockers in operator rollups."""
+    if not snapshot.get("tripped"):
+        return
+    reason = str(snapshot.get("reason") or "").strip()
+    detail = _daily_loss_hold_detail(snapshot)
+    current_at = str(
+        snapshot.get("checked_at")
+        or snapshot.get("generated_at")
+        or datetime.now(UTC).isoformat()
+    )
+    block_reason = f"daily_kill_switch:{reason}" if reason else "daily_kill_switch"
+    block_summary = f"Entries halted by daily kill switch: {detail}"
+    for row in rows:
+        existing_reason = str(row.get("current_block_reason") or "").strip()
+        existing_kind = str(row.get("current_block_kind") or "").strip()
+        if existing_reason and existing_kind != "daily_kill_switch":
+            row["current_block_secondary_reason"] = existing_reason
+            row["current_block_secondary_kind"] = existing_kind
+            row["current_block_secondary_summary"] = str(row.get("current_block_summary") or "").strip()
+        row["current_block_source"] = "daily_loss_killswitch"
+        row["current_block_kind"] = "daily_kill_switch"
+        row["current_block_reason"] = block_reason
+        row["current_block_summary"] = block_summary
+        row["current_block_at"] = current_at
 
 
 def _blocked_bot_rollup(rows: list[dict[str, Any]]) -> dict[str, Any]:
