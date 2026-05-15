@@ -3910,6 +3910,12 @@ class JarvisStrategySupervisor:
         )
 
         starting_cash = float(self.cfg.starting_cash_per_bot or bot.cash or 0.0)
+        if self._enforce_live_close_ledger_daily_loss_cap(
+            bot,
+            now=now,
+            starting_cash=starting_cash,
+        ):
+            return True
         halted, _loss_pct = enforce_daily_loss_cap(
             bot.session_state,
             realized_pnl=float(bot.realized_pnl),
@@ -3930,6 +3936,110 @@ class JarvisStrategySupervisor:
                 )
                 self._daily_halt_logged[key] = True
         return halted
+
+    def _enforce_live_close_ledger_daily_loss_cap(
+        self,
+        bot: BotInstance,
+        *,
+        now: datetime,
+        starting_cash: float,
+    ) -> bool:
+        """Trip the per-bot cap from today's canonical close ledger.
+
+        Broker-routed paper/live fills are recorded in trade_closes.jsonl,
+        while a restarted supervisor may have bot.realized_pnl reset to
+        zero. This guard treats the ledger's current-session PnL as
+        authoritative for entry throttling so one losing bot cannot keep
+        firing until the fleet-wide daily stop catches it.
+        """
+        if bot.session_state is None:
+            return False
+        if starting_cash <= 0 or float(bot.daily_loss_limit_pct) <= 0:
+            return False
+
+        ledger_pnl, ledger_count = self._today_live_close_ledger_pnl(bot.bot_id, now=now)
+        if ledger_count <= 0 or ledger_pnl >= 0:
+            return False
+
+        loss_pct = abs(ledger_pnl) / starting_cash * 100.0
+        bot.session_state.last_daily_loss_pct = max(
+            float(getattr(bot.session_state, "last_daily_loss_pct", 0.0) or 0.0),
+            loss_pct,
+        )
+        if loss_pct < float(bot.daily_loss_limit_pct):
+            return False
+
+        from eta_engine.scripts.supervisor_session_wiring import current_session_date
+
+        session_date = current_session_date(now)
+        bot.session_state.daily_session_date = session_date
+        bot.session_state.halted_until_session_date = session_date
+        key = (bot.bot_id, session_date)
+        if not self._daily_halt_logged.get(key):
+            logger.warning(
+                "DAILY LOSS HALT %s: live_close_pnl=%.2f closes=%d "
+                "loss=%.2f%% limit=%.2f%% session=%s -- entries blocked until next session",
+                bot.bot_id,
+                ledger_pnl,
+                ledger_count,
+                loss_pct,
+                bot.daily_loss_limit_pct,
+                session_date,
+            )
+            self._daily_halt_logged[key] = True
+        return True
+
+    def _today_live_close_ledger_pnl(self, bot_id: str, *, now: datetime) -> tuple[float, int]:
+        """Return current-session PnL/count for one bot from close ledger."""
+        from eta_engine.scripts.closed_trade_ledger import (
+            DEFAULT_OPERATOR_DATA_SOURCES,
+            load_close_records,
+        )
+        from eta_engine.scripts.supervisor_session_wiring import current_session_date
+
+        session_date = current_session_date(now)
+        try:
+            rows = load_close_records(
+                since_days=2,
+                bot_filter=bot_id,
+                data_sources=DEFAULT_OPERATOR_DATA_SOURCES,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("daily-loss ledger read failed for %s: %s", bot_id, exc)
+            return 0.0, 0
+
+        total = 0.0
+        count = 0
+        for row in rows:
+            ts = self._close_ledger_record_ts(row)
+            if ts is None or current_session_date(ts) != session_date:
+                continue
+            total += self._close_ledger_record_pnl(row)
+            count += 1
+        return total, count
+
+    @staticmethod
+    def _close_ledger_record_ts(row: dict[str, Any]) -> datetime | None:
+        extra = row.get("extra") if isinstance(row.get("extra"), dict) else {}
+        raw = row.get("ts") or row.get("close_ts") or extra.get("close_ts")
+        if not raw:
+            return None
+        try:
+            dt = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        if dt.tzinfo is None:
+            return dt.replace(tzinfo=UTC)
+        return dt.astimezone(UTC)
+
+    @staticmethod
+    def _close_ledger_record_pnl(row: dict[str, Any]) -> float:
+        extra = row.get("extra") if isinstance(row.get("extra"), dict) else {}
+        raw = row.get("realized_pnl", extra.get("realized_pnl"))
+        try:
+            return float(raw)
+        except (TypeError, ValueError):
+            return 0.0
 
     def _paper_live_killswitch_advisory_enabled(self) -> bool:
         """Return True only for explicit paper-live soak advisory mode."""

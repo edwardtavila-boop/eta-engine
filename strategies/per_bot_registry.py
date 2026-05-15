@@ -671,7 +671,10 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             },
             "per_ticker_optimal": "MNQ",
             "warmup_policy": {"promoted_on": "2026-04-30", "warmup_days": 30, "risk_multiplier_during_warmup": 0.5},
-            "daily_loss_limit_pct": 4.0,
+            # 2026-05-15 paper-live guard: this bot drove the daily stop
+            # with 8 broker-ledger closes totaling about -$871. Keep it
+            # active for soak, but force a same-day retune pause sooner.
+            "daily_loss_limit_pct": 0.75,
         },
     ),
     # nq_futures_sage — same ORB+retest+sage on NQ. 35.4% WR, RR=3.0.

@@ -50,7 +50,16 @@ def test_status_page_contains_blocker_topline_anchors(client) -> None:
     assert r.status_code == 200
     assert 'id="blockerStatusText"' in r.text
     assert 'id="heldBots"' in r.text
+    assert 'id="approvedCountSub"' in r.text
     assert "function blockedFleetRollup" in r.text
+
+
+def test_supercharge_serves_held_diagnostics_chip_logic(client) -> None:
+    """The diagnostics chip source should expose held-bot topline logic."""
+    r = client.get("/js/supercharge.js")
+    assert r.status_code == 200
+    assert "current_blocked_bots" in r.text
+    assert "| held ${blockedBots}" in r.text
 
 
 def test_service_worker_cleanup_unregisters_stale_clients(client) -> None:

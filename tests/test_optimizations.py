@@ -590,7 +590,9 @@ class TestStatusPage:
         assert "paperLabel = 'Held'" in html
         assert "paperClass = 'yellow'" in html
         assert "held by Bracket Audit" in html
-        assert "paperGateHeld ? paperBracketHold : firstPaperGate?.detail" in html
+        assert "paperDailyLossHold" in html
+        assert "? paperEffectiveDetail || 'Daily-loss soft stop is active" in html
+        assert "? paperBracketHold" in html
 
     def test_status_page_surfaces_vps_root_reconciliation_card(self):
         root = Path(__file__).resolve().parent.parent / "deploy" / "status_page"
@@ -669,7 +671,8 @@ class TestStatusPage:
         assert "initCommandCenterDiagnostics" in supercharge
         assert "/api/dashboard/diagnostics" in supercharge
         assert "Command Center Diagnostics" in supercharge
-        assert "diagnostics: live" in supercharge
+        assert "diagnostics: ${confirmed}/${botTotal} live" in supercharge
+        assert "| held ${blockedBots}" in supercharge
         assert "api_build" in supercharge
         assert "bot_fleet" in supercharge
         assert "equity" in supercharge

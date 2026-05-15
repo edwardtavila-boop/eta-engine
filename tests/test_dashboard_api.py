@@ -1900,6 +1900,39 @@ class TestDashboardAPI:
         assert "vps_ops_hardening" in data
         assert data["checks"]["vps_ops_hardening_contract"] is True
 
+    def test_dashboard_diagnostics_reuses_short_ttl_cache(self, app_client, monkeypatch):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        calls: list[int] = []
+
+        def fake_payload() -> dict:
+            calls.append(1)
+            return {
+                "dashboard_version": "v1",
+                "source_of_truth": "dashboard_diagnostics",
+                "generated_at": f"call-{len(calls)}",
+            }
+
+        with mod._DASHBOARD_DIAGNOSTICS_CACHE_LOCK:
+            mod._DASHBOARD_DIAGNOSTICS_CACHE["payload"] = None
+            mod._DASHBOARD_DIAGNOSTICS_CACHE["ts"] = 0.0
+        monkeypatch.setattr(mod, "_DASHBOARD_DIAGNOSTICS_CACHE_TTL_S", 60)
+        monkeypatch.setattr(mod, "_dashboard_diagnostics_payload", fake_payload)
+
+        first = app_client.get("/api/dashboard/diagnostics")
+        second = app_client.get("/api/dashboard/diagnostics")
+        refreshed = app_client.get("/api/dashboard/diagnostics?refresh=true")
+
+        assert first.status_code == 200
+        assert second.status_code == 200
+        assert refreshed.status_code == 200
+        assert len(calls) == 2
+        assert first.json()["generated_at"] == "call-1"
+        assert second.json()["generated_at"] == "call-1"
+        assert second.json()["diagnostics_cache"]["status"] == "hit"
+        assert refreshed.json()["generated_at"] == "call-2"
+        assert refreshed.json()["diagnostics_cache"]["status"] == "miss"
+
     def test_dashboard_diagnostics_includes_vps_ops_admin_ai(self, app_client, tmp_path):
         state = tmp_path / "state"
         generated_at = datetime.now(UTC).isoformat()

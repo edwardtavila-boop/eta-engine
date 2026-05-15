@@ -745,6 +745,46 @@ def test_daily_loss_cap_does_not_halt_when_below_floor(monkeypatch) -> None:
     assert bot.session_state.halted_until_session_date == ""
 
 
+def test_daily_loss_cap_uses_today_live_close_ledger_after_restart(monkeypatch) -> None:
+    """Broker-routed paper/live closes must still trip the per-bot guard.
+
+    The supervisor can restart with bot.realized_pnl reset to zero while
+    the canonical close ledger already carries today's broker-confirmed
+    losses. The per-bot cap should read that ledger before allowing a
+    fresh entry.
+    """
+    sup, bot = _make_supervisor_with_gated_bot(daily_cap=0.75)
+    bot.bot_id = "mnq_futures_sage"
+    fake_now = _ct_to_utc(2026, 5, 15, 10, 0)
+    bot.session_state.daily_session_date = ""
+    bot.session_state.daily_pnl_anchor = 0.0
+    bot.realized_pnl = 0.0
+
+    def _fake_load_close_records(**kwargs: Any) -> list[dict[str, Any]]:
+        assert kwargs["bot_filter"] == "mnq_futures_sage"
+        return [
+            {
+                "bot_id": "mnq_futures_sage",
+                "ts": fake_now.isoformat(),
+                "realized_pnl": -50.0,
+                "data_source": "live",
+                "extra": {"symbol": "MNQ1"},
+            }
+        ]
+
+    monkeypatch.setattr(
+        "eta_engine.scripts.closed_trade_ledger.load_close_records",
+        _fake_load_close_records,
+    )
+
+    halted = sup._enforce_daily_loss_cap(bot, now=fake_now)
+
+    assert halted is True
+    assert bot.session_state is not None
+    assert bot.session_state.halted_until_session_date == current_session_date(fake_now)
+    assert bot.session_state.last_daily_loss_pct == pytest.approx(1.0)
+
+
 # ----------------------------------------------------------------------- #
 # load_bots integration: registry extras propagate to BotInstance
 # ----------------------------------------------------------------------- #
@@ -775,6 +815,21 @@ def test_load_bots_propagates_registry_extras(monkeypatch) -> None:
     assert bot.session_state.gate is not None
     # daily_loss_limit_pct=3.0 should have been pulled from extras
     assert bot.daily_loss_limit_pct == pytest.approx(3.0)
+
+
+def test_load_bots_applies_mnq_futures_sage_paper_loss_throttle(monkeypatch) -> None:
+    """The current paper-live offender gets a tighter cap before retune."""
+    cfg = SupervisorConfig()
+    cfg.mode = "paper_sim"
+    cfg.data_feed = "mock"
+    cfg.bots_env = "mnq_futures_sage"
+    sup = JarvisStrategySupervisor(cfg=cfg)
+    n = sup.load_bots()
+    if n == 0:
+        pytest.skip("mnq_futures_sage is not active in this registry build")
+    bot = sup.bots[0]
+    assert bot.bot_id == "mnq_futures_sage"
+    assert bot.daily_loss_limit_pct == pytest.approx(0.75)
 
 
 # ----------------------------------------------------------------------- #

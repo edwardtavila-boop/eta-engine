@@ -388,6 +388,12 @@ _PAPER_LIVE_TRANSITION_CACHE_MAX_AGE_S = _positive_int_env(
     "ETA_PAPER_LIVE_TRANSITION_CACHE_MAX_AGE_S",
     15 * 60,
 )
+_DASHBOARD_DIAGNOSTICS_CACHE_TTL_S = _positive_int_env(
+    "ETA_DASHBOARD_DIAGNOSTICS_CACHE_TTL_S",
+    8,
+)
+_DASHBOARD_DIAGNOSTICS_CACHE_LOCK = threading.Lock()
+_DASHBOARD_DIAGNOSTICS_CACHE: dict[str, Any] = {"ts": 0.0, "payload": None}
 
 
 def _dashboard_cors_origins() -> list[str]:
@@ -1210,6 +1216,54 @@ def _dashboard_diagnostics_payload() -> dict:
             "auth_contract": "auth_session" in DASHBOARD_REQUIRED_DATA,
         },
     }
+
+
+def _dashboard_diagnostics_with_cache_meta(payload: dict[str, Any], *, status: str, age_s: float) -> dict[str, Any]:
+    """Annotate a diagnostics response without mutating the cached source object."""
+    annotated = dict(payload)
+    annotated["diagnostics_cache"] = {
+        "status": status,
+        "age_s": round(max(0.0, age_s), 3),
+        "ttl_s": _DASHBOARD_DIAGNOSTICS_CACHE_TTL_S,
+    }
+    return annotated
+
+
+def _dashboard_diagnostics_cached_payload(*, refresh: bool = False) -> dict[str, Any]:
+    """Serve diagnostics from a short stale-safe cache for responsive operator loads."""
+    now_ts = time.time()
+    with _DASHBOARD_DIAGNOSTICS_CACHE_LOCK:
+        cached_payload = _DASHBOARD_DIAGNOSTICS_CACHE.get("payload")
+        cached_ts = float(_DASHBOARD_DIAGNOSTICS_CACHE.get("ts") or 0.0)
+        cache_age_s = max(0.0, now_ts - cached_ts) if cached_ts > 0 else None
+        if (
+            not refresh
+            and isinstance(cached_payload, dict)
+            and cache_age_s is not None
+            and cache_age_s <= _DASHBOARD_DIAGNOSTICS_CACHE_TTL_S
+        ):
+            return _dashboard_diagnostics_with_cache_meta(cached_payload, status="hit", age_s=cache_age_s)
+
+    try:
+        fresh_payload = _dashboard_diagnostics_payload()
+    except Exception as exc:  # noqa: BLE001 -- keep the operator surface responsive.
+        with _DASHBOARD_DIAGNOSTICS_CACHE_LOCK:
+            cached_payload = _DASHBOARD_DIAGNOSTICS_CACHE.get("payload")
+            cached_ts = float(_DASHBOARD_DIAGNOSTICS_CACHE.get("ts") or 0.0)
+        if isinstance(cached_payload, dict) and cached_ts > 0:
+            fallback = _dashboard_diagnostics_with_cache_meta(
+                cached_payload,
+                status="stale_fallback_error",
+                age_s=now_ts - cached_ts,
+            )
+            fallback["diagnostics_cache"]["error"] = str(exc)
+            return fallback
+        raise
+
+    with _DASHBOARD_DIAGNOSTICS_CACHE_LOCK:
+        _DASHBOARD_DIAGNOSTICS_CACHE["payload"] = fresh_payload
+        _DASHBOARD_DIAGNOSTICS_CACHE["ts"] = now_ts
+    return _dashboard_diagnostics_with_cache_meta(fresh_payload, status="miss", age_s=0.0)
 
 
 def _dashboard_cross_check_payload() -> dict:
@@ -4807,12 +4861,12 @@ def dashboard_card_health(response: Response) -> dict:
 
 
 @app.get("/api/dashboard/diagnostics")
-def dashboard_diagnostics(response: Response) -> dict:
+def dashboard_diagnostics(response: Response, refresh: bool = False) -> dict:
     """V1 live-source diagnostic rollup for the Command Center."""
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     response.headers["Pragma"] = "no-cache"
     response.headers["Expires"] = "0"
-    return _dashboard_diagnostics_payload()
+    return _dashboard_diagnostics_cached_payload(refresh=refresh)
 
 
 @app.get("/api/dashboard/cross-check")

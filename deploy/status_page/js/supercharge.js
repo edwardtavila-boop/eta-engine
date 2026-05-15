@@ -818,7 +818,7 @@ function initCommandCenterDiagnostics() {
     const confirmed = Number(botFleet.confirmed_bots || 0);
     const blockedBots = Number(botFleet.current_blocked_bots || 0);
     const label = ok
-      ? `diagnostics: live ${confirmed}/${botTotal}`
+      ? `diagnostics: ${confirmed}/${botTotal} live${blockedBots > 0 ? ` | held ${blockedBots}` : ''}`
       : 'diagnostics: degraded';
     setChip(
       label,

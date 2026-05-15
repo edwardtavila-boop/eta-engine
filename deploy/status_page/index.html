@@ -391,7 +391,7 @@ tr:hover td{background:rgba(100,215,255,.055)}
   <div class="card"><h3 id="cumulativeRLabel">Trade Quality</h3><div class="stat dim" id="cumulativeR">--</div><div class="sub" id="cumulativeRSub">R score pending</div></div>
   <div class="card"><h3 id="totalTradesLabel">MTD Closed Trades</h3><div class="stat blue" id="totalTrades">--</div><div class="sub" id="totalTradesSub"></div></div>
   <div class="card"><h3>Win Rate</h3><div class="stat blue" id="winRate">--</div><div class="sub" id="winRateDetail"></div></div>
-  <div class="card"><h3>Trade-Ready</h3><div class="stat green" id="approvedCount">--</div><div class="sub">approved or conditional</div></div>
+  <div class="card"><h3>Trade-Ready</h3><div class="stat green" id="approvedCount">--</div><div class="sub" id="approvedCountSub">approved or conditional</div></div>
   <div class="card"><h3>Data Coverage</h3><div class="stat" id="dataIntelligenceStatus">--</div><div class="sub" id="dataIntelligenceSub">symbols + news + book + sentiment</div></div>
   <div class="card retune-factory-card"><h3>Retune Factory</h3><div class="stat" id="retuneFactoryStatus">--</div><div class="sub" id="retuneFactorySub">paper retunes pending</div></div>
   <div class="card"><h3>Policy Mode</h3><div class="stat yellow" id="jarvisMode">--</div></div>
@@ -2548,7 +2548,11 @@ function showOffline(clearDashboard = true) {
   const adminAiSub = document.getElementById('adminAiSub');
   if (adminAiSub) adminAiSub.textContent = '';
   const heldBotsSub = document.getElementById('heldBotsSub');
-  if (heldBotsSub) heldBotsSub.textContent = 'checking live entry holds';
+  if (heldBotsSub) heldBotsSub.textContent = 'source unavailable';
+  const heldBots = document.getElementById('heldBots');
+  if (heldBots) heldBots.className = 'stat dim';
+  const approvedCountSub = document.getElementById('approvedCountSub');
+  if (approvedCountSub) approvedCountSub.textContent = 'source unavailable';
   const blockerStatusText = document.getElementById('blockerStatusText');
   if (blockerStatusText) blockerStatusText.textContent = 'Held: source unavailable';
   const paperLiveSub = document.getElementById('paperLiveSub');
@@ -3165,8 +3169,27 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
   const verdicts = bots.map(b => b.last_jarvis_verdict || '');
   const approved = verdicts.filter(v => v === 'APPROVED' || v === 'CONDITIONAL').length;
   const denied = verdicts.filter(v => v === 'DENIED' || v === 'KILL' || v === 'REDUCE').length;
+  const approvedCountSub = document.getElementById('approvedCountSub');
+  const blockedKindsText = blockedRollup.kindsLine || blockedSummaryLine || blockedRollup.statusLine;
+  const dailyKillSwitchCount = Number(blockedRollup.kinds.daily_kill_switch || 0);
   document.getElementById('approvedCount').textContent = approved;
-  document.getElementById('approvedCount').className = 'stat ' + (approved > 0 ? 'green' : 'dim');
+  document.getElementById('approvedCount').className = 'stat ' + (
+    blockedBots > 0
+      ? (dailyKillSwitchCount > 0 ? 'red' : 'yellow')
+      : (approved > 0 ? 'green' : 'dim')
+  );
+  if (approvedCountSub) {
+    approvedCountSub.textContent = blockedBots > 0
+      ? compactText(
+          humanizeStatusText(
+            approved > 0
+              ? `${approved} approved verdict${approved === 1 ? '' : 's'} | ${blockedKindsText}`
+              : `entries held | ${blockedKindsText}`
+          ),
+          82
+        )
+      : 'approved or conditional';
+  }
 
   const liveModes = [...new Set(
     bots
@@ -3793,7 +3816,10 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
   }
   const botRosterSummary = document.getElementById('botRosterSummary');
   if (botRosterSummary) {
-    botRosterSummary.textContent = `${bots.length} focus visible, ${active} active, ${hiddenCount} hidden/backburner`;
+    const heldText = blockedBots > 0
+      ? `, ${blockedBots} held${blockedRollup.kindsLine ? ` | ${blockedRollup.kindsLine}` : ''}`
+      : '';
+    botRosterSummary.textContent = `${bots.length} focus visible, ${active} active, ${hiddenCount} hidden/backburner${heldText}`;
   }
   document.getElementById('botTable').innerHTML = html || '<tr><td colspan="12" class="loading">No visible active/staged bots after disabled and removed filters.</td></tr>';
   updateClock();
