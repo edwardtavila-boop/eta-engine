@@ -92,7 +92,7 @@ def test_bracket_audit_loads_local_bot_fleet_fallback_when_primary_fetch_empty(m
     assert payload == {"target_exit_summary": {"broker_open_position_count": 0}}
     assert calls == [
         (audit.DEFAULT_FLEET_URL, 10.0),
-        ("http://127.0.0.1:8420/api/bot-fleet", 20.0),
+        ("http://127.0.0.1:8421/api/bot-fleet", 20.0),
     ]
 
 
@@ -136,7 +136,7 @@ def test_bracket_audit_prefers_local_broker_truth_over_public_paper_watch(monkey
     assert payload is local_payload
     assert calls == [
         (audit.DEFAULT_FLEET_URL, 10.0),
-        ("http://127.0.0.1:8420/api/bot-fleet", 5.0),
+        ("http://127.0.0.1:8421/api/bot-fleet", 5.0),
     ]
 
 

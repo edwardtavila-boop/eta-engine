@@ -20,7 +20,12 @@ if str(_PARENT) not in sys.path:
 from eta_engine.scripts import workspace_roots  # noqa: E402
 
 DEFAULT_FLEET_URL = "https://ops.evolutionarytradingalgo.com/api/bot-fleet"
-DEFAULT_LOCAL_FLEET_URL = "http://127.0.0.1:8420/api/bot-fleet"
+DEFAULT_LOCAL_FLEET_URL = "http://127.0.0.1:8421/api/bot-fleet"
+LOCAL_FLEET_FALLBACK_URLS = (
+    DEFAULT_LOCAL_FLEET_URL,
+    "http://127.0.0.1:8000/api/bot-fleet",
+    "http://127.0.0.1:8420/api/bot-fleet",
+)
 DEFAULT_OUT = workspace_roots.ETA_BROKER_BRACKET_AUDIT_PATH
 DEFAULT_MANUAL_ACK_PATH = workspace_roots.ETA_BROKER_BRACKET_MANUAL_ACK_PATH
 FUTURES_MULTIPLIERS = {
@@ -323,19 +328,26 @@ def load_fleet_payload(url: str = DEFAULT_FLEET_URL) -> dict[str, Any]:
     primary_has_truth = _fleet_has_position_truth(primary)
     if primary_has_truth and _broker_truth_score(primary) > 0:
         return primary
-    if url == DEFAULT_LOCAL_FLEET_URL:
+    if url in LOCAL_FLEET_FALLBACK_URLS:
         return primary
     local_timeout = 5.0 if primary_has_truth else 20.0
-    local = _fetch_json(DEFAULT_LOCAL_FLEET_URL, timeout_s=local_timeout)
-    if _fleet_has_position_truth(local) and (
-        not primary_has_truth or _broker_truth_score(local) > _broker_truth_score(primary)
-    ):
-        return local
+    first_local_payload: dict[str, Any] = {}
+    first_local_truth: dict[str, Any] = {}
+    for local_url in LOCAL_FLEET_FALLBACK_URLS:
+        local = _fetch_json(local_url, timeout_s=local_timeout)
+        if local and not first_local_payload:
+            first_local_payload = local
+        if _fleet_has_position_truth(local) and not first_local_truth:
+            first_local_truth = local
+        if _fleet_has_position_truth(local) and (
+            not primary_has_truth or _broker_truth_score(local) > _broker_truth_score(primary)
+        ):
+            return local
     if primary_has_truth:
         return primary
-    if _fleet_has_position_truth(local):
-        return local
-    return primary or local
+    if first_local_truth:
+        return first_local_truth
+    return primary or first_local_payload
 
 
 def _load_json(path: Path) -> dict[str, Any]:
