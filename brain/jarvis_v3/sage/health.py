@@ -128,7 +128,7 @@ class SageHealthMonitor:
             self._loaded_mtime_ns = None
             return
         try:
-            data = json.loads(self.state_path.read_text(encoding="utf-8"))
+            data = json.loads(self.state_path.read_text(encoding="utf-8-sig"))
             loaded: dict[str, _SchoolHealth] = {}
             for name, snap in data.get("schools", {}).items():
                 loaded[name] = _SchoolHealth(
