@@ -292,3 +292,58 @@ def test_status_surfaces_unstable_positive_tuning_without_live_mutation() -> Non
     assert "no live changes" in report["bots"][0]["next_action"]
     assert report["bots"][0]["research_signal"]["classification"] == "UNSTABLE_POSITIVE_TUNE"
     assert report["bots"][0]["safe_to_mutate_live"] is False
+
+
+def test_status_distinguishes_research_window_gap_from_broker_close_gap() -> None:
+    from eta_engine.scripts import diamond_retune_status as status
+
+    campaign = {
+        "generated_at_utc": "2026-05-14T20:00:00+00:00",
+        "targets": [
+            {
+                "rank": 1,
+                "bot_id": "mnq_futures_sage",
+                "symbol": "MNQ1",
+                "asset_sleeve": "equity_index",
+                "priority_score": 1000.0,
+                "promotion_block": "broker_proof_required",
+                "safe_to_mutate_live": False,
+            },
+        ],
+    }
+    history_rows = [
+        {
+            "run_id": "low-sample",
+            "generated_at_utc": "2026-05-14T23:01:00+00:00",
+            "bot_id": "mnq_futures_sage",
+            "rank": 1,
+            "status": "research_low_sample_keep_collecting",
+            "exit_code": 1,
+            "research_signal": {
+                "classification": "LOW_SAMPLE_PROMISING",
+                "windows": 1,
+                "agg_oos": 6.803,
+                "pass_frac_pct": 100.0,
+            },
+            "safe_to_mutate_live": False,
+            "live_mutation_policy": "paper_only_advisory",
+            "promotion_block": "broker_proof_required",
+        },
+    ]
+    closed_trade_ledger = {
+        "generated_at_utc": "2026-05-14T23:30:00+00:00",
+        "data_sources_filter": ["live", "paper"],
+        "per_bot": {"mnq_futures_sage": {"closed_trade_count": 126}},
+    }
+
+    report = status.build_status(
+        campaign=campaign,
+        history_rows=history_rows,
+        closed_trade_ledger=closed_trade_ledger,
+    )
+
+    assert report["summary"]["n_broker_proof_ready"] == 1
+    assert report["summary"]["n_broker_proof_shortfall"] == 0
+    assert report["bots"][0]["broker_close_evidence"]["remaining_closed_trade_count"] == 0
+    assert "broker close sample met (126/100)" in report["bots"][0]["next_action"]
+    assert "independent research windows" in report["bots"][0]["next_action"]

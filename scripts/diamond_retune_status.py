@@ -147,14 +147,20 @@ def _next_action(state: str, bot_id: str, *, broker_evidence: dict[str, Any] | N
                 f"review research artifact, then collect {remaining} more paper/broker closes "
                 f"({closed_trade_count}/{required_closes}) before any promotion"
             )
-        return "review research artifact, then require fresh broker closes before any promotion"
+        return (
+            f"broker close sample met ({closed_trade_count}/{required_closes}); "
+            "review research artifact and broker proof metrics before any promotion"
+        )
     if state == "COLLECT_MORE_SAMPLE":
         if remaining > 0:
             return (
                 f"collect {remaining} more paper/broker closes "
                 f"({closed_trade_count}/{required_closes}) before promotion; no live changes"
             )
-        return "collect more paper closes before promotion; no live changes"
+        return (
+            f"broker close sample met ({closed_trade_count}/{required_closes}); "
+            "collect more independent research windows before promotion; no live changes"
+        )
     if state == "NEAR_MISS_RETUNE":
         return "apply focused tuning to the highest-impact filters, rerun paper research, no live changes"
     if state == "UNSTABLE_POSITIVE_RETUNE":
