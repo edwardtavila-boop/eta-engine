@@ -145,12 +145,44 @@ _FUTURES_MAP: dict[str, tuple[str, str, str]] = {
 # Where ticks land. The default stays inside the canonical workspace; the env
 # override is for isolated tests or explicit operator-run sandboxes only.
 TICK_ROOT = Path(os.environ.get("ETA_TICK_ROOT", str(ROOT.parent / "mnq_data" / "ticks")))
+STATE_DIR = ROOT.parent / "var" / "eta_engine" / "state"
+STATE_DIR.mkdir(parents=True, exist_ok=True)
+TICK_STATUS_FILE = STATE_DIR / "capture_tick_status.json"
 
 # Flush buffer params.
 _FLUSH_EVERY_TICKS = 100
 _FLUSH_EVERY_SECONDS = 1.0
 # CRITICAL if first tick arrives more than this seconds stale.
 _DELAYED_DATA_THRESHOLD_S = 60.0
+_STATUS_WRITE_INTERVAL_S = 5.0
+
+
+def _tick_ops_blocker(error_code: int, message: str) -> dict[str, Any] | None:
+    """Return operator-actionable blocker metadata for known IBKR async errors."""
+    lowered = message.lower()
+    if error_code == 10189 and "different ip address" in lowered:
+        return {
+            "code": 10189,
+            "slug": "different_ip_trading_session",
+            "summary": (
+                "Tick-by-tick data blocked because another trading TWS session is connected "
+                "from a different IP address."
+            ),
+            "operator_action": (
+                "Close the competing trading TWS/Gateway session or route trading back to the VPS-only session, "
+                "then restart ETA-CaptureTicks."
+            ),
+        }
+    return None
+
+
+def _write_tick_status(payload: dict[str, Any], *, path: Path = TICK_STATUS_FILE) -> None:
+    """Best-effort status surface for operator tooling and capture health."""
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")
+    except OSError:
+        log.debug("could not write tick status to %s", path)
 
 
 class TickWriter:
@@ -231,6 +263,9 @@ class TickStreamCapture:
         self._stale_flagged: set[str] = set()
         self._counts: dict[str, int] = defaultdict(int)
         self._tick_offsets: dict[str, int] = defaultdict(int)
+        self._async_errors: list[dict[str, Any]] = []
+        self._blocked_reason: dict[str, Any] | None = None
+        self._last_status_write = 0.0
         self._ib: Any = None
         self._stop = threading.Event()
 
@@ -274,12 +309,17 @@ class TickStreamCapture:
             self.client_id = cid
             ib.reqMarketDataType(1)
             self._ib = ib
+            try:
+                ib.errorEvent += self._on_ib_error
+            except Exception:
+                pass
             log.info(
                 "connected ib_insync host=%s port=%s clientId=%s realtime requested",
                 self.host,
                 self.port,
                 self.client_id,
             )
+            self._write_status("CONNECTED", force=True)
             return
         raise RuntimeError(
             f"could not connect to IBKR gateway after {len(attempts)} clientId attempts: {last_exc}",
@@ -324,6 +364,25 @@ class TickStreamCapture:
                 continue
             ticks.updateEvent += lambda t, s=sym: self._on_tick(s, t)
             log.info("subscribed %s -> %s.%s", sym, contract.exchange, contract.localSymbol)
+        self._write_status("SUBSCRIBED", force=True)
+
+    def _on_ib_error(self, reqId, errorCode, errorString, contract_arg=None) -> None:  # noqa: ANN001, ARG002, N803
+        code = int(errorCode or 0)
+        message = str(errorString or "").strip()
+        entry = {
+            "ts": datetime.now(tz=UTC).isoformat(),
+            "code": code,
+            "message": message[:240],
+            "req_id": int(reqId) if reqId is not None else -1,
+        }
+        self._async_errors.append(entry)
+        blocker = _tick_ops_blocker(code, message)
+        if blocker is None or self._blocked_reason is not None:
+            return
+        self._blocked_reason = blocker | {"ibkr_error": entry}
+        log.error("tick capture blocked by IBKR error %s: %s", code, message)
+        self._write_status("BLOCKED", note=blocker["summary"], force=True)
+        self.stop()
 
     def _on_tick(self, sym: str, ticker: Any) -> None:
         all_trades = list(getattr(ticker, "tickByTicks", []) or [])
@@ -367,11 +426,19 @@ class TickStreamCapture:
                 "unreported": bool(getattr(trade, "unreported", False)),
             }
             self.writers[sym].append(record)
+        if start < len(all_trades):
+            self._write_status("RUNNING")
 
     def run(self) -> None:
-        # Periodic flush loop to enforce _FLUSH_EVERY_SECONDS even if
-        # tick volume is sparse.
-        self._ib.run()  # blocks; tick callbacks fire on the event loop
+        log.info("entering tick capture loop")
+        while not self._stop.is_set():
+            if self._ib is None or not self._ib.isConnected():
+                if self._blocked_reason is None:
+                    log.warning("IBKR tick capture connection dropped; exiting loop")
+                    self._write_status("DISCONNECTED", note="IBKR connection dropped", force=True)
+                return
+            self._write_status("RUNNING")
+            self._ib.sleep(1.0)
 
     def stop(self) -> None:
         self._stop.set()
@@ -384,6 +451,31 @@ class TickStreamCapture:
 
     def stats(self) -> dict[str, int]:
         return dict(self._counts)
+
+    @property
+    def blocked_reason(self) -> dict[str, Any] | None:
+        return self._blocked_reason
+
+    def _write_status(self, status: str, *, note: str | None = None, force: bool = False) -> None:
+        now = time.monotonic()
+        if not force and (now - self._last_status_write) < _STATUS_WRITE_INTERVAL_S:
+            return
+        self._last_status_write = now
+        payload = {
+            "ts": datetime.now(tz=UTC).isoformat(),
+            "status": status,
+            "host": self.host,
+            "port": self.port,
+            "client_id": self.client_id,
+            "symbols": self.symbols,
+            "counts": self.stats(),
+            "blocked_reason": self._blocked_reason,
+            "recent_ibkr_errors": self._async_errors[-5:],
+            "connected": bool(self._ib is not None and self._ib.isConnected()),
+        }
+        if note:
+            payload["note"] = note
+        _write_tick_status(payload)
 
 
 def _setup_logging(level: str) -> None:
@@ -418,9 +510,25 @@ def _run_capture(args: argparse.Namespace) -> int:
     signal.signal(signal.SIGTERM, _shutdown)
 
     try:
+        _write_tick_status(
+            {
+                "ts": datetime.now(tz=UTC).isoformat(),
+                "status": "STARTING",
+                "host": args.host,
+                "port": args.port,
+                "client_id": args.client_id,
+                "symbols": list(args.symbols),
+            }
+        )
         capture.connect()
         capture.subscribe()
         capture.run()
+        if capture.blocked_reason is not None:
+            log.warning(
+                "capture_tick blocked by operator-session issue: %s",
+                capture.blocked_reason.get("summary", "unknown IBKR blocker"),
+            )
+            return 0
     except KeyboardInterrupt:
         log.info("KeyboardInterrupt")
     except ConnectionRefusedError:
@@ -454,6 +562,9 @@ def _run_capture(args: argparse.Namespace) -> int:
         return 1
     finally:
         capture.close_writers()
+        final_status = "BLOCKED" if capture.blocked_reason is not None else ("STOPPED" if capture.stats() else "IDLE")
+        final_note = capture.blocked_reason.get("summary") if capture.blocked_reason else None
+        capture._write_status(final_status, note=final_note, force=True)
         log.info("final counts: %s", capture.stats())
     return 0
 

@@ -132,6 +132,38 @@ def test_tick_capture_returns_0_on_missing_subscription(monkeypatch) -> None:
     assert rc == 0
 
 
+def test_tick_capture_returns_0_on_operator_session_blocker(monkeypatch) -> None:
+    from eta_engine.scripts import capture_tick_stream as mod
+
+    cls = next(
+        v for k, v in vars(mod).items()
+        if isinstance(v, type) and "Capture" in k and v.__module__ == mod.__name__
+    )
+    monkeypatch.setattr(cls, "connect", lambda self: None)
+    monkeypatch.setattr(cls, "subscribe", lambda self: None)
+
+    def blocked_run(self: object) -> None:
+        self._blocked_reason = {
+            "code": 10189,
+            "summary": (
+                "Tick-by-tick data blocked because another trading TWS session is connected "
+                "from a different IP address."
+            ),
+        }
+
+    monkeypatch.setattr(cls, "run", blocked_run)
+    monkeypatch.setattr(cls, "stats", lambda self: {})
+    args = argparse.Namespace(
+        symbols=["MNQ"],
+        host="127.0.0.1",
+        port=4002,
+        client_id=99,
+        log_level="WARNING",
+    )
+    rc = mod._run_capture(args)
+    assert rc == 0
+
+
 def test_tick_capture_returns_1_on_unexpected_error(monkeypatch) -> None:
     from eta_engine.scripts import capture_tick_stream as mod
 
@@ -155,3 +187,15 @@ def test_tick_capture_returns_1_on_unexpected_error(monkeypatch) -> None:
     )
     rc = mod._run_capture(args)
     assert rc == 1
+
+
+def test_tick_ops_blocker_detects_different_ip() -> None:
+    from eta_engine.scripts import capture_tick_stream as mod
+
+    blocker = mod._tick_ops_blocker(
+        10189,
+        "Failed to request tick-by-tick data. Trading TWS session is connected from a different IP address",
+    )
+    assert blocker is not None
+    assert blocker["code"] == 10189
+    assert blocker["slug"] == "different_ip_trading_session"

@@ -34,6 +34,8 @@ def isolated_dirs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict:
     monkeypatch.setattr(chm, "HEALTH_LOG", logs / "capture_health.jsonl")
     monkeypatch.setattr(chm, "ALERT_LOG", logs / "alerts_log.jsonl")
     monkeypatch.setattr(chm, "SUB_STATUS_LOG", logs / "ibkr_subscription_status.jsonl")
+    monkeypatch.setattr(chm, "STATE_DIR", tmp_path / "state")
+    monkeypatch.setattr(chm, "TICK_STATUS_FILE", tmp_path / "state" / "capture_tick_status.json")
     return {"ticks": ticks, "depth": depth, "logs": logs}
 
 
@@ -44,6 +46,17 @@ def _write_capture(path: Path, size: int, mtime_offset_seconds: int = 0) -> None
         import os
 
         os.utime(path, (new_time, new_time))
+
+
+def _write_depth_jsonl(path: Path, *, bid_levels: int = 5, ask_levels: int = 5, repeat: int = 12000) -> None:
+    payload = {
+        "ts": datetime.now(UTC).isoformat(),
+        "symbol": "MNQ",
+        "bids": [{"price": 100.0 - i, "size": 1 + i, "mm": "CME"} for i in range(bid_levels)],
+        "asks": [{"price": 100.25 + i, "size": 1 + i, "mm": "CME"} for i in range(ask_levels)],
+    }
+    line = (json.dumps(payload) + "\n").encode("utf-8")
+    path.write_bytes(line * repeat)
 
 
 # ── _check_capture_file ───────────────────────────────────────────
@@ -131,6 +144,41 @@ def test_sub_audit_corrupt(isolated_dirs: dict) -> None:
     assert out["status"] == "PARSE_ERROR"
 
 
+def test_tick_daemon_status_blocked(isolated_dirs: dict) -> None:
+    chm.TICK_STATUS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    chm.TICK_STATUS_FILE.write_text(
+        json.dumps(
+            {
+                "status": "BLOCKED",
+                "blocked_reason": {
+                    "code": 10189,
+                    "summary": (
+                        "Tick-by-tick data blocked because another trading TWS session is connected "
+                        "from a different IP address."
+                    ),
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    out = chm._check_tick_daemon_status()
+    assert out["status"] == "BLOCKED"
+    assert out["blocked_reason"]["code"] == 10189
+
+
+def test_depth_book_quality_empty_book(isolated_dirs: dict) -> None:
+    today = date.today()
+    p = isolated_dirs["depth"] / f"MNQ_{today.strftime('%Y%m%d')}.jsonl"
+    p.write_text(
+        json.dumps({"ts": datetime.now(UTC).isoformat(), "symbol": "MNQ", "bids": [], "asks": []}) + "\n",
+        encoding="utf-8",
+    )
+    out = chm._check_depth_book_quality("MNQ", today)
+    assert out["today_book_status"] == "EMPTY_BOOK"
+    assert out["today_bid_levels"] == 0
+    assert out["today_ask_levels"] == 0
+
+
 # ── _emit_alert ───────────────────────────────────────────────────
 
 
@@ -150,10 +198,10 @@ def test_emit_alert_writes_line(isolated_dirs: dict) -> None:
 def test_main_green_when_all_fresh(isolated_dirs: dict, monkeypatch: pytest.MonkeyPatch) -> None:
     today = datetime.now(UTC).date()
     for sym in ["MNQ", "NQ"]:
-        for d, size in [(isolated_dirs["ticks"], 50_000), (isolated_dirs["depth"], 2_000_000)]:
-            for offset_day in [0, -1]:
-                ds = today + timedelta(days=offset_day)
-                _write_capture(d / f"{sym}_{ds.strftime('%Y%m%d')}.jsonl", size)
+        for offset_day in [0, -1]:
+            ds = today + timedelta(days=offset_day)
+            _write_capture(isolated_dirs["ticks"] / f"{sym}_{ds.strftime('%Y%m%d')}.jsonl", 50_000)
+            _write_depth_jsonl(isolated_dirs["depth"] / f"{sym}_{ds.strftime('%Y%m%d')}.jsonl")
     rec = {"ts": datetime.now(UTC).isoformat(), "all_realtime": True}
     chm.SUB_STATUS_LOG.write_text(json.dumps(rec) + "\n", encoding="utf-8")
 
@@ -183,3 +231,45 @@ def test_main_yellow_when_only_stale(isolated_dirs: dict, monkeypatch: pytest.Mo
     monkeypatch.setattr("sys.argv", ["capture_health_monitor", "--symbols", "MNQ"])
     rc = chm.main()
     assert rc == 1  # YELLOW — files exist but stale
+
+
+def test_main_red_when_tick_daemon_blocked(isolated_dirs: dict, monkeypatch: pytest.MonkeyPatch) -> None:
+    rec = {"ts": datetime.now(UTC).isoformat(), "all_realtime": True}
+    chm.SUB_STATUS_LOG.write_text(json.dumps(rec) + "\n", encoding="utf-8")
+    chm.TICK_STATUS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    chm.TICK_STATUS_FILE.write_text(
+        json.dumps(
+            {
+                "status": "BLOCKED",
+                "blocked_reason": {
+                    "code": 10189,
+                    "summary": (
+                        "Tick-by-tick data blocked because another trading TWS session is connected "
+                        "from a different IP address."
+                    ),
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("sys.argv", ["capture_health_monitor", "--symbols", "MNQ"])
+    rc = chm.main()
+    assert rc == 2
+
+
+def test_main_yellow_when_depth_book_empty(isolated_dirs: dict, monkeypatch: pytest.MonkeyPatch) -> None:
+    today = datetime.now(UTC).date()
+    yest = today - timedelta(days=1)
+    _write_capture(isolated_dirs["ticks"] / f"MNQ_{today.strftime('%Y%m%d')}.jsonl", 50_000)
+    _write_capture(isolated_dirs["ticks"] / f"MNQ_{yest.strftime('%Y%m%d')}.jsonl", 50_000)
+    depth_today = isolated_dirs["depth"] / f"MNQ_{today.strftime('%Y%m%d')}.jsonl"
+    depth_today.write_text(
+        json.dumps({"ts": datetime.now(UTC).isoformat(), "symbol": "MNQ", "bids": [], "asks": []}) + "\n",
+        encoding="utf-8",
+    )
+    _write_capture(isolated_dirs["depth"] / f"MNQ_{yest.strftime('%Y%m%d')}.jsonl", 2_000_000)
+    rec = {"ts": datetime.now(UTC).isoformat(), "all_realtime": True}
+    chm.SUB_STATUS_LOG.write_text(json.dumps(rec) + "\n", encoding="utf-8")
+    monkeypatch.setattr("sys.argv", ["capture_health_monitor", "--symbols", "MNQ"])
+    rc = chm.main()
+    assert rc == 1
