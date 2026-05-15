@@ -262,6 +262,16 @@ def test_eta_watchdog_registrar_discovers_python_without_stale_hardcode() -> Non
     assert r"C:\Program Files\Python312\python.exe" not in text
 
 
+def test_eta_watchdog_registrar_falls_back_when_system_task_is_denied() -> None:
+    text = ETA_WATCHDOG_SCRIPT.read_text(encoding="utf-8")
+
+    assert "SYSTEM registration unavailable" in text
+    assert "WindowsIdentity]::GetCurrent().Name" in text
+    assert "LogonType Interactive" in text
+    assert "current_user:$currentUser" in text
+    assert "PrincipalLabel" in text
+
+
 def test_capture_daemon_registrar_uses_runtime_parameters_without_hardcoded_user() -> None:
     text = CAPTURE_DAEMONS_SCRIPT.read_text(encoding="utf-8")
 

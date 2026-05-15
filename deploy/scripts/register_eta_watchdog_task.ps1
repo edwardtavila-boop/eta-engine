@@ -93,19 +93,39 @@ $principal = New-ScheduledTaskPrincipal `
     -RunLevel Highest
 
 if ($PSCmdlet.ShouldProcess($TaskName, "Register ETA watchdog task")) {
-    Register-ScheduledTask `
-        -TaskName $TaskName `
-        -Action $action `
-        -Trigger $triggers `
-        -Settings $settings `
-        -Principal $principal `
-        -Description "ETA long-running runtime watchdog. Uses boot/logon triggers only; the process loops internally." `
-        -Force | Out-Null
+    try {
+        Register-ScheduledTask `
+            -TaskName $TaskName `
+            -Action $action `
+            -Trigger $triggers `
+            -Settings $settings `
+            -Principal $principal `
+            -Description "ETA long-running runtime watchdog. Uses boot/logon triggers only; the process loops internally." `
+            -Force | Out-Null
+        $principalLabel = "SYSTEM, AtStartup+AtLogOn"
+    } catch {
+        $currentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+        Write-Warning "SYSTEM registration unavailable: $($_.Exception.Message)"
+        $userTriggers = @((New-ScheduledTaskTrigger -AtLogOn -User $currentUser))
+        $userPrincipal = New-ScheduledTaskPrincipal `
+            -UserId $currentUser `
+            -LogonType Interactive `
+            -RunLevel Limited
+        Register-ScheduledTask `
+            -TaskName $TaskName `
+            -Action $action `
+            -Trigger $userTriggers `
+            -Settings $settings `
+            -Principal $userPrincipal `
+            -Description "ETA long-running runtime watchdog. Current-user fallback; process loops internally." `
+            -Force | Out-Null
+        $principalLabel = "current_user:$currentUser, AtLogOn"
+    }
 
     if ($Start) {
         Start-ScheduledTask -TaskName $TaskName
     }
 
     Get-ScheduledTask -TaskName $TaskName |
-        Select-Object TaskName,State,@{Name="UserId";Expression={$_.Principal.UserId}},@{Name="PythonExe";Expression={$PythonExe}},@{Name="IntervalSeconds";Expression={$IntervalSeconds}}
+        Select-Object TaskName,State,@{Name="UserId";Expression={$_.Principal.UserId}},@{Name="PrincipalLabel";Expression={$principalLabel}},@{Name="PythonExe";Expression={$PythonExe}},@{Name="IntervalSeconds";Expression={$IntervalSeconds}}
 }
