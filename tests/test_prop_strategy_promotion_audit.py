@@ -32,6 +32,28 @@ def _candidate(
     }
 
 
+def _runner_candidate(
+    *,
+    bot_id: str = "volume_profile_nq",
+    symbol: str = "NQ1",
+    evidence_grade: str = "near_strict",
+    blockers: list[str] | None = None,
+) -> dict[str, object]:
+    return {
+        "bot_id": bot_id,
+        "role": "runner",
+        "symbol": symbol,
+        "launch_lane": "paper_soak",
+        "active": True,
+        "can_paper_trade": True,
+        "can_live_trade": False,
+        "live_routing_allowed": False,
+        "evidence_grade": evidence_grade,
+        "strict_gate": {"trades": 1284, "sh_def": 1.74, "L": True, "S": True},
+        "blockers": blockers if blockers is not None else ["runner slot is paper/research only"],
+    }
+
+
 def test_promotion_audit_explains_paper_soak_hold_with_required_evidence() -> None:
     report = audit.build_promotion_audit_report(
         gate_report={
@@ -156,6 +178,51 @@ def test_promotion_audit_blocks_kaizen_retired_primary_without_reactivation_hint
     assert report["primary"]["deactivation_source"] == "kaizen_sidecar"
     assert "review Kaizen retirement evidence" in required
     assert "set volume_profile_mnq can_live_trade=true" not in required
+
+
+def test_kaizen_retired_primary_surfaces_runner_up_candidate_without_promoting() -> None:
+    candidate = {
+        **_candidate(launch_lane="deactivated", blockers=["bot row is deactivated via kaizen_sidecar"]),
+        "active": False,
+        "data_status": "deactivated",
+        "promotion_status": "deactivated",
+        "deactivation_source": "kaizen_sidecar",
+        "deactivation_reason": "tier=DECAY mc=MIXED expR=-0.0061 n=66",
+    }
+
+    report = audit.build_promotion_audit_report(
+        gate_report={
+            "summary": "BLOCKED",
+            "primary_bot": "volume_profile_mnq",
+            "checks": [
+                _check(
+                    "primary_ladder",
+                    "BLOCKED",
+                    "volume_profile_mnq is not cleared by the futures prop ladder",
+                    primary_candidate=candidate,
+                ),
+                _check("prop_readiness", "PASS"),
+                _check("broker_native_brackets", "PASS"),
+                _check("closed_trade_ledger", "PASS", closed_trade_count=43000),
+                _check("live_bot_gate", "BLOCKED", "volume_profile_mnq is deactivated"),
+            ],
+        },
+        ladder_report={
+            "summary": {"automation_mode": "FULLY_AUTOMATED_PAPER_PROP_HELD"},
+            "candidates": [candidate, _runner_candidate(), _runner_candidate(bot_id="rsi_mr_mnq_v2", symbol="MNQ1")],
+        },
+    )
+
+    required = "\n".join(report["required_evidence"])
+
+    assert report["summary"] == "BLOCKED_KAIZEN_RETIRED"
+    assert report["runner_up_count"] == 2
+    assert report["next_runner_candidate"]["bot_id"] == "volume_profile_nq"
+    assert report["next_runner_candidate"]["can_live_trade"] is False
+    assert report["next_runner_candidate"]["strict_gate_status"] == "WATCH"
+    assert report["runner_up_candidates"][1]["bot_id"] == "rsi_mr_mnq_v2"
+    assert "evaluate runner-up candidate volume_profile_nq in paper soak" in required
+    assert "focus runner-up review on volume_profile_nq" in report["operator_note"]
 
 
 def test_promotion_audit_prefers_live_gate_deactivation_over_stale_ladder_candidate() -> None:

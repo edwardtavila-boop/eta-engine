@@ -496,7 +496,46 @@ def _promotion_gate_summary(promotion_audit: dict[str, Any]) -> dict[str, Any]:
         "READY_FOR_PROP_DRY_RUN_REVIEW",
         "READY",
     }
-    return {"status": status, "ready": ready}
+    return {
+        "status": status,
+        "ready": ready,
+        "required_evidence": [str(item) for item in _as_list(promotion_audit.get("required_evidence"))],
+        "next_runner_candidate": _as_dict(promotion_audit.get("next_runner_candidate")),
+    }
+
+
+def _promotion_gate_action(gate: dict[str, Any]) -> str:
+    runner = _as_dict(gate.get("next_runner_candidate"))
+    runner_id = str(runner.get("bot_id") or "").strip()
+    runner_symbol = str(runner.get("symbol") or "").strip()
+    if runner_id:
+        label = f"{runner_id} ({runner_symbol})" if runner_symbol else runner_id
+        return f"Keep strategy lane in paper soak; evaluate runner-up {label} before any prop promotion"
+    required = [str(item) for item in _as_list(gate.get("required_evidence")) if str(item).strip()]
+    if required:
+        return "Keep strategy lane in paper soak: " + required[0]
+    return "Keep strategy lane in paper soak until prop promotion audit is PASS/READY"
+
+
+def _paper_live_status(
+    *,
+    runtime_ready: bool,
+    broker_gate: dict[str, Any],
+    ibgateway_gate: dict[str, Any],
+    supervisor_reconcile_gate: dict[str, Any],
+    supervisor_code_gate: dict[str, Any],
+) -> str:
+    if not runtime_ready:
+        return "BLOCKED_RUNTIME"
+    if not broker_gate["ready"]:
+        return "BLOCKED_BROKER_BRACKETS"
+    if not ibgateway_gate["ready"]:
+        return "BLOCKED_IBKR_GATEWAY"
+    if not supervisor_reconcile_gate["ready"]:
+        return "BLOCKED_SUPERVISOR_RECONCILE"
+    if not supervisor_code_gate["ready"]:
+        return "BLOCKED_SUPERVISOR_CODE"
+    return "READY_FOR_PAPER_SOAK"
 
 
 def _ibgateway_summary(
@@ -941,13 +980,17 @@ def build_report(
         and not stale_restart_hooks
     )
     dashboard_durable = not missing_dashboard_tasks
-    trading_gate_ready = bool(
-        broker_gate["ready"]
-        and promotion_gate["ready"]
-        and ibgateway_gate["ready"]
-        and supervisor_reconcile_gate["ready"]
-        and supervisor_code_gate["ready"]
+    paper_live_status = _paper_live_status(
+        runtime_ready=runtime_ready,
+        broker_gate=broker_gate,
+        ibgateway_gate=ibgateway_gate,
+        supervisor_reconcile_gate=supervisor_reconcile_gate,
+        supervisor_code_gate=supervisor_code_gate,
     )
+    paper_live_gate_ready = paper_live_status == "READY_FOR_PAPER_SOAK"
+    prop_promotion_gate_ready = bool(promotion_gate["ready"])
+    live_promotion_blocked = not prop_promotion_gate_ready
+    trading_gate_ready = bool(paper_live_gate_ready and prop_promotion_gate_ready)
     next_actions: list[str] = []
 
     for name in service_down:
@@ -1014,7 +1057,7 @@ def build_report(
     if not supervisor_code_gate["ready"]:
         next_actions.append(_supervisor_code_action(supervisor_code_gate))
     if not promotion_gate["ready"]:
-        next_actions.append("Keep strategy lane in paper soak until prop promotion audit is PASS/READY")
+        next_actions.append(_promotion_gate_action(promotion_gate))
     if not admin_ai_gate["ready"]:
         admin_actions = admin_ai_gate["next_actions"]
         if admin_actions:
@@ -1046,7 +1089,11 @@ def build_report(
             "runtime_ready": runtime_ready,
             "dashboard_durable": dashboard_durable,
             "dashboard_schema_current": not dashboard_schema_drift,
+            "paper_live_gate_ready": paper_live_gate_ready,
+            "paper_live_status": paper_live_status,
             "trading_gate_ready": trading_gate_ready,
+            "prop_promotion_gate_ready": prop_promotion_gate_ready,
+            "live_promotion_blocked": live_promotion_blocked,
             "admin_ai_ready": admin_ai_gate["ready"],
             "admin_ai_status": admin_ai_gate["status"],
             "supervisor_reconcile_ready": supervisor_reconcile_gate["ready"],
@@ -1136,6 +1183,7 @@ def _print_human(report: dict[str, Any]) -> None:
     print(f"VPS ops hardening: {summary.get('status', 'UNKNOWN')}")
     print(f"Runtime ready: {summary.get('runtime_ready')}")
     print(f"Dashboard durable: {summary.get('dashboard_durable')}")
+    print(f"Paper-live gate ready: {summary.get('paper_live_gate_ready')} ({summary.get('paper_live_status')})")
     print(f"Trading gate ready: {summary.get('trading_gate_ready')}")
     print(f"Supervisor code current: {summary.get('supervisor_code_current')}")
     print(f"Admin AI ready: {summary.get('admin_ai_ready')} ({summary.get('admin_ai_status')})")

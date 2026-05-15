@@ -68,6 +68,17 @@ def _blocked_bracket_gate() -> dict[str, object]:
     }
 
 
+def _ready_bracket_gate() -> dict[str, object]:
+    return {
+        "summary": {
+            "status": "PASS",
+            "ready_for_prop_dry_run": True,
+            "missing_bracket_count": 0,
+            "missing_bracket_symbols": [],
+        }
+    }
+
+
 def _blocked_promotion_gate() -> dict[str, object]:
     return {
         "summary": {
@@ -96,6 +107,53 @@ def test_runtime_ok_but_trading_gates_blocked_is_yellow_not_red() -> None:
         "NQM6",
     ]
     assert any("MNQM6, NQM6" in action for action in report["next_actions"])
+
+
+def test_promotion_blocker_points_to_runner_up_when_primary_is_retired() -> None:
+    report = audit.build_report(
+        services=_running_services(),
+        ports=_listening_ports(),
+        endpoints=_healthy_endpoints(),
+        broker_bracket_audit=_ready_bracket_gate(),
+        promotion_audit={
+            "summary": "BLOCKED_KAIZEN_RETIRED",
+            "ready_for_prop_dry_run_review": False,
+            "next_runner_candidate": {"bot_id": "volume_profile_nq", "symbol": "NQ1"},
+            "required_evidence": [
+                "evaluate runner-up candidate volume_profile_nq in paper soak; keep can_live_trade=false",
+            ],
+        },
+        service_config={"fm_status_server": {"matches_expected": True}},
+        tasks=_healthy_tasks(),
+        ibgateway_reauth={"status": "healthy"},
+    )
+
+    assert report["summary"]["status"] == "YELLOW_SAFETY_BLOCKED"
+    assert report["safety_gates"]["promotion"]["status"] == "BLOCKED_KAIZEN_RETIRED"
+    assert any("volume_profile_nq (NQ1)" in action for action in report["next_actions"])
+
+
+def test_paper_live_gate_ready_when_only_prop_promotion_is_blocked() -> None:
+    report = audit.build_report(
+        services=_running_services(),
+        ports=_listening_ports(),
+        endpoints=_healthy_endpoints(),
+        broker_bracket_audit=_ready_bracket_gate(),
+        promotion_audit=_blocked_promotion_gate(),
+        service_config={"fm_status_server": {"matches_expected": True}},
+        tasks=_healthy_tasks(),
+        ibgateway_reauth={"status": "healthy"},
+    )
+
+    assert report["summary"]["runtime_ready"] is True
+    assert report["summary"]["paper_live_gate_ready"] is True
+    assert report["summary"]["paper_live_status"] == "READY_FOR_PAPER_SOAK"
+    assert report["summary"]["prop_promotion_gate_ready"] is False
+    assert report["summary"]["live_promotion_blocked"] is True
+    assert report["summary"]["trading_gate_ready"] is False
+    assert report["summary"]["promotion_allowed"] is False
+    assert report["summary"]["order_action_allowed"] is False
+    assert report["summary"]["status"] == "YELLOW_SAFETY_BLOCKED"
 
 
 def test_task_first_runtime_does_not_require_legacy_firm_services() -> None:

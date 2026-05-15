@@ -97,6 +97,17 @@ def _with_live_deactivation(candidate: dict[str, Any], gate_report: dict[str, An
     return merged
 
 
+def _runner_candidates(ladder_report: dict[str, Any]) -> list[dict[str, Any]]:
+    candidates: list[dict[str, Any]] = []
+    for raw_candidate in _as_list(ladder_report.get("candidates")):
+        candidate = _as_dict(raw_candidate)
+        bot_id = str(candidate.get("bot_id") or "").strip()
+        if not bot_id or bot_id == PRIMARY_BOT:
+            continue
+        candidates.append(candidate)
+    return candidates
+
+
 def _status_by_check(gate_report: dict[str, Any]) -> dict[str, str]:
     checks = _checks_by_name(gate_report)
     names = (
@@ -115,7 +126,7 @@ def _strict_gate_status(candidate: dict[str, Any]) -> str:
     grade = str(candidate.get("evidence_grade") or "")
     if grade == "strict_pass":
         return "PASS"
-    if grade == "near_strict":
+    if grade in {"near_strict", "small_sample_watch", "watch_only"}:
         return "WATCH"
     return "BLOCKED"
 
@@ -185,6 +196,67 @@ def _summary(
     return "BLOCKED_READINESS"
 
 
+def _runner_next_action(candidate: dict[str, Any]) -> str:
+    bot_id = str(candidate.get("bot_id") or "runner").strip()
+    if _is_deactivated(candidate):
+        return f"Keep {bot_id} deactivated until fresh paper-soak evidence repairs the retirement case"
+    if bool(candidate.get("live_routing_allowed")) and bool(candidate.get("can_live_trade")):
+        return f"Review {bot_id} for controlled promotion only after every broker/order gate is still PASS"
+    return (
+        f"Keep {bot_id} paper-only; judge it on broker-backed closes, profit factor, drawdown, "
+        "and native bracket coverage before any promotion"
+    )
+
+
+def _runner_operator_note(candidate: dict[str, Any]) -> str:
+    status = _strict_gate_status(candidate)
+    if status == "PASS":
+        return "Strongest current runner by ladder order; still requires full broker/order gate confirmation."
+    if status == "WATCH":
+        return "Promising runner; keep collecting broker-backed paper closes before promotion review."
+    return "Runner remains blocked; useful for research, not promotion."
+
+
+def _runner_summary(candidate: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "bot_id": candidate.get("bot_id") or "",
+        "role": candidate.get("role") or "runner",
+        "symbol": candidate.get("symbol") or "",
+        "launch_lane": candidate.get("launch_lane") or "",
+        "active": candidate.get("active", True) is not False,
+        "data_status": candidate.get("data_status") or "",
+        "promotion_status": candidate.get("promotion_status") or "",
+        "can_paper_trade": bool(candidate.get("can_paper_trade")),
+        "can_live_trade": bool(candidate.get("can_live_trade")),
+        "live_routing_allowed": bool(candidate.get("live_routing_allowed")),
+        "evidence_grade": candidate.get("evidence_grade") or "missing_strict_gate",
+        "strict_gate_status": _strict_gate_status(candidate),
+        "strict_gate": _as_dict(candidate.get("strict_gate")),
+        "ladder_blockers": [str(item) for item in _as_list(candidate.get("blockers"))],
+        "next_action": candidate.get("next_action") or _runner_next_action(candidate),
+        "operator_note": _runner_operator_note(candidate),
+    }
+
+
+def _next_runner_candidate(runners: list[dict[str, Any]]) -> dict[str, Any]:
+    for runner in runners:
+        if runner.get("active", True) is not False and not _is_deactivated(runner):
+            return runner
+    return runners[0] if runners else {}
+
+
+def _runner_required_evidence(next_runner: dict[str, Any]) -> list[str]:
+    if not next_runner:
+        return []
+    bot_id = str(next_runner.get("bot_id") or "").strip()
+    if not bot_id:
+        return []
+    return [
+        f"evaluate runner-up candidate {bot_id} in paper soak; keep can_live_trade=false until "
+        "broker-backed closes, prop readiness, and native brackets pass",
+    ]
+
+
 def build_promotion_audit_report(
     *,
     gate_report: dict[str, Any],
@@ -194,10 +266,16 @@ def build_promotion_audit_report(
         _primary_candidate(gate_report=gate_report, ladder_report=ladder_report),
         gate_report,
     )
+    runners = _runner_candidates(ladder_report)
+    next_runner = _next_runner_candidate(runners)
+    runner_summaries = [_runner_summary(runner) for runner in runners]
+    next_runner_summary = _runner_summary(next_runner) if next_runner else {}
     statuses = _status_by_check(gate_report)
     gate_summary = str(gate_report.get("summary") or "UNKNOWN")
     required = _required_evidence(candidate=candidate, statuses=statuses, gate_summary=gate_summary)
     summary = _summary(candidate=candidate, gate_summary=gate_summary, required=required)
+    if summary == "BLOCKED_KAIZEN_RETIRED":
+        required = list(dict.fromkeys(required + _runner_required_evidence(next_runner)))
     return {
         "kind": "eta_prop_strategy_promotion_audit",
         "schema_version": 1,
@@ -221,16 +299,26 @@ def build_promotion_audit_report(
             "strict_gate": _as_dict(candidate.get("strict_gate")),
             "ladder_blockers": [str(item) for item in _as_list(candidate.get("blockers"))],
         },
+        "runner_up_count": len(runner_summaries),
+        "next_runner_candidate": next_runner_summary,
+        "runner_up_candidates": runner_summaries,
         "readiness": statuses,
         "required_evidence": required,
-        "operator_note": _operator_note(summary),
+        "operator_note": _operator_note(summary, next_runner_candidate=next_runner_summary),
     }
 
 
-def _operator_note(summary: str) -> str:
+def _operator_note(summary: str, *, next_runner_candidate: dict[str, Any] | None = None) -> str:
     if summary == "READY_FOR_PROP_DRY_RUN_REVIEW":
         return "Primary strategy is ready for operator review of a controlled DORMANT-lane prop dry run."
     if summary == "BLOCKED_KAIZEN_RETIRED":
+        runner = _as_dict(next_runner_candidate)
+        runner_id = str(runner.get("bot_id") or "").strip()
+        if runner_id:
+            return (
+                "Primary strategy was retired by live Kaizen evidence; keep it out of prop routing and "
+                f"focus runner-up review on {runner_id}."
+            )
         return (
             "Primary strategy was retired by live Kaizen evidence; keep it out of prop routing and "
             "evaluate runner-up candidates."
