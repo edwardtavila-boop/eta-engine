@@ -18,6 +18,7 @@ deep inside the supervisor.
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime, time, timedelta
 from typing import Any
 
@@ -783,6 +784,59 @@ def test_daily_loss_cap_uses_today_live_close_ledger_after_restart(monkeypatch) 
     assert bot.session_state is not None
     assert bot.session_state.halted_until_session_date == current_session_date(fake_now)
     assert bot.session_state.last_daily_loss_pct == pytest.approx(1.0)
+
+
+def test_broker_negative_edge_retune_status_halts_paper_live_entries(monkeypatch, tmp_path) -> None:
+    """Broker-proven negative edge must block new paper-live entries until retuned."""
+    sup, bot = _make_supervisor_with_gated_bot(daily_cap=3.0)
+    sup.cfg.mode = "paper_live"
+    bot.bot_id = "neg_edge_bot"
+    fake_now = _ct_to_utc(2026, 5, 15, 10, 0)
+    state = tmp_path / "state"
+    state.mkdir()
+    (state / "diamond_retune_status_latest.json").write_text(
+        json.dumps(
+            {
+                "kind": "eta_diamond_retune_status",
+                "bots": [
+                    {
+                        "bot_id": "neg_edge_bot",
+                        "safe_to_mutate_live": False,
+                        "next_action": "retune or demote before promotion",
+                        "broker_close_evidence": {
+                            "edge_status": "sample_met_negative_edge",
+                            "closed_trade_count": 126,
+                            "required_closed_trade_count": 100,
+                            "total_realized_pnl": -1000.50,
+                            "profit_factor": 0.50,
+                        },
+                    }
+                ],
+                "summary": {"safe_to_mutate_live": False},
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "eta_engine.scripts.jarvis_strategy_supervisor.workspace_roots.ETA_RUNTIME_STATE_DIR",
+        state,
+    )
+    monkeypatch.setattr(
+        "eta_engine.scripts.jarvis_strategy_supervisor.datetime",
+        _FakeDatetime(fake_now),
+    )
+    monkeypatch.setattr(sup, "_enforce_live_close_ledger_daily_loss_cap", lambda *a, **kw: False)
+    monkeypatch.setattr(sup, "_strategy_readiness_allows_entry", lambda _bot: True)
+    submit_called: list[bool] = []
+    consult_called: list[bool] = []
+    monkeypatch.setattr(sup._router, "submit_entry", lambda **kw: submit_called.append(True) or None)
+    monkeypatch.setattr(sup, "_consult_jarvis", lambda **kw: consult_called.append(True) or None)
+
+    sup._maybe_enter(bot, {"close": 21450.0, "high": 21455.0, "low": 21445.0, "open": 21450.0})
+
+    assert submit_called == []
+    assert consult_called == []
+    assert bot.last_aggregation_reject_reason == "broker_negative_edge_retune_hold"
 
 
 # ----------------------------------------------------------------------- #

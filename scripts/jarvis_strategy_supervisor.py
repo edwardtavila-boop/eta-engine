@@ -2285,6 +2285,9 @@ class JarvisStrategySupervisor:
         self._strategy_readiness_mtime_ns: int | None = None
         self._strategy_readiness_by_bot: dict[str, dict[str, Any]] = {}
         self._strategy_readiness_block_logged: set[tuple[str, str]] = set()
+        self._diamond_retune_status_mtime_ns: int | None = None
+        self._negative_broker_edge_by_bot: dict[str, dict[str, Any]] = {}
+        self._negative_broker_edge_block_logged: set[tuple[str, str]] = set()
         # Low-frequency Sage diagnostics so the health surface keeps
         # seeing real consultations even when the live lane is session-
         # gated or simply managing existing positions.
@@ -2494,6 +2497,69 @@ class JarvisStrategySupervisor:
                 readiness.get("next_action") or "",
             )
             self._strategy_readiness_block_logged.add(key)
+        return False
+
+    def _negative_broker_edge_rows_for_entry_gate(self) -> dict[str, dict[str, Any]]:
+        """Return bots whose broker-backed sample is large enough and negative."""
+        path = workspace_roots.ETA_RUNTIME_STATE_DIR / "diamond_retune_status_latest.json"
+        try:
+            mtime_ns = path.stat().st_mtime_ns
+        except OSError:
+            return {}
+        if self._diamond_retune_status_mtime_ns == mtime_ns:
+            return self._negative_broker_edge_by_bot
+
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            logger.warning("diamond retune status read failed for entry gate: %s", exc)
+            return self._negative_broker_edge_by_bot
+        else:
+            rows = payload.get("bots") if isinstance(payload, dict) and isinstance(payload.get("bots"), list) else []
+
+        negative: dict[str, dict[str, Any]] = {}
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            bot_id = str(row.get("bot_id") or "")
+            evidence = row.get("broker_close_evidence")
+            evidence = evidence if isinstance(evidence, dict) else {}
+            if bot_id and str(evidence.get("edge_status") or "") == "sample_met_negative_edge":
+                negative[bot_id] = row
+
+        self._negative_broker_edge_by_bot = negative
+        self._diamond_retune_status_mtime_ns = mtime_ns
+        return negative
+
+    def _broker_retune_allows_entry(self, bot: BotInstance) -> bool:
+        """Block new real-order entries for bots with broker-proven negative edge."""
+        mode = str(self.cfg.mode or "").strip().lower()
+        if mode not in {"paper_live", "live"}:
+            return True
+        row = self._negative_broker_edge_rows_for_entry_gate().get(bot.bot_id)
+        if not row:
+            if str(bot.last_aggregation_reject_reason or "") == "broker_negative_edge_retune_hold":
+                bot.last_aggregation_reject_reason = ""
+                bot.last_aggregation_reject_at = ""
+            return True
+
+        evidence = row.get("broker_close_evidence") if isinstance(row.get("broker_close_evidence"), dict) else {}
+        reason = "broker_negative_edge_retune_hold"
+        bot.last_aggregation_reject_reason = reason
+        bot.last_aggregation_reject_at = datetime.now(UTC).isoformat()
+        key = (bot.bot_id, reason)
+        if key not in self._negative_broker_edge_block_logged:
+            logger.warning(
+                "BROKER EDGE block %s: mode=%s edge=%s closes=%s pnl=%s pf=%s next=%s",
+                bot.bot_id,
+                mode,
+                evidence.get("edge_status") or "",
+                evidence.get("closed_trade_count") or "",
+                evidence.get("total_realized_pnl") or "",
+                evidence.get("profit_factor") or "",
+                row.get("next_action") or "",
+            )
+            self._negative_broker_edge_block_logged.add(key)
         return False
 
     # ── JarvisFull bootstrap ─────────────────────────────────
@@ -4346,6 +4412,9 @@ class JarvisStrategySupervisor:
             return
 
         if not self._strategy_readiness_allows_entry(bot):
+            return
+
+        if not self._broker_retune_allows_entry(bot):
             return
 
         # Mock entry signal: per-call independent dice, ~1-in-5 fire rate.
