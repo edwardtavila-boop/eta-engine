@@ -465,6 +465,40 @@ def test_supervisor_blocks_recent_filled_result_when_broker_flat(
     assert reason.startswith("broker_router_filled_unadopted:")
 
 
+def test_broker_router_stale_fill_reject_clears_without_recent_candidate(
+    tmp_path: Path,
+) -> None:
+    from datetime import UTC, datetime
+
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        BotInstance,
+        JarvisStrategySupervisor,
+        SupervisorConfig,
+    )
+
+    cfg = SupervisorConfig()
+    cfg.mode = "paper_live"
+    cfg.paper_live_order_route = "broker_router"
+    cfg.state_dir = tmp_path / "state"
+    cfg.broker_router_pending_dir = tmp_path / "router" / "pending"
+    sup = JarvisStrategySupervisor(cfg=cfg)
+    bot = BotInstance(
+        bot_id="mnq_futures_sage",
+        symbol="MNQ1",
+        strategy_kind="orb_sage_gated",
+        direction="long",
+        cash=50_000.0,
+    )
+    bot.last_aggregation_reject_reason = "broker_router_filled_but_broker_flat"
+    bot.last_aggregation_reject_at = datetime.now(UTC).isoformat()
+
+    adopted = sup._adopt_broker_router_fill_if_needed(bot, now=datetime.now(UTC))  # noqa: SLF001
+
+    assert adopted is False
+    assert bot.last_aggregation_reject_reason == ""
+    assert bot.last_aggregation_reject_at == ""
+
+
 def test_direct_ibkr_open_without_fill_does_not_create_local_open_position(
     tmp_path: Path,
     monkeypatch,
@@ -1280,6 +1314,170 @@ def test_paper_live_killswitch_advisory_allows_paper_soak_entry(
     assert bot.daily_loss_gate_mode == "advisory"
     assert bot.daily_loss_gate_active is True
     assert "day_pnl=-1214.75" in bot.daily_loss_gate_reason
+
+
+def test_shadow_paper_skips_prop_sleeve_cap_block(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from unittest.mock import MagicMock
+
+    from eta_engine.feeds import capital_allocator as ca
+    from eta_engine.scripts import daily_loss_killswitch
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        BotInstance,
+        FillRecord,
+        JarvisStrategySupervisor,
+        SupervisorConfig,
+    )
+
+    monkeypatch.setenv("ETA_PROP_SLEEVE_CAP_NASDAQ", "10")
+    monkeypatch.setattr(daily_loss_killswitch, "is_killswitch_tripped", lambda: (False, ""))
+    monkeypatch.setattr(ca, "prop_entry_size_multiplier", lambda _bot_id: 1.0)
+    monkeypatch.setattr(ca, "get_prop_guard_signal", lambda: "GO")
+    monkeypatch.setattr(ca, "get_bot_lifecycle", lambda _bot_id: ca.LIFECYCLE_EVAL_PAPER)
+    monkeypatch.setattr(
+        ca,
+        "resolve_execution_target",
+        lambda _bot_id, prospective_loss_usd: (
+            "paper",
+            "paper_shadow_only",
+        ),
+    )
+
+    cfg = SupervisorConfig()
+    cfg.mode = "paper_live"
+    cfg.live_money_enabled = False
+    cfg.data_feed = "unit"
+    cfg.state_dir = tmp_path / "state"
+    cfg.broker_router_pending_dir = tmp_path / "pending"
+    sup = JarvisStrategySupervisor(cfg=cfg)
+    monkeypatch.setattr(sup, "_strategy_readiness_allows_entry", lambda _bot: True)
+    monkeypatch.setattr(sup, "_enforce_daily_loss_cap", lambda _bot, now: False)
+    monkeypatch.setattr(sup, "_consult_sage_for_bot", lambda *args, **kwargs: None)
+    monkeypatch.setattr(sup, "_check_signal_aggregation", lambda **_kwargs: "")
+
+    verdict = MagicMock()
+    verdict.is_blocked.return_value = False
+    verdict.consolidated.final_verdict = "APPROVED"
+    verdict.consolidated.confidence = 0.95
+    verdict.final_size_multiplier = 1.0
+    monkeypatch.setattr(sup, "_consult_jarvis", lambda **_kwargs: verdict)
+
+    fill = FillRecord(
+        bot_id="volume_profile_nq",
+        signal_id="sig-paper",
+        side="BUY",
+        symbol="NQ1",
+        qty=1.0,
+        fill_price=100.0,
+        fill_ts="2026-05-15T01:00:00+00:00",
+        paper=True,
+        note="mode=paper_live",
+    )
+    submit_entry = MagicMock(return_value=fill)
+    monkeypatch.setattr(sup._router, "submit_entry", submit_entry)
+
+    bot = BotInstance(
+        bot_id="volume_profile_nq",
+        symbol="NQ1",
+        strategy_kind="volume_profile",
+        direction="long",
+        cash=50_000.0,
+    )
+
+    sup._maybe_enter(
+        bot,
+        {
+            "ts": "2026-05-15T01:00:00+00:00",
+            "open": 100.0,
+            "high": 101.0,
+            "low": 99.0,
+            "close": 100.0,
+            "volume": 10,
+        },
+    )
+
+    assert submit_entry.called
+    assert bot.last_aggregation_reject_reason == ""
+    assert bot.execution_lane == "shadow_paper"
+    assert bot.capital_gate_scope == "shadow_observe"
+
+
+def test_prop_sleeve_cap_still_blocks_capital_execution_lane(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from unittest.mock import MagicMock
+
+    from eta_engine.feeds import capital_allocator as ca
+    from eta_engine.scripts import daily_loss_killswitch
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        BotInstance,
+        JarvisStrategySupervisor,
+        SupervisorConfig,
+    )
+
+    monkeypatch.setenv("ETA_PROP_SLEEVE_CAP_NASDAQ", "10")
+    monkeypatch.setattr(daily_loss_killswitch, "is_killswitch_tripped", lambda: (False, ""))
+    monkeypatch.setattr(ca, "prop_entry_size_multiplier", lambda _bot_id: 1.0)
+    monkeypatch.setattr(ca, "get_prop_guard_signal", lambda: "GO")
+    monkeypatch.setattr(ca, "get_bot_lifecycle", lambda _bot_id: ca.LIFECYCLE_APPROVED)
+    monkeypatch.setattr(
+        ca,
+        "resolve_execution_target",
+        lambda _bot_id, prospective_loss_usd: (
+            "live",
+            "prop_live_enabled",
+        ),
+    )
+
+    cfg = SupervisorConfig()
+    cfg.mode = "paper_live"
+    cfg.live_money_enabled = True
+    cfg.data_feed = "unit"
+    cfg.state_dir = tmp_path / "state"
+    cfg.broker_router_pending_dir = tmp_path / "pending"
+    sup = JarvisStrategySupervisor(cfg=cfg)
+    monkeypatch.setattr(sup, "_strategy_readiness_allows_entry", lambda _bot: True)
+    monkeypatch.setattr(sup, "_enforce_daily_loss_cap", lambda _bot, now: False)
+    monkeypatch.setattr(sup, "_consult_sage_for_bot", lambda *args, **kwargs: None)
+    monkeypatch.setattr(sup, "_check_signal_aggregation", lambda **_kwargs: "")
+
+    verdict = MagicMock()
+    verdict.is_blocked.return_value = False
+    verdict.consolidated.final_verdict = "APPROVED"
+    verdict.consolidated.confidence = 0.95
+    verdict.final_size_multiplier = 1.0
+    monkeypatch.setattr(sup, "_consult_jarvis", lambda **_kwargs: verdict)
+
+    submit_entry = MagicMock()
+    monkeypatch.setattr(sup._router, "submit_entry", submit_entry)
+
+    bot = BotInstance(
+        bot_id="volume_profile_nq",
+        symbol="NQ1",
+        strategy_kind="volume_profile",
+        direction="long",
+        cash=50_000.0,
+    )
+
+    sup._maybe_enter(
+        bot,
+        {
+            "ts": "2026-05-15T01:00:00+00:00",
+            "open": 100.0,
+            "high": 101.0,
+            "low": 99.0,
+            "close": 100.0,
+            "volume": 10,
+        },
+    )
+
+    assert submit_entry.called is False
+    assert bot.last_aggregation_reject_reason.startswith("prop_sleeve_cap:")
+    assert bot.execution_lane == "capital_execution"
+    assert bot.capital_gate_scope == "prop_live"
 
 
 def test_paper_live_killswitch_advisory_keeps_live_money_hard_stopped(

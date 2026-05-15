@@ -4193,6 +4193,22 @@ class JarvisStrategySupervisor:
             self._env_float("ETA_BROKER_ROUTER_FILL_ADOPT_WINDOW_S", 86400.0),
         )
 
+    def _clear_last_aggregation_reject_if_prefixes(
+        self,
+        bot: BotInstance,
+        *prefixes: str,
+    ) -> None:
+        reason = str(bot.last_aggregation_reject_reason or "")
+        if not reason:
+            return
+        for prefix in prefixes:
+            if not prefix:
+                continue
+            if reason == prefix or reason.startswith(prefix):
+                bot.last_aggregation_reject_reason = ""
+                bot.last_aggregation_reject_at = ""
+                return
+
     def _broker_router_recent_result_payloads(
         self,
         bot: BotInstance,
@@ -4244,6 +4260,11 @@ class JarvisStrategySupervisor:
         open_position so exits and duplicate-entry gates can manage it.
         """
         if bot.open_position is not None:
+            self._clear_last_aggregation_reject_if_prefixes(
+                bot,
+                "broker_router_filled_but_broker_flat",
+                "broker_router_filled_unadopted:",
+            )
             return False
         if str(getattr(self.cfg, "mode", "")).strip().lower() != "paper_live":
             return False
@@ -4329,6 +4350,11 @@ class JarvisStrategySupervisor:
             bot.n_entries += 1
             bot.last_signal_at = entry_ts
             bot.consecutive_broker_rejects = 0
+            self._clear_last_aggregation_reject_if_prefixes(
+                bot,
+                "broker_router_filled_but_broker_flat",
+                "broker_router_filled_unadopted:",
+            )
             self._router._persist_open_position(bot)  # noqa: SLF001
             with contextlib.suppress(Exception):
                 from eta_engine.safety.cross_bot_position_tracker import (  # noqa: PLC0415
@@ -4349,6 +4375,11 @@ class JarvisStrategySupervisor:
                 signal_id,
             )
             return True
+        self._clear_last_aggregation_reject_if_prefixes(
+            bot,
+            "broker_router_filled_but_broker_flat",
+            "broker_router_filled_unadopted:",
+        )
         return False
 
     def _broker_router_pending_entry_block_reason(
@@ -4472,6 +4503,12 @@ class JarvisStrategySupervisor:
             bot.last_aggregation_reject_reason = pending_reason
             bot.last_aggregation_reject_at = now.astimezone(UTC).isoformat()
             return
+        self._clear_last_aggregation_reject_if_prefixes(
+            bot,
+            "broker_router_order_open_no_fill:",
+            "broker_router_filled_unadopted:",
+            "broker_router_signal_cooldown:",
+        )
 
         if not bot.entry_enabled:
             reason = bot.entry_disabled_reason or "entry_disabled"
@@ -5049,12 +5086,13 @@ class JarvisStrategySupervisor:
                 requested_delta=est_qty,
                 fleet_cap=resolve_fleet_cap(sym_root_for_cap),
             )
-            self._cross_bot_tracker.assert_prop_sleeve_cap(
-                symbol_root=sym_root_for_cap,
-                side=order_side,
-                requested_delta=est_qty,
-                sleeve_cap=resolve_prop_sleeve_cap("NASDAQ"),
-            )
+            if str(getattr(bot, "capital_gate_scope", "") or "") == "prop_live":
+                self._cross_bot_tracker.assert_prop_sleeve_cap(
+                    symbol_root=sym_root_for_cap,
+                    side=order_side,
+                    requested_delta=est_qty,
+                    sleeve_cap=resolve_prop_sleeve_cap("NASDAQ"),
+                )
         except FleetPositionCapExceeded as exc:
             bot.last_aggregation_reject_reason = (
                 "fleet_position_cap: root="
