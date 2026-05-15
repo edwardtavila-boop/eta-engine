@@ -113,3 +113,86 @@ def test_promotion_audit_marks_ready_when_primary_and_gate_are_clear() -> None:
     assert report["ready_for_prop_dry_run_review"] is True
     assert report["required_evidence"] == []
     assert report["primary"]["live_routing_allowed"] is True
+
+
+def test_promotion_audit_blocks_kaizen_retired_primary_without_reactivation_hint() -> None:
+    candidate = {
+        **_candidate(launch_lane="deactivated", blockers=["bot row is deactivated via kaizen_sidecar"]),
+        "active": False,
+        "data_status": "deactivated",
+        "promotion_status": "deactivated",
+        "deactivation_source": "kaizen_sidecar",
+        "deactivation_reason": "tier=DECAY mc=MIXED expR=-0.0061 n=66",
+    }
+
+    report = audit.build_promotion_audit_report(
+        gate_report={
+            "summary": "BLOCKED",
+            "primary_bot": "volume_profile_mnq",
+            "checks": [
+                _check(
+                    "primary_ladder",
+                    "BLOCKED",
+                    "volume_profile_mnq is not cleared by the futures prop ladder",
+                    primary_candidate=candidate,
+                ),
+                _check("prop_readiness", "PASS"),
+                _check("broker_native_brackets", "PASS"),
+                _check("closed_trade_ledger", "PASS", closed_trade_count=43000),
+                _check(
+                    "live_bot_gate",
+                    "BLOCKED",
+                    "volume_profile_mnq is deactivated on the live readiness surface",
+                ),
+            ],
+        },
+        ladder_report={"summary": {"automation_mode": "PROP_DRY_RUN_READY_LIVE_BLOCKED"}, "candidates": [candidate]},
+    )
+
+    required = "\n".join(report["required_evidence"])
+
+    assert report["summary"] == "BLOCKED_KAIZEN_RETIRED"
+    assert report["primary"]["active"] is False
+    assert report["primary"]["deactivation_source"] == "kaizen_sidecar"
+    assert "review Kaizen retirement evidence" in required
+    assert "set volume_profile_mnq can_live_trade=true" not in required
+
+
+def test_promotion_audit_prefers_live_gate_deactivation_over_stale_ladder_candidate() -> None:
+    report = audit.build_promotion_audit_report(
+        gate_report={
+            "summary": "BLOCKED",
+            "primary_bot": "volume_profile_mnq",
+            "checks": [
+                _check("primary_ladder", "BLOCKED", primary_candidate=_candidate()),
+                _check("prop_readiness", "BLOCKED"),
+                _check("broker_native_brackets", "PASS"),
+                _check("closed_trade_ledger", "PASS", closed_trade_count=43000),
+                _check(
+                    "live_bot_gate",
+                    "BLOCKED",
+                    "volume_profile_mnq is deactivated on the live readiness surface",
+                    live_readiness_found=True,
+                    live_readiness_active=False,
+                    live_readiness_launch_lane="deactivated",
+                    live_readiness_data_status="deactivated",
+                    live_readiness_promotion_status="deactivated",
+                    live_readiness_deactivation_source="kaizen_sidecar",
+                    live_readiness_deactivation_reason="tier=DECAY mc=MIXED expR=-0.0061 n=66",
+                ),
+            ],
+        },
+        ladder_report={
+            "summary": {"automation_mode": "FULLY_AUTOMATED_PAPER_PROP_HELD"},
+            "candidates": [_candidate()],
+        },
+    )
+
+    required = "\n".join(report["required_evidence"])
+
+    assert report["summary"] == "BLOCKED_KAIZEN_RETIRED"
+    assert report["primary"]["active"] is False
+    assert report["primary"]["launch_lane"] == "deactivated"
+    assert report["primary"]["deactivation_source"] == "kaizen_sidecar"
+    assert "review Kaizen retirement evidence" in required
+    assert "set volume_profile_mnq can_live_trade=true" not in required

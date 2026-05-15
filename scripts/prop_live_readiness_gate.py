@@ -465,11 +465,20 @@ def _next_actions(checks: list[dict[str, Any]]) -> list[str]:
                 source_suffix = f" via {source}" if source else ""
                 next_action = str(live_evidence.get("live_readiness_next_action") or "").strip()
                 suffix = f" Live readiness action: {next_action}" if next_action else ""
-                actions.append(
-                    f"Reconcile the VPS bot_strategy_readiness artifact so {PRIMARY_BOT} matches the canonical "
-                    f"paper-soak registry before any prop dry-run; live readiness currently reports "
-                    f"{state}{source_suffix}.{suffix}",
-                )
+                if source == "kaizen_sidecar":
+                    actions.append(
+                        f"Treat {PRIMARY_BOT} as intentionally retired by Kaizen on the VPS; do not reconcile it "
+                        "back to paper-soak or reactivate it for a prop dry-run unless the operator explicitly "
+                        "overrides after evidence review. Use the ladder runner-up/Kaizen ELITE review to pick the "
+                        "next MNQ/NQ/MES/MYM candidate; live readiness currently reports "
+                        f"{state}{source_suffix}.{suffix}",
+                    )
+                else:
+                    actions.append(
+                        f"Reconcile the VPS bot_strategy_readiness artifact so {PRIMARY_BOT} matches the canonical "
+                        f"paper-soak registry before any prop dry-run; live readiness currently reports "
+                        f"{state}{source_suffix}.{suffix}",
+                    )
         else:
             launch_lane = str(live_evidence.get("launch_lane") or primary_candidate.get("launch_lane") or "paper")
             blockers = [str(item) for item in _as_list(primary_candidate.get("blockers")) if item]

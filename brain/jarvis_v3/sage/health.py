@@ -1,15 +1,25 @@
 """Sage health watchdog (Wave-5 #26, 2026-04-27).
 
-Detects silently-broken schools: a school that returns NEUTRAL on
->95% of consultations for >24h is probably broken (missing dep, raised
-exception caught by consult_sage's safety net, etc.). This module:
+The original monitor treated "NEUTRAL most of the time" as synonymous
+with "broken". That proved too blunt once Sage added regime-oriented
+schools and telemetry-gated schools:
 
-  * keeps a rolling counter of (school, NEUTRAL/non-NEUTRAL) per consultation
-  * persists to ``state/sage/health.json``
-  * provides ``check_health() -> list[Issue]`` for the watchdog task
+* ``volatility_regime`` is directionally neutral by design.
+* ``risk_management`` and ``cross_asset_correlation`` can return healthy
+  neutral regime reads with real conviction/signals.
+* ``order_flow`` / ``funding_basis`` / ``options_greeks`` often return
+  neutral only because the runtime did not supply the needed telemetry.
 
-Run via ``Eta-Sage-Health-Daily`` scheduled task; alerts via Resend
-when any school's neutral_rate exceeds the threshold.
+This module now distinguishes three cases:
+
+* ``silent_neutral``      -> suspicious, likely a truly broken/no-op school
+* ``missing_telemetry``   -> wiring gap; surface it honestly but don't
+                             confuse it with a broken implementation
+* ``informative_neutral`` -> healthy regime/risk/read-only output
+
+Run via ``Eta-Sage-Health-Daily`` scheduled task; alerts fire when a
+school becomes truly silent or when a wiring gap persists long enough to
+matter operationally.
 """
 
 from __future__ import annotations
@@ -32,11 +42,25 @@ class _SchoolHealth:
     school: str
     n_consultations: int = 0
     n_neutral: int = 0
+    n_directional: int = 0
+    n_silent_neutral: int = 0
+    n_informative_neutral: int = 0
+    n_structural_neutral: int = 0
+    n_missing_telemetry: int = 0
+    n_warmup: int = 0
     last_observed: str = ""
 
     @property
     def neutral_rate(self) -> float:
         return self.n_neutral / self.n_consultations if self.n_consultations else 0.0
+
+    @property
+    def silent_neutral_rate(self) -> float:
+        return self.n_silent_neutral / self.n_consultations if self.n_consultations else 0.0
+
+    @property
+    def missing_telemetry_rate(self) -> float:
+        return self.n_missing_telemetry / self.n_consultations if self.n_consultations else 0.0
 
 
 @dataclass(frozen=True)
@@ -46,6 +70,29 @@ class HealthIssue:
     n_consultations: int
     severity: str  # "warn" | "critical"
     detail: str
+    issue_type: str = "silent_neutral"
+    observed_rate: float = 0.0
+
+
+_STRUCTURAL_NEUTRAL_SCHOOLS = frozenset(
+    {
+        "cross_asset_correlation",
+        "risk_management",
+        "volatility_regime",
+    }
+)
+_WARMUP_RATIONALE_FRAGMENTS = (
+    "insufficient bars",
+    "zero baseline vol",
+    "zero path",
+)
+_MISSING_TELEMETRY_RATIONALE_FRAGMENTS = (
+    "no order-flow telemetry",
+    "no funding/basis telemetry",
+    "no options telemetry",
+    "no peer_returns",
+    "school skipped",
+)
 
 
 class SageHealthMonitor:
@@ -69,6 +116,12 @@ class SageHealthMonitor:
                     school=name,
                     n_consultations=int(snap.get("n_consultations", 0)),
                     n_neutral=int(snap.get("n_neutral", 0)),
+                    n_directional=int(snap.get("n_directional", 0)),
+                    n_silent_neutral=int(snap.get("n_silent_neutral", 0)),
+                    n_informative_neutral=int(snap.get("n_informative_neutral", 0)),
+                    n_structural_neutral=int(snap.get("n_structural_neutral", 0)),
+                    n_missing_telemetry=int(snap.get("n_missing_telemetry", 0)),
+                    n_warmup=int(snap.get("n_warmup", 0)),
                     last_observed=snap.get("last_observed", ""),
                 )
         except (json.JSONDecodeError, OSError, KeyError, ValueError) as exc:
@@ -85,7 +138,15 @@ class SageHealthMonitor:
                             name: {
                                 "n_consultations": h.n_consultations,
                                 "n_neutral": h.n_neutral,
+                                "n_directional": h.n_directional,
+                                "n_silent_neutral": h.n_silent_neutral,
+                                "n_informative_neutral": h.n_informative_neutral,
+                                "n_structural_neutral": h.n_structural_neutral,
+                                "n_missing_telemetry": h.n_missing_telemetry,
+                                "n_warmup": h.n_warmup,
                                 "neutral_rate": round(h.neutral_rate, 4),
+                                "silent_neutral_rate": round(h.silent_neutral_rate, 4),
+                                "missing_telemetry_rate": round(h.missing_telemetry_rate, 4),
                                 "last_observed": h.last_observed,
                             }
                             for name, h in self._health.items()
@@ -98,16 +159,66 @@ class SageHealthMonitor:
         except OSError as exc:
             logger.warning("sage health save failed: %s", exc)
 
-    def observe_consultation(self, *, school: str, was_neutral: bool) -> None:
+    def observe_consultation(
+        self,
+        *,
+        school: str,
+        was_neutral: bool,
+        observation_kind: str | None = None,
+    ) -> None:
         with self._lock:
             h = self._health.setdefault(school, _SchoolHealth(school=school))
             h.n_consultations += 1
             if was_neutral:
                 h.n_neutral += 1
+                kind = observation_kind or "silent_neutral"
+                if kind == "silent_neutral":
+                    h.n_silent_neutral += 1
+                elif kind == "informative_neutral":
+                    h.n_informative_neutral += 1
+                elif kind == "structural_neutral":
+                    h.n_structural_neutral += 1
+                elif kind == "missing_telemetry":
+                    h.n_missing_telemetry += 1
+                elif kind == "warmup":
+                    h.n_warmup += 1
+                else:
+                    h.n_silent_neutral += 1
+            else:
+                h.n_directional += 1
             h.last_observed = datetime.now(UTC).isoformat()
             # Save every 10 observations so we don't thrash the disk
             if h.n_consultations % 10 == 0:
                 self._save()
+
+    def _classify_verdict(self, school: str, verdict: object) -> tuple[bool, str]:
+        try:
+            bias_value = verdict.bias.value
+        except AttributeError:
+            bias_value = str(getattr(verdict, "bias", ""))
+        bias_value = str(bias_value).lower()
+        if bias_value != "neutral":
+            return False, "directional"
+
+        signals = getattr(verdict, "signals", None)
+        if not isinstance(signals, dict):
+            signals = {}
+        rationale = str(getattr(verdict, "rationale", "") or "").lower()
+        conviction = float(getattr(verdict, "conviction", 0.0) or 0.0)
+        aligned = bool(getattr(verdict, "aligned_with_entry", False))
+
+        missing = signals.get("missing")
+        if isinstance(missing, list) and missing:
+            return True, "missing_telemetry"
+        if any(fragment in rationale for fragment in _MISSING_TELEMETRY_RATIONALE_FRAGMENTS):
+            return True, "missing_telemetry"
+        if any(fragment in rationale for fragment in _WARMUP_RATIONALE_FRAGMENTS):
+            return True, "warmup"
+        if school in _STRUCTURAL_NEUTRAL_SCHOOLS:
+            return True, "structural_neutral"
+        if conviction > 0.0 or aligned or signals:
+            return True, "informative_neutral"
+        return True, "silent_neutral"
 
     def observe(self, report: Any) -> None:  # noqa: ANN401 -- duck-typed SageReport
         """Convenience: feed a full SageReport. Iterates per_school
@@ -119,43 +230,73 @@ class SageHealthMonitor:
         """
         per_school = getattr(report, "per_school", None) or {}
         for name, verdict in per_school.items():
-            try:
-                bias_value = verdict.bias.value
-            except AttributeError:
-                # Duck-type: if bias is already a string-ish, compare directly
-                bias_value = str(getattr(verdict, "bias", ""))
+            was_neutral, observation_kind = self._classify_verdict(name, verdict)
             self.observe_consultation(
                 school=name,
-                was_neutral=(bias_value == "neutral"),
+                was_neutral=was_neutral,
+                observation_kind=observation_kind,
             )
 
     def check_health(self) -> list[HealthIssue]:
-        """Surface every school whose neutral_rate breaches threshold."""
+        """Surface schools that are silently failing or permanently unwired."""
         issues: list[HealthIssue] = []
         with self._lock:
             for name, h in self._health.items():
                 if h.n_consultations < self.MIN_OBSERVATIONS:
                     continue
-                if h.neutral_rate >= self.NEUTRAL_RATE_CRITICAL:
-                    severity = "critical"
-                elif h.neutral_rate >= self.NEUTRAL_RATE_WARN:
-                    severity = "warn"
-                else:
-                    continue
-                issues.append(
-                    HealthIssue(
-                        school=name,
-                        neutral_rate=h.neutral_rate,
-                        n_consultations=h.n_consultations,
-                        severity=severity,
-                        detail=(
-                            f"school '{name}' returned NEUTRAL on "
-                            f"{h.n_neutral}/{h.n_consultations} consults "
-                            f"({h.neutral_rate * 100:.1f}%); likely broken "
-                            f"(missing dep, exception, stale data)."
-                        ),
+                if h.silent_neutral_rate >= self.NEUTRAL_RATE_CRITICAL:
+                    issues.append(
+                        HealthIssue(
+                            school=name,
+                            neutral_rate=h.neutral_rate,
+                            n_consultations=h.n_consultations,
+                            severity="critical",
+                            issue_type="silent_neutral",
+                            observed_rate=h.silent_neutral_rate,
+                            detail=(
+                                f"school '{name}' produced silent neutral verdicts on "
+                                f"{h.n_silent_neutral}/{h.n_consultations} consults "
+                                f"({h.silent_neutral_rate * 100:.1f}%) with no conviction/signals; "
+                                "likely a broken or inert implementation."
+                            ),
+                        )
                     )
-                )
+                    continue
+                if h.silent_neutral_rate >= self.NEUTRAL_RATE_WARN:
+                    issues.append(
+                        HealthIssue(
+                            school=name,
+                            neutral_rate=h.neutral_rate,
+                            n_consultations=h.n_consultations,
+                            severity="warn",
+                            issue_type="silent_neutral",
+                            observed_rate=h.silent_neutral_rate,
+                            detail=(
+                                f"school '{name}' is drifting toward silence: "
+                                f"{h.n_silent_neutral}/{h.n_consultations} consults "
+                                f"({h.silent_neutral_rate * 100:.1f}%) returned neutral "
+                                "without usable conviction or signals."
+                            ),
+                        )
+                    )
+                    continue
+                if h.missing_telemetry_rate >= self.NEUTRAL_RATE_WARN:
+                    issues.append(
+                        HealthIssue(
+                            school=name,
+                            neutral_rate=h.neutral_rate,
+                            n_consultations=h.n_consultations,
+                            severity="warn",
+                            issue_type="missing_telemetry",
+                            observed_rate=h.missing_telemetry_rate,
+                            detail=(
+                                f"school '{name}' is mostly skipped because runtime telemetry is missing on "
+                                f"{h.n_missing_telemetry}/{h.n_consultations} consults "
+                                f"({h.missing_telemetry_rate * 100:.1f}%); wire the required feed before "
+                                "treating this school as live."
+                            ),
+                        )
+                    )
         return issues
 
     def snapshot(self) -> dict[str, dict]:
@@ -164,7 +305,15 @@ class SageHealthMonitor:
                 name: {
                     "n_consultations": h.n_consultations,
                     "n_neutral": h.n_neutral,
+                    "n_directional": h.n_directional,
+                    "n_silent_neutral": h.n_silent_neutral,
+                    "n_informative_neutral": h.n_informative_neutral,
+                    "n_structural_neutral": h.n_structural_neutral,
+                    "n_missing_telemetry": h.n_missing_telemetry,
+                    "n_warmup": h.n_warmup,
                     "neutral_rate": round(h.neutral_rate, 4),
+                    "silent_neutral_rate": round(h.silent_neutral_rate, 4),
+                    "missing_telemetry_rate": round(h.missing_telemetry_rate, 4),
                     "last_observed": h.last_observed,
                 }
                 for name, h in self._health.items()

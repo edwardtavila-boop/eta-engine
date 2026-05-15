@@ -54,6 +54,49 @@ def _primary_candidate(
     return _as_dict(_as_dict(primary_ladder.get("evidence")).get("primary_candidate"))
 
 
+def _with_live_deactivation(candidate: dict[str, Any], gate_report: dict[str, Any]) -> dict[str, Any]:
+    live_check = _as_dict(_checks_by_name(gate_report).get("live_bot_gate"))
+    evidence = _as_dict(live_check.get("evidence"))
+    live_found = bool(evidence.get("live_readiness_found"))
+    live_active = evidence.get("live_readiness_active")
+    live_lane = str(evidence.get("live_readiness_launch_lane") or "")
+    live_status = str(evidence.get("live_readiness_data_status") or "")
+    live_promotion = str(evidence.get("live_readiness_promotion_status") or "")
+    if not live_found:
+        return candidate
+    if not (
+        live_active is False
+        or live_lane.lower() == "deactivated"
+        or live_status.lower() == "deactivated"
+        or live_promotion.lower() == "deactivated"
+    ):
+        return candidate
+
+    merged = dict(candidate)
+    merged.update(
+        {
+            "active": live_active is not False,
+            "launch_lane": live_lane or merged.get("launch_lane") or "",
+            "data_status": live_status or merged.get("data_status") or "",
+            "promotion_status": live_promotion or merged.get("promotion_status") or "",
+            "deactivation_source": (
+                evidence.get("live_readiness_deactivation_source") or merged.get("deactivation_source") or ""
+            ),
+            "deactivation_reason": (
+                evidence.get("live_readiness_deactivation_reason") or merged.get("deactivation_reason") or ""
+            ),
+            "next_action": evidence.get("live_readiness_next_action") or merged.get("next_action") or "",
+        },
+    )
+    blockers = [str(item) for item in _as_list(merged.get("blockers"))]
+    source = str(merged.get("deactivation_source") or "").strip()
+    blocker = f"live readiness is deactivated via {source}" if source else "live readiness is deactivated"
+    if blocker not in blockers:
+        blockers.insert(0, blocker)
+    merged["blockers"] = blockers
+    return merged
+
+
 def _status_by_check(gate_report: dict[str, Any]) -> dict[str, str]:
     checks = _checks_by_name(gate_report)
     names = (
@@ -77,6 +120,15 @@ def _strict_gate_status(candidate: dict[str, Any]) -> str:
     return "BLOCKED"
 
 
+def _is_deactivated(candidate: dict[str, Any]) -> bool:
+    return (
+        candidate.get("active") is False
+        or str(candidate.get("launch_lane") or "").lower() == "deactivated"
+        or str(candidate.get("data_status") or "").lower() == "deactivated"
+        or str(candidate.get("promotion_status") or "").lower() == "deactivated"
+    )
+
+
 def _required_evidence(
     *,
     candidate: dict[str, Any],
@@ -84,6 +136,19 @@ def _required_evidence(
     gate_summary: str,
 ) -> list[str]:
     required: list[str] = []
+    if _is_deactivated(candidate):
+        source = str(candidate.get("deactivation_source") or "").strip()
+        reason = str(candidate.get("deactivation_reason") or "").strip()
+        if source == "kaizen_sidecar":
+            required.append(
+                f"review Kaizen retirement evidence for {PRIMARY_BOT}; do not reactivate for prop dry-run "
+                "unless the operator explicitly overrides and paper-soak evidence recovers",
+            )
+        else:
+            required.append(f"resolve {PRIMARY_BOT} deactivation before promotion review")
+        if reason:
+            required.append(f"document deactivation reason: {reason}")
+        return required
     if not bool(candidate.get("can_live_trade")):
         required.append(
             f"set {PRIMARY_BOT} can_live_trade=true only after paper-soak promotion approval",
@@ -111,6 +176,10 @@ def _summary(
 ) -> str:
     if gate_summary == "READY_FOR_CONTROLLED_PROP_DRY_RUN" and not required:
         return "READY_FOR_PROP_DRY_RUN_REVIEW"
+    if _is_deactivated(candidate):
+        if candidate.get("deactivation_source") == "kaizen_sidecar":
+            return "BLOCKED_KAIZEN_RETIRED"
+        return "BLOCKED_DEACTIVATED"
     if str(candidate.get("launch_lane") or "") == "paper_soak" or not bool(candidate.get("can_live_trade")):
         return "BLOCKED_PAPER_SOAK"
     return "BLOCKED_READINESS"
@@ -121,7 +190,10 @@ def build_promotion_audit_report(
     gate_report: dict[str, Any],
     ladder_report: dict[str, Any],
 ) -> dict[str, Any]:
-    candidate = _primary_candidate(gate_report=gate_report, ladder_report=ladder_report)
+    candidate = _with_live_deactivation(
+        _primary_candidate(gate_report=gate_report, ladder_report=ladder_report),
+        gate_report,
+    )
     statuses = _status_by_check(gate_report)
     gate_summary = str(gate_report.get("summary") or "UNKNOWN")
     required = _required_evidence(candidate=candidate, statuses=statuses, gate_summary=gate_summary)
@@ -137,6 +209,11 @@ def build_promotion_audit_report(
             "bot_id": candidate.get("bot_id") or PRIMARY_BOT,
             "symbol": candidate.get("symbol") or "",
             "launch_lane": candidate.get("launch_lane") or "",
+            "active": candidate.get("active", True) is not False,
+            "data_status": candidate.get("data_status") or "",
+            "promotion_status": candidate.get("promotion_status") or "",
+            "deactivation_source": candidate.get("deactivation_source") or "",
+            "deactivation_reason": candidate.get("deactivation_reason") or "",
             "can_live_trade": bool(candidate.get("can_live_trade")),
             "live_routing_allowed": bool(candidate.get("live_routing_allowed")),
             "evidence_grade": candidate.get("evidence_grade") or "missing_strict_gate",
@@ -153,6 +230,13 @@ def build_promotion_audit_report(
 def _operator_note(summary: str) -> str:
     if summary == "READY_FOR_PROP_DRY_RUN_REVIEW":
         return "Primary strategy is ready for operator review of a controlled DORMANT-lane prop dry run."
+    if summary == "BLOCKED_KAIZEN_RETIRED":
+        return (
+            "Primary strategy was retired by live Kaizen evidence; keep it out of prop routing and "
+            "evaluate runner-up candidates."
+        )
+    if summary == "BLOCKED_DEACTIVATED":
+        return "Primary strategy is deactivated; resolve the deactivation before any promotion review."
     if summary == "BLOCKED_PAPER_SOAK":
         return "Primary strategy remains in paper soak; do not promote until the listed evidence is cleared."
     return "Primary strategy still has readiness blockers; keep live routing disabled."

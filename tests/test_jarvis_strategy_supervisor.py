@@ -43,6 +43,107 @@ def test_mock_feed_handles_unknown_symbol() -> None:
     assert bar["close"] > 0
 
 
+def test_consult_sage_for_bot_enriches_context_with_live_book_imbalance(tmp_path, monkeypatch) -> None:
+    import json
+    from datetime import UTC, datetime, timedelta
+    from types import SimpleNamespace
+
+    import pytest
+
+    from eta_engine.scripts import jarvis_strategy_supervisor as mod
+
+    depth_root = tmp_path / "mnq_data"
+    depth_dir = depth_root / "depth"
+    depth_dir.mkdir(parents=True, exist_ok=True)
+    snapshot = {
+        "ts": datetime.now(UTC).isoformat(),
+        "symbol": "MNQ1",
+        "bids": [
+            {"price": 21000.25, "size": 9},
+            {"price": 21000.00, "size": 6},
+            {"price": 20999.75, "size": 3},
+        ],
+        "asks": [
+            {"price": 21000.50, "size": 3},
+            {"price": 21000.75, "size": 2},
+            {"price": 21001.00, "size": 1},
+        ],
+        "spread": 0.25,
+        "mid": 21000.375,
+    }
+    (depth_dir / "MNQ_20260514.jsonl").write_text(json.dumps(snapshot) + "\n", encoding="utf-8")
+    monkeypatch.setattr(mod.workspace_roots, "MNQ_DATA_ROOT", depth_root)
+
+    captured: dict[str, object] = {}
+
+    def _fake_consult(ctx, **_kwargs):
+        captured["ctx"] = ctx
+        return SimpleNamespace(
+            conviction=0.42,
+            composite_bias=SimpleNamespace(value="long"),
+            alignment_score=1.0,
+            per_school={},
+        )
+
+    monkeypatch.setattr("eta_engine.brain.jarvis_v3.sage.consult_sage", _fake_consult)
+
+    cfg = mod.SupervisorConfig()
+    cfg.state_dir = tmp_path / "state"
+    sup = mod.JarvisStrategySupervisor(cfg=cfg)
+
+    bot = mod.BotInstance(
+        bot_id="mnq_futures_sage",
+        symbol="MNQ1",
+        strategy_kind="orb_sage_gated",
+        direction="long",
+        cash=50_000.0,
+    )
+    peer = mod.BotInstance(
+        bot_id="nq_peer",
+        symbol="NQ1",
+        strategy_kind="orb_sage_gated",
+        direction="long",
+        cash=50_000.0,
+    )
+    now = datetime.now(UTC)
+    for idx in range(20):
+        bot.sage_bars.append(
+            {
+                "ts": (now - timedelta(minutes=20 - idx)).isoformat(),
+                "open": 21000.0 + idx,
+                "high": 21001.0 + idx,
+                "low": 20999.0 + idx,
+                "close": 21000.5 + idx,
+                "volume": 1000 + idx,
+            }
+        )
+        peer.sage_bars.append(
+            {
+                "ts": (now - timedelta(minutes=20 - idx)).isoformat(),
+                "open": 18000.0 + idx,
+                "high": 18001.0 + idx,
+                "low": 17999.0 + idx,
+                "close": 18000.5 + idx,
+                "volume": 900 + idx,
+            }
+        )
+    sup.bots = [bot, peer]
+
+    report = sup._consult_sage_for_bot(
+        bot,
+        {"close": 21025.0, "high": 21030.0, "low": 21020.0, "open": 21024.0},
+        "long",
+        21025.0,
+    )
+
+    assert report is not None
+    ctx = captured["ctx"]
+    assert ctx.order_book_imbalance == pytest.approx(0.5)
+    assert ctx.peer_returns is not None
+    assert "NQ1" in ctx.peer_returns
+    assert ctx.account_equity_usd == pytest.approx(50_000.0)
+
+
 def test_paper_live_symbol_allowlist_accepts_root_and_contract_alias(
     monkeypatch,
 ) -> None:
@@ -1900,6 +2001,71 @@ def test_supervisor_synthetic_ctx_treats_paper_killswitch_advisory_as_inactive(
 
 
 # ─── LiveIbkrVenue dedicated-loop-thread dispatcher ───────────────
+
+
+def test_supervisor_builds_sage_context_with_depth_and_peer_returns(tmp_path: Path, monkeypatch) -> None:
+    from eta_engine.scripts import jarvis_strategy_supervisor as mod
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        BotInstance,
+        JarvisStrategySupervisor,
+        SupervisorConfig,
+    )
+
+    class FakeMarketContext:
+        def __init__(self, **kwargs) -> None:
+            self.kwargs = kwargs
+
+    cfg = SupervisorConfig()
+    cfg.state_dir = tmp_path / "state"
+    sup = JarvisStrategySupervisor(cfg=cfg)
+    bot = BotInstance(
+        bot_id="mnq_primary",
+        symbol="MNQ1",
+        strategy_kind="x",
+        direction="long",
+        cash=50_000.0,
+    )
+    peer = BotInstance(
+        bot_id="nq_peer",
+        symbol="NQ1",
+        strategy_kind="x",
+        direction="long",
+        cash=50_000.0,
+    )
+    other = BotInstance(
+        bot_id="btc_peer",
+        symbol="BTC",
+        strategy_kind="x",
+        direction="long",
+        cash=50_000.0,
+    )
+    for idx, close in enumerate([100.0, 101.0, 102.0, 103.0, 104.0], start=1):
+        peer.sage_bars.append({"close": close, "ts": f"p{idx}"})
+        other.sage_bars.append({"close": close, "ts": f"o{idx}"})
+    sup.bots.extend([bot, peer, other])
+    monkeypatch.setattr(
+        mod,
+        "_latest_depth_snapshot",
+        lambda _symbol: {
+            "bids": [{"size": 12}, {"size": 8}, {"size": 5}],
+            "asks": [{"size": 5}, {"size": 5}, {"size": 5}],
+        },
+    )
+
+    ctx = sup._build_sage_context(
+        bot,
+        bars=[{"close": 105.0}],
+        side="long",
+        entry_price=105.0,
+        market_context_cls=FakeMarketContext,
+    )
+
+    assert ctx.kwargs["symbol"] == "MNQ1"
+    assert ctx.kwargs["instrument_class"] == "futures"
+    assert ctx.kwargs["account_equity_usd"] == 50_000.0
+    assert ctx.kwargs["order_book_imbalance"] == 0.25
+    assert "NQ1" in ctx.kwargs["peer_returns"]
+    assert "BTC" not in ctx.kwargs["peer_returns"]
 
 
 def _reset_live_ibkr(mod) -> None:

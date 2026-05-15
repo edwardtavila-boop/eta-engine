@@ -485,11 +485,54 @@ def test_sage_health_flags_silently_broken_school(tmp_path: Path) -> None:
     from eta_engine.brain.jarvis_v3.sage.health import SageHealthMonitor
 
     m = SageHealthMonitor(state_path=tmp_path / "health.json")
-    # 100 neutrals, 0 non-neutrals -> critical
+    # 100 silent neutrals, 0 directional reads -> critical
     for _ in range(100):
         m.observe_consultation(school="broken", was_neutral=True)
     issues = m.check_health()
-    assert any(i.school == "broken" and i.severity == "critical" for i in issues)
+    broken = next(i for i in issues if i.school == "broken")
+    assert broken.severity == "critical"
+    assert broken.issue_type == "silent_neutral"
+
+
+def test_sage_health_warns_on_missing_telemetry_without_calling_it_broken(tmp_path: Path) -> None:
+    from eta_engine.brain.jarvis_v3.sage.health import SageHealthMonitor
+
+    m = SageHealthMonitor(state_path=tmp_path / "health.json")
+    for _ in range(40):
+        m.observe_consultation(
+            school="options_greeks",
+            was_neutral=True,
+            observation_kind="missing_telemetry",
+        )
+    issues = m.check_health()
+    issue = next(i for i in issues if i.school == "options_greeks")
+    assert issue.severity == "warn"
+    assert issue.issue_type == "missing_telemetry"
+
+
+def test_sage_health_ignores_informative_neutral_regime_school(tmp_path: Path) -> None:
+    from eta_engine.brain.jarvis_v3.sage.health import SageHealthMonitor
+
+    m = SageHealthMonitor(state_path=tmp_path / "health.json")
+
+    class _Verdict:
+        def __init__(self) -> None:
+            self.bias = type("_Bias", (), {"value": "neutral"})()
+            self.conviction = 0.55
+            self.aligned_with_entry = True
+            self.rationale = "vol expanding sharply"
+            self.signals = {"regime": "expanding", "vol_ratio": 1.9}
+
+    class _Report:
+        per_school = {"volatility_regime": _Verdict()}
+
+    for _ in range(50):
+        m.observe(_Report())
+
+    assert m.check_health() == []
+    snap = m.snapshot()["volatility_regime"]
+    assert snap["n_structural_neutral"] == 50
+    assert snap["n_silent_neutral"] == 0
 
 
 def test_sage_health_no_issue_below_min_observations(tmp_path: Path) -> None:

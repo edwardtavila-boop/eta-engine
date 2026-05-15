@@ -78,6 +78,34 @@ def test_ladder_blocks_cutover_until_prop_and_live_gates_are_green() -> None:
     assert report["summary"]["automation_mode"] == "PROP_DRY_RUN_READY_LIVE_BLOCKED"
 
 
+def test_ladder_treats_kaizen_retired_primary_as_quarantined_not_stale() -> None:
+    report = ladder.build_ladder_report(
+        readiness_rows=[
+            {
+                **_row("volume_profile_mnq", "MNQ1", launch_lane="deactivated", promotion_status="deactivated"),
+                "active": False,
+                "data_status": "deactivated",
+                "deactivation_source": "kaizen_sidecar",
+                "deactivation_reason": "tier=DECAY mc=MIXED expR=-0.0061 n=66",
+            },
+            _row("volume_profile_nq", "NQ1", can_live_trade=True),
+        ],
+        strict_gate_metrics={"volume_profile_mnq": {"trades": 2916, "sh_def": 2.86, "L": True, "S": True}},
+        prop_readiness={"summary": "READY_FOR_DRY_RUN"},
+    )
+
+    primary = report["candidates"][0]
+    actions = "\n".join(report["next_actions"])
+
+    assert primary["bot_id"] == "volume_profile_mnq"
+    assert primary["active"] is False
+    assert primary["deactivation_source"] == "kaizen_sidecar"
+    assert "bot row is deactivated via kaizen_sidecar" in primary["blockers"]
+    assert primary["live_routing_allowed"] is False
+    assert "Keep volume_profile_mnq quarantined" in actions
+    assert "ELITE/ROBUST" in actions
+
+
 def test_ladder_allows_primary_only_when_every_live_gate_passes() -> None:
     report = ladder.build_ladder_report(
         readiness_rows=[

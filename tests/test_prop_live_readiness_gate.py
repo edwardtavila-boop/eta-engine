@@ -157,7 +157,9 @@ def test_prop_live_gate_reports_live_readiness_deactivation_drift() -> None:
     assert live_check["evidence"]["live_readiness_has_deactivation_provenance"] is True
     assert live_check["evidence"]["live_readiness_deactivation_source"] == "kaizen_sidecar"
     assert live_check["evidence"]["visible_related_bots"] == ["volume_profile_nq"]
-    assert "Reconcile the VPS bot_strategy_readiness artifact" in actions
+    assert "intentionally retired by Kaizen" in actions
+    assert "do not reconcile it back to paper-soak" in actions
+    assert "runner-up/Kaizen ELITE review" in actions
     assert "via kaizen_sidecar" in actions
     assert "No action: bot is explicitly deactivated." in actions
 

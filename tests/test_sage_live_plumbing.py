@@ -285,6 +285,30 @@ def test_health_monitor_observe_report() -> None:
 # ─── Sage upkeep scripts smoke ──────────────────────────────────
 
 
+def test_health_monitor_observe_report_classifies_missing_telemetry(tmp_path: Path) -> None:
+    from eta_engine.brain.jarvis_v3.sage.health import SageHealthMonitor
+
+    m = SageHealthMonitor(state_path=tmp_path / "health.json")
+
+    class _Bias:
+        value = "neutral"
+
+    class _Verdict:
+        bias = _Bias()
+        conviction = 0.0
+        rationale = "no peer_returns on ctx -- school skipped"
+        signals = {}
+
+    class _Report:
+        per_school = {"cross_asset_correlation": _Verdict()}
+
+    m.observe(_Report())
+    snap = m.snapshot()["cross_asset_correlation"]
+
+    assert snap["n_missing_telemetry"] == 1
+    assert snap["n_structural_neutral"] == 0
+
+
 def test_sage_onchain_warm_help_runs() -> None:
     from eta_engine.scripts import sage_onchain_warm
 

@@ -634,6 +634,8 @@ _MAX_QTY_DEFAULT_CRYPTO = 0.5  # crypto base unit, conservative
 # ignored to keep the file from growing unbounded).
 _SENT_SIGNALS_LOG_FILENAME = "sent_signals.jsonl"
 _SENT_SIGNALS_DEDUP_HOURS = 24
+_DEPTH_BOOK_LEVELS = 3
+_DEPTH_SNAPSHOT_MAX_AGE_S = 90.0
 
 
 def _classify_symbol(symbol: str) -> str:
@@ -644,6 +646,117 @@ def _classify_symbol(symbol: str) -> str:
     if s in _FUTURES_ROOTS:
         return "futures"
     return "other"
+
+
+def _depth_symbol_candidates(symbol: str) -> list[str]:
+    normalized = symbol.upper().lstrip("/").strip()
+    candidates = [normalized]
+    root = normalized.rstrip("0123456789")
+    if root and root not in candidates:
+        candidates.insert(0, root)
+    return candidates
+
+
+def _read_last_jsonl_dict(path: Path) -> dict[str, Any] | None:
+    if not path.exists():
+        return None
+    try:
+        with path.open("rb") as fh:
+            fh.seek(0, 2)
+            size = fh.tell()
+            if size <= 0:
+                return None
+            tail_bytes = min(size, 64 * 1024)
+            fh.seek(-tail_bytes, 2)
+            chunk = fh.read().decode("utf-8", errors="ignore")
+    except OSError:
+        return None
+    for line in reversed(chunk.splitlines()):
+        if not line.strip():
+            continue
+        with contextlib.suppress(json.JSONDecodeError):
+            payload = json.loads(line)
+            if isinstance(payload, dict):
+                return payload
+        break
+    return None
+
+
+def _parse_iso_utc(raw: object) -> datetime | None:
+    if raw is None or raw == "":
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
+
+
+def _snapshot_order_book_imbalance(snapshot: dict[str, Any], *, levels: int = _DEPTH_BOOK_LEVELS) -> float | None:
+    raw = snapshot.get("book_imbalance")
+    if raw is None:
+        raw = snapshot.get("order_book_imbalance")
+    if raw is not None:
+        try:
+            value = float(raw)
+        except (TypeError, ValueError):
+            value = 0.0
+        return max(-1.0, min(1.0, value))
+
+    bids = snapshot.get("bids") if isinstance(snapshot.get("bids"), list) else []
+    asks = snapshot.get("asks") if isinstance(snapshot.get("asks"), list) else []
+    if not bids or not asks:
+        return None
+
+    def _side_total(rows: list[Any]) -> float:
+        total = 0.0
+        for row in rows[:levels]:
+            if not isinstance(row, dict):
+                continue
+            try:
+                total += float(row.get("size") or 0.0)
+            except (TypeError, ValueError):
+                continue
+        return total
+
+    bid_total = _side_total(bids)
+    ask_total = _side_total(asks)
+    total = bid_total + ask_total
+    if total <= 0.0:
+        return None
+    return round(max(-1.0, min(1.0, (bid_total - ask_total) / total)), 4)
+
+
+def _latest_depth_snapshot(
+    symbol: str,
+    *,
+    depth_root: Path | None = None,
+    max_age_s: float = _DEPTH_SNAPSHOT_MAX_AGE_S,
+) -> dict[str, Any] | None:
+    root = depth_root or (workspace_roots.MNQ_DATA_ROOT / "depth")
+    if not root.exists():
+        return None
+    now = datetime.now(tz=UTC)
+    for candidate in _depth_symbol_candidates(symbol):
+        paths = sorted(
+            root.glob(f"{candidate}_*.jsonl"),
+            key=lambda path: path.stat().st_mtime,
+            reverse=True,
+        )
+        if not paths:
+            continue
+        latest = _read_last_jsonl_dict(paths[0])
+        if latest is None:
+            continue
+        ts = _parse_iso_utc(latest.get("ts") or latest.get("timestamp"))
+        if ts is None:
+            ts = datetime.fromtimestamp(paths[0].stat().st_mtime, tz=UTC)
+        if (now - ts).total_seconds() > max_age_s:
+            return None
+        return latest
+    return None
 
 
 def _round_to_tick(price: float, symbol: str) -> float:
@@ -4737,38 +4850,12 @@ class JarvisStrategySupervisor:
             # cross_asset_correlation school can compute meaningful
             # alignment instead of returning neutral with rationale
             # "no peer_returns on ctx — school skipped".
-            peer_returns: dict[str, list[float]] = {}
-            try:
-                _self_class = _classify_symbol(bot.symbol)
-                for _peer in self.bots:
-                    if _peer.bot_id == bot.bot_id:
-                        continue
-                    if _classify_symbol(_peer.symbol) != _self_class:
-                        continue
-                    if not _peer.sage_bars or len(_peer.sage_bars) < 5:
-                        continue
-                    _closes = [
-                        float(b.get("close", 0)) for b in list(_peer.sage_bars)[-30:] if b.get("close") is not None
-                    ]
-                    if len(_closes) < 5:
-                        continue
-                    _rets = [
-                        (_closes[i] - _closes[i - 1]) / _closes[i - 1]
-                        for i in range(1, len(_closes))
-                        if _closes[i - 1] > 0
-                    ]
-                    if _rets:
-                        peer_returns[_peer.symbol] = _rets
-            except Exception:  # noqa: BLE001
-                peer_returns = {}
-
-            ctx = MarketContext(
+            ctx = self._build_sage_context(
+                bot,
                 bars=bars,
                 side=side,
                 entry_price=entry_price,
-                symbol=bot.symbol,
-                instrument_class=_classify_symbol(bot.symbol),
-                peer_returns=peer_returns or None,
+                market_context_cls=MarketContext,
             )
             report = consult_sage(ctx)
             with contextlib.suppress(Exception):
@@ -5358,12 +5445,12 @@ class JarvisStrategySupervisor:
                 entry_side = inv_side
                 entry_price_for_ctx = float(rec.fill_price or 0)
             entry_dir = "long" if entry_side == "BUY" else "short"
-            ctx = MarketContext(
+            ctx = self._build_sage_context(
+                bot,
                 bars=bars,
                 side=entry_dir,
                 entry_price=entry_price_for_ctx,
-                symbol=bot.symbol,
-                instrument_class=_classify_symbol(bot.symbol),
+                market_context_cls=MarketContext,
             )
             report = consult_sage(ctx, parallel=False, use_cache=False)
             tracker = default_tracker()
@@ -5414,6 +5501,63 @@ class JarvisStrategySupervisor:
             )
 
     # ── Fleet State Persistence ──────────────────────────────
+
+    def _peer_returns_for_bot(self, bot: BotInstance) -> dict[str, list[float]]:
+        """Return recent same-class peer returns for cross-asset Sage reads."""
+        peer_returns: dict[str, list[float]] = {}
+        try:
+            self_class = _classify_symbol(bot.symbol)
+            for peer in self.bots:
+                if peer.bot_id == bot.bot_id:
+                    continue
+                if _classify_symbol(peer.symbol) != self_class:
+                    continue
+                if not peer.sage_bars or len(peer.sage_bars) < 5:
+                    continue
+                closes = [
+                    float(bar.get("close", 0))
+                    for bar in list(peer.sage_bars)[-30:]
+                    if bar.get("close") is not None
+                ]
+                if len(closes) < 5:
+                    continue
+                returns = [
+                    (closes[idx] - closes[idx - 1]) / closes[idx - 1]
+                    for idx in range(1, len(closes))
+                    if closes[idx - 1] > 0
+                ]
+                if returns:
+                    peer_returns[peer.symbol] = returns
+        except Exception:  # noqa: BLE001
+            return {}
+        return peer_returns
+
+    def _build_sage_context(
+        self,
+        bot: BotInstance,
+        *,
+        bars: list[dict[str, Any]],
+        side: str,
+        entry_price: float,
+        market_context_cls: type[object],
+    ) -> object:
+        """Build a Sage MarketContext enriched with live non-price telemetry."""
+        peer_returns = self._peer_returns_for_bot(bot)
+        order_book_imbalance = None
+        with contextlib.suppress(Exception):
+            snapshot = _latest_depth_snapshot(bot.symbol)
+            if snapshot is not None:
+                order_book_imbalance = _snapshot_order_book_imbalance(snapshot)
+        return market_context_cls(
+            bars=bars,
+            side=side,
+            entry_price=entry_price,
+            symbol=bot.symbol,
+            instrument_class=_classify_symbol(bot.symbol),
+            peer_returns=peer_returns or None,
+            order_book_imbalance=order_book_imbalance,
+            account_equity_usd=float(bot.cash) if bot.cash > 0 else None,
+        )
 
     def _write_fleet_state(self) -> None:
         """Aggregate open positions from self.bots and write fleet_state.json.

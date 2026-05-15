@@ -166,6 +166,13 @@ def _blockers(
     evidence_grade: str,
 ) -> list[str]:
     blockers: list[str] = []
+    launch_lane = str(row.get("launch_lane") or "").lower()
+    data_status = str(row.get("data_status") or "").lower()
+    promotion_status = str(row.get("promotion_status") or "").lower()
+    if row.get("active", True) is False or "deactivated" in {launch_lane, data_status, promotion_status}:
+        source = str(row.get("deactivation_source") or "").strip()
+        suffix = f" via {source}" if source else ""
+        blockers.append(f"bot row is deactivated{suffix}")
     if prop_summary != "READY_FOR_DRY_RUN":
         blockers.append(f"prop readiness is {prop_summary or 'UNKNOWN'}, not READY_FOR_DRY_RUN")
     if not bool(row.get("can_live_trade")):
@@ -201,7 +208,12 @@ def _candidate_from_row(
         "instrument_family": _instrument_family(root),
         "strategy_kind": row.get("strategy_kind") or "",
         "launch_lane": row.get("launch_lane") or "",
+        "active": bool(row.get("active", True)),
+        "data_status": row.get("data_status") or "",
         "promotion_status": row.get("promotion_status") or "",
+        "deactivation_source": row.get("deactivation_source") or "",
+        "deactivation_reason": row.get("deactivation_reason") or "",
+        "next_action": row.get("next_action") or "",
         "can_paper_trade": bool(row.get("can_paper_trade")),
         "can_live_trade": bool(row.get("can_live_trade")),
         "strict_gate": metrics or {},
@@ -274,15 +286,31 @@ def build_ladder_report(
             "live_routing_allowed_count": sum(1 for candidate in candidates if candidate["live_routing_allowed"]),
         },
         "candidates": candidates,
-        "next_actions": _next_actions(automation_mode, prop_summary),
+        "next_actions": _next_actions(automation_mode, prop_summary, candidates),
     }
 
 
-def _next_actions(automation_mode: str, prop_summary: str) -> list[str]:
-    actions = [
-        "Keep volume_profile_mnq as the only primary prop-lane candidate.",
-        "Keep runner-ups in paper/research until strict-gate and closed-ledger evidence improve.",
-    ]
+def _next_actions(automation_mode: str, prop_summary: str, candidates: list[dict[str, Any]]) -> list[str]:
+    primary = candidates[0] if candidates else {}
+    source = str(primary.get("deactivation_source") or "").strip()
+    primary_deactivated = (
+        primary.get("active") is False
+        or str(primary.get("launch_lane") or "").lower() == "deactivated"
+        or str(primary.get("data_status") or "").lower() == "deactivated"
+        or str(primary.get("promotion_status") or "").lower() == "deactivated"
+    )
+    if primary_deactivated and source == "kaizen_sidecar":
+        actions = [
+            "Keep volume_profile_mnq quarantined: Kaizen retired it from live evidence, so do not force it "
+            "back into the prop lane without explicit operator reactivation.",
+            "Use the runner-up slots and latest Kaizen ELITE/ROBUST evidence to pick the next "
+            "MNQ/NQ/MES/MYM paper-soak candidate.",
+        ]
+    else:
+        actions = [
+            "Keep volume_profile_mnq as the only primary prop-lane candidate unless live Kaizen evidence retires it.",
+            "Keep runner-ups in paper/research until strict-gate and closed-ledger evidence improve.",
+        ]
     if prop_summary != "READY_FOR_DRY_RUN":
         actions.append("Keep Tradovate DORMANT until API/account readiness is explicitly reactivated in code and docs.")
     if automation_mode == "PROP_DRY_RUN_READY_LIVE_BLOCKED":
