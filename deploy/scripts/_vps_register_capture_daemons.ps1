@@ -31,7 +31,10 @@ if (-not $TaskUser) {
     $TaskUser = [Environment]::GetEnvironmentVariable("ETA_TASK_USER", "User")
 }
 if (-not $TaskUser) {
-    $TaskUser = "$env:USERDOMAIN\$env:USERNAME"
+    $TaskUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+}
+if (-not $TaskUser) {
+    $TaskUser = "$env:COMPUTERNAME\$env:USERNAME"
 }
 
 Write-Host "--- Registering Phase 1 capture daemons on VPS ---"

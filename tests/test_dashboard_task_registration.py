@@ -282,7 +282,8 @@ def test_capture_daemon_registrar_uses_runtime_parameters_without_hardcoded_user
     assert "[switch]$StartNow" in text
     assert 'GetEnvironmentVariable("ETA_PYTHON_EXE", "Machine")' in text
     assert 'GetEnvironmentVariable("ETA_TASK_USER", "Machine")' in text
-    assert '$TaskUser = "$env:USERDOMAIN\\$env:USERNAME"' in text
+    assert "WindowsIdentity]::GetCurrent().Name" in text
+    assert '$TaskUser = "$env:COMPUTERNAME\\$env:USERNAME"' in text
     assert 'Join-Path $WorkspaceRoot "eta_engine\\.venv\\Scripts\\python.exe"' in text
     assert "if ($StartNow)" in text
     for symbol in ('"MNQ"', '"NQ"', '"ES"', '"MES"', '"YM"', '"MYM"', '"M2K"'):

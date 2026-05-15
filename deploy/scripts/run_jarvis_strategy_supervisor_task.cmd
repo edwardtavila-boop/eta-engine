@@ -190,6 +190,11 @@ rem fallback $5k/-$300 defaults.
 set "ETA_KILLSWITCH_TIMEZONE=America/New_York"
 set "ETA_KILLSWITCH_EQUITY_USD=50000"
 set "ETA_KILLSWITCH_DAILY_LIMIT_USD=-1000"
+rem Paper soak must keep producing evidence after the simulated daily floor
+rem trips. This does not disable the kill switch; live_money/live modes still
+rem hard-stop because the supervisor only honors advisory mode for paper_live
+rem with ETA_LIVE_MONEY=0.
+set "ETA_PAPER_LIVE_KILLSWITCH_MODE=advisory"
 set "ETA_BROKER_ROUTER_PENDING_DIR=%ETA_ROOT%\var\eta_engine\state\router\pending"
 rem IBKR Gateway can take several seconds to promote bracket legs from PendingSubmit.
 set "ETA_IBKR_SUBMIT_CONFIRM_SECONDS=10"
