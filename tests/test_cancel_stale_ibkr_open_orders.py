@@ -12,12 +12,13 @@ class _FakeContract:
 
 
 class _FakeOrder:
-    def __init__(self, order_id: int) -> None:
+    def __init__(self, order_id: int, *, client_id: int = 9031) -> None:
         self.orderId = order_id
         self.action = "BUY"
         self.orderType = "LMT"
         self.totalQuantity = 1.0
         self.permId = 0
+        self.clientId = client_id
 
 
 class _FakeStatus:
@@ -41,7 +42,7 @@ class _FakeIB:
 
     def connect(self, _host: str, _port: int, *, clientId: int, timeout: int) -> None:  # noqa: N803
         self.connected = True
-        assert clientId > 0
+        assert clientId >= 0
         assert timeout > 0
 
     def openTrades(self) -> list[_FakeTrade]:  # noqa: N802
@@ -60,10 +61,10 @@ class _FakeIB:
         self.disconnected = True
 
 
-def _trade(symbol: str, order_id: int, *, local_symbol: str = "") -> _FakeTrade:
+def _trade(symbol: str, order_id: int, *, local_symbol: str = "", client_id: int = 9031) -> _FakeTrade:
     return _FakeTrade(
         contract=_FakeContract(symbol=symbol, local_symbol=local_symbol),
-        order=_FakeOrder(order_id=order_id),
+        order=_FakeOrder(order_id=order_id, client_id=client_id),
         order_status=_FakeStatus(),
     )
 
@@ -134,4 +135,28 @@ def test_cancel_stale_orders_confirm_cancels_only_candidates(tmp_path: Path) -> 
 
     assert [row.status for row in results] == ["cancel_submitted", "cancel_submitted"]
     assert fake_ib.cancelled == [102, 103]
+    assert fake_ib.disconnected is True
+
+
+def test_confirm_fails_closed_when_order_owner_client_differs(tmp_path: Path) -> None:
+    fake_ib = _FakeIB([_trade("MYM", 103, local_symbol="MYMM6", client_id=188)])
+    audit_path = tmp_path / "audit.json"
+    audit_path.write_text(
+        '{"stale_flat_open_orders":[{"symbol":"MYMM6"}]}',
+        encoding="utf-8",
+    )
+
+    results = cancel_stale.cancel_stale_ibkr_open_orders(
+        host="127.0.0.1",
+        port=4002,
+        client_id=9031,
+        confirm=True,
+        audit_path=audit_path,
+        ib_factory=lambda: fake_ib,
+    )
+
+    assert [row.status for row in results] == ["owner_client_mismatch"]
+    assert results[0].owner_client_id == 188
+    assert "--client-id 188" in results[0].detail
+    assert fake_ib.cancelled == []
     assert fake_ib.disconnected is True

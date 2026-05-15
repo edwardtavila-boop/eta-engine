@@ -45,6 +45,7 @@ class CancelCandidate:
     quantity: float
     order_id: int | None
     perm_id: int | None
+    owner_client_id: int | None
     status: str
 
 
@@ -57,6 +58,7 @@ class CancelResult:
     quantity: float
     order_id: int | None
     perm_id: int | None
+    owner_client_id: int | None
     status: str
     detail: str = ""
 
@@ -154,6 +156,7 @@ def _candidate_from_trade(trade: object) -> CancelCandidate:
         quantity=_as_float(getattr(order, "totalQuantity", 0.0)),
         order_id=_as_int_or_none(getattr(order, "orderId", None)),
         perm_id=_as_int_or_none(getattr(order, "permId", None)),
+        owner_client_id=_as_int_or_none(getattr(order, "clientId", None)),
         status=_trade_status(trade),
     )
 
@@ -243,6 +246,19 @@ def cancel_stale_ibkr_open_orders(
                         candidate,
                         status="dry_run",
                         detail="pass --confirm to cancel this order",
+                    ),
+                )
+                continue
+            if candidate.owner_client_id is not None and candidate.owner_client_id != client_id:
+                results.append(
+                    _result_from_candidate(
+                        candidate,
+                        status="owner_client_mismatch",
+                        detail=(
+                            f"order belongs to IBKR clientId {candidate.owner_client_id}; "
+                            f"stop that owner process and rerun with --client-id {candidate.owner_client_id}; "
+                            "no cancel submitted"
+                        ),
                     ),
                 )
                 continue
