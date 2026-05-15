@@ -655,6 +655,28 @@ class TestDashboardAPI:
         assert r.status_code == 200
         assert r.json()["quota_state"] == "OK"
 
+    def test_heartbeat_prefers_canonical_supervisor_when_present(self, app_client):
+        state = os.environ["ETA_STATE_DIR"]
+        supervisor_dir = os.path.join(state, "jarvis_intel", "supervisor")
+        os.makedirs(supervisor_dir, exist_ok=True)
+        now = datetime.now(UTC)
+        with open(os.path.join(supervisor_dir, "heartbeat.json"), "w", encoding="utf-8") as fh:
+            json.dump({"ts": now.isoformat(), "mode": "paper_live", "tick_count": 42}, fh)
+        with open(os.path.join(supervisor_dir, "heartbeat_keepalive.json"), "w", encoding="utf-8") as fh:
+            json.dump({"keepalive_ts": now.isoformat()}, fh)
+
+        r = app_client.get("/api/heartbeat")
+
+        assert r.status_code == 200
+        payload = r.json()
+        assert payload["source"] == "jarvis_strategy_supervisor"
+        assert payload["canonical"] is True
+        assert payload["status"] == "RUNNING"
+        assert payload["mode"] == "paper_live"
+        assert payload["tick_count"] == 42
+        assert payload["quota_state"] == "OK"
+        assert payload["supervisor_liveness"]["main_heartbeat_fresh"] is True
+
     def test_dashboard(self, app_client):
         r = app_client.get("/api/dashboard")
         assert r.status_code == 200

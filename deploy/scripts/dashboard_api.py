@@ -3818,6 +3818,42 @@ def _read_json(name: str) -> dict:
         raise HTTPException(status_code=500, detail=f"parse error: {e}") from e
 
 
+def _heartbeat_payload() -> dict:
+    """Return the freshest runtime heartbeat while preserving legacy fields."""
+    state_dir = _state_dir()
+    legacy_path = state_dir / "avengers_heartbeat.json"
+    legacy = _read_json_file(legacy_path)
+    supervisor_path = state_dir / "jarvis_intel" / "supervisor" / "heartbeat.json"
+    supervisor = _read_json_file(supervisor_path)
+    liveness = _supervisor_liveness_snapshot(state_dir, server_ts=time.time())
+
+    if supervisor:
+        payload = {**legacy, **supervisor}
+        payload["source"] = "jarvis_strategy_supervisor"
+        payload["canonical"] = True
+        payload["legacy_avengers_heartbeat_path"] = str(legacy_path)
+        payload["supervisor_heartbeat_path"] = str(supervisor_path)
+        payload["supervisor_liveness"] = liveness
+        payload["heartbeat_age_s"] = liveness.get("main_heartbeat_age_s")
+        payload["keepalive_age_s"] = liveness.get("keepalive_age_s")
+        if not payload.get("status"):
+            if liveness.get("main_heartbeat_fresh"):
+                payload["status"] = "RUNNING"
+            elif liveness.get("keepalive_fresh"):
+                payload["status"] = "WORKING"
+            else:
+                payload["status"] = "STALE"
+        return payload
+
+    if legacy:
+        legacy["source"] = "avengers_heartbeat"
+        legacy["canonical"] = False
+        legacy["supervisor_liveness"] = liveness
+        return legacy
+
+    raise HTTPException(status_code=404, detail=f"heartbeat not found in {state_dir}")
+
+
 def _operator_queue_cache_payload(*, server_ts: float | None = None) -> dict | None:
     """Return cached operator-queue truth for fast diagnostics when present."""
     path = _state_dir() / "operator_queue_snapshot.json"
@@ -4893,8 +4929,8 @@ def health() -> dict:
 
 @app.get("/api/heartbeat")
 def heartbeat() -> dict:
-    """Latest Avengers daemon heartbeat."""
-    return _read_json("avengers_heartbeat.json")
+    """Latest canonical runtime heartbeat with legacy Avengers fallback."""
+    return _heartbeat_payload()
 
 
 @app.get("/api/dashboard")
