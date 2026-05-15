@@ -378,7 +378,10 @@ class TestStrategyResearchCandidateProbe:
                 "warnings": [
                     "research_candidate (strict gate failed; OOS +1.929)",
                 ],
-                "evidence": {"candidate_agg_oos_sharpe": 1.929},
+                "evidence": {
+                    "baseline_present": False,
+                    "candidate_agg_oos_sharpe": 1.929,
+                },
             },
         )
 
@@ -391,6 +394,7 @@ class TestStrategyResearchCandidateProbe:
         assert item.evidence["launch_role"] == "strategy_optimization_backlog"
         assert item.evidence["blocked_bots"] == ["eth_perp"]
         assert item.evidence["blockers"][0]["next_commands"] == [
+            "python -m eta_engine.scripts.run_research_grid --source registry --bots eth_perp --report-policy auto",
             "python -m eta_engine.scripts.paper_live_launch_check --bots eth_perp --json",
         ]
 
