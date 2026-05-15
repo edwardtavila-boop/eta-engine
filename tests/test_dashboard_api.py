@@ -4181,6 +4181,36 @@ class TestDashboardAPI:
         assert payload["plan_age_s"] is not None
         assert payload["artifact_stale"] is False
 
+    def test_workspace_checkout_payload_preserves_aligned_submodule_prefix(self, app_client, monkeypatch):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        expected_commit = "c08210db16fd0fd6f632a7c46c14168d883880fa"
+
+        def fake_git(repo_path, *args):
+            repo_text = str(repo_path)
+            if args == ("rev-parse", "--show-toplevel"):
+                return 0, repo_text, ""
+            if args == ("rev-parse", "HEAD"):
+                return 0, "e063e40b4f3f1aa0d00000000000000000000000", ""
+            if args == ("branch", "--show-current"):
+                return 0, "codex/test", ""
+            if args == ("status", "--porcelain=v1"):
+                return 0, "", ""
+            if repo_text.endswith("EvolutionaryTradingAlgo") and args == ("submodule", "status", "eta_engine"):
+                return 0, f" {expected_commit} eta_engine (heads/codex/symbol-intel-data-spine)", ""
+            raise AssertionError(f"unexpected git command: repo={repo_text} args={args}")
+
+        monkeypatch.setattr(mod, "_git_command", fake_git)
+
+        payload = mod._workspace_checkout_payload_uncached()
+
+        assert payload["status"] == "clean"
+        assert payload["submodule"]["status"] == "aligned"
+        assert payload["submodule"]["state"] == " "
+        assert payload["submodule"]["state_label"] == "aligned"
+        assert payload["submodule"]["expected_commit"] == expected_commit
+        assert payload["submodule"]["expected_short"] == expected_commit[:7]
+
     def test_vps_root_reconciliation_clean_root_is_clear_with_cleanup_locked(
         self,
         app_client,

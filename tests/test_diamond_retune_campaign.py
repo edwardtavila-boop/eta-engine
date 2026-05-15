@@ -660,3 +660,57 @@ def test_runner_appends_attempt_history_without_live_mutation(tmp_path) -> None:
     assert all(row["safe_to_mutate_live"] is False for row in rows)
     assert all(row["live_mutation_policy"] == "paper_only_advisory" for row in rows)
     assert all(row["promotion_block"] == "broker_proof_required" for row in rows)
+
+
+def test_runner_can_refresh_campaign_and_status_surfaces_after_attempt(tmp_path, monkeypatch) -> None:
+    from eta_engine.scripts import diamond_retune_runner as runner
+
+    campaign = {
+        "generated_at_utc": "2026-05-14T20:00:00+00:00",
+        "targets": [
+            {
+                "rank": 1,
+                "bot_id": "mnq_futures_sage",
+                "symbol": "MNQ1",
+                "asset_sleeve": "equity_index",
+                "priority_score": 1061.81,
+                "next_command": (
+                    "python -m eta_engine.scripts.run_research_grid "
+                    "--source registry --bots mnq_futures_sage --report-policy runtime"
+                ),
+                "promotion_block": "broker_proof_required",
+                "live_mutation_policy": "paper_only_advisory",
+                "safe_to_mutate_live": False,
+            },
+        ],
+    }
+    history_path = tmp_path / "history.jsonl"
+    seen: list[str] = []
+
+    def fake_executor(args: list[str], *, timeout_seconds: int) -> runner.CommandResult:
+        return runner.CommandResult(returncode=1, stdout="still weak", stderr="")
+
+    def fake_refresh(*, history_path):
+        seen.append(str(history_path))
+        return {
+            "ok": True,
+            "campaign_path": str(tmp_path / "campaign.json"),
+            "status_path": str(tmp_path / "status.json"),
+            "error": None,
+        }
+
+    monkeypatch.setattr(runner, "_refresh_surface_artifacts", fake_refresh)
+
+    receipt = runner.run_campaign_once(
+        campaign,
+        out_path=tmp_path / "receipt.json",
+        history_path=history_path,
+        refresh_artifacts=True,
+        executor=fake_executor,
+    )
+
+    assert seen == [str(history_path)]
+    assert receipt["artifact_refresh"]["ok"] is True
+    assert receipt["artifact_refresh"]["campaign_path"].endswith("campaign.json")
+    persisted = json.loads((tmp_path / "receipt.json").read_text(encoding="utf-8"))
+    assert persisted["artifact_refresh"]["status_path"].endswith("status.json")

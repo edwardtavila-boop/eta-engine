@@ -964,6 +964,51 @@ def _dashboard_diagnostics_payload() -> dict:
     live_broker_diagnostics = _live_broker_diagnostic_payload()
     roster_bots = roster.get("bots") if isinstance(roster.get("bots"), list) else []
     roster_summary = roster.get("summary") if isinstance(roster.get("summary"), dict) else {}
+    bot_total = int(roster_summary.get("bot_total") or len(roster_bots) or 0)
+    confirmed_bots = int(roster.get("confirmed_bots") or roster_summary.get("confirmed_bots") or 0)
+    active_bots = int(roster_summary.get("active_bots") or roster.get("active_bots") or 0)
+    runtime_active_bots = int(
+        roster_summary.get("runtime_active_bots")
+        or roster.get("runtime_active_bots")
+        or roster_summary.get("active_bots")
+        or roster.get("active_bots")
+        or 0
+    )
+    running_bots = int(roster_summary.get("running_bots") or 0)
+    staged_bots = int(roster_summary.get("staged_bots") or roster.get("staged_bots") or 0)
+    live_attached_bots = int(
+        roster_summary.get("live_attached_bots")
+        or roster.get("live_attached_bots")
+        or runtime_active_bots
+        or active_bots
+        or 0
+    )
+    live_in_trade_bots = int(
+        roster_summary.get("live_in_trade_bots")
+        or roster.get("live_in_trade_bots")
+        or running_bots
+        or 0
+    )
+    idle_live_bots_raw = roster_summary.get("idle_live_bots")
+    if idle_live_bots_raw is None:
+        idle_live_bots_raw = roster.get("idle_live_bots")
+    try:
+        idle_live_bots = (
+            int(idle_live_bots_raw) if idle_live_bots_raw is not None else max(0, live_attached_bots - live_in_trade_bots)
+        )
+    except (TypeError, ValueError):
+        idle_live_bots = max(0, live_attached_bots - live_in_trade_bots)
+    inactive_runtime_bots_raw = roster_summary.get("inactive_runtime_bots")
+    if inactive_runtime_bots_raw is None:
+        inactive_runtime_bots_raw = roster.get("inactive_runtime_bots")
+    try:
+        inactive_runtime_bots = (
+            int(inactive_runtime_bots_raw)
+            if inactive_runtime_bots_raw is not None
+            else max(0, bot_total - live_attached_bots - staged_bots)
+        )
+    except (TypeError, ValueError):
+        inactive_runtime_bots = max(0, bot_total - live_attached_bots - staged_bots)
     equity_series = equity.get("series") if isinstance(equity.get("series"), list) else []
     equity_summary = equity.get("summary") if isinstance(equity.get("summary"), dict) else {}
     card_summary = cards.get("summary") if isinstance(cards.get("summary"), dict) else {}
@@ -1127,17 +1172,16 @@ def _dashboard_diagnostics_payload() -> dict:
             "stale_cards": cards.get("stale_cards") if isinstance(cards.get("stale_cards"), list) else [],
         },
         "bot_fleet": {
-            "bot_total": int(roster_summary.get("bot_total") or len(roster_bots)),
-            "confirmed_bots": int(roster.get("confirmed_bots") or roster_summary.get("confirmed_bots") or 0),
-            "active_bots": int(roster_summary.get("active_bots") or roster.get("active_bots") or 0),
-            "runtime_active_bots": int(
-                roster_summary.get("runtime_active_bots")
-                or roster.get("runtime_active_bots")
-                or roster_summary.get("active_bots")
-                or 0
-            ),
-            "running_bots": int(roster_summary.get("running_bots") or 0),
-            "staged_bots": int(roster_summary.get("staged_bots") or roster.get("staged_bots") or 0),
+            "bot_total": bot_total,
+            "confirmed_bots": confirmed_bots,
+            "active_bots": active_bots,
+            "runtime_active_bots": runtime_active_bots,
+            "running_bots": running_bots,
+            "live_attached_bots": live_attached_bots,
+            "live_in_trade_bots": live_in_trade_bots,
+            "idle_live_bots": idle_live_bots,
+            "inactive_runtime_bots": inactive_runtime_bots,
+            "staged_bots": staged_bots,
             "truth_status": str(roster.get("truth_status") or roster_summary.get("truth_status") or "unknown"),
             "truth_summary_line": str(
                 roster.get("truth_summary_line") or roster_summary.get("truth_summary_line") or "",
@@ -2662,6 +2706,8 @@ _HIDDEN_BOT_ROW_VALUES = {
     "inactive",
 }
 
+_BOT_HEARTBEAT_FRESH_WINDOW_S = 300
+
 
 def _is_hidden_bot_row(row: dict) -> bool:
     """Return True when a bot was intentionally removed from display surfaces."""
@@ -2687,6 +2733,45 @@ def _is_hidden_bot_row(row: dict) -> bool:
     # Readiness snapshots mark old/retired rows with active=false. Do not
     # hide a live supervisor row that somehow still has exposure attached.
     return readiness.get("active") is False and not _row_has_open_exposure(row)
+
+
+def _is_readiness_only_bot_row(row: dict) -> bool:
+    if not isinstance(row, dict):
+        return False
+    return (
+        str(row.get("status") or "").strip().lower() == "readiness_only"
+        or str(row.get("mode") or "").strip().lower() == "readiness_snapshot"
+    )
+
+
+def _row_heartbeat_age_s(row: dict) -> float | None:
+    if not isinstance(row, dict):
+        return None
+    with contextlib.suppress(TypeError, ValueError):
+        value = row.get("heartbeat_age_s")
+        if value in (None, ""):
+            return None
+        return float(value)
+    return None
+
+
+def _row_has_fresh_heartbeat(row: dict, *, max_age_s: float = _BOT_HEARTBEAT_FRESH_WINDOW_S) -> bool:
+    age_s = _row_heartbeat_age_s(row)
+    return age_s is not None and age_s <= max_age_s
+
+
+def _is_live_attached_bot_row(row: dict) -> bool:
+    """Fresh runtime rows that are actually attached to the live supervisor lane."""
+    if not isinstance(row, dict) or _is_readiness_only_bot_row(row):
+        return False
+    status = str(row.get("status") or "").strip().lower()
+    if status in _HIDDEN_BOT_ROW_VALUES or status in {"stale", "delayed"}:
+        return False
+    if not _row_has_fresh_heartbeat(row):
+        return False
+    if row.get("confirmed") is True or row.get("source") == "jarvis_strategy_supervisor":
+        return True
+    return status in {"running", "connected", "active", "live", "idle"}
 
 
 def _is_runtime_active_bot_row(row: dict) -> bool:
@@ -3115,7 +3200,7 @@ def _git_command(repo_path: Path, *args: str) -> tuple[int, str, str]:
         )
     except (OSError, subprocess.SubprocessError) as exc:
         return 1, "", str(exc)
-    return completed.returncode, completed.stdout.strip(), completed.stderr.strip()
+    return completed.returncode, completed.stdout.rstrip(), completed.stderr.rstrip()
 
 
 def _git_checkout_health(repo_path: Path, *, label: str) -> dict[str, object]:
@@ -6740,7 +6825,7 @@ def _lane_rollup(rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
             },
         )
         bucket["bot_count"] += 1
-        if _is_runtime_active_bot_row(row):
+        if _is_live_attached_bot_row(row):
             bucket["active_bots"] += 1
         if str(row.get("current_block_reason") or "").strip():
             bucket["blocked_bots"] += 1

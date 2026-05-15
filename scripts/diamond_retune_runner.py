@@ -148,6 +148,27 @@ def _append_history(path: Path | None, receipt: dict[str, Any]) -> None:
         fh.write(json.dumps(row, sort_keys=True) + "\n")
 
 
+def _refresh_surface_artifacts(*, history_path: Path | None) -> dict[str, Any]:
+    history_arg = history_path or DEFAULT_HISTORY_PATH
+    refresh: dict[str, Any] = {
+        "ok": True,
+        "campaign_path": None,
+        "status_path": None,
+        "error": None,
+    }
+    try:
+        from eta_engine.scripts import diamond_retune_campaign, diamond_retune_status
+
+        diamond_retune_campaign.run()
+        diamond_retune_status.run(history_path=history_arg)
+        refresh["campaign_path"] = str(diamond_retune_campaign.OUT_LATEST)
+        refresh["status_path"] = str(diamond_retune_status.OUT_LATEST)
+    except Exception as exc:  # noqa: BLE001 -- research receipt should survive surface refresh failures
+        refresh["ok"] = False
+        refresh["error"] = f"{type(exc).__name__}: {exc}"
+    return refresh
+
+
 def command_args_for_target(target: dict[str, Any]) -> list[str]:
     if target.get("safe_to_mutate_live") is not False:
         raise ValueError("target must explicitly be safe_to_mutate_live=false")
@@ -273,6 +294,7 @@ def run_campaign_once(
     cursor_path: Path | None = None,
     history_path: Path | None = None,
     timeout_seconds: int = 1800,
+    refresh_artifacts: bool = False,
     executor: Callable[[list[str]], CommandResult] | None = None,
 ) -> dict[str, Any]:
     effective_rank = rank if rank is not None else _cursor_rank(campaign, _load_cursor(cursor_path))
@@ -311,8 +333,6 @@ def run_campaign_once(
         "live_mutation_policy": "paper_only_advisory",
         "safe_to_mutate_live": False,
     }
-    workspace_roots.ensure_parent(out_path)
-    out_path.write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     if cursor_path is not None and bot_id is None and rank is None:
         selected_rank = int(_as_float(target.get("rank"), effective_rank))
         cursor = {
@@ -328,6 +348,10 @@ def run_campaign_once(
         workspace_roots.ensure_parent(cursor_path)
         cursor_path.write_text(json.dumps(cursor, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     _append_history(history_path, receipt)
+    if refresh_artifacts:
+        receipt["artifact_refresh"] = _refresh_surface_artifacts(history_path=history_path)
+    workspace_roots.ensure_parent(out_path)
+    out_path.write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return receipt
 
 
@@ -350,6 +374,7 @@ def main(argv: list[str] | None = None) -> int:
         cursor_path=args.cursor_path,
         history_path=args.history_path,
         timeout_seconds=args.timeout_seconds,
+        refresh_artifacts=True,
     )
     if args.json:
         print(json.dumps(receipt, indent=2, sort_keys=True))
