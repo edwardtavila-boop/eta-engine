@@ -290,8 +290,9 @@ def test_capture_daemon_registrar_uses_runtime_parameters_without_hardcoded_user
     assert "capture_depth_snapshots" in text
     assert "capture_tick_stream" in text
     assert "if ($StartNow)" in text
-    for symbol in ('"MNQ"', '"NQ"', '"ES"', '"MES"', '"YM"', '"MYM"', '"M2K"'):
+    for symbol in ('"MNQ"', '"NQ"', '"ES"', '"M2K"', '"MYM"', '"6E"', '"MBT"', '"MCL"', '"NG"'):
         assert symbol in text
+    assert "--max-active-tick-requests 5 --rotation-seconds 20" in text
     assert "--max-active-depth-requests 3 --rotation-seconds 20" in text
     assert "fxut9145410\\trader" not in text
 

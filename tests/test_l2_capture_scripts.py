@@ -43,6 +43,7 @@ def test_tick_stream_processes_only_new_ibkr_ticks() -> None:
     writer = _TickWriter()
     capture.writers["MNQ"] = writer
     ticker = _Ticker()
+    capture._tickers["MNQ"] = ticker
 
     ticker.tickByTicks.append(_Trade(price=29000.25, size=1))
     capture._on_tick("MNQ", ticker)
@@ -52,6 +53,37 @@ def test_tick_stream_processes_only_new_ibkr_ticks() -> None:
 
     assert [record["price"] for record in writer.records] == [29000.25, 29000.50]
     assert capture.stats()["MNQ"] == 2
+
+
+class _TickEvent:
+    def __iadd__(self, _handler: Any) -> _TickEvent:
+        return self
+
+
+class _RotatingTickTicker:
+    def __init__(self) -> None:
+        self.updateEvent = _TickEvent()
+        self.tickByTicks: list[_Trade] = []
+
+
+class _FakeTickIB:
+    def __init__(self) -> None:
+        self.requested: list[str] = []
+        self.canceled: list[str] = []
+
+    def reqTickByTickData(self, contract, tickType: str, numberOfTicks: int, ignoreSize: bool):  # noqa: N803
+        assert tickType == "Last"
+        assert numberOfTicks == 0
+        assert ignoreSize is False
+        self.requested.append(contract.localSymbol)
+        return _RotatingTickTicker()
+
+    def cancelTickByTickData(self, contract, tickType: str = "Last"):  # noqa: N803
+        assert tickType == "Last"
+        self.canceled.append(contract.localSymbol)
+
+    def isConnected(self) -> bool:
+        return True
 
 
 class _DepthWriter:
@@ -134,6 +166,51 @@ def test_depth_snapshot_loop_uses_sync_ib_sleep_without_asyncio_run() -> None:
 
 def test_depth_capture_defaults_cover_priority_futures_books() -> None:
     assert depth._DEFAULT_SYMBOLS == ("MNQ", "NQ", "ES", "MES", "YM", "MYM", "M2K")
+
+
+def test_tick_capture_defaults_cover_live_fleet_rotation_roster() -> None:
+    assert ticks._DEFAULT_SYMBOLS == ("MNQ", "NQ", "M2K", "6E", "MCL", "MYM", "NG", "MBT")
+
+
+def test_tick_capture_batches_requests_to_ibkr_limit() -> None:
+    capture = ticks.TickStreamCapture(
+        symbols=["MNQ", "NQ", "M2K", "6E", "MCL", "MYM", "NG", "MBT"],
+        host="127.0.0.1",
+        port=4002,
+        client_id=31,
+        max_active_tick_requests=5,
+        rotation_seconds=20.0,
+    )
+
+    assert capture._batches == [
+        ["MNQ", "NQ", "M2K", "6E", "MCL"],
+        ["MYM", "NG", "MBT"],
+    ]
+
+
+def test_tick_capture_rotates_batches_cleanly() -> None:
+    capture = ticks.TickStreamCapture(
+        symbols=["MNQ", "NQ", "M2K", "6E"],
+        host="127.0.0.1",
+        port=4002,
+        client_id=31,
+        max_active_tick_requests=2,
+        rotation_seconds=5.0,
+    )
+    fake_ib = _FakeTickIB()
+    capture._ib = fake_ib
+    capture._resolve = lambda sym: SimpleNamespace(exchange="CME", localSymbol=sym)  # type: ignore[method-assign]
+
+    capture.subscribe()
+    assert capture._active_symbols == ["MNQ", "NQ"]
+    assert fake_ib.requested == ["MNQ", "NQ"]
+
+    capture._active_batch_started = time.monotonic() - 6.0
+    capture._rotate_if_due()
+
+    assert capture._active_symbols == ["M2K", "6E"]
+    assert fake_ib.canceled == ["MNQ", "NQ"]
+    assert fake_ib.requested == ["MNQ", "NQ", "M2K", "6E"]
 
 
 def test_depth_capture_batches_market_depth_requests_to_ibkr_limit() -> None:

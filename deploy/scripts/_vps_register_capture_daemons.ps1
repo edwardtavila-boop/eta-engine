@@ -2,8 +2,8 @@ param(
     [string]$PythonPath = "",
     [string]$WorkspaceRoot = "C:\EvolutionaryTradingAlgo",
     [string]$TaskUser = "",
-    [string[]]$TickSymbols = @("MNQ", "NQ", "M2K", "6E", "MCL"),
-    [string[]]$DepthSymbols = @("MNQ", "NQ", "ES", "MES", "YM", "MYM", "M2K"),
+    [string[]]$TickSymbols = @("MNQ", "NQ", "M2K", "6E", "MCL", "MYM", "NG", "MBT"),
+    [string[]]$DepthSymbols = @("MNQ", "NQ", "ES", "M2K", "MYM", "6E", "MBT"),
     [switch]$StartNow
 )
 
@@ -91,6 +91,8 @@ foreach ($name in @("ETA-CaptureTicks", "ETA-CaptureDepth")) {
     $symbolArgs = ($symbols | ForEach-Object { $_.Trim() } | Where-Object { $_ }) -join " "
     $extraArgs = if ($name -eq "ETA-CaptureDepth") {
         "--max-active-depth-requests 3 --rotation-seconds 20"
+    } elseif ($name -eq "ETA-CaptureTicks") {
+        "--max-active-tick-requests 5 --rotation-seconds 20"
     } else {
         ""
     }

@@ -68,6 +68,10 @@ appended; rotation happens at UTC date rollover. Each symbol
 buffers in-memory and flushes every 100 ticks or 1 second
 (whichever comes first), so kill -9 loses at most ~1 second of
 data per symbol.
+
+IBKR also caps concurrent tick-by-tick streams. The daemon therefore
+rotates larger symbol sets in batches instead of hard-failing once the
+operator expands beyond the confirmed live slot count.
 """
 
 from __future__ import annotations
@@ -108,17 +112,21 @@ _DEFAULT_PORT: int = 4002
 _DEFAULT_CLIENT_ID: int = 131
 _CONNECT_TIMEOUT_S: float = 20.0
 
-# Core always-on set. The VPS hit IBKR Error 10190 when the daemon requested
-# the larger 8-symbol tick-by-tick set, so the default stays inside the five
-# symbols that were confirmed to stream. Wider runs remain available via
-# ``--symbols`` after more slots/data are provisioned.
+# Live fleet tick roster. The VPS hit IBKR Error 10190 when all eight were
+# requested concurrently, so the daemon rotates these symbols in capped
+# batches instead of pretending the full set can stay subscribed at once.
 _DEFAULT_SYMBOLS: tuple[str, ...] = (
     "MNQ",
     "NQ",
     "M2K",
     "6E",
     "MCL",
+    "MYM",
+    "NG",
+    "MBT",
 )
+_DEFAULT_MAX_ACTIVE_TICK_REQUESTS: int = 5
+_DEFAULT_ROTATION_SECONDS: float = 20.0
 
 # Symbol -> (root, exchange, currency). Mirrors fetch_tws_historical_bars.
 _FUTURES_MAP: dict[str, tuple[str, str, str]] = {
@@ -253,20 +261,46 @@ class TickWriter:
 class TickStreamCapture:
     """Manage IBKR tick subscriptions + writers."""
 
-    def __init__(self, *, symbols: list[str], host: str, port: int, client_id: int) -> None:
+    def __init__(
+        self,
+        *,
+        symbols: list[str],
+        host: str,
+        port: int,
+        client_id: int,
+        max_active_tick_requests: int = _DEFAULT_MAX_ACTIVE_TICK_REQUESTS,
+        rotation_seconds: float = _DEFAULT_ROTATION_SECONDS,
+    ) -> None:
         self.symbols = symbols
         self.host = host
         self.port = port
         self.client_id = client_id
+        self.max_active_tick_requests = max(1, max_active_tick_requests)
+        self.rotation_seconds = max(1.0, rotation_seconds)
         self.writers: dict[str, TickWriter] = {s: TickWriter(s, TICK_ROOT) for s in symbols}
+        self._contracts: dict[str, Any] = {}
+        self._tickers: dict[str, Any] = {}
         self._stale_flagged: set[str] = set()
         self._counts: dict[str, int] = defaultdict(int)
         self._tick_offsets: dict[str, int] = defaultdict(int)
         self._async_errors: list[dict[str, Any]] = []
         self._blocked_reason: dict[str, Any] | None = None
         self._last_status_write = 0.0
+        self._batches = self._subscription_batches()
+        self._active_symbols: list[str] = []
+        self._active_batch_index = 0
+        self._active_batch_started = 0.0
         self._ib: Any = None
         self._stop = threading.Event()
+
+    def _subscription_batches(self) -> list[list[str]]:
+        if not self.symbols:
+            return []
+        batch_size = max(1, min(self.max_active_tick_requests, len(self.symbols)))
+        return [
+            self.symbols[idx : idx + batch_size]
+            for idx in range(0, len(self.symbols), batch_size)
+        ]
 
     def connect(self) -> None:
         """Connect with multi-retry clientId-collision handling.
@@ -349,20 +383,73 @@ class TickStreamCapture:
             raise RuntimeError(f"{sym}: no non-expired contracts found")
         return candidates[0]
 
+    def _subscribe_symbol(self, sym: str) -> bool:
+        try:
+            contract = self._resolve(sym)
+        except Exception:
+            log.exception("resolve failed for %s; skipping", sym)
+            return False
+        try:
+            ticker = self._ib.reqTickByTickData(contract, "Last", 0, False)
+        except Exception:
+            log.exception("reqTickByTickData failed for %s; skipping", sym)
+            return False
+        self._contracts[sym] = contract
+        self._tickers[sym] = ticker
+        self._tick_offsets[sym] = 0
+        ticker.updateEvent += lambda t, s=sym: self._on_tick(s, t)
+        log.info("subscribed %s -> %s.%s", sym, contract.exchange, contract.localSymbol)
+        return True
+
+    def _unsubscribe_symbol(self, sym: str) -> None:
+        contract = self._contracts.pop(sym, None)
+        self._tickers.pop(sym, None)
+        self._tick_offsets.pop(sym, None)
+        if contract is None or self._ib is None or not self._ib.isConnected():
+            return
+        try:
+            self._ib.cancelTickByTickData(contract, "Last")
+        except TypeError:
+            try:
+                self._ib.cancelTickByTickData(contract)
+            except Exception:
+                log.debug("cancelTickByTickData failed for %s", sym)
+        except Exception:
+            log.debug("cancelTickByTickData failed for %s", sym)
+
+    def _activate_batch(self, batch_index: int) -> None:
+        if not self._batches:
+            return
+        batch = self._batches[batch_index]
+        active: list[str] = []
+        for sym in batch:
+            if self._subscribe_symbol(sym):
+                active.append(sym)
+        self._active_batch_index = batch_index
+        self._active_symbols = active
+        self._active_batch_started = time.monotonic()
+        log.info(
+            "active tick batch %d/%d: %s",
+            batch_index + 1,
+            len(self._batches),
+            " ".join(batch),
+        )
+
+    def _rotate_if_due(self) -> None:
+        if len(self._batches) <= 1:
+            return
+        if (time.monotonic() - self._active_batch_started) < self.rotation_seconds:
+            return
+        prior_symbols = list(self._active_symbols)
+        for sym in prior_symbols:
+            self._unsubscribe_symbol(sym)
+        next_index = (self._active_batch_index + 1) % len(self._batches)
+        self._activate_batch(next_index)
+
     def subscribe(self) -> None:
-        for sym in self.symbols:
-            try:
-                contract = self._resolve(sym)
-            except Exception:
-                log.exception("resolve failed for %s; skipping", sym)
-                continue
-            try:
-                ticks = self._ib.reqTickByTickData(contract, "Last", 0, False)
-            except Exception:
-                log.exception("reqTickByTickData failed for %s; skipping", sym)
-                continue
-            ticks.updateEvent += lambda t, s=sym: self._on_tick(s, t)
-            log.info("subscribed %s -> %s.%s", sym, contract.exchange, contract.localSymbol)
+        if not self._batches:
+            return
+        self._activate_batch(0)
         self._write_status("SUBSCRIBED", force=True)
 
     def _on_ib_error(self, reqId, errorCode, errorString, contract_arg=None) -> None:  # noqa: ANN001, ARG002, N803
@@ -384,6 +471,8 @@ class TickStreamCapture:
         self.stop()
 
     def _on_tick(self, sym: str, ticker: Any) -> None:
+        if self._tickers.get(sym) is not ticker:
+            return
         all_trades = list(getattr(ticker, "tickByTicks", []) or [])
         start = self._tick_offsets.get(sym, 0)
         if start > len(all_trades):
@@ -436,6 +525,7 @@ class TickStreamCapture:
                     log.warning("IBKR tick capture connection dropped; exiting loop")
                     self._write_status("DISCONNECTED", note="IBKR connection dropped", force=True)
                 return
+            self._rotate_if_due()
             self._write_status("RUNNING")
             self._ib.sleep(1.0)
 
@@ -467,6 +557,11 @@ class TickStreamCapture:
             "port": self.port,
             "client_id": self.client_id,
             "symbols": self.symbols,
+            "active_symbols": list(self._active_symbols),
+            "active_batch_index": self._active_batch_index,
+            "active_batch_count": len(self._batches),
+            "max_active_tick_requests": self.max_active_tick_requests,
+            "rotation_seconds": self.rotation_seconds,
             "counts": self.stats(),
             "blocked_reason": self._blocked_reason,
             "recent_ibkr_errors": self._async_errors[-5:],
@@ -497,6 +592,10 @@ def _run_capture(args: argparse.Namespace) -> int:
         host=args.host,
         port=args.port,
         client_id=args.client_id,
+        max_active_tick_requests=int(
+            getattr(args, "max_active_tick_requests", _DEFAULT_MAX_ACTIVE_TICK_REQUESTS)
+        ),
+        rotation_seconds=float(getattr(args, "rotation_seconds", _DEFAULT_ROTATION_SECONDS)),
     )
 
     def _shutdown(_signum: int, _frame: Any) -> None:
@@ -581,6 +680,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--host", default=_DEFAULT_HOST)
     parser.add_argument("--port", type=int, default=_DEFAULT_PORT)
     parser.add_argument("--client-id", type=int, default=_DEFAULT_CLIENT_ID)
+    parser.add_argument("--max-active-tick-requests", type=int, default=_DEFAULT_MAX_ACTIVE_TICK_REQUESTS)
+    parser.add_argument("--rotation-seconds", type=float, default=_DEFAULT_ROTATION_SECONDS)
     parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
     args = parser.parse_args(argv)
     _setup_logging(args.log_level)

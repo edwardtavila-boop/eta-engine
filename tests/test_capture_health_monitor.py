@@ -59,6 +59,11 @@ def _write_depth_jsonl(path: Path, *, bid_levels: int = 5, ask_levels: int = 5, 
     path.write_bytes(line * repeat)
 
 
+def test_default_depth_symbols_match_vps_capture_rotation() -> None:
+    assert chm.DEFAULT_TICK_SYMBOLS == ["MNQ", "NQ", "M2K", "6E", "MCL", "MYM", "NG", "MBT"]
+    assert chm.DEFAULT_DEPTH_SYMBOLS == ["MNQ", "NQ", "ES", "M2K", "MYM", "6E", "MBT"]
+
+
 # ── _check_capture_file ───────────────────────────────────────────
 
 

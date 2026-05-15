@@ -36,7 +36,7 @@ Run
     python -m eta_engine.scripts.capture_health_monitor \
         --symbols MNQ NQ M2K 6E MCL MYM NG MBT
     python -m eta_engine.scripts.capture_health_monitor \
-        --tick-symbols MNQ NQ M2K 6E MCL --depth-symbols MNQ NQ M2K
+        --tick-symbols MNQ NQ M2K 6E MCL MYM NG MBT --depth-symbols MNQ NQ ES M2K MYM 6E MBT
 """
 
 from __future__ import annotations
@@ -60,8 +60,8 @@ ALERT_LOG = LOG_DIR / "alerts_log.jsonl"
 SUB_STATUS_LOG = LOG_DIR / "ibkr_subscription_status.jsonl"
 TICK_STATUS_FILE = STATE_DIR / "capture_tick_status.json"
 
-DEFAULT_TICK_SYMBOLS = ["MNQ", "NQ", "M2K", "6E", "MCL"]
-DEFAULT_DEPTH_SYMBOLS = ["MNQ", "NQ", "M2K"]
+DEFAULT_TICK_SYMBOLS = ["MNQ", "NQ", "M2K", "6E", "MCL", "MYM", "NG", "MBT"]
+DEFAULT_DEPTH_SYMBOLS = ["MNQ", "NQ", "ES", "M2K", "MYM", "6E", "MBT"]
 
 TICK_STALE_SECONDS = 30 * 60  # ticks should land within 30min during RTH
 DEPTH_STALE_SECONDS = 5 * 60  # depth snapshots are 1Hz, very fresh expected
