@@ -1537,6 +1537,23 @@ class TestDashboardAPI:
             raise AssertionError("diagnostics must not open a live broker probe")
 
         monkeypatch.setattr(mod, "_live_broker_state_payload", fail_live_broker_probe)
+        monkeypatch.setattr(
+            mod,
+            "_cached_live_broker_state_for_diagnostics",
+            lambda: {
+                "ready": True,
+                "source": "cached_live_broker_state_for_diagnostics",
+                "probe_skipped": True,
+                "broker_snapshot_source": "ibkr_probe_cache",
+                "broker_snapshot_age_s": 6.4,
+                "broker_snapshot_state": "warm",
+                "today_actual_fills": 12,
+                "today_realized_pnl": 125.5,
+                "total_unrealized_pnl": 42.25,
+                "open_position_count": 3,
+                "ibkr": {"ready": True},
+            },
+        )
         (tmp_path / "state" / "operator_queue_snapshot.json").write_text(
             json.dumps(
                 {
@@ -1564,6 +1581,14 @@ class TestDashboardAPI:
         assert data["operator_queue"]["launch_blocked"] == 1
         assert data["operator_queue"]["cache_stale"] is False
         assert data["checks"]["operator_queue_contract"] is True
+        assert data["live_broker_state"]["ready"] is True
+        assert data["live_broker_state"]["broker_snapshot_source"] == "ibkr_probe_cache"
+        assert data["live_broker_state"]["broker_snapshot_state"] == "warm"
+        assert data["live_broker_state"]["broker_snapshot_age_s"] == 6.4
+        assert data["live_broker_state"]["broker_probe_skipped"] is True
+        assert data["live_broker_state"]["broker_refresh_probe_failed"] is False
+        assert data["live_broker_state"]["broker_today_actual_fills"] == 12
+        assert data["checks"]["live_broker_state_contract"] is True
 
     def test_dashboard_diagnostics_falls_back_when_operator_queue_cache_is_stale(
         self,

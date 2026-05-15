@@ -905,6 +905,7 @@ def _dashboard_diagnostics_payload() -> dict:
     readiness = _bot_strategy_readiness_payload()
     symbol_intelligence = _load_symbol_intelligence_snapshot()
     diamond_retune_status = _load_diamond_retune_status()
+    live_broker_diagnostics = _live_broker_diagnostic_payload()
     roster_bots = roster.get("bots") if isinstance(roster.get("bots"), list) else []
     roster_summary = roster.get("summary") if isinstance(roster.get("summary"), dict) else {}
     equity_series = equity.get("series") if isinstance(equity.get("series"), list) else []
@@ -1041,6 +1042,7 @@ def _dashboard_diagnostics_payload() -> dict:
         },
         "symbol_intelligence": _symbol_intelligence_diagnostic_payload(symbol_intelligence),
         "diamond_retune_status": _diamond_retune_diagnostic_payload(diamond_retune_status),
+        "live_broker_state": live_broker_diagnostics,
         "operator_queue": {
             "blocked": int(operator_summary.get("BLOCKED") or 0),
             "observed": int(operator_summary.get("OBSERVED") or 0),
@@ -1095,6 +1097,9 @@ def _dashboard_diagnostics_payload() -> dict:
             "bot_strategy_readiness_contract": readiness.get("status") == "ready" and not readiness.get("error"),
             "symbol_intelligence_contract": bool(symbol_intelligence.get("contract_ok")),
             "diamond_retune_status_contract": bool(diamond_retune_status.get("contract_ok")),
+            "live_broker_state_contract": isinstance(live_broker_diagnostics, dict)
+            and "ready" in live_broker_diagnostics
+            and "broker_snapshot_source" in live_broker_diagnostics,
             "operator_queue_contract": isinstance(operator_queue, dict) and "summary" in operator_queue,
             "paper_live_transition_contract": isinstance(paper_live_transition, dict)
             and "status" in paper_live_transition,
@@ -1171,6 +1176,33 @@ def _dashboard_cross_check_payload() -> dict:
         },
         "card_health": {"summary": card_summary, "dead_cards": card_dead},
         "diagnostics": {"cards": diagnostics_cards},
+    }
+
+
+def _live_broker_diagnostic_payload() -> dict[str, object]:
+    """Fast broker truth for diagnostics without opening a broker connection."""
+    try:
+        cached = _cached_live_broker_state_for_diagnostics()
+    except Exception as exc:  # noqa: BLE001 - diagnostics must fail soft.
+        return {
+            "ready": False,
+            "status": "error",
+            "source": "cached_live_broker_state_for_diagnostics",
+            "broker_snapshot_source": "",
+            "broker_snapshot_state": "",
+            "broker_probe_skipped": True,
+            "broker_refresh_probe_failed": False,
+            "error": str(exc),
+        }
+    cached = cached if isinstance(cached, dict) else {}
+    summary = _broker_summary_fields(cached)
+    ready = bool(cached.get("ready")) and not cached.get("error")
+    return {
+        "ready": ready,
+        "status": "ready" if ready else "unavailable",
+        "source": str(cached.get("source") or "cached_live_broker_state_for_diagnostics"),
+        "error": cached.get("error"),
+        **summary,
     }
 
 
