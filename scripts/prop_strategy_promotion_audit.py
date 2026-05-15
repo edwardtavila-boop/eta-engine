@@ -219,7 +219,10 @@ def _broker_close_evidence(closed_trade_ledger: dict[str, Any], bot_id: str) -> 
     if count <= 0:
         verdict = "MISSING_BROKER_CLOSES"
     elif count < 30:
-        verdict = "SMALL_SAMPLE"
+        if total_pnl < 0 or (profit_factor is not None and float(profit_factor) < 1.0):
+            verdict = "EARLY_NEGATIVE_BROKER_SAMPLE"
+        else:
+            verdict = "SMALL_SAMPLE"
     elif total_pnl <= 0 or (profit_factor is not None and float(profit_factor) < 1.0):
         verdict = "NEGATIVE_OR_WEAK_BROKER_EDGE"
     else:
@@ -512,6 +515,11 @@ def _runner_next_action(
             f"Keep {bot_id} research-only; latest retune failed "
             f"(OOS Sharpe {oos_sharpe}, DSR pass {dsr_pass}) and is not promotion proof"
         )
+    if broker_evidence.get("verdict") == "EARLY_NEGATIVE_BROKER_SAMPLE":
+        return (
+            f"Keep {bot_id} paper/research-only; early broker-backed sample is negative "
+            "and must repair before promotion review"
+        )
     if _is_deactivated(candidate):
         return f"Keep {bot_id} deactivated until fresh paper-soak evidence repairs the retirement case"
     if close_count <= 0:
@@ -590,6 +598,11 @@ def _runner_operator_note(
         return (
             "Latest research retest failed; treat this runner as research-only and rotate the "
             "promotion review to the next available paper candidate."
+        )
+    if broker_evidence.get("verdict") == "EARLY_NEGATIVE_BROKER_SAMPLE":
+        return (
+            "Early broker-backed closes are negative; keep this runner out of promotion review until "
+            "more paper closes or a new variant repairs the edge."
         )
     if int(broker_evidence.get("closed_trade_count") or 0) <= 0:
         outcome_count = int(outcome_evidence.get("evaluated_count") or 0)
@@ -697,6 +710,9 @@ def _runner_available_for_review(runner_summary: dict[str, Any]) -> bool:
         return False
     if bool(_as_dict(runner_summary.get("research_retest_evidence")).get("hard_fail")):
         return False
+    broker_verdict = str(_as_dict(runner_summary.get("broker_close_evidence")).get("verdict") or "")
+    if broker_verdict in {"EARLY_NEGATIVE_BROKER_SAMPLE", "NEGATIVE_OR_WEAK_BROKER_EDGE"}:
+        return False
     return str(_as_dict(runner_summary.get("retune_plan")).get("status") or "") != "PAPER_ONLY_RETUNE_FAILED"
 
 
@@ -704,7 +720,14 @@ def _next_runner_summary(runner_summaries: list[dict[str, Any]]) -> dict[str, An
     for runner in runner_summaries:
         if _runner_available_for_review(runner):
             return runner
-    return runner_summaries[0] if runner_summaries else {}
+    return {}
+
+
+def _no_reviewable_runner_required_evidence() -> list[str]:
+    return [
+        "no runner-up candidate is promotion-reviewable; keep all candidates paper/research-only until "
+        "fresh broker-backed positive evidence or a new retuned variant appears",
+    ]
 
 
 def _runner_required_evidence(next_runner: dict[str, Any]) -> list[str]:
@@ -766,7 +789,10 @@ def build_promotion_audit_report(
     required = _required_evidence(candidate=candidate, statuses=statuses, gate_summary=gate_summary)
     summary = _summary(candidate=candidate, gate_summary=gate_summary, required=required)
     if summary == "BLOCKED_KAIZEN_RETIRED":
-        required = list(dict.fromkeys(required + _runner_required_evidence(next_runner_summary)))
+        if next_runner_summary:
+            required = list(dict.fromkeys(required + _runner_required_evidence(next_runner_summary)))
+        elif runner_summaries:
+            required = list(dict.fromkeys(required + _no_reviewable_runner_required_evidence()))
     return {
         "kind": "eta_prop_strategy_promotion_audit",
         "schema_version": 1,

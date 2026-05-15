@@ -54,15 +54,23 @@ def _runner_candidate(
     }
 
 
-def _closed_trade_ledger(*, bot_id: str = "volume_profile_nq", closed_trade_count: int = 0) -> dict[str, object]:
+def _closed_trade_ledger(
+    *,
+    bot_id: str = "volume_profile_nq",
+    closed_trade_count: int = 0,
+    cumulative_r: float = 9.25,
+    profit_factor: float = 1.42,
+    total_realized_pnl: float = 825.0,
+    win_rate_pct: float = 56.0,
+) -> dict[str, object]:
     per_bot: dict[str, object] = {}
     if closed_trade_count:
         per_bot[bot_id] = {
             "closed_trade_count": closed_trade_count,
-            "cumulative_r": 9.25,
-            "profit_factor": 1.42,
-            "total_realized_pnl": 825.0,
-            "win_rate_pct": 56.0,
+            "cumulative_r": cumulative_r,
+            "profit_factor": profit_factor,
+            "total_realized_pnl": total_realized_pnl,
+            "win_rate_pct": win_rate_pct,
         }
     return {"per_bot": per_bot}
 
@@ -641,6 +649,73 @@ def test_research_retest_failure_rotates_next_runner_off_failed_candidate() -> N
     assert report["next_runner_candidate"]["bot_id"] == "rsi_mr_mnq_v2"
     assert "volume_profile_nq" not in "\n".join(report["required_evidence"])
     assert "focus runner-up review on rsi_mr_mnq_v2" in report["operator_note"]
+
+
+def test_no_reviewable_runner_when_remaining_candidates_have_negative_small_samples() -> None:
+    candidate = {
+        **_candidate(launch_lane="deactivated", blockers=["bot row is deactivated via kaizen_sidecar"]),
+        "active": False,
+        "data_status": "deactivated",
+        "promotion_status": "deactivated",
+        "deactivation_source": "kaizen_sidecar",
+    }
+
+    report = audit.build_promotion_audit_report(
+        gate_report={
+            "summary": "BLOCKED",
+            "primary_bot": "volume_profile_mnq",
+            "checks": [
+                _check("primary_ladder", "BLOCKED", primary_candidate=candidate),
+                _check("prop_readiness", "PASS"),
+                _check("broker_native_brackets", "PASS"),
+                _check("closed_trade_ledger", "PASS", closed_trade_count=43000),
+                _check("live_bot_gate", "BLOCKED", "volume_profile_mnq is deactivated"),
+            ],
+        },
+        ladder_report={
+            "summary": {"automation_mode": "FULLY_AUTOMATED_PAPER_PROP_HELD"},
+            "candidates": [
+                candidate,
+                _runner_candidate(),
+                _runner_candidate(bot_id="rsi_mr_mnq_v2", symbol="MNQ1"),
+                _runner_candidate(bot_id="mym_sweep_reclaim", symbol="MYM1"),
+            ],
+        },
+        closed_trade_ledger={
+            "per_bot": {
+                "rsi_mr_mnq_v2": {
+                    "closed_trade_count": 9,
+                    "cumulative_r": -6.1301,
+                    "profit_factor": 0.2273,
+                    "total_realized_pnl": -212.5,
+                    "win_rate_pct": 33.33,
+                },
+                "mym_sweep_reclaim": {
+                    "closed_trade_count": 14,
+                    "cumulative_r": -6.3887,
+                    "profit_factor": 0.2491,
+                    "total_realized_pnl": -108.5,
+                    "win_rate_pct": 35.71,
+                },
+            },
+        },
+        supervisor_heartbeat=_supervisor_heartbeat(last_signal_at=""),
+        shadow_signals=_shadow_signals(count=88),
+        shadow_outcome_report=_shadow_outcome_report(
+            evaluated_count=88,
+            shadow_signal_count=88,
+            verdict="WEAK_OR_NEGATIVE_COUNTERFACTUAL",
+        ),
+        research_retest_rows=_failed_research_retest(),
+    )
+
+    required = "\n".join(report["required_evidence"])
+
+    assert report["next_runner_candidate"] == {}
+    assert report["runner_up_candidates"][1]["broker_close_evidence"]["verdict"] == "EARLY_NEGATIVE_BROKER_SAMPLE"
+    assert report["runner_up_candidates"][2]["broker_close_evidence"]["verdict"] == "EARLY_NEGATIVE_BROKER_SAMPLE"
+    assert "no runner-up candidate is promotion-reviewable" in required
+    assert "evaluate runner-up candidates" in report["operator_note"]
 
 
 def test_runner_up_candidate_names_bar_freshness_when_shadow_outcome_replay_cannot_evaluate() -> None:
