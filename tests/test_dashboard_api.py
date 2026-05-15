@@ -5439,8 +5439,8 @@ class TestDashboardAPI:
                             "strategy_kind": "orb",
                             "status": "idle",
                             "direction": "long",
-                            "n_entries": 1,
-                            "n_exits": 1,
+                            "n_entries": 0,
+                            "n_exits": 0,
                             "realized_pnl": 0.0,
                             "open_position": None,
                             "last_bar_ts": now,
@@ -5486,17 +5486,17 @@ class TestDashboardAPI:
         assert summary["live_in_trade_bots"] == 1
         assert summary["idle_live_bots"] == 1
         assert summary["inactive_runtime_bots"] == 0
-        assert summary["staged_bots"] == 1
+        assert summary["staged_bots"] == 0
         assert data["active_bots"] == 2
         assert data["live_attached_bots"] == 2
         assert data["live_in_trade_bots"] == 1
         assert data["idle_live_bots"] == 1
         assert data["inactive_runtime_bots"] == 0
-        assert data["staged_bots"] == 1
+        assert data["staged_bots"] == 0
         assert data["truth_summary_line"].startswith(
-            "Live ETA truth: 2/3 bot heartbeat(s) are fresh; 2 attached, 1 in trade, 1 flat/idle."
+            "Live ETA truth: 2/2 bot heartbeat(s) are fresh; 2 attached, 1 in trade, 1 flat/idle."
         )
-        assert "1 readiness-only inventory row(s) remain staged." in data["truth_summary_line"]
+        assert "readiness-only inventory" not in data["truth_summary_line"]
 
     def test_mnq_runtime_summary_excludes_readiness_only_inventory(self, app_client, tmp_path, monkeypatch):
         """MNQ runtime headline should not imply snapshot-only rows are down bots."""
@@ -5568,6 +5568,52 @@ class TestDashboardAPI:
         assert summary["staged_bots"] == 1
         assert summary["current_blocked_bots"] == 1
         assert summary["current_blocked_kinds"] == {"session_gate": 1}
+
+    def test_bot_fleet_counts_stale_runtime_rows_separately_from_live_attached(self, app_client):
+        """Runtime-active rows should stay visible even when the live lane heartbeat is stale."""
+        import json
+        import os
+        from datetime import UTC, datetime, timedelta
+        from pathlib import Path
+
+        state = Path(os.environ["ETA_STATE_DIR"])
+        bot_dir = state / "bots" / "mnq_futures_sage"
+        bot_dir.mkdir(parents=True, exist_ok=True)
+        stale_hb = (datetime.now(UTC) - timedelta(minutes=8)).isoformat()
+        (bot_dir / "status.json").write_text(
+            json.dumps(
+                {
+                    "name": "mnq_futures_sage",
+                    "symbol": "MNQ1",
+                    "tier": "orb_sage",
+                    "venue": "ibkr",
+                    "status": "running",
+                    "heartbeat_ts": stale_hb,
+                    "todays_pnl": 0.0,
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/bot-fleet")
+
+        assert r.status_code == 200
+        data = r.json()
+        summary = data["summary"]
+        assert summary["active_bots"] == 1
+        assert summary["runtime_active_bots"] == 1
+        assert summary["running_bots"] == 1
+        assert summary["live_attached_bots"] == 0
+        assert summary["live_in_trade_bots"] == 0
+        assert summary["idle_live_bots"] == 0
+        assert summary["inactive_runtime_bots"] == 1
+        assert summary["staged_bots"] == 0
+        assert data["active_bots"] == 1
+        assert data["runtime_active_bots"] == 1
+        assert data["live_attached_bots"] == 0
+        assert data["inactive_runtime_bots"] == 1
+        assert "none have a fresh heartbeat" in data["truth_summary_line"]
+        assert "1 bot row" in data["truth_summary_line"]
 
     def test_bot_fleet_summary_carries_broker_net_without_fake_lifetime(
         self,
@@ -6009,6 +6055,7 @@ class TestDashboardAPI:
         """Supervisor heartbeat bots appear in /api/bot-fleet even when state/bots/ is empty."""
         import json
         import os
+        from datetime import UTC, datetime, timedelta
         from pathlib import Path
 
         import eta_engine.deploy.scripts.dashboard_api as mod
@@ -6035,8 +6082,12 @@ class TestDashboardAPI:
         # Write supervisor heartbeat
         sup_dir = state / "jarvis_intel" / "supervisor"
         sup_dir.mkdir(parents=True, exist_ok=True)
+        now_dt = datetime.now(UTC)
+        now = now_dt.isoformat()
+        mnq_signal_at = (now_dt - timedelta(minutes=1)).isoformat()
+        btc_entry_at = (now_dt - timedelta(minutes=2)).isoformat()
         hb = {
-            "ts": "2026-04-28T12:00:00+00:00",
+            "ts": now,
             "mode": "paper_sim",
             "bots": [
                 {
@@ -6049,8 +6100,8 @@ class TestDashboardAPI:
                     "realized_pnl": 2.0,
                     "open_position": None,
                     "last_jarvis_verdict": "APPROVED",
-                    "last_signal_at": "2026-04-28T11:59:00+00:00",
-                    "last_bar_ts": "2026-04-28T12:00:00+00:00",
+                    "last_signal_at": mnq_signal_at,
+                    "last_bar_ts": now,
                     "strategy_readiness": {
                         "status": "ready",
                         "launch_lane": "live_preflight",
@@ -6071,7 +6122,7 @@ class TestDashboardAPI:
                         "side": "BUY",
                         "qty": 0.05,
                         "entry_price": 67000.0,
-                        "entry_ts": "2026-04-28T11:58:30+00:00",
+                        "entry_ts": btc_entry_at,
                         "mark_price": 67350.0,
                         "bracket_stop": 66200.0,
                         "bracket_target": 68400.0,
@@ -6082,7 +6133,7 @@ class TestDashboardAPI:
                         "signal_id": "btc_hybrid_001",
                     },
                     "last_jarvis_verdict": "CONDITIONAL",
-                    "last_bar_ts": "2026-04-28T12:00:00+00:00",
+                    "last_bar_ts": now,
                 },
             ],
         }
@@ -6103,12 +6154,12 @@ class TestDashboardAPI:
         assert mnq["last_trade_side"] is None
         assert mnq["last_trade_qty"] is None
         assert mnq["last_trade_r"] is None
-        assert mnq["last_signal_ts"] == "2026-04-28T11:59:00+00:00"
+        assert mnq["last_signal_ts"] == mnq_signal_at
         assert mnq["last_signal_side"] == "LONG"
-        assert mnq["last_activity_ts"] == "2026-04-28T11:59:00+00:00"
+        assert mnq["last_activity_ts"] == mnq_signal_at
         assert mnq["last_activity_side"] == "LONG"
         assert mnq["last_activity_type"] == "signal"
-        assert mnq["last_bar_ts"] == "2026-04-28T12:00:00+00:00"
+        assert mnq["last_bar_ts"] == now
         assert mnq["venue"] == "paper-sim"
         assert mnq["tier"] == "orb"
         assert mnq["strategy_readiness"]["launch_lane"] == "live_preflight"
@@ -6130,14 +6181,14 @@ class TestDashboardAPI:
         assert btc["position_state"]["target_progress_pct"] == 25.0
         assert btc["position_state"]["stop_cushion_pct"] == 143.75
         assert btc["open_positions"] == 1
-        assert btc["last_signal_ts"] == "2026-04-28T11:58:30+00:00"
+        assert btc["last_signal_ts"] == btc_entry_at
         assert btc["last_activity_type"] == "signal"
         assert btc["bracket_stop"] == 66200.0
         assert btc["bracket_target"] == 68400.0
         assert btc["broker_bracket"] is False
         assert btc["bracket_src"] == "supervisor_local"
-        assert data["latest_signal_ts"] == "2026-04-28T11:59:00+00:00"
-        assert data["summary"]["latest_signal_ts"] == "2026-04-28T11:59:00+00:00"
+        assert data["latest_signal_ts"] == mnq_signal_at
+        assert data["summary"]["latest_signal_ts"] == mnq_signal_at
         assert data["signal_cadence"]["status"] == "staggered"
         assert data["signal_cadence"]["signal_update_count"] == 2
         assert data["signal_cadence"]["unique_signal_seconds"] == 2

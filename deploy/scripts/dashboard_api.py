@@ -7234,14 +7234,15 @@ def bot_fleet_roster(
         gate_mode=str((lane_rollup.get(SHADOW_PAPER_LANE) or {}).get("daily_loss_gate_mode") or ""),
     )
     live_attached_rows = [r for r in rows if _is_live_attached_bot_row(r)]
+    runtime_active_rows = [r for r in rows if _is_runtime_active_bot_row(r)]
     live_in_trade_rows = [r for r in live_attached_rows if _row_has_open_exposure(r)]
     live_attached_bots = len(live_attached_rows)
     live_in_trade_bots = len(live_in_trade_rows)
     idle_live_bots = max(0, live_attached_bots - live_in_trade_bots)
     staged_bots = sum(1 for r in rows if _is_readiness_only_bot_row(r))
-    inactive_runtime_bots = max(0, len(rows) - live_attached_bots - staged_bots)
-    active_bots = live_attached_bots
-    running_bots = sum(1 for r in live_attached_rows if str(r.get("status") or "").lower() == "running")
+    active_bots = len(runtime_active_rows)
+    inactive_runtime_bots = max(0, active_bots - live_attached_bots)
+    running_bots = sum(1 for r in runtime_active_rows if str(r.get("status") or "").lower() == "running")
     mnq_rows = [r for r in rows if str(r.get("symbol") or "").upper().startswith("MNQ")]
     mnq_readiness_only = [r for r in mnq_rows if _is_readiness_only_bot_row(r)]
     mnq_runtime_rows = [r for r in mnq_rows if not _is_readiness_only_bot_row(r)]
