@@ -147,6 +147,16 @@ def _leaderboard_rank_key(e: LeaderboardEntry) -> tuple[int, float, int, str]:
     )
 
 
+def _broker_truth_lane(e: LeaderboardEntry) -> str:
+    return {
+        4: "Broker positive",
+        3: "Positive PnL",
+        2: "Lab review",
+        1: "Retune",
+        0: "No signal",
+    }[_broker_truth_rank_bucket(e)]
+
+
 @dataclass
 class LeaderboardEntry:
     bot_id: str
@@ -162,6 +172,7 @@ class LeaderboardEntry:
     symmetry_bonus: float = 1.0
     composite_score: float = 0.0
     rank: int = 0
+    operator_lane: str = ""
     prop_ready: bool = False
     prop_ready_disqualified_for: list[str] = field(default_factory=list)
     sources: dict[str, Any] = field(default_factory=dict)
@@ -385,6 +396,7 @@ def _evaluate_prop_ready(entries: list[LeaderboardEntry]) -> None:
     for i, e in enumerate(entries, start=1):
         e.rank = i
         e.sources["broker_truth_rank_bucket"] = _broker_truth_rank_bucket(e)
+        e.operator_lane = _broker_truth_lane(e)
 
     # Eligibility filter
     eligible: list[LeaderboardEntry] = []
@@ -526,7 +538,8 @@ def _print(summary: dict[str, Any]) -> None:
         print("  >>> No bots currently qualify for PROP_READY.")
     print()
     print(
-        f" {'rank':>4s}  {'bot':25s}  {'n':>5s}  {'avg_R':>7s}  {'composite':>10s}  {'PROP':>5s}  rationale",
+        f" {'rank':>4s}  {'bot':25s}  {'lane':12s}  {'n':>5s}  "
+        f"{'avg_R':>7s}  {'composite':>10s}  {'PROP':>5s}  rationale",
     )
     print("-" * 130)
     for e in summary["leaderboard"]:
@@ -534,6 +547,7 @@ def _print(summary: dict[str, Any]) -> None:
         rationale = e["rationale"][:60]
         print(
             f" {e['rank']:>4d}  {e['bot_id']:25s}  "
+            f"{e.get('operator_lane', ''):12s}  "
             f"{e['n_trades']:>5d}  "
             f"{e['avg_r']:>+7.3f}  "
             f"{e['composite_score']:>+10.3f}  "

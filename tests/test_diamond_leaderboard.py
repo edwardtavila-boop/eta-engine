@@ -225,7 +225,9 @@ def test_broker_truth_disqualifies_prop_ready_wave26() -> None:
     assert any("promotion gate REJECT" in d for d in phantom.prop_ready_disqualified_for)
     assert any("broker PnL<=0" in d for d in phantom.prop_ready_disqualified_for)
     assert any("broker profit factor<" in d for d in phantom.prop_ready_disqualified_for)
+    assert phantom.operator_lane == "Retune"
     assert good.prop_ready
+    assert good.operator_lane == "Broker positive"
 
 
 def test_broker_truth_ranks_above_lab_only_and_broker_negative() -> None:
@@ -257,6 +259,9 @@ def test_broker_truth_ranks_above_lab_only_and_broker_negative() -> None:
     assert phantom.rank == 3
     assert good.sources["broker_truth_rank_bucket"] > lab_only.sources["broker_truth_rank_bucket"]
     assert lab_only.sources["broker_truth_rank_bucket"] > phantom.sources["broker_truth_rank_bucket"]
+    assert good.operator_lane == "Broker positive"
+    assert lab_only.operator_lane == "Lab review"
+    assert phantom.operator_lane == "Retune"
 
 
 def test_broker_positive_rejected_bot_still_ranks_above_lab_only() -> None:
@@ -278,6 +283,7 @@ def test_broker_positive_rejected_bot_still_ranks_above_lab_only() -> None:
     assert broker_positive.rank == 1
     assert lab_only.rank == 2
     assert not broker_positive.prop_ready
+    assert broker_positive.operator_lane == "Broker positive"
     assert any("promotion gate REJECT" in d for d in broker_positive.prop_ready_disqualified_for)
 
 
@@ -301,6 +307,8 @@ def test_broker_negative_signal_ranks_above_no_signal_bot() -> None:
     assert no_signal.rank == 2
     assert not retune_target.prop_ready
     assert not no_signal.prop_ready
+    assert retune_target.operator_lane == "Retune"
+    assert no_signal.operator_lane == "No signal"
     assert retune_target.sources["broker_truth_rank_bucket"] > no_signal.sources["broker_truth_rank_bucket"]
 
 
