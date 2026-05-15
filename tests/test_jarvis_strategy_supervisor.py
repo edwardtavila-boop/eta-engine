@@ -1580,6 +1580,85 @@ def test_run_forever_writes_start_heartbeat_before_tick(
     assert observed["heartbeat_exists"] is True
 
 
+def test_reconcile_clears_stale_futures_roots_after_successful_ibkr_query(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from eta_engine.scripts import jarvis_strategy_supervisor as mod
+
+    class FakeTracker:
+        def __init__(self) -> None:
+            self.state = {"BTC": 0.5, "MCL": 1.0, "MET": -0.25, "MYM": 1.0, "MNQ": 3.0}
+            self.last_call: dict[str, object] | None = None
+
+        def snapshot(self) -> dict[str, float]:
+            return dict(self.state)
+
+        def resync_from_broker(
+            self,
+            *,
+            by_root,
+            clear_missing_roots=None,
+        ) -> None:
+            clear_missing_roots = set(clear_missing_roots or ())
+            for root, qty in by_root.items():
+                self.state[str(root)] = float(qty)
+            for root in clear_missing_roots:
+                if root not in by_root:
+                    self.state[str(root)] = 0.0
+            self.last_call = {
+                "by_root": dict(by_root),
+                "clear_missing_roots": clear_missing_roots,
+            }
+
+    class FakeVenue:
+        def get_positions(self):
+            return object()
+
+    cfg = mod.SupervisorConfig()
+    cfg.mode = "paper_live"
+    cfg.state_dir = tmp_path / "state"
+    sup = mod.JarvisStrategySupervisor(cfg=cfg)
+    sup.bots = [
+        mod.BotInstance(
+            bot_id="mnq_futures_sage",
+            symbol="MNQ1",
+            strategy_kind="orb_sage_gated",
+            direction="long",
+            cash=50_000.0,
+            open_position={
+                "side": "BUY",
+                "qty": 1.0,
+                "entry_price": 29583.75,
+            },
+        )
+    ]
+    fake_tracker = FakeTracker()
+    sup._cross_bot_tracker = fake_tracker  # noqa: SLF001
+
+    monkeypatch.setattr(mod, "_get_live_ibkr_venue", lambda: FakeVenue())
+    monkeypatch.setattr(
+        mod,
+        "_run_on_live_ibkr_loop",
+        lambda _awaitable, timeout=10.0: [{"symbol": "MNQ", "position": 1.0}],
+    )
+
+    findings = sup.reconcile_with_broker()
+
+    assert findings["matched"] == 1
+    assert findings["brokers_queried"] == ["ibkr"]
+    assert fake_tracker.last_call is not None
+    clear_missing_roots = fake_tracker.last_call["clear_missing_roots"]
+    assert isinstance(clear_missing_roots, set)
+    assert {"MCL", "MET", "MYM", "MNQ"}.issubset(clear_missing_roots)
+    assert "BTC" not in clear_missing_roots
+    assert fake_tracker.state["BTC"] == 0.5
+    assert fake_tracker.state["MCL"] == 0.0
+    assert fake_tracker.state["MET"] == 0.0
+    assert fake_tracker.state["MYM"] == 0.0
+    assert fake_tracker.state["MNQ"] == 1.0
+
+
 def test_supervisor_writes_heartbeat_with_bots(tmp_path: Path) -> None:
     import json
 

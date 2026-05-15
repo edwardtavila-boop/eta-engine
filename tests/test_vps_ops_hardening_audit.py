@@ -347,6 +347,30 @@ def test_ready_no_open_exposure_counts_as_bracket_ready() -> None:
     assert report["summary"]["status"] == "GREEN_READY_FOR_SOAK"
 
 
+def test_ready_open_exposure_bracketed_counts_as_bracket_ready() -> None:
+    report = audit.build_report(
+        services=_running_services(),
+        ports=_listening_ports(),
+        endpoints=_healthy_endpoints(),
+        broker_bracket_audit={
+            "summary": "READY_OPEN_EXPOSURE_BRACKETED",
+            "ready_for_prop_dry_run": True,
+            "position_summary": {
+                "broker_bracket_required_position_count": 2,
+                "broker_bracket_count": 2,
+            },
+        },
+        promotion_audit={"summary": {"status": "PASS", "ready_for_live": True}},
+        service_config={"fm_status_server": {"matches_expected": True}},
+        tasks=_healthy_tasks(),
+        ibgateway_reauth={"status": "healthy"},
+    )
+
+    assert report["safety_gates"]["broker_brackets"]["ready"] is True
+    assert report["summary"]["trading_gate_ready"] is True
+    assert report["summary"]["status"] == "GREEN_READY_FOR_SOAK"
+
+
 def test_supervisor_broker_reconcile_mismatch_blocks_trading_gate() -> None:
     report = audit.build_report(
         services=_running_services(),

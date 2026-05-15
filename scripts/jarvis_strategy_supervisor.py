@@ -2951,7 +2951,33 @@ class JarvisStrategySupervisor:
             if tracker is not None and findings.get("brokers_queried"):
                 roots_to_resync = set(broker_by_root) | set(supervisor_by_root)
                 resync_map = {root: float(broker_by_root.get(root, 0.0)) for root in roots_to_resync}
-                tracker.resync_from_broker(by_root=resync_map)
+                tracked_roots = set()
+                with contextlib.suppress(Exception):
+                    tracked_roots = set((tracker.snapshot() or {}).keys())
+                clear_missing_roots = set()
+                for root in tracked_roots | roots_to_resync:
+                    routed_venue, routed_asset_class = _resolve_bot_routing(
+                        root.lower(),
+                        root,
+                    )
+                    alpaca_surface_covers_root = query_alpaca and (
+                        routed_venue == "alpaca" or routed_asset_class == "crypto"
+                    )
+                    ibkr_surface_covers_root = query_ibkr and (
+                        routed_venue == "ibkr"
+                        or routed_asset_class == "futures"
+                        or (
+                            routed_venue is None
+                            and routed_asset_class is None
+                            and _classify_symbol(root) != "crypto"
+                        )
+                    )
+                    if alpaca_surface_covers_root or ibkr_surface_covers_root:
+                        clear_missing_roots.add(root)
+                tracker.resync_from_broker(
+                    by_root=resync_map,
+                    clear_missing_roots=clear_missing_roots,
+                )
                 logger.info(
                     "cross_bot_tracker resynced from broker: %s",
                     tracker.snapshot(),

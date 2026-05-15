@@ -470,8 +470,8 @@ def _broker_gate_summary(broker_bracket_audit: dict[str, Any]) -> dict[str, Any]
     ready = bool(
         summary.get("ready_for_prop_dry_run")
         or broker_bracket_audit.get("ready_for_prop_dry_run")
-        or status in {"READY_NO_OPEN_EXPOSURE"}
-    ) and status in {"PASS", "READY", "READY_NO_OPEN_EXPOSURE"}
+        or status in {"READY_NO_OPEN_EXPOSURE", "READY_OPEN_EXPOSURE_BRACKETED"}
+    ) and status in {"PASS", "READY", "READY_NO_OPEN_EXPOSURE", "READY_OPEN_EXPOSURE_BRACKETED"}
     return {
         "status": status,
         "ready": ready,

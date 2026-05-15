@@ -327,6 +327,23 @@ def test_reconcile_leaves_unrelated_roots_alone() -> None:
     assert tracker.net_position("MBT") == -3.0
 
 
+def test_reconcile_clear_missing_roots_zeroes_only_explicit_surface() -> None:
+    tracker = CrossBotPositionTracker()
+    tracker.record_entry(symbol_root="BTC", side="BUY", qty=0.5)
+    tracker.record_entry(symbol_root="MCL", side="BUY", qty=1)
+    tracker.record_entry(symbol_root="MYM", side="BUY", qty=1)
+
+    tracker.resync_from_broker(
+        by_root={"MNQ": 1.0},
+        clear_missing_roots={"MCL", "MYM", "MNQ"},
+    )
+
+    assert tracker.net_position("BTC") == 0.5
+    assert tracker.net_position("MCL") == 0.0
+    assert tracker.net_position("MYM") == 0.0
+    assert tracker.net_position("MNQ") == 1.0
+
+
 def test_module_assert_noop_when_unregistered() -> None:
     register_cross_bot_position_tracker(None)
     assert_fleet_position_cap(

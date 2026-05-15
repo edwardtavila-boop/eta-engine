@@ -71,7 +71,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Iterable, Mapping
     from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -378,19 +378,31 @@ class CrossBotPositionTracker:
         signed = signed_delta(side, qty)
         return self._apply_delta(symbol_root, signed)
 
-    def resync_from_broker(self, *, by_root: Mapping[str, float]) -> None:
+    def resync_from_broker(
+        self,
+        *,
+        by_root: Mapping[str, float],
+        clear_missing_roots: Iterable[str] | None = None,
+    ) -> None:
         """Replace the running net for every supplied root with broker truth.
 
         Roots in ``by_root`` overwrite the tracker belief. Roots NOT
-        in ``by_root`` are LEFT ALONE - the broker may not have queried
-        every venue, so a missing key is ambiguity, not a flatten signal.
+        in ``by_root`` are LEFT ALONE unless they appear in
+        ``clear_missing_roots`` - use that set only for roots whose
+        broker surface was successfully queried and therefore whose
+        absence means broker-flat rather than broker-unknown.
         """
-        if not by_root:
+        if not by_root and not clear_missing_roots:
             return
+        cleared = {normalize_root(root) for root in (clear_missing_roots or ())}
         with self._lock:
+            seen: set[str] = set()
             for raw_root, qty in by_root.items():
                 root = normalize_root(raw_root)
                 self._net_by_root[root] = float(qty)
+                seen.add(root)
+            for root in cleared - seen:
+                self._net_by_root[root] = 0.0
         self._persist()
 
     def reset(self) -> None:
