@@ -273,6 +273,7 @@ if (-not $SkipETATasks) {
     $dashboardApiTaskScript = "$EtaEngineDir\deploy\scripts\register_dashboard_api_task.ps1"
     $proxy8421TaskScript = "$EtaEngineDir\deploy\scripts\register_proxy8421_bridge_task.ps1"
     $dashboardProxyWatchdogTaskScript = "$EtaEngineDir\deploy\scripts\register_dashboard_proxy_watchdog_task.ps1"
+    $publicEdgeRouteWatchdogTaskScript = "$EtaEngineDir\deploy\scripts\register_public_edge_route_watchdog_task.ps1"
     $dashboardDiagnosticsCacheWarmTaskScript = "$EtaEngineDir\deploy\scripts\register_dashboard_diagnostics_cache_warm_task.ps1"
     $paperLiveTransitionTaskScript = "$EtaEngineDir\deploy\scripts\register_paper_live_transition_check_task.ps1"
     $dailyStopResetAuditTaskScript = "$EtaEngineDir\deploy\scripts\register_daily_stop_reset_audit_task.ps1"
@@ -312,6 +313,15 @@ if (-not $SkipETATasks) {
         }
     } else {
         Write-Host "  register_dashboard_proxy_watchdog_task.ps1 not found at $dashboardProxyWatchdogTaskScript" -ForegroundColor Yellow
+    }
+
+    if (Test-Path $publicEdgeRouteWatchdogTaskScript) {
+        Write-Host "  Registering public edge route watchdog task (keeps 127.0.0.1:8081 aligned to 8421)..." -ForegroundColor Gray
+        if (-not $WhatIf) {
+            & $pwshPath -ExecutionPolicy Bypass -File $publicEdgeRouteWatchdogTaskScript -Start -RestartExistingProcess
+        }
+    } else {
+        Write-Host "  register_public_edge_route_watchdog_task.ps1 not found at $publicEdgeRouteWatchdogTaskScript" -ForegroundColor Yellow
     }
 
     if (Test-Path $cloudflareTunnelTaskScript) {
@@ -623,6 +633,7 @@ Write-Host "  ETA-Dashboard-API                -- 127.0.0.1:8000 canonical API" 
 Write-Host "  ETA-Proxy-8421                   -- ops bridge 127.0.0.1:8421 -> 8000" -ForegroundColor Gray
 Write-Host "  ETA-Cloudflare-Tunnel            -- boot/logon named tunnel" -ForegroundColor Gray
 Write-Host "  ETA-Dashboard-Proxy-Watchdog     -- boot/logon 8421 self-heal" -ForegroundColor Gray
+Write-Host "  ETA-Public-Edge-Route-Watchdog   -- boot/logon + every 5m 8081 route self-heal" -ForegroundColor Gray
 Write-Host "  ETA-DashboardDiagnosticsCacheWarm -- boot/logon + every 1m read-only cache warm" -ForegroundColor Gray
 Write-Host "  ETA-PaperLiveTransitionCheck     -- boot/logon + every 5m" -ForegroundColor Gray
 Write-Host "  ETA-DailyStopResetAudit          -- boot/logon + every 5m read-only reset audit" -ForegroundColor Gray

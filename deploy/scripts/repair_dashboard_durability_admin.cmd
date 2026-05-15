@@ -9,6 +9,7 @@ set "SCRIPT_NAME=repair_dashboard_durability_admin.cmd"
 set "REGISTER_DASHBOARD=%SCRIPTS%\register_dashboard_api_task.ps1"
 set "REGISTER_PROXY=%SCRIPTS%\register_proxy8421_bridge_task.ps1"
 set "REGISTER_WATCHDOG=%SCRIPTS%\register_dashboard_proxy_watchdog_task.ps1"
+set "REGISTER_PUBLIC_EDGE=%SCRIPTS%\register_public_edge_route_watchdog_task.ps1"
 set "REGISTER_AUDIT=%SCRIPTS%\register_vps_ops_hardening_audit_task.ps1"
 set "REGISTER_CRYPTO_REFRESH=%SCRIPTS%\register_crypto_dashboard_refresh_task.ps1"
 set "REGISTER_INDEX_FUTURES_REFRESH=%SCRIPTS%\register_index_futures_bar_refresh_task.ps1"
@@ -51,6 +52,11 @@ if not exist "%REGISTER_PROXY%" (
 if not exist "%REGISTER_WATCHDOG%" (
     echo Missing proxy watchdog registrar:
     echo   %REGISTER_WATCHDOG%
+    exit /b 3
+)
+if not exist "%REGISTER_PUBLIC_EDGE%" (
+    echo Missing public edge route watchdog registrar:
+    echo   %REGISTER_PUBLIC_EDGE%
     exit /b 3
 )
 if not exist "%REGISTER_AUDIT%" (
@@ -102,6 +108,10 @@ if "%DRY_RUN%"=="1" (
 
     echo === DRY RUN: validate ETA dashboard proxy watchdog registrar ===
     powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%REGISTER_WATCHDOG%" -WhatIf
+    if errorlevel 1 goto fail
+
+    echo === DRY RUN: validate ETA public edge route watchdog registrar ===
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%REGISTER_PUBLIC_EDGE%" -WhatIf
     if errorlevel 1 goto fail
 
     echo === DRY RUN: validate read-only VPS ops hardening audit registrar ===
@@ -165,6 +175,10 @@ if errorlevel 1 goto fail
 
 echo === Register ETA dashboard proxy watchdog task ===
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%REGISTER_WATCHDOG%" -Start -RestartExistingProcess
+if errorlevel 1 goto fail
+
+echo === Register ETA public edge route watchdog task ===
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%REGISTER_PUBLIC_EDGE%" -Start -RestartExistingProcess
 if errorlevel 1 goto fail
 
 echo === Register read-only VPS ops hardening audit task ===

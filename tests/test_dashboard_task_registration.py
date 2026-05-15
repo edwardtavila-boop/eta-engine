@@ -8,6 +8,7 @@ RUNNER = ROOT / "deploy" / "scripts" / "run_dashboard_api_task.cmd"
 PROXY_SCRIPT = ROOT / "deploy" / "scripts" / "register_proxy8421_bridge_task.ps1"
 PROXY_RUNNER = ROOT / "deploy" / "scripts" / "run_proxy8421_task.cmd"
 PROXY_WATCHDOG_SCRIPT = ROOT / "deploy" / "scripts" / "register_dashboard_proxy_watchdog_task.ps1"
+PUBLIC_EDGE_WATCHDOG_SCRIPT = ROOT / "deploy" / "scripts" / "register_public_edge_route_watchdog_task.ps1"
 ETA_WATCHDOG_SCRIPT = ROOT / "deploy" / "scripts" / "register_eta_watchdog_task.ps1"
 REPAIR_DASHBOARD_DURABILITY = ROOT / "deploy" / "scripts" / "repair_dashboard_durability_admin.cmd"
 DASHBOARD_SYNC_SCRIPT = ROOT / "deploy" / "scripts" / "sync_dashboard_api_live.ps1"
@@ -245,6 +246,43 @@ def test_dashboard_proxy_watchdog_task_registration_avoids_legacy_paths() -> Non
     assert "The_Firm" not in text
 
 
+def test_public_edge_route_watchdog_task_registration_is_canonical() -> None:
+    text = PUBLIC_EDGE_WATCHDOG_SCRIPT.read_text(encoding="utf-8")
+
+    assert 'TaskName = "ETA-Public-Edge-Route-Watchdog"' in text
+    assert r"C:\EvolutionaryTradingAlgo" in text
+    assert "public_edge_route_watchdog.py" in text
+    assert "eta_engine.scripts.public_edge_route_watchdog" in text
+    assert "Get-CimInstance Win32_Process" in text
+    assert "Stop-ScheduledTask -TaskName $TaskName" in text
+    assert "Unregister-ScheduledTask -TaskName $TaskName" in text
+    assert "New-ScheduledTaskTrigger -AtStartup" in text
+    assert "New-ScheduledTaskTrigger -AtLogOn" in text
+    assert "RecoveryIntervalMinutes" in text
+    assert "New-ScheduledTaskTrigger -Once" in text
+    assert "RepetitionInterval (New-TimeSpan -Minutes $RecoveryIntervalMinutes)" in text
+    assert "RestartCount 999" in text
+    assert "--once --json" in text
+    assert "127.0.0.1:8081" in text
+    assert "127.0.0.1:8421" in text
+    assert "FirmCommandCenterEdge route drift" in text
+    assert "SYSTEM registration unavailable" in text
+    assert "WindowsIdentity]::GetCurrent().Name" in text
+    assert "LogonType Interactive" in text
+    assert "PrincipalLabel" in text
+
+
+def test_public_edge_route_watchdog_task_registration_avoids_legacy_paths() -> None:
+    text = PUBLIC_EDGE_WATCHDOG_SCRIPT.read_text(encoding="utf-8")
+
+    assert "OneDrive" not in text
+    assert "LOCALAPPDATA" not in text
+    assert "mnq_data" not in text
+    assert "crypto_data" not in text
+    assert "TheFirm" not in text
+    assert "The_Firm" not in text
+
+
 def test_eta_watchdog_bootstrap_passes_resolved_python() -> None:
     text = (ROOT / "deploy" / "vps_bootstrap.ps1").read_text(encoding="utf-8")
 
@@ -372,12 +410,14 @@ def test_dashboard_durability_admin_launcher_repairs_dashboard_and_queue_tasks()
     assert "register_dashboard_api_task.ps1" in text
     assert "register_proxy8421_bridge_task.ps1" in text
     assert "register_dashboard_proxy_watchdog_task.ps1" in text
+    assert "register_public_edge_route_watchdog_task.ps1" in text
     assert "register_vps_ops_hardening_audit_task.ps1" in text
     assert "register_operator_queue_heartbeat_task.ps1" in text
     assert "register_paper_live_transition_check_task.ps1" in text
     assert 'File "%REGISTER_DASHBOARD%" -DryRun' in text
     assert 'File "%REGISTER_PROXY%" -WhatIf' in text
     assert 'File "%REGISTER_WATCHDOG%" -WhatIf' in text
+    assert 'File "%REGISTER_PUBLIC_EDGE%" -WhatIf' in text
     assert 'File "%REGISTER_AUDIT%" -DryRun' in text
     assert 'File "%REGISTER_OPERATOR_QUEUE%" -DryRun' in text
     assert 'File "%REGISTER_PAPER_LIVE%" -DryRun' in text
@@ -397,6 +437,15 @@ def test_dashboard_durability_admin_launcher_avoids_legacy_paths() -> None:
     assert "crypto_data" not in text
     assert "TheFirm" not in text
     assert "The_Firm" not in text
+
+
+def test_vps_bootstrap_registers_public_edge_route_watchdog() -> None:
+    text = (ROOT / "deploy" / "vps_bootstrap.ps1").read_text(encoding="utf-8")
+
+    assert "register_public_edge_route_watchdog_task.ps1" in text
+    assert "Registering public edge route watchdog task" in text
+    assert "ETA-Public-Edge-Route-Watchdog" in text
+    assert "8081 route self-heal" in text
 
 
 def test_dashboard_sync_script_is_child_only_and_canonical() -> None:

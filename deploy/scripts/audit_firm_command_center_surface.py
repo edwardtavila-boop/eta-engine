@@ -22,6 +22,7 @@ EXPECTED_SUMMARY_FIELDS = (
     "truth_status",
 )
 DEFAULT_ENDPOINT_CANDIDATES = (
+    "http://127.0.0.1:8081/api/bot-fleet",
     "http://127.0.0.1:8421/api/bot-fleet",
     "http://127.0.0.1:8000/api/bot-fleet",
     "http://127.0.0.1:8420/api/bot-fleet",

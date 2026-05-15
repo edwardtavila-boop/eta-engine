@@ -27,6 +27,8 @@ def test_build_audit_falls_back_to_reachable_endpoint(monkeypatch, tmp_path) -> 
     monkeypatch.setattr(mod.dashboard_api, "bot_fleet_roster", lambda *args, **kwargs: direct_payload)
 
     def fake_fetch(url: str) -> dict:
+        if url.endswith(":8081/api/bot-fleet"):
+            raise urllib.error.URLError("dashboard bridge unavailable")
         if url.endswith(":8421/api/bot-fleet"):
             raise urllib.error.URLError("bridge unavailable")
         if url.endswith(":8000/api/bot-fleet"):
@@ -39,7 +41,9 @@ def test_build_audit_falls_back_to_reachable_endpoint(monkeypatch, tmp_path) -> 
 
     assert audit["status"] == "ok"
     assert audit["endpoint"] == "http://127.0.0.1:8000/api/bot-fleet"
-    assert audit["candidate_endpoints"][0] == "http://127.0.0.1:8421/api/bot-fleet"
+    assert audit["candidate_endpoints"][0] == "http://127.0.0.1:8081/api/bot-fleet"
+    assert audit["candidate_endpoints"][1] == "http://127.0.0.1:8421/api/bot-fleet"
+    assert audit["served_errors"]["http://127.0.0.1:8081/api/bot-fleet"].startswith("URLError:")
     assert audit["served_errors"]["http://127.0.0.1:8421/api/bot-fleet"].startswith("URLError:")
     assert audit["mismatched_summary_fields"] == {}
     assert audit["truth_line_matches"] is True
