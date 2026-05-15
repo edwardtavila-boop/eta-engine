@@ -31,7 +31,7 @@ _DONE_STATUSES = {"apicancelled", "cancelled", "filled", "inactive"}
 def _ensure_main_thread_event_loop() -> None:
     """ib_insync/eventkit expects an event loop at import time on Python 3.14."""
     try:
-        asyncio.get_event_loop()
+        asyncio.get_running_loop()
     except RuntimeError:
         asyncio.set_event_loop(asyncio.new_event_loop())
 

@@ -213,7 +213,7 @@ def _stale_flat_open_orders(
 def _ensure_main_thread_event_loop() -> None:
     """ib_insync/eventkit expects an event loop at import time on Python 3.14."""
     with contextlib.suppress(RuntimeError):
-        asyncio.get_event_loop()
+        asyncio.get_running_loop()
         return
     asyncio.set_event_loop(asyncio.new_event_loop())
 
