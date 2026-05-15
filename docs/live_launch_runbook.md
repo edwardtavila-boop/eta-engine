@@ -370,6 +370,11 @@ cd C:\EvolutionaryTradingAlgo
 # first so the readiness endpoint and transition card agree. It never clears holds or submits orders.
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\eta_engine\deploy\scripts\register_paper_live_transition_check_task.ps1 -Start
 
+# Daily-loss reset receipt. Keeps daily_stop_reset_audit_latest.json fresh so
+# the VPS proves whether the midnight reset cleared and whether another gate
+# still blocks paper_live. It never submits, cancels, flattens, or promotes.
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\eta_engine\deploy\scripts\register_daily_stop_reset_audit_task.ps1 -Start
+
 # Dry run first. Expect status=ready_to_release only after 4002 handshake is fresh.
 .\eta_engine\.venv\Scripts\python.exe -m eta_engine.scripts.ibgateway_release_guard
 

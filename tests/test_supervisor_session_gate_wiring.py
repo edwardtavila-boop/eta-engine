@@ -794,6 +794,7 @@ def test_broker_negative_edge_retune_status_halts_paper_live_entries(monkeypatch
     fake_now = _ct_to_utc(2026, 5, 15, 10, 0)
     state = tmp_path / "state"
     state.mkdir()
+    sup.cfg.state_dir = state
     (state / "diamond_retune_status_latest.json").write_text(
         json.dumps(
             {
@@ -816,10 +817,6 @@ def test_broker_negative_edge_retune_status_halts_paper_live_entries(monkeypatch
             }
         ),
         encoding="utf-8",
-    )
-    monkeypatch.setattr(
-        "eta_engine.scripts.jarvis_strategy_supervisor.workspace_roots.ETA_RUNTIME_STATE_DIR",
-        state,
     )
     monkeypatch.setattr(
         "eta_engine.scripts.jarvis_strategy_supervisor.datetime",

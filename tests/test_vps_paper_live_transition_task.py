@@ -5,6 +5,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 RUNNER = ROOT / "deploy" / "scripts" / "run_paper_live_transition_check.cmd"
 REGISTRAR = ROOT / "deploy" / "scripts" / "register_paper_live_transition_check_task.ps1"
+RESET_AUDIT_RUNNER = ROOT / "deploy" / "scripts" / "run_daily_stop_reset_audit_task.cmd"
+RESET_AUDIT_REGISTRAR = ROOT / "deploy" / "scripts" / "register_daily_stop_reset_audit_task.ps1"
 READINESS_RUNNER = ROOT / "deploy" / "scripts" / "run_eta_readiness_snapshot.cmd"
 READINESS_REGISTRAR = ROOT / "deploy" / "scripts" / "register_eta_readiness_snapshot_task.ps1"
 BOOTSTRAP = ROOT / "deploy" / "vps_bootstrap.ps1"
@@ -69,7 +71,14 @@ def test_paper_live_transition_task_is_wired_into_bootstrap_and_runbook() -> Non
 def test_paper_live_transition_task_scripts_do_not_use_legacy_write_paths() -> None:
     combined = "\n".join(
         path.read_text(encoding="utf-8")
-        for path in (RUNNER, REGISTRAR, READINESS_RUNNER, READINESS_REGISTRAR)
+        for path in (
+            RUNNER,
+            REGISTRAR,
+            RESET_AUDIT_RUNNER,
+            RESET_AUDIT_REGISTRAR,
+            READINESS_RUNNER,
+            READINESS_REGISTRAR,
+        )
     )
 
     assert "OneDrive" not in combined
@@ -78,6 +87,40 @@ def test_paper_live_transition_task_scripts_do_not_use_legacy_write_paths() -> N
     assert "crypto_data" not in combined
     assert "TheFirm" not in combined
     assert "The_Firm" not in combined
+
+
+def test_daily_stop_reset_audit_runner_refreshes_canonical_cache_without_task_failure() -> None:
+    text = RESET_AUDIT_RUNNER.read_text(encoding="utf-8")
+
+    assert r"ETA_ROOT=C:\EvolutionaryTradingAlgo" in text
+    assert r"ETA_STATE_DIR=%ETA_ROOT%\var\eta_engine\state" in text
+    assert r"ETA_LOG_DIR=%ETA_ROOT%\logs\eta_engine" in text
+    assert "-m eta_engine.scripts.daily_stop_reset_audit" in text
+    assert "daily_stop_reset_audit_latest.json" in text
+    assert "daily_stop_reset_audit.stdout.log" in text
+    assert "daily_stop_reset_audit.stderr.log" in text
+    assert "daily_stop_reset_audit.task.log" in text
+    assert "exit_code=%AUDIT_RC%" in text
+    assert "exit /b 0" in text
+
+
+def test_daily_stop_reset_audit_registrar_is_wired_into_bootstrap() -> None:
+    registrar = RESET_AUDIT_REGISTRAR.read_text(encoding="utf-8")
+    bootstrap = BOOTSTRAP.read_text(encoding="utf-8")
+
+    assert "ETA-DailyStopResetAudit" in registrar
+    assert '$WorkspaceRoot = "C:\\EvolutionaryTradingAlgo"' in registrar
+    assert "Assert-CanonicalEtaPath" in registrar
+    assert "run_daily_stop_reset_audit_task.cmd" in registrar
+    assert "daily_stop_reset_audit_latest.json" in registrar
+    assert "-RepetitionInterval (New-TimeSpan -Minutes 5)" in registrar
+    assert "-ExecutionTimeLimit (New-TimeSpan -Minutes 2)" in registrar
+    assert "-MultipleInstances IgnoreNew" in registrar
+    assert '-UserId "NT AUTHORITY\\SYSTEM"' in registrar
+    assert "Order action: never submits, cancels, flattens, or promotes" in registrar
+    assert "register_daily_stop_reset_audit_task.ps1" in bootstrap
+    assert "daily stop reset audit task" in bootstrap
+    assert "register_daily_stop_reset_audit_task.ps1 -Start" in RUNBOOK.read_text(encoding="utf-8")
 
 
 def test_eta_readiness_snapshot_runner_refreshes_canonical_ops_receipt_without_order_actions() -> None:

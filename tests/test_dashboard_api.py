@@ -1827,6 +1827,7 @@ class TestDashboardAPI:
         assert data["source_of_truth"] == "dashboard_diagnostics"
         assert set(data["api_build"]["capabilities"]) >= {
             "command_center_watchdog",
+            "daily_stop_reset_audit",
             "eta_readiness_snapshot",
             "ibkr_futures_avg_cost_normalized",
             "sage_sentiment_pressure",
@@ -1897,8 +1898,52 @@ class TestDashboardAPI:
             "unknown",
         }
         assert data["checks"]["eta_readiness_snapshot_contract"] is True
+        assert data["daily_stop_reset_audit"]["status"] in {
+            "held_until_reset",
+            "reset_cleared_ready",
+            "reset_cleared_blocked",
+            "still_tripped_after_reset_window",
+            "missing",
+            "unreadable",
+            "invalid",
+            "unknown",
+        }
+        assert data["checks"]["daily_stop_reset_audit_contract"] is True
         assert "vps_ops_hardening" in data
         assert data["checks"]["vps_ops_hardening_contract"] is True
+
+    def test_dashboard_diagnostics_includes_daily_stop_reset_audit(self, app_client, tmp_path):
+        state = tmp_path / "state"
+        (state / "daily_stop_reset_audit_latest.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "source": "daily_stop_reset_audit",
+                    "generated_at": datetime.now(UTC).isoformat(),
+                    "status": "reset_cleared_ready",
+                    "post_reset_ready": True,
+                    "read_only": True,
+                    "safe_to_trade_mutation": False,
+                    "operator_next_action": "Watch the first supervisor tick after reset.",
+                    "daily_loss_killswitch": {"status": "clear", "tripped": False},
+                    "paper_live_transition": {"status": "ready_to_launch_paper_live", "critical_ready": True},
+                    "first_failed_gate": {},
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/dashboard/diagnostics")
+
+        assert r.status_code == 200
+        audit = r.json()["daily_stop_reset_audit"]
+        assert audit["status"] == "reset_cleared_ready"
+        assert audit["ready"] is True
+        assert audit["read_only"] is True
+        assert audit["safe_to_trade_mutation"] is False
+        assert audit["operator_next_action"].startswith("Watch the first supervisor tick")
+        assert audit["path"].endswith("daily_stop_reset_audit_latest.json")
+        assert r.json()["checks"]["daily_stop_reset_audit_contract"] is True
 
     def test_dashboard_diagnostics_reuses_short_ttl_cache(self, app_client, monkeypatch):
         import eta_engine.deploy.scripts.dashboard_api as mod

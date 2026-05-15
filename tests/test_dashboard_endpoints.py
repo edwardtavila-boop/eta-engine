@@ -51,6 +51,9 @@ def test_status_page_contains_blocker_topline_anchors(client) -> None:
     assert 'id="blockerStatusText"' in r.text
     assert 'id="heldBots"' in r.text
     assert 'id="approvedCountSub"' in r.text
+    assert "paper-ready" in r.text
+    assert "current_block_summary" in r.text
+    assert "badge-hold" in r.text
     assert "function blockedFleetRollup" in r.text
 
 

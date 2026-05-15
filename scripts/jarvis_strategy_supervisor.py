@@ -2501,7 +2501,7 @@ class JarvisStrategySupervisor:
 
     def _negative_broker_edge_rows_for_entry_gate(self) -> dict[str, dict[str, Any]]:
         """Return bots whose broker-backed sample is large enough and negative."""
-        path = workspace_roots.ETA_RUNTIME_STATE_DIR / "diamond_retune_status_latest.json"
+        path = self._diamond_retune_status_path()
         try:
             mtime_ns = path.stat().st_mtime_ns
         except OSError:
@@ -2530,6 +2530,23 @@ class JarvisStrategySupervisor:
         self._negative_broker_edge_by_bot = negative
         self._diamond_retune_status_mtime_ns = mtime_ns
         return negative
+
+    def _diamond_retune_status_path(self) -> Path:
+        """Resolve retune status from the supervisor's configured state root.
+
+        Production supervisors keep their heartbeat under
+        ``.../state/jarvis_intel/supervisor`` while the retune artifact
+        lives at ``.../state/diamond_retune_status_latest.json``. Unit
+        tests often point ``cfg.state_dir`` at a temp directory; in that
+        case, read the temp state root instead of the operator's live file.
+        """
+        runtime_state = Path(workspace_roots.ETA_RUNTIME_STATE_DIR)
+        configured_state = Path(self.cfg.state_dir)
+        try:
+            configured_state.resolve().relative_to(runtime_state.resolve())
+        except (OSError, ValueError):
+            return configured_state / "diamond_retune_status_latest.json"
+        return runtime_state / "diamond_retune_status_latest.json"
 
     def _broker_retune_allows_entry(self, bot: BotInstance) -> bool:
         """Block new real-order entries for bots with broker-proven negative edge."""

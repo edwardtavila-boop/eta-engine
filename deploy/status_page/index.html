@@ -32,6 +32,7 @@ tr:nth-child(even) td{background:rgba(255,255,255,.01)}
 .badge-loss{background:rgba(255,23,68,.15);color:var(--red)}
 .badge-idle{background:rgba(110,118,129,.1);color:var(--dim)}
 .badge-deny{background:rgba(255,196,0,.1);color:var(--yellow)}
+.badge-hold{background:rgba(255,209,102,.18);color:#fff1c7}
 .badge-approve{background:rgba(0,230,118,.15);color:var(--green)}
 .controls{display:flex;gap:.5rem;flex-wrap:wrap;padding:0 2rem 1rem}
 .controls button{padding:.5rem 1rem;border-radius:6px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:.75rem;cursor:pointer;transition:all .2s}
@@ -80,6 +81,7 @@ tr:nth-child(even) td{background:rgba(255,255,255,.01)}
 .position-cell{min-width:150px}
 .position-cell .main,.protection-cell .main{display:block;font-weight:700}
 .position-cell .subline,.protection-cell .subline{display:block;margin-top:.18rem;color:var(--dim);font-size:.68rem}
+.table-subline{display:block;margin-top:.2rem;color:var(--dim);font-size:.66rem;line-height:1.24;white-space:normal}
 .protection-cell{min-width:190px;color:var(--blue)}
 .empty-panel{border:1px dashed rgba(255,255,255,.10);border-radius:12px;padding:.72rem;color:var(--dim);font-size:.74rem}
 @media(max-width:640px){.grid{grid-template-columns:1fr 1fr;padding:1rem}.header{padding:.75rem 1rem;flex-wrap:wrap}}
@@ -317,7 +319,7 @@ tr:hover td{background:rgba(100,215,255,.055)}
       <div class="hero-metric"><span>Session Net</span><strong>--</strong><small>IBKR live pending</small></div>
       <div class="hero-metric"><span>Broker MTD</span><strong>--</strong><small>IBKR portfolio pending</small></div>
       <div class="hero-metric"><span>Open Risk</span><strong>--</strong><small>live open book</small></div>
-      <div class="hero-metric"><span>Readiness</span><strong>--</strong><small>paper | live</small></div>
+      <div class="hero-metric"><span>Readiness</span><strong>--</strong><small>paper-ready | live</small></div>
       <div class="hero-metric"><span>Data Coverage</span><strong>--</strong><small>symbols + evidence</small></div>
     </div>
   </div>
@@ -2168,6 +2170,14 @@ function renderPortfolioCommand(bots, hiddenCount, liveBroker, summary, d, today
   const blockedRollup = blockedFleetRollup(summary, diagnostics || {});
   const blockedBots = blockedRollup.count;
   const blockedLine = blockedRollup.summaryLine || blockedRollup.statusLine;
+  const paperStatus = String(paperLive?.status || 'unknown').toLowerCase();
+  const paperEffectiveStatus = String(paperLive?.effective_status || paperLive?.status || 'unknown').toLowerCase();
+  const paperDailyLossHold = paperLive?.held_by_daily_loss_stop === true
+    || paperEffectiveStatus === 'held_by_daily_loss_stop';
+  const paperTransitionLaunchBlocked = Number(
+    paperLive?.operator_queue_launch_blocked_count ?? (paperLive?.operator_queue_first_launch_blocker_op_id ? 1 : 0)
+  );
+  const paperLaunchBlocked = paperStatus === 'blocked' || paperTransitionLaunchBlocked > 0;
   const realized = finiteNumber(liveBroker?.today_realized_pnl);
   const unrealized = finiteNumber(liveBroker?.total_unrealized_pnl);
   const focusPolicy = liveBroker?.focus_policy && typeof liveBroker.focus_policy === 'object'
@@ -2221,7 +2231,7 @@ function renderPortfolioCommand(bots, hiddenCount, liveBroker, summary, d, today
     const truthLine = compactText(String(truth).replace(/^Live ETA truth:\s*/i, ''), isMobileNarrow ? 54 : 82);
     const scopeLine = [
       `${bots.length} focus`,
-      `${paperReady} ready`,
+      `${paperReady} paper-ready`,
       active > 0 ? `${active} active` : 'flat',
       blockedBots > 0 ? `${blockedBots} held` : ''
     ].filter(Boolean).join(' | ');
@@ -2236,7 +2246,7 @@ function renderPortfolioCommand(bots, hiddenCount, liveBroker, summary, d, today
     chips.innerHTML = [
       `<span class="hero-chip"><strong>${bots.length}</strong> focus</span>`,
       `<span class="hero-chip"><strong>${active}</strong> live</span>`,
-      `<span class="hero-chip"><strong>${paperReady}</strong> ready</span>`,
+      `<span class="hero-chip"><strong>${paperReady}</strong> paper-ready</span>`,
       blockedBots > 0 ? `<span class="hero-chip blocked-chip"><strong>${blockedBots}</strong> held</span>` : '',
       `<span class="hero-chip"><strong>${brokerPositions.length}</strong> open</span>`,
       `<span class="hero-chip"><strong>${formatMoney(portfolioExposure ?? openExposure, 0)}</strong> risk</span>`,
@@ -2251,20 +2261,28 @@ function renderPortfolioCommand(bots, hiddenCount, liveBroker, summary, d, today
       ? diagnostics.eta_readiness_snapshot
       : {};
     const readinessStatus = String(readinessSnapshot.status || '').toLowerCase();
-    const readinessText = readinessStatus === 'blocked'
+    const readinessText = paperDailyLossHold
+      ? 'Held'
+      : paperLaunchBlocked
+        ? 'Blocked'
+        : readinessStatus === 'blocked'
       ? 'Blocked'
       : readinessStatus === 'ready'
         ? 'Ready'
         : readinessStatus === 'stale_receipt'
           ? 'Snapshot Stale'
-          : `${paperReady} ready`;
+          : `${paperReady} paper-ready`;
     const bracketCount = Number(readinessSnapshot.broker_missing_bracket_count || 0);
-    const readinessSub = readinessStatus === 'blocked'
+    const readinessSub = paperDailyLossHold
+      ? `${paperReady} paper-ready | daily-loss hold active`
+      : paperLaunchBlocked
+        ? `${paperReady} paper-ready | launch blocked`
+        : readinessStatus === 'blocked'
       ? (bracketCount > 0
         ? `${bracketCount} exit-protection gap | ${readinessSnapshot.prop_primary_bot || 'prop bot'} held`
         : readinessSnapshot.primary_action || readinessSnapshot.promotion_summary || 'gates blocked')
       : readinessStatus === 'ready'
-        ? `${paperReady} ready | ${active} live`
+        ? `${paperReady} paper-ready | ${active} live`
         : `${active} live now`;
     const readinessSubWithBlocks = blockedBots > 0
       ? compactText(`${blockedBots} held | ${blockedRollup.kindsLine || blockedLine}`, 86)
@@ -3792,9 +3810,13 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
   for (const b of bots) {
     const pnlClass = (b.todays_pnl || 0) > 0 ? 'badge-win' : (b.todays_pnl || 0) < 0 ? 'badge-loss' : 'badge-idle';
     const v = b.last_jarvis_verdict || '';
-    const verdictClass = (v === 'APPROVED' || v === 'CONDITIONAL') ? 'badge-approve'
+    const currentBlockSummary = compactText(String(b.current_block_summary || ''), 54);
+    const heldVerdict = Boolean(currentBlockSummary);
+    const verdictClass = heldVerdict ? 'badge-hold'
+      : (v === 'APPROVED' || v === 'CONDITIONAL') ? 'badge-approve'
       : (v === 'DENIED' || v === 'KILL' || v === 'REDUCE') ? 'badge-deny'
       : 'badge-idle';
+    const verdictLabel = heldVerdict ? `Held ${v ? `(${v})` : ''}`.trim() : (b.last_jarvis_verdict || '--');
     const activity = activityForBot(b);
     const activityText = activity ? activity.type + ' ' + formatActivityTime(activity.ts) + (activity.side ? ' ' + activity.side : '') : '--';
     const position = positionForBot(b);
@@ -3805,7 +3827,7 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
       '<td>' + (b.tier || b.strategy || '--') + '</td>' +
       '<td>' + (b.mode || '--') + '</td>' +
       '<td><span class="' + (b.status === 'idle' ? 'badge-idle' : b.status === 'error' ? 'badge-loss' : 'badge-approve') + '">' + (b.status || '--') + '</span></td>' +
-      '<td><span class="' + verdictClass + '">' + (b.last_jarvis_verdict || '--') + '</span></td>' +
+      '<td><span class="' + verdictClass + '">' + esc(verdictLabel) + '</span>' + (heldVerdict ? '<span class="table-subline">' + esc(currentBlockSummary) + '</span>' : '') + '</td>' +
       '<td class="' + ((b.todays_pnl || 0) > 0 ? 'green' : (b.todays_pnl || 0) < 0 ? 'red' : '') + '">$' + (b.todays_pnl || 0).toFixed(0) + '</td>' +
       '<td class="position-cell"><span class="main">' + esc(position.text) + '</span><span class="subline">' + esc(position.sub) + '</span></td>' +
       '<td class="protection-cell"><span class="main">' + esc(protection.text) + '</span><span class="subline">' + esc(protection.sub) + '</span></td>' +

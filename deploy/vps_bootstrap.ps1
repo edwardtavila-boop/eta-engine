@@ -274,6 +274,7 @@ if (-not $SkipETATasks) {
     $proxy8421TaskScript = "$EtaEngineDir\deploy\scripts\register_proxy8421_bridge_task.ps1"
     $dashboardProxyWatchdogTaskScript = "$EtaEngineDir\deploy\scripts\register_dashboard_proxy_watchdog_task.ps1"
     $paperLiveTransitionTaskScript = "$EtaEngineDir\deploy\scripts\register_paper_live_transition_check_task.ps1"
+    $dailyStopResetAuditTaskScript = "$EtaEngineDir\deploy\scripts\register_daily_stop_reset_audit_task.ps1"
     $etaReadinessSnapshotTaskScript = "$EtaEngineDir\deploy\scripts\register_eta_readiness_snapshot_task.ps1"
     $vpsOpsHardeningTaskScript = "$EtaEngineDir\deploy\scripts\register_vps_ops_hardening_audit_task.ps1"
     $symbolIntelCollectorTaskScript = "$EtaEngineDir\deploy\scripts\register_symbol_intelligence_collector_task.ps1"
@@ -328,6 +329,15 @@ if (-not $SkipETATasks) {
         }
     } else {
         Write-Host "  register_paper_live_transition_check_task.ps1 not found at $paperLiveTransitionTaskScript" -ForegroundColor Yellow
+    }
+
+    if (Test-Path $dailyStopResetAuditTaskScript) {
+        Write-Host "  Registering daily stop reset audit task (every 5m, read-only)..." -ForegroundColor Gray
+        if (-not $WhatIf) {
+            & $pwshPath -ExecutionPolicy Bypass -File $dailyStopResetAuditTaskScript -Start
+        }
+    } else {
+        Write-Host "  register_daily_stop_reset_audit_task.ps1 not found at $dailyStopResetAuditTaskScript" -ForegroundColor Yellow
     }
 
     if (Test-Path $etaReadinessSnapshotTaskScript) {
@@ -604,6 +614,7 @@ Write-Host "  ETA-Proxy-8421                   -- ops bridge 127.0.0.1:8421 -> 8
 Write-Host "  ETA-Cloudflare-Tunnel            -- boot/logon named tunnel" -ForegroundColor Gray
 Write-Host "  ETA-Dashboard-Proxy-Watchdog     -- boot/logon 8421 self-heal" -ForegroundColor Gray
 Write-Host "  ETA-PaperLiveTransitionCheck     -- boot/logon + every 5m" -ForegroundColor Gray
+Write-Host "  ETA-DailyStopResetAudit          -- boot/logon + every 5m read-only reset audit" -ForegroundColor Gray
 Write-Host "  ETA-VpsOpsHardeningAudit         -- boot/logon + every 5m read-only audit" -ForegroundColor Gray
 Write-Host "  ETA-SymbolIntelCollector         -- boot/logon + every 5m data lake refresh" -ForegroundColor Gray
 Write-Host "  ETA-IndexFutures-Bar-Refresh     -- boot/logon + every 10m NQ/MNQ bar refresh" -ForegroundColor Gray

@@ -344,10 +344,22 @@ LOG_DIR = Path(os.environ.get("ETA_LOG_DIR", os.environ.get("ETA_LOG_DIR", str(_
 _START_TS = time.time()
 API_BUILD_CAPABILITIES = (
     "command_center_watchdog",
+    "daily_stop_reset_audit",
     "eta_readiness_snapshot",
     "ibkr_futures_avg_cost_normalized",
     "sage_sentiment_pressure",
 )
+_DAILY_STOP_RESET_AUDIT_STATUSES = {
+    "held_until_reset",
+    "reset_cleared_ready",
+    "reset_cleared_blocked",
+    "still_tripped_after_reset_window",
+    "missing",
+    "unreadable",
+    "invalid",
+    "unknown",
+    "error",
+}
 _VPS_OPS_HARDENING_STATUSES = {
     "PASS",
     "WARN",
@@ -896,6 +908,7 @@ def _dashboard_diagnostics_payload() -> dict:
     dashboard_proxy_watchdog = _dashboard_proxy_watchdog_payload(server_ts=server_ts)
     command_center_watchdog = _command_center_watchdog_payload(server_ts=server_ts)
     eta_readiness_snapshot = _eta_readiness_snapshot_payload(server_ts=server_ts)
+    daily_stop_reset_audit = _daily_stop_reset_audit_payload(server_ts=server_ts)
     vps_ops_hardening = _vps_ops_hardening_payload(server_ts=server_ts)
 
     try:
@@ -1162,6 +1175,7 @@ def _dashboard_diagnostics_payload() -> dict:
         "dashboard_proxy_watchdog": dashboard_proxy_watchdog,
         "command_center_watchdog": command_center_watchdog,
         "eta_readiness_snapshot": eta_readiness_snapshot,
+        "daily_stop_reset_audit": daily_stop_reset_audit,
         "vps_ops_hardening": vps_ops_hardening,
         "hardening": vps_ops_hardening,
         "checks": {
@@ -1211,6 +1225,8 @@ def _dashboard_diagnostics_payload() -> dict:
                 "stale_receipt",
                 "unknown",
             },
+            "daily_stop_reset_audit_contract": daily_stop_reset_audit.get("status")
+            in _DAILY_STOP_RESET_AUDIT_STATUSES,
             "vps_ops_hardening_contract": vps_ops_hardening.get("status") in _VPS_OPS_HARDENING_STATUSES,
             "hardening_contract": vps_ops_hardening.get("status") in _VPS_OPS_HARDENING_STATUSES,
             "auth_contract": "auth_session" in DASHBOARD_REQUIRED_DATA,
@@ -2175,6 +2191,14 @@ def _vps_ops_hardening_audit_path() -> Path:
     return _state_dir() / "vps_ops_hardening_latest.json"
 
 
+def _daily_stop_reset_audit_path() -> Path:
+    """Latest read-only daily-loss reset audit surfaced into diagnostics."""
+    explicit = os.environ.get("ETA_DAILY_STOP_RESET_AUDIT_PATH")
+    if explicit:
+        return Path(explicit)
+    return _state_dir() / "daily_stop_reset_audit_latest.json"
+
+
 def _iso_age_s(value: object, *, server_ts: float) -> float | None:
     if not value:
         return None
@@ -2185,6 +2209,89 @@ def _iso_age_s(value: object, *, server_ts: float) -> float | None:
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=UTC)
     return max(0.0, server_ts - parsed.timestamp())
+
+
+def _daily_stop_reset_audit_payload(*, server_ts: float) -> dict:
+    """Fail-soft summary of the VPS daily-loss reset handoff audit."""
+    path = _daily_stop_reset_audit_path()
+    if not path.exists():
+        return {
+            "status": "missing",
+            "ready": False,
+            "path": str(path),
+            "generated_at": None,
+            "age_s": None,
+            "read_only": True,
+            "safe_to_trade_mutation": False,
+            "post_reset_ready": False,
+            "operator_next_action": "Run python -m eta_engine.scripts.daily_stop_reset_audit --json on the VPS",
+            "daily_loss_status": "unknown",
+            "daily_loss_tripped": False,
+            "paper_live_status": "unknown",
+            "paper_live_critical_ready": False,
+            "first_failed_gate": {},
+        }
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return {
+            "status": "unreadable",
+            "ready": False,
+            "path": str(path),
+            "generated_at": None,
+            "age_s": None,
+            "read_only": True,
+            "safe_to_trade_mutation": False,
+            "post_reset_ready": False,
+            "operator_next_action": f"Refresh unreadable daily stop reset audit: {exc}",
+            "daily_loss_status": "unknown",
+            "daily_loss_tripped": False,
+            "paper_live_status": "unknown",
+            "paper_live_critical_ready": False,
+            "first_failed_gate": {},
+            "error": str(exc),
+        }
+    if not isinstance(payload, dict):
+        return {
+            "status": "invalid",
+            "ready": False,
+            "path": str(path),
+            "generated_at": None,
+            "age_s": None,
+            "read_only": True,
+            "safe_to_trade_mutation": False,
+            "post_reset_ready": False,
+            "operator_next_action": "Refresh invalid daily stop reset audit JSON",
+            "daily_loss_status": "unknown",
+            "daily_loss_tripped": False,
+            "paper_live_status": "unknown",
+            "paper_live_critical_ready": False,
+            "first_failed_gate": {},
+        }
+
+    daily_loss = payload.get("daily_loss_killswitch") if isinstance(payload.get("daily_loss_killswitch"), dict) else {}
+    paper_live = payload.get("paper_live_transition") if isinstance(payload.get("paper_live_transition"), dict) else {}
+    first_failed_gate = payload.get("first_failed_gate") if isinstance(payload.get("first_failed_gate"), dict) else {}
+    status = str(payload.get("status") or "unknown")
+    generated_at = payload.get("generated_at")
+    return {
+        "status": status,
+        "ready": status == "reset_cleared_ready" and bool(payload.get("post_reset_ready")),
+        "path": str(path),
+        "generated_at": generated_at,
+        "age_s": _iso_age_s(generated_at, server_ts=server_ts),
+        "read_only": bool(payload.get("read_only", True)),
+        "safe_to_trade_mutation": bool(payload.get("safe_to_trade_mutation")),
+        "post_reset_ready": bool(payload.get("post_reset_ready")),
+        "operator_next_action": str(payload.get("operator_next_action") or ""),
+        "daily_loss_status": str(daily_loss.get("status") or "unknown"),
+        "daily_loss_tripped": bool(daily_loss.get("tripped")),
+        "paper_live_status": str(paper_live.get("status") or "unknown"),
+        "paper_live_critical_ready": bool(paper_live.get("critical_ready")),
+        "first_failed_gate": first_failed_gate,
+        "source": str(payload.get("source") or "daily_stop_reset_audit"),
+        "error": payload.get("error"),
+    }
 
 
 def _vps_ops_hardening_payload(*, server_ts: float) -> dict:
