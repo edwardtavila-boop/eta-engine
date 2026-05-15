@@ -5952,6 +5952,7 @@ def bot_fleet_roster(
 
     registry_active = _registry_active_by_bot()
     for row in rows:
+        row.update(_current_bot_block_state(row))
         row_bot_id = str(row.get("name") or row.get("id") or row.get("bot_id") or "").strip()
         if row_bot_id in registry_active:
             row["registry_active"] = registry_active[row_bot_id]
@@ -5964,6 +5965,11 @@ def bot_fleet_roster(
     confirmed_bots = sum(
         1 for r in rows if r.get("source") == "jarvis_strategy_supervisor" or r.get("confirmed") is True
     )
+    blocked_rows = [r for r in rows if str(r.get("current_block_reason") or "").strip()]
+    blocked_kinds: dict[str, int] = {}
+    for row in blocked_rows:
+        kind = str(row.get("current_block_kind") or "unknown").strip() or "unknown"
+        blocked_kinds[kind] = blocked_kinds.get(kind, 0) + 1
     active_bots = sum(1 for r in rows if _is_runtime_active_bot_row(r))
     staged_bots = max(0, len(rows) - active_bots)
     running_bots = sum(1 for r in rows if str(r.get("status") or "").lower() == "running")
@@ -6213,6 +6219,8 @@ def bot_fleet_roster(
             "running_bots": running_bots,
             "staged_bots": staged_bots,
             "readiness_staged_bots": staged_bots,
+            "current_blocked_bots": len(blocked_rows),
+            "current_blocked_kinds": blocked_kinds,
             "live_broker_probe_mode": "live" if live_broker_probe else "cached_diagnostics",
             "mnq_total": len(mnq_runtime_rows),
             "mnq_runtime_total": len(mnq_runtime_rows),

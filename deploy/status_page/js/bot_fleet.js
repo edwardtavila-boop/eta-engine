@@ -200,6 +200,10 @@ function formatCurrentBlockSummary(data, status) {
     .replace(/^route_paper:/, 'Entries routed to paper lane: ');
 }
 
+function formatRosterBlockSummary(bot) {
+  return formatCurrentBlockSummary(bot || {}, bot || {});
+}
+
 // --- 1. Roster table ---
 class RosterPanel extends Panel {
   constructor() {
@@ -269,7 +273,9 @@ class RosterPanel extends Panel {
     const quality = data.stale_payload_alert ? 'stale' : data.truth_status || 'live';
     const version = [data.dashboard_version, data.release_stage].filter(Boolean).join(' ');
     const liveLine = `server ${srvTs} | fills 1h ${live.fills_1h ?? 0} | fills 24h ${live.fills_24h ?? 0} | last fill ${formatTime(live.last_fill_ts)}`;
-    this.body.innerHTML = `<div class="dashboard-freshness-line text-[10px] text-zinc-500 mb-1" data-quality="${escapeHtml(String(quality))}">${escapeHtml(version || 'v1 pre_beta')} | live roster | ${escapeHtml(liveLine)} | age ${dataAge ?? 'n/a'}s | confirmed ${Number(data.confirmed_bots || 0)} | window yesterday-&gt;now</div><table class="mobile-card-table w-full text-xs"><thead class="text-zinc-500">
+    const blockedBots = Number(data.summary?.current_blocked_bots || 0);
+    const blockedLabel = blockedBots > 0 ? ` | blocked ${blockedBots}` : '';
+    this.body.innerHTML = `<div class="dashboard-freshness-line text-[10px] text-zinc-500 mb-1" data-quality="${escapeHtml(String(quality))}">${escapeHtml(version || 'v1 pre_beta')} | live roster | ${escapeHtml(liveLine)} | age ${dataAge ?? 'n/a'}s | confirmed ${Number(data.confirmed_bots || 0)}${escapeHtml(blockedLabel)} | window yesterday-&gt;now</div><table class="mobile-card-table w-full text-xs"><thead class="text-zinc-500">
       <tr><th class="text-left">Bot</th><th class="text-left">Symbol</th><th class="text-left">Tier</th><th class="text-left">Venue</th><th class="text-left">Readiness</th><th class="text-left">Status</th><th class="text-left">Position</th><th class="text-right">Day PnL</th><th class="text-left">Last Trade</th><th class="text-left">Age</th><th class="text-right">R</th></tr>
       </thead><tbody>${bots.map(b => {
         const statusCls = b.status === 'running' ? 'text-emerald-400'
@@ -282,6 +288,10 @@ class RosterPanel extends Panel {
         const side = b.last_trade_side ? String(b.last_trade_side).toUpperCase() : '-';
         const readiness = formatBotStrategyReadiness(b);
         const positionHtml = renderPositionSummary(b);
+        const blockSummary = formatRosterBlockSummary(b);
+        const statusDetail = blockSummary
+          ? `<div class="text-[10px] text-amber-300 mt-1">${escapeHtml(blockSummary)}</div>`
+          : '';
         const actionLine = readiness.nextAction
           ? `<div class="strategy-readiness-action">${escapeHtml(readiness.nextAction)}</div>`
           : `<div class="strategy-readiness-action">${escapeHtml(readiness.laneLabel)}</div>`;
@@ -291,7 +301,7 @@ class RosterPanel extends Panel {
           <td data-label="Tier">${escapeHtml(b.tier)}</td>
           <td data-label="Venue">${escapeHtml(b.venue)}</td>
           <td data-label="Readiness"><span class="strategy-readiness-chip" data-readiness-state="${escapeHtml(readiness.state)}" title="${escapeHtml(readiness.nextAction || readiness.laneLabel)}">${escapeHtml(readiness.label)}</span>${actionLine}</td>
-          <td data-label="Status" class="${statusCls}">${escapeHtml(b.status)}</td>
+          <td data-label="Status"><div class="${statusCls}">${escapeHtml(b.status)}</div>${statusDetail}</td>
           <td data-label="Position">${positionHtml}</td>
           <td data-label="Day PnL" class="text-right ${pnlCls}">${formatNumber(b.todays_pnl)}</td>
           <td data-label="Last Trade" class="text-zinc-300">${side} | ${formatTime(b.last_trade_ts)}</td>

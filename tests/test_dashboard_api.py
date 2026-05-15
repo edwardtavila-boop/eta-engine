@@ -4177,6 +4177,8 @@ class TestDashboardAPI:
                     "venue": "paper-sim",
                     "status": "running",
                     "todays_pnl": 0.0,
+                    "last_aggregation_reject_reason": "session_gate:outside_rth",
+                    "last_aggregation_reject_at": "2026-05-15T12:00:00+00:00",
                 }
             ),
             encoding="utf-8",
@@ -4335,6 +4337,8 @@ class TestDashboardAPI:
                     "venue": "paper-sim",
                     "status": "running",
                     "todays_pnl": 0.0,
+                    "last_aggregation_reject_reason": "session_gate:outside_rth",
+                    "last_aggregation_reject_at": "2026-05-15T12:00:00+00:00",
                 }
             ),
             encoding="utf-8",
@@ -4383,6 +4387,8 @@ class TestDashboardAPI:
         assert summary["runtime_active_bots"] == 1
         assert summary["running_bots"] == 1
         assert summary["staged_bots"] == 1
+        assert summary["current_blocked_bots"] == 1
+        assert summary["current_blocked_kinds"] == {"session_gate": 1}
 
     def test_bot_fleet_summary_carries_broker_net_without_fake_lifetime(
         self,
@@ -7077,6 +7083,8 @@ class TestDashboardAPI:
                             "open_position": None,
                             "last_jarvis_verdict": "DENIED",
                             "last_bar_ts": "2026-04-28T12:00:00+00:00",
+                            "last_aggregation_reject_reason": "session_gate:outside_rth",
+                            "last_aggregation_reject_at": "2026-04-28T12:00:00+00:00",
                         },
                     ],
                 },
@@ -7122,11 +7130,16 @@ class TestDashboardAPI:
         nq = nq_rows[0]
         assert nq["source"] == "jarvis_strategy_supervisor"
         assert nq["status"] == "running"
+        assert nq["current_block_reason"] == "session_gate:outside_rth"
+        assert nq["current_block_summary"] == "Entries paused by session gate: outside_rth"
+        assert nq["current_block_at"] == "2026-04-28T12:00:00+00:00"
         assert nq["strategy_readiness"]["strategy_id"] == "volume_profile_nq_v1"
         assert nq["launch_lane"] == "live_preflight"
         assert nq["can_paper_trade"] is True
         assert nq["can_live_trade"] is False
         assert nq["readiness_next_action"].startswith("Run per-bot promotion")
+        assert data["summary"]["current_blocked_bots"] == 1
+        assert data["summary"]["current_blocked_kinds"] == {"session_gate": 1}
 
     def test_bot_fleet_surfaces_tws_gateway_health(self, app_client):
         """The public roster reports broker execution health separately from bot liveness."""
