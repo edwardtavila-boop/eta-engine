@@ -346,6 +346,7 @@ API_BUILD_CAPABILITIES = (
     "command_center_watchdog",
     "eta_readiness_snapshot",
     "ibkr_futures_avg_cost_normalized",
+    "sage_sentiment_pressure",
 )
 _VPS_OPS_HARDENING_STATUSES = {
     "PASS",

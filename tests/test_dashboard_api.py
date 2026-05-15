@@ -1682,6 +1682,7 @@ class TestDashboardAPI:
             "command_center_watchdog",
             "eta_readiness_snapshot",
             "ibkr_futures_avg_cost_normalized",
+            "sage_sentiment_pressure",
         }
         assert data["service"]["status"] == "ok"
         assert data["service"]["uptime_s"] >= 0
