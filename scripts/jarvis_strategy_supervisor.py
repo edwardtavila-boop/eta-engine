@@ -93,10 +93,12 @@ if str(ROOT / "src") not in sys.path:
     sys.path.insert(0, str(ROOT / "src"))
 
 from eta_engine.core.execution_lanes import (  # noqa: E402
+    SHADOW_PAPER_LANE,
     capital_gate_scope_for_lane,
     daily_loss_gate_mode_for_lane,
     execution_lane_from_fields,
     gate_advisory,
+    normalize_execution_lane,
 )
 from eta_engine.scripts import l2_supervisor_hooks as l2hooks  # noqa: E402
 from eta_engine.scripts import workspace_roots  # noqa: E402
@@ -4193,6 +4195,165 @@ class JarvisStrategySupervisor:
             self._env_float("ETA_BROKER_ROUTER_FILL_ADOPT_WINDOW_S", 86400.0),
         )
 
+    def _shadow_paper_pending_fallback_s(self) -> float:
+        """Return how long a shadow-paper pending order may stay unfilled before local adoption."""
+        return max(0.0, self._env_float("ETA_SHADOW_PAPER_PENDING_FALLBACK_S", 120.0))
+
+    def _adopt_stale_shadow_pending_entry_if_needed(
+        self,
+        bot: BotInstance,
+        *,
+        now: datetime,
+    ) -> bool:
+        """Rehydrate shadow-paper state from a stale broker-router pending order.
+
+        Shadow-paper is a learning lane, so once a router pending-order has sat
+        stale well past the normal async hand-off window we prefer to keep the
+        paper state moving instead of freezing the bot indefinitely. Capital
+        lanes keep the stricter broker-confirmed path and never use this
+        fallback.
+        """
+        if bot.open_position is not None:
+            return False
+        if str(getattr(self.cfg, "mode", "")).strip().lower() != "paper_live":
+            return False
+        route = str(getattr(self.cfg, "paper_live_order_route", "") or "").strip().lower()
+        if route not in {"broker_router", "pending_file", "pending"}:
+            return False
+        fallback_s = self._shadow_paper_pending_fallback_s()
+        if fallback_s <= 0:
+            return False
+
+        now_utc = now.astimezone(UTC)
+        pending_dir = self.cfg.broker_router_pending_dir
+        for folder_name in ("", "processing"):
+            folder = pending_dir if not folder_name else pending_dir.parent / folder_name
+            path = folder / f"{bot.bot_id}.pending_order.json"
+            try:
+                payload = json.loads(path.read_text(encoding="utf-8"))
+                mtime = datetime.fromtimestamp(path.stat().st_mtime, tz=UTC)
+            except (OSError, TypeError, ValueError, json.JSONDecodeError):
+                continue
+
+            lane = normalize_execution_lane(
+                payload.get("execution_lane"),
+                default=normalize_execution_lane(getattr(bot, "execution_lane", ""), default=""),
+            )
+            if lane != SHADOW_PAPER_LANE:
+                continue
+
+            age_ref = self._parse_open_position_ts(payload.get("ts")) or mtime
+            age_s = max(0.0, (now_utc - age_ref).total_seconds())
+            if age_s < fallback_s:
+                continue
+
+            side = str(payload.get("side") or "").upper()
+            if side not in {"BUY", "SELL"}:
+                continue
+            try:
+                qty = abs(float(payload.get("qty") or 0))
+            except (TypeError, ValueError):
+                continue
+            if qty <= 0:
+                continue
+
+            entry_price_raw = payload.get("limit_price")
+            if entry_price_raw is None:
+                entry_price_raw = payload.get("price")
+            try:
+                entry_price = round(float(entry_price_raw), 4)
+            except (TypeError, ValueError):
+                continue
+
+            signal_id = str(payload.get("signal_id") or path.stem)
+            entry_ts = str(payload.get("ts") or age_ref.isoformat())
+            adopted_dir = pending_dir.parent / "shadow_adopted"
+            adopted_dir.mkdir(parents=True, exist_ok=True)
+            adopted_path = adopted_dir / f"{bot.bot_id}_{signal_id}.pending_order.json"
+            suffix = 1
+            while adopted_path.exists():
+                adopted_path = adopted_dir / f"{bot.bot_id}_{signal_id}_{suffix}.pending_order.json"
+                suffix += 1
+            try:
+                os.replace(path, adopted_path)
+            except OSError as exc:
+                logger.warning(
+                    "shadow pending adoption could not quarantine %s for %s: %s",
+                    path,
+                    bot.bot_id,
+                    exc,
+                )
+                return False
+
+            pos: dict[str, Any] = {
+                "side": side,
+                "qty": qty,
+                "entry_price": entry_price,
+                "entry_ts": entry_ts,
+                "signal_id": signal_id,
+                "symbol": bot.symbol,
+                "shadow_pending_adopted": True,
+                "shadow_pending_age_s": round(age_s, 1),
+                "shadow_pending_order_path": str(adopted_path),
+                "broker_bracket": False,
+                "bracket_src": "shadow_pending_fallback",
+            }
+            stop_price = payload.get("stop_price")
+            target_price = payload.get("target_price")
+            with contextlib.suppress(TypeError, ValueError):
+                if stop_price is not None:
+                    pos["bracket_stop"] = round(float(stop_price), 4)
+            with contextlib.suppress(TypeError, ValueError):
+                if target_price is not None:
+                    pos["bracket_target"] = round(float(target_price), 4)
+            if pos.get("bracket_stop") is not None:
+                try:
+                    from eta_engine.feeds.instrument_specs import (  # noqa: PLC0415
+                        effective_point_value,
+                    )
+
+                    point_value = float(effective_point_value(bot.symbol, route="auto") or 1.0)
+                except Exception:  # noqa: BLE001
+                    point_value = 1.0
+                initial_stop_distance = abs(float(pos["bracket_stop"]) - entry_price)
+                pos["initial_stop_distance"] = round(initial_stop_distance, 6)
+                pos["initial_risk_unit"] = round(initial_stop_distance * qty * point_value, 4)
+
+            bot.open_position = pos
+            bot.n_entries += 1
+            bot.last_signal_at = entry_ts
+            bot.consecutive_broker_rejects = 0
+            self._clear_last_aggregation_reject_if_prefixes(
+                bot,
+                "broker_router_pending_file:",
+                "broker_router_order_open_no_fill:",
+                "broker_router_filled_unadopted:",
+                "broker_router_signal_cooldown:",
+            )
+            self._router._persist_open_position(bot)  # noqa: SLF001
+            with contextlib.suppress(Exception):
+                from eta_engine.safety.cross_bot_position_tracker import (  # noqa: PLC0415
+                    normalize_root as _cbpt_normalize_root,
+                )
+
+                self._cross_bot_tracker.record_entry(
+                    symbol_root=_cbpt_normalize_root(bot.symbol),
+                    side=side,
+                    qty=qty,
+                )
+            self._persist_supervisor_open_positions_belief(reason="shadow_pending_entry_adopted")
+            logger.warning(
+                "SHADOW PENDING ADOPTED %s: side=%s qty=%.6f entry=%.4f age=%.0fs signal_id=%s",
+                bot.bot_id,
+                side,
+                qty,
+                entry_price,
+                age_s,
+                signal_id,
+            )
+            return True
+        return False
+
     def _clear_last_aggregation_reject_if_prefixes(
         self,
         bot: BotInstance,
@@ -4499,6 +4660,9 @@ class JarvisStrategySupervisor:
             return
 
         if self._stale_flatten_cooldown_active(bot, now=now):
+            return
+
+        if self._adopt_stale_shadow_pending_entry_if_needed(bot, now=now):
             return
 
         pending_reason = self._broker_router_pending_entry_block_reason(bot, now=now)

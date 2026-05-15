@@ -401,6 +401,154 @@ def test_supervisor_adopts_broker_router_filled_entry(
     assert persisted[-1][0]["bot_id"] == bot.bot_id
 
 
+def test_supervisor_adopts_stale_shadow_pending_entry(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    import json
+    import os
+    from datetime import UTC, datetime, timedelta
+
+    from eta_engine.scripts import jarvis_strategy_supervisor as mod
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        BotInstance,
+        JarvisStrategySupervisor,
+        SupervisorConfig,
+    )
+
+    monkeypatch.setenv("ETA_SHADOW_PAPER_PENDING_FALLBACK_S", "30")
+
+    cfg = SupervisorConfig()
+    cfg.mode = "paper_live"
+    cfg.paper_live_order_route = "broker_router"
+    cfg.state_dir = tmp_path / "state"
+    cfg.broker_router_pending_dir = tmp_path / "router" / "pending"
+    sup = JarvisStrategySupervisor(cfg=cfg)
+    bot = BotInstance(
+        bot_id="mnq_futures_sage",
+        symbol="MNQ1",
+        strategy_kind="orb_sage_gated",
+        direction="long",
+        cash=50_000.0,
+        execution_lane="shadow_paper",
+    )
+    sup.bots.append(bot)
+
+    persisted: list[list[dict]] = []
+    tracker_calls: list[dict[str, object]] = []
+    monkeypatch.setattr(mod, "persist_open_positions", lambda rows: persisted.append(rows))
+    monkeypatch.setattr(
+        sup._cross_bot_tracker,
+        "record_entry",
+        lambda **kwargs: tracker_calls.append(dict(kwargs)),
+    )
+
+    pending_path = cfg.broker_router_pending_dir / f"{bot.bot_id}.pending_order.json"
+    pending_path.parent.mkdir(parents=True, exist_ok=True)
+    stale_ts = datetime.now(UTC) - timedelta(minutes=5)
+    pending_path.write_text(
+        json.dumps(
+            {
+                "ts": stale_ts.isoformat(),
+                "signal_id": "mnq_shadow_pending",
+                "side": "BUY",
+                "qty": 1.0,
+                "symbol": "MNQ1",
+                "limit_price": 29300.25,
+                "stop_price": 29250.25,
+                "target_price": 29400.25,
+                "execution_lane": "shadow_paper",
+            },
+        ),
+        encoding="utf-8",
+    )
+    os.utime(pending_path, (stale_ts.timestamp(), stale_ts.timestamp()))
+
+    adopted = sup._adopt_stale_shadow_pending_entry_if_needed(bot, now=datetime.now(UTC))  # noqa: SLF001
+
+    assert adopted is True
+    assert bot.open_position is not None
+    assert bot.open_position["signal_id"] == "mnq_shadow_pending"
+    assert bot.open_position["side"] == "BUY"
+    assert bot.open_position["qty"] == 1.0
+    assert bot.open_position["entry_price"] == 29300.25
+    assert bot.open_position["bracket_stop"] == 29250.25
+    assert bot.open_position["bracket_target"] == 29400.25
+    assert bot.open_position["shadow_pending_adopted"] is True
+    assert bot.open_position["broker_bracket"] is False
+    assert bot.n_entries == 1
+    assert bot.last_signal_at == stale_ts.isoformat()
+    assert tracker_calls == [{"symbol_root": "MNQ", "side": "BUY", "qty": 1.0}]
+    assert pending_path.exists() is False
+    adopted_dir = cfg.broker_router_pending_dir.parent / "shadow_adopted"
+    adopted_paths = list(adopted_dir.glob("mnq_futures_sage_mnq_shadow_pending*.pending_order.json"))
+    assert len(adopted_paths) == 1
+    assert bot.open_position["shadow_pending_order_path"] == str(adopted_paths[0])
+    assert (cfg.state_dir / "bots" / bot.bot_id / "open_position.json").exists()
+    assert persisted[-1][0]["bot_id"] == bot.bot_id
+
+
+def test_supervisor_does_not_adopt_stale_capital_pending_entry(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    import json
+    import os
+    from datetime import UTC, datetime, timedelta
+
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        BotInstance,
+        JarvisStrategySupervisor,
+        SupervisorConfig,
+    )
+
+    monkeypatch.setenv("ETA_SHADOW_PAPER_PENDING_FALLBACK_S", "30")
+
+    cfg = SupervisorConfig()
+    cfg.mode = "paper_live"
+    cfg.paper_live_order_route = "broker_router"
+    cfg.state_dir = tmp_path / "state"
+    cfg.broker_router_pending_dir = tmp_path / "router" / "pending"
+    sup = JarvisStrategySupervisor(cfg=cfg)
+    bot = BotInstance(
+        bot_id="mnq_futures_sage",
+        symbol="MNQ1",
+        strategy_kind="orb_sage_gated",
+        direction="long",
+        cash=50_000.0,
+        execution_lane="capital_execution",
+    )
+    sup.bots.append(bot)
+
+    pending_path = cfg.broker_router_pending_dir / f"{bot.bot_id}.pending_order.json"
+    pending_path.parent.mkdir(parents=True, exist_ok=True)
+    stale_ts = datetime.now(UTC) - timedelta(minutes=5)
+    pending_path.write_text(
+        json.dumps(
+            {
+                "ts": stale_ts.isoformat(),
+                "signal_id": "mnq_capital_pending",
+                "side": "BUY",
+                "qty": 1.0,
+                "symbol": "MNQ1",
+                "limit_price": 29300.25,
+                "stop_price": 29250.25,
+                "target_price": 29400.25,
+                "execution_lane": "capital_execution",
+            },
+        ),
+        encoding="utf-8",
+    )
+    os.utime(pending_path, (stale_ts.timestamp(), stale_ts.timestamp()))
+
+    adopted = sup._adopt_stale_shadow_pending_entry_if_needed(bot, now=datetime.now(UTC))  # noqa: SLF001
+
+    assert adopted is False
+    assert bot.open_position is None
+    assert pending_path.exists() is True
+    assert not (cfg.broker_router_pending_dir.parent / "shadow_adopted").exists()
+
+
 def test_supervisor_blocks_recent_filled_result_when_broker_flat(
     tmp_path: Path,
     monkeypatch,
