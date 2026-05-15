@@ -230,6 +230,40 @@ def test_supervisor_bridge_idle_status_when_no_entries_no_position(tmp_path: Pat
     assert accounts[0]["last_bar_ts"] == "2026-04-28T12:00:00+00:00"
 
 
+def test_supervisor_bridge_respects_explicit_idle_status_after_flatten(tmp_path: Path) -> None:
+    """Heartbeat status must win when a bot is flat after prior entries."""
+    from eta_engine.scripts.jarvis_supervisor_bridge import (
+        jarvis_supervisor_bot_accounts,
+    )
+
+    hb_data = {
+        "ts": "2026-05-15T12:00:00+00:00",
+        "mode": "paper_live",
+        "bots": [
+            {
+                "bot_id": "mnq_futures_sage",
+                "symbol": "MNQ1",
+                "strategy_kind": "orb",
+                "status": "idle",
+                "direction": "long",
+                "n_entries": 1,
+                "n_exits": 1,
+                "realized_pnl": 0.0,
+                "open_position": None,
+                "last_bar_ts": "2026-05-15T12:00:00+00:00",
+            },
+        ],
+    }
+    hb = tmp_path / "heartbeat.json"
+    hb.write_text(json.dumps(hb_data), encoding="utf-8")
+
+    accounts = jarvis_supervisor_bot_accounts(heartbeat_path=hb)
+
+    assert len(accounts) == 1
+    assert accounts[0]["status"] == "idle"
+    assert accounts[0]["open_positions"] == 0
+
+
 def test_supervisor_bridge_preserves_aggregation_reject_fields(tmp_path: Path) -> None:
     """Supervisor heartbeat blocker fields must survive bridge normalization."""
     from eta_engine.scripts.jarvis_supervisor_bridge import (

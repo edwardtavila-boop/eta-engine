@@ -7234,7 +7234,12 @@ def bot_fleet_roster(
         gate_mode=str((lane_rollup.get(SHADOW_PAPER_LANE) or {}).get("daily_loss_gate_mode") or ""),
     )
     live_attached_rows = [r for r in rows if _is_live_attached_bot_row(r)]
-    runtime_active_rows = [r for r in rows if _is_runtime_active_bot_row(r)]
+    runtime_active_rows = [
+        r
+        for r in rows
+        if not _is_readiness_only_bot_row(r)
+        and str(r.get("status") or "").strip().lower() not in {"unknown", "stale", "delayed"}
+    ]
     live_in_trade_rows = [r for r in live_attached_rows if _row_has_open_exposure(r)]
     live_attached_bots = len(live_attached_rows)
     live_in_trade_bots = len(live_in_trade_rows)

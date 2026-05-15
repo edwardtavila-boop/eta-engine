@@ -112,7 +112,8 @@ def jarvis_supervisor_bot_accounts(
         open_position = bot.get("open_position") if isinstance(bot.get("open_position"), dict) else {}
         open_positions = 1 if open_position else 0
         running = bool(open_position) or n_entries > 0
-        status = "running" if running else "idle"
+        explicit_status = str(bot.get("status") or "").strip().lower()
+        status = explicit_status if explicit_status else ("running" if running else "idle")
         last_bar_ts = str(bot.get("last_bar_ts") or "")
         # A bar refresh is market-data freshness, not a trading signal.
         # Surface true signal time when the supervisor has actually fired

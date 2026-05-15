@@ -5390,6 +5390,15 @@ class TestDashboardAPI:
                 "ibkr": {"ready": True, "open_positions": [], "open_position_count": 0},
             },
         )
+        monkeypatch.setattr(
+            mod,
+            "_registry_active_by_bot",
+            lambda: {
+                "mnq_futures_sage": True,
+                "ng_sweep_reclaim": True,
+                "eth_sage_daily": True,
+            },
+        )
 
         state = Path(os.environ["ETA_STATE_DIR"])
         (state / "bots").mkdir(parents=True, exist_ok=True)
@@ -5486,17 +5495,17 @@ class TestDashboardAPI:
         assert summary["live_in_trade_bots"] == 1
         assert summary["idle_live_bots"] == 1
         assert summary["inactive_runtime_bots"] == 0
-        assert summary["staged_bots"] == 0
+        assert summary["staged_bots"] == 1
         assert data["active_bots"] == 2
         assert data["live_attached_bots"] == 2
         assert data["live_in_trade_bots"] == 1
         assert data["idle_live_bots"] == 1
         assert data["inactive_runtime_bots"] == 0
-        assert data["staged_bots"] == 0
+        assert data["staged_bots"] == 1
         assert data["truth_summary_line"].startswith(
-            "Live ETA truth: 2/2 bot heartbeat(s) are fresh; 2 attached, 1 in trade, 1 flat/idle."
+            "Live ETA truth: 2/3 bot heartbeat(s) are fresh; 2 attached, 1 in trade, 1 flat/idle."
         )
-        assert "readiness-only inventory" not in data["truth_summary_line"]
+        assert "1 readiness-only inventory row(s) remain staged." in data["truth_summary_line"]
 
     def test_mnq_runtime_summary_excludes_readiness_only_inventory(self, app_client, tmp_path, monkeypatch):
         """MNQ runtime headline should not imply snapshot-only rows are down bots."""
