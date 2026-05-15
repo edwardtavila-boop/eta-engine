@@ -36,6 +36,12 @@ function Get-TaskActionText {
     return (($Task.Actions | ForEach-Object { "$($_.Execute) $($_.Arguments)" }) -join " || ")
 }
 
+$unsafeDuplicateSupervisorTasks = @(
+    # Legacy wrapper observed on the VPS running a second
+    # jarvis_strategy_supervisor.py instance and mutating safety state.
+    "ETA-PaperLive-Supervisor"
+)
+
 $rows = Get-ScheduledTask | Where-Object {
     $_.TaskName -like "ETA-*" -or
     $_.TaskName -like "Eta-*" -or
@@ -54,8 +60,13 @@ $rows = Get-ScheduledTask | Where-Object {
         $actions -like "*AppData\Local\eta_engine*" -or
         $actions -like "*OneDrive*"
     )
+    $isUnsafeDuplicateSupervisor = (
+        $_.TaskName -in $unsafeDuplicateSupervisorTasks -and
+        $stateName -ne "Disabled"
+    )
     $needsAttention = (
         $usesLegacy -or
+        $isUnsafeDuplicateSupervisor -or
         ($stateName -ne "Disabled" -and $resultClass -notin @("success", "running", "never_or_no_more_runs")) -or
         ($stateName -ne "Disabled" -and -not $usesCanonical -and $_.TaskName -like "ETA-*")
     )
@@ -69,6 +80,8 @@ $rows = Get-ScheduledTask | Where-Object {
         next_run_time = $info.NextRunTime
         uses_canonical = $usesCanonical
         uses_legacy_path = $usesLegacy
+        is_unsafe_duplicate_supervisor = $isUnsafeDuplicateSupervisor
+        unsafe_duplicate_supervisor = if ($isUnsafeDuplicateSupervisor) { "disable_duplicate_and_keep_ETA-Jarvis-Strategy-Supervisor" } else { "" }
         needs_attention = $needsAttention
         actions = $actions
     }

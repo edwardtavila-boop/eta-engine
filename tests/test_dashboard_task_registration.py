@@ -312,6 +312,14 @@ def test_scheduled_task_audit_is_read_only_and_surfaces_legacy_paths() -> None:
         assert forbidden not in text
 
 
+def test_scheduled_task_audit_flags_duplicate_paper_live_supervisor() -> None:
+    text = SCHEDULED_TASK_AUDIT_SCRIPT.read_text(encoding="utf-8")
+
+    assert "ETA-PaperLive-Supervisor" in text
+    assert "unsafe_duplicate_supervisor" in text
+    assert "is_unsafe_duplicate_supervisor" in text
+
+
 def test_legacy_apex_disabler_is_apply_gated_and_canonical_backup_only() -> None:
     text = DISABLE_LEGACY_APEX_TASKS_SCRIPT.read_text(encoding="utf-8")
 
