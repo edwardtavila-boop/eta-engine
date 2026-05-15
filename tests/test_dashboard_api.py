@@ -3838,6 +3838,83 @@ class TestDashboardAPI:
         assert payload["runtime"]["operator_queue_launch_blocked_count"] == 0
         assert payload["systems"]["paper_live"]["status"] == "GREEN"
 
+    def test_master_status_retries_fresh_broker_state_for_stale_flat_validation_failure(
+        self,
+        app_client,
+        tmp_path,
+        monkeypatch,
+    ):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        del app_client
+        (tmp_path / "state" / "paper_live_transition_check.json").write_text(
+            json.dumps(
+                {
+                    "generated_at": "2026-05-15T15:42:00+00:00",
+                    "status": "ready_to_launch_paper_live",
+                    "critical_ready": True,
+                    "paper_ready_bots": 9,
+                    "operator_queue_launch_blocked_count": 0,
+                    "gates": [],
+                },
+            ),
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(mod, "_operator_queue_payload", lambda: {"summary": {}, "launch_blocked_count": 0})
+        monkeypatch.setattr(mod, "_broker_gateway_snapshot", lambda: {"status": "connected"})
+        monkeypatch.setattr(mod, "_broker_router_snapshot", lambda: {"status": "ok"})
+        monkeypatch.setattr(
+            mod,
+            "_target_exit_summary_for_master_status",
+            lambda: {
+                "status": "watching",
+                "broker_open_position_count": 0,
+                "broker_bracket_required_position_count": 0,
+                "broker_bracket_count": 0,
+                "missing_bracket_count": 0,
+            },
+        )
+        monkeypatch.setattr(mod, "_daily_loss_killswitch_snapshot", lambda: {"tripped": False})
+        monkeypatch.setattr(mod, "_vps_root_reconciliation_payload", lambda: {"status": "ok", "risk_level": "low"})
+        monkeypatch.setattr(mod, "_cached_live_broker_state_for_gateway_reconcile", lambda: {"source": "cached"})
+        monkeypatch.setattr(mod, "_live_broker_state_payload", lambda: {"source": "fresh"})
+
+        audit_sources: list[str] = []
+
+        def fake_bracket_audit_payload(*, target_exit_summary, live_broker_state):
+            del target_exit_summary
+            audit_sources.append(str(live_broker_state.get("source") or ""))
+            if live_broker_state.get("source") == "cached":
+                return {
+                    "summary": "BLOCKED_STALE_FLAT_OPEN_ORDERS",
+                    "ready_for_prop_dry_run": False,
+                    "operator_action_required": True,
+                    "next_action": "Cancel stale active broker order(s) for MBTK6.",
+                    "operator_actions": [{"label": "Cancel stale flat-symbol orders", "order_action": True}],
+                    "position_summary": {"stale_flat_open_order_symbols": ["MBTK6"]},
+                    "stale_flat_open_order_validation": {"status": "live_socket_validation_failed"},
+                }
+            return {
+                "summary": "READY_NO_OPEN_EXPOSURE",
+                "ready_for_prop_dry_run": True,
+                "operator_action_required": False,
+                "next_action": "Broker-native bracket/OCO audit is clear.",
+                "operator_actions": [],
+                "position_summary": {},
+                "stale_flat_open_order_validation": {"status": "not_requested"},
+            }
+
+        monkeypatch.setattr(mod, "_broker_bracket_audit_payload", fake_bracket_audit_payload)
+
+        payload = mod._local_master_status_payload()
+
+        assert audit_sources == ["cached", "fresh"]
+        assert payload["broker_bracket_audit"]["summary"] == "READY_NO_OPEN_EXPOSURE"
+        assert payload["broker_bracket_audit"]["refreshed_after_stale_validation_failure"] is True
+        assert payload["paper_live"]["status"] == "ready_to_launch_paper_live"
+        assert payload["paper_live"]["effective_status"] == "ready_to_launch_paper_live"
+        assert payload["paper_live"]["held_by_bracket_audit"] is False
+
     def test_vps_root_reconciliation_endpoint_surfaces_review_plan(self, app_client, tmp_path):
         plan = {
             "status": "ok",

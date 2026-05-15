@@ -10158,6 +10158,15 @@ def _broker_bracket_audit_card_status(report: dict) -> str:
     return "YELLOW"
 
 
+def _broker_bracket_audit_needs_fresh_state_retry(report: dict) -> bool:
+    """Return true when a stale-order hold may be based on stale cached broker state."""
+    if str(report.get("summary") or "").upper() != "BLOCKED_STALE_FLAT_OPEN_ORDERS":
+        return False
+    validation = report.get("stale_flat_open_order_validation")
+    validation = validation if isinstance(validation, dict) else {}
+    return str(validation.get("status") or "").lower() == "live_socket_validation_failed"
+
+
 def _broker_bracket_audit_endpoint_payload() -> dict:
     """Read-only broker bracket audit payload for direct operator probes."""
     now_ts = time.time()
@@ -12731,6 +12740,22 @@ def _local_master_status_payload() -> dict[str, object]:
         target_exit_summary=target_exit_summary,
         live_broker_state=cached_live_broker_state,
     )
+    if _broker_bracket_audit_needs_fresh_state_retry(broker_bracket_audit):
+        try:
+            fresh_live_broker_state = _live_broker_state_payload()
+            refreshed_broker_bracket_audit = _broker_bracket_audit_payload(
+                target_exit_summary=target_exit_summary,
+                live_broker_state=fresh_live_broker_state,
+            )
+            refreshed_broker_bracket_audit["refreshed_after_stale_validation_failure"] = True
+            refreshed_broker_bracket_audit["previous_stale_validation"] = broker_bracket_audit.get(
+                "stale_flat_open_order_validation",
+            )
+            broker_bracket_audit = refreshed_broker_bracket_audit
+            cached_live_broker_state = fresh_live_broker_state
+        except Exception as exc:  # noqa: BLE001 - master status must stay available.
+            broker_bracket_audit = dict(broker_bracket_audit)
+            broker_bracket_audit["fresh_state_retry_error"] = f"{type(exc).__name__}: {exc}"
     broker_bracket_audit_status = str(
         broker_bracket_audit.get("summary") or "AUDIT_UNAVAILABLE",
     )
