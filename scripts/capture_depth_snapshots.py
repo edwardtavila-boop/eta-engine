@@ -97,11 +97,17 @@ _DEFAULT_PORT: int = 4002
 _DEFAULT_CLIENT_ID: int = 132
 _CONNECT_TIMEOUT_S: float = 20.0
 
-# Core always-on depth set. VPS evidence showed these CME books producing real
-# bid/ask levels; broader venues stay manual until depth subscriptions catch up.
+# Core always-on depth set for the current index-futures lane. The May 14, 2026
+# IBKR entitlement refresh added CME/CBOT depth coverage, so the default book
+# capture now matches the symbol-intelligence audit surface instead of only the
+# original MNQ/NQ pilot roots. M2K stays included for Russell context.
 _DEFAULT_SYMBOLS: tuple[str, ...] = (
     "MNQ",
     "NQ",
+    "ES",
+    "MES",
+    "YM",
+    "MYM",
     "M2K",
 )
 

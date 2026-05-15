@@ -100,3 +100,7 @@ def test_depth_snapshot_loop_uses_sync_ib_sleep_without_asyncio_run() -> None:
     assert len(writer.records) == 1
     assert writer.records[0]["spread"] == 0.25
     assert writer.records[0]["mid"] == 29000.125
+
+
+def test_depth_capture_defaults_cover_priority_futures_books() -> None:
+    assert {"MNQ", "NQ", "ES", "MES", "YM", "MYM"}.issubset(set(depth._DEFAULT_SYMBOLS))

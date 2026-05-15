@@ -21,6 +21,7 @@ DIAMOND_CRON_SCRIPT = ROOT / "deploy" / "scripts" / "register_diamond_cron_tasks
 L2_CRON_SCRIPT = ROOT / "deploy" / "scripts" / "register_l2_cron_tasks.ps1"
 SCHEDULED_TASK_AUDIT_SCRIPT = ROOT / "deploy" / "scripts" / "audit_vps_scheduled_tasks.ps1"
 DISABLE_LEGACY_APEX_TASKS_SCRIPT = ROOT / "deploy" / "scripts" / "disable_legacy_apex_tasks.ps1"
+TELEGRAM_INBOUND_RUNNER = ROOT / "deploy" / "telegram_inbound_run.bat"
 VPS_BOOTSTRAP_SCRIPTS = (ROOT / "deploy" / "vps_bootstrap.ps1",)
 VPS_BOOTSTRAP_SERVICE_SCRIPTS = (
     ROOT / "deploy" / "vps_bootstrap.ps1",
@@ -284,6 +285,8 @@ def test_capture_daemon_registrar_uses_runtime_parameters_without_hardcoded_user
     assert '$TaskUser = "$env:USERDOMAIN\\$env:USERNAME"' in text
     assert 'Join-Path $WorkspaceRoot "eta_engine\\.venv\\Scripts\\python.exe"' in text
     assert "if ($StartNow)" in text
+    for symbol in ('"MNQ"', '"NQ"', '"ES"', '"MES"', '"YM"', '"MYM"', '"M2K"'):
+        assert symbol in text
     assert "fxut9145410\\trader" not in text
 
 
@@ -332,6 +335,15 @@ def test_legacy_apex_disabler_is_apply_gated_and_canonical_backup_only() -> None
     assert "Export-ScheduledTask" in text
     assert "Disable-ScheduledTask" in text
     assert "Unregister-ScheduledTask" not in text
+
+
+def test_telegram_inbound_runner_uses_eta_venv_not_hermes_admin_venv() -> None:
+    text = TELEGRAM_INBOUND_RUNNER.read_text(encoding="utf-8")
+
+    assert r"set ETA_ENGINE=C:\EvolutionaryTradingAlgo\eta_engine" in text
+    assert r"set PYTHON_EXE=%ETA_ENGINE%\.venv\Scripts\python.exe" in text
+    assert r'"%PYTHON_EXE%" ^' in text
+    assert r"C:\Users\Administrator\.hermes" not in text
 
 
 def test_dashboard_durability_admin_launcher_repairs_dashboard_and_queue_tasks() -> None:

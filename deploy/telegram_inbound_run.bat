@@ -7,11 +7,14 @@ REM Whitelisted to TELEGRAM_CHAT_ID for security.
 
 set PYTHONIOENCODING=utf-8
 set PYTHONPATH=C:\EvolutionaryTradingAlgo
+set ETA_ENGINE=C:\EvolutionaryTradingAlgo\eta_engine
+set PYTHON_EXE=%ETA_ENGINE%\.venv\Scripts\python.exe
+if not exist "%PYTHON_EXE%" set PYTHON_EXE=python.exe
 
 if not exist C:\EvolutionaryTradingAlgo\var mkdir C:\EvolutionaryTradingAlgo\var
 
 echo [%date% %time%] telegram_inbound starting >> C:\EvolutionaryTradingAlgo\var\telegram_inbound.log
-C:\Users\Administrator\.hermes\hermes-agent\.venv\Scripts\python.exe ^
+"%PYTHON_EXE%" ^
   -m eta_engine.scripts.telegram_inbound_bot ^
   1>> C:\EvolutionaryTradingAlgo\var\telegram_inbound.log ^
   2>> C:\EvolutionaryTradingAlgo\var\telegram_inbound.err

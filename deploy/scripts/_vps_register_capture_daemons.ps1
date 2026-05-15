@@ -3,7 +3,7 @@ param(
     [string]$WorkspaceRoot = "C:\EvolutionaryTradingAlgo",
     [string]$TaskUser = "",
     [string[]]$TickSymbols = @("MNQ", "NQ", "M2K", "6E", "MCL"),
-    [string[]]$DepthSymbols = @("MNQ", "NQ", "M2K"),
+    [string[]]$DepthSymbols = @("MNQ", "NQ", "ES", "MES", "YM", "MYM", "M2K"),
     [switch]$StartNow
 )
 
