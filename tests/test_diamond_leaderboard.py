@@ -281,6 +281,29 @@ def test_broker_positive_rejected_bot_still_ranks_above_lab_only() -> None:
     assert any("promotion gate REJECT" in d for d in broker_positive.prop_ready_disqualified_for)
 
 
+def test_broker_negative_signal_ranks_above_no_signal_bot() -> None:
+    """A losing live strategy is actionable; a zero-signal bot is not."""
+    from eta_engine.scripts import diamond_leaderboard as lb
+
+    retune_target = _entry("mnq_futures_sage", n=200, avg_r=0.8, composite=12.0)
+    retune_target.sources.update(
+        {
+            "promotion_verdict": "REJECT",
+            "broker_total_realized_pnl": -250.0,
+            "broker_profit_factor": 0.4,
+        },
+    )
+    no_signal = _entry("gc_momentum", n=0, avg_r=0.0, composite=0.0)
+
+    lb._evaluate_prop_ready([no_signal, retune_target])
+
+    assert retune_target.rank == 1
+    assert no_signal.rank == 2
+    assert not retune_target.prop_ready
+    assert not no_signal.prop_ready
+    assert retune_target.sources["broker_truth_rank_bucket"] > no_signal.sources["broker_truth_rank_bucket"]
+
+
 def test_ibkr_futures_eligible_helper() -> None:
     """Sanity check on the upstream helper: futures bots pass, spot bots fail."""
     from eta_engine.feeds.capital_allocator import is_ibkr_futures_eligible

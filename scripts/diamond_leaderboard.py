@@ -112,28 +112,30 @@ def _broker_truth_rank_bucket(e: LeaderboardEntry) -> int:
     """Rank broker-proven edge above lab-only optics.
 
     Buckets, high to low:
-    3 = broker-positive and PF-proven
-    2 = broker-positive but PF unavailable
-    1 = lab-only / broker truth unavailable
-    0 = broker-rejected, broker-negative, or weak PF
+    4 = broker-positive and PF-proven
+    3 = broker-positive but PF unavailable
+    2 = lab-only with active signal
+    1 = broker-rejected, broker-negative, or weak PF with active signal
+    0 = no actionable signal yet
     """
     promotion_verdict = e.sources.get("promotion_verdict")
     broker_pnl = _float_or_none(e.sources.get("broker_total_realized_pnl"))
     broker_pf = _float_or_none(e.sources.get("broker_profit_factor"))
+    has_signal = e.n_trades > 0 or abs(e.composite_score) > 0
 
     if broker_pnl is not None and broker_pnl <= MIN_PROP_READY_REALIZED_PNL:
-        return 0
+        return 1 if has_signal else 0
     if broker_pnl is not None and broker_pnl > MIN_PROP_READY_REALIZED_PNL:
         if broker_pf is None:
-            return 2
+            return 3
         if broker_pf < MIN_PROP_READY_PROFIT_FACTOR:
-            return 0
-        return 3
+            return 1 if has_signal else 0
+        return 4
     if broker_pf is not None and broker_pf < MIN_PROP_READY_PROFIT_FACTOR:
-        return 0
+        return 1 if has_signal else 0
     if promotion_verdict and promotion_verdict != "PROMOTE":
-        return 0
-    return 1
+        return 1 if has_signal else 0
+    return 2 if has_signal else 0
 
 
 def _leaderboard_rank_key(e: LeaderboardEntry) -> tuple[int, float, int, str]:
