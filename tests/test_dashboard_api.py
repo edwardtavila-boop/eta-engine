@@ -4123,7 +4123,17 @@ class TestDashboardAPI:
         assert payload["paper_live"]["effective_status"] == "ready_to_launch_paper_live"
         assert payload["paper_live"]["held_by_bracket_audit"] is False
 
-    def test_vps_root_reconciliation_endpoint_surfaces_review_plan(self, app_client, tmp_path):
+    def test_vps_root_reconciliation_endpoint_surfaces_review_plan(self, app_client, tmp_path, monkeypatch):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        monkeypatch.setattr(
+            mod,
+            "_workspace_checkout_payload",
+            lambda refresh=False: {
+                "status": "clean",
+                "summary_line": "root clean abc1234 | eta clean def5678 | submodule aligned c08210d",
+            },
+        )
         plan = {
             "status": "ok",
             "mode": "review_plan_only",
@@ -4175,7 +4185,18 @@ class TestDashboardAPI:
         self,
         app_client,
         tmp_path,
+        monkeypatch,
     ):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        monkeypatch.setattr(
+            mod,
+            "_workspace_checkout_payload",
+            lambda refresh=False: {
+                "status": "clean",
+                "summary_line": "root clean abc1234 | eta clean def5678 | submodule aligned c08210d",
+            },
+        )
         plan = {
             "status": "ok",
             "mode": "review_plan_only",
@@ -4234,7 +4255,139 @@ class TestDashboardAPI:
         assert bot_payload["summary"]["vps_root_generated_untracked"] == 0
         assert bot_payload["summary"]["vps_root_submodule_uninitialized"] == 4
 
-    def test_vps_root_reconciliation_prefers_plan_recommended_action(self, app_client, tmp_path):
+    def test_vps_root_reconciliation_includes_live_checkout_health(self, app_client, tmp_path, monkeypatch):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        monkeypatch.setattr(
+            mod,
+            "_workspace_checkout_payload",
+            lambda refresh=False: {
+                "status": "clean",
+                "summary_line": "root clean dec9423 | eta clean c08210d | submodule aligned c08210d",
+                "root": {
+                    "status": "clean",
+                    "dirty": False,
+                    "head_short": "dec9423",
+                },
+                "eta_engine": {
+                    "status": "clean",
+                    "dirty": False,
+                    "head_short": "c08210d",
+                },
+                "submodule": {
+                    "status": "aligned",
+                    "state": " ",
+                    "state_label": "aligned",
+                    "expected_short": "c08210d",
+                },
+            },
+        )
+        (tmp_path / "state" / "vps_root_reconciliation_plan.json").write_text(
+            json.dumps(
+                {
+                    "status": "ok",
+                    "mode": "review_plan_only",
+                    "risk_level": "low",
+                    "cleanup_allowed": False,
+                    "destructive_actions_performed": False,
+                    "counts": {"status": 0, "submodule_drift": 0},
+                    "summary": {
+                        "source_or_governance_deleted": 0,
+                        "unknown_deleted": 0,
+                        "generated_untracked": 0,
+                        "source_or_governance_untracked": 0,
+                        "submodule_drift": 0,
+                        "dirty_companion_repos": 0,
+                    },
+                    "steps": [],
+                },
+            ),
+            encoding="utf-8",
+        )
+
+        response = app_client.get("/api/vps/root-reconciliation")
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["live_checkout"]["status"] == "clean"
+        assert payload["live_checkout"]["root"]["head_short"] == "dec9423"
+        assert payload["live_checkout"]["eta_engine"]["head_short"] == "c08210d"
+        assert payload["live_checkout"]["submodule"]["state_label"] == "aligned"
+        assert "submodule aligned" in payload["live_checkout"]["summary_line"]
+
+    def test_master_status_vps_root_card_warns_on_live_checkout_review(self, app_client, tmp_path, monkeypatch):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        monkeypatch.setattr(
+            mod,
+            "_workspace_checkout_payload",
+            lambda refresh=False: {
+                "status": "review",
+                "summary_line": "root clean dec9423 | eta dirty c08210d | 1 tracked | submodule aligned c08210d",
+                "root": {
+                    "status": "clean",
+                    "dirty": False,
+                    "head_short": "dec9423",
+                },
+                "eta_engine": {
+                    "status": "dirty",
+                    "dirty": True,
+                    "head_short": "c08210d",
+                    "tracked_change_count": 1,
+                    "untracked_change_count": 0,
+                },
+                "submodule": {
+                    "status": "aligned",
+                    "state": " ",
+                    "state_label": "aligned",
+                    "expected_short": "c08210d",
+                },
+            },
+        )
+        (tmp_path / "state" / "vps_root_reconciliation_plan.json").write_text(
+            json.dumps(
+                {
+                    "status": "ok",
+                    "mode": "review_plan_only",
+                    "risk_level": "low",
+                    "cleanup_allowed": False,
+                    "destructive_actions_performed": False,
+                    "counts": {"status": 0, "submodule_drift": 0, "dirty_companion_repos": 0},
+                    "summary": {
+                        "source_or_governance_deleted": 0,
+                        "unknown_deleted": 0,
+                        "generated_untracked": 0,
+                        "source_or_governance_untracked": 0,
+                        "submodule_drift": 0,
+                        "dirty_companion_repos": 0,
+                        "submodule_uninitialized": 0,
+                    },
+                    "steps": [],
+                },
+            ),
+            encoding="utf-8",
+        )
+
+        response = app_client.get("/api/master/status")
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["vps_root_reconciliation"]["live_checkout"]["status"] == "review"
+        assert payload["systems"]["vps_root"]["status"] == "YELLOW"
+        assert "live_checkout=review" in payload["systems"]["vps_root"]["detail"]
+        assert "eta dirty c08210d" in payload["systems"]["vps_root"]["detail"]
+
+    def test_vps_root_reconciliation_prefers_plan_recommended_action(self, app_client, tmp_path, monkeypatch):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        monkeypatch.setattr(
+            mod,
+            "_workspace_checkout_payload",
+            lambda refresh=False: {
+                "status": "clean",
+                "summary_line": "root clean abc1234 | eta clean def5678 | submodule aligned c08210d",
+            },
+        )
         plan = {
             "status": "ok",
             "mode": "review_plan_only",
@@ -4270,7 +4423,17 @@ class TestDashboardAPI:
         assert payload["summary"]["submodule_drift"] == 6
         assert payload["recommended_action"] == plan["recommended_action"]
 
-    def test_vps_root_reconciliation_marks_old_review_plan_stale(self, app_client, tmp_path):
+    def test_vps_root_reconciliation_marks_old_review_plan_stale(self, app_client, tmp_path, monkeypatch):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        monkeypatch.setattr(
+            mod,
+            "_workspace_checkout_payload",
+            lambda refresh=False: {
+                "status": "clean",
+                "summary_line": "root clean abc1234 | eta clean def5678 | submodule aligned c08210d",
+            },
+        )
         plan_path = tmp_path / "state" / "vps_root_reconciliation_plan.json"
         plan_path.write_text(
             json.dumps(
@@ -4298,7 +4461,17 @@ class TestDashboardAPI:
         assert payload["systems"]["vps_root"]["status"] == "YELLOW"
         assert "artifact_stale=True" in payload["systems"]["vps_root"]["detail"]
 
-    def test_master_status_includes_vps_root_reconciliation_card(self, app_client, tmp_path):
+    def test_master_status_includes_vps_root_reconciliation_card(self, app_client, tmp_path, monkeypatch):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        monkeypatch.setattr(
+            mod,
+            "_workspace_checkout_payload",
+            lambda refresh=False: {
+                "status": "clean",
+                "summary_line": "root clean abc1234 | eta clean def5678 | submodule aligned c08210d",
+            },
+        )
         (tmp_path / "state" / "vps_root_reconciliation_plan.json").write_text(
             json.dumps(
                 {
@@ -4327,6 +4500,45 @@ class TestDashboardAPI:
         assert payload["systems"]["vps_root"]["source"] == "vps_root_reconciliation"
         assert "source_deleted=124" in payload["systems"]["vps_root"]["detail"]
         assert "dirty_companions=3" in payload["systems"]["vps_root"]["detail"]
+
+    def test_master_status_marks_vps_root_yellow_when_live_checkout_needs_review(
+        self,
+        app_client,
+        tmp_path,
+        monkeypatch,
+    ):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        monkeypatch.setattr(
+            mod,
+            "_workspace_checkout_payload",
+            lambda refresh=False: {
+                "status": "review",
+                "summary_line": "root clean abc1234 | eta dirty def5678 | submodule aligned c08210d",
+            },
+        )
+        (tmp_path / "state" / "vps_root_reconciliation_plan.json").write_text(
+            json.dumps(
+                {
+                    "status": "ok",
+                    "risk_level": "low",
+                    "cleanup_allowed": False,
+                    "destructive_actions_performed": False,
+                    "counts": {"status": 0, "submodule_drift": 0, "dirty_companion_repos": 0},
+                    "summary": {"generated_untracked": 0, "submodule_uninitialized": 1},
+                    "steps": [],
+                },
+            ),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/master/status")
+
+        assert r.status_code == 200
+        payload = r.json()
+        assert payload["systems"]["vps_root"]["status"] == "YELLOW"
+        assert "live_checkout=review" in payload["systems"]["vps_root"]["detail"]
+        assert "eta dirty def5678" in payload["systems"]["vps_root"]["detail"]
 
     def test_runtime_and_bridge_status_use_local_master_payload(self, app_client, tmp_path):
         (tmp_path / "state" / "paper_live_transition_check.json").write_text(
@@ -5297,8 +5509,18 @@ class TestDashboardAPI:
         assert rows[0]["daily_loss_advisory_active"] is True
         assert rows[0]["capital_lanes_held_by_daily_loss_stop"] is True
 
-    def test_bot_fleet_embeds_vps_root_reconciliation_summary(self, app_client, tmp_path):
+    def test_bot_fleet_embeds_vps_root_reconciliation_summary(self, app_client, tmp_path, monkeypatch):
         """Bot-fleet consumers need the root dirty-tree review state without another probe."""
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        monkeypatch.setattr(
+            mod,
+            "_workspace_checkout_payload",
+            lambda refresh=False: {
+                "status": "clean",
+                "summary_line": "root clean abc1234 | eta clean def5678 | submodule aligned c08210d",
+            },
+        )
         (tmp_path / "state" / "vps_root_reconciliation_plan.json").write_text(
             json.dumps(
                 {

@@ -2800,6 +2800,9 @@ function renderVpsRootReview(vpsRoot) {
   const subEl = document.getElementById('vpsRootSub');
   if (!statusEl || !subEl) return;
   const status = String(vpsRoot?.status || 'missing').toLowerCase();
+  const liveCheckout = vpsRoot?.live_checkout && typeof vpsRoot.live_checkout === 'object' ? vpsRoot.live_checkout : {};
+  const liveCheckoutStatus = String(liveCheckout.status || '').toLowerCase();
+  const liveCheckoutSummary = compactText(String(liveCheckout.summary_line || '').trim(), 118);
   const risk = String(vpsRoot?.risk_level || 'unknown').toLowerCase();
   const summary = vpsRoot?.summary || {};
   const counts = vpsRoot?.counts || {};
@@ -2814,11 +2817,29 @@ function renderVpsRootReview(vpsRoot) {
   const ageMinutes = finiteNumber(vpsRoot?.plan_age_s ?? vpsRoot?.inventory_age_s);
   const ageText = ageMinutes == null ? 'age unknown' : `${Math.max(0, Math.round(ageMinutes / 60))}m old`;
   const needsReview = artifactStale || status === 'review_required' || risk === 'high' || risk === 'medium' || sourceDeleted > 0 || submoduleDrift > 0 || dirtyRepos > 0 || generatedArtifacts > 0 || statusRows > 0;
-  statusEl.textContent = status === 'missing' ? 'Missing' : artifactStale ? 'Refresh' : needsReview ? 'Review' : 'Clear';
-  statusEl.className = 'stat ' + (needsReview || status === 'missing' ? 'yellow' : 'green');
-  subEl.textContent = status === 'missing'
+  const checkoutNeedsReview = liveCheckoutStatus === 'review' || liveCheckoutStatus === 'error';
+  const checkoutClean = liveCheckoutStatus === 'clean';
+  const baseReviewText = status === 'missing'
     ? 'cleanup plan missing; run workspace scan'
     : `${artifactStale ? 'needs refresh; ' : ''}${ageText}; risk ${risk}; protected deletions ${sourceDeleted}; repo drift ${submoduleDrift}; uncommitted repos ${dirtyRepos}; new files ${generatedArtifacts}; inactive modules ${dormantSubmodules}; cleanup ${cleanupAllowed ? 'allowed' : 'locked'}`;
+  if (checkoutNeedsReview) {
+    statusEl.textContent = liveCheckoutStatus === 'error' ? 'Repo Check' : 'Repo Drift';
+    statusEl.className = 'stat yellow';
+    subEl.textContent = compactText(
+      [liveCheckoutSummary || 'live checkout needs review', baseReviewText].filter(Boolean).join('; '),
+      150,
+    );
+    return;
+  }
+  statusEl.textContent = status === 'missing' ? (checkoutClean ? 'Aligned' : 'Missing') : artifactStale ? 'Refresh' : needsReview ? 'Review' : (checkoutClean ? 'Aligned' : 'Clear');
+  statusEl.className = 'stat ' + (needsReview || (status === 'missing' && !checkoutClean) ? 'yellow' : 'green');
+  subEl.textContent = compactText(
+    [
+      liveCheckoutSummary,
+      baseReviewText,
+    ].filter(Boolean).join('; '),
+    150,
+  );
 }
 
 function dataIntelligenceReadout(snapshot) {
@@ -2956,6 +2977,11 @@ function renderVpsRootDetails(vpsRoot) {
   const payload = vpsRoot || {};
   const status = String(payload.status || 'missing').toLowerCase();
   const risk = String(payload.risk_level || 'unknown').toLowerCase();
+  const liveCheckout = payload.live_checkout && typeof payload.live_checkout === 'object' ? payload.live_checkout : {};
+  const liveCheckoutStatus = String(liveCheckout.status || 'missing').toLowerCase();
+  const liveRoot = liveCheckout.root && typeof liveCheckout.root === 'object' ? liveCheckout.root : {};
+  const liveEta = liveCheckout.eta_engine && typeof liveCheckout.eta_engine === 'object' ? liveCheckout.eta_engine : {};
+  const liveSubmodule = liveCheckout.submodule && typeof liveCheckout.submodule === 'object' ? liveCheckout.submodule : {};
   const summary = payload.summary || {};
   const counts = payload.counts || {};
   const cleanupAllowed = payload.cleanup_allowed === true;
@@ -2984,12 +3010,20 @@ function renderVpsRootDetails(vpsRoot) {
   statusEl.className = 'truth-chip';
   kickerEl.textContent = [friendlySourceLabel(payload.source || 'workspace scan'), payload.plan_status || 'read-only'].filter(Boolean).join(' | ');
   if (summaryLineEl) {
-    summaryLineEl.textContent = status === 'missing'
-      ? 'Cleanup plan missing - run the workspace scan before deleting anything.'
-      : `${statusText} | ${snapshotAgeText} old | risk ${risk} | ${steps.length} review step${steps.length === 1 ? '' : 's'}`;
+    const checkoutSummary = String(liveCheckout.summary_line || '').trim();
+    summaryLineEl.textContent = compactText(
+      status === 'missing'
+        ? [checkoutSummary, 'Cleanup plan missing - run the workspace scan before deleting anything.'].filter(Boolean).join(' | ')
+        : [statusText, `${snapshotAgeText} old`, `risk ${risk}`, `${steps.length} review step${steps.length === 1 ? '' : 's'}`, checkoutSummary].filter(Boolean).join(' | '),
+      220,
+    );
   }
 
   const metrics = [
+    ['Live checkout', liveCheckoutStatus || 'missing'],
+    ['Root repo', String(liveRoot.status || 'unknown')],
+    ['Engine repo', String(liveEta.status || 'unknown')],
+    ['Submodule', String(liveSubmodule.state_label || 'unknown')],
     ['Risk', risk],
     ['Cleanup', cleanupAllowed ? 'allowed' : 'locked'],
     ['Scan age', snapshotAgeText],

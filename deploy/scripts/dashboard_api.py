@@ -425,6 +425,12 @@ _DASHBOARD_DIAGNOSTICS_CACHE_TTL_S = _positive_int_env(
 )
 _DASHBOARD_DIAGNOSTICS_CACHE_LOCK = threading.Lock()
 _DASHBOARD_DIAGNOSTICS_CACHE: dict[str, Any] = {"ts": 0.0, "payload": None}
+_WORKSPACE_CHECKOUT_CACHE_TTL_S = _positive_int_env(
+    "ETA_WORKSPACE_CHECKOUT_CACHE_TTL_S",
+    20,
+)
+_WORKSPACE_CHECKOUT_CACHE_LOCK = threading.Lock()
+_WORKSPACE_CHECKOUT_CACHE: dict[str, Any] = {"ts": 0.0, "payload": None}
 _IBKR_GATEWAY_TRANSIENT_RECOVERY_STATUSES = frozenset(
     {
         "waiting_for_failures",
@@ -3094,6 +3100,242 @@ def _vps_root_dirty_inventory_path() -> Path:
     return _state_dir() / "vps_root_dirty_inventory.json"
 
 
+def _git_command(repo_path: Path, *args: str) -> tuple[int, str, str]:
+    """Run a small git command against a local checkout and fail soft for ops surfaces."""
+    try:
+        completed = subprocess.run(
+            ["git", *args],
+            cwd=str(repo_path),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=6,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        return 1, "", str(exc)
+    return completed.returncode, completed.stdout.strip(), completed.stderr.strip()
+
+
+def _git_checkout_health(repo_path: Path, *, label: str) -> dict[str, object]:
+    """Summarize a repo checkout without mutating it."""
+    if not repo_path.exists():
+        return {
+            "label": label,
+            "repo_path": str(repo_path),
+            "status": "missing",
+            "dirty": False,
+            "change_count": 0,
+            "tracked_change_count": 0,
+            "untracked_change_count": 0,
+            "top_changes": [],
+            "branch": "",
+            "head": "",
+            "head_short": "",
+            "summary_line": f"{label} missing",
+        }
+
+    code, top_level, err = _git_command(repo_path, "rev-parse", "--show-toplevel")
+    if code != 0:
+        error_text = err or top_level or "git rev-parse failed"
+        return {
+            "label": label,
+            "repo_path": str(repo_path),
+            "status": "error",
+            "dirty": False,
+            "change_count": 0,
+            "tracked_change_count": 0,
+            "untracked_change_count": 0,
+            "top_changes": [],
+            "branch": "",
+            "head": "",
+            "head_short": "",
+            "error": error_text,
+            "summary_line": f"{label} check failed",
+        }
+
+    head_code, head, head_err = _git_command(repo_path, "rev-parse", "HEAD")
+    if head_code != 0:
+        error_text = head_err or head or "git rev-parse HEAD failed"
+        return {
+            "label": label,
+            "repo_path": str(repo_path),
+            "top_level": top_level,
+            "status": "error",
+            "dirty": False,
+            "change_count": 0,
+            "tracked_change_count": 0,
+            "untracked_change_count": 0,
+            "top_changes": [],
+            "branch": "",
+            "head": "",
+            "head_short": "",
+            "error": error_text,
+            "summary_line": f"{label} check failed",
+        }
+
+    branch_code, branch, _branch_err = _git_command(repo_path, "branch", "--show-current")
+    status_code, porcelain, status_err = _git_command(repo_path, "status", "--porcelain=v1")
+    if status_code != 0:
+        error_text = status_err or porcelain or "git status failed"
+        return {
+            "label": label,
+            "repo_path": str(repo_path),
+            "top_level": top_level,
+            "status": "error",
+            "dirty": False,
+            "change_count": 0,
+            "tracked_change_count": 0,
+            "untracked_change_count": 0,
+            "top_changes": [],
+            "branch": branch if branch_code == 0 else "",
+            "head": head,
+            "head_short": head[:7],
+            "error": error_text,
+            "summary_line": f"{label} check failed",
+        }
+
+    lines = [line.rstrip() for line in porcelain.splitlines() if line.strip()]
+    untracked_count = sum(1 for line in lines if line.startswith("??"))
+    tracked_count = max(0, len(lines) - untracked_count)
+    top_changes = []
+    for raw in lines[:5]:
+        top_changes.append(raw[3:].strip() if len(raw) > 3 else raw.strip())
+    dirty = bool(lines)
+    branch_name = branch if branch_code == 0 and branch else "detached"
+    head_short = head[:7]
+    if dirty:
+        fragments: list[str] = []
+        if tracked_count > 0:
+            fragments.append(f"{tracked_count} tracked")
+        if untracked_count > 0:
+            fragments.append(f"{untracked_count} untracked")
+        summary_line = f"{label} dirty {head_short} | " + ", ".join(fragments or [f"{len(lines)} changed"])
+    else:
+        summary_line = f"{label} clean {head_short}"
+    return {
+        "label": label,
+        "repo_path": str(repo_path),
+        "top_level": top_level,
+        "status": "dirty" if dirty else "clean",
+        "dirty": dirty,
+        "change_count": len(lines),
+        "tracked_change_count": tracked_count,
+        "untracked_change_count": untracked_count,
+        "top_changes": top_changes,
+        "branch": branch_name,
+        "head": head,
+        "head_short": head_short,
+        "summary_line": summary_line,
+    }
+
+
+def _workspace_checkout_payload_uncached() -> dict[str, object]:
+    """Live git health for the root workspace and eta_engine child checkout."""
+    root = _git_checkout_health(_WORKSPACE_ROOT, label="root")
+    eta_engine = _git_checkout_health(_REPO_ROOT, label="eta")
+
+    submodule: dict[str, object]
+    code, stdout, stderr = _git_command(_WORKSPACE_ROOT, "submodule", "status", "eta_engine")
+    if code != 0:
+        submodule = {
+            "path": "eta_engine",
+            "status": "error",
+            "state": "?",
+            "state_label": "submodule check failed",
+            "expected_commit": "",
+            "expected_short": "",
+            "error": stderr or stdout or "git submodule status failed",
+        }
+    elif not stdout:
+        submodule = {
+            "path": "eta_engine",
+            "status": "missing",
+            "state": "?",
+            "state_label": "submodule missing",
+            "expected_commit": "",
+            "expected_short": "",
+        }
+    else:
+        line = stdout.splitlines()[0].lstrip("\ufeff")
+        state = line[:1] if line else "?"
+        payload = line[1:].strip()
+        parts = payload.split()
+        expected_commit = parts[0] if parts else ""
+        state_label = {
+            " ": "aligned",
+            "+": "drift",
+            "-": "not initialized",
+            "U": "conflicted",
+        }.get(state, "unknown")
+        submodule = {
+            "path": "eta_engine",
+            "status": "aligned" if state == " " else "review",
+            "state": state,
+            "state_label": state_label,
+            "expected_commit": expected_commit,
+            "expected_short": expected_commit[:7],
+            "raw": line,
+        }
+
+    root_status = str(root.get("status") or "")
+    eta_status = str(eta_engine.get("status") or "")
+    submodule_status = str(submodule.get("status") or "")
+    if "error" in {root_status, eta_status, submodule_status}:
+        status = "error"
+    elif "missing" in {root_status, eta_status}:
+        status = "missing"
+    elif (
+        bool(root.get("dirty"))
+        or bool(eta_engine.get("dirty"))
+        or submodule_status not in {"aligned", ""}
+    ):
+        status = "review"
+    else:
+        status = "clean"
+
+    fragments = [
+        str(root.get("summary_line") or "root unknown"),
+        str(eta_engine.get("summary_line") or "eta unknown"),
+    ]
+    submodule_short = str(submodule.get("expected_short") or "")
+    submodule_label = str(submodule.get("state_label") or "unknown")
+    if submodule_short:
+        fragments.append(f"submodule {submodule_label} {submodule_short}")
+    else:
+        fragments.append(f"submodule {submodule_label}")
+
+    return {
+        "status": status,
+        "summary_line": " | ".join(fragment for fragment in fragments if fragment),
+        "root": root,
+        "eta_engine": eta_engine,
+        "submodule": submodule,
+    }
+
+
+def _workspace_checkout_payload(*, refresh: bool = False) -> dict[str, object]:
+    """Short-TTL cached workspace git health for dashboard surfaces."""
+    now_ts = time.time()
+    with _WORKSPACE_CHECKOUT_CACHE_LOCK:
+        cached = _WORKSPACE_CHECKOUT_CACHE.get("payload")
+        cached_ts = float(_WORKSPACE_CHECKOUT_CACHE.get("ts") or 0.0)
+        if (
+            not refresh
+            and isinstance(cached, dict)
+            and cached_ts > 0
+            and now_ts - cached_ts <= _WORKSPACE_CHECKOUT_CACHE_TTL_S
+        ):
+            return dict(cached)
+
+    payload = _workspace_checkout_payload_uncached()
+    with _WORKSPACE_CHECKOUT_CACHE_LOCK:
+        _WORKSPACE_CHECKOUT_CACHE["payload"] = payload
+        _WORKSPACE_CHECKOUT_CACHE["ts"] = time.time()
+    return dict(payload)
+
+
 def _vps_root_reconciliation_payload() -> dict[str, object]:
     """Expose the VPS root reconciliation artifacts without taking action."""
 
@@ -3119,6 +3361,7 @@ def _vps_root_reconciliation_payload() -> dict[str, object]:
     now_ts = time.time()
     plan_snapshot = _file_snapshot(plan_path, now_ts=now_ts)
     inventory_snapshot = _file_snapshot(inventory_path, now_ts=now_ts)
+    live_checkout = _workspace_checkout_payload()
     if not plan and not inventory:
         return {
             "status": "missing",
@@ -3137,6 +3380,7 @@ def _vps_root_reconciliation_payload() -> dict[str, object]:
             "summary": {},
             "steps": [],
             "recommended_action": "run inspect_vps_root_dirty.ps1 and plan_vps_root_reconciliation.ps1 on the VPS",
+            "live_checkout": live_checkout,
         }
 
     counts = plan.get("counts") if isinstance(plan.get("counts"), dict) else {}
@@ -3202,6 +3446,7 @@ def _vps_root_reconciliation_payload() -> dict[str, object]:
         "summary": summary,
         "steps": steps,
         "recommended_action": recommended_action,
+        "live_checkout": live_checkout,
     }
 
 
@@ -13219,6 +13464,10 @@ def _local_master_status_payload() -> dict[str, object]:
     def _vps_root_card_status(payload: dict[str, object]) -> str:
         status = str(payload.get("status") or "unknown").lower()
         risk = str(payload.get("risk_level") or "unknown").lower()
+        live_checkout = payload.get("live_checkout") if isinstance(payload.get("live_checkout"), dict) else {}
+        live_checkout_status = str(live_checkout.get("status") or "").lower()
+        if live_checkout_status in {"review", "error"}:
+            return "YELLOW"
         if status == "missing":
             return "YELLOW"
         if status in {"stale", "stale_review_required"} or payload.get("artifact_stale") is True:
@@ -13230,10 +13479,18 @@ def _local_master_status_payload() -> dict[str, object]:
     def _vps_root_card_detail(payload: dict[str, object]) -> str:
         summary = payload.get("summary") if isinstance(payload.get("summary"), dict) else {}
         counts = payload.get("counts") if isinstance(payload.get("counts"), dict) else {}
+        live_checkout = payload.get("live_checkout") if isinstance(payload.get("live_checkout"), dict) else {}
         age = payload.get("plan_age_s") or payload.get("inventory_age_s")
         age_text = "unknown"
         if isinstance(age, (int, float)):
             age_text = f"{int(age // 60)}m"
+        live_checkout_status = str(live_checkout.get("status") or "unknown")
+        live_checkout_summary = str(live_checkout.get("summary_line") or "").strip()
+        live_checkout_detail = (
+            f"live_checkout={live_checkout_status}; {live_checkout_summary}"
+            if live_checkout_summary
+            else f"live_checkout={live_checkout_status}"
+        )
         return (
             f"risk={payload.get('risk_level')}; cleanup_allowed={payload.get('cleanup_allowed')}; "
             f"artifact_stale={payload.get('artifact_stale')}; snapshot_age={age_text}; "
@@ -13243,7 +13500,8 @@ def _local_master_status_payload() -> dict[str, object]:
             f"generated_untracked={summary.get('generated_untracked', 0)}; "
             f"status_rows={counts.get('status', 0)}; "
             "dormant_submodules="
-            f"{summary.get('submodule_uninitialized', counts.get('submodule_uninitialized', 0))}"
+            f"{summary.get('submodule_uninitialized', counts.get('submodule_uninitialized', 0))}; "
+            f"{live_checkout_detail}"
         )
 
     paper_live = dict(paper)

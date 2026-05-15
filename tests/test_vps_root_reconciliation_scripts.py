@@ -4,6 +4,7 @@ ROOT = Path(__file__).resolve().parents[1]
 INSPECT = ROOT / "deploy" / "scripts" / "inspect_vps_root_dirty.ps1"
 PLAN = ROOT / "deploy" / "scripts" / "plan_vps_root_reconciliation.ps1"
 SYNC = ROOT / "deploy" / "scripts" / "sync_dashboard_api_live.ps1"
+RUNNER = ROOT / "deploy" / "scripts" / "run_vps_ops_hardening_audit.cmd"
 
 
 def test_vps_root_inventory_classifies_local_backups_outside_source_risk() -> None:
@@ -63,3 +64,15 @@ def test_dashboard_sync_refreshes_read_only_root_review_artifacts() -> None:
     assert "root_review_refresh" in text
     assert "cleanup_allowed" in text
     assert "destructive_actions_performed" in text
+
+
+def test_vps_ops_hardening_runner_refreshes_root_review_artifacts() -> None:
+    text = RUNNER.read_text(encoding="utf-8")
+
+    assert "inspect_vps_root_dirty.ps1" in text
+    assert "plan_vps_root_reconciliation.ps1" in text
+    assert "vps_root_dirty_inventory.json" in text
+    assert "vps_root_reconciliation_plan.json" in text
+    assert "root_review_refresh" in text
+    assert "inspect_exit_code=" in text
+    assert "plan_exit_code=" in text

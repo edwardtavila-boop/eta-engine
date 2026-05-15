@@ -6,6 +6,7 @@ set "ETA_ENGINE=%ETA_ROOT%\eta_engine"
 set "ETA_STATE_DIR=%ETA_ROOT%\var\eta_engine\state"
 set "ETA_LOG_DIR=%ETA_ROOT%\logs\eta_engine"
 set "PYTHONUNBUFFERED=1"
+set "PWSH_EXE=powershell.exe"
 
 set "PYTHON_EXE=%ETA_ENGINE%\.venv\Scripts\python.exe"
 if not exist "%PYTHON_EXE%" set "PYTHON_EXE=python.exe"
@@ -21,6 +22,39 @@ set "PROMO_STDOUT_TMP=%ETA_LOG_DIR%\prop_strategy_promotion_audit.%RUN_ID%.stdou
 set "PROMO_STDERR_TMP=%ETA_LOG_DIR%\prop_strategy_promotion_audit.%RUN_ID%.stderr.tmp.log"
 set "AUDIT_STDOUT_TMP=%ETA_LOG_DIR%\vps_ops_hardening_audit.%RUN_ID%.stdout.tmp.log"
 set "AUDIT_STDERR_TMP=%ETA_LOG_DIR%\vps_ops_hardening_audit.%RUN_ID%.stderr.tmp.log"
+set "ROOT_REVIEW_STDOUT_TMP=%ETA_LOG_DIR%\root_review_refresh.%RUN_ID%.stdout.tmp.log"
+set "ROOT_REVIEW_STDERR_TMP=%ETA_LOG_DIR%\root_review_refresh.%RUN_ID%.stderr.tmp.log"
+set "ROOT_REVIEW_INVENTORY=%ETA_STATE_DIR%\vps_root_dirty_inventory.json"
+set "ROOT_REVIEW_PLAN=%ETA_STATE_DIR%\vps_root_reconciliation_plan.json"
+
+"%PWSH_EXE%" -NoProfile -ExecutionPolicy Bypass -File "%ETA_ENGINE%\deploy\scripts\inspect_vps_root_dirty.ps1" ^
+    -Root "%ETA_ROOT%" ^
+    -OutputPath "%ROOT_REVIEW_INVENTORY%" ^
+    1> "%ROOT_REVIEW_STDOUT_TMP%" ^
+    2> "%ROOT_REVIEW_STDERR_TMP%"
+set "ROOT_REVIEW_INSPECT_RC=%ERRORLEVEL%"
+
+if "%ROOT_REVIEW_INSPECT_RC%"=="0" (
+    "%PWSH_EXE%" -NoProfile -ExecutionPolicy Bypass -File "%ETA_ENGINE%\deploy\scripts\plan_vps_root_reconciliation.ps1" ^
+        -Root "%ETA_ROOT%" ^
+        -InventoryPath "%ROOT_REVIEW_INVENTORY%" ^
+        -OutputDir "%ETA_STATE_DIR%" ^
+        1>> "%ROOT_REVIEW_STDOUT_TMP%" ^
+        2>> "%ROOT_REVIEW_STDERR_TMP%"
+    set "ROOT_REVIEW_PLAN_RC=%ERRORLEVEL%"
+) else (
+    set "ROOT_REVIEW_PLAN_RC=9009"
+)
+
+if exist "%ROOT_REVIEW_STDOUT_TMP%" (
+    type "%ROOT_REVIEW_STDOUT_TMP%" >> "%ETA_LOG_DIR%\root_review_refresh.stdout.log"
+    del "%ROOT_REVIEW_STDOUT_TMP%" 2>nul
+)
+if exist "%ROOT_REVIEW_STDERR_TMP%" (
+    type "%ROOT_REVIEW_STDERR_TMP%" >> "%ETA_LOG_DIR%\root_review_refresh.stderr.log"
+    del "%ROOT_REVIEW_STDERR_TMP%" 2>nul
+)
+echo %DATE% %TIME% root_review_refresh inspect_exit_code=%ROOT_REVIEW_INSPECT_RC% plan_exit_code=%ROOT_REVIEW_PLAN_RC% inventory="%ROOT_REVIEW_INVENTORY%" plan="%ROOT_REVIEW_PLAN%" >> "%ETA_LOG_DIR%\vps_ops_hardening_audit.task.log"
 
 "%PYTHON_EXE%" -m eta_engine.scripts.broker_bracket_audit --json ^
     1> "%BRACKET_STDOUT_TMP%" ^
