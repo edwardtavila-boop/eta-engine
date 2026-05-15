@@ -292,6 +292,77 @@ class TestDashboardAPI:
         assert payload["operator_actions"][0]["label"] == "Verify broker OCO coverage"
         assert payload["target_exit_summary"]["missing_bracket_count"] == 1
 
+    def test_live_broker_summary_is_compact_and_data_only(self, app_client, monkeypatch):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        monkeypatch.setattr(
+            mod,
+            "_cached_live_broker_state_for_diagnostics",
+            lambda: {
+                "ready": True,
+                "source": "cached_live_broker_state_for_diagnostics",
+                "reporting_timezone": "America/New_York",
+                "today_start_utc": "2026-05-15T04:00:00Z",
+                "today_actual_fills": 4,
+                "today_realized_pnl": -123.45,
+                "total_unrealized_pnl": 12.0,
+                "open_position_count": 1,
+                "broker_mtd_pnl": 20521.0,
+                "broker_snapshot_state": "warm",
+                "focus_policy": {
+                    "active_venues": ["ibkr"],
+                    "standby_venues": ["tastytrade"],
+                    "dormant_venues": ["tradovate"],
+                    "paused_venues": ["alpaca"],
+                },
+                "close_history": {
+                    "source": "trade_close_ledger",
+                    "default_window": "mtd",
+                    "timezone": "America/New_York",
+                    "day_boundary": "local_midnight",
+                    "windows": {
+                        "today": {
+                            "window": "today",
+                            "label": "Today",
+                            "closed_outcome_count": 2,
+                            "evaluated_outcome_count": 2,
+                            "winning_outcomes": 1,
+                            "losing_outcomes": 1,
+                            "win_rate": 0.5,
+                            "realized_pnl": -20.0,
+                            "recent_outcomes": [{"bot_id": "too_verbose"}],
+                            "pnl_map": {
+                                "limit": 5,
+                                "top_winners": [{"bot_id": "mbt", "realized_pnl": 10.0}],
+                                "top_losers": [{"bot_id": "mnq", "realized_pnl": -30.0}],
+                            },
+                        },
+                        "mtd": {
+                            "window": "mtd",
+                            "label": "MTD",
+                            "closed_outcome_count": 10,
+                            "evaluated_outcome_count": 9,
+                            "win_rate": 0.4444,
+                            "realized_pnl": -100.0,
+                        },
+                    },
+                },
+            },
+        )
+
+        response = app_client.get("/api/live/broker_summary")
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["ready"] is True
+        assert payload["order_action_allowed"] is False
+        assert payload["broker"]["broker_mtd_pnl"] == 20521.0
+        assert payload["broker"]["broker_today_realized_pnl"] == -123.45
+        assert payload["close_history"]["today"]["closed_outcome_count"] == 2
+        assert payload["close_history"]["today"]["pnl_map"]["top_losers"][0]["bot_id"] == "mnq"
+        assert "recent_outcomes" not in payload["close_history"]["today"]
+        assert payload["focus_policy"]["active_venues"] == ["ibkr"]
+
     def test_target_exit_summary_counts_only_bracket_required_broker_exposure(self):
         import eta_engine.deploy.scripts.dashboard_api as mod
 
@@ -672,6 +743,17 @@ class TestDashboardAPI:
 
         dashboard = app_client.get("/api/dashboard")
         symbol_intelligence = dashboard.json()["symbol_intelligence"]
+        assert dashboard.json()["symbol_intelligence_status"] == "AMBER"
+        assert dashboard.json()["symbol_intelligence_required_gap_count"] == 1
+        assert dashboard.json()["symbol_intelligence_optional_gap_count"] == 2
+        assert dashboard.json()["news_ready_symbols"] == 1
+        assert dashboard.json()["book_ready_symbols"] == 1
+        assert dashboard.json()["symbol_intelligence_news_flowing"] is True
+        assert dashboard.json()["symbol_intelligence_book_flowing"] is True
+        assert dashboard.json()["sentiment_asset_count"] == 4
+        assert dashboard.json()["sentiment_ok_count"] == 4
+        assert dashboard.json()["sentiment_lead_asset"] == "SOL"
+        assert "fomc" in dashboard.json()["sentiment_active_topics"]
         assert symbol_intelligence["status"] == "AMBER"
         assert symbol_intelligence["average_score_pct"] == 83
         assert symbol_intelligence["symbol_count"] == 2
@@ -681,6 +763,12 @@ class TestDashboardAPI:
         assert symbol_intelligence["news_ready_symbols"] == 1
         assert symbol_intelligence["book_ready_symbols"] == 1
         assert symbol_intelligence["collector"]["status"] == "ok"
+        assert symbol_intelligence["collector"]["news_records_added_last_run"] == 7
+        assert symbol_intelligence["collector"]["book_records_added_last_run"] == 2
+        assert symbol_intelligence["collector"]["news_ready_symbols"] == 1
+        assert symbol_intelligence["collector"]["book_ready_symbols"] == 1
+        assert symbol_intelligence["collector"]["news_flowing"] is True
+        assert symbol_intelligence["collector"]["book_flowing"] is True
         assert symbol_intelligence["collector"]["sentiment_snapshot_count"] == 4
         assert symbol_intelligence["sentiment"]["ok_count"] == 4
         assert "fomc" in symbol_intelligence["sentiment"]["active_topics"]
@@ -817,6 +905,9 @@ class TestDashboardAPI:
         assert data["book_ready_symbols"] == 1
         assert data["collector"]["status"] == "ok"
         assert data["collector"]["book_records"] == 1
+        assert data["collector"]["book_records_added_last_run"] == 1
+        assert data["collector"]["news_flowing"] is True
+        assert data["collector"]["book_flowing"] is True
         assert data["sentiment"]["status"] == "ok"
         assert data["sentiment"]["ok_count"] == 4
         assert "fomc" in data["sentiment"]["active_topics"]

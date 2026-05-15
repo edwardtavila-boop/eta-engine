@@ -1248,6 +1248,75 @@ def _live_broker_diagnostic_payload() -> dict[str, object]:
     }
 
 
+def _compact_close_window(window: object) -> dict[str, object]:
+    """Return only operator-facing close-window totals, never full trade rows."""
+    if not isinstance(window, dict):
+        return {}
+    pnl_map = window.get("pnl_map") if isinstance(window.get("pnl_map"), dict) else {}
+    return {
+        "label": window.get("label"),
+        "window": window.get("window"),
+        "since": window.get("since"),
+        "until": window.get("until"),
+        "closed_outcome_count": int(window.get("closed_outcome_count") or window.get("count") or 0),
+        "evaluated_outcome_count": int(window.get("evaluated_outcome_count") or 0),
+        "winning_outcomes": int(window.get("winning_outcomes") or 0),
+        "losing_outcomes": int(window.get("losing_outcomes") or 0),
+        "win_rate": _float_value(window.get("win_rate")),
+        "realized_pnl": _float_value(window.get("realized_pnl")),
+        "pnl_map": {
+            "limit": int(pnl_map.get("limit") or 5),
+            "top_winners": pnl_map.get("top_winners") if isinstance(pnl_map.get("top_winners"), list) else [],
+            "top_losers": pnl_map.get("top_losers") if isinstance(pnl_map.get("top_losers"), list) else [],
+        },
+    }
+
+
+def _live_broker_summary_payload(*, refresh: bool = False) -> dict[str, object]:
+    """Small live-broker payload for watches that do not need full trade rows."""
+    live_state = (
+        _last_good_broker_state_after_failed_refresh(_live_broker_state_payload())
+        if refresh
+        else _cached_live_broker_state_for_diagnostics()
+    )
+    live_state = live_state if isinstance(live_state, dict) else {}
+    close_history = live_state.get("close_history") if isinstance(live_state.get("close_history"), dict) else {}
+    windows = close_history.get("windows") if isinstance(close_history.get("windows"), dict) else {}
+    focus_policy = live_state.get("focus_policy") if isinstance(live_state.get("focus_policy"), dict) else {}
+    return {
+        "source": "live_broker_summary",
+        "ready": bool(live_state.get("ready")) and not live_state.get("error"),
+        "refresh_requested": bool(refresh),
+        "order_action_allowed": False,
+        "live_money_gate_bypassed": False,
+        "reporting_timezone": str(live_state.get("reporting_timezone") or DASHBOARD_LOCAL_TIME_ZONE_NAME),
+        "today_start_utc": live_state.get("today_start_utc"),
+        "broker": _broker_summary_fields(live_state),
+        "focus_policy": {
+            "active_venues": focus_policy.get("active_venues")
+            if isinstance(focus_policy.get("active_venues"), list)
+            else [],
+            "standby_venues": focus_policy.get("standby_venues")
+            if isinstance(focus_policy.get("standby_venues"), list)
+            else [],
+            "dormant_venues": focus_policy.get("dormant_venues")
+            if isinstance(focus_policy.get("dormant_venues"), list)
+            else [],
+            "paused_venues": focus_policy.get("paused_venues")
+            if isinstance(focus_policy.get("paused_venues"), list)
+            else [],
+        },
+        "close_history": {
+            "source": close_history.get("source"),
+            "default_window": close_history.get("default_window"),
+            "timezone": close_history.get("timezone") or live_state.get("reporting_timezone"),
+            "day_boundary": close_history.get("day_boundary"),
+            "today": _compact_close_window(windows.get("today")),
+            "mtd": _compact_close_window(windows.get("mtd")),
+        },
+    }
+
+
 def _dashboard_data_cross_check_payload() -> dict:
     """Compare direct bot/equity endpoints with the diagnostics rollup."""
     server_ts = time.time()
@@ -1655,6 +1724,15 @@ def _symbol_intelligence_diagnostic_payload(snapshot: dict[str, Any]) -> dict[st
     )
     collector = snapshot.get("collector") if isinstance(snapshot.get("collector"), dict) else {}
     sentiment = snapshot.get("sentiment") if isinstance(snapshot.get("sentiment"), dict) else {}
+    news_ready_symbols = int(optional_counts.get("news") or 0)
+    book_ready_symbols = int(optional_counts.get("book") or 0)
+    collector_news_records = int(collector.get("news_records") or 0)
+    collector_book_records = int(collector.get("book_records") or 0)
+    sentiment_ok_assets = sentiment.get("ok_assets") if isinstance(sentiment.get("ok_assets"), list) else []
+    sentiment_sources = sentiment.get("sources") if isinstance(sentiment.get("sources"), list) else []
+    sentiment_active_topics = (
+        sentiment.get("active_topics") if isinstance(sentiment.get("active_topics"), list) else []
+    )
     return {
         "status": str(snapshot.get("status") or "UNKNOWN").upper(),
         "ready": bool(snapshot.get("ready")),
@@ -1665,14 +1743,20 @@ def _symbol_intelligence_diagnostic_payload(snapshot: dict[str, Any]) -> dict[st
         "required_gap_count": int(snapshot.get("required_gap_count") or 0),
         "optional_gap_count": int(snapshot.get("optional_gap_count") or 0),
         "optional_component_symbol_counts": optional_counts,
-        "news_ready_symbols": int(optional_counts.get("news") or 0),
-        "book_ready_symbols": int(optional_counts.get("book") or 0),
+        "news_ready_symbols": news_ready_symbols,
+        "book_ready_symbols": book_ready_symbols,
         "collector": {
             "status": str(collector.get("status") or "missing"),
             "ready": bool(collector.get("ready")),
             "audit_status": str(collector.get("audit_status") or "unknown"),
-            "news_records": int(collector.get("news_records") or 0),
-            "book_records": int(collector.get("book_records") or 0),
+            "news_records": collector_news_records,
+            "book_records": collector_book_records,
+            "news_records_added_last_run": collector_news_records,
+            "book_records_added_last_run": collector_book_records,
+            "news_ready_symbols": news_ready_symbols,
+            "book_ready_symbols": book_ready_symbols,
+            "news_flowing": news_ready_symbols > 0,
+            "book_flowing": book_ready_symbols > 0,
             "sentiment_snapshot_count": int(collector.get("sentiment_snapshot_count") or 0),
             "updated_at": collector.get("updated_at"),
             "age_s": collector.get("age_s"),
@@ -1682,9 +1766,9 @@ def _symbol_intelligence_diagnostic_payload(snapshot: dict[str, Any]) -> dict[st
             "ready": bool(sentiment.get("ready")),
             "asset_count": int(sentiment.get("asset_count") or 0),
             "ok_count": int(sentiment.get("ok_count") or 0),
-            "ok_assets": sentiment.get("ok_assets") if isinstance(sentiment.get("ok_assets"), list) else [],
-            "sources": sentiment.get("sources") if isinstance(sentiment.get("sources"), list) else [],
-            "active_topics": sentiment.get("active_topics") if isinstance(sentiment.get("active_topics"), list) else [],
+            "ok_assets": sentiment_ok_assets,
+            "sources": sentiment_sources,
+            "active_topics": sentiment_active_topics,
             "lead_asset": str(sentiment.get("lead_asset") or ""),
             "lead_social_volume_z": sentiment.get("lead_social_volume_z"),
             "updated_at": sentiment.get("updated_at"),
@@ -4369,7 +4453,24 @@ def dashboard_payload(response: Response) -> dict:
     payload["operator_queue"] = _operator_queue_payload()
     payload["paper_live_transition"] = _paper_live_transition_payload(refresh=False)
     payload["bot_strategy_readiness"] = _bot_strategy_readiness_payload()
-    payload["symbol_intelligence"] = _load_symbol_intelligence_snapshot()
+    payload["symbol_intelligence"] = _symbol_intelligence_diagnostic_payload(_load_symbol_intelligence_snapshot())
+    symbol_intelligence = (
+        payload["symbol_intelligence"] if isinstance(payload.get("symbol_intelligence"), dict) else {}
+    )
+    collector = symbol_intelligence.get("collector") if isinstance(symbol_intelligence.get("collector"), dict) else {}
+    sentiment = symbol_intelligence.get("sentiment") if isinstance(symbol_intelligence.get("sentiment"), dict) else {}
+    payload["symbol_intelligence_status"] = str(symbol_intelligence.get("status") or "UNKNOWN")
+    payload["symbol_intelligence_required_gap_count"] = int(symbol_intelligence.get("required_gap_count") or 0)
+    payload["symbol_intelligence_optional_gap_count"] = int(symbol_intelligence.get("optional_gap_count") or 0)
+    payload["news_ready_symbols"] = int(symbol_intelligence.get("news_ready_symbols") or 0)
+    payload["book_ready_symbols"] = int(symbol_intelligence.get("book_ready_symbols") or 0)
+    payload["symbol_intelligence_news_flowing"] = bool(collector.get("news_flowing"))
+    payload["symbol_intelligence_book_flowing"] = bool(collector.get("book_flowing"))
+    payload["sentiment_asset_count"] = int(sentiment.get("asset_count") or 0)
+    payload["sentiment_ok_count"] = int(sentiment.get("ok_count") or 0)
+    payload["sentiment_active_topics"] = [str(topic) for topic in sentiment.get("active_topics") or []]
+    payload["sentiment_lead_asset"] = str(sentiment.get("lead_asset") or "")
+    payload["sentiment_lead_social_volume_z"] = sentiment.get("lead_social_volume_z")
     payload["diamond_retune_status"] = _load_diamond_retune_status()
     # Additive: cached broker reality for first paint. Fresh IBKR probes can
     # stall when Gateway is wedged, so /api/dashboard must not block on them.
@@ -10253,6 +10354,15 @@ def live_broker_state(response: Response, refresh: bool = False) -> dict:
     if not refresh:
         return _cached_live_broker_state_for_diagnostics()
     return _last_good_broker_state_after_failed_refresh(_live_broker_state_payload())
+
+
+@app.get("/api/live/broker_summary")
+def live_broker_summary(response: Response, refresh: bool = False) -> dict:
+    """Compact broker truth for monitoring without large trade-history rows."""
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return _live_broker_summary_payload(refresh=refresh)
 
 
 @app.get("/api/live/position_exposure")
