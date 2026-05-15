@@ -46,7 +46,12 @@ if (-not $PythonPath) {
     $PythonPath = [Environment]::GetEnvironmentVariable("ETA_PYTHON_EXE", "User")
 }
 if (-not $PythonPath) {
-    $PythonPath = "C:\Program Files\Python312\python.exe"
+    $VenvPython = Join-Path $WorkspaceRoot "eta_engine\.venv\Scripts\python.exe"
+    if (Test-Path $VenvPython) {
+        $PythonPath = $VenvPython
+    } else {
+        $PythonPath = "C:\Program Files\Python312\python.exe"
+    }
 }
 
 if (-not $TaskUser) {

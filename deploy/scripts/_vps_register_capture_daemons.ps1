@@ -1,17 +1,48 @@
+param(
+    [string]$PythonPath = "",
+    [string]$WorkspaceRoot = "C:\EvolutionaryTradingAlgo",
+    [string]$TaskUser = "",
+    [switch]$StartNow
+)
+
 $ErrorActionPreference = "Stop"
 
-$pythonPath = "C:\Program Files\Python312\python.exe"
-$workspaceRoot = "C:\EvolutionaryTradingAlgo"
-$user = "fxut9145410\trader"
+if (-not $PythonPath) {
+    $PythonPath = [Environment]::GetEnvironmentVariable("ETA_PYTHON_EXE", "Machine")
+}
+if (-not $PythonPath) {
+    $PythonPath = [Environment]::GetEnvironmentVariable("ETA_PYTHON_EXE", "User")
+}
+if (-not $PythonPath) {
+    $VenvPython = Join-Path $WorkspaceRoot "eta_engine\.venv\Scripts\python.exe"
+    if (Test-Path $VenvPython) {
+        $PythonPath = $VenvPython
+    } else {
+        $PythonPath = "C:\Program Files\Python312\python.exe"
+    }
+}
+
+if (-not $TaskUser) {
+    $TaskUser = [Environment]::GetEnvironmentVariable("ETA_TASK_USER", "Machine")
+}
+if (-not $TaskUser) {
+    $TaskUser = [Environment]::GetEnvironmentVariable("ETA_TASK_USER", "User")
+}
+if (-not $TaskUser) {
+    $TaskUser = "$env:USERDOMAIN\$env:USERNAME"
+}
 
 Write-Host "--- Registering Phase 1 capture daemons on VPS ---"
-Write-Host "  python : $pythonPath"
-Write-Host "  cwd    : $workspaceRoot"
-Write-Host "  user   : $user"
+Write-Host "  python : $PythonPath"
+Write-Host "  cwd    : $WorkspaceRoot"
+Write-Host "  user   : $TaskUser"
 Write-Host ""
 
-if (-not (Test-Path $pythonPath)) {
-    throw "Python not found at $pythonPath"
+if (-not (Test-Path $PythonPath)) {
+    throw "Python not found at $PythonPath"
+}
+if (-not (Test-Path $WorkspaceRoot)) {
+    throw "Workspace root not found at $WorkspaceRoot"
 }
 
 # Common task settings: long-running, restart on failure, no time limit
@@ -21,7 +52,7 @@ $settings = New-ScheduledTaskSettingsSet `
     -ExecutionTimeLimit (New-TimeSpan -Hours 0)  # 0 = unlimited
 
 # Trigger: start at logon AND at boot (defense in depth)
-$triggerLogon = New-ScheduledTaskTrigger -AtLogOn -User $user
+$triggerLogon = New-ScheduledTaskTrigger -AtLogOn -User $TaskUser
 $triggerBoot = New-ScheduledTaskTrigger -AtStartup
 
 foreach ($name in @("ETA-CaptureTicks", "ETA-CaptureDepth")) {
@@ -41,26 +72,28 @@ foreach ($name in @("ETA-CaptureTicks", "ETA-CaptureDepth")) {
     }
 
     $action = New-ScheduledTaskAction `
-        -Execute $pythonPath `
+        -Execute $PythonPath `
         -Argument "-m $script --port 4002" `
-        -WorkingDirectory $workspaceRoot
+        -WorkingDirectory $WorkspaceRoot
 
     Register-ScheduledTask -TaskName $name `
         -Action $action `
         -Trigger @($triggerLogon, $triggerBoot) `
         -Settings $settings `
-        -User $user `
+        -User $TaskUser `
         -RunLevel Limited `
         -Description "Phase 1 capture daemon: $script (auto-managed)" | Out-Null
 
     Write-Host "  registered"
 
     # Try to start now
-    try {
-        Start-ScheduledTask -TaskName $name
-        Write-Host "  started"
-    } catch {
-        Write-Host "  WARN start failed: $($_.Exception.Message)"
+    if ($StartNow) {
+        try {
+            Start-ScheduledTask -TaskName $name
+            Write-Host "  started"
+        } catch {
+            Write-Host "  WARN start failed: $($_.Exception.Message)"
+        }
     }
 }
 
@@ -77,8 +110,8 @@ foreach ($name in @("ETA-CaptureTicks", "ETA-CaptureDepth")) {
 }
 Write-Host ""
 Write-Host "Capture daemons should now be writing to:"
-Write-Host "  $workspaceRoot\mnq_data\ticks\<SYMBOL>_<YYYYMMDD>.jsonl"
-Write-Host "  $workspaceRoot\mnq_data\depth\<SYMBOL>_<YYYYMMDD>.jsonl"
+Write-Host "  $WorkspaceRoot\mnq_data\ticks\<SYMBOL>_<YYYYMMDD>.jsonl"
+Write-Host "  $WorkspaceRoot\mnq_data\depth\<SYMBOL>_<YYYYMMDD>.jsonl"
 Write-Host ""
 Write-Host "Verify capture in 60s with:"
 Write-Host "  python -m eta_engine.scripts.capture_health_monitor"

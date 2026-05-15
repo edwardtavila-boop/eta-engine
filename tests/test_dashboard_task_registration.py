@@ -16,6 +16,11 @@ ROOT_DIRTY_INSPECT_SCRIPT = ROOT / "deploy" / "scripts" / "inspect_vps_root_dirt
 ROOT_RECONCILE_PLAN_SCRIPT = ROOT / "deploy" / "scripts" / "plan_vps_root_reconciliation.ps1"
 DIAG_COMPACT_SCRIPT = ROOT / "deploy" / "scripts" / "diag_compact.ps1"
 FULL_DIAGNOSTICS_SCRIPT = ROOT / "deploy" / "scripts" / "full_diagnostics.ps1"
+CAPTURE_DAEMONS_SCRIPT = ROOT / "deploy" / "scripts" / "_vps_register_capture_daemons.ps1"
+DIAMOND_CRON_SCRIPT = ROOT / "deploy" / "scripts" / "register_diamond_cron_tasks.ps1"
+L2_CRON_SCRIPT = ROOT / "deploy" / "scripts" / "register_l2_cron_tasks.ps1"
+SCHEDULED_TASK_AUDIT_SCRIPT = ROOT / "deploy" / "scripts" / "audit_vps_scheduled_tasks.ps1"
+DISABLE_LEGACY_APEX_TASKS_SCRIPT = ROOT / "deploy" / "scripts" / "disable_legacy_apex_tasks.ps1"
 VPS_BOOTSTRAP_SCRIPTS = (ROOT / "deploy" / "vps_bootstrap.ps1",)
 VPS_BOOTSTRAP_SERVICE_SCRIPTS = (
     ROOT / "deploy" / "vps_bootstrap.ps1",
@@ -255,6 +260,60 @@ def test_eta_watchdog_registrar_discovers_python_without_stale_hardcode() -> Non
     assert 'Join-Path $EngineDir ".venv\\Scripts\\python.exe"' in text
     assert "Get-Command python" in text
     assert r"C:\Program Files\Python312\python.exe" not in text
+
+
+def test_capture_daemon_registrar_uses_runtime_parameters_without_hardcoded_user() -> None:
+    text = CAPTURE_DAEMONS_SCRIPT.read_text(encoding="utf-8")
+
+    assert '[string]$WorkspaceRoot = "C:\\EvolutionaryTradingAlgo"' in text
+    assert '[string]$PythonPath = ""' in text
+    assert '[string]$TaskUser = ""' in text
+    assert "[switch]$StartNow" in text
+    assert 'GetEnvironmentVariable("ETA_PYTHON_EXE", "Machine")' in text
+    assert 'GetEnvironmentVariable("ETA_TASK_USER", "Machine")' in text
+    assert '$TaskUser = "$env:USERDOMAIN\\$env:USERNAME"' in text
+    assert 'Join-Path $WorkspaceRoot "eta_engine\\.venv\\Scripts\\python.exe"' in text
+    assert "if ($StartNow)" in text
+    assert "fxut9145410\\trader" not in text
+
+
+def test_cron_task_registrars_prefer_workspace_venv_python() -> None:
+    for path in (DIAMOND_CRON_SCRIPT, L2_CRON_SCRIPT):
+        text = path.read_text(encoding="utf-8")
+        assert '[string]$WorkspaceRoot = "C:\\EvolutionaryTradingAlgo"' in text
+        assert 'Join-Path $WorkspaceRoot "eta_engine\\.venv\\Scripts\\python.exe"' in text
+        assert 'GetEnvironmentVariable("ETA_PYTHON_EXE", "Machine")' in text
+        assert 'GetEnvironmentVariable("ETA_TASK_USER", "Machine")' in text
+
+
+def test_scheduled_task_audit_is_read_only_and_surfaces_legacy_paths() -> None:
+    text = SCHEDULED_TASK_AUDIT_SCRIPT.read_text(encoding="utf-8")
+
+    assert '[string]$WorkspaceRoot = "C:\\EvolutionaryTradingAlgo"' in text
+    assert "[switch]$Json" in text
+    assert "Get-ScheduledTask" in text
+    assert "needs_attention_count" in text
+    assert "uses_canonical" in text
+    assert "uses_legacy_path" in text
+    assert "C:\\eta_engine" in text
+    assert "AppData\\Local\\eta_engine" in text
+    assert "C:\\apex_predator" in text
+    for forbidden in ("Disable-ScheduledTask", "Unregister-ScheduledTask", "Register-ScheduledTask"):
+        assert forbidden not in text
+
+
+def test_legacy_apex_disabler_is_apply_gated_and_canonical_backup_only() -> None:
+    text = DISABLE_LEGACY_APEX_TASKS_SCRIPT.read_text(encoding="utf-8")
+
+    assert '[string]$WorkspaceRoot = "C:\\EvolutionaryTradingAlgo"' in text
+    assert "[switch]$Apply" in text
+    assert "Assert-CanonicalEtaPath -Path $WorkspaceRoot" in text
+    assert "Assert-CanonicalEtaPath -Path $BackupRoot" in text
+    assert '"would_disable"' in text
+    assert 'if ($Apply)' in text
+    assert "Export-ScheduledTask" in text
+    assert "Disable-ScheduledTask" in text
+    assert "Unregister-ScheduledTask" not in text
 
 
 def test_dashboard_durability_admin_launcher_repairs_dashboard_and_queue_tasks() -> None:
