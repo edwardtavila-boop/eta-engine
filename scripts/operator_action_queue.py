@@ -610,7 +610,7 @@ def _research_priority_key(blocker: dict[str, object]) -> tuple[float, ...]:
 def _op16_next_commands(bot_id: str) -> list[str]:
     """Return actionable research commands, not a launch-check loop."""
     return [
-        f"python -m eta_engine.scripts.run_research_grid --source registry --bots {bot_id} --report-policy auto",
+        f"python -m eta_engine.scripts.run_research_grid --source registry --bots {bot_id} --report-policy runtime",
         f"python -m eta_engine.scripts.paper_live_launch_check --bots {bot_id} --json",
     ]
 
