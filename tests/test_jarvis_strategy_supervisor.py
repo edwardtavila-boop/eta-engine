@@ -1809,6 +1809,48 @@ def test_tick_bot_sage_health_probe_respects_interval(tmp_path: Path, monkeypatc
     assert calls == []
 
 
+def test_tick_once_runs_background_sage_health_probe_from_latest_real_mark(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        BotInstance,
+        JarvisStrategySupervisor,
+        SupervisorConfig,
+    )
+
+    cfg = SupervisorConfig()
+    cfg.state_dir = tmp_path / "state"
+    sup = JarvisStrategySupervisor(cfg=cfg)
+    monkeypatch.setenv("ETA_SAGE_HEALTH_PROBE_INTERVAL_S", "60")
+    monkeypatch.setattr(sup, "_tick_bot", lambda _bot, _tick_count: None)
+
+    calls: list[tuple[str, bool, float]] = []
+
+    def fake_consult(_bot, _bar, _side, entry_price, *, cache_last=True):
+        calls.append((_bot.bot_id, cache_last, entry_price))
+        return object()
+
+    monkeypatch.setattr(sup, "_consult_sage_for_bot", fake_consult)
+    bot = BotInstance(
+        bot_id="mnq_probe_background",
+        symbol="MNQ1",
+        strategy_kind="orb_sage_gated",
+        direction="long",
+        cash=50_000.0,
+        last_bar_ts="2026-05-08T00:00:00+00:00",
+        last_bar_close=100.5,
+        last_bar_high=101.0,
+        last_bar_low=99.0,
+    )
+    sup.bots.append(bot)
+
+    sup._tick_once(1)
+
+    assert calls == [("mnq_probe_background", False, 100.5)]
+    assert bot.bot_id in sup._sage_health_probe_last_ts
+
+
 def test_supervisor_heartbeat_embeds_strategy_readiness(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
     import json
 
@@ -1995,6 +2037,29 @@ def test_supervisor_heartbeat_per_bot_mode_inherits_cfg_mode(tmp_path: Path) -> 
         assert bot["mode"] == "paper_live", (
             f"bot {bot['bot_id']} reports mode={bot.get('mode')!r}, expected paper_live (cfg.mode inheritance broken)"
         )
+
+
+def test_supervisor_heartbeat_includes_code_revision(tmp_path: Path) -> None:
+    """Heartbeat must identify the exact supervisor code the process loaded."""
+    import json
+
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        JarvisStrategySupervisor,
+        SupervisorConfig,
+    )
+
+    cfg = SupervisorConfig()
+    cfg.state_dir = tmp_path / "state"
+    sup = JarvisStrategySupervisor(cfg=cfg)
+
+    sup._write_heartbeat(3)
+
+    payload = json.loads((cfg.state_dir / "heartbeat.json").read_text(encoding="utf-8"))
+    revision = payload["code_revision"]
+    assert revision["head"]
+    assert revision["head_short"] == revision["head"][:7]
+    assert revision["repo_root"].endswith("eta_engine")
+    assert revision["captured_at"]
 
 
 # --- Synthetic JarvisContext ----------------------------------------

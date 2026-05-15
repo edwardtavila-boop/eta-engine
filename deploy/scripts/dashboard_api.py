@@ -1893,7 +1893,10 @@ def _vps_ops_hardening_payload(*, server_ts: float) -> dict:
         "supervisor_reconcile": {
             "status": str(supervisor_reconcile_gate.get("status") or "unknown"),
             "ready": bool(supervisor_reconcile_gate.get("ready")),
+            "source": str(supervisor_reconcile_gate.get("source") or ""),
             "checked_at": supervisor_reconcile_gate.get("checked_at"),
+            "heartbeat_ts": supervisor_reconcile_gate.get("heartbeat_ts"),
+            "broker_state_source": supervisor_reconcile_gate.get("broker_state_source"),
             "age_s": supervisor_reconcile_gate.get("age_s"),
             "max_age_s": supervisor_reconcile_gate.get("max_age_s"),
             "broker_only_symbols": (

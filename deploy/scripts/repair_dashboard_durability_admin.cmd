@@ -11,6 +11,7 @@ set "REGISTER_PROXY=%SCRIPTS%\register_proxy8421_bridge_task.ps1"
 set "REGISTER_WATCHDOG=%SCRIPTS%\register_dashboard_proxy_watchdog_task.ps1"
 set "REGISTER_AUDIT=%SCRIPTS%\register_vps_ops_hardening_audit_task.ps1"
 set "REGISTER_BROKER_STATE_REFRESH=%SCRIPTS%\register_broker_state_refresh_task.ps1"
+set "REGISTER_SUPERVISOR_BROKER_RECONCILE=%SCRIPTS%\register_supervisor_broker_reconcile_task.ps1"
 set "REGISTER_OPERATOR_QUEUE=%SCRIPTS%\register_operator_queue_heartbeat_task.ps1"
 set "REGISTER_PAPER_LIVE=%SCRIPTS%\register_paper_live_transition_check_task.ps1"
 set "DRY_RUN=0"
@@ -60,6 +61,11 @@ if not exist "%REGISTER_BROKER_STATE_REFRESH%" (
     echo   %REGISTER_BROKER_STATE_REFRESH%
     exit /b 3
 )
+if not exist "%REGISTER_SUPERVISOR_BROKER_RECONCILE%" (
+    echo Missing supervisor-broker reconcile registrar:
+    echo   %REGISTER_SUPERVISOR_BROKER_RECONCILE%
+    exit /b 3
+)
 if not exist "%REGISTER_OPERATOR_QUEUE%" (
     echo Missing operator queue heartbeat registrar:
     echo   %REGISTER_OPERATOR_QUEUE%
@@ -94,6 +100,10 @@ if "%DRY_RUN%"=="1" (
     powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%REGISTER_BROKER_STATE_REFRESH%" -DryRun
     if errorlevel 1 goto fail
 
+    echo === DRY RUN: validate read-only supervisor-broker reconcile registrar ===
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%REGISTER_SUPERVISOR_BROKER_RECONCILE%" -DryRun
+    if errorlevel 1 goto fail
+
     echo === DRY RUN: validate read-only operator queue heartbeat registrar ===
     powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%REGISTER_OPERATOR_QUEUE%" -DryRun
     if errorlevel 1 goto fail
@@ -118,7 +128,7 @@ if errorlevel 1 (
         exit /b 5
     )
     echo Requesting Administrator approval to repair ETA dashboard durability.
-    echo This registers dashboard self-heal, operator queue heartbeat, and paper-live cache tasks only; it never places, cancels, flattens, or promotes orders.
+    echo This registers dashboard self-heal, operator queue heartbeat, supervisor-broker reconcile, and paper-live cache tasks only; it never places, cancels, flattens, or promotes orders.
     powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath '%~f0' -WorkingDirectory '%ETA_ROOT%' -Verb RunAs -WindowStyle Normal"
     exit /b 0
 )
@@ -143,6 +153,10 @@ if errorlevel 1 goto fail
 
 echo === Register read-only broker-state refresh task ===
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%REGISTER_BROKER_STATE_REFRESH%" -Start
+if errorlevel 1 goto fail
+
+echo === Register read-only supervisor-broker reconcile task ===
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%REGISTER_SUPERVISOR_BROKER_RECONCILE%" -Start
 if errorlevel 1 goto fail
 
 echo === Register read-only operator queue heartbeat task ===

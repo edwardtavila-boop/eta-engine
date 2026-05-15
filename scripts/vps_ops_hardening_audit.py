@@ -8,6 +8,7 @@ brackets, paper-soak, or prop gates are not clean yet.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import subprocess
 import sys
@@ -25,6 +26,7 @@ if str(ROOT) not in sys.path:
 from eta_engine.scripts import jarvis_hermes_admin_audit, workspace_roots  # noqa: E402
 
 DEFAULT_OUT = workspace_roots.ETA_VPS_OPS_HARDENING_AUDIT_PATH
+ETA_ENGINE_REPO_ROOT = workspace_roots.ETA_ENGINE_ROOT
 CURRENT_JARVIS_HERMES_BRIDGE_TASK_COUNT = 8
 CRITICAL_SERVICES = ("FmStatusServer",)
 LEGACY_COMPAT_SERVICES = (
@@ -43,6 +45,7 @@ DASHBOARD_DURABLE_TASKS = (
     "ETA-Proxy-8421",
     "ETA-Dashboard-Proxy-Watchdog",
     "ETA-BrokerStateRefreshHeartbeat",
+    "ETA-SupervisorBrokerReconcile",
     "ETA-OperatorQueueHeartbeat",
     "ETA-PaperLiveTransitionCheck",
 )
@@ -67,6 +70,8 @@ WATCHDOG_OBSERVED_TASKS = (
 CANONICAL_SUPERVISOR_TASK = "ETA-Jarvis-Strategy-Supervisor"
 LEGACY_PAPERLIVE_SUPERVISOR_TASK = "ETA-PaperLive-Supervisor"
 SUPERVISOR_RECONCILE_MAX_AGE_S = 15 * 60
+BROKER_STATE_URL = "http://127.0.0.1:8421/api/live/broker_state"
+FUTURES_MONTH_CODES = frozenset("FGHJKMNQUVXZ")
 ENDPOINTS = (
     {
         "name": "local_dashboard_api_diagnostics",
@@ -119,6 +124,44 @@ def _read_json(path: Path) -> dict[str, Any]:
     except (OSError, json.JSONDecodeError) as exc:
         return {"artifact_status": "unreadable", "path": str(path), "error": str(exc)}
     return payload if isinstance(payload, dict) else {"artifact_status": "invalid", "path": str(path)}
+
+
+def collect_repo_revision(repo_root: Path = ETA_ENGINE_REPO_ROOT) -> dict[str, Any]:
+    """Collect the deployed eta_engine git revision for stale-process checks."""
+
+    def _git(*args: str) -> str:
+        return subprocess.run(
+            ["git", "-C", str(repo_root), *args],
+            capture_output=True,
+            check=True,
+            text=True,
+            timeout=3,
+        ).stdout.strip()
+
+    payload: dict[str, Any] = {
+        "repo_root": str(repo_root),
+        "captured_at": datetime.now(UTC).isoformat(),
+    }
+    try:
+        head = _git("rev-parse", "HEAD")
+    except Exception as exc:  # noqa: BLE001 - report the gate instead of crashing the audit
+        payload.update(
+            {
+                "status": "error",
+                "head": "",
+                "head_short": "",
+                "error": f"{type(exc).__name__}: {exc}",
+            }
+        )
+    else:
+        payload["status"] = "ok"
+        payload["head"] = head
+        payload["head_short"] = head[:7]
+    with contextlib.suppress(Exception):
+        payload["branch"] = _git("branch", "--show-current")
+    with contextlib.suppress(Exception):
+        payload["dirty"] = bool(_git("status", "--short"))
+    return payload
 
 
 def _run_powershell_json(command: str, *, timeout_s: int = 10) -> Any:  # noqa: ANN401
@@ -496,6 +539,228 @@ def _symbols_from_rows(rows: list[Any]) -> list[str]:
     return sorted(dict.fromkeys(symbols))
 
 
+def _float_value(value: object) -> float | None:
+    try:
+        return float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+
+
+def _position_symbol_root(value: object) -> str:
+    symbol = str(value or "").strip().upper().replace("/", "")
+    if not symbol:
+        return ""
+    for suffix in ("USDT", "USD"):
+        if symbol.endswith(suffix):
+            symbol = symbol[: -len(suffix)]
+            break
+    if (
+        len(symbol) >= 3
+        and symbol[-1].isdigit()
+        and symbol[-1] != "1"
+        and symbol[-2] in FUTURES_MONTH_CODES
+    ):
+        return symbol[:-2]
+    return symbol.rstrip("0123456789") or symbol
+
+
+def _broker_positions_by_root(live_broker_state: dict[str, Any] | None) -> dict[str, float]:
+    live_broker_state = live_broker_state if isinstance(live_broker_state, dict) else {}
+    by_root: dict[str, float] = {}
+    for venue in ("ibkr", "tastytrade", "tasty"):
+        venue_state = _as_dict(live_broker_state.get(venue))
+        for row in _as_list(venue_state.get("open_positions")):
+            if not isinstance(row, dict):
+                continue
+            root = _position_symbol_root(row.get("symbol") or row.get("local_symbol") or row.get("contract"))
+            qty = _float_value(row.get("position"))
+            if qty is None:
+                qty = _float_value(row.get("qty"))
+            if qty is None:
+                qty = _float_value(row.get("quantity"))
+            if not root or qty is None or abs(qty) <= 1e-6:
+                continue
+            by_root[root] = by_root.get(root, 0.0) + qty
+    return by_root
+
+
+def _supervisor_positions_by_root(supervisor_heartbeat: dict[str, Any] | None) -> dict[str, float]:
+    supervisor_heartbeat = supervisor_heartbeat if isinstance(supervisor_heartbeat, dict) else {}
+    by_root: dict[str, float] = {}
+    for bot in _as_list(supervisor_heartbeat.get("bots")):
+        if not isinstance(bot, dict):
+            continue
+        open_position = _as_dict(bot.get("open_position"))
+        if not open_position:
+            continue
+        root = _position_symbol_root(bot.get("symbol") or open_position.get("symbol"))
+        qty = _float_value(open_position.get("qty"))
+        if qty is None:
+            qty = _float_value(open_position.get("quantity"))
+        if not root or qty is None or abs(qty) <= 1e-6:
+            continue
+        side = str(open_position.get("side") or open_position.get("direction") or "BUY").upper()
+        signed = abs(qty) if side not in {"SELL", "SHORT"} else -abs(qty)
+        by_root[root] = by_root.get(root, 0.0) + signed
+    return by_root
+
+
+def _diff_position_books(
+    *,
+    broker_by_root: dict[str, float],
+    supervisor_by_root: dict[str, float],
+    checked_at: str,
+    source: str,
+    brokers_queried: list[str],
+) -> dict[str, Any]:
+    findings: dict[str, Any] = {
+        "checked_at": checked_at,
+        "source": source,
+        "broker_only": [],
+        "supervisor_only": [],
+        "divergent": [],
+        "matched": 0,
+        "brokers_queried": brokers_queried,
+    }
+    for root in sorted(set(broker_by_root) | set(supervisor_by_root)):
+        b_qty = float(broker_by_root.get(root, 0.0))
+        s_qty = float(supervisor_by_root.get(root, 0.0))
+        diff = abs(b_qty - s_qty)
+        if diff <= 1e-6:
+            findings["matched"] += 1
+        elif abs(s_qty) <= 1e-6:
+            findings["broker_only"].append({"symbol": root, "broker_qty": b_qty})
+        elif abs(b_qty) <= 1e-6:
+            findings["supervisor_only"].append({"symbol": root, "supervisor_qty": s_qty})
+        else:
+            findings["divergent"].append(
+                {
+                    "symbol": root,
+                    "broker_qty": b_qty,
+                    "supervisor_qty": s_qty,
+                    "delta": b_qty - s_qty,
+                }
+            )
+    return findings
+
+
+def _reconcile_mismatch_count(snapshot: dict[str, Any] | None) -> int:
+    snapshot = snapshot if isinstance(snapshot, dict) else {}
+    return (
+        len(_as_list(snapshot.get("broker_only")))
+        + len(_as_list(snapshot.get("supervisor_only")))
+        + len(_as_list(snapshot.get("divergent")))
+    )
+
+
+def _current_supervisor_reconcile_snapshot(
+    *,
+    supervisor_heartbeat: dict[str, Any] | None,
+    live_broker_state: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    if not isinstance(live_broker_state, dict) or not live_broker_state.get("ready"):
+        return None
+    broker_by_root = _broker_positions_by_root(live_broker_state)
+    supervisor_by_root = _supervisor_positions_by_root(supervisor_heartbeat)
+    if not broker_by_root and not supervisor_by_root:
+        return None
+    ibkr_state = _as_dict(live_broker_state.get("ibkr"))
+    reported_open_count = _float_value(live_broker_state.get("open_position_count"))
+    if reported_open_count is None:
+        reported_open_count = _float_value(ibkr_state.get("open_position_count"))
+    if not broker_by_root and reported_open_count is not None and reported_open_count > 0:
+        return None
+    if not broker_by_root and supervisor_by_root and reported_open_count is None:
+        return None
+    snapshot = _diff_position_books(
+        broker_by_root=broker_by_root,
+        supervisor_by_root=supervisor_by_root,
+        checked_at=datetime.now(UTC).isoformat(),
+        source="supervisor_heartbeat_and_live_broker_state",
+        brokers_queried=["ibkr"] if _as_dict((live_broker_state or {}).get("ibkr")).get("ready") else [],
+    )
+    snapshot["broker_roots"] = dict(sorted(broker_by_root.items()))
+    snapshot["supervisor_roots"] = dict(sorted(supervisor_by_root.items()))
+    snapshot["heartbeat_ts"] = _as_dict(supervisor_heartbeat).get("ts")
+    snapshot["broker_state_source"] = _as_dict(live_broker_state).get("source")
+    return snapshot
+
+
+def _effective_supervisor_reconcile(
+    *,
+    supervisor_reconcile: dict[str, Any] | None,
+    supervisor_heartbeat: dict[str, Any] | None,
+    live_broker_state: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    current = _current_supervisor_reconcile_snapshot(
+        supervisor_heartbeat=supervisor_heartbeat,
+        live_broker_state=live_broker_state,
+    )
+    if current is None:
+        return supervisor_reconcile
+    if _reconcile_mismatch_count(current):
+        return current
+    # A clean current read should not silently clear a supervisor startup
+    # divergence latch; the operator still needs to clear that runtime hold.
+    if _reconcile_mismatch_count(supervisor_reconcile):
+        return supervisor_reconcile
+    return current
+
+
+def _supervisor_code_summary(
+    *,
+    supervisor_heartbeat: dict[str, Any] | None,
+    repo_revision: dict[str, Any] | None,
+) -> dict[str, Any]:
+    if repo_revision is None:
+        return {
+            "status": "not_collected",
+            "ready": True,
+            "heartbeat_head": "",
+            "repo_head": "",
+        }
+    heartbeat_revision = _as_dict(_as_dict(supervisor_heartbeat).get("code_revision"))
+    heartbeat_head = str(heartbeat_revision.get("head") or "").strip()
+    repo_head = str(repo_revision.get("head") or "").strip()
+    if not heartbeat_head:
+        return {
+            "status": "MISSING_SUPERVISOR_CODE_REVISION",
+            "ready": False,
+            "heartbeat_head": "",
+            "repo_head": repo_head,
+            "repo_head_short": str(repo_revision.get("head_short") or repo_head[:12]),
+        }
+    if repo_head and heartbeat_head != repo_head:
+        return {
+            "status": "STALE_SUPERVISOR_CODE",
+            "ready": False,
+            "heartbeat_head": heartbeat_head,
+            "repo_head": repo_head,
+            "heartbeat_head_short": str(heartbeat_revision.get("head_short") or heartbeat_head[:12]),
+            "repo_head_short": str(repo_revision.get("head_short") or repo_head[:12]),
+        }
+    return {
+        "status": "PASS",
+        "ready": True,
+        "heartbeat_head": heartbeat_head,
+        "repo_head": repo_head,
+        "heartbeat_head_short": str(heartbeat_revision.get("head_short") or heartbeat_head[:12]),
+        "repo_head_short": str(repo_revision.get("head_short") or repo_head[:12]),
+    }
+
+
+def _supervisor_code_action(gate: dict[str, Any]) -> str:
+    status = str(gate.get("status") or "unknown")
+    if status == "MISSING_SUPERVISOR_CODE_REVISION":
+        return "Restart ETA-Jarvis-Strategy-Supervisor after deploying code so the heartbeat reports its code revision"
+    if status == "STALE_SUPERVISOR_CODE":
+        return (
+            "Restart ETA-Jarvis-Strategy-Supervisor: running "
+            f"{gate.get('heartbeat_head')} but repo is {gate.get('repo_head')}"
+        )
+    return f"Review supervisor code revision gate: {status}"
+
+
 def _supervisor_reconcile_summary(supervisor_reconcile: dict[str, Any] | None) -> dict[str, Any]:
     """Summarize broker-vs-supervisor position reconciliation as a safety gate."""
     if supervisor_reconcile is None:
@@ -539,10 +804,13 @@ def _supervisor_reconcile_summary(supervisor_reconcile: dict[str, Any] | None) -
     return {
         "status": status,
         "ready": ready,
+        "source": supervisor_reconcile.get("source") or "reconcile_artifact",
         "path": supervisor_reconcile.get("path"),
         "checked_at": checked_at,
         "age_s": round(age_s, 1) if age_s is not None else None,
         "max_age_s": SUPERVISOR_RECONCILE_MAX_AGE_S,
+        "heartbeat_ts": supervisor_reconcile.get("heartbeat_ts"),
+        "broker_state_source": supervisor_reconcile.get("broker_state_source"),
         "broker_only": broker_only,
         "supervisor_only": supervisor_only,
         "divergent": divergent,
@@ -577,6 +845,69 @@ def _supervisor_reconcile_action(gate: dict[str, Any]) -> str:
     if status == "STALE_RECONCILE_SNAPSHOT":
         return "Refresh supervisor broker reconciliation before clearing the supervisor entry halt"
     return f"Repair supervisor broker reconciliation safety gate: {status}"
+
+
+def _supervisor_code_revision_summary(
+    *,
+    supervisor_heartbeat: dict[str, Any] | None,
+    repo_revision: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Fail closed when the running supervisor is older than deployed code."""
+    if repo_revision is None:
+        return {
+            "status": "NOT_COLLECTED",
+            "ready": True,
+        }
+    repo_head = str(repo_revision.get("head") or "")
+    repo_head_short = str(repo_revision.get("head_short") or repo_head[:7])
+    heartbeat = supervisor_heartbeat if isinstance(supervisor_heartbeat, dict) else {}
+    code_revision = _as_dict(heartbeat.get("code_revision"))
+    heartbeat_head = str(code_revision.get("head") or "")
+    heartbeat_head_short = str(code_revision.get("head_short") or heartbeat_head[:7])
+    ready = bool(repo_head and heartbeat_head and heartbeat_head == repo_head)
+    if not repo_head:
+        status = "REPO_REVISION_UNKNOWN"
+    elif heartbeat.get("artifact_status") in {"missing", "unreadable", "invalid"}:
+        status = "MISSING_SUPERVISOR_HEARTBEAT"
+    elif not heartbeat_head:
+        status = "MISSING_SUPERVISOR_CODE_REVISION"
+    elif heartbeat_head != repo_head:
+        status = "STALE_SUPERVISOR_CODE"
+    else:
+        status = "PASS"
+    return {
+        "status": status,
+        "ready": ready,
+        "repo_head": repo_head,
+        "repo_head_short": repo_head_short,
+        "repo_root": repo_revision.get("repo_root"),
+        "repo_captured_at": repo_revision.get("captured_at"),
+        "repo_dirty": repo_revision.get("dirty"),
+        "heartbeat_head": heartbeat_head,
+        "heartbeat_head_short": heartbeat_head_short,
+        "heartbeat_repo_root": code_revision.get("repo_root"),
+        "heartbeat_captured_at": code_revision.get("captured_at"),
+        "heartbeat_dirty": code_revision.get("dirty"),
+        "heartbeat_ts": heartbeat.get("ts"),
+    }
+
+
+def _supervisor_code_revision_action(gate: dict[str, Any]) -> str:
+    status = str(gate.get("status") or "unknown")
+    if status == "STALE_SUPERVISOR_CODE":
+        return (
+            "Restart ETA-Jarvis-Strategy-Supervisor so paper-live supervisor loads deployed code "
+            f"({gate.get('heartbeat_head_short') or gate.get('heartbeat_head')} -> "
+            f"{gate.get('repo_head_short') or gate.get('repo_head')})"
+        )
+    if status == "MISSING_SUPERVISOR_CODE_REVISION":
+        return (
+            "Restart ETA-Jarvis-Strategy-Supervisor so heartbeat includes code_revision "
+            "before clearing paper-live trading gates"
+        )
+    if status == "MISSING_SUPERVISOR_HEARTBEAT":
+        return "Start or repair ETA-Jarvis-Strategy-Supervisor; canonical supervisor heartbeat is missing"
+    return f"Repair supervisor deployed-code safety gate: {status}"
 
 
 def _jarvis_hermes_admin_summary(
@@ -626,6 +957,9 @@ def build_report(
     ibgateway_reauth: dict[str, Any] | None = None,
     jarvis_hermes_admin: dict[str, Any] | None = None,
     supervisor_reconcile: dict[str, Any] | None = None,
+    supervisor_heartbeat: dict[str, Any] | None = None,
+    live_broker_state: dict[str, Any] | None = None,
+    repo_revision: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build the deterministic hardening report from collected inputs."""
     tasks = tasks or {}
@@ -642,7 +976,16 @@ def build_report(
     promotion_gate = _promotion_gate_summary(promotion_audit)
     ibgateway_gate = _ibgateway_summary(ibgateway_reauth, ports)
     admin_ai_gate = _jarvis_hermes_admin_summary(jarvis_hermes_admin)
-    supervisor_reconcile_gate = _supervisor_reconcile_summary(supervisor_reconcile)
+    effective_supervisor_reconcile = _effective_supervisor_reconcile(
+        supervisor_reconcile=supervisor_reconcile,
+        supervisor_heartbeat=supervisor_heartbeat,
+        live_broker_state=live_broker_state,
+    )
+    supervisor_reconcile_gate = _supervisor_reconcile_summary(effective_supervisor_reconcile)
+    supervisor_code_gate = _supervisor_code_summary(
+        supervisor_heartbeat=supervisor_heartbeat,
+        repo_revision=repo_revision,
+    )
     runtime_ready = (
         not service_down
         and not missing_ports
@@ -657,6 +1000,7 @@ def build_report(
         and promotion_gate["ready"]
         and ibgateway_gate["ready"]
         and supervisor_reconcile_gate["ready"]
+        and supervisor_code_gate["ready"]
     )
     next_actions: list[str] = []
 
@@ -721,6 +1065,8 @@ def build_report(
         )
     if not supervisor_reconcile_gate["ready"]:
         next_actions.append(_supervisor_reconcile_action(supervisor_reconcile_gate))
+    if not supervisor_code_gate["ready"]:
+        next_actions.append(_supervisor_code_action(supervisor_code_gate))
     if not promotion_gate["ready"]:
         next_actions.append("Keep strategy lane in paper soak until prop promotion audit is PASS/READY")
     if not admin_ai_gate["ready"]:
@@ -758,6 +1104,7 @@ def build_report(
             "admin_ai_ready": admin_ai_gate["ready"],
             "admin_ai_status": admin_ai_gate["status"],
             "supervisor_reconcile_ready": supervisor_reconcile_gate["ready"],
+            "supervisor_code_ready": supervisor_code_gate["ready"],
             "promotion_allowed": promotion_allowed,
             "order_action_allowed": False,
         },
@@ -799,6 +1146,7 @@ def build_report(
             "broker_brackets": broker_gate,
             "promotion": promotion_gate,
             "supervisor_reconcile": supervisor_reconcile_gate,
+            "supervisor_code": supervisor_code_gate,
             "jarvis_hermes_admin_ai": admin_ai_gate,
         },
         "service_config": service_config,
@@ -817,6 +1165,8 @@ def collect_jarvis_hermes_admin_status() -> dict[str, Any]:
 
 def collect_live_report() -> dict[str, Any]:
     """Collect live read-only inputs and build the hardening report."""
+    broker_state_probe = _probe_endpoint(BROKER_STATE_URL, timeout_s=8.0)
+    live_broker_state = _as_dict(broker_state_probe.get("payload"))
     return build_report(
         services=collect_service_status(),
         ports=collect_port_status(),
@@ -828,6 +1178,8 @@ def collect_live_report() -> dict[str, Any]:
         ibgateway_reauth=_read_json(workspace_roots.ETA_RUNTIME_STATE_DIR / "ibgateway_reauth.json"),
         jarvis_hermes_admin=collect_jarvis_hermes_admin_status(),
         supervisor_reconcile=_read_json(workspace_roots.ETA_JARVIS_SUPERVISOR_RECONCILE_PATH),
+        supervisor_heartbeat=_read_json(workspace_roots.ETA_JARVIS_SUPERVISOR_HEARTBEAT_PATH),
+        live_broker_state=live_broker_state,
     )
 
 

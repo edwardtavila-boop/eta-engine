@@ -1667,6 +1667,7 @@ class TestDashboardAPI:
                         "supervisor_reconcile": {
                             "status": "BLOCKED_BROKER_SUPERVISOR_RECONCILE",
                             "ready": False,
+                            "source": "supervisor_heartbeat_and_live_broker_state",
                             "broker_only_symbols": ["MCL", "MYM"],
                             "divergent_symbols": ["MNQ"],
                             "age_s": 12,
@@ -1690,6 +1691,7 @@ class TestDashboardAPI:
         assert data["vps_ops_hardening"]["summary"]["supervisor_reconcile_ready"] is False
         assert reconcile["status"] == "BLOCKED_BROKER_SUPERVISOR_RECONCILE"
         assert reconcile["ready"] is False
+        assert reconcile["source"] == "supervisor_heartbeat_and_live_broker_state"
         assert reconcile["broker_only_symbols"] == ["MCL", "MYM"]
         assert reconcile["divergent_symbols"] == ["MNQ"]
         assert data["checks"]["vps_ops_hardening_contract"] is True

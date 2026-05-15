@@ -70,6 +70,7 @@ import logging
 import os
 import random
 import signal as os_signal
+import subprocess
 import sys
 import threading
 import uuid
@@ -101,6 +102,57 @@ from eta_engine.scripts.runtime_order_hold import (  # noqa: E402
 from eta_engine.scripts.uptime_events import record_uptime_event  # noqa: E402
 
 logger = logging.getLogger("jarvis_strategy_supervisor")
+
+
+def _atomic_write_text(path: Path, text: str, *, encoding: str = "utf-8") -> None:
+    """Atomically replace ``path`` using a process-unique sibling temp file."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_name(
+        f".{path.name}.{os.getpid()}.{threading.get_ident()}.{uuid.uuid4().hex}.tmp"
+    )
+    try:
+        tmp_path.write_text(text, encoding=encoding)
+        os.replace(tmp_path, path)
+    except Exception:
+        with contextlib.suppress(FileNotFoundError, OSError):
+            tmp_path.unlink()
+        raise
+
+
+def _repo_code_revision() -> dict[str, Any]:
+    """Capture the exact eta_engine revision loaded by this process."""
+
+    def _git(*args: str) -> str:
+        return subprocess.run(
+            ["git", "-C", str(ROOT), *args],
+            capture_output=True,
+            check=True,
+            text=True,
+            timeout=2,
+        ).stdout.strip()
+
+    payload: dict[str, Any] = {
+        "repo_root": str(ROOT),
+        "captured_at": datetime.now(UTC).isoformat(),
+    }
+    try:
+        head = _git("rev-parse", "HEAD")
+    except Exception as exc:  # noqa: BLE001 - heartbeat must survive git issues
+        payload.update(
+            {
+                "head": "",
+                "head_short": "",
+                "error": f"{type(exc).__name__}: {exc}",
+            }
+        )
+    else:
+        payload["head"] = head
+        payload["head_short"] = head[:7]
+    with contextlib.suppress(Exception):
+        payload["branch"] = _git("branch", "--show-current")
+    with contextlib.suppress(Exception):
+        payload["dirty"] = bool(_git("status", "--short"))
+    return payload
 
 
 # Log hygiene: ib_insync at INFO emits one line per execDetails /
@@ -1802,16 +1854,13 @@ class ExecutionRouter:
             return
         try:
             path = self._open_position_path(bot.bot_id)
-            path.parent.mkdir(parents=True, exist_ok=True)
-            tmp = path.with_suffix(".json.tmp")
             # Keep per-bot restart state self-describing. The L2 aggregate
             # heartbeat has bot.symbol in memory, but a standalone
             # open_position.json must carry the symbol so diagnostics and
             # restart recovery never classify a real paper position as
             # malformed.
             bot.open_position["symbol"] = bot.symbol
-            tmp.write_text(json.dumps(bot.open_position, default=str), encoding="utf-8")
-            os.replace(tmp, path)
+            _atomic_write_text(path, json.dumps(bot.open_position, default=str))
         except Exception as exc:  # noqa: BLE001 — persistence is best-effort
             logger.warning(
                 "_persist_open_position(%s) failed: %s — bot state may not survive restart",
@@ -2043,13 +2092,10 @@ class _HeartbeatKeepAlive:
                 )
 
     def _write_stamp(self) -> None:
-        self._state_dir.mkdir(parents=True, exist_ok=True)
         payload = {"keepalive_ts": datetime.now(UTC).isoformat()}
         # Use the same atomic-write shape as heartbeat.json so a concurrent
         # diagnostic read never catches a zero-byte/truncated keepalive file.
-        tmp_path = self.path.with_suffix(self.path.suffix + ".tmp")
-        tmp_path.write_text(json.dumps(payload), encoding="utf-8")
-        os.replace(tmp_path, self.path)
+        _atomic_write_text(self.path, json.dumps(payload))
 
 
 class JarvisStrategySupervisor:
@@ -2066,6 +2112,7 @@ class JarvisStrategySupervisor:
         self.cfg = cfg or SupervisorConfig()
         self.cfg.state_dir.mkdir(parents=True, exist_ok=True)
         self._stopped = False
+        self._code_revision = _repo_code_revision()
         self.bots: list[BotInstance] = []
         # Real-data feed dispatch: ETA_SUPERVISOR_FEED selects between
         # mock | yfinance | coinbase | ibkr | composite. Mock is the
@@ -2483,9 +2530,7 @@ class JarvisStrategySupervisor:
                     )
                     existing = ""
             new_payload = existing + (line + "\n")
-            tmp_path = path.with_suffix(path.suffix + ".tmp")
-            tmp_path.write_text(new_payload, encoding="utf-8")
-            os.replace(tmp_path, path)
+            _atomic_write_text(path, new_payload)
         except OSError as exc:
             # The ledger is best-effort hardening — failing to record
             # cannot block the trade itself. Log at WARNING so the
@@ -2685,6 +2730,7 @@ class JarvisStrategySupervisor:
         findings: dict[str, Any] = {
             "checked_at": datetime.now(UTC).isoformat(),
             "mode": self.cfg.mode,
+            "code_revision": self._code_revision,
             "broker_only": [],
             "supervisor_only": [],
             "divergent": [],
@@ -3232,6 +3278,7 @@ class JarvisStrategySupervisor:
                     bot.bot_id,
                     exc,
                 )
+        self._run_background_sage_health_probes(now=datetime.now(UTC))
         # L2 supercharge: persist supervisor's open-positions belief to
         # disk so l2_reconciliation (cron) can compare against broker
         # truth.  Atomic write via os.replace — readers see one of two
@@ -3277,6 +3324,33 @@ class JarvisStrategySupervisor:
             bot.open_position["last_bar_high"] = high
         if low is not None:
             bot.open_position["last_bar_low"] = low
+
+    def _latest_probe_bar(self, bot: BotInstance) -> dict[str, Any] | None:
+        """Return the most recent confirmed-real bar for quiet-period probes."""
+        close = bot.last_bar_close
+        if close is None or not bot.last_bar_ts:
+            return None
+        high = bot.last_bar_high if bot.last_bar_high is not None else close
+        low = bot.last_bar_low if bot.last_bar_low is not None else close
+        return {
+            "ts": bot.last_bar_ts,
+            "open": close,
+            "high": high,
+            "low": low,
+            "close": close,
+            "volume": 0,
+        }
+
+    def _run_background_sage_health_probes(self, *, now: datetime) -> None:
+        """Keep Sage health alive even when no new real bars arrive this tick."""
+        for bot in self.bots:
+            bar = self._latest_probe_bar(bot)
+            if bar is None:
+                continue
+            try:
+                self._maybe_probe_sage_health(bot, bar, now=now)
+            except Exception as exc:  # noqa: BLE001 -- health must not break trading
+                logger.debug("background sage health probe for %s failed: %s", bot.bot_id, exc)
 
     @staticmethod
     def _parse_open_position_ts(value: object) -> datetime | None:
@@ -5724,6 +5798,7 @@ class JarvisStrategySupervisor:
             payload = {
                 "ts": datetime.now(UTC).isoformat(),
                 "tick_count": tick_count,
+                "code_revision": self._code_revision,
                 "mode": self.cfg.mode,
                 "feed": self.cfg.data_feed,
                 "feed_health": feed_health,
@@ -5735,9 +5810,9 @@ class JarvisStrategySupervisor:
                 "bot_strategy_readiness": readiness,
                 "bots": bot_states,
             }
-            (self.cfg.state_dir / "heartbeat.json").write_text(
+            _atomic_write_text(
+                self.cfg.state_dir / "heartbeat.json",
                 json.dumps(payload, indent=2, default=str),
-                encoding="utf-8",
             )
         except (KeyboardInterrupt, SystemExit):
             # Operator-initiated shutdown — never swallow.

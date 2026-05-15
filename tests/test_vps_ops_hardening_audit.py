@@ -380,6 +380,187 @@ def test_supervisor_broker_reconcile_mismatch_blocks_trading_gate() -> None:
     assert any("MYM" in action and "MNQ" in action for action in report["next_actions"])
 
 
+def test_current_supervisor_reconcile_uses_heartbeat_and_live_broker_state() -> None:
+    report = audit.build_report(
+        services=_running_services(),
+        ports=_listening_ports(),
+        endpoints=_healthy_endpoints(),
+        broker_bracket_audit={
+            "summary": "READY_NO_OPEN_EXPOSURE",
+            "ready_for_prop_dry_run": True,
+        },
+        promotion_audit={"summary": {"status": "PASS", "ready_for_live": True}},
+        service_config={"fm_status_server": {"matches_expected": True}},
+        tasks=_healthy_tasks(),
+        ibgateway_reauth={"status": "healthy"},
+        supervisor_reconcile={
+            "checked_at": audit.datetime.now(audit.UTC).isoformat(),
+            "broker_only": [{"symbol": "MCL", "broker_qty": 1.0}],
+            "supervisor_only": [{"symbol": "MBT", "supervisor_qty": -1.0}],
+            "divergent": [],
+            "brokers_queried": ["ibkr"],
+        },
+        supervisor_heartbeat={
+            "ts": audit.datetime.now(audit.UTC).isoformat(),
+            "bots": [
+                {"bot_id": "mnq", "symbol": "MNQ1", "open_position": {"side": "BUY", "qty": 1}},
+                {"bot_id": "mbt", "symbol": "MBT1", "open_position": {"side": "BUY", "qty": 1}},
+            ],
+        },
+        live_broker_state={
+            "ready": True,
+            "source": "cached_live_broker_state_for_diagnostics",
+            "ibkr": {
+                "ready": True,
+                "open_positions": [
+                    {"symbol": "MCLM6", "position": 1},
+                    {"symbol": "MYMM6", "position": 1},
+                    {"symbol": "MNQM6", "position": 3},
+                    {"symbol": "MBTK6", "position": 1},
+                ],
+            },
+        },
+    )
+
+    reconcile = report["safety_gates"]["supervisor_reconcile"]
+    assert reconcile["source"] == "supervisor_heartbeat_and_live_broker_state"
+    assert reconcile["broker_only_symbols"] == ["MCL", "MYM"]
+    assert reconcile["supervisor_only_symbols"] == []
+    assert reconcile["divergent_symbols"] == ["MNQ"]
+    assert any("broker-only: MCL, MYM" in action for action in report["next_actions"])
+
+
+def test_clean_current_reconcile_does_not_clear_prior_startup_latch() -> None:
+    report = audit.build_report(
+        services=_running_services(),
+        ports=_listening_ports(),
+        endpoints=_healthy_endpoints(),
+        broker_bracket_audit={
+            "summary": "READY_NO_OPEN_EXPOSURE",
+            "ready_for_prop_dry_run": True,
+        },
+        promotion_audit={"summary": {"status": "PASS", "ready_for_live": True}},
+        service_config={"fm_status_server": {"matches_expected": True}},
+        tasks=_healthy_tasks(),
+        ibgateway_reauth={"status": "healthy"},
+        supervisor_reconcile={
+            "checked_at": audit.datetime.now(audit.UTC).isoformat(),
+            "broker_only": [{"symbol": "MCL", "broker_qty": 1.0}],
+            "supervisor_only": [],
+            "divergent": [],
+            "brokers_queried": ["ibkr"],
+        },
+        supervisor_heartbeat={
+            "ts": audit.datetime.now(audit.UTC).isoformat(),
+            "bots": [{"bot_id": "mcl", "symbol": "MCL1", "open_position": {"side": "BUY", "qty": 1}}],
+        },
+        live_broker_state={
+            "source": "cached_live_broker_state_for_diagnostics",
+            "ibkr": {"ready": True, "open_positions": [{"symbol": "MCLM6", "position": 1}]},
+        },
+    )
+
+    reconcile = report["safety_gates"]["supervisor_reconcile"]
+    assert reconcile["source"] == "reconcile_artifact"
+    assert reconcile["broker_only_symbols"] == ["MCL"]
+    assert report["summary"]["trading_gate_ready"] is False
+
+
+def test_missing_live_broker_detail_does_not_create_false_supervisor_only() -> None:
+    report = audit.build_report(
+        services=_running_services(),
+        ports=_listening_ports(),
+        endpoints=_healthy_endpoints(),
+        broker_bracket_audit={
+            "summary": "READY_NO_OPEN_EXPOSURE",
+            "ready_for_prop_dry_run": True,
+        },
+        promotion_audit={"summary": {"status": "PASS", "ready_for_live": True}},
+        service_config={"fm_status_server": {"matches_expected": True}},
+        tasks=_healthy_tasks(),
+        ibgateway_reauth={"status": "healthy"},
+        supervisor_reconcile={
+            "checked_at": audit.datetime.now(audit.UTC).isoformat(),
+            "broker_only": [{"symbol": "MCL", "broker_qty": 1.0}],
+            "supervisor_only": [],
+            "divergent": [],
+            "brokers_queried": ["ibkr"],
+        },
+        supervisor_heartbeat={
+            "ts": audit.datetime.now(audit.UTC).isoformat(),
+            "bots": [
+                {"bot_id": "mnq", "symbol": "MNQ1", "open_position": {"side": "BUY", "qty": 1}},
+                {"bot_id": "mbt", "symbol": "MBT1", "open_position": {"side": "BUY", "qty": 1}},
+            ],
+        },
+        live_broker_state={"ready": False, "source": "probe_failed"},
+    )
+
+    reconcile = report["safety_gates"]["supervisor_reconcile"]
+    assert reconcile["source"] == "reconcile_artifact"
+    assert reconcile["broker_only_symbols"] == ["MCL"]
+    assert reconcile["supervisor_only_symbols"] == []
+
+
+def test_missing_supervisor_code_revision_blocks_trading_gate() -> None:
+    report = audit.build_report(
+        services=_running_services(),
+        ports=_listening_ports(),
+        endpoints=_healthy_endpoints(),
+        broker_bracket_audit={
+            "summary": "READY_NO_OPEN_EXPOSURE",
+            "ready_for_prop_dry_run": True,
+        },
+        promotion_audit={"summary": {"status": "PASS", "ready_for_live": True}},
+        service_config={"fm_status_server": {"matches_expected": True}},
+        tasks=_healthy_tasks(),
+        ibgateway_reauth={"status": "healthy"},
+        supervisor_heartbeat={
+            "ts": audit.datetime.now(audit.UTC).isoformat(),
+            "bots": [],
+        },
+        repo_revision={"head": "abc1234", "head_short": "abc1234"},
+    )
+
+    supervisor_code = report["safety_gates"]["supervisor_code"]
+    assert report["summary"]["runtime_ready"] is True
+    assert report["summary"]["trading_gate_ready"] is False
+    assert report["summary"]["status"] == "YELLOW_SAFETY_BLOCKED"
+    assert supervisor_code["status"] == "MISSING_SUPERVISOR_CODE_REVISION"
+    assert supervisor_code["ready"] is False
+    assert any("Restart ETA-Jarvis-Strategy-Supervisor" in action for action in report["next_actions"])
+
+
+def test_stale_supervisor_code_revision_blocks_trading_gate() -> None:
+    report = audit.build_report(
+        services=_running_services(),
+        ports=_listening_ports(),
+        endpoints=_healthy_endpoints(),
+        broker_bracket_audit={
+            "summary": "READY_NO_OPEN_EXPOSURE",
+            "ready_for_prop_dry_run": True,
+        },
+        promotion_audit={"summary": {"status": "PASS", "ready_for_live": True}},
+        service_config={"fm_status_server": {"matches_expected": True}},
+        tasks=_healthy_tasks(),
+        ibgateway_reauth={"status": "healthy"},
+        supervisor_heartbeat={
+            "ts": audit.datetime.now(audit.UTC).isoformat(),
+            "code_revision": {"head": "oldrev", "head_short": "oldrev"},
+            "bots": [],
+        },
+        repo_revision={"head": "newrev", "head_short": "newrev"},
+    )
+
+    supervisor_code = report["safety_gates"]["supervisor_code"]
+    assert report["summary"]["trading_gate_ready"] is False
+    assert supervisor_code["status"] == "STALE_SUPERVISOR_CODE"
+    assert supervisor_code["ready"] is False
+    assert supervisor_code["heartbeat_head"] == "oldrev"
+    assert supervisor_code["repo_head"] == "newrev"
+    assert any("oldrev" in action and "newrev" in action for action in report["next_actions"])
+
+
 def test_dashboard_ports_live_but_durable_tasks_missing_is_yellow_gap() -> None:
     tasks = _healthy_tasks()
     for name in audit.DASHBOARD_DURABLE_TASKS:

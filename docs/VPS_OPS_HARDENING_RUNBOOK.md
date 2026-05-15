@@ -10,6 +10,7 @@ Run from `C:\EvolutionaryTradingAlgo`:
 
 ```powershell
 python -m eta_engine.scripts.broker_bracket_audit --json
+python -m eta_engine.scripts.supervisor_broker_reconcile_heartbeat --json
 python -m eta_engine.scripts.prop_strategy_promotion_audit --json
 python -m eta_engine.scripts.operator_queue_heartbeat --cached-readiness --changed-only
 python -m eta_engine.scripts.vps_ops_hardening_audit --json-out --json
@@ -29,16 +30,21 @@ Register the every-5-minute VPS audit task:
 ```powershell
 powershell -ExecutionPolicy Bypass -File eta_engine\deploy\scripts\register_vps_ops_hardening_audit_task.ps1 -Start
 powershell -ExecutionPolicy Bypass -File eta_engine\deploy\scripts\register_broker_state_refresh_task.ps1 -Start
+powershell -ExecutionPolicy Bypass -File eta_engine\deploy\scripts\register_supervisor_broker_reconcile_task.ps1 -Start
 powershell -ExecutionPolicy Bypass -File eta_engine\deploy\scripts\register_operator_queue_heartbeat_task.ps1 -Start
 ```
 
 `ETA-VpsOpsHardeningAudit` refreshes the safety-gate audit.
 `ETA-BrokerStateRefreshHeartbeat` warms the read-only IBKR broker-state cache
 used for current PnL, MTD, fills, open positions, and EST reporting. It writes
-`broker_state_refresh_heartbeat.json`. `ETA-OperatorQueueHeartbeat` refreshes
-the read-only operator queue snapshot that dashboard diagnostics use for blocker
-counts and stale-state detection. These tasks never submit, cancel, flatten, or
-promote orders.
+`broker_state_refresh_heartbeat.json`. `ETA-SupervisorBrokerReconcile` refreshes
+the read-only broker-vs-supervisor position artifact
+`jarvis_intel\supervisor\reconcile_last.json` from current IBKR positions plus
+the current supervisor heartbeat; it also writes
+`supervisor_broker_reconcile_heartbeat.json`. `ETA-OperatorQueueHeartbeat`
+refreshes the read-only operator queue snapshot that dashboard diagnostics use
+for blocker counts and stale-state detection. These tasks never submit, cancel,
+flatten, acknowledge, or promote orders.
 
 The VPS bootstrap now registers the same task:
 
@@ -69,7 +75,10 @@ If `supervisor_reconcile.status` reports
 entries stay intentionally halted. Treat the listed `broker_only_symbols`,
 `supervisor_only_symbols`, and `divergent_symbols` as the first human action;
 do not clear entry holds or promotion gates until IBKR/Tastytrade broker
-positions and the supervisor book agree again.
+positions and the supervisor book agree again. If the symbols look stale, run
+`python -m eta_engine.scripts.supervisor_broker_reconcile_heartbeat --json`
+first so the gate reflects current broker and supervisor truth before deciding
+whether to flatten broker-only exposure or clear stale supervisor files.
 
 If the dashboard shows stale broker PnL or `broker_snapshot_state=stale_persisted`,
 start `ETA-BrokerStateRefreshHeartbeat` or run
