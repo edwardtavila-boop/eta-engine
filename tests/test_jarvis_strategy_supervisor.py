@@ -1052,6 +1052,7 @@ def test_daily_kill_switch_block_is_visible_on_bot_heartbeat(
         "is_killswitch_tripped",
         lambda: (True, "day_pnl=-1214.75 <= limit=-1000.00"),
     )
+    monkeypatch.setenv("ETA_PAPER_LIVE_KILLSWITCH_MODE", "enforce")
 
     cfg = SupervisorConfig()
     cfg.mode = "paper_live"
@@ -1084,6 +1085,9 @@ def test_daily_kill_switch_block_is_visible_on_bot_heartbeat(
 
     assert bot.last_aggregation_reject_reason == "daily_kill_switch:day_pnl=-1214.75 <= limit=-1000.00"
     assert bot.last_aggregation_reject_at
+    assert bot.execution_lane == "shadow_paper"
+    assert bot.capital_gate_scope == "shadow_observe"
+    assert bot.daily_loss_gate_mode == "enforce"
 
 
 def test_session_gate_block_is_visible_on_bot_heartbeat(
@@ -1272,6 +1276,10 @@ def test_paper_live_killswitch_advisory_allows_paper_soak_entry(
     assert submit_entry.called
     assert bot.last_aggregation_reject_reason == ""
     assert bot.last_aggregation_reject_at == ""
+    assert bot.execution_lane == "shadow_paper"
+    assert bot.daily_loss_gate_mode == "advisory"
+    assert bot.daily_loss_gate_active is True
+    assert "day_pnl=-1214.75" in bot.daily_loss_gate_reason
 
 
 def test_paper_live_killswitch_advisory_keeps_live_money_hard_stopped(

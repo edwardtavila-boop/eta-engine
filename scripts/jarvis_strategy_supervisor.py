@@ -92,6 +92,12 @@ if str(ROOT.parent) not in sys.path:
 if str(ROOT / "src") not in sys.path:
     sys.path.insert(0, str(ROOT / "src"))
 
+from eta_engine.core.execution_lanes import (  # noqa: E402
+    capital_gate_scope_for_lane,
+    daily_loss_gate_mode_for_lane,
+    execution_lane_from_fields,
+    gate_advisory,
+)
 from eta_engine.scripts import l2_supervisor_hooks as l2hooks  # noqa: E402
 from eta_engine.scripts import workspace_roots  # noqa: E402
 from eta_engine.scripts.l2_supervisor_state_persister import (  # noqa: E402
@@ -418,6 +424,11 @@ class BotInstance:
     session_state: Any = None
     entry_enabled: bool = True
     entry_disabled_reason: str = ""
+    execution_lane: str = ""
+    capital_gate_scope: str = ""
+    daily_loss_gate_mode: str = ""
+    daily_loss_gate_active: bool = False
+    daily_loss_gate_reason: str = ""
 
     def to_state(self, *, mode: str | None = None) -> dict:
         # Per-bot ``mode`` field is REQUIRED in the heartbeat so the
@@ -2044,6 +2055,11 @@ class ExecutionRouter:
                         "stop_price": stop_price,
                         "target_price": target_price,
                         "reduce_only": bool(reduce_only),
+                        "execution_lane": str(bot.execution_lane or ""),
+                        "capital_gate_scope": str(bot.capital_gate_scope or ""),
+                        "daily_loss_gate_mode": str(bot.daily_loss_gate_mode or ""),
+                        "daily_loss_gate_active": bool(bot.daily_loss_gate_active),
+                        "daily_loss_gate_reason": str(bot.daily_loss_gate_reason or ""),
                     },
                     indent=2,
                 ),
@@ -4125,12 +4141,46 @@ class JarvisStrategySupervisor:
             return 0.0
 
     def _paper_live_killswitch_advisory_enabled(self) -> bool:
-        """Return True only for explicit paper-live soak advisory mode."""
+        """Return True when the current execution lane treats the gate as advisory."""
+        return gate_advisory(self._daily_loss_gate_mode())
+
+    def _paper_live_killswitch_policy_override(self) -> str | None:
         mode = str(getattr(self.cfg, "mode", "")).strip().lower()
-        if mode != "paper_live" or bool(getattr(self.cfg, "live_money_enabled", False)):
-            return False
-        policy = os.getenv("ETA_PAPER_LIVE_KILLSWITCH_MODE", "enforce").strip().lower()
-        return policy in {"advisory", "warn", "warning", "observe", "soft"}
+        if mode != "paper_live":
+            return None
+        policy = os.getenv("ETA_PAPER_LIVE_KILLSWITCH_MODE", "").strip()
+        return policy or None
+
+    def _execution_lane(self, *, route_target: str | None = None) -> str:
+        return execution_lane_from_fields(
+            mode=getattr(self.cfg, "mode", ""),
+            route_target=route_target,
+            live_money_enabled=bool(getattr(self.cfg, "live_money_enabled", False)),
+        )
+
+    def _daily_loss_gate_mode(self, *, route_target: str | None = None) -> str:
+        lane = self._execution_lane(route_target=route_target)
+        return daily_loss_gate_mode_for_lane(
+            lane,
+            explicit_policy=self._paper_live_killswitch_policy_override(),
+        )
+
+    def _update_bot_lane_state(
+        self,
+        bot: BotInstance,
+        *,
+        route_target: str | None = None,
+        daily_loss_active: bool | None = None,
+        daily_loss_reason: str | None = None,
+    ) -> None:
+        lane = self._execution_lane(route_target=route_target)
+        bot.execution_lane = lane
+        bot.capital_gate_scope = capital_gate_scope_for_lane(lane)
+        bot.daily_loss_gate_mode = self._daily_loss_gate_mode(route_target=route_target)
+        if daily_loss_active is not None:
+            bot.daily_loss_gate_active = bool(daily_loss_active)
+        if daily_loss_reason is not None:
+            bot.daily_loss_gate_reason = str(daily_loss_reason or "")
 
     def _broker_router_pending_entry_cooldown_s(self) -> float:
         """Return the broker-router no-refire window for submitted entries."""
@@ -4379,6 +4429,7 @@ class JarvisStrategySupervisor:
         # (enable_session_gate=False or missing edge_config) bypass
         # this block by design — see supervisor_session_wiring.
         now = datetime.now(UTC)
+        self._update_bot_lane_state(bot)
         from eta_engine.scripts.supervisor_session_wiring import (
             evaluate_pre_entry_gate,
         )
@@ -4546,7 +4597,15 @@ class JarvisStrategySupervisor:
                 exc_info=True,
             )
             return
+        self._update_bot_lane_state(
+            bot,
+            daily_loss_active=bool(tripped),
+            daily_loss_reason=reason if tripped else "",
+        )
         if tripped and self._paper_live_killswitch_advisory_enabled():
+            if str(bot.last_aggregation_reject_reason or "").startswith("daily_kill_switch:"):
+                bot.last_aggregation_reject_reason = ""
+                bot.last_aggregation_reject_at = ""
             if not getattr(self, "_killswitch_advisory_warned_today", False):
                 logger.warning(
                     "DAILY KILL SWITCH ADVISORY - paper_live entries continue: %s",
@@ -4592,6 +4651,9 @@ class JarvisStrategySupervisor:
                         severity="CRITICAL",
                     )
             return
+        elif str(bot.last_aggregation_reject_reason or "").startswith("daily_kill_switch:"):
+            bot.last_aggregation_reject_reason = ""
+            bot.last_aggregation_reject_at = ""
 
         # Generate a unique signal_id and consult the persisted ledger
         # to make sure we never re-issue a signal_id that was already
@@ -4788,6 +4850,7 @@ class JarvisStrategySupervisor:
                 bot.bot_id,
                 prospective_loss_usd=prospective_loss_est_usd,
             )
+            self._update_bot_lane_state(bot, route_target=target)
 
             if target == "reject":
                 bot.last_aggregation_reject_reason = f"gate_reject: {target_reason}"
@@ -6509,8 +6572,21 @@ class JarvisStrategySupervisor:
         # shutdowns still terminate the process.
         try:
             readiness, readiness_by_bot = _load_bot_strategy_readiness_snapshot()
+            daily_loss_active = False
+            daily_loss_reason = ""
+            with contextlib.suppress(Exception):
+                from eta_engine.scripts.daily_loss_killswitch import (
+                    is_killswitch_tripped,
+                )
+
+                daily_loss_active, daily_loss_reason = is_killswitch_tripped()
             bot_states = []
             for bot in self.bots:
+                self._update_bot_lane_state(
+                    bot,
+                    daily_loss_active=bool(daily_loss_active),
+                    daily_loss_reason=daily_loss_reason if daily_loss_active else "",
+                )
                 # Pass cfg.mode so each per-bot dict carries an explicit
                 # ``mode`` field (paper_sim/paper_live/live). Without this
                 # the dashboard bridge fell back to a hardcoded paper_sim

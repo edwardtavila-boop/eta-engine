@@ -68,6 +68,11 @@ def test_supervisor_bridge_lifts_bots_into_account_shape(tmp_path: Path) -> None
                 "last_jarvis_verdict": "APPROVED",
                 "last_signal_at": "2026-04-28T11:57:00+00:00",
                 "last_bar_ts": "2026-04-28T12:00:00+00:00",
+                "execution_lane": "shadow_paper",
+                "capital_gate_scope": "shadow_observe",
+                "daily_loss_gate_mode": "advisory",
+                "daily_loss_gate_active": True,
+                "daily_loss_gate_reason": "day_pnl=$-925.50 <= limit=$-900.00",
                 "strategy_readiness": {
                     "status": "ready",
                     "launch_lane": "live_preflight",
@@ -118,6 +123,11 @@ def test_supervisor_bridge_lifts_bots_into_account_shape(tmp_path: Path) -> None
     assert mnq["launch_lane"] == "live_preflight"
     assert mnq["can_paper_trade"] is True
     assert mnq["can_live_trade"] is False
+    assert mnq["execution_lane"] == "shadow_paper"
+    assert mnq["capital_gate_scope"] == "shadow_observe"
+    assert mnq["daily_loss_gate_mode"] == "advisory"
+    assert mnq["daily_loss_gate_active"] is True
+    assert "day_pnl=$-925.50" in mnq["daily_loss_gate_reason"]
     assert mnq["open_positions"] == 0
 
     btc = accounts[1]

@@ -192,10 +192,10 @@ set "ETA_KILLSWITCH_EQUITY_USD=50000"
 rem Soft-stop before a $1k prop-style daily wall so slippage/reject retries
 rem do not turn a warning into an avoidable rule break.
 set "ETA_KILLSWITCH_DAILY_LIMIT_USD=-900"
-rem Hardened prop-prep default: once the daily floor trips, paper_live stops
-rem producing fresh entry intents. The broker router also enforces this as a
-rem last-mile brake, but the supervisor should not keep filling pending/.
-set "ETA_PAPER_LIVE_KILLSWITCH_MODE=enforce"
+rem Shadow-paper default: once the daily floor trips, capital lanes remain
+rem held, but paper_live keeps gathering live-fill evidence on the paper lane.
+rem The supervisor and broker_router both honor this shared advisory mode.
+set "ETA_PAPER_LIVE_KILLSWITCH_MODE=advisory"
 set "ETA_BROKER_ROUTER_PENDING_DIR=%ETA_ROOT%\var\eta_engine\state\router\pending"
 rem IBKR Gateway can take several seconds to promote bracket legs from PendingSubmit.
 set "ETA_IBKR_SUBMIT_CONFIRM_SECONDS=10"

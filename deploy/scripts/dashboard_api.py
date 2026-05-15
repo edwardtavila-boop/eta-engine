@@ -49,6 +49,16 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTex
 from pydantic import BaseModel
 
 from eta_engine.brain.jarvis_v3.sentiment_pressure import summarize_pressure, unknown_pressure
+from eta_engine.core.execution_lanes import (
+    CAPITAL_EXECUTION_LANE,
+    RESEARCH_SIM_LANE,
+    SHADOW_PAPER_LANE,
+    daily_loss_gate_mode_for_lane,
+    execution_lane_from_fields,
+    gate_advisory,
+    gate_enforced,
+    normalize_daily_loss_gate_mode,
+)
 from eta_engine.deploy.scripts.dashboard_services import ensure_dir_writable, read_jsonl_tail, run_background_task
 
 if TYPE_CHECKING:
@@ -1015,10 +1025,24 @@ def _dashboard_diagnostics_payload() -> dict:
         roster_summary.get("paper_live_held_by_bracket_audit") or paper_live_transition.get("held_by_bracket_audit")
     )
     daily_loss_killswitch = _daily_loss_killswitch_snapshot()
+    paper_live_daily_loss_gate_mode = str(
+        roster_summary.get("paper_live_daily_loss_gate_mode")
+        or paper_live_transition.get("daily_loss_gate_mode")
+        or _paper_live_daily_loss_gate_mode()
+    )
+    paper_live_daily_loss_advisory_active = bool(
+        roster_summary.get("paper_live_daily_loss_advisory_active")
+        or paper_live_transition.get("daily_loss_advisory_active")
+    )
     paper_live_held_by_daily_loss_stop = bool(
         roster_summary.get("paper_live_held_by_daily_loss_stop")
         or paper_live_transition.get("held_by_daily_loss_stop")
-        or daily_loss_killswitch.get("tripped")
+    )
+    paper_live_capital_lanes_held_by_daily_loss_stop = bool(
+        roster_summary.get("paper_live_capital_lanes_held_by_daily_loss_stop")
+        or paper_live_transition.get("capital_lanes_held_by_daily_loss_stop")
+        or paper_live_held_by_daily_loss_stop
+        or paper_live_daily_loss_advisory_active
     )
     if transition_launch_blocked > 0 and paper_live_effective_status in {
         "ready",
@@ -1031,7 +1055,14 @@ def _dashboard_diagnostics_payload() -> dict:
             or str(first_launch_blocker.get("detail") or first_launch_blocker.get("title") or "")
             or "Fresh operator queue has a launch blocker."
         )
-    if paper_live_held_by_daily_loss_stop and paper_live_effective_status in {
+    if paper_live_daily_loss_advisory_active and paper_live_effective_status in {
+        "ready",
+        "ready_to_launch_paper_live",
+        "green",
+    }:
+        paper_live_effective_status = "shadow_paper_active"
+        paper_live_effective_detail = _paper_live_shadow_detail(daily_loss_killswitch)
+    elif paper_live_held_by_daily_loss_stop and paper_live_effective_status in {
         "ready",
         "ready_to_launch_paper_live",
         "green",
@@ -1153,6 +1184,9 @@ def _dashboard_diagnostics_payload() -> dict:
             "effective_detail": paper_live_effective_detail,
             "held_by_bracket_audit": paper_live_held_by_bracket_audit,
             "held_by_daily_loss_stop": paper_live_held_by_daily_loss_stop,
+            "daily_loss_gate_mode": paper_live_daily_loss_gate_mode,
+            "daily_loss_advisory_active": paper_live_daily_loss_advisory_active,
+            "capital_lanes_held_by_daily_loss_stop": paper_live_capital_lanes_held_by_daily_loss_stop,
             "broker_bracket_missing_count": int(roster_summary.get("broker_bracket_missing_count") or 0),
             "broker_bracket_primary_symbol": str(roster_summary.get("broker_bracket_primary_symbol") or ""),
             "broker_bracket_primary_venue": str(roster_summary.get("broker_bracket_primary_venue") or ""),
@@ -4003,6 +4037,47 @@ def _paper_live_transition_cache_payload() -> dict:
     return payload
 
 
+def _paper_live_daily_loss_gate_mode() -> str:
+    lane = execution_lane_from_fields(
+        mode="paper_live",
+        route_target="paper",
+        live_money_enabled=False,
+    )
+    return daily_loss_gate_mode_for_lane(
+        lane,
+        explicit_policy=os.getenv("ETA_PAPER_LIVE_KILLSWITCH_MODE", ""),
+    )
+
+
+def _paper_live_shadow_detail(snapshot: dict[str, Any]) -> str:
+    return (
+        "Shadow paper remains live while capital lanes are held by the daily kill switch: "
+        f"{_daily_loss_hold_detail(snapshot)}"
+    )
+
+
+def _paper_live_daily_loss_state(
+    *,
+    snapshot: dict[str, Any] | None = None,
+    gate_mode: str | None = None,
+) -> dict[str, Any]:
+    killswitch = snapshot if isinstance(snapshot, dict) else _daily_loss_killswitch_snapshot()
+    mode = normalize_daily_loss_gate_mode(
+        gate_mode,
+        default=_paper_live_daily_loss_gate_mode(),
+    )
+    tripped = bool(killswitch.get("tripped"))
+    advisory_active = tripped and gate_advisory(mode)
+    held_by_stop = tripped and gate_enforced(mode)
+    return {
+        "gate_mode": mode,
+        "daily_loss_advisory_active": advisory_active,
+        "held_by_daily_loss_stop": held_by_stop,
+        "capital_lanes_held_by_daily_loss_stop": tripped,
+        "daily_loss_killswitch": killswitch,
+    }
+
+
 def _paper_live_transition_with_effective_holds(payload: dict) -> dict:
     """Annotate raw paper-live readiness with runtime holds that suppress entries."""
     out = dict(payload) if isinstance(payload, dict) else {}
@@ -4017,11 +4092,18 @@ def _paper_live_transition_with_effective_holds(payload: dict) -> dict:
     except (TypeError, ValueError):
         launch_blocked = 0
 
-    daily_loss_killswitch = _daily_loss_killswitch_snapshot()
-    held_by_daily_loss_stop = bool(daily_loss_killswitch.get("tripped")) and bool(out.get("critical_ready")) and (
+    daily_loss_state = _paper_live_daily_loss_state()
+    daily_loss_killswitch = daily_loss_state["daily_loss_killswitch"]
+    held_by_daily_loss_stop = bool(daily_loss_state["held_by_daily_loss_stop"]) and bool(out.get("critical_ready")) and (
         launch_blocked == 0
     )
-    if held_by_daily_loss_stop and effective_status in {"ready", "ready_to_launch_paper_live", "green"}:
+    daily_loss_advisory_active = bool(daily_loss_state["daily_loss_advisory_active"]) and bool(
+        out.get("critical_ready")
+    ) and (launch_blocked == 0)
+    if daily_loss_advisory_active and effective_status in {"ready", "ready_to_launch_paper_live", "green"}:
+        effective_status = "shadow_paper_active"
+        effective_detail = _paper_live_shadow_detail(daily_loss_killswitch)
+    elif held_by_daily_loss_stop and effective_status in {"ready", "ready_to_launch_paper_live", "green"}:
         effective_status = "held_by_daily_loss_stop"
         effective_detail = _daily_loss_hold_detail(daily_loss_killswitch)
 
@@ -4029,6 +4111,11 @@ def _paper_live_transition_with_effective_holds(payload: dict) -> dict:
     out["effective_status"] = effective_status
     out["effective_detail"] = effective_detail
     out["held_by_daily_loss_stop"] = held_by_daily_loss_stop
+    out["daily_loss_gate_mode"] = daily_loss_state["gate_mode"]
+    out["daily_loss_advisory_active"] = daily_loss_advisory_active
+    out["capital_lanes_held_by_daily_loss_stop"] = bool(
+        daily_loss_state["capital_lanes_held_by_daily_loss_stop"]
+    )
     out["daily_loss_killswitch"] = daily_loss_killswitch
     return out
 
@@ -5904,6 +5991,90 @@ def _target_exit_summary(
     }
 
 
+def _row_execution_lane(row: dict[str, Any]) -> str:
+    if not isinstance(row, dict):
+        return ""
+    lane = str(row.get("execution_lane") or "").strip()
+    if lane:
+        return lane
+    mode = str(row.get("mode") or "").strip()
+    return execution_lane_from_fields(
+        mode=mode,
+        route_target="paper" if mode == "paper_live" else None,
+        live_money_enabled=mode == "live",
+    )
+
+
+def _row_daily_loss_gate_mode(row: dict[str, Any]) -> str:
+    if not isinstance(row, dict):
+        return daily_loss_gate_mode_for_lane("")
+    explicit = str(row.get("daily_loss_gate_mode") or "").strip()
+    if explicit:
+        return normalize_daily_loss_gate_mode(explicit)
+    return daily_loss_gate_mode_for_lane(_row_execution_lane(row))
+
+
+def _lane_rollup(rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    out: dict[str, dict[str, Any]] = {
+        RESEARCH_SIM_LANE: {
+            "bot_count": 0,
+            "active_bots": 0,
+            "blocked_bots": 0,
+            "todays_pnl": 0.0,
+            "daily_loss_gate_mode": "",
+            "daily_loss_gate_active": False,
+            "bot_ids": [],
+        },
+        SHADOW_PAPER_LANE: {
+            "bot_count": 0,
+            "active_bots": 0,
+            "blocked_bots": 0,
+            "todays_pnl": 0.0,
+            "daily_loss_gate_mode": "",
+            "daily_loss_gate_active": False,
+            "bot_ids": [],
+        },
+        CAPITAL_EXECUTION_LANE: {
+            "bot_count": 0,
+            "active_bots": 0,
+            "blocked_bots": 0,
+            "todays_pnl": 0.0,
+            "daily_loss_gate_mode": "",
+            "daily_loss_gate_active": False,
+            "bot_ids": [],
+        },
+    }
+    for row in rows:
+        lane = _row_execution_lane(row)
+        if not lane:
+            continue
+        bucket = out.setdefault(
+            lane,
+            {
+                "bot_count": 0,
+                "active_bots": 0,
+                "blocked_bots": 0,
+                "todays_pnl": 0.0,
+                "daily_loss_gate_mode": "",
+                "daily_loss_gate_active": False,
+                "bot_ids": [],
+            },
+        )
+        bucket["bot_count"] += 1
+        if _is_runtime_active_bot_row(row):
+            bucket["active_bots"] += 1
+        if str(row.get("current_block_reason") or "").strip():
+            bucket["blocked_bots"] += 1
+        bucket["todays_pnl"] = round(bucket["todays_pnl"] + float(row.get("todays_pnl") or 0.0), 2)
+        if not bucket["daily_loss_gate_mode"]:
+            bucket["daily_loss_gate_mode"] = _row_daily_loss_gate_mode(row)
+        bucket["daily_loss_gate_active"] = bucket["daily_loss_gate_active"] or bool(row.get("daily_loss_gate_active"))
+        bot_id = str(row.get("name") or row.get("id") or row.get("bot_id") or "").strip()
+        if bot_id:
+            bucket["bot_ids"].append(bot_id)
+    return out
+
+
 def _sup_bot_to_roster_row(sup: dict, now_ts: float) -> dict:
     """Convert a jarvis_supervisor_bot_accounts() row into /api/bot-fleet roster shape."""
     from datetime import UTC, datetime
@@ -6077,6 +6248,11 @@ def _sup_bot_to_roster_row(sup: dict, now_ts: float) -> dict:
         "readiness_next_action": str(
             sup.get("readiness_next_action") or strategy_readiness.get("next_action") or "",
         ),
+        "execution_lane": str(sup.get("execution_lane") or ""),
+        "capital_gate_scope": str(sup.get("capital_gate_scope") or ""),
+        "daily_loss_gate_mode": str(sup.get("daily_loss_gate_mode") or ""),
+        "daily_loss_gate_active": bool(sup.get("daily_loss_gate_active")),
+        "daily_loss_gate_reason": str(sup.get("daily_loss_gate_reason") or ""),
     }
 
 
@@ -6275,6 +6451,11 @@ def bot_fleet_roster(
     daily_loss_killswitch = _daily_loss_killswitch_snapshot()
     _apply_global_daily_loss_killswitch_to_roster_rows(rows, daily_loss_killswitch)
     blocked_rollup = _blocked_bot_rollup(rows)
+    lane_rollup = _lane_rollup(rows)
+    paper_live_lane_state = _paper_live_daily_loss_state(
+        snapshot=daily_loss_killswitch,
+        gate_mode=str((lane_rollup.get(SHADOW_PAPER_LANE) or {}).get("daily_loss_gate_mode") or ""),
+    )
     active_bots = sum(1 for r in rows if _is_runtime_active_bot_row(r))
     staged_bots = max(0, len(rows) - active_bots)
     running_bots = sum(1 for r in rows if str(r.get("status") or "").lower() == "running")
@@ -6478,8 +6659,16 @@ def bot_fleet_roster(
             if broker_bracket_action_labels
             else "held by Bracket Audit"
         )
-    paper_live_held_by_daily_loss_stop = bool(daily_loss_killswitch.get("tripped"))
-    if paper_live_held_by_daily_loss_stop and paper_live_effective_status in {
+    paper_live_held_by_daily_loss_stop = bool(paper_live_lane_state["held_by_daily_loss_stop"])
+    paper_live_daily_loss_advisory_active = bool(paper_live_lane_state["daily_loss_advisory_active"])
+    if paper_live_daily_loss_advisory_active and paper_live_effective_status in {
+        "ready",
+        "ready_to_launch_paper_live",
+        "green",
+    }:
+        paper_live_effective_status = "shadow_paper_active"
+        paper_live_effective_detail = _paper_live_shadow_detail(daily_loss_killswitch)
+    elif paper_live_held_by_daily_loss_stop and paper_live_effective_status in {
         "ready",
         "ready_to_launch_paper_live",
         "green",
@@ -6592,6 +6781,11 @@ def bot_fleet_roster(
             "paper_live_effective_detail": paper_live_effective_detail,
             "paper_live_held_by_bracket_audit": paper_live_held_by_bracket_audit,
             "paper_live_held_by_daily_loss_stop": paper_live_held_by_daily_loss_stop,
+            "paper_live_daily_loss_gate_mode": str(paper_live_lane_state["gate_mode"] or ""),
+            "paper_live_daily_loss_advisory_active": paper_live_daily_loss_advisory_active,
+            "paper_live_capital_lanes_held_by_daily_loss_stop": bool(
+                paper_live_lane_state["capital_lanes_held_by_daily_loss_stop"]
+            ),
             "daily_loss_killswitch": daily_loss_killswitch,
             "paper_live_critical_ready": paper_live_critical_ready,
             "paper_live_ready_bots": int(paper_live_transition.get("paper_ready_bots") or 0),
@@ -6599,6 +6793,7 @@ def bot_fleet_roster(
                 paper_live_transition.get("operator_queue_launch_blocked_count") or 0
             ),
             "paper_live_source_age_s": paper_live_transition.get("source_age_s"),
+            "execution_lanes": lane_rollup,
             "vps_root_reconciliation_status": str(vps_root_reconciliation.get("status") or "unknown"),
             "vps_root_risk_level": str(vps_root_reconciliation.get("risk_level") or "unknown"),
             "vps_root_cleanup_allowed": bool(vps_root_reconciliation.get("cleanup_allowed")),
@@ -6913,6 +7108,14 @@ def _apply_global_daily_loss_killswitch_to_roster_rows(rows: list[dict[str, Any]
     block_reason = f"daily_kill_switch:{reason}" if reason else "daily_kill_switch"
     block_summary = f"Entries halted by daily kill switch: {detail}"
     for row in rows:
+        gate_mode = _row_daily_loss_gate_mode(row)
+        row["daily_loss_gate_mode"] = gate_mode
+        row["daily_loss_gate_active"] = True
+        row["daily_loss_gate_reason"] = reason
+        row["daily_loss_advisory_active"] = gate_advisory(gate_mode)
+        row["capital_lanes_held_by_daily_loss_stop"] = True
+        if gate_advisory(gate_mode):
+            continue
         existing_reason = str(row.get("current_block_reason") or "").strip()
         existing_kind = str(row.get("current_block_kind") or "").strip()
         if existing_reason and existing_kind != "daily_kill_switch":
@@ -7385,7 +7588,13 @@ def risk_gates() -> dict:
                 continue
             row_out = {"bot_id": bot_id, **row}
             bots.append(row_out)
-    return {"bots": bots, "fleet_aggregate": fleet_agg}
+    lane_rows = _supervisor_roster_rows(time.time())
+    return {
+        "bots": bots,
+        "fleet_aggregate": fleet_agg,
+        "daily_loss_killswitch": _daily_loss_killswitch_snapshot(),
+        "lanes": _lane_rollup(lane_rows),
+    }
 
 
 @app.get("/api/positions/reconciler")
@@ -12578,7 +12787,13 @@ def _local_master_status_payload() -> dict[str, object]:
         }
     )
     paper_held_by_bracket_audit = broker_bracket_prop_dry_run_blocked and paper_ready and launch_blocked == 0
-    paper_held_by_daily_loss_stop = bool(daily_loss_killswitch.get("tripped")) and paper_ready and launch_blocked == 0
+    paper_live_lane_state = _paper_live_daily_loss_state(snapshot=daily_loss_killswitch)
+    paper_held_by_daily_loss_stop = bool(paper_live_lane_state["held_by_daily_loss_stop"]) and paper_ready and (
+        launch_blocked == 0
+    )
+    paper_daily_loss_advisory_active = bool(paper_live_lane_state["daily_loss_advisory_active"]) and paper_ready and (
+        launch_blocked == 0
+    )
     paper_live_effective_status = (
         "held_by_bracket_audit" if paper_held_by_bracket_audit else str(paper.get("status") or "unknown")
     )
@@ -12589,7 +12804,14 @@ def _local_master_status_payload() -> dict[str, object]:
             if broker_bracket_action_labels
             else "held by Bracket Audit"
         )
-    if paper_held_by_daily_loss_stop and paper_live_effective_status in {
+    if paper_daily_loss_advisory_active and paper_live_effective_status in {
+        "ready",
+        "ready_to_launch_paper_live",
+        "green",
+    }:
+        paper_live_effective_status = "shadow_paper_active"
+        paper_live_effective_detail = _paper_live_shadow_detail(daily_loss_killswitch)
+    elif paper_held_by_daily_loss_stop and paper_live_effective_status in {
         "ready",
         "ready_to_launch_paper_live",
         "green",
@@ -12603,6 +12825,11 @@ def _local_master_status_payload() -> dict[str, object]:
             "effective_detail": paper_live_effective_detail,
             "held_by_bracket_audit": paper_held_by_bracket_audit,
             "held_by_daily_loss_stop": paper_held_by_daily_loss_stop,
+            "daily_loss_gate_mode": str(paper_live_lane_state["gate_mode"] or ""),
+            "daily_loss_advisory_active": paper_daily_loss_advisory_active,
+            "capital_lanes_held_by_daily_loss_stop": bool(
+                paper_live_lane_state["capital_lanes_held_by_daily_loss_stop"]
+            ),
             "daily_loss_killswitch": daily_loss_killswitch,
         }
     )
@@ -12610,7 +12837,7 @@ def _local_master_status_payload() -> dict[str, object]:
         "RED"
         if launch_blocked
         else "YELLOW"
-        if paper_held_by_bracket_audit or paper_held_by_daily_loss_stop
+        if paper_held_by_bracket_audit or paper_held_by_daily_loss_stop or paper_daily_loss_advisory_active
         else "GREEN"
         if paper_ready
         else "YELLOW"
@@ -12638,6 +12865,10 @@ def _local_master_status_payload() -> dict[str, object]:
             "operator_queue_blocked_count": blocked,
             "operator_queue_launch_blocked_count": launch_blocked,
             "paper_live_held_by_daily_loss_stop": paper_held_by_daily_loss_stop,
+            "paper_live_daily_loss_advisory_active": paper_daily_loss_advisory_active,
+            "paper_live_capital_lanes_held_by_daily_loss_stop": bool(
+                paper_live_lane_state["capital_lanes_held_by_daily_loss_stop"]
+            ),
         },
         "paper": {
             "mode": runtime_mode,
@@ -12781,6 +13012,12 @@ def runtime_status() -> dict[str, object]:
         runtime_payload["paper_live_effective_status"] = paper_live.get("effective_status")
         runtime_payload["paper_live_held_by_bracket_audit"] = bool(paper_live.get("held_by_bracket_audit"))
         runtime_payload["paper_live_held_by_daily_loss_stop"] = bool(paper_live.get("held_by_daily_loss_stop"))
+        runtime_payload["paper_live_daily_loss_advisory_active"] = bool(
+            paper_live.get("daily_loss_advisory_active")
+        )
+        runtime_payload["paper_live_capital_lanes_held_by_daily_loss_stop"] = bool(
+            paper_live.get("capital_lanes_held_by_daily_loss_stop")
+        )
     return {
         "paper": paper,
         "paper_live": paper_live,
@@ -12792,6 +13029,9 @@ def runtime_status() -> dict[str, object]:
         ),
         "held_by_daily_loss_stop": bool(
             paper_live.get("held_by_daily_loss_stop") if isinstance(paper_live, dict) else False
+        ),
+        "daily_loss_advisory_active": bool(
+            paper_live.get("daily_loss_advisory_active") if isinstance(paper_live, dict) else False
         ),
     }
 

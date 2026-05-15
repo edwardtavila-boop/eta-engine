@@ -219,6 +219,7 @@ def _write_pending(
     target_price: float | None = 25_100.0,
     include_brackets: bool = True,
     reduce_only: bool = False,
+    extra_fields: dict[str, Any] | None = None,
 ) -> Path:
     """Drop a pending-order JSON file into ``pending_dir``.
 
@@ -244,6 +245,8 @@ def _write_pending(
         payload["target_price"] = target_price
     if reduce_only:
         payload["reduce_only"] = True
+    if isinstance(extra_fields, dict):
+        payload.update(extra_fields)
     path.write_text(json.dumps(payload), encoding="utf-8")
     return path
 
@@ -414,6 +417,27 @@ class TestParsePendingFile:
         order = broker_router.parse_pending_file(path)
         assert order.stop_price is None
         assert order.target_price is None
+
+    def test_parse_pending_file_preserves_execution_lane_gate_metadata(self, tmp_path: Path) -> None:
+        path = _write_pending(
+            tmp_path,
+            bot_id="shadow",
+            extra_fields={
+                "execution_lane": "shadow_paper",
+                "capital_gate_scope": "shadow_observe",
+                "daily_loss_gate_mode": "advisory",
+                "daily_loss_gate_active": True,
+                "daily_loss_gate_reason": "paper daily loss advisory",
+            },
+        )
+
+        order = broker_router.parse_pending_file(path)
+
+        assert order.execution_lane == "shadow_paper"
+        assert order.capital_gate_scope == "shadow_observe"
+        assert order.daily_loss_gate_mode == "advisory"
+        assert order.daily_loss_gate_active is True
+        assert order.daily_loss_gate_reason == "paper daily loss advisory"
 
     def test_parse_pending_file_non_numeric_bracket_raises(self, tmp_path: Path) -> None:
         """Garbage bracket values fail parse rather than silently None-coercing."""
@@ -881,6 +905,47 @@ class TestLifecycle:
 
         assert len(venue.calls) == 1
         assert venue.calls[0].reduce_only is True
+        assert _find_under(state_root / "blocked", path.name) is None
+
+    def test_daily_killswitch_allows_shadow_paper_entry_when_gate_is_advisory(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        pending_dir = tmp_path / "pending"
+        state_root = tmp_path / "state"
+        path = _write_pending(
+            pending_dir,
+            signal_id="sig-shadow",
+            bot_id="alpha",
+            extra_fields={
+                "execution_lane": "shadow_paper",
+                "daily_loss_gate_mode": "advisory",
+                "daily_loss_gate_active": True,
+                "daily_loss_gate_reason": "day_pnl=$-925.50 <= limit=$-300.00",
+            },
+        )
+
+        from eta_engine.scripts import daily_loss_killswitch
+
+        monkeypatch.setattr(
+            daily_loss_killswitch,
+            "is_killswitch_tripped",
+            lambda: (True, "day_pnl=$-925.50 <= limit=$-300.00"),
+        )
+        venue = _FakeVenue()
+        smart_router = _FakeSmartRouter(venue)
+        journal = _FakeJournal()
+        _stub_fetch_positions(monkeypatch, {})
+        router = _make_router(
+            pending_dir=pending_dir,
+            state_root=state_root,
+            smart_router=smart_router,
+            journal=journal,
+            gate_chain=_allow_gate_chain(),
+        )
+
+        asyncio.run(router._process_pending_file(path))
+
+        assert len(venue.calls) == 1
         assert _find_under(state_root / "blocked", path.name) is None
 
     def test_malformed_json_quarantined(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

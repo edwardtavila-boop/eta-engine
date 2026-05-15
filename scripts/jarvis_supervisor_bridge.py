@@ -155,6 +155,11 @@ def jarvis_supervisor_bot_accounts(
                 "can_paper_trade": bool(readiness_payload.get("can_paper_trade")),
                 "can_live_trade": bool(readiness_payload.get("can_live_trade")),
                 "readiness_next_action": readiness_payload.get("next_action"),
+                "execution_lane": str(bot.get("execution_lane") or ""),
+                "capital_gate_scope": str(bot.get("capital_gate_scope") or ""),
+                "daily_loss_gate_mode": str(bot.get("daily_loss_gate_mode") or ""),
+                "daily_loss_gate_active": bool(bot.get("daily_loss_gate_active")),
+                "daily_loss_gate_reason": str(bot.get("daily_loss_gate_reason") or ""),
             }
         )
 

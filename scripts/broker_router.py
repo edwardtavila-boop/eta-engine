@@ -51,6 +51,11 @@ PARENT = ROOT.parent
 if str(PARENT) not in sys.path:
     sys.path.insert(0, str(PARENT))
 
+from eta_engine.core.execution_lanes import (  # noqa: E402
+    daily_loss_gate_mode_for_lane,
+    gate_advisory,
+    gate_inactive,
+)
 from eta_engine.core.secrets import SECRETS  # noqa: E402
 from eta_engine.obs.decision_journal import (  # noqa: E402
     Actor,
@@ -149,6 +154,11 @@ def router_daily_loss_killswitch_denial(order: PendingOrder) -> dict[str, Any] |
     allowed so already-open risk can still be flattened.
     """
     if order.reduce_only:
+        return None
+    gate_mode = str(order.daily_loss_gate_mode or "").strip().lower()
+    if not gate_mode:
+        gate_mode = daily_loss_gate_mode_for_lane(order.execution_lane)
+    if gate_advisory(gate_mode) or gate_inactive(gate_mode):
         return None
     try:
         from eta_engine.scripts.daily_loss_killswitch import (  # noqa: PLC0415
@@ -756,6 +766,11 @@ class PendingOrder:
     stop_price: float | None = None
     target_price: float | None = None
     reduce_only: bool = False
+    execution_lane: str = ""
+    capital_gate_scope: str = ""
+    daily_loss_gate_mode: str = ""
+    daily_loss_gate_active: bool = False
+    daily_loss_gate_reason: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -832,6 +847,11 @@ def parse_pending_file(path: Path) -> PendingOrder:
         stop_price=stop_price,
         target_price=target_price,
         reduce_only=reduce_only,
+        execution_lane=str(payload.get("execution_lane") or ""),
+        capital_gate_scope=str(payload.get("capital_gate_scope") or ""),
+        daily_loss_gate_mode=str(payload.get("daily_loss_gate_mode") or ""),
+        daily_loss_gate_active=bool(payload.get("daily_loss_gate_active", False)),
+        daily_loss_gate_reason=str(payload.get("daily_loss_gate_reason") or ""),
     )
 
 
