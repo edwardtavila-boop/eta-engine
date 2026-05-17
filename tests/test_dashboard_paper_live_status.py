@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from eta_engine.deploy.scripts.dashboard_paper_live_status import (
+    build_dashboard_paper_live_transition_diagnostics_summary,
     build_operator_queue_diagnostics_summary,
     build_paper_live_transition_summary,
     reconcile_paper_live_transition_launch_block,
@@ -365,6 +366,46 @@ def test_build_paper_live_transition_summary_falls_back_to_launch_or_gate_detail
     assert payload["first_launch_blocker_op_id"] == "OP-19"
 
 
+def test_build_dashboard_paper_live_transition_diagnostics_summary_shares_launch_rollup() -> None:
+    payload = build_dashboard_paper_live_transition_diagnostics_summary(
+        roster_summary={
+            "paper_live_effective_status": "ready_to_launch_paper_live",
+            "paper_live_effective_detail": "",
+            "paper_live_daily_loss_gate_mode": "warn",
+        },
+        paper_live_transition={
+            "status": "ready_to_launch_paper_live",
+            "detail": "",
+            "paper_ready_bots": 12,
+            "critical_ready": True,
+            "operator_queue_launch_blocked_count": 1,
+        },
+        operator_queue={
+            "cache_stale": False,
+            "launch_blocked_count": 1,
+        },
+        first_launch_blocker={
+            "op_id": "OP-19",
+            "next_actions": ["Apply gateway authority on VPS."],
+            "detail": "Seed IBC credentials and recover TWS API 4002.",
+        },
+        first_failed_gate={"name": "gateway_host", "detail": None, "next_action": 7},
+        default_daily_loss_gate_mode="warn",
+        daily_loss_shadow_detail="shadow detail",
+        daily_loss_hold_detail="hold detail",
+    )
+
+    assert payload["effective_status"] == "blocked_by_operator_queue"
+    assert payload["detail"] == "Apply gateway authority on VPS."
+    assert payload["first_launch_blocker_op_id"] == "OP-19"
+    assert payload["first_launch_next_action"] == "Apply gateway authority on VPS."
+    assert payload["first_failed_gate"] == {
+        "name": "gateway_host",
+        "detail": "",
+        "next_action": "7",
+    }
+
+
 def test_build_operator_queue_diagnostics_summary_preserves_stale_fallback_launch_blocker() -> None:
     payload = build_operator_queue_diagnostics_summary(
         operator_summary={"BLOCKED": 3, "OBSERVED": 11, "UNKNOWN": 0},
@@ -459,3 +500,64 @@ def test_build_operator_queue_diagnostics_summary_keeps_advisory_lane_separate()
         "mgc_sweep_reclaim",
         "mes_sweep_reclaim_v2",
     ]
+
+
+def test_build_dashboard_paper_live_transition_diagnostics_summary_blocks_ready_launch_queue() -> None:
+    payload = build_dashboard_paper_live_transition_diagnostics_summary(
+        roster_summary={},
+        paper_live_transition={
+            "status": "ready_to_launch_paper_live",
+            "effective_status": "ready_to_launch_paper_live",
+            "critical_ready": True,
+            "paper_ready_bots": 9,
+            "gates": [],
+        },
+        operator_queue={
+            "cache_stale": False,
+            "launch_blocked_count": 1,
+        },
+        first_launch_blocker={
+            "op_id": "OP-20",
+            "detail": "Do not unlock new entries until broker/supervisor positions reconcile.",
+        },
+        first_failed_gate={},
+        default_daily_loss_gate_mode="warn",
+        daily_loss_shadow_detail="shadow detail",
+        daily_loss_hold_detail="hold detail",
+    )
+
+    assert payload["status"] == "ready_to_launch_paper_live"
+    assert payload["effective_status"] == "blocked_by_operator_queue"
+    assert payload["operator_queue_launch_blocked_count"] == 1
+    assert payload["first_launch_blocker_op_id"] == "OP-20"
+    assert payload["first_launch_next_action"] == (
+        "Do not unlock new entries until broker/supervisor positions reconcile."
+    )
+
+
+def test_build_dashboard_paper_live_transition_diagnostics_summary_uses_roster_daily_loss_merge() -> None:
+    payload = build_dashboard_paper_live_transition_diagnostics_summary(
+        roster_summary={
+            "paper_live_daily_loss_advisory_active": True,
+            "paper_live_capital_lanes_held_by_daily_loss_stop": True,
+        },
+        paper_live_transition={
+            "status": "ready_to_launch_paper_live",
+            "effective_status": "ready_to_launch_paper_live",
+            "critical_ready": True,
+            "paper_ready_bots": 9,
+            "gates": [],
+        },
+        operator_queue={"cache_stale": False, "launch_blocked_count": 0},
+        first_launch_blocker={},
+        first_failed_gate={},
+        default_daily_loss_gate_mode="advisory",
+        daily_loss_shadow_detail="Shadow paper remains live until reset: day_pnl=$-925.50 <= limit=$-900.00",
+        daily_loss_hold_detail="hold detail",
+    )
+
+    assert payload["effective_status"] == "shadow_paper_active"
+    assert payload["daily_loss_gate_mode"] == "advisory"
+    assert payload["daily_loss_advisory_active"] is True
+    assert payload["capital_lanes_held_by_daily_loss_stop"] is True
+    assert "Shadow paper remains live" in payload["effective_detail"]
