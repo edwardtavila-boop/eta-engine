@@ -56,6 +56,13 @@ CRITICAL_SERVICE_RUNTIME_PROBES: dict[str, dict[str, Any]] = {
         "endpoint": "local_fm_status",
     }
 }
+CANONICAL_SUPERVISOR_SERVICE = "ETAJarvisSupervisor"
+CANONICAL_SUPERVISOR_TASK = "ETA-Jarvis-Strategy-Supervisor"
+LEGACY_PAPERLIVE_SUPERVISOR_TASK = "ETA-PaperLive-Supervisor"
+SUPERVISOR_RESTART_TARGET = (
+    f"{CANONICAL_SUPERVISOR_SERVICE} service "
+    f"(scheduled-task fallback: {CANONICAL_SUPERVISOR_TASK})"
+)
 DASHBOARD_DURABLE_TASKS = (
     "ETA-Dashboard-API",
     "ETA-Proxy-8421",
@@ -66,7 +73,7 @@ DASHBOARD_DURABLE_TASKS = (
     "ETA-PaperLiveTransitionCheck",
 )
 PAPER_LIVE_DURABLE_TASKS = (
-    "ETA-PaperLive-Supervisor",
+    CANONICAL_SUPERVISOR_TASK,
     "ETA-TWS-Watchdog",
     "ETA-IBGateway-Reauth",
 )
@@ -114,7 +121,7 @@ NON_AUTHORITATIVE_TASK_ARTIFACTS: dict[str, dict[str, Any]] = {
             },
         ),
     },
-    "ETA-PaperLive-Supervisor": {
+    CANONICAL_SUPERVISOR_TASK: {
         "max_age_s": 12 * 60 * 60,
         "artifacts": (
             {
@@ -153,7 +160,7 @@ NON_AUTHORITATIVE_TASK_REFRESH_COMMANDS = {
     "ETA-OperatorQueueHeartbeat": "run eta_engine\\deploy\\scripts\\run_operator_queue_heartbeat_task.cmd",
     "ETA-PaperLiveTransitionCheck": "run eta_engine\\deploy\\scripts\\run_paper_live_transition_check.cmd",
     "ETA-ThreeAI-Sync": "run python -B -m eta_engine.scripts.force_multiplier_health --json-out --quiet",
-    "ETA-PaperLive-Supervisor": "run eta_engine\\deploy\\scripts\\run_paper_live_transition_check.cmd",
+    CANONICAL_SUPERVISOR_TASK: "run eta_engine\\deploy\\scripts\\run_jarvis_strategy_supervisor_task.cmd",
     "ETA-IndexFutures-Bar-Refresh": "run eta_engine\\deploy\\scripts\\run_index_futures_bar_refresh_task.cmd",
 }
 IBGATEWAY_TASKS = (
@@ -165,13 +172,6 @@ IBGATEWAY_TASKS = (
 WATCHDOG_OBSERVED_TASKS = (
     "ETA-Watchdog",
     "ETA-Watchdog-Restart",
-)
-CANONICAL_SUPERVISOR_SERVICE = "ETAJarvisSupervisor"
-CANONICAL_SUPERVISOR_TASK = "ETA-Jarvis-Strategy-Supervisor"
-LEGACY_PAPERLIVE_SUPERVISOR_TASK = "ETA-PaperLive-Supervisor"
-SUPERVISOR_RESTART_TARGET = (
-    f"{CANONICAL_SUPERVISOR_SERVICE} service "
-    f"(scheduled-task fallback: {CANONICAL_SUPERVISOR_TASK})"
 )
 SUPERVISOR_RECONCILE_MAX_AGE_S = 15 * 60
 BROKER_STATE_URL = "http://127.0.0.1:8421/api/live/broker_state"

@@ -63,6 +63,10 @@ from eta_engine.obs.decision_journal import (  # noqa: E402
     Outcome,
     default_journal,
 )
+from eta_engine.scripts.broker_router_state import (  # noqa: E402
+    EMPTY_RETRY_META,
+    BrokerRouterStateIO,
+)
 from eta_engine.scripts.prop_risk_governor import prop_order_risk_denial  # noqa: E402
 from eta_engine.scripts.runtime_order_hold import (  # noqa: E402
     OrderEntryHold,
@@ -108,13 +112,6 @@ BACKOFF_CAP_S = 300.0
 #: ``{"attempts": int, "last_attempt_ts": isoformat-str,
 #:   "last_reject_reason": str}``.
 RETRY_META_SUFFIX = ".retry_meta.json"
-
-#: Canonical empty retry-meta payload for fresh files.
-_EMPTY_RETRY_META: dict[str, Any] = {
-    "attempts": 0,
-    "last_attempt_ts": "",
-    "last_reject_reason": "",
-}
 
 #: Operator escape hatch — set ``ETA_GATE_BOOTSTRAP=1`` to allow first-run
 #: operation when the gate-chain module cannot be imported. Mirrors the
@@ -958,7 +955,7 @@ def pending_order_sanity_denial(order: PendingOrder) -> str:
     return ""
 
 
-def _first_nonempty_text(*values: Any) -> str:
+def _first_nonempty_text(*values: object) -> str:
     """Return the first non-empty stringified value."""
     for value in values:
         if value in (None, ""):
@@ -969,7 +966,7 @@ def _first_nonempty_text(*values: Any) -> str:
     return ""
 
 
-def _extract_broker_fill_ts(result: Any) -> str:
+def _extract_broker_fill_ts(result: object) -> str:
     """Best-effort broker fill timestamp from an OrderResult.
 
     Prefer the canonical ``OrderResult.filled_at`` field when the venue layer
@@ -1062,27 +1059,21 @@ class BrokerRouter:
         self.routing_config = routing_config if routing_config is not None else RoutingConfig.load()
         self._prop_venue_cache: dict[str, VenueBase] = {}
         self.order_hold_path = Path(order_hold_path) if order_hold_path else default_hold_path()
-
-        self.processing_dir = self.state_root / "processing"
-        self.blocked_dir = self.state_root / "blocked"
-        self.archive_dir = self.state_root / "archive"
-        self.quarantine_dir = self.state_root / "quarantine"
-        self.failed_dir = self.state_root / "failed"
-        self.fill_results_dir = self.state_root / "fill_results"
-        self.heartbeat_path = self.state_root / "broker_router_heartbeat.json"
-        self.gate_pre_trade_path = self.state_root / "pre_trade_gate.json"
-        self.gate_heat_state_path = self.state_root / "heat_state.json"
-        self.gate_journal_path = self.state_root / "gate_journal.sqlite"
-
-        for d in (
-            self.processing_dir,
-            self.blocked_dir,
-            self.archive_dir,
-            self.quarantine_dir,
-            self.failed_dir,
-            self.fill_results_dir,
-        ):
-            d.mkdir(parents=True, exist_ok=True)
+        self._state_io = BrokerRouterStateIO(
+            state_root=self.state_root,
+            retry_meta_suffix=RETRY_META_SUFFIX,
+            logger=logger,
+        )
+        self.processing_dir = self._state_io.processing_dir
+        self.blocked_dir = self._state_io.blocked_dir
+        self.archive_dir = self._state_io.archive_dir
+        self.quarantine_dir = self._state_io.quarantine_dir
+        self.failed_dir = self._state_io.failed_dir
+        self.fill_results_dir = self._state_io.fill_results_dir
+        self.heartbeat_path = self._state_io.heartbeat_path
+        self.gate_pre_trade_path = self._state_io.gate_pre_trade_path
+        self.gate_heat_state_path = self._state_io.gate_heat_state_path
+        self.gate_journal_path = self._state_io.gate_journal_path
 
         self._stopped = False
         self._retry_counts: dict[str, int] = {}
@@ -1214,7 +1205,7 @@ class BrokerRouter:
             except OSError as exc:
                 logger.info("skip (move failed, likely raced): %s (%s)", path.name, exc)
                 return
-        await self._run_lifecycle(target, retry_meta=_EMPTY_RETRY_META.copy())
+        await self._run_lifecycle(target, retry_meta=EMPTY_RETRY_META.copy())
 
     async def _process_retry_file(self, target: Path) -> None:
         """Re-process a file already in ``processing/`` (sidecar-driven)."""
@@ -1237,26 +1228,16 @@ class BrokerRouter:
         await self._run_lifecycle(target, retry_meta=retry_meta)
 
     def _retry_meta_path(self, target: Path) -> Path:
-        return target.with_name(target.name + RETRY_META_SUFFIX)
+        return self._state_io.retry_meta_path(target)
 
     def _load_retry_meta(self, target: Path) -> dict[str, Any]:
-        """Read the retry-meta sidecar; any failure -> empty meta."""
-        try:
-            payload = json.loads(self._retry_meta_path(target).read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            return _EMPTY_RETRY_META.copy()
-        return {
-            "attempts": int(payload.get("attempts", 0) or 0),
-            "last_attempt_ts": str(payload.get("last_attempt_ts", "") or ""),
-            "last_reject_reason": str(payload.get("last_reject_reason", "") or ""),
-        }
+        return self._state_io.load_retry_meta(target)
 
     def _save_retry_meta(self, target: Path, meta: dict[str, Any]) -> None:
-        self._write_sidecar(self._retry_meta_path(target), meta)
+        self._state_io.save_retry_meta(target, meta)
 
     def _clear_retry_meta(self, target: Path) -> None:
-        with contextlib.suppress(OSError):
-            self._retry_meta_path(target).unlink()
+        self._state_io.clear_retry_meta(target)
 
     def _should_backoff(self, retry_meta: dict[str, Any]) -> bool:
         """``min(BACKOFF_CAP_S, interval_s * 2**attempts)`` not yet elapsed."""
@@ -1278,14 +1259,7 @@ class BrokerRouter:
         target: Path,
         retry_meta: dict[str, Any],
     ) -> None:
-        """Move target -> failed/ and persist meta alongside for forensics."""
-        with contextlib.suppress(OSError):
-            self._atomic_move(target, self.failed_dir / target.name)
-        self._write_sidecar(
-            self.failed_dir / (target.name + RETRY_META_SUFFIX),
-            retry_meta,
-        )
-        self._clear_retry_meta(target)
+        self._state_io.move_to_failed_with_meta(target, retry_meta)
 
     async def _run_lifecycle(
         self,
@@ -2312,20 +2286,10 @@ class BrokerRouter:
     # -- IO helpers ---------------------------------------------------------
 
     def _atomic_move(self, src: Path, dst: Path) -> None:
-        """Rename with parent-mkdir; raises OSError on collision/race."""
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        os.replace(src, dst)
+        self._state_io.atomic_move(src, dst)
 
     def _write_sidecar(self, path: Path, payload: dict[str, Any]) -> None:
-        """Write a small JSON sidecar; failures are logged not raised."""
-        try:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(
-                json.dumps(payload, indent=2, sort_keys=True, default=str),
-                encoding="utf-8",
-            )
-        except OSError as exc:
-            logger.warning("sidecar write failed %s: %s", path, exc)
+        self._state_io.write_sidecar(path, payload)
 
     def _order_entry_hold(self) -> OrderEntryHold:
         """Load the shared operator order-entry hold state."""

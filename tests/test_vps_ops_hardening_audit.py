@@ -162,8 +162,8 @@ def _non_authoritative_task_artifacts(
             "age_s": 64800.0 if force_multiplier_status == "stale" else 300.0,
             "max_age_s": 43200,
         },
-        "ETA-PaperLive-Supervisor": {
-            "task_name": "ETA-PaperLive-Supervisor",
+        audit.CANONICAL_SUPERVISOR_TASK: {
+            "task_name": audit.CANONICAL_SUPERVISOR_TASK,
             "covered": paper_live_status in {"fresh", "stale"},
             "stale": paper_live_status == "stale",
             "status": paper_live_status,
@@ -716,8 +716,8 @@ def test_missing_paper_live_durable_task_is_red_runtime_degraded() -> None:
 
 def test_non_authoritative_cached_paper_live_artifact_downgrades_local_missing_task() -> None:
     tasks = _healthy_tasks()
-    tasks["ETA-PaperLive-Supervisor"] = {
-        "task_name": "ETA-PaperLive-Supervisor",
+    tasks[audit.CANONICAL_SUPERVISOR_TASK] = {
+        "task_name": audit.CANONICAL_SUPERVISOR_TASK,
         "state": "Missing",
         "last_task_result": None,
     }
@@ -744,10 +744,17 @@ def test_non_authoritative_cached_paper_live_artifact_downgrades_local_missing_t
 
     assert report["summary"]["status"] == "YELLOW_SAFETY_BLOCKED"
     assert report["summary"]["runtime_ready"] is True
-    assert report["runtime"]["tasks"]["observed_missing_paper_live_durable"] == ["ETA-PaperLive-Supervisor"]
+    assert audit.LEGACY_PAPERLIVE_SUPERVISOR_TASK not in report["runtime"]["tasks"]["paper_live_durable"]
+    assert report["runtime"]["tasks"]["observed_missing_paper_live_durable"] == [
+        audit.CANONICAL_SUPERVISOR_TASK
+    ]
     assert report["runtime"]["tasks"]["missing_paper_live_durable"] == []
-    assert report["runtime"]["tasks"]["artifact_backed_missing_paper_live_durable"] == ["ETA-PaperLive-Supervisor"]
-    assert report["runtime"]["tasks"]["stale_artifact_backed_paper_live_durable"] == ["ETA-PaperLive-Supervisor"]
+    assert report["runtime"]["tasks"]["artifact_backed_missing_paper_live_durable"] == [
+        audit.CANONICAL_SUPERVISOR_TASK
+    ]
+    assert report["runtime"]["tasks"]["stale_artifact_backed_paper_live_durable"] == [
+        audit.CANONICAL_SUPERVISOR_TASK
+    ]
     assert any("non-authoritative paper-live watch artifacts" in action for action in report["next_actions"])
     assert not any("Repair paper-live scheduled task lane" in action for action in report["next_actions"])
 
@@ -857,7 +864,7 @@ def test_collect_task_status_preserves_access_denied_rows(monkeypatch) -> None:
                 "QuerySource": "schtasks",
             },
             {
-                "TaskName": "ETA-PaperLive-Supervisor",
+                "TaskName": "ETA-Jarvis-Strategy-Supervisor",
                 "State": "Missing",
                 "LastTaskResult": None,
                 "LastRunTime": None,
@@ -875,8 +882,8 @@ def test_collect_task_status_preserves_access_denied_rows(monkeypatch) -> None:
     assert observed["ETA-Dashboard-API"]["state"] == "AccessDenied"
     assert observed["ETA-Dashboard-API"]["error"] == "Access is denied."
     assert observed["ETA-Dashboard-API"]["query_source"] == "schtasks"
-    assert observed["ETA-PaperLive-Supervisor"]["state"] == "Missing"
-    assert observed["ETA-PaperLive-Supervisor"]["error"] == "The system cannot find the file specified."
+    assert observed["ETA-Jarvis-Strategy-Supervisor"]["state"] == "Missing"
+    assert observed["ETA-Jarvis-Strategy-Supervisor"]["error"] == "The system cannot find the file specified."
 
 
 def test_collect_endpoint_status_honors_per_endpoint_timeouts(monkeypatch) -> None:
@@ -2062,7 +2069,7 @@ def test_collect_non_authoritative_task_artifacts_uses_snapshot_fallbacks(tmp_pa
                     {"name": "fm_health_snapshot", "path": fm_health_snapshot},
                 ),
             },
-            "ETA-PaperLive-Supervisor": {
+            audit.CANONICAL_SUPERVISOR_TASK: {
                 "max_age_s": 3600,
                 "artifacts": (
                     {"name": "paper_live_transition_check", "path": paper_live_snapshot},
@@ -2093,7 +2100,7 @@ def test_collect_non_authoritative_task_artifacts_uses_snapshot_fallbacks(tmp_pa
     assert coverage["ETA-OperatorQueueHeartbeat"]["status"] == "fresh"
     assert coverage["ETA-PaperLiveTransitionCheck"]["status"] == "fresh"
     assert coverage["ETA-ThreeAI-Sync"]["status"] == "fresh"
-    assert coverage["ETA-PaperLive-Supervisor"]["status"] == "fresh"
+    assert coverage[audit.CANONICAL_SUPERVISOR_TASK]["status"] == "fresh"
     assert coverage["ETA-IndexFutures-Bar-Refresh"]["covered"] is True
     assert coverage["ETA-IndexFutures-Bar-Refresh"]["source"] == "symbol_intelligence_snapshot"
 

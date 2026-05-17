@@ -4226,6 +4226,8 @@ class TestDashboardAPI:
         assert watchdog["probe_healthy"] is True
         assert watchdog["probe_reason"] == "ok"
         assert watchdog["status_code"] == 200
+        assert watchdog["summary"] == "noop: ok"
+        assert watchdog["detail"] == "noop: ok"
         assert watchdog["heartbeat_path"].endswith("dashboard_proxy_watchdog_heartbeat.json")
         assert payload["checks"]["dashboard_proxy_watchdog_contract"] is True
 
@@ -4264,6 +4266,8 @@ class TestDashboardAPI:
         assert watchdog["fresh"] is False
         assert watchdog["probe_healthy"] is True
         assert watchdog["probe_reason"] == "ok"
+        assert "stale" in watchdog["summary"].lower()
+        assert "healthy" in watchdog["detail"].lower()
 
     def test_dashboard_diagnostics_includes_eta_readiness_snapshot_rollup(
         self,

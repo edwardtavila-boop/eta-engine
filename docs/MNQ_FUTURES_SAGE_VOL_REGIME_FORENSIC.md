@@ -63,7 +63,12 @@ distribution differs because:
 
 ### Option D — operator filter to high-vol regime only
 
-Adjust the bot's config:
+This section is preserved as the original hypothesis only. The live
+remediation was later corrected in
+`MNQ_FUTURES_SAGE_VOL_REGIME_FORENSIC_CORRECTION_2026_05_13.md`, which traced
+the qty split to the supervisor partial-profit mechanism.
+
+Historical config snippet only (do not apply as the current remediation):
 
 ```python
 # In sweep_reclaim_strategy SweepReclaimConfig (or its mnq_futures_sage
@@ -71,14 +76,15 @@ Adjust the bot's config:
 vol_low_size_mult: float = 0.0  # SKIP normal-vol setups entirely
 ```
 
-With this change, the strategy refuses to enter when ATR is below the
-high-vol threshold. Only the qty<1 (high-vol) book remains, which has:
+This was the original hypothesis: the strategy would refuse to enter when ATR
+is below the high-vol threshold, leaving only the qty<1 (high-vol) book:
 - 100% WR on 24 trades
 - +$485 cum USD
 - +6.3 avg R
 - All in overnight + post-close hours (regime is stable, less news risk)
 
-This is a **single config flip** away from a defensible launch candidate.
+That "single config flip" interpretation is now superseded by the correction
+doc above.
 
 ### What about sample size?
 
@@ -88,9 +94,10 @@ roughly [0.86, 1.00], so the true hit rate is at least 86% with high
 confidence. That's still a strong edge IF the high-vol regime
 remains stable.
 
-The right next step is a **paper-live soak of vol_low_size_mult=0.0**
-for 2 weeks. If the high-vol-only book stays USD-positive on a 50+
-trade sample, the bot is launch-ready.
+The current next step is the corrected paper-live soak with
+`partial_profit_enabled=false` for this bot. If that post-fix broker-backed
+sample improves and stays positive on a meaningful sample, then the bot can be
+reconsidered.
 
 ---
 
@@ -110,24 +117,31 @@ This is a real finding, not a Monday launch authorization. Reasons:
    wave-25 era. Whether the high-vol-only book holds up over wider
    historical windows is unknown.
 
-4. **The config change needs testing.** Setting `vol_low_size_mult=0.0`
-   has never been tested in paper mode. There could be edge cases
-   (e.g. the bot fires zero trades for 3 weeks straight if vol stays
-   low) that should be observed before going live.
+4. **The corrected experiment needs testing.** The bot-scoped
+   `partial_profit_enabled=false` paper-soak still needs a broker-backed
+   post-fix sample before any live conclusion.
 
 ---
 
 ## Recommended path forward
 
-1. **Today (2026-05-13)**: ship this forensic; update `prop_launch_check`
-   to surface per-qty-band stats in the launch-candidate report.
-2. **Tonight**: set `vol_low_size_mult=0.0` for mnq_futures_sage in
-   the bot config (NOT the global SweepReclaimConfig default).
+1. **Today (2026-05-13)**: keep this forensic as the historical hypothesis,
+   but defer to `MNQ_FUTURES_SAGE_VOL_REGIME_FORENSIC_CORRECTION_2026_05_13.md`
+   for the live remediation.
+2. **Tonight**: enable the corrected bot-scoped paper-soak with
+   `partial_profit_enabled=false`, not `vol_low_size_mult=0.0`.
 3. **2 weeks (until 2026-05-27)**: let the supervisor paper-soak the
-   filtered config. Daily `prop_launch_check` will show the post-filter
-   USD trajectory.
+   corrected experiment. Daily `prop_launch_check` will show the launch-lane
+   effect, while the futures prop-ladder dry-run lane remains separate.
+   Historical note: the launch phrasing that follows is preserved for audit
+   context only and is superseded by the corrected
+   `partial_profit_enabled=false` broker-sample decision threshold.
 4. **If high-vol-only book stays USD-positive with n≥50**: launch.
    The launch-candidate scan will surface the bot as qualifying.
+4a. **Correction**: the older "if high-vol-only book stays USD-positive"
+    launch line is superseded. The current decision threshold is whether the
+    corrected `partial_profit_enabled=false` post-fix broker sample improves
+    materially enough to reopen launch review.
 5. **If not**: investigate further OR redesign the qty sizing entirely
    per `MES_V2_SIZING_FORENSIC.md` Fix C (constant-USD risk).
 

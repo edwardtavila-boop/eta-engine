@@ -106,6 +106,10 @@ Action item #2 in the CLI originally auto-surfaced:
 > `vol_low_size_mult=0.0` in the bot's strategy config to skip
 > normal-vol setups; paper-soak for 2 weeks before EVAL_LIVE."
 
+Correction: that quoted action text is now superseded. The live remediation is
+the corrected `partial_profit_enabled=false` paper-soak in
+`MNQ_FUTURES_SAGE_VOL_REGIME_FORENSIC_CORRECTION_2026_05_13.md`.
+
 ---
 
 ## Recommended path forward (operator)

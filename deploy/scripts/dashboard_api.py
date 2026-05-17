@@ -621,6 +621,20 @@ def _dashboard_proxy_watchdog_payload(*, server_ts: float) -> dict:
     else:
         status = "unknown"
 
+    summary = f"{action}: {probe_reason}"
+    if status == "probe_ok_watchdog_stale":
+        summary = "dashboard proxy watchdog heartbeat is stale, but the latest 8421 probe is healthy."
+    elif status == "stale":
+        summary = "dashboard proxy watchdog heartbeat is stale; refresh the watchdog before trusting 8421 bridge health."
+    elif status == "missing":
+        summary = "dashboard proxy watchdog heartbeat missing"
+    elif status == "failed":
+        summary = f"dashboard proxy watchdog restart failed: {probe_reason}"
+    elif status == "degraded":
+        summary = f"dashboard proxy watchdog probe degraded: {probe_reason}"
+    elif status == "unknown":
+        summary = f"dashboard proxy watchdog state unknown: {probe_reason}"
+
     return {
         "status": status,
         "fresh": age_s is not None and age_s <= 180,
@@ -638,7 +652,8 @@ def _dashboard_proxy_watchdog_payload(*, server_ts: float) -> dict:
         "body_len": probe.get("body_len"),
         "restart_ok": restart_ok,
         "restart_reason": decision.get("restart_reason"),
-        "summary": f"{action}: {probe_reason}",
+        "summary": summary,
+        "detail": summary,
     }
 
 
@@ -18904,7 +18919,7 @@ def _local_master_status_payload() -> dict[str, object]:
     }
     dashboard_proxy_watchdog_system = {
         "status": _dashboard_proxy_watchdog_card_status(str(dashboard_proxy_watchdog.get("status") or "")),
-        "detail": str(dashboard_proxy_watchdog.get("summary") or ""),
+        "detail": str(dashboard_proxy_watchdog.get("detail") or dashboard_proxy_watchdog.get("summary") or ""),
         "source": "dashboard_proxy_watchdog",
         "raw_status": str(dashboard_proxy_watchdog.get("status") or ""),
         "effective_status": str(dashboard_proxy_watchdog.get("status") or ""),
