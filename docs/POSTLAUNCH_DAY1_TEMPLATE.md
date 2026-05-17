@@ -3,10 +3,15 @@
 **Date:** YYYY-MM-DD
 **Operator:** Edward
 **Eval account:** BluSky 50K (or whichever)
-**Bots opted EVAL_LIVE:** _list bot_ids_
+**Bots opted EVAL_LIVE:** _list approved launch-candidate bot_ids_
 
 Copy this template to `docs/POSTLAUNCH_DAY1_<YYYY-MM-DD>.md` at EOD
 and fill it in. The structure forces honesty.
+
+> **Safety note:** Use this template only after `prop_launch_check` returns
+> `GO` and at least one approved bot has been explicitly moved to `EVAL_LIVE`.
+> If the launch lane is still `NO_GO` or `HOLD`, stay on the pre-launch
+> readiness and operator-checklist surfaces instead.
 
 ---
 
@@ -40,7 +45,7 @@ python -m eta_engine.scripts.prop_strategy_promotion_audit --json
 |---|---|
 | 09:25 | First-light check verdict: ___ |
 | 09:30 | RTH open; first signal at ___ |
-| 10:00 | _e.g. mnq_futures_sage fill: BUY 1 @ $___, exit @ $___, R=____ |
+| 10:00 | _e.g. <launch_bot_1> fill: BUY 1 @ $___, exit @ $___, R=____ |
 | 12:00 | _lunch check, DD buffer at $____ |
 | 14:00 | _e.g. WATCH triggered at $___ daily PnL; supervisor halved sizes_ |
 | 16:00 | _RTH close; ____ trades closed for the session_ |
@@ -71,7 +76,7 @@ Pull from supervisor heartbeat or the alerts log:
 
 What happened that I didn't expect?
 
-- _Slippage on mnq_futures_sage: paper expected $0.50/fill, live got $____
+- _Slippage on <launch_bot_1>: paper expected $0.50/fill, live got $____
 - _Lag between signal and broker confirm: ___ ms_
 - _Bot fired more/fewer times than I expected because ____
 
@@ -80,7 +85,7 @@ TODO at the end of this doc.)
 
 ## What worked
 
-- _e.g. wave-25 gate correctly routed mnq_futures_sage to live, mes_v2 to paper_
+- _e.g. wave-25 gate correctly routed <launch_bot_1> to live, <paper_bot_1> to paper_
 - _e.g. drawdown guard caught a brewing consistency-rule issue at 14:32 and shifted to WATCH_
 - _e.g. Telegram delivered HALT alert within 30 seconds of trigger_
 
@@ -103,7 +108,7 @@ TODO at the end of this doc.)
 The pre-launch quant review committed to specific falsification
 criteria. Honest check today:
 
-- [ ] mnq_futures_sage delivered >0R live today (yes/no)
+- [ ] Primary launch bot delivered >0R live today (yes/no)
 - [ ] No single-trade USD loss > $250 (yes/no)
 - [ ] No single-day-share ratio > 30% (yes/no)
 - [ ] At least 1 live trade closed (proves the gate fires) (yes/no)
