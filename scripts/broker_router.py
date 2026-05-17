@@ -94,6 +94,8 @@ from eta_engine.scripts.workspace_roots import (  # noqa: E402
     ETA_RUNTIME_STATE_DIR,
 )
 from eta_engine.venues.router import SmartRouter  # noqa: E402
+# Tradovate remains DORMANT by operator policy; keep the adapter import
+# available only for explicit un-dormancy / credential reactivation flows.
 from eta_engine.venues.tradovate import TradovateVenue  # noqa: E402
 
 logger = logging.getLogger("eta_engine.broker_router")

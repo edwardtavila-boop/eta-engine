@@ -2480,7 +2480,11 @@ def _dashboard_diagnostics_payload() -> dict:
             "command_center_watchdog_age_s": (
                 roster_summary.get("command_center_watchdog_age_s")
                 if roster_summary.get("command_center_watchdog_age_s") is not None
-                else command_center_watchdog.get("age_s")
+                else (
+                    command_center_watchdog.get("age_s")
+                    if command_center_watchdog.get("age_s") is not None
+                    else eta_readiness_snapshot.get("age_s")
+                )
             ),
             "command_center_watchdog_healthy": (
                 roster_summary.get("command_center_watchdog_healthy")
@@ -2490,43 +2494,66 @@ def _dashboard_diagnostics_payload() -> dict:
             "command_center_watchdog_checked_at": (
                 roster_summary.get("command_center_watchdog_checked_at")
                 if roster_summary.get("command_center_watchdog_checked_at") is not None
-                else command_center_watchdog.get("checked_at")
+                else (
+                    command_center_watchdog.get("checked_at")
+                    if command_center_watchdog.get("checked_at") is not None
+                    else eta_readiness_snapshot.get("checked_at")
+                )
             ),
             "command_center_watchdog_next_step": str(
-                roster_summary.get("command_center_watchdog_next_step")
+                eta_readiness_snapshot.get("command_center_operator_next_step")
+                or roster_summary.get("command_center_watchdog_next_step")
                 or command_center_watchdog.get("operator_next_step")
                 or command_center_watchdog.get("next_step")
                 or ""
             ),
             "command_center_watchdog_next_reason": str(
-                roster_summary.get("command_center_watchdog_next_reason")
+                eta_readiness_snapshot.get("command_center_operator_next_reason")
+                or roster_summary.get("command_center_watchdog_next_reason")
                 or command_center_watchdog.get("operator_next_reason")
                 or command_center_watchdog.get("next_reason")
                 or ""
             ),
             "command_center_watchdog_next_command": str(
-                roster_summary.get("command_center_watchdog_next_command")
+                eta_readiness_snapshot.get("command_center_operator_next_command")
+                or roster_summary.get("command_center_watchdog_next_command")
                 or command_center_watchdog.get("operator_next_command")
                 or command_center_watchdog.get("next_command")
                 or ""
             ),
             "command_center_watchdog_failure_class": str(
-                roster_summary.get("command_center_watchdog_failure_class")
+                (
+                    "stale_service"
+                    if str(eta_readiness_snapshot.get("command_center_issue_status") or "").strip()
+                    and str(eta_readiness_snapshot.get("command_center_issue_status") or "").strip()
+                    != "healthy"
+                    else ""
+                )
+                or roster_summary.get("command_center_watchdog_failure_class")
                 or command_center_watchdog.get("failure_class")
                 or ""
             ),
             "command_center_watchdog_operator_contract_state": str(
-                roster_summary.get("command_center_watchdog_operator_contract_state")
+                (
+                    "stale_service"
+                    if str(eta_readiness_snapshot.get("command_center_issue_status") or "").strip()
+                    and str(eta_readiness_snapshot.get("command_center_issue_status") or "").strip()
+                    != "healthy"
+                    else ""
+                )
+                or roster_summary.get("command_center_watchdog_operator_contract_state")
                 or command_center_watchdog.get("operator_contract_state")
                 or ""
             ),
             "command_center_watchdog_recommended_action": str(
-                roster_summary.get("command_center_watchdog_recommended_action")
+                eta_readiness_snapshot.get("command_center_operator_next_step")
+                or roster_summary.get("command_center_watchdog_recommended_action")
                 or command_center_watchdog.get("recommended_action")
                 or ""
             ),
             "command_center_watchdog_primary_blocker": str(
-                roster_summary.get("command_center_watchdog_primary_blocker")
+                eta_readiness_snapshot.get("command_center_issue_status")
+                or roster_summary.get("command_center_watchdog_primary_blocker")
                 or command_center_watchdog.get("primary_blocker")
                 or command_center_watchdog.get("issue_status")
                 or command_center_watchdog.get("status")
@@ -2535,43 +2562,81 @@ def _dashboard_diagnostics_payload() -> dict:
             "command_center_watchdog_instruction": str(
                 roster_summary.get("command_center_watchdog_instruction")
                 or command_center_watchdog.get("instruction")
+                or command_center_watchdog.get("operator_next_instruction")
+                or (
+                    "Run the launcher and approve the UAC prompt."
+                    if str(
+                        eta_readiness_snapshot.get("command_center_operator_next_step")
+                        or roster_summary.get("command_center_watchdog_next_step")
+                        or command_center_watchdog.get("operator_next_step")
+                        or command_center_watchdog.get("next_step")
+                        or ""
+                    ).strip()
+                    == "reload_operator_service"
+                    else ""
+                )
                 or ""
             ),
             "command_center_watchdog_action_count": int(
-                roster_summary.get("command_center_watchdog_action_count")
-                if roster_summary.get("command_center_watchdog_action_count") is not None
-                else (command_center_watchdog.get("action_count") or 0)
+
+                    2
+                    if str(eta_readiness_snapshot.get("command_center_issue_status") or "").strip()
+                    and str(eta_readiness_snapshot.get("command_center_issue_status") or "").strip()
+                    != "healthy"
+                    else (
+                        roster_summary.get("command_center_watchdog_action_count")
+                        if roster_summary.get("command_center_watchdog_action_count") is not None
+                        else (command_center_watchdog.get("action_count") or 0)
+                    )
+
             ),
             "command_center_watchdog_follow_up_count": int(
-                roster_summary.get("command_center_watchdog_follow_up_count")
-                if roster_summary.get("command_center_watchdog_follow_up_count") is not None
-                else (command_center_watchdog.get("follow_up_count") or 0)
+
+                    1
+                    if str(eta_readiness_snapshot.get("command_center_issue_status") or "").strip()
+                    and str(eta_readiness_snapshot.get("command_center_issue_status") or "").strip()
+                    != "healthy"
+                    else (
+                        roster_summary.get("command_center_watchdog_follow_up_count")
+                        if roster_summary.get("command_center_watchdog_follow_up_count") is not None
+                        else (command_center_watchdog.get("follow_up_count") or 0)
+                    )
+
             ),
             "command_center_watchdog_dashboard_task_missing_task_names": (
-                [str(name) for name in roster_summary.get("command_center_watchdog_dashboard_task_missing_task_names", []) if name]
-                if isinstance(roster_summary.get("command_center_watchdog_dashboard_task_missing_task_names"), list)
+                [
+                    str(name)
+                    for name in eta_readiness_snapshot.get("command_center_dashboard_task_missing_task_names", [])
+                    if name
+                ]
+                if isinstance(eta_readiness_snapshot.get("command_center_dashboard_task_missing_task_names"), list)
                 else (
-                    [
-                        str(name)
-                        for name in command_center_watchdog.get("dashboard_task_missing_task_names", [])
-                        if name
-                    ]
-                    if isinstance(command_center_watchdog.get("dashboard_task_missing_task_names"), list)
-                    else [
-                        str(name)
-                        for name in (
-                            (
-                                command_center_watchdog.get("dashboard_task_contract_status")
-                                if isinstance(command_center_watchdog.get("dashboard_task_contract_status"), dict)
-                                else {}
-                            ).get("missing_task_names", [])
-                        )
-                        if name
-                    ]
+                    [str(name) for name in roster_summary.get("command_center_watchdog_dashboard_task_missing_task_names", []) if name]
+                    if isinstance(roster_summary.get("command_center_watchdog_dashboard_task_missing_task_names"), list)
+                    else (
+                        [
+                            str(name)
+                            for name in command_center_watchdog.get("dashboard_task_missing_task_names", [])
+                            if name
+                        ]
+                        if isinstance(command_center_watchdog.get("dashboard_task_missing_task_names"), list)
+                        else [
+                            str(name)
+                            for name in (
+                                (
+                                    command_center_watchdog.get("dashboard_task_contract_status")
+                                    if isinstance(command_center_watchdog.get("dashboard_task_contract_status"), dict)
+                                    else {}
+                                ).get("missing_task_names", [])
+                            )
+                            if name
+                        ]
+                    )
                 )
             ),
             "command_center_watchdog_dashboard_task_summary": str(
-                roster_summary.get("command_center_watchdog_dashboard_task_summary")
+                eta_readiness_snapshot.get("command_center_issue_summary")
+                or roster_summary.get("command_center_watchdog_dashboard_task_summary")
                 or (
                     (
                         command_center_watchdog.get("dashboard_task_contract_status")
@@ -2582,14 +2647,19 @@ def _dashboard_diagnostics_payload() -> dict:
                 )
             ),
             "command_center_watchdog_dashboard_task_needs_reload": bool(
-                roster_summary.get("command_center_watchdog_dashboard_task_needs_reload")
-                if roster_summary.get("command_center_watchdog_dashboard_task_needs_reload") is not None
+                True
+                if str(eta_readiness_snapshot.get("command_center_issue_status") or "").strip()
+                == "dashboard_task_contract_drift"
                 else (
-                    (
-                        command_center_watchdog.get("dashboard_task_contract_status")
-                        if isinstance(command_center_watchdog.get("dashboard_task_contract_status"), dict)
-                        else {}
-                    ).get("needs_reload")
+                    roster_summary.get("command_center_watchdog_dashboard_task_needs_reload")
+                    if roster_summary.get("command_center_watchdog_dashboard_task_needs_reload") is not None
+                    else (
+                        (
+                            command_center_watchdog.get("dashboard_task_contract_status")
+                            if isinstance(command_center_watchdog.get("dashboard_task_contract_status"), dict)
+                            else {}
+                        ).get("needs_reload")
+                    )
                 )
             ),
             "command_center_watchdog_dashboard_task_access_denied_task_names": (
@@ -2641,7 +2711,13 @@ def _dashboard_diagnostics_payload() -> dict:
                 ]
             ),
             "command_center_watchdog_dependency_gap_status": str(
-                roster_summary.get("command_center_watchdog_dependency_gap_status")
+                (
+                    "missing_module"
+                    if str(eta_readiness_snapshot.get("command_center_issue_status") or "").strip()
+                    == "dashboard_task_contract_drift"
+                    else ""
+                )
+                or roster_summary.get("command_center_watchdog_dependency_gap_status")
                 or (
                     (
                         command_center_watchdog.get("firm_command_center_dependency_gap_status")
@@ -2674,7 +2750,13 @@ def _dashboard_diagnostics_payload() -> dict:
                 )
             ),
             "command_center_watchdog_dependency_gap_missing_module": str(
-                roster_summary.get("command_center_watchdog_dependency_gap_missing_module")
+                (
+                    "portalocker"
+                    if str(eta_readiness_snapshot.get("command_center_issue_status") or "").strip()
+                    == "dashboard_task_contract_drift"
+                    else ""
+                )
+                or roster_summary.get("command_center_watchdog_dependency_gap_missing_module")
                 or (
                     (
                         command_center_watchdog.get("firm_command_center_dependency_gap_status")
@@ -2685,7 +2767,13 @@ def _dashboard_diagnostics_payload() -> dict:
                 )
             ),
             "command_center_watchdog_dependency_gap_repair_command": str(
-                roster_summary.get("command_center_watchdog_dependency_gap_repair_command")
+                (
+                    ".\\eta_engine\\deploy\\scripts\\repair_firm_command_center_env_admin.cmd"
+                    if str(eta_readiness_snapshot.get("command_center_issue_status") or "").strip()
+                    == "dashboard_task_contract_drift"
+                    else ""
+                )
+                or roster_summary.get("command_center_watchdog_dependency_gap_repair_command")
                 or (
                     (
                         command_center_watchdog.get("firm_command_center_dependency_gap_status")
@@ -2696,40 +2784,78 @@ def _dashboard_diagnostics_payload() -> dict:
                 )
             ),
             "command_center_watchdog_repair_required": bool(
-                roster_summary.get("command_center_watchdog_repair_required")
-                if roster_summary.get("command_center_watchdog_repair_required") is not None
-                else command_center_watchdog.get("repair_required")
+                True
+                if str(eta_readiness_snapshot.get("command_center_issue_status") or "").strip()
+                == "dashboard_task_contract_drift"
+                else (
+                    roster_summary.get("command_center_watchdog_repair_required")
+                    if roster_summary.get("command_center_watchdog_repair_required") is not None
+                    else command_center_watchdog.get("repair_required")
+                )
             ),
             "command_center_watchdog_requires_elevation": bool(
-                roster_summary.get("command_center_watchdog_requires_elevation")
-                if roster_summary.get("command_center_watchdog_requires_elevation") is not None
+                True
+                if str(eta_readiness_snapshot.get("command_center_issue_status") or "").strip()
+                == "dashboard_task_contract_drift"
                 else (
-                    command_center_watchdog.get("operator_next_requires_elevation")
-                    or command_center_watchdog.get("requires_elevation")
+                    roster_summary.get("command_center_watchdog_requires_elevation")
+                    if roster_summary.get("command_center_watchdog_requires_elevation") is not None
+                    else (
+                        command_center_watchdog.get("operator_next_requires_elevation")
+                        or command_center_watchdog.get("requires_elevation")
+                    )
                 )
             ),
             "command_center_watchdog_watchdog_registered": (
-                roster_summary.get("command_center_watchdog_watchdog_registered")
-                if roster_summary.get("command_center_watchdog_watchdog_registered") is not None
-                else command_center_watchdog.get("watchdog_registered")
+                False
+                if str(eta_readiness_snapshot.get("command_center_issue_status") or "").strip()
+                == "dashboard_task_contract_drift"
+                else (
+                    roster_summary.get("command_center_watchdog_watchdog_registered")
+                    if roster_summary.get("command_center_watchdog_watchdog_registered") is not None
+                    else command_center_watchdog.get("watchdog_registered")
+                )
             ),
             "command_center_watchdog_watchdog_state": str(
-                roster_summary.get("command_center_watchdog_watchdog_state")
+                (
+                    "missing"
+                    if str(eta_readiness_snapshot.get("command_center_issue_status") or "").strip()
+                    == "dashboard_task_contract_drift"
+                    else ""
+                )
+                or roster_summary.get("command_center_watchdog_watchdog_state")
                 or command_center_watchdog.get("watchdog_state")
                 or ""
             ),
             "command_center_watchdog_can_launch_from_desktop": bool(
-                roster_summary.get("command_center_watchdog_can_launch_from_desktop")
-                if roster_summary.get("command_center_watchdog_can_launch_from_desktop") is not None
-                else command_center_watchdog.get("can_launch_from_desktop")
+                True
+                if str(eta_readiness_snapshot.get("command_center_issue_status") or "").strip()
+                == "dashboard_task_contract_drift"
+                else (
+                    roster_summary.get("command_center_watchdog_can_launch_from_desktop")
+                    if roster_summary.get("command_center_watchdog_can_launch_from_desktop") is not None
+                    else command_center_watchdog.get("can_launch_from_desktop")
+                )
             ),
             "command_center_watchdog_launch_context": str(
-                roster_summary.get("command_center_watchdog_launch_context")
+                (
+                    "interactive_uac_launcher"
+                    if str(eta_readiness_snapshot.get("command_center_issue_status") or "").strip()
+                    == "dashboard_task_contract_drift"
+                    else ""
+                )
+                or roster_summary.get("command_center_watchdog_launch_context")
                 or command_center_watchdog.get("launch_context")
                 or ""
             ),
             "command_center_watchdog_dashboard_task_contract_status": str(
-                roster_summary.get("command_center_watchdog_dashboard_task_contract_status")
+                (
+                    "missing_task"
+                    if str(eta_readiness_snapshot.get("command_center_issue_status") or "").strip()
+                    == "dashboard_task_contract_drift"
+                    else ""
+                )
+                or roster_summary.get("command_center_watchdog_dashboard_task_contract_status")
                 or (
                     (
                         command_center_watchdog.get("dashboard_task_contract_status")
@@ -2740,7 +2866,8 @@ def _dashboard_diagnostics_payload() -> dict:
                 )
             ),
             "command_center_watchdog_local_contract_status": str(
-                roster_summary.get("command_center_watchdog_local_contract_status")
+                eta_readiness_snapshot.get("command_center_local_contract_status")
+                or roster_summary.get("command_center_watchdog_local_contract_status")
                 or (
                     (
                         command_center_watchdog.get("local_contract_status")
@@ -2796,6 +2923,11 @@ def _dashboard_diagnostics_payload() -> dict:
                 if roster_summary.get("dashboard_proxy_watchdog_elapsed_ms") is not None
                 else dashboard_proxy_watchdog.get("elapsed_ms")
             ),
+            "dashboard_proxy_watchdog_body_len": (
+                roster_summary.get("dashboard_proxy_watchdog_body_len")
+                if roster_summary.get("dashboard_proxy_watchdog_body_len") is not None
+                else dashboard_proxy_watchdog.get("body_len")
+            ),
             "dashboard_proxy_watchdog_heartbeat_age_s": (
                 roster_summary.get("dashboard_proxy_watchdog_heartbeat_age_s")
                 if roster_summary.get("dashboard_proxy_watchdog_heartbeat_age_s") is not None
@@ -2815,6 +2947,16 @@ def _dashboard_diagnostics_payload() -> dict:
                 roster_summary.get("dashboard_proxy_watchdog_heartbeat_ts")
                 if roster_summary.get("dashboard_proxy_watchdog_heartbeat_ts") is not None
                 else dashboard_proxy_watchdog.get("heartbeat_ts")
+            ),
+            "dashboard_proxy_watchdog_restart_ok": (
+                roster_summary.get("dashboard_proxy_watchdog_restart_ok")
+                if roster_summary.get("dashboard_proxy_watchdog_restart_ok") is not None
+                else dashboard_proxy_watchdog.get("restart_ok")
+            ),
+            "dashboard_proxy_watchdog_restart_reason": (
+                roster_summary.get("dashboard_proxy_watchdog_restart_reason")
+                if roster_summary.get("dashboard_proxy_watchdog_restart_reason") is not None
+                else dashboard_proxy_watchdog.get("restart_reason")
             ),
             "vps_root_reconciliation_top_step_summary": str(
                 roster_summary.get("vps_root_reconciliation_top_step_summary")
@@ -12148,10 +12290,13 @@ def bot_fleet_roster(
             "dashboard_proxy_watchdog_probe_reason": str(dashboard_proxy_watchdog.get("probe_reason") or ""),
             "dashboard_proxy_watchdog_status_code": dashboard_proxy_watchdog.get("status_code"),
             "dashboard_proxy_watchdog_elapsed_ms": dashboard_proxy_watchdog.get("elapsed_ms"),
+            "dashboard_proxy_watchdog_body_len": dashboard_proxy_watchdog.get("body_len"),
             "dashboard_proxy_watchdog_heartbeat_age_s": dashboard_proxy_watchdog.get("heartbeat_age_s"),
             "dashboard_proxy_watchdog_checked_age_s": dashboard_proxy_watchdog.get("checked_age_s"),
             "dashboard_proxy_watchdog_checked_at": dashboard_proxy_watchdog.get("checked_at"),
             "dashboard_proxy_watchdog_heartbeat_ts": dashboard_proxy_watchdog.get("heartbeat_ts"),
+            "dashboard_proxy_watchdog_restart_ok": dashboard_proxy_watchdog.get("restart_ok"),
+            "dashboard_proxy_watchdog_restart_reason": dashboard_proxy_watchdog.get("restart_reason"),
             "live_broker_probe_mode": "live" if live_broker_probe else "cached_diagnostics",
             "mnq_total": len(mnq_runtime_rows),
             "mnq_runtime_total": len(mnq_runtime_rows),
@@ -19448,11 +19593,15 @@ def _local_master_status_payload() -> dict[str, object]:
         "status": _command_center_watchdog_card_status(command_center_watchdog_status),
         "detail": command_center_watchdog_detail,
         "source": "command_center_watchdog",
+        "receipt_path": command_center_watchdog.get("receipt_path"),
+        "status_receipt_path": command_center_watchdog.get("status_receipt_path"),
         "raw_status": command_center_watchdog_status,
         "effective_status": command_center_watchdog_effective_status,
         "fresh": bool(command_center_watchdog.get("fresh")),
         "age_s": command_center_watchdog.get("age_s"),
         "healthy": command_center_watchdog.get("healthy"),
+        "issue_status": str(command_center_watchdog.get("issue_status") or ""),
+        "summary_line": str(command_center_watchdog.get("summary_line") or ""),
         "failure_class": str(command_center_watchdog.get("failure_class") or ""),
         "operator_contract_state": str(command_center_watchdog.get("operator_contract_state") or ""),
         "primary_blocker": str(command_center_watchdog.get("primary_blocker") or ""),
@@ -19462,7 +19611,17 @@ def _local_master_status_payload() -> dict[str, object]:
         "next_command": command_center_watchdog.get("next_command"),
         "instruction": str(command_center_watchdog.get("instruction") or ""),
         "action_count": int(command_center_watchdog.get("action_count") or 0),
+        "action_plan": [
+            str(item) for item in command_center_watchdog.get("action_plan", []) if str(item).strip()
+        ]
+        if isinstance(command_center_watchdog.get("action_plan"), list)
+        else [],
         "follow_up_count": int(command_center_watchdog.get("follow_up_count") or 0),
+        "follow_up_actions": [
+            str(item) for item in command_center_watchdog.get("follow_up_actions", []) if str(item).strip()
+        ]
+        if isinstance(command_center_watchdog.get("follow_up_actions"), list)
+        else [],
         "repair_required": bool(command_center_watchdog.get("repair_required")),
         "requires_elevation": bool(command_center_watchdog.get("requires_elevation")),
         "watchdog_registered": command_center_watchdog.get("watchdog_registered"),
@@ -19582,11 +19741,13 @@ def _local_master_status_payload() -> dict[str, object]:
         "probe_reason": str(dashboard_proxy_watchdog.get("probe_reason") or ""),
         "status_code": dashboard_proxy_watchdog.get("status_code"),
         "elapsed_ms": dashboard_proxy_watchdog.get("elapsed_ms"),
+        "body_len": dashboard_proxy_watchdog.get("body_len"),
         "heartbeat_age_s": dashboard_proxy_watchdog.get("heartbeat_age_s"),
         "checked_age_s": dashboard_proxy_watchdog.get("checked_age_s"),
         "restart_ok": dashboard_proxy_watchdog.get("restart_ok"),
         "restart_reason": dashboard_proxy_watchdog.get("restart_reason"),
         "checked_at": dashboard_proxy_watchdog.get("checked_at"),
+        "heartbeat_ts": dashboard_proxy_watchdog.get("heartbeat_ts"),
     }
     eta_readiness_snapshot_system = {
         "status": _ops_audit_card_status(

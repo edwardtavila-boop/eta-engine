@@ -126,6 +126,15 @@ from eta_engine.scripts.supervisor_entry_gate import (  # noqa: E402
 from eta_engine.scripts.supervisor_entry_gate import (  # noqa: E402
     strategy_readiness_block_reason as _strategy_readiness_block_reason,
 )
+from eta_engine.scripts.supervisor_exit_helpers import (  # noqa: E402
+    apply_exit_accounting,
+    build_entry_snapshot,
+    build_exit_fill_record_payload,
+    compute_exit_realization,
+    compute_paper_exit_fill_price,
+    maybe_route_paper_live_exit,
+    reconcile_exit_qty,
+)
 from eta_engine.scripts.supervisor_persistence import SupervisorPersistenceStore  # noqa: E402
 from eta_engine.scripts.uptime_events import record_uptime_event  # noqa: E402
 
@@ -1657,28 +1666,15 @@ class ExecutionRouter:
         # bounded by what's actually held; if the query fails (broker
         # unreachable / paper_sim has no broker), we fall back to the
         # supervisor's belief but log it so the operator can investigate.
-        try:
-            supervisor_qty = abs(float(pos.get("qty", 0) or 0))
-        except (TypeError, ValueError):
-            supervisor_qty = 0.0
-        broker_qty = self._get_broker_position_qty(bot)
-        if broker_qty is None:
-            logger.info(
-                "submit_exit: broker qty unavailable for %s; using supervisor qty=%.6f",
-                bot.bot_id,
-                supervisor_qty,
-            )
-            exit_qty = supervisor_qty
-        elif broker_qty < supervisor_qty:
-            logger.warning(
-                "QTY DIVERGENCE %s: supervisor believes %.6f, broker holds %.6f — sizing exit against broker qty",
-                bot.bot_id,
-                supervisor_qty,
-                broker_qty,
-            )
-            exit_qty = broker_qty
-        else:
-            exit_qty = supervisor_qty
+        qty_decision = reconcile_exit_qty(
+            pos,
+            self._get_broker_position_qty(bot),
+            bot_id=bot.bot_id,
+            logger=logger,
+        )
+        supervisor_qty = qty_decision.supervisor_qty
+        broker_qty = qty_decision.broker_qty
+        exit_qty = qty_decision.exit_qty
         if exit_qty <= 0.0:
             logger.warning(
                 "submit_exit skipped for %s: reconciled exit_qty=%.6f "
@@ -1692,45 +1688,13 @@ class ExecutionRouter:
             self._clear_persisted_open_position(bot)
             return None
         side_close = "SELL" if pos["side"] == "BUY" else "BUY"
-        # Adverse slippage on exit (same sign convention as submit_entry):
-        # BUY-back fills above mid; SELL fills below mid. Magnitude is
-        # always positive. Earlier ``-1.5`` for SELL gave the trader a
-        # better-than-mid fill — wrong direction.
-        adverse_bps = 1.5
-        sign_slip_exit = 1.0 if side_close == "BUY" else -1.0
-        # Paper-sim exit fill routing (Fix 2): when ``_maybe_exit`` set
-        # ``exit_reason`` on the position, fill at the bracket-leg price
-        # rather than ``bar.close``. Real bracket legs cross the spread:
-        # stops fill slightly worse than the trigger, takeprofit limits
-        # fill at the limit (best case). This stops paper R from
-        # over-booking winners (filling at close above target) and
-        # under-booking wickers (filling at close after a wick stops us).
-        exit_reason = str(pos.get("exit_reason") or "")
-        entry_price = float(pos["entry_price"])
-        ref_close = float(bar.get("close", entry_price))
-        if exit_reason == "paper_stop" and pos.get("bracket_stop") is not None:
-            try:
-                stop_price = float(pos["bracket_stop"])
-                # Stop crossed the spread: fill is ADVERSE to the holder.
-                # LONG-side stop is below entry, exit is a SELL — receive
-                # below stop. SHORT-side stop is above entry, exit is a
-                # BUY — pay above stop. ``sign_slip_exit`` already encodes
-                # the side: SELL → -1 (below), BUY → +1 (above).
-                fill_price = stop_price + sign_slip_exit * (stop_price * adverse_bps / 10_000.0)
-            except (TypeError, ValueError):
-                fill_price = ref_close + sign_slip_exit * (ref_close * adverse_bps / 10_000.0)
-        elif exit_reason == "paper_target" and pos.get("bracket_target") is not None:
-            try:
-                # Take-profit limits fill AT the limit (best case) when
-                # the market trades through. No adverse slippage applied.
-                fill_price = float(pos["bracket_target"])
-            except (TypeError, ValueError):
-                fill_price = ref_close + sign_slip_exit * (ref_close * adverse_bps / 10_000.0)
-        else:
-            # Default path (no bracket reason set, e.g. emergency exit,
-            # legacy random/percent fallback): mid + adverse slippage.
-            fill_price = ref_close + sign_slip_exit * (ref_close * adverse_bps / 10_000.0)
-        fill_price = _round_to_tick(fill_price, bot.symbol)
+        fill_price = compute_paper_exit_fill_price(
+            pos,
+            bar,
+            symbol=bot.symbol,
+            adverse_bps=1.5,
+            round_to_tick_fn=_round_to_tick,
+        )
         # Realized P&L (paper) — multiply by instrument point_value so
         # futures contracts (MNQ=$2/pt, ES=$50/pt, GC=$100/pt, etc.) get
         # accurate dollar PnL. Spot crypto (BTC/ETH/SOL on Alpaca paper)
@@ -1741,69 +1705,32 @@ class ExecutionRouter:
         # root cause of the supervisor's -$678k sim-equity drift on
         # 2026-05-07. effective_point_value resolves the spot/futures
         # ambiguity for the supervisor's auto routing.
-        try:
-            from eta_engine.feeds.instrument_specs import effective_point_value
-
-            _pv = float(effective_point_value(bot.symbol, route="auto") or 1.0)
-        except Exception as exc:  # noqa: BLE001
-            # Surface the lookup failure so a registry/spec gap doesn't
-            # silently calculate futures PnL with multiplier=1
-            # (e.g. MNQ booked at 1/2x of true PnL).
-            logger.debug(
-                "point_value lookup failed for %s, defaulting to 1.0: %s",
-                bot.symbol,
-                exc,
-            )
-            _pv = 1.0
-        sign = 1.0 if pos["side"] == "BUY" else -1.0
-        pnl_per_unit = (fill_price - pos["entry_price"]) * sign
-        # Use the reconciled exit_qty (broker-authoritative when available)
-        # for both the PnL calc AND the outgoing FillRecord. Otherwise
-        # downstream R-attribution and the broker order would disagree
-        # on size.
-        pnl = pnl_per_unit * exit_qty * _pv
-        # Realized R: prefer the INITIAL planned risk_unit recorded at
-        # entry time (immune to ``_stale_tighten`` mutating bracket_stop
-        # mid-trade). Without this, a winning trade after a stop-tighten
-        # produces +20-69R phantom values that pollute every downstream
-        # aggregator. The defensive trade_close_sanitizer is the final
-        # safety net.
-        #
-        # Fallback chain:
-        #   1. pos["initial_risk_unit"]  (set at entry, post-fix)
-        #   2. abs(current bracket_stop − entry_price) × qty × pv  (pre-fix legacy)
-        #   3. 1% of cash  (pre-bracket legacy)
-        risk_unit = 0.0
-        initial_risk_unit = pos.get("initial_risk_unit")
-        if initial_risk_unit is not None:
-            with contextlib.suppress(TypeError, ValueError):
-                risk_unit = float(initial_risk_unit)
-        if risk_unit <= 0:
-            plan_stop = pos.get("bracket_stop")
-            if plan_stop is not None:
-                with contextlib.suppress(TypeError, ValueError):
-                    risk_unit = abs(float(plan_stop) - pos["entry_price"]) * exit_qty * _pv
-        if risk_unit <= 0:
-            risk_unit = bot.cash * 0.01
-        realized_r = pnl / max(risk_unit, 1e-9) if risk_unit > 0 else 0.0
+        valuation = compute_exit_realization(
+            pos,
+            symbol=bot.symbol,
+            fill_price=fill_price,
+            exit_qty=exit_qty,
+            cash=bot.cash,
+            logger=logger,
+        )
+        pnl = valuation.pnl
+        realized_r = valuation.realized_r
 
         rec = FillRecord(
-            bot_id=bot.bot_id,
-            signal_id=pos["signal_id"],
-            side=side_close,
-            symbol=bot.symbol,
-            qty=exit_qty,
-            fill_price=round(fill_price, 4),
-            fill_ts=datetime.now(UTC).isoformat(),
-            paper=True,
-            realized_r=round(realized_r, 4),
-            realized_pnl=round(pnl, 4),
-            note=f"close pnl={pnl:+.2f}",
+            **build_exit_fill_record_payload(
+                bot_id=bot.bot_id,
+                signal_id=pos["signal_id"],
+                side=side_close,
+                symbol=bot.symbol,
+                qty=exit_qty,
+                fill_price=fill_price,
+                fill_ts=datetime.now(UTC).isoformat(),
+                realized_r=realized_r,
+                pnl=pnl,
+            )
         )
 
-        bot.realized_pnl += pnl
-        bot.cash += pnl
-        bot.n_exits += 1
+        apply_exit_accounting(bot, pnl=pnl)
         # Capture the entry-state snapshot BEFORE clearing bot.open_position
         # so _propagate_close can pass real entry_side / entry_price into
         # edge_tracker.observe(). Earlier this happened AFTER the clear,
@@ -1811,21 +1738,7 @@ class ExecutionRouter:
         # exit FillRecord's side/price — inverted from what the tracker
         # expects. The dict mirrors the open_position layout so callers
         # can pass it straight into _propagate_close.
-        entry_snapshot = {
-            "side": pos.get("side"),
-            "entry_price": pos.get("entry_price"),
-            "qty": pos.get("qty"),
-            "bracket_stop": pos.get("bracket_stop"),
-            "bracket_target": pos.get("bracket_target"),
-            "signal_id": pos.get("signal_id"),
-            "entry_fill_age_s": pos.get("entry_fill_age_s"),
-            "entry_fill_latency_source": pos.get("entry_fill_latency_source"),
-            "entry_fill_age_precision": pos.get("entry_fill_age_precision"),
-            "broker_fill_ts": pos.get("broker_fill_ts"),
-            "broker_router_result_ts": pos.get("broker_router_result_ts"),
-            "fill_to_adopt_delay_s": pos.get("fill_to_adopt_delay_s"),
-            "fill_result_write_delay_s": pos.get("fill_result_write_delay_s"),
-        }
+        entry_snapshot = build_entry_snapshot(pos)
         # Attach as an attribute (rather than a new field on FillRecord)
         # to avoid touching the FillRecord dataclass — keeps the change
         # local to the supervisor and doesn't ripple into journal/router
@@ -1846,9 +1759,12 @@ class ExecutionRouter:
         # bracket-required check (added by the reduce_only audit) and
         # the venue's bracket-attachment block is skipped (already
         # gated on `not request.reduce_only`).
-        if self.cfg.mode == "paper_live":
-            with contextlib.suppress(Exception):
-                self._write_pending_order(bot, rec, reduce_only=True)
+        maybe_route_paper_live_exit(
+            mode=self.cfg.mode,
+            write_pending_order_fn=self._write_pending_order,
+            bot=bot,
+            rec=rec,
+        )
         # Decrement the cross-bot net-position tracker. submit_exit
         # only reaches this point when bot.open_position was non-None
         # at entry AND the close size was reconciled against broker

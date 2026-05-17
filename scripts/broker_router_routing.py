@@ -96,7 +96,7 @@ class BrokerRouterRoutingResolver:
         if missing:
             missing_csv = ", ".join(missing)
             raise ValueError(
-                f"prop account {alias} missing Tradovate credential envs: {missing_csv}"
+                f"prop account {alias} missing Tradovate credential envs while Tradovate remains DORMANT: {missing_csv}"
             )
 
         env_name = (account.get("env") or "demo").strip().lower()

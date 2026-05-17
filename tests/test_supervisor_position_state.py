@@ -419,6 +419,130 @@ def test_submit_exit_uses_broker_qty_when_smaller_than_supervisor(
     assert rec.qty == 0.5, f"submit_exit shipped {rec.qty!r}; should have used broker's 0.5"
 
 
+def test_submit_exit_uses_reconciliation_helper_decision(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """Keep the broker/supervisor quantity decision on the shared helper path."""
+    from types import SimpleNamespace
+
+    from eta_engine.scripts import jarvis_strategy_supervisor as supervisor
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        BotInstance,
+        ExecutionRouter,
+        SupervisorConfig,
+    )
+
+    calls: list[tuple[dict, float | None, str]] = []
+
+    def fake_reconcile(pos, broker_qty, *, bot_id, logger):  # noqa: ANN001
+        calls.append((pos, broker_qty, bot_id))
+        return SimpleNamespace(
+            supervisor_qty=1.0,
+            broker_qty=broker_qty,
+            exit_qty=0.125,
+        )
+
+    cfg = SupervisorConfig()
+    cfg.mode = "paper_live"
+    router = ExecutionRouter(cfg=cfg, bf_dir=tmp_path)
+    bot = BotInstance(
+        bot_id="helper_qty_bot",
+        symbol="BTC",
+        strategy_kind="x",
+        direction="long",
+        cash=50_000.0,
+    )
+    bot.open_position = {
+        "side": "BUY",
+        "qty": 1.0,
+        "entry_price": 95_000.0,
+        "entry_ts": "2026-05-05T12:00:00+00:00",
+        "signal_id": "sig-helper-qty",
+        "bracket_stop": 94_000.0,
+        "bracket_target": 97_000.0,
+    }
+    position = bot.open_position
+
+    monkeypatch.setattr(
+        ExecutionRouter,
+        "_get_broker_position_qty",
+        lambda self, b: 0.5,
+    )
+    monkeypatch.setattr(supervisor, "reconcile_exit_qty", fake_reconcile)
+
+    rec = router.submit_exit(
+        bot=bot,
+        bar={"close": 96_000.0, "high": 96_010.0, "low": 95_990.0, "open": 95_995.0},
+    )
+
+    assert rec is not None
+    assert rec.qty == 0.125
+    assert calls == [(position, 0.5, "helper_qty_bot")]
+
+
+def test_submit_exit_uses_realization_helper_decision(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """Keep PnL and realized-R calculation on the shared exit helper path."""
+    from types import SimpleNamespace
+
+    from eta_engine.scripts import jarvis_strategy_supervisor as supervisor
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        BotInstance,
+        ExecutionRouter,
+        SupervisorConfig,
+    )
+
+    calls: list[tuple[dict, str, float, float, float]] = []
+
+    def fake_realization(
+        pos,
+        *,
+        symbol,
+        fill_price,
+        exit_qty,
+        cash,
+        logger,
+    ):  # noqa: ANN001
+        calls.append((pos, symbol, fill_price, exit_qty, cash))
+        return SimpleNamespace(point_value=99.0, pnl=321.43219, realized_r=4.56789)
+
+    cfg = SupervisorConfig()
+    router = ExecutionRouter(cfg=cfg, bf_dir=tmp_path)
+    bot = BotInstance(
+        bot_id="helper_realization_bot",
+        symbol="BTC",
+        strategy_kind="x",
+        direction="long",
+        cash=50_000.0,
+    )
+    bot.open_position = {
+        "side": "BUY",
+        "qty": 1.0,
+        "entry_price": 95_000.0,
+        "entry_ts": "2026-05-05T12:00:00+00:00",
+        "signal_id": "sig-helper-realization",
+        "bracket_stop": 94_000.0,
+        "bracket_target": 97_000.0,
+    }
+    position = bot.open_position
+
+    monkeypatch.setattr(supervisor, "compute_exit_realization", fake_realization)
+
+    rec = router.submit_exit(
+        bot=bot,
+        bar={"close": 96_000.0, "high": 96_010.0, "low": 95_990.0, "open": 95_995.0},
+    )
+
+    assert rec is not None
+    assert rec.realized_pnl == 321.4322
+    assert rec.realized_r == 4.5679
+    assert bot.cash == 50_321.43219
+    assert calls == [(position, "BTC", rec.fill_price, 1.0, 50_000.0)]
+
+
 def test_submit_exit_logs_warning_on_qty_divergence(
     tmp_path: Path,
     monkeypatch,

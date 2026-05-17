@@ -1,19 +1,47 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import logging
+    from collections.abc import Callable
+
 
 def wire_router_bootstrap(
-    router: Any,
+    router: object,
     *,
-    failover_cls: Any,
+    failover_cls: Callable[..., object] | None = None,
     retry_meta_suffix: str,
-    routing_resolver_cls: Any,
-    secrets: Any,
-    state_io_cls: Any,
-    tradovate_venue_cls: Any,
-    logger: Any,
+    routing_resolver_cls: Callable[..., object] | None = None,
+    secrets: object | None = None,
+    state_io_cls: Callable[..., object] | None = None,
+    tradovate_venue_cls: Callable[..., object] | None = None,
+    logger: logging.Logger,
 ) -> None:
     """Attach the constructor-owned state, failover, routing, and path surfaces."""
+    if failover_cls is None:
+        from eta_engine.scripts.broker_router_failover import BrokerRouterFailover
+
+        failover_cls = BrokerRouterFailover
+    if routing_resolver_cls is None:
+        from eta_engine.scripts.broker_router_routing import BrokerRouterRoutingResolver
+
+        routing_resolver_cls = BrokerRouterRoutingResolver
+    if secrets is None:
+        from eta_engine.core.secrets import SECRETS
+
+        secrets = SECRETS
+    if state_io_cls is None:
+        from eta_engine.scripts.broker_router_state import BrokerRouterStateIO
+
+        state_io_cls = BrokerRouterStateIO
+    if tradovate_venue_cls is None:
+        # Tradovate remains DORMANT by default; this preserves the
+        # adapter slot for explicit un-dormancy and tests.
+        from eta_engine.venues.tradovate import TradovateVenue
+
+        tradovate_venue_cls = TradovateVenue
+
     router._prop_venue_cache = {}
     router._state_io = state_io_cls(
         state_root=router.state_root,
