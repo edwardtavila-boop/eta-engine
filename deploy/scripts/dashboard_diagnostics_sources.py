@@ -142,3 +142,43 @@ def extract_dashboard_operator_queue_rollups(
         "first_operator_advisory_blocked_bots": first_operator_advisory_blocked_bots,
         "first_operator_advisory_next_actions": first_operator_advisory_next_actions,
     }
+
+
+def extract_dashboard_readiness_second_brain_rollups(
+    *,
+    paper_live_transition: dict[str, Any],
+    fallback_first_failed_gate: dict[str, Any],
+    readiness: dict[str, Any],
+    second_brain: dict[str, Any],
+) -> dict[str, Any]:
+    """Normalize readiness, second-brain, and transition-fallback rollups."""
+
+    first_failed_gate = (
+        paper_live_transition.get("first_failed_gate")
+        if isinstance(paper_live_transition.get("first_failed_gate"), dict)
+        else fallback_first_failed_gate
+    )
+    readiness_summary = readiness.get("summary") if isinstance(readiness.get("summary"), dict) else {}
+    readiness_lanes = readiness_summary.get("launch_lanes") if isinstance(readiness_summary, dict) else {}
+    readiness_lane_counts = readiness_lanes if isinstance(readiness_lanes, dict) else {}
+    readiness_blocked_data = int(
+        readiness_summary.get("blocked_data") or readiness_lane_counts.get("blocked_data") or 0
+    )
+    second_brain_playbook = (
+        second_brain.get("playbook") if isinstance(second_brain.get("playbook"), dict) else {}
+    )
+
+    return {
+        "first_failed_gate": {
+            "name": str(first_failed_gate.get("name") or ""),
+            "detail": str(first_failed_gate.get("detail") or ""),
+            "next_action": str(first_failed_gate.get("next_action") or ""),
+        },
+        "readiness_summary": readiness_summary,
+        "readiness_lane_counts": readiness_lane_counts,
+        "readiness_blocked_data": readiness_blocked_data,
+        "second_brain_eligible_patterns": int(second_brain_playbook.get("eligible_patterns") or 0),
+        "second_brain_favor_pattern_count": len(second_brain_playbook.get("favor_patterns") or []),
+        "second_brain_avoid_pattern_count": len(second_brain_playbook.get("avoid_patterns") or []),
+        "second_brain_truth_note": str(second_brain.get("truth_note") or second_brain_playbook.get("truth_note") or ""),
+    }

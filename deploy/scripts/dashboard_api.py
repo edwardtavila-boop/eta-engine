@@ -65,14 +65,19 @@ from eta_engine.deploy.scripts.dashboard_diagnostics_contracts import (
     build_command_center_watchdog_local_contract_details,
     build_dashboard_diagnostics_checks,
 )
+from eta_engine.deploy.scripts.dashboard_diagnostics_payloads import (
+    build_dashboard_diagnostics_readiness_payload,
+    build_dashboard_diagnostics_second_brain_payload,
+)
 from eta_engine.deploy.scripts.dashboard_diagnostics_sources import (
     build_dashboard_diagnostics_bot_fleet_counts,
     extract_dashboard_operator_queue_rollups,
+    extract_dashboard_readiness_second_brain_rollups,
 )
 from eta_engine.deploy.scripts.dashboard_paper_live_status import (
     build_dashboard_paper_live_transition_diagnostics_summary,
+    build_master_status_paper_live_state,
     build_operator_queue_diagnostics_summary,
-    resolve_paper_live_card,
     resolve_paper_live_effective_state,
 )
 from eta_engine.deploy.scripts.dashboard_services import ensure_dir_writable, read_jsonl_tail, run_background_task
@@ -2158,19 +2163,13 @@ def _dashboard_diagnostics_payload() -> dict:
     first_operator_advisory_evidence = operator_queue_rollups["first_operator_advisory_evidence"]
     first_operator_advisory_blocked_bots = operator_queue_rollups["first_operator_advisory_blocked_bots"]
     first_operator_advisory_next_actions = operator_queue_rollups["first_operator_advisory_next_actions"]
-    first_failed_gate = (
-        paper_live_transition.get("first_failed_gate")
-        if isinstance(paper_live_transition.get("first_failed_gate"), dict)
-        else _first_failed_gate(paper_live_transition if isinstance(paper_live_transition, dict) else {})
-    )
-    readiness_summary = readiness.get("summary") if isinstance(readiness.get("summary"), dict) else {}
-    readiness_lanes = readiness_summary.get("launch_lanes") if isinstance(readiness_summary, dict) else {}
-    readiness_lane_counts = readiness_lanes if isinstance(readiness_lanes, dict) else {}
-    readiness_blocked_data = int(
-        readiness_summary.get("blocked_data") or readiness_lane_counts.get("blocked_data") or 0
-    )
-    second_brain_playbook = (
-        second_brain.get("playbook") if isinstance(second_brain.get("playbook"), dict) else {}
+    readiness_second_brain_rollups = extract_dashboard_readiness_second_brain_rollups(
+        paper_live_transition=paper_live_transition if isinstance(paper_live_transition, dict) else {},
+        fallback_first_failed_gate=_first_failed_gate(
+            paper_live_transition if isinstance(paper_live_transition, dict) else {}
+        ),
+        readiness=readiness if isinstance(readiness, dict) else {},
+        second_brain=second_brain if isinstance(second_brain, dict) else {},
     )
     daily_loss_killswitch = _daily_loss_killswitch_snapshot()
     paper_live_transition_summary = build_dashboard_paper_live_transition_diagnostics_summary(
@@ -2178,11 +2177,7 @@ def _dashboard_diagnostics_payload() -> dict:
         paper_live_transition=paper_live_transition if isinstance(paper_live_transition, dict) else {},
         operator_queue=operator_queue if isinstance(operator_queue, dict) else {},
         first_launch_blocker=first_launch_blocker if isinstance(first_launch_blocker, dict) else {},
-        first_failed_gate={
-            "name": str(first_failed_gate.get("name") or ""),
-            "detail": str(first_failed_gate.get("detail") or ""),
-            "next_action": str(first_failed_gate.get("next_action") or ""),
-        },
+        first_failed_gate=readiness_second_brain_rollups["first_failed_gate"],
         default_daily_loss_gate_mode=_paper_live_daily_loss_gate_mode(),
         daily_loss_shadow_detail=_paper_live_shadow_detail(daily_loss_killswitch),
         daily_loss_hold_detail=_daily_loss_hold_detail(daily_loss_killswitch),
@@ -2987,31 +2982,19 @@ def _dashboard_diagnostics_payload() -> dict:
             "today_pnl": equity_summary.get("today_pnl"),
             "error": equity.get("_error"),
         },
-        "bot_strategy_readiness": {
-            "status": str(readiness.get("status") or "unknown"),
-            "blocked_data": readiness_blocked_data,
-            "paper_ready": int(readiness_summary.get("can_paper_trade") or 0),
-            "can_live_any": bool(readiness_summary.get("can_live_any")),
-            "launch_lanes": readiness_lane_counts,
-            "top_action_count": len(readiness.get("top_actions") or []),
-            "error": readiness.get("error"),
-        },
-        "second_brain": {
-            "status": str(second_brain.get("status") or "unknown"),
-            "n_episodes": int(second_brain.get("n_episodes") or 0),
-            "win_rate": second_brain.get("win_rate"),
-            "avg_r": second_brain.get("avg_r"),
-            "semantic_patterns": int(second_brain.get("semantic_patterns") or 0),
-            "procedural_versions": int(second_brain.get("procedural_versions") or 0),
-            "eligible_patterns": int(second_brain_playbook.get("eligible_patterns") or 0),
-            "favor_pattern_count": len(second_brain_playbook.get("favor_patterns") or []),
-            "avoid_pattern_count": len(second_brain_playbook.get("avoid_patterns") or []),
-            "legacy_sources_active": bool(second_brain.get("legacy_sources_active")),
-            "sources": second_brain.get("sources") if isinstance(second_brain.get("sources"), dict) else {},
-            "paths": second_brain.get("paths") if isinstance(second_brain.get("paths"), dict) else {},
-            "truth_note": str(second_brain.get("truth_note") or second_brain_playbook.get("truth_note") or ""),
-            "error": second_brain.get("error"),
-        },
+        "bot_strategy_readiness": build_dashboard_diagnostics_readiness_payload(
+            readiness=readiness if isinstance(readiness, dict) else {},
+            readiness_summary=readiness_second_brain_rollups["readiness_summary"],
+            readiness_lane_counts=readiness_second_brain_rollups["readiness_lane_counts"],
+            readiness_blocked_data=readiness_second_brain_rollups["readiness_blocked_data"],
+        ),
+        "second_brain": build_dashboard_diagnostics_second_brain_payload(
+            second_brain=second_brain if isinstance(second_brain, dict) else {},
+            eligible_patterns=readiness_second_brain_rollups["second_brain_eligible_patterns"],
+            favor_pattern_count=readiness_second_brain_rollups["second_brain_favor_pattern_count"],
+            avoid_pattern_count=readiness_second_brain_rollups["second_brain_avoid_pattern_count"],
+            truth_note=readiness_second_brain_rollups["second_brain_truth_note"],
+        ),
         "dirty_worktree_reconciliation": {
             "status": str(dirty_worktree_reconciliation.get("status") or "unknown"),
             "ready": bool(dirty_worktree_reconciliation.get("ready")),
@@ -19443,89 +19426,36 @@ def _local_master_status_payload() -> dict[str, object]:
         detail += f"; {live_checkout_detail}"
         return detail
 
-    paper_live = dict(paper)
-    paper_live.update(
-        {
-            "mode": runtime_mode,
-            "status": paper.get("status") or "unknown",
-            "critical_ready": paper_ready,
-            "paper_ready_bots": int(paper.get("paper_ready_bots") or 0),
-            "operator_queue_blocked_count": blocked,
-            "operator_queue_launch_blocked_count": launch_blocked,
-        }
-    )
-    paper_held_by_bracket_audit = broker_bracket_prop_dry_run_blocked and paper_ready and launch_blocked == 0
     paper_live_lane_state = _paper_live_daily_loss_state(snapshot=daily_loss_killswitch)
-    paper_held_by_daily_loss_stop = bool(paper_live_lane_state["held_by_daily_loss_stop"]) and paper_ready and (
-        launch_blocked == 0
-    )
-    paper_daily_loss_advisory_active = bool(paper_live_lane_state["daily_loss_advisory_active"]) and paper_ready and (
-        launch_blocked == 0
-    )
-    paper_non_authoritative_gateway_host = bool(paper.get("non_authoritative_gateway_host"))
-    paper_first_failed_gate = _first_failed_gate(paper)
-    paper_first_launch_next_action = str(
-        paper.get("operator_queue_first_launch_next_action") or paper.get("operator_queue_first_next_action") or ""
-    ).strip()
-    paper_stale_receipt = bool(paper.get("stale_receipt"))
-    paper_stale_detail = str(paper.get("stale_detail") or "")
     shadow_runtime = _shadow_paper_runtime_overlay_state()
-    paper_live_effective = resolve_paper_live_effective_state(
-        raw_status=str(paper.get("status") or "unknown"),
-        effective_detail=str(paper.get("effective_detail") or ""),
-        operator_queue_launch_blocked_count=launch_blocked,
-        operator_queue_blocked_detail=paper_first_launch_next_action,
-        stale_receipt=paper_stale_receipt,
-        stale_detail=paper_stale_detail,
-        held_by_bracket_audit=paper_held_by_bracket_audit,
-        bracket_audit_detail=(
-            f"held by Bracket Audit: {' or '.join(broker_bracket_action_labels)}"
-            if broker_bracket_action_labels
-            else str(broker_bracket_audit.get("effective_detail") or "held by Bracket Audit")
-        ),
-        held_by_daily_loss_stop=paper_held_by_daily_loss_stop,
-        daily_loss_advisory_active=paper_daily_loss_advisory_active,
+    paper_live_state = build_master_status_paper_live_state(
+        paper=paper if isinstance(paper, dict) else {},
+        runtime_mode=runtime_mode,
+        paper_ready=paper_ready,
+        blocked=blocked,
+        launch_blocked=launch_blocked,
+        broker_bracket_prop_dry_run_blocked=broker_bracket_prop_dry_run_blocked,
+        broker_bracket_action_labels=broker_bracket_action_labels,
+        broker_bracket_effective_detail=str(broker_bracket_audit.get("effective_detail") or ""),
+        daily_loss_killswitch=daily_loss_killswitch if isinstance(daily_loss_killswitch, dict) else {},
+        paper_live_lane_state=paper_live_lane_state if isinstance(paper_live_lane_state, dict) else {},
+        first_failed_gate=_first_failed_gate(paper if isinstance(paper, dict) else {}),
         daily_loss_shadow_detail=_paper_live_shadow_detail(daily_loss_killswitch),
         daily_loss_hold_detail=_daily_loss_hold_detail(daily_loss_killswitch),
         shadow_runtime_active=bool(shadow_runtime.get("active")),
         shadow_runtime_detail=str(shadow_runtime.get("detail") or ""),
     )
-    paper_live_effective_status = str(paper_live_effective["effective_status"])
-    paper_live_effective_detail = str(paper_live_effective["effective_detail"])
-    paper_live.update(
-        {
-            "raw_status": str(paper.get("status") or "unknown"),
-            "effective_status": paper_live_effective_status,
-            "effective_detail": paper_live_effective_detail,
-            "held_by_bracket_audit": paper_held_by_bracket_audit,
-            "held_by_daily_loss_stop": paper_held_by_daily_loss_stop,
-            "daily_loss_gate_mode": str(paper_live_lane_state["gate_mode"] or ""),
-            "daily_loss_advisory_active": paper_daily_loss_advisory_active,
-            "capital_lanes_held_by_daily_loss_stop": bool(
-                paper_live_lane_state["capital_lanes_held_by_daily_loss_stop"]
-            ),
-            "daily_loss_killswitch": daily_loss_killswitch,
-        }
-    )
-    paper_card = resolve_paper_live_card(
-        effective_status=paper_live_effective_status,
-        stale_receipt=paper_stale_receipt,
-        stale_detail=paper_stale_detail,
-        non_authoritative_gateway_host=paper_non_authoritative_gateway_host,
-        launch_blocked_count=launch_blocked,
-        held_by_bracket_audit=paper_held_by_bracket_audit,
-        held_by_daily_loss_stop=paper_held_by_daily_loss_stop,
-        daily_loss_advisory_active=paper_daily_loss_advisory_active,
-        critical_ready=paper_ready,
-        shadow_runtime_active=bool(shadow_runtime.get("active")),
-        blocked_detail=str(
-            paper_first_launch_next_action
-            or paper_first_failed_gate.get("next_action")
-            or paper.get("operator_queue_first_launch_next_action")
-            or paper_first_failed_gate.get("name")
-            or paper_live_effective_status
-        ),
-    )
+    paper_live = paper_live_state["paper_live"] if isinstance(paper_live_state.get("paper_live"), dict) else {}
+    paper_card = paper_live_state["paper_card"] if isinstance(paper_live_state.get("paper_card"), dict) else {}
+    paper_held_by_bracket_audit = bool(paper_live.get("held_by_bracket_audit"))
+    paper_held_by_daily_loss_stop = bool(paper_live.get("held_by_daily_loss_stop"))
+    paper_daily_loss_advisory_active = bool(paper_live.get("daily_loss_advisory_active"))
+    paper_live_effective_status = str(paper_live.get("effective_status") or "")
+    paper_live_effective_detail = str(paper_live.get("effective_detail") or "")
+    paper_stale_receipt = bool(paper_live.get("stale_receipt"))
+    paper_stale_detail = str(paper_live.get("stale_detail") or "")
+    paper_non_authoritative_gateway_host = bool(paper_live.get("non_authoritative_gateway_host"))
+    paper_first_launch_next_action = str(paper_live.get("first_launch_next_action") or "")
     paper_card_status = str(paper_card["status"])
     paper_card_detail = str(paper_card["detail"])
     router_card_status = _router_card_status(router_status)
@@ -19826,7 +19756,7 @@ def _local_master_status_payload() -> dict[str, object]:
             "paper_live_held_by_daily_loss_stop": paper_held_by_daily_loss_stop,
             "paper_live_daily_loss_advisory_active": paper_daily_loss_advisory_active,
             "paper_live_capital_lanes_held_by_daily_loss_stop": bool(
-                paper_live_lane_state["capital_lanes_held_by_daily_loss_stop"]
+                paper_live.get("capital_lanes_held_by_daily_loss_stop")
             ),
         },
         "paper": {

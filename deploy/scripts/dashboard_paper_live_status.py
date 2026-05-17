@@ -13,6 +13,18 @@ _READY_PAPER_LIVE_STATUSES = frozenset(
 )
 
 
+def _normalize_first_failed_gate(first_failed_gate: dict[str, Any] | None) -> dict[str, str]:
+    """Normalize first-failed-gate payloads into stable string fields."""
+
+    if not isinstance(first_failed_gate, dict):
+        return {}
+    return {
+        "name": str(first_failed_gate.get("name") or ""),
+        "detail": str(first_failed_gate.get("detail") or ""),
+        "next_action": str(first_failed_gate.get("next_action") or ""),
+    }
+
+
 def resolve_paper_live_effective_state(
     *,
     raw_status: str,
@@ -329,15 +341,7 @@ def build_dashboard_paper_live_transition_diagnostics_summary(
 ) -> dict[str, Any]:
     """Build the diagnostics `paper_live_transition` rollup from raw inputs."""
 
-    normalized_first_failed_gate = (
-        {
-            "name": str(first_failed_gate.get("name") or ""),
-            "detail": str(first_failed_gate.get("detail") or ""),
-            "next_action": str(first_failed_gate.get("next_action") or ""),
-        }
-        if isinstance(first_failed_gate, dict)
-        else {}
-    )
+    normalized_first_failed_gate = _normalize_first_failed_gate(first_failed_gate)
 
     transition_launch = reconcile_paper_live_transition_launch_block(
         paper_live_transition=paper_live_transition,
@@ -429,3 +433,116 @@ def build_dashboard_paper_live_transition_diagnostics_summary(
         error=paper_live_transition.get("error"),
         first_failed_gate=normalized_first_failed_gate,
     )
+
+
+def build_master_status_paper_live_state(
+    *,
+    paper: dict[str, Any],
+    runtime_mode: str,
+    paper_ready: bool,
+    blocked: int,
+    launch_blocked: int,
+    broker_bracket_prop_dry_run_blocked: bool,
+    broker_bracket_action_labels: list[str],
+    broker_bracket_effective_detail: str,
+    daily_loss_killswitch: dict[str, Any],
+    paper_live_lane_state: dict[str, Any],
+    first_failed_gate: dict[str, Any] | None,
+    daily_loss_shadow_detail: str,
+    daily_loss_hold_detail: str,
+    shadow_runtime_active: bool = False,
+    shadow_runtime_detail: str = "",
+) -> dict[str, Any]:
+    """Build the shared paper-live runtime payload and card state for master-status."""
+
+    paper_live = dict(paper)
+    paper_live.update(
+        {
+            "mode": runtime_mode,
+            "status": paper.get("status") or "unknown",
+            "critical_ready": paper_ready,
+            "paper_ready_bots": int(paper.get("paper_ready_bots") or 0),
+            "operator_queue_blocked_count": blocked,
+            "operator_queue_launch_blocked_count": launch_blocked,
+        }
+    )
+    paper_held_by_bracket_audit = broker_bracket_prop_dry_run_blocked and paper_ready and launch_blocked == 0
+    paper_held_by_daily_loss_stop = bool(paper_live_lane_state.get("held_by_daily_loss_stop")) and paper_ready and (
+        launch_blocked == 0
+    )
+    paper_daily_loss_advisory_active = (
+        bool(paper_live_lane_state.get("daily_loss_advisory_active"))
+        and paper_ready
+        and launch_blocked == 0
+    )
+    paper_non_authoritative_gateway_host = bool(paper.get("non_authoritative_gateway_host"))
+    normalized_first_failed_gate = _normalize_first_failed_gate(first_failed_gate)
+    paper_first_launch_next_action = str(
+        paper.get("operator_queue_first_launch_next_action") or paper.get("operator_queue_first_next_action") or ""
+    ).strip()
+    paper_stale_receipt = bool(paper.get("stale_receipt"))
+    paper_stale_detail = str(paper.get("stale_detail") or "")
+    paper_live_effective = resolve_paper_live_effective_state(
+        raw_status=str(paper.get("status") or "unknown"),
+        effective_detail=str(paper.get("effective_detail") or ""),
+        operator_queue_launch_blocked_count=launch_blocked,
+        operator_queue_blocked_detail=paper_first_launch_next_action,
+        stale_receipt=paper_stale_receipt,
+        stale_detail=paper_stale_detail,
+        held_by_bracket_audit=paper_held_by_bracket_audit,
+        bracket_audit_detail=(
+            f"held by Bracket Audit: {' or '.join(broker_bracket_action_labels)}"
+            if broker_bracket_action_labels
+            else str(broker_bracket_effective_detail or "held by Bracket Audit")
+        ),
+        held_by_daily_loss_stop=paper_held_by_daily_loss_stop,
+        daily_loss_advisory_active=paper_daily_loss_advisory_active,
+        daily_loss_shadow_detail=daily_loss_shadow_detail,
+        daily_loss_hold_detail=daily_loss_hold_detail,
+        shadow_runtime_active=shadow_runtime_active,
+        shadow_runtime_detail=shadow_runtime_detail,
+    )
+    paper_live_effective_status = str(paper_live_effective["effective_status"])
+    paper_live_effective_detail = str(paper_live_effective["effective_detail"])
+    paper_live.update(
+        {
+            "raw_status": str(paper.get("status") or "unknown"),
+            "effective_status": paper_live_effective_status,
+            "effective_detail": paper_live_effective_detail,
+            "stale_receipt": paper_stale_receipt,
+            "stale_detail": paper_stale_detail,
+            "non_authoritative_gateway_host": paper_non_authoritative_gateway_host,
+            "first_launch_next_action": paper_first_launch_next_action,
+            "held_by_bracket_audit": paper_held_by_bracket_audit,
+            "held_by_daily_loss_stop": paper_held_by_daily_loss_stop,
+            "daily_loss_gate_mode": str(paper_live_lane_state.get("gate_mode") or ""),
+            "daily_loss_advisory_active": paper_daily_loss_advisory_active,
+            "capital_lanes_held_by_daily_loss_stop": bool(
+                paper_live_lane_state.get("capital_lanes_held_by_daily_loss_stop")
+            ),
+            "daily_loss_killswitch": daily_loss_killswitch,
+        }
+    )
+    paper_card = resolve_paper_live_card(
+        effective_status=paper_live_effective_status,
+        stale_receipt=paper_stale_receipt,
+        stale_detail=paper_stale_detail,
+        non_authoritative_gateway_host=paper_non_authoritative_gateway_host,
+        launch_blocked_count=launch_blocked,
+        held_by_bracket_audit=paper_held_by_bracket_audit,
+        held_by_daily_loss_stop=paper_held_by_daily_loss_stop,
+        daily_loss_advisory_active=paper_daily_loss_advisory_active,
+        critical_ready=paper_ready,
+        shadow_runtime_active=shadow_runtime_active,
+        blocked_detail=str(
+            paper_first_launch_next_action
+            or normalized_first_failed_gate.get("next_action")
+            or paper.get("operator_queue_first_launch_next_action")
+            or normalized_first_failed_gate.get("name")
+            or paper_live_effective_status
+        ),
+    )
+    return {
+        "paper_live": paper_live,
+        "paper_card": paper_card,
+    }

@@ -3,6 +3,7 @@ from __future__ import annotations
 from eta_engine.deploy.scripts.dashboard_diagnostics_sources import (
     build_dashboard_diagnostics_bot_fleet_counts,
     extract_dashboard_operator_queue_rollups,
+    extract_dashboard_readiness_second_brain_rollups,
 )
 
 
@@ -126,3 +127,71 @@ def test_extract_dashboard_operator_queue_rollups_coerces_missing_lists_to_empty
     assert payload["first_operator_advisory_evidence"] == {}
     assert payload["first_operator_advisory_blocked_bots"] == []
     assert payload["first_operator_advisory_next_actions"] == []
+
+
+def test_extract_dashboard_readiness_second_brain_rollups_uses_transition_gate_when_present() -> None:
+    payload = extract_dashboard_readiness_second_brain_rollups(
+        paper_live_transition={
+            "first_failed_gate": {
+                "name": "gateway_host",
+                "detail": "Fresh operator queue is unavailable on this host.",
+                "next_action": "Run the paper-live check on the VPS.",
+            }
+        },
+        fallback_first_failed_gate={"name": "fallback", "detail": "fallback detail", "next_action": "fallback action"},
+        readiness={
+            "summary": {
+                "can_paper_trade": 10,
+                "can_live_any": False,
+                "launch_lanes": {"live_preflight": 6, "paper_soak": 4},
+            }
+        },
+        second_brain={
+            "playbook": {
+                "eligible_patterns": 2,
+                "favor_patterns": [{"pattern": "neutral+rth+long"}],
+                "avoid_patterns": [],
+                "truth_note": "playbook truth",
+            }
+        },
+    )
+
+    assert payload["first_failed_gate"] == {
+        "name": "gateway_host",
+        "detail": "Fresh operator queue is unavailable on this host.",
+        "next_action": "Run the paper-live check on the VPS.",
+    }
+    assert payload["readiness_lane_counts"] == {"live_preflight": 6, "paper_soak": 4}
+    assert payload["readiness_blocked_data"] == 0
+    assert payload["second_brain_eligible_patterns"] == 2
+    assert payload["second_brain_favor_pattern_count"] == 1
+    assert payload["second_brain_avoid_pattern_count"] == 0
+    assert payload["second_brain_truth_note"] == "playbook truth"
+
+
+def test_extract_dashboard_readiness_second_brain_rollups_falls_back_to_lane_counts_and_top_level_truth() -> None:
+    payload = extract_dashboard_readiness_second_brain_rollups(
+        paper_live_transition={},
+        fallback_first_failed_gate={"name": "tws_api_4002", "detail": None, "next_action": 7},
+        readiness={"summary": {"launch_lanes": {"blocked_data": 3}}},
+        second_brain={
+            "truth_note": "top-level truth",
+            "playbook": {
+                "eligible_patterns": 0,
+                "favor_patterns": [],
+                "avoid_patterns": ["avoid-a", "avoid-b"],
+            },
+        },
+    )
+
+    assert payload["first_failed_gate"] == {
+        "name": "tws_api_4002",
+        "detail": "",
+        "next_action": "7",
+    }
+    assert payload["readiness_lane_counts"] == {"blocked_data": 3}
+    assert payload["readiness_blocked_data"] == 3
+    assert payload["second_brain_eligible_patterns"] == 0
+    assert payload["second_brain_favor_pattern_count"] == 0
+    assert payload["second_brain_avoid_pattern_count"] == 2
+    assert payload["second_brain_truth_note"] == "top-level truth"

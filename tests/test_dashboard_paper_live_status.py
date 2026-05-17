@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from eta_engine.deploy.scripts.dashboard_paper_live_status import (
     build_dashboard_paper_live_transition_diagnostics_summary,
+    build_master_status_paper_live_state,
     build_operator_queue_diagnostics_summary,
     build_paper_live_transition_summary,
     reconcile_paper_live_transition_launch_block,
@@ -561,3 +562,80 @@ def test_build_dashboard_paper_live_transition_diagnostics_summary_uses_roster_d
     assert payload["daily_loss_advisory_active"] is True
     assert payload["capital_lanes_held_by_daily_loss_stop"] is True
     assert "Shadow paper remains live" in payload["effective_detail"]
+
+
+def test_build_master_status_paper_live_state_marks_shadow_runtime_active() -> None:
+    payload = build_master_status_paper_live_state(
+        paper={
+            "status": "blocked",
+            "critical_ready": False,
+            "paper_ready_bots": 11,
+            "operator_queue_first_launch_next_action": "",
+        },
+        runtime_mode="paper_live",
+        paper_ready=False,
+        blocked=5,
+        launch_blocked=1,
+        broker_bracket_prop_dry_run_blocked=False,
+        broker_bracket_action_labels=[],
+        broker_bracket_effective_detail="",
+        daily_loss_killswitch={"status": "clear"},
+        paper_live_lane_state={
+            "held_by_daily_loss_stop": False,
+            "daily_loss_advisory_active": False,
+            "gate_mode": "warn",
+            "capital_lanes_held_by_daily_loss_stop": False,
+        },
+        first_failed_gate={},
+        daily_loss_shadow_detail="shadow detail",
+        daily_loss_hold_detail="hold detail",
+        shadow_runtime_active=True,
+        shadow_runtime_detail="live shadow paper lane active on 1 attached bot(s)",
+    )
+
+    assert payload["paper_live"]["effective_status"] == "shadow_paper_active"
+    assert payload["paper_live"]["effective_detail"] == "live shadow paper lane active on 1 attached bot(s)"
+    assert payload["paper_card"] == {
+        "status": "YELLOW",
+        "detail": "shadow_paper_active",
+    }
+
+
+def test_build_master_status_paper_live_state_marks_bracket_audit_hold() -> None:
+    payload = build_master_status_paper_live_state(
+        paper={
+            "status": "ready_to_launch_paper_live",
+            "critical_ready": True,
+            "paper_ready_bots": 9,
+        },
+        runtime_mode="paper_live",
+        paper_ready=True,
+        blocked=0,
+        launch_blocked=0,
+        broker_bracket_prop_dry_run_blocked=True,
+        broker_bracket_action_labels=[
+            "Verify broker OCO coverage",
+            "Flatten unprotected paper exposure",
+        ],
+        broker_bracket_effective_detail="held by Bracket Audit",
+        daily_loss_killswitch={"status": "clear"},
+        paper_live_lane_state={
+            "held_by_daily_loss_stop": False,
+            "daily_loss_advisory_active": False,
+            "gate_mode": "warn",
+            "capital_lanes_held_by_daily_loss_stop": False,
+        },
+        first_failed_gate={},
+        daily_loss_shadow_detail="shadow detail",
+        daily_loss_hold_detail="hold detail",
+    )
+
+    assert payload["paper_live"]["held_by_bracket_audit"] is True
+    assert payload["paper_live"]["effective_status"] == "held_by_bracket_audit"
+    assert payload["paper_live"]["effective_detail"] == (
+        "held by Bracket Audit: Verify broker OCO coverage or Flatten unprotected paper exposure"
+    )
+    assert payload["paper_card"] == {
+        "status": "YELLOW",
+        "detail": "held_by_bracket_audit",
+    }
