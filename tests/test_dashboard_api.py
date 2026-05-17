@@ -4265,6 +4265,8 @@ class TestDashboardAPI:
             "command_center_watchdog_status_latest.json"
         )
         assert payload["bot_fleet"]["command_center_watchdog_firm_command_center_dependency_gap_status"] == {}
+        assert payload["bot_fleet"]["command_center_watchdog_dashboard_task_contract_status_details"] == {}
+        assert payload["bot_fleet"]["command_center_watchdog_local_contract_status_details"] == {}
         assert payload["bot_fleet"]["command_center_watchdog_summary_line"] == (
             "Command Center doctor receipt missing"
         )
@@ -4497,6 +4499,21 @@ class TestDashboardAPI:
         assert payload["bot_fleet"]["command_center_watchdog_launch_context"] == "interactive_uac_launcher"
         assert payload["bot_fleet"]["command_center_watchdog_dashboard_task_contract_status"] == "missing_task"
         assert payload["bot_fleet"]["command_center_watchdog_local_contract_status"] == "upstream_failure"
+        assert payload["bot_fleet"]["command_center_watchdog_dashboard_task_contract_status_details"] == {
+            "status": "missing_task",
+            "summary": (
+                "Canonical dashboard runtime task(s) missing: "
+                "ETA-Dashboard-API, ETA-Proxy-8421."
+            ),
+            "missing_task_names": ["ETA-Dashboard-API", "ETA-Proxy-8421"],
+            "needs_reload": True,
+            "access_denied_task_names": [],
+            "drift_task_names": [],
+        }
+        assert payload["bot_fleet"]["command_center_watchdog_local_contract_status_details"] == {
+            "status": "upstream_failure",
+            "summary": "Local 8421 is reachable, but upstream is returning HTTP 5xx.",
+        }
         assert payload["checks"]["eta_readiness_snapshot_contract"] is True
 
     def test_dashboard_diagnostics_allows_readiness_scheduler_grace(
@@ -11165,6 +11182,16 @@ class TestDashboardAPI:
         assert payload["summary"]["command_center_watchdog_launch_context"] == "ready"
         assert payload["summary"]["command_center_watchdog_dashboard_task_contract_status"] == "access_denied"
         assert payload["summary"]["command_center_watchdog_local_contract_status"] == "healthy"
+        assert payload["summary"]["command_center_watchdog_dashboard_task_contract_status_details"] == {
+            "status": "access_denied",
+            "summary": "Canonical dashboard runtime task(s) require elevation to inspect.",
+            "needs_reload": False,
+            "access_denied_task_names": ["ETA-Dashboard-API", "ETA-Proxy-8421"],
+            "drift_task_names": [],
+        }
+        assert payload["summary"]["command_center_watchdog_local_contract_status_details"] == {
+            "status": "healthy"
+        }
         assert payload["summary"]["dashboard_proxy_watchdog_status"] == "ok"
         assert payload["summary"]["dashboard_proxy_watchdog_detail"] == "noop: ok"
         assert payload["summary"]["dashboard_proxy_watchdog_fresh"] is True
@@ -13963,6 +13990,16 @@ class TestDashboardAPI:
         assert payload["summary"]["command_center_watchdog_launch_context"] == "ready"
         assert payload["summary"]["command_center_watchdog_dashboard_task_contract_status"] == "access_denied"
         assert payload["summary"]["command_center_watchdog_local_contract_status"] == "healthy"
+        assert payload["summary"]["command_center_watchdog_dashboard_task_contract_status_details"] == {
+            "status": "access_denied",
+            "summary": "Canonical dashboard runtime task(s) require elevation to inspect.",
+            "needs_reload": False,
+            "access_denied_task_names": ["ETA-Dashboard-API", "ETA-Proxy-8421"],
+            "drift_task_names": [],
+        }
+        assert payload["summary"]["command_center_watchdog_local_contract_status_details"] == {
+            "status": "healthy"
+        }
         assert payload["summary"]["dashboard_proxy_watchdog_status"] == "ok"
         assert payload["summary"]["dashboard_proxy_watchdog_detail"] == "noop: ok"
         assert payload["summary"]["dashboard_proxy_watchdog_fresh"] is True

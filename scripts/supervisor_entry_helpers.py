@@ -288,6 +288,60 @@ def route_paper_live_broker_router_entry(
     return rec
 
 
+def route_paper_live_entry(
+    *,
+    bot: object,
+    rec: object,
+    bar: dict[str, Any],
+    logger: logging.Logger,
+    allowed_symbols: set[str] | None,
+    paper_live_allowed_symbols_env: str,
+    paper_live_symbol_allowed_fn: Callable[[str, set[str] | None], bool],
+    paper_live_order_route: str | None,
+    crypto_live_env: str | None,
+    round_to_tick_fn: Callable[[float, str], float],
+    write_pending_order_fn: Callable[[object, object], None],
+    get_live_ibkr_venue_fn: Callable[[], object],
+    run_on_live_ibkr_loop_fn: Callable[..., object],
+    pre_trade_check_fn: Callable[[object, object], bool],
+    record_signal_fn: Callable[[object, object, object], None],
+    record_fill_fn: Callable[..., None],
+    callbacks: EntryStateCallbacks,
+) -> object | None:
+    route = str(paper_live_order_route or "direct_ibkr").strip().lower()
+    if route in {"broker_router", "pending_file", "pending"}:
+        return route_paper_live_broker_router_entry(
+            bot=bot,
+            rec=rec,
+            write_pending_order_fn=write_pending_order_fn,
+            callbacks=callbacks,
+        )
+
+    dispatch = route_paper_live_direct_entry(
+        bot=bot,
+        rec=rec,
+        bar=bar,
+        logger=logger,
+        allowed_symbols=allowed_symbols,
+        paper_live_allowed_symbols_env=paper_live_allowed_symbols_env,
+        paper_live_symbol_allowed_fn=paper_live_symbol_allowed_fn,
+        paper_live_order_route=paper_live_order_route,
+        crypto_live_env=crypto_live_env,
+        round_to_tick_fn=round_to_tick_fn,
+        get_live_ibkr_venue_fn=get_live_ibkr_venue_fn,
+        run_on_live_ibkr_loop_fn=run_on_live_ibkr_loop_fn,
+        pre_trade_check_fn=pre_trade_check_fn,
+        record_signal_fn=record_signal_fn,
+        record_fill_fn=record_fill_fn,
+        callbacks=callbacks,
+    )
+    if dispatch.bypassed_to_paper:
+        return rec
+    if dispatch.outcome is None or dispatch.outcome.action == "rejected":
+        return None
+    return rec
+
+
 def direct_ibkr_result_reason(result: object) -> str:
     raw = getattr(result, "raw", {}) or {}
     if not isinstance(raw, dict):

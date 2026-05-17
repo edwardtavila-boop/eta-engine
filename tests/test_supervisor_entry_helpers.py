@@ -159,6 +159,151 @@ def test_route_paper_live_broker_router_entry_writes_pending_and_clears_local_st
     assert clear_calls == ["broker_router_pending_order"]
 
 
+def test_route_paper_live_entry_routes_broker_router_pending_path(monkeypatch) -> None:
+    writes: list[tuple[object, object]] = []
+    clear_calls: list[str] = []
+    bot = SimpleNamespace(bot_id="paperlive")
+    rec = SimpleNamespace(note="mode=paper_live")
+    callbacks = supervisor_entry_helpers.EntryStateCallbacks(
+        rollback_recorded_entry=lambda _reason: (_ for _ in ()).throw(
+            AssertionError("unexpected rollback"),
+        ),
+        clear_recorded_entry_without_reject=clear_calls.append,
+    )
+    monkeypatch.setattr(
+        supervisor_entry_helpers,
+        "route_paper_live_direct_entry",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            AssertionError("direct paper-live helper should not run for broker_router route"),
+        ),
+    )
+
+    routed = supervisor_entry_helpers.route_paper_live_entry(
+        bot=bot,
+        rec=rec,
+        bar={"close": 100.0},
+        logger=SimpleNamespace(
+            debug=lambda *_args: None,
+            info=lambda *_args: None,
+            warning=lambda *_args: None,
+        ),
+        allowed_symbols={"MNQ1"},
+        paper_live_allowed_symbols_env="MNQ1",
+        paper_live_symbol_allowed_fn=lambda *_args: True,
+        paper_live_order_route="broker_router",
+        crypto_live_env="",
+        round_to_tick_fn=lambda price, _symbol: round(price, 2),
+        write_pending_order_fn=lambda current_bot, current_rec: writes.append((current_bot, current_rec)),
+        get_live_ibkr_venue_fn=lambda: None,
+        run_on_live_ibkr_loop_fn=lambda *_args, **_kwargs: None,
+        pre_trade_check_fn=lambda *_args: True,
+        record_signal_fn=lambda *_args: None,
+        record_fill_fn=lambda **_kwargs: None,
+        callbacks=callbacks,
+    )
+
+    assert routed is rec
+    assert writes == [(bot, rec)]
+    assert rec.note == "mode=paper_live;broker_router_pending_order"
+    assert clear_calls == ["broker_router_pending_order"]
+
+
+def test_route_paper_live_entry_dispatches_to_broker_router_when_configured(monkeypatch) -> None:
+    calls: list[dict[str, object]] = []
+    bot = SimpleNamespace(bot_id="paperlive")
+    rec = SimpleNamespace(note="mode=paper_live", symbol="BTC")
+    callbacks = supervisor_entry_helpers.EntryStateCallbacks(
+        rollback_recorded_entry=lambda _reason: None,
+        clear_recorded_entry_without_reject=lambda _reason: None,
+    )
+
+    def _fake_broker_router_entry(**kwargs):
+        calls.append(kwargs)
+        return rec
+
+    monkeypatch.setattr(
+        supervisor_entry_helpers,
+        "route_paper_live_broker_router_entry",
+        _fake_broker_router_entry,
+    )
+    monkeypatch.setattr(
+        supervisor_entry_helpers,
+        "route_paper_live_direct_entry",
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("direct route should not run")),
+    )
+
+    routed = supervisor_entry_helpers.route_paper_live_entry(
+        bot=bot,
+        rec=rec,
+        bar={"close": 50000.0},
+        logger=logging.getLogger("test_supervisor_entry_helpers"),
+        allowed_symbols={"BTC"},
+        paper_live_allowed_symbols_env="ETA_PAPER_LIVE_ALLOWED_SYMBOLS",
+        paper_live_symbol_allowed_fn=lambda _symbol, _allowed: True,
+        paper_live_order_route="broker_router",
+        crypto_live_env="",
+        round_to_tick_fn=lambda price, _symbol: price,
+        write_pending_order_fn=lambda *_args: None,
+        get_live_ibkr_venue_fn=lambda: None,
+        run_on_live_ibkr_loop_fn=lambda *_args, **_kwargs: None,
+        pre_trade_check_fn=lambda *_args: True,
+        record_signal_fn=lambda *_args: None,
+        record_fill_fn=lambda **_kwargs: None,
+        callbacks=callbacks,
+    )
+
+    assert routed is rec
+    assert len(calls) == 1
+    assert calls[0]["bot"] is bot
+    assert calls[0]["rec"] is rec
+    assert calls[0]["callbacks"] is callbacks
+
+
+def test_route_paper_live_entry_returns_none_for_rejected_direct_dispatch(monkeypatch) -> None:
+    bot = SimpleNamespace(bot_id="paperlive")
+    rec = SimpleNamespace(note="mode=paper_live", symbol="MNQ1")
+    callbacks = supervisor_entry_helpers.EntryStateCallbacks(
+        rollback_recorded_entry=lambda _reason: None,
+        clear_recorded_entry_without_reject=lambda _reason: None,
+    )
+
+    monkeypatch.setattr(
+        supervisor_entry_helpers,
+        "route_paper_live_broker_router_entry",
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("broker-router path should not run")),
+    )
+    monkeypatch.setattr(
+        supervisor_entry_helpers,
+        "route_paper_live_direct_entry",
+        lambda **_kwargs: supervisor_entry_helpers.DirectIbkrRouteDispatch(
+            bypassed_to_paper=False,
+            outcome=SimpleNamespace(action="rejected"),
+        ),
+    )
+
+    routed = supervisor_entry_helpers.route_paper_live_entry(
+        bot=bot,
+        rec=rec,
+        bar={"close": 100.0},
+        logger=logging.getLogger("test_supervisor_entry_helpers"),
+        allowed_symbols={"MNQ1"},
+        paper_live_allowed_symbols_env="ETA_PAPER_LIVE_ALLOWED_SYMBOLS",
+        paper_live_symbol_allowed_fn=lambda _symbol, _allowed: True,
+        paper_live_order_route="direct_ibkr",
+        crypto_live_env="1",
+        round_to_tick_fn=lambda price, _symbol: price,
+        write_pending_order_fn=lambda *_args: None,
+        get_live_ibkr_venue_fn=lambda: None,
+        run_on_live_ibkr_loop_fn=lambda *_args, **_kwargs: None,
+        pre_trade_check_fn=lambda *_args: True,
+        record_signal_fn=lambda *_args: None,
+        record_fill_fn=lambda **_kwargs: None,
+        callbacks=callbacks,
+    )
+
+    assert routed is None
+
+
 def test_paper_live_direct_crypto_bypasses_broker_when_disabled() -> None:
     assert (
         supervisor_entry_helpers.paper_live_direct_crypto_bypasses_broker(

@@ -1192,7 +1192,6 @@ class ExecutionRouter:
         )
 
         if self.cfg.mode == "paper_live":
-            _route = (self.cfg.paper_live_order_route or "direct_ibkr").strip().lower()
             _entry_callbacks = supervisor_entry_helpers.build_entry_state_callbacks(
                 bot=bot,
                 rec=rec,
@@ -1206,13 +1205,6 @@ class ExecutionRouter:
             # multi-broker routing existed. Applying it on broker_router
             # would block crypto bots whose symbols (BTC/ETH/...) are
             # not in the allowlist that's curated for IBKR futures.
-            if _route in {"broker_router", "pending_file", "pending"}:
-                return supervisor_entry_helpers.route_paper_live_broker_router_entry(
-                    bot=bot,
-                    rec=rec,
-                    write_pending_order_fn=self._write_pending_order,
-                    callbacks=_entry_callbacks,
-                )
             # ── direct_ibkr path ──────────────────────────────────
             # Now the allowlist applies — direct_ibkr only handles the
             # operator-curated futures set the IBKR account is
@@ -1229,7 +1221,7 @@ class ExecutionRouter:
             # Per-bot atr_stop_mult / rr_target from per_bot_registry
             # take precedence over the global env defaults so live
             # and lab geometry match.
-            _dispatch = supervisor_entry_helpers.route_paper_live_direct_entry(
+            _paper_live_result = supervisor_entry_helpers.route_paper_live_entry(
                 bot=bot,
                 rec=rec,
                 bar=bar,
@@ -1245,12 +1237,10 @@ class ExecutionRouter:
                 pre_trade_check_fn=l2hooks.pre_trade_check,
                 record_signal_fn=l2hooks.record_signal,
                 record_fill_fn=l2hooks.record_fill,
+                write_pending_order_fn=self._write_pending_order,
                 callbacks=_entry_callbacks,
             )
-            if _dispatch.bypassed_to_paper:
-                return rec
-            if _dispatch.outcome is None or _dispatch.outcome.action == "rejected":
-                return None
+            return _paper_live_result
 
         return rec
 
