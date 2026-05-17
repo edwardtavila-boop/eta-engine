@@ -25,8 +25,11 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-from eta_engine.scripts.retune_advisory_cache import build_retune_advisory, summarize_active_experiment
 from eta_engine.scripts import workspace_roots
+from eta_engine.scripts.retune_advisory_cache import (
+    build_retune_advisory,
+    summarize_active_experiment,
+)
 
 _CANONICAL_ROOT = workspace_roots.WORKSPACE_ROOT
 _DEFAULT_OUTPUT_DIR = workspace_roots.ETA_RUNTIME_STATE_DIR
@@ -315,12 +318,20 @@ def _classify_submodule_status(result: CommandResult) -> tuple[str, str]:
 
     if blocker_sets:
         normalized_sets = [blocker_set for _name, blocker_set in required_blocker_sets]
-        if required_blocker_sets and all(blocker_set.issubset(allowed_integration_blockers) for blocker_set in normalized_sets) and any(
-            "dirty worktree" in blocker_set for blocker_set in normalized_sets
+        if (
+            required_blocker_sets
+            and all(
+                blocker_set.issubset(allowed_integration_blockers)
+                for blocker_set in normalized_sets
+            )
+            and any("dirty worktree" in blocker_set for blocker_set in normalized_sets)
         ):
             modules_text = ", ".join([name for name, _blockers in required_blocker_sets] + optional_only_modules)
             if optional_only_modules:
-                detail = f"dirty/diverged child integration plus optional missing submodule checkout blocks gitlink wiring ({modules_text})"
+                detail = (
+                    "dirty/diverged child integration plus optional missing "
+                    f"submodule checkout blocks gitlink wiring ({modules_text})"
+                )
             else:
                 detail = f"dirty/diverged child integration blocks gitlink wiring ({modules_text})"
             detail += dirty_group_detail
@@ -887,13 +898,7 @@ def main(argv: list[str] | None = None) -> int:
             experiment = summarize_active_experiment(advisory.get("active_experiment"))
             if experiment:
                 print(f"  experiment: {experiment['headline']}")
-                print(
-                    "             "
-                    f"partial_profit_enabled={experiment['partial_profit_enabled_text']} "
-                    f"closes={experiment['post_change_closed_trade_count_text']} "
-                    f"pnl={experiment['post_change_total_realized_pnl_text']} "
-                    f"pf={experiment['post_change_profit_factor_text']}"
-                )
+                print(f"             outcome: {experiment['outcome_line']}")
         for gate in report["gates"]:
             print(f"  [{gate['status'].upper()}] {gate['name']} - {gate['detail']}")
     return int(report["exit_code"])

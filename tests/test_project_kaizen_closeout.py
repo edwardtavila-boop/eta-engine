@@ -1009,4 +1009,4 @@ def test_main_prints_active_experiment_hint(monkeypatch, capsys) -> None:
 
     assert rc == 1
     assert "experiment: partial_profit_disabled since 2026-05-16T01:44:06+00:00" in out
-    assert "partial_profit_enabled=False closes=2 pnl=$+40.00 pf=1.50" in out
+    assert "outcome: partial_profit_disabled: 2 post-change closes | PnL $40.00 | PF 1.50" in out

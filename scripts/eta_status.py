@@ -24,9 +24,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from eta_engine.scripts.retune_advisory_cache import build_retune_advisory, summarize_active_experiment
-from eta_engine.scripts.supervisor_heartbeat_check import build_supervisor_heartbeat_report
 from eta_engine.scripts import workspace_roots
+from eta_engine.scripts.retune_advisory_cache import (
+    build_retune_advisory,
+    summarize_active_experiment,
+)
+from eta_engine.scripts.supervisor_heartbeat_check import build_supervisor_heartbeat_report
 
 # wave-25q post-review: derive STATE_DIR from __file__ rather than
 # hardcoding an absolute Windows path. The previous hardcode broke on
@@ -34,14 +37,13 @@ from eta_engine.scripts import workspace_roots
 # where the workspace lives under a non-C: path. ETA_STATE_DIR env-var
 # override is the canonical "I know better" escape hatch.
 _STATE_DIR_ENV = os.environ.get("ETA_STATE_DIR")
-if _STATE_DIR_ENV:
-    STATE_DIR = Path(_STATE_DIR_ENV)
-else:
-    STATE_DIR = workspace_roots.ETA_RUNTIME_STATE_DIR
+STATE_DIR = Path(_STATE_DIR_ENV) if _STATE_DIR_ENV else workspace_roots.ETA_RUNTIME_STATE_DIR
 HEARTBEAT_PATH = STATE_DIR / workspace_roots.ETA_JARVIS_SUPERVISOR_HEARTBEAT_PATH.relative_to(
     workspace_roots.ETA_RUNTIME_STATE_DIR
 )
-LEADERBOARD = STATE_DIR / workspace_roots.ETA_DIAMOND_LEADERBOARD_PATH.relative_to(workspace_roots.ETA_RUNTIME_STATE_DIR)
+LEADERBOARD = STATE_DIR / workspace_roots.ETA_DIAMOND_LEADERBOARD_PATH.relative_to(
+    workspace_roots.ETA_RUNTIME_STATE_DIR
+)
 LAUNCH_READINESS = STATE_DIR / workspace_roots.ETA_DIAMOND_PROP_LAUNCH_READINESS_PATH.relative_to(
     workspace_roots.ETA_RUNTIME_STATE_DIR
 )
@@ -344,13 +346,7 @@ def render_text(state: dict[str, Any]) -> str:
         experiment = summarize_active_experiment(retune.get("active_experiment"))
         if experiment:
             lines.append(f"  post-fix exp  : {experiment['headline']}")
-            lines.append(
-                "  post-fix data : "
-                f"partial_profit_enabled={experiment['partial_profit_enabled_text']}  "
-                f"closes={experiment['post_change_closed_trade_count_text']}  "
-                f"pnl={experiment['post_change_total_realized_pnl_text']}  "
-                f"pf={experiment['post_change_profit_factor_text']}"
-            )
+            lines.append(f"  post-fix data : {experiment['outcome_line']}")
 
     launch = state["launch_readiness"]
     lines.append(

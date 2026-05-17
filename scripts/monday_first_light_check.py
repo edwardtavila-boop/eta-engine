@@ -34,8 +34,11 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-from eta_engine.scripts.retune_advisory_cache import build_retune_advisory, summarize_active_experiment
 from eta_engine.scripts import workspace_roots
+from eta_engine.scripts.retune_advisory_cache import (
+    build_retune_advisory,
+    summarize_active_experiment,
+)
 
 WORKSPACE_ROOT = workspace_roots.WORKSPACE_ROOT
 HEALTH_DIR = workspace_roots.ETA_RUNTIME_HEALTH_DIR
@@ -237,12 +240,7 @@ def _format_telegram_body(
         experiment = summarize_active_experiment(retune_advisory.get("active_experiment"))
         if experiment:
             lines.append(f"Post-fix experiment: {experiment['headline']}")
-            lines.append(
-                f"partial_profit_enabled={experiment['partial_profit_enabled_text']} "
-                f"closes={experiment['post_change_closed_trade_count_text']} "
-                f"pnl={experiment['post_change_total_realized_pnl_text']} "
-                f"pf={experiment['post_change_profit_factor_text']}"
-            )
+            lines.append(f"Post-fix outcome: {experiment['outcome_line']}")
         lines.append("")
     for c in checks:
         mark = {"GO": "OK", "HOLD": "??", "NO_GO": "XX"}.get(c.status, "?")
@@ -323,13 +321,7 @@ def main(argv: list[str] | None = None) -> int:
             experiment = summarize_active_experiment(retune_advisory.get("active_experiment"))
             if experiment:
                 print(f"                   post-fix experiment: {experiment['headline']}")
-                print(
-                    "                                       "
-                    f"partial_profit_enabled={experiment['partial_profit_enabled_text']} "
-                    f"closes={experiment['post_change_closed_trade_count_text']} "
-                    f"pnl={experiment['post_change_total_realized_pnl_text']} "
-                    f"pf={experiment['post_change_profit_factor_text']}"
-                )
+                print(f"                                       post-fix outcome: {experiment['outcome_line']}")
         if push_result is not None:
             sent_mark = "OK" if push_result["sent"] else "FAIL"
             print()

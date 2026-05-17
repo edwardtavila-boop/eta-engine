@@ -134,6 +134,24 @@ def test_process_down_blocks_recovery_on_non_authoritative_host(tmp_path: Path, 
     assert started == []
 
 
+def test_gateway_authority_marker_treats_string_false_as_disabled(tmp_path: Path, monkeypatch) -> None:
+    from eta_engine.scripts import ibgateway_reauth_controller as controller
+
+    authority_path = tmp_path / "gateway_authority.json"
+    authority_path.write_text(
+        json.dumps({"enabled": "false", "role": "vps", "computer_name": ""}),
+        encoding="utf-8",
+    )
+    monkeypatch.delenv("ETA_IBKR_GATEWAY_AUTHORITY", raising=False)
+    monkeypatch.setenv("COMPUTERNAME", "ETA")
+
+    result = controller.gateway_authority_status(authority_path=authority_path)
+
+    assert result["allowed"] is False
+    assert result["source"] == "marker"
+    assert result["enabled"] is False
+
+
 def test_recent_competing_session_pauses_gateway_autostart() -> None:
     from eta_engine.scripts import ibgateway_reauth_controller as controller
 

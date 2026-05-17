@@ -13,6 +13,7 @@ python -m eta_engine.scripts.broker_bracket_audit --json
 python -m eta_engine.scripts.supervisor_broker_reconcile_heartbeat --json
 python -m eta_engine.scripts.prop_strategy_promotion_audit --json
 python -m eta_engine.scripts.operator_queue_heartbeat --cached-readiness --changed-only
+python -m eta_engine.scripts.flaw_hardening_heartbeat --changed-only
 python -m eta_engine.scripts.vps_ops_hardening_audit --json-out --json
 ```
 
@@ -21,6 +22,7 @@ The canonical summaries are written to:
 ```text
 C:\EvolutionaryTradingAlgo\var\eta_engine\state\vps_ops_hardening_latest.json
 C:\EvolutionaryTradingAlgo\var\eta_engine\state\operator_queue_snapshot.json
+C:\EvolutionaryTradingAlgo\var\eta_engine\state\flaw_hardening_snapshot.json
 ```
 
 ## Scheduled refresh
@@ -34,6 +36,7 @@ powershell -ExecutionPolicy Bypass -File eta_engine\deploy\scripts\register_inde
 powershell -ExecutionPolicy Bypass -File eta_engine\deploy\scripts\register_broker_state_refresh_task.ps1 -Start
 powershell -ExecutionPolicy Bypass -File eta_engine\deploy\scripts\register_supervisor_broker_reconcile_task.ps1 -Start
 powershell -ExecutionPolicy Bypass -File eta_engine\deploy\scripts\register_operator_queue_heartbeat_task.ps1 -Start
+powershell -ExecutionPolicy Bypass -File eta_engine\deploy\scripts\register_flaw_hardening_heartbeat_task.ps1 -Start
 powershell -ExecutionPolicy Bypass -File eta_engine\deploy\scripts\repair_eta_healthcheck_task.ps1
 ```
 
@@ -55,8 +58,11 @@ the read-only broker-vs-supervisor position artifact
 the current supervisor heartbeat; it also writes
 `supervisor_broker_reconcile_heartbeat.json`. `ETA-OperatorQueueHeartbeat`
 refreshes the read-only operator queue snapshot that dashboard diagnostics use
-for blocker counts and stale-state detection. These tasks never submit, cancel,
-flatten, acknowledge, or promote orders.
+for blocker counts and stale-state detection. `ETA-FlawHardeningHeartbeat`
+refreshes a read-only flaw snapshot that combines scorecard truth, prop-live
+readiness truth, launch blocker truth, and architecture hotspot counts into
+`flaw_hardening_snapshot.json`. These tasks never submit, cancel, flatten,
+acknowledge, or promote orders.
 `ETA-HealthCheck` should point at the canonical
 `eta_engine\scripts\health_check.py` task with
 `--allow-remote-supervisor-truth`, `--allow-remote-retune-truth`, and

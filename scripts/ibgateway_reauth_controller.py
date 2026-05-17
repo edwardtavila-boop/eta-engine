@@ -250,7 +250,13 @@ def _int_value(value: object, default: int = 0) -> int:
 
 
 def _bool_value(value: object) -> bool:
-    return bool(value)
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "y", "on"}
+    return False
 
 
 def _parse_time(value: object) -> datetime | None:

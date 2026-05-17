@@ -6,7 +6,11 @@ import threading
 import urllib.error
 import urllib.request
 
-from deploy.scripts.reverse_proxy_bridge import build_handler
+from eta_engine.deploy.scripts.reverse_proxy_bridge import (
+    _BridgeHTTPServer,
+    _is_expected_disconnect_exception,
+    build_handler,
+)
 
 
 class _Origin(http.server.BaseHTTPRequestHandler):
@@ -92,3 +96,35 @@ def test_reverse_proxy_returns_bad_gateway_when_origin_down() -> None:
             raise AssertionError("expected 502 from bridge")
     finally:
         proxy.shutdown()
+
+
+def test_expected_disconnect_exception_classifier() -> None:
+    assert _is_expected_disconnect_exception(ConnectionResetError(10054, "reset"))
+    assert _is_expected_disconnect_exception(BrokenPipeError(32, "broken pipe"))
+    assert _is_expected_disconnect_exception(RuntimeError("boom")) is False
+
+
+def test_bridge_server_suppresses_expected_disconnect_errors(monkeypatch) -> None:
+    server = _BridgeHTTPServer(("127.0.0.1", 0), build_handler(target="http://127.0.0.1:9", timeout=0.2))
+    called: list[tuple[object, tuple[str, int]]] = []
+
+    def _record_super(self: http.server.ThreadingHTTPServer, request: object, client_address: tuple[str, int]) -> None:
+        called.append((request, client_address))
+
+    monkeypatch.setattr(http.server.ThreadingHTTPServer, "handle_error", _record_super)
+    try:
+        monkeypatch.setattr(
+            "eta_engine.deploy.scripts.reverse_proxy_bridge.sys.exc_info",
+            lambda: (ConnectionResetError, ConnectionResetError(10054, "reset"), None),
+        )
+        server.handle_error(object(), ("127.0.0.1", 1234))
+        assert called == []
+
+        monkeypatch.setattr(
+            "eta_engine.deploy.scripts.reverse_proxy_bridge.sys.exc_info",
+            lambda: (RuntimeError, RuntimeError("boom"), None),
+        )
+        server.handle_error("request", ("127.0.0.1", 4321))
+        assert called == [("request", ("127.0.0.1", 4321))]
+    finally:
+        server.server_close()

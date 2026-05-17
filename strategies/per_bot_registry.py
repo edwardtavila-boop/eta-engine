@@ -738,6 +738,9 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "enable_scale_out": True,
             "rr_partial": 1.5,
             "partial_qty_frac": 0.5,
+            # Keep the sister futures Sage lane on unsliced close truth
+            # during the qty-band asymmetry hardening cycle.
+            "partial_profit_enabled": False,
             "enable_vix_filter": True,
             "vix_lookback_bars": 252,
             "vix_pct_threshold": 0.90,

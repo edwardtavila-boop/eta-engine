@@ -40,6 +40,10 @@ def _forwardable_headers(headers: Iterable[tuple[str, str]]) -> dict[str, str]:
     return forwarded
 
 
+def _is_expected_disconnect_exception(exc: BaseException | None) -> bool:
+    return isinstance(exc, (BrokenPipeError, ConnectionResetError))
+
+
 def build_handler(target: str, timeout: float) -> type[http.server.BaseHTTPRequestHandler]:
     """Create a request handler bound to a target origin."""
 
@@ -112,9 +116,17 @@ def build_handler(target: str, timeout: float) -> type[http.server.BaseHTTPReque
     return ReverseProxyHandler
 
 
+class _BridgeHTTPServer(http.server.ThreadingHTTPServer):
+    def handle_error(self, request: object, client_address: tuple[str, int]) -> None:
+        _exc_type, exc, _tb = sys.exc_info()
+        if _is_expected_disconnect_exception(exc):
+            return
+        super().handle_error(request, client_address)
+
+
 def run_proxy(*, listen_host: str, listen_port: int, target: str, timeout: float) -> None:
     handler = build_handler(target=target, timeout=timeout)
-    server = http.server.ThreadingHTTPServer((listen_host, listen_port), handler)
+    server = _BridgeHTTPServer((listen_host, listen_port), handler)
     print(
         f"reverse_proxy_bridge listening on {listen_host}:{listen_port} -> {target}",
         file=sys.stderr,

@@ -34,6 +34,10 @@ DEFAULT_FLEET_URL = "https://ops.evolutionarytradingalgo.com/api/bot-fleet"
 DEFAULT_LIVE_READINESS_URL = f"https://ops.evolutionarytradingalgo.com/api/jarvis/bot_strategy_readiness/{PRIMARY_BOT}"
 ACTIVE_FUTURES_BROKERS = ("ibkr", "tastytrade")
 DORMANT_PROP_VENUE_POLICY = "tradovate_dormant"
+SCOPE_FAMILY = "futures_prop_ladder"
+SCOPE_MODE = "controlled_prop_dry_run"
+PARALLEL_LAUNCH_SURFACE = "eta_engine.scripts.prop_launch_check"
+PARALLEL_LAUNCH_SCOPE = "diamond_wave25_launch_readiness"
 
 
 def _as_dict(value: Any) -> dict[str, Any]:  # noqa: ANN401
@@ -94,8 +98,8 @@ def _fleet_payload_has_usable_truth(payload: dict[str, Any]) -> bool:
 
 def _load_local_dashboard_fleet_payload() -> dict[str, Any]:
     try:
-        from fastapi import Response  # noqa: PLC0415
         from eta_engine.deploy.scripts import dashboard_api  # noqa: PLC0415
+        from fastapi import Response  # noqa: PLC0415
 
         return _as_dict(dashboard_api.bot_fleet_roster(Response(), since_days=1, live_broker_probe=False))
     except Exception:  # noqa: BLE001
@@ -125,6 +129,24 @@ def _check(name: str, status: str, detail: str, **evidence: Any) -> dict[str, An
     if evidence:
         payload["evidence"] = evidence
     return payload
+
+
+def _scope_metadata() -> dict[str, str]:
+    return {
+        "scope_family": SCOPE_FAMILY,
+        "scope_mode": SCOPE_MODE,
+        "scope_primary_bot": PRIMARY_BOT,
+        "scope_note": (
+            f"This gate governs the futures prop-ladder controlled dry-run lane for {PRIMARY_BOT}. "
+            "Diamond or Wave-25 launch candidacy is tracked separately and can remain NO_GO "
+            "independently."
+        ),
+        "parallel_launch_surface": PARALLEL_LAUNCH_SURFACE,
+        "parallel_launch_scope": PARALLEL_LAUNCH_SCOPE,
+        "parallel_launch_note": (
+            "Use eta_engine.scripts.prop_launch_check for Diamond and Wave-25 launch-candidate truth."
+        ),
+    }
 
 
 def _has_tradovate_secret_gap(missing_secrets: list[Any]) -> bool:
@@ -632,11 +654,13 @@ def build_gate_report(
     summary = (
         "BLOCKED" if any(check["status"] == "BLOCKED" for check in checks) else "READY_FOR_CONTROLLED_PROP_DRY_RUN"
     )
+    scope = _scope_metadata()
     return {
         "kind": "eta_prop_live_readiness_gate",
         "generated_at_utc": datetime.now(UTC).isoformat(),
         "summary": summary,
         "primary_bot": PRIMARY_BOT,
+        **scope,
         "checks": checks,
         "next_actions": _next_actions(checks),
     }
@@ -754,6 +778,13 @@ def _print_human(report: dict[str, Any], out_path: Path | None = None) -> None:
     print("=" * 72)
     print(f"summary    : {report['summary']}")
     print(f"primary bot: {report['primary_bot']}")
+    scope_family = str(report.get("scope_family") or "").strip()
+    scope_mode = str(report.get("scope_mode") or "").strip()
+    scope_note = str(report.get("scope_note") or "").strip()
+    if scope_family or scope_mode:
+        print(f"scope      : {scope_family}/{scope_mode}")
+    if scope_note:
+        print(f"scope note : {scope_note}")
     if out_path is not None:
         print(f"artifact   : {out_path}")
     print("-" * 72)

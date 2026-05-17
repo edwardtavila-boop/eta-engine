@@ -876,6 +876,50 @@ def test_persisted_open_position_includes_symbol(tmp_path: Path) -> None:
     assert bot.open_position["symbol"] == "MNQ1"
 
 
+def test_load_persisted_open_positions_restores_bot_state(tmp_path: Path) -> None:
+    import json
+
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        BotInstance,
+        ExecutionRouter,
+        SupervisorConfig,
+    )
+
+    cfg = SupervisorConfig()
+    cfg.mode = "paper_sim"
+    cfg.state_dir = tmp_path / "state"
+    bot = BotInstance(
+        bot_id="mnq_restore",
+        symbol="MNQ1",
+        strategy_kind="x",
+        direction="long",
+        cash=50_000.0,
+    )
+    router = ExecutionRouter(cfg=cfg, bf_dir=tmp_path, bots_ref=lambda: [bot])
+    persisted = cfg.state_dir / "bots" / bot.bot_id / "open_position.json"
+    persisted.parent.mkdir(parents=True, exist_ok=True)
+    persisted.write_text(
+        json.dumps(
+            {
+                "side": "BUY",
+                "qty": 1.0,
+                "entry_price": 29_300.0,
+                "entry_ts": "2026-05-13T16:00:00+00:00",
+                "signal_id": "sig-restore",
+                "symbol": "MNQ1",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    restored = router._load_persisted_open_positions()
+
+    assert restored == 1
+    assert bot.open_position is not None
+    assert bot.open_position["signal_id"] == "sig-restore"
+    assert bot.open_position["symbol"] == "MNQ1"
+
+
 def test_router_submit_exit_computes_pnl(tmp_path: Path) -> None:
     from eta_engine.scripts.jarvis_strategy_supervisor import (
         BotInstance,
@@ -3102,7 +3146,7 @@ def test_supervisor_loads_exit_watch_bot_without_entry_permission(tmp_path: Path
     assert bots["mbt_funding_basis"].entry_disabled_reason == "exit_watch_only"
 
 
-def test_supervisor_load_bots_carries_registry_extras_for_mnq_futures_sage(tmp_path: Path) -> None:
+def test_supervisor_load_bots_carries_registry_extras_for_futures_sage_lanes(tmp_path: Path) -> None:
     from eta_engine.scripts.jarvis_strategy_supervisor import (
         JarvisStrategySupervisor,
         SupervisorConfig,
@@ -3112,7 +3156,7 @@ def test_supervisor_load_bots_carries_registry_extras_for_mnq_futures_sage(tmp_p
     cfg.mode = "paper_live"
     cfg.data_feed = "mock"
     cfg.state_dir = tmp_path / "state"
-    cfg.bots_env = "mnq_futures_sage"
+    cfg.bots_env = "mnq_futures_sage,nq_futures_sage"
     sup = JarvisStrategySupervisor(cfg=cfg)
 
     sup.load_bots()
@@ -3120,6 +3164,8 @@ def test_supervisor_load_bots_carries_registry_extras_for_mnq_futures_sage(tmp_p
     bots = {bot.bot_id: bot for bot in sup.bots}
     assert bots["mnq_futures_sage"].registry_extras["partial_profit_enabled"] is False
     assert bots["mnq_futures_sage"].partial_profit_enabled is False
+    assert bots["nq_futures_sage"].registry_extras["partial_profit_enabled"] is False
+    assert bots["nq_futures_sage"].partial_profit_enabled is False
 
 
 def test_partial_profit_respects_bot_scoped_disable(monkeypatch, tmp_path: Path) -> None:

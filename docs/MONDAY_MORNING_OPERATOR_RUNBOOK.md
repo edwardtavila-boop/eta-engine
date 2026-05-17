@@ -16,6 +16,17 @@ Run this. Read the **Action items**. Do them in order. Re-run. Done.
 
 If the verdict is `GO`, you're cleared. If it's `HOLD` or `NO_GO`, the script tells you exactly what's still in the way.
 
+Scope note: `prop_launch_check` is the Diamond/Wave-25 launch-candidate
+cutover lane. The separate futures prop-ladder controlled dry-run lane for
+`volume_profile_mnq` is tracked independently. If you need that story too,
+run:
+
+```powershell
+python -m eta_engine.scripts.prop_live_readiness_gate --json
+python -m eta_engine.scripts.prop_operator_checklist --json
+python -m eta_engine.scripts.prop_strategy_promotion_audit --json
+```
+
 ---
 
 ## Sunday EOD checklist (do before bed Sunday)
@@ -99,7 +110,10 @@ python -m eta_engine.scripts.prop_launch_check
 
 ## Severity ladder — when things go wrong
 
-Always run `prop_launch_check` first to see WHICH gate fired. Reasons:
+Always run `prop_launch_check` first to see WHICH Diamond/Wave-25 launch gate
+fired. If the question is instead whether the separate futures prop-ladder
+paper/dry-run lane is still blocked, use `prop_live_readiness_gate`,
+`prop_operator_checklist`, and `prop_strategy_promotion_audit`. Reasons:
 
 | Reason prefix | Meaning | Operator action |
 |---|---|---|

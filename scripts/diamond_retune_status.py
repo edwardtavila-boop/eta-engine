@@ -76,6 +76,9 @@ def _public_retune_truth_override(payload: dict[str, Any] | None) -> dict[str, A
     focus_bot = str(normalized.get("focus_bot") or payload.get("focus_bot") or "").strip()
     if not focus_bot:
         return {}
+    focus_active_experiment = normalized.get("focus_active_experiment")
+    if not isinstance(focus_active_experiment, dict) or not focus_active_experiment:
+        focus_active_experiment = None
     override = {
         "broker_truth_focus_bot_id": focus_bot,
         "broker_truth_focus_issue_code": normalized.get("focus_issue"),
@@ -87,6 +90,15 @@ def _public_retune_truth_override(payload: dict[str, Any] | None) -> dict[str, A
         "broker_truth_focus_closed_trade_count": normalized.get("focus_closed_trade_count"),
         "broker_truth_focus_total_realized_pnl": normalized.get("focus_total_realized_pnl"),
         "broker_truth_focus_profit_factor": normalized.get("focus_profit_factor"),
+        "broker_truth_focus_active_experiment": focus_active_experiment,
+        "broker_truth_focus_active_experiment_summary_line": (
+            normalized.get("focus_active_experiment_summary_line")
+            or summary.get("broker_truth_focus_active_experiment_summary_line")
+        ),
+        "broker_truth_focus_active_experiment_outcome_line": (
+            normalized.get("focus_active_experiment_outcome_line")
+            or summary.get("broker_truth_focus_active_experiment_outcome_line")
+        ),
         "broker_truth_summary_line": summary.get("broker_truth_summary_line"),
         "safe_to_mutate_live": normalized.get("safe_to_mutate_live"),
         "broker_truth_focus_source": source,
@@ -592,9 +604,12 @@ def build_status(
 
     focus_bot = str(summary.get("broker_truth_focus_bot_id") or "")
     advisory_focus_bot = str((retune_advisory or {}).get("focus_bot") or "")
+    advisory_active_experiment = (retune_advisory or {}).get("active_experiment")
     active_experiment = (
-        (retune_advisory or {}).get("active_experiment")
-        if focus_bot and advisory_focus_bot == focus_bot and isinstance((retune_advisory or {}).get("active_experiment"), dict)
+        advisory_active_experiment
+        if focus_bot
+        and advisory_focus_bot == focus_bot
+        and isinstance(advisory_active_experiment, dict)
         else None
     )
     advisory_preferred_action = str((retune_advisory or {}).get("preferred_action") or "")
@@ -605,6 +620,9 @@ def build_status(
         experiment_summary = summarize_active_experiment(active_experiment)
         if experiment_summary:
             summary["broker_truth_focus_active_experiment_summary_line"] = experiment_summary["headline"]
+            summary["broker_truth_focus_active_experiment_outcome_line"] = (
+                experiment_summary.get("outcome_line") or ""
+            )
 
     return {
         "kind": "eta_diamond_retune_status",
@@ -623,6 +641,7 @@ def build_status(
         "focus_profit_factor": summary.get("broker_truth_focus_profit_factor"),
         "focus_active_experiment": summary.get("broker_truth_focus_active_experiment"),
         "focus_active_experiment_summary_line": summary.get("broker_truth_focus_active_experiment_summary_line"),
+        "focus_active_experiment_outcome_line": summary.get("broker_truth_focus_active_experiment_outcome_line"),
         "safe_to_mutate_live": summary.get("safe_to_mutate_live"),
         "summary": summary,
         "bots": bot_rows,

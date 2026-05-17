@@ -625,7 +625,10 @@ def test_live_fm_endpoint_with_non_running_service_is_restart_required_not_red()
         "live endpoint: FmStatusServer (port 8422 owner=python, manual module runner)" in action
         for action in report["next_actions"]
     )
-    assert any("repair_force_multiplier_control_plane_admin.cmd /RestartService" in action for action in report["next_actions"])
+    assert any(
+        "repair_force_multiplier_control_plane_admin.cmd /RestartService" in action
+        for action in report["next_actions"]
+    )
 
 
 def test_missing_force_multiplier_sync_task_surfaces_control_plane_durability_gap() -> None:
@@ -649,7 +652,10 @@ def test_missing_force_multiplier_sync_task_surfaces_control_plane_durability_ga
     assert report["runtime"]["tasks"]["force_multiplier_durable"] == ["ETA-ThreeAI-Sync"]
     assert report["runtime"]["tasks"]["missing_force_multiplier_durable"] == ["ETA-ThreeAI-Sync"]
     assert any("Force Multiplier scheduled task lane" in action for action in report["next_actions"])
-    assert any("repair_force_multiplier_control_plane_admin.cmd /RestartService" in action for action in report["next_actions"])
+    assert any(
+        "repair_force_multiplier_control_plane_admin.cmd /RestartService" in action
+        for action in report["next_actions"]
+    )
 
 
 def test_non_authoritative_cached_force_multiplier_artifact_downgrades_local_missing_task() -> None:
@@ -769,7 +775,32 @@ def test_stale_watchdog_restart_hook_to_disabled_paperlive_is_runtime_risk() -> 
     assert report["summary"]["status"] == "RED_RUNTIME_DEGRADED"
     assert report["summary"]["runtime_ready"] is False
     assert report["runtime"]["tasks"]["stale_supervisor_restart_hooks"] == ["ETA-Watchdog-Restart"]
+    assert any("ETAJarvisSupervisor service" in action for action in report["next_actions"])
     assert any("ETA-Jarvis-Strategy-Supervisor" in action for action in report["next_actions"])
+
+
+def test_service_supervisor_restart_hook_is_current_not_stale() -> None:
+    tasks = _healthy_tasks()
+    tasks["ETA-Watchdog-Restart"] = {
+        "task_name": "ETA-Watchdog-Restart",
+        "state": "Ready",
+        "last_task_result": 0,
+        "actions": "powershell.exe -Command Restart-Service ETAJarvisSupervisor",
+    }
+
+    report = audit.build_report(
+        services=_running_services(),
+        ports=_listening_ports(),
+        endpoints=_healthy_endpoints(),
+        broker_bracket_audit=_blocked_bracket_gate(),
+        promotion_audit=_blocked_promotion_gate(),
+        service_config={"fm_status_server": {"matches_expected": True}},
+        tasks=tasks,
+        ibgateway_reauth={"status": "healthy"},
+    )
+
+    assert report["runtime"]["tasks"]["stale_supervisor_restart_hooks"] == []
+    assert not any("stale supervisor restart hook" in action for action in report["next_actions"])
 
 
 def test_unknown_watchdog_restart_hook_without_actions_is_not_called_stale() -> None:
@@ -1065,10 +1096,10 @@ def test_collect_service_config_status_uses_resolved_python_for_fm_status_server
     eta_engine_root = tmp_path / "eta_engine"
     install_root = tmp_path / "firm_command_center" / "services"
     template_xml = eta_engine_root / "deploy" / "FmStatusServer.xml"
-    installed_xml = install_root / "FmStatusServer" / "FmStatusServer.xml"
-    legacy_installed_xml = install_root / "FmStatusServer.xml"
+    installed_xml = install_root / "FmStatusServer.xml"
+    legacy_installed_xml = install_root / "FmStatusServer" / "FmStatusServer.xml"
     template_xml.parent.mkdir(parents=True)
-    installed_xml.parent.mkdir(parents=True)
+    legacy_installed_xml.parent.mkdir(parents=True)
     template_xml.write_text(
         "<service><executable>C:\\EvolutionaryTradingAlgo\\eta_engine\\.venv\\Scripts\\python.exe</executable>"
         "<arguments>-m eta_engine.deploy.fm_status_http_server --host 127.0.0.1 --port 8422</arguments></service>",
@@ -1080,8 +1111,11 @@ def test_collect_service_config_status_uses_resolved_python_for_fm_status_server
         encoding="utf-8",
     )
     legacy_installed_xml.write_text(
-        "<service><executable>C:\\OldPython\\python.exe</executable>"
-        "<arguments>-m eta_engine.deploy.fm_status_http_server --host 127.0.0.1 --port 8422</arguments></service>",
+        (
+            "<service><executable>C:\\OldPython\\python.exe</executable>"
+            "<arguments>-m uvicorn eta_engine.deploy.fm_status_server:app "
+            "--host 127.0.0.1 --port 8422</arguments></service>"
+        ),
         encoding="utf-8",
     )
     monkeypatch.setattr(audit.workspace_roots, "ETA_ENGINE_ROOT", eta_engine_root)
@@ -1094,11 +1128,14 @@ def test_collect_service_config_status_uses_resolved_python_for_fm_status_server
     observed = audit.collect_service_config_status()
 
     assert observed["fm_status_server"]["matches_expected"] is True
-    assert observed["fm_status_server"]["template_executable"] == r"C:\EvolutionaryTradingAlgo\eta_engine\.venv\Scripts\python.exe"
+    assert observed["fm_status_server"]["template_executable"] == (
+        r"C:\EvolutionaryTradingAlgo\eta_engine\.venv\Scripts\python.exe"
+    )
     assert observed["fm_status_server"]["expected_executable"] == r"C:\Python314\python.exe"
     assert observed["fm_status_server"]["installed_executable"] == r"C:\Python314\python.exe"
     assert observed["fm_status_server"]["expected_executable_source"] == "resolved_python"
-    assert observed["fm_status_server"]["installed_xml_source"] == "service_sidecar"
+    assert observed["fm_status_server"]["installed_xml"] == str(installed_xml)
+    assert observed["fm_status_server"]["installed_xml_source"] == "flat_winsw_service"
 
 
 def test_stale_dashboard_diagnostics_schema_requires_reload_before_green() -> None:
@@ -1519,7 +1556,8 @@ def test_missing_supervisor_code_revision_blocks_trading_gate() -> None:
     assert report["summary"]["status"] == "YELLOW_SAFETY_BLOCKED"
     assert supervisor_code["status"] == "MISSING_SUPERVISOR_CODE_REVISION"
     assert supervisor_code["ready"] is False
-    assert any("Restart ETA-Jarvis-Strategy-Supervisor" in action for action in report["next_actions"])
+    assert any("Restart ETAJarvisSupervisor service" in action for action in report["next_actions"])
+    assert any("ETA-Jarvis-Strategy-Supervisor" in action for action in report["next_actions"])
 
 
 def test_stale_supervisor_code_revision_blocks_trading_gate() -> None:
@@ -1550,6 +1588,36 @@ def test_stale_supervisor_code_revision_blocks_trading_gate() -> None:
     assert supervisor_code["heartbeat_head"] == "oldrev"
     assert supervisor_code["repo_head"] == "newrev"
     assert any("oldrev" in action and "newrev" in action for action in report["next_actions"])
+
+
+def test_dirty_repo_stale_supervisor_code_warns_before_restart() -> None:
+    report = audit.build_report(
+        services=_running_services(),
+        ports=_listening_ports(),
+        endpoints=_healthy_endpoints(),
+        broker_bracket_audit={
+            "summary": "READY_NO_OPEN_EXPOSURE",
+            "ready_for_prop_dry_run": True,
+        },
+        promotion_audit={"summary": {"status": "PASS", "ready_for_live": True}},
+        service_config={"fm_status_server": {"matches_expected": True}},
+        tasks=_healthy_tasks(),
+        ibgateway_reauth={"status": "healthy"},
+        supervisor_heartbeat={
+            "ts": audit.datetime.now(audit.UTC).isoformat(),
+            "code_revision": {"head": "oldrev", "head_short": "oldrev"},
+            "bots": [],
+        },
+        repo_revision={"head": "newrev", "head_short": "newrev", "dirty": True},
+    )
+
+    supervisor_code = report["safety_gates"]["supervisor_code"]
+    assert supervisor_code["status"] == "STALE_SUPERVISOR_CODE"
+    assert supervisor_code["ready"] is False
+    assert supervisor_code["repo_dirty"] is True
+    assert any("Do not restart ETAJarvisSupervisor service" in action for action in report["next_actions"])
+    assert any("ETA-Jarvis-Strategy-Supervisor" in action for action in report["next_actions"])
+    assert any("repo dirty" in action for action in report["next_actions"])
 
 
 def test_dashboard_ports_live_but_durable_tasks_missing_is_yellow_gap() -> None:

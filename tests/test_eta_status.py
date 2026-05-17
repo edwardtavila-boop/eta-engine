@@ -312,4 +312,4 @@ def test_render_text_includes_active_experiment_post_fix_sample() -> None:
     text = mod.render_text(state)
 
     assert "post-fix exp  : partial_profit_disabled since 2026-05-16T01:44:06+00:00" in text
-    assert "partial_profit_enabled=False  closes=2  pnl=$+40.00  pf=1.50" in text
+    assert "post-fix data : partial_profit_disabled: 2 post-change closes | PnL $40.00 | PF 1.50" in text

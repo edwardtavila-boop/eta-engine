@@ -80,6 +80,17 @@ Instead:
    unprofitable in USD terms, and the operator must redesign the qty
    sizing logic before any further launch attempt."
 
+Scope note: `prop_launch_check` is the Diamond/Wave-25 launch-candidate
+cutover verdict. The separate futures prop-ladder controlled dry-run lane for
+`volume_profile_mnq` can remain blocked independently. Check that parallel
+lane with:
+
+```powershell
+python -m eta_engine.scripts.prop_live_readiness_gate --json
+python -m eta_engine.scripts.prop_operator_checklist --json
+python -m eta_engine.scripts.prop_strategy_promotion_audit --json
+```
+
 The $59 eval account stays untouched. The wave-25 infrastructure
 keeps surfacing the truth.
 
@@ -111,6 +122,9 @@ While paper data accumulates:
 python -m eta_engine.scripts.diamond_qty_asymmetry_audit
 python -m eta_engine.scripts.diamond_leaderboard
 python -m eta_engine.scripts.prop_launch_check
+python -m eta_engine.scripts.prop_live_readiness_gate --json
+python -m eta_engine.scripts.prop_operator_checklist --json
+python -m eta_engine.scripts.prop_strategy_promotion_audit --json
 ```
 
 The `_find_launch_candidate.py` one-shot script that generated this

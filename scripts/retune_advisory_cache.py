@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 RETUNE_TRUTH_CHECK = "diamond_retune_truth_check_latest.json"
 PUBLIC_RETUNE_TRUTH = "public_diamond_retune_truth_latest.json"
@@ -43,7 +45,7 @@ def _preferred_message(messages: list[str], *needles: str) -> str:
     return messages[0] if messages else ""
 
 
-def _parse_ts(raw: Any) -> datetime | None:
+def _parse_ts(raw: object) -> datetime | None:
     if not raw:
         return None
     try:
@@ -56,7 +58,7 @@ def _parse_ts(raw: Any) -> datetime | None:
     return dt.astimezone(UTC)
 
 
-def _as_float(value: Any, default: float = 0.0) -> float:
+def _as_float(value: object, default: float = 0.0) -> float:
     try:
         return float(value)
     except (TypeError, ValueError):
@@ -150,8 +152,41 @@ def summarize_active_experiment(experiment: dict[str, Any] | None) -> dict[str, 
     pnl_text = f"${float(pnl):+,.2f}" if isinstance(pnl, int | float) else "n/a"
     pf_text = f"{float(pf):.2f}" if isinstance(pf, int | float) else "n/a"
 
+    awaiting_first_post_change_close = experiment.get("awaiting_first_post_change_close") is True
+    if awaiting_first_post_change_close:
+        outcome_line = f"{experiment_id}: awaiting first post-change close"
+    else:
+        close_count = 0
+        if not isinstance(closes, bool):
+            try:
+                close_count = int(closes or 0)
+            except (TypeError, ValueError):
+                close_count = 0
+        if close_count <= 0:
+            outcome_line = experiment_id
+        else:
+            parts = [f"{experiment_id}: {close_count} post-change close{'s' if close_count != 1 else ''}"]
+            for raw_value, label, formatter in (
+                (experiment.get("post_change_cumulative_r"), "R", lambda value: f"{value:+.2f}"),
+                (
+                    experiment.get("post_change_total_realized_pnl"),
+                    "PnL",
+                    lambda value: f"{'-' if value < 0 else ''}${abs(float(value)):,.2f}",
+                ),
+                (experiment.get("post_change_profit_factor"), "PF", lambda value: f"{value:.2f}"),
+            ):
+                if isinstance(raw_value, bool) or raw_value is None:
+                    continue
+                try:
+                    numeric_value = float(raw_value)
+                except (TypeError, ValueError):
+                    continue
+                parts.append(f"{label} {formatter(numeric_value)}")
+            outcome_line = " | ".join(parts)
+
     return {
         "headline": f"{experiment_id} since {started_at}",
+        "outcome_line": outcome_line,
         "partial_profit_enabled_text": partial_profit_text,
         "post_change_closed_trade_count_text": closes_text,
         "post_change_total_realized_pnl_text": pnl_text,

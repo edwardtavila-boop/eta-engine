@@ -93,6 +93,16 @@ cutover readiness, `volume_profile_mnq` live eligibility, router cleanliness,
 broker-native bracket/OCO proof, live fleet broker surfaces, or schema-backed
 closed-trade outcomes.
 
+Scope note: `prop_live_readiness_gate` and `prop_operator_checklist` are the
+futures prop-ladder controlled dry-run lane for `volume_profile_mnq`. They are
+not the Diamond/Wave-25 launch gate. Use the parallel launch surface below
+when the question is broader launch readiness:
+
+```powershell
+cd C:\EvolutionaryTradingAlgo
+python -m eta_engine.scripts.prop_launch_check --json
+```
+
 ## Current Code Path
 
 The repo now supports the first activation layer:
@@ -187,6 +197,8 @@ Phase 4: Live watched cutover.
   `python -m eta_engine.scripts.prop_live_readiness_gate`.
 - Use the compact operator checklist for the exact remaining manual commands:
   `python -m eta_engine.scripts.prop_operator_checklist`.
+- Use the parallel Diamond/Wave-25 launch gate for the separate launch story:
+  `python -m eta_engine.scripts.prop_launch_check --json`.
 - After funding/API activation, require:
   `python -m eta_engine.scripts.tradovate_prop_readiness --phase cutover`
   to report `READY_FOR_DRY_RUN` before editing any winning-bot route.

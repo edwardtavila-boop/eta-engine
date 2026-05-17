@@ -298,6 +298,16 @@ def test_promotion_audit_marks_ready_when_primary_and_gate_are_clear() -> None:
     assert report["ready_for_prop_dry_run_review"] is True
     assert report["required_evidence"] == []
     assert report["primary"]["live_routing_allowed"] is True
+    assert report["scope_family"] == "futures_prop_ladder"
+    assert report["scope_mode"] == "controlled_prop_dry_run"
+    assert report["scope_summary"] == "futures_prop_ladder/controlled_prop_dry_run for volume_profile_mnq"
+    assert report["parallel_launch_surface"] == "eta_engine.scripts.prop_launch_check"
+    assert report["parallel_launch_scope"] == "diamond_wave25_launch_readiness"
+    assert report["parallel_launch_command"] == "python -m eta_engine.scripts.prop_launch_check --json"
+    assert (
+        report["parallel_lane_hint"]
+        == "Separate lane: diamond_wave25_launch_readiness via eta_engine.scripts.prop_launch_check"
+    )
 
 
 def test_promotion_audit_blocks_kaizen_retired_primary_without_reactivation_hint() -> None:
@@ -771,7 +781,9 @@ def test_runner_up_candidate_names_stale_replay_coverage_when_shadow_outcome_rep
     assert evidence["latest_bar_coverage_end_ts"] == "2026-05-08T10:50:00+00:00"
     assert "Refresh NQ1 5-minute replay bars" in report["next_runner_candidate"]["next_action"]
     assert "2026-05-08T10:50:00+00:00" in report["next_runner_candidate"]["next_action"]
-    assert "local NQ1 5-minute replay bars end at 2026-05-08T10:50:00+00:00" in report["next_runner_candidate"]["operator_note"]
+    assert "local NQ1 5-minute replay bars end at 2026-05-08T10:50:00+00:00" in (
+        report["next_runner_candidate"]["operator_note"]
+    )
 
 
 def test_runner_up_candidate_names_missing_shadow_context_before_replay() -> None:

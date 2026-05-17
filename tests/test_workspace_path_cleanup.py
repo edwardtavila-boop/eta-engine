@@ -126,6 +126,12 @@ def test_workspace_roots_point_inside_canonical_repo() -> None:
     assert workspace_roots.ETA_OPERATOR_QUEUE_PREVIOUS_SNAPSHOT_PATH == (
         ROOT / "var" / "eta_engine" / "state" / "operator_queue_snapshot.previous.json"
     )
+    assert workspace_roots.ETA_FLAW_HARDENING_SNAPSHOT_PATH == (
+        ROOT / "var" / "eta_engine" / "state" / "flaw_hardening_snapshot.json"
+    )
+    assert workspace_roots.ETA_FLAW_HARDENING_PREVIOUS_SNAPSHOT_PATH == (
+        ROOT / "var" / "eta_engine" / "state" / "flaw_hardening_snapshot.previous.json"
+    )
     assert workspace_roots.ETA_IBC_CUTOVER_READINESS_PATH == (
         ROOT / "var" / "eta_engine" / "state" / "ibc_cutover_readiness.json"
     )
@@ -134,6 +140,9 @@ def test_workspace_roots_point_inside_canonical_repo() -> None:
     )
     assert workspace_roots.ETA_PAPER_LIVE_LAUNCH_CHECK_SNAPSHOT_PATH == (
         ROOT / "var" / "eta_engine" / "state" / "paper_live_launch_check_latest.json"
+    )
+    assert workspace_roots.ETA_PROP_LIVE_READINESS_PATH == (
+        ROOT / "var" / "eta_engine" / "state" / "prop_live_readiness_latest.json"
     )
     assert workspace_roots.ETA_DIAMOND_LEADERBOARD_PATH == (
         ROOT / "var" / "eta_engine" / "state" / "diamond_leaderboard_latest.json"

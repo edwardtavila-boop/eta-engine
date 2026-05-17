@@ -191,14 +191,16 @@ def test_repository_shape_alone_is_capped_without_live_evidence(monkeypatch, tmp
 
     assert scorecard["status"] == "degraded"
     assert scorecard["summary"]["runtime_evidence_categories"] == 0
-    assert scorecard["categories"]["sharpe_calmar"]["score"] <= 4.0
-    assert scorecard["categories"]["autonomy_ratio"]["score"] <= 4.0
+    assert scorecard["categories"]["sharpe_calmar"]["score"] <= 2.5
+    assert scorecard["categories"]["sharpe_calmar"]["details"]["repository_shape_score_10"] > 0.0
+    assert scorecard["categories"]["autonomy_ratio"]["score"] <= 2.5
+    assert scorecard["categories"]["autonomy_ratio"]["details"]["repository_shape_score_10"] > 0.0
     assert scorecard["categories"]["kaizen_improvement"]["score"] <= 4.0
     assert scorecard["categories"]["quantum_edge"]["score"] <= 4.0
     assert scorecard["categories"]["ops_maturity"]["score"] <= 4.0
     assert scorecard["categories"]["regulatory_posture"]["score"] <= 4.0
     assert scorecard["categories"]["test_coverage"]["score"] <= 6.0
-    assert scorecard["composite_score"] < 6.0
+    assert scorecard["composite_score"] < 5.5
 
 
 def test_live_runtime_evidence_unlocks_higher_scores(monkeypatch, tmp_path) -> None:
@@ -246,7 +248,7 @@ def test_live_runtime_evidence_unlocks_higher_scores(monkeypatch, tmp_path) -> N
     assert scorecard["summary"]["runtime_evidence_categories"] >= 8
     assert scorecard["categories"]["sharpe_calmar"]["details"]["data_source"] == "runtime"
     assert scorecard["categories"]["sharpe_calmar"]["score"] > 4.0
-    assert scorecard["categories"]["autonomy_ratio"]["score"] > 7.0
+    assert scorecard["categories"]["autonomy_ratio"]["score"] > 6.0
     assert scorecard["categories"]["kaizen_improvement"]["score"] > 6.0
     assert scorecard["categories"]["quantum_edge"]["score"] > 6.0
     assert scorecard["categories"]["ops_maturity"]["score"] > 6.0
@@ -301,7 +303,108 @@ def test_launch_readiness_no_go_caps_composite_and_status(monkeypatch, tmp_path)
     assert scorecard["composite_score"] <= 5.5
     assert scorecard["summary"]["launch_readiness_verdict"] == "no_go"
     assert scorecard["summary"]["launch_readiness_non_calendar_no_go_gates"] == ["R4_SIZING_NOT_BREACHED"]
+    assert scorecard["summary"]["launch_readiness_primary_blocker"] == "R4_SIZING_NOT_BREACHED"
+    assert scorecard["summary"]["launch_readiness_primary_blocker_detail"] == "R4_SIZING_NOT_BREACHED failing"
     assert scorecard["summary"]["composite_score_cap_reason"].startswith("Launch readiness still has hard")
+
+
+def test_launch_readiness_broker_truth_no_go_caps_more_harshly(monkeypatch, tmp_path) -> None:
+    root, engine, runtime = _configure_workspace(monkeypatch, tmp_path)
+    _seed_repo_shape(root, engine)
+
+    _write_json(
+        runtime / "dashboard_payload.json",
+        {"equity": _equity_curve(), "stress": {"composite": 0.2}},
+    )
+    _write_runtime_audit_dir(runtime, _decision_rows(60))
+    _write_jsonl(runtime / "decision_journal.jsonl", _decision_rows(60))
+    _write_json(runtime / "kaizen_ledger.json", {"tickets": [{"status": "SHIPPED"} for _ in range(10)]})
+    _write_json(runtime / "avengers_heartbeat.json", {"health": "healthy"})
+    _write_json(runtime / "quantum_results.json", {"total_invocations": 120})
+    _write_json(runtime / "bot_strategy_readiness_latest.json", {"rows": [{"bot_id": "mnq_futures"}]})
+    _write_json(runtime / "fm_health.json", {"status": "ok", "service_count": 8})
+    _write_json(runtime / "nightly_audit.json", {"completed": True})
+    _write_json(
+        runtime / "diamond_prop_launch_readiness_latest.json",
+        {
+            "ts": "2026-07-08T00:00:00+00:00",
+            "launch_date": "2026-07-08",
+            "days_until_launch": 0,
+            "overall_verdict": "NO_GO",
+            "summary": "broker truth failing",
+            "gates": [
+                {
+                    "name": "R0_LIVE_CAPITAL_CALENDAR",
+                    "status": "GO",
+                    "rationale": "calendar cleared",
+                    "detail": {"paper_live_required": False},
+                },
+                {
+                    "name": "R8_BROKER_TRUTH_CONFIRMED",
+                    "status": "NO_GO",
+                    "rationale": "negative broker sample",
+                },
+            ],
+        },
+    )
+
+    scorecard = firm_scorecard.build_scorecard()
+
+    assert scorecard["status"] == "limited"
+    assert scorecard["composite_score"] <= 4.0
+    assert scorecard["summary"]["launch_readiness_primary_blocker"] == "R8_BROKER_TRUTH_CONFIRMED"
+    assert scorecard["summary"]["launch_readiness_primary_blocker_detail"] == "negative broker sample"
+    assert scorecard["summary"]["composite_score_cap_reason"].startswith("Launch readiness broker truth")
+
+
+def test_launch_readiness_prop_ready_no_go_caps_more_harshly(monkeypatch, tmp_path) -> None:
+    root, engine, runtime = _configure_workspace(monkeypatch, tmp_path)
+    _seed_repo_shape(root, engine)
+
+    _write_json(
+        runtime / "dashboard_payload.json",
+        {"equity": _equity_curve(), "stress": {"composite": 0.2}},
+    )
+    _write_runtime_audit_dir(runtime, _decision_rows(60))
+    _write_jsonl(runtime / "decision_journal.jsonl", _decision_rows(60))
+    _write_json(runtime / "kaizen_ledger.json", {"tickets": [{"status": "SHIPPED"} for _ in range(10)]})
+    _write_json(runtime / "avengers_heartbeat.json", {"health": "healthy"})
+    _write_json(runtime / "quantum_results.json", {"total_invocations": 120})
+    _write_json(runtime / "bot_strategy_readiness_latest.json", {"rows": [{"bot_id": "mnq_futures"}]})
+    _write_json(runtime / "fm_health.json", {"status": "ok", "service_count": 8})
+    _write_json(runtime / "nightly_audit.json", {"completed": True})
+    _write_json(
+        runtime / "diamond_prop_launch_readiness_latest.json",
+        {
+            "ts": "2026-07-08T00:00:00+00:00",
+            "launch_date": "2026-07-08",
+            "days_until_launch": 0,
+            "overall_verdict": "NO_GO",
+            "summary": "prop ready failing",
+            "gates": [
+                {
+                    "name": "R0_LIVE_CAPITAL_CALENDAR",
+                    "status": "GO",
+                    "rationale": "calendar cleared",
+                    "detail": {"paper_live_required": False},
+                },
+                {
+                    "name": "R1_PROP_READY_DESIGNATED",
+                    "status": "NO_GO",
+                    "rationale": "no bots currently qualify",
+                    "detail": {"n": 0},
+                },
+            ],
+        },
+    )
+
+    scorecard = firm_scorecard.build_scorecard()
+
+    assert scorecard["status"] == "limited"
+    assert scorecard["composite_score"] <= 4.5
+    assert scorecard["summary"]["launch_readiness_primary_blocker"] == "R1_PROP_READY_DESIGNATED"
+    assert scorecard["summary"]["launch_readiness_primary_blocker_detail"] == "no bots currently qualify"
+    assert scorecard["summary"]["composite_score_cap_reason"].startswith("Launch readiness still lacks PROP_READY")
 
 
 def test_calendar_only_hold_does_not_cap_strong_scorecard(monkeypatch, tmp_path) -> None:

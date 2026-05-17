@@ -58,6 +58,28 @@ function Test-TruthyText {
     return @("1", "true", "yes", "y", "vps", "authority") -contains $Value.Trim().ToLowerInvariant()
 }
 
+function Convert-GatewayAuthorityEnabled {
+    param($Value)
+    if ($null -eq $Value) {
+        return $false
+    }
+    if ($Value -is [bool]) {
+        return [bool]$Value
+    }
+    if ($Value -is [System.ValueType]) {
+        try {
+            return ([double]$Value -ne 0)
+        } catch {
+            return $false
+        }
+    }
+    $text = [string]$Value
+    if ([string]::IsNullOrWhiteSpace($text)) {
+        return $false
+    }
+    return @("1", "true", "yes", "y", "on") -contains $text.Trim().ToLowerInvariant()
+}
+
 function Get-AuthorityPayload {
     param([string]$Path)
 
@@ -93,7 +115,7 @@ function Assert-GatewayAuthority {
     }
     $enabled = $false
     if ($null -ne $payload -and $null -ne $payload.enabled) {
-        $enabled = [bool]$payload.enabled
+        $enabled = Convert-GatewayAuthorityEnabled -Value $payload.enabled
     }
     $markerComputer = if ($null -ne $payload -and $null -ne $payload.computer_name) {
         [string]$payload.computer_name

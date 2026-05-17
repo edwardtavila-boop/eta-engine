@@ -23,6 +23,11 @@ from eta_engine.scripts import workspace_roots  # noqa: E402
 from eta_engine.scripts.futures_prop_ladder import PRIMARY_BOT  # noqa: E402
 
 DEFAULT_OUT = workspace_roots.ETA_PROP_STRATEGY_PROMOTION_AUDIT_PATH
+SCOPE_FAMILY = "futures_prop_ladder"
+SCOPE_MODE = "controlled_prop_dry_run"
+PARALLEL_LAUNCH_SURFACE = "eta_engine.scripts.prop_launch_check"
+PARALLEL_LAUNCH_SCOPE = "diamond_wave25_launch_readiness"
+PARALLEL_LAUNCH_COMMAND = "python -m eta_engine.scripts.prop_launch_check --json"
 
 
 def _as_dict(value: Any) -> dict[str, Any]:  # noqa: ANN401
@@ -31,6 +36,29 @@ def _as_dict(value: Any) -> dict[str, Any]:  # noqa: ANN401
 
 def _as_list(value: Any) -> list[Any]:  # noqa: ANN401
     return value if isinstance(value, list) else []
+
+
+def _scope_metadata() -> dict[str, str]:
+    return {
+        "scope_family": SCOPE_FAMILY,
+        "scope_mode": SCOPE_MODE,
+        "scope_primary_bot": PRIMARY_BOT,
+        "scope_note": (
+            f"This promotion audit evaluates the futures prop-ladder controlled dry-run lane for "
+            f"{PRIMARY_BOT}. Diamond or Wave-25 launch candidacy is tracked separately and can "
+            "remain NO_GO independently."
+        ),
+        "scope_summary": f"{SCOPE_FAMILY}/{SCOPE_MODE} for {PRIMARY_BOT}",
+        "parallel_launch_surface": PARALLEL_LAUNCH_SURFACE,
+        "parallel_launch_scope": PARALLEL_LAUNCH_SCOPE,
+        "parallel_launch_note": (
+            "Use eta_engine.scripts.prop_launch_check for Diamond and Wave-25 launch-candidate truth."
+        ),
+        "parallel_launch_command": PARALLEL_LAUNCH_COMMAND,
+        "parallel_lane_hint": (
+            f"Separate lane: {PARALLEL_LAUNCH_SCOPE} via {PARALLEL_LAUNCH_SURFACE}"
+        ),
+    }
 
 
 def _safe_float(value: Any, default: float = 0.0) -> float:  # noqa: ANN401
@@ -845,6 +873,7 @@ def build_promotion_audit_report(
     gate_summary = str(gate_report.get("summary") or "UNKNOWN")
     required = _required_evidence(candidate=candidate, statuses=statuses, gate_summary=gate_summary)
     summary = _summary(candidate=candidate, gate_summary=gate_summary, required=required)
+    scope_metadata = _scope_metadata()
     if summary == "BLOCKED_KAIZEN_RETIRED":
         if next_runner_summary:
             required = list(dict.fromkeys(required + _runner_required_evidence(next_runner_summary)))
@@ -857,6 +886,7 @@ def build_promotion_audit_report(
         "summary": summary,
         "primary_bot": PRIMARY_BOT,
         "ready_for_prop_dry_run_review": summary == "READY_FOR_PROP_DRY_RUN_REVIEW",
+        **scope_metadata,
         "primary": {
             "bot_id": candidate.get("bot_id") or PRIMARY_BOT,
             "symbol": candidate.get("symbol") or "",
@@ -979,6 +1009,19 @@ def _print_human(report: dict[str, Any], out_path: Path | None = None) -> None:
     print(f"summary    : {report['summary']}")
     print(f"primary bot: {report['primary_bot']}")
     print(f"ready      : {report['ready_for_prop_dry_run_review']}")
+    scope_summary = str(report.get("scope_summary") or "").strip()
+    if scope_summary:
+        print(f"lane       : {scope_summary}")
+    scope_family = str(report.get("scope_family") or "").strip()
+    scope_mode = str(report.get("scope_mode") or "").strip()
+    if scope_family or scope_mode:
+        print(f"scope      : {scope_family}/{scope_mode}")
+    parallel_lane_hint = str(report.get("parallel_lane_hint") or "").strip()
+    parallel_launch_command = str(report.get("parallel_launch_command") or "").strip()
+    if parallel_lane_hint:
+        print(f"parallel   : {parallel_lane_hint}")
+    if parallel_launch_command:
+        print(f"parallel cmd: {parallel_launch_command}")
     if out_path is not None:
         print(f"artifact   : {out_path}")
     print("-" * 72)

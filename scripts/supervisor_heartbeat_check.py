@@ -38,6 +38,12 @@ DEFAULT_STALE_THRESHOLD_MINUTES = 10.0
 # overrides this floor for environments where the keepalive cadence
 # has been re-tuned.
 DEFAULT_KEEPALIVE_STALE_SECONDS = 60.0
+SUPERVISOR_SERVICE_NAME = "ETAJarvisSupervisor"
+SUPERVISOR_TASK_FALLBACK = "ETA-Jarvis-Strategy-Supervisor"
+SUPERVISOR_RESTART_TARGET = (
+    f"{SUPERVISOR_SERVICE_NAME} WinSW service "
+    f"(scheduled-task fallback: {SUPERVISOR_TASK_FALLBACK})"
+)
 CANONICAL_RELATIVE = ETA_JARVIS_SUPERVISOR_HEARTBEAT_PATH.relative_to(ETA_RUNTIME_STATE_DIR)
 KEEPALIVE_RELATIVE = ETA_JARVIS_SUPERVISOR_KEEPALIVE_PATH.relative_to(ETA_RUNTIME_STATE_DIR)
 LEGACY_RELATIVES = (
@@ -343,11 +349,15 @@ def build_supervisor_heartbeat_report(
             status = "wrong_write_path"
             diagnosis = f"canonical_missing_{fresh_legacy[0].label}_fresh"
             warnings.append("Supervisor appears alive, but it is writing to a non-canonical heartbeat path.")
-            action_items.append("Restart ETA-Jarvis-Strategy-Supervisor with the canonical var/eta_engine/state path.")
+            action_items.append(
+                f"Restart {SUPERVISOR_RESTART_TARGET} with the canonical var/eta_engine/state path."
+            )
         else:
             status = "missing"
             diagnosis = "canonical_heartbeat_missing"
-            action_items.append("Start or repair ETA-Jarvis-Strategy-Supervisor; canonical heartbeat was not created.")
+            action_items.append(
+                f"Start or repair {SUPERVISOR_RESTART_TARGET}; canonical heartbeat was not created."
+            )
     elif not canonical.readable:
         if main_loop_stuck:
             status = "main_loop_stuck"
@@ -377,13 +387,15 @@ def build_supervisor_heartbeat_report(
             warnings.append(
                 "Supervisor appears alive, but the canonical heartbeat is stale while a non-canonical path is fresh."
             )
-            action_items.append("Restart ETA-Jarvis-Strategy-Supervisor with the canonical var/eta_engine/state path.")
+            action_items.append(
+                f"Restart {SUPERVISOR_RESTART_TARGET} with the canonical var/eta_engine/state path."
+            )
         else:
             status = "stale"
             diagnosis = "canonical_heartbeat_stale"
             age = canonical.age_seconds or 0.0
             action_items.append(
-                f"Restart or inspect ETA-Jarvis-Strategy-Supervisor; canonical heartbeat age is {age:.1f}s."
+                f"Restart or inspect {SUPERVISOR_RESTART_TARGET}; canonical heartbeat age is {age:.1f}s."
             )
     else:
         status = "fresh"
@@ -413,7 +425,7 @@ def build_supervisor_heartbeat_report(
         )
         action_items.append(
             "Keep supervisor_mock isolated from live readiness; "
-            "start ETA-Jarvis-Strategy-Supervisor for canonical health."
+            f"start {SUPERVISOR_RESTART_TARGET} for canonical health."
         )
 
     if mock_main_loop_stuck and not healthy and not fresh_legacy:
@@ -425,7 +437,7 @@ def build_supervisor_heartbeat_report(
         )
         action_items.insert(
             0,
-            "Restart ETAJarvisSupervisor via the ETA-Watchdog/SYSTEM task; live-money routes remain gated.",
+            f"Restart {SUPERVISOR_SERVICE_NAME} via the ETA-Watchdog/SYSTEM task; live-money routes remain gated.",
         )
 
     return {

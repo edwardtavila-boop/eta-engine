@@ -274,6 +274,7 @@ def test_status_surfaces_focus_active_experiment_from_retune_advisory() -> None:
                 "started_at": "2026-05-16T01:44:06+00:00",
                 "partial_profit_enabled": False,
                 "post_change_closed_trade_count": 2,
+                "post_change_cumulative_r": 0.82,
                 "post_change_total_realized_pnl": 40.0,
                 "post_change_profit_factor": 1.5,
             },
@@ -285,6 +286,9 @@ def test_status_surfaces_focus_active_experiment_from_retune_advisory() -> None:
     assert report["summary"]["broker_truth_focus_active_experiment_summary_line"] == (
         "partial_profit_disabled since 2026-05-16T01:44:06+00:00"
     )
+    assert report["summary"]["broker_truth_focus_active_experiment_outcome_line"] == (
+        "partial_profit_disabled: 2 post-change closes | R +0.82 | PnL $40.00 | PF 1.50"
+    )
     assert report["focus_next_action"] == (
         "Await the first post-fix close for mnq_futures_sage; latest broker-proof close for this bot was "
         "2026-05-15T20:59:35.998873+00:00, before experiment start 2026-05-16T01:44:06+00:00."
@@ -292,6 +296,9 @@ def test_status_surfaces_focus_active_experiment_from_retune_advisory() -> None:
     assert report["focus_active_experiment"]["post_change_closed_trade_count"] == 2
     assert report["focus_active_experiment_summary_line"] == (
         "partial_profit_disabled since 2026-05-16T01:44:06+00:00"
+    )
+    assert report["focus_active_experiment_outcome_line"] == (
+        "partial_profit_disabled: 2 post-change closes | R +0.82 | PnL $40.00 | PF 1.50"
     )
 
 
@@ -338,6 +345,18 @@ def test_status_prefers_public_retune_truth_for_operator_focus_summary() -> None
                 "focus_closed_trade_count": 141,
                 "focus_total_realized_pnl": -1939.75,
                 "focus_profit_factor": 0.3951,
+                "focus_active_experiment": {
+                    "experiment_id": "partial_profit_disabled",
+                    "started_at": "2026-05-16T01:44:06+00:00",
+                    "partial_profit_enabled": False,
+                    "post_change_closed_trade_count": 1,
+                    "post_change_cumulative_r": -0.82,
+                    "post_change_total_realized_pnl": 0.0,
+                },
+                "focus_active_experiment_summary_line": "partial_profit_disabled since 2026-05-16T01:44:06+00:00",
+                "focus_active_experiment_outcome_line": (
+                    "partial_profit_disabled: 1 post-change close | R -0.82 | PnL $0.00"
+                ),
                 "safe_to_mutate_live": False,
             },
             "summary": {
@@ -366,6 +385,17 @@ def test_status_prefers_public_retune_truth_for_operator_focus_summary() -> None
     assert report["summary"]["local_broker_truth_focus_bot_id"] == "mcl_sweep_reclaim"
     assert report["summary"]["broker_truth_focus_edge_status"] == "sample_met_negative_edge"
     assert report["summary"]["broker_truth_focus_remaining_closed_trade_count"] == 0
+    assert report["summary"]["broker_truth_focus_active_experiment"]["experiment_id"] == "partial_profit_disabled"
+    assert report["summary"]["broker_truth_focus_active_experiment_summary_line"] == (
+        "partial_profit_disabled since 2026-05-16T01:44:06+00:00"
+    )
+    assert report["summary"]["broker_truth_focus_active_experiment_outcome_line"] == (
+        "partial_profit_disabled: 1 post-change close | R -0.82 | PnL $0.00"
+    )
+    assert report["focus_active_experiment"]["post_change_closed_trade_count"] == 1
+    assert report["focus_active_experiment_outcome_line"] == (
+        "partial_profit_disabled: 1 post-change close | R -0.82 | PnL $0.00"
+    )
     assert "sample met (141/100) but broker edge is negative" in report["summary"]["broker_truth_focus_next_action"]
     assert "broker edge is negative" in report["summary"]["broker_truth_summary_line"]
 

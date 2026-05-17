@@ -61,6 +61,12 @@ def test_prop_live_gate_ready_when_every_surface_is_green() -> None:
     report = gate.build_gate_report(**payloads)
 
     assert report["summary"] == "READY_FOR_CONTROLLED_PROP_DRY_RUN"
+    assert report["scope_family"] == "futures_prop_ladder"
+    assert report["scope_mode"] == "controlled_prop_dry_run"
+    assert report["scope_primary_bot"] == "volume_profile_mnq"
+    assert report["parallel_launch_surface"] == "eta_engine.scripts.prop_launch_check"
+    assert report["parallel_launch_scope"] == "diamond_wave25_launch_readiness"
+    assert "Diamond or Wave-25 launch candidacy" in report["scope_note"]
     assert gate.exit_code(report) == 0
     assert all(check["status"] == "PASS" for check in report["checks"])
 
@@ -513,7 +519,13 @@ def test_load_gate_inputs_uses_local_master_and_live_readiness_fallbacks_when_pu
     monkeypatch.setattr(
         gate,
         "_load_local_master_payload",
-        lambda: {"systems": {"ibkr": {"status": "GREEN"}, "broker": {"status": "GREEN"}, "paper_live": {"status": "GREEN"}}},
+        lambda: {
+            "systems": {
+                "ibkr": {"status": "GREEN"},
+                "broker": {"status": "GREEN"},
+                "paper_live": {"status": "GREEN"},
+            },
+        },
     )
     monkeypatch.setattr(
         gate,

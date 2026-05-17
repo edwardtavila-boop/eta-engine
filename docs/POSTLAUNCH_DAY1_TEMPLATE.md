@@ -14,6 +14,16 @@ and fill it in. The structure forces honesty.
 
 Pull from `python -m eta_engine.scripts.prop_launch_check` at EOD:
 
+Scope note: `prop_launch_check` is the Diamond/Wave-25 launch-candidate
+cutover surface. If you also want the separate futures prop-ladder controlled
+dry-run story for `volume_profile_mnq`, snapshot these in parallel:
+
+```powershell
+python -m eta_engine.scripts.prop_live_readiness_gate --json
+python -m eta_engine.scripts.prop_operator_checklist --json
+python -m eta_engine.scripts.prop_strategy_promotion_audit --json
+```
+
 - **Daily PnL:** $___
 - **Daily DD buffer remaining:** $___ / $1,500 (used ___ %)
 - **Static DD buffer remaining:** $___ / $2,500 (used ___ %)

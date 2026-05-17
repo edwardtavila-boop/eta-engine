@@ -186,11 +186,13 @@ def _launch_readiness_overlay(
     non_calendar_hold: list[str] = []
     calendar_hold = False
     prop_ready_count: int | None = None
+    blocker_rationale: dict[str, str] = {}
     for gate in gates:
         if not isinstance(gate, dict):
             continue
         name = str(gate.get("name") or "")
         gate_status = str(gate.get("status") or "").upper()
+        rationale = str(gate.get("rationale") or "")
         detail = gate.get("detail") if isinstance(gate.get("detail"), dict) else {}
         if name == "R1_PROP_READY_DESIGNATED" and prop_ready_count is None:
             n_value = detail.get("n")
@@ -201,8 +203,21 @@ def _launch_readiness_overlay(
             continue
         if gate_status == "NO_GO":
             non_calendar_no_go.append(name)
+            blocker_rationale[name] = rationale
         elif gate_status == "HOLD":
             non_calendar_hold.append(name)
+            blocker_rationale[name] = rationale
+
+    primary_blocker = None
+    if non_calendar_no_go:
+        if "R8_BROKER_TRUTH_CONFIRMED" in non_calendar_no_go:
+            primary_blocker = "R8_BROKER_TRUTH_CONFIRMED"
+        elif "R1_PROP_READY_DESIGNATED" in non_calendar_no_go:
+            primary_blocker = "R1_PROP_READY_DESIGNATED"
+        else:
+            primary_blocker = non_calendar_no_go[0]
+    elif non_calendar_hold:
+        primary_blocker = non_calendar_hold[0]
 
     summary.update(
         {
@@ -213,12 +228,28 @@ def _launch_readiness_overlay(
             "launch_readiness_non_calendar_no_go_gates": non_calendar_no_go,
             "launch_readiness_non_calendar_hold_gates": non_calendar_hold,
             "launch_readiness_calendar_hold": calendar_hold,
+            "launch_readiness_primary_blocker": primary_blocker,
+            "launch_readiness_primary_blocker_detail": blocker_rationale.get(primary_blocker or "", ""),
         }
     )
     if prop_ready_count is not None:
         summary["launch_readiness_prop_ready_count"] = prop_ready_count
 
     if non_calendar_no_go:
+        if "R8_BROKER_TRUTH_CONFIRMED" in non_calendar_no_go:
+            return (
+                summary,
+                4.0,
+                "Launch readiness broker truth is still failing; scorecard cannot grade the firm above weak proof.",
+                "limited",
+            )
+        if "R1_PROP_READY_DESIGNATED" in non_calendar_no_go:
+            return (
+                summary,
+                4.5,
+                "Launch readiness still lacks PROP_READY designation; scorecard cannot grade the firm as launch-ready.",
+                "limited",
+            )
         return (
             summary,
             5.5,
@@ -302,21 +333,23 @@ def _compute_sharpe_calmar(state_dir: Path, runtime_state_dir: Path) -> dict:
         details["wf_dsr_pass_pct"] = wf.get("dsr_pass_pct")
         details["wf_bars"] = wf.get("total_bars")
 
-    score = 0.5
+    repository_shape_score = 0.5
     if strategies >= 20:
-        score = 2.5
+        repository_shape_score += 0.5
     elif strategies >= 10:
-        score = 2.0
+        repository_shape_score += 0.4
     elif strategies >= 5:
-        score = 1.5
+        repository_shape_score += 0.3
     elif strategies > 0:
-        score = 1.0
+        repository_shape_score += 0.2
     if backtest_files > 0:
-        score += 0.5
+        repository_shape_score += 0.4
     if walk_forward_files > 0:
-        score += 0.5
+        repository_shape_score += 0.3
     if wf.get("agg_oos_sharpe", 0) > 0.5:
-        score += 0.5
+        repository_shape_score += 0.3
+    score = repository_shape_score
+    details["repository_shape_score_10"] = round(repository_shape_score, 2)
 
     runtime_evidence = len(pnl_values) >= 20
     score_cap = None
@@ -342,10 +375,21 @@ def _compute_sharpe_calmar(state_dir: Path, runtime_state_dir: Path) -> dict:
         elif calmar > 0.0:
             score += 0.5
     else:
-        score_cap = 4.0
-        cap_reason = "Live equity history is missing or too sparse; repository structure cannot earn a strong performance grade."
+        score_cap = 2.5
+        cap_reason = (
+            "Live equity history is missing or too sparse; repository structure "
+            "alone cannot earn more than a weak performance grade."
+        )
 
-    data_source = dash_source if dash_source != "missing" else ("repository" if strategies or backtest_files or walk_forward_files or wf else "missing")
+    data_source = (
+        dash_source
+        if dash_source != "missing"
+        else (
+            "repository"
+            if strategies or backtest_files or walk_forward_files or wf
+            else "missing"
+        )
+    )
     return _finalize_result(
         "sharpe_calmar",
         score,
@@ -363,7 +407,12 @@ def _compute_autonomy_ratio(state_dir: Path, runtime_state_dir: Path) -> dict:
     jarvis_modules = _py_module_count(engine / "brain" / "jarvis_v3", "")
     firm_board = _py_module_count(engine / "brain" / "firm_board", "")
     agent_modules = _py_module_count(engine / "brain", "") if (engine / "brain").exists() else 0
-    decisions, decisions_source, decisions_status = _load_state_jsonl("jarvis_audit.jsonl", state_dir, runtime_state_dir, 500)
+    decisions, decisions_source, decisions_status = _load_state_jsonl(
+        "jarvis_audit.jsonl",
+        state_dir,
+        runtime_state_dir,
+        500,
+    )
     decision_log_name = "jarvis_audit.jsonl"
     if not decisions:
         decisions, decisions_source, decisions_status = _load_state_jsonl(
@@ -388,21 +437,23 @@ def _compute_autonomy_ratio(state_dir: Path, runtime_state_dir: Path) -> dict:
     if total > 0:
         details["autonomy_ratio"] = round(ratio, 4)
 
-    score = 0.5
+    repository_shape_score = 0.5
     if jarvis_modules >= 50:
-        score = 3.5
+        repository_shape_score += 0.5
     elif jarvis_modules >= 20:
-        score = 3.0
+        repository_shape_score += 0.4
     elif jarvis_modules >= 10:
-        score = 2.5
+        repository_shape_score += 0.3
     elif jarvis_modules >= 5:
-        score = 2.0
+        repository_shape_score += 0.2
     elif jarvis_modules > 0:
-        score = 1.5
+        repository_shape_score += 0.1
     if firm_board > 0:
-        score += 0.5
+        repository_shape_score += 0.2
     if agent_modules > 30:
-        score += 0.5
+        repository_shape_score += 0.3
+    score = repository_shape_score
+    details["repository_shape_score_10"] = round(repository_shape_score, 2)
 
     runtime_evidence = total > 0
     score_cap = None
@@ -429,8 +480,12 @@ def _compute_autonomy_ratio(state_dir: Path, runtime_state_dir: Path) -> dict:
             score_cap = 7.0
             cap_reason = "Autonomy decisions exist, but the journal is still too shallow for top-tier confidence."
     else:
-        score_cap = 4.0
-        cap_reason = "Declared autonomy modules are present, but there is no runtime decision evidence."
+        score_cap = 2.5
+        cap_reason = (
+            "Declared autonomy modules are present, but there is no runtime "
+            "decision evidence strong enough to support more than a weak "
+            "autonomy grade."
+        )
 
     data_source = decisions_source if decisions_source != "missing" else "repository"
     return _finalize_result(
@@ -575,7 +630,10 @@ def _compute_regime_adaptation(state_dir: Path, runtime_state_dir: Path) -> dict
                 score += 0.75
         if runtime_signal_count == 1:
             score_cap = 6.5
-            cap_reason = "Only one live regime signal is present; a strong adaptation grade needs both heartbeat and stress context."
+            cap_reason = (
+                "Only one live regime signal is present; a strong adaptation "
+                "grade needs both heartbeat and stress context."
+            )
     else:
         score_cap = 4.0
         cap_reason = "Regime-related code exists, but there is no live heartbeat or stress evidence."
@@ -606,7 +664,12 @@ def _compute_fault_tolerance(state_dir: Path, runtime_state_dir: Path) -> dict:
     has_breaker = breaker_path.exists()
     has_sentinel = sentinel_path.exists()
 
-    decisions, decisions_source, decisions_status = _load_state_jsonl("jarvis_audit.jsonl", state_dir, runtime_state_dir, 300)
+    decisions, decisions_source, decisions_status = _load_state_jsonl(
+        "jarvis_audit.jsonl",
+        state_dir,
+        runtime_state_dir,
+        300,
+    )
     decision_log_name = "jarvis_audit.jsonl"
     if not decisions:
         decisions, decisions_source, decisions_status = _load_state_jsonl(
@@ -741,7 +804,10 @@ def _compute_quantum_edge(state_dir: Path, runtime_state_dir: Path) -> dict:
             score += 1.5
         if invocations < 5:
             score_cap = 6.0
-            cap_reason = "Quantum execution evidence exists, but the invocation count is too low for a strong edge grade."
+            cap_reason = (
+                "Quantum execution evidence exists, but the invocation count "
+                "is too low for a strong edge grade."
+            )
         elif invocations < 25:
             score_cap = 8.0
             cap_reason = "Quantum execution exists, but the runtime sample is still modest."
@@ -868,7 +934,10 @@ def _compute_ops_maturity(state_dir: Path, runtime_state_dir: Path) -> dict:
         cap_reason = "Deployment markers exist, but there is no runtime readiness or Force Multiplier health evidence."
     elif runtime_signal_count == 1:
         score_cap = 7.0
-        cap_reason = "Only one live ops signal is present; strong ops maturity needs both readiness and health snapshots."
+        cap_reason = (
+            "Only one live ops signal is present; strong ops maturity needs "
+            "both readiness and health snapshots."
+        )
 
     data_source = _primary_source(readiness_source, fm_source, fallback="repository")
     return _finalize_result(
@@ -887,9 +956,19 @@ def _compute_regulatory_posture(state_dir: Path, runtime_state_dir: Path) -> dic
     root = workspace_roots.WORKSPACE_ROOT
     audit, audit_source, audit_status = _load_state_json("nightly_audit.json", state_dir, runtime_state_dir)
     has_audit = bool(audit)
-    decisions, decisions_source, decisions_status = _load_state_jsonl("jarvis_audit.jsonl", state_dir, runtime_state_dir, 100)
+    decisions, decisions_source, decisions_status = _load_state_jsonl(
+        "jarvis_audit.jsonl",
+        state_dir,
+        runtime_state_dir,
+        100,
+    )
     decisions_count = len(decisions)
-    journal, journal_source, journal_status = _load_state_jsonl("decision_journal.jsonl", state_dir, runtime_state_dir, 50)
+    journal, journal_source, journal_status = _load_state_jsonl(
+        "decision_journal.jsonl",
+        state_dir,
+        runtime_state_dir,
+        50,
+    )
     has_journal = bool(journal)
 
     compliance_docs = list(root.rglob("COMPLIANCE*")) + list(root.rglob("compliance*")) + list(root.rglob("*audit*"))
@@ -930,7 +1009,10 @@ def _compute_regulatory_posture(state_dir: Path, runtime_state_dir: Path) -> dic
         cap_reason = "Compliance docs exist, but there is no runtime audit or decision-journal evidence."
     elif decisions_count < 10:
         score_cap = 7.0
-        cap_reason = "Audit evidence exists, but the live journal is still too thin for a strong regulatory posture grade."
+        cap_reason = (
+            "Audit evidence exists, but the live journal is still too thin for "
+            "a strong regulatory posture grade."
+        )
 
     data_source = _primary_source(audit_source, decisions_source, journal_source, fallback="repository")
     return _finalize_result(

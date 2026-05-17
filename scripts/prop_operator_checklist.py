@@ -17,6 +17,7 @@ if str(_PARENT) not in sys.path:
 from eta_engine.scripts import workspace_roots  # noqa: E402
 
 DEFAULT_OUT = workspace_roots.ETA_PROP_OPERATOR_CHECKLIST_PATH
+PARALLEL_LAUNCH_COMMAND = "python -m eta_engine.scripts.prop_launch_check --json"
 
 
 def _as_dict(value: Any) -> dict[str, Any]:  # noqa: ANN401
@@ -127,6 +128,13 @@ def _paper_soak_step(gate_report: dict[str, Any], check: dict[str, Any]) -> dict
         "order_action": False,
         "bot_id": primary_bot,
         "launch_lane": launch_lane,
+        "scope_family": str(gate_report.get("scope_family") or ""),
+        "scope_mode": str(gate_report.get("scope_mode") or ""),
+        "scope_note": str(gate_report.get("scope_note") or ""),
+        "parallel_launch_surface": str(gate_report.get("parallel_launch_surface") or ""),
+        "parallel_launch_scope": str(gate_report.get("parallel_launch_scope") or ""),
+        "parallel_launch_note": str(gate_report.get("parallel_launch_note") or ""),
+        "parallel_launch_command": PARALLEL_LAUNCH_COMMAND,
         "command": "python -m eta_engine.scripts.prop_strategy_promotion_audit --json",
         "promotion_audit_command": "python -m eta_engine.scripts.prop_strategy_promotion_audit --json",
         "ladder_command": "python -m eta_engine.scripts.futures_prop_ladder --json",
@@ -151,12 +159,37 @@ def build_checklist_report(*, gate_report: dict[str, Any]) -> dict[str, Any]:
 
     summary = str(gate_report.get("summary") or "UNKNOWN")
     can_start = summary == "READY_FOR_CONTROLLED_PROP_DRY_RUN" and not checklist
+    scope_family = str(gate_report.get("scope_family") or "")
+    scope_mode = str(gate_report.get("scope_mode") or "")
+    scope_primary_bot = str(gate_report.get("primary_bot") or "")
+    parallel_launch_surface = str(gate_report.get("parallel_launch_surface") or "")
+    parallel_launch_scope = str(gate_report.get("parallel_launch_scope") or "")
+    parallel_launch_note = str(gate_report.get("parallel_launch_note") or "")
+    scope_summary = (
+        f"{scope_family}/{scope_mode} for {scope_primary_bot}"
+        if scope_family or scope_mode or scope_primary_bot
+        else ""
+    )
+    parallel_lane_hint = (
+        f"Separate lane: {parallel_launch_scope} via {parallel_launch_surface}"
+        if parallel_launch_surface or parallel_launch_scope
+        else ""
+    )
     return {
         "kind": "eta_prop_operator_checklist",
         "schema_version": 1,
         "generated_at_utc": datetime.now(UTC).isoformat(),
         "summary": summary,
         "primary_bot": gate_report.get("primary_bot"),
+        "scope_family": scope_family,
+        "scope_mode": scope_mode,
+        "scope_note": str(gate_report.get("scope_note") or ""),
+        "scope_summary": scope_summary,
+        "parallel_launch_surface": parallel_launch_surface,
+        "parallel_launch_scope": parallel_launch_scope,
+        "parallel_launch_note": parallel_launch_note,
+        "parallel_launch_command": PARALLEL_LAUNCH_COMMAND,
+        "parallel_lane_hint": parallel_lane_hint,
         "can_start_prop_dry_run": can_start,
         "blocking_step_count": len(checklist),
         "checklist": checklist,
@@ -185,6 +218,19 @@ def _print_human(report: dict[str, Any], out_path: Path | None = None) -> None:
     print("=" * 72)
     print(f"summary   : {report['summary']}")
     print(f"can start : {report['can_start_prop_dry_run']}")
+    scope_summary = str(report.get("scope_summary") or "").strip()
+    if scope_summary:
+        print(f"lane      : {scope_summary}")
+    scope_family = str(report.get("scope_family") or "").strip()
+    scope_mode = str(report.get("scope_mode") or "").strip()
+    if scope_family or scope_mode:
+        print(f"scope     : {scope_family}/{scope_mode}")
+    parallel_lane_hint = str(report.get("parallel_lane_hint") or "").strip()
+    parallel_launch_command = str(report.get("parallel_launch_command") or "").strip()
+    if parallel_lane_hint:
+        print(f"parallel  : {parallel_lane_hint}")
+    if parallel_launch_command:
+        print(f"parallel cmd: {parallel_launch_command}")
     if out_path is not None:
         print(f"artifact  : {out_path}")
     print("-" * 72)

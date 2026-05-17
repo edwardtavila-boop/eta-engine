@@ -167,7 +167,10 @@ def test_health_check_includes_supervisor_action_item(monkeypatch) -> None:
             "status": "missing",
             "diagnosis": "canonical_heartbeat_missing",
             "canonical_age_seconds": None,
-            "action_items": ["Start or repair ETA-Jarvis-Strategy-Supervisor."],
+            "action_items": [
+                "Start or repair ETAJarvisSupervisor WinSW service "
+                "(scheduled-task fallback: ETA-Jarvis-Strategy-Supervisor)."
+            ],
         },
     )
 
@@ -176,4 +179,5 @@ def test_health_check_includes_supervisor_action_item(monkeypatch) -> None:
     assert component.name == "supervisor_heartbeat"
     assert component.healthy is False
     assert component.status == "missing"
-    assert "action: Start or repair ETA-Jarvis-Strategy-Supervisor." in component.detail
+    assert "action: Start or repair ETAJarvisSupervisor WinSW service" in component.detail
+    assert "ETA-Jarvis-Strategy-Supervisor" in component.detail

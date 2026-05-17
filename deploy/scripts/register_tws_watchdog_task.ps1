@@ -36,6 +36,28 @@ function Test-TruthyText {
     return @("1", "true", "yes", "y", "vps", "authority") -contains $Value.Trim().ToLowerInvariant()
 }
 
+function Convert-GatewayAuthorityEnabled {
+    param($Value)
+    if ($null -eq $Value) {
+        return $false
+    }
+    if ($Value -is [bool]) {
+        return [bool]$Value
+    }
+    if ($Value -is [System.ValueType]) {
+        try {
+            return ([double]$Value -ne 0)
+        } catch {
+            return $false
+        }
+    }
+    $text = [string]$Value
+    if ([string]::IsNullOrWhiteSpace($text)) {
+        return $false
+    }
+    return @("1", "true", "yes", "y", "on") -contains $text.Trim().ToLowerInvariant()
+}
+
 function Assert-GatewayAuthority {
     param([string]$Path)
 
@@ -53,7 +75,7 @@ function Assert-GatewayAuthority {
         $payload = Get-Content -LiteralPath $Path -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
     }
     $role = if ($null -ne $payload -and $null -ne $payload.role) { [string]$payload.role } else { "" }
-    $enabled = if ($null -ne $payload -and $null -ne $payload.enabled) { [bool]$payload.enabled } else { $false }
+    $enabled = if ($null -ne $payload -and $null -ne $payload.enabled) { Convert-GatewayAuthorityEnabled -Value $payload.enabled } else { $false }
     $markerComputer = if ($null -ne $payload -and $null -ne $payload.computer_name) { [string]$payload.computer_name } else { "" }
     $roleOk = @("vps", "gateway_authority") -contains $role.Trim().ToLowerInvariant()
     $hostOk = [string]::IsNullOrWhiteSpace($markerComputer) -or $markerComputer.Equals($env:COMPUTERNAME, [System.StringComparison]::OrdinalIgnoreCase)

@@ -31,10 +31,10 @@ DEFAULT_OUT = workspace_roots.ETA_VPS_OPS_HARDENING_AUDIT_PATH
 ETA_ENGINE_REPO_ROOT = workspace_roots.ETA_ENGINE_ROOT
 CURRENT_JARVIS_HERMES_BRIDGE_TASK_COUNT = 8
 FM_STATUS_TEMPLATE_XML = workspace_roots.ETA_ENGINE_ROOT / "deploy" / "FmStatusServer.xml"
-FM_STATUS_INSTALLED_XML = (
+FM_STATUS_INSTALLED_XML = workspace_roots.WORKSPACE_ROOT / "firm_command_center" / "services" / "FmStatusServer.xml"
+FM_STATUS_INSTALLED_XML_LEGACY = (
     workspace_roots.WORKSPACE_ROOT / "firm_command_center" / "services" / "FmStatusServer" / "FmStatusServer.xml"
 )
-FM_STATUS_INSTALLED_XML_LEGACY = workspace_roots.WORKSPACE_ROOT / "firm_command_center" / "services" / "FmStatusServer.xml"
 DEFAULT_MACHINE_PYTHON = Path(r"C:\Python314\python.exe")
 CRITICAL_SERVICES = ("FmStatusServer",)
 LEGACY_COMPAT_SERVICES = (
@@ -166,8 +166,13 @@ WATCHDOG_OBSERVED_TASKS = (
     "ETA-Watchdog",
     "ETA-Watchdog-Restart",
 )
+CANONICAL_SUPERVISOR_SERVICE = "ETAJarvisSupervisor"
 CANONICAL_SUPERVISOR_TASK = "ETA-Jarvis-Strategy-Supervisor"
 LEGACY_PAPERLIVE_SUPERVISOR_TASK = "ETA-PaperLive-Supervisor"
+SUPERVISOR_RESTART_TARGET = (
+    f"{CANONICAL_SUPERVISOR_SERVICE} service "
+    f"(scheduled-task fallback: {CANONICAL_SUPERVISOR_TASK})"
+)
 SUPERVISOR_RECONCILE_MAX_AGE_S = 15 * 60
 BROKER_STATE_URL = "http://127.0.0.1:8421/api/live/broker_state"
 BROKER_STATE_REFRESH_URL = f"{BROKER_STATE_URL}?refresh=1"
@@ -585,8 +590,14 @@ def collect_service_config_status() -> dict[str, dict[str, Any]]:
             "template_executable": template_executable,
             "expected_executable": expected_executable,
             "installed_executable": installed_executable,
-            "expected_executable_source": "resolved_python" if resolved_python else "template_xml",
-            "installed_xml_source": "service_sidecar" if installed == FM_STATUS_INSTALLED_XML else "legacy_flat_xml",
+            "expected_executable_source": (
+                "resolved_python" if resolved_python else "template_xml"
+            ),
+            "installed_xml_source": (
+                "flat_winsw_service"
+                if installed == FM_STATUS_INSTALLED_XML
+                else "legacy_nested_xml"
+            ),
             "expected_arguments": expected_arguments,
             "installed_arguments": installed_arguments,
         }
@@ -846,7 +857,11 @@ def _stale_supervisor_restart_hooks(tasks: dict[str, dict[str, Any]]) -> list[st
     actions = str(task.get("actions") or "")
     if not actions:
         return stale
-    if LEGACY_PAPERLIVE_SUPERVISOR_TASK in actions or CANONICAL_SUPERVISOR_TASK not in actions:
+    targets_current_supervisor = (
+        CANONICAL_SUPERVISOR_SERVICE in actions
+        or CANONICAL_SUPERVISOR_TASK in actions
+    )
+    if LEGACY_PAPERLIVE_SUPERVISOR_TASK in actions or not targets_current_supervisor:
         stale.append("ETA-Watchdog-Restart")
     return stale
 
@@ -871,7 +886,6 @@ def _dashboard_schema_drift(endpoints: dict[str, dict[str, Any]]) -> list[str]:
         if not payload:
             continue
         checks = _as_dict(payload.get("checks"))
-        hardening = _as_dict(payload.get("vps_ops_hardening"))
         if (
             "command_center_watchdog" not in payload
             or "eta_readiness_snapshot" not in payload
@@ -1377,18 +1391,26 @@ def _supervisor_code_summary(
 def _supervisor_code_action(gate: dict[str, Any]) -> str:
     status = str(gate.get("status") or "unknown")
     if status == "STALE_SUPERVISOR_CODE":
+        if gate.get("repo_dirty"):
+            return (
+                f"Do not restart {SUPERVISOR_RESTART_TARGET} until the eta_engine "
+                "worktree changes are intentionally shipped or stashed; current paper-live "
+                "supervisor is on deployed code "
+                f"({gate.get('heartbeat_head_short') or gate.get('heartbeat_head')} -> "
+                f"{gate.get('repo_head_short') or gate.get('repo_head')}, repo dirty)"
+            )
         return (
-            "Restart ETA-Jarvis-Strategy-Supervisor so paper-live supervisor loads deployed code "
+            f"Restart {SUPERVISOR_RESTART_TARGET} so paper-live supervisor loads deployed code "
             f"({gate.get('heartbeat_head_short') or gate.get('heartbeat_head')} -> "
             f"{gate.get('repo_head_short') or gate.get('repo_head')})"
         )
     if status == "MISSING_SUPERVISOR_CODE_REVISION":
         return (
-            "Restart ETA-Jarvis-Strategy-Supervisor so heartbeat includes code_revision "
+            f"Restart {SUPERVISOR_RESTART_TARGET} so heartbeat includes code_revision "
             "before clearing paper-live trading gates"
         )
     if status == "MISSING_SUPERVISOR_HEARTBEAT":
-        return "Start or repair ETA-Jarvis-Strategy-Supervisor; canonical supervisor heartbeat is missing"
+        return f"Start or repair {SUPERVISOR_RESTART_TARGET}; canonical supervisor heartbeat is missing"
     return f"Review supervisor code revision gate: {status}"
 
 
@@ -1714,7 +1736,8 @@ def build_report(
         )
     if stale_artifact_backed_force_multiplier_tasks:
         next_actions.append(
-            "Refresh local non-authoritative Force Multiplier watch artifacts; cached authoritative coverage is stale for "
+            "Refresh local non-authoritative Force Multiplier watch artifacts; "
+            "cached authoritative coverage is stale for "
             + ", ".join(stale_artifact_backed_force_multiplier_tasks)
             + _artifact_refresh_guidance(stale_artifact_backed_force_multiplier_tasks)
         )
@@ -1734,11 +1757,12 @@ def build_report(
         next_actions.append(
             "Disable or repair stale supervisor restart hook(s): "
             + ", ".join(stale_restart_hooks)
-            + f"; target {CANONICAL_SUPERVISOR_TASK} only"
+            + f"; target {SUPERVISOR_RESTART_TARGET} only"
         )
     if dashboard_schema_drift:
         next_actions.append(
-            "Reload dashboard API/proxy so live diagnostics schema includes the compatibility aliases and audit contracts: "
+            "Reload dashboard API/proxy so live diagnostics schema includes "
+            "the compatibility aliases and audit contracts: "
             + ", ".join(dashboard_schema_drift)
             + f"; run {DASHBOARD_SCHEMA_RELOAD_COMMAND}"
         )

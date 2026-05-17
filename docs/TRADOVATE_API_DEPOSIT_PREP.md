@@ -62,6 +62,17 @@ lane and should block until all of these are true:
 - A schema-backed closed-trade ledger exists so win rate, PnL, and R are not
   stale.
 
+Important scope note: `prop_live_readiness_gate` and
+`prop_operator_checklist` are the futures prop-ladder controlled dry-run
+surfaces for `volume_profile_mnq`. They are not the Diamond/Wave-25 launch
+gate. Use the separate Diamond launch surface when the question is launch
+readiness for the broader Wave-25 book:
+
+```powershell
+cd C:\EvolutionaryTradingAlgo
+python -m eta_engine.scripts.prop_launch_check --json
+```
+
 Use `prop_operator_checklist` when you want the short operator version of
 what remains. It writes
 `C:\EvolutionaryTradingAlgo\var\eta_engine\state\prop_operator_checklist_latest.json`
@@ -181,6 +192,11 @@ broker_native_brackets: PASS
 closed_trade_ledger: PASS
 live_bot_gate: PASS
 ```
+
+This result only clears the controlled futures prop dry-run lane for
+`volume_profile_mnq`. It does not imply that the separate Diamond/Wave-25
+launch lane is `GO`; keep checking `prop_launch_check` for that parallel
+readiness story.
 
 ## First Dry Run
 

@@ -94,8 +94,20 @@ def test_execute_clears_ibkr_hold_and_restarts_release_tasks(tmp_path: Path, mon
     assert calls == [
         ("Enable-ScheduledTask", "ETA-IBGateway-Reauth"),
         ("Start-ScheduledTask", "ETA-Broker-Router"),
-        ("Start-ScheduledTask", "ETA-Jarvis-Strategy-Supervisor"),
+        ("Start-Supervisor", "ETAJarvisSupervisor"),
     ]
+
+
+def test_release_guard_formats_service_first_supervisor_command() -> None:
+    from eta_engine.scripts import ibgateway_release_guard as guard
+
+    supervisor_command = guard._task_command("Start-Supervisor", "ETAJarvisSupervisor")
+    assert "Get-Service -Name 'ETAJarvisSupervisor'" in supervisor_command
+    assert "Start-Service -Name 'ETAJarvisSupervisor'" in supervisor_command
+    assert "Start-ScheduledTask -TaskName 'ETA-Jarvis-Strategy-Supervisor'" in supervisor_command
+    assert guard._task_command("Start-ScheduledTask", "ETA-Broker-Router") == (
+        "Start-ScheduledTask -TaskName 'ETA-Broker-Router' -ErrorAction SilentlyContinue"
+    )
 
 
 def test_execute_refuses_to_enable_reauth_on_non_authoritative_host(tmp_path: Path, monkeypatch) -> None:

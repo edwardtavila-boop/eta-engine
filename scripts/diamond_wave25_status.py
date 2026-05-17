@@ -305,13 +305,7 @@ def _print_table(report: dict) -> None:
         experiment = summarize_active_experiment(advisory.get("active_experiment"))
         if experiment:
             print(f"                   post-fix experiment: {experiment['headline']}")
-            print(
-                "                                       "
-                f"partial_profit_enabled={experiment['partial_profit_enabled_text']} "
-                f"closes={experiment['post_change_closed_trade_count_text']} "
-                f"pnl={experiment['post_change_total_realized_pnl_text']} "
-                f"pf={experiment['post_change_profit_factor_text']}"
-            )
+            print(f"                                       post-fix outcome: {experiment['outcome_line']}")
     print("  unfiltered counts by classification:")
     for ds, n in snap["unfiltered"].items():
         print(f"    {ds}: {n}")

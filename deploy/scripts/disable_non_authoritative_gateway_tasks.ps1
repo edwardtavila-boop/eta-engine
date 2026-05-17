@@ -10,6 +10,28 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+function Convert-GatewayAuthorityEnabled {
+    param($Value)
+    if ($null -eq $Value) {
+        return $false
+    }
+    if ($Value -is [bool]) {
+        return [bool]$Value
+    }
+    if ($Value -is [System.ValueType]) {
+        try {
+            return ([double]$Value -ne 0)
+        } catch {
+            return $false
+        }
+    }
+    $text = [string]$Value
+    if ([string]::IsNullOrWhiteSpace($text)) {
+        return $false
+    }
+    return @("1", "true", "yes", "y", "on") -contains $text.Trim().ToLowerInvariant()
+}
+
 function Test-GatewayAuthorityMarker {
     param([string]$Path)
     try {
@@ -18,7 +40,7 @@ function Test-GatewayAuthorityMarker {
         }
         $payload = Get-Content -LiteralPath $Path -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
         $role = [string]($payload.role)
-        $enabled = [bool]($payload.enabled)
+        $enabled = Convert-GatewayAuthorityEnabled -Value $payload.enabled
         $computer = [string]($payload.computer_name)
         $roleOk = @("vps", "gateway_authority") -contains $role.Trim().ToLowerInvariant()
         $hostOk = [string]::IsNullOrWhiteSpace($computer) -or $computer.Equals($env:COMPUTERNAME, [System.StringComparison]::OrdinalIgnoreCase)
@@ -51,8 +73,10 @@ $result = [ordered]@{
     gateway_authority = $isAuthority
     desktop_host = $isDesktop
     disabled_tasks = @()
+    would_disable_tasks = @()
     skipped_tasks = @()
     stopped_processes = @()
+    would_stop_processes = @()
 }
 
 if ($isAuthority) {
@@ -79,17 +103,25 @@ foreach ($name in $tasks) {
         Stop-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue
         Disable-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue | Out-Null
     }
-    $result.disabled_tasks += [ordered]@{
+    $taskReceipt = [ordered]@{
         task = $name
         previous_state = [string]$task.State
+    }
+    if ($Apply) {
+        $result.disabled_tasks += $taskReceipt
+    } else {
+        $result.would_disable_tasks += $taskReceipt
     }
 }
 
 if ($StopGatewayProcesses) {
     foreach ($proc in @(Get-Process -Name "ibgateway", "ibgateway1" -ErrorAction SilentlyContinue)) {
-        $result.stopped_processes += [ordered]@{ name = $proc.ProcessName; pid = $proc.Id }
+        $processReceipt = [ordered]@{ name = $proc.ProcessName; pid = $proc.Id }
         if ($Apply) {
+            $result.stopped_processes += $processReceipt
             Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+        } else {
+            $result.would_stop_processes += $processReceipt
         }
     }
 }

@@ -4,7 +4,7 @@ This script is the safe handoff after the operator completes the visible
 IBKR Gateway login or two-factor prompt. It never bypasses IBKR auth. It only
 clears ETA's order-entry hold when the TWS watchdog has fresh, healthy socket
 and API-handshake evidence, then restarts the paper-live router/supervisor
-tasks that are allowed to submit orders.
+lanes that are allowed to submit orders.
 """
 
 from __future__ import annotations
@@ -31,10 +31,12 @@ _DEFAULT_GATEWAY_AUTHORITY_PATH = workspace_roots.ETA_RUNTIME_STATE_DIR / "gatew
 _DEFAULT_MAX_WATCHDOG_AGE_S = 180
 _CLEAR_REASON = "ibgateway_manual_login_verified_healthy"
 _IBGATEWAY_HOLD_PREFIX = "ibgateway_"
+_SUPERVISOR_SERVICE_NAME = "ETAJarvisSupervisor"
+_SUPERVISOR_TASK_FALLBACK = "ETA-Jarvis-Strategy-Supervisor"
 _RELEASE_TASKS: tuple[tuple[str, str], ...] = (
     ("Enable-ScheduledTask", "ETA-IBGateway-Reauth"),
     ("Start-ScheduledTask", "ETA-Broker-Router"),
-    ("Start-ScheduledTask", "ETA-Jarvis-Strategy-Supervisor"),
+    ("Start-Supervisor", _SUPERVISOR_SERVICE_NAME),
 )
 
 
@@ -69,6 +71,15 @@ def _iso(now: datetime) -> str:
 
 def _task_command(verb: str, task_name: str) -> str:
     escaped = task_name.replace("'", "''")
+    if verb == "Start-Supervisor":
+        fallback = _SUPERVISOR_TASK_FALLBACK.replace("'", "''")
+        return (
+            f"$svc = Get-Service -Name '{escaped}' -ErrorAction SilentlyContinue; "
+            f"if ($null -ne $svc) {{ Start-Service -Name '{escaped}' -ErrorAction SilentlyContinue }} "
+            f"else {{ Start-ScheduledTask -TaskName '{fallback}' -ErrorAction SilentlyContinue }}"
+        )
+    if verb.endswith("-Service"):
+        return f"{verb} -Name '{escaped}' -ErrorAction SilentlyContinue"
     return f"{verb} -TaskName '{escaped}' -ErrorAction SilentlyContinue"
 
 

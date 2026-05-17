@@ -108,6 +108,25 @@ from eta_engine.scripts.l2_supervisor_state_persister import (  # noqa: E402
 from eta_engine.scripts.runtime_order_hold import (  # noqa: E402
     load_order_entry_hold,
 )
+from eta_engine.scripts.supervisor_entry_gate import (  # noqa: E402
+    broker_retune_block_reason as _broker_retune_block_reason,
+)
+from eta_engine.scripts.supervisor_entry_gate import (  # noqa: E402
+    load_bot_strategy_readiness_snapshot as _load_bot_strategy_readiness_snapshot,
+)
+from eta_engine.scripts.supervisor_entry_gate import (  # noqa: E402
+    load_negative_broker_edge_rows_for_entry_gate as _load_negative_broker_edge_rows_for_entry_gate,
+)
+from eta_engine.scripts.supervisor_entry_gate import (  # noqa: E402
+    load_strategy_readiness_rows_for_entry_gate as _load_strategy_readiness_rows_for_entry_gate,
+)
+from eta_engine.scripts.supervisor_entry_gate import (  # noqa: E402
+    resolve_diamond_retune_status_path as _resolve_diamond_retune_status_path,
+)
+from eta_engine.scripts.supervisor_entry_gate import (  # noqa: E402
+    strategy_readiness_block_reason as _strategy_readiness_block_reason,
+)
+from eta_engine.scripts.supervisor_persistence import SupervisorPersistenceStore  # noqa: E402
 from eta_engine.scripts.uptime_events import record_uptime_event  # noqa: E402
 
 logger = logging.getLogger("jarvis_strategy_supervisor")
@@ -210,69 +229,6 @@ def _resolve_bot_routing(bot_id: str, symbol: str) -> tuple[str | None, str | No
         return venue, asset_class
     except Exception:  # noqa: BLE001 — routing is advisory here, never fatal
         return None, None
-
-
-def _compact_strategy_readiness(row: dict[str, Any]) -> dict[str, Any]:
-    """Return the bot-level readiness fields safe for supervisor heartbeat."""
-    return {
-        "status": "ready",
-        "bot_id": row.get("bot_id"),
-        "strategy_id": row.get("strategy_id"),
-        "launch_lane": row.get("launch_lane"),
-        "data_status": row.get("data_status"),
-        "promotion_status": row.get("promotion_status"),
-        "can_paper_trade": bool(row.get("can_paper_trade")),
-        "can_live_trade": bool(row.get("can_live_trade")),
-        "next_action": row.get("next_action"),
-    }
-
-
-def _load_bot_strategy_readiness_snapshot(
-    path: Path | None = None,
-) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
-    """Load canonical strategy readiness for heartbeat enrichment."""
-    target = path or workspace_roots.ETA_BOT_STRATEGY_READINESS_SNAPSHOT_PATH
-    try:
-        payload = json.loads(target.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        return {
-            "status": "missing",
-            "path": str(target),
-            "summary": {},
-            "generated_at": None,
-        }, {}
-    except (OSError, json.JSONDecodeError) as exc:
-        return {
-            "status": "unreadable",
-            "path": str(target),
-            "summary": {},
-            "generated_at": None,
-            "error": str(exc),
-        }, {}
-
-    if not isinstance(payload, dict):
-        return {
-            "status": "unreadable",
-            "path": str(target),
-            "summary": {},
-            "generated_at": None,
-            "error": "bot strategy readiness snapshot must be a JSON object",
-        }, {}
-
-    rows = payload.get("rows") if isinstance(payload.get("rows"), list) else []
-    readiness_by_bot = {
-        str(row["bot_id"]): _compact_strategy_readiness(row)
-        for row in rows
-        if isinstance(row, dict) and row.get("bot_id")
-    }
-    summary = payload.get("summary") if isinstance(payload.get("summary"), dict) else {}
-    return {
-        "status": "ready",
-        "path": str(target),
-        "schema_version": payload.get("schema_version"),
-        "generated_at": payload.get("generated_at"),
-        "summary": summary,
-    }, readiness_by_bot
 
 
 # Load .env so os.getenv() sees paper_live / STARTING_CASH etc
@@ -933,6 +889,14 @@ class ExecutionRouter:
         # capital cap. Decoupled so unit tests can pass a fixed list
         # without instantiating the full supervisor.
         self._bots_ref = bots_ref or (lambda: [])
+        self._persistence = SupervisorPersistenceStore(
+            state_dir=self.cfg.state_dir,
+            bf_dir=self.bf_dir,
+            bots_ref=self._bots_ref,
+            logger=logger,
+            atomic_write_text=_atomic_write_text,
+            round_to_tick=_round_to_tick,
+        )
 
     def _fleet_open_notional_for_symbol(self, symbol: str) -> float:
         """Sum of |qty| * entry_price across bots whose symbol shares
@@ -1931,91 +1895,20 @@ class ExecutionRouter:
     # closed position.
 
     def _open_positions_dir(self) -> Path:
-        return self.cfg.state_dir / "bots"
+        return self._persistence.open_positions_dir()
 
     def _open_position_path(self, bot_id: str) -> Path:
-        return self._open_positions_dir() / bot_id / "open_position.json"
+        return self._persistence.open_position_path(bot_id)
 
     def _persist_open_position(self, bot: BotInstance) -> None:
-        """Write bot.open_position to disk (atomic). No-op if None."""
-        if bot.open_position is None:
-            return
-        try:
-            path = self._open_position_path(bot.bot_id)
-            # Keep per-bot restart state self-describing. The L2 aggregate
-            # heartbeat has bot.symbol in memory, but a standalone
-            # open_position.json must carry the symbol so diagnostics and
-            # restart recovery never classify a real paper position as
-            # malformed.
-            bot.open_position["symbol"] = bot.symbol
-            _atomic_write_text(path, json.dumps(bot.open_position, default=str))
-        except Exception as exc:  # noqa: BLE001 — persistence is best-effort
-            logger.warning(
-                "_persist_open_position(%s) failed: %s — bot state may not survive restart",
-                bot.bot_id,
-                exc,
-            )
+        self._persistence.persist_open_position(bot)
 
     def _clear_persisted_open_position(self, bot: BotInstance) -> None:
-        """Delete the persisted open_position file. Safe if missing."""
-        try:
-            path = self._open_position_path(bot.bot_id)
-            if path.exists():
-                path.unlink()
-        except Exception as exc:  # noqa: BLE001
-            logger.warning(
-                "_clear_persisted_open_position(%s) failed: %s",
-                bot.bot_id,
-                exc,
-            )
+        self._persistence.clear_persisted_open_position(bot)
 
     def _load_persisted_open_positions(self) -> int:
-        """Restore bot.open_position from disk for each bot at startup.
-
-        Called from run_forever AFTER load_bots and BEFORE the tick
-        loop. Returns the count of positions restored — operator can
-        see this in the startup log to know the supervisor remembers
-        what it had before the restart.
-
-        Lives on ExecutionRouter (this class) but is dispatched from
-        JarvisStrategySupervisor.run_forever via self._router. The
-        bots list is accessed via the bots_ref callable the supervisor
-        passed at construction.
-        """
-        if not self._open_positions_dir().exists():
-            return 0
-        restored = 0
-        bot_by_id = {bot.bot_id: bot for bot in self._bots_ref()}
-        for bot_dir in self._open_positions_dir().iterdir():
-            if not bot_dir.is_dir():
-                continue
-            bot = bot_by_id.get(bot_dir.name)
-            if bot is None:
-                # Bot not in active fleet — leave the file in place; the
-                # operator may want to inspect it. A future supervisor
-                # cleanup pass can sweep stale dirs.
-                continue
-            path = bot_dir / "open_position.json"
-            if not path.exists():
-                continue
-            try:
-                bot.open_position = json.loads(path.read_text(encoding="utf-8"))
-                restored += 1
-                logger.info(
-                    "restored open_position for %s: side=%s entry_price=%s qty=%s signal_id=%s",
-                    bot.bot_id,
-                    bot.open_position.get("side"),
-                    bot.open_position.get("entry_price"),
-                    bot.open_position.get("qty"),
-                    bot.open_position.get("signal_id"),
-                )
-            except Exception as exc:  # noqa: BLE001
-                logger.warning(
-                    "_load_persisted_open_positions: failed to read %s: %s",
-                    path,
-                    exc,
-                )
-        return restored
+        """Restore bot.open_position from disk for each bot at startup."""
+        return self._persistence.load_persisted_open_positions()
 
     def _write_pending_order(
         self,
@@ -2042,43 +1935,7 @@ class ExecutionRouter:
         # or double the position if the wire-side merged it as a fresh
         # entry. The default ``False`` matches the historical entry-only
         # call site so the caller doesn't have to opt in.
-        pos = bot.open_position or {}
-        # Tick-grid rounding (Fix 4): stop/target/limit are already
-        # tick-rounded upstream when ``submit_entry`` writes them, but
-        # defensively re-round here so an externally-mutated
-        # bot.open_position can't ship un-quantized prices to IBKR
-        # while the supervisor records the un-rounded value.
-        _raw_stop = pos.get("bracket_stop")
-        _raw_target = pos.get("bracket_target")
-        stop_price = _round_to_tick(float(_raw_stop), rec.symbol) if _raw_stop is not None else None
-        target_price = _round_to_tick(float(_raw_target), rec.symbol) if _raw_target is not None else None
-        limit_price = _round_to_tick(float(rec.fill_price), rec.symbol)
-        try:
-            f = self.bf_dir / f"{bot.bot_id}.pending_order.json"
-            f.write_text(
-                json.dumps(
-                    {
-                        "ts": rec.fill_ts,
-                        "signal_id": rec.signal_id,
-                        "side": rec.side,
-                        "qty": rec.qty,
-                        "symbol": rec.symbol,
-                        "limit_price": limit_price,
-                        "stop_price": stop_price,
-                        "target_price": target_price,
-                        "reduce_only": bool(reduce_only),
-                        "execution_lane": str(bot.execution_lane or ""),
-                        "capital_gate_scope": str(bot.capital_gate_scope or ""),
-                        "daily_loss_gate_mode": str(bot.daily_loss_gate_mode or ""),
-                        "daily_loss_gate_active": bool(bot.daily_loss_gate_active),
-                        "daily_loss_gate_reason": str(bot.daily_loss_gate_reason or ""),
-                    },
-                    indent=2,
-                ),
-                encoding="utf-8",
-            )
-        except OSError as exc:
-            logger.warning("pending order write failed (%s)", exc)
+        self._persistence.write_pending_order(bot, rec, reduce_only=reduce_only)
 
 
 # ─── Supervisor ───────────────────────────────────────────────────
@@ -2486,33 +2343,26 @@ class JarvisStrategySupervisor:
     def _strategy_readiness_rows_for_entry_gate(self) -> dict[str, dict[str, Any]]:
         """Return cached bot readiness rows for paper_live/live entry gating."""
         path = workspace_roots.ETA_BOT_STRATEGY_READINESS_SNAPSHOT_PATH
-        try:
-            mtime_ns = path.stat().st_mtime_ns
-        except OSError:
-            return {}
-        if self._strategy_readiness_mtime_ns != mtime_ns:
-            _payload, rows = _load_bot_strategy_readiness_snapshot(path)
-            self._strategy_readiness_by_bot = rows
-            self._strategy_readiness_mtime_ns = mtime_ns
+        rows, mtime_ns = _load_strategy_readiness_rows_for_entry_gate(
+            path,
+            previous_mtime_ns=self._strategy_readiness_mtime_ns,
+            previous_rows=self._strategy_readiness_by_bot,
+        )
+        self._strategy_readiness_by_bot = rows
+        self._strategy_readiness_mtime_ns = mtime_ns
         return self._strategy_readiness_by_bot
 
     def _strategy_readiness_allows_entry(self, bot: BotInstance) -> bool:
         """Fail closed for known research/non-approved bots in real order lanes."""
         mode = str(self.cfg.mode or "").strip().lower()
-        if mode not in {"paper_live", "live"}:
-            return True
         readiness = self._strategy_readiness_rows_for_entry_gate().get(bot.bot_id)
-        if not readiness:
-            return True
-
-        field = "can_live_trade" if mode == "live" else "can_paper_trade"
-        if bool(readiness.get(field)):
-            return True
-
-        lane = str(
-            readiness.get("launch_lane") or readiness.get("promotion_status") or "not_approved",
+        reason, lane, field = _strategy_readiness_block_reason(
+            mode=mode,
+            readiness=readiness,
         )
-        reason = f"strategy_readiness_block:{lane}"
+        if reason is None:
+            return True
+
         bot.last_aggregation_reject_reason = reason
         bot.last_aggregation_reject_at = datetime.now(UTC).isoformat()
         key = (bot.bot_id, reason)
@@ -2531,31 +2381,12 @@ class JarvisStrategySupervisor:
     def _negative_broker_edge_rows_for_entry_gate(self) -> dict[str, dict[str, Any]]:
         """Return bots whose broker-backed sample is large enough and negative."""
         path = self._diamond_retune_status_path()
-        try:
-            mtime_ns = path.stat().st_mtime_ns
-        except OSError:
-            return {}
-        if self._diamond_retune_status_mtime_ns == mtime_ns:
-            return self._negative_broker_edge_by_bot
-
-        try:
-            payload = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as exc:
-            logger.warning("diamond retune status read failed for entry gate: %s", exc)
-            return self._negative_broker_edge_by_bot
-        else:
-            rows = payload.get("bots") if isinstance(payload, dict) and isinstance(payload.get("bots"), list) else []
-
-        negative: dict[str, dict[str, Any]] = {}
-        for row in rows:
-            if not isinstance(row, dict):
-                continue
-            bot_id = str(row.get("bot_id") or "")
-            evidence = row.get("broker_close_evidence")
-            evidence = evidence if isinstance(evidence, dict) else {}
-            if bot_id and str(evidence.get("edge_status") or "") == "sample_met_negative_edge":
-                negative[bot_id] = row
-
+        negative, mtime_ns = _load_negative_broker_edge_rows_for_entry_gate(
+            path,
+            previous_mtime_ns=self._diamond_retune_status_mtime_ns,
+            previous_rows=self._negative_broker_edge_by_bot,
+            logger=logger,
+        )
         self._negative_broker_edge_by_bot = negative
         self._diamond_retune_status_mtime_ns = mtime_ns
         return negative
@@ -2569,28 +2400,23 @@ class JarvisStrategySupervisor:
         tests often point ``cfg.state_dir`` at a temp directory; in that
         case, read the temp state root instead of the operator's live file.
         """
-        runtime_state = Path(workspace_roots.ETA_RUNTIME_STATE_DIR)
-        configured_state = Path(self.cfg.state_dir)
-        try:
-            configured_state.resolve().relative_to(runtime_state.resolve())
-        except (OSError, ValueError):
-            return configured_state / "diamond_retune_status_latest.json"
-        return runtime_state / "diamond_retune_status_latest.json"
+        return _resolve_diamond_retune_status_path(
+            Path(self.cfg.state_dir),
+            Path(workspace_roots.ETA_RUNTIME_STATE_DIR),
+        )
 
     def _broker_retune_allows_entry(self, bot: BotInstance) -> bool:
         """Block new real-order entries for bots with broker-proven negative edge."""
         mode = str(self.cfg.mode or "").strip().lower()
-        if mode not in {"paper_live", "live"}:
-            return True
         row = self._negative_broker_edge_rows_for_entry_gate().get(bot.bot_id)
-        if not row:
+        reason = _broker_retune_block_reason(mode=mode, row=row)
+        if reason is None:
             if str(bot.last_aggregation_reject_reason or "") == "broker_negative_edge_retune_hold":
                 bot.last_aggregation_reject_reason = ""
                 bot.last_aggregation_reject_at = ""
             return True
 
         evidence = row.get("broker_close_evidence") if isinstance(row.get("broker_close_evidence"), dict) else {}
-        reason = "broker_negative_edge_retune_hold"
         bot.last_aggregation_reject_reason = reason
         bot.last_aggregation_reject_at = datetime.now(UTC).isoformat()
         key = (bot.bot_id, reason)
@@ -5495,7 +5321,7 @@ class JarvisStrategySupervisor:
             return default
 
     @staticmethod
-    def _coerce_bool(value: Any, default: bool) -> bool:
+    def _coerce_bool(value: object, default: bool) -> bool:
         if isinstance(value, bool):
             return value
         if value is None:

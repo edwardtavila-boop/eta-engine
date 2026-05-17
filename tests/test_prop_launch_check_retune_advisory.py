@@ -11,6 +11,25 @@ if str(WORKSPACE_ROOT) not in sys.path:
 from eta_engine.scripts import prop_launch_check as mod  # noqa: E402
 
 
+def test_scope_metadata_declares_parallel_readiness_lane() -> None:
+    metadata = mod._scope_metadata()
+
+    assert metadata["scope_family"] == "diamond_wave25_launch_readiness"
+    assert metadata["scope_mode"] == "launch_candidate_cutover"
+    assert metadata["parallel_readiness_surface"] == "eta_engine.scripts.prop_live_readiness_gate"
+    assert metadata["parallel_readiness_family"] == "futures_prop_ladder"
+    assert metadata["parallel_readiness_mode"] == "controlled_prop_dry_run"
+    assert metadata["parallel_readiness_command"] == (
+        "python -m eta_engine.scripts.prop_live_readiness_gate --json"
+    )
+    assert metadata["parallel_checklist_command"] == (
+        "python -m eta_engine.scripts.prop_operator_checklist --json"
+    )
+    assert metadata["parallel_promotion_audit_command"] == (
+        "python -m eta_engine.scripts.prop_strategy_promotion_audit --json"
+    )
+
+
 def test_check_retune_advisory_reads_public_caches(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(mod, "WORKSPACE_ROOT", tmp_path)
     health_dir = tmp_path / "var" / "eta_engine" / "state" / "health"
@@ -168,6 +187,12 @@ def test_build_action_list_surfaces_active_post_fix_experiment() -> None:
 def test_print_human_renders_retune_advisory_section(capsys) -> None:
     report = {
         "ts": "2026-05-15T20:10:00+00:00",
+        "scope_summary": "diamond_wave25_launch_readiness/launch_candidate_cutover",
+        "parallel_lane_hint": (
+            "Separate lane: futures_prop_ladder/controlled_prop_dry_run via "
+            "eta_engine.scripts.prop_live_readiness_gate"
+        ),
+        "parallel_readiness_command": "python -m eta_engine.scripts.prop_live_readiness_gate --json",
         "dryrun": {"overall_verdict": "HOLD", "summary": "paper-only window", "sections": []},
         "lifecycle": {
             "counts": {"EVAL_LIVE": 0, "EVAL_PAPER": 9, "FUNDED_LIVE": 0, "RETIRED": 0},
@@ -216,5 +241,8 @@ def test_print_human_renders_retune_advisory_section(capsys) -> None:
     out = capsys.readouterr().out
 
     assert "Broker-backed retune advisory" in out
+    assert "lane=diamond_wave25_launch_readiness/launch_candidate_cutover" in out
+    assert "parallel=Separate lane: futures_prop_ladder/controlled_prop_dry_run" in out
+    assert "parallel cmd=python -m eta_engine.scripts.prop_live_readiness_gate --json" in out
     assert "focus=mnq_futures_sage state=COLLECT_MORE_SAMPLE issue=broker_pnl_negative" in out
     assert "local drift: public_local_focus_mismatch" in out

@@ -323,6 +323,7 @@ if (-not $SkipETATasks) {
     $brokerStateRefreshTaskScript = "$EtaEngineDir\deploy\scripts\register_broker_state_refresh_task.ps1"
     $supervisorBrokerReconcileTaskScript = "$EtaEngineDir\deploy\scripts\register_supervisor_broker_reconcile_task.ps1"
     $operatorQueueHeartbeatTaskScript = "$EtaEngineDir\deploy\scripts\register_operator_queue_heartbeat_task.ps1"
+    $flawHardeningHeartbeatTaskScript = "$EtaEngineDir\deploy\scripts\register_flaw_hardening_heartbeat_task.ps1"
     $cloudflareTunnelTaskScript = "$EtaEngineDir\deploy\scripts\register_cloudflare_named_tunnel_task.ps1"
     $etaWatchdogTaskScript = "$EtaEngineDir\deploy\scripts\register_eta_watchdog_task.ps1"
 
@@ -468,6 +469,15 @@ if (-not $SkipETATasks) {
         }
     } else {
         Write-Host "  register_operator_queue_heartbeat_task.ps1 not found at $operatorQueueHeartbeatTaskScript" -ForegroundColor Yellow
+    }
+
+    if (Test-Path $flawHardeningHeartbeatTaskScript) {
+        Write-Host "  Registering flaw hardening heartbeat task (every 10m, read-only)..." -ForegroundColor Gray
+        if (-not $WhatIf) {
+            & $pwshPath -ExecutionPolicy Bypass -File $flawHardeningHeartbeatTaskScript -Start
+        }
+    } else {
+        Write-Host "  register_flaw_hardening_heartbeat_task.ps1 not found at $flawHardeningHeartbeatTaskScript" -ForegroundColor Yellow
     }
 
     if (Test-Path $etaWatchdogTaskScript) {
@@ -692,6 +702,7 @@ Write-Host "  ETA-IndexFutures-Bar-Refresh     -- boot/logon + every 10m NQ/MNQ 
 Write-Host "  ETA-BrokerStateRefreshHeartbeat  -- boot/logon + every 5m read-only broker cache refresh" -ForegroundColor Gray
 Write-Host "  ETA-SupervisorBrokerReconcile    -- boot/logon + every 5m read-only broker/supervisor reconcile" -ForegroundColor Gray
 Write-Host "  ETA-OperatorQueueHeartbeat       -- boot/logon + every 5m read-only queue snapshot" -ForegroundColor Gray
+Write-Host "  ETA-FlawHardeningHeartbeat      -- boot/logon + every 10m read-only flaw snapshot" -ForegroundColor Gray
 Write-Host "  ETA-FM-HealthProbe               -- every 15m cached Force Multiplier health" -ForegroundColor Gray
 Write-Host "  ETA-Watchdog                     -- boot/logon runtime watchdog" -ForegroundColor Gray
 Write-Host "  ETA-TWS-Watchdog                 -- startup + every 60s TWS health" -ForegroundColor Gray

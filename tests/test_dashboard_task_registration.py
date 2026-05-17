@@ -872,6 +872,9 @@ def test_scheduled_task_audit_flags_duplicate_paper_live_supervisor() -> None:
     text = SCHEDULED_TASK_AUDIT_SCRIPT.read_text(encoding="utf-8")
 
     assert "ETA-PaperLive-Supervisor" in text
+    assert "ETAJarvisSupervisor" in text
+    assert "disable_duplicate_and_keep_${canonicalSupervisorService}_service_fallback_${canonicalSupervisorTaskFallback}" in text
+    assert '"disable_duplicate_and_keep_ETA-Jarvis-Strategy-Supervisor"' not in text
     assert "unsafe_duplicate_supervisor" in text
     assert "is_unsafe_duplicate_supervisor" in text
 

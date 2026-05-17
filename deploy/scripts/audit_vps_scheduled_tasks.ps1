@@ -49,6 +49,9 @@ $unsafeDuplicateSupervisorTasks = @(
     # jarvis_strategy_supervisor.py instance and mutating safety state.
     "ETA-PaperLive-Supervisor"
 )
+$canonicalSupervisorService = "ETAJarvisSupervisor"
+$canonicalSupervisorTaskFallback = "ETA-Jarvis-Strategy-Supervisor"
+$unsafeDuplicateSupervisorAction = "disable_duplicate_and_keep_${canonicalSupervisorService}_service_fallback_${canonicalSupervisorTaskFallback}"
 
 $verdictExitTasks = @{
     "ETA-Diamond-FirstLightCheck" = @{
@@ -182,7 +185,7 @@ $rows = Get-ScheduledTask | Where-Object {
         is_healthcheck_contract_drift = $healthCheckContractDrift
         healthcheck_contract_issue = $healthCheckContractIssue
         is_unsafe_duplicate_supervisor = $isUnsafeDuplicateSupervisor
-        unsafe_duplicate_supervisor = if ($isUnsafeDuplicateSupervisor) { "disable_duplicate_and_keep_ETA-Jarvis-Strategy-Supervisor" } else { "" }
+        unsafe_duplicate_supervisor = if ($isUnsafeDuplicateSupervisor) { $unsafeDuplicateSupervisorAction } else { "" }
         needs_attention = $needsAttention
         actions = $actions
     }

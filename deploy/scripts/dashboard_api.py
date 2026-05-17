@@ -1368,6 +1368,30 @@ def _eta_readiness_snapshot_payload(*, server_ts: float) -> dict:
             or promotion_primary.get("bot_id")
             or ""
         ),
+        "prop_gate_scope_family": str(
+            receipt.get("prop_gate_scope_family") or prop_payload.get("scope_family") or ""
+        ).strip(),
+        "prop_gate_scope_mode": str(
+            receipt.get("prop_gate_scope_mode") or prop_payload.get("scope_mode") or ""
+        ).strip(),
+        "prop_gate_scope_note": str(
+            receipt.get("prop_gate_scope_note") or prop_payload.get("scope_note") or ""
+        ).strip(),
+        "prop_gate_parallel_launch_surface": str(
+            receipt.get("prop_gate_parallel_launch_surface")
+            or prop_payload.get("parallel_launch_surface")
+            or ""
+        ).strip(),
+        "prop_gate_parallel_launch_scope": str(
+            receipt.get("prop_gate_parallel_launch_scope")
+            or prop_payload.get("parallel_launch_scope")
+            or ""
+        ).strip(),
+        "prop_gate_parallel_launch_note": str(
+            receipt.get("prop_gate_parallel_launch_note")
+            or prop_payload.get("parallel_launch_note")
+            or ""
+        ).strip(),
         "command_center_issue_status": str(
             receipt.get("command_center_issue_status") or command_center_watchdog.get("issue_status") or ""
         ),
@@ -2065,6 +2089,9 @@ def _dashboard_diagnostics_payload() -> dict:
     dirty_worktree_reconciliation = _dirty_worktree_reconciliation_payload()
     symbol_intelligence = _load_symbol_intelligence_snapshot()
     diamond_retune_status = _load_diamond_retune_status()
+    diamond_retune_summary = (
+        diamond_retune_status.get("summary") if isinstance(diamond_retune_status.get("summary"), dict) else {}
+    )
     live_broker_diagnostics = _live_broker_diagnostic_payload()
     eta_readiness_snapshot = _augment_eta_readiness_snapshot_with_live_broker_state(
         eta_readiness_snapshot,
@@ -2157,7 +2184,11 @@ def _dashboard_diagnostics_payload() -> dict:
     first_operator_advisory_next_actions = first_operator_advisory.get("next_actions")
     if not isinstance(first_operator_advisory_next_actions, list):
         first_operator_advisory_next_actions = []
-    first_failed_gate = _first_failed_gate(paper_live_transition if isinstance(paper_live_transition, dict) else {})
+    first_failed_gate = (
+        paper_live_transition.get("first_failed_gate")
+        if isinstance(paper_live_transition.get("first_failed_gate"), dict)
+        else _first_failed_gate(paper_live_transition if isinstance(paper_live_transition, dict) else {})
+    )
     readiness_summary = readiness.get("summary") if isinstance(readiness.get("summary"), dict) else {}
     readiness_lanes = readiness_summary.get("launch_lanes") if isinstance(readiness_summary, dict) else {}
     readiness_lane_counts = readiness_lanes if isinstance(readiness_lanes, dict) else {}
@@ -2211,11 +2242,15 @@ def _dashboard_diagnostics_payload() -> dict:
                 )
         if paper_live_transition.get("cache_stale") and fresh_operator_queue:
             transition_first_launch_blocker = str(first_launch_blocker.get("op_id") or "")
-            transition_first_launch_next_action = str(
-                first_launch_blocker.get("detail")
-                or first_launch_blocker.get("title")
-                or transition_first_launch_next_action
-            )
+            launch_actions = first_launch_blocker.get("next_actions")
+            if isinstance(launch_actions, list) and launch_actions:
+                transition_first_launch_next_action = str(launch_actions[0])
+            else:
+                transition_first_launch_next_action = str(
+                    first_launch_blocker.get("detail")
+                    or first_launch_blocker.get("title")
+                    or transition_first_launch_next_action
+                )
 
     paper_live_status = str(paper_live_transition.get("status") or "unknown")
     paper_live_effective_status = str(
@@ -2223,6 +2258,7 @@ def _dashboard_diagnostics_payload() -> dict:
         or paper_live_transition.get("effective_status")
         or paper_live_status
     )
+    paper_live_detail = str(paper_live_transition.get("detail") or "")
     paper_live_effective_detail = str(
         roster_summary.get("paper_live_effective_detail") or paper_live_transition.get("effective_detail") or ""
     )
@@ -2279,6 +2315,13 @@ def _dashboard_diagnostics_payload() -> dict:
     if paper_live_stale_receipt:
         paper_live_effective_status = "stale_receipt"
         paper_live_effective_detail = paper_live_stale_detail or paper_live_effective_detail
+    if not paper_live_detail:
+        paper_live_detail = str(
+            transition_first_launch_next_action
+            or first_failed_gate.get("detail")
+            or first_failed_gate.get("next_action")
+            or ""
+        ).strip()
 
     return {
         **_dashboard_contract(),
@@ -2476,6 +2519,59 @@ def _dashboard_diagnostics_payload() -> dict:
         },
         "symbol_intelligence": _symbol_intelligence_diagnostic_payload(symbol_intelligence),
         "diamond_retune_status": _diamond_retune_diagnostic_payload(diamond_retune_status),
+        "retune_focus_bot_id": str(diamond_retune_status.get("focus_bot") or ""),
+        "retune_focus_state": str(diamond_retune_status.get("focus_state") or ""),
+        "retune_focus_issue": str(diamond_retune_status.get("focus_issue") or ""),
+        "retune_focus_next_action": str(diamond_retune_status.get("focus_next_action") or ""),
+        "retune_focus_active_experiment": (
+            dict(diamond_retune_status.get("focus_active_experiment"))
+            if isinstance(diamond_retune_status.get("focus_active_experiment"), dict)
+            else {}
+        ),
+        "retune_focus_active_experiment_summary_line": str(
+            diamond_retune_summary.get("broker_truth_focus_active_experiment_summary_line") or ""
+        ),
+        "retune_focus_active_experiment_outcome_line": str(
+            diamond_retune_status.get("focus_active_experiment_outcome_line") or ""
+        ),
+        "public_live_retune_generated_at_utc": str(
+            eta_readiness_snapshot.get("public_live_retune_generated_at_utc") or ""
+        ),
+        "public_live_retune_focus_active_experiment_outcome_line": str(
+            eta_readiness_snapshot.get("public_live_retune_focus_active_experiment_outcome_line") or ""
+        ),
+        "public_live_retune_sync_drift_display": str(
+            eta_readiness_snapshot.get("public_live_retune_sync_drift_display") or ""
+        ),
+        "dashboard_api_runtime_public_live_retune_generated_at_utc": str(
+            eta_readiness_snapshot.get("dashboard_api_runtime_public_live_retune_generated_at_utc") or ""
+        ),
+        "dashboard_api_runtime_public_live_retune_sync_drift_display": str(
+            eta_readiness_snapshot.get("dashboard_api_runtime_public_live_retune_sync_drift_display") or ""
+        ),
+        "dashboard_api_runtime_retune_drift_display": str(
+            eta_readiness_snapshot.get("dashboard_api_runtime_retune_drift_display") or ""
+        ),
+        "current_live_retune_generated_at_utc": str(
+            eta_readiness_snapshot.get("current_live_retune_generated_at_utc") or ""
+        ),
+        "current_live_retune_focus_active_experiment_outcome_line": str(
+            eta_readiness_snapshot.get("current_live_retune_focus_active_experiment_outcome_line") or ""
+        ),
+        "current_live_retune_sync_drift_display": str(
+            eta_readiness_snapshot.get("current_live_retune_sync_drift_display") or ""
+        ),
+        "local_retune_generated_at_utc": str(eta_readiness_snapshot.get("local_retune_generated_at_utc") or ""),
+        "local_retune_focus_active_experiment_outcome_line": str(
+            eta_readiness_snapshot.get("local_retune_focus_active_experiment_outcome_line") or ""
+        ),
+        "retune_focus_active_experiment_drift_display": str(
+            eta_readiness_snapshot.get("retune_focus_active_experiment_drift_display") or ""
+        ),
+        "current_local_retune_generated_at_utc": str(
+            eta_readiness_snapshot.get("current_local_retune_generated_at_utc") or ""
+        ),
+        "local_retune_sync_drift_display": str(eta_readiness_snapshot.get("local_retune_sync_drift_display") or ""),
         "daily_loss_killswitch": daily_loss_killswitch,
         "live_broker_state": live_broker_diagnostics,
         "operator_queue": {
@@ -2514,6 +2610,7 @@ def _dashboard_diagnostics_payload() -> dict:
         },
         "paper_live_transition": {
             "status": paper_live_status,
+            "detail": paper_live_detail,
             "stale_receipt": paper_live_stale_receipt,
             "stale_detail": paper_live_stale_detail,
             "effective_status": paper_live_effective_status,
@@ -2536,6 +2633,7 @@ def _dashboard_diagnostics_payload() -> dict:
             "operator_queue_launch_blocked_count": transition_launch_blocked,
             "first_launch_blocker_op_id": transition_first_launch_blocker,
             "first_launch_next_action": transition_first_launch_next_action,
+            "non_authoritative_gateway_host": bool(paper_live_transition.get("non_authoritative_gateway_host")),
             "first_failed_gate": {
                 "name": str(first_failed_gate.get("name") or ""),
                 "detail": str(first_failed_gate.get("detail") or ""),
@@ -8458,9 +8556,6 @@ def _paper_live_transition_with_effective_holds(payload: dict) -> dict:
     raw_status = str(out.get("status") or "unknown")
     effective_status = str(out.get("effective_status") or raw_status)
     effective_detail = str(out.get("effective_detail") or "")
-    first_launch_next_action = str(
-        out.get("operator_queue_first_launch_next_action") or out.get("operator_queue_first_next_action") or ""
-    ).strip()
     cache_stale = bool(out.get("cache_stale"))
     source_age_s = out.get("source_age_s")
     launch_blocked_raw = out.get("operator_queue_launch_blocked_count")
@@ -8470,6 +8565,15 @@ def _paper_live_transition_with_effective_holds(payload: dict) -> dict:
         launch_blocked = int(launch_blocked_raw or 0)
     except (TypeError, ValueError):
         launch_blocked = 0
+    first_failed_gate = out.get("first_failed_gate") if isinstance(out.get("first_failed_gate"), dict) else {}
+    if not first_failed_gate:
+        first_failed_gate = _first_failed_gate(out)
+    first_launch_next_action = str(out.get("first_launch_next_action") or "").strip()
+    if not first_launch_next_action and launch_blocked > 0:
+        first_launch_next_action = str(
+            out.get("operator_queue_first_launch_next_action") or out.get("operator_queue_first_next_action") or ""
+        ).strip()
+    detail = str(out.get("detail") or "").strip()
 
     daily_loss_state = _paper_live_daily_loss_state(
         host_authoritative=_host_allows_local_daily_loss_holds(out),
@@ -8494,18 +8598,32 @@ def _paper_live_transition_with_effective_holds(payload: dict) -> dict:
         effective_detail = str(shadow_runtime.get("detail") or effective_detail)
 
     if not effective_detail and effective_status == raw_status:
-        first_failed_gate = _first_failed_gate(out)
         effective_detail = str(
             first_launch_next_action
             or first_failed_gate.get("next_action")
             or first_failed_gate.get("detail")
-            or out.get("operator_queue_first_next_action")
+            or (out.get("operator_queue_first_next_action") if raw_status == "blocked" else "")
+            or ""
+        ).strip()
+    if not first_launch_next_action and effective_status == raw_status and (launch_blocked > 0 or raw_status == "blocked"):
+        first_launch_next_action = str(
+            first_failed_gate.get("next_action") or first_failed_gate.get("detail") or effective_detail or ""
+        ).strip()
+    if not detail:
+        detail = str(
+            effective_detail
+            or first_launch_next_action
+            or first_failed_gate.get("detail")
+            or first_failed_gate.get("next_action")
             or ""
         ).strip()
 
     out["raw_status"] = raw_status
     out["effective_status"] = effective_status
+    out["detail"] = detail
     out["effective_detail"] = effective_detail
+    out["first_launch_next_action"] = first_launch_next_action
+    out["first_failed_gate"] = first_failed_gate
     out["held_by_daily_loss_stop"] = held_by_daily_loss_stop
     out["daily_loss_gate_mode"] = daily_loss_state["gate_mode"]
     out["daily_loss_advisory_active"] = daily_loss_advisory_active
@@ -8525,6 +8643,10 @@ def _paper_live_transition_with_effective_holds(payload: dict) -> dict:
             )
         else:
             stale_detail = "paper-live transition cache is stale; refresh on the VPS before trusting blockers."
+        effective_status = "stale_receipt"
+        effective_detail = stale_detail or effective_detail
+        out["effective_status"] = effective_status
+        out["effective_detail"] = effective_detail
     out["stale_receipt"] = cache_stale
     out["stale_detail"] = stale_detail
     return out
@@ -11223,6 +11345,13 @@ def bot_fleet_roster(
     paper_live_stale_receipt = bool(paper_live_transition.get("stale_receipt"))
     paper_live_stale_detail = str(paper_live_transition.get("stale_detail") or "")
     paper_live_critical_ready = bool(paper_live_transition.get("critical_ready"))
+    paper_live_detail = str(paper_live_transition.get("detail") or "")
+    paper_live_first_launch_next_action = str(
+        paper_live_transition.get("first_launch_next_action")
+        or paper_live_transition.get("operator_queue_first_launch_next_action")
+        or paper_live_transition.get("operator_queue_first_next_action")
+        or ""
+    ).strip()
     paper_live_held_by_bracket_audit = broker_bracket_prop_dry_run_blocked and paper_live_critical_ready
     paper_live_effective_status = "held_by_bracket_audit" if paper_live_held_by_bracket_audit else paper_live_status
     paper_live_effective_detail = str(paper_live_transition.get("effective_detail") or "")
@@ -11588,8 +11717,13 @@ def bot_fleet_roster(
             "broker_bracket_primary_unrealized_pnl": broker_bracket_primary.get("unrealized_pnl"),
             "broker_bracket_primary_coverage_status": str(broker_bracket_primary.get("coverage_status") or ""),
             "paper_live_status": paper_live_status,
+            "paper_live_detail": paper_live_detail,
             "paper_live_effective_status": paper_live_effective_status,
             "paper_live_effective_detail": paper_live_effective_detail,
+            "paper_live_first_launch_next_action": paper_live_first_launch_next_action,
+            "paper_live_non_authoritative_gateway_host": bool(
+                paper_live_transition.get("non_authoritative_gateway_host")
+            ),
             "paper_live_stale_receipt": paper_live_stale_receipt,
             "paper_live_stale_detail": paper_live_stale_detail,
             "paper_live_held_by_bracket_audit": paper_live_held_by_bracket_audit,
@@ -11600,6 +11734,9 @@ def bot_fleet_roster(
                 paper_live_lane_state["capital_lanes_held_by_daily_loss_stop"]
             ),
             "paper_live_daily_loss_suppressed_non_authoritative_gateway_host": bool(
+                paper_live_transition.get("daily_loss_suppressed_non_authoritative_gateway_host")
+            )
+            or bool(
                 paper_live_lane_state["suppressed_on_non_authoritative_gateway_host"]
             ),
             "daily_loss_killswitch": daily_loss_killswitch,
@@ -18112,6 +18249,7 @@ def _local_master_status_payload() -> dict[str, object]:
         eta_readiness_snapshot=eta_readiness_snapshot,
     )
     command_center_watchdog = _command_center_watchdog_payload(server_ts=server_ts)
+    dashboard_proxy_watchdog = _dashboard_proxy_watchdog_payload(server_ts=server_ts)
     daily_stop_reset_audit = _daily_stop_reset_audit_payload(server_ts=server_ts)
     vps_ops_hardening = _vps_ops_hardening_payload(server_ts=server_ts)
     broker_bracket_audit_status = str(
@@ -18378,6 +18516,21 @@ def _local_master_status_payload() -> dict[str, object]:
         }:
             return "YELLOW"
         return "RED"
+
+    def _dashboard_proxy_watchdog_card_status(status: str) -> str:
+        normalized = str(status or "unknown").strip().lower()
+        if normalized == "ok":
+            return "GREEN"
+        if normalized in {
+            "probe_ok_watchdog_stale",
+            "stale",
+            "missing",
+            "unknown",
+        }:
+            return "YELLOW"
+        if normalized in {"failed", "degraded"}:
+            return "RED"
+        return "YELLOW"
 
     def _ops_audit_card_status(status: str, *, ready: bool = False) -> str:
         normalized = str(status or "unknown").strip().lower()
@@ -18749,6 +18902,22 @@ def _local_master_status_payload() -> dict[str, object]:
         "requires_elevation": bool(command_center_watchdog.get("requires_elevation")),
         "checked_at": command_center_watchdog.get("checked_at"),
     }
+    dashboard_proxy_watchdog_system = {
+        "status": _dashboard_proxy_watchdog_card_status(str(dashboard_proxy_watchdog.get("status") or "")),
+        "detail": str(dashboard_proxy_watchdog.get("summary") or ""),
+        "source": "dashboard_proxy_watchdog",
+        "raw_status": str(dashboard_proxy_watchdog.get("status") or ""),
+        "effective_status": str(dashboard_proxy_watchdog.get("status") or ""),
+        "fresh": bool(dashboard_proxy_watchdog.get("fresh")),
+        "action": str(dashboard_proxy_watchdog.get("action") or ""),
+        "task_name": str(dashboard_proxy_watchdog.get("task_name") or ""),
+        "probe_healthy": dashboard_proxy_watchdog.get("probe_healthy"),
+        "probe_reason": str(dashboard_proxy_watchdog.get("probe_reason") or ""),
+        "status_code": dashboard_proxy_watchdog.get("status_code"),
+        "restart_ok": dashboard_proxy_watchdog.get("restart_ok"),
+        "restart_reason": dashboard_proxy_watchdog.get("restart_reason"),
+        "checked_at": dashboard_proxy_watchdog.get("checked_at"),
+    }
     eta_readiness_snapshot_system = {
         "status": _ops_audit_card_status(
             eta_readiness_status,
@@ -18865,6 +19034,7 @@ def _local_master_status_payload() -> dict[str, object]:
         "retune_focus_active_experiment_summary_line": retune_focus_active_experiment_summary_line,
         "retune_focus_active_experiment_outcome_line": retune_focus_active_experiment_outcome_line,
         "command_center_watchdog": command_center_watchdog,
+        "dashboard_proxy_watchdog": dashboard_proxy_watchdog,
         "surface_watch": command_center_watchdog,
         "eta_readiness_snapshot": eta_readiness_snapshot,
         "daily_stop_reset_audit": daily_stop_reset_audit,
@@ -19016,6 +19186,7 @@ def _local_master_status_payload() -> dict[str, object]:
                 "non_authoritative_host": gateway_non_authoritative_host,
             },
             "command_center_watchdog": command_center_watchdog_system,
+            "dashboard_proxy_watchdog": dashboard_proxy_watchdog_system,
             "surface_watch": dict(command_center_watchdog_system),
             "eta_readiness_snapshot": eta_readiness_snapshot_system,
             "daily_stop_reset_audit": daily_stop_reset_audit_system,

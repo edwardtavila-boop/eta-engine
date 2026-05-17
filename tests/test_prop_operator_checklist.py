@@ -10,6 +10,18 @@ def _blocked_gate_report() -> dict[str, object]:
         "kind": "eta_prop_live_readiness_gate",
         "summary": "BLOCKED",
         "primary_bot": "volume_profile_mnq",
+        "scope_family": "futures_prop_ladder",
+        "scope_mode": "controlled_prop_dry_run",
+        "scope_note": (
+            "This gate governs the futures prop-ladder controlled dry-run lane "
+            "for volume_profile_mnq. Diamond or Wave-25 launch candidacy is "
+            "tracked separately and can remain NO_GO independently."
+        ),
+        "parallel_launch_surface": "eta_engine.scripts.prop_launch_check",
+        "parallel_launch_scope": "diamond_wave25_launch_readiness",
+        "parallel_launch_note": (
+            "Use eta_engine.scripts.prop_launch_check for Diamond and Wave-25 launch-candidate truth."
+        ),
         "checks": [
             {
                 "name": "prop_readiness",
@@ -59,6 +71,15 @@ def test_prop_operator_checklist_turns_gate_blockers_into_operator_steps() -> No
     report = checklist.build_checklist_report(gate_report=_blocked_gate_report())
 
     assert report["summary"] == "BLOCKED"
+    assert report["scope_family"] == "futures_prop_ladder"
+    assert report["scope_mode"] == "controlled_prop_dry_run"
+    assert report["scope_summary"] == "futures_prop_ladder/controlled_prop_dry_run for volume_profile_mnq"
+    assert report["parallel_launch_surface"] == "eta_engine.scripts.prop_launch_check"
+    assert report["parallel_launch_scope"] == "diamond_wave25_launch_readiness"
+    assert report["parallel_launch_command"] == "python -m eta_engine.scripts.prop_launch_check --json"
+    assert report["parallel_lane_hint"] == (
+        "Separate lane: diamond_wave25_launch_readiness via eta_engine.scripts.prop_launch_check"
+    )
     assert report["can_start_prop_dry_run"] is False
     assert report["blocking_step_count"] == 3
     assert [step["id"] for step in report["checklist"]] == [
@@ -100,6 +121,17 @@ def test_prop_operator_checklist_turns_gate_blockers_into_operator_steps() -> No
     assert steps["verify_manual_oco_or_flatten"]["alternative_order_action"] is True
     assert steps["hold_primary_paper_soak"]["bot_id"] == "volume_profile_mnq"
     assert steps["hold_primary_paper_soak"]["launch_lane"] == "paper_soak"
+    assert steps["hold_primary_paper_soak"]["scope_family"] == "futures_prop_ladder"
+    assert steps["hold_primary_paper_soak"]["scope_mode"] == "controlled_prop_dry_run"
+    assert "Diamond or Wave-25 launch candidacy" in steps["hold_primary_paper_soak"]["scope_note"]
+    assert steps["hold_primary_paper_soak"]["parallel_launch_surface"] == "eta_engine.scripts.prop_launch_check"
+    assert steps["hold_primary_paper_soak"]["parallel_launch_scope"] == "diamond_wave25_launch_readiness"
+    assert steps["hold_primary_paper_soak"]["parallel_launch_note"] == (
+        "Use eta_engine.scripts.prop_launch_check for Diamond and Wave-25 launch-candidate truth."
+    )
+    assert steps["hold_primary_paper_soak"]["parallel_launch_command"] == (
+        "python -m eta_engine.scripts.prop_launch_check --json"
+    )
     assert steps["hold_primary_paper_soak"]["promotion_audit_command"] == (
         "python -m eta_engine.scripts.prop_strategy_promotion_audit --json"
     )
@@ -110,6 +142,8 @@ def test_prop_operator_checklist_ready_has_no_blocking_steps() -> None:
         "kind": "eta_prop_live_readiness_gate",
         "summary": "READY_FOR_CONTROLLED_PROP_DRY_RUN",
         "primary_bot": "volume_profile_mnq",
+        "scope_family": "futures_prop_ladder",
+        "scope_mode": "controlled_prop_dry_run",
         "checks": [
             {"name": "prop_readiness", "status": "PASS", "detail": "ready"},
             {"name": "broker_native_brackets", "status": "PASS", "detail": "ready"},
@@ -123,4 +157,5 @@ def test_prop_operator_checklist_ready_has_no_blocking_steps() -> None:
     assert report["summary"] == "READY_FOR_CONTROLLED_PROP_DRY_RUN"
     assert report["can_start_prop_dry_run"] is True
     assert report["blocking_step_count"] == 0
+    assert report["parallel_launch_command"] == "python -m eta_engine.scripts.prop_launch_check --json"
     assert report["checklist"] == []

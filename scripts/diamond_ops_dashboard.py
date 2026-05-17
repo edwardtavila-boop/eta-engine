@@ -454,7 +454,11 @@ def run() -> dict[str, Any]:
             "broker_mtd_pnl": retune_advisory.get("broker_mtd_pnl"),
             "today_realized_pnl": retune_advisory.get("today_realized_pnl"),
             "active_experiment": active_experiment or {},
-            "active_experiment_summary_line": active_experiment_summary["headline"] if active_experiment_summary else "",
+            "active_experiment_summary_line": (
+                active_experiment_summary["headline"]
+                if active_experiment_summary
+                else ""
+            ),
         }
         if retune_advisory.get("focus_bot")
         else {},
@@ -503,20 +507,9 @@ def _print(summary: dict[str, Any]) -> None:
         experiment = advisory.get("active_experiment") if isinstance(advisory.get("active_experiment"), dict) else {}
         if experiment_summary_line:
             print(_console_ascii(f" advisory experiment: {experiment_summary_line}"))
-            partial_profit_enabled = experiment.get("partial_profit_enabled")
-            closes = experiment.get("post_change_closed_trade_count")
-            pnl = _float_or_none(experiment.get("post_change_total_realized_pnl"))
-            pf = _float_or_none(experiment.get("post_change_profit_factor"))
-            closes_text = str(closes) if closes is not None else "n/a"
-            pnl_text = f"${pnl:+,.2f}" if pnl is not None else "n/a"
-            pf_text = f"{pf:.2f}" if pf is not None else "n/a"
-            print(
-                _console_ascii(
-                    "                   "
-                    f"partial_profit_enabled={partial_profit_enabled} "
-                    f"closes={closes_text} pnl={pnl_text} pf={pf_text}"
-                ),
-            )
+            experiment_summary = summarize_active_experiment(experiment)
+            if experiment_summary:
+                print(_console_ascii(f"                   advisory outcome: {experiment_summary['outcome_line']}"))
     print(_console_ascii("-" * 130))
     for s in summary["syntheses"]:
         cum_r = s.get("cum_r")

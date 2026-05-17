@@ -1227,6 +1227,22 @@ class TestDashboardAPI:
             json.dumps(
                 {
                     "kind": "eta_diamond_retune_status",
+                    "focus_bot": "mnq_futures_sage",
+                    "focus_state": "STUCK_RESEARCH_FAILING",
+                    "focus_issue": "broker_pnl_negative",
+                    "focus_next_action": "pause repeated attempts",
+                    "focus_active_experiment": {
+                        "experiment_id": "partial_profit_disabled",
+                        "started_at": "2026-05-16T01:44:06+00:00",
+                        "partial_profit_enabled": False,
+                        "post_change_closed_trade_count": 2,
+                        "post_change_cumulative_r": 0.8192,
+                        "post_change_total_realized_pnl": 40.0,
+                        "post_change_profit_factor": 1.5,
+                    },
+                    "focus_active_experiment_outcome_line": (
+                        "partial_profit_disabled: 2 post-change closes | R +0.82 | PnL $40.00 | PF 1.50"
+                    ),
                     "summary": {
                         "n_targets": 3,
                         "n_attempted_bots": 2,
@@ -1265,6 +1281,7 @@ class TestDashboardAPI:
                             "python -m eta_engine.scripts.run_research_grid "
                             "--source registry --bots mnq_futures_sage --report-policy runtime"
                         ),
+                        "broker_truth_focus_next_action": "pause repeated attempts",
                         "broker_truth_focus_active_experiment": {
                             "experiment_id": "partial_profit_disabled",
                             "started_at": "2026-05-16T01:44:06+00:00",
@@ -1307,7 +1324,8 @@ class TestDashboardAPI:
         r = app_client.get("/api/dashboard/diagnostics?refresh=true")
 
         assert r.status_code == 200
-        data = r.json()["diamond_retune_status"]
+        payload = r.json()
+        data = payload["diamond_retune_status"]
         assert data["status"] == "ready"
         assert data["ready"] is True
         assert data["contract_ok"] is True
@@ -1348,7 +1366,21 @@ class TestDashboardAPI:
         assert data["broker_truth_focus_active_experiment_summary_line"] == (
             "partial_profit_disabled since 2026-05-16T01:44:06+00:00"
         )
+        assert data["broker_truth_focus_active_experiment_outcome_line"] == (
+            "partial_profit_disabled: 2 post-change closes | R +0.82 | PnL $40.00 | PF 1.50"
+        )
         assert data["broker_truth_summary_line"].startswith("mnq_futures_sage: sample met")
+        assert payload["retune_focus_bot_id"] == "mnq_futures_sage"
+        assert payload["retune_focus_state"] == "STUCK_RESEARCH_FAILING"
+        assert payload["retune_focus_issue"] == "broker_pnl_negative"
+        assert payload["retune_focus_next_action"] == "pause repeated attempts"
+        assert payload["retune_focus_active_experiment"]["experiment_id"] == "partial_profit_disabled"
+        assert payload["retune_focus_active_experiment_summary_line"] == (
+            "partial_profit_disabled since 2026-05-16T01:44:06+00:00"
+        )
+        assert payload["retune_focus_active_experiment_outcome_line"] == (
+            "partial_profit_disabled: 2 post-change closes | R +0.82 | PnL $40.00 | PF 1.50"
+        )
 
     def test_dashboard_cold_start_still_exposes_operator_queue(self, tmp_path, app_client):
         state = tmp_path / "state"
@@ -1691,6 +1723,8 @@ class TestDashboardAPI:
         data = r.json()
         assert data["cache_stale"] is True
         assert data["stale_receipt"] is True
+        assert data["effective_status"] == "stale_receipt"
+        assert "stale" in data["effective_detail"].lower()
         assert "stale" in data["stale_detail"].lower()
 
     def test_jarvis_paper_live_transition_endpoint_surfaces_daily_loss_shadow_advisory(
@@ -1855,7 +1889,53 @@ class TestDashboardAPI:
             == "On the VPS only: powershell.exe -NoProfile -ExecutionPolicy Bypass "
             "-File .\\eta_engine\\deploy\\scripts\\set_gateway_authority.ps1 -Apply -Role vps"
         )
+        assert (
+            data["detail"]
+            == "On the VPS only: powershell.exe -NoProfile -ExecutionPolicy Bypass "
+            "-File .\\eta_engine\\deploy\\scripts\\set_gateway_authority.ps1 -Apply -Role vps"
+        )
+        assert (
+            data["first_launch_next_action"]
+            == "On the VPS only: powershell.exe -NoProfile -ExecutionPolicy Bypass "
+            "-File .\\eta_engine\\deploy\\scripts\\set_gateway_authority.ps1 -Apply -Role vps"
+        )
+        assert data["first_failed_gate"] == {}
         assert data["daily_loss_killswitch"]["status"] == "tripped"
+
+    def test_jarvis_paper_live_transition_endpoint_keeps_advisory_queue_out_of_launch_action(
+        self,
+        app_client,
+        tmp_path,
+    ):
+        (tmp_path / "state" / "paper_live_transition_check.json").write_text(
+            json.dumps(
+                {
+                    "generated_at": datetime.now(UTC).isoformat(),
+                    "status": "ready_to_launch_paper_live",
+                    "critical_ready": True,
+                    "operator_queue_blocked_count": 1,
+                    "operator_queue_launch_blocked_count": 0,
+                    "operator_queue_first_blocker_op_id": "OP-16",
+                    "operator_queue_first_next_action": "continue research soak",
+                    "operator_queue_first_launch_blocker_op_id": None,
+                    "operator_queue_first_launch_next_action": None,
+                    "paper_ready_bots": 12,
+                    "gates": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/jarvis/paper_live_transition")
+
+        assert r.status_code == 200
+        data = r.json()
+        assert data["status"] == "ready_to_launch_paper_live"
+        assert data["effective_status"] == "ready_to_launch_paper_live"
+        assert data["effective_detail"] == ""
+        assert data["detail"] == ""
+        assert data["first_launch_next_action"] == ""
+        assert data["first_failed_gate"] == {}
 
     def test_jarvis_paper_live_transition_endpoint_marks_live_shadow_runtime_active(
         self,
@@ -3765,6 +3845,111 @@ class TestDashboardAPI:
         )
         assert payload["paper_live_transition"]["first_failed_gate"]["name"] == "tws_api_4002"
 
+    def test_dashboard_diagnostics_preserves_shared_paper_live_detail_on_stale_non_authoritative_host(
+        self,
+        app_client,
+        tmp_path,
+    ):
+        authority_action = (
+            "On the VPS only: powershell.exe -NoProfile -ExecutionPolicy Bypass "
+            "-File .\\eta_engine\\deploy\\scripts\\set_gateway_authority.ps1 -Apply -Role vps"
+        )
+        (tmp_path / "state" / "operator_queue_snapshot.json").write_text(
+            json.dumps(
+                {
+                    "generated_at": datetime.now(UTC).isoformat(),
+                    "status": "blocked",
+                    "launch_blocked_count": 1,
+                    "operator_queue": {
+                        "source": "jarvis_status.operator_queue",
+                        "summary": {"BLOCKED": 5, "OBSERVED": 12, "UNKNOWN": 0},
+                        "launch_blocked_count": 1,
+                        "top_blockers": [
+                            {
+                                "op_id": "OP-19",
+                                "title": "Install/configure canonical IB Gateway and recover TWS API 4002",
+                                "detail": (
+                                    "This host is not the VPS Gateway authority; do not repair, start, "
+                                    "or reauth IB Gateway from this desktop. Verify the VPS authority "
+                                    "marker and recovery lane on the 24/7 server."
+                                ),
+                                "next_actions": [
+                                    authority_action,
+                                    (
+                                        "On the VPS only: python -m "
+                                        "eta_engine.scripts.ibgateway_reauth_controller --execute"
+                                    ),
+                                ],
+                            }
+                        ],
+                        "top_launch_blockers": [
+                            {
+                                "op_id": "OP-19",
+                                "title": "Install/configure canonical IB Gateway and recover TWS API 4002",
+                                "detail": (
+                                    "This host is not the VPS Gateway authority; do not repair, start, "
+                                    "or reauth IB Gateway from this desktop. Verify the VPS authority "
+                                    "marker and recovery lane on the 24/7 server."
+                                ),
+                                "next_actions": [
+                                    authority_action,
+                                    (
+                                        "On the VPS only: python -m "
+                                        "eta_engine.scripts.ibgateway_reauth_controller --execute"
+                                    ),
+                                ],
+                            }
+                        ],
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        (tmp_path / "state" / "paper_live_transition_check.json").write_text(
+            json.dumps(
+                {
+                    "generated_at": (datetime.now(UTC) - timedelta(minutes=20)).isoformat(),
+                    "status": "blocked",
+                    "critical_ready": False,
+                    "non_authoritative_gateway_host": True,
+                    "paper_ready_bots": 9,
+                    "operator_queue_launch_blocked_count": 1,
+                    "operator_queue_first_launch_blocker_op_id": "OP-18",
+                    "operator_queue_first_launch_next_action": authority_action,
+                    "gates": [
+                        {
+                            "name": "tws_api_4002",
+                            "passed": False,
+                            "detail": (
+                                "Keep supervisor in paper_sim until TWS/IB Gateway API 4002 is running "
+                                "and the watchdog confirms an API handshake."
+                            ),
+                            "next_action": (
+                                "On the VPS only: python -m eta_engine.scripts.tws_watchdog "
+                                "--host 127.0.0.1 --port 4002"
+                            ),
+                            "critical": True,
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/dashboard/diagnostics")
+
+        assert r.status_code == 200
+        payload = r.json()
+        assert payload["paper_live_transition"]["status"] == "blocked"
+        assert payload["paper_live_transition"]["effective_status"] == "stale_receipt"
+        assert payload["paper_live_transition"]["detail"] == authority_action
+        assert payload["paper_live_transition"]["effective_detail"].startswith(
+            "paper-live transition cache is stale"
+        )
+        assert payload["paper_live_transition"]["first_launch_next_action"] == authority_action
+        assert payload["paper_live_transition"]["non_authoritative_gateway_host"] is True
+        assert payload["paper_live_transition"]["first_failed_gate"]["name"] == "tws_api_4002"
+
     def test_dashboard_diagnostics_lets_fresh_operator_queue_block_ready_paper_status(
         self,
         app_client,
@@ -4140,6 +4325,15 @@ class TestDashboardAPI:
                             "exit_code": 1,
                             "payload": {
                                 "primary_bot": "volume_profile_mnq",
+                                "scope_family": "futures_prop_ladder",
+                                "scope_mode": "controlled_prop_dry_run",
+                                "scope_note": (
+                                    "This gate governs the futures prop-ladder controlled dry-run lane "
+                                    "for volume_profile_mnq. Diamond or Wave-25 launch candidacy is "
+                                    "tracked separately and can remain NO_GO independently."
+                                ),
+                                "parallel_launch_surface": "eta_engine.scripts.prop_launch_check",
+                                "parallel_launch_scope": "diamond_wave25_launch_readiness",
                                 "next_actions": ["Keep volume_profile_mnq in paper_soak until can_live_trade=true."],
                             },
                         },
@@ -4184,6 +4378,11 @@ class TestDashboardAPI:
         assert snapshot["prop_gate_summary"] == "BLOCKED"
         assert snapshot["prop_gate_primary_action"].startswith("Keep volume_profile_mnq in paper_soak")
         assert snapshot["prop_primary_bot"] == "volume_profile_mnq"
+        assert snapshot["prop_gate_scope_family"] == "futures_prop_ladder"
+        assert snapshot["prop_gate_scope_mode"] == "controlled_prop_dry_run"
+        assert "Diamond or Wave-25 launch candidacy" in snapshot["prop_gate_scope_note"]
+        assert snapshot["prop_gate_parallel_launch_surface"] == "eta_engine.scripts.prop_launch_check"
+        assert snapshot["prop_gate_parallel_launch_scope"] == "diamond_wave25_launch_readiness"
         assert snapshot["promotion_summary"] == "BLOCKED_PAPER_SOAK"
         assert snapshot["ready_for_prop_dry_run_review"] is False
         assert snapshot["required_evidence"] == ["clear broker_native_brackets to PASS"]
@@ -4457,7 +4656,8 @@ class TestDashboardAPI:
         r = app_client.get("/api/dashboard/diagnostics")
 
         assert r.status_code == 200
-        snapshot = r.json()["eta_readiness_snapshot"]
+        payload = r.json()
+        snapshot = payload["eta_readiness_snapshot"]
         assert snapshot["command_center_issue_status"] == "healthy"
         assert snapshot["command_center_issue_summary"] == "Command Center watchdog is healthy."
         assert snapshot["command_center_operator_next_step"] == "none"
@@ -4546,6 +4746,39 @@ class TestDashboardAPI:
         )
         assert (
             snapshot["retune_focus_active_experiment_drift_display"]
+            == "public retune says partial_profit_disabled: awaiting first post-change close; "
+            "local mirror says partial_profit_disabled: 1 post-change close | R -0.82 | PnL $0.00"
+        )
+        assert payload["public_live_retune_generated_at_utc"] == "2026-05-16T20:33:18+00:00"
+        assert (
+            payload["public_live_retune_focus_active_experiment_outcome_line"]
+            == "partial_profit_disabled: awaiting first post-change close"
+        )
+        assert (
+            payload["public_live_retune_sync_drift_display"]
+            == "public retune truth refreshed at 2026-05-16T20:33:18+00:00 "
+            "after readiness cached 2026-05-16T19:33:18+00:00"
+        )
+        assert payload["dashboard_api_runtime_public_live_retune_generated_at_utc"] == "2026-05-16T20:33:18+00:00"
+        assert (
+            payload["dashboard_api_runtime_public_live_retune_sync_drift_display"]
+            == "public retune truth refreshed at 2026-05-16T20:33:18+00:00 "
+            "after readiness cached 2026-05-16T19:33:18+00:00"
+        )
+        assert payload["dashboard_api_runtime_retune_drift_display"] == ""
+        assert payload["local_retune_generated_at_utc"] == "2026-05-16T20:25:28+00:00"
+        assert (
+            payload["local_retune_focus_active_experiment_outcome_line"]
+            == "partial_profit_disabled: 1 post-change close | R -0.82 | PnL $0.00"
+        )
+        assert payload["current_local_retune_generated_at_utc"] == "2026-05-16T21:25:28+00:00"
+        assert (
+            payload["local_retune_sync_drift_display"]
+            == "local retune snapshot refreshed at 2026-05-16T21:25:28+00:00 "
+            "after readiness cached 2026-05-16T20:25:28+00:00"
+        )
+        assert (
+            payload["retune_focus_active_experiment_drift_display"]
             == "public retune says partial_profit_disabled: awaiting first post-change close; "
             "local mirror says partial_profit_disabled: 1 post-change close | R -0.82 | PnL $0.00"
         )
@@ -5809,6 +6042,61 @@ class TestDashboardAPI:
         assert payload["systems"]["command_center_watchdog"]["raw_status"] == "healthy"
         assert payload["systems"]["command_center_watchdog"]["effective_status"] == "healthy"
         assert payload["systems"]["command_center_watchdog"]["detail"] == "Command Center watchdog is healthy."
+
+    def test_master_status_includes_dashboard_proxy_watchdog_system(self, app_client, tmp_path, monkeypatch):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        monkeypatch.setattr(
+            mod,
+            "_operator_queue_payload",
+            lambda: {"summary": {"BLOCKED": 0}, "launch_blocked_count": 0},
+        )
+        (tmp_path / "state" / "dashboard_proxy_watchdog_heartbeat.json").write_text(
+            json.dumps(
+                {
+                    "ts": datetime.now(UTC).isoformat(),
+                    "component": "dashboard_proxy_watchdog",
+                    "decision": {
+                        "checked_at": datetime.now(UTC).isoformat(),
+                        "action": "noop",
+                        "task_name": "ETA-Proxy-8421",
+                        "probe": {
+                            "healthy": True,
+                            "url": "http://127.0.0.1:8421/",
+                            "status_code": 200,
+                            "reason": "ok",
+                            "elapsed_ms": 15,
+                            "body_len": 77000,
+                        },
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        (tmp_path / "state" / "paper_live_transition_check.json").write_text(
+            json.dumps(
+                {
+                    "generated_at": datetime.now(UTC).isoformat(),
+                    "status": "ready_to_launch_paper_live",
+                    "critical_ready": True,
+                    "paper_ready_bots": 5,
+                    "operator_queue_blocked_count": 0,
+                    "operator_queue_launch_blocked_count": 0,
+                    "gates": [],
+                }
+            )
+        )
+
+        r = app_client.get("/api/master/status")
+
+        assert r.status_code == 200
+        payload = r.json()
+        assert payload["dashboard_proxy_watchdog"]["status"] == "ok"
+        assert payload["systems"]["dashboard_proxy_watchdog"]["status"] == "GREEN"
+        assert payload["systems"]["dashboard_proxy_watchdog"]["raw_status"] == "ok"
+        assert payload["systems"]["dashboard_proxy_watchdog"]["effective_status"] == "ok"
+        assert payload["systems"]["dashboard_proxy_watchdog"]["detail"] == "noop: ok"
+        assert payload["systems"]["dashboard_proxy_watchdog"]["task_name"] == "ETA-Proxy-8421"
 
     def test_master_status_includes_stale_audit_systems(self, app_client, tmp_path, monkeypatch):
         import eta_engine.deploy.scripts.dashboard_api as mod
@@ -10512,7 +10800,10 @@ class TestDashboardAPI:
         assert payload["paper_live_transition"]["status"] == "ready_to_launch_paper_live"
         assert payload["paper_live_transition"]["critical_ready"] is True
         assert payload["summary"]["paper_live_status"] == "ready_to_launch_paper_live"
+        assert payload["summary"]["paper_live_detail"] == ""
         assert payload["summary"]["paper_live_effective_status"] == "ready_to_launch_paper_live"
+        assert payload["summary"]["paper_live_first_launch_next_action"] == ""
+        assert payload["summary"]["paper_live_non_authoritative_gateway_host"] is False
         assert payload["summary"]["paper_live_held_by_bracket_audit"] is False
         assert payload["summary"]["paper_live_critical_ready"] is True
         assert payload["summary"]["paper_live_ready_bots"] == 12
@@ -10561,6 +10852,8 @@ class TestDashboardAPI:
         assert payload["summary"]["paper_live_status"] == "ready_to_launch_paper_live"
         assert payload["summary"]["paper_live_effective_status"] == "stale_receipt"
         assert payload["summary"]["paper_live_stale_receipt"] is True
+        assert payload["summary"]["paper_live_detail"] == ""
+        assert payload["summary"]["paper_live_first_launch_next_action"] == ""
         assert "stale" in payload["summary"]["paper_live_stale_detail"].lower()
 
     def test_bot_fleet_marks_shadow_paper_active_when_attached_runtime_is_live(self, app_client, tmp_path):
@@ -14950,6 +15243,17 @@ class TestDashboardAPI:
             == "On the VPS only: powershell.exe -NoProfile -ExecutionPolicy Bypass "
             "-File .\\eta_engine\\deploy\\scripts\\set_gateway_authority.ps1 -Apply -Role vps"
         )
+        assert (
+            data["summary"]["paper_live_detail"]
+            == "On the VPS only: powershell.exe -NoProfile -ExecutionPolicy Bypass "
+            "-File .\\eta_engine\\deploy\\scripts\\set_gateway_authority.ps1 -Apply -Role vps"
+        )
+        assert (
+            data["summary"]["paper_live_first_launch_next_action"]
+            == "On the VPS only: powershell.exe -NoProfile -ExecutionPolicy Bypass "
+            "-File .\\eta_engine\\deploy\\scripts\\set_gateway_authority.ps1 -Apply -Role vps"
+        )
+        assert data["summary"]["paper_live_non_authoritative_gateway_host"] is True
         assert data["summary"]["paper_live_capital_lanes_held_by_daily_loss_stop"] is False
         assert data["summary"]["paper_live_daily_loss_advisory_active"] is False
         assert data["summary"]["paper_live_daily_loss_suppressed_non_authoritative_gateway_host"] is True

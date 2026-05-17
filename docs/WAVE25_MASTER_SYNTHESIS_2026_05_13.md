@@ -75,10 +75,10 @@ small-R bracket churn. The aggregate `cum_USD = −$255` is the sum of
 these two regimes. **Half the trade book is just bad. The other half is
 launch-candidate-quality.**
 
-Right answer is NOT "fix the qty bug" (Fix A from `MES_V2_SIZING_FORENSIC.md`).
-Right answer IS regime/vol filtering: set `vol_low_size_mult=0.0` and
-take only the high-vol setups. That's a single config flip away from a
-defensible candidate.
+This interpretation was later corrected. The qty<1 vs qty>=1 split on
+`mnq_futures_sage` was traced to the supervisor partial-profit mechanism,
+not a real vol-regime filter that can be fixed with `vol_low_size_mult=0.0`.
+See `MNQ_FUTURES_SAGE_VOL_REGIME_FORENSIC_CORRECTION_2026_05_13.md`.
 
 ---
 
@@ -100,7 +100,7 @@ mnq_futures_sage  n= 109  WR=64.2%  cum_R=+136.9  cum_USD=$-255 ASYM *VOL_FILTER
     qty<1: n= 24 WR=100.0% USD=  +$486    qty>=1: n= 30 WR= 16.7% USD=  -$740
 ```
 
-Action item #2 in the CLI auto-surfaces:
+Action item #2 in the CLI originally auto-surfaced:
 
 > "VOL-REGIME FILTER candidate: mnq_futures_sage — set
 > `vol_low_size_mult=0.0` in the bot's strategy config to skip
@@ -120,6 +120,12 @@ python -m eta_engine.scripts.prop_launch_check
 
 The verdict will be `NO_GO`. Trust it.
 
+Scope note: `prop_launch_check` is the Diamond/Wave-25 launch-candidate
+cutover verdict. If the separate futures prop-ladder controlled dry-run lane
+for `volume_profile_mnq` matters too, read it in parallel via
+`prop_live_readiness_gate`, `prop_operator_checklist`, and
+`prop_strategy_promotion_audit`.
+
 ### Monday 2026-05-18 morning
 
 **Do not launch live.** Let the supervisor keep running in `paper_live`
@@ -128,16 +134,22 @@ accumulating real-fidelity paper data.
 
 ### Optional Sunday-night experiment
 
-If the operator wants to test the vol-regime filter hypothesis BEFORE
-2026-06-01, set in the strategy config (NOT the global default):
+If the operator wants to test the corrected `mnq_futures_sage` hypothesis
+BEFORE 2026-06-01, do not use `vol_low_size_mult=0.0`. Instead, run the
+bot-scoped paper-soak from
+`MNQ_FUTURES_SAGE_VOL_REGIME_FORENSIC_CORRECTION_2026_05_13.md`:
 
 ```python
-# mnq_futures_sage's SweepReclaimConfig
-vol_low_size_mult: float = 0.0  # skip normal-vol setups entirely
+# corrected paper-soak target for mnq_futures_sage
+partial_profit_enabled = false
 ```
 
-Then paper-soak for 2 weeks. The Sunday-EOD `prop_launch_check` will
+Then paper-soak for 2 weeks. The Sunday-EOD `prop_launch_check` will show
 show whether the filtered book stays USD-positive at n≥50.
+
+Correction: the older "filtered book" wording above is superseded. The current
+live experiment is the corrected `partial_profit_enabled=false` paper-soak,
+not a `vol_low_size_mult=0.0` config flip.
 
 ### Pre-committed falsification
 
@@ -165,9 +177,9 @@ edge IF the high-vol regime stays stable. But:
 - `mnq_futures_sage`'s broader history (1267 trades, +0.82R avg, 55% WR)
   blends both vol regimes. Whether the high-vol-only book holds up over
   wider historical windows is unknown.
-- Setting `vol_low_size_mult=0.0` has never been tested in paper mode.
-  There could be edge cases (e.g. the bot fires zero trades for 3 weeks
-  straight if vol stays low).
+- The corrected `partial_profit_enabled=false` experiment still needs a
+  broker-backed post-fix sample. A tiny post-fix close count is not enough
+  to reclassify the bot as launch-ready.
 
 **These caveats are why the recommendation is paper-soak, not Monday
 launch.**
@@ -204,6 +216,9 @@ it exists.
 
 ```powershell
 python -m eta_engine.scripts.prop_launch_check
+python -m eta_engine.scripts.prop_live_readiness_gate --json
+python -m eta_engine.scripts.prop_operator_checklist --json
+python -m eta_engine.scripts.prop_strategy_promotion_audit --json
 python -m eta_engine.scripts.diamond_qty_asymmetry_audit
 python -m eta_engine.scripts.diamond_leaderboard
 python -m eta_engine.scripts.diamond_wave25_status

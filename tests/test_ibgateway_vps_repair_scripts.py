@@ -12,6 +12,8 @@ REAUTH_REGISTRAR = ROOT / "deploy" / "scripts" / "register_ibgateway_reauth_task
 TWS_REGISTRAR = ROOT / "deploy" / "scripts" / "register_tws_watchdog_task.ps1"
 OPERATOR_TASKS = ROOT / "deploy" / "scripts" / "register_operator_tasks.ps1"
 VPS_BOOTSTRAP = ROOT / "deploy" / "vps_bootstrap.ps1"
+DIAG_COMPACT = ROOT / "deploy" / "scripts" / "diag_compact.ps1"
+FULL_DIAGNOSTICS = ROOT / "deploy" / "scripts" / "full_diagnostics.ps1"
 
 
 def test_ibgateway_starter_uses_canonical_logs_and_verified_direct_start() -> None:
@@ -211,6 +213,11 @@ def test_gateway_authority_helpers_block_workstation_ownership_and_clean_local_t
     tws_registrar_text = TWS_REGISTRAR.read_text(encoding="utf-8")
     bootstrap_text = VPS_BOOTSTRAP.read_text(encoding="utf-8")
     repair_text = REPAIR.read_text(encoding="utf-8")
+    operator_tasks_text = OPERATOR_TASKS.read_text(encoding="utf-8")
+    diagnostic_texts = (
+        DIAG_COMPACT.read_text(encoding="utf-8"),
+        FULL_DIAGNOSTICS.read_text(encoding="utf-8"),
+    )
 
     assert "[switch]$AllowDesktopHost" in authority_text
     assert "ProductType -eq 1" in authority_text
@@ -230,6 +237,24 @@ def test_gateway_authority_helpers_block_workstation_ownership_and_clean_local_t
     assert "ETA-TWS-Watchdog" in disable_text
     assert "EtaIbkrBbo1mCapture" in disable_text
     assert "Non-authoritative Windows workstation" in disable_text
+    assert "would_disable_tasks" in disable_text
+    assert "would_stop_processes" in disable_text
+    assert "$result.would_disable_tasks += $taskReceipt" in disable_text
+
+    authority_parser_texts = (
+        disable_text,
+        reauth_registrar_text,
+        tws_registrar_text,
+        repair_text,
+        STARTER.read_text(encoding="utf-8"),
+        operator_tasks_text,
+        *diagnostic_texts,
+    )
+    for text in authority_parser_texts:
+        assert "function Convert-GatewayAuthorityEnabled" in text
+        assert "Convert-GatewayAuthorityEnabled -Value $payload.enabled" in text
+        assert "[bool]$payload.enabled" not in text
+        assert "[bool]($payload.enabled)" not in text
 
     for text in (reauth_registrar_text, tws_registrar_text):
         assert "GatewayAuthorityPath" in text

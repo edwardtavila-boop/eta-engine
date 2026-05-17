@@ -45,6 +45,15 @@ WORKSPACE_ROOT = ROOT.parent
 if str(WORKSPACE_ROOT) not in sys.path:
     sys.path.insert(0, str(WORKSPACE_ROOT))
 
+SCOPE_FAMILY = "diamond_wave25_launch_readiness"
+SCOPE_MODE = "launch_candidate_cutover"
+PARALLEL_READINESS_SURFACE = "eta_engine.scripts.prop_live_readiness_gate"
+PARALLEL_READINESS_FAMILY = "futures_prop_ladder"
+PARALLEL_READINESS_MODE = "controlled_prop_dry_run"
+PARALLEL_READINESS_COMMAND = "python -m eta_engine.scripts.prop_live_readiness_gate --json"
+PARALLEL_CHECKLIST_COMMAND = "python -m eta_engine.scripts.prop_operator_checklist --json"
+PARALLEL_PROMOTION_AUDIT_COMMAND = "python -m eta_engine.scripts.prop_strategy_promotion_audit --json"
+
 
 def _state_dir() -> Path:
     return WORKSPACE_ROOT / "var" / "eta_engine" / "state"
@@ -78,6 +87,29 @@ def _string_list(payload: dict, key: str) -> list[str]:
     if not isinstance(value, list):
         return []
     return [str(item) for item in value if str(item).strip()]
+
+
+def _scope_metadata() -> dict[str, str]:
+    return {
+        "scope_family": SCOPE_FAMILY,
+        "scope_mode": SCOPE_MODE,
+        "scope_note": (
+            "This launch check governs Diamond and Wave-25 launch-candidate cutover truth. "
+            "The futures prop-ladder controlled dry-run lane is tracked separately and can "
+            "remain BLOCKED independently."
+        ),
+        "scope_summary": f"{SCOPE_FAMILY}/{SCOPE_MODE}",
+        "parallel_readiness_surface": PARALLEL_READINESS_SURFACE,
+        "parallel_readiness_family": PARALLEL_READINESS_FAMILY,
+        "parallel_readiness_mode": PARALLEL_READINESS_MODE,
+        "parallel_readiness_command": PARALLEL_READINESS_COMMAND,
+        "parallel_checklist_command": PARALLEL_CHECKLIST_COMMAND,
+        "parallel_promotion_audit_command": PARALLEL_PROMOTION_AUDIT_COMMAND,
+        "parallel_lane_hint": (
+            f"Separate lane: {PARALLEL_READINESS_FAMILY}/{PARALLEL_READINESS_MODE} via "
+            f"{PARALLEL_READINESS_SURFACE}"
+        ),
+    }
 
 
 def _print_section_header(title: str) -> None:
@@ -605,6 +637,15 @@ def _print_human(report: dict) -> None:
     print(f"  PROP LAUNCH CHECK  ({report['ts']})  verdict={verdict}")
     print("=" * 92)
     print(f"  {summary_text}")
+    scope_summary = str(report.get("scope_summary") or "").strip()
+    if scope_summary:
+        print(f"  lane={scope_summary}")
+    parallel_lane_hint = str(report.get("parallel_lane_hint") or "").strip()
+    parallel_readiness_command = str(report.get("parallel_readiness_command") or "").strip()
+    if parallel_lane_hint:
+        print(f"  parallel={parallel_lane_hint}")
+    if parallel_readiness_command:
+        print(f"  parallel cmd={parallel_readiness_command}")
 
     # Supervisor health
     supervisor = report.get("supervisor", {})
@@ -833,6 +874,7 @@ def main(argv: list[str] | None = None) -> int:
 
     report = {
         "ts": datetime.now(UTC).replace(microsecond=0).isoformat(),
+        **_scope_metadata(),
         "dryrun": dryrun,
         "lifecycle": lifecycle,
         "leaderboard": leaderboard,

@@ -35,7 +35,7 @@ ssh forex-vps "cd C:\EvolutionaryTradingAlgo\eta_engine; python scripts\supervis
 - `status=fresh` with `diagnosis=canonical_fresh_legacy_path_mismatch` means the supervisor is healthy and the stale warning came from a wrong path.
 - `status=main_loop_stuck` means the independent keepalive is fresh but `heartbeat.json` stopped advancing. The process is alive, but the trade tick loop is blocked and the ETA watchdog should restart the paper supervisor.
 - `status=paper_main_loop_stuck` means the managed paper-sim service is alive under `supervisor_mock`, but its main tick loop is blocked. This is the paper-soak variant of `main_loop_stuck`.
-- `status=stale` means the canonical heartbeat exists but is older than the threshold, so inspect or restart `ETA-Jarvis-Strategy-Supervisor`.
+- `status=stale` means the canonical heartbeat exists but is older than the threshold, so inspect or restart the `ETAJarvisSupervisor` WinSW service. Use the scheduled task `ETA-Jarvis-Strategy-Supervisor` only as the fallback lane when the service is not installed.
 - `status=missing` or `status=invalid` means the canonical heartbeat is absent or corrupt and the supervisor lane needs repair before trusting downstream dashboards.
 
 ## Always-On Paper Self-Heal
