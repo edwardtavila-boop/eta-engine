@@ -1,4 +1,4 @@
-"""Shared paper-live status helpers for the ETA dashboard."""
+"""Shared paper-live and operator-queue status helpers for the ETA dashboard."""
 
 from __future__ import annotations
 
@@ -180,4 +180,137 @@ def reconcile_paper_live_transition_launch_block(
         "launch_blocked_count": transition_launch_blocked,
         "first_launch_blocker_op_id": transition_first_launch_blocker,
         "first_launch_next_action": transition_first_launch_next_action,
+    }
+
+
+def build_paper_live_transition_summary(
+    *,
+    raw_status: str,
+    detail: str,
+    stale_receipt: bool,
+    stale_detail: str,
+    effective_status: str,
+    effective_detail: str,
+    held_by_bracket_audit: bool,
+    held_by_daily_loss_stop: bool,
+    daily_loss_gate_mode: str,
+    daily_loss_advisory_active: bool,
+    capital_lanes_held_by_daily_loss_stop: bool,
+    daily_loss_suppressed_non_authoritative_gateway_host: bool,
+    broker_bracket_missing_count: int,
+    broker_bracket_primary_symbol: str,
+    broker_bracket_primary_venue: str,
+    broker_bracket_primary_sec_type: str,
+    paper_ready_bots: int,
+    critical_ready: bool,
+    operator_queue_launch_blocked_count: int,
+    first_launch_blocker_op_id: str,
+    first_launch_next_action: str,
+    non_authoritative_gateway_host: bool,
+    cache_stale: bool,
+    error: object,
+    first_failed_gate: dict[str, Any],
+) -> dict[str, Any]:
+    """Build the diagnostics `paper_live_transition` payload."""
+
+    resolved_detail = str(detail or "").strip()
+    if not resolved_detail:
+        resolved_detail = str(
+            first_launch_next_action
+            or first_failed_gate.get("detail")
+            or first_failed_gate.get("next_action")
+            or ""
+        ).strip()
+
+    return {
+        "status": str(raw_status or "unknown"),
+        "detail": resolved_detail,
+        "stale_receipt": bool(stale_receipt),
+        "stale_detail": str(stale_detail or ""),
+        "effective_status": str(effective_status or "unknown"),
+        "effective_detail": str(effective_detail or ""),
+        "held_by_bracket_audit": bool(held_by_bracket_audit),
+        "held_by_daily_loss_stop": bool(held_by_daily_loss_stop),
+        "daily_loss_gate_mode": str(daily_loss_gate_mode or ""),
+        "daily_loss_advisory_active": bool(daily_loss_advisory_active),
+        "capital_lanes_held_by_daily_loss_stop": bool(capital_lanes_held_by_daily_loss_stop),
+        "daily_loss_suppressed_non_authoritative_gateway_host": bool(
+            daily_loss_suppressed_non_authoritative_gateway_host
+        ),
+        "broker_bracket_missing_count": int(broker_bracket_missing_count or 0),
+        "broker_bracket_primary_symbol": str(broker_bracket_primary_symbol or ""),
+        "broker_bracket_primary_venue": str(broker_bracket_primary_venue or ""),
+        "broker_bracket_primary_sec_type": str(broker_bracket_primary_sec_type or ""),
+        "paper_ready_bots": int(paper_ready_bots or 0),
+        "critical_ready": bool(critical_ready),
+        "operator_queue_launch_blocked_count": int(operator_queue_launch_blocked_count or 0),
+        "first_launch_blocker_op_id": str(first_launch_blocker_op_id or ""),
+        "first_launch_next_action": str(first_launch_next_action or ""),
+        "non_authoritative_gateway_host": bool(non_authoritative_gateway_host),
+        "cache_stale": bool(cache_stale),
+        "error": error,
+        "first_failed_gate": first_failed_gate if isinstance(first_failed_gate, dict) else {},
+    }
+
+
+def build_operator_queue_diagnostics_summary(
+    *,
+    operator_summary: dict[str, Any],
+    operator_queue: dict[str, Any],
+    first_operator_blocker: dict[str, Any],
+    first_operator_evidence: dict[str, Any],
+    first_operator_blocked_bots: list[Any],
+    first_operator_next_actions: list[Any],
+    first_launch_blocker: dict[str, Any],
+    first_operator_advisory: dict[str, Any],
+    first_operator_advisory_evidence: dict[str, Any],
+    first_operator_advisory_blocked_bots: list[Any],
+    first_operator_advisory_next_actions: list[Any],
+) -> dict[str, Any]:
+    """Build the diagnostics `operator_queue` payload."""
+
+    operator_advisory_count_raw = operator_queue.get("advisory_count")
+    if operator_advisory_count_raw is None:
+        operator_advisory_count_raw = operator_queue.get("non_launch_blocked_count")
+    if operator_advisory_count_raw is None:
+        operator_advisory_count_raw = max(0, int(operator_summary.get("BLOCKED") or 0))
+    try:
+        operator_advisory_count = int(operator_advisory_count_raw or 0)
+    except (TypeError, ValueError):
+        operator_advisory_count = 0
+
+    launch_blocked_count = int(operator_queue.get("launch_blocked_count") or 0)
+
+    return {
+        "blocked": int(operator_summary.get("BLOCKED") or 0),
+        "observed": int(operator_summary.get("OBSERVED") or 0),
+        "unknown": int(operator_summary.get("UNKNOWN") or 0),
+        "launch_blocked": launch_blocked_count,
+        "advisory_count": operator_advisory_count,
+        "advisory_only": bool(operator_queue.get("advisory_only"))
+        or (operator_advisory_count > 0 and launch_blocked_count == 0),
+        "top_blocker_op_id": str(first_operator_blocker.get("op_id") or ""),
+        "top_blocker_title": str(first_operator_blocker.get("title") or ""),
+        "top_blocker_detail": str(first_operator_blocker.get("detail") or ""),
+        "top_blocker_launch_blocker": bool(first_operator_evidence.get("launch_blocker")),
+        "top_blocker_launch_role": str(first_operator_evidence.get("launch_role") or ""),
+        "top_blocker_blocked_bots": [str(bot) for bot in first_operator_blocked_bots],
+        "top_blocker_next_actions": [str(action) for action in first_operator_next_actions],
+        "top_launch_blocker_op_id": str(first_launch_blocker.get("op_id") or ""),
+        "top_launch_blocker_detail": str(
+            first_launch_blocker.get("detail") or first_launch_blocker.get("title") or ""
+        ),
+        "top_advisory_op_id": str(first_operator_advisory.get("op_id") or ""),
+        "top_advisory_title": str(first_operator_advisory.get("title") or ""),
+        "top_advisory_detail": str(first_operator_advisory.get("detail") or ""),
+        "top_advisory_launch_role": str(first_operator_advisory_evidence.get("launch_role") or ""),
+        "top_advisory_blocked_bots": [str(bot) for bot in first_operator_advisory_blocked_bots],
+        "top_advisory_next_actions": [str(action) for action in first_operator_advisory_next_actions],
+        "source": str(operator_queue.get("source") or "unknown"),
+        "cache_status": str(operator_queue.get("cache_status") or ""),
+        "cache_age_s": operator_queue.get("cache_age_s"),
+        "cache_stale": bool(operator_queue.get("cache_stale")),
+        "stale_cache_age_s": operator_queue.get("stale_cache_age_s"),
+        "stale_cache_path": operator_queue.get("stale_cache_path"),
+        "error": operator_queue.get("error"),
     }

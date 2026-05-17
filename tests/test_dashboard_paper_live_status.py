@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from eta_engine.deploy.scripts.dashboard_paper_live_status import (
+    build_paper_live_transition_summary,
     reconcile_paper_live_transition_launch_block,
     resolve_paper_live_card,
     resolve_paper_live_effective_state,
@@ -251,3 +252,113 @@ def test_reconcile_paper_live_transition_launch_block_fills_missing_action_from_
         resolved["first_launch_next_action"]
         == "Do not unlock new entries until broker/supervisor positions reconcile."
     )
+
+
+def test_build_paper_live_transition_summary_prefers_next_action_when_detail_missing() -> None:
+    resolved = build_paper_live_transition_summary(
+        raw_status="ready_to_launch_paper_live",
+        detail="",
+        stale_receipt=False,
+        stale_detail="",
+        effective_status="blocked_by_operator_queue",
+        effective_detail="Apply gateway authority on VPS.",
+        held_by_bracket_audit=False,
+        held_by_daily_loss_stop=False,
+        daily_loss_gate_mode="warn",
+        daily_loss_advisory_active=False,
+        capital_lanes_held_by_daily_loss_stop=False,
+        daily_loss_suppressed_non_authoritative_gateway_host=False,
+        broker_bracket_missing_count=0,
+        broker_bracket_primary_symbol="",
+        broker_bracket_primary_venue="",
+        broker_bracket_primary_sec_type="",
+        paper_ready_bots=12,
+        critical_ready=True,
+        operator_queue_launch_blocked_count=1,
+        first_launch_blocker_op_id="OP-21",
+        first_launch_next_action="Apply gateway authority on VPS.",
+        non_authoritative_gateway_host=False,
+        cache_stale=False,
+        error=None,
+        first_failed_gate={"name": "", "detail": "", "next_action": ""},
+    )
+
+    assert resolved["detail"] == "Apply gateway authority on VPS."
+    assert resolved["operator_queue_launch_blocked_count"] == 1
+    assert resolved["first_launch_blocker_op_id"] == "OP-21"
+
+
+def test_build_paper_live_transition_summary_falls_back_to_first_failed_gate_detail() -> None:
+    resolved = build_paper_live_transition_summary(
+        raw_status="blocked",
+        detail="",
+        stale_receipt=False,
+        stale_detail="",
+        effective_status="blocked",
+        effective_detail="blocked",
+        held_by_bracket_audit=False,
+        held_by_daily_loss_stop=False,
+        daily_loss_gate_mode="warn",
+        daily_loss_advisory_active=False,
+        capital_lanes_held_by_daily_loss_stop=False,
+        daily_loss_suppressed_non_authoritative_gateway_host=False,
+        broker_bracket_missing_count=2,
+        broker_bracket_primary_symbol="MNQ",
+        broker_bracket_primary_venue="IBKR",
+        broker_bracket_primary_sec_type="FUT",
+        paper_ready_bots=0,
+        critical_ready=False,
+        operator_queue_launch_blocked_count=0,
+        first_launch_blocker_op_id="",
+        first_launch_next_action="",
+        non_authoritative_gateway_host=True,
+        cache_stale=True,
+        error="cache stale",
+        first_failed_gate={
+            "name": "gateway_host",
+            "detail": "Fresh operator queue is unavailable on this host.",
+            "next_action": "Run the paper-live check on the VPS.",
+        },
+    )
+
+    assert resolved["detail"] == "Fresh operator queue is unavailable on this host."
+    assert resolved["broker_bracket_missing_count"] == 2
+    assert resolved["non_authoritative_gateway_host"] is True
+
+
+def test_build_paper_live_transition_summary_falls_back_to_launch_or_gate_detail() -> None:
+    payload = build_paper_live_transition_summary(
+        raw_status="blocked",
+        detail="",
+        stale_receipt=False,
+        stale_detail="",
+        effective_status="blocked",
+        effective_detail="blocked",
+        held_by_bracket_audit=False,
+        held_by_daily_loss_stop=False,
+        daily_loss_gate_mode="enforce",
+        daily_loss_advisory_active=False,
+        capital_lanes_held_by_daily_loss_stop=False,
+        daily_loss_suppressed_non_authoritative_gateway_host=False,
+        broker_bracket_missing_count=0,
+        broker_bracket_primary_symbol="",
+        broker_bracket_primary_venue="",
+        broker_bracket_primary_sec_type="",
+        paper_ready_bots=9,
+        critical_ready=False,
+        operator_queue_launch_blocked_count=1,
+        first_launch_blocker_op_id="OP-19",
+        first_launch_next_action="Apply gateway authority on VPS.",
+        non_authoritative_gateway_host=True,
+        cache_stale=True,
+        error=None,
+        first_failed_gate={
+            "name": "tws_api_4002",
+            "detail": "Keep supervisor in paper_sim until TWS API 4002 is back.",
+            "next_action": "python -m eta_engine.scripts.tws_watchdog --host 127.0.0.1 --port 4002",
+        },
+    )
+
+    assert payload["detail"] == "Apply gateway authority on VPS."
+    assert payload["first_failed_gate"]["name"] == "tws_api_4002"
+    assert payload["first_launch_blocker_op_id"] == "OP-19"

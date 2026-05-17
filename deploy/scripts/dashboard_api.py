@@ -61,6 +61,8 @@ from eta_engine.core.execution_lanes import (
     normalize_daily_loss_gate_mode,
 )
 from eta_engine.deploy.scripts.dashboard_paper_live_status import (
+    build_operator_queue_diagnostics_summary,
+    build_paper_live_transition_summary,
     reconcile_paper_live_transition_launch_block,
     resolve_paper_live_card,
     resolve_paper_live_effective_state,
@@ -2364,13 +2366,39 @@ def _dashboard_diagnostics_payload() -> dict:
     )
     paper_live_effective_status = str(paper_live_effective["effective_status"])
     paper_live_effective_detail = str(paper_live_effective["effective_detail"])
-    if not paper_live_detail:
-        paper_live_detail = str(
-            transition_first_launch_next_action
-            or first_failed_gate.get("detail")
-            or first_failed_gate.get("next_action")
-            or ""
-        ).strip()
+    paper_live_transition_summary = build_paper_live_transition_summary(
+        raw_status=paper_live_status,
+        detail=paper_live_detail,
+        stale_receipt=paper_live_stale_receipt,
+        stale_detail=paper_live_stale_detail,
+        effective_status=paper_live_effective_status,
+        effective_detail=paper_live_effective_detail,
+        held_by_bracket_audit=paper_live_held_by_bracket_audit,
+        held_by_daily_loss_stop=paper_live_held_by_daily_loss_stop,
+        daily_loss_gate_mode=paper_live_daily_loss_gate_mode,
+        daily_loss_advisory_active=paper_live_daily_loss_advisory_active,
+        capital_lanes_held_by_daily_loss_stop=paper_live_capital_lanes_held_by_daily_loss_stop,
+        daily_loss_suppressed_non_authoritative_gateway_host=bool(
+            paper_live_transition.get("daily_loss_suppressed_non_authoritative_gateway_host")
+        ),
+        broker_bracket_missing_count=int(roster_summary.get("broker_bracket_missing_count") or 0),
+        broker_bracket_primary_symbol=str(roster_summary.get("broker_bracket_primary_symbol") or ""),
+        broker_bracket_primary_venue=str(roster_summary.get("broker_bracket_primary_venue") or ""),
+        broker_bracket_primary_sec_type=str(roster_summary.get("broker_bracket_primary_sec_type") or ""),
+        critical_ready=bool(paper_live_transition.get("critical_ready")),
+        paper_ready_bots=int(paper_live_transition.get("paper_ready_bots") or 0),
+        operator_queue_launch_blocked_count=transition_launch_blocked,
+        first_launch_blocker_op_id=transition_first_launch_blocker,
+        first_launch_next_action=transition_first_launch_next_action,
+        non_authoritative_gateway_host=bool(paper_live_transition.get("non_authoritative_gateway_host")),
+        cache_stale=bool(paper_live_transition.get("cache_stale")),
+        error=paper_live_transition.get("error"),
+        first_failed_gate={
+            "name": str(first_failed_gate.get("name") or ""),
+            "detail": str(first_failed_gate.get("detail") or ""),
+            "next_action": str(first_failed_gate.get("next_action") or ""),
+        },
+    )
 
     return {
         **_dashboard_contract(),
@@ -3264,39 +3292,9 @@ def _dashboard_diagnostics_payload() -> dict:
             "error": operator_queue.get("error"),
         },
         "paper_live_transition": {
-            "status": paper_live_status,
-            "detail": paper_live_detail,
-            "stale_receipt": paper_live_stale_receipt,
-            "stale_detail": paper_live_stale_detail,
-            "effective_status": paper_live_effective_status,
-            "effective_detail": paper_live_effective_detail,
-            "held_by_bracket_audit": paper_live_held_by_bracket_audit,
-            "held_by_daily_loss_stop": paper_live_held_by_daily_loss_stop,
-            "daily_loss_gate_mode": paper_live_daily_loss_gate_mode,
-            "daily_loss_advisory_active": paper_live_daily_loss_advisory_active,
-            "capital_lanes_held_by_daily_loss_stop": paper_live_capital_lanes_held_by_daily_loss_stop,
-            "daily_loss_suppressed_non_authoritative_gateway_host": bool(
-                paper_live_transition.get("daily_loss_suppressed_non_authoritative_gateway_host")
-            ),
-            "broker_bracket_missing_count": int(roster_summary.get("broker_bracket_missing_count") or 0),
-            "broker_bracket_primary_symbol": str(roster_summary.get("broker_bracket_primary_symbol") or ""),
-            "broker_bracket_primary_venue": str(roster_summary.get("broker_bracket_primary_venue") or ""),
-            "broker_bracket_primary_sec_type": str(roster_summary.get("broker_bracket_primary_sec_type") or ""),
-            "critical_ready": bool(paper_live_transition.get("critical_ready")),
-            "paper_ready_bots": int(paper_live_transition.get("paper_ready_bots") or 0),
+            **paper_live_transition_summary,
             "operator_queue_blocked_count": int(operator_summary.get("BLOCKED") or 0),
-            "operator_queue_launch_blocked_count": transition_launch_blocked,
-            "first_launch_blocker_op_id": transition_first_launch_blocker,
-            "first_launch_next_action": transition_first_launch_next_action,
-            "non_authoritative_gateway_host": bool(paper_live_transition.get("non_authoritative_gateway_host")),
-            "first_failed_gate": {
-                "name": str(first_failed_gate.get("name") or ""),
-                "detail": str(first_failed_gate.get("detail") or ""),
-                "next_action": str(first_failed_gate.get("next_action") or ""),
-            },
             "source_age_s": paper_live_transition.get("source_age_s"),
-            "cache_stale": bool(paper_live_transition.get("cache_stale")),
-            "error": paper_live_transition.get("error"),
         },
         "dashboard_proxy_watchdog": dashboard_proxy_watchdog,
         "command_center_watchdog": command_center_watchdog,
