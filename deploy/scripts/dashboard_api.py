@@ -60,6 +60,7 @@ from eta_engine.core.execution_lanes import (
     gate_enforced,
     normalize_daily_loss_gate_mode,
 )
+from eta_engine.deploy.scripts.dashboard_paper_live_status import resolve_paper_live_effective_state
 from eta_engine.deploy.scripts.dashboard_services import ensure_dir_writable, read_jsonl_tail, run_background_task
 from eta_engine.scripts.submodule_wiring_preflight import inspect_submodule_wiring
 
@@ -11986,41 +11987,27 @@ def bot_fleet_roster(
         or ""
     ).strip()
     paper_live_held_by_bracket_audit = broker_bracket_prop_dry_run_blocked and paper_live_critical_ready
-    paper_live_effective_status = "held_by_bracket_audit" if paper_live_held_by_bracket_audit else paper_live_status
-    paper_live_effective_detail = str(paper_live_transition.get("effective_detail") or "")
-    if paper_live_held_by_bracket_audit:
-        paper_live_effective_detail = (
+    paper_live_held_by_daily_loss_stop = bool(paper_live_lane_state["held_by_daily_loss_stop"])
+    paper_live_daily_loss_advisory_active = bool(paper_live_lane_state["daily_loss_advisory_active"])
+    paper_live_effective = resolve_paper_live_effective_state(
+        raw_status=paper_live_status,
+        effective_detail=str(paper_live_transition.get("effective_detail") or ""),
+        stale_receipt=paper_live_stale_receipt,
+        stale_detail=paper_live_stale_detail,
+        held_by_bracket_audit=paper_live_held_by_bracket_audit,
+        bracket_audit_detail=(
             f"held by Bracket Audit: {' or '.join(broker_bracket_action_labels)}"
             if broker_bracket_action_labels
             else str(broker_bracket_audit.get("effective_detail") or "held by Bracket Audit")
-        )
-    paper_live_held_by_daily_loss_stop = bool(paper_live_lane_state["held_by_daily_loss_stop"])
-    paper_live_daily_loss_advisory_active = bool(paper_live_lane_state["daily_loss_advisory_active"])
-    if paper_live_daily_loss_advisory_active and paper_live_effective_status in {
-        "ready",
-        "ready_to_launch_paper_live",
-        "green",
-    }:
-        paper_live_effective_status = "shadow_paper_active"
-        paper_live_effective_detail = _paper_live_shadow_detail(daily_loss_killswitch)
-    elif paper_live_held_by_daily_loss_stop and paper_live_effective_status in {
-        "ready",
-        "ready_to_launch_paper_live",
-        "green",
-    }:
-        paper_live_effective_status = "held_by_daily_loss_stop"
-        paper_live_effective_detail = _daily_loss_hold_detail(daily_loss_killswitch)
-    if shadow_paper_attached_count > 0 and paper_live_effective_status not in {
-        "held_by_bracket_audit",
-        "held_by_daily_loss_stop",
-    }:
-        paper_live_effective_status = "shadow_paper_active"
-        paper_live_effective_detail = (
-            f"live shadow paper lane active on {shadow_paper_attached_count} attached bot(s)"
-        )
-    if paper_live_stale_receipt:
-        paper_live_effective_status = "stale_receipt"
-        paper_live_effective_detail = paper_live_stale_detail or paper_live_effective_detail
+        ),
+        held_by_daily_loss_stop=paper_live_held_by_daily_loss_stop,
+        daily_loss_advisory_active=paper_live_daily_loss_advisory_active,
+        daily_loss_shadow_detail=_paper_live_shadow_detail(daily_loss_killswitch),
+        daily_loss_hold_detail=_daily_loss_hold_detail(daily_loss_killswitch),
+        shadow_paper_attached_count=shadow_paper_attached_count,
+    )
+    paper_live_effective_status = str(paper_live_effective["effective_status"])
+    paper_live_effective_detail = str(paper_live_effective["effective_detail"])
     vps_root_reconciliation = _vps_root_reconciliation_payload()
     vps_root_summary = (
         vps_root_reconciliation.get("summary") if isinstance(vps_root_reconciliation.get("summary"), dict) else {}
@@ -19718,37 +19705,27 @@ def _local_master_status_payload() -> dict[str, object]:
     ).strip()
     paper_stale_receipt = bool(paper.get("stale_receipt"))
     paper_stale_detail = str(paper.get("stale_detail") or "")
-    paper_live_effective_status = (
-        "held_by_bracket_audit" if paper_held_by_bracket_audit else str(paper.get("status") or "unknown")
-    )
-    paper_live_effective_detail = str(paper.get("effective_detail") or "")
-    if paper_held_by_bracket_audit:
-        paper_live_effective_detail = (
+    shadow_runtime = _shadow_paper_runtime_overlay_state()
+    paper_live_effective = resolve_paper_live_effective_state(
+        raw_status=str(paper.get("status") or "unknown"),
+        effective_detail=str(paper.get("effective_detail") or ""),
+        stale_receipt=paper_stale_receipt,
+        stale_detail=paper_stale_detail,
+        held_by_bracket_audit=paper_held_by_bracket_audit,
+        bracket_audit_detail=(
             f"held by Bracket Audit: {' or '.join(broker_bracket_action_labels)}"
             if broker_bracket_action_labels
             else str(broker_bracket_audit.get("effective_detail") or "held by Bracket Audit")
-        )
-    if paper_daily_loss_advisory_active and paper_live_effective_status in {
-        "ready",
-        "ready_to_launch_paper_live",
-        "green",
-    }:
-        paper_live_effective_status = "shadow_paper_active"
-        paper_live_effective_detail = _paper_live_shadow_detail(daily_loss_killswitch)
-    elif paper_held_by_daily_loss_stop and paper_live_effective_status in {
-        "ready",
-        "ready_to_launch_paper_live",
-        "green",
-    }:
-        paper_live_effective_status = "held_by_daily_loss_stop"
-        paper_live_effective_detail = _daily_loss_hold_detail(daily_loss_killswitch)
-    shadow_runtime = _shadow_paper_runtime_overlay_state()
-    if bool(shadow_runtime.get("active")) and paper_live_effective_status != "held_by_daily_loss_stop":
-        paper_live_effective_status = "shadow_paper_active"
-        paper_live_effective_detail = str(shadow_runtime.get("detail") or paper_live_effective_detail)
-    if paper_stale_receipt:
-        paper_live_effective_status = "stale_receipt"
-        paper_live_effective_detail = paper_stale_detail or paper_live_effective_detail
+        ),
+        held_by_daily_loss_stop=paper_held_by_daily_loss_stop,
+        daily_loss_advisory_active=paper_daily_loss_advisory_active,
+        daily_loss_shadow_detail=_paper_live_shadow_detail(daily_loss_killswitch),
+        daily_loss_hold_detail=_daily_loss_hold_detail(daily_loss_killswitch),
+        shadow_runtime_active=bool(shadow_runtime.get("active")),
+        shadow_runtime_detail=str(shadow_runtime.get("detail") or ""),
+    )
+    paper_live_effective_status = str(paper_live_effective["effective_status"])
+    paper_live_effective_detail = str(paper_live_effective["effective_detail"])
     paper_live.update(
         {
             "raw_status": str(paper.get("status") or "unknown"),
