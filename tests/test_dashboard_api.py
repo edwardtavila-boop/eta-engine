@@ -19,6 +19,7 @@ def app_client(tmp_path, monkeypatch):
     monkeypatch.setenv("ETA_STATE_DIR", str(tmp_path / "state"))
     monkeypatch.setenv("ETA_LOG_DIR", str(tmp_path / "logs"))
     monkeypatch.setenv("ETA_DASHBOARD_DISABLE_BROKER_PROBES", "1")
+    monkeypatch.setenv("ETA_IBKR_GATEWAY_AUTHORITY", "1")
     monkeypatch.setenv(
         "ETA_COMMAND_CENTER_DOCTOR_RECEIPT_PATH",
         str(tmp_path / "state" / "command_center_doctor_latest.json"),
@@ -94,6 +95,37 @@ def app_client(tmp_path, monkeypatch):
     import eta_engine.deploy.scripts.dashboard_api as mod
 
     importlib.reload(mod)
+    for cache_name in (
+        "_ALPACA_PER_BOT_CACHE",
+        "_DASHBOARD_DIAGNOSTICS_CACHE",
+        "_IBKR_PROBE_CACHE",
+        "_PUBLIC_OPERATOR_BROKER_STATE_CACHE",
+        "_PUBLIC_OPERATOR_RETUNE_STATUS_CACHE",
+        "_WORKSPACE_CHECKOUT_CACHE",
+    ):
+        cache = getattr(mod, cache_name, None)
+        if isinstance(cache, dict):
+            cache.clear()
+    from eta_engine.scripts import jarvis_status
+
+    monkeypatch.setattr(
+        jarvis_status,
+        "build_second_brain_summary",
+        lambda **_kwargs: {
+            "source": "jarvis_status.second_brain",
+            "status": "cold_start",
+            "n_episodes": 0,
+            "win_rate": 0.0,
+            "avg_r": 0.0,
+            "semantic_patterns": 0,
+            "procedural_versions": 0,
+            "top_patterns": [],
+            "playbook": {"eligible_patterns": 0, "favor_patterns": [], "avoid_patterns": []},
+            "paths": {},
+            "sources": {},
+            "legacy_sources_active": False,
+        },
+    )
     return TestClient(mod.app)
 
 
@@ -122,9 +154,35 @@ class TestDashboardAPI:
         assert r.status_code == 200
         payload = r.json()
         assert payload["source"] == "kaizen_latest_json"
-        assert payload["summary"]["n_bots"] == 3
-        assert payload["summary"]["held_count"] == 1
-        assert payload["filename"] == "kaizen_latest.json"
+
+    def test_api_data_status_prefers_canonical_inventory_snapshot(self, app_client, tmp_path):
+        state = tmp_path / "state"
+        (state / "data_inventory_latest.json").write_text(
+            json.dumps(
+                {
+                    "ts": "2026-05-15T12:00:00+00:00",
+                    "schema_version": 3,
+                    "summary": {"datasets": 1, "ok": 1},
+                    "by_dataset": {
+                        "bars:MNQ1/5m": {
+                            "status": "OK",
+                            "end": "2026-05-15T11:55:00+00:00",
+                            "rows": 42,
+                            "path": "var/eta_engine/state/data/bars/MNQ1_5m.parquet",
+                        }
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/data/status")
+
+        assert r.status_code == 200
+        payload = r.json()
+        assert payload["catalog"]["ts"] == "2026-05-15T12:00:00+00:00"
+        assert payload["catalog"]["summary"]["datasets"] == 1
+        assert payload["catalog"]["active_symbol_rows"][0]["symbol"] == "MNQ1"
 
     def test_public_dashboard_uses_local_bot_fleet_truth(self, app_client, tmp_path, monkeypatch):
         import eta_engine.deploy.scripts.dashboard_api as mod
@@ -332,6 +390,31 @@ class TestDashboardAPI:
 
         assert r.status_code == 200
         assert calls["validate_live_stale_orders"] is True
+
+    def test_broker_bracket_audit_payload_skips_live_stale_validation_by_default(self, monkeypatch):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+        from eta_engine.scripts import broker_bracket_audit
+
+        calls: dict[str, object] = {}
+
+        def _fake_build_bracket_audit(*, fleet, validate_live_stale_orders=False):
+            calls["fleet"] = fleet
+            calls["validate_live_stale_orders"] = validate_live_stale_orders
+            return {
+                "summary": "READY_NO_OPEN_EXPOSURE",
+                "ready_for_prop_dry_run": True,
+                "operator_action_required": False,
+                "operator_actions": [],
+                "position_summary": {"broker_open_position_count": 0},
+                "stale_flat_open_orders": [],
+            }
+
+        monkeypatch.setattr(broker_bracket_audit, "build_bracket_audit", _fake_build_bracket_audit)
+
+        payload = mod._broker_bracket_audit_payload(target_exit_summary={}, live_broker_state={})
+
+        assert payload["summary"] == "READY_NO_OPEN_EXPOSURE"
+        assert calls["validate_live_stale_orders"] is False
 
     def test_live_broker_summary_is_compact_and_data_only(self, app_client, monkeypatch):
         import eta_engine.deploy.scripts.dashboard_api as mod
@@ -1116,7 +1199,7 @@ class TestDashboardAPI:
             encoding="utf-8",
         )
 
-        r = app_client.get("/api/dashboard/diagnostics")
+        r = app_client.get("/api/dashboard/diagnostics?refresh=true")
 
         assert r.status_code == 200
         data = r.json()["symbol_intelligence"]
@@ -1182,6 +1265,18 @@ class TestDashboardAPI:
                             "python -m eta_engine.scripts.run_research_grid "
                             "--source registry --bots mnq_futures_sage --report-policy runtime"
                         ),
+                        "broker_truth_focus_active_experiment": {
+                            "experiment_id": "partial_profit_disabled",
+                            "started_at": "2026-05-16T01:44:06+00:00",
+                            "partial_profit_enabled": False,
+                            "post_change_closed_trade_count": 2,
+                            "post_change_cumulative_r": 0.8192,
+                            "post_change_total_realized_pnl": 40.0,
+                            "post_change_profit_factor": 1.5,
+                        },
+                        "broker_truth_focus_active_experiment_summary_line": (
+                            "partial_profit_disabled since 2026-05-16T01:44:06+00:00"
+                        ),
                         "broker_truth_summary_line": (
                             "mnq_futures_sage: sample met (126/100) but broker edge is negative"
                         ),
@@ -1209,7 +1304,7 @@ class TestDashboardAPI:
             encoding="utf-8",
         )
 
-        r = app_client.get("/api/dashboard/diagnostics")
+        r = app_client.get("/api/dashboard/diagnostics?refresh=true")
 
         assert r.status_code == 200
         data = r.json()["diamond_retune_status"]
@@ -1248,6 +1343,10 @@ class TestDashboardAPI:
         assert data["broker_truth_focus_primary_experiment"] == "Bias fresh sample toward close and block overnight."
         assert data["broker_truth_focus_next_command"].endswith(
             "--bots mnq_futures_sage --report-policy runtime"
+        )
+        assert data["broker_truth_focus_active_experiment"]["experiment_id"] == "partial_profit_disabled"
+        assert data["broker_truth_focus_active_experiment_summary_line"] == (
+            "partial_profit_disabled since 2026-05-16T01:44:06+00:00"
         )
         assert data["broker_truth_summary_line"].startswith("mnq_futures_sage: sample met")
 
@@ -1369,6 +1468,160 @@ class TestDashboardAPI:
         assert r.json()["error"] == "probe exploded"
         assert r.json()["top_blockers"] == []
 
+    def test_dashboard_uses_second_brain_summary(self, app_client, monkeypatch):
+        from eta_engine.scripts import jarvis_status
+
+        monkeypatch.setattr(
+            jarvis_status,
+            "build_second_brain_summary",
+            lambda **_kwargs: {
+                "source": "jarvis_status.second_brain",
+                "status": "warm",
+                "n_episodes": 42,
+                "win_rate": 0.571,
+                "avg_r": 0.2346,
+                "semantic_patterns": 3,
+                "procedural_versions": 1,
+                "top_patterns": [{"pattern": "neutral+rth+long"}],
+                "playbook": {
+                    "eligible_patterns": 2,
+                    "favor_patterns": [{"pattern": "neutral+rth+long"}],
+                    "avoid_patterns": [],
+                },
+                "paths": {},
+                "sources": {},
+                "legacy_sources_active": False,
+            },
+        )
+
+        r = app_client.get("/api/dashboard")
+
+        assert r.status_code == 200
+        second_brain = r.json()["second_brain"]
+        assert second_brain["status"] == "warm"
+        assert second_brain["n_episodes"] == 42
+        assert second_brain["playbook"]["eligible_patterns"] == 2
+
+    def test_jarvis_second_brain_endpoint(self, app_client, monkeypatch):
+        from eta_engine.scripts import jarvis_status
+
+        monkeypatch.setattr(
+            jarvis_status,
+            "build_second_brain_summary",
+            lambda **_kwargs: {
+                "source": "jarvis_status.second_brain",
+                "status": "warm",
+                "n_episodes": 42,
+                "win_rate": 0.571,
+                "avg_r": 0.2346,
+                "semantic_patterns": 3,
+                "procedural_versions": 1,
+                "top_patterns": [],
+                "playbook": {"eligible_patterns": 2, "favor_patterns": [], "avoid_patterns": []},
+                "paths": {},
+                "sources": {},
+                "legacy_sources_active": False,
+            },
+        )
+
+        r = app_client.get("/api/jarvis/second_brain")
+
+        assert r.status_code == 200
+        assert r.json()["status"] == "warm"
+        assert r.json()["n_episodes"] == 42
+        assert "no-store" in r.headers["Cache-Control"]
+
+    def test_jarvis_second_brain_endpoint_fails_soft(self, app_client, monkeypatch):
+        from eta_engine.scripts import jarvis_status
+
+        def boom(**_kwargs):
+            raise RuntimeError("memory probe exploded")
+
+        monkeypatch.setattr(jarvis_status, "build_second_brain_summary", boom)
+
+        r = app_client.get("/api/jarvis/second_brain")
+
+        assert r.status_code == 200
+        data = r.json()
+        assert data["status"] == "unavailable"
+        assert data["error"] == "memory probe exploded"
+        assert data["n_episodes"] == 0
+        assert data["playbook"]["eligible_patterns"] == 0
+
+    def test_dashboard_uses_dirty_worktree_reconciliation_summary(self, app_client, monkeypatch):
+        from eta_engine.scripts import jarvis_status
+
+        monkeypatch.setattr(
+            jarvis_status,
+            "build_dirty_worktree_reconciliation_summary",
+            lambda **_kwargs: {
+                "source": "jarvis_status.dirty_worktree_reconciliation",
+                "status": "review_required",
+                "ready": False,
+                "action": "review_child_dirty_groups_before_gitlink_wiring",
+                "dirty_modules": ["eta_engine", "mnq_backtest"],
+                "blocking_modules": ["eta_engine", "mnq_backtest"],
+                "next_actions": ["eta_engine: start with scripts=130"],
+                "module_summaries": [{"module": "eta_engine", "entry_count": 444}],
+                "review_batches": [{"batch_id": "eta_engine:scripts", "count": 130}],
+                "safety": {"no_git_mutation": True},
+            },
+        )
+
+        r = app_client.get("/api/dashboard")
+
+        assert r.status_code == 200
+        payload = r.json()["dirty_worktree_reconciliation"]
+        assert payload["status"] == "review_required"
+        assert payload["dirty_modules"] == ["eta_engine", "mnq_backtest"]
+        assert payload["next_actions"] == ["eta_engine: start with scripts=130"]
+        assert payload["review_batches"] == [{"batch_id": "eta_engine:scripts", "count": 130}]
+
+    def test_jarvis_dirty_worktree_reconciliation_endpoint(self, app_client, monkeypatch):
+        from eta_engine.scripts import jarvis_status
+
+        monkeypatch.setattr(
+            jarvis_status,
+            "build_dirty_worktree_reconciliation_summary",
+            lambda **_kwargs: {
+                "source": "jarvis_status.dirty_worktree_reconciliation",
+                "status": "review_required",
+                "ready": False,
+                "action": "review_child_dirty_groups_before_gitlink_wiring",
+                "dirty_modules": ["eta_engine"],
+                "blocking_modules": ["eta_engine"],
+                "next_actions": [],
+                "module_summaries": [],
+                "review_batches": [{"batch_id": "eta_engine:scripts"}],
+                "safety": {"no_git_mutation": True},
+            },
+        )
+
+        r = app_client.get("/api/jarvis/dirty_worktree_reconciliation")
+
+        assert r.status_code == 200
+        assert r.json()["status"] == "review_required"
+        assert r.json()["dirty_modules"] == ["eta_engine"]
+        assert r.json()["review_batches"] == [{"batch_id": "eta_engine:scripts"}]
+        assert "no-store" in r.headers["Cache-Control"]
+
+    def test_jarvis_dirty_worktree_reconciliation_endpoint_fails_soft(self, app_client, monkeypatch):
+        from eta_engine.scripts import jarvis_status
+
+        def boom(**_kwargs):
+            raise RuntimeError("reconciliation probe exploded")
+
+        monkeypatch.setattr(jarvis_status, "build_dirty_worktree_reconciliation_summary", boom)
+
+        r = app_client.get("/api/jarvis/dirty_worktree_reconciliation")
+
+        assert r.status_code == 200
+        data = r.json()
+        assert data["status"] == "unavailable"
+        assert data["error"] == "reconciliation probe exploded"
+        assert data["dirty_modules"] == []
+        assert data["review_batches"] == []
+
     def test_jarvis_paper_live_transition_endpoint_uses_cached_snapshot(
         self,
         app_client,
@@ -1407,6 +1660,38 @@ class TestDashboardAPI:
         assert data["paper_ready_bots"] == 10
         assert data["source_age_s"] >= 0
         assert "no-store" in r.headers["Cache-Control"]
+
+    def test_jarvis_paper_live_transition_endpoint_marks_stale_cache_detail(
+        self,
+        app_client,
+        monkeypatch,
+        tmp_path,
+    ):
+        from eta_engine.scripts import paper_live_transition_check
+
+        def boom(**_kwargs):
+            raise RuntimeError("live probe should not run")
+
+        monkeypatch.setattr(paper_live_transition_check, "build_transition_check", boom)
+        (tmp_path / "state" / "paper_live_transition_check.json").write_text(
+            json.dumps(
+                {
+                    "generated_at": (datetime.now(UTC) - timedelta(hours=18)).isoformat(),
+                    "status": "blocked",
+                    "critical_ready": False,
+                    "paper_ready_bots": 11,
+                    "gates": [{"name": "tws_api_4002", "passed": False}],
+                }
+            )
+        )
+
+        r = app_client.get("/api/jarvis/paper_live_transition")
+
+        assert r.status_code == 200
+        data = r.json()
+        assert data["cache_stale"] is True
+        assert data["stale_receipt"] is True
+        assert "stale" in data["stale_detail"].lower()
 
     def test_jarvis_paper_live_transition_endpoint_surfaces_daily_loss_shadow_advisory(
         self,
@@ -1514,6 +1799,63 @@ class TestDashboardAPI:
         assert data["daily_loss_gate_mode"] == "enforce"
         assert data["daily_loss_advisory_active"] is False
         assert data["capital_lanes_held_by_daily_loss_stop"] is True
+
+    def test_jarvis_paper_live_transition_endpoint_ignores_local_daily_loss_on_non_authoritative_host(
+        self,
+        app_client,
+        monkeypatch,
+        tmp_path,
+    ):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        monkeypatch.setattr(
+            mod,
+            "_daily_loss_killswitch_snapshot",
+            lambda: {
+                "source": "daily_loss_killswitch",
+                "status": "tripped",
+                "tripped": True,
+                "disabled": False,
+                "today_pnl_usd": -925.50,
+                "limit_usd": -900.0,
+                "reason": "day_pnl=$-925.50 <= limit=$-900.00 (date=2026-05-15)",
+            },
+        )
+        (tmp_path / "state" / "paper_live_transition_check.json").write_text(
+            json.dumps(
+                {
+                    "generated_at": datetime.now(UTC).isoformat(),
+                    "status": "blocked",
+                    "critical_ready": False,
+                    "non_authoritative_gateway_host": True,
+                    "operator_queue_launch_blocked_count": 1,
+                    "operator_queue_first_launch_next_action": (
+                        "On the VPS only: powershell.exe -NoProfile -ExecutionPolicy Bypass "
+                        "-File .\\eta_engine\\deploy\\scripts\\set_gateway_authority.ps1 "
+                        "-Apply -Role vps"
+                    ),
+                    "paper_ready_bots": 9,
+                    "gates": [],
+                },
+            ),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/jarvis/paper_live_transition")
+
+        assert r.status_code == 200
+        data = r.json()
+        assert data["effective_status"] == "blocked"
+        assert data["held_by_daily_loss_stop"] is False
+        assert data["daily_loss_advisory_active"] is False
+        assert data["capital_lanes_held_by_daily_loss_stop"] is False
+        assert data["daily_loss_suppressed_non_authoritative_gateway_host"] is True
+        assert (
+            data["effective_detail"]
+            == "On the VPS only: powershell.exe -NoProfile -ExecutionPolicy Bypass "
+            "-File .\\eta_engine\\deploy\\scripts\\set_gateway_authority.ps1 -Apply -Role vps"
+        )
+        assert data["daily_loss_killswitch"]["status"] == "tripped"
 
     def test_jarvis_paper_live_transition_endpoint_marks_live_shadow_runtime_active(
         self,
@@ -1896,6 +2238,18 @@ class TestDashboardAPI:
                             "python -m eta_engine.scripts.run_research_grid "
                             "--source registry --bots mnq_futures_sage --report-policy runtime"
                         ),
+                        "broker_truth_focus_active_experiment": {
+                            "experiment_id": "partial_profit_disabled",
+                            "started_at": "2026-05-16T01:44:06+00:00",
+                            "partial_profit_enabled": False,
+                            "post_change_closed_trade_count": 2,
+                            "post_change_cumulative_r": 0.8192,
+                            "post_change_total_realized_pnl": 40.0,
+                            "post_change_profit_factor": 1.5,
+                        },
+                        "broker_truth_focus_active_experiment_summary_line": (
+                            "partial_profit_disabled since 2026-05-16T01:44:06+00:00"
+                        ),
                         "safe_to_mutate_live": False,
                     },
                     "bots": [
@@ -1931,6 +2285,17 @@ class TestDashboardAPI:
         assert data["focus_worst_session"] == "overnight"
         assert data["focus_parameter_focus"] == ["session predicate", "rr_target"]
         assert data["focus_command"].endswith("--bots mnq_futures_sage --report-policy runtime")
+        assert data["summary"]["broker_truth_focus_active_experiment"]["experiment_id"] == "partial_profit_disabled"
+        assert data["summary"]["broker_truth_focus_active_experiment_summary_line"] == (
+            "partial_profit_disabled since 2026-05-16T01:44:06+00:00"
+        )
+        assert data["summary"]["broker_truth_focus_active_experiment_outcome_line"] == (
+            "partial_profit_disabled: 2 post-change closes | R +0.82 | PnL $40.00 | PF 1.50"
+        )
+        assert data["focus_active_experiment"]["partial_profit_enabled"] is False
+        assert data["focus_active_experiment_outcome_line"] == (
+            "partial_profit_disabled: 2 post-change closes | R +0.82 | PnL $40.00 | PF 1.50"
+        )
         assert data["summary"]["safe_to_mutate_live"] is False
         assert data["safe_to_mutate_live"] is False
         assert data["bots"][0]["bot_id"] == "mnq_futures_sage"
@@ -2170,6 +2535,11 @@ class TestDashboardAPI:
         assert "fl-equity-curve" in cards
         assert cards["cc-verdict-stream"]["source"] == "sse"
         assert cards["cc-paper-live-transition"]["endpoint"] == "/api/jarvis/paper_live_transition"
+        assert cards["cc-second-brain"]["endpoint"] == "/api/jarvis/second_brain"
+        assert (
+            cards["cc-dirty-worktree-reconciliation"]["endpoint"]
+            == "/api/jarvis/dirty_worktree_reconciliation"
+        )
         assert "cc-strategy-supercharge-results" not in cards
         assert cards["cc-diamond-retune-status"]["endpoint"] == "/api/jarvis/diamond_retune_status"
         assert cards["fl-controls"]["source"] == "client"
@@ -2190,6 +2560,8 @@ class TestDashboardAPI:
             "daily_stop_reset_audit",
             "eta_readiness_snapshot",
             "ibkr_futures_avg_cost_normalized",
+            "dirty_worktree_reconciliation",
+            "jarvis_second_brain",
             "sage_sentiment_pressure",
         }
         assert data["service"]["status"] == "ok"
@@ -2227,8 +2599,10 @@ class TestDashboardAPI:
         assert "generated_at" in data
         assert "operator_queue" in data
         assert "paper_live_transition" in data
+        assert "second_brain" in data
         assert data["checks"]["operator_queue_contract"] is True
         assert data["checks"]["paper_live_transition_contract"] is True
+        assert data["checks"]["second_brain_contract"] is True
         assert data["daily_loss_killswitch"]["status"] in {"clear", "tripped", "disabled", "unknown"}
         assert data["checks"]["daily_loss_killswitch_contract"] is True
         assert data["dashboard_proxy_watchdog"]["status"] in {
@@ -2249,6 +2623,8 @@ class TestDashboardAPI:
             "stale_service",
             "service_unreachable",
             "public_operator_drift",
+            "public_tunnel_service_drift",
+            "public_tunnel_token_rejected",
             "contract_failure",
             "secret_surface",
             "unknown",
@@ -2267,6 +2643,7 @@ class TestDashboardAPI:
             "reset_cleared_ready",
             "reset_cleared_blocked",
             "still_tripped_after_reset_window",
+            "stale_receipt",
             "missing",
             "unreadable",
             "invalid",
@@ -2306,7 +2683,45 @@ class TestDashboardAPI:
         assert audit["read_only"] is True
         assert audit["safe_to_trade_mutation"] is False
         assert audit["operator_next_action"].startswith("Watch the first supervisor tick")
+        assert audit["detail"] == "Watch the first supervisor tick after reset."
         assert audit["path"].endswith("daily_stop_reset_audit_latest.json")
+        assert r.json()["checks"]["daily_stop_reset_audit_contract"] is True
+
+    def test_dashboard_diagnostics_marks_stale_daily_stop_reset_audit(self, app_client, tmp_path):
+        state = tmp_path / "state"
+        (state / "daily_stop_reset_audit_latest.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "source": "daily_stop_reset_audit",
+                    "generated_at": (datetime.now(UTC) - timedelta(hours=6)).isoformat(),
+                    "status": "reset_cleared_blocked",
+                    "post_reset_ready": False,
+                    "read_only": True,
+                    "safe_to_trade_mutation": False,
+                    "operator_next_action": "Old blocker detail",
+                    "daily_loss_killswitch": {"status": "clear", "tripped": False},
+                    "paper_live_transition": {"status": "blocked", "critical_ready": False},
+                    "first_failed_gate": {"name": "tws_api_4002", "passed": False},
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/dashboard/diagnostics")
+
+        assert r.status_code == 200
+        audit = r.json()["daily_stop_reset_audit"]
+        assert audit["status"] == "stale_receipt"
+        assert audit["source_status"] == "reset_cleared_blocked"
+        assert audit["fresh"] is False
+        assert audit["ready"] is False
+        assert "stale" in audit["stale_detail"].lower()
+        assert audit["detail"] == audit["stale_detail"]
+        assert audit["operator_next_action"] == (
+            "Run python -m eta_engine.scripts.daily_stop_reset_audit --json on the VPS"
+        )
+        assert audit["source_operator_next_action"] == "Old blocker detail"
         assert r.json()["checks"]["daily_stop_reset_audit_contract"] is True
 
     def test_dashboard_diagnostics_reuses_short_ttl_cache(self, app_client, monkeypatch):
@@ -2325,6 +2740,7 @@ class TestDashboardAPI:
         with mod._DASHBOARD_DIAGNOSTICS_CACHE_LOCK:
             mod._DASHBOARD_DIAGNOSTICS_CACHE["payload"] = None
             mod._DASHBOARD_DIAGNOSTICS_CACHE["ts"] = 0.0
+            mod._DASHBOARD_DIAGNOSTICS_CACHE["dependency_stamp"] = None
         monkeypatch.setattr(mod, "_DASHBOARD_DIAGNOSTICS_CACHE_TTL_S", 60)
         monkeypatch.setattr(mod, "_dashboard_diagnostics_payload", fake_payload)
 
@@ -2363,6 +2779,7 @@ class TestDashboardAPI:
         with mod._DASHBOARD_DIAGNOSTICS_CACHE_LOCK:
             mod._DASHBOARD_DIAGNOSTICS_CACHE["payload"] = None
             mod._DASHBOARD_DIAGNOSTICS_CACHE["ts"] = 0.0
+            mod._DASHBOARD_DIAGNOSTICS_CACHE["dependency_stamp"] = None
         monkeypatch.setattr(mod, "_DASHBOARD_DIAGNOSTICS_CACHE_TTL_S", 10)
         monkeypatch.setattr(mod, "_dashboard_diagnostics_payload", fake_payload)
         monkeypatch.setattr(mod.time, "time", fake_time)
@@ -2375,6 +2792,43 @@ class TestDashboardAPI:
         assert second["generated_at"] == "call-1"
         assert second["diagnostics_cache"]["status"] == "hit"
         assert second["diagnostics_cache"]["age_s"] == 0.0
+
+    def test_dashboard_diagnostics_cache_invalidates_when_dependency_stamp_changes(self, monkeypatch):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        calls: list[int] = []
+        stamps = [(1, 1), (1, 1), (2, 1)]
+
+        def fake_payload() -> dict:
+            calls.append(1)
+            return {
+                "dashboard_version": "v1",
+                "source_of_truth": "dashboard_diagnostics",
+                "generated_at": f"call-{len(calls)}",
+            }
+
+        def fake_dependency_stamp() -> tuple[int, int]:
+            return stamps.pop(0) if stamps else (2, 1)
+
+        with mod._DASHBOARD_DIAGNOSTICS_CACHE_LOCK:
+            mod._DASHBOARD_DIAGNOSTICS_CACHE["payload"] = None
+            mod._DASHBOARD_DIAGNOSTICS_CACHE["ts"] = 0.0
+            mod._DASHBOARD_DIAGNOSTICS_CACHE["dependency_stamp"] = None
+        monkeypatch.setattr(mod, "_DASHBOARD_DIAGNOSTICS_CACHE_TTL_S", 60)
+        monkeypatch.setattr(mod, "_dashboard_diagnostics_payload", fake_payload)
+        monkeypatch.setattr(mod, "_dashboard_diagnostics_dependency_stamp", fake_dependency_stamp)
+
+        first = mod._dashboard_diagnostics_cached_payload()
+        second = mod._dashboard_diagnostics_cached_payload()
+        third = mod._dashboard_diagnostics_cached_payload()
+
+        assert len(calls) == 2
+        assert first["generated_at"] == "call-1"
+        assert first["diagnostics_cache"]["status"] == "miss"
+        assert second["generated_at"] == "call-1"
+        assert second["diagnostics_cache"]["status"] == "hit"
+        assert third["generated_at"] == "call-2"
+        assert third["diagnostics_cache"]["status"] == "miss"
 
     def test_dashboard_diagnostics_includes_vps_ops_admin_ai(self, app_client, tmp_path):
         state = tmp_path / "state"
@@ -2430,9 +2884,198 @@ class TestDashboardAPI:
         assert hardening["jarvis_hermes_admin_ai"]["status"] == "WARN"
         assert hardening["jarvis_hermes_admin_ai"]["ready"] is False
         assert hardening["jarvis_hermes_admin_ai"]["next_actions"] == ["Review bridge_plan_tasks: T17 wave pending"]
+        assert hardening["detail"] == "Keep paper soak blocked until gates pass"
         assert hardening["age_s"] is not None
         assert data["checks"]["vps_ops_hardening_contract"] is True
         assert data["checks"]["hardening_contract"] is True
+
+    def test_dashboard_diagnostics_surfaces_force_multiplier_control_plane_repair(self, app_client, tmp_path):
+        state = tmp_path / "state"
+        generated_at = datetime.now(UTC).isoformat()
+        repair_action = (
+            "Repair supervised Windows service ownership for live endpoint: "
+            "FmStatusServer (port 8422 owner=python, manual module runner); run "
+            "eta_engine\\deploy\\scripts\\repair_force_multiplier_control_plane_admin.cmd /RestartService"
+        )
+        (state / "vps_ops_hardening_latest.json").write_text(
+            json.dumps(
+                {
+                    "generated_at_utc": generated_at,
+                    "summary": {
+                        "status": "YELLOW_RESTART_REQUIRED",
+                        "runtime_ready": True,
+                        "dashboard_durable": True,
+                        "force_multiplier_durable": True,
+                        "dashboard_schema_current": True,
+                        "paper_live_gate_ready": False,
+                        "paper_live_status": "BLOCKED_BROKER_BRACKETS",
+                        "trading_gate_ready": False,
+                        "prop_promotion_gate_ready": False,
+                        "live_promotion_blocked": True,
+                        "admin_ai_ready": True,
+                        "admin_ai_status": "PASS",
+                        "promotion_allowed": False,
+                        "order_action_allowed": False,
+                    },
+                    "runtime": {
+                        "services": {
+                            "runtime_drift": ["FmStatusServer"],
+                            "runtime_drift_detail": {
+                                "FmStatusServer": {
+                                    "port": 8422,
+                                    "port_owner_runner": "manual_module_runner",
+                                    "port_owner_runner_label": "manual module runner",
+                                    "port_owner_details": [
+                                        {
+                                            "Pid": 30980,
+                                            "Name": "python",
+                                            "Path": "C:/Python314/python.exe",
+                                            "CommandLine": (
+                                                '"C:/Python314/python.exe" '
+                                                "-m eta_engine.deploy.fm_status_server"
+                                            ),
+                                        }
+                                    ],
+                                }
+                            },
+                        },
+                        "tasks": {
+                            "observed_missing_force_multiplier_durable": ["ETA-ThreeAI-Sync"],
+                            "missing_force_multiplier_durable": [],
+                            "artifact_backed_missing_force_multiplier_durable": ["ETA-ThreeAI-Sync"],
+                            "stale_artifact_backed_force_multiplier_durable": ["ETA-ThreeAI-Sync"],
+                        },
+                    },
+                    "service_config": {
+                        "fm_status_server": {
+                            "matches_expected": False,
+                            "installed_executable": "C:\\Python314\\python.exe",
+                        }
+                    },
+                    "safety_gates": {
+                        "jarvis_hermes_admin_ai": {
+                            "status": "PASS",
+                            "ready": True,
+                            "warned": 0,
+                            "blocked": 0,
+                            "next_actions": [],
+                        }
+                    },
+                    "next_actions": [repair_action],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/dashboard/diagnostics")
+
+        assert r.status_code == 200
+        hardening = r.json()["vps_ops_hardening"]
+        fm_control = hardening["force_multiplier_control_plane"]
+        assert hardening["status"] == "YELLOW_RESTART_REQUIRED"
+        assert hardening["summary"]["force_multiplier_durable"] is True
+        assert hardening["summary"]["service_runtime_drift"] == ["FmStatusServer"]
+        assert hardening["summary"]["service_config_drift"] == ["fm_status_server"]
+        assert hardening["summary"]["missing_force_multiplier_durable"] == []
+        assert hardening["summary"]["stale_artifact_backed_force_multiplier_durable"] == ["ETA-ThreeAI-Sync"]
+        assert fm_control["status"] == "restart_required"
+        assert fm_control["restart_required"] is True
+        assert fm_control["repair_required"] is True
+        assert fm_control["watch_stale"] is True
+        assert fm_control["service_runtime_drift"] == ["FmStatusServer"]
+        assert fm_control["service_config_drift"] == ["fm_status_server"]
+        assert fm_control["service_config"]["matches_expected"] is False
+        assert fm_control["observed_missing_tasks"] == ["ETA-ThreeAI-Sync"]
+        assert fm_control["stale_artifact_backed_tasks"] == ["ETA-ThreeAI-Sync"]
+        assert fm_control["repair_command"].endswith(
+            "repair_force_multiplier_control_plane_admin.cmd /RestartService"
+        )
+        assert fm_control["next_command"] == fm_control["repair_command"]
+        assert fm_control["detail"] == repair_action
+
+        master = app_client.get("/api/master/status")
+        assert master.status_code == 200
+        hardening_system = master.json()["systems"]["vps_ops_hardening"]
+        assert hardening_system["force_multiplier_status"] == "restart_required"
+        assert hardening_system["force_multiplier_next_command"] == fm_control["repair_command"]
+        assert hardening_system["service_runtime_drift"] == ["FmStatusServer"]
+        assert hardening_system["service_config_drift"] == ["fm_status_server"]
+        assert hardening_system["missing_force_multiplier_durable"] == []
+        assert hardening_system["stale_artifact_backed_force_multiplier_durable"] == ["ETA-ThreeAI-Sync"]
+        assert hardening_system["operator_next_action"] == repair_action
+
+    def test_dashboard_diagnostics_fails_soft_when_vps_ops_hardening_raises(self, app_client, monkeypatch):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        def boom(*, server_ts):
+            raise NameError("cached_live_broker_state")
+
+        monkeypatch.setattr(mod, "_vps_ops_hardening_payload", boom)
+
+        r = app_client.get("/api/dashboard/diagnostics?refresh=true")
+
+        assert r.status_code == 200
+        data = r.json()
+        assert data["vps_ops_hardening"]["status"] == "error"
+        assert data["vps_ops_hardening"]["ready"] is False
+        assert "cached_live_broker_state" in data["vps_ops_hardening"]["error"]
+        assert data["checks"]["vps_ops_hardening_contract"] is True
+        assert data["checks"]["hardening_contract"] is True
+        assert data["checks"]["second_brain_contract"] is True
+
+    def test_dashboard_diagnostics_marks_stale_vps_ops_hardening(self, app_client, tmp_path):
+        state = tmp_path / "state"
+        generated_at = (datetime.now(UTC) - timedelta(hours=5)).isoformat()
+        (state / "vps_ops_hardening_latest.json").write_text(
+            json.dumps(
+                {
+                    "generated_at_utc": generated_at,
+                    "summary": {
+                        "status": "RED_RUNTIME_DEGRADED",
+                        "runtime_ready": False,
+                        "dashboard_durable": False,
+                        "paper_live_gate_ready": False,
+                        "paper_live_status": "BLOCKED_RUNTIME",
+                        "trading_gate_ready": False,
+                        "prop_promotion_gate_ready": False,
+                        "live_promotion_blocked": True,
+                        "admin_ai_ready": True,
+                        "admin_ai_status": "PASS",
+                        "promotion_allowed": False,
+                        "order_action_allowed": False,
+                    },
+                    "safety_gates": {
+                        "jarvis_hermes_admin_ai": {
+                            "status": "PASS",
+                            "ready": True,
+                            "warned": 0,
+                            "blocked": 0,
+                            "next_actions": ["Old hardening detail"],
+                        }
+                    },
+                    "next_actions": ["Old hardening action"],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/dashboard/diagnostics")
+
+        assert r.status_code == 200
+        hardening = r.json()["vps_ops_hardening"]
+        assert hardening["status"] == "stale_receipt"
+        assert hardening["source_status"] == "RED_RUNTIME_DEGRADED"
+        assert hardening["fresh"] is False
+        assert hardening["ready"] is False
+        assert "stale" in hardening["stale_detail"].lower()
+        assert hardening["detail"] == hardening["stale_detail"]
+        assert hardening["jarvis_hermes_admin_ai"]["status"] == "stale_receipt"
+        assert hardening["jarvis_hermes_admin_ai"]["source_status"] == "PASS"
+        assert hardening["jarvis_hermes_admin_ai"]["ready"] is False
+        assert hardening["next_actions"] == ["Run eta_engine.scripts.vps_ops_hardening_audit --json-out on the VPS"]
+        assert hardening["source_next_actions"] == ["Old hardening action"]
+        assert r.json()["checks"]["vps_ops_hardening_contract"] is True
+        assert r.json()["checks"]["hardening_contract"] is True
 
     def test_dashboard_diagnostics_includes_supervisor_reconcile_gate(self, app_client, tmp_path):
         state = tmp_path / "state"
@@ -2700,6 +3343,35 @@ class TestDashboardAPI:
                             "at": "2026-05-15T13:15:04+00:00",
                         },
                     ],
+                    "current_actionable_blocked_bots": 1,
+                    "current_actionable_blocked_kinds": {"daily_kill_switch": 1},
+                    "current_actionable_blocked_summary_line": (
+                        "Actionable blockers: 1 bot(s) - 1 daily kill switch. "
+                        "Top: mnq_futures_sage. Awaiting session: 2 bot(s)."
+                    ),
+                    "current_actionable_blocked_preview": [
+                        {
+                            "bot_id": "mnq_futures_sage",
+                            "symbol": "MNQ1",
+                            "kind": "daily_kill_switch",
+                            "summary": "Entries halted by daily kill switch: day_pnl=$-925.50 <= limit=$-900.00",
+                            "at": "2026-05-15T13:15:02+00:00",
+                        },
+                    ],
+                    "current_session_gated_bots": 2,
+                    "current_session_gated_kinds": {"session_gate": 2},
+                    "current_session_gated_summary_line": (
+                        "Awaiting session: 2 bot(s) - 2 session gate. Top: volume_profile_nq."
+                    ),
+                    "current_session_gated_preview": [
+                        {
+                            "bot_id": "volume_profile_nq",
+                            "symbol": "NQ1",
+                            "kind": "session_gate",
+                            "summary": "Entries paused by session gate: outside_rth",
+                            "at": "2026-05-15T13:15:04+00:00",
+                        },
+                    ],
                     "live_broker_probe_mode": "cached_diagnostics",
                 },
                 "truth_status": "working",
@@ -2718,6 +3390,18 @@ class TestDashboardAPI:
         assert data["bot_fleet"]["current_blocked_preview"][1]["summary"] == (
             "Entries paused by session gate: outside_rth"
         )
+        assert data["bot_fleet"]["current_actionable_blocked_bots"] == 1
+        assert data["bot_fleet"]["current_actionable_blocked_kinds"] == {"daily_kill_switch": 1}
+        assert data["bot_fleet"]["current_actionable_blocked_summary_line"].startswith(
+            "Actionable blockers: 1 bot(s)"
+        )
+        assert data["bot_fleet"]["current_session_gated_bots"] == 2
+        assert data["bot_fleet"]["current_session_gated_kinds"] == {"session_gate": 2}
+        assert data["bot_fleet"]["current_session_gated_summary_line"].startswith("Awaiting session: 2 bot(s)")
+        assert data["bot_fleet"]["blocked_summary"].startswith("Actionable blockers: 1 bot(s)")
+        assert data["bot_fleet"]["session_gated_bots"] == 2
+        assert data["bot_fleet"]["session_gated_kinds"] == {"session_gate": 2}
+        assert data["bot_fleet"]["session_gated_summary_line"].startswith("Awaiting session: 2 bot(s)")
         assert data["bot_fleet"]["live_attached_bots"] == 2
         assert data["bot_fleet"]["live_in_trade_bots"] == 2
         assert data["bot_fleet"]["idle_live_bots"] == 0
@@ -2905,6 +3589,9 @@ class TestDashboardAPI:
         assert payload["operator_queue"]["launch_blocked"] == 1
         assert payload["operator_queue"]["top_launch_blocker_op_id"] == "OP-19"
         assert payload["paper_live_transition"]["status"] == "blocked"
+        assert payload["paper_live_transition"]["stale_receipt"] is True
+        assert payload["paper_live_transition"]["effective_status"] == "stale_receipt"
+        assert "stale" in payload["paper_live_transition"]["stale_detail"].lower()
         assert payload["paper_live_transition"]["paper_ready_bots"] == 10
         assert payload["paper_live_transition"]["first_launch_blocker_op_id"] == "OP-19"
         assert payload["paper_live_transition"]["first_failed_gate"]["name"] == "op19_gateway_runtime"
@@ -3177,7 +3864,7 @@ class TestDashboardAPI:
         (tmp_path / "state" / "paper_live_transition_check.json").write_text(
             json.dumps(
                 {
-                    "generated_at": "2026-05-09T12:00:00+00:00",
+                    "generated_at": datetime.now(UTC).isoformat(),
                     "status": "ready_to_launch_paper_live",
                     "critical_ready": True,
                     "paper_ready_bots": 12,
@@ -3404,6 +4091,25 @@ class TestDashboardAPI:
                     "schema_version": "eta.readiness_snapshot.v1",
                     "checked_at_utc": datetime.now(UTC).isoformat(),
                     "summary": "BLOCKED",
+                    "command_center_watchdog": {
+                        "issue_status": "dashboard_task_contract_drift",
+                        "issue_summary": (
+                            "Canonical dashboard runtime task(s) missing: "
+                            "ETA-Dashboard-API, ETA-Proxy-8421.; "
+                            "findings=state=dashboard_task_contract_drift,endpoints=5,truncated=true."
+                        ),
+                        "dashboard_task_missing_task_names": [
+                            "ETA-Dashboard-API",
+                            "ETA-Proxy-8421",
+                        ],
+                        "local_contract_status": {
+                            "status": "upstream_failure",
+                        },
+                        "operator_next_step": "reload_operator_service",
+                        "operator_next_reason": "dashboard_task_contract_drift",
+                        "operator_next_command": ".\\scripts\\reload-command-center-admin.cmd -PublicUrl https://ops.evolutionarytradingalgo.com",
+                        "operator_next_requires_elevation": True,
+                    },
                     "checks": [
                         {
                             "name": "closed_trade_ledger",
@@ -3473,11 +4179,37 @@ class TestDashboardAPI:
         assert snapshot["win_rate_pct"] == 28.94
         assert snapshot["broker_missing_bracket_count"] == 1
         assert snapshot["broker_open_position_count"] == 1
+        assert snapshot["brackets_summary"] == "BLOCKED"
+        assert snapshot["brackets_next_action"].startswith("Verify manual broker OCO coverage")
+        assert snapshot["prop_gate_summary"] == "BLOCKED"
+        assert snapshot["prop_gate_primary_action"].startswith("Keep volume_profile_mnq in paper_soak")
         assert snapshot["prop_primary_bot"] == "volume_profile_mnq"
         assert snapshot["promotion_summary"] == "BLOCKED_PAPER_SOAK"
         assert snapshot["ready_for_prop_dry_run_review"] is False
         assert snapshot["required_evidence"] == ["clear broker_native_brackets to PASS"]
+        assert snapshot["promotion_required_evidence"] == ["clear broker_native_brackets to PASS"]
         assert snapshot["primary_action"].startswith("Keep volume_profile_mnq")
+        assert snapshot["detail"].startswith("Keep volume_profile_mnq")
+        assert snapshot["command_center_issue_status"] == "dashboard_task_contract_drift"
+        assert snapshot["command_center_issue_summary"] == (
+            "Canonical dashboard runtime task(s) missing: "
+            "ETA-Dashboard-API, ETA-Proxy-8421."
+        )
+        assert snapshot["command_center_operator_next_step"] == "reload_operator_service"
+        assert snapshot["command_center_operator_next_reason"] == "dashboard_task_contract_drift"
+        assert snapshot["command_center_operator_next_command"].startswith(
+            ".\\scripts\\reload-command-center-admin.cmd"
+        )
+        assert snapshot["command_center_operator_next_requires_elevation"] is True
+        assert snapshot["command_center_dashboard_task_missing_task_names"] == [
+            "ETA-Dashboard-API",
+            "ETA-Proxy-8421",
+        ]
+        assert snapshot["command_center_local_contract_status"] == "upstream_failure"
+        assert payload["bot_fleet"]["command_center_watchdog_status"] == "dashboard_task_contract_drift"
+        assert payload["bot_fleet"]["command_center_watchdog_detail"] == (
+            "Canonical dashboard runtime task(s) missing: ETA-Dashboard-API, ETA-Proxy-8421."
+        )
         assert payload["checks"]["eta_readiness_snapshot_contract"] is True
 
     def test_dashboard_diagnostics_allows_readiness_scheduler_grace(
@@ -3524,6 +4256,597 @@ class TestDashboardAPI:
         assert snapshot["fresh"] is True
         assert snapshot["age_s"] >= 1000
         assert snapshot["primary_action"] == "Verify broker OCO coverage."
+        assert snapshot["detail"] == "Verify broker OCO coverage."
+
+    def test_dashboard_diagnostics_marks_stale_readiness_detail(
+        self,
+        app_client,
+        tmp_path,
+    ):
+        (tmp_path / "state" / "eta_readiness_snapshot_latest.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": "eta.readiness_snapshot.v1",
+                    "checked_at_utc": (datetime.now(UTC) - timedelta(hours=3)).isoformat(),
+                    "summary": "BLOCKED",
+                    "checks": [
+                        {
+                            "name": "broker_bracket_audit",
+                            "status": "BLOCKED",
+                            "exit_code": 1,
+                            "payload": {
+                                "next_action": "Old readiness blocker detail.",
+                                "position_summary": {
+                                    "missing_bracket_count": 1,
+                                    "broker_open_position_count": 1,
+                                },
+                            },
+                        },
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/dashboard/diagnostics")
+
+        assert r.status_code == 200
+        snapshot = r.json()["eta_readiness_snapshot"]
+        assert snapshot["status"] == "stale_receipt"
+        assert snapshot["fresh"] is False
+        assert "stale" in snapshot["detail"].lower()
+        assert ".\\scripts\\eta-readiness-snapshot.ps1" in snapshot["detail"]
+
+    def test_dashboard_diagnostics_prefers_top_level_readiness_receipt_fields(
+        self,
+        app_client,
+        tmp_path,
+        monkeypatch,
+    ):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        monkeypatch.setattr(
+            mod,
+            "_live_broker_diagnostic_payload",
+            lambda: {
+                "ready": True,
+                "broker_open_order_count": 258,
+                "broker_checked_utc": "2026-05-16T21:59:53+00:00",
+            },
+        )
+        (tmp_path / "state" / "diamond_retune_status_latest.json").write_text(
+            json.dumps(
+                {
+                    "kind": "eta_diamond_retune_status",
+                    "generated_at_utc": "2026-05-16T21:25:28+00:00",
+                    "status": "ok",
+                    "summary": {},
+                    "bots": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+        (tmp_path / "state" / "eta_readiness_snapshot_latest.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": "eta.readiness_snapshot.v1",
+                    "checked_at_utc": datetime.now(UTC).isoformat(),
+                    "status": "blocked",
+                    "summary": "BLOCKED",
+                    "detail": "top-level readiness detail",
+                    "primary_blocker": "top_level_primary_blocker",
+                    "primary_action": "top-level primary action",
+                    "next_actions": ["top-level primary action", "top-level evidence"],
+                    "command_center_issue_status": "healthy",
+                    "command_center_issue_summary": "Command Center watchdog is healthy.",
+                    "command_center_operator_next_step": "none",
+                    "command_center_operator_next_command": "",
+                    "command_center_operator_next_requires_elevation": False,
+                    "command_center_dashboard_task_missing_task_names": [],
+                    "public_fallback_reason": "non_authoritative_gateway_host",
+                    "public_fallback_blocked_count": 7,
+                    "public_fallback_primary_action": "top-level fallback primary action",
+                    "public_live_broker_ready": False,
+                    "public_live_broker_snapshot_state": "missing",
+                    "public_live_broker_snapshot_source": "missing_ibkr_probe_cache",
+                    "public_live_broker_source": "cached_live_broker_state_for_diagnostics",
+                    "public_live_broker_degraded_display": (
+                        "public broker_state degraded: missing_ibkr_probe_cache; "
+                        "via cached_live_broker_state_for_diagnostics"
+                    ),
+                    "dashboard_api_runtime_current_live_broker_state_checked_utc": "",
+                    "dashboard_api_runtime_current_live_broker_open_order_count": 0,
+                    "dashboard_api_runtime_public_live_broker_degraded_display": "",
+                    "dashboard_api_runtime_drift_display": (
+                        "8421 master/status is still blank for public_live_broker_degraded_display "
+                        "while readiness receipt says public broker_state degraded: "
+                        "missing_ibkr_probe_cache; via cached_live_broker_state_for_diagnostics"
+                    ),
+                    "dashboard_api_runtime_probe_display": (
+                        "8421 master/status probe failed: local_dashboard_master_status timed out after 15s"
+                    ),
+                    "dashboard_api_runtime_refresh_command": (
+                        ".\\scripts\\reload-command-center-admin.cmd "
+                        "-PublicUrl https://ops.evolutionarytradingalgo.com"
+                    ),
+                    "dashboard_api_runtime_refresh_requires_elevation": True,
+                    "public_live_broker_state_checked_utc": "2026-05-16T20:59:53+00:00",
+                    "public_live_broker_open_order_count": 252,
+                    "public_fallback_broker_open_order_count": 19,
+                    "public_fallback_broker_open_order_drift_display": (
+                        "live broker_state reports 252 open orders vs "
+                        "public-fallback stale-order audit 19"
+                    ),
+                    "public_fallback_stale_flat_open_order_count": 19,
+                    "public_fallback_stale_flat_open_order_symbols": ["NQM6", "NGM26"],
+                    "public_fallback_stale_flat_open_order_display": "19 stale broker orders (NQM6, NGM26)",
+                    "public_fallback_stale_flat_open_order_relation_display": (
+                        "all 19 broker open orders are stale flat orders"
+                    ),
+                    "public_live_retune_generated_at_utc": "2026-05-16T20:33:18+00:00",
+                    "public_live_retune_focus_active_experiment_outcome_line": (
+                        "partial_profit_disabled: awaiting first post-change close"
+                    ),
+                    "public_live_retune_sync_drift_display": (
+                        "public retune truth refreshed at 2026-05-16T20:33:18+00:00 "
+                        "after readiness cached 2026-05-16T19:33:18+00:00"
+                    ),
+                    "dashboard_api_runtime_public_live_retune_generated_at_utc": "",
+                    "dashboard_api_runtime_public_live_retune_sync_drift_display": "",
+                    "dashboard_api_runtime_retune_drift_display": (
+                        "8421 master/status is still blank for public_live_retune_generated_at_utc "
+                        "while readiness receipt has 2026-05-16T20:33:18+00:00"
+                    ),
+                    "local_retune_generated_at_utc": "2026-05-16T20:25:28+00:00",
+                    "local_retune_focus_active_experiment_outcome_line": (
+                        "partial_profit_disabled: 1 post-change close | R -0.82 | PnL $0.00"
+                    ),
+                    "retune_focus_active_experiment_drift_display": (
+                        "public retune says partial_profit_disabled: awaiting first post-change "
+                        "close; local mirror says partial_profit_disabled: 1 post-change close "
+                        "| R -0.82 | PnL $0.00"
+                    ),
+                    "public_fallback_brackets_summary": "TOP_LEVEL_FALLBACK_BRACKETS",
+                    "promotion_required_evidence": ["top-level evidence"],
+                    "public_fallback_brackets_next_action": "top-level fallback bracket action",
+                    "public_fallback_prop_gate_summary": "TOP_LEVEL_FALLBACK_PROP_GATE",
+                    "public_fallback_prop_gate_primary_action": "top-level fallback prop gate action",
+                    "brackets_summary": "TOP_LEVEL_BRACKETS",
+                    "brackets_next_action": "top-level bracket action",
+                    "prop_gate_summary": "TOP_LEVEL_PROP_GATE",
+                    "prop_gate_primary_action": "top-level prop gate action",
+                    "prop_primary_bot": "top_level_bot",
+                    "promotion_summary": "TOP_LEVEL_PROMOTION",
+                    "ready_for_prop_dry_run_review": True,
+                    "checks": [
+                        {
+                            "name": "closed_trade_ledger",
+                            "status": "OK",
+                            "exit_code": 0,
+                            "payload": {"closed_trade_count": 1},
+                        },
+                        {
+                            "name": "broker_bracket_audit",
+                            "status": "BLOCKED",
+                            "exit_code": 1,
+                            "payload": {
+                                "summary": "BLOCKED",
+                                "next_action": "nested bracket action",
+                                "position_summary": {
+                                    "missing_bracket_count": 1,
+                                    "broker_open_position_count": 1,
+                                },
+                            },
+                        },
+                        {
+                            "name": "prop_strategy_promotion_audit",
+                            "status": "BLOCKED",
+                            "exit_code": 1,
+                            "payload": {
+                                "summary": "BLOCKED_PAPER_SOAK",
+                                "ready_for_prop_dry_run_review": False,
+                                "required_evidence": ["nested evidence"],
+                            },
+                        },
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/dashboard/diagnostics")
+
+        assert r.status_code == 200
+        snapshot = r.json()["eta_readiness_snapshot"]
+        assert snapshot["command_center_issue_status"] == "healthy"
+        assert snapshot["command_center_issue_summary"] == "Command Center watchdog is healthy."
+        assert snapshot["command_center_operator_next_step"] == "none"
+        assert snapshot["status"] == "blocked"
+        assert snapshot["detail"] == "top-level readiness detail"
+        assert snapshot["primary_blocker"] == "top_level_primary_blocker"
+        assert snapshot["primary_action"] == "top-level primary action"
+        assert snapshot["next_actions"][:2] == ["top-level primary action", "top-level evidence"]
+        assert snapshot["public_fallback_blocked_count"] == 7
+        assert snapshot["public_fallback_primary_action"] == "top-level fallback primary action"
+        assert snapshot["public_live_broker_ready"] is False
+        assert snapshot["public_live_broker_snapshot_state"] == "missing"
+        assert snapshot["public_live_broker_snapshot_source"] == "missing_ibkr_probe_cache"
+        assert snapshot["public_live_broker_source"] == "cached_live_broker_state_for_diagnostics"
+        assert (
+            snapshot["public_live_broker_degraded_display"]
+            == "public broker_state degraded: missing_ibkr_probe_cache; "
+            "via cached_live_broker_state_for_diagnostics"
+        )
+        assert snapshot["dashboard_api_runtime_current_live_broker_state_checked_utc"] == "2026-05-16T21:59:53+00:00"
+        assert snapshot["dashboard_api_runtime_current_live_broker_open_order_count"] == 258
+        assert (
+            snapshot["dashboard_api_runtime_public_live_broker_degraded_display"]
+            == "public broker_state degraded: missing_ibkr_probe_cache; "
+            "via cached_live_broker_state_for_diagnostics"
+        )
+        assert snapshot["dashboard_api_runtime_drift_display"] == ""
+        assert (
+            snapshot["dashboard_api_runtime_probe_display"]
+            == "8421 master/status probe failed: local_dashboard_master_status timed out after 15s"
+        )
+        assert (
+            snapshot["dashboard_api_runtime_refresh_command"]
+            == ".\\scripts\\reload-command-center-admin.cmd "
+            "-PublicUrl https://ops.evolutionarytradingalgo.com"
+        )
+        assert snapshot["dashboard_api_runtime_refresh_requires_elevation"] is True
+        assert snapshot["public_live_broker_state_checked_utc"] == "2026-05-16T20:59:53+00:00"
+        assert snapshot["public_live_broker_open_order_count"] == 252
+        assert snapshot["current_live_broker_state_checked_utc"] == "2026-05-16T21:59:53+00:00"
+        assert snapshot["current_live_broker_open_order_count"] == 258
+        assert snapshot["current_live_broker_degraded_display"] == ""
+        assert (
+            snapshot["current_live_broker_open_order_drift_display"]
+            == "live broker_state now reports 258 open orders vs readiness cached 19 stale flat orders"
+        )
+        assert snapshot["public_fallback_broker_open_order_count"] == 19
+        assert (
+            snapshot["public_fallback_broker_open_order_drift_display"]
+            == "live broker_state reports 252 open orders vs public-fallback stale-order audit 19"
+        )
+        assert snapshot["public_fallback_stale_flat_open_order_count"] == 19
+        assert snapshot["public_fallback_stale_flat_open_order_symbols"] == ["NQM6", "NGM26"]
+        assert snapshot["public_fallback_stale_flat_open_order_display"] == "19 stale broker orders (NQM6, NGM26)"
+        assert (
+            snapshot["public_fallback_stale_flat_open_order_relation_display"]
+            == "all 19 broker open orders are stale flat orders"
+        )
+        assert snapshot["public_live_retune_generated_at_utc"] == "2026-05-16T20:33:18+00:00"
+        assert (
+            snapshot["public_live_retune_focus_active_experiment_outcome_line"]
+            == "partial_profit_disabled: awaiting first post-change close"
+        )
+        assert (
+            snapshot["public_live_retune_sync_drift_display"]
+            == "public retune truth refreshed at 2026-05-16T20:33:18+00:00 "
+            "after readiness cached 2026-05-16T19:33:18+00:00"
+        )
+        assert snapshot["dashboard_api_runtime_public_live_retune_generated_at_utc"] == "2026-05-16T20:33:18+00:00"
+        assert (
+            snapshot["dashboard_api_runtime_public_live_retune_sync_drift_display"]
+            == "public retune truth refreshed at 2026-05-16T20:33:18+00:00 "
+            "after readiness cached 2026-05-16T19:33:18+00:00"
+        )
+        assert snapshot["dashboard_api_runtime_retune_drift_display"] == ""
+        assert snapshot["local_retune_generated_at_utc"] == "2026-05-16T20:25:28+00:00"
+        assert (
+            snapshot["local_retune_focus_active_experiment_outcome_line"]
+            == "partial_profit_disabled: 1 post-change close | R -0.82 | PnL $0.00"
+        )
+        assert snapshot["current_local_retune_generated_at_utc"] == "2026-05-16T21:25:28+00:00"
+        assert (
+            snapshot["local_retune_sync_drift_display"]
+            == "local retune snapshot refreshed at 2026-05-16T21:25:28+00:00 "
+            "after readiness cached 2026-05-16T20:25:28+00:00"
+        )
+        assert (
+            snapshot["retune_focus_active_experiment_drift_display"]
+            == "public retune says partial_profit_disabled: awaiting first post-change close; "
+            "local mirror says partial_profit_disabled: 1 post-change close | R -0.82 | PnL $0.00"
+        )
+        assert snapshot["public_fallback_brackets_summary"] == "TOP_LEVEL_FALLBACK_BRACKETS"
+        assert snapshot["promotion_required_evidence"] == ["top-level evidence"]
+        assert snapshot["public_fallback_brackets_next_action"] == "top-level fallback bracket action"
+        assert snapshot["public_fallback_prop_gate_summary"] == "TOP_LEVEL_FALLBACK_PROP_GATE"
+        assert snapshot["public_fallback_prop_gate_primary_action"] == "top-level fallback prop gate action"
+        assert snapshot["brackets_summary"] == "TOP_LEVEL_BRACKETS"
+        assert snapshot["brackets_next_action"] == "top-level bracket action"
+        assert snapshot["prop_gate_summary"] == "TOP_LEVEL_PROP_GATE"
+        assert snapshot["prop_gate_primary_action"] == "top-level prop gate action"
+        assert snapshot["prop_primary_bot"] == "top_level_bot"
+        assert snapshot["promotion_summary"] == "TOP_LEVEL_PROMOTION"
+        assert snapshot["ready_for_prop_dry_run_review"] is True
+
+    def test_dashboard_diagnostics_uses_public_broker_state_when_local_cache_missing(
+        self,
+        app_client,
+        tmp_path,
+        monkeypatch,
+    ):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        monkeypatch.setattr(
+            mod,
+            "_live_broker_diagnostic_payload",
+            lambda: {
+                "ready": False,
+                "status": "unavailable",
+                "broker_probe_skipped": True,
+                "broker_snapshot_state": "missing",
+            },
+        )
+        monkeypatch.setattr(
+            mod,
+            "_public_operator_broker_state_payload",
+            lambda **_kwargs: {
+                "ibkr": {
+                    "open_order_count": 261,
+                    "checked_utc": "2026-05-16T22:09:53+00:00",
+                }
+            },
+        )
+        (tmp_path / "state" / "diamond_retune_status_latest.json").write_text(
+            json.dumps(
+                {
+                    "kind": "eta_diamond_retune_status",
+                    "generated_at_utc": "2026-05-16T21:25:28+00:00",
+                    "status": "ok",
+                    "summary": {},
+                    "bots": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+        (tmp_path / "state" / "eta_readiness_snapshot_latest.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": "eta.readiness_snapshot.v1",
+                    "checked_at_utc": datetime.now(UTC).isoformat(),
+                    "summary": "BLOCKED",
+                    "public_fallback_active": True,
+                    "public_fallback_reason": "non_authoritative_gateway_host",
+                    "public_live_broker_open_order_count": 255,
+                    "public_fallback_stale_flat_open_order_count": 255,
+                    "checks": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/dashboard/diagnostics")
+
+        assert r.status_code == 200
+        snapshot = r.json()["eta_readiness_snapshot"]
+        assert snapshot["current_live_broker_state_checked_utc"] == "2026-05-16T22:09:53+00:00"
+        assert snapshot["current_live_broker_open_order_count"] == 261
+        assert snapshot["current_live_broker_degraded_display"] == ""
+        assert (
+            snapshot["current_live_broker_open_order_drift_display"]
+            == "live broker_state now reports 261 open orders vs readiness cached 255 stale flat orders"
+        )
+
+    def test_dashboard_diagnostics_surfaces_current_public_broker_degraded_state_when_live_count_missing(
+        self,
+        app_client,
+        tmp_path,
+        monkeypatch,
+    ):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        monkeypatch.setattr(
+            mod,
+            "_live_broker_diagnostic_payload",
+            lambda: {
+                "ready": False,
+                "status": "unavailable",
+                "broker_probe_skipped": True,
+                "broker_snapshot_state": "missing",
+            },
+        )
+        monkeypatch.setattr(
+            mod,
+            "_public_operator_broker_state_payload",
+            lambda **_kwargs: {
+                "ready": False,
+                "source": "cached_live_broker_state_for_diagnostics",
+                "broker_snapshot_state": "missing",
+                "broker_snapshot_source": "missing_ibkr_probe_cache",
+            },
+        )
+        (tmp_path / "state" / "diamond_retune_status_latest.json").write_text(
+            json.dumps(
+                {
+                    "kind": "eta_diamond_retune_status",
+                    "generated_at_utc": "2026-05-16T21:25:28+00:00",
+                    "status": "ok",
+                    "summary": {},
+                    "bots": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+        (tmp_path / "state" / "eta_readiness_snapshot_latest.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": "eta.readiness_snapshot.v1",
+                    "checked_at_utc": datetime.now(UTC).isoformat(),
+                    "summary": "BLOCKED",
+                    "public_fallback_active": True,
+                    "public_fallback_reason": "non_authoritative_gateway_host",
+                    "public_live_broker_ready": False,
+                    "public_live_broker_snapshot_state": "warm",
+                    "public_live_broker_snapshot_source": "ibkr_probe_cache",
+                    "public_live_broker_source": "cached_live_broker_state_for_diagnostics",
+                    "public_live_broker_degraded_display": (
+                        "public broker_state degraded: ibkr_probe_cache; "
+                        "via cached_live_broker_state_for_diagnostics"
+                    ),
+                    "checks": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/dashboard/diagnostics")
+
+        assert r.status_code == 200
+        snapshot = r.json()["eta_readiness_snapshot"]
+        assert snapshot["current_live_broker_state_checked_utc"] == ""
+        assert snapshot["current_live_broker_open_order_count"] == 0
+        assert (
+            snapshot["current_live_broker_degraded_display"]
+            == "live broker_state now degraded: missing_ibkr_probe_cache; "
+            "via cached_live_broker_state_for_diagnostics"
+        )
+        assert snapshot["current_live_broker_open_order_drift_display"] == ""
+
+    def test_public_operator_broker_state_payload_sets_user_agent(self, monkeypatch):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        captured: dict[str, object] = {}
+
+        class _FakeResponse:
+            def __enter__(self) -> _FakeResponse:
+                return self
+
+            def __exit__(self, exc_type, exc, tb) -> bool:
+                return False
+
+            def read(self):
+                return (
+                    b'{"ibkr":{"open_order_count":261,"checked_utc":"2026-05-16T22:09:53+00:00"}}'
+                )
+
+        def fake_urlopen(request, timeout=0.0):
+            captured["url"] = request.full_url
+            captured["headers"] = {key.lower(): value for key, value in request.header_items()}
+            captured["timeout"] = timeout
+            return _FakeResponse()
+
+        monkeypatch.setenv("ETA_OPERATOR_URL", "https://ops.evolutionarytradingalgo.com")
+        monkeypatch.setattr(mod.urllib_request, "urlopen", fake_urlopen)
+        with mod._PUBLIC_OPERATOR_BROKER_STATE_CACHE_LOCK:
+            mod._PUBLIC_OPERATOR_BROKER_STATE_CACHE["payload"] = None
+            mod._PUBLIC_OPERATOR_BROKER_STATE_CACHE["ts"] = 0.0
+
+        payload = mod._public_operator_broker_state_payload(force=True)
+
+        assert payload["ibkr"]["open_order_count"] == 261
+        assert captured["url"] == "https://ops.evolutionarytradingalgo.com/api/live/broker_state"
+        assert captured["timeout"] == 5.0
+        assert captured["headers"]["accept"] == "application/json"
+        assert captured["headers"]["user-agent"] == "ETA-Operator/1.0"
+
+    def test_public_operator_diamond_retune_status_payload_sets_user_agent(self, monkeypatch):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        captured: dict[str, object] = {}
+
+        class _FakeResponse:
+            def __enter__(self) -> _FakeResponse:
+                return self
+
+            def __exit__(self, exc_type, exc, tb) -> bool:
+                return False
+
+            def read(self):
+                return (
+                    b'{"generated_at_utc":"2026-05-17T01:25:18+00:00",'
+                    b'"focus_active_experiment_outcome_line":"partial_profit_disabled: '
+                    b'1 post-change close | R -0.82 | PnL $0.00"}'
+                )
+
+        def fake_urlopen(request, timeout=0.0):
+            captured["url"] = request.full_url
+            captured["headers"] = {key.lower(): value for key, value in request.header_items()}
+            captured["timeout"] = timeout
+            return _FakeResponse()
+
+        monkeypatch.setenv("ETA_OPERATOR_URL", "https://ops.evolutionarytradingalgo.com")
+        monkeypatch.setattr(mod.urllib_request, "urlopen", fake_urlopen)
+        with mod._PUBLIC_OPERATOR_RETUNE_STATUS_CACHE_LOCK:
+            mod._PUBLIC_OPERATOR_RETUNE_STATUS_CACHE["payload"] = None
+            mod._PUBLIC_OPERATOR_RETUNE_STATUS_CACHE["ts"] = 0.0
+
+        payload = mod._public_operator_diamond_retune_status_payload(force=True)
+
+        assert payload["generated_at_utc"] == "2026-05-17T01:25:18+00:00"
+        assert captured["url"] == "https://ops.evolutionarytradingalgo.com/api/jarvis/diamond_retune_status"
+        assert captured["timeout"] == 5.0
+        assert captured["headers"]["accept"] == "application/json"
+        assert captured["headers"]["user-agent"] == "ETA-Operator/1.0"
+
+    def test_dashboard_diagnostics_surfaces_current_public_retune_drift_when_receipt_is_stale(
+        self,
+        app_client,
+        tmp_path,
+        monkeypatch,
+    ):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        monkeypatch.setattr(
+            mod,
+            "_public_operator_diamond_retune_status_payload",
+            lambda **_kwargs: {
+                "generated_at_utc": "2026-05-17T01:25:18+00:00",
+                "focus_active_experiment_outcome_line": (
+                    "partial_profit_disabled: 1 post-change close | R -0.82 | PnL $0.00"
+                ),
+            },
+        )
+        monkeypatch.setattr(
+            mod,
+            "_public_operator_broker_state_payload",
+            lambda **_kwargs: {},
+        )
+        (tmp_path / "state" / "diamond_retune_status_latest.json").write_text(
+            json.dumps(
+                {
+                    "kind": "eta_diamond_retune_status",
+                    "generated_at_utc": "2026-05-17T01:25:18+00:00",
+                    "status": "ok",
+                    "summary": {},
+                    "bots": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+        (tmp_path / "state" / "eta_readiness_snapshot_latest.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": "eta.readiness_snapshot.v1",
+                    "checked_at_utc": "2026-05-16T20:25:26+00:00",
+                    "summary": "BLOCKED",
+                    "public_live_retune_generated_at_utc": "2026-05-17T00:25:26+00:00",
+                    "public_live_retune_focus_active_experiment_outcome_line": (
+                        "partial_profit_disabled: awaiting first post-change close"
+                    ),
+                    "checks": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/dashboard/diagnostics")
+
+        assert r.status_code == 200
+        snapshot = r.json()["eta_readiness_snapshot"]
+        assert snapshot["fresh"] is False
+        assert snapshot["current_live_retune_generated_at_utc"] == "2026-05-17T01:25:18+00:00"
+        assert (
+            snapshot["current_live_retune_focus_active_experiment_outcome_line"]
+            == "partial_profit_disabled: 1 post-change close | R -0.82 | PnL $0.00"
+        )
+        assert (
+            snapshot["current_live_retune_sync_drift_display"]
+            == "public retune truth now refreshed at 2026-05-17T01:25:18+00:00 "
+            "after readiness cached 2026-05-17T00:25:26+00:00"
+        )
 
     def test_dashboard_diagnostics_promotes_public_fallback_readiness_action(
         self,
@@ -3620,6 +4943,120 @@ class TestDashboardAPI:
         assert snapshot["next_actions"][0].startswith("5 broker bracket-required")
         assert snapshot["broker_missing_bracket_count"] == 5
         assert snapshot["broker_open_position_count"] == 6
+        assert snapshot["public_fallback_brackets_summary"] == "BLOCKED"
+        assert snapshot["public_fallback_brackets_next_action"].startswith("5 broker bracket-required")
+        assert snapshot["public_fallback_prop_gate_summary"] == "BLOCKED"
+        assert snapshot["public_fallback_prop_gate_primary_action"].startswith(
+            "Keep volume_profile_mnq in paper_soak"
+        )
+
+    def test_dashboard_diagnostics_activates_public_fallback_for_non_authoritative_gateway_host(
+        self,
+        app_client,
+        tmp_path,
+    ):
+        (tmp_path / "state" / "eta_readiness_snapshot_latest.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": "eta.readiness_snapshot.v1",
+                    "checked_at_utc": datetime.now(UTC).isoformat(),
+                    "summary": "BLOCKED",
+                    "non_authoritative_gateway_host": True,
+                    "public_fallback_reason": "non_authoritative_gateway_host",
+                    "public_fallback_checks": [
+                        {
+                            "name": "broker_bracket_audit_public_fallback",
+                            "status": "BLOCKED",
+                            "exit_code": 1,
+                            "payload": {
+                                "next_action": "2 broker bracket-required positions missing broker-native OCO.",
+                                "position_summary": {
+                                    "missing_bracket_count": 2,
+                                    "broker_open_position_count": 3,
+                                },
+                            },
+                        },
+                        {
+                            "name": "prop_live_readiness_gate_public_fallback",
+                            "status": "BLOCKED",
+                            "exit_code": 1,
+                            "payload": {
+                                "next_actions": [
+                                    "Keep volume_profile_mnq in paper_soak until public bracket audit clears."
+                                ],
+                            },
+                        },
+                    ],
+                    "checks": [
+                        {
+                            "name": "closed_trade_ledger",
+                            "status": "OK",
+                            "exit_code": 0,
+                            "payload": {
+                                "closed_trade_count": 43511,
+                                "total_realized_pnl": 27173899.25,
+                                "win_rate_pct": 28.94,
+                            },
+                        },
+                        {
+                            "name": "broker_bracket_audit",
+                            "status": "READY_NO_OPEN_EXPOSURE",
+                            "exit_code": 0,
+                            "payload": {
+                                "summary": "READY_NO_OPEN_EXPOSURE",
+                                "position_summary": {
+                                    "missing_bracket_count": 0,
+                                    "broker_open_position_count": 0,
+                                },
+                            },
+                        },
+                        {
+                            "name": "prop_live_readiness_gate",
+                            "status": "BLOCKED",
+                            "exit_code": 1,
+                            "payload": {
+                                "primary_bot": "volume_profile_mnq",
+                                "next_actions": [
+                                    "On the VPS only: restore the authoritative paper-live gateway runtime."
+                                ],
+                            },
+                        },
+                        {
+                            "name": "prop_strategy_promotion_audit",
+                            "status": "BLOCKED",
+                            "exit_code": 1,
+                            "payload": {
+                                "primary_bot": "volume_profile_mnq",
+                                "summary": "BLOCKED_PAPER_SOAK",
+                                "ready_for_prop_dry_run_review": False,
+                            },
+                        },
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/dashboard/diagnostics")
+
+        assert r.status_code == 200
+        snapshot = r.json()["eta_readiness_snapshot"]
+        assert snapshot["status"] == "blocked"
+        assert snapshot["non_authoritative_gateway_host"] is True
+        assert snapshot["public_fallback_active"] is True
+        assert snapshot["public_fallback_reason"] == "non_authoritative_gateway_host"
+        assert snapshot["public_fallback_blocked_count"] == 2
+        assert snapshot["primary_blocker"] == "broker_bracket_audit_public_fallback"
+        assert snapshot["primary_action"].startswith("2 broker bracket-required")
+        assert snapshot["next_actions"][0].startswith("2 broker bracket-required")
+        assert snapshot["broker_missing_bracket_count"] == 2
+        assert snapshot["broker_open_position_count"] == 3
+        assert snapshot["public_fallback_brackets_summary"] == "BLOCKED"
+        assert snapshot["public_fallback_brackets_next_action"].startswith("2 broker bracket-required")
+        assert snapshot["public_fallback_prop_gate_summary"] == "BLOCKED"
+        assert snapshot["public_fallback_prop_gate_primary_action"].startswith(
+            "Keep volume_profile_mnq in paper_soak"
+        )
 
     def test_dashboard_diagnostics_includes_command_center_watchdog_rollup(
         self,
@@ -3655,6 +5092,28 @@ class TestDashboardAPI:
         status_path.write_text(
             json.dumps(
                 {
+                    "issue_status": "dashboard_task_contract_drift",
+                    "issue_summary": (
+                        "Canonical dashboard runtime task(s) missing: "
+                        "ETA-Dashboard-API, ETA-Proxy-8421."
+                    ),
+                    "primary_blocker": "dashboard_task_contract_drift",
+                    "local_contract_status": {
+                        "status": "upstream_failure",
+                        "summary": "Local 8421 is reachable, but upstream is returning HTTP 5xx.",
+                    },
+                    "dashboard_task_contract_status": {
+                        "status": "missing_task",
+                        "summary": (
+                            "Canonical dashboard runtime task(s) missing: "
+                            "ETA-Dashboard-API, ETA-Proxy-8421."
+                        ),
+                        "missing_task_names": ["ETA-Dashboard-API", "ETA-Proxy-8421"],
+                    },
+                    "firm_command_center_dependency_gap_status": {
+                        "status": "missing_module",
+                        "missing_module": "portalocker",
+                    },
                     "operator_action_plan": [
                         {
                             "role": "primary",
@@ -3697,10 +5156,17 @@ class TestDashboardAPI:
         assert watchdog["fresh"] is True
         assert watchdog["failure_class"] == "stale_service"
         assert watchdog["operator_contract_state"] == "stale_service"
+        assert watchdog["next_reason"] == "dashboard_task_contract_drift"
         assert watchdog["next_step"] == "reload_operator_service"
+        assert watchdog["operator_next_step"] == "reload_operator_service"
+        assert watchdog["operator_next_reason"] == "dashboard_task_contract_drift"
+        assert watchdog["operator_next_command"].startswith(
+            ".\\scripts\\reload-command-center-admin.cmd"
+        )
         assert watchdog["recommended_action"] == "reload_operator_service"
         assert watchdog["repair_required"] is True
         assert watchdog["requires_elevation"] is True
+        assert watchdog["operator_next_requires_elevation"] is True
         assert watchdog["receipt_path"].endswith("command_center_doctor_latest.json")
         assert watchdog["status_receipt_path"].endswith("command_center_watchdog_status_latest.json")
         assert watchdog["action_count"] == 2
@@ -3710,6 +5176,109 @@ class TestDashboardAPI:
         assert watchdog["watchdog_state"] == "missing"
         assert watchdog["can_launch_from_desktop"] is True
         assert watchdog["launch_context"] == "interactive_uac_launcher"
+        assert watchdog["issue_status"] == "dashboard_task_contract_drift"
+        assert watchdog["issue_summary"].startswith("Canonical dashboard runtime task(s) missing")
+        assert watchdog["primary_blocker"] == "dashboard_task_contract_drift"
+        assert watchdog["local_contract_status"]["status"] == "upstream_failure"
+        assert watchdog["dashboard_task_contract_status"]["status"] == "missing_task"
+        assert watchdog["dashboard_task_missing_task_names"] == [
+            "ETA-Dashboard-API",
+            "ETA-Proxy-8421",
+        ]
+        assert watchdog["firm_command_center_dependency_gap_status"]["missing_module"] == "portalocker"
+        assert watchdog["summary_line"] == watchdog["summary"]
+        assert payload["checks"]["command_center_watchdog_contract"] is True
+
+    def test_dashboard_diagnostics_accepts_dashboard_task_contract_drift_watchdog_status(
+        self,
+        app_client,
+        tmp_path,
+    ):
+        receipt_path = tmp_path / "state" / "command_center_doctor_latest.json"
+        receipt_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": "eta.command_center.doctor.v1",
+                    "checked_at": datetime.now(UTC).isoformat(),
+                    "healthy": False,
+                    "failure_class": "dashboard_task_contract_drift",
+                    "operator_contract_state": "dashboard_task_contract_drift",
+                    "recommended_action": "reload_operator_service",
+                    "repair_required": True,
+                    "operator_action": {
+                        "step": "reload_operator_service",
+                        "reason": "dashboard_task_contract_drift",
+                        "command": ".\\scripts\\reload-command-center-admin.cmd -PublicUrl https://ops.evolutionarytradingalgo.com",
+                        "requires_elevation": True,
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        status_path = tmp_path / "state" / "command_center_watchdog_status_latest.json"
+        status_path.write_text(
+            json.dumps(
+                {
+                    "overall_status": "degraded",
+                    "effective_status": "dashboard_task_contract_drift",
+                    "primary_blocker": "dashboard_task_contract_drift",
+                    "issue_status": "dashboard_task_contract_drift",
+                    "issue_summary": (
+                        "Canonical dashboard runtime task(s) missing: "
+                        "ETA-Dashboard-API, ETA-Proxy-8421.; "
+                        "findings=state=dashboard_task_contract_drift,endpoints=5,truncated=true."
+                    ),
+                    "operator_issue_status": "dashboard_task_contract_drift",
+                    "operator_next_step": "reload_operator_service",
+                    "operator_next_reason": "dashboard_task_contract_drift",
+                    "operator_next_command": ".\\scripts\\reload-command-center-admin.cmd -PublicUrl https://ops.evolutionarytradingalgo.com",
+                    "operator_next_requires_elevation": True,
+                    "watchdog_registered": True,
+                    "watchdog_state": "Running",
+                    "local_contract_status": {
+                        "status": "upstream_failure",
+                        "summary": "Local 8421 is reachable, but upstream is returning HTTP 5xx.",
+                    },
+                    "dashboard_task_contract_status": {
+                        "status": "missing_task",
+                        "summary": (
+                            "Canonical dashboard runtime task(s) missing: "
+                            "ETA-Dashboard-API, ETA-Proxy-8421."
+                        ),
+                        "missing_task_names": ["ETA-Dashboard-API", "ETA-Proxy-8421"],
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/dashboard/diagnostics")
+
+        assert r.status_code == 200
+        payload = r.json()
+        watchdog = payload["command_center_watchdog"]
+        assert watchdog["status"] == "dashboard_task_contract_drift"
+        assert watchdog["healthy"] is False
+        assert watchdog["next_reason"] == "dashboard_task_contract_drift"
+        assert watchdog["next_step"] == "reload_operator_service"
+        assert watchdog["operator_next_step"] == "reload_operator_service"
+        assert watchdog["operator_next_reason"] == "dashboard_task_contract_drift"
+        assert watchdog["operator_next_command"].startswith(
+            ".\\scripts\\reload-command-center-admin.cmd"
+        )
+        assert watchdog["operator_next_requires_elevation"] is True
+        assert watchdog["issue_status"] == "dashboard_task_contract_drift"
+        assert watchdog["display_issue_summary"] == (
+            "Canonical dashboard runtime task(s) missing: "
+            "ETA-Dashboard-API, ETA-Proxy-8421."
+        )
+        assert watchdog["display_summary"] == watchdog["display_issue_summary"]
+        assert "findings=state=dashboard_task_contract_drift" in watchdog["issue_summary"]
+        assert watchdog["summary_line"] == watchdog["summary"]
+        assert watchdog["dashboard_task_missing_task_names"] == [
+            "ETA-Dashboard-API",
+            "ETA-Proxy-8421",
+        ]
         assert payload["checks"]["command_center_watchdog_contract"] is True
 
     def test_dashboard_diagnostics_uses_status_receipt_when_doctor_receipt_stale(
@@ -3725,6 +5294,20 @@ class TestDashboardAPI:
                     "checked_at": (datetime.now(UTC) - timedelta(hours=1)).isoformat(),
                     "healthy": True,
                     "failure_class": "healthy",
+                    "failure_detail": "Canonical dashboard runtime task(s) missing: ETA-Dashboard-API, ETA-Proxy-8421.",
+                    "dashboard_task_contract": {
+                        "status": "missing_task",
+                        "summary": (
+                            "Canonical dashboard runtime task(s) missing: "
+                            "ETA-Dashboard-API, ETA-Proxy-8421."
+                        ),
+                        "missing_task_names": ["ETA-Dashboard-API", "ETA-Proxy-8421"],
+                    },
+                    "local_dependency_gap": {
+                        "status": "missing_module",
+                        "summary": "FirmCommandCenter mirror environment is missing module portalocker.",
+                        "missing_module": "portalocker",
+                    },
                     "operator_contract_state": "healthy",
                     "recommended_action": "none",
                     "repair_required": False,
@@ -3744,6 +5327,10 @@ class TestDashboardAPI:
                 {
                     "effective_status": "public_tunnel_token_rejected",
                     "primary_blocker": "public_tunnel_token_rejected",
+                    "issue_summary": (
+                        "Command Center watchdog is critical: public_tunnel_token_rejected; "
+                        "next=repair_public_tunnel_token."
+                    ),
                     "operator_next_step": "repair_public_tunnel_token",
                     "operator_next_reason": "public_tunnel_token_rejected",
                     "operator_next_command": ".\\scripts\\repair-public-tunnel-admin.cmd",
@@ -3772,8 +5359,284 @@ class TestDashboardAPI:
         assert watchdog["next_command"] == ".\\scripts\\repair-public-tunnel-admin.cmd"
         assert watchdog["repair_required"] is True
         assert watchdog["requires_elevation"] is True
+        assert (
+            watchdog["failure_detail"]
+            == "Canonical dashboard runtime task(s) missing: ETA-Dashboard-API, ETA-Proxy-8421."
+        )
+        assert watchdog["issue_summary"].startswith(
+            "Command Center watchdog is critical: public_tunnel_token_rejected; next=repair_public_tunnel_token."
+        )
+        assert "Canonical dashboard runtime task(s) missing: ETA-Dashboard-API, ETA-Proxy-8421." in watchdog[
+            "issue_summary"
+        ]
+        assert "Canonical dashboard runtime task(s) missing: ETA-Dashboard-API, ETA-Proxy-8421." in watchdog["summary"]
         assert "public_tunnel_token_rejected" in watchdog["summary"]
         assert "next=repair_public_tunnel_token" in watchdog["summary"]
+        assert watchdog["dashboard_task_contract_status"]["status"] == "missing_task"
+        assert watchdog["dashboard_task_missing_task_names"] == [
+            "ETA-Dashboard-API",
+            "ETA-Proxy-8421",
+        ]
+        assert watchdog["firm_command_center_dependency_gap_status"]["missing_module"] == "portalocker"
+
+    def test_dashboard_diagnostics_uses_fresh_degraded_watchdog_status_receipt(
+        self,
+        app_client,
+        tmp_path,
+    ):
+        receipt_path = tmp_path / "state" / "command_center_doctor_latest.json"
+        receipt_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": "eta.command_center.doctor.v1",
+                    "checked_at": datetime.now(UTC).isoformat(),
+                    "healthy": True,
+                    "failure_class": "healthy",
+                    "operator_contract_state": "healthy",
+                    "recommended_action": "none",
+                    "repair_required": False,
+                    "operator_action": {
+                        "step": "none",
+                        "reason": "healthy",
+                        "command": None,
+                        "requires_elevation": False,
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        status_path = tmp_path / "state" / "command_center_watchdog_status_latest.json"
+        status_path.write_text(
+            json.dumps(
+                {
+                    "overall_status": "degraded",
+                    "effective_status": "public_tunnel_token_rejected",
+                    "primary_blocker": "public_tunnel_token_rejected",
+                    "operator_issue_status": "public_tunnel_token_rejected",
+                    "operator_next_step": "repair_public_tunnel_token",
+                    "operator_next_reason": "public_tunnel_token_rejected",
+                    "operator_next_command": ".\\scripts\\repair-public-tunnel-admin.cmd",
+                    "operator_next_requires_elevation": True,
+                    "watchdog_registered": True,
+                    "watchdog_state": "Running",
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/dashboard/diagnostics")
+
+        assert r.status_code == 200
+        watchdog = r.json()["command_center_watchdog"]
+        assert watchdog["status"] == "public_tunnel_token_rejected"
+        assert watchdog["healthy"] is False
+        assert watchdog["fresh"] is True
+        assert watchdog["recommended_action"] == "repair_public_tunnel_token"
+        assert watchdog["next_step"] == "repair_public_tunnel_token"
+        assert watchdog["next_command"] == ".\\scripts\\repair-public-tunnel-admin.cmd"
+        assert watchdog["repair_required"] is True
+        assert watchdog["requires_elevation"] is True
+        assert "public_tunnel_token_rejected" in watchdog["summary"]
+
+    def test_dashboard_diagnostics_prefers_fresh_healthy_watchdog_status_receipt(
+        self,
+        app_client,
+        tmp_path,
+    ):
+        receipt_path = tmp_path / "state" / "command_center_doctor_latest.json"
+        receipt_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": "eta.command_center.doctor.v1",
+                    "checked_at": datetime.now(UTC).isoformat(),
+                    "healthy": False,
+                    "failure_class": "contract_failure",
+                    "operator_contract_state": "contract_failure",
+                    "recommended_action": "inspect_operator_contract",
+                    "repair_required": True,
+                    "operator_action": {
+                        "step": "inspect_operator_contract",
+                        "reason": "contract_failure",
+                        "command": ".\\scripts\\command-center-doctor.ps1 -Repair",
+                        "requires_elevation": True,
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        status_path = tmp_path / "state" / "command_center_watchdog_status_latest.json"
+        status_path.write_text(
+            json.dumps(
+                {
+                    "checked_at": datetime.now(UTC).isoformat(),
+                    "overall_status": "healthy",
+                    "effective_status": "healthy",
+                    "primary_blocker": "none",
+                    "issue_status": "healthy",
+                    "issue_summary": "Command Center watchdog is healthy.",
+                    "display_summary": "Command Center watchdog is healthy.",
+                    "operator_issue_status": "healthy",
+                    "operator_next_step": "none",
+                    "operator_next_reason": "healthy",
+                    "operator_next_command": None,
+                    "operator_next_requires_elevation": False,
+                    "watchdog_registered": True,
+                    "watchdog_state": "Ready",
+                    "local_contract_status": {
+                        "status": "healthy",
+                        "summary": "Local 8421 exposes the canonical dashboard contract probes.",
+                    },
+                    "dashboard_task_contract_status": {
+                        "status": "access_denied",
+                        "summary": (
+                            "Canonical dashboard runtime task(s) require elevation to inspect: "
+                            "ETA-Dashboard-API, ETA-Proxy-8421."
+                        ),
+                        "missing_task_names": [],
+                        "access_denied_task_names": ["ETA-Dashboard-API", "ETA-Proxy-8421"],
+                        "needs_reload": False,
+                    },
+                    "firm_command_center_dependency_gap_status": {
+                        "status": "healthy",
+                        "summary": "FirmCommandCenter runtime import probe succeeded.",
+                    },
+                    "latest_fresh": True,
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/dashboard/diagnostics")
+
+        assert r.status_code == 200
+        watchdog = r.json()["command_center_watchdog"]
+        assert watchdog["status"] == "healthy"
+        assert watchdog["healthy"] is True
+        assert watchdog["failure_class"] == "healthy"
+        assert watchdog["operator_contract_state"] == "healthy"
+        assert watchdog["recommended_action"] == "none"
+        assert watchdog["next_reason"] == "healthy"
+        assert watchdog["next_step"] == "none"
+        assert watchdog["next_command"] is None
+        assert watchdog["repair_required"] is False
+        assert watchdog["requires_elevation"] is False
+        assert watchdog["issue_status"] == "healthy"
+        assert watchdog["display_summary"] == "Command Center watchdog is healthy."
+
+    def test_dashboard_diagnostics_uses_public_tunnel_service_drift_status_receipt(
+        self,
+        app_client,
+        tmp_path,
+    ):
+        receipt_path = tmp_path / "state" / "command_center_doctor_latest.json"
+        receipt_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": "eta.command_center.doctor.v1",
+                    "checked_at": datetime.now(UTC).isoformat(),
+                    "healthy": True,
+                    "failure_class": "healthy",
+                    "operator_contract_state": "healthy",
+                    "recommended_action": "none",
+                    "repair_required": False,
+                    "operator_action": {
+                        "step": "none",
+                        "reason": "healthy",
+                        "command": None,
+                        "requires_elevation": False,
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        status_path = tmp_path / "state" / "command_center_watchdog_status_latest.json"
+        status_path.write_text(
+            json.dumps(
+                {
+                    "overall_status": "degraded",
+                    "effective_status": "public_tunnel_service_drift",
+                    "primary_blocker": "public_tunnel_service_drift",
+                    "operator_issue_status": "public_tunnel_service_drift",
+                    "operator_next_step": "repair_public_tunnel_token",
+                    "operator_next_reason": "public_tunnel_service_drift",
+                    "operator_next_command": ".\\scripts\\repair-public-tunnel-admin.cmd",
+                    "operator_next_requires_elevation": True,
+                    "watchdog_registered": True,
+                    "watchdog_state": "Running",
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/dashboard/diagnostics")
+
+        assert r.status_code == 200
+        watchdog = r.json()["command_center_watchdog"]
+        assert watchdog["status"] == "public_tunnel_service_drift"
+        assert watchdog["healthy"] is False
+        assert watchdog["fresh"] is True
+        assert watchdog["recommended_action"] == "repair_public_tunnel_token"
+        assert watchdog["next_step"] == "repair_public_tunnel_token"
+        assert watchdog["next_command"] == ".\\scripts\\repair-public-tunnel-admin.cmd"
+        assert watchdog["repair_required"] is True
+        assert watchdog["requires_elevation"] is True
+        assert "public_tunnel_service_drift" in watchdog["summary"]
+
+    def test_dashboard_diagnostics_normalizes_internal_watchdog_reason_codes(
+        self,
+        app_client,
+        tmp_path,
+    ):
+        receipt_path = tmp_path / "state" / "command_center_doctor_latest.json"
+        receipt_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": "eta.command_center.doctor.v1",
+                    "checked_at": datetime.now(UTC).isoformat(),
+                    "healthy": True,
+                    "failure_class": "healthy",
+                    "operator_contract_state": "healthy",
+                    "recommended_action": "none",
+                    "repair_required": False,
+                    "operator_action": {
+                        "step": "none",
+                        "reason": "healthy",
+                        "command": None,
+                        "requires_elevation": False,
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        status_path = tmp_path / "state" / "command_center_watchdog_status_latest.json"
+        status_path.write_text(
+            json.dumps(
+                {
+                    "overall_status": "degraded",
+                    "effective_status": "local_service_unreachable",
+                    "primary_blocker": "local_service_unreachable",
+                    "operator_issue_status": "local_service_unreachable",
+                    "operator_next_step": "start_or_reload_operator_service",
+                    "operator_next_reason": "local_service_unreachable",
+                    "operator_next_command": ".\\scripts\\reload-command-center-admin.cmd",
+                    "operator_next_requires_elevation": True,
+                    "watchdog_registered": True,
+                    "watchdog_state": "Running",
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/dashboard/diagnostics")
+
+        assert r.status_code == 200
+        watchdog = r.json()["command_center_watchdog"]
+        assert watchdog["status"] == "service_unreachable"
+        assert watchdog["healthy"] is False
+        assert watchdog["recommended_action"] == "start_or_reload_operator_service"
+        assert watchdog["next_step"] == "start_or_reload_operator_service"
+        assert watchdog["next_command"] == ".\\scripts\\reload-command-center-admin.cmd"
+        assert "service_unreachable" in watchdog["summary"]
 
     def test_dashboard_diagnostics_blocks_green_when_watchdog_task_missing(
         self,
@@ -3847,7 +5710,7 @@ class TestDashboardAPI:
         (tmp_path / "state" / "paper_live_transition_check.json").write_text(
             json.dumps(
                 {
-                    "generated_at": "2026-05-07T23:40:00+00:00",
+                    "generated_at": datetime.now(UTC).isoformat(),
                     "status": "ready_to_launch_paper_live",
                     "critical_ready": True,
                     "paper_ready_bots": 5,
@@ -3877,6 +5740,763 @@ class TestDashboardAPI:
         assert payload["systems"]["ibkr"]["source"] == "broker_gateway"
         assert payload["systems"]["broker"]["source"] == "broker_router"
 
+    def test_master_status_includes_command_center_watchdog_system(self, app_client, tmp_path, monkeypatch):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        monkeypatch.setattr(
+            mod,
+            "_operator_queue_payload",
+            lambda: {"summary": {"BLOCKED": 0}, "launch_blocked_count": 0},
+        )
+        (tmp_path / "state" / "command_center_doctor_latest.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": "eta.command_center.doctor.v1",
+                    "checked_at": datetime.now(UTC).isoformat(),
+                    "healthy": True,
+                    "failure_class": "healthy",
+                    "operator_contract_state": "healthy",
+                    "recommended_action": "none",
+                    "repair_required": False,
+                    "operator_action": {
+                        "step": "none",
+                        "reason": "healthy",
+                        "command": None,
+                        "requires_elevation": False,
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        (tmp_path / "state" / "command_center_watchdog_status_latest.json").write_text(
+            json.dumps(
+                {
+                    "overall_status": "healthy",
+                    "effective_status": "healthy",
+                    "issue_status": "healthy",
+                    "primary_blocker": "healthy",
+                    "display_summary": "Command Center watchdog is healthy.",
+                    "operator_next_step": "none",
+                    "operator_next_reason": "healthy",
+                    "watchdog_registered": True,
+                    "watchdog_state": "Running",
+                }
+            ),
+            encoding="utf-8",
+        )
+        (tmp_path / "state" / "paper_live_transition_check.json").write_text(
+            json.dumps(
+                {
+                    "generated_at": datetime.now(UTC).isoformat(),
+                    "status": "ready_to_launch_paper_live",
+                    "critical_ready": True,
+                    "paper_ready_bots": 5,
+                    "operator_queue_blocked_count": 0,
+                    "operator_queue_launch_blocked_count": 0,
+                    "gates": [],
+                }
+            )
+        )
+
+        r = app_client.get("/api/master/status")
+
+        assert r.status_code == 200
+        payload = r.json()
+        assert payload["command_center_watchdog"]["status"] == "healthy"
+        assert payload["surface_watch"] == payload["command_center_watchdog"]
+        assert payload["systems"]["command_center_watchdog"]["status"] == "GREEN"
+        assert payload["systems"]["surface_watch"] == payload["systems"]["command_center_watchdog"]
+        assert payload["systems"]["command_center_watchdog"]["raw_status"] == "healthy"
+        assert payload["systems"]["command_center_watchdog"]["effective_status"] == "healthy"
+        assert payload["systems"]["command_center_watchdog"]["detail"] == "Command Center watchdog is healthy."
+
+    def test_master_status_includes_stale_audit_systems(self, app_client, tmp_path, monkeypatch):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        monkeypatch.setattr(
+            mod,
+            "_operator_queue_payload",
+            lambda: {"summary": {"BLOCKED": 0}, "launch_blocked_count": 0},
+        )
+        state = tmp_path / "state"
+        (state / "paper_live_transition_check.json").write_text(
+            json.dumps(
+                {
+                    "generated_at": datetime.now(UTC).isoformat(),
+                    "status": "ready_to_launch_paper_live",
+                    "critical_ready": True,
+                    "paper_ready_bots": 5,
+                    "operator_queue_blocked_count": 0,
+                    "operator_queue_launch_blocked_count": 0,
+                    "gates": [],
+                }
+            )
+        )
+        (state / "eta_readiness_snapshot_latest.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": "eta.readiness_snapshot.v1",
+                    "checked_at_utc": (datetime.now(UTC) - timedelta(hours=3)).isoformat(),
+                    "summary": "BLOCKED",
+                    "checks": [
+                        {
+                            "name": "broker_bracket_audit",
+                            "status": "BLOCKED",
+                            "exit_code": 1,
+                            "payload": {
+                                "next_action": "Old readiness blocker detail.",
+                                "position_summary": {
+                                    "missing_bracket_count": 1,
+                                    "broker_open_position_count": 1,
+                                },
+                            },
+                        },
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        (state / "daily_stop_reset_audit_latest.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "source": "daily_stop_reset_audit",
+                    "generated_at": (datetime.now(UTC) - timedelta(hours=6)).isoformat(),
+                    "status": "reset_cleared_blocked",
+                    "post_reset_ready": False,
+                    "read_only": True,
+                    "safe_to_trade_mutation": False,
+                    "operator_next_action": "Old blocker detail",
+                    "daily_loss_killswitch": {"status": "clear", "tripped": False},
+                    "paper_live_transition": {"status": "blocked", "critical_ready": False},
+                    "first_failed_gate": {"name": "tws_api_4002", "passed": False},
+                }
+            ),
+            encoding="utf-8",
+        )
+        (state / "vps_ops_hardening_latest.json").write_text(
+            json.dumps(
+                {
+                    "generated_at_utc": (datetime.now(UTC) - timedelta(hours=5)).isoformat(),
+                    "summary": {
+                        "status": "RED_RUNTIME_DEGRADED",
+                        "runtime_ready": False,
+                        "dashboard_durable": False,
+                        "paper_live_gate_ready": False,
+                        "paper_live_status": "BLOCKED_RUNTIME",
+                        "trading_gate_ready": False,
+                        "prop_promotion_gate_ready": False,
+                        "live_promotion_blocked": True,
+                        "admin_ai_ready": True,
+                        "admin_ai_status": "PASS",
+                        "promotion_allowed": False,
+                        "order_action_allowed": False,
+                    },
+                    "safety_gates": {
+                        "jarvis_hermes_admin_ai": {
+                            "status": "PASS",
+                            "ready": True,
+                            "warned": 0,
+                            "blocked": 0,
+                            "next_actions": ["Old hardening detail"],
+                        }
+                    },
+                    "next_actions": ["Old hardening action"],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/master/status")
+
+        assert r.status_code == 200
+        payload = r.json()
+        assert payload["eta_readiness_snapshot"]["status"] == "stale_receipt"
+        assert payload["daily_stop_reset_audit"]["status"] == "stale_receipt"
+        assert payload["vps_ops_hardening"]["status"] == "stale_receipt"
+        assert payload["hardening"] == payload["vps_ops_hardening"]
+        assert payload["systems"]["eta_readiness_snapshot"]["status"] == "YELLOW"
+        assert payload["systems"]["eta_readiness_snapshot"]["raw_status"] == "stale_receipt"
+        assert "stale" in payload["systems"]["eta_readiness_snapshot"]["detail"].lower()
+        assert payload["systems"]["daily_stop_reset_audit"]["status"] == "YELLOW"
+        assert payload["systems"]["daily_stop_reset_audit"]["raw_status"] == "stale_receipt"
+        assert "stale" in payload["systems"]["daily_stop_reset_audit"]["detail"].lower()
+        assert payload["systems"]["vps_ops_hardening"]["status"] == "YELLOW"
+        assert payload["systems"]["hardening"] == payload["systems"]["vps_ops_hardening"]
+        assert payload["systems"]["vps_ops_hardening"]["raw_status"] == "stale_receipt"
+        assert payload["systems"]["vps_ops_hardening"]["admin_ai_status"] == "PASS"
+        assert "stale" in payload["systems"]["vps_ops_hardening"]["detail"].lower()
+
+    def test_master_status_marks_stale_paper_live_receipt_as_yellow_system(self, app_client, tmp_path, monkeypatch):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        monkeypatch.setattr(
+            mod,
+            "_operator_queue_payload",
+            lambda: {"summary": {"BLOCKED": 0}, "launch_blocked_count": 0},
+        )
+        (tmp_path / "state" / "paper_live_transition_check.json").write_text(
+            json.dumps(
+                {
+                    "generated_at": "2026-05-07T23:40:00+00:00",
+                    "status": "ready_to_launch_paper_live",
+                    "critical_ready": True,
+                    "paper_ready_bots": 5,
+                    "operator_queue_blocked_count": 0,
+                    "operator_queue_launch_blocked_count": 0,
+                    "gates": [],
+                }
+            )
+        )
+
+        r = app_client.get("/api/master/status")
+
+        assert r.status_code == 200
+        payload = r.json()
+        assert payload["paper_live"]["status"] == "ready_to_launch_paper_live"
+        assert payload["paper_live"]["stale_receipt"] is True
+        assert payload["paper_live"]["effective_status"] == "stale_receipt"
+        assert payload["systems"]["paper_live"]["status"] == "YELLOW"
+        assert payload["systems"]["paper_live"]["raw_status"] == "ready_to_launch_paper_live"
+        assert "stale" in payload["systems"]["paper_live"]["detail"].lower()
+
+    def test_master_status_marks_non_authoritative_gateway_as_yellow_system(
+        self,
+        app_client,
+        tmp_path,
+        monkeypatch,
+    ):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        monkeypatch.setattr(
+            mod,
+            "_operator_queue_payload",
+            lambda: {"summary": {"BLOCKED": 0}, "launch_blocked_count": 0},
+        )
+        monkeypatch.setattr(
+            mod,
+            "_broker_gateway_snapshot",
+            lambda: {
+                "status": "down",
+                "detail": "gateway process not running",
+                "ibkr": {
+                    "status": "down",
+                    "detail": "gateway process not running",
+                    "checked_at": None,
+                },
+            },
+        )
+        monkeypatch.setattr(
+            mod,
+            "_gateway_authority_payload",
+            lambda: {
+                "allowed": False,
+                "source": "missing_marker",
+                "reason": "This host is not marked as the ETA IBKR Gateway authority.",
+            },
+        )
+        (tmp_path / "state" / "paper_live_transition_check.json").write_text(
+            json.dumps(
+                {
+                    "generated_at": datetime.now(UTC).isoformat(),
+                    "status": "ready_to_launch_paper_live",
+                    "critical_ready": True,
+                    "paper_ready_bots": 5,
+                    "operator_queue_blocked_count": 0,
+                    "operator_queue_launch_blocked_count": 0,
+                    "gates": [],
+                }
+            )
+        )
+
+        r = app_client.get("/api/master/status")
+
+        assert r.status_code == 200
+        payload = r.json()
+        assert payload["systems"]["ibkr"]["status"] == "YELLOW"
+        assert payload["systems"]["ibkr"]["raw_status"] == "down"
+        assert payload["systems"]["ibkr"]["effective_status"] == "vps_only"
+        assert payload["systems"]["ibkr"]["non_authoritative_host"] is True
+        assert "gateway authority" in payload["systems"]["ibkr"]["detail"].lower()
+
+    def test_master_status_suppresses_local_daily_loss_red_on_non_authoritative_paper_live(
+        self,
+        app_client,
+        tmp_path,
+        monkeypatch,
+    ):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        monkeypatch.setattr(
+            mod,
+            "_operator_queue_payload",
+            lambda: {"summary": {"BLOCKED": 1}, "launch_blocked_count": 1},
+        )
+        monkeypatch.setattr(
+            mod,
+            "_daily_loss_killswitch_snapshot",
+            lambda: {
+                "source": "daily_loss_killswitch",
+                "status": "tripped",
+                "tripped": True,
+                "disabled": False,
+                "today_pnl_usd": -925.50,
+                "limit_usd": -900.0,
+                "reason": "day_pnl=$-925.50 <= limit=$-900.00 (date=2026-05-15)",
+            },
+        )
+        (tmp_path / "state" / "paper_live_transition_check.json").write_text(
+            json.dumps(
+                {
+                    "generated_at": datetime.now(UTC).isoformat(),
+                    "status": "blocked",
+                    "critical_ready": False,
+                    "non_authoritative_gateway_host": True,
+                    "operator_queue_blocked_count": 1,
+                    "operator_queue_launch_blocked_count": 1,
+                    "operator_queue_first_launch_next_action": (
+                        "On the VPS only: powershell.exe -NoProfile -ExecutionPolicy Bypass "
+                        "-File .\\eta_engine\\deploy\\scripts\\set_gateway_authority.ps1 "
+                        "-Apply -Role vps"
+                    ),
+                    "paper_ready_bots": 9,
+                    "gates": [
+                        {
+                            "name": "tws_api_4002",
+                            "passed": False,
+                            "next_action": (
+                                "On the VPS only: python -m eta_engine.scripts.tws_watchdog "
+                                "--host 127.0.0.1 --port 4002"
+                            ),
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/master/status")
+
+        assert r.status_code == 200
+        payload = r.json()
+        assert payload["paper_live"]["effective_status"] == "blocked"
+        assert payload["paper_live"]["held_by_daily_loss_stop"] is False
+        assert payload["paper_live"]["daily_loss_suppressed_non_authoritative_gateway_host"] is True
+        assert payload["systems"]["paper_live"]["status"] == "YELLOW"
+        assert payload["systems"]["paper_live"]["raw_status"] == "blocked"
+        assert payload["systems"]["paper_live"]["effective_status"] == "blocked"
+        assert payload["systems"]["paper_live"]["non_authoritative_gateway_host"] is True
+        assert (
+            payload["systems"]["paper_live"]["first_launch_next_action"]
+            == "On the VPS only: powershell.exe -NoProfile -ExecutionPolicy Bypass "
+            "-File .\\eta_engine\\deploy\\scripts\\set_gateway_authority.ps1 -Apply -Role vps"
+        )
+        assert payload["systems"]["paper_live"]["held_by_daily_loss_stop"] is False
+        assert (
+            payload["systems"]["paper_live"]["detail"]
+            == "On the VPS only: powershell.exe -NoProfile -ExecutionPolicy Bypass "
+            "-File .\\eta_engine\\deploy\\scripts\\set_gateway_authority.ps1 -Apply -Role vps"
+        )
+
+    def test_master_status_marks_authoritative_stale_bracket_hold_as_yellow_system(
+        self,
+        app_client,
+        tmp_path,
+        monkeypatch,
+    ):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        monkeypatch.setattr(
+            mod,
+            "_operator_queue_payload",
+            lambda: {"summary": {"BLOCKED": 0}, "launch_blocked_count": 0},
+        )
+        monkeypatch.setattr(
+            mod,
+            "_broker_bracket_audit_payload",
+            lambda **kwargs: {
+                "summary": "READY_NO_OPEN_EXPOSURE",
+                "ready_for_prop_dry_run": True,
+                "position_summary": {
+                    "broker_open_position_count": 0,
+                    "broker_bracket_required_position_count": 0,
+                    "broker_bracket_count": 0,
+                    "missing_bracket_count": 0,
+                },
+                "next_action": "",
+            },
+        )
+        monkeypatch.setattr(
+            mod,
+            "_maybe_promote_validated_broker_bracket_artifact",
+            lambda report, **kwargs: report,
+        )
+        (tmp_path / "state" / "paper_live_transition_check.json").write_text(
+            json.dumps(
+                {
+                    "generated_at": datetime.now(UTC).isoformat(),
+                    "status": "ready_to_launch_paper_live",
+                    "critical_ready": True,
+                    "paper_ready_bots": 5,
+                    "operator_queue_blocked_count": 0,
+                    "operator_queue_launch_blocked_count": 0,
+                    "gates": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+        (tmp_path / "state" / "eta_readiness_snapshot_latest.json").write_text(
+            json.dumps(
+                {
+                    "checked_at_utc": "2026-05-15T01:00:00+00:00",
+                    "summary": "BLOCKED",
+                    "non_authoritative_gateway_host": True,
+                    "public_fallback_reason": "non_authoritative_gateway_host",
+                    "public_fallback_primary_action": (
+                        "Wait for or clear 159 stale broker order(s) before prop dry-run."
+                    ),
+                    "public_fallback_brackets_summary": "BLOCKED_STALE_FLAT_OPEN_ORDERS",
+                    "public_fallback_checks": [
+                        {
+                            "name": "broker_bracket_audit_public_fallback",
+                            "status": "BLOCKED_STALE_FLAT_OPEN_ORDERS",
+                            "payload": {
+                                "summary": "BLOCKED_STALE_FLAT_OPEN_ORDERS",
+                                "next_action": "Wait for or clear 159 stale broker order(s) before prop dry-run.",
+                            },
+                        }
+                    ],
+                    "checks": [
+                        {
+                            "name": "broker_bracket_audit",
+                            "status": "READY_NO_OPEN_EXPOSURE",
+                            "payload": {
+                                "summary": "READY_NO_OPEN_EXPOSURE",
+                                "position_summary": {
+                                    "missing_bracket_count": 0,
+                                    "broker_open_position_count": 0,
+                                },
+                            },
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/master/status")
+
+        assert r.status_code == 200
+        payload = r.json()
+        audit_system = payload["systems"]["broker_bracket_audit"]
+        assert audit_system["status"] == "YELLOW"
+        assert audit_system["raw_status"] == "READY_NO_OPEN_EXPOSURE"
+        assert audit_system["effective_status"] == "AUTHORITATIVE_STALE_REVIEW"
+        assert audit_system["authoritative_advisory_active"] is True
+        assert audit_system["authoritative_public_fallback_stale"] is True
+        assert audit_system["ready_for_prop_dry_run"] is False
+        assert audit_system["raw_ready_for_prop_dry_run"] is True
+        assert "stale and last reported blocked stale flat open orders" in audit_system["detail"].lower()
+
+    def test_master_status_includes_retune_focus_active_experiment(self, app_client, tmp_path, monkeypatch):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        monkeypatch.setattr(
+            mod,
+            "_operator_queue_payload",
+            lambda: {"summary": {"BLOCKED": 0}, "launch_blocked_count": 0},
+        )
+        (tmp_path / "state" / "paper_live_transition_check.json").write_text(
+            json.dumps(
+                {
+                    "generated_at": datetime.now(UTC).isoformat(),
+                    "status": "ready_to_launch_paper_live",
+                    "critical_ready": True,
+                    "paper_ready_bots": 5,
+                    "operator_queue_blocked_count": 0,
+                    "operator_queue_launch_blocked_count": 0,
+                    "gates": [],
+                }
+            )
+        )
+        (tmp_path / "state" / "diamond_retune_status_latest.json").write_text(
+            json.dumps(
+                {
+                    "kind": "eta_diamond_retune_status",
+                    "status": "ready",
+                    "focus_bot": "mnq_futures_sage",
+                    "focus_active_experiment": {
+                        "experiment_id": "partial_profit_disabled",
+                        "started_at": "2026-05-16T01:44:06+00:00",
+                        "partial_profit_enabled": False,
+                        "awaiting_first_post_change_close": True,
+                        "post_change_closed_trade_count": 0,
+                        "post_change_total_realized_pnl": 0.0,
+                        "post_change_profit_factor": None,
+                    },
+                    "summary": {
+                        "broker_truth_focus_bot_id": "mnq_futures_sage",
+                        "broker_truth_focus_active_experiment": {
+                            "experiment_id": "partial_profit_disabled",
+                            "started_at": "2026-05-16T01:44:06+00:00",
+                            "partial_profit_enabled": False,
+                            "awaiting_first_post_change_close": True,
+                            "post_change_closed_trade_count": 0,
+                            "post_change_total_realized_pnl": 0.0,
+                            "post_change_profit_factor": None,
+                        },
+                        "broker_truth_focus_active_experiment_summary_line": (
+                            "partial_profit_disabled since 2026-05-16T01:44:06+00:00"
+                        ),
+                    },
+                    "bots": [],
+                    "research_backlog": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(
+            mod,
+            "_eta_readiness_snapshot_payload",
+            lambda **_kwargs: {
+                "status": "blocked",
+                "detail": (
+                    "Keep volume_profile_mnq in paper_soak until can_live_trade=true "
+                    "and the futures prop ladder clears."
+                ),
+                "primary_blocker": "prop_live_readiness_gate",
+                "primary_action": (
+                    "Keep volume_profile_mnq in paper_soak until can_live_trade=true "
+                    "and the futures prop ladder clears."
+                ),
+                "public_fallback_reason": "non_authoritative_gateway_host",
+                "public_fallback_brackets_summary": "BLOCKED_STALE_FLAT_OPEN_ORDERS",
+                "public_fallback_brackets_next_action": "252 stale flat broker orders still need review.",
+                "brackets_summary": "BLOCKED_FLEET_TRUTH_UNAVAILABLE",
+                "brackets_next_action": (
+                    "Bot-fleet position truth is unavailable; restore /api/bot-fleet "
+                    "before treating broker exposure as flat."
+                ),
+                "public_live_broker_ready": False,
+                "public_live_broker_snapshot_state": "missing",
+                "public_live_broker_snapshot_source": "missing_ibkr_probe_cache",
+                "public_live_broker_source": "cached_live_broker_state_for_diagnostics",
+                "public_live_broker_degraded_display": (
+                    "public broker_state degraded: missing_ibkr_probe_cache; "
+                    "via cached_live_broker_state_for_diagnostics"
+                ),
+                "dashboard_api_runtime_current_live_broker_state_checked_utc": "",
+                "dashboard_api_runtime_current_live_broker_open_order_count": 0,
+                "dashboard_api_runtime_public_live_broker_degraded_display": "",
+                "dashboard_api_runtime_drift_display": (
+                    "8421 master/status is still blank for public_live_broker_degraded_display "
+                    "while readiness receipt says public broker_state degraded: "
+                    "missing_ibkr_probe_cache; via cached_live_broker_state_for_diagnostics"
+                ),
+                "dashboard_api_runtime_probe_display": (
+                    "8421 master/status probe failed: local_dashboard_master_status timed out after 15s"
+                ),
+                "dashboard_api_runtime_refresh_command": (
+                    ".\\scripts\\reload-command-center-admin.cmd "
+                    "-PublicUrl https://ops.evolutionarytradingalgo.com"
+                ),
+                "dashboard_api_runtime_refresh_requires_elevation": True,
+                "public_live_broker_open_order_count": 252,
+                "public_fallback_broker_open_order_count": 252,
+                "public_fallback_broker_open_order_drift_display": "",
+                "public_fallback_stale_flat_open_order_count": 252,
+                "public_fallback_stale_flat_open_order_relation_display": (
+                    "all 252 broker open orders are stale flat orders"
+                ),
+                "public_live_retune_generated_at_utc": "2026-05-16T20:33:18+00:00",
+                "public_live_retune_focus_active_experiment_outcome_line": (
+                    "partial_profit_disabled: awaiting first post-change close"
+                ),
+                "public_live_retune_sync_drift_display": (
+                    "public retune truth refreshed at 2026-05-16T20:33:18+00:00 "
+                    "after readiness cached 2026-05-16T19:33:18+00:00"
+                ),
+                "dashboard_api_runtime_public_live_retune_generated_at_utc": "",
+                "dashboard_api_runtime_public_live_retune_sync_drift_display": "",
+                "dashboard_api_runtime_retune_drift_display": (
+                    "8421 master/status is still blank for public_live_retune_generated_at_utc "
+                    "while readiness receipt has 2026-05-16T20:33:18+00:00"
+                ),
+                "local_retune_generated_at_utc": "2026-05-16T20:25:28+00:00",
+                "local_retune_focus_active_experiment_outcome_line": (
+                    "partial_profit_disabled: 1 post-change close | R -0.82 | PnL $0.00"
+                ),
+                "retune_focus_active_experiment_drift_display": (
+                    "public retune says partial_profit_disabled: awaiting first post-change close; "
+                    "local mirror says partial_profit_disabled: 1 post-change close | R -0.82 | PnL $0.00"
+                ),
+                "current_local_retune_generated_at_utc": "2026-05-16T21:25:12+00:00",
+                "local_retune_sync_drift_display": (
+                    "local retune snapshot refreshed at 2026-05-16T21:25:12+00:00 "
+                    "after readiness cached 2026-05-16T20:25:28+00:00"
+                ),
+            },
+        )
+        monkeypatch.setattr(
+            mod,
+            "_cached_live_broker_state_for_gateway_reconcile",
+            lambda: {},
+        )
+        monkeypatch.setattr(
+            mod,
+            "_public_operator_broker_state_payload",
+            lambda **_kwargs: {
+                "ibkr": {
+                    "open_order_count": 258,
+                    "checked_utc": "2026-05-16T21:59:53+00:00",
+                }
+            },
+        )
+
+        r = app_client.get("/api/master/status")
+
+        assert r.status_code == 200
+        payload = r.json()
+        assert payload["diamond_retune_status"]["focus_active_experiment"]["experiment_id"] == "partial_profit_disabled"
+        assert payload["retune_focus_active_experiment"]["partial_profit_enabled"] is False
+        assert payload["retune_focus_active_experiment_summary_line"] == (
+            "partial_profit_disabled since 2026-05-16T01:44:06+00:00"
+        )
+        assert payload["retune_focus_active_experiment_outcome_line"] == (
+            "partial_profit_disabled: awaiting first post-change close"
+        )
+        assert payload["eta_readiness_status"] == "blocked"
+        assert payload["eta_readiness_primary_blocker"] == "prop_live_readiness_gate"
+        assert (
+            payload["eta_readiness_detail"]
+            == "Keep volume_profile_mnq in paper_soak until can_live_trade=true "
+            "and the futures prop ladder clears."
+        )
+        assert (
+            payload["eta_readiness_primary_action"]
+            == "Keep volume_profile_mnq in paper_soak until can_live_trade=true "
+            "and the futures prop ladder clears."
+        )
+        assert payload["public_fallback_reason"] == "non_authoritative_gateway_host"
+        assert payload["public_fallback_brackets_summary"] == "BLOCKED_STALE_FLAT_OPEN_ORDERS"
+        assert payload["public_fallback_brackets_next_action"] == "252 stale flat broker orders still need review."
+        assert payload["brackets_summary"] == "BLOCKED_FLEET_TRUTH_UNAVAILABLE"
+        assert (
+            payload["brackets_next_action"]
+            == "Bot-fleet position truth is unavailable; restore /api/bot-fleet "
+            "before treating broker exposure as flat."
+        )
+        assert (
+            payload["systems"]["eta_readiness_snapshot"]["detail"]
+            == "Keep volume_profile_mnq in paper_soak until can_live_trade=true "
+            "and the futures prop ladder clears."
+        )
+        assert payload["systems"]["eta_readiness_snapshot"]["primary_blocker"] == (
+            "prop_live_readiness_gate"
+        )
+        assert payload["systems"]["eta_readiness_snapshot"]["primary_action"] == (
+            "Keep volume_profile_mnq in paper_soak until can_live_trade=true "
+            "and the futures prop ladder clears."
+        )
+        assert payload["systems"]["eta_readiness_snapshot"]["brackets_summary"] == (
+            "BLOCKED_FLEET_TRUTH_UNAVAILABLE"
+        )
+        assert (
+            payload["systems"]["eta_readiness_snapshot"]["brackets_next_action"]
+            == "Bot-fleet position truth is unavailable; restore /api/bot-fleet "
+            "before treating broker exposure as flat."
+        )
+        assert (
+            payload["systems"]["eta_readiness_snapshot"]["public_fallback_reason"]
+            == "non_authoritative_gateway_host"
+        )
+        assert (
+            payload["systems"]["eta_readiness_snapshot"]["public_fallback_brackets_summary"]
+            == "BLOCKED_STALE_FLAT_OPEN_ORDERS"
+        )
+        assert (
+            payload["systems"]["eta_readiness_snapshot"]["public_fallback_brackets_next_action"]
+            == "252 stale flat broker orders still need review."
+        )
+        assert payload["public_live_broker_ready"] is False
+        assert payload["public_live_broker_snapshot_state"] == "missing"
+        assert payload["public_live_broker_snapshot_source"] == "missing_ibkr_probe_cache"
+        assert payload["public_live_broker_source"] == "cached_live_broker_state_for_diagnostics"
+        assert (
+            payload["public_live_broker_degraded_display"]
+            == "public broker_state degraded: missing_ibkr_probe_cache; "
+            "via cached_live_broker_state_for_diagnostics"
+        )
+        assert payload["dashboard_api_runtime_current_live_broker_state_checked_utc"] == "2026-05-16T21:59:53+00:00"
+        assert payload["dashboard_api_runtime_current_live_broker_open_order_count"] == 258
+        assert (
+            payload["dashboard_api_runtime_public_live_broker_degraded_display"]
+            == "public broker_state degraded: missing_ibkr_probe_cache; "
+            "via cached_live_broker_state_for_diagnostics"
+        )
+        assert payload["dashboard_api_runtime_drift_display"] == ""
+        assert (
+            payload["dashboard_api_runtime_probe_display"]
+            == "8421 master/status probe failed: local_dashboard_master_status timed out after 15s"
+        )
+        assert (
+            payload["dashboard_api_runtime_refresh_command"]
+            == ".\\scripts\\reload-command-center-admin.cmd "
+            "-PublicUrl https://ops.evolutionarytradingalgo.com"
+        )
+        assert payload["dashboard_api_runtime_refresh_requires_elevation"] is True
+        assert payload["public_live_broker_open_order_count"] == 252
+        assert payload["current_live_broker_state_checked_utc"] == "2026-05-16T21:59:53+00:00"
+        assert payload["current_live_broker_open_order_count"] == 258
+        assert payload["current_live_broker_degraded_display"] == ""
+        assert (
+            payload["current_live_broker_open_order_drift_display"]
+            == "live broker_state now reports 258 open orders vs readiness cached 252 stale flat orders"
+        )
+        assert payload["public_fallback_broker_open_order_count"] == 252
+        assert payload["public_fallback_broker_open_order_drift_display"] == ""
+        assert payload["public_fallback_stale_flat_open_order_count"] == 252
+        assert (
+            payload["public_fallback_stale_flat_open_order_relation_display"]
+            == "all 252 broker open orders are stale flat orders"
+        )
+        assert (
+            payload["public_live_retune_focus_active_experiment_outcome_line"]
+            == "partial_profit_disabled: awaiting first post-change close"
+        )
+        assert payload["public_live_retune_generated_at_utc"] == "2026-05-16T20:33:18+00:00"
+        assert (
+            payload["public_live_retune_sync_drift_display"]
+            == "public retune truth refreshed at 2026-05-16T20:33:18+00:00 "
+            "after readiness cached 2026-05-16T19:33:18+00:00"
+        )
+        assert payload["current_live_retune_generated_at_utc"] == ""
+        assert payload["current_live_retune_focus_active_experiment_outcome_line"] == ""
+        assert payload["current_live_retune_sync_drift_display"] == ""
+        assert payload["dashboard_api_runtime_public_live_retune_generated_at_utc"] == "2026-05-16T20:33:18+00:00"
+        assert (
+            payload["dashboard_api_runtime_public_live_retune_sync_drift_display"]
+            == "public retune truth refreshed at 2026-05-16T20:33:18+00:00 "
+            "after readiness cached 2026-05-16T19:33:18+00:00"
+        )
+        assert payload["dashboard_api_runtime_retune_drift_display"] == ""
+        assert payload["local_retune_generated_at_utc"] == "2026-05-16T20:25:28+00:00"
+        assert (
+            payload["local_retune_focus_active_experiment_outcome_line"]
+            == "partial_profit_disabled: 1 post-change close | R -0.82 | PnL $0.00"
+        )
+        assert (
+            payload["retune_focus_active_experiment_drift_display"]
+            == "public retune says partial_profit_disabled: awaiting first post-change close; "
+            "local mirror says partial_profit_disabled: 1 post-change close | R -0.82 | PnL $0.00"
+        )
+        assert payload["current_local_retune_generated_at_utc"] == "2026-05-16T21:25:12+00:00"
+        assert (
+            payload["local_retune_sync_drift_display"]
+            == "local retune snapshot refreshed at 2026-05-16T21:25:12+00:00 "
+            "after readiness cached 2026-05-16T20:25:28+00:00"
+        )
+
     def test_master_status_surfaces_daily_loss_shadow_advisory(self, app_client, tmp_path, monkeypatch):
         import eta_engine.deploy.scripts.dashboard_api as mod
 
@@ -3901,7 +6521,7 @@ class TestDashboardAPI:
         (tmp_path / "state" / "paper_live_transition_check.json").write_text(
             json.dumps(
                 {
-                    "generated_at": "2026-05-15T12:40:00+00:00",
+                    "generated_at": datetime.now(UTC).isoformat(),
                     "status": "ready_to_launch_paper_live",
                     "critical_ready": True,
                     "paper_ready_bots": 9,
@@ -4018,7 +6638,7 @@ class TestDashboardAPI:
         (tmp_path / "state" / "paper_live_transition_check.json").write_text(
             json.dumps(
                 {
-                    "generated_at": "2026-05-07T23:40:00+00:00",
+                    "generated_at": datetime.now(UTC).isoformat(),
                     "status": "ready_to_launch_paper_live",
                     "critical_ready": True,
                     "paper_ready_bots": 5,
@@ -4032,7 +6652,7 @@ class TestDashboardAPI:
         (tmp_path / "state" / "tws_watchdog.json").write_text(
             json.dumps(
                 {
-                    "checked_at": "2026-05-09T05:20:00+00:00",
+                    "checked_at": datetime.now(UTC).isoformat(),
                     "healthy": True,
                     "details": {
                         "socket_ok": True,
@@ -4185,7 +6805,7 @@ class TestDashboardAPI:
         (tmp_path / "state" / "paper_live_transition_check.json").write_text(
             json.dumps(
                 {
-                    "generated_at": "2026-05-09T05:40:00+00:00",
+                    "generated_at": datetime.now(UTC).isoformat(),
                     "status": "ready_to_launch_paper_live",
                     "critical_ready": True,
                     "paper_ready_bots": 5,
@@ -4280,7 +6900,7 @@ class TestDashboardAPI:
         (tmp_path / "state" / "paper_live_transition_check.json").write_text(
             json.dumps(
                 {
-                    "generated_at": "2026-05-08T13:10:00+00:00",
+                    "generated_at": datetime.now(UTC).isoformat(),
                     "status": "ready_to_launch_paper_live",
                     "critical_ready": True,
                     "paper_ready_bots": 4,
@@ -4314,7 +6934,7 @@ class TestDashboardAPI:
         (tmp_path / "state" / "paper_live_transition_check.json").write_text(
             json.dumps(
                 {
-                    "generated_at": "2026-05-15T15:42:00+00:00",
+                    "generated_at": datetime.now(UTC).isoformat(),
                     "status": "ready_to_launch_paper_live",
                     "critical_ready": True,
                     "paper_ready_bots": 9,
@@ -4379,6 +6999,158 @@ class TestDashboardAPI:
         assert payload["paper_live"]["effective_status"] == "ready_to_launch_paper_live"
         assert payload["paper_live"]["held_by_bracket_audit"] is False
 
+    def test_local_master_status_promotes_recent_validated_bracket_audit_artifact(
+        self,
+        app_client,
+        tmp_path,
+        monkeypatch,
+    ):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        del app_client
+        artifact_path = tmp_path / "state" / "broker_bracket_audit_latest.json"
+        artifact_path.write_text(
+            json.dumps(
+                {
+                    "generated_at_utc": datetime.now(UTC).isoformat(),
+                    "summary": "BLOCKED_STALE_FLAT_OPEN_ORDERS",
+                    "ready_for_prop_dry_run": False,
+                    "operator_action_required": True,
+                    "next_action": (
+                        "Wait for or clear 3 stale PendingCancel broker order(s) for MCLN6, NGM26, NQM6; "
+                        "they still have no matching broker open position."
+                    ),
+                    "operator_actions": [
+                        {
+                            "label": "Clear pending stale flat-symbol orders",
+                            "detail": "3 orders already show PendingCancel with IBKR.",
+                            "order_action": True,
+                        },
+                    ],
+                    "position_summary": {
+                        "broker_open_position_count": 1,
+                        "broker_bracket_required_position_count": 1,
+                        "broker_bracket_count": 1,
+                        "missing_bracket_count": 0,
+                        "stale_flat_open_order_count": 3,
+                        "stale_flat_open_order_symbols": ["MCLN6", "NGM26", "NQM6"],
+                    },
+                    "stale_flat_open_order_validation": {"status": "live_socket_validated"},
+                },
+            ),
+            encoding="utf-8",
+        )
+        (tmp_path / "state" / "paper_live_transition_check.json").write_text(
+            json.dumps(
+                {
+                    "generated_at": "2026-05-15T15:42:00+00:00",
+                    "status": "ready_to_launch_paper_live",
+                    "critical_ready": True,
+                    "paper_ready_bots": 9,
+                    "operator_queue_launch_blocked_count": 0,
+                    "gates": [],
+                },
+            ),
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("ETA_BROKER_BRACKET_AUDIT_PATH", str(artifact_path))
+        monkeypatch.setattr(mod, "_operator_queue_payload", lambda: {"summary": {}, "launch_blocked_count": 0})
+        monkeypatch.setattr(mod, "_broker_gateway_snapshot", lambda: {"status": "connected"})
+        monkeypatch.setattr(mod, "_broker_router_snapshot", lambda: {"status": "ok"})
+        monkeypatch.setattr(
+            mod,
+            "_target_exit_summary_for_master_status",
+            lambda: {
+                "status": "watching",
+                "broker_open_position_count": 1,
+                "broker_bracket_required_position_count": 1,
+                "broker_bracket_count": 1,
+                "missing_bracket_count": 0,
+            },
+        )
+        monkeypatch.setattr(mod, "_daily_loss_killswitch_snapshot", lambda: {"tripped": False})
+        monkeypatch.setattr(mod, "_vps_root_reconciliation_payload", lambda: {"status": "ok", "risk_level": "low"})
+        monkeypatch.setattr(mod, "_cached_live_broker_state_for_gateway_reconcile", lambda: {"source": "cached"})
+        monkeypatch.setattr(mod, "_live_broker_state_payload", lambda: pytest.fail("fresh broker probe should not run"))
+
+        def fake_bracket_audit_payload(*, target_exit_summary, live_broker_state):
+            del target_exit_summary, live_broker_state
+            return {
+                "summary": "BLOCKED_STALE_FLAT_OPEN_ORDERS",
+                "ready_for_prop_dry_run": False,
+                "operator_action_required": True,
+                "next_action": "Cancel stale active broker order(s) for MCLN6, NGM26, NQM6.",
+                "operator_actions": [{"label": "Cancel stale flat-symbol orders", "order_action": True}],
+                "position_summary": {
+                    "broker_open_position_count": 1,
+                    "broker_bracket_required_position_count": 1,
+                    "broker_bracket_count": 1,
+                    "missing_bracket_count": 0,
+                    "stale_flat_open_order_count": 3,
+                    "stale_flat_open_order_symbols": ["MCLN6", "NGM26", "NQM6"],
+                },
+                "stale_flat_open_order_validation": {"status": "not_requested"},
+            }
+
+        monkeypatch.setattr(mod, "_broker_bracket_audit_payload", fake_bracket_audit_payload)
+
+        payload = mod._local_master_status_payload()
+
+        assert payload["broker_bracket_audit"]["promoted_validated_artifact"] is True
+        assert payload["broker_bracket_audit"]["stale_flat_open_order_validation"]["status"] == "live_socket_validated"
+        assert payload["broker_bracket_audit"]["next_action"].startswith(
+            "Wait for or clear 3 stale PendingCancel broker order(s)",
+        )
+        assert payload["broker_bracket_audit"]["operator_actions"][0]["label"] == (
+            "Clear pending stale flat-symbol orders"
+        )
+
+    def test_broker_bracket_artifact_promotion_requires_matching_fingerprint(self, tmp_path, monkeypatch):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        artifact_path = tmp_path / "broker_bracket_audit_latest.json"
+        artifact_path.write_text(
+            json.dumps(
+                {
+                    "generated_at_utc": datetime.now(UTC).isoformat(),
+                    "summary": "BLOCKED_STALE_FLAT_OPEN_ORDERS",
+                    "position_summary": {
+                        "broker_open_position_count": 1,
+                        "broker_bracket_required_position_count": 1,
+                        "broker_bracket_count": 1,
+                        "missing_bracket_count": 0,
+                        "stale_flat_open_order_count": 1,
+                        "stale_flat_open_order_symbols": ["MBTK6"],
+                    },
+                    "stale_flat_open_order_validation": {"status": "live_socket_validated"},
+                },
+            ),
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("ETA_BROKER_BRACKET_AUDIT_PATH", str(artifact_path))
+
+        current = {
+            "summary": "BLOCKED_STALE_FLAT_OPEN_ORDERS",
+            "position_summary": {
+                "broker_open_position_count": 1,
+                "broker_bracket_required_position_count": 1,
+                "broker_bracket_count": 1,
+                "missing_bracket_count": 0,
+                "stale_flat_open_order_count": 3,
+                "stale_flat_open_order_symbols": ["MCLN6", "NGM26", "NQM6"],
+            },
+            "stale_flat_open_order_validation": {"status": "not_requested"},
+        }
+
+        promoted = mod._maybe_promote_validated_broker_bracket_artifact(
+            current,
+            server_ts=datetime.now(UTC).timestamp(),
+            target_exit_summary={},
+            live_broker_state={},
+        )
+
+        assert promoted is current
+
     def test_vps_root_reconciliation_endpoint_surfaces_review_plan(self, app_client, tmp_path, monkeypatch):
         import eta_engine.deploy.scripts.dashboard_api as mod
 
@@ -4387,7 +7159,28 @@ class TestDashboardAPI:
             "_workspace_checkout_payload",
             lambda refresh=False: {
                 "status": "clean",
-                "summary_line": "root clean abc1234 | eta clean def5678 | submodule aligned c08210d",
+                "summary_line": "root clean abc1234 | eta dirty def5678 | submodule aligned def5678",
+                "eta_engine": {
+                    "status": "dirty",
+                    "branch": "codex/runtime-review",
+                    "head_short": "def5678",
+                    "tracked_change_count": 26,
+                    "untracked_change_count": 4,
+                    "summary_line": "eta dirty def5678 | 26 tracked, 4 untracked",
+                },
+                "submodule": {
+                    "path": "eta_engine",
+                    "status": "aligned",
+                    "state_label": "aligned",
+                    "expected_short": "def5678",
+                },
+                "wiring": {
+                    "status": "review",
+                    "summary_line": (
+                        "dirty/diverged child integration plus optional missing submodule checkout "
+                        "blocks gitlink wiring (eta_engine, mnq_backtest)"
+                    ),
+                },
             },
         )
         plan = {
@@ -4411,6 +7204,91 @@ class TestDashboardAPI:
                     "id": "freeze-and-backup",
                     "action": "Keep root cleanup disabled until review is approved.",
                 },
+                {
+                    "id": "restore-source-governance",
+                    "decision": "manual_review_required",
+                    "evidence": [
+                        "source_or_governance_deleted=124",
+                        "scripts/command-center-watchdog-status.ps1",
+                        "scripts/reload-operator-service.ps1",
+                    ],
+                },
+                {
+                    "id": "align-submodules",
+                    "decision": "manual_review_required",
+                    "evidence": [
+                        "dirty_companion_repos=3",
+                        "eta_engine:submodule_pointer_changed",
+                    ],
+                },
+            ],
+            "source_review_items": [
+                {
+                    "path": "scripts/command-center-watchdog-status.ps1",
+                    "basename": "command-center-watchdog-status.ps1",
+                    "change_class": "deleted",
+                    "area": "operator_watchdog_truth",
+                    "rationale": (
+                        "Tracks Command Center watchdog truth, task contract drift, "
+                        "and public route health semantics."
+                    ),
+                    "change_summary": (
+                        "Adds runtime dependency-gap probing, watchdog/dashboard "
+                        "task-contract checks, and display-safe operator summaries."
+                    ),
+                    "verification_command": (
+                        "powershell -ExecutionPolicy Bypass -File "
+                        ".\\scripts\\command-center-watchdog-status.ps1 -Json"
+                    ),
+                    "verification_goal": (
+                        "Confirm the live watchdog contract, task-contract status, "
+                        "and display-safe operator summary on the authoritative host."
+                    ),
+                    "verification_mode": "status_probe",
+                    "verification_side_effects": "refreshes the canonical watchdog receipt",
+                    "suggested_decision": "preserve_if_it_matches_live_watchdog_contract",
+                },
+                {
+                    "path": "scripts/reload-operator-service.ps1",
+                    "basename": "reload-operator-service.ps1",
+                    "change_class": "deleted",
+                    "area": "operator_reload_runtime",
+                    "rationale": (
+                        "Controls canonical 8421 reload behavior and the task-owned "
+                        "Command Center runtime path on the VPS."
+                    ),
+                    "change_summary": (
+                        "Replaces brittle raw 8421 waits with unified local-truth "
+                        "verification and uses the canonical runtime Python."
+                    ),
+                    "verification_command": (
+                        "powershell -ExecutionPolicy Bypass -File "
+                        ".\\scripts\\reload-operator-service.ps1 "
+                        "-SkipPublicCheck -SkipWatchdogRegistration "
+                        "-NoAutoElevate -TimeoutSeconds 30"
+                    ),
+                    "verification_goal": (
+                        "Confirm the VPS reload flow exits cleanly and re-verifies "
+                        "the local 8421 operator contract."
+                    ),
+                    "verification_mode": "runtime_reload",
+                    "verification_side_effects": (
+                        "re-registers dashboard tasks, refreshes live service wiring, "
+                        "and reloads the 8421 operator surface"
+                    ),
+                    "suggested_decision": "preserve_if_it_matches_live_8421_reload_flow",
+                },
+            ],
+            "companion_review_items": [
+                {
+                    "target": "eta_engine",
+                    "reason": "submodule_pointer_changed",
+                    "rationale": (
+                        "The authoritative ETA child repo is dirty/diverged and needs "
+                        "a child-repo decision before the root gitlink is updated."
+                    ),
+                    "suggested_decision": "commit_preserve_or_pin_before_root_update",
+                }
             ],
         }
         (tmp_path / "state" / "vps_root_reconciliation_plan.json").write_text(json.dumps(plan))
@@ -4432,10 +7310,931 @@ class TestDashboardAPI:
         assert payload["summary"]["source_or_governance_deleted"] == 124
         assert payload["counts"]["submodule_drift"] == 6
         assert payload["summary"]["dirty_companion_repos"] == 3
+        assert payload["source_review_files"] == [
+            "command-center-watchdog-status.ps1",
+            "reload-operator-service.ps1",
+        ]
+        assert payload["source_review_items"] == plan["source_review_items"]
+        assert payload["companion_review_targets"] == ["eta_engine"]
+        assert payload["companion_review_items"] == plan["companion_review_items"]
+        assert payload["review_focus_summary_line"] == (
+            "2 root source file(s) under review; "
+            "eta_engine: eta dirty def5678 | 26 tracked, 4 untracked; "
+            "manual review before root update"
+        )
+        assert payload["review_focus_primary_command"] == (
+            "git -C C:\\EvolutionaryTradingAlgo diff -- scripts/command-center-watchdog-status.ps1"
+        )
+        assert payload["review_focus_primary_action"] == {
+            "scope": "source",
+            "path": "scripts/command-center-watchdog-status.ps1",
+            "basename": "command-center-watchdog-status.ps1",
+            "area": "operator_watchdog_truth",
+            "change_summary": (
+                "Adds runtime dependency-gap probing, watchdog/dashboard "
+                "task-contract checks, and display-safe operator summaries."
+            ),
+            "verification_command": (
+                "powershell -ExecutionPolicy Bypass -File "
+                ".\\scripts\\command-center-watchdog-status.ps1 -Json"
+            ),
+            "verification_goal": (
+                "Confirm the live watchdog contract, task-contract status, "
+                "and display-safe operator summary on the authoritative host."
+            ),
+            "verification_mode": "status_probe",
+            "verification_side_effects": "refreshes the canonical watchdog receipt",
+            "suggested_decision": "preserve_if_it_matches_live_watchdog_contract",
+            "command": "git -C C:\\EvolutionaryTradingAlgo diff -- scripts/command-center-watchdog-status.ps1",
+        }
+        review_focus = payload["review_focus"]
+        assert review_focus["source_modified_count"] == 0
+        assert review_focus["dirty_companion_repos"] == 3
+        assert review_focus["source_review_item_count"] == 2
+        assert review_focus["companion_review_item_count"] == 1
+        assert review_focus["source_review_files"] == [
+            "command-center-watchdog-status.ps1",
+            "reload-operator-service.ps1",
+        ]
+        assert review_focus["source_review_context"] == {}
+        assert review_focus["summary_line"] == payload["review_focus_summary_line"]
+        assert review_focus["source_review_commands"] == [
+            "git -C C:\\EvolutionaryTradingAlgo diff -- scripts/command-center-watchdog-status.ps1",
+            "git -C C:\\EvolutionaryTradingAlgo diff -- scripts/reload-operator-service.ps1",
+        ]
+        assert review_focus["companion_review_targets"] == ["eta_engine"]
+        assert review_focus["companion_review_reasons"] == ["submodule_pointer_changed"]
+        assert review_focus["companion_review_suggested_decisions"] == [
+            "commit_preserve_or_pin_before_root_update",
+        ]
+        assert review_focus["companion_review_status"] == ""
+        assert review_focus["companion_review_summary_line"] == ""
+        assert review_focus["companion_review_verified_count"] == 0
+        assert review_focus["companion_review_decision_required_count"] == 0
+        assert review_focus["companion_review_details"][0] == {
+            "target": "eta_engine",
+            "reason": "submodule_pointer_changed",
+            "rationale": (
+                "The authoritative ETA child repo is dirty/diverged and needs "
+                "a child-repo decision before the root gitlink is updated."
+            ),
+            "suggested_decision": "commit_preserve_or_pin_before_root_update",
+            "status": "dirty",
+            "branch": "codex/runtime-review",
+            "head_short": "def5678",
+            "tracked_change_count": 26,
+            "untracked_change_count": 4,
+            "summary_line": "eta dirty def5678 | 26 tracked, 4 untracked",
+            "submodule_status": "aligned",
+            "submodule_state_label": "aligned",
+            "submodule_expected_short": "def5678",
+            "wiring_status": "review",
+            "wiring_summary": (
+                "dirty/diverged child integration plus optional missing submodule checkout "
+                "blocks gitlink wiring (eta_engine, mnq_backtest)"
+            ),
+            "status_command": "git -C C:\\EvolutionaryTradingAlgo\\eta_engine status --short",
+            "inspection_command": "git -C C:\\EvolutionaryTradingAlgo\\eta_engine status --short",
+        }
+        assert review_focus["review_actions"][-1] == {
+            "scope": "companion",
+            "target": "eta_engine",
+            "reason": "submodule_pointer_changed",
+            "suggested_decision": "commit_preserve_or_pin_before_root_update",
+            "command": "git -C C:\\EvolutionaryTradingAlgo\\eta_engine status --short",
+            "overview_command": "git -C C:\\EvolutionaryTradingAlgo\\eta_engine status --short",
+            "overview_summary": "",
+            "drilldown_command": "git -C C:\\EvolutionaryTradingAlgo\\eta_engine status --short",
+            "review_sequence": [
+                {
+                    "step": 1,
+                    "kind": "overview",
+                    "label": "Batch overview",
+                    "command": "git -C C:\\EvolutionaryTradingAlgo\\eta_engine status --short",
+                }
+            ],
+            "review_sequence_summary": "overview",
+            "status_command": "git -C C:\\EvolutionaryTradingAlgo\\eta_engine status --short",
+            "inspection_command": "git -C C:\\EvolutionaryTradingAlgo\\eta_engine status --short",
+            "inspection_group_command": "git -C C:\\EvolutionaryTradingAlgo\\eta_engine status --short",
+            "inspection_sample_paths": [],
+            "inspection_sample_commands": [],
+            "batch_scope_command": "",
+            "batch_scope_stat_command": "",
+            "batch_scope_shortstat": "",
+            "batch_scope_paths": [],
+            "batch_scope_path_count": 0,
+            "inspection_focus": "",
+            "summary_line": "eta dirty def5678 | 26 tracked, 4 untracked",
+        }
+        assert review_focus["primary_review_action"] == payload["review_focus_primary_action"]
+        assert review_focus["source_step_id"] == "restore-source-governance"
+        assert review_focus["source_step_decision"] == "manual_review_required"
+        assert review_focus["companion_step_id"] == "align-submodules"
+        assert review_focus["companion_step_decision"] == "manual_review_required"
+        assert alias_payload["source_review_files"] == payload["source_review_files"]
+        assert alias_payload["source_review_items"] == payload["source_review_items"]
+        assert alias_payload["companion_review_targets"] == payload["companion_review_targets"]
+        assert alias_payload["companion_review_items"] == payload["companion_review_items"]
+        assert alias_payload["review_focus"] == payload["review_focus"]
         assert payload["recommended_action"] == "Keep root cleanup disabled until review is approved."
         assert payload["plan_updated_at"] is not None
         assert payload["plan_age_s"] is not None
         assert payload["artifact_stale"] is False
+
+    def test_vps_root_reconciliation_endpoint_merges_observed_review_results(self, app_client, tmp_path, monkeypatch):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        monkeypatch.setattr(
+            mod,
+            "_workspace_checkout_payload",
+            lambda refresh=False: {
+                "status": "clean",
+                "summary_line": "root clean abc1234 | eta clean def5678 | submodule aligned def5678",
+            },
+        )
+        plan = {
+            "status": "ok",
+            "risk_level": "medium",
+            "cleanup_allowed": False,
+            "destructive_actions_performed": False,
+            "counts": {"status": 1, "dirty_companion_repos": 0},
+            "summary": {"source_or_governance_modified": 1, "dirty_companion_repos": 1},
+            "steps": [
+                {
+                    "id": "restore-source-governance",
+                    "decision": "manual_review_required",
+                    "evidence": [
+                        "source_or_governance_modified=1",
+                        "scripts/command-center-watchdog-status.ps1",
+                    ],
+                },
+                {
+                    "id": "align-submodules",
+                    "decision": "manual_review_required",
+                    "evidence": [
+                        "dirty_companion_repos=1",
+                        "eta_engine:dirty_diverged_child_integration",
+                    ],
+                },
+            ],
+            "source_review_items": [
+                {
+                    "path": "scripts/command-center-watchdog-status.ps1",
+                    "basename": "command-center-watchdog-status.ps1",
+                    "change_class": "modified",
+                    "area": "operator_watchdog_truth",
+                    "rationale": "Tracks Command Center watchdog truth.",
+                    "change_summary": "Adds runtime dependency-gap probing.",
+                    "verification_command": (
+                        "powershell -ExecutionPolicy Bypass -File "
+                        ".\\scripts\\command-center-watchdog-status.ps1 -Json"
+                    ),
+                    "verification_goal": "Confirm the live watchdog contract.",
+                    "verification_mode": "status_probe",
+                    "verification_side_effects": "refreshes the canonical watchdog receipt",
+                    "suggested_decision": "preserve_if_it_matches_live_watchdog_contract",
+                }
+            ],
+            "companion_review_items": [
+                {
+                    "target": "eta_engine",
+                    "reason": "dirty_diverged_child_integration",
+                    "rationale": (
+                        "The authoritative ETA child repo is dirty/diverged and needs a child-repo "
+                        "decision before the root gitlink is updated."
+                    ),
+                    "suggested_decision": "commit_preserve_or_pin_before_root_update",
+                }
+            ],
+        }
+        review = {
+            "status": "ok",
+            "verified_at": "2026-05-16T15:30:00+00:00",
+            "verified_ok_count": 1,
+            "preserve_candidate_count": 1,
+            "summary_line": "1/1 source review item(s) verified; 1 preserve candidate(s)",
+            "companion_review_status": "review_required",
+            "companion_item_count": 1,
+            "companion_verified_count": 1,
+            "companion_decision_required_count": 1,
+            "companion_summary_line": "1/1 companion review target(s) checked; 1 decision-required companion target(s)",
+            "results_by_basename": {
+                "command-center-watchdog-status.ps1": {
+                    "basename": "command-center-watchdog-status.ps1",
+                    "review_status": "verified_ok",
+                    "review_summary": "Watchdog status probe succeeded; overall_status=healthy",
+                    "recommended_outcome": "preserve_candidate",
+                    "verified_at": "2026-05-16T15:30:00+00:00",
+                    "exit_code": 0,
+                    "output_excerpt": '{"overall_status":"healthy"}',
+                }
+            },
+            "companion_results_by_target": {
+                "eta_engine": {
+                    "target": "eta_engine",
+                    "reason": "dirty_diverged_child_integration",
+                    "suggested_decision": "commit_preserve_or_pin_before_root_update",
+                    "review_status": "verified_review_required",
+                    "review_summary": (
+                        "Companion eta_engine remains dirty/diverged; branch=detached; head=29f9c07; "
+                        "tracked=26; untracked=6."
+                    ),
+                    "recommended_outcome": "commit_preserve_or_pin_before_root_update",
+                    "verified_at": "2026-05-16T15:31:00+00:00",
+                    "exit_code": 0,
+                    "output_excerpt": " M eta_engine\\deploy\\scripts\\dashboard_api.py",
+                    "tracked_change_count": 5,
+                    "untracked_change_count": 2,
+                    "tracked_files": [
+                        "deploy/scripts/dashboard_api.py",
+                        "scripts/broker_bracket_audit.py",
+                        "scripts/project_kaizen_closeout.py",
+                        "scripts/prop_launch_check.py",
+                        "scripts/health_check.py",
+                    ],
+                    "untracked_files": [
+                        "deploy/scripts/verify_vps_root_reconciliation.ps1",
+                        "scripts/retune_advisory_cache.py",
+                    ],
+                    "change_groups": [
+                        {
+                            "group": "scripts",
+                            "tracked_count": 4,
+                            "untracked_count": 1,
+                            "total_count": 5,
+                            "sample_paths": [
+                                "scripts/broker_bracket_audit.py",
+                                "scripts/closed_trade_ledger.py",
+                                "scripts/daily_loss_killswitch.py",
+                            ],
+                            "inspection_command": "git -C C:\\EvolutionaryTradingAlgo\\eta_engine diff -- scripts",
+                        },
+                        {
+                            "group": "deploy/scripts",
+                            "tracked_count": 1,
+                            "untracked_count": 1,
+                            "total_count": 2,
+                            "sample_paths": [
+                                "deploy/scripts/dashboard_api.py",
+                                "deploy/scripts/verify_vps_root_reconciliation.ps1",
+                            ],
+                            "inspection_command": (
+                                "git -C C:\\EvolutionaryTradingAlgo\\eta_engine diff -- "
+                                "deploy/scripts"
+                            ),
+                        },
+                    ],
+                    "change_group_summary": "scripts t=4 u=1; deploy/scripts t=1 u=1",
+                    "focus_areas": [
+                        {
+                            "area": "ops_readiness_truth",
+                            "tracked_count": 3,
+                            "untracked_count": 1,
+                            "total_count": 4,
+                            "sample_paths": [
+                                "scripts/project_kaizen_closeout.py",
+                                "scripts/prop_launch_check.py",
+                                "scripts/health_check.py",
+                            ],
+                        },
+                        {
+                            "area": "operator_surface_reconciliation",
+                            "tracked_count": 1,
+                            "untracked_count": 1,
+                            "total_count": 2,
+                            "sample_paths": [
+                                "deploy/scripts/dashboard_api.py",
+                                "deploy/scripts/verify_vps_root_reconciliation.ps1",
+                            ],
+                        },
+                        {
+                            "area": "broker_runtime_controls",
+                            "tracked_count": 1,
+                            "untracked_count": 0,
+                            "total_count": 1,
+                            "sample_paths": [
+                                "scripts/broker_bracket_audit.py",
+                            ],
+                        },
+                    ],
+                    "focus_area_summary": (
+                        "ops_readiness_truth t=3 u=1; "
+                        "operator_surface_reconciliation t=1 u=1; broker_runtime_controls t=1"
+                    ),
+                    "batch_label": "runtime_hardening_batch",
+                    "batch_coherence": "coherent",
+                    "batch_recommended_handling": "preserve_or_commit_as_single_child_batch",
+                    "batch_summary": (
+                        "top areas ops_readiness_truth + operator_surface_reconciliation "
+                        "cover 6/7 file changes"
+                    ),
+                    "batch_top_areas": [
+                        "ops_readiness_truth",
+                        "operator_surface_reconciliation",
+                    ],
+                    "batch_scope_paths": [
+                        "scripts",
+                        "deploy/scripts",
+                    ],
+                    "batch_scope_command": (
+                        "git -C C:\\EvolutionaryTradingAlgo\\eta_engine diff -- scripts "
+                        "deploy/scripts"
+                    ),
+                    "batch_scope_stat_command": (
+                        "git -C C:\\EvolutionaryTradingAlgo\\eta_engine diff --shortstat -- "
+                        "scripts deploy/scripts"
+                    ),
+                    "batch_scope_shortstat": (
+                        "5 files changed, 123 insertions(+), 17 deletions(-); plus 2 "
+                        "untracked path(s)"
+                    ),
+                    "batch_scope_path_count": 2,
+                }
+            },
+        }
+        (tmp_path / "state" / "vps_root_reconciliation_plan.json").write_text(
+            json.dumps(plan), encoding="utf-8"
+        )
+        (tmp_path / "state" / "vps_root_reconciliation_review.json").write_text(
+            json.dumps(review), encoding="utf-8"
+        )
+
+        payload = app_client.get("/api/vps/root-reconciliation").json()
+        master = app_client.get("/api/master/status").json()
+        fleet = app_client.get("/api/bot-fleet").json()
+        commit_command = (
+            'git -C C:\\EvolutionaryTradingAlgo\\eta_engine commit -m '
+            '"eta_engine: harden VPS runtime readiness and operator truth surfaces"'
+        )
+        decision_basis = (
+            "top areas ops_readiness_truth + operator_surface_reconciliation cover 6/7 file changes; "
+            "5 files changed, 123 insertions(+), 17 deletions(-); plus 2 untracked path(s)"
+        )
+        child_next_action = (
+            "Prefer commit for eta_engine as one runtime-hardening child batch if the reviewed slice "
+            "is intended shared child-repo work; otherwise preserve or pin it."
+        )
+        root_recommended_action = (
+            "Prefer commit for eta_engine as one runtime-hardening child batch if this VPS-reviewed "
+            "slice is intended shared child-repo work; otherwise preserve or pin it before updating "
+            "the superproject root; root source preserve candidates are "
+            "command-center-watchdog-status.ps1."
+        )
+        review_focus_summary_line = (
+            "1 root source file(s) under review; eta_engine: Companion eta_engine remains "
+            "dirty/diverged; branch=detached; head=29f9c07; tracked=26; untracked=6.; "
+            "1 item(s) live-verified; 1 preserve candidate(s) pending decision"
+        )
+        companion_commit_detail = (
+            'companion_commit_cmd=git -C C:\\EvolutionaryTradingAlgo\\eta_engine commit -m '
+            '"eta_engine: harden VPS runtime readiness and operator truth surfaces"'
+        )
+        companion_next_action_detail = (
+            "companion_next_action=Prefer commit for eta_engine as one runtime-hardening child "
+            "batch if the reviewed slice is intended shared child-repo work; otherwise preserve "
+            "or pin it."
+        )
+
+        assert payload["review_status"] == "ok"
+        assert payload["review_summary_line"] == "1/1 source review item(s) verified; 1 preserve candidate(s)"
+        assert payload["source_review_decision_ready"] is True
+        assert payload["review_decision_ready"] is False
+        assert payload["review_decision_blocked_by_companion"] is True
+        assert payload["review_preserve_candidate_files"] == ["command-center-watchdog-status.ps1"]
+        assert payload["review_revisit_required_files"] == []
+        assert payload["companion_review_status"] == "review_required"
+        assert payload["companion_review_decision_ready"] is True
+        assert payload["companion_review_decision_summary"] == (
+            "live-verified coherent runtime_hardening_batch ready for preserve/commit/pin decision"
+        )
+        assert payload["companion_review_decision_recommended_handling"] == (
+            "preserve_or_commit_as_single_child_batch"
+        )
+        assert payload["companion_review_decision_recommended_option"] == "commit"
+        assert payload["companion_review_decision_recommended_reason"] == (
+            "eta_engine is a live-verified coherent runtime_hardening_batch; commit is the cleanest path "
+            "if this reviewed slice is intended shared child-repo work."
+        )
+        assert payload["companion_review_decision_basis"] == decision_basis
+        assert payload["companion_review_decision_recommended_paths"] == ["scripts", "deploy/scripts"]
+        assert payload["companion_review_decision_recommended_commit_message"] == (
+            "eta_engine: harden VPS runtime readiness and operator truth surfaces"
+        )
+        assert payload["companion_review_decision_recommended_stage_command"] == (
+            "git -C C:\\EvolutionaryTradingAlgo\\eta_engine add -- scripts deploy/scripts"
+        )
+        assert payload["companion_review_decision_recommended_commit_command"] == commit_command
+        assert payload["companion_review_decision_recommended_commands"] == [
+            "git -C C:\\EvolutionaryTradingAlgo\\eta_engine add -- scripts deploy/scripts",
+            commit_command,
+        ]
+        assert payload["companion_review_decision_options"][0] == {
+            "option": "commit",
+            "label": "Commit child batch",
+            "summary": (
+                "Commit eta_engine as one coherent runtime_hardening_batch inside the child repo, "
+                "then the superproject can move the gitlink later."
+            ),
+            "when_to_choose": (
+                "Choose when the reviewed changes are intended shared child-repo updates and the batch "
+                "review is complete."
+            ),
+            "root_update_ready": True,
+        }
+        assert payload["companion_review_decision_next_action"] == child_next_action
+        assert payload["companion_review_summary_line"] == (
+            "1/1 companion review target(s) checked; 1 decision-required companion target(s)"
+        )
+        assert payload["recommended_action"] == root_recommended_action
+        assert payload["review_focus_active_lane"] == "companion"
+        assert payload["review_focus"]["companion_review_decision_ready"] is True
+        assert payload["review_focus"]["companion_review_decision_summary"] == (
+            "live-verified coherent runtime_hardening_batch ready for preserve/commit/pin decision"
+        )
+        assert payload["review_focus"]["companion_review_decision_recommended_handling"] == (
+            "preserve_or_commit_as_single_child_batch"
+        )
+        assert payload["review_focus"]["companion_review_decision_recommended_option"] == "commit"
+        assert payload["review_focus"]["companion_review_decision_recommended_reason"] == (
+            "eta_engine is a live-verified coherent runtime_hardening_batch; commit is the cleanest path "
+            "if this reviewed slice is intended shared child-repo work."
+        )
+        assert payload["review_focus"]["companion_review_decision_basis"] == decision_basis
+        assert payload["review_focus"]["companion_review_decision_recommended_paths"] == [
+            "scripts",
+            "deploy/scripts",
+        ]
+        assert payload["review_focus"]["companion_review_decision_recommended_commit_message"] == (
+            "eta_engine: harden VPS runtime readiness and operator truth surfaces"
+        )
+        assert payload["review_focus"]["companion_review_decision_recommended_stage_command"] == (
+            "git -C C:\\EvolutionaryTradingAlgo\\eta_engine add -- scripts deploy/scripts"
+        )
+        assert payload["review_focus"]["companion_review_decision_recommended_commit_command"] == commit_command
+        assert payload["review_focus"]["companion_review_decision_next_action"] == child_next_action
+        assert payload["review_focus_summary_line"] == review_focus_summary_line
+        assert payload["review_focus"]["observed_review_status"] == "ok"
+        assert payload["review_focus"]["observed_review_summary_line"] == (
+            "1/1 source review item(s) verified; 1 preserve candidate(s)"
+        )
+        assert payload["review_focus"]["companion_review_status"] == "review_required"
+        assert payload["review_focus"]["companion_review_summary_line"] == (
+            "1/1 companion review target(s) checked; 1 decision-required companion target(s)"
+        )
+        assert payload["review_focus"]["source_review_details"][0]["observed_review_status"] == "verified_ok"
+        assert payload["review_focus"]["source_review_details"][0]["observed_recommended_outcome"] == (
+            "preserve_candidate"
+        )
+        assert payload["review_focus"]["companion_review_details"][0]["reason"] == "dirty_diverged_child_integration"
+        assert payload["review_focus"]["companion_review_details"][0]["suggested_decision"] == (
+            "commit_preserve_or_pin_before_root_update"
+        )
+        assert payload["review_focus"]["companion_review_details"][0]["observed_review_status"] == (
+            "verified_review_required"
+        )
+        assert payload["review_focus"]["companion_review_details"][0]["observed_recommended_outcome"] == (
+            "commit_preserve_or_pin_before_root_update"
+        )
+        assert payload["review_focus"]["companion_review_details"][0]["observed_tracked_change_count"] == 5
+        assert payload["review_focus"]["companion_review_details"][0]["observed_untracked_change_count"] == 2
+        assert payload["review_focus"]["companion_review_details"][0]["observed_tracked_files"] == [
+            "deploy/scripts/dashboard_api.py",
+            "scripts/broker_bracket_audit.py",
+            "scripts/project_kaizen_closeout.py",
+            "scripts/prop_launch_check.py",
+            "scripts/health_check.py",
+        ]
+        assert payload["review_focus"]["companion_review_details"][0]["observed_untracked_files"] == [
+            "deploy/scripts/verify_vps_root_reconciliation.ps1",
+            "scripts/retune_advisory_cache.py",
+        ]
+        assert payload["review_focus"]["companion_review_details"][0]["observed_change_group_summary"] == (
+            "scripts t=4 u=1; deploy/scripts t=1 u=1"
+        )
+        assert payload["review_focus"]["companion_review_details"][0]["observed_focus_area_summary"] == (
+            "ops_readiness_truth t=3 u=1; operator_surface_reconciliation t=1 u=1; broker_runtime_controls t=1"
+        )
+        assert payload["review_focus"]["companion_review_details"][0]["observed_batch_label"] == (
+            "runtime_hardening_batch"
+        )
+        assert payload["review_focus"]["companion_review_details"][0]["observed_batch_coherence"] == "coherent"
+        assert payload["review_focus"]["companion_review_details"][0]["observed_batch_recommended_handling"] == (
+            "preserve_or_commit_as_single_child_batch"
+        )
+        assert payload["review_focus"]["companion_review_details"][0]["observed_batch_summary"] == (
+            "top areas ops_readiness_truth + operator_surface_reconciliation cover 6/7 file changes"
+        )
+        assert payload["review_focus"]["companion_review_details"][0]["observed_batch_top_areas"] == [
+            "ops_readiness_truth",
+            "operator_surface_reconciliation",
+        ]
+        assert payload["review_focus"]["companion_review_details"][0]["observed_batch_scope_paths"] == [
+            "scripts",
+            "deploy/scripts",
+        ]
+        assert payload["review_focus"]["companion_review_details"][0]["observed_batch_scope_command"] == (
+            "git -C C:\\EvolutionaryTradingAlgo\\eta_engine diff -- scripts deploy/scripts"
+        )
+        assert payload["review_focus"]["companion_review_details"][0]["observed_batch_scope_stat_command"] == (
+            "git -C C:\\EvolutionaryTradingAlgo\\eta_engine diff --shortstat -- scripts deploy/scripts"
+        )
+        assert payload["review_focus"]["companion_review_details"][0]["observed_batch_scope_shortstat"] == (
+            "5 files changed, 123 insertions(+), 17 deletions(-); plus 2 untracked path(s)"
+        )
+        assert payload["review_focus"]["companion_review_details"][0]["observed_focus_areas"][0]["area"] == (
+            "ops_readiness_truth"
+        )
+        assert payload["review_focus"]["companion_review_details"][0]["observed_focus_areas"][0]["sample_paths"] == [
+            "scripts/project_kaizen_closeout.py",
+            "scripts/prop_launch_check.py",
+            "scripts/health_check.py",
+        ]
+        assert payload["review_focus"]["companion_review_details"][0]["observed_change_groups"][0]["group"] == (
+            "scripts"
+        )
+        assert payload["review_focus"]["companion_review_details"][0]["observed_change_groups"][1]["group"] == (
+            "deploy/scripts"
+        )
+        assert payload["review_focus"]["companion_review_details"][0]["status_command"] == (
+            "git -C C:\\EvolutionaryTradingAlgo\\eta_engine status --short"
+        )
+        assert payload["review_focus"]["companion_review_details"][0]["inspection_command"] == (
+            "git -C C:\\EvolutionaryTradingAlgo\\eta_engine diff -- scripts"
+        )
+        assert payload["review_focus"]["companion_review_details"][0]["inspection_focus"] == "scripts"
+        assert payload["review_focus"]["companion_review_details"][0]["inspection_group_command"] == (
+            "git -C C:\\EvolutionaryTradingAlgo\\eta_engine diff -- scripts"
+        )
+        assert payload["review_focus"]["companion_review_details"][0]["inspection_sample_paths"] == [
+            "scripts/project_kaizen_closeout.py",
+            "scripts/prop_launch_check.py",
+            "scripts/health_check.py",
+        ]
+        assert payload["review_focus"]["companion_review_details"][0]["inspection_sample_commands"] == [
+            "git -C C:\\EvolutionaryTradingAlgo\\eta_engine diff -- scripts/project_kaizen_closeout.py",
+            "git -C C:\\EvolutionaryTradingAlgo\\eta_engine diff -- scripts/prop_launch_check.py",
+            "git -C C:\\EvolutionaryTradingAlgo\\eta_engine diff -- scripts/health_check.py",
+        ]
+        assert payload["review_focus"]["active_review_lane"] == "companion"
+        assert payload["review_focus_primary_command"] == (
+            "git -C C:\\EvolutionaryTradingAlgo\\eta_engine diff --shortstat -- scripts deploy/scripts"
+        )
+        assert payload["review_focus_primary_action"]["scope"] == "companion"
+        assert payload["review_focus_primary_action"]["command"] == (
+            "git -C C:\\EvolutionaryTradingAlgo\\eta_engine diff --shortstat -- scripts deploy/scripts"
+        )
+        assert payload["review_focus_primary_action"]["overview_command"] == (
+            "git -C C:\\EvolutionaryTradingAlgo\\eta_engine diff --shortstat -- scripts deploy/scripts"
+        )
+        assert payload["review_focus_primary_action"]["overview_summary"] == (
+            "5 files changed, 123 insertions(+), 17 deletions(-); plus 2 untracked path(s)"
+        )
+        assert payload["review_focus_primary_action"]["drilldown_command"] == (
+            "git -C C:\\EvolutionaryTradingAlgo\\eta_engine diff -- scripts deploy/scripts"
+        )
+        assert payload["review_focus_primary_action"]["review_sequence_summary"] == (
+            "overview -> drilldown -> group -> 3 sample file diffs"
+        )
+        assert payload["review_focus_primary_action"]["review_sequence"] == [
+            {
+                "step": 1,
+                "kind": "overview",
+                "label": "Batch overview",
+                "command": "git -C C:\\EvolutionaryTradingAlgo\\eta_engine diff --shortstat -- scripts deploy/scripts",
+                "summary": "5 files changed, 123 insertions(+), 17 deletions(-); plus 2 untracked path(s)",
+            },
+            {
+                "step": 2,
+                "kind": "drilldown",
+                "label": "Full batch diff",
+                "command": "git -C C:\\EvolutionaryTradingAlgo\\eta_engine diff -- scripts deploy/scripts",
+                "path_count": 2,
+                "paths": ["scripts", "deploy/scripts"],
+            },
+            {
+                "step": 3,
+                "kind": "group",
+                "label": "Dominant group diff",
+                "command": "git -C C:\\EvolutionaryTradingAlgo\\eta_engine diff -- scripts",
+                "focus": "scripts",
+            },
+            {
+                "step": 4,
+                "kind": "sample",
+                "label": "Sample diff: project_kaizen_closeout.py",
+                "command": "git -C C:\\EvolutionaryTradingAlgo\\eta_engine diff -- scripts/project_kaizen_closeout.py",
+                "path": "scripts/project_kaizen_closeout.py",
+            },
+            {
+                "step": 5,
+                "kind": "sample",
+                "label": "Sample diff: prop_launch_check.py",
+                "command": "git -C C:\\EvolutionaryTradingAlgo\\eta_engine diff -- scripts/prop_launch_check.py",
+                "path": "scripts/prop_launch_check.py",
+            },
+            {
+                "step": 6,
+                "kind": "sample",
+                "label": "Sample diff: health_check.py",
+                "command": "git -C C:\\EvolutionaryTradingAlgo\\eta_engine diff -- scripts/health_check.py",
+                "path": "scripts/health_check.py",
+            },
+        ]
+        assert payload["review_focus_primary_action"]["status_command"] == (
+            "git -C C:\\EvolutionaryTradingAlgo\\eta_engine status --short"
+        )
+        assert payload["review_focus_primary_action"]["inspection_command"] == (
+            "git -C C:\\EvolutionaryTradingAlgo\\eta_engine diff -- scripts"
+        )
+        assert payload["review_focus_primary_action"]["inspection_focus"] == "scripts"
+        assert payload["review_focus_primary_action"]["inspection_group_command"] == (
+            "git -C C:\\EvolutionaryTradingAlgo\\eta_engine diff -- scripts"
+        )
+        assert payload["review_focus_primary_action"]["inspection_sample_paths"] == [
+            "scripts/project_kaizen_closeout.py",
+            "scripts/prop_launch_check.py",
+            "scripts/health_check.py",
+        ]
+        assert payload["review_focus_primary_action"]["inspection_sample_commands"] == [
+            "git -C C:\\EvolutionaryTradingAlgo\\eta_engine diff -- scripts/project_kaizen_closeout.py",
+            "git -C C:\\EvolutionaryTradingAlgo\\eta_engine diff -- scripts/prop_launch_check.py",
+            "git -C C:\\EvolutionaryTradingAlgo\\eta_engine diff -- scripts/health_check.py",
+        ]
+        assert payload["review_focus_primary_action"]["observed_review_status"] == "verified_review_required"
+        assert payload["review_focus_primary_action"]["observed_recommended_outcome"] == (
+            "commit_preserve_or_pin_before_root_update"
+        )
+        assert payload["review_focus_primary_action"]["observed_tracked_change_count"] == 5
+        assert payload["review_focus_primary_action"]["observed_untracked_change_count"] == 2
+        assert payload["review_focus_primary_action"]["observed_change_group_summary"] == (
+            "scripts t=4 u=1; deploy/scripts t=1 u=1"
+        )
+        assert payload["review_focus_primary_action"]["observed_focus_area_summary"] == (
+            "ops_readiness_truth t=3 u=1; operator_surface_reconciliation t=1 u=1; broker_runtime_controls t=1"
+        )
+        assert payload["review_focus_primary_action"]["observed_batch_label"] == "runtime_hardening_batch"
+        assert payload["review_focus_primary_action"]["observed_batch_coherence"] == "coherent"
+        assert payload["review_focus_primary_action"]["observed_batch_recommended_handling"] == (
+            "preserve_or_commit_as_single_child_batch"
+        )
+        assert payload["review_focus_primary_action"]["observed_batch_summary"] == (
+            "top areas ops_readiness_truth + operator_surface_reconciliation cover 6/7 file changes"
+        )
+        assert payload["review_focus_primary_action"]["observed_decision_recommended_option"] == "commit"
+        assert payload["review_focus_primary_action"]["observed_decision_recommended_reason"] == (
+            "eta_engine is a live-verified coherent runtime_hardening_batch; commit is the cleanest path "
+            "if this reviewed slice is intended shared child-repo work."
+        )
+        assert payload["review_focus_primary_action"]["observed_decision_basis"] == (
+            "top areas ops_readiness_truth + operator_surface_reconciliation cover 6/7 file changes; "
+            "5 files changed, 123 insertions(+), 17 deletions(-); plus 2 untracked path(s)"
+        )
+        assert payload["review_focus_primary_action"]["observed_decision_recommended_paths"] == [
+            "scripts",
+            "deploy/scripts",
+        ]
+        assert payload["review_focus_primary_action"]["observed_decision_recommended_commit_message"] == (
+            "eta_engine: harden VPS runtime readiness and operator truth surfaces"
+        )
+        assert payload["review_focus_primary_action"]["observed_decision_recommended_stage_command"] == (
+            "git -C C:\\EvolutionaryTradingAlgo\\eta_engine add -- scripts deploy/scripts"
+        )
+        assert payload["review_focus_primary_action"]["observed_decision_recommended_commit_command"] == (
+            commit_command
+        )
+        assert payload["review_focus_primary_action"]["observed_decision_recommended_commands"] == [
+            "git -C C:\\EvolutionaryTradingAlgo\\eta_engine add -- scripts deploy/scripts",
+            commit_command,
+        ]
+        assert payload["review_focus_primary_action"]["observed_decision_options"][0]["option"] == "commit"
+        assert payload["review_focus_primary_action"]["observed_decision_options"][0]["root_update_ready"] is True
+        assert payload["review_focus_primary_action"]["observed_batch_top_areas"] == [
+            "ops_readiness_truth",
+            "operator_surface_reconciliation",
+        ]
+        assert payload["review_focus_primary_action"]["batch_scope_paths"] == [
+            "scripts",
+            "deploy/scripts",
+        ]
+        assert payload["review_focus_primary_action"]["batch_scope_command"] == (
+            "git -C C:\\EvolutionaryTradingAlgo\\eta_engine diff -- scripts deploy/scripts"
+        )
+        assert payload["review_focus_primary_action"]["batch_scope_stat_command"] == (
+            "git -C C:\\EvolutionaryTradingAlgo\\eta_engine diff --shortstat -- scripts deploy/scripts"
+        )
+        assert payload["review_focus_primary_action"]["batch_scope_shortstat"] == (
+            "5 files changed, 123 insertions(+), 17 deletions(-); plus 2 untracked path(s)"
+        )
+        assert payload["review_focus_primary_action"]["observed_focus_areas"][0]["area"] == (
+            "ops_readiness_truth"
+        )
+        assert master["systems"]["vps_root"]["source_review_decision_ready"] is True
+        assert master["systems"]["vps_root"]["review_decision_ready"] is False
+        assert master["systems"]["vps_root"]["review_decision_blocked_by_companion"] is True
+        assert master["systems"]["vps_root"]["review_preserve_candidate_files"] == [
+            "command-center-watchdog-status.ps1"
+        ]
+        assert master["systems"]["vps_root"]["review_revisit_required_files"] == []
+        assert master["systems"]["vps_root"]["companion_review_status"] == "review_required"
+        assert master["systems"]["vps_root"]["companion_review_decision_ready"] is True
+        assert master["systems"]["vps_root"]["companion_review_decision_summary"] == (
+            "live-verified coherent runtime_hardening_batch ready for preserve/commit/pin decision"
+        )
+        assert master["systems"]["vps_root"]["companion_review_decision_recommended_handling"] == (
+            "preserve_or_commit_as_single_child_batch"
+        )
+        assert master["systems"]["vps_root"]["companion_review_decision_recommended_option"] == "commit"
+        assert master["systems"]["vps_root"]["companion_review_decision_recommended_reason"] == (
+            "eta_engine is a live-verified coherent runtime_hardening_batch; commit is the cleanest path "
+            "if this reviewed slice is intended shared child-repo work."
+        )
+        assert master["systems"]["vps_root"]["companion_review_decision_basis"] == decision_basis
+        assert master["systems"]["vps_root"]["companion_review_decision_recommended_paths"] == [
+            "scripts",
+            "deploy/scripts",
+        ]
+        assert master["systems"]["vps_root"]["companion_review_decision_recommended_commit_message"] == (
+            "eta_engine: harden VPS runtime readiness and operator truth surfaces"
+        )
+        assert master["systems"]["vps_root"]["companion_review_decision_recommended_stage_command"] == (
+            "git -C C:\\EvolutionaryTradingAlgo\\eta_engine add -- scripts deploy/scripts"
+        )
+        assert master["systems"]["vps_root"]["companion_review_decision_recommended_commit_command"] == (
+            commit_command
+        )
+        assert master["systems"]["vps_root"]["companion_review_decision_next_action"] == child_next_action
+        assert master["systems"]["vps_root"]["companion_review_summary_line"] == (
+            "1/1 companion review target(s) checked; 1 decision-required companion target(s)"
+        )
+        assert master["systems"]["vps_root"]["review_focus_active_lane"] == "companion"
+        assert master["systems"]["vps_root"]["recommended_action"] == root_recommended_action
+        assert "review_status=ok" in master["systems"]["vps_root"]["detail"]
+        assert (
+            "review_verdict=1/1 source review item(s) verified; 1 preserve candidate(s)"
+            in master["systems"]["vps_root"]["detail"]
+        )
+        assert "companion_review_status=review_required" in master["systems"]["vps_root"]["detail"]
+        assert (
+            "companion_review_verdict=1/1 companion review target(s) checked; 1 decision-required companion target(s)"
+            in master["systems"]["vps_root"]["detail"]
+        )
+        assert "companion_decision_ready=true" in master["systems"]["vps_root"]["detail"]
+        assert (
+            "companion_decision=live-verified coherent runtime_hardening_batch ready for preserve/commit/pin decision"
+            in master["systems"]["vps_root"]["detail"]
+        )
+        assert "companion_handling=preserve_or_commit_as_single_child_batch" in (
+            master["systems"]["vps_root"]["detail"]
+        )
+        assert "companion_preferred=commit" in master["systems"]["vps_root"]["detail"]
+        assert (
+            "companion_commit_msg=eta_engine: harden VPS runtime readiness and operator truth surfaces"
+            in master["systems"]["vps_root"]["detail"]
+        )
+        assert (
+            "companion_stage_cmd=git -C C:\\EvolutionaryTradingAlgo\\eta_engine add -- scripts deploy/scripts"
+            in master["systems"]["vps_root"]["detail"]
+        )
+        assert companion_commit_detail in master["systems"]["vps_root"]["detail"]
+        assert companion_next_action_detail in master["systems"]["vps_root"]["detail"]
+        assert "companion_groups=scripts t=4 u=1; deploy/scripts t=1 u=1" in master["systems"]["vps_root"]["detail"]
+        assert (
+            "companion_areas=ops_readiness_truth t=3 u=1; "
+            "operator_surface_reconciliation t=1 u=1; broker_runtime_controls t=1"
+        ) in master["systems"]["vps_root"]["detail"]
+        assert "companion_batch=runtime_hardening_batch:coherent" in master["systems"]["vps_root"]["detail"]
+        assert (
+            "companion_batch_summary=top areas ops_readiness_truth + "
+            "operator_surface_reconciliation cover 6/7 file changes"
+        ) in master["systems"]["vps_root"]["detail"]
+        assert "companion_batch_scope=scripts,deploy/scripts" in master["systems"]["vps_root"]["detail"]
+        assert (
+            "companion_batch_stat=5 files changed, 123 insertions(+), 17 deletions(-); "
+            "plus 2 untracked path(s)"
+        ) in master["systems"]["vps_root"]["detail"]
+        assert "companion_samples=project_kaizen_closeout.py,prop_launch_check.py,health_check.py" in (
+            master["systems"]["vps_root"]["detail"]
+        )
+        assert "review_lane=companion" in master["systems"]["vps_root"]["detail"]
+        assert "source_review_decision_ready=true" in master["systems"]["vps_root"]["detail"]
+        assert "; review_decision_ready=true" not in master["systems"]["vps_root"]["detail"]
+        assert "review_decision_blocked_by_companion=true" in master["systems"]["vps_root"]["detail"]
+        assert "preserve_candidates=command-center-watchdog-status.ps1" in master["systems"]["vps_root"]["detail"]
+        assert (
+            "review_cmd=git -C C:\\EvolutionaryTradingAlgo\\eta_engine diff --shortstat -- "
+            "scripts deploy/scripts"
+        ) in master["systems"]["vps_root"]["detail"]
+        assert (
+            "review_overview=5 files changed, 123 insertions(+), 17 deletions(-); plus 2 "
+            "untracked path(s)"
+        ) in master["systems"]["vps_root"]["detail"]
+        assert (
+            "review_drilldown_cmd=git -C C:\\EvolutionaryTradingAlgo\\eta_engine diff -- "
+            "scripts deploy/scripts"
+        ) in master["systems"]["vps_root"]["detail"]
+        assert "review_sequence=overview -> drilldown -> group -> 3 sample file diffs" in (
+            master["systems"]["vps_root"]["detail"]
+        )
+        assert "review_outcome=commit_preserve_or_pin_before_root_update" in master["systems"]["vps_root"]["detail"]
+        assert fleet["summary"]["vps_root_source_review_decision_ready"] is True
+        assert fleet["summary"]["vps_root_review_decision_ready"] is False
+        assert fleet["summary"]["vps_root_review_decision_blocked_by_companion"] is True
+        assert fleet["summary"]["vps_root_review_preserve_candidate_files"] == [
+            "command-center-watchdog-status.ps1"
+        ]
+        assert fleet["summary"]["vps_root_review_revisit_required_files"] == []
+        assert fleet["summary"]["vps_root_companion_review_status"] == "review_required"
+        assert fleet["summary"]["vps_root_companion_review_decision_ready"] is True
+        assert fleet["summary"]["vps_root_companion_review_decision_summary"] == (
+            "live-verified coherent runtime_hardening_batch ready for preserve/commit/pin decision"
+        )
+        assert (
+            fleet["summary"]["vps_root_companion_review_decision_recommended_handling"]
+            == "preserve_or_commit_as_single_child_batch"
+        )
+        assert fleet["summary"]["vps_root_companion_review_decision_recommended_option"] == "commit"
+        assert fleet["summary"]["vps_root_companion_review_decision_recommended_reason"] == (
+            "eta_engine is a live-verified coherent runtime_hardening_batch; commit is the cleanest path "
+            "if this reviewed slice is intended shared child-repo work."
+        )
+        assert fleet["summary"]["vps_root_companion_review_decision_basis"] == decision_basis
+        assert fleet["summary"]["vps_root_companion_review_decision_recommended_paths"] == [
+            "scripts",
+            "deploy/scripts",
+        ]
+        assert fleet["summary"]["vps_root_companion_review_decision_recommended_commit_message"] == (
+            "eta_engine: harden VPS runtime readiness and operator truth surfaces"
+        )
+        assert fleet["summary"]["vps_root_companion_review_decision_recommended_stage_command"] == (
+            "git -C C:\\EvolutionaryTradingAlgo\\eta_engine add -- scripts deploy/scripts"
+        )
+        assert fleet["summary"]["vps_root_companion_review_decision_recommended_commit_command"] == (
+            commit_command
+        )
+        assert fleet["summary"]["vps_root_companion_review_decision_next_action"] == child_next_action
+        assert fleet["summary"]["vps_root_companion_review_summary_line"] == (
+            "1/1 companion review target(s) checked; 1 decision-required companion target(s)"
+        )
+        assert fleet["summary"]["vps_root_review_focus_active_lane"] == "companion"
+        assert fleet["summary"]["vps_root_recommended_action"] == root_recommended_action
+        assert fleet["summary"]["vps_root_review_focus_primary_action"]["observed_review_status"] == (
+            "verified_review_required"
+        )
+        assert fleet["summary"]["vps_root_review_focus_primary_action"]["observed_change_group_summary"] == (
+            "scripts t=4 u=1; deploy/scripts t=1 u=1"
+        )
+        assert fleet["summary"]["vps_root_review_focus_primary_action"]["observed_focus_area_summary"] == (
+            "ops_readiness_truth t=3 u=1; operator_surface_reconciliation t=1 u=1; broker_runtime_controls t=1"
+        )
+        assert fleet["summary"]["vps_root_review_focus_primary_action"]["observed_batch_label"] == (
+            "runtime_hardening_batch"
+        )
+        assert fleet["summary"]["vps_root_review_focus_primary_action"]["observed_batch_coherence"] == (
+            "coherent"
+        )
+        assert (
+            fleet["summary"]["vps_root_review_focus_primary_action"]["observed_batch_recommended_handling"]
+            == "preserve_or_commit_as_single_child_batch"
+        )
+        assert fleet["summary"]["vps_root_review_focus_primary_action"]["observed_batch_summary"] == (
+            "top areas ops_readiness_truth + operator_surface_reconciliation cover 6/7 file changes"
+        )
+        assert fleet["summary"]["vps_root_review_focus_primary_action"]["batch_scope_paths"] == [
+            "scripts",
+            "deploy/scripts",
+        ]
+        assert fleet["summary"]["vps_root_review_focus_primary_action"]["batch_scope_command"] == (
+            "git -C C:\\EvolutionaryTradingAlgo\\eta_engine diff -- scripts deploy/scripts"
+        )
+        assert fleet["summary"]["vps_root_review_focus_primary_action"]["batch_scope_stat_command"] == (
+            "git -C C:\\EvolutionaryTradingAlgo\\eta_engine diff --shortstat -- scripts deploy/scripts"
+        )
+        assert fleet["summary"]["vps_root_review_focus_primary_action"]["batch_scope_shortstat"] == (
+            "5 files changed, 123 insertions(+), 17 deletions(-); plus 2 untracked path(s)"
+        )
+        assert fleet["summary"]["vps_root_review_focus_primary_action"]["overview_command"] == (
+            "git -C C:\\EvolutionaryTradingAlgo\\eta_engine diff --shortstat -- scripts deploy/scripts"
+        )
+        assert fleet["summary"]["vps_root_review_focus_primary_action"]["overview_summary"] == (
+            "5 files changed, 123 insertions(+), 17 deletions(-); plus 2 untracked path(s)"
+        )
+        assert fleet["summary"]["vps_root_review_focus_primary_action"]["drilldown_command"] == (
+            "git -C C:\\EvolutionaryTradingAlgo\\eta_engine diff -- scripts deploy/scripts"
+        )
+        assert fleet["summary"]["vps_root_review_focus_primary_action"]["review_sequence_summary"] == (
+            "overview -> drilldown -> group -> 3 sample file diffs"
+        )
+        assert fleet["summary"]["vps_root_review_focus_primary_action"]["inspection_sample_paths"] == [
+            "scripts/project_kaizen_closeout.py",
+            "scripts/prop_launch_check.py",
+            "scripts/health_check.py",
+        ]
+        assert fleet["summary"]["vps_root_review_focus_primary_action"]["inspection_sample_commands"] == [
+            "git -C C:\\EvolutionaryTradingAlgo\\eta_engine diff -- scripts/project_kaizen_closeout.py",
+            "git -C C:\\EvolutionaryTradingAlgo\\eta_engine diff -- scripts/prop_launch_check.py",
+            "git -C C:\\EvolutionaryTradingAlgo\\eta_engine diff -- scripts/health_check.py",
+        ]
 
     def test_workspace_checkout_payload_preserves_aligned_submodule_prefix(self, app_client, monkeypatch):
         import eta_engine.deploy.scripts.dashboard_api as mod
@@ -4457,6 +8256,16 @@ class TestDashboardAPI:
             raise AssertionError(f"unexpected git command: repo={repo_text} args={args}")
 
         monkeypatch.setattr(mod, "_git_command", fake_git)
+        monkeypatch.setattr(
+            mod,
+            "_workspace_submodule_wiring_payload",
+            lambda: {
+                "status": "aligned",
+                "summary_line": "gitlink wiring ready",
+                "summary_short": "ready",
+                "modules": {},
+            },
+        )
 
         payload = mod._workspace_checkout_payload_uncached()
 
@@ -4480,7 +8289,28 @@ class TestDashboardAPI:
             "_workspace_checkout_payload",
             lambda refresh=False: {
                 "status": "clean",
-                "summary_line": "root clean abc1234 | eta clean def5678 | submodule aligned c08210d",
+                "summary_line": "root clean abc1234 | eta dirty def5678 | submodule aligned def5678",
+                "eta_engine": {
+                    "status": "dirty",
+                    "branch": "codex/runtime-review",
+                    "head_short": "def5678",
+                    "tracked_change_count": 26,
+                    "untracked_change_count": 4,
+                    "summary_line": "eta dirty def5678 | 26 tracked, 4 untracked",
+                },
+                "submodule": {
+                    "path": "eta_engine",
+                    "status": "aligned",
+                    "state_label": "aligned",
+                    "expected_short": "def5678",
+                },
+                "wiring": {
+                    "status": "review",
+                    "summary_line": (
+                        "dirty/diverged child integration plus optional missing submodule checkout "
+                        "blocks gitlink wiring (eta_engine, mnq_backtest)"
+                    ),
+                },
             },
         )
         plan = {
@@ -4532,6 +8362,8 @@ class TestDashboardAPI:
         assert payload["vps_root_reconciliation"]["cleanup_allowed"] is False
         assert payload["vps_root_reconciliation"]["summary"]["submodule_uninitialized"] == 4
         assert payload["systems"]["vps_root"]["status"] == "GREEN"
+        assert payload["systems"]["vps_root"]["review_focus_primary_command"] == ""
+        assert payload["systems"]["vps_root"]["review_focus_primary_action"] == {}
         assert "generated_untracked=0" in payload["systems"]["vps_root"]["detail"]
         assert "status_rows=0" in payload["systems"]["vps_root"]["detail"]
         assert "dormant_submodules=4" in payload["systems"]["vps_root"]["detail"]
@@ -4540,6 +8372,8 @@ class TestDashboardAPI:
         assert bot_payload["summary"]["vps_root_status_rows"] == 0
         assert bot_payload["summary"]["vps_root_generated_untracked"] == 0
         assert bot_payload["summary"]["vps_root_submodule_uninitialized"] == 4
+        assert bot_payload["summary"]["vps_root_review_focus_primary_command"] == ""
+        assert bot_payload["summary"]["vps_root_review_focus_primary_action"] == {}
 
     def test_vps_root_reconciliation_includes_live_checkout_health(self, app_client, tmp_path, monkeypatch):
         import eta_engine.deploy.scripts.dashboard_api as mod
@@ -4630,6 +8464,16 @@ class TestDashboardAPI:
         monkeypatch.setattr(mod, "_WORKSPACE_ROOT", workspace)
         monkeypatch.setattr(mod, "_REPO_ROOT", eta_root)
         monkeypatch.setattr(mod, "_git_command", fake_git_command)
+        monkeypatch.setattr(
+            mod,
+            "_workspace_submodule_wiring_payload",
+            lambda: {
+                "status": "aligned",
+                "summary_line": "gitlink wiring ready",
+                "summary_short": "ready",
+                "modules": {},
+            },
+        )
 
         payload = mod._workspace_checkout_payload_uncached()
 
@@ -4638,6 +8482,151 @@ class TestDashboardAPI:
         assert payload["submodule"]["state"] == " "
         assert payload["submodule"]["state_label"] == "aligned"
         assert payload["submodule"]["expected_short"] == "9cfb7d8"
+
+    def test_workspace_checkout_payload_uncached_filters_optional_dormant_root_deletion(self, monkeypatch, tmp_path):
+        from pathlib import Path
+
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        workspace = tmp_path / "workspace"
+        eta_root = workspace / "eta_engine"
+        eta_root.mkdir(parents=True, exist_ok=True)
+
+        def fake_git_command(repo_path, *args):
+            if args == ("rev-parse", "--show-toplevel"):
+                return 0, str(repo_path), ""
+            if args == ("rev-parse", "HEAD"):
+                if Path(repo_path) == workspace:
+                    return 0, "e063e40abcdef1234567890", ""
+                return 0, "9cfb7d8abcdef1234567890", ""
+            if args == ("branch", "--show-current"):
+                if Path(repo_path) == workspace:
+                    return 0, "codex/vps-root-truth", ""
+                return 0, "codex/symbol-intel-data-spine", ""
+            if args == ("status", "--porcelain=v1"):
+                if Path(repo_path) == workspace:
+                    workspace_status = "\n".join(
+                        [
+                            " D mnq_backtest",
+                            " M eta_engine",
+                            " M scripts/verify_operator_source_of_truth.py",
+                            "?? scripts/tmp_probe.py",
+                        ]
+                    )
+                    return (
+                        0,
+                        workspace_status,
+                        "",
+                    )
+                return 0, "", ""
+            if args == ("submodule", "status", "eta_engine"):
+                return 0, " 9cfb7d8abcdef1234567890 eta_engine (heads/codex/symbol-intel-data-spine)", ""
+            raise AssertionError(f"unexpected git args: {args!r}")
+
+        monkeypatch.setattr(mod, "_WORKSPACE_ROOT", workspace)
+        monkeypatch.setattr(mod, "_REPO_ROOT", eta_root)
+        monkeypatch.setattr(mod, "_git_command", fake_git_command)
+        monkeypatch.setattr(
+            mod,
+            "_workspace_submodule_wiring_payload",
+            lambda: {
+                "status": "aligned",
+                "summary_line": "gitlink wiring ready",
+                "summary_short": "ready",
+                "modules": {},
+            },
+        )
+
+        payload = mod._workspace_checkout_payload_uncached()
+
+        assert payload["status"] == "review"
+        assert payload["root"]["change_count"] == 3
+        assert payload["root"]["tracked_change_count"] == 2
+        assert payload["root"]["non_companion_tracked_change_count"] == 1
+        assert payload["root"]["companion_tracked_change_count"] == 1
+        assert payload["root"]["untracked_change_count"] == 1
+        assert payload["root"]["top_changes"] == [
+            "eta_engine",
+            "scripts/verify_operator_source_of_truth.py",
+            "scripts/tmp_probe.py",
+        ]
+        assert payload["root"]["summary_line"] == (
+            "root dirty e063e40 | 1 root tracked, 1 companion tracked, 1 untracked"
+        )
+        assert payload["summary_line"] == (
+            "root dirty e063e40 | 1 root tracked, 1 companion tracked, 1 untracked | "
+            "eta clean 9cfb7d8 | submodule aligned 9cfb7d8"
+        )
+
+    def test_classify_workspace_submodule_wiring_treats_optional_missing_as_review(self):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        payload = mod._classify_workspace_submodule_wiring(
+            {
+                "eta_engine": {"blockers": ["dirty worktree", "gitlink diverged"]},
+                "firm": {"blockers": []},
+                "mnq_backtest": {"blockers": ["missing submodule checkout", "gitlink uninitialized"]},
+            }
+        )
+
+        assert payload["status"] == "review"
+        assert payload["summary_short"] == "dirty/diverged integration + optional missing (eta_engine, mnq_backtest)"
+        assert payload["summary_line"] == (
+            "dirty/diverged child integration plus optional missing submodule checkout "
+            "blocks gitlink wiring (eta_engine, mnq_backtest)"
+        )
+
+    def test_workspace_checkout_payload_uncached_includes_wiring_review_summary(self, monkeypatch, tmp_path):
+        from pathlib import Path
+
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        workspace = tmp_path / "workspace"
+        eta_root = workspace / "eta_engine"
+        eta_root.mkdir(parents=True, exist_ok=True)
+
+        def fake_git_command(repo_path, *args):
+            if args == ("rev-parse", "--show-toplevel"):
+                return 0, str(repo_path), ""
+            if args == ("rev-parse", "HEAD"):
+                if Path(repo_path) == workspace:
+                    return 0, "e063e40abcdef1234567890", ""
+                return 0, "9cfb7d8abcdef1234567890", ""
+            if args == ("branch", "--show-current"):
+                if Path(repo_path) == workspace:
+                    return 0, "codex/vps-data-pipeline-hardening", ""
+                return 0, "codex/symbol-intel-data-spine", ""
+            if args == ("status", "--porcelain=v1"):
+                return 0, "", ""
+            if args == ("submodule", "status", "eta_engine"):
+                return 0, " 9cfb7d8abcdef1234567890 eta_engine (heads/codex/symbol-intel-data-spine)", ""
+            raise AssertionError(f"unexpected git args: {args!r}")
+
+        monkeypatch.setattr(mod, "_WORKSPACE_ROOT", workspace)
+        monkeypatch.setattr(mod, "_REPO_ROOT", eta_root)
+        monkeypatch.setattr(mod, "_git_command", fake_git_command)
+        monkeypatch.setattr(
+            mod,
+            "_workspace_submodule_wiring_payload",
+            lambda: {
+                "status": "review",
+                "summary_line": (
+                    "dirty/diverged child integration plus optional missing submodule checkout "
+                    "blocks gitlink wiring (eta_engine, mnq_backtest)"
+                ),
+                "summary_short": "dirty/diverged integration + optional missing (eta_engine, mnq_backtest)",
+                "modules": {},
+            },
+        )
+
+        payload = mod._workspace_checkout_payload_uncached()
+
+        assert payload["status"] == "review"
+        assert payload["wiring"]["status"] == "review"
+        assert (
+            "wiring dirty/diverged integration + optional missing (eta_engine, mnq_backtest)"
+            in payload["summary_line"]
+        )
 
     def test_master_status_vps_root_card_warns_on_live_checkout_review(self, app_client, tmp_path, monkeypatch):
         import eta_engine.deploy.scripts.dashboard_api as mod
@@ -4701,6 +8690,61 @@ class TestDashboardAPI:
         assert "live_checkout=review" in payload["systems"]["vps_root"]["detail"]
         assert "eta dirty c08210d" in payload["systems"]["vps_root"]["detail"]
 
+    def test_master_status_vps_root_card_includes_live_checkout_wiring_detail(self, app_client, tmp_path, monkeypatch):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        monkeypatch.setattr(
+            mod,
+            "_workspace_checkout_payload",
+            lambda refresh=False: {
+                "status": "review",
+                "summary_line": (
+                    "root clean dec9423 | eta dirty c08210d | submodule aligned c08210d | "
+                    "wiring dirty/diverged integration + optional missing (eta_engine, mnq_backtest)"
+                ),
+                "wiring": {
+                    "status": "review",
+                    "summary_line": (
+                        "dirty/diverged child integration plus optional missing submodule checkout "
+                        "blocks gitlink wiring (eta_engine, mnq_backtest)"
+                    ),
+                },
+            },
+        )
+        (tmp_path / "state" / "vps_root_reconciliation_plan.json").write_text(
+            json.dumps(
+                {
+                    "status": "ok",
+                    "mode": "review_plan_only",
+                    "risk_level": "low",
+                    "cleanup_allowed": False,
+                    "destructive_actions_performed": False,
+                    "counts": {"status": 0, "submodule_drift": 0, "dirty_companion_repos": 0},
+                    "summary": {
+                        "source_or_governance_deleted": 0,
+                        "unknown_deleted": 0,
+                        "generated_untracked": 0,
+                        "source_or_governance_untracked": 0,
+                        "submodule_drift": 0,
+                        "dirty_companion_repos": 0,
+                        "submodule_uninitialized": 1,
+                    },
+                    "steps": [],
+                },
+            ),
+            encoding="utf-8",
+        )
+
+        response = app_client.get("/api/master/status")
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["systems"]["vps_root"]["status"] == "YELLOW"
+        assert (
+            "wiring=dirty/diverged child integration plus optional missing submodule checkout "
+            "blocks gitlink wiring (eta_engine, mnq_backtest)"
+        ) in payload["systems"]["vps_root"]["detail"]
+
     def test_vps_root_reconciliation_prefers_plan_recommended_action(self, app_client, tmp_path, monkeypatch):
         import eta_engine.deploy.scripts.dashboard_api as mod
 
@@ -4709,7 +8753,28 @@ class TestDashboardAPI:
             "_workspace_checkout_payload",
             lambda refresh=False: {
                 "status": "clean",
-                "summary_line": "root clean abc1234 | eta clean def5678 | submodule aligned c08210d",
+                "summary_line": "root clean abc1234 | eta dirty def5678 | submodule aligned def5678",
+                "eta_engine": {
+                    "status": "dirty",
+                    "branch": "codex/runtime-review",
+                    "head_short": "def5678",
+                    "tracked_change_count": 26,
+                    "untracked_change_count": 4,
+                    "summary_line": "eta dirty def5678 | 26 tracked, 4 untracked",
+                },
+                "submodule": {
+                    "path": "eta_engine",
+                    "status": "aligned",
+                    "state_label": "aligned",
+                    "expected_short": "def5678",
+                },
+                "wiring": {
+                    "status": "review",
+                    "summary_line": (
+                        "dirty/diverged child integration plus optional missing submodule checkout "
+                        "blocks gitlink wiring (eta_engine, mnq_backtest)"
+                    ),
+                },
             },
         )
         plan = {
@@ -4755,7 +8820,28 @@ class TestDashboardAPI:
             "_workspace_checkout_payload",
             lambda refresh=False: {
                 "status": "clean",
-                "summary_line": "root clean abc1234 | eta clean def5678 | submodule aligned c08210d",
+                "summary_line": "root clean abc1234 | eta dirty def5678 | submodule aligned def5678",
+                "eta_engine": {
+                    "status": "dirty",
+                    "branch": "codex/runtime-review",
+                    "head_short": "def5678",
+                    "tracked_change_count": 26,
+                    "untracked_change_count": 4,
+                    "summary_line": "eta dirty def5678 | 26 tracked, 4 untracked",
+                },
+                "submodule": {
+                    "path": "eta_engine",
+                    "status": "aligned",
+                    "state_label": "aligned",
+                    "expected_short": "def5678",
+                },
+                "wiring": {
+                    "status": "review",
+                    "summary_line": (
+                        "dirty/diverged child integration plus optional missing submodule checkout "
+                        "blocks gitlink wiring (eta_engine, mnq_backtest)"
+                    ),
+                },
             },
         )
         plan_path = tmp_path / "state" / "vps_root_reconciliation_plan.json"
@@ -4792,8 +8878,37 @@ class TestDashboardAPI:
             mod,
             "_workspace_checkout_payload",
             lambda refresh=False: {
-                "status": "clean",
-                "summary_line": "root clean abc1234 | eta clean def5678 | submodule aligned c08210d",
+                "status": "review",
+                "summary_line": "root dirty abc1234 | eta dirty def5678 | submodule aligned def5678",
+                "root": {
+                    "status": "dirty",
+                    "branch": "codex/root-review",
+                    "head_short": "abc1234",
+                    "tracked_change_count": 3,
+                    "untracked_change_count": 0,
+                    "summary_line": "root dirty abc1234 | 3 root tracked",
+                },
+                "eta_engine": {
+                    "status": "dirty",
+                    "branch": "detached",
+                    "head_short": "def5678",
+                    "tracked_change_count": 26,
+                    "untracked_change_count": 4,
+                    "summary_line": "eta dirty def5678 | 26 tracked, 4 untracked",
+                },
+                "submodule": {
+                    "path": "eta_engine",
+                    "status": "aligned",
+                    "state_label": "aligned",
+                    "expected_short": "def5678",
+                },
+                "wiring": {
+                    "status": "review",
+                    "summary_line": (
+                        "dirty/diverged child integration plus optional missing submodule checkout "
+                        "blocks gitlink wiring (eta_engine, mnq_backtest)"
+                    ),
+                },
             },
         )
         (tmp_path / "state" / "vps_root_reconciliation_plan.json").write_text(
@@ -4803,14 +8918,142 @@ class TestDashboardAPI:
                     "risk_level": "high",
                     "cleanup_allowed": False,
                     "destructive_actions_performed": False,
-                    "counts": {"status": 279, "submodule_drift": 6, "dirty_companion_repos": 3},
+                    "counts": {
+                        "status": 279,
+                        "submodule_drift": 6,
+                        "dirty_companion_repos": 3,
+                        "optional_dormant_deleted_tracked": 1,
+                    },
                     "summary": {
                         "source_or_governance_deleted": 124,
+                        "source_or_governance_modified": 3,
+                        "optional_dormant_deleted_tracked": 1,
                         "unknown_deleted": 2,
                         "submodule_drift": 6,
                         "dirty_companion_repos": 3,
                     },
-                    "steps": [],
+                    "steps": [
+                        {
+                            "id": "restore-source-governance",
+                            "title": "Review tracked source and governance modifications",
+                            "risk": "medium",
+                            "decision": "manual_review_required",
+                            "action": "Review tracked root source/governance modifications.",
+                            "evidence": [
+                                "source_or_governance_deleted=124",
+                                "source_or_governance_modified=3",
+                                "scripts/command-center-watchdog-status.ps1",
+                                "scripts/reload-operator-service.ps1",
+                                "scripts/verify_operator_source_of_truth.py",
+                            ],
+                        },
+                        {
+                            "id": "align-submodules",
+                            "title": "Align companion repositories",
+                            "risk": "medium",
+                            "decision": "manual_review_required",
+                            "action": "Review dirty companion worktrees.",
+                            "evidence": [
+                                "submodule_drift=6",
+                                "dirty_companion_repos=3",
+                                "eta_engine:submodule_pointer_changed",
+                            ],
+                        }
+                    ],
+                    "source_review_items": [
+                        {
+                            "path": "scripts/command-center-watchdog-status.ps1",
+                            "basename": "command-center-watchdog-status.ps1",
+                            "change_class": "modified",
+                            "area": "operator_watchdog_truth",
+                            "rationale": (
+                                "Tracks Command Center watchdog truth, task contract "
+                                "drift, and public route health semantics."
+                            ),
+                            "change_summary": (
+                                "Adds runtime dependency-gap probing, watchdog/dashboard "
+                                "task-contract checks, and display-safe operator summaries."
+                            ),
+                            "verification_command": (
+                                "powershell -ExecutionPolicy Bypass -File "
+                                ".\\scripts\\command-center-watchdog-status.ps1 -Json"
+                            ),
+                        "verification_goal": (
+                            "Confirm the live watchdog contract, task-contract status, "
+                            "and display-safe operator summary on the authoritative host."
+                        ),
+                        "verification_mode": "status_probe",
+                        "verification_side_effects": "refreshes the canonical watchdog receipt",
+                        "suggested_decision": "preserve_if_it_matches_live_watchdog_contract",
+                    },
+                        {
+                            "path": "scripts/reload-operator-service.ps1",
+                            "basename": "reload-operator-service.ps1",
+                            "change_class": "modified",
+                            "area": "operator_reload_runtime",
+                            "rationale": (
+                                "Controls canonical 8421 reload behavior and the "
+                                "task-owned Command Center runtime path on the VPS."
+                            ),
+                            "change_summary": (
+                                "Replaces brittle raw 8421 waits with unified local-truth "
+                                "verification and uses the canonical runtime Python."
+                            ),
+                            "verification_command": (
+                                "powershell -ExecutionPolicy Bypass -File "
+                                ".\\scripts\\reload-operator-service.ps1 "
+                                "-SkipPublicCheck -SkipWatchdogRegistration "
+                                "-NoAutoElevate -TimeoutSeconds 30"
+                            ),
+                        "verification_goal": (
+                            "Confirm the VPS reload flow exits cleanly and re-verifies "
+                            "the local 8421 operator contract."
+                        ),
+                        "verification_mode": "runtime_reload",
+                        "verification_side_effects": (
+                            "re-registers dashboard tasks, refreshes live service wiring, "
+                            "and reloads the 8421 operator surface"
+                        ),
+                        "suggested_decision": "preserve_if_it_matches_live_8421_reload_flow",
+                    },
+                        {
+                            "path": "scripts/verify_operator_source_of_truth.py",
+                            "basename": "verify_operator_source_of_truth.py",
+                            "change_class": "modified",
+                            "area": "operator_contract_verification",
+                            "rationale": (
+                                "Verifies operator truth surfaces, including transient "
+                                "endpoint retries and upstream failure classification."
+                            ),
+                            "change_summary": (
+                                "Adds transient endpoint retries, upstream 5xx "
+                                "classification, and display-summary leakage checks."
+                            ),
+                            "verification_command": (
+                                "python .\\scripts\\verify_operator_source_of_truth.py "
+                                "--base-url http://127.0.0.1:8421 --timeout 30"
+                            ),
+                        "verification_goal": (
+                            "Confirm the canonical local operator verifier accepts "
+                            "the live 8421 payloads and failure classification contract."
+                        ),
+                        "verification_mode": "read_only_contract_probe",
+                        "verification_side_effects": "none",
+                        "suggested_decision": "preserve_if_it_matches_current_operator_contract",
+                    },
+                    ],
+                    "companion_review_items": [
+                        {
+                            "target": "eta_engine",
+                            "reason": "submodule_pointer_changed",
+                            "rationale": (
+                                "The authoritative ETA child repo is dirty/diverged "
+                                "and needs a child-repo decision before the root "
+                                "gitlink is updated."
+                            ),
+                            "suggested_decision": "commit_preserve_or_pin_before_root_update",
+                        }
+                    ],
                 },
             ),
         )
@@ -4822,7 +9065,146 @@ class TestDashboardAPI:
         assert payload["vps_root_reconciliation"]["status"] == "review_required"
         assert payload["systems"]["vps_root"]["status"] == "YELLOW"
         assert payload["systems"]["vps_root"]["source"] == "vps_root_reconciliation"
+        assert payload["systems"]["vps_root"]["source_review_files"] == [
+            "command-center-watchdog-status.ps1",
+            "reload-operator-service.ps1",
+            "verify_operator_source_of_truth.py",
+        ]
+        assert (
+            payload["systems"]["vps_root"]["source_review_items"][0]["basename"]
+            == "command-center-watchdog-status.ps1"
+        )
+        assert payload["systems"]["vps_root"]["companion_review_targets"] == ["eta_engine"]
+        assert payload["systems"]["vps_root"]["companion_review_items"][0]["target"] == "eta_engine"
+        assert payload["systems"]["vps_root"]["review_focus_summary_line"] == (
+            "root dirty abc1234 | 3 root tracked; "
+            "eta_engine: eta dirty def5678 | 26 tracked, 4 untracked; "
+            "manual review before root update"
+        )
+        assert payload["systems"]["vps_root"]["review_focus_primary_command"] == (
+            "git -C C:\\EvolutionaryTradingAlgo diff -- scripts/command-center-watchdog-status.ps1"
+        )
+        assert payload["systems"]["vps_root"]["review_focus_primary_action"] == {
+            "scope": "source",
+            "path": "scripts/command-center-watchdog-status.ps1",
+            "basename": "command-center-watchdog-status.ps1",
+            "area": "operator_watchdog_truth",
+            "change_summary": (
+                "Adds runtime dependency-gap probing, watchdog/dashboard "
+                "task-contract checks, and display-safe operator summaries."
+            ),
+            "verification_command": (
+                "powershell -ExecutionPolicy Bypass -File "
+                ".\\scripts\\command-center-watchdog-status.ps1 -Json"
+            ),
+            "verification_goal": (
+                "Confirm the live watchdog contract, task-contract status, "
+                "and display-safe operator summary on the authoritative host."
+            ),
+            "verification_mode": "status_probe",
+            "verification_side_effects": "refreshes the canonical watchdog receipt",
+            "suggested_decision": "preserve_if_it_matches_live_watchdog_contract",
+            "command": "git -C C:\\EvolutionaryTradingAlgo diff -- scripts/command-center-watchdog-status.ps1",
+        }
+        review_focus = payload["systems"]["vps_root"]["review_focus"]
+        assert review_focus["source_modified_count"] == 3
+        assert review_focus["dirty_companion_repos"] == 3
+        assert review_focus["source_review_item_count"] == 3
+        assert review_focus["companion_review_item_count"] == 1
+        assert review_focus["source_review_context"] == {
+            "status": "dirty",
+            "branch": "codex/root-review",
+            "head_short": "abc1234",
+            "tracked_change_count": 3,
+            "untracked_change_count": 0,
+            "summary_line": "root dirty abc1234 | 3 root tracked",
+        }
+        assert review_focus["summary_line"] == payload["systems"]["vps_root"]["review_focus_summary_line"]
+        assert review_focus["companion_review_targets"] == ["eta_engine"]
+        assert review_focus["companion_review_reasons"] == ["submodule_pointer_changed"]
+        assert review_focus["companion_review_suggested_decisions"] == [
+            "commit_preserve_or_pin_before_root_update",
+        ]
+        assert review_focus["companion_review_status"] == ""
+        assert review_focus["companion_review_summary_line"] == ""
+        assert review_focus["companion_review_details"][0] == {
+            "target": "eta_engine",
+            "reason": "submodule_pointer_changed",
+            "rationale": (
+                "The authoritative ETA child repo is dirty/diverged "
+                "and needs a child-repo decision before the root "
+                "gitlink is updated."
+            ),
+            "suggested_decision": "commit_preserve_or_pin_before_root_update",
+            "status": "dirty",
+            "branch": "detached",
+            "head_short": "def5678",
+            "tracked_change_count": 26,
+            "untracked_change_count": 4,
+            "summary_line": "eta dirty def5678 | 26 tracked, 4 untracked",
+            "submodule_status": "aligned",
+            "submodule_state_label": "aligned",
+            "submodule_expected_short": "def5678",
+            "wiring_status": "review",
+            "wiring_summary": (
+                "dirty/diverged child integration plus optional missing submodule checkout "
+                "blocks gitlink wiring (eta_engine, mnq_backtest)"
+            ),
+            "status_command": "git -C C:\\EvolutionaryTradingAlgo\\eta_engine status --short",
+            "inspection_command": "git -C C:\\EvolutionaryTradingAlgo\\eta_engine status --short",
+        }
+        assert review_focus["review_actions"][-1] == {
+            "scope": "companion",
+            "target": "eta_engine",
+            "reason": "submodule_pointer_changed",
+            "suggested_decision": "commit_preserve_or_pin_before_root_update",
+            "command": "git -C C:\\EvolutionaryTradingAlgo\\eta_engine status --short",
+            "overview_command": "git -C C:\\EvolutionaryTradingAlgo\\eta_engine status --short",
+            "overview_summary": "",
+            "drilldown_command": "git -C C:\\EvolutionaryTradingAlgo\\eta_engine status --short",
+            "review_sequence": [
+                {
+                    "step": 1,
+                    "kind": "overview",
+                    "label": "Batch overview",
+                    "command": "git -C C:\\EvolutionaryTradingAlgo\\eta_engine status --short",
+                }
+            ],
+            "review_sequence_summary": "overview",
+            "status_command": "git -C C:\\EvolutionaryTradingAlgo\\eta_engine status --short",
+            "inspection_command": "git -C C:\\EvolutionaryTradingAlgo\\eta_engine status --short",
+            "inspection_group_command": "git -C C:\\EvolutionaryTradingAlgo\\eta_engine status --short",
+            "inspection_sample_paths": [],
+            "inspection_sample_commands": [],
+            "batch_scope_command": "",
+            "batch_scope_stat_command": "",
+            "batch_scope_shortstat": "",
+            "batch_scope_paths": [],
+            "batch_scope_path_count": 0,
+            "inspection_focus": "",
+            "summary_line": "eta dirty def5678 | 26 tracked, 4 untracked",
+        }
+        assert review_focus["primary_review_action"] == payload["systems"]["vps_root"]["review_focus_primary_action"]
+        assert review_focus["source_step_id"] == "restore-source-governance"
+        assert review_focus["source_step_decision"] == "manual_review_required"
+        assert review_focus["companion_step_id"] == "align-submodules"
+        assert review_focus["companion_step_decision"] == "manual_review_required"
         assert "source_deleted=124" in payload["systems"]["vps_root"]["detail"]
+        assert "source_modified=3" in payload["systems"]["vps_root"]["detail"]
+        assert "optional_dormant_deleted=1" in payload["systems"]["vps_root"]["detail"]
+        assert (
+            "source_review_files=command-center-watchdog-status.ps1,reload-operator-service.ps1,"
+            "verify_operator_source_of_truth.py"
+        ) in payload["systems"]["vps_root"]["detail"]
+        assert "companion_review_targets=eta_engine" in payload["systems"]["vps_root"]["detail"]
+        assert (
+            "review_focus=root dirty abc1234 | 3 root tracked; eta_engine: eta dirty def5678 | "
+            "26 tracked, 4 untracked; manual review before root update"
+        ) in payload["systems"]["vps_root"]["detail"]
+        assert (
+            "review_cmd=git -C C:\\EvolutionaryTradingAlgo diff -- scripts/command-center-watchdog-status.ps1"
+        ) in payload["systems"]["vps_root"]["detail"]
+        assert "review_scope=source" in payload["systems"]["vps_root"]["detail"]
         assert "dirty_companions=3" in payload["systems"]["vps_root"]["detail"]
 
     def test_master_status_marks_vps_root_yellow_when_live_checkout_needs_review(
@@ -4944,7 +9326,10 @@ class TestDashboardAPI:
         from pathlib import Path
 
         state = Path(os.environ["ETA_STATE_DIR"])
-        audit = state / "jarvis_audit.jsonl"
+        today = datetime.now(UTC).strftime("%Y-%m-%d")
+        audit_dir = state / "jarvis_audit"
+        audit_dir.mkdir(parents=True, exist_ok=True)
+        audit = audit_dir / f"{today}.jsonl"
         # 3 entries: one approved, one denied, one conditional
         rows = [
             {
@@ -5008,7 +9393,10 @@ class TestDashboardAPI:
         from pathlib import Path
 
         state = Path(os.environ["ETA_STATE_DIR"])
-        audit = state / "jarvis_audit.jsonl"
+        today = datetime.now(UTC).strftime("%Y-%m-%d")
+        audit_dir = state / "jarvis_audit"
+        audit_dir.mkdir(parents=True, exist_ok=True)
+        audit = audit_dir / f"{today}.jsonl"
         rows = [
             {
                 "ts": "2026-04-24T10:00:00+00:00",
@@ -5053,7 +9441,10 @@ class TestDashboardAPI:
         from pathlib import Path
 
         state = Path(os.environ["ETA_STATE_DIR"])
-        audit = state / "jarvis_audit.jsonl"
+        today = datetime.now(UTC).strftime("%Y-%m-%d")
+        audit_dir = state / "jarvis_audit"
+        audit_dir.mkdir(parents=True, exist_ok=True)
+        audit = audit_dir / f"{today}.jsonl"
         rows = [
             {
                 "request": {"subsystem": "bot.mnq"},
@@ -5088,6 +9479,41 @@ class TestDashboardAPI:
         assert j["by_verdict"]["CONDITIONAL"] == 1
         assert j["by_sub_verdict"]["bot.mnq"]["APPROVED"] == 2
         assert j["by_sub_verdict"]["bot.mnq"]["DENIED"] == 1
+
+    def test_recent_verdict_rows_from_log_reads_canonical_daily_audit_dir(self, app_client):
+        import os
+        from pathlib import Path
+
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        state = Path(os.environ["ETA_STATE_DIR"])
+        today = datetime.now(UTC).strftime("%Y-%m-%d")
+        audit_dir = state / "jarvis_audit"
+        audit_dir.mkdir(parents=True, exist_ok=True)
+        (audit_dir / f"{today}.jsonl").write_text(
+            json.dumps(
+                {
+                    "ts": "2026-05-15T10:00:00+00:00",
+                    "bot_id": "mnq_futures_sage",
+                    "request": {
+                        "subsystem": "bot.mnq",
+                        "action": "ORDER_PLACE",
+                    },
+                    "response": {
+                        "verdict": "APPROVED",
+                        "reason": "canonical daily audit hit",
+                    },
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        rows = mod._recent_verdict_rows_from_log(bot_id="mnq_futures_sage", limit=5)
+
+        assert len(rows) == 1
+        assert rows[0]["verdict"] == "APPROVED"
+        assert rows[0]["reason"] == "canonical daily audit hit"
 
     # ------------------------------------------------------------------ #
     # Broker readiness + BTC fleet endpoints
@@ -5128,6 +9554,7 @@ class TestDashboardAPI:
         """Seed a fleet dir under STATE_DIR/broker_fleet and verify the endpoint
         returns the lane snapshots."""
         import os
+        from datetime import UTC, datetime
         from pathlib import Path
 
         state = Path(os.environ["ETA_STATE_DIR"])
@@ -5138,10 +9565,15 @@ class TestDashboardAPI:
         (fleet_dir / "btc_broker_fleet_latest.json").write_text(
             json.dumps(
                 {
-                    "generated_at_utc": "2026-04-24T10:00:00+00:00",
+                    "generated_at_utc": datetime.now(UTC).isoformat(),
                     "fleet": "btc_broker_paper_fleet",
                     "requested_workers": 4,
                     "running_workers": 2,
+                    "paper_balance_tracking": "not_tracked",
+                    "paper_balance_note": (
+                        "starting cash is configuration only; current worker cash/equity "
+                        "is not tracked by the BTC broker-paper heartbeat"
+                    ),
                 }
             ),
             encoding="utf-8",
@@ -5196,6 +9628,14 @@ class TestDashboardAPI:
                     "status": "RUNNING",
                     "pid": 12345,
                     "execution_state": "ACTIVE",
+                    "paper_starting_cash": 5000.0,
+                    "paper_cash": None,
+                    "paper_equity": None,
+                    "paper_balance_tracking": "not_tracked",
+                    "paper_balance_note": (
+                        "starting cash is configuration only; worker heartbeat does not "
+                        "mark cash/equity to market"
+                    ),
                 }
             ),
             encoding="utf-8",
@@ -5205,6 +9645,9 @@ class TestDashboardAPI:
         assert r.status_code == 200
         j = r.json()
         assert j["lane_count"] == 2
+        assert j["manifest_stale"] is False
+        assert j["manifest_stale_after_s"] > 0
+        assert j["paper_balance_tracking"] == "not_tracked"
         # Sorted by filename so directional comes first (d < g)
         directional = next(lane for lane in j["lanes"] if lane["lane"] == "directional")
         grid = next(lane for lane in j["lanes"] if lane["lane"] == "grid")
@@ -5214,7 +9657,72 @@ class TestDashboardAPI:
         assert grid["heartbeat_status"] == "RUNNING"
         assert grid["pid"] == 12345
         assert grid["execution_state"] == "ACTIVE"
+        assert grid["paper_cash"] is None
+        assert grid["paper_equity"] is None
+        assert grid["paper_balance_tracking"] == "not_tracked"
         assert j["manifest"]["fleet"] == "btc_broker_paper_fleet"
+
+    def test_btc_lanes_marks_stale_manifest(self, tmp_path, app_client):
+        import os
+        from datetime import UTC, datetime, timedelta
+        from pathlib import Path
+
+        state = Path(os.environ["ETA_STATE_DIR"])
+        fleet_dir = state / "broker_fleet"
+        fleet_dir.mkdir(parents=True, exist_ok=True)
+
+        (fleet_dir / "btc_broker_fleet_latest.json").write_text(
+            json.dumps(
+                {
+                    "generated_at_utc": (datetime.now(UTC) - timedelta(days=2)).isoformat(),
+                    "fleet": "btc_broker_paper_fleet",
+                    "requested_workers": 4,
+                    "running_workers": 0,
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/btc/lanes")
+        assert r.status_code == 200
+        j = r.json()
+        assert j["manifest_stale"] is True
+        assert j["manifest_age_s"] is not None
+        assert j["manifest_age_s"] > j["manifest_stale_after_s"]
+
+    def test_btc_lanes_does_not_fall_back_to_repo_docs_when_state_dir_is_overridden(
+        self,
+        tmp_path,
+        monkeypatch,
+    ):
+        import importlib
+
+        monkeypatch.setenv("ETA_STATE_DIR", str(tmp_path / "state"))
+        monkeypatch.setenv("ETA_LOG_DIR", str(tmp_path / "logs"))
+        monkeypatch.setenv("ETA_DASHBOARD_DISABLE_BROKER_PROBES", "1")
+        monkeypatch.delenv("ETA_BTC_FLEET_DIR", raising=False)
+        (tmp_path / "state").mkdir()
+        (tmp_path / "logs").mkdir()
+
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        importlib.reload(mod)
+        try:
+            state = tmp_path / "state"
+            assert state != mod._DEFAULT_STATE
+            docs_fleet_dir = mod._WORKSPACE_ROOT / "eta_engine" / "docs" / "btc_live" / "broker_fleet"
+            assert docs_fleet_dir.exists()
+
+            with TestClient(mod.app) as client:
+                r = client.get("/api/btc/lanes")
+                assert r.status_code == 200
+                j = r.json()
+                assert j["lanes"] == []
+                assert j["manifest"] is None
+                assert j["fleet_dir"] == str(state / "broker_fleet")
+                assert "fleet dir not found" in j.get("note", "")
+        finally:
+            importlib.reload(mod)
 
     def test_btc_trades_tails_ledger(self, tmp_path, app_client):
         import os
@@ -5437,6 +9945,55 @@ class TestDashboardAPI:
         fleet = j["systems"]["btc_fleet"]
         assert fleet["status"] == "GREEN"
         assert "4/4" in fleet["detail"]
+
+    def test_systems_rollup_yellow_when_btc_manifest_is_stale(
+        self,
+        tmp_path,
+        app_client,
+        monkeypatch,
+    ):
+        from datetime import UTC, datetime, timedelta
+
+        fleet_dir = tmp_path / "state" / "broker_fleet"
+        fleet_dir.mkdir(parents=True, exist_ok=True)
+        monkeypatch.setenv("ETA_BTC_FLEET_DIR", str(fleet_dir))
+        (fleet_dir / "btc_broker_fleet_latest.json").write_text(
+            json.dumps(
+                {
+                    "generated_at_utc": (datetime.now(UTC) - timedelta(days=2)).isoformat(),
+                    "fleet": "btc_broker_paper_fleet",
+                    "requested_workers": 4,
+                    "running_workers": 4,
+                }
+            ),
+            encoding="utf-8",
+        )
+        for i, (lane, broker) in enumerate(
+            [
+                ("directional", "ibkr"),
+                ("directional", "tastytrade"),
+                ("grid", "ibkr"),
+                ("grid", "tastytrade"),
+            ]
+        ):
+            (fleet_dir / f"btc-{lane}-{broker}.lane.json").write_text(
+                json.dumps(
+                    {
+                        "worker_id": f"btc-{lane}-{broker}",
+                        "broker": broker,
+                        "lane": lane,
+                        "active_order_id": f"srv-{i:03d}",
+                        "active_order_status": "OPEN",
+                    }
+                ),
+                encoding="utf-8",
+            )
+        r = app_client.get("/api/systems")
+        j = r.json()
+        fleet = j["systems"]["btc_fleet"]
+        assert fleet["status"] == "YELLOW"
+        assert "4/4" in fleet["detail"]
+        assert "manifest stale" in fleet["detail"]
 
     def test_default_state_dir_is_repo_relative(self):
         """_DEFAULT_STATE must be under the eta_engine repo, not LOCALAPPDATA."""
@@ -5935,7 +10492,7 @@ class TestDashboardAPI:
         (tmp_path / "state" / "paper_live_transition_check.json").write_text(
             json.dumps(
                 {
-                    "generated_at": "2026-05-09T08:00:00+00:00",
+                    "generated_at": datetime.now(UTC).isoformat(),
                     "status": "ready_to_launch_paper_live",
                     "critical_ready": True,
                     "paper_ready_bots": 12,
@@ -5960,6 +10517,51 @@ class TestDashboardAPI:
         assert payload["summary"]["paper_live_critical_ready"] is True
         assert payload["summary"]["paper_live_ready_bots"] == 12
         assert payload["summary"]["paper_live_launch_blocked_count"] == 0
+
+    def test_bot_fleet_marks_stale_paper_live_summary_as_stale_receipt(self, app_client, tmp_path, monkeypatch):
+        """Stale paper-live cache should not keep derived bot-fleet readiness blocked."""
+        import time
+
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        mod._IBKR_PROBE_CACHE["snapshot"] = {"ready": True, "open_position_count": 0, "open_positions": []}
+        mod._IBKR_PROBE_CACHE["ts"] = time.time()
+        monkeypatch.setattr(
+            mod,
+            "_broker_bracket_audit_payload",
+            lambda **_: {
+                "summary": "READY_NO_OPEN_EXPOSURE",
+                "ready_for_prop_dry_run": True,
+                "operator_action_required": False,
+                "position_summary": {},
+            },
+        )
+        (tmp_path / "state" / "paper_live_transition_check.json").write_text(
+            json.dumps(
+                {
+                    "generated_at": "2026-05-09T08:00:00+00:00",
+                    "status": "ready_to_launch_paper_live",
+                    "critical_ready": True,
+                    "paper_ready_bots": 12,
+                    "operator_queue_launch_blocked_count": 0,
+                    "operator_queue_first_launch_blocker_op_id": "",
+                    "operator_queue_first_launch_next_action": "",
+                    "gates": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/bot-fleet")
+
+        assert r.status_code == 200
+        payload = r.json()
+        assert payload["paper_live_transition"]["status"] == "ready_to_launch_paper_live"
+        assert payload["paper_live_transition"]["stale_receipt"] is True
+        assert payload["summary"]["paper_live_status"] == "ready_to_launch_paper_live"
+        assert payload["summary"]["paper_live_effective_status"] == "stale_receipt"
+        assert payload["summary"]["paper_live_stale_receipt"] is True
+        assert "stale" in payload["summary"]["paper_live_stale_detail"].lower()
 
     def test_bot_fleet_marks_shadow_paper_active_when_attached_runtime_is_live(self, app_client, tmp_path):
         """Fresh attached shadow-paper rows should override a stale launch label in the summary."""
@@ -6111,6 +10713,44 @@ class TestDashboardAPI:
         assert rollup["kinds"] == {"daily_kill_switch": 1}
         assert rollup["summary_line"].startswith("Current blockers: 1 bot(s) held - 1 daily kill switch")
 
+    def test_blocked_bot_rollup_separates_actionable_holds_from_session_gates(self):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        rows = [
+            {
+                "name": "mnq_futures_sage",
+                "symbol": "MNQ1",
+                "current_block_kind": "broker_router_signal_cooldown",
+                "current_block_reason": "broker_router_signal_cooldown",
+                "current_block_summary": "Broker router signal cooldown active",
+                "current_block_at": "2026-05-16T13:57:34+00:00",
+            },
+            {
+                "name": "volume_profile_nq",
+                "symbol": "NQ1",
+                "current_block_kind": "session_gate",
+                "current_block_reason": "session_gate:outside_rth",
+                "current_block_summary": "Entries paused by session gate: outside_rth",
+                "current_block_at": "2026-05-16T13:58:34+00:00",
+            },
+        ]
+
+        rollup = mod._blocked_bot_rollup(rows)
+
+        assert rollup["count"] == 2
+        assert rollup["kinds"] == {"broker_router_signal_cooldown": 1, "session_gate": 1}
+        assert rollup["actionable_count"] == 1
+        assert rollup["actionable_kinds"] == {"broker_router_signal_cooldown": 1}
+        assert rollup["actionable_summary_line"] == (
+            "Actionable blockers: 1 bot(s) - 1 broker router signal cooldown. "
+            "Top: mnq_futures_sage. Awaiting session: 1 bot(s)."
+        )
+        assert rollup["session_gated_count"] == 1
+        assert rollup["session_gated_kinds"] == {"session_gate": 1}
+        assert rollup["session_gated_summary_line"] == (
+            "Awaiting session: 1 bot(s) - 1 session gate. Top: volume_profile_nq."
+        )
+
     def test_global_daily_loss_stop_leaves_shadow_paper_rows_unblocked(self):
         import eta_engine.deploy.scripts.dashboard_api as mod
 
@@ -6143,6 +10783,30 @@ class TestDashboardAPI:
         assert rows[0]["daily_loss_advisory_active"] is True
         assert rows[0]["capital_lanes_held_by_daily_loss_stop"] is True
 
+    def test_non_authoritative_host_suppresses_local_daily_loss_row_blocks(self):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        rows = [
+            {
+                "name": "mnq_futures_sage",
+                "symbol": "MNQ1",
+                "current_block_source": "aggregation",
+                "current_block_kind": "daily_kill_switch",
+                "current_block_reason": "daily_kill_switch:day_pnl=$-925.50 <= limit=$-900.00 (date=2026-05-15)",
+                "current_block_summary": "Entries halted by daily kill switch",
+                "current_block_at": "2026-05-15T14:00:00+00:00",
+                "daily_loss_gate_active": True,
+            }
+        ]
+
+        mod._suppress_non_authoritative_local_daily_loss_row_blocks(rows)
+
+        assert rows[0]["current_block_kind"] == ""
+        assert rows[0]["current_block_reason"] == ""
+        assert rows[0]["daily_loss_gate_active"] is False
+        assert rows[0]["daily_loss_suppressed_non_authoritative_gateway_host"] is True
+        assert rows[0]["suppressed_current_block_kind"] == "daily_kill_switch"
+
     def test_bot_fleet_embeds_vps_root_reconciliation_summary(self, app_client, tmp_path, monkeypatch):
         """Bot-fleet consumers need the root dirty-tree review state without another probe."""
         import eta_engine.deploy.scripts.dashboard_api as mod
@@ -6162,15 +10826,43 @@ class TestDashboardAPI:
                     "risk_level": "medium",
                     "cleanup_allowed": False,
                     "destructive_actions_performed": False,
-                    "counts": {"status": 4, "submodule_drift": 5, "dirty_companion_repos": 3},
+                    "counts": {
+                        "status": 4,
+                        "submodule_drift": 5,
+                        "dirty_companion_repos": 3,
+                        "optional_dormant_deleted_tracked": 1,
+                    },
                     "summary": {
                         "source_or_governance_deleted": 0,
+                        "source_or_governance_modified": 3,
+                        "optional_dormant_deleted_tracked": 1,
                         "unknown_deleted": 0,
                         "submodule_drift": 5,
                         "dirty_companion_repos": 3,
                     },
-                    "recommended_action": "Review dirty companion worktrees before root cleanup.",
+                    "recommended_action": (
+                        "Review tracked root source/governance modifications and dirty companion worktrees "
+                        "before updating the superproject root."
+                    ),
                     "steps": [
+                        {
+                            "id": "restore-source-governance",
+                            "title": "Review tracked source and governance modifications",
+                            "risk": "medium",
+                            "decision": "manual_review_required",
+                            "action": (
+                                "Review tracked root source/governance modifications and decide whether they "
+                                "should be committed, preserved as local runtime edits, or reverted before "
+                                "branch updates."
+                            ),
+                            "evidence": [
+                                "source_or_governance_deleted=0",
+                                "source_or_governance_modified=3",
+                                "scripts/command-center-watchdog-status.ps1",
+                                "scripts/reload-operator-service.ps1",
+                                "scripts/verify_operator_source_of_truth.py",
+                            ],
+                        },
                         {
                             "id": "align-submodules",
                             "title": "Align companion repositories",
@@ -6182,7 +10874,102 @@ class TestDashboardAPI:
                             "evidence": [
                                 "submodule_drift=5",
                                 "dirty_companion_repos=3",
+                                "eta_engine:submodule_pointer_changed",
                             ],
+                        }
+                    ],
+                    "source_review_items": [
+                        {
+                            "path": "scripts/command-center-watchdog-status.ps1",
+                            "basename": "command-center-watchdog-status.ps1",
+                            "change_class": "modified",
+                            "area": "operator_watchdog_truth",
+                            "rationale": (
+                                "Tracks Command Center watchdog truth, task contract "
+                                "drift, and public route health semantics."
+                            ),
+                            "change_summary": (
+                                "Adds runtime dependency-gap probing, watchdog/dashboard "
+                                "task-contract checks, and display-safe operator summaries."
+                            ),
+                            "verification_command": (
+                                "powershell -ExecutionPolicy Bypass -File "
+                                ".\\scripts\\command-center-watchdog-status.ps1 -Json"
+                            ),
+                        "verification_goal": (
+                            "Confirm the live watchdog contract, task-contract status, "
+                            "and display-safe operator summary on the authoritative host."
+                        ),
+                        "verification_mode": "status_probe",
+                        "verification_side_effects": "refreshes the canonical watchdog receipt",
+                        "suggested_decision": "preserve_if_it_matches_live_watchdog_contract",
+                    },
+                        {
+                            "path": "scripts/reload-operator-service.ps1",
+                            "basename": "reload-operator-service.ps1",
+                            "change_class": "modified",
+                            "area": "operator_reload_runtime",
+                            "rationale": (
+                                "Controls canonical 8421 reload behavior and the "
+                                "task-owned Command Center runtime path on the VPS."
+                            ),
+                            "change_summary": (
+                                "Replaces brittle raw 8421 waits with unified local-truth "
+                                "verification and uses the canonical runtime Python."
+                            ),
+                            "verification_command": (
+                                "powershell -ExecutionPolicy Bypass -File "
+                                ".\\scripts\\reload-operator-service.ps1 "
+                                "-SkipPublicCheck -SkipWatchdogRegistration "
+                                "-NoAutoElevate -TimeoutSeconds 30"
+                            ),
+                        "verification_goal": (
+                            "Confirm the VPS reload flow exits cleanly and re-verifies "
+                            "the local 8421 operator contract."
+                        ),
+                        "verification_mode": "runtime_reload",
+                        "verification_side_effects": (
+                            "re-registers dashboard tasks, refreshes live service wiring, "
+                            "and reloads the 8421 operator surface"
+                        ),
+                        "suggested_decision": "preserve_if_it_matches_live_8421_reload_flow",
+                    },
+                        {
+                            "path": "scripts/verify_operator_source_of_truth.py",
+                            "basename": "verify_operator_source_of_truth.py",
+                            "change_class": "modified",
+                            "area": "operator_contract_verification",
+                            "rationale": (
+                                "Verifies operator truth surfaces, including transient "
+                                "endpoint retries and upstream failure classification."
+                            ),
+                            "change_summary": (
+                                "Adds transient endpoint retries, upstream 5xx "
+                                "classification, and display-summary leakage checks."
+                            ),
+                            "verification_command": (
+                                "python .\\scripts\\verify_operator_source_of_truth.py "
+                                "--base-url http://127.0.0.1:8421 --timeout 30"
+                            ),
+                        "verification_goal": (
+                            "Confirm the canonical local operator verifier accepts "
+                            "the live 8421 payloads and failure classification contract."
+                        ),
+                        "verification_mode": "read_only_contract_probe",
+                        "verification_side_effects": "none",
+                        "suggested_decision": "preserve_if_it_matches_current_operator_contract",
+                    },
+                    ],
+                    "companion_review_items": [
+                        {
+                            "target": "eta_engine",
+                            "reason": "submodule_pointer_changed",
+                            "rationale": (
+                                "The authoritative ETA child repo is dirty/diverged "
+                                "and needs a child-repo decision before the root "
+                                "gitlink is updated."
+                            ),
+                            "suggested_decision": "commit_preserve_or_pin_before_root_update",
                         }
                     ],
                 }
@@ -6200,24 +10987,131 @@ class TestDashboardAPI:
         assert payload["summary"]["vps_root_risk_level"] == "medium"
         assert payload["summary"]["vps_root_cleanup_allowed"] is False
         assert payload["summary"]["vps_root_source_deleted_count"] == 0
+        assert payload["summary"]["vps_root_source_modified_count"] == 3
+        assert payload["summary"]["vps_root_optional_dormant_deleted_count"] == 1
         assert payload["summary"]["vps_root_submodule_drift"] == 5
         assert payload["summary"]["vps_root_dirty_companion_repos"] == 3
         assert payload["summary"]["vps_root_recommended_action"] == (
-            "Review dirty companion worktrees before root cleanup."
+            "Review tracked root source/governance modifications and dirty companion worktrees "
+            "before updating the superproject root."
         )
-        assert payload["summary"]["vps_root_review_step_count"] == 1
-        assert payload["summary"]["vps_root_top_step_id"] == "align-submodules"
-        assert payload["summary"]["vps_root_top_step_title"] == "Align companion repositories"
+        assert payload["summary"]["vps_root_review_focus_summary_line"] == (
+            "3 root source file(s) under review; eta_engine companion review pending; "
+            "manual review before root update"
+        )
+        assert payload["summary"]["vps_root_review_focus_primary_command"] == (
+            "git -C C:\\EvolutionaryTradingAlgo diff -- scripts/command-center-watchdog-status.ps1"
+        )
+        assert payload["summary"]["vps_root_review_focus_primary_action"] == {
+            "scope": "source",
+            "path": "scripts/command-center-watchdog-status.ps1",
+            "basename": "command-center-watchdog-status.ps1",
+            "area": "operator_watchdog_truth",
+            "change_summary": (
+                "Adds runtime dependency-gap probing, watchdog/dashboard "
+                "task-contract checks, and display-safe operator summaries."
+            ),
+            "verification_command": (
+                "powershell -ExecutionPolicy Bypass -File "
+                ".\\scripts\\command-center-watchdog-status.ps1 -Json"
+            ),
+            "verification_goal": (
+                "Confirm the live watchdog contract, task-contract status, "
+                "and display-safe operator summary on the authoritative host."
+            ),
+            "verification_mode": "status_probe",
+            "verification_side_effects": "refreshes the canonical watchdog receipt",
+            "suggested_decision": "preserve_if_it_matches_live_watchdog_contract",
+            "command": "git -C C:\\EvolutionaryTradingAlgo diff -- scripts/command-center-watchdog-status.ps1",
+        }
+        assert payload["summary"]["vps_root_review_step_count"] == 2
+        assert payload["summary"]["vps_root_top_step_id"] == "restore-source-governance"
+        assert payload["summary"]["vps_root_top_step_title"] == "Review tracked source and governance modifications"
         assert payload["summary"]["vps_root_top_step_risk"] == "medium"
         assert payload["summary"]["vps_root_top_step_decision"] == "manual_review_required"
         assert payload["summary"]["vps_root_top_step_action"] == (
-            "Choose whether each companion repo follows root, live branch, or remains pinned."
+            "Review tracked root source/governance modifications and decide whether they "
+            "should be committed, preserved as local runtime edits, or reverted before "
+            "branch updates."
         )
-        assert payload["summary"]["vps_root_top_step_evidence_count"] == 2
+        assert payload["summary"]["vps_root_reconciliation_top_step_summary"] == (
+            "Review tracked root source/governance modifications and decide whether they "
+            "should be committed, preserved as local runtime edits, or reverted before "
+            "branch updates."
+        )
+        assert payload["summary"]["vps_root_top_step_evidence_count"] == 5
         assert payload["summary"]["vps_root_top_step_evidence"] == [
-            "submodule_drift=5",
-            "dirty_companion_repos=3",
+            "source_or_governance_deleted=0",
+            "source_or_governance_modified=3",
+            "scripts/command-center-watchdog-status.ps1",
+            "scripts/reload-operator-service.ps1",
+            "scripts/verify_operator_source_of_truth.py",
         ]
+        assert payload["summary"]["vps_root_source_step_id"] == "restore-source-governance"
+        assert payload["summary"]["vps_root_source_step_title"] == "Review tracked source and governance modifications"
+        assert payload["summary"]["vps_root_source_step_risk"] == "medium"
+        assert payload["summary"]["vps_root_source_step_decision"] == "manual_review_required"
+        assert payload["summary"]["vps_root_source_step_action"] == (
+            "Review tracked root source/governance modifications and decide whether they "
+            "should be committed, preserved as local runtime edits, or reverted before "
+            "branch updates."
+        )
+        assert payload["summary"]["vps_root_source_step_evidence_count"] == 5
+        assert payload["summary"]["vps_root_source_step_evidence"] == [
+            "source_or_governance_deleted=0",
+            "source_or_governance_modified=3",
+            "scripts/command-center-watchdog-status.ps1",
+            "scripts/reload-operator-service.ps1",
+            "scripts/verify_operator_source_of_truth.py",
+        ]
+        assert payload["summary"]["vps_root_source_review_files"] == [
+            "command-center-watchdog-status.ps1",
+            "reload-operator-service.ps1",
+            "verify_operator_source_of_truth.py",
+        ]
+        assert payload["summary"]["vps_root_source_review_items"][0]["basename"] == "command-center-watchdog-status.ps1"
+        assert payload["summary"]["vps_root_companion_review_targets"] == ["eta_engine"]
+        assert payload["summary"]["vps_root_companion_review_items"][0]["target"] == "eta_engine"
+        review_focus = payload["summary"]["vps_root_review_focus"]
+        assert review_focus["source_modified_count"] == 3
+        assert review_focus["dirty_companion_repos"] == 3
+        assert review_focus["source_review_item_count"] == 3
+        assert review_focus["companion_review_item_count"] == 1
+        assert review_focus["source_review_context"] == {}
+        assert review_focus["summary_line"] == payload["summary"]["vps_root_review_focus_summary_line"]
+        assert review_focus["companion_review_targets"] == ["eta_engine"]
+        assert review_focus["companion_review_reasons"] == ["submodule_pointer_changed"]
+        assert review_focus["companion_review_suggested_decisions"] == [
+            "commit_preserve_or_pin_before_root_update",
+        ]
+        assert review_focus["companion_review_status"] == ""
+        assert review_focus["companion_review_summary_line"] == ""
+        assert review_focus["companion_review_details"][0]["target"] == "eta_engine"
+        assert review_focus["companion_review_details"][0]["reason"] == "submodule_pointer_changed"
+        assert review_focus["companion_review_details"][0]["status_command"] == (
+            "git -C C:\\EvolutionaryTradingAlgo\\eta_engine status --short"
+        )
+        assert review_focus["companion_review_details"][0]["inspection_command"] == (
+            "git -C C:\\EvolutionaryTradingAlgo\\eta_engine status --short"
+        )
+        assert review_focus["review_actions"][-1]["scope"] == "companion"
+        assert review_focus["review_actions"][-1]["target"] == "eta_engine"
+        assert review_focus["review_actions"][-1]["reason"] == "submodule_pointer_changed"
+        assert review_focus["review_actions"][-1]["suggested_decision"] == (
+            "commit_preserve_or_pin_before_root_update"
+        )
+        assert review_focus["review_actions"][-1]["command"] == (
+            "git -C C:\\EvolutionaryTradingAlgo\\eta_engine status --short"
+        )
+        assert review_focus["review_actions"][-1]["status_command"] == (
+            "git -C C:\\EvolutionaryTradingAlgo\\eta_engine status --short"
+        )
+        assert review_focus["review_actions"][-1]["inspection_focus"] == ""
+        assert review_focus["primary_review_action"] == payload["summary"]["vps_root_review_focus_primary_action"]
+        assert review_focus["source_step_id"] == "restore-source-governance"
+        assert review_focus["source_step_decision"] == "manual_review_required"
+        assert review_focus["companion_step_id"] == "align-submodules"
+        assert review_focus["companion_step_decision"] == "manual_review_required"
         assert payload["summary"]["vps_root_companion_step_id"] == "align-submodules"
         assert payload["summary"]["vps_root_companion_step_title"] == "Align companion repositories"
         assert payload["summary"]["vps_root_companion_step_risk"] == "medium"
@@ -6225,10 +11119,11 @@ class TestDashboardAPI:
         assert payload["summary"]["vps_root_companion_step_action"] == (
             "Choose whether each companion repo follows root, live branch, or remains pinned."
         )
-        assert payload["summary"]["vps_root_companion_step_evidence_count"] == 2
+        assert payload["summary"]["vps_root_companion_step_evidence_count"] == 3
         assert payload["summary"]["vps_root_companion_step_evidence"] == [
             "submodule_drift=5",
             "dirty_companion_repos=3",
+            "eta_engine:submodule_pointer_changed",
         ]
 
     def test_bot_fleet_exposes_portfolio_summary_for_allocation_and_pnl_graphs(
@@ -6940,6 +11835,171 @@ class TestDashboardAPI:
         assert status["bracket_target"] == 68400.0
         assert status["bracket_stop"] == 66200.0
 
+    def test_bot_fleet_and_drilldown_surface_retune_focus_active_experiment(self, app_client, monkeypatch):
+        import json
+        import os
+        from pathlib import Path
+
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        state = Path(os.environ["ETA_STATE_DIR"])
+        (state / "diamond_retune_status_latest.json").write_text(
+            json.dumps(
+                {
+                    "kind": "eta_diamond_retune_status",
+                    "status": "ready",
+                    "focus_bot": "mnq_futures_sage",
+                    "focus_issue": "broker_pnl_negative",
+                    "focus_state": "COLLECT_MORE_SAMPLE",
+                    "focus_next_action": "Let fresh post-fix closes accumulate.",
+                    "focus_active_experiment": {
+                        "experiment_id": "partial_profit_disabled",
+                        "started_at": "2026-05-16T01:44:06+00:00",
+                        "partial_profit_enabled": False,
+                        "post_change_closed_trade_count": 2,
+                        "post_change_cumulative_r": 0.8192,
+                        "post_change_total_realized_pnl": 40.0,
+                        "post_change_profit_factor": 1.5,
+                    },
+                    "summary": {
+                        "broker_truth_focus_bot_id": "mnq_futures_sage",
+                        "broker_truth_focus_state": "COLLECT_MORE_SAMPLE",
+                        "broker_truth_focus_next_action": "Let fresh post-fix closes accumulate.",
+                        "broker_truth_focus_active_experiment": {
+                            "experiment_id": "partial_profit_disabled",
+                            "started_at": "2026-05-16T01:44:06+00:00",
+                            "partial_profit_enabled": False,
+                            "post_change_closed_trade_count": 2,
+                            "post_change_cumulative_r": 0.8192,
+                            "post_change_total_realized_pnl": 40.0,
+                            "post_change_profit_factor": 1.5,
+                        },
+                        "broker_truth_focus_active_experiment_summary_line": (
+                            "partial_profit_disabled since 2026-05-16T01:44:06+00:00"
+                        ),
+                    },
+                    "bots": [],
+                    "research_backlog": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+        original_readiness_payload = mod._eta_readiness_snapshot_payload
+
+        def _patched_readiness_payload(*, server_ts: float):
+            payload = original_readiness_payload(server_ts=server_ts)
+            payload.update(
+                {
+                    "public_live_retune_focus_active_experiment_outcome_line": (
+                        "partial_profit_disabled: awaiting first post-change close"
+                    ),
+                    "local_retune_focus_active_experiment_outcome_line": (
+                        "partial_profit_disabled: 2 post-change closes | R +0.82 | PnL $40.00 | PF 1.50"
+                    ),
+                    "retune_focus_active_experiment_drift_display": (
+                        "public retune says partial_profit_disabled: awaiting first post-change close; "
+                        "local mirror says partial_profit_disabled: 2 post-change closes | R +0.82 | "
+                        "PnL $40.00 | PF 1.50"
+                    ),
+                }
+            )
+            return payload
+
+        monkeypatch.setattr(mod, "_eta_readiness_snapshot_payload", _patched_readiness_payload)
+        sup_dir = state / "jarvis_intel" / "supervisor"
+        sup_dir.mkdir(parents=True, exist_ok=True)
+        (sup_dir / "heartbeat.json").write_text(
+            json.dumps(
+                {
+                    "ts": "2026-05-16T02:00:00+00:00",
+                    "mode": "paper_live",
+                    "bots": [
+                        {
+                            "bot_id": "mnq_futures_sage",
+                            "symbol": "MNQ1",
+                            "strategy_kind": "orb",
+                            "direction": "long",
+                            "n_entries": 5,
+                            "n_exits": 5,
+                            "realized_pnl": 2.0,
+                            "open_position": None,
+                            "last_jarvis_verdict": "APPROVED",
+                            "last_signal_at": "2026-05-16T01:55:00+00:00",
+                            "last_bar_ts": "2026-05-16T02:00:00+00:00",
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        roster = app_client.get("/api/bot-fleet?bot=mnq_futures_sage")
+        assert roster.status_code == 200
+        roster_data = roster.json()
+        row = roster_data["bots"][0]
+        assert roster_data["summary"]["retune_focus_bot_id"] == "mnq_futures_sage"
+        assert roster_data["summary"]["retune_focus_active_experiment_summary_line"] == (
+            "partial_profit_disabled since 2026-05-16T01:44:06+00:00"
+        )
+        assert (
+            roster_data["summary"]["public_live_retune_focus_active_experiment_outcome_line"]
+            == "partial_profit_disabled: awaiting first post-change close"
+        )
+        assert (
+            roster_data["summary"]["local_retune_focus_active_experiment_outcome_line"]
+            == "partial_profit_disabled: 2 post-change closes | R +0.82 | PnL $40.00 | PF 1.50"
+        )
+        assert (
+            roster_data["summary"]["retune_focus_active_experiment_drift_display"]
+            == "public retune says partial_profit_disabled: awaiting first post-change close; "
+            "local mirror says partial_profit_disabled: 2 post-change closes | R +0.82 | "
+            "PnL $40.00 | PF 1.50"
+        )
+        assert row["retune_focus_active_experiment"]["experiment_id"] == "partial_profit_disabled"
+        assert row["retune_focus_active_experiment_outcome_line"] == (
+            "partial_profit_disabled: 2 post-change closes | R +0.82 | PnL $40.00 | PF 1.50"
+        )
+        assert (
+            row["public_live_retune_focus_active_experiment_outcome_line"]
+            == "partial_profit_disabled: awaiting first post-change close"
+        )
+        assert (
+            row["local_retune_focus_active_experiment_outcome_line"]
+            == "partial_profit_disabled: 2 post-change closes | R +0.82 | PnL $40.00 | PF 1.50"
+        )
+        assert (
+            row["retune_focus_active_experiment_drift_display"]
+            == "public retune says partial_profit_disabled: awaiting first post-change close; "
+            "local mirror says partial_profit_disabled: 2 post-change closes | R +0.82 | "
+            "PnL $40.00 | PF 1.50"
+        )
+        assert row["retune_focus_next_action"] == "Let fresh post-fix closes accumulate."
+
+        drill = app_client.get("/api/bot-fleet/mnq_futures_sage")
+        assert drill.status_code == 200
+        drill_data = drill.json()
+        assert drill_data["status"]["retune_focus_active_experiment"]["partial_profit_enabled"] is False
+        assert drill_data["retune_focus_active_experiment_summary_line"] == (
+            "partial_profit_disabled since 2026-05-16T01:44:06+00:00"
+        )
+        assert drill_data["retune_focus_active_experiment_outcome_line"] == (
+            "partial_profit_disabled: 2 post-change closes | R +0.82 | PnL $40.00 | PF 1.50"
+        )
+        assert (
+            drill_data["public_live_retune_focus_active_experiment_outcome_line"]
+            == "partial_profit_disabled: awaiting first post-change close"
+        )
+        assert (
+            drill_data["local_retune_focus_active_experiment_outcome_line"]
+            == "partial_profit_disabled: 2 post-change closes | R +0.82 | PnL $40.00 | PF 1.50"
+        )
+        assert (
+            drill_data["retune_focus_active_experiment_drift_display"]
+            == "public retune says partial_profit_disabled: awaiting first post-change close; "
+            "local mirror says partial_profit_disabled: 2 post-change closes | R +0.82 | "
+            "PnL $40.00 | PF 1.50"
+        )
+
     def test_supervisor_heartbeat_freshness_is_not_last_signal_freshness(self, app_client):
         """A quiet bot should stay live when the supervisor heartbeat is fresh."""
         import os
@@ -7296,10 +12356,149 @@ class TestDashboardAPI:
         assert ibkr["healthy"] is False
         assert r.json()["broker_gateway"]["status"] == "degraded"
         assert r.json()["summary"]["ibkr_gateway_status"] == "degraded"
+        assert r.json()["summary"]["ibkr_gateway_raw_status"] == "degraded"
         assert ibkr["transient_self_heal_grace_active"] is True
         assert 0 <= float(ibkr["last_healthy_age_s"]) <= 180
         assert "recovery: auth_pending" in ibkr["detail"]
         assert "self-heal grace active" in ibkr["detail"]
+
+    def test_bot_fleet_exposes_non_authoritative_gateway_overlay(self, app_client, monkeypatch):
+        """Local desktop should expose gateway-authority truth without hiding raw socket state."""
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        monkeypatch.setattr(
+            mod,
+            "_broker_gateway_snapshot",
+            lambda: {
+                "status": "down",
+                "detail": "gateway process not running",
+                "ibkr": {
+                    "status": "down",
+                    "healthy": False,
+                    "detail": "gateway process not running",
+                    "checked_at": None,
+                },
+            },
+        )
+        monkeypatch.setattr(
+            mod,
+            "_gateway_authority_payload",
+            lambda: {
+                "allowed": False,
+                "source": "missing_marker",
+                "reason": "This host is not marked as the ETA IBKR Gateway authority.",
+            },
+        )
+
+        r = app_client.get("/api/bot-fleet")
+
+        assert r.status_code == 200
+        data = r.json()
+        assert data["broker_gateway"]["status"] == "down"
+        assert data["broker_gateway"]["non_authoritative_host"] is True
+        assert data["broker_gateway"]["gateway_authority"]["allowed"] is False
+        assert data["broker_gateway"]["ibkr"]["non_authoritative_host"] is True
+        assert "gateway authority" in data["broker_gateway"]["detail"].lower()
+        assert data["summary"]["ibkr_gateway_status"] == "vps_only"
+        assert data["summary"]["ibkr_gateway_raw_status"] == "down"
+        assert data["summary"]["ibkr_gateway_non_authoritative_host"] is True
+        assert "gateway authority" in data["summary"]["ibkr_gateway_detail"].lower()
+
+    def test_bot_fleet_surfaces_authoritative_stale_bracket_advisory(
+        self,
+        app_client,
+        tmp_path,
+        monkeypatch,
+    ):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        monkeypatch.setattr(
+            mod,
+            "_broker_bracket_audit_payload",
+            lambda **kwargs: {
+                "summary": "READY_NO_OPEN_EXPOSURE",
+                "ready_for_prop_dry_run": True,
+                "position_summary": {
+                    "broker_open_position_count": 0,
+                    "broker_bracket_required_position_count": 0,
+                    "broker_bracket_count": 0,
+                    "missing_bracket_count": 0,
+                },
+                "next_action": "",
+            },
+        )
+        monkeypatch.setattr(
+            mod,
+            "_maybe_promote_validated_broker_bracket_artifact",
+            lambda report, **kwargs: report,
+        )
+        monkeypatch.setattr(
+            mod,
+            "_paper_live_transition_payload",
+            lambda *, refresh=False: {
+                "generated_at": datetime.now(UTC).isoformat(),
+                "status": "ready_to_launch_paper_live",
+                "critical_ready": True,
+                "paper_ready_bots": 7,
+                "operator_queue_blocked_count": 0,
+                "operator_queue_launch_blocked_count": 0,
+                "gates": [],
+            },
+        )
+        (tmp_path / "state" / "eta_readiness_snapshot_latest.json").write_text(
+            json.dumps(
+                {
+                    "checked_at_utc": "2026-05-15T01:00:00+00:00",
+                    "summary": "BLOCKED",
+                    "non_authoritative_gateway_host": True,
+                    "public_fallback_reason": "non_authoritative_gateway_host",
+                    "public_fallback_primary_action": (
+                        "Wait for or clear 159 stale broker order(s) before prop dry-run."
+                    ),
+                    "public_fallback_brackets_summary": "BLOCKED_STALE_FLAT_OPEN_ORDERS",
+                    "public_fallback_checks": [
+                        {
+                            "name": "broker_bracket_audit_public_fallback",
+                            "status": "BLOCKED_STALE_FLAT_OPEN_ORDERS",
+                            "payload": {
+                                "summary": "BLOCKED_STALE_FLAT_OPEN_ORDERS",
+                                "next_action": "Wait for or clear 159 stale broker order(s) before prop dry-run.",
+                            },
+                        }
+                    ],
+                    "checks": [
+                        {
+                            "name": "broker_bracket_audit",
+                            "status": "READY_NO_OPEN_EXPOSURE",
+                            "payload": {
+                                "summary": "READY_NO_OPEN_EXPOSURE",
+                                "position_summary": {
+                                    "missing_bracket_count": 0,
+                                    "broker_open_position_count": 0,
+                                },
+                            },
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/bot-fleet")
+
+        assert r.status_code == 200
+        data = r.json()
+        audit = data["broker_bracket_audit"]
+        assert audit["summary"] == "READY_NO_OPEN_EXPOSURE"
+        assert audit["effective_summary"] == "AUTHORITATIVE_STALE_REVIEW"
+        assert audit["authoritative_advisory_active"] is True
+        assert audit["authoritative_public_fallback_stale"] is True
+        assert data["summary"]["broker_bracket_audit_status"] == "AUTHORITATIVE_STALE_REVIEW"
+        assert data["summary"]["broker_bracket_prop_dry_run_blocked"] is True
+        assert data["summary"]["broker_bracket_authoritative_advisory_stale"] is True
+        assert "stale and last reported blocked stale flat open orders" in (
+            data["summary"]["paper_live_effective_detail"].lower()
+        )
 
     def test_bot_fleet_reconciles_gateway_detail_with_live_ibkr_positions(
         self,
@@ -8367,6 +13566,772 @@ class TestDashboardAPI:
         assert outcomes["win_rate"] == 0.5
         assert [row["realized_pnl"] for row in outcomes["recent_outcomes"]] == [-5.0, 5.0]
 
+    def test_closed_outcomes_prefer_broker_fill_ts_when_present(self):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        outcomes = mod._closed_outcomes_from_filled_orders(
+            [
+                {
+                    "symbol": "ETH/USD",
+                    "side": "buy",
+                    "filled_qty": "1.0",
+                    "filled_avg_price": "200.00",
+                    "broker_fill_ts": "2026-05-07T14:00:00Z",
+                    "ts": "2026-05-07T14:00:09Z",
+                    "status": "filled",
+                },
+                {
+                    "symbol": "ETH/USD",
+                    "side": "sell",
+                    "filled_qty": "1.0",
+                    "filled_avg_price": "210.00",
+                    "broker_fill_ts": "2026-05-07T15:00:00Z",
+                    "ts": "2026-05-07T15:00:08Z",
+                    "status": "filled",
+                },
+            ]
+        )
+
+        assert outcomes["closed_outcome_count"] == 1
+        assert outcomes["evaluated_outcome_count"] == 1
+        assert outcomes["winning_outcomes"] == 1
+        assert outcomes["recent_outcomes"][0]["closed_at"] == "2026-05-07T15:00:00Z"
+
+    def test_closed_outcomes_fall_back_to_execution_time_when_fill_ts_missing(self):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        outcomes = mod._closed_outcomes_from_filled_orders(
+            [
+                {
+                    "symbol": "SOL/USD",
+                    "side": "buy",
+                    "filled_qty": "1.0",
+                    "filled_avg_price": "120.00",
+                    "execution_time": "2026-05-07T14:00:00Z",
+                    "ts": "2026-05-07T14:00:09Z",
+                    "status": "filled",
+                },
+                {
+                    "symbol": "SOL/USD",
+                    "side": "sell",
+                    "filled_qty": "1.0",
+                    "filled_avg_price": "125.00",
+                    "execution_time": "2026-05-07T15:00:00Z",
+                    "ts": "2026-05-07T15:00:08Z",
+                    "status": "filled",
+                },
+            ]
+        )
+
+        assert outcomes["closed_outcome_count"] == 1
+        assert outcomes["evaluated_outcome_count"] == 1
+        assert outcomes["winning_outcomes"] == 1
+        assert outcomes["recent_outcomes"][0]["closed_at"] == "2026-05-07T15:00:00Z"
+
+    def test_closed_outcomes_fall_back_to_executed_at_when_fill_ts_missing(self):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        outcomes = mod._closed_outcomes_from_filled_orders(
+            [
+                {
+                    "symbol": "XRP/USD",
+                    "side": "buy",
+                    "filled_qty": "1.0",
+                    "filled_avg_price": "0.50",
+                    "executed_at": "2026-05-07T14:00:00Z",
+                    "ts": "2026-05-07T14:00:09Z",
+                    "status": "filled",
+                },
+                {
+                    "symbol": "XRP/USD",
+                    "side": "sell",
+                    "filled_qty": "1.0",
+                    "filled_avg_price": "0.55",
+                    "executed_at": "2026-05-07T15:00:00Z",
+                    "ts": "2026-05-07T15:00:08Z",
+                    "status": "filled",
+                },
+            ]
+        )
+
+        assert outcomes["closed_outcome_count"] == 1
+        assert outcomes["evaluated_outcome_count"] == 1
+        assert outcomes["winning_outcomes"] == 1
+        assert outcomes["recent_outcomes"][0]["closed_at"] == "2026-05-07T15:00:00Z"
+
+    def test_closed_outcomes_fall_back_to_last_fill_time_when_fill_ts_missing(self):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        outcomes = mod._closed_outcomes_from_filled_orders(
+            [
+                {
+                    "symbol": "ADA/USD",
+                    "side": "buy",
+                    "filled_qty": "1.0",
+                    "filled_avg_price": "0.40",
+                    "lastFillTime": "2026-05-07T14:00:00Z",
+                    "ts": "2026-05-07T14:00:09Z",
+                    "status": "filled",
+                },
+                {
+                    "symbol": "ADA/USD",
+                    "side": "sell",
+                    "filled_qty": "1.0",
+                    "filled_avg_price": "0.45",
+                    "lastFillTime": "2026-05-07T15:00:00Z",
+                    "ts": "2026-05-07T15:00:08Z",
+                    "status": "filled",
+                },
+            ]
+        )
+
+        assert outcomes["closed_outcome_count"] == 1
+        assert outcomes["evaluated_outcome_count"] == 1
+        assert outcomes["winning_outcomes"] == 1
+        assert outcomes["recent_outcomes"][0]["closed_at"] == "2026-05-07T15:00:00Z"
+
+    def test_closed_outcomes_fall_back_to_timestamp_when_fill_ts_missing(self):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        outcomes = mod._closed_outcomes_from_filled_orders(
+            [
+                {
+                    "symbol": "DOGE/USD",
+                    "side": "buy",
+                    "filled_qty": "1.0",
+                    "filled_avg_price": "0.20",
+                    "timestamp": "2026-05-07T14:00:00Z",
+                    "status": "filled",
+                },
+                {
+                    "symbol": "DOGE/USD",
+                    "side": "sell",
+                    "filled_qty": "1.0",
+                    "filled_avg_price": "0.22",
+                    "timestamp": "2026-05-07T15:00:00Z",
+                    "status": "filled",
+                },
+            ]
+        )
+
+        assert outcomes["closed_outcome_count"] == 1
+        assert outcomes["evaluated_outcome_count"] == 1
+        assert outcomes["winning_outcomes"] == 1
+        assert outcomes["recent_outcomes"][0]["closed_at"] == "2026-05-07T15:00:00Z"
+
+    def test_closed_outcomes_fall_back_to_hyphenated_filled_at_when_fill_ts_missing(self):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        outcomes = mod._closed_outcomes_from_filled_orders(
+            [
+                {
+                    "symbol": "AVAX/USD",
+                    "side": "buy",
+                    "filled_qty": "1.0",
+                    "filled_avg_price": "20.00",
+                    "filled-at": "2026-05-07T14:00:00Z",
+                    "status": "filled",
+                },
+                {
+                    "symbol": "AVAX/USD",
+                    "side": "sell",
+                    "filled_qty": "1.0",
+                    "filled_avg_price": "22.00",
+                    "filled-at": "2026-05-07T15:00:00Z",
+                    "status": "filled",
+                },
+            ]
+        )
+
+        assert outcomes["closed_outcome_count"] == 1
+        assert outcomes["evaluated_outcome_count"] == 1
+        assert outcomes["winning_outcomes"] == 1
+        assert outcomes["recent_outcomes"][0]["closed_at"] == "2026-05-07T15:00:00Z"
+
+    def test_closed_outcomes_fall_back_to_hyphenated_updated_at_when_fill_ts_missing(self):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        outcomes = mod._closed_outcomes_from_filled_orders(
+            [
+                {
+                    "symbol": "LINK/USD",
+                    "side": "buy",
+                    "filled_qty": "1.0",
+                    "filled_avg_price": "15.00",
+                    "updated-at": "2026-05-07T14:00:00Z",
+                    "status": "filled",
+                },
+                {
+                    "symbol": "LINK/USD",
+                    "side": "sell",
+                    "filled_qty": "1.0",
+                    "filled_avg_price": "16.00",
+                    "updated-at": "2026-05-07T15:00:00Z",
+                    "status": "filled",
+                },
+            ]
+        )
+
+        assert outcomes["closed_outcome_count"] == 1
+        assert outcomes["evaluated_outcome_count"] == 1
+        assert outcomes["winning_outcomes"] == 1
+        assert outcomes["recent_outcomes"][0]["closed_at"] == "2026-05-07T15:00:00Z"
+
+    def test_closed_outcomes_fall_back_to_created_at_when_fill_ts_missing(self):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        outcomes = mod._closed_outcomes_from_filled_orders(
+            [
+                {
+                    "symbol": "MATIC/USD",
+                    "side": "buy",
+                    "filled_qty": "1.0",
+                    "filled_avg_price": "1.00",
+                    "created_at": "2026-05-07T14:00:00Z",
+                    "status": "filled",
+                },
+                {
+                    "symbol": "MATIC/USD",
+                    "side": "sell",
+                    "filled_qty": "1.0",
+                    "filled_avg_price": "1.10",
+                    "created_at": "2026-05-07T15:00:00Z",
+                    "status": "filled",
+                },
+            ]
+        )
+
+        assert outcomes["closed_outcome_count"] == 1
+        assert outcomes["evaluated_outcome_count"] == 1
+        assert outcomes["winning_outcomes"] == 1
+        assert outcomes["recent_outcomes"][0]["closed_at"] == "2026-05-07T15:00:00Z"
+
+    def test_alpaca_live_state_recent_filled_orders_prefer_broker_fill_ts(self, monkeypatch):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+        from eta_engine.venues.alpaca import AlpacaConfig
+
+        class _Resp:
+            def __init__(self, status_code, payload) -> None:
+                self.status_code = status_code
+                self._payload = payload
+
+            def json(self):
+                return self._payload
+
+        class _Client:
+            def __init__(self, *args, **kwargs) -> None:
+                _ = args, kwargs
+
+            def __enter__(self) -> _Client:
+                return self
+
+            def __exit__(self, exc_type, exc, tb) -> bool:
+                return False
+
+            def get(self, path, params=None):
+                _ = params
+                if path == "/v2/account":
+                    return _Resp(200, {"account_number": "PA123", "equity": "100100", "last_equity": "100000"})
+                if path == "/v2/positions":
+                    return _Resp(200, [])
+                if path == "/v2/orders":
+                    return _Resp(
+                        200,
+                        [
+                            {
+                                "symbol": "BTC/USD",
+                                "side": "buy",
+                                "filled_qty": "0.5",
+                                "filled_avg_price": "60000.0",
+                                "broker_fill_ts": "2026-05-07T14:00:00Z",
+                                "filled_at": "2026-05-07T14:00:08Z",
+                                "ts": "2026-05-07T14:00:09Z",
+                                "client_order_id": "btc-open-1",
+                                "status": "filled",
+                            },
+                            {
+                                "symbol": "BTC/USD",
+                                "side": "sell",
+                                "filled_qty": "0.5",
+                                "filled_avg_price": "62000.0",
+                                "broker_fill_ts": "2026-05-07T15:00:00Z",
+                                "filled_at": "2026-05-07T15:00:08Z",
+                                "ts": "2026-05-07T15:00:09Z",
+                                "client_order_id": "btc-close-1",
+                                "status": "filled",
+                            }
+                        ],
+                    )
+                raise AssertionError(f"unexpected path {path}")
+
+        alpaca_config = AlpacaConfig(api_key_id="PK1", api_secret_key="SK1")
+        monkeypatch.setattr(
+            AlpacaConfig,
+            "from_env",
+            classmethod(lambda cls: alpaca_config),
+        )
+        import httpx
+
+        monkeypatch.setattr(httpx, "Client", _Client)
+
+        snapshot = mod._alpaca_live_state_snapshot(today_start_iso="2026-05-07T00:00:00Z")
+
+        assert snapshot["ready"] is True
+        assert snapshot["today_filled_orders"] == 2
+        assert [row["filled_at"] for row in snapshot["recent_filled_orders"]] == [
+            "2026-05-07T14:00:00Z",
+            "2026-05-07T15:00:00Z",
+        ]
+        assert snapshot["recent_closed_outcomes"][0]["closed_at"] == "2026-05-07T15:00:00Z"
+
+    def test_alpaca_live_state_recent_filled_orders_fall_back_to_created_at(self, monkeypatch):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+        from eta_engine.venues.alpaca import AlpacaConfig
+
+        class _Resp:
+            def __init__(self, status_code, payload) -> None:
+                self.status_code = status_code
+                self._payload = payload
+
+            def json(self):
+                return self._payload
+
+        class _Client:
+            def __init__(self, *args, **kwargs) -> None:
+                _ = args, kwargs
+
+            def __enter__(self) -> _Client:
+                return self
+
+            def __exit__(self, exc_type, exc, tb) -> bool:
+                return False
+
+            def get(self, path, params=None):
+                _ = params
+                if path == "/v2/account":
+                    return _Resp(200, {"account_number": "PA123", "equity": "100100", "last_equity": "100000"})
+                if path == "/v2/positions":
+                    return _Resp(200, [])
+                if path == "/v2/orders":
+                    return _Resp(
+                        200,
+                        [
+                            {
+                                "symbol": "BTC/USD",
+                                "side": "buy",
+                                "filled_qty": "0.5",
+                                "filled_avg_price": "60000.0",
+                                "created_at": "2026-05-07T14:00:00Z",
+                                "client_order_id": "btc-open-1",
+                                "status": "filled",
+                            },
+                            {
+                                "symbol": "BTC/USD",
+                                "side": "sell",
+                                "filled_qty": "0.5",
+                                "filled_avg_price": "62000.0",
+                                "created_at": "2026-05-07T15:00:00Z",
+                                "client_order_id": "btc-close-1",
+                                "status": "filled",
+                            }
+                        ],
+                    )
+                raise AssertionError(f"unexpected path {path}")
+
+        alpaca_config = AlpacaConfig(api_key_id="PK1", api_secret_key="SK1")
+        monkeypatch.setattr(
+            AlpacaConfig,
+            "from_env",
+            classmethod(lambda cls: alpaca_config),
+        )
+        import httpx
+
+        monkeypatch.setattr(httpx, "Client", _Client)
+
+        snapshot = mod._alpaca_live_state_snapshot(today_start_iso="2026-05-07T00:00:00Z")
+
+        assert snapshot["ready"] is True
+        assert snapshot["today_filled_orders"] == 2
+        assert [row["filled_at"] for row in snapshot["recent_filled_orders"]] == [
+            "2026-05-07T14:00:00Z",
+            "2026-05-07T15:00:00Z",
+        ]
+        assert snapshot["recent_closed_outcomes"][0]["closed_at"] == "2026-05-07T15:00:00Z"
+
+    def test_alpaca_live_state_recent_filled_orders_fall_back_to_hyphenated_filled_at(self, monkeypatch):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+        from eta_engine.venues.alpaca import AlpacaConfig
+
+        class _Resp:
+            def __init__(self, status_code, payload) -> None:
+                self.status_code = status_code
+                self._payload = payload
+
+            def json(self):
+                return self._payload
+
+        class _Client:
+            def __init__(self, *args, **kwargs) -> None:
+                _ = args, kwargs
+
+            def __enter__(self) -> _Client:
+                return self
+
+            def __exit__(self, exc_type, exc, tb) -> bool:
+                return False
+
+            def get(self, path, params=None):
+                _ = params
+                if path == "/v2/account":
+                    return _Resp(200, {"account_number": "PA123", "equity": "100100", "last_equity": "100000"})
+                if path == "/v2/positions":
+                    return _Resp(200, [])
+                if path == "/v2/orders":
+                    return _Resp(
+                        200,
+                        [
+                            {
+                                "symbol": "BTC/USD",
+                                "side": "buy",
+                                "filled_qty": "0.5",
+                                "filled_avg_price": "60000.0",
+                                "filled-at": "2026-05-07T14:00:00Z",
+                                "client_order_id": "btc-open-1",
+                                "status": "filled",
+                            },
+                            {
+                                "symbol": "BTC/USD",
+                                "side": "sell",
+                                "filled_qty": "0.5",
+                                "filled_avg_price": "62000.0",
+                                "filled-at": "2026-05-07T15:00:00Z",
+                                "client_order_id": "btc-close-1",
+                                "status": "filled",
+                            }
+                        ],
+                    )
+                raise AssertionError(f"unexpected path {path}")
+
+        alpaca_config = AlpacaConfig(api_key_id="PK1", api_secret_key="SK1")
+        monkeypatch.setattr(
+            AlpacaConfig,
+            "from_env",
+            classmethod(lambda cls: alpaca_config),
+        )
+        import httpx
+
+        monkeypatch.setattr(httpx, "Client", _Client)
+
+        snapshot = mod._alpaca_live_state_snapshot(today_start_iso="2026-05-07T00:00:00Z")
+
+        assert snapshot["ready"] is True
+        assert snapshot["today_filled_orders"] == 2
+        assert [row["filled_at"] for row in snapshot["recent_filled_orders"]] == [
+            "2026-05-07T14:00:00Z",
+            "2026-05-07T15:00:00Z",
+        ]
+        assert snapshot["recent_closed_outcomes"][0]["closed_at"] == "2026-05-07T15:00:00Z"
+
+    def test_alpaca_live_state_recent_filled_orders_fall_back_to_hyphenated_updated_at(self, monkeypatch):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+        from eta_engine.venues.alpaca import AlpacaConfig
+
+        class _Resp:
+            def __init__(self, status_code, payload) -> None:
+                self.status_code = status_code
+                self._payload = payload
+
+            def json(self):
+                return self._payload
+
+        class _Client:
+            def __init__(self, *args, **kwargs) -> None:
+                _ = args, kwargs
+
+            def __enter__(self) -> _Client:
+                return self
+
+            def __exit__(self, exc_type, exc, tb) -> bool:
+                return False
+
+            def get(self, path, params=None):
+                _ = params
+                if path == "/v2/account":
+                    return _Resp(200, {"account_number": "PA123", "equity": "100100", "last_equity": "100000"})
+                if path == "/v2/positions":
+                    return _Resp(200, [])
+                if path == "/v2/orders":
+                    return _Resp(
+                        200,
+                        [
+                            {
+                                "symbol": "BTC/USD",
+                                "side": "buy",
+                                "filled_qty": "0.5",
+                                "filled_avg_price": "60000.0",
+                                "updated-at": "2026-05-07T14:00:00Z",
+                                "client_order_id": "btc-open-1",
+                                "status": "filled",
+                            },
+                            {
+                                "symbol": "BTC/USD",
+                                "side": "sell",
+                                "filled_qty": "0.5",
+                                "filled_avg_price": "62000.0",
+                                "updated-at": "2026-05-07T15:00:00Z",
+                                "client_order_id": "btc-close-1",
+                                "status": "filled",
+                            }
+                        ],
+                    )
+                raise AssertionError(f"unexpected path {path}")
+
+        alpaca_config = AlpacaConfig(api_key_id="PK1", api_secret_key="SK1")
+        monkeypatch.setattr(
+            AlpacaConfig,
+            "from_env",
+            classmethod(lambda cls: alpaca_config),
+        )
+        import httpx
+
+        monkeypatch.setattr(httpx, "Client", _Client)
+
+        snapshot = mod._alpaca_live_state_snapshot(today_start_iso="2026-05-07T00:00:00Z")
+
+        assert snapshot["ready"] is True
+        assert snapshot["today_filled_orders"] == 2
+        assert [row["filled_at"] for row in snapshot["recent_filled_orders"]] == [
+            "2026-05-07T14:00:00Z",
+            "2026-05-07T15:00:00Z",
+        ]
+        assert snapshot["recent_closed_outcomes"][0]["closed_at"] == "2026-05-07T15:00:00Z"
+
+    def test_alpaca_live_state_recent_filled_orders_fall_back_to_timestamp(self, monkeypatch):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+        from eta_engine.venues.alpaca import AlpacaConfig
+
+        class _Resp:
+            def __init__(self, status_code, payload) -> None:
+                self.status_code = status_code
+                self._payload = payload
+
+            def json(self):
+                return self._payload
+
+        class _Client:
+            def __init__(self, *args, **kwargs) -> None:
+                _ = args, kwargs
+
+            def __enter__(self) -> _Client:
+                return self
+
+            def __exit__(self, exc_type, exc, tb) -> bool:
+                return False
+
+            def get(self, path, params=None):
+                _ = params
+                if path == "/v2/account":
+                    return _Resp(200, {"account_number": "PA123", "equity": "100100", "last_equity": "100000"})
+                if path == "/v2/positions":
+                    return _Resp(200, [])
+                if path == "/v2/orders":
+                    return _Resp(
+                        200,
+                        [
+                            {
+                                "symbol": "BTC/USD",
+                                "side": "buy",
+                                "filled_qty": "0.5",
+                                "filled_avg_price": "60000.0",
+                                "timestamp": "2026-05-07T14:00:00Z",
+                                "client_order_id": "btc-open-1",
+                                "status": "filled",
+                            },
+                            {
+                                "symbol": "BTC/USD",
+                                "side": "sell",
+                                "filled_qty": "0.5",
+                                "filled_avg_price": "62000.0",
+                                "timestamp": "2026-05-07T15:00:00Z",
+                                "client_order_id": "btc-close-1",
+                                "status": "filled",
+                            }
+                        ],
+                    )
+                raise AssertionError(f"unexpected path {path}")
+
+        alpaca_config = AlpacaConfig(api_key_id="PK1", api_secret_key="SK1")
+        monkeypatch.setattr(
+            AlpacaConfig,
+            "from_env",
+            classmethod(lambda cls: alpaca_config),
+        )
+        import httpx
+
+        monkeypatch.setattr(httpx, "Client", _Client)
+
+        snapshot = mod._alpaca_live_state_snapshot(today_start_iso="2026-05-07T00:00:00Z")
+
+        assert snapshot["ready"] is True
+        assert snapshot["today_filled_orders"] == 2
+        assert [row["filled_at"] for row in snapshot["recent_filled_orders"]] == [
+            "2026-05-07T14:00:00Z",
+            "2026-05-07T15:00:00Z",
+        ]
+        assert snapshot["recent_closed_outcomes"][0]["closed_at"] == "2026-05-07T15:00:00Z"
+
+    def test_alpaca_live_state_recent_filled_orders_fall_back_to_last_fill_time(self, monkeypatch):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+        from eta_engine.venues.alpaca import AlpacaConfig
+
+        class _Resp:
+            def __init__(self, status_code, payload) -> None:
+                self.status_code = status_code
+                self._payload = payload
+
+            def json(self):
+                return self._payload
+
+        class _Client:
+            def __init__(self, *args, **kwargs) -> None:
+                _ = args, kwargs
+
+            def __enter__(self) -> _Client:
+                return self
+
+            def __exit__(self, exc_type, exc, tb) -> bool:
+                return False
+
+            def get(self, path, params=None):
+                _ = params
+                if path == "/v2/account":
+                    return _Resp(200, {"account_number": "PA123", "equity": "100100", "last_equity": "100000"})
+                if path == "/v2/positions":
+                    return _Resp(200, [])
+                if path == "/v2/orders":
+                    return _Resp(
+                        200,
+                        [
+                            {
+                                "symbol": "BTC/USD",
+                                "side": "buy",
+                                "filled_qty": "0.5",
+                                "filled_avg_price": "60000.0",
+                                "lastFillTime": "2026-05-07T14:00:00Z",
+                                "ts": "2026-05-07T14:00:09Z",
+                                "client_order_id": "btc-open-1",
+                                "status": "filled",
+                            },
+                            {
+                                "symbol": "BTC/USD",
+                                "side": "sell",
+                                "filled_qty": "0.5",
+                                "filled_avg_price": "62000.0",
+                                "lastFillTime": "2026-05-07T15:00:00Z",
+                                "ts": "2026-05-07T15:00:09Z",
+                                "client_order_id": "btc-close-1",
+                                "status": "filled",
+                            }
+                        ],
+                    )
+                raise AssertionError(f"unexpected path {path}")
+
+        alpaca_config = AlpacaConfig(api_key_id="PK1", api_secret_key="SK1")
+        monkeypatch.setattr(
+            AlpacaConfig,
+            "from_env",
+            classmethod(lambda cls: alpaca_config),
+        )
+        import httpx
+
+        monkeypatch.setattr(httpx, "Client", _Client)
+
+        snapshot = mod._alpaca_live_state_snapshot(today_start_iso="2026-05-07T00:00:00Z")
+
+        assert snapshot["ready"] is True
+        assert snapshot["today_filled_orders"] == 2
+        assert [row["filled_at"] for row in snapshot["recent_filled_orders"]] == [
+            "2026-05-07T14:00:00Z",
+            "2026-05-07T15:00:00Z",
+        ]
+        assert snapshot["recent_closed_outcomes"][0]["closed_at"] == "2026-05-07T15:00:00Z"
+
+    def test_alpaca_live_state_recent_filled_orders_fall_back_to_executed_at(self, monkeypatch):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+        from eta_engine.venues.alpaca import AlpacaConfig
+
+        class _Resp:
+            def __init__(self, status_code, payload) -> None:
+                self.status_code = status_code
+                self._payload = payload
+
+            def json(self):
+                return self._payload
+
+        class _Client:
+            def __init__(self, *args, **kwargs) -> None:
+                _ = args, kwargs
+
+            def __enter__(self) -> _Client:
+                return self
+
+            def __exit__(self, exc_type, exc, tb) -> bool:
+                return False
+
+            def get(self, path, params=None):
+                _ = params
+                if path == "/v2/account":
+                    return _Resp(200, {"account_number": "PA123", "equity": "100100", "last_equity": "100000"})
+                if path == "/v2/positions":
+                    return _Resp(200, [])
+                if path == "/v2/orders":
+                    return _Resp(
+                        200,
+                        [
+                            {
+                                "symbol": "BTC/USD",
+                                "side": "buy",
+                                "filled_qty": "0.5",
+                                "filled_avg_price": "60000.0",
+                                "executed_at": "2026-05-07T14:00:00Z",
+                                "ts": "2026-05-07T14:00:09Z",
+                                "client_order_id": "btc-open-1",
+                                "status": "filled",
+                            },
+                            {
+                                "symbol": "BTC/USD",
+                                "side": "sell",
+                                "filled_qty": "0.5",
+                                "filled_avg_price": "62000.0",
+                                "executed_at": "2026-05-07T15:00:00Z",
+                                "ts": "2026-05-07T15:00:09Z",
+                                "client_order_id": "btc-close-1",
+                                "status": "filled",
+                            }
+                        ],
+                    )
+                raise AssertionError(f"unexpected path {path}")
+
+        alpaca_config = AlpacaConfig(api_key_id="PK1", api_secret_key="SK1")
+        monkeypatch.setattr(
+            AlpacaConfig,
+            "from_env",
+            classmethod(lambda cls: alpaca_config),
+        )
+        import httpx
+
+        monkeypatch.setattr(httpx, "Client", _Client)
+
+        snapshot = mod._alpaca_live_state_snapshot(today_start_iso="2026-05-07T00:00:00Z")
+
+        assert snapshot["ready"] is True
+        assert snapshot["today_filled_orders"] == 2
+        assert [row["filled_at"] for row in snapshot["recent_filled_orders"]] == [
+            "2026-05-07T14:00:00Z",
+            "2026-05-07T15:00:00Z",
+        ]
+        assert snapshot["recent_closed_outcomes"][0]["closed_at"] == "2026-05-07T15:00:00Z"
+
     def test_live_broker_state_aggregates_ibkr_realized_pnl(self, monkeypatch):
         import eta_engine.deploy.scripts.dashboard_api as mod
 
@@ -8882,6 +14847,12 @@ class TestDashboardAPI:
         assert data["summary"]["current_blocked_summary_line"] == (
             "Current blockers: 1 bot(s) held - 1 session gate. Top: volume_profile_nq."
         )
+        assert data["summary"]["blocked_summary"] == "No actionable blockers; 1 bot(s) await session reopen."
+        assert data["summary"]["session_gated_bots"] == 1
+        assert data["summary"]["session_gated_kinds"] == {"session_gate": 1}
+        assert data["summary"]["session_gated_summary_line"] == (
+            "Awaiting session: 1 bot(s) - 1 session gate. Top: volume_profile_nq."
+        )
         assert data["summary"]["current_blocked_preview"] == [
             {
                 "bot_id": "volume_profile_nq",
@@ -8891,6 +14862,87 @@ class TestDashboardAPI:
                 "at": "2026-04-28T12:00:00+00:00",
             },
         ]
+
+    def test_bot_fleet_ignores_local_daily_loss_overlay_on_non_authoritative_host(
+        self,
+        app_client,
+        monkeypatch,
+    ):
+        import json
+        import os
+        from pathlib import Path
+
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        monkeypatch.setattr(
+            mod,
+            "_daily_loss_killswitch_snapshot",
+            lambda: {
+                "source": "daily_loss_killswitch",
+                "status": "tripped",
+                "tripped": True,
+                "disabled": False,
+                "today_pnl_usd": -925.50,
+                "limit_usd": -900.0,
+                "reason": "day_pnl=$-925.50 <= limit=$-900.00 (date=2026-05-15)",
+            },
+        )
+
+        state = Path(os.environ["ETA_STATE_DIR"])
+        sup_dir = state / "jarvis_intel" / "supervisor"
+        sup_dir.mkdir(parents=True, exist_ok=True)
+        (sup_dir / "heartbeat.json").write_text(
+            json.dumps(
+                {
+                    "ts": "2026-05-16T12:00:00+00:00",
+                    "mode": "paper_sim",
+                    "bots": [
+                        {
+                            "bot_id": "volume_profile_nq",
+                            "symbol": "NQ1",
+                            "strategy_kind": "orb",
+                            "direction": "long",
+                            "n_entries": 5,
+                            "n_exits": 5,
+                            "realized_pnl": 3.5,
+                            "open_position": None,
+                            "last_bar_ts": "2026-05-16T12:00:00+00:00",
+                            "last_aggregation_reject_reason": (
+                                "daily_kill_switch:day_pnl=$-925.50 <= limit=$-900.00 (date=2026-05-15)"
+                            ),
+                            "last_aggregation_reject_at": "2026-05-16T12:00:00+00:00",
+                        },
+                    ],
+                },
+            ),
+            encoding="utf-8",
+        )
+        (state / "paper_live_transition_check.json").write_text(
+            json.dumps(
+                {
+                    "generated_at": datetime.now(UTC).isoformat(),
+                    "status": "blocked",
+                    "critical_ready": False,
+                    "non_authoritative_gateway_host": True,
+                    "operator_queue_launch_blocked_count": 1,
+                    "paper_ready_bots": 9,
+                    "gates": [],
+                },
+            ),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/bot-fleet")
+
+        assert r.status_code == 200
+        data = r.json()
+        nq = next(b for b in data["bots"] if b["name"] == "volume_profile_nq")
+        assert nq["current_block_kind"] == ""
+        assert data["summary"]["current_blocked_bots"] == 0
+        assert data["summary"]["current_blocked_kinds"] == {}
+        assert data["summary"]["paper_live_capital_lanes_held_by_daily_loss_stop"] is False
+        assert data["summary"]["paper_live_daily_loss_advisory_active"] is False
+        assert data["summary"]["paper_live_daily_loss_suppressed_non_authoritative_gateway_host"] is True
 
     def test_bot_fleet_surfaces_tws_gateway_health(self, app_client):
         """The public roster reports broker execution health separately from bot liveness."""
@@ -8997,6 +15049,8 @@ class TestDashboardAPI:
         assert ibkr["status"] == "down"
         assert data["broker_gateway"]["status"] == "down"
         assert data["summary"]["ibkr_gateway_status"] == "down"
+        assert data["summary"]["ibkr_gateway_raw_status"] == "down"
+        assert data["summary"]["ibkr_gateway_non_authoritative_host"] is False
         assert ibkr["healthy"] is False
         assert data["broker_gateway"]["healthy"] is False
         assert ibkr["port"] == 4002
@@ -9209,6 +15263,7 @@ class TestDashboardAPI:
                     "bot_id": "mnq_anchor_sweep",
                     "venue": "ibkr",
                     "ts": "2026-05-07T05:29:08+00:00",
+                    "broker_fill_ts": "2026-05-07T05:28:41+00:00",
                     "result": {
                         "status": "OPEN",
                         "order_id": "sig-open",
@@ -9241,6 +15296,120 @@ class TestDashboardAPI:
         assert latest["status"] == "OPEN"
         assert latest["filled_qty"] == 1.0
         assert latest["avg_price"] == 28709.5
+        assert latest["ts"] == "2026-05-07T05:28:41+00:00"
+
+    def test_bot_fleet_router_latest_result_falls_back_to_result_written_ts(self, app_client):
+        """Latest router result should stay timestamped even without broker fill time."""
+        import json
+        import os
+        from pathlib import Path
+
+        state = Path(os.environ["ETA_STATE_DIR"])
+        router = state / "router"
+        result_dir = router / "fill_results"
+        result_dir.mkdir(parents=True, exist_ok=True)
+        (result_dir / "sig-open_result.json").write_text(
+            json.dumps(
+                {
+                    "signal_id": "sig-open",
+                    "bot_id": "mnq_anchor_sweep",
+                    "venue": "ibkr",
+                    "result_written_ts": "2026-05-07T05:29:08+00:00",
+                    "result": {
+                        "status": "OPEN",
+                        "order_id": "sig-open",
+                        "filled_qty": 1.0,
+                        "avg_price": 28709.5,
+                    },
+                },
+            ),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/bot-fleet")
+
+        assert r.status_code == 200
+        latest = r.json()["broker_router"]["latest_result"]
+        assert latest["status"] == "OPEN"
+        assert latest["ts"] == "2026-05-07T05:29:08+00:00"
+
+    def test_bot_fleet_router_latest_result_prefers_raw_execution_time(self, app_client):
+        """Latest router result should use broker-side raw execution time before write time."""
+        import json
+        import os
+        from pathlib import Path
+
+        state = Path(os.environ["ETA_STATE_DIR"])
+        router = state / "router"
+        result_dir = router / "fill_results"
+        result_dir.mkdir(parents=True, exist_ok=True)
+        (result_dir / "sig-open_result.json").write_text(
+            json.dumps(
+                {
+                    "signal_id": "sig-open",
+                    "bot_id": "mnq_anchor_sweep",
+                    "venue": "ibkr",
+                    "result_written_ts": "2026-05-07T05:29:08+00:00",
+                    "result": {
+                        "status": "OPEN",
+                        "order_id": "sig-open",
+                        "filled_qty": 1.0,
+                        "avg_price": 28709.5,
+                        "raw": {
+                            "execution_time": "2026-05-07T05:28:54+00:00",
+                        },
+                    },
+                },
+            ),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/bot-fleet")
+
+        assert r.status_code == 200
+        latest = r.json()["broker_router"]["latest_result"]
+        assert latest["status"] == "OPEN"
+        assert latest["ts"] == "2026-05-07T05:28:54+00:00"
+
+    def test_bot_fleet_router_latest_result_prefers_legacy_server_execution_time(self, app_client):
+        """Latest router result should honor older nested raw.server timing hints."""
+        import json
+        import os
+        from pathlib import Path
+
+        state = Path(os.environ["ETA_STATE_DIR"])
+        router = state / "router"
+        result_dir = router / "fill_results"
+        result_dir.mkdir(parents=True, exist_ok=True)
+        (result_dir / "sig-open_result.json").write_text(
+            json.dumps(
+                {
+                    "signal_id": "sig-open",
+                    "bot_id": "mnq_anchor_sweep",
+                    "venue": "ibkr",
+                    "result_written_ts": "2026-05-07T05:29:08+00:00",
+                    "result": {
+                        "status": "OPEN",
+                        "order_id": "sig-open",
+                        "filled_qty": 1.0,
+                        "avg_price": 28709.5,
+                        "raw": {
+                            "server": {
+                                "execution_time": "2026-05-07T05:28:52+00:00",
+                            },
+                        },
+                    },
+                },
+            ),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/bot-fleet")
+
+        assert r.status_code == 200
+        latest = r.json()["broker_router"]["latest_result"]
+        assert latest["status"] == "OPEN"
+        assert latest["ts"] == "2026-05-07T05:28:52+00:00"
 
     def test_bot_fleet_treats_historical_router_rejects_as_history(self, app_client):
         """Old rejected router artifacts should not masquerade as active degradation."""
@@ -9452,6 +15621,183 @@ class TestDashboardAPI:
         assert len(fills) == 1
         assert fills[0]["source"] == "ibkr_execution"
         assert fills[0]["symbol"] == "CL"
+
+    def test_live_fills_router_fill_results_prefer_broker_fill_ts(self, app_client):
+        """Router fill rows should use broker_fill_ts over later write timestamps."""
+        import json
+        import os
+        from pathlib import Path
+
+        state = Path(os.environ["ETA_STATE_DIR"])
+        result_dir = state / "router" / "fill_results"
+        result_dir.mkdir(parents=True, exist_ok=True)
+        (result_dir / "btc-fill_result.json").write_text(
+            json.dumps(
+                {
+                    "signal_id": "btc-fill",
+                    "bot_id": "btc_optimized",
+                    "broker_fill_ts": "2026-05-16T14:20:01+00:00",
+                    "result_written_ts": "2026-05-16T14:20:08+00:00",
+                    "ts": "2026-05-16T14:20:09+00:00",
+                    "request": {
+                        "bot_id": "btc_optimized",
+                        "symbol": "BTC",
+                        "side": "SELL",
+                        "client_order_id": "btc-fill",
+                    },
+                    "result": {
+                        "status": "FILLED",
+                        "order_id": "btc-fill",
+                        "filled_qty": 0.25,
+                        "avg_price": 64250.5,
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        fills = app_client.get("/api/live/fills?limit=5").json()["fills"]
+
+        assert len(fills) == 1
+        assert fills[0]["source"] == "broker_router"
+        assert fills[0]["bot"] == "btc_optimized"
+        assert fills[0]["symbol"] == "BTC"
+        assert fills[0]["qty"] == 0.25
+        assert fills[0]["price"] == 64250.5
+        assert fills[0]["ts"] == "2026-05-16T14:20:01+00:00"
+
+    def test_live_fills_router_fill_results_prefer_raw_execution_time(self, app_client):
+        """Router fill rows should prefer raw execution_time over later write timestamps."""
+        import json
+        import os
+        from pathlib import Path
+
+        state = Path(os.environ["ETA_STATE_DIR"])
+        result_dir = state / "router" / "fill_results"
+        result_dir.mkdir(parents=True, exist_ok=True)
+        (result_dir / "btc-fill_result.json").write_text(
+            json.dumps(
+                {
+                    "signal_id": "btc-fill",
+                    "bot_id": "btc_optimized",
+                    "result_written_ts": "2026-05-16T14:20:08+00:00",
+                    "ts": "2026-05-16T14:20:09+00:00",
+                    "request": {
+                        "bot_id": "btc_optimized",
+                        "symbol": "BTC",
+                        "side": "SELL",
+                        "client_order_id": "btc-fill",
+                    },
+                    "result": {
+                        "status": "FILLED",
+                        "order_id": "btc-fill",
+                        "filled_qty": 0.25,
+                        "avg_price": 64250.5,
+                        "raw": {
+                            "execution_time": "2026-05-16T14:20:04+00:00",
+                        },
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        fills = app_client.get("/api/live/fills?limit=5").json()["fills"]
+
+        assert len(fills) == 1
+        assert fills[0]["source"] == "broker_router"
+        assert fills[0]["ts"] == "2026-05-16T14:20:04+00:00"
+
+    def test_live_fills_router_fill_results_derive_ibkr_parent_fill_from_raw_statuses(self, app_client):
+        """Router fill rows should surface IBKR parent fills even when top-level qty stays zero."""
+        import json
+        import os
+        from pathlib import Path
+
+        state = Path(os.environ["ETA_STATE_DIR"])
+        result_dir = state / "router" / "fill_results"
+        result_dir.mkdir(parents=True, exist_ok=True)
+        (result_dir / "mnq-parent_result.json").write_text(
+            json.dumps(
+                {
+                    "signal_id": "mnq-parent",
+                    "bot_id": "mnq_anchor_sweep",
+                    "result_written_ts": "2026-05-16T14:25:08+00:00",
+                    "request": {
+                        "bot_id": "mnq_anchor_sweep",
+                        "symbol": "MNQ",
+                        "side": "BUY",
+                        "client_order_id": "mnq-parent",
+                    },
+                    "result": {
+                        "status": "FILLED",
+                        "order_id": "mnq-parent",
+                        "filled_qty": 0.0,
+                        "avg_price": 0.0,
+                        "raw": {
+                            "ib_statuses": [
+                                {
+                                    "status": "Filled",
+                                    "filled": 1.0,
+                                    "avg_fill_price": 28709.5,
+                                    "filled_at": "2026-05-16T14:25:01+00:00",
+                                },
+                                {
+                                    "status": "Submitted",
+                                    "filled": 0.0,
+                                    "avg_fill_price": 0.0,
+                                },
+                            ],
+                        },
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        fills = app_client.get("/api/live/fills?limit=5").json()["fills"]
+
+        assert len(fills) == 1
+        assert fills[0]["source"] == "broker_router"
+        assert fills[0]["bot"] == "mnq_anchor_sweep"
+        assert fills[0]["symbol"] == "MNQ"
+        assert fills[0]["qty"] == 1.0
+        assert fills[0]["price"] == 28709.5
+        assert fills[0]["ts"] == "2026-05-16T14:25:01+00:00"
+
+    def test_live_fills_legacy_router_rows_prefer_broker_fill_ts(self, app_client):
+        """Legacy router JSONL rows should also prefer broker_fill_ts when present."""
+        import json
+        import os
+        from pathlib import Path
+
+        state = Path(os.environ["ETA_STATE_DIR"])
+        (state / "broker_router_fills.jsonl").write_text(
+            json.dumps(
+                {
+                    "ts": "2026-05-16T14:31:09+00:00",
+                    "broker_fill_ts": "2026-05-16T14:31:01+00:00",
+                    "bot_id": "eth_sage_daily",
+                    "symbol": "ETH",
+                    "status": "FILLED",
+                    "qty": 0.4,
+                    "price": 3123.25,
+                    "order_id": "eth-fill-1",
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        fills = app_client.get("/api/live/fills?limit=5").json()["fills"]
+
+        assert len(fills) == 1
+        assert fills[0]["source"] == "broker_router"
+        assert fills[0]["bot"] == "eth_sage_daily"
+        assert fills[0]["symbol"] == "ETH"
+        assert fills[0]["qty"] == 0.4
+        assert fills[0]["price"] == 3123.25
+        assert fills[0]["ts"] == "2026-05-16T14:31:01+00:00"
 
     def test_fleet_equity_uses_supervisor_when_curves_are_missing(self, app_client):
         """Fleet equity stays live from supervisor heartbeat when curve files are absent."""

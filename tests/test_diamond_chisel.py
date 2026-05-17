@@ -310,6 +310,7 @@ def test_mnq_nq_sage_extras_are_identical_or_flagged() -> None:
         "warmup_policy",  # may differ between bots
         "sub_strategy_extras",  # symbol-bound (sweep_preset etc)
         "rationale",
+        "partial_profit_enabled",  # intentional MNQ-only paper-soak override
     }
     mnq_keys = set(mnq.extras.keys()) - ignore_keys
     nq_keys = set(nq.extras.keys()) - ignore_keys

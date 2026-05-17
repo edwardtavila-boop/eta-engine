@@ -428,6 +428,12 @@ def test_broker_router_forwards_reduce_only_to_venue(
         _stub_fetch_positions,
         raising=False,
     )
+    monkeypatch.setattr(
+        _br,
+        "router_daily_loss_killswitch_denial",
+        lambda _order: None,
+        raising=False,
+    )
 
     router = _br.BrokerRouter(
         pending_dir=pending_dir,
@@ -499,6 +505,12 @@ def test_broker_router_entry_default_reduce_only_is_false(
         _br,
         "fetch_bot_positions",
         _stub_fetch_positions,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        _br,
+        "router_daily_loss_killswitch_denial",
+        lambda _order: None,
         raising=False,
     )
 

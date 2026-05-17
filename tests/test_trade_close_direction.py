@@ -99,16 +99,17 @@ def test_supervisor_script_uses_derived_direction() -> None:
 
 
 def test_feeds_supervisor_uses_derived_direction() -> None:
-    """Same integration check for feeds/jarvis_strategy_supervisor.py."""
+    """The feeds compatibility layer must route to the derived-direction implementation."""
     from pathlib import Path
 
     p = Path(__file__).resolve().parents[1] / "feeds" / "jarvis_strategy_supervisor.py"
     text = p.read_text(encoding="utf-8")
-    # The feeds variant uses getattr to tolerate FillRecord shape changes
-    assert '_raw_side = (getattr(rec, "side", "") or "").upper()' in text, (
-        "wave-10 derivation block missing from feeds/jarvis_strategy_supervisor.py"
+    assert "build_script_shim" in text, (
+        "feeds/jarvis_strategy_supervisor.py should stay a compatibility shim"
     )
-    assert "direction=_trade_direction," in text
+    assert '"eta_engine.scripts.jarvis_strategy_supervisor"' in text, (
+        "feeds/jarvis_strategy_supervisor.py must target the canonical scripts supervisor"
+    )
 
 
 def test_pre_wave10_pattern_absent_in_both_supervisors() -> None:

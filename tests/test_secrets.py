@@ -11,6 +11,11 @@ from eta_engine.core.secrets import (
 )
 
 
+@pytest.fixture(autouse=True)
+def disable_keyring(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(SecretsManager, "_try_keyring", lambda self, key: None)
+
+
 def test_env_lookup_returns_value(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ETA_TEST_KEY", "hello-value")
     sm = SecretsManager(env_file="does_not_exist.env")
@@ -75,3 +80,24 @@ def test_env_file_lookup(tmp_path) -> None:
     sm = SecretsManager(env_file=ef)
     assert sm.get("ETA_FILE_KEY", required=False) == "file-value"
     assert sm.get("ETA_OTHER", required=False) == "x"
+
+
+def test_env_file_strips_inline_comments(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("TRADOVATE_APP_ID", raising=False)
+    monkeypatch.delenv("TRADOVATE_PASSWORD", raising=False)
+    ef = tmp_path / ".env"
+    ef.write_text(
+        "TRADOVATE_APP_ID=EvolutionaryTradingAlgo  # free-form API-app name you register\n"
+        "TRADOVATE_PASSWORD=                # Tradovate account password\n",
+        encoding="utf-8",
+    )
+    sm = SecretsManager(env_file=ef)
+    assert sm.get("TRADOVATE_APP_ID", required=False) == "EvolutionaryTradingAlgo"
+    assert sm.get("TRADOVATE_PASSWORD", required=False) == ""
+
+
+def test_env_file_keeps_hash_without_comment_whitespace(tmp_path) -> None:
+    ef = tmp_path / ".env"
+    ef.write_text("ETA_HASH_KEY=value#not-a-comment\n", encoding="utf-8")
+    sm = SecretsManager(env_file=ef)
+    assert sm.get("ETA_HASH_KEY", required=False) == "value#not-a-comment"

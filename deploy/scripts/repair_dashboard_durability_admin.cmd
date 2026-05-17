@@ -17,6 +17,9 @@ set "REGISTER_BROKER_STATE_REFRESH=%SCRIPTS%\register_broker_state_refresh_task.
 set "REGISTER_SUPERVISOR_BROKER_RECONCILE=%SCRIPTS%\register_supervisor_broker_reconcile_task.ps1"
 set "REGISTER_OPERATOR_QUEUE=%SCRIPTS%\register_operator_queue_heartbeat_task.ps1"
 set "REGISTER_PAPER_LIVE=%SCRIPTS%\register_paper_live_transition_check_task.ps1"
+set "REPAIR_PUBLIC_EDGE_WATCHDOG=%SCRIPTS%\repair_eta_public_edge_route_watchdog_task.ps1"
+set "REPAIR_HEALTHCHECK=%SCRIPTS%\repair_eta_healthcheck_task.ps1"
+set "REPAIR_FIRM_COMMAND_CENTER_ENV=%SCRIPTS%\repair_firm_command_center_env.ps1"
 set "DRY_RUN=0"
 set "NO_ELEVATE=0"
 
@@ -94,6 +97,21 @@ if not exist "%REGISTER_PAPER_LIVE%" (
     echo   %REGISTER_PAPER_LIVE%
     exit /b 3
 )
+if not exist "%REPAIR_PUBLIC_EDGE_WATCHDOG%" (
+    echo Missing public edge route watchdog repair script:
+    echo   %REPAIR_PUBLIC_EDGE_WATCHDOG%
+    exit /b 3
+)
+if not exist "%REPAIR_HEALTHCHECK%" (
+    echo Missing healthcheck repair script:
+    echo   %REPAIR_HEALTHCHECK%
+    exit /b 3
+)
+if not exist "%REPAIR_FIRM_COMMAND_CENTER_ENV%" (
+    echo Missing FirmCommandCenter env repair script:
+    echo   %REPAIR_FIRM_COMMAND_CENTER_ENV%
+    exit /b 3
+)
 
 if "%DRY_RUN%"=="1" (
     pushd "%ETA_ROOT%" >nul
@@ -142,8 +160,21 @@ if "%DRY_RUN%"=="1" (
     powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%REGISTER_PAPER_LIVE%" -DryRun
     if errorlevel 1 goto fail
 
+    echo === DRY RUN: validate canonical ETA-Public-Edge-Route-Watchdog repair ===
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%REPAIR_PUBLIC_EDGE_WATCHDOG%" -DryRun
+    if errorlevel 1 goto fail
+
+    echo === DRY RUN: validate canonical ETA-HealthCheck repair ===
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%REPAIR_HEALTHCHECK%" -DryRun
+    if errorlevel 1 goto fail
+
+    echo === DRY RUN: validate canonical FirmCommandCenter env repair ===
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%REPAIR_FIRM_COMMAND_CENTER_ENV%" -DryRun
+    if errorlevel 1 goto fail
+
     echo DRY RUN OK: dashboard durability repair prerequisites are present.
-    echo Re-run without /DryRun from an elevated shell to register and start the tasks.
+    echo Re-run without /DryRun from an elevated shell to register and start the tasks, including canonical ETA-HealthCheck repair, ETA-Public-Edge-Route-Watchdog, and FirmCommandCenter env repair.
+    echo This covers ETA-Public-Edge-Route-Watchdog, ETA-HealthCheck, and FirmCommandCenter env repair.
     popd >nul
     exit /b 0
 )
@@ -207,6 +238,18 @@ if errorlevel 1 goto fail
 
 echo === Register read-only paper-live transition cache task ===
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%REGISTER_PAPER_LIVE%" -Start
+if errorlevel 1 goto fail
+
+echo === Repair canonical ETA-Public-Edge-Route-Watchdog task ===
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%REPAIR_PUBLIC_EDGE_WATCHDOG%"
+if errorlevel 1 goto fail
+
+echo === Repair canonical ETA-HealthCheck task ===
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%REPAIR_HEALTHCHECK%"
+if errorlevel 1 goto fail
+
+echo === Repair FirmCommandCenter environment ===
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%REPAIR_FIRM_COMMAND_CENTER_ENV%" -Start
 if errorlevel 1 goto fail
 
 echo === Refresh read-only VPS ops hardening audit ===

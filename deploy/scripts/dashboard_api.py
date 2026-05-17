@@ -8,7 +8,7 @@ via a small REST API. Designed to be consumed by the React trading-dashboard
 or hit directly from curl.
 
 Run:
-  uvicorn deploy.scripts.dashboard_api:app --host 127.0.0.1 --port 8000
+  uvicorn eta_engine.deploy.scripts.dashboard_api:app --host 127.0.0.1 --port 8000
 
 Endpoints:
   GET  /health                       -- liveness
@@ -61,6 +61,7 @@ from eta_engine.core.execution_lanes import (
     normalize_daily_loss_gate_mode,
 )
 from eta_engine.deploy.scripts.dashboard_services import ensure_dir_writable, read_jsonl_tail, run_background_task
+from eta_engine.scripts.submodule_wiring_preflight import inspect_submodule_wiring
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -71,6 +72,20 @@ DASHBOARD_VERSION = "v1"
 DASHBOARD_RELEASE_STAGE = "pre_beta"
 DASHBOARD_LOCAL_TIME_ZONE_NAME = "America/New_York"
 DASHBOARD_LOCAL_TIME_ZONE = ZoneInfo(DASHBOARD_LOCAL_TIME_ZONE_NAME)
+_RUNTIME_OPTIONAL_CHECKOUTS = frozenset({"mnq_backtest"})
+_ROOT_COMPANION_CHECKOUTS = frozenset(
+    {
+        "eta_engine",
+        "firm",
+        "mnq_bot",
+        "mnq_backtest",
+        "mnq_eta_bot",
+        "tradingview-mcp",
+        "website",
+    }
+)
+_OPTIONAL_CHECKOUT_BLOCKERS = frozenset({"missing submodule checkout", "gitlink uninitialized"})
+_INTEGRATION_CHECKOUT_BLOCKERS = frozenset({"dirty worktree", "gitlink diverged"})
 _SESSION_GATE_SIGNAL_AUDIT_TAIL_LIMIT = max(
     20,
     int(os.getenv("ETA_SESSION_GATE_SIGNAL_AUDIT_TAIL_LIMIT", "200") or 200),
@@ -121,6 +136,22 @@ DASHBOARD_CARD_REGISTRY = (
         "endpoint": "/api/jarvis/bot_strategy_readiness",
         "required": True,
         "stale_after_s": 60,
+    },
+    {
+        "id": "cc-second-brain",
+        "title": "JARVIS Second Brain",
+        "source": "endpoint",
+        "endpoint": "/api/jarvis/second_brain",
+        "required": True,
+        "stale_after_s": 300,
+    },
+    {
+        "id": "cc-dirty-worktree-reconciliation",
+        "title": "Repo Reconciliation",
+        "source": "endpoint",
+        "endpoint": "/api/jarvis/dirty_worktree_reconciliation",
+        "required": True,
+        "stale_after_s": 300,
     },
     {
         "id": "cc-strategy-supercharge",
@@ -362,6 +393,8 @@ API_BUILD_CAPABILITIES = (
     "daily_stop_reset_audit",
     "eta_readiness_snapshot",
     "ibkr_futures_avg_cost_normalized",
+    "dirty_worktree_reconciliation",
+    "jarvis_second_brain",
     "sage_sentiment_pressure",
 )
 _DAILY_STOP_RESET_AUDIT_STATUSES = {
@@ -369,6 +402,7 @@ _DAILY_STOP_RESET_AUDIT_STATUSES = {
     "reset_cleared_ready",
     "reset_cleared_blocked",
     "still_tripped_after_reset_window",
+    "stale_receipt",
     "missing",
     "unreadable",
     "invalid",
@@ -386,10 +420,12 @@ _VPS_OPS_HARDENING_STATUSES = {
     "YELLOW_SAFETY_BLOCKED",
     "YELLOW_ADMIN_AI_BLOCKED",
     "YELLOW_ADMIN_AI_PENDING",
+    "stale_receipt",
     "missing",
     "unreadable",
     "invalid",
     "unknown",
+    "error",
 }
 
 
@@ -410,6 +446,14 @@ def _truthy_env(name: str, default: str = "0") -> bool:
 _ETA_READINESS_SNAPSHOT_MAX_AGE_S = _positive_int_env(
     "ETA_READINESS_SNAPSHOT_MAX_AGE_S",
     20 * 60,
+)
+_DAILY_STOP_RESET_AUDIT_MAX_AGE_S = _positive_int_env(
+    "ETA_DAILY_STOP_RESET_AUDIT_MAX_AGE_S",
+    3 * 60 * 60,
+)
+_VPS_OPS_HARDENING_MAX_AGE_S = _positive_int_env(
+    "ETA_VPS_OPS_HARDENING_MAX_AGE_S",
+    2 * 60 * 60,
 )
 _PAPER_LIVE_TRANSITION_CACHE_MAX_AGE_S = _positive_int_env(
     "ETA_PAPER_LIVE_TRANSITION_CACHE_MAX_AGE_S",
@@ -458,6 +502,22 @@ def _dashboard_contract() -> dict:
         "required_data": list(DASHBOARD_REQUIRED_DATA),
         "operator_url": "https://ops.evolutionarytradingalgo.com",
     }
+
+
+_PUBLIC_OPERATOR_BROKER_STATE_CACHE: dict[str, object] = {"payload": None, "ts": 0.0}
+_PUBLIC_OPERATOR_BROKER_STATE_CACHE_LOCK = threading.Lock()
+_PUBLIC_OPERATOR_BROKER_STATE_CACHE_TTL_S = float(
+    os.environ.get("ETA_PUBLIC_OPERATOR_BROKER_STATE_CACHE_TTL_S", "60") or 60
+)
+
+
+def _operator_url_base() -> str:
+    raw = str(
+        os.environ.get("ETA_OPERATOR_URL")
+        or _dashboard_contract().get("operator_url")
+        or "https://ops.evolutionarytradingalgo.com"
+    ).strip()
+    return raw.rstrip("/")
 
 
 def _dashboard_card_health_payload() -> dict:
@@ -589,6 +649,22 @@ def _command_center_watchdog_status_path() -> Path:
     return _WORKSPACE_ROOT / "var" / "ops" / "command_center_watchdog_status_latest.json"
 
 
+def _normalize_command_center_watchdog_status(status: object) -> str:
+    """Map internal watchdog reason codes into the public diagnostics vocabulary."""
+    normalized = str(status or "").strip().lower()
+    if not normalized:
+        return ""
+    return {
+        "local_stale_service": "stale_service",
+        "local_service_unreachable": "service_unreachable",
+        "watchdog_missing": "missing_watchdog",
+        "receipt_missing": "missing_receipt",
+        "receipt_stale": "stale_receipt",
+        "public_tunnel_service_drift": "public_tunnel_service_drift",
+        "degraded_status": "public_operator_drift",
+    }.get(normalized, normalized)
+
+
 def _eta_readiness_snapshot_status_path() -> Path:
     """Canonical root-level ETA readiness snapshot receipt path."""
     override = os.environ.get("ETA_READINESS_SNAPSHOT_STATUS_PATH", "").strip()
@@ -610,6 +686,7 @@ def _eta_readiness_snapshot_payload(*, server_ts: float) -> dict:
             "checked_at": None,
             "age_s": None,
             "summary": "ETA readiness snapshot receipt missing",
+            "detail": "ETA readiness snapshot receipt missing",
             "check_count": 0,
             "blocked_count": 0,
             "ok_count": 0,
@@ -622,13 +699,57 @@ def _eta_readiness_snapshot_payload(*, server_ts: float) -> dict:
             "cumulative_r": None,
             "broker_missing_bracket_count": 0,
             "broker_open_position_count": 0,
+            "non_authoritative_gateway_host": False,
             "public_fallback_reason": "",
             "public_fallback_active": False,
             "public_fallback_primary_action": "",
             "public_fallback_blocked_count": 0,
+            "public_live_broker_ready": False,
+            "public_live_broker_snapshot_state": "",
+            "public_live_broker_snapshot_source": "",
+            "public_live_broker_source": "",
+            "public_live_broker_degraded_display": "",
+            "dashboard_api_runtime_current_live_broker_state_checked_utc": "",
+            "dashboard_api_runtime_current_live_broker_open_order_count": 0,
+            "dashboard_api_runtime_public_live_broker_degraded_display": "",
+            "dashboard_api_runtime_drift_display": "",
+            "dashboard_api_runtime_refresh_command": "",
+            "dashboard_api_runtime_refresh_requires_elevation": False,
+            "public_live_broker_state_checked_utc": "",
+            "public_live_broker_open_order_count": 0,
+            "public_fallback_broker_open_order_count": 0,
+            "public_fallback_broker_open_order_drift_display": "",
+            "public_fallback_stale_flat_open_order_count": 0,
+            "public_fallback_stale_flat_open_order_symbols": [],
+            "public_fallback_stale_flat_open_order_display": "",
+            "public_fallback_stale_flat_open_order_relation_display": "",
+            "public_live_retune_generated_at_utc": "",
+            "public_live_retune_focus_active_experiment_outcome_line": "",
+            "local_retune_generated_at_utc": "",
+            "local_retune_focus_active_experiment_outcome_line": "",
+            "retune_focus_active_experiment_drift_display": "",
+            "current_local_retune_generated_at_utc": "",
+            "local_retune_sync_drift_display": "",
+            "public_fallback_brackets_summary": "",
+            "public_fallback_brackets_next_action": "",
+            "public_fallback_prop_gate_summary": "",
+            "public_fallback_prop_gate_primary_action": "",
+            "brackets_summary": "",
+            "brackets_next_action": "",
+            "prop_gate_summary": "",
+            "prop_gate_primary_action": "",
             "prop_primary_bot": "",
+            "command_center_issue_status": "",
+            "command_center_issue_summary": "",
+            "command_center_operator_next_step": "",
+            "command_center_operator_next_reason": "",
+            "command_center_operator_next_command": "",
+            "command_center_operator_next_requires_elevation": False,
+            "command_center_dashboard_task_missing_task_names": [],
+            "command_center_local_contract_status": "",
             "promotion_summary": "",
             "required_evidence": [],
+            "promotion_required_evidence": [],
         }
 
     checked_at = receipt.get("checked_at_utc") or receipt.get("checked_at")
@@ -698,37 +819,388 @@ def _eta_readiness_snapshot_payload(*, server_ts: float) -> dict:
         if isinstance(fallback_bracket_payload.get("position_summary"), dict)
         else {}
     )
+    fallback_broker_oco_evidence = (
+        fallback_bracket_payload.get("broker_oco_evidence")
+        if isinstance(fallback_bracket_payload.get("broker_oco_evidence"), dict)
+        else {}
+    )
     public_fallback_blocked_checks = [
         check
         for check in public_fallback_checks
         if isinstance(check, dict) and str(check.get("status") or "").upper() not in pass_statuses
     ]
+    public_fallback_reason = str(receipt.get("public_fallback_reason") or "")
     local_fleet_truth_unavailable = (
         str(bracket_payload.get("summary") or "").upper() == "BLOCKED_FLEET_TRUTH_UNAVAILABLE"
     )
+    local_non_authoritative_gateway_host = bool(receipt.get("non_authoritative_gateway_host"))
     public_fallback_active = bool(
-        receipt.get("public_fallback_reason") and public_fallback_checks and local_fleet_truth_unavailable
+        public_fallback_reason
+        and public_fallback_checks
+        and (
+            local_fleet_truth_unavailable
+            or (
+                public_fallback_reason == "non_authoritative_gateway_host"
+                and local_non_authoritative_gateway_host
+            )
+        )
+    )
+    command_center_watchdog = (
+        receipt.get("command_center_watchdog") if isinstance(receipt.get("command_center_watchdog"), dict) else {}
+    )
+    command_center_dashboard_task_missing_task_names = (
+        [str(name) for name in receipt.get("command_center_dashboard_task_missing_task_names", []) if name]
+        if isinstance(receipt.get("command_center_dashboard_task_missing_task_names"), list)
+        else (
+            [
+                str(name)
+                for name in command_center_watchdog.get("dashboard_task_missing_task_names", [])
+                if name
+            ]
+            if isinstance(command_center_watchdog.get("dashboard_task_missing_task_names"), list)
+            else []
+        )
+    )
+    command_center_local_contract_status = (
+        str(
+            (
+                command_center_watchdog.get("local_contract_status")
+                if isinstance(command_center_watchdog.get("local_contract_status"), dict)
+                else {}
+            ).get("status")
+            or ""
+        )
     )
 
     next_actions: list[str] = []
     public_fallback_next_actions: list[str] = []
     fallback_bracket_action = str(
-        fallback_bracket_payload.get("next_action") or fallback_bracket_payload.get("operator_action") or ""
+        receipt.get("public_fallback_brackets_next_action")
+        or fallback_bracket_payload.get("next_action")
+        or fallback_bracket_payload.get("operator_action")
+        or ""
     ).strip()
     if fallback_bracket_action:
         public_fallback_next_actions.append(fallback_bracket_action)
+    fallback_bracket_summary = str(
+        receipt.get("public_fallback_brackets_summary")
+        or fallback_bracket_payload.get("summary")
+        or public_fallback_by_name.get("broker_bracket_audit_public_fallback", {}).get("status")
+        or ""
+    ).strip()
     fallback_prop_actions = fallback_prop_payload.get("next_actions")
     if isinstance(fallback_prop_actions, list):
         public_fallback_next_actions.extend(str(action) for action in fallback_prop_actions if action)
+    fallback_prop_primary_action = str(receipt.get("public_fallback_prop_gate_primary_action") or "").strip() or (
+        str(public_fallback_next_actions[1] if len(public_fallback_next_actions) > 1 else "")
+        if fallback_bracket_action
+        else str(public_fallback_next_actions[0] if public_fallback_next_actions else "")
+    ).strip()
+    public_fallback_primary_action = (
+        str(receipt.get("public_fallback_primary_action") or "").strip()
+        or (str(public_fallback_next_actions[0]) if public_fallback_next_actions else "")
+    )
+    fallback_prop_summary = str(
+        receipt.get("public_fallback_prop_gate_summary")
+        or fallback_prop_payload.get("summary")
+        or public_fallback_by_name.get("prop_live_readiness_gate_public_fallback", {}).get("status")
+        or ""
+    ).strip()
+    raw_public_fallback_blocked_count = receipt.get("public_fallback_blocked_count")
+    if isinstance(raw_public_fallback_blocked_count, bool):
+        public_fallback_blocked_count = len(public_fallback_blocked_checks)
+    elif isinstance(raw_public_fallback_blocked_count, int):
+        public_fallback_blocked_count = raw_public_fallback_blocked_count
+    else:
+        public_fallback_blocked_count = len(public_fallback_blocked_checks)
+    raw_public_fallback_stale_count = receipt.get("public_fallback_stale_flat_open_order_count")
+    if isinstance(raw_public_fallback_stale_count, bool):
+        public_fallback_stale_flat_open_order_count = int(
+            fallback_position_summary.get("stale_flat_open_order_count") or 0
+        )
+    elif isinstance(raw_public_fallback_stale_count, int):
+        public_fallback_stale_flat_open_order_count = raw_public_fallback_stale_count
+    else:
+        public_fallback_stale_flat_open_order_count = int(
+            fallback_position_summary.get("stale_flat_open_order_count") or 0
+        )
+    raw_public_fallback_broker_open_order_count = receipt.get("public_fallback_broker_open_order_count")
+    if isinstance(raw_public_fallback_broker_open_order_count, bool):
+        public_fallback_broker_open_order_count = int(
+            fallback_broker_oco_evidence.get("open_order_count") or 0
+        )
+    elif isinstance(raw_public_fallback_broker_open_order_count, int):
+        public_fallback_broker_open_order_count = raw_public_fallback_broker_open_order_count
+    else:
+        public_fallback_broker_open_order_count = int(
+            fallback_broker_oco_evidence.get("open_order_count") or 0
+        )
+    receipt_public_fallback_stale_symbols = receipt.get("public_fallback_stale_flat_open_order_symbols")
+    if isinstance(receipt_public_fallback_stale_symbols, list):
+        public_fallback_stale_flat_open_order_symbols = [
+            str(symbol) for symbol in receipt_public_fallback_stale_symbols if str(symbol).strip()
+        ]
+    else:
+        fallback_stale_symbols = fallback_position_summary.get("stale_flat_open_order_symbols")
+        public_fallback_stale_flat_open_order_symbols = (
+            [str(symbol) for symbol in fallback_stale_symbols if str(symbol).strip()]
+            if isinstance(fallback_stale_symbols, list)
+            else []
+        )
+    receipt_public_fallback_stale_display = str(
+        receipt.get("public_fallback_stale_flat_open_order_display") or ""
+    ).strip()
+    if receipt_public_fallback_stale_display:
+        public_fallback_stale_flat_open_order_display = receipt_public_fallback_stale_display
+    elif (
+        public_fallback_stale_flat_open_order_count > 0
+        and public_fallback_stale_flat_open_order_symbols
+    ):
+        public_fallback_stale_flat_open_order_display = (
+            f"{public_fallback_stale_flat_open_order_count} stale broker orders "
+            f"({', '.join(public_fallback_stale_flat_open_order_symbols)})"
+        )
+    elif public_fallback_stale_flat_open_order_count > 0:
+        public_fallback_stale_flat_open_order_display = (
+            f"{public_fallback_stale_flat_open_order_count} stale broker orders"
+        )
+    else:
+        public_fallback_stale_flat_open_order_display = ""
+    receipt_public_fallback_stale_relation_display = str(
+        receipt.get("public_fallback_stale_flat_open_order_relation_display") or ""
+    ).strip()
+    if receipt_public_fallback_stale_relation_display:
+        public_fallback_stale_flat_open_order_relation_display = (
+            receipt_public_fallback_stale_relation_display
+        )
+    elif (
+        public_fallback_broker_open_order_count > 0
+        and public_fallback_stale_flat_open_order_count > 0
+    ):
+        if public_fallback_broker_open_order_count == public_fallback_stale_flat_open_order_count:
+            public_fallback_stale_flat_open_order_relation_display = (
+                f"all {public_fallback_broker_open_order_count} broker open orders are stale flat orders"
+            )
+        else:
+            public_fallback_stale_flat_open_order_relation_display = (
+                f"{public_fallback_stale_flat_open_order_count} stale flat broker orders vs "
+                f"{public_fallback_broker_open_order_count} total broker open orders"
+            )
+    elif public_fallback_broker_open_order_count > 0:
+        public_fallback_stale_flat_open_order_relation_display = (
+            f"{public_fallback_broker_open_order_count} total broker open orders on public fallback"
+        )
+    else:
+        public_fallback_stale_flat_open_order_relation_display = ""
+    raw_public_live_broker_ready = receipt.get("public_live_broker_ready")
+    public_live_broker_ready = (
+        raw_public_live_broker_ready
+        if isinstance(raw_public_live_broker_ready, bool)
+        else False
+    )
+    public_live_broker_snapshot_state = str(
+        receipt.get("public_live_broker_snapshot_state") or ""
+    ).strip()
+    public_live_broker_snapshot_source = str(
+        receipt.get("public_live_broker_snapshot_source") or ""
+    ).strip()
+    public_live_broker_source = str(
+        receipt.get("public_live_broker_source") or ""
+    ).strip()
+    receipt_public_live_broker_degraded_display = str(
+        receipt.get("public_live_broker_degraded_display") or ""
+    ).strip()
+    if receipt_public_live_broker_degraded_display:
+        public_live_broker_degraded_display = (
+            receipt_public_live_broker_degraded_display
+        )
+    elif not public_live_broker_ready:
+        degraded_reason = (
+            public_live_broker_snapshot_source
+            or public_live_broker_snapshot_state
+            or public_live_broker_source
+        )
+        if degraded_reason:
+            public_live_broker_degraded_display = (
+                f"public broker_state degraded: {degraded_reason}"
+            )
+            if (
+                public_live_broker_source
+                and public_live_broker_source != degraded_reason
+            ):
+                public_live_broker_degraded_display = (
+                    f"{public_live_broker_degraded_display}; via "
+                    f"{public_live_broker_source}"
+                )
+        else:
+            public_live_broker_degraded_display = ""
+    else:
+        public_live_broker_degraded_display = ""
+    dashboard_api_runtime_current_live_broker_state_checked_utc = str(
+        receipt.get("dashboard_api_runtime_current_live_broker_state_checked_utc") or ""
+    ).strip()
+    raw_dashboard_api_runtime_current_live_broker_open_order_count = receipt.get(
+        "dashboard_api_runtime_current_live_broker_open_order_count"
+    )
+    if isinstance(raw_dashboard_api_runtime_current_live_broker_open_order_count, bool):
+        dashboard_api_runtime_current_live_broker_open_order_count = 0
+    elif isinstance(raw_dashboard_api_runtime_current_live_broker_open_order_count, int):
+        dashboard_api_runtime_current_live_broker_open_order_count = (
+            raw_dashboard_api_runtime_current_live_broker_open_order_count
+        )
+    else:
+        dashboard_api_runtime_current_live_broker_open_order_count = 0
+    dashboard_api_runtime_public_live_broker_degraded_display = str(
+        receipt.get("dashboard_api_runtime_public_live_broker_degraded_display") or ""
+    ).strip()
+    dashboard_api_runtime_drift_display = str(
+        receipt.get("dashboard_api_runtime_drift_display") or ""
+    ).strip()
+    dashboard_api_runtime_refresh_command = str(
+        receipt.get("dashboard_api_runtime_refresh_command") or ""
+    ).strip()
+    raw_dashboard_api_runtime_refresh_requires_elevation = receipt.get(
+        "dashboard_api_runtime_refresh_requires_elevation"
+    )
+    dashboard_api_runtime_refresh_requires_elevation = (
+        raw_dashboard_api_runtime_refresh_requires_elevation
+        if isinstance(raw_dashboard_api_runtime_refresh_requires_elevation, bool)
+        else False
+    )
+    public_live_broker_state_checked_utc = str(
+        receipt.get("public_live_broker_state_checked_utc") or ""
+    ).strip()
+    raw_public_live_broker_open_order_count = receipt.get("public_live_broker_open_order_count")
+    if isinstance(raw_public_live_broker_open_order_count, bool):
+        public_live_broker_open_order_count = public_fallback_broker_open_order_count
+    elif isinstance(raw_public_live_broker_open_order_count, int):
+        public_live_broker_open_order_count = raw_public_live_broker_open_order_count
+    else:
+        public_live_broker_open_order_count = public_fallback_broker_open_order_count
+    receipt_public_fallback_broker_open_order_drift_display = str(
+        receipt.get("public_fallback_broker_open_order_drift_display") or ""
+    ).strip()
+    if receipt_public_fallback_broker_open_order_drift_display:
+        public_fallback_broker_open_order_drift_display = (
+            receipt_public_fallback_broker_open_order_drift_display
+        )
+    elif (
+        public_live_broker_open_order_count > 0
+        and public_fallback_broker_open_order_count > 0
+        and public_live_broker_open_order_count != public_fallback_broker_open_order_count
+    ):
+        public_fallback_broker_open_order_drift_display = (
+            "live broker_state reports "
+            f"{public_live_broker_open_order_count} open orders vs "
+            f"public-fallback stale-order audit {public_fallback_broker_open_order_count}"
+        )
+    else:
+        public_fallback_broker_open_order_drift_display = ""
+    public_live_retune_generated_at_utc = str(
+        receipt.get("public_live_retune_generated_at_utc") or ""
+    ).strip()
+    public_live_retune_focus_active_experiment_outcome_line = str(
+        receipt.get("public_live_retune_focus_active_experiment_outcome_line") or ""
+    ).strip()
+    local_retune_generated_at_utc = str(receipt.get("local_retune_generated_at_utc") or "").strip()
+    local_retune_focus_active_experiment_outcome_line = str(
+        receipt.get("local_retune_focus_active_experiment_outcome_line") or ""
+    ).strip()
+    current_local_retune_status = _load_diamond_retune_status()
+    current_local_retune_generated_at_utc = str(
+        current_local_retune_status.get("generated_at_utc")
+        or current_local_retune_status.get("generated_at")
+        or ""
+    ).strip()
+    receipt_retune_focus_active_experiment_drift_display = str(
+        receipt.get("retune_focus_active_experiment_drift_display") or ""
+    ).strip()
+    if receipt_retune_focus_active_experiment_drift_display:
+        retune_focus_active_experiment_drift_display = (
+            receipt_retune_focus_active_experiment_drift_display
+        )
+    elif (
+        public_live_retune_focus_active_experiment_outcome_line
+        and local_retune_focus_active_experiment_outcome_line
+        and public_live_retune_focus_active_experiment_outcome_line
+        != local_retune_focus_active_experiment_outcome_line
+    ):
+        retune_focus_active_experiment_drift_display = (
+            "public retune says "
+            f"{public_live_retune_focus_active_experiment_outcome_line}; "
+            "local mirror says "
+            f"{local_retune_focus_active_experiment_outcome_line}"
+        )
+    else:
+        retune_focus_active_experiment_drift_display = ""
+    if current_local_retune_generated_at_utc and local_retune_generated_at_utc:
+        try:
+            current_local_retune_dt = datetime.fromisoformat(
+                current_local_retune_generated_at_utc.replace("Z", "+00:00")
+            )
+            cached_local_retune_dt = datetime.fromisoformat(
+                local_retune_generated_at_utc.replace("Z", "+00:00")
+            )
+        except ValueError:
+            current_local_retune_dt = None
+            cached_local_retune_dt = None
+        if (
+            current_local_retune_dt is not None
+            and cached_local_retune_dt is not None
+            and current_local_retune_dt > cached_local_retune_dt
+        ):
+            local_retune_sync_drift_display = (
+                "local retune snapshot refreshed at "
+                f"{current_local_retune_generated_at_utc} after readiness cached "
+                f"{local_retune_generated_at_utc}"
+            )
+        elif current_local_retune_generated_at_utc != local_retune_generated_at_utc:
+            local_retune_sync_drift_display = (
+                "local retune snapshot timestamp "
+                f"{current_local_retune_generated_at_utc} differs from readiness cached "
+                f"{local_retune_generated_at_utc}"
+            )
+        else:
+            local_retune_sync_drift_display = ""
+    elif current_local_retune_generated_at_utc and not local_retune_generated_at_utc:
+        local_retune_sync_drift_display = (
+            "local retune snapshot refreshed at "
+            f"{current_local_retune_generated_at_utc} but readiness cached no local retune timestamp"
+        )
+    else:
+        local_retune_sync_drift_display = ""
     raw_next_actions = prop_payload.get("next_actions")
     if isinstance(raw_next_actions, list):
         next_actions.extend(str(action) for action in raw_next_actions if action)
     bracket_action = str(bracket_payload.get("next_action") or bracket_payload.get("operator_action") or "").strip()
     if bracket_action and bracket_action not in next_actions:
         next_actions.append(bracket_action)
+    bracket_summary = str(
+        receipt.get("brackets_summary")
+        or bracket_payload.get("summary")
+        or by_name.get("broker_bracket_audit", {}).get("status")
+        or ""
+    ).strip()
+    bracket_action = str(receipt.get("brackets_next_action") or bracket_action).strip()
+    prop_gate_primary_action = str(
+        receipt.get("prop_gate_primary_action") or (next_actions[0] if next_actions else "")
+    ).strip()
+    prop_gate_summary = str(
+        receipt.get("prop_gate_summary")
+        or prop_payload.get("summary")
+        or by_name.get("prop_live_readiness_gate", {}).get("status")
+        or ""
+    ).strip()
     raw_required_evidence = promotion_payload.get("required_evidence")
+    receipt_required_evidence = receipt.get("promotion_required_evidence")
     required_evidence = (
-        [str(item) for item in raw_required_evidence if item] if isinstance(raw_required_evidence, list) else []
+        [str(item) for item in receipt_required_evidence if item]
+        if isinstance(receipt_required_evidence, list)
+        else (
+            [str(item) for item in raw_required_evidence if item]
+            if isinstance(raw_required_evidence, list)
+            else []
+        )
     )
     for item in required_evidence:
         if item not in next_actions:
@@ -759,6 +1231,14 @@ def _eta_readiness_snapshot_payload(*, server_ts: float) -> dict:
         status = "blocked"
     else:
         status = "unknown"
+    detail = raw_summary
+    if status == "stale_receipt":
+        detail = (
+            "ETA readiness snapshot is stale; rerun .\\scripts\\eta-readiness-snapshot.ps1 "
+            "before trusting this readiness state."
+        )
+    elif primary_action and primary_action != "No action required.":
+        detail = primary_action
 
     return {
         "status": status,
@@ -768,6 +1248,7 @@ def _eta_readiness_snapshot_payload(*, server_ts: float) -> dict:
         "checked_at": checked_at,
         "age_s": age_s,
         "summary": raw_summary,
+        "detail": detail,
         "check_count": len(checks),
         "blocked_count": len(blocked_checks),
         "ok_count": ok_count,
@@ -780,20 +1261,185 @@ def _eta_readiness_snapshot_payload(*, server_ts: float) -> dict:
         "cumulative_r": closed_payload.get("cumulative_r"),
         "broker_missing_bracket_count": int(effective_position_summary.get("missing_bracket_count") or 0),
         "broker_open_position_count": int(effective_position_summary.get("broker_open_position_count") or 0),
-        "public_fallback_reason": str(receipt.get("public_fallback_reason") or ""),
+        "non_authoritative_gateway_host": local_non_authoritative_gateway_host,
+        "public_fallback_reason": public_fallback_reason,
         "public_fallback_active": public_fallback_active,
-        "public_fallback_primary_action": public_fallback_next_actions[0] if public_fallback_next_actions else "",
-        "public_fallback_blocked_count": len(public_fallback_blocked_checks),
+        "public_fallback_primary_action": public_fallback_primary_action,
+        "public_fallback_blocked_count": public_fallback_blocked_count,
+        "public_live_broker_ready": public_live_broker_ready,
+        "public_live_broker_snapshot_state": public_live_broker_snapshot_state,
+        "public_live_broker_snapshot_source": public_live_broker_snapshot_source,
+        "public_live_broker_source": public_live_broker_source,
+        "public_live_broker_degraded_display": public_live_broker_degraded_display,
+        "dashboard_api_runtime_current_live_broker_state_checked_utc": (
+            dashboard_api_runtime_current_live_broker_state_checked_utc
+        ),
+        "dashboard_api_runtime_current_live_broker_open_order_count": (
+            dashboard_api_runtime_current_live_broker_open_order_count
+        ),
+        "dashboard_api_runtime_public_live_broker_degraded_display": (
+            dashboard_api_runtime_public_live_broker_degraded_display
+        ),
+        "dashboard_api_runtime_drift_display": dashboard_api_runtime_drift_display,
+        "dashboard_api_runtime_refresh_command": dashboard_api_runtime_refresh_command,
+        "dashboard_api_runtime_refresh_requires_elevation": (
+            dashboard_api_runtime_refresh_requires_elevation
+        ),
+        "public_live_broker_state_checked_utc": public_live_broker_state_checked_utc,
+        "public_live_broker_open_order_count": public_live_broker_open_order_count,
+        "public_fallback_broker_open_order_count": public_fallback_broker_open_order_count,
+        "public_fallback_broker_open_order_drift_display": public_fallback_broker_open_order_drift_display,
+        "public_fallback_stale_flat_open_order_count": public_fallback_stale_flat_open_order_count,
+        "public_fallback_stale_flat_open_order_symbols": public_fallback_stale_flat_open_order_symbols,
+        "public_fallback_stale_flat_open_order_display": public_fallback_stale_flat_open_order_display,
+        "public_fallback_stale_flat_open_order_relation_display": public_fallback_stale_flat_open_order_relation_display,
+        "public_live_retune_generated_at_utc": public_live_retune_generated_at_utc,
+        "public_live_retune_focus_active_experiment_outcome_line": (
+            public_live_retune_focus_active_experiment_outcome_line
+        ),
+        "local_retune_generated_at_utc": local_retune_generated_at_utc,
+        "local_retune_focus_active_experiment_outcome_line": (
+            local_retune_focus_active_experiment_outcome_line
+        ),
+        "retune_focus_active_experiment_drift_display": retune_focus_active_experiment_drift_display,
+        "current_local_retune_generated_at_utc": current_local_retune_generated_at_utc,
+        "local_retune_sync_drift_display": local_retune_sync_drift_display,
+        "public_fallback_brackets_summary": fallback_bracket_summary,
+        "public_fallback_prop_gate_summary": fallback_prop_summary,
+        "public_fallback_prop_gate_primary_action": fallback_prop_primary_action,
+        "brackets_summary": bracket_summary,
+        "brackets_next_action": bracket_action,
+        "prop_gate_summary": prop_gate_summary,
+        "prop_gate_primary_action": prop_gate_primary_action,
         "prop_primary_bot": str(
-            prop_payload.get("primary_bot")
+            receipt.get("prop_primary_bot")
+            or prop_payload.get("primary_bot")
             or promotion_payload.get("primary_bot")
             or promotion_primary.get("bot_id")
             or ""
         ),
-        "promotion_summary": str(promotion_payload.get("summary") or ""),
-        "ready_for_prop_dry_run_review": bool(promotion_payload.get("ready_for_prop_dry_run_review")),
+        "command_center_issue_status": str(
+            receipt.get("command_center_issue_status") or command_center_watchdog.get("issue_status") or ""
+        ),
+        "command_center_issue_summary": str(
+            receipt.get("command_center_issue_summary")
+            or command_center_watchdog.get("display_issue_summary")
+            or command_center_watchdog.get("display_summary")
+            or command_center_watchdog.get("issue_summary")
+            or ""
+        ).split("; findings=", 1)[0].strip(),
+        "command_center_operator_next_step": str(
+            receipt.get("command_center_operator_next_step") or command_center_watchdog.get("operator_next_step") or ""
+        ),
+        "command_center_operator_next_reason": str(
+            receipt.get("command_center_operator_next_reason")
+            or command_center_watchdog.get("operator_next_reason")
+            or ""
+        ),
+        "command_center_operator_next_command": str(
+            receipt.get("command_center_operator_next_command")
+            or command_center_watchdog.get("operator_next_command")
+            or ""
+        ),
+        "command_center_operator_next_requires_elevation": bool(
+            receipt.get("command_center_operator_next_requires_elevation")
+            or command_center_watchdog.get("operator_next_requires_elevation")
+        ),
+        "command_center_dashboard_task_missing_task_names": command_center_dashboard_task_missing_task_names,
+        "command_center_local_contract_status": command_center_local_contract_status,
+        "promotion_summary": str(receipt.get("promotion_summary") or promotion_payload.get("summary") or ""),
+        "ready_for_prop_dry_run_review": bool(
+            receipt.get("ready_for_prop_dry_run_review")
+            if receipt.get("ready_for_prop_dry_run_review") is not None
+            else promotion_payload.get("ready_for_prop_dry_run_review")
+        ),
         "required_evidence": required_evidence[:5],
+        "promotion_required_evidence": required_evidence[:5],
+        "public_fallback_brackets_next_action": fallback_bracket_action,
     }
+
+
+def _extract_live_broker_open_order_count(live_broker_state: dict | None) -> int | None:
+    """Return the best available open-order count from a broker payload."""
+    payload = live_broker_state if isinstance(live_broker_state, dict) else {}
+    ibkr = payload.get("ibkr") if isinstance(payload.get("ibkr"), dict) else {}
+    for value in (
+        payload.get("current_live_broker_open_order_count"),
+        payload.get("broker_open_order_count"),
+        payload.get("open_order_count"),
+        ibkr.get("open_order_count"),
+    ):
+        count = _float_value(value)
+        if count is not None:
+            return int(count)
+    return None
+
+
+def _extract_live_broker_checked_at_utc(live_broker_state: dict | None) -> str:
+    """Return the best available checked timestamp from a broker payload."""
+    payload = live_broker_state if isinstance(live_broker_state, dict) else {}
+    ibkr = payload.get("ibkr") if isinstance(payload.get("ibkr"), dict) else {}
+    for value in (
+        payload.get("current_live_broker_state_checked_utc"),
+        payload.get("broker_checked_utc"),
+        payload.get("checked_at_utc"),
+        payload.get("checked_utc"),
+        ibkr.get("checked_utc"),
+    ):
+        text = str(value or "").strip()
+        if text:
+            return text
+    return ""
+
+
+def _augment_eta_readiness_snapshot_with_live_broker_state(
+    snapshot: dict | None,
+    live_broker_state: dict | None,
+) -> dict:
+    """Overlay current live broker count drift onto the readiness snapshot."""
+    out = dict(snapshot) if isinstance(snapshot, dict) else {}
+    effective_live_broker_state = live_broker_state if isinstance(live_broker_state, dict) else {}
+    current_live_broker_open_order_count = _extract_live_broker_open_order_count(effective_live_broker_state)
+    current_live_broker_state_checked_utc = _extract_live_broker_checked_at_utc(effective_live_broker_state)
+    if (
+        current_live_broker_open_order_count is None
+        and bool(out.get("public_fallback_active") or out.get("public_fallback_reason"))
+    ):
+        public_live_broker_state = _public_operator_broker_state_payload()
+        public_live_broker_open_order_count = _extract_live_broker_open_order_count(public_live_broker_state)
+        if public_live_broker_open_order_count is not None:
+            effective_live_broker_state = public_live_broker_state
+            current_live_broker_open_order_count = public_live_broker_open_order_count
+            current_live_broker_state_checked_utc = _extract_live_broker_checked_at_utc(public_live_broker_state)
+    out["current_live_broker_open_order_count"] = int(current_live_broker_open_order_count or 0)
+    out["current_live_broker_state_checked_utc"] = current_live_broker_state_checked_utc
+    public_live_broker_open_order_count = int(out.get("public_live_broker_open_order_count") or 0)
+    public_fallback_stale_flat_open_order_count = int(
+        out.get("public_fallback_stale_flat_open_order_count") or 0
+    )
+    if current_live_broker_open_order_count is None or current_live_broker_open_order_count <= 0:
+        out["current_live_broker_open_order_drift_display"] = ""
+    elif (
+        public_fallback_stale_flat_open_order_count > 0
+        and current_live_broker_open_order_count != public_fallback_stale_flat_open_order_count
+    ):
+        out["current_live_broker_open_order_drift_display"] = (
+            "live broker_state now reports "
+            f"{current_live_broker_open_order_count} open orders vs readiness cached "
+            f"{public_fallback_stale_flat_open_order_count} stale flat orders"
+        )
+    elif (
+        public_live_broker_open_order_count > 0
+        and current_live_broker_open_order_count != public_live_broker_open_order_count
+    ):
+        out["current_live_broker_open_order_drift_display"] = (
+            "live broker_state now reports "
+            f"{current_live_broker_open_order_count} open orders vs readiness cached "
+            f"{public_live_broker_open_order_count} public broker open orders"
+        )
+    else:
+        out["current_live_broker_open_order_drift_display"] = ""
+    return out
 
 
 def _command_center_watchdog_payload(*, server_ts: float) -> dict:
@@ -828,11 +1474,41 @@ def _command_center_watchdog_payload(*, server_ts: float) -> dict:
             "watchdog_state": status_receipt.get("watchdog_state"),
             "repair_required": True,
             "requires_elevation": True,
+            "failure_detail": "",
+            "issue_status": str(status_receipt.get("issue_status") or "missing_receipt"),
+            "issue_summary": str(status_receipt.get("issue_summary") or "Command Center doctor receipt missing"),
+            "display_issue_summary": str(
+                status_receipt.get("issue_summary") or "Command Center doctor receipt missing"
+            ),
+            "primary_blocker": str(status_receipt.get("primary_blocker") or "missing_receipt"),
+            "local_contract_status": (
+                status_receipt.get("local_contract_status")
+                if isinstance(status_receipt.get("local_contract_status"), dict)
+                else {}
+            ),
+            "dashboard_task_contract_status": (
+                status_receipt.get("dashboard_task_contract_status")
+                if isinstance(status_receipt.get("dashboard_task_contract_status"), dict)
+                else {}
+            ),
+            "dashboard_task_missing_task_names": [],
+            "firm_command_center_dependency_gap_status": (
+                status_receipt.get("firm_command_center_dependency_gap_status")
+                if isinstance(status_receipt.get("firm_command_center_dependency_gap_status"), dict)
+                else {}
+            ),
             "summary": "Command Center doctor receipt missing",
         }
 
     operator_action = receipt.get("operator_action") if isinstance(receipt.get("operator_action"), dict) else {}
     failure_summary = receipt.get("failure_summary") if isinstance(receipt.get("failure_summary"), dict) else {}
+    failure_detail = str(receipt.get("failure_detail") or operator_action.get("detail") or "").strip()
+    doctor_dashboard_task_contract = (
+        receipt.get("dashboard_task_contract") if isinstance(receipt.get("dashboard_task_contract"), dict) else {}
+    )
+    doctor_local_dependency_gap = (
+        receipt.get("local_dependency_gap") if isinstance(receipt.get("local_dependency_gap"), dict) else {}
+    )
     action_plan = (
         status_receipt.get("operator_action_plan")
         if isinstance(status_receipt.get("operator_action_plan"), list)
@@ -845,11 +1521,34 @@ def _command_center_watchdog_payload(*, server_ts: float) -> dict:
     )
     first_follow_up = follow_up_actions[0] if follow_up_actions and isinstance(follow_up_actions[0], dict) else {}
     watchdog_missing = status_receipt.get("watchdog_registered") is False
+    status_receipt_overall = str(status_receipt.get("overall_status") or "").strip().lower()
+    status_receipt_effective_status = str(
+        status_receipt.get("effective_status")
+        or status_receipt.get("primary_blocker")
+        or status_receipt.get("operator_issue_status")
+        or ""
+    ).strip()
+    status_receipt_checked_at = status_receipt.get("checked_at")
+    status_receipt_age_s = _iso_age_s(status_receipt_checked_at, server_ts=server_ts)
+    status_receipt_fresh = (
+        (status_receipt_age_s is not None and status_receipt_age_s <= 900)
+        or bool(status_receipt.get("latest_fresh"))
+    )
+    status_receipt_issue_status = _normalize_command_center_watchdog_status(
+        status_receipt.get("issue_status") or status_receipt.get("operator_issue_status") or ""
+    )
+    status_receipt_effective_status_normalized = _normalize_command_center_watchdog_status(
+        status_receipt_effective_status
+    )
+    status_receipt_primary_blocker = _normalize_command_center_watchdog_status(
+        status_receipt.get("primary_blocker") or ""
+    )
+    status_receipt_degraded = status_receipt_overall not in {"", "healthy"}
     checked_at = receipt.get("checked_at")
     age_s = _iso_age_s(checked_at, server_ts=server_ts)
     fresh = age_s is not None and age_s <= 900
     receipt_healthy = bool(receipt.get("healthy")) and fresh
-    healthy = receipt_healthy and not watchdog_missing
+    healthy = receipt_healthy and not watchdog_missing and not status_receipt_degraded
     failure_class = str(receipt.get("failure_class") or "unknown")
     contract_state = str(receipt.get("operator_contract_state") or failure_class)
     recommended_action = str(receipt.get("recommended_action") or operator_action.get("step") or "unknown")
@@ -864,14 +1563,32 @@ def _command_center_watchdog_payload(*, server_ts: float) -> dict:
     next_command = operator_action.get("command")
     repair_required = bool(receipt.get("repair_required"))
     requires_elevation = bool(operator_action.get("requires_elevation"))
-    if not fresh or watchdog_missing:
-        status_reason = str(
+    status_receipt_explicitly_healthy = (
+        status_receipt_fresh
+        and status_receipt_overall in {"", "healthy"}
+        and status_receipt_issue_status in {"", "healthy"}
+        and status_receipt_effective_status_normalized in {"", "healthy"}
+        and status_receipt_primary_blocker in {"", "none", "healthy"}
+    )
+    if status_receipt_explicitly_healthy and not watchdog_missing:
+        healthy = True
+        failure_class = "healthy"
+        contract_state = "healthy"
+        recommended_action = str(status_receipt.get("operator_next_step") or "none")
+        reason = str(status_receipt.get("operator_next_reason") or "healthy")
+        next_step = recommended_action
+        next_command = status_receipt.get("operator_next_command")
+        repair_required = False
+        requires_elevation = False
+        status = "healthy"
+    if not fresh or watchdog_missing or status_receipt_degraded:
+        status_reason = _normalize_command_center_watchdog_status(
             status_receipt.get("operator_next_reason")
             or status_receipt.get("primary_blocker")
             or status_receipt.get("effective_status")
             or status_receipt.get("operator_issue_status")
             or ""
-        ).strip()
+        )
         status_next_step = str(status_receipt.get("operator_next_step") or "").strip()
         status_next_command = status_receipt.get("operator_next_command")
         if status_next_step:
@@ -888,6 +1605,13 @@ def _command_center_watchdog_payload(*, server_ts: float) -> dict:
             reason = status_reason
         elif watchdog_missing and (receipt_healthy or reason in {"healthy", "unknown"}):
             reason = str(first_follow_up.get("reason") or "watchdog_missing")
+        if status_receipt_degraded and fresh and not watchdog_missing:
+            status = (
+                status_reason
+                or _normalize_command_center_watchdog_status(status_receipt_effective_status)
+                or _normalize_command_center_watchdog_status(status_receipt_overall)
+                or status
+            )
         repair_required = True
         requires_elevation = bool(
             status_receipt.get("operator_next_requires_elevation")
@@ -895,14 +1619,51 @@ def _command_center_watchdog_payload(*, server_ts: float) -> dict:
             or requires_elevation
         )
 
-    summary = (
-        "Command Center watchdog is healthy."
-        if healthy
-        else (
-            f"Command Center watchdog receipt is stale; latest status says {reason}; next={recommended_action}."
+    failure_detail_clean = failure_detail.rstrip(".") if failure_detail else ""
+    if healthy:
+        summary = "Command Center watchdog is healthy."
+    else:
+        summary = (
+            f"Command Center watchdog receipt is stale; latest status says {reason}; next={recommended_action}"
             if not fresh
-            else f"Command Center watchdog needs {recommended_action}: {reason}."
+            else f"Command Center watchdog needs {recommended_action}: {reason}"
         )
+        if failure_detail_clean and failure_detail_clean not in summary:
+            summary = f"{summary}; detail={failure_detail_clean}"
+        summary = f"{summary}."
+    issue_status = str(status_receipt.get("issue_status") or status or reason)
+    status_issue_summary = str(status_receipt.get("issue_summary") or "").strip()
+    issue_summary = status_issue_summary or failure_detail or summary
+    failure_detail_for_issue = str(failure_detail or "").strip()
+    if failure_detail_for_issue and failure_detail_for_issue not in issue_summary:
+        issue_summary = f"{issue_summary}; detail={failure_detail_for_issue}"
+    display_issue_summary = issue_summary.split("; findings=", 1)[0].strip() or issue_summary
+    display_summary = (
+        str(status_receipt.get("display_summary") or display_issue_summary or summary)
+        .split("; findings=", 1)[0]
+        .strip()
+        or summary
+    )
+    primary_blocker = str(status_receipt.get("primary_blocker") or issue_status or reason)
+    local_contract_status = (
+        status_receipt.get("local_contract_status")
+        if isinstance(status_receipt.get("local_contract_status"), dict)
+        else {}
+    )
+    dashboard_task_contract_status = (
+        status_receipt.get("dashboard_task_contract_status")
+        if isinstance(status_receipt.get("dashboard_task_contract_status"), dict)
+        else doctor_dashboard_task_contract
+    )
+    dashboard_task_missing_task_names = (
+        [str(name) for name in dashboard_task_contract_status.get("missing_task_names", []) if name]
+        if isinstance(dashboard_task_contract_status.get("missing_task_names"), list)
+        else []
+    )
+    firm_command_center_dependency_gap_status = (
+        status_receipt.get("firm_command_center_dependency_gap_status")
+        if isinstance(status_receipt.get("firm_command_center_dependency_gap_status"), dict)
+        else doctor_local_dependency_gap
     )
 
     return {
@@ -916,8 +1677,13 @@ def _command_center_watchdog_payload(*, server_ts: float) -> dict:
         "failure_class": failure_class,
         "operator_contract_state": contract_state,
         "recommended_action": recommended_action,
+        "next_reason": reason,
         "next_step": next_step,
         "next_command": next_command,
+        "operator_next_step": next_step,
+        "operator_next_reason": reason,
+        "operator_next_command": next_command,
+        "operator_next_requires_elevation": requires_elevation,
         "action_plan": action_plan,
         "action_count": int(status_receipt.get("operator_action_count") or len(action_plan)),
         "follow_up_actions": follow_up_actions,
@@ -929,8 +1695,19 @@ def _command_center_watchdog_payload(*, server_ts: float) -> dict:
         "instruction": status_receipt.get("operator_next_instruction"),
         "repair_required": repair_required,
         "requires_elevation": requires_elevation,
+        "failure_detail": failure_detail,
+        "issue_status": issue_status,
+        "issue_summary": issue_summary,
+        "display_issue_summary": display_issue_summary,
+        "display_summary": display_summary,
+        "primary_blocker": primary_blocker,
+        "local_contract_status": local_contract_status,
+        "dashboard_task_contract_status": dashboard_task_contract_status,
+        "dashboard_task_missing_task_names": dashboard_task_missing_task_names,
+        "firm_command_center_dependency_gap_status": firm_command_center_dependency_gap_status,
         "failure_summary": failure_summary,
         "summary": summary,
+        "summary_line": summary,
     }
 
 
@@ -943,7 +1720,34 @@ def _dashboard_diagnostics_payload() -> dict:
     command_center_watchdog = _command_center_watchdog_payload(server_ts=server_ts)
     eta_readiness_snapshot = _eta_readiness_snapshot_payload(server_ts=server_ts)
     daily_stop_reset_audit = _daily_stop_reset_audit_payload(server_ts=server_ts)
-    vps_ops_hardening = _vps_ops_hardening_payload(server_ts=server_ts)
+    try:
+        vps_ops_hardening = _vps_ops_hardening_payload(server_ts=server_ts)
+    except Exception as exc:  # noqa: BLE001 -- diagnostics must not 500 on stale hardening artifacts.
+        vps_ops_hardening = {
+            "status": "error",
+            "source_status": "error",
+            "fresh": False,
+            "ready": False,
+            "path": str(_vps_ops_hardening_audit_path()),
+            "summary": {},
+            "jarvis_hermes_admin_ai": {
+                "status": "error",
+                "source_status": "error",
+                "ready": False,
+                "next_actions": [f"Refresh VPS hardening audit: {exc}"],
+            },
+            "supervisor_reconcile": {
+                "status": "error",
+                "ready": False,
+                "source": "vps_ops_hardening_payload_error",
+                "mismatch_count": 0,
+            },
+            "next_actions": [f"Refresh VPS hardening audit: {exc}"],
+            "age_s": None,
+            "stale_detail": "",
+            "detail": f"Refresh VPS hardening audit: {exc}",
+            "error": str(exc),
+        }
     session_gate_signal_audit = _session_gate_signal_audit_payload(server_ts=server_ts)
 
     try:
@@ -959,9 +1763,15 @@ def _dashboard_diagnostics_payload() -> dict:
     operator_queue = _operator_queue_payload(prefer_cache=True, server_ts=server_ts)
     paper_live_transition = _paper_live_transition_payload(refresh=False)
     readiness = _bot_strategy_readiness_payload()
+    second_brain = _second_brain_payload()
+    dirty_worktree_reconciliation = _dirty_worktree_reconciliation_payload()
     symbol_intelligence = _load_symbol_intelligence_snapshot()
     diamond_retune_status = _load_diamond_retune_status()
     live_broker_diagnostics = _live_broker_diagnostic_payload()
+    eta_readiness_snapshot = _augment_eta_readiness_snapshot_with_live_broker_state(
+        eta_readiness_snapshot,
+        live_broker_diagnostics,
+    )
     roster_bots = roster.get("bots") if isinstance(roster.get("bots"), list) else []
     roster_summary = roster.get("summary") if isinstance(roster.get("summary"), dict) else {}
     bot_total = int(roster_summary.get("bot_total") or len(roster_bots) or 0)
@@ -1056,6 +1866,9 @@ def _dashboard_diagnostics_payload() -> dict:
     readiness_blocked_data = int(
         readiness_summary.get("blocked_data") or readiness_lane_counts.get("blocked_data") or 0
     )
+    second_brain_playbook = (
+        second_brain.get("playbook") if isinstance(second_brain.get("playbook"), dict) else {}
+    )
     operator_advisory_count_raw = operator_queue.get("advisory_count")
     if operator_advisory_count_raw is None:
         operator_advisory_count_raw = operator_queue.get("non_launch_blocked_count")
@@ -1138,6 +1951,8 @@ def _dashboard_diagnostics_payload() -> dict:
         or paper_live_held_by_daily_loss_stop
         or paper_live_daily_loss_advisory_active
     )
+    paper_live_stale_receipt = bool(paper_live_transition.get("stale_receipt"))
+    paper_live_stale_detail = str(paper_live_transition.get("stale_detail") or "")
     if transition_launch_blocked > 0 and paper_live_effective_status in {
         "ready",
         "ready_to_launch_paper_live",
@@ -1163,6 +1978,9 @@ def _dashboard_diagnostics_payload() -> dict:
     }:
         paper_live_effective_status = "held_by_daily_loss_stop"
         paper_live_effective_detail = _daily_loss_hold_detail(daily_loss_killswitch)
+    if paper_live_stale_receipt:
+        paper_live_effective_status = "stale_receipt"
+        paper_live_effective_detail = paper_live_stale_detail or paper_live_effective_detail
 
     return {
         **_dashboard_contract(),
@@ -1222,6 +2040,84 @@ def _dashboard_diagnostics_payload() -> dict:
                 if isinstance(roster_summary.get("current_blocked_preview"), list)
                 else []
             ),
+            "current_actionable_blocked_bots": int(roster_summary.get("current_actionable_blocked_bots") or 0),
+            "current_actionable_blocked_kinds": (
+                roster_summary.get("current_actionable_blocked_kinds")
+                if isinstance(roster_summary.get("current_actionable_blocked_kinds"), dict)
+                else {}
+            ),
+            "current_actionable_blocked_summary_line": str(
+                roster_summary.get("current_actionable_blocked_summary_line") or "",
+            ),
+            "current_actionable_blocked_preview": (
+                roster_summary.get("current_actionable_blocked_preview")
+                if isinstance(roster_summary.get("current_actionable_blocked_preview"), list)
+                else []
+            ),
+            "current_session_gated_bots": int(roster_summary.get("current_session_gated_bots") or 0),
+            "current_session_gated_kinds": (
+                roster_summary.get("current_session_gated_kinds")
+                if isinstance(roster_summary.get("current_session_gated_kinds"), dict)
+                else {}
+            ),
+            "current_session_gated_summary_line": str(
+                roster_summary.get("current_session_gated_summary_line") or "",
+            ),
+            "current_session_gated_preview": (
+                roster_summary.get("current_session_gated_preview")
+                if isinstance(roster_summary.get("current_session_gated_preview"), list)
+                else []
+            ),
+            "blocked_summary": str(
+                roster_summary.get("blocked_summary")
+                or roster_summary.get("current_actionable_blocked_summary_line")
+                or roster_summary.get("current_blocked_summary_line")
+                or "",
+            ),
+            "session_gated_bots": int(
+                roster_summary.get("session_gated_bots")
+                or roster_summary.get("current_session_gated_bots")
+                or 0
+            ),
+            "session_gated_kinds": (
+                roster_summary.get("session_gated_kinds")
+                if isinstance(roster_summary.get("session_gated_kinds"), dict)
+                else (
+                    roster_summary.get("current_session_gated_kinds")
+                    if isinstance(roster_summary.get("current_session_gated_kinds"), dict)
+                    else {}
+                )
+            ),
+            "session_gated_summary_line": str(
+                roster_summary.get("session_gated_summary_line")
+                or roster_summary.get("current_session_gated_summary_line")
+                or "",
+            ),
+            "session_gated_preview": (
+                roster_summary.get("session_gated_preview")
+                if isinstance(roster_summary.get("session_gated_preview"), list)
+                else (
+                    roster_summary.get("current_session_gated_preview")
+                    if isinstance(roster_summary.get("current_session_gated_preview"), list)
+                    else []
+                )
+            ),
+            "command_center_watchdog_status": str(
+                roster_summary.get("command_center_watchdog_status")
+                or eta_readiness_snapshot.get("command_center_issue_status")
+                or "",
+            ),
+            "command_center_watchdog_detail": str(
+                roster_summary.get("command_center_watchdog_detail")
+                or eta_readiness_snapshot.get("command_center_issue_summary")
+                or "",
+            ),
+            "vps_root_reconciliation_top_step_summary": str(
+                roster_summary.get("vps_root_reconciliation_top_step_summary")
+                or roster_summary.get("vps_root_top_step_action")
+                or roster_summary.get("vps_root_top_step_title")
+                or "",
+            ),
             "live_broker_probe_mode": str(roster_summary.get("live_broker_probe_mode") or "unknown"),
             "source_of_truth": str(roster.get("source_of_truth") or _state_dir()),
             "error": roster.get("_error"),
@@ -1242,6 +2138,43 @@ def _dashboard_diagnostics_payload() -> dict:
             "launch_lanes": readiness_lane_counts,
             "top_action_count": len(readiness.get("top_actions") or []),
             "error": readiness.get("error"),
+        },
+        "second_brain": {
+            "status": str(second_brain.get("status") or "unknown"),
+            "n_episodes": int(second_brain.get("n_episodes") or 0),
+            "win_rate": second_brain.get("win_rate"),
+            "avg_r": second_brain.get("avg_r"),
+            "semantic_patterns": int(second_brain.get("semantic_patterns") or 0),
+            "procedural_versions": int(second_brain.get("procedural_versions") or 0),
+            "eligible_patterns": int(second_brain_playbook.get("eligible_patterns") or 0),
+            "favor_pattern_count": len(second_brain_playbook.get("favor_patterns") or []),
+            "avoid_pattern_count": len(second_brain_playbook.get("avoid_patterns") or []),
+            "legacy_sources_active": bool(second_brain.get("legacy_sources_active")),
+            "sources": second_brain.get("sources") if isinstance(second_brain.get("sources"), dict) else {},
+            "paths": second_brain.get("paths") if isinstance(second_brain.get("paths"), dict) else {},
+            "truth_note": str(second_brain.get("truth_note") or second_brain_playbook.get("truth_note") or ""),
+            "error": second_brain.get("error"),
+        },
+        "dirty_worktree_reconciliation": {
+            "status": str(dirty_worktree_reconciliation.get("status") or "unknown"),
+            "ready": bool(dirty_worktree_reconciliation.get("ready")),
+            "action": str(dirty_worktree_reconciliation.get("action") or ""),
+            "dirty_modules": dirty_worktree_reconciliation.get("dirty_modules")
+            if isinstance(dirty_worktree_reconciliation.get("dirty_modules"), list)
+            else [],
+            "blocking_modules": dirty_worktree_reconciliation.get("blocking_modules")
+            if isinstance(dirty_worktree_reconciliation.get("blocking_modules"), list)
+            else [],
+            "next_actions": dirty_worktree_reconciliation.get("next_actions")
+            if isinstance(dirty_worktree_reconciliation.get("next_actions"), list)
+            else [],
+            "module_summaries": dirty_worktree_reconciliation.get("module_summaries")
+            if isinstance(dirty_worktree_reconciliation.get("module_summaries"), list)
+            else [],
+            "review_batches": dirty_worktree_reconciliation.get("review_batches")
+            if isinstance(dirty_worktree_reconciliation.get("review_batches"), list)
+            else [],
+            "error": dirty_worktree_reconciliation.get("error"),
         },
         "symbol_intelligence": _symbol_intelligence_diagnostic_payload(symbol_intelligence),
         "diamond_retune_status": _diamond_retune_diagnostic_payload(diamond_retune_status),
@@ -1283,6 +2216,8 @@ def _dashboard_diagnostics_payload() -> dict:
         },
         "paper_live_transition": {
             "status": paper_live_status,
+            "stale_receipt": paper_live_stale_receipt,
+            "stale_detail": paper_live_stale_detail,
             "effective_status": paper_live_effective_status,
             "effective_detail": paper_live_effective_detail,
             "held_by_bracket_audit": paper_live_held_by_bracket_audit,
@@ -1290,6 +2225,9 @@ def _dashboard_diagnostics_payload() -> dict:
             "daily_loss_gate_mode": paper_live_daily_loss_gate_mode,
             "daily_loss_advisory_active": paper_live_daily_loss_advisory_active,
             "capital_lanes_held_by_daily_loss_stop": paper_live_capital_lanes_held_by_daily_loss_stop,
+            "daily_loss_suppressed_non_authoritative_gateway_host": bool(
+                paper_live_transition.get("daily_loss_suppressed_non_authoritative_gateway_host")
+            ),
             "broker_bracket_missing_count": int(roster_summary.get("broker_bracket_missing_count") or 0),
             "broker_bracket_primary_symbol": str(roster_summary.get("broker_bracket_primary_symbol") or ""),
             "broker_bracket_primary_venue": str(roster_summary.get("broker_bracket_primary_venue") or ""),
@@ -1322,6 +2260,9 @@ def _dashboard_diagnostics_payload() -> dict:
             "bot_fleet_contract": isinstance(roster.get("bots"), list),
             "equity_contract": "series" in equity,
             "bot_strategy_readiness_contract": readiness.get("status") == "ready" and not readiness.get("error"),
+            "second_brain_contract": isinstance(second_brain, dict)
+            and "n_episodes" in second_brain
+            and isinstance(second_brain.get("playbook"), dict),
             "symbol_intelligence_contract": bool(symbol_intelligence.get("contract_ok")),
             "diamond_retune_status_contract": bool(diamond_retune_status.get("contract_ok")),
             "daily_loss_killswitch_contract": daily_loss_killswitch.get("status")
@@ -1344,13 +2285,22 @@ def _dashboard_diagnostics_payload() -> dict:
             },
             "command_center_watchdog_contract": command_center_watchdog.get("status")
             in {
+                "access_denied",
                 "healthy",
                 "missing_receipt",
                 "missing_watchdog",
                 "stale_receipt",
                 "stale_service",
                 "service_unreachable",
+                "upstream_failure",
+                "dashboard_task_contract_drift",
+                "local_dependency_gap",
+                "service_dependency_gap",
                 "public_operator_drift",
+                "public_tunnel_service_drift",
+                "public_tunnel_token_rejected",
+                "repair_prompted",
+                "repair_attempted",
                 "contract_failure",
                 "secret_surface",
                 "unknown",
@@ -1790,6 +2740,9 @@ def _diamond_retune_status_unknown(path: Path, *, reason: str) -> dict[str, obje
             "broker_truth_focus_primary_experiment": "",
             "broker_truth_focus_next_command": "",
             "broker_truth_focus_next_action": "",
+            "broker_truth_focus_active_experiment": {},
+            "broker_truth_focus_active_experiment_summary_line": "",
+            "broker_truth_focus_active_experiment_outcome_line": "",
             "broker_truth_summary_line": "",
             "safe_to_mutate_live": False,
         },
@@ -1797,6 +2750,54 @@ def _diamond_retune_status_unknown(path: Path, *, reason: str) -> dict[str, obje
         "research_backlog": [],
         "notes": ["diamond retune status has not been generated"],
     }
+
+
+def _format_retune_experiment_currency(value: float) -> str:
+    sign = "-" if value < 0 else ""
+    return f"{sign}${abs(value):,.2f}"
+
+
+def _retune_focus_active_experiment_outcome_line(
+    experiment: dict[str, Any] | None,
+    *,
+    fallback: object = "",
+) -> str:
+    fallback_text = str(fallback or "").strip()
+    if fallback_text:
+        return fallback_text
+    if not isinstance(experiment, dict):
+        return ""
+    experiment_id = str(experiment.get("experiment_id") or "").strip()
+    if not experiment_id:
+        return ""
+    if experiment.get("awaiting_first_post_change_close") is True:
+        return f"{experiment_id}: awaiting first post-change close"
+
+    raw_close_count = experiment.get("post_change_closed_trade_count")
+    if isinstance(raw_close_count, bool):
+        close_count = 0
+    else:
+        try:
+            close_count = int(raw_close_count or 0)
+        except (TypeError, ValueError):
+            close_count = 0
+    if close_count <= 0:
+        return experiment_id
+
+    parts = [f"{experiment_id}: {close_count} post-change close{'s' if close_count != 1 else ''}"]
+    for raw_value, label, formatter in (
+        (experiment.get("post_change_cumulative_r"), "R", lambda v: f"{v:+.2f}"),
+        (experiment.get("post_change_total_realized_pnl"), "PnL", _format_retune_experiment_currency),
+        (experiment.get("post_change_profit_factor"), "PF", lambda v: f"{v:.2f}"),
+    ):
+        if isinstance(raw_value, bool) or raw_value is None:
+            continue
+        try:
+            numeric_value = float(raw_value)
+        except (TypeError, ValueError):
+            continue
+        parts.append(f"{label} {formatter(numeric_value)}")
+    return " | ".join(parts)
 
 
 def _load_diamond_retune_status() -> dict[str, object]:
@@ -1812,6 +2813,22 @@ def _load_diamond_retune_status() -> dict[str, object]:
     kind_ok = payload.get("kind") == "eta_diamond_retune_status"
     contract_ok = kind_ok and isinstance(summary, dict) and isinstance(bots, list)
     status = str(payload.get("status") or ("ready" if contract_ok else "invalid"))
+    focus_active_experiment = (
+        dict(summary.get("broker_truth_focus_active_experiment"))
+        if isinstance(summary.get("broker_truth_focus_active_experiment"), dict)
+        else (
+            dict(payload.get("focus_active_experiment"))
+            if isinstance(payload.get("focus_active_experiment"), dict)
+            else {}
+        )
+    )
+    focus_active_experiment_outcome_line = _retune_focus_active_experiment_outcome_line(
+        focus_active_experiment,
+        fallback=(
+            summary.get("broker_truth_focus_active_experiment_outcome_line")
+            or payload.get("focus_active_experiment_outcome_line")
+        ),
+    )
     normalized_summary = {
         "n_targets": int(summary.get("n_targets") or len(bots)),
         "n_attempted_bots": int(summary.get("n_attempted_bots") or 0),
@@ -1858,6 +2875,11 @@ def _load_diamond_retune_status() -> dict[str, object]:
         "broker_truth_focus_primary_experiment": str(summary.get("broker_truth_focus_primary_experiment") or ""),
         "broker_truth_focus_next_command": str(summary.get("broker_truth_focus_next_command") or ""),
         "broker_truth_focus_next_action": str(summary.get("broker_truth_focus_next_action") or ""),
+        "broker_truth_focus_active_experiment": focus_active_experiment,
+        "broker_truth_focus_active_experiment_summary_line": str(
+            summary.get("broker_truth_focus_active_experiment_summary_line") or ""
+        ),
+        "broker_truth_focus_active_experiment_outcome_line": focus_active_experiment_outcome_line,
         "broker_truth_summary_line": str(summary.get("broker_truth_summary_line") or ""),
         "safe_to_mutate_live": False,
     }
@@ -1890,6 +2912,8 @@ def _load_diamond_retune_status() -> dict[str, object]:
             "focus_parameter_focus": list(normalized_summary["broker_truth_focus_parameter_focus"]),
             "focus_command": normalized_summary["broker_truth_focus_next_command"],
             "focus_next_action": normalized_summary["broker_truth_focus_next_action"],
+            "focus_active_experiment": dict(normalized_summary["broker_truth_focus_active_experiment"]),
+            "focus_active_experiment_outcome_line": focus_active_experiment_outcome_line,
         }
     )
     return normalized
@@ -1953,6 +2977,19 @@ def _diamond_retune_diagnostic_payload(snapshot: dict[str, Any]) -> dict[str, ob
         "broker_truth_focus_primary_experiment": str(summary.get("broker_truth_focus_primary_experiment") or ""),
         "broker_truth_focus_next_command": str(summary.get("broker_truth_focus_next_command") or ""),
         "broker_truth_focus_next_action": str(summary.get("broker_truth_focus_next_action") or ""),
+        "broker_truth_focus_active_experiment": (
+            dict(summary.get("broker_truth_focus_active_experiment"))
+            if isinstance(summary.get("broker_truth_focus_active_experiment"), dict)
+            else {}
+        ),
+        "broker_truth_focus_active_experiment_summary_line": str(
+            summary.get("broker_truth_focus_active_experiment_summary_line") or ""
+        ),
+        "broker_truth_focus_active_experiment_outcome_line": str(
+            summary.get("broker_truth_focus_active_experiment_outcome_line")
+            or snapshot.get("focus_active_experiment_outcome_line")
+            or _retune_focus_active_experiment_outcome_line(summary.get("broker_truth_focus_active_experiment"))
+        ),
         "broker_truth_summary_line": str(summary.get("broker_truth_summary_line") or ""),
         "safe_to_mutate_live": bool(summary.get("safe_to_mutate_live") is True),
         "top_bot_id": str(first_bot.get("bot_id") or ""),
@@ -1970,6 +3007,47 @@ def _diamond_retune_diagnostic_payload(snapshot: dict[str, Any]) -> dict[str, ob
         "source": str(snapshot.get("source") or "diamond_retune_status_latest"),
         "updated_at": datetime.fromtimestamp(mtime, UTC).isoformat() if mtime is not None else None,
         "age_s": max(0, int(time.time() - mtime)) if mtime is not None else None,
+    }
+
+
+def _retune_focus_overlay(
+    snapshot: dict[str, Any],
+    bot_id: str,
+    readiness_snapshot: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    focus_bot = str(snapshot.get("focus_bot") or "").strip()
+    if not focus_bot or focus_bot != str(bot_id or "").strip():
+        return {}
+    summary = snapshot.get("summary") if isinstance(snapshot.get("summary"), dict) else {}
+    readiness = readiness_snapshot if isinstance(readiness_snapshot, dict) else {}
+    return {
+        "retune_focus_bot_id": focus_bot,
+        "retune_focus_state": str(snapshot.get("focus_state") or ""),
+        "retune_focus_issue": str(snapshot.get("focus_issue") or ""),
+        "retune_focus_strategy_kind": str(snapshot.get("focus_strategy_kind") or ""),
+        "retune_focus_next_action": str(snapshot.get("focus_next_action") or snapshot.get("focus_next_command") or ""),
+        "retune_focus_active_experiment": (
+            dict(snapshot.get("focus_active_experiment"))
+            if isinstance(snapshot.get("focus_active_experiment"), dict)
+            else {}
+        ),
+        "retune_focus_active_experiment_summary_line": str(
+            summary.get("broker_truth_focus_active_experiment_summary_line") or ""
+        ),
+        "retune_focus_active_experiment_outcome_line": str(
+            snapshot.get("focus_active_experiment_outcome_line")
+            or summary.get("broker_truth_focus_active_experiment_outcome_line")
+            or _retune_focus_active_experiment_outcome_line(snapshot.get("focus_active_experiment"))
+        ),
+        "public_live_retune_focus_active_experiment_outcome_line": str(
+            readiness.get("public_live_retune_focus_active_experiment_outcome_line") or ""
+        ),
+        "local_retune_focus_active_experiment_outcome_line": str(
+            readiness.get("local_retune_focus_active_experiment_outcome_line") or ""
+        ),
+        "retune_focus_active_experiment_drift_display": str(
+            readiness.get("retune_focus_active_experiment_drift_display") or ""
+        ),
     }
 
 
@@ -2386,6 +3464,14 @@ def _daily_stop_reset_audit_path() -> Path:
     return _state_dir() / "daily_stop_reset_audit_latest.json"
 
 
+def _broker_bracket_audit_artifact_path() -> Path:
+    """Latest persisted broker bracket audit surfaced into operator cards."""
+    explicit = os.environ.get("ETA_BROKER_BRACKET_AUDIT_PATH")
+    if explicit:
+        return Path(explicit)
+    return _state_dir() / "broker_bracket_audit_latest.json"
+
+
 def _iso_age_s(value: object, *, server_ts: float) -> float | None:
     if not value:
         return None
@@ -2401,17 +3487,23 @@ def _iso_age_s(value: object, *, server_ts: float) -> float | None:
 def _daily_stop_reset_audit_payload(*, server_ts: float) -> dict:
     """Fail-soft summary of the VPS daily-loss reset handoff audit."""
     path = _daily_stop_reset_audit_path()
+    refresh_hint = "Run python -m eta_engine.scripts.daily_stop_reset_audit --json on the VPS"
     if not path.exists():
         return {
             "status": "missing",
+            "source_status": "missing",
+            "fresh": False,
             "ready": False,
             "path": str(path),
             "generated_at": None,
             "age_s": None,
+            "stale_detail": "",
+            "detail": refresh_hint,
             "read_only": True,
             "safe_to_trade_mutation": False,
             "post_reset_ready": False,
-            "operator_next_action": "Run python -m eta_engine.scripts.daily_stop_reset_audit --json on the VPS",
+            "operator_next_action": refresh_hint,
+            "source_operator_next_action": refresh_hint,
             "daily_loss_status": "unknown",
             "daily_loss_tripped": False,
             "paper_live_status": "unknown",
@@ -2423,14 +3515,19 @@ def _daily_stop_reset_audit_payload(*, server_ts: float) -> dict:
     except (OSError, json.JSONDecodeError) as exc:
         return {
             "status": "unreadable",
+            "source_status": "unreadable",
+            "fresh": False,
             "ready": False,
             "path": str(path),
             "generated_at": None,
             "age_s": None,
+            "stale_detail": "",
+            "detail": f"Refresh unreadable daily stop reset audit: {exc}",
             "read_only": True,
             "safe_to_trade_mutation": False,
             "post_reset_ready": False,
             "operator_next_action": f"Refresh unreadable daily stop reset audit: {exc}",
+            "source_operator_next_action": f"Refresh unreadable daily stop reset audit: {exc}",
             "daily_loss_status": "unknown",
             "daily_loss_tripped": False,
             "paper_live_status": "unknown",
@@ -2441,14 +3538,19 @@ def _daily_stop_reset_audit_payload(*, server_ts: float) -> dict:
     if not isinstance(payload, dict):
         return {
             "status": "invalid",
+            "source_status": "invalid",
+            "fresh": False,
             "ready": False,
             "path": str(path),
             "generated_at": None,
             "age_s": None,
+            "stale_detail": "",
+            "detail": "Refresh invalid daily stop reset audit JSON",
             "read_only": True,
             "safe_to_trade_mutation": False,
             "post_reset_ready": False,
             "operator_next_action": "Refresh invalid daily stop reset audit JSON",
+            "source_operator_next_action": "Refresh invalid daily stop reset audit JSON",
             "daily_loss_status": "unknown",
             "daily_loss_tripped": False,
             "paper_live_status": "unknown",
@@ -2459,18 +3561,33 @@ def _daily_stop_reset_audit_payload(*, server_ts: float) -> dict:
     daily_loss = payload.get("daily_loss_killswitch") if isinstance(payload.get("daily_loss_killswitch"), dict) else {}
     paper_live = payload.get("paper_live_transition") if isinstance(payload.get("paper_live_transition"), dict) else {}
     first_failed_gate = payload.get("first_failed_gate") if isinstance(payload.get("first_failed_gate"), dict) else {}
-    status = str(payload.get("status") or "unknown")
+    source_status = str(payload.get("status") or "unknown")
     generated_at = payload.get("generated_at")
+    age_s = _iso_age_s(generated_at, server_ts=server_ts)
+    fresh = age_s is not None and age_s <= _DAILY_STOP_RESET_AUDIT_MAX_AGE_S
+    stale_detail = ""
+    operator_next_action = str(payload.get("operator_next_action") or "")
+    status = source_status
+    if not fresh:
+        status = "stale_receipt"
+        operator_next_action = refresh_hint
+        stale_detail = "daily stop reset audit is stale; refresh it on the VPS before trusting this reset verdict."
+    detail = stale_detail or operator_next_action or str(payload.get("operator_next_action") or "") or source_status
     return {
         "status": status,
-        "ready": status == "reset_cleared_ready" and bool(payload.get("post_reset_ready")),
+        "source_status": source_status,
+        "fresh": fresh,
+        "ready": source_status == "reset_cleared_ready" and bool(payload.get("post_reset_ready")) and fresh,
         "path": str(path),
         "generated_at": generated_at,
-        "age_s": _iso_age_s(generated_at, server_ts=server_ts),
+        "age_s": age_s,
+        "stale_detail": stale_detail,
+        "detail": detail,
         "read_only": bool(payload.get("read_only", True)),
         "safe_to_trade_mutation": bool(payload.get("safe_to_trade_mutation")),
         "post_reset_ready": bool(payload.get("post_reset_ready")),
-        "operator_next_action": str(payload.get("operator_next_action") or ""),
+        "operator_next_action": operator_next_action,
+        "source_operator_next_action": str(payload.get("operator_next_action") or ""),
         "daily_loss_status": str(daily_loss.get("status") or "unknown"),
         "daily_loss_tripped": bool(daily_loss.get("tripped")),
         "paper_live_status": str(paper_live.get("status") or "unknown"),
@@ -2484,41 +3601,65 @@ def _daily_stop_reset_audit_payload(*, server_ts: float) -> dict:
 def _vps_ops_hardening_payload(*, server_ts: float) -> dict:
     """Fail-soft summary of VPS hardening gates for the dashboard."""
     path = _vps_ops_hardening_audit_path()
+    refresh_hint = "Run eta_engine.scripts.vps_ops_hardening_audit --json-out on the VPS"
     if not path.exists():
         return {
             "status": "missing",
+            "source_status": "missing",
+            "fresh": False,
             "ready": False,
             "path": str(path),
             "summary": {},
-            "jarvis_hermes_admin_ai": {"status": "missing", "ready": False, "next_actions": []},
-            "next_actions": ["Run eta_engine.scripts.vps_ops_hardening_audit --json-out"],
+            "jarvis_hermes_admin_ai": {
+                "status": "missing",
+                "source_status": "missing",
+                "ready": False,
+                "next_actions": [],
+            },
+            "next_actions": [refresh_hint],
             "age_s": None,
+            "stale_detail": "",
+            "detail": refresh_hint,
         }
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         return {
             "status": "unreadable",
+            "source_status": "unreadable",
+            "fresh": False,
             "ready": False,
             "path": str(path),
             "summary": {},
             "jarvis_hermes_admin_ai": {
                 "status": "unreadable",
+                "source_status": "unreadable",
                 "ready": False,
                 "next_actions": [str(exc)],
             },
             "next_actions": [f"Refresh unreadable VPS hardening audit: {exc}"],
             "age_s": None,
+            "stale_detail": "",
+            "detail": f"Refresh unreadable VPS hardening audit: {exc}",
         }
     if not isinstance(payload, dict):
         return {
             "status": "invalid",
+            "source_status": "invalid",
+            "fresh": False,
             "ready": False,
             "path": str(path),
             "summary": {},
-            "jarvis_hermes_admin_ai": {"status": "invalid", "ready": False, "next_actions": []},
+            "jarvis_hermes_admin_ai": {
+                "status": "invalid",
+                "source_status": "invalid",
+                "ready": False,
+                "next_actions": [],
+            },
             "next_actions": ["Refresh invalid VPS hardening audit JSON"],
             "age_s": None,
+            "stale_detail": "",
+            "detail": "Refresh invalid VPS hardening audit JSON",
         }
     summary = payload.get("summary") if isinstance(payload.get("summary"), dict) else {}
     gates = payload.get("safety_gates") if isinstance(payload.get("safety_gates"), dict) else {}
@@ -2540,17 +3681,34 @@ def _vps_ops_hardening_payload(*, server_ts: float) -> dict:
             "mismatch_count": 0,
         }
     generated_at = payload.get("generated_at_utc") or payload.get("generated_at")
+    source_status = str(summary.get("status") or payload.get("status") or "unknown")
+    age_s = _iso_age_s(generated_at, server_ts=server_ts)
+    fresh = age_s is not None and age_s <= _VPS_OPS_HARDENING_MAX_AGE_S
+    stale_detail = ""
+    next_actions = payload.get("next_actions") if isinstance(payload.get("next_actions"), list) else []
+    admin_status = str(admin_gate.get("status") or "unknown")
+    admin_ready = bool(admin_gate.get("ready"))
+    if not fresh:
+        stale_detail = "VPS hardening audit is stale; refresh it on the VPS before trusting runtime blockers."
+        next_actions = [refresh_hint]
+        admin_status = "stale_receipt"
+        admin_ready = False
+    detail = stale_detail or (str(next_actions[0]) if next_actions else "") or source_status
     return {
-        "status": str(summary.get("status") or payload.get("status") or "unknown"),
+        "status": "stale_receipt" if not fresh else source_status,
+        "source_status": source_status,
+        "fresh": fresh,
         "ready": bool(
             summary.get("runtime_ready")
             and summary.get("dashboard_durable")
             and summary.get("trading_gate_ready")
             and summary.get("admin_ai_ready")
-        ),
+        ) and fresh,
         "path": str(path),
         "generated_at": generated_at,
-        "age_s": _iso_age_s(generated_at, server_ts=server_ts),
+        "age_s": age_s,
+        "stale_detail": stale_detail,
+        "detail": detail,
         "summary": {
             "runtime_ready": bool(summary.get("runtime_ready")),
             "dashboard_durable": bool(summary.get("dashboard_durable")),
@@ -2566,11 +3724,14 @@ def _vps_ops_hardening_payload(*, server_ts: float) -> dict:
             "order_action_allowed": bool(summary.get("order_action_allowed")),
         },
         "jarvis_hermes_admin_ai": {
-            "status": str(admin_gate.get("status") or "unknown"),
-            "ready": bool(admin_gate.get("ready")),
+            "status": admin_status,
+            "source_status": str(admin_gate.get("status") or "unknown"),
+            "ready": admin_ready,
             "blocked": int(admin_gate.get("blocked") or 0),
             "warned": int(admin_gate.get("warned") or 0),
-            "next_actions": admin_gate.get("next_actions") if isinstance(admin_gate.get("next_actions"), list) else [],
+            "next_actions": [stale_detail]
+            if stale_detail
+            else (admin_gate.get("next_actions") if isinstance(admin_gate.get("next_actions"), list) else []),
         },
         "supervisor_reconcile": {
             "status": str(supervisor_reconcile_gate.get("status") or "unknown"),
@@ -2603,7 +3764,8 @@ def _vps_ops_hardening_payload(*, server_ts: float) -> dict:
                 else []
             ),
         },
-        "next_actions": payload.get("next_actions") if isinstance(payload.get("next_actions"), list) else [],
+        "source_next_actions": payload.get("next_actions") if isinstance(payload.get("next_actions"), list) else [],
+        "next_actions": next_actions,
     }
 
 
@@ -3156,6 +4318,21 @@ def _append_detail_once(detail: object, extra: str) -> str:
     return f"{base}{separator}{extra}"
 
 
+def _gateway_authority_payload() -> dict[str, object]:
+    """Return whether this host is the authoritative IBKR Gateway owner."""
+    try:
+        from eta_engine.scripts.ibgateway_reauth_controller import gateway_authority_status
+
+        payload = gateway_authority_status()
+    except Exception as exc:  # noqa: BLE001 - dashboard must fail soft on helper import/runtime
+        return {
+            "allowed": None,
+            "source": "unavailable",
+            "reason": f"gateway authority unavailable: {type(exc).__name__}: {exc}",
+        }
+    return payload if isinstance(payload, dict) else {}
+
+
 def _live_ibkr_exposure_for_gateway(live_broker_state: dict | None) -> dict:
     """Summarize live IBKR positions for Gateway card reconciliation."""
     live_broker_state = live_broker_state if isinstance(live_broker_state, dict) else {}
@@ -3184,6 +4361,11 @@ def _reconcile_broker_gateway_with_live_state(
     out = dict(broker_gateway) if isinstance(broker_gateway, dict) else {}
     ibkr = out.get("ibkr") if isinstance(out.get("ibkr"), dict) else {}
     ibkr = dict(ibkr)
+    gateway_authority = _gateway_authority_payload()
+    non_authoritative_host = gateway_authority.get("allowed") is False
+    authority_reason = str(gateway_authority.get("reason") or "").strip()
+    ibkr["gateway_authority"] = gateway_authority
+    ibkr["non_authoritative_host"] = non_authoritative_host
     exposure = _live_ibkr_exposure_for_gateway(live_broker_state)
     if exposure.get("observed"):
         count = int(exposure.get("open_position_count") or 0)
@@ -3199,8 +4381,37 @@ def _reconcile_broker_gateway_with_live_state(
             )
             ibkr["detail"] = detail
             out["detail"] = detail
+    if non_authoritative_host:
+        detail = _append_detail_once(
+            ibkr.get("detail") or out.get("detail"),
+            authority_reason or "This host is not marked as the ETA IBKR Gateway authority.",
+        )
+        ibkr["detail"] = detail
+        out["detail"] = detail
+    out["gateway_authority"] = gateway_authority
+    out["non_authoritative_host"] = non_authoritative_host
     out["ibkr"] = ibkr
     return out
+
+
+def _gateway_summary_effective_status(raw_status: object, *, non_authoritative_host: bool) -> str:
+    if non_authoritative_host:
+        return "vps_only"
+    return str(raw_status or "unknown").strip().lower() or "unknown"
+
+
+def _gateway_summary_effective_detail(
+    raw_detail: object,
+    *,
+    non_authoritative_host: bool,
+    authority_reason: object,
+) -> str:
+    detail = str(raw_detail or "").strip()
+    if detail:
+        return detail
+    if non_authoritative_host and str(authority_reason or "").strip():
+        return str(authority_reason).strip()
+    return detail
 
 
 def _read_json_file(path: Path) -> dict:
@@ -3214,6 +4425,11 @@ def _read_json_file(path: Path) -> dict:
 def _vps_root_reconciliation_plan_path() -> Path:
     """Review-only plan generated from the live VPS root dirty inventory."""
     return _state_dir() / "vps_root_reconciliation_plan.json"
+
+
+def _vps_root_reconciliation_review_path() -> Path:
+    """Observed verification results for the surfaced VPS root review items."""
+    return _state_dir() / "vps_root_reconciliation_review.json"
 
 
 def _vps_root_dirty_inventory_path() -> Path:
@@ -3318,8 +4534,29 @@ def _git_checkout_health(repo_path: Path, *, label: str) -> dict[str, object]:
         }
 
     lines = [line.rstrip() for line in porcelain.splitlines() if line.strip()]
+    companion_tracked_count = 0
+    non_companion_tracked_count = 0
+    if repo_path == _WORKSPACE_ROOT:
+        filtered_lines: list[str] = []
+        for raw in lines:
+            if len(raw) < 4:
+                filtered_lines.append(raw)
+                continue
+            status_code = raw[:2].strip()
+            path = raw[3:].strip().strip('"').replace("\\", "/")
+            if status_code == "D" and path in _RUNTIME_OPTIONAL_CHECKOUTS:
+                continue
+            filtered_lines.append(raw)
+            if not raw.startswith("??"):
+                if path in _ROOT_COMPANION_CHECKOUTS:
+                    companion_tracked_count += 1
+                else:
+                    non_companion_tracked_count += 1
+        lines = filtered_lines
     untracked_count = sum(1 for line in lines if line.startswith("??"))
     tracked_count = max(0, len(lines) - untracked_count)
+    if repo_path != _WORKSPACE_ROOT:
+        non_companion_tracked_count = tracked_count
     top_changes = []
     for raw in lines[:5]:
         top_changes.append(raw[3:].strip() if len(raw) > 3 else raw.strip())
@@ -3328,7 +4565,12 @@ def _git_checkout_health(repo_path: Path, *, label: str) -> dict[str, object]:
     head_short = head[:7]
     if dirty:
         fragments: list[str] = []
-        if tracked_count > 0:
+        if repo_path == _WORKSPACE_ROOT:
+            if non_companion_tracked_count > 0:
+                fragments.append(f"{non_companion_tracked_count} root tracked")
+            if companion_tracked_count > 0:
+                fragments.append(f"{companion_tracked_count} companion tracked")
+        elif tracked_count > 0:
             fragments.append(f"{tracked_count} tracked")
         if untracked_count > 0:
             fragments.append(f"{untracked_count} untracked")
@@ -3343,6 +4585,8 @@ def _git_checkout_health(repo_path: Path, *, label: str) -> dict[str, object]:
         "dirty": dirty,
         "change_count": len(lines),
         "tracked_change_count": tracked_count,
+        "non_companion_tracked_change_count": non_companion_tracked_count,
+        "companion_tracked_change_count": companion_tracked_count,
         "untracked_change_count": untracked_count,
         "top_changes": top_changes,
         "branch": branch_name,
@@ -3400,10 +4644,12 @@ def _workspace_checkout_payload_uncached() -> dict[str, object]:
             "raw": line,
         }
 
+    wiring = _workspace_submodule_wiring_payload()
     root_status = str(root.get("status") or "")
     eta_status = str(eta_engine.get("status") or "")
     submodule_status = str(submodule.get("status") or "")
-    if "error" in {root_status, eta_status, submodule_status}:
+    wiring_status = str(wiring.get("status") or "")
+    if "error" in {root_status, eta_status, submodule_status, wiring_status}:
         status = "error"
     elif "missing" in {root_status, eta_status}:
         status = "missing"
@@ -3411,6 +4657,7 @@ def _workspace_checkout_payload_uncached() -> dict[str, object]:
         bool(root.get("dirty"))
         or bool(eta_engine.get("dirty"))
         or submodule_status not in {"aligned", ""}
+        or wiring_status not in {"aligned", ""}
     ):
         status = "review"
     else:
@@ -3426,6 +4673,9 @@ def _workspace_checkout_payload_uncached() -> dict[str, object]:
         fragments.append(f"submodule {submodule_label} {submodule_short}")
     else:
         fragments.append(f"submodule {submodule_label}")
+    wiring_short = str(wiring.get("summary_short") or "").strip()
+    if wiring_short and wiring_short != "ready":
+        fragments.append(f"wiring {wiring_short}")
 
     return {
         "status": status,
@@ -3433,6 +4683,7 @@ def _workspace_checkout_payload_uncached() -> dict[str, object]:
         "root": root,
         "eta_engine": eta_engine,
         "submodule": submodule,
+        "wiring": wiring,
     }
 
 
@@ -3457,6 +4708,106 @@ def _workspace_checkout_payload(*, refresh: bool = False) -> dict[str, object]:
     return dict(payload)
 
 
+def _inspect_workspace_submodule_wiring() -> dict[str, object]:
+    """Inspect companion-repo wiring state for the current workspace."""
+    return inspect_submodule_wiring(root=_WORKSPACE_ROOT).as_payload()
+
+
+def _classify_workspace_submodule_wiring(modules: dict[str, dict[str, object]]) -> dict[str, object]:
+    """Mirror closeout's child-repo warning semantics for dashboard surfaces."""
+    blocker_sets: list[tuple[str, tuple[str, ...]]] = []
+    normalized_modules: dict[str, dict[str, object]] = {}
+    for raw_name, raw_module in modules.items():
+        name = str(raw_name)
+        module = raw_module if isinstance(raw_module, dict) else {}
+        normalized_modules[name] = module
+        blockers = module.get("blockers") if isinstance(module.get("blockers"), list) else []
+        normalized = tuple(str(blocker).strip() for blocker in blockers if str(blocker).strip())
+        if normalized:
+            blocker_sets.append((name, normalized))
+
+    def _payload(status: str, summary_line: str, summary_short: str) -> dict[str, object]:
+        return {
+            "status": status,
+            "ready": status == "aligned",
+            "summary_line": summary_line,
+            "summary_short": summary_short,
+            "modules": normalized_modules,
+        }
+
+    if not blocker_sets:
+        return _payload("aligned", "gitlink wiring ready", "ready")
+
+    if all(blockers == ("dirty worktree",) for _name, blockers in blocker_sets):
+        modules_text = ", ".join(name for name, _blockers in blocker_sets)
+        return _payload(
+            "review",
+            f"dirty child worktree blocks gitlink wiring ({modules_text})",
+            f"dirty child worktree ({modules_text})",
+        )
+
+    optional_only_modules: list[str] = []
+    required_blocker_sets: list[tuple[str, set[str]]] = []
+    for name, blockers in blocker_sets:
+        blocker_set = set(blockers)
+        if name in _RUNTIME_OPTIONAL_CHECKOUTS and blocker_set.issubset(_OPTIONAL_CHECKOUT_BLOCKERS):
+            optional_only_modules.append(name)
+            continue
+        required_blocker_sets.append((name, blocker_set))
+
+    if optional_only_modules and not required_blocker_sets:
+        modules_text = ", ".join(optional_only_modules)
+        return _payload(
+            "review",
+            f"runtime-optional submodule missing/uninitialized ({modules_text})",
+            f"optional missing ({modules_text})",
+        )
+
+    normalized_sets = [blocker_set for _name, blocker_set in required_blocker_sets]
+    if required_blocker_sets and all(blocker_set.issubset(_INTEGRATION_CHECKOUT_BLOCKERS) for blocker_set in normalized_sets):
+        modules_text = ", ".join([name for name, _blockers in required_blocker_sets] + optional_only_modules)
+        if optional_only_modules:
+            return _payload(
+                "review",
+                "dirty/diverged child integration plus optional missing submodule checkout "
+                f"blocks gitlink wiring ({modules_text})",
+                f"dirty/diverged integration + optional missing ({modules_text})",
+            )
+        return _payload(
+            "review",
+            f"dirty/diverged child integration blocks gitlink wiring ({modules_text})",
+            f"dirty/diverged integration ({modules_text})",
+        )
+
+    modules_text = ", ".join(name for name, _blockers in blocker_sets)
+    return _payload(
+        "error",
+        f"submodule wiring review required ({modules_text})",
+        f"review required ({modules_text})",
+    )
+
+
+def _workspace_submodule_wiring_payload() -> dict[str, object]:
+    """Best-effort child-repo wiring summary for operator-facing dashboards."""
+    try:
+        report = _inspect_workspace_submodule_wiring()
+    except Exception as exc:  # noqa: BLE001 -- degrade softly on dashboard surfaces
+        return {
+            "status": "error",
+            "ready": False,
+            "summary_line": f"submodule wiring check failed: {exc}",
+            "summary_short": "check failed",
+            "error": str(exc),
+            "modules": {},
+        }
+
+    modules = report.get("modules") if isinstance(report.get("modules"), dict) else {}
+    payload = _classify_workspace_submodule_wiring(modules)
+    payload["root"] = str(report.get("root") or _WORKSPACE_ROOT)
+    payload["action"] = str(report.get("action") or "")
+    return payload
+
+
 def _vps_root_reconciliation_payload() -> dict[str, object]:
     """Expose the VPS root reconciliation artifacts without taking action."""
 
@@ -3475,12 +4826,31 @@ def _vps_root_reconciliation_payload() -> dict[str, object]:
             "age_s": max(0, int(now_ts - mtime)),
         }
 
+    def _review_files_by_outcome(review_payload: object, outcome: str) -> list[str]:
+        review_dict = review_payload if isinstance(review_payload, dict) else {}
+        items = review_dict.get("items") if isinstance(review_dict.get("items"), list) else []
+        if not items and isinstance(review_dict.get("results_by_basename"), dict):
+            items = list(review_dict["results_by_basename"].values())
+        files: list[str] = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            if str(item.get("recommended_outcome") or "").strip() != outcome:
+                continue
+            basename = str(item.get("basename") or "").strip()
+            if basename:
+                files.append(basename)
+        return list(dict.fromkeys(files))
+
     plan_path = _vps_root_reconciliation_plan_path()
+    review_path = _vps_root_reconciliation_review_path()
     inventory_path = _vps_root_dirty_inventory_path()
     plan = _read_json_file(plan_path)
+    review = _read_json_file(review_path)
     inventory = _read_json_file(inventory_path)
     now_ts = time.time()
     plan_snapshot = _file_snapshot(plan_path, now_ts=now_ts)
+    review_snapshot = _file_snapshot(review_path, now_ts=now_ts)
     inventory_snapshot = _file_snapshot(inventory_path, now_ts=now_ts)
     live_checkout = _workspace_checkout_payload()
     if not plan and not inventory:
@@ -3488,18 +4858,38 @@ def _vps_root_reconciliation_payload() -> dict[str, object]:
             "status": "missing",
             "source": "missing",
             "plan_path": str(plan_path),
+            "review_path": str(review_path),
             "inventory_path": str(inventory_path),
             "plan_updated_at": plan_snapshot["updated_at"],
             "plan_age_s": plan_snapshot["age_s"],
+            "review_updated_at": review_snapshot["updated_at"],
+            "review_age_s": review_snapshot["age_s"],
             "inventory_updated_at": inventory_snapshot["updated_at"],
             "inventory_age_s": inventory_snapshot["age_s"],
             "artifact_stale": False,
             "risk_level": "unknown",
             "cleanup_allowed": False,
             "destructive_actions_performed": False,
+            "review_status": "missing",
+            "review_summary_line": "",
+            "review_verified_at": None,
+            "source_review_decision_ready": False,
+            "review_decision_ready": False,
+            "review_decision_blocked_by_companion": False,
+            "review_preserve_candidate_files": [],
+            "review_revisit_required_files": [],
+            "companion_review_status": "missing",
+            "companion_review_summary_line": "",
+            "companion_review_verified_count": 0,
+            "companion_review_decision_required_count": 0,
             "counts": {},
             "summary": {},
             "steps": [],
+            "source_review_files": [],
+            "source_review_items": [],
+            "companion_review_targets": [],
+            "companion_review_items": [],
+            "review_focus": _vps_root_review_focus_payload({}, {}, [], [], [], {}, {}),
             "recommended_action": "run inspect_vps_root_dirty.ps1 and plan_vps_root_reconciliation.ps1 on the VPS",
             "live_checkout": live_checkout,
         }
@@ -3511,6 +4901,33 @@ def _vps_root_reconciliation_payload() -> dict[str, object]:
         counts = inventory["counts"]
     if not summary and isinstance(inventory.get("summary"), dict):
         summary = inventory["summary"]
+    source_step = next(
+        (step for step in steps if isinstance(step, dict) and step.get("id") == "restore-source-governance"),
+        {},
+    )
+    companion_step = next(
+        (step for step in steps if isinstance(step, dict) and step.get("id") == "align-submodules"),
+        {},
+    )
+    source_step_evidence = source_step.get("evidence") if isinstance(source_step.get("evidence"), list) else []
+    companion_step_evidence = (
+        companion_step.get("evidence") if isinstance(companion_step.get("evidence"), list) else []
+    )
+    source_review_files = _vps_root_review_files_from_evidence(source_step_evidence)
+    source_review_items = plan.get("source_review_items") if isinstance(plan.get("source_review_items"), list) else []
+    companion_review_targets = _vps_root_companion_targets_from_evidence(companion_step_evidence)
+    companion_review_items = (
+        plan.get("companion_review_items") if isinstance(plan.get("companion_review_items"), list) else []
+    )
+    review_focus = _vps_root_review_focus_payload(
+        summary,
+        counts,
+        steps,
+        source_review_items,
+        companion_review_items,
+        live_checkout,
+        review,
+    )
 
     risk_level = str(plan.get("risk_level") or inventory.get("risk_level") or "unknown").lower()
     cleanup_allowed = bool(plan.get("cleanup_allowed") is True)
@@ -3542,6 +4959,30 @@ def _vps_root_reconciliation_payload() -> dict[str, object]:
     ):
         recommended_action = str(steps[0].get("action") or recommended_action)
 
+    preserve_candidate_files = _review_files_by_outcome(review, "preserve_candidate")
+    revisit_required_files = _review_files_by_outcome(review, "revisit_required")
+    review_status = str(review.get("status") or "missing")
+    companion_review_status = str(review.get("companion_review_status") or "missing").lower()
+    source_review_decision_ready = review_status == "ok" and len(preserve_candidate_files) > 0
+    review_decision_blocked_by_companion = source_review_decision_ready and companion_review_status in {
+        "review_required",
+        "partial",
+        "failed",
+    }
+    review_decision_ready = source_review_decision_ready and not review_decision_blocked_by_companion
+    if source_review_decision_ready:
+        preserve_text = ", ".join(preserve_candidate_files[:3])
+        companion_text = ", ".join(companion_review_targets[:3]) if companion_review_targets else ""
+        recommended_action = (
+            f"Decide whether to preserve or commit {len(preserve_candidate_files)} live-verified root source change(s)"
+        )
+        if preserve_text:
+            recommended_action += f" ({preserve_text})"
+        if companion_text:
+            recommended_action += f", then resolve {companion_text} before updating the superproject root."
+        else:
+            recommended_action += " before updating the superproject root."
+
     source_age_s = plan_snapshot["age_s"] if plan else inventory_snapshot["age_s"]
     artifact_stale = isinstance(source_age_s, int) and source_age_s > 7200
     if artifact_stale:
@@ -3549,26 +4990,1513 @@ def _vps_root_reconciliation_payload() -> dict[str, object]:
     else:
         status = "review_required" if manual_review_required else "ready_for_review"
 
+    review_focus_summary_line = str(review_focus.get("summary_line") or "")
+    review_focus_primary_command = str(review_focus.get("primary_review_command") or "")
+    review_focus_primary_action = (
+        dict(review_focus.get("primary_review_action"))
+        if isinstance(review_focus.get("primary_review_action"), dict)
+        else {}
+    )
+    review_focus_active_lane = str(review_focus.get("active_review_lane") or "")
+    decision_context = _companion_review_decision_context(
+        primary_review_action=review_focus_primary_action,
+        companion_review_targets=companion_review_targets,
+        review_decision_blocked_by_companion=review_decision_blocked_by_companion,
+    )
+    companion_review_decision_ready = bool(decision_context["ready"])
+    companion_review_decision_summary = str(decision_context["summary"])
+    companion_review_decision_recommended_handling = str(decision_context["recommended_handling"])
+    companion_review_decision_next_action = str(decision_context["next_action"])
+    companion_review_decision_options = list(decision_context["options"])
+    companion_review_decision_recommended_option = str(decision_context["recommended_option"])
+    companion_review_decision_recommended_reason = str(decision_context["recommended_reason"])
+    companion_review_decision_basis = str(decision_context["basis"])
+    if review_decision_blocked_by_companion:
+        companion_text = ", ".join(companion_review_targets[:3]) if companion_review_targets else "companion repo"
+        preserve_text = ", ".join(preserve_candidate_files[:3])
+        if companion_review_decision_ready:
+            if companion_review_decision_recommended_option == "commit":
+                recommended_action = (
+                    f"Prefer commit for {companion_text} as one runtime-hardening child batch if this VPS-reviewed "
+                    f"slice is intended shared child-repo work; otherwise preserve or pin it before updating the "
+                    f"superproject root; root source preserve candidates are {preserve_text}."
+                )
+            else:
+                recommended_action = (
+                    f"Choose preserve, commit, or pin for {companion_text} as one runtime-hardening child batch "
+                    f"before updating the superproject root; root source preserve candidates are {preserve_text}."
+                )
+        elif companion_review_decision_recommended_handling == "preserve_or_commit_as_single_child_batch":
+            recommended_action = (
+                f"Resolve {companion_text} as one runtime-hardening child batch before updating the superproject root; "
+                f"root source preserve candidates are {preserve_text}."
+            )
+        else:
+            recommended_action = (
+                f"Resolve {companion_text} before updating the superproject root; "
+                f"root source preserve candidates are {preserve_text}."
+            )
     return {
         "status": status,
         "source": "vps_root_reconciliation_plan" if plan else "vps_root_dirty_inventory",
         "plan_status": plan.get("status") or "missing",
         "plan_path": str(plan_path),
+        "review_path": str(review_path),
         "inventory_path": str(inventory_path),
         "plan_updated_at": plan_snapshot["updated_at"],
         "plan_age_s": plan_snapshot["age_s"],
+        "review_updated_at": review_snapshot["updated_at"],
+        "review_age_s": review_snapshot["age_s"],
         "inventory_updated_at": inventory_snapshot["updated_at"],
         "inventory_age_s": inventory_snapshot["age_s"],
         "artifact_stale": artifact_stale,
         "risk_level": risk_level,
         "cleanup_allowed": cleanup_allowed,
         "destructive_actions_performed": destructive_actions_performed,
+        "review_status": review_status,
+        "review_summary_line": str(review.get("summary_line") or ""),
+        "review_verified_at": review.get("verified_at"),
+        "source_review_decision_ready": source_review_decision_ready,
+        "review_decision_ready": review_decision_ready,
+        "review_decision_blocked_by_companion": review_decision_blocked_by_companion,
+        "review_preserve_candidate_files": preserve_candidate_files,
+        "review_revisit_required_files": revisit_required_files,
+        "companion_review_status": str(review.get("companion_review_status") or "missing"),
+        "companion_review_decision_ready": companion_review_decision_ready,
+        "companion_review_decision_summary": companion_review_decision_summary,
+        "companion_review_decision_recommended_handling": companion_review_decision_recommended_handling,
+        "companion_review_decision_next_action": companion_review_decision_next_action,
+        "companion_review_decision_options": companion_review_decision_options,
+        "companion_review_decision_recommended_option": companion_review_decision_recommended_option,
+        "companion_review_decision_recommended_reason": companion_review_decision_recommended_reason,
+        "companion_review_decision_basis": companion_review_decision_basis,
+        "companion_review_decision_recommended_paths": list(
+            decision_context["recommended_paths"]
+        ),
+        "companion_review_decision_recommended_commit_message": str(
+            decision_context["recommended_commit_message"]
+        ),
+        "companion_review_decision_recommended_stage_command": str(
+            decision_context["recommended_stage_command"]
+        ),
+        "companion_review_decision_recommended_commit_command": str(
+            decision_context["recommended_commit_command"]
+        ),
+        "companion_review_decision_recommended_commands": list(
+            decision_context["recommended_commands"]
+        ),
+        "companion_review_summary_line": str(review.get("companion_summary_line") or ""),
+        "companion_review_verified_count": int(review.get("companion_verified_count") or 0),
+        "companion_review_decision_required_count": int(
+            review.get("companion_decision_required_count") or 0
+        ),
         "counts": counts,
         "summary": summary,
         "steps": steps,
+        "source_review_files": source_review_files,
+        "source_review_items": source_review_items,
+        "companion_review_targets": companion_review_targets,
+        "companion_review_items": companion_review_items,
+        "review_focus": review_focus,
+        "review_focus_summary_line": review_focus_summary_line,
+        "review_focus_primary_command": review_focus_primary_command,
+        "review_focus_primary_action": review_focus_primary_action,
+        "review_focus_active_lane": review_focus_active_lane,
         "recommended_action": recommended_action,
         "live_checkout": live_checkout,
     }
+
+
+def _string_list(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    values: list[str] = []
+    for item in value:
+        text = str(item or "").strip()
+        if text:
+            values.append(text)
+    return values
+
+
+def _vps_root_review_files_from_evidence(evidence: object) -> list[str]:
+    if not isinstance(evidence, list):
+        return []
+    review_files: list[str] = []
+    for item in evidence:
+        if not isinstance(item, str):
+            continue
+        candidate = item.replace("\\", "/")
+        if "/" not in candidate:
+            continue
+        basename = candidate.split("/")[-1].strip()
+        if basename:
+            review_files.append(basename)
+    return list(dict.fromkeys(review_files))
+
+
+def _vps_root_companion_targets_from_evidence(evidence: object) -> list[str]:
+    if not isinstance(evidence, list):
+        return []
+    targets: list[str] = []
+    for item in evidence:
+        if not isinstance(item, str) or ":" not in item:
+            continue
+        candidate = item.split(":", 1)[0].strip().replace("\\", "/")
+        if not candidate or "/" in candidate:
+            continue
+        targets.append(candidate)
+    return list(dict.fromkeys(targets))
+
+
+def _vps_root_companion_review_detail_payloads(
+    targets: object,
+    live_checkout: object,
+    companion_review_items: object = None,
+    review_payload: object = None,
+) -> list[dict[str, object]]:
+    if not isinstance(targets, list) or not isinstance(live_checkout, dict):
+        return []
+    eta_checkout = live_checkout.get("eta_engine") if isinstance(live_checkout.get("eta_engine"), dict) else {}
+    submodule = live_checkout.get("submodule") if isinstance(live_checkout.get("submodule"), dict) else {}
+    wiring = live_checkout.get("wiring") if isinstance(live_checkout.get("wiring"), dict) else {}
+    companion_items = companion_review_items if isinstance(companion_review_items, list) else []
+    review_result_map = _vps_root_companion_review_result_map(review_payload)
+    companion_item_map: dict[str, dict[str, object]] = {}
+    for raw in companion_items:
+        if not isinstance(raw, dict):
+            continue
+        key = str(raw.get("target") or "").strip()
+        if key:
+            companion_item_map[key] = raw
+    details: list[dict[str, object]] = []
+    for target in targets:
+        if not isinstance(target, str) or not target.strip():
+            continue
+        target_name = target.strip()
+        if target_name != "eta_engine":
+            continue
+        detail: dict[str, object] = {"target": target_name}
+        item_detail = companion_item_map.get(target_name, {})
+        if item_detail:
+            detail.update(
+                {
+                    "reason": str(item_detail.get("reason") or ""),
+                    "rationale": str(item_detail.get("rationale") or ""),
+                    "suggested_decision": str(item_detail.get("suggested_decision") or ""),
+                }
+            )
+        if eta_checkout:
+            detail.update(
+                {
+                    "status": str(eta_checkout.get("status") or ""),
+                    "branch": str(eta_checkout.get("branch") or ""),
+                    "head_short": str(eta_checkout.get("head_short") or ""),
+                    "tracked_change_count": int(eta_checkout.get("tracked_change_count") or 0),
+                    "untracked_change_count": int(eta_checkout.get("untracked_change_count") or 0),
+                    "summary_line": str(eta_checkout.get("summary_line") or ""),
+                }
+            )
+        if str(submodule.get("path") or "") == target_name:
+            detail.update(
+                {
+                    "submodule_status": str(submodule.get("status") or ""),
+                    "submodule_state_label": str(submodule.get("state_label") or ""),
+                    "submodule_expected_short": str(submodule.get("expected_short") or ""),
+                }
+            )
+        wiring_summary = str(wiring.get("summary_line") or "")
+        if wiring_summary:
+            detail.update(
+                {
+                    "wiring_status": str(wiring.get("status") or ""),
+                    "wiring_summary": wiring_summary,
+                }
+            )
+        observed = review_result_map.get(target_name, {})
+        if observed:
+            detail.update(
+                {
+                    "observed_review_status": str(observed.get("review_status") or ""),
+                    "observed_review_summary": str(observed.get("review_summary") or ""),
+                    "observed_verified_at": str(observed.get("verified_at") or ""),
+                    "observed_recommended_outcome": str(observed.get("recommended_outcome") or ""),
+                    "observed_exit_code": int(observed.get("exit_code") or 0),
+                    "observed_output_excerpt": str(observed.get("output_excerpt") or ""),
+                    "observed_tracked_change_count": int(observed.get("tracked_change_count") or 0),
+                    "observed_untracked_change_count": int(observed.get("untracked_change_count") or 0),
+                    "observed_tracked_files": _string_list(observed.get("tracked_files")),
+                    "observed_untracked_files": _string_list(observed.get("untracked_files")),
+                    "observed_change_groups": (
+                        list(observed.get("change_groups"))
+                        if isinstance(observed.get("change_groups"), list)
+                        else []
+                    ),
+                    "observed_change_group_summary": str(observed.get("change_group_summary") or ""),
+                }
+            )
+            explicit_focus_areas = (
+                list(observed.get("focus_areas"))
+                if isinstance(observed.get("focus_areas"), list)
+                else []
+            )
+            explicit_focus_area_summary = str(observed.get("focus_area_summary") or "")
+            focus_areas = explicit_focus_areas
+            focus_area_summary = explicit_focus_area_summary
+            if not focus_areas:
+                focus_areas, focus_area_summary = _observed_companion_focus_areas(
+                    tracked_files=detail.get("observed_tracked_files"),
+                    untracked_files=detail.get("observed_untracked_files"),
+                )
+            if focus_areas:
+                detail["observed_focus_areas"] = focus_areas
+                detail["observed_focus_area_summary"] = focus_area_summary
+                batch_assessment = {
+                    "label": str(observed.get("batch_label") or ""),
+                    "coherence": str(observed.get("batch_coherence") or ""),
+                    "recommended_handling": str(observed.get("batch_recommended_handling") or ""),
+                    "summary": str(observed.get("batch_summary") or ""),
+                    "top_areas": _string_list(observed.get("batch_top_areas")),
+                }
+                if not any(str(batch_assessment.get(key) or "").strip() for key in ("label", "coherence", "recommended_handling", "summary")):
+                    batch_assessment = _assess_observed_companion_batch(focus_areas)
+                if batch_assessment:
+                    detail["observed_batch_label"] = str(batch_assessment.get("label") or "")
+                    detail["observed_batch_coherence"] = str(batch_assessment.get("coherence") or "")
+                    detail["observed_batch_recommended_handling"] = str(
+                        batch_assessment.get("recommended_handling") or ""
+                    )
+                    detail["observed_batch_summary"] = str(batch_assessment.get("summary") or "")
+                    detail["observed_batch_top_areas"] = _string_list(batch_assessment.get("top_areas"))
+                explicit_scope_paths = _string_list(observed.get("batch_scope_paths"))
+                explicit_scope_command = str(observed.get("batch_scope_command") or "")
+                explicit_scope_count = int(observed.get("batch_scope_path_count") or 0)
+                batch_scope = (
+                    {
+                        "paths": explicit_scope_paths,
+                        "command": explicit_scope_command,
+                        "stat_command": str(observed.get("batch_scope_stat_command") or ""),
+                        "shortstat": str(observed.get("batch_scope_shortstat") or ""),
+                        "path_count": explicit_scope_count,
+                    }
+                    if explicit_scope_paths or explicit_scope_command or str(observed.get("batch_scope_stat_command") or "")
+                    else _observed_companion_batch_scope(detail.get("observed_change_groups"))
+                )
+                if batch_scope:
+                    detail["observed_batch_scope_paths"] = _string_list(batch_scope.get("paths"))
+                    detail["observed_batch_scope_command"] = str(batch_scope.get("command") or "")
+                    detail["observed_batch_scope_stat_command"] = str(batch_scope.get("stat_command") or "")
+                    detail["observed_batch_scope_shortstat"] = str(batch_scope.get("shortstat") or "")
+                    detail["observed_batch_scope_path_count"] = int(batch_scope.get("path_count") or 0)
+                decision_payload = {
+                    "decision_options": _normalize_companion_decision_options(observed.get("decision_options")),
+                    "decision_recommended_option": str(
+                        observed.get("decision_recommended_option") or ""
+                    ).strip(),
+                    "decision_recommended_reason": str(
+                        observed.get("decision_recommended_reason") or ""
+                    ).strip(),
+                    "decision_basis": str(observed.get("decision_basis") or "").strip(),
+                    "decision_recommended_paths": _string_list(
+                        observed.get("decision_recommended_paths")
+                    ),
+                    "decision_recommended_commit_message": str(
+                        observed.get("decision_recommended_commit_message") or ""
+                    ).strip(),
+                    "decision_recommended_stage_command": str(
+                        observed.get("decision_recommended_stage_command") or ""
+                    ).strip(),
+                    "decision_recommended_commit_command": str(
+                        observed.get("decision_recommended_commit_command") or ""
+                    ).strip(),
+                    "decision_recommended_commands": _string_list(
+                        observed.get("decision_recommended_commands")
+                    ),
+                }
+                default_decision_payload = _default_companion_decision_payload(
+                    target=target_name,
+                    batch_label=detail.get("observed_batch_label"),
+                    batch_handling=detail.get("observed_batch_recommended_handling"),
+                    batch_summary=detail.get("observed_batch_summary"),
+                    batch_scope_shortstat=detail.get("observed_batch_scope_shortstat"),
+                    batch_scope_paths=detail.get("observed_batch_scope_paths"),
+                )
+                if not any(
+                    (
+                        decision_payload["decision_options"],
+                        decision_payload["decision_recommended_option"],
+                        decision_payload["decision_recommended_reason"],
+                        decision_payload["decision_basis"],
+                        decision_payload["decision_recommended_paths"],
+                        decision_payload["decision_recommended_commit_message"],
+                        decision_payload["decision_recommended_stage_command"],
+                        decision_payload["decision_recommended_commit_command"],
+                        decision_payload["decision_recommended_commands"],
+                    )
+                ):
+                    decision_payload = default_decision_payload
+                elif default_decision_payload:
+                    for key, value in default_decision_payload.items():
+                        current = decision_payload.get(key)
+                        if current in ("", None, []) or current == {}:
+                            decision_payload[key] = value
+                if decision_payload:
+                    detail["observed_decision_options"] = _normalize_companion_decision_options(
+                        decision_payload.get("decision_options")
+                    )
+                    detail["observed_decision_recommended_option"] = str(
+                        decision_payload.get("decision_recommended_option") or ""
+                    ).strip()
+                    detail["observed_decision_recommended_reason"] = str(
+                        decision_payload.get("decision_recommended_reason") or ""
+                    ).strip()
+                    detail["observed_decision_basis"] = str(
+                        decision_payload.get("decision_basis") or ""
+                    ).strip()
+                    detail["observed_decision_recommended_paths"] = _string_list(
+                        decision_payload.get("decision_recommended_paths")
+                    )
+                    detail["observed_decision_recommended_commit_message"] = str(
+                        decision_payload.get("decision_recommended_commit_message") or ""
+                    ).strip()
+                    detail["observed_decision_recommended_stage_command"] = str(
+                        decision_payload.get("decision_recommended_stage_command") or ""
+                    ).strip()
+                    detail["observed_decision_recommended_commit_command"] = str(
+                        decision_payload.get("decision_recommended_commit_command") or ""
+                    ).strip()
+                    detail["observed_decision_recommended_commands"] = _string_list(
+                        decision_payload.get("decision_recommended_commands")
+                    )
+        if len(detail) > 1:
+            status_command = f"git -C {_REPO_ROOT} status --short"
+            detail["status_command"] = status_command
+            observed_change_groups = (
+                detail.get("observed_change_groups") if isinstance(detail.get("observed_change_groups"), list) else []
+            )
+            primary_group = observed_change_groups[0] if observed_change_groups and isinstance(observed_change_groups[0], dict) else {}
+            group_command = str(primary_group.get("inspection_command") or "").strip()
+            if group_command:
+                detail["inspection_command"] = group_command
+                detail["inspection_focus"] = str(primary_group.get("group") or "")
+                detail["inspection_group_command"] = group_command
+                sample_paths = _prioritized_companion_sample_paths(
+                    focus_group=detail.get("inspection_focus"),
+                    tracked_files=detail.get("observed_tracked_files"),
+                    untracked_files=detail.get("observed_untracked_files"),
+                    fallback_paths=primary_group.get("sample_paths"),
+                )
+                if sample_paths:
+                    detail["inspection_sample_paths"] = sample_paths
+                    detail["inspection_sample_commands"] = [
+                        f"git -C {_REPO_ROOT} diff -- {path}" for path in sample_paths
+                    ]
+            else:
+                detail["inspection_command"] = status_command
+            details.append(detail)
+    return details
+
+
+def _vps_root_source_review_context_payload(live_checkout: object) -> dict[str, object]:
+    if not isinstance(live_checkout, dict):
+        return {}
+    root_checkout = live_checkout.get("root") if isinstance(live_checkout.get("root"), dict) else {}
+    if not root_checkout:
+        return {}
+    return {
+        "status": str(root_checkout.get("status") or ""),
+        "branch": str(root_checkout.get("branch") or ""),
+        "head_short": str(root_checkout.get("head_short") or ""),
+        "tracked_change_count": int(root_checkout.get("tracked_change_count") or 0),
+        "untracked_change_count": int(root_checkout.get("untracked_change_count") or 0),
+        "summary_line": str(root_checkout.get("summary_line") or ""),
+    }
+
+
+def _vps_root_review_result_map(review_payload: object) -> dict[str, dict[str, object]]:
+    review = review_payload if isinstance(review_payload, dict) else {}
+    result_map: dict[str, dict[str, object]] = {}
+
+    results_by_basename = (
+        review.get("results_by_basename") if isinstance(review.get("results_by_basename"), dict) else {}
+    )
+    for basename, raw in results_by_basename.items():
+        if not isinstance(raw, dict):
+            continue
+        key = str(basename or raw.get("basename") or "").strip()
+        if not key:
+            continue
+        result_map[key] = raw
+
+    if result_map:
+        return result_map
+
+    items = review.get("items") if isinstance(review.get("items"), list) else []
+    for raw in items:
+        if not isinstance(raw, dict):
+            continue
+        key = str(raw.get("basename") or "").strip()
+        if not key:
+            continue
+        result_map[key] = raw
+    return result_map
+
+
+def _vps_root_companion_review_result_map(review_payload: object) -> dict[str, dict[str, object]]:
+    review = review_payload if isinstance(review_payload, dict) else {}
+    result_map: dict[str, dict[str, object]] = {}
+
+    results_by_target = (
+        review.get("companion_results_by_target")
+        if isinstance(review.get("companion_results_by_target"), dict)
+        else {}
+    )
+    for target, raw in results_by_target.items():
+        if not isinstance(raw, dict):
+            continue
+        key = str(target or raw.get("target") or "").strip()
+        if not key:
+            continue
+        result_map[key] = raw
+
+    if result_map:
+        return result_map
+
+    items = review.get("companion_items") if isinstance(review.get("companion_items"), list) else []
+    for raw in items:
+        if not isinstance(raw, dict):
+            continue
+        key = str(raw.get("target") or "").strip()
+        if not key:
+            continue
+        result_map[key] = raw
+    return result_map
+
+
+_COMPANION_SAMPLE_PRIORITY = (
+    "scripts/project_kaizen_closeout.py",
+    "scripts/prop_launch_check.py",
+    "scripts/health_check.py",
+    "scripts/diamond_retune_status.py",
+    "scripts/public_edge_route_watchdog.py",
+    "scripts/diamond_ops_dashboard.py",
+    "scripts/diamond_prop_prelaunch_dryrun.py",
+    "scripts/eta_status.py",
+    "scripts/prop_live_readiness_gate.py",
+    "scripts/jarvis_strategy_supervisor.py",
+    "strategies/per_bot_registry.py",
+    "deploy/scripts/dashboard_api.py",
+    "deploy/scripts/inspect_vps_root_dirty.ps1",
+    "deploy/scripts/plan_vps_root_reconciliation.ps1",
+    "deploy/scripts/verify_vps_root_reconciliation.ps1",
+)
+
+_COMPANION_FOCUS_AREA_PRIORITY = (
+    "ops_readiness_truth",
+    "operator_surface_reconciliation",
+    "broker_runtime_controls",
+    "supervisor_strategy_runtime",
+    "observability_reconciliation",
+    "ops_runtime_misc",
+)
+
+_KNOWN_COMPANION_FOCUS_AREAS = frozenset(_COMPANION_FOCUS_AREA_PRIORITY)
+
+_COMPANION_FOCUS_AREA_PATH_MAP = {
+    "scripts/project_kaizen_closeout.py": "ops_readiness_truth",
+    "scripts/prop_launch_check.py": "ops_readiness_truth",
+    "scripts/health_check.py": "ops_readiness_truth",
+    "scripts/diamond_retune_status.py": "ops_readiness_truth",
+    "scripts/diamond_ops_dashboard.py": "ops_readiness_truth",
+    "scripts/diamond_prop_prelaunch_dryrun.py": "ops_readiness_truth",
+    "scripts/prop_live_readiness_gate.py": "ops_readiness_truth",
+    "scripts/eta_status.py": "ops_readiness_truth",
+    "scripts/retune_advisory_cache.py": "ops_readiness_truth",
+    "scripts/alert_channel_config.py": "ops_readiness_truth",
+    "scripts/diamond_retune_truth_check.py": "ops_readiness_truth",
+    "scripts/diamond_wave25_status.py": "ops_readiness_truth",
+    "scripts/monday_first_light_check.py": "ops_readiness_truth",
+    "scripts/verify_telegram.py": "ops_readiness_truth",
+    "scripts/broker_bracket_audit.py": "broker_runtime_controls",
+    "scripts/closed_trade_ledger.py": "broker_runtime_controls",
+    "scripts/daily_loss_killswitch.py": "broker_runtime_controls",
+    "scripts/jarvis_strategy_supervisor.py": "supervisor_strategy_runtime",
+    "strategies/per_bot_registry.py": "supervisor_strategy_runtime",
+    "deploy/scripts/dashboard_api.py": "operator_surface_reconciliation",
+    "deploy/scripts/inspect_vps_root_dirty.ps1": "operator_surface_reconciliation",
+    "deploy/scripts/plan_vps_root_reconciliation.ps1": "operator_surface_reconciliation",
+    "deploy/scripts/verify_vps_root_reconciliation.ps1": "operator_surface_reconciliation",
+    "scripts/public_edge_route_watchdog.py": "operator_surface_reconciliation",
+}
+
+
+def _normalize_review_path(path: object) -> str:
+    return str(path or "").strip().replace("\\", "/").strip("/")
+
+
+def _review_path_in_group(path: object, group: object) -> bool:
+    normalized_path = _normalize_review_path(path)
+    normalized_group = _normalize_review_path(group)
+    if not normalized_path or not normalized_group:
+        return False
+    return normalized_path == normalized_group or normalized_path.startswith(f"{normalized_group}/")
+
+
+def _prioritized_companion_sample_paths(
+    *,
+    focus_group: object,
+    tracked_files: object,
+    untracked_files: object,
+    fallback_paths: object,
+    limit: int = 3,
+) -> list[str]:
+    focus = _normalize_review_path(focus_group)
+    tracked = [path for path in _string_list(tracked_files) if _review_path_in_group(path, focus)]
+    untracked = [path for path in _string_list(untracked_files) if _review_path_in_group(path, focus)]
+    fallback = [path for path in _string_list(fallback_paths) if _review_path_in_group(path, focus)]
+
+    candidate_pool: list[str] = []
+    candidate_set: set[str] = set()
+    ordered_candidates: list[str] = []
+    seen: set[str] = set()
+
+    def _collect(paths: list[str]) -> None:
+        for raw in paths:
+            normalized = _normalize_review_path(raw)
+            if not normalized or normalized in candidate_set:
+                continue
+            candidate_set.add(normalized)
+            candidate_pool.append(normalized)
+
+    def _add(paths: list[str]) -> None:
+        for raw in paths:
+            normalized = _normalize_review_path(raw)
+            if not normalized or normalized not in candidate_set or normalized in seen:
+                continue
+            seen.add(normalized)
+            ordered_candidates.append(normalized)
+
+    _collect(tracked)
+    _collect(untracked)
+    _collect(fallback)
+
+    _add(_COMPANION_SAMPLE_PRIORITY)
+    _add(candidate_pool)
+
+    return ordered_candidates[:limit]
+
+
+def _companion_focus_area_for_path(path: object) -> str:
+    normalized = _normalize_review_path(path)
+    if not normalized:
+        return ""
+    mapped = _COMPANION_FOCUS_AREA_PATH_MAP.get(normalized)
+    if mapped:
+        return mapped
+    if normalized.startswith("deploy/scripts/"):
+        return "operator_surface_reconciliation"
+    if normalized.startswith("obs/"):
+        return "observability_reconciliation"
+    if normalized.startswith("strategies/"):
+        return "supervisor_strategy_runtime"
+    if normalized.startswith("scripts/"):
+        return "ops_runtime_misc"
+    return "ops_runtime_misc"
+
+
+def _observed_companion_focus_areas(
+    *,
+    tracked_files: object,
+    untracked_files: object,
+) -> tuple[list[dict[str, object]], str]:
+    area_map: dict[str, dict[str, object]] = {}
+
+    def _ensure(area: str) -> dict[str, object]:
+        record = area_map.get(area)
+        if record is None:
+            record = {
+                "area": area,
+                "tracked_count": 0,
+                "untracked_count": 0,
+                "total_count": 0,
+                "sample_paths": [],
+            }
+            area_map[area] = record
+        return record
+
+    def _add(path: object, *, tracked: bool) -> None:
+        normalized = _normalize_review_path(path)
+        if not normalized:
+            return
+        area = _companion_focus_area_for_path(normalized)
+        record = _ensure(area)
+        key = "tracked_count" if tracked else "untracked_count"
+        record[key] = int(record.get(key) or 0) + 1
+        record["total_count"] = int(record.get("total_count") or 0) + 1
+        sample_paths = record.get("sample_paths")
+        if isinstance(sample_paths, list) and len(sample_paths) < 3 and normalized not in sample_paths:
+            sample_paths.append(normalized)
+
+    for path in _string_list(tracked_files):
+        _add(path, tracked=True)
+    for path in _string_list(untracked_files):
+        _add(path, tracked=False)
+
+    priority_index = {name: idx for idx, name in enumerate(_COMPANION_FOCUS_AREA_PRIORITY)}
+    ordered = sorted(
+        area_map.values(),
+        key=lambda item: (
+            -int(item.get("total_count") or 0),
+            priority_index.get(str(item.get("area") or ""), len(priority_index)),
+            str(item.get("area") or ""),
+        ),
+    )
+
+    summary_parts: list[str] = []
+    payload: list[dict[str, object]] = []
+    for item in ordered:
+        area = str(item.get("area") or "")
+        tracked_count = int(item.get("tracked_count") or 0)
+        untracked_count = int(item.get("untracked_count") or 0)
+        total_count = int(item.get("total_count") or 0)
+        sample_paths = _string_list(item.get("sample_paths"))
+        payload.append(
+            {
+                "area": area,
+                "tracked_count": tracked_count,
+                "untracked_count": untracked_count,
+                "total_count": total_count,
+                "sample_paths": sample_paths,
+            }
+        )
+        summary = area
+        if tracked_count > 0:
+            summary += f" t={tracked_count}"
+        if untracked_count > 0:
+            summary += f" u={untracked_count}"
+        if total_count > 0 and tracked_count == 0 and untracked_count == 0:
+            summary += f" c={total_count}"
+        summary_parts.append(summary)
+
+    return payload, "; ".join(summary_parts)
+
+
+def _assess_observed_companion_batch(
+    focus_areas: object,
+) -> dict[str, object]:
+    items = focus_areas if isinstance(focus_areas, list) else []
+    normalized_items = [item for item in items if isinstance(item, dict) and str(item.get("area") or "").strip()]
+    if not normalized_items:
+        return {}
+
+    total_count = sum(int(item.get("total_count") or 0) for item in normalized_items)
+    if total_count <= 0:
+        return {}
+
+    top = normalized_items[0]
+    second = normalized_items[1] if len(normalized_items) > 1 else {}
+    top_area = str(top.get("area") or "")
+    second_area = str(second.get("area") or "")
+    top_count = int(top.get("total_count") or 0)
+    second_count = int(second.get("total_count") or 0)
+    top_two_count = top_count + second_count
+    all_runtime = all(str(item.get("area") or "") in _KNOWN_COMPANION_FOCUS_AREAS for item in normalized_items)
+
+    if all_runtime and top_two_count / total_count >= 0.6:
+        label = "runtime_hardening_batch"
+        coherence = "coherent"
+        handling = "preserve_or_commit_as_single_child_batch"
+    elif top_count / total_count >= 0.5:
+        label = f"{top_area}_dominant_batch"
+        coherence = "mostly_coherent"
+        handling = "preserve_or_commit_after_targeted_review"
+    else:
+        label = "mixed_runtime_batch"
+        coherence = "mixed"
+        handling = "split_or_review_before_commit"
+
+    if second_area:
+        summary = f"top areas {top_area} + {second_area} cover {top_two_count}/{total_count} file changes"
+        top_areas = [top_area, second_area]
+    else:
+        summary = f"top area {top_area} covers {top_count}/{total_count} file changes"
+        top_areas = [top_area]
+
+    return {
+        "label": label,
+        "coherence": coherence,
+        "recommended_handling": handling,
+        "summary": summary,
+        "top_areas": top_areas,
+        "total_count": total_count,
+    }
+
+
+def _observed_companion_batch_scope(change_groups: object) -> dict[str, object]:
+    groups = change_groups if isinstance(change_groups, list) else []
+    paths: list[str] = []
+    for raw in groups:
+        if not isinstance(raw, dict):
+            continue
+        group_name = _normalize_review_path(raw.get("group"))
+        total_count = int(raw.get("total_count") or 0)
+        sample_paths = _string_list(raw.get("sample_paths"))
+        scope_path = group_name
+        if total_count == 1 and len(sample_paths) == 1:
+            scope_path = _normalize_review_path(sample_paths[0])
+        if scope_path and scope_path not in paths:
+            paths.append(scope_path)
+    command = f"git -C {_REPO_ROOT} diff -- {' '.join(paths)}" if paths else ""
+    stat_command = f"git -C {_REPO_ROOT} diff --shortstat -- {' '.join(paths)}" if paths else ""
+    return {
+        "paths": paths,
+        "command": command,
+        "stat_command": stat_command,
+        "path_count": len(paths),
+    }
+
+
+def _normalize_companion_decision_options(options: object) -> list[dict[str, object]]:
+    normalized: list[dict[str, object]] = []
+    if not isinstance(options, list):
+        return normalized
+    for raw in options:
+        if not isinstance(raw, dict):
+            continue
+        option = str(raw.get("option") or "").strip()
+        if not option:
+            continue
+        normalized.append(
+            {
+                "option": option,
+                "label": str(raw.get("label") or option.replace("_", " ").title()).strip(),
+                "summary": str(raw.get("summary") or "").strip(),
+                "when_to_choose": str(raw.get("when_to_choose") or "").strip(),
+                "root_update_ready": bool(raw.get("root_update_ready")),
+            }
+        )
+    return normalized
+
+
+def _default_companion_decision_payload(
+    *,
+    target: object,
+    batch_label: object,
+    batch_handling: object,
+    batch_summary: object,
+    batch_scope_shortstat: object,
+    batch_scope_paths: object = None,
+) -> dict[str, object]:
+    handling = str(batch_handling or "").strip()
+    if handling != "preserve_or_commit_as_single_child_batch":
+        return {}
+    target_text = str(target or "companion repo").strip() or "companion repo"
+    batch_text = str(batch_label or "runtime_hardening_batch").strip() or "runtime_hardening_batch"
+    summary_text = str(batch_summary or "").strip()
+    shortstat_text = str(batch_scope_shortstat or "").strip()
+    scope_paths = _string_list(batch_scope_paths)
+    commit_message = "eta_engine: harden VPS runtime readiness and operator truth surfaces"
+    recommended_stage_command = (
+        f"git -C {_REPO_ROOT} add -- {' '.join(scope_paths)}" if scope_paths else ""
+    )
+    recommended_commit_command = (
+        f'git -C {_REPO_ROOT} commit -m "{commit_message}"' if scope_paths else ""
+    )
+    recommended_commands = [
+        command
+        for command in (recommended_stage_command, recommended_commit_command)
+        if command
+    ]
+    basis_parts = [part for part in (summary_text, shortstat_text) if part]
+    if not basis_parts:
+        basis_parts.append(f"{target_text} is a live-verified coherent {batch_text}")
+    return {
+        "decision_options": [
+            {
+                "option": "commit",
+                "label": "Commit child batch",
+                "summary": (
+                    f"Commit {target_text} as one coherent {batch_text} inside the child repo, "
+                    "then the superproject can move the gitlink later."
+                ),
+                "when_to_choose": (
+                    "Choose when the reviewed changes are intended shared child-repo updates and "
+                    "the batch review is complete."
+                ),
+                "root_update_ready": True,
+            },
+            {
+                "option": "preserve",
+                "label": "Preserve current checkout",
+                "summary": (
+                    f"Preserve the current {target_text} checkout in place for more soak or host-local "
+                    "runtime use without moving the superproject gitlink."
+                ),
+                "when_to_choose": (
+                    "Choose when the batch still needs live soak or is intentionally VPS-local for now."
+                ),
+                "root_update_ready": False,
+            },
+            {
+                "option": "pin",
+                "label": "Pin current head",
+                "summary": (
+                    f"Freeze the current {target_text} head for later comparison or rollback without "
+                    "committing the child batch yet."
+                ),
+                "when_to_choose": (
+                    "Choose when you want to preserve the exact reviewed state before deciding whether "
+                    "to commit it."
+                ),
+                "root_update_ready": False,
+            },
+        ],
+        "decision_recommended_option": "commit",
+        "decision_recommended_reason": (
+            f"{target_text} is a live-verified coherent {batch_text}; commit is the cleanest path if "
+            "this reviewed slice is intended shared child-repo work."
+        ),
+        "decision_basis": "; ".join(basis_parts),
+        "decision_recommended_paths": scope_paths,
+        "decision_recommended_commit_message": commit_message,
+        "decision_recommended_stage_command": recommended_stage_command,
+        "decision_recommended_commit_command": recommended_commit_command,
+        "decision_recommended_commands": recommended_commands,
+    }
+
+
+def _vps_root_source_review_detail_payloads(
+    source_review_items: object,
+    review_payload: object = None,
+) -> list[dict[str, object]]:
+    if not isinstance(source_review_items, list):
+        return []
+    result_map = _vps_root_review_result_map(review_payload)
+    details: list[dict[str, object]] = []
+    for item in source_review_items:
+        if not isinstance(item, dict):
+            continue
+        detail = {
+            "path": str(item.get("path") or ""),
+            "basename": str(item.get("basename") or ""),
+            "change_class": str(item.get("change_class") or ""),
+            "area": str(item.get("area") or ""),
+            "change_summary": str(item.get("change_summary") or ""),
+            "verification_command": str(item.get("verification_command") or ""),
+            "verification_goal": str(item.get("verification_goal") or ""),
+            "verification_mode": str(item.get("verification_mode") or ""),
+            "verification_side_effects": str(item.get("verification_side_effects") or ""),
+            "suggested_decision": str(item.get("suggested_decision") or ""),
+        }
+        detail_path = str(detail.get("path") or "").strip().replace("\\", "/")
+        if detail_path:
+            detail["inspection_command"] = f"git -C {_WORKSPACE_ROOT} diff -- {detail_path}"
+        observed = result_map.get(detail["basename"]) if detail.get("basename") else None
+        if isinstance(observed, dict):
+            detail["observed_review_status"] = str(observed.get("review_status") or "")
+            detail["observed_review_summary"] = str(observed.get("review_summary") or "")
+            detail["observed_verified_at"] = str(observed.get("verified_at") or "")
+            detail["observed_recommended_outcome"] = str(observed.get("recommended_outcome") or "")
+            detail["observed_exit_code"] = int(observed.get("exit_code") or 0)
+            detail["observed_output_excerpt"] = str(observed.get("output_excerpt") or "")
+        if detail["basename"] or detail["path"]:
+            details.append(detail)
+    return details
+
+
+def _vps_root_source_review_commands(source_review_details: object) -> list[str]:
+    if not isinstance(source_review_details, list):
+        return []
+    commands: list[str] = []
+    for detail in source_review_details:
+        if not isinstance(detail, dict):
+            continue
+        path = str(detail.get("path") or "").strip().replace("\\", "/")
+        if not path:
+            continue
+        commands.append(f"git -C {_WORKSPACE_ROOT} diff -- {path}")
+    return list(dict.fromkeys(commands))
+
+
+def _vps_root_companion_review_commands(companion_review_targets: object) -> list[str]:
+    if not isinstance(companion_review_targets, list):
+        return []
+    commands: list[str] = []
+    for target in companion_review_targets:
+        target_name = str(target or "").strip()
+        if not target_name:
+            continue
+        if target_name == "eta_engine":
+            commands.append(f"git -C {_REPO_ROOT} status --short")
+        else:
+            commands.append(f"git -C {_WORKSPACE_ROOT} submodule status {target_name}")
+    return list(dict.fromkeys(commands))
+
+
+def _vps_root_review_action_payloads(
+    source_review_details: object,
+    companion_review_details: object,
+) -> list[dict[str, object]]:
+    source_details = source_review_details if isinstance(source_review_details, list) else []
+    companion_details = companion_review_details if isinstance(companion_review_details, list) else []
+    actions: list[dict[str, object]] = []
+
+    for detail in source_details:
+        if not isinstance(detail, dict):
+            continue
+        command = str(detail.get("inspection_command") or "").strip()
+        path = str(detail.get("path") or "").strip()
+        basename = str(detail.get("basename") or "").strip()
+        if not command or not path:
+            continue
+        action = {
+            "scope": "source",
+            "path": path,
+            "basename": basename,
+            "area": str(detail.get("area") or ""),
+            "change_summary": str(detail.get("change_summary") or ""),
+            "verification_command": str(detail.get("verification_command") or ""),
+            "verification_goal": str(detail.get("verification_goal") or ""),
+            "verification_mode": str(detail.get("verification_mode") or ""),
+            "verification_side_effects": str(detail.get("verification_side_effects") or ""),
+            "suggested_decision": str(detail.get("suggested_decision") or ""),
+            "command": command,
+        }
+        if any(
+            str(detail.get(key) or "").strip()
+            for key in (
+                "observed_review_status",
+                "observed_review_summary",
+                "observed_verified_at",
+                "observed_recommended_outcome",
+            )
+        ):
+            action["observed_review_status"] = str(detail.get("observed_review_status") or "")
+            action["observed_review_summary"] = str(detail.get("observed_review_summary") or "")
+            action["observed_verified_at"] = str(detail.get("observed_verified_at") or "")
+            action["observed_recommended_outcome"] = str(detail.get("observed_recommended_outcome") or "")
+            action["observed_exit_code"] = int(detail.get("observed_exit_code") or 0)
+            action["observed_output_excerpt"] = str(detail.get("observed_output_excerpt") or "")
+        actions.append(action)
+
+    for detail in companion_details:
+        if not isinstance(detail, dict):
+            continue
+        inspection_command = str(detail.get("inspection_command") or "").strip()
+        inspection_group_command = str(detail.get("inspection_group_command") or inspection_command or "").strip()
+        inspection_focus = str(detail.get("inspection_focus") or "")
+        inspection_sample_paths = _string_list(detail.get("inspection_sample_paths"))
+        inspection_sample_commands = _string_list(detail.get("inspection_sample_commands"))
+        batch_scope_command = str(detail.get("observed_batch_scope_command") or "").strip()
+        batch_scope_stat_command = str(detail.get("observed_batch_scope_stat_command") or "").strip()
+        batch_scope_shortstat = str(detail.get("observed_batch_scope_shortstat") or "").strip()
+        batch_handling = str(detail.get("observed_batch_recommended_handling") or "").strip()
+        command = (
+            batch_scope_stat_command
+            if batch_handling == "preserve_or_commit_as_single_child_batch" and batch_scope_stat_command
+            else (
+                batch_scope_command
+                if batch_handling == "preserve_or_commit_as_single_child_batch" and batch_scope_command
+                else inspection_command
+            )
+        )
+        overview_command = batch_scope_stat_command or command
+        overview_summary = batch_scope_shortstat
+        drilldown_command = batch_scope_command or inspection_command or command
+        review_sequence: list[dict[str, object]] = []
+        seen_review_commands: set[str] = set()
+
+        def append_review_step(
+            kind: str,
+            label: str,
+            step_command: str,
+            _seen_review_commands: set[str] = seen_review_commands,
+            _review_sequence: list[dict[str, object]] = review_sequence,
+            **extra: object,
+        ) -> None:
+            normalized = str(step_command or "").strip()
+            if not normalized or normalized in _seen_review_commands:
+                return
+            _seen_review_commands.add(normalized)
+            step_payload: dict[str, object] = {
+                "step": len(_review_sequence) + 1,
+                "kind": kind,
+                "label": label,
+                "command": normalized,
+            }
+            for key, value in extra.items():
+                if value in ("", [], None):
+                    continue
+                step_payload[key] = value
+            _review_sequence.append(step_payload)
+
+        append_review_step("overview", "Batch overview", overview_command, summary=overview_summary)
+        append_review_step(
+            "drilldown",
+            "Full batch diff",
+            drilldown_command,
+            path_count=int(detail.get("observed_batch_scope_path_count") or 0),
+            paths=_string_list(detail.get("observed_batch_scope_paths")),
+        )
+        append_review_step(
+            "group",
+            "Dominant group diff",
+            inspection_group_command,
+            focus=inspection_focus,
+        )
+        for path, sample_command in zip(
+            inspection_sample_paths,
+            inspection_sample_commands,
+            strict=False,
+        ):
+            append_review_step(
+                "sample",
+                f"Sample diff: {Path(path).name}",
+                sample_command,
+                path=path,
+            )
+
+        review_sequence_summary_parts: list[str] = []
+        if overview_command:
+            review_sequence_summary_parts.append("overview")
+        if drilldown_command and drilldown_command != overview_command:
+            review_sequence_summary_parts.append("drilldown")
+        if inspection_group_command and inspection_group_command not in {overview_command, drilldown_command}:
+            review_sequence_summary_parts.append("group")
+        if inspection_sample_commands:
+            sample_count = len(inspection_sample_commands)
+            review_sequence_summary_parts.append(
+                f"{sample_count} sample file diff{'s' if sample_count != 1 else ''}"
+            )
+        review_sequence_summary = " -> ".join(review_sequence_summary_parts)
+        target = str(detail.get("target") or "").strip()
+        if not command or not target:
+            continue
+        actions.append(
+            {
+                "scope": "companion",
+                "target": target,
+                "reason": str(detail.get("reason") or "submodule_pointer_changed"),
+                "suggested_decision": str(detail.get("suggested_decision") or "commit_preserve_or_pin_before_root_update"),
+                "command": command,
+                "overview_command": overview_command,
+                "overview_summary": overview_summary,
+                "drilldown_command": drilldown_command,
+                "review_sequence": review_sequence,
+                "review_sequence_summary": review_sequence_summary,
+                "status_command": str(detail.get("status_command") or command),
+                "inspection_command": inspection_command or drilldown_command,
+                "inspection_focus": inspection_focus,
+                "inspection_group_command": inspection_group_command or command,
+                "inspection_sample_paths": inspection_sample_paths,
+                "inspection_sample_commands": inspection_sample_commands,
+                "batch_scope_command": batch_scope_command,
+                "batch_scope_stat_command": batch_scope_stat_command,
+                "batch_scope_shortstat": batch_scope_shortstat,
+                "batch_scope_paths": _string_list(detail.get("observed_batch_scope_paths")),
+                "batch_scope_path_count": int(detail.get("observed_batch_scope_path_count") or 0),
+                "summary_line": str(detail.get("summary_line") or ""),
+            }
+        )
+        action = actions[-1]
+        if any(
+            str(detail.get(key) or "").strip()
+            for key in (
+                "observed_review_status",
+                "observed_review_summary",
+                "observed_verified_at",
+                "observed_recommended_outcome",
+            )
+        ):
+            action["observed_review_status"] = str(detail.get("observed_review_status") or "")
+            action["observed_review_summary"] = str(detail.get("observed_review_summary") or "")
+            action["observed_verified_at"] = str(detail.get("observed_verified_at") or "")
+            action["observed_recommended_outcome"] = str(detail.get("observed_recommended_outcome") or "")
+            action["observed_exit_code"] = int(detail.get("observed_exit_code") or 0)
+            action["observed_output_excerpt"] = str(detail.get("observed_output_excerpt") or "")
+            action["observed_tracked_change_count"] = int(detail.get("observed_tracked_change_count") or 0)
+            action["observed_untracked_change_count"] = int(detail.get("observed_untracked_change_count") or 0)
+            action["observed_change_groups"] = (
+                list(detail.get("observed_change_groups"))
+                if isinstance(detail.get("observed_change_groups"), list)
+                else []
+            )
+            action["observed_change_group_summary"] = str(detail.get("observed_change_group_summary") or "")
+            action["observed_focus_areas"] = (
+                list(detail.get("observed_focus_areas"))
+                if isinstance(detail.get("observed_focus_areas"), list)
+                else []
+            )
+            action["observed_focus_area_summary"] = str(detail.get("observed_focus_area_summary") or "")
+            action["observed_batch_label"] = str(detail.get("observed_batch_label") or "")
+            action["observed_batch_coherence"] = str(detail.get("observed_batch_coherence") or "")
+            action["observed_batch_recommended_handling"] = str(
+                detail.get("observed_batch_recommended_handling") or ""
+            )
+            action["observed_batch_summary"] = str(detail.get("observed_batch_summary") or "")
+            action["observed_batch_top_areas"] = _string_list(detail.get("observed_batch_top_areas"))
+            action["observed_decision_options"] = _normalize_companion_decision_options(
+                detail.get("observed_decision_options")
+            )
+            action["observed_decision_recommended_option"] = str(
+                detail.get("observed_decision_recommended_option") or ""
+            )
+            action["observed_decision_recommended_reason"] = str(
+                detail.get("observed_decision_recommended_reason") or ""
+            )
+            action["observed_decision_basis"] = str(detail.get("observed_decision_basis") or "")
+            action["observed_decision_recommended_paths"] = _string_list(
+                detail.get("observed_decision_recommended_paths")
+            )
+            action["observed_decision_recommended_commit_message"] = str(
+                detail.get("observed_decision_recommended_commit_message") or ""
+            )
+            action["observed_decision_recommended_stage_command"] = str(
+                detail.get("observed_decision_recommended_stage_command") or ""
+            )
+            action["observed_decision_recommended_commit_command"] = str(
+                detail.get("observed_decision_recommended_commit_command") or ""
+            )
+            action["observed_decision_recommended_commands"] = _string_list(
+                detail.get("observed_decision_recommended_commands")
+            )
+
+    return actions
+
+
+def _vps_root_review_focus_summary_line(
+    source_review_context: object,
+    source_review_details: object,
+    companion_review_targets: object,
+    companion_review_details: object,
+    review_payload: object = None,
+) -> str:
+    source_context = source_review_context if isinstance(source_review_context, dict) else {}
+    source_details = source_review_details if isinstance(source_review_details, list) else []
+    companion_targets = companion_review_targets if isinstance(companion_review_targets, list) else []
+    companion_details = companion_review_details if isinstance(companion_review_details, list) else []
+    review_dict = review_payload if isinstance(review_payload, dict) else {}
+
+    parts: list[str] = []
+    source_context_line = str(source_context.get("summary_line") or "").strip()
+    if source_context_line:
+        parts.append(source_context_line)
+    elif source_details:
+        parts.append(f"{len(source_details)} root source file(s) under review")
+
+    if companion_details:
+        first_detail = companion_details[0] if isinstance(companion_details[0], dict) else {}
+        companion_target = str(first_detail.get("target") or "").strip()
+        companion_summary = str(
+            first_detail.get("observed_review_summary") or first_detail.get("summary_line") or ""
+        ).strip()
+        if companion_target and companion_summary:
+            parts.append(f"{companion_target}: {companion_summary}")
+        elif companion_summary:
+            parts.append(companion_summary)
+        elif companion_target:
+            parts.append(f"{companion_target} companion review pending")
+    elif companion_targets:
+        if len(companion_targets) == 1 and isinstance(companion_targets[0], str):
+            parts.append(f"{companion_targets[0]} companion review pending")
+        else:
+            parts.append(f"{len(companion_targets)} companion repos under review")
+
+    if parts:
+        review_status = str(review_dict.get("status") or "").strip().lower()
+        verified_ok_count = int(review_dict.get("verified_ok_count") or 0)
+        preserve_candidate_count = int(review_dict.get("preserve_candidate_count") or 0)
+        review_summary = str(review_dict.get("summary_line") or "").strip()
+        if review_status == "ok" and preserve_candidate_count > 0:
+            parts.append(
+                f"{verified_ok_count} item(s) live-verified; {preserve_candidate_count} preserve candidate(s) pending decision"
+            )
+        elif review_status == "partial" and review_summary:
+            parts.append(f"review verification partial; {review_summary}")
+        elif review_status == "failed" and review_summary:
+            parts.append(f"review verification failed; {review_summary}")
+        else:
+            parts.append("manual review before root update")
+    return "; ".join(part for part in parts if part)
+
+
+def _companion_review_decision_context(
+    *,
+    primary_review_action: object,
+    companion_review_targets: object,
+    review_decision_blocked_by_companion: bool,
+) -> dict[str, object]:
+    action = primary_review_action if isinstance(primary_review_action, dict) else {}
+    companion_targets = [str(target).strip() for target in _string_list(companion_review_targets) if str(target).strip()]
+    companion_text = ", ".join(companion_targets[:3]) if companion_targets else "companion repo"
+    batch_handling = str(action.get("observed_batch_recommended_handling") or "").strip()
+    companion_review_decision_ready = (
+        review_decision_blocked_by_companion
+        and str(action.get("scope") or "").strip() == "companion"
+        and str(action.get("observed_review_status") or "").strip() == "verified_review_required"
+        and batch_handling == "preserve_or_commit_as_single_child_batch"
+    )
+    decision_defaults = _default_companion_decision_payload(
+        target=companion_targets[0] if companion_targets else companion_text,
+        batch_label=action.get("observed_batch_label"),
+        batch_handling=batch_handling,
+        batch_summary=action.get("observed_batch_summary"),
+        batch_scope_shortstat=action.get("batch_scope_shortstat"),
+    )
+    decision_options = _normalize_companion_decision_options(action.get("observed_decision_options"))
+    if not decision_options:
+        decision_options = _normalize_companion_decision_options(decision_defaults.get("decision_options"))
+    recommended_option = str(
+        action.get("observed_decision_recommended_option")
+        or decision_defaults.get("decision_recommended_option")
+        or ""
+    ).strip()
+    recommended_reason = str(
+        action.get("observed_decision_recommended_reason")
+        or decision_defaults.get("decision_recommended_reason")
+        or ""
+    ).strip()
+    decision_basis = str(
+        action.get("observed_decision_basis") or decision_defaults.get("decision_basis") or ""
+    ).strip()
+    recommended_paths = _string_list(
+        action.get("observed_decision_recommended_paths")
+        or decision_defaults.get("decision_recommended_paths")
+    )
+    recommended_commit_message = str(
+        action.get("observed_decision_recommended_commit_message")
+        or decision_defaults.get("decision_recommended_commit_message")
+        or ""
+    ).strip()
+    recommended_stage_command = str(
+        action.get("observed_decision_recommended_stage_command")
+        or decision_defaults.get("decision_recommended_stage_command")
+        or ""
+    ).strip()
+    recommended_commit_command = str(
+        action.get("observed_decision_recommended_commit_command")
+        or decision_defaults.get("decision_recommended_commit_command")
+        or ""
+    ).strip()
+    recommended_commands = _string_list(
+        action.get("observed_decision_recommended_commands")
+        or decision_defaults.get("decision_recommended_commands")
+    )
+    companion_review_decision_summary = ""
+    companion_review_decision_recommended_handling = batch_handling if companion_review_decision_ready else ""
+    companion_review_decision_next_action = ""
+    if companion_review_decision_ready:
+        batch_label = str(action.get("observed_batch_label") or "runtime_hardening_batch").strip()
+        companion_review_decision_summary = (
+            f"live-verified coherent {batch_label} ready for preserve/commit/pin decision"
+        )
+        if recommended_option == "commit":
+            companion_review_decision_next_action = (
+                f"Prefer commit for {companion_text} as one runtime-hardening child batch if the reviewed slice "
+                "is intended shared child-repo work; otherwise preserve or pin it."
+            )
+        else:
+            companion_review_decision_next_action = (
+                f"Choose preserve, commit, or pin for {companion_text} as one runtime-hardening child batch."
+            )
+    return {
+        "ready": companion_review_decision_ready,
+        "summary": companion_review_decision_summary,
+        "recommended_handling": companion_review_decision_recommended_handling,
+        "next_action": companion_review_decision_next_action,
+        "options": decision_options,
+        "recommended_option": recommended_option,
+        "recommended_reason": recommended_reason,
+        "basis": decision_basis,
+        "recommended_paths": recommended_paths,
+        "recommended_commit_message": recommended_commit_message,
+        "recommended_stage_command": recommended_stage_command,
+        "recommended_commit_command": recommended_commit_command,
+        "recommended_commands": recommended_commands,
+    }
+
+
+def _vps_root_review_focus_payload(
+    summary: object,
+    counts: object,
+    steps: object,
+    source_review_items: object = None,
+    companion_review_items: object = None,
+    live_checkout: object = None,
+    review_payload: object = None,
+) -> dict[str, object]:
+    summary_dict = summary if isinstance(summary, dict) else {}
+    counts_dict = counts if isinstance(counts, dict) else {}
+    step_list = steps if isinstance(steps, list) else []
+    source_items = source_review_items if isinstance(source_review_items, list) else []
+    companion_items = companion_review_items if isinstance(companion_review_items, list) else []
+    review_dict = review_payload if isinstance(review_payload, dict) else {}
+    source_step = next(
+        (step for step in step_list if isinstance(step, dict) and step.get("id") == "restore-source-governance"),
+        {},
+    )
+    companion_step = next(
+        (step for step in step_list if isinstance(step, dict) and step.get("id") == "align-submodules"),
+        {},
+    )
+    source_evidence = source_step.get("evidence") if isinstance(source_step.get("evidence"), list) else []
+    companion_evidence = (
+        companion_step.get("evidence") if isinstance(companion_step.get("evidence"), list) else []
+    )
+    source_review_areas = list(
+        dict.fromkeys(
+            str(item.get("area") or "").strip()
+            for item in source_items
+            if isinstance(item, dict) and str(item.get("area") or "").strip()
+        )
+    )
+    source_review_decisions = list(
+        dict.fromkeys(
+            str(item.get("suggested_decision") or "").strip()
+            for item in source_items
+            if isinstance(item, dict) and str(item.get("suggested_decision") or "").strip()
+        )
+    )
+    companion_review_reasons = list(
+        dict.fromkeys(
+            str(item.get("reason") or "").strip()
+            for item in companion_items
+            if isinstance(item, dict) and str(item.get("reason") or "").strip()
+        )
+    )
+    companion_review_decisions = list(
+        dict.fromkeys(
+            str(item.get("suggested_decision") or "").strip()
+            for item in companion_items
+            if isinstance(item, dict) and str(item.get("suggested_decision") or "").strip()
+        )
+    )
+    companion_review_targets = _vps_root_companion_targets_from_evidence(companion_evidence)
+    companion_review_details = _vps_root_companion_review_detail_payloads(
+        companion_review_targets,
+        live_checkout,
+        companion_items,
+        review_dict,
+    )
+    source_review_context = _vps_root_source_review_context_payload(live_checkout)
+    source_review_details = _vps_root_source_review_detail_payloads(source_items, review_dict)
+    source_review_commands = _vps_root_source_review_commands(source_review_details)
+    companion_review_commands = _vps_root_companion_review_commands(companion_review_targets)
+    review_commands = list(dict.fromkeys([*source_review_commands, *companion_review_commands]))
+    review_actions = _vps_root_review_action_payloads(source_review_details, companion_review_details)
+    source_actions = [
+        action for action in review_actions if isinstance(action, dict) and str(action.get("scope") or "") == "source"
+    ]
+    companion_actions = [
+        action
+        for action in review_actions
+        if isinstance(action, dict) and str(action.get("scope") or "") == "companion"
+    ]
+    review_status = str(review_dict.get("status") or "").strip().lower()
+    companion_review_status = str(review_dict.get("companion_review_status") or "").strip().lower()
+    source_review_verified = review_status == "ok" and len(source_actions) > 0
+    review_decision_blocked_by_companion = source_review_verified and companion_review_status in {
+        "review_required",
+        "partial",
+        "failed",
+    }
+    primary_review_action: dict[str, object]
+    active_review_lane = ""
+    if source_review_verified and companion_review_status in {"review_required", "partial", "failed"} and companion_actions:
+        primary_review_action = dict(companion_actions[0])
+        active_review_lane = "companion"
+    elif source_actions:
+        primary_review_action = dict(source_actions[0])
+        active_review_lane = "source"
+    elif companion_actions:
+        primary_review_action = dict(companion_actions[0])
+        active_review_lane = "companion"
+    else:
+        primary_review_action = {}
+    primary_review_command = str(primary_review_action.get("command") or "")
+    decision_context = _companion_review_decision_context(
+        primary_review_action=primary_review_action,
+        companion_review_targets=companion_review_targets,
+        review_decision_blocked_by_companion=review_decision_blocked_by_companion,
+    )
+    review_focus_summary_line = _vps_root_review_focus_summary_line(
+        source_review_context,
+        source_review_details,
+        companion_review_targets,
+        companion_review_details,
+        review_dict,
+    )
+    observed_summary_line = str(review_dict.get("summary_line") or "").strip()
+    payload = {
+        "source_modified_count": int(summary_dict.get("source_or_governance_modified") or 0),
+        "dirty_companion_repos": int(
+            summary_dict.get("dirty_companion_repos") or counts_dict.get("dirty_companion_repos") or 0
+        ),
+        "source_review_item_count": len(source_items),
+        "companion_review_item_count": len(companion_items),
+        "source_review_files": _vps_root_review_files_from_evidence(source_evidence),
+        "source_review_context": source_review_context,
+        "source_review_details": source_review_details,
+        "summary_line": review_focus_summary_line,
+        "source_review_commands": source_review_commands,
+        "source_review_areas": source_review_areas,
+        "source_review_suggested_decisions": source_review_decisions,
+        "companion_review_targets": companion_review_targets,
+        "companion_review_reasons": companion_review_reasons,
+        "companion_review_suggested_decisions": companion_review_decisions,
+        "companion_review_details": companion_review_details,
+        "companion_review_commands": companion_review_commands,
+        "companion_review_status": str(review_dict.get("companion_review_status") or ""),
+        "companion_review_decision_ready": bool(decision_context["ready"]),
+        "companion_review_decision_summary": str(decision_context["summary"]),
+        "companion_review_decision_recommended_handling": str(
+            decision_context["recommended_handling"]
+        ),
+        "companion_review_decision_next_action": str(decision_context["next_action"]),
+        "companion_review_decision_options": list(decision_context["options"]),
+        "companion_review_decision_recommended_option": str(
+            decision_context["recommended_option"]
+        ),
+        "companion_review_decision_recommended_reason": str(
+            decision_context["recommended_reason"]
+        ),
+        "companion_review_decision_basis": str(decision_context["basis"]),
+        "companion_review_decision_recommended_paths": list(decision_context["recommended_paths"]),
+        "companion_review_decision_recommended_commit_message": str(
+            decision_context["recommended_commit_message"]
+        ),
+        "companion_review_decision_recommended_stage_command": str(
+            decision_context["recommended_stage_command"]
+        ),
+        "companion_review_decision_recommended_commit_command": str(
+            decision_context["recommended_commit_command"]
+        ),
+        "companion_review_decision_recommended_commands": list(
+            decision_context["recommended_commands"]
+        ),
+        "companion_review_summary_line": str(review_dict.get("companion_summary_line") or ""),
+        "companion_review_verified_count": int(review_dict.get("companion_verified_count") or 0),
+        "companion_review_decision_required_count": int(
+            review_dict.get("companion_decision_required_count") or 0
+        ),
+        "review_commands": review_commands,
+        "primary_review_command": primary_review_command,
+        "review_actions": review_actions,
+        "primary_review_action": primary_review_action,
+        "active_review_lane": active_review_lane,
+        "source_step_id": str(source_step.get("id") or ""),
+        "source_step_decision": str(source_step.get("decision") or ""),
+        "companion_step_id": str(companion_step.get("id") or ""),
+        "companion_step_decision": str(companion_step.get("decision") or ""),
+    }
+    if any(str(review_dict.get(key) or "").strip() for key in ("status", "summary_line", "verified_at")):
+        payload["observed_review_status"] = str(review_dict.get("status") or "")
+        payload["observed_review_summary_line"] = observed_summary_line
+        payload["observed_review_verified_at"] = str(review_dict.get("verified_at") or "")
+        payload["observed_review_verified_ok_count"] = int(review_dict.get("verified_ok_count") or 0)
+        payload["observed_review_preserve_candidate_count"] = int(
+            review_dict.get("preserve_candidate_count") or 0
+        )
+    return payload
 
 
 def _count_matching_files(path: Path, pattern: str) -> int:
@@ -3764,7 +6692,7 @@ def _normalize_router_result(path: Path, payload: dict) -> dict:
         "order_id": result.get("order_id"),
         "filled_qty": filled_qty,
         "avg_price": avg_price,
-        "ts": payload.get("ts") or payload.get("submitted_at"),
+        "ts": payload.get("broker_fill_ts") or result.get("filled_at") or payload.get("result_written_ts") or payload.get("ts") or payload.get("submitted_at"),
         "reason": reason,
         "source_path": str(path),
     }
@@ -4958,17 +7886,25 @@ def _paper_live_shadow_detail(snapshot: dict[str, Any]) -> str:
     )
 
 
+def _host_allows_local_daily_loss_holds(payload: dict[str, Any] | None = None) -> bool:
+    if not isinstance(payload, dict):
+        return True
+    return not bool(payload.get("non_authoritative_gateway_host"))
+
+
 def _paper_live_daily_loss_state(
     *,
     snapshot: dict[str, Any] | None = None,
     gate_mode: str | None = None,
+    host_authoritative: bool = True,
 ) -> dict[str, Any]:
     killswitch = snapshot if isinstance(snapshot, dict) else _daily_loss_killswitch_snapshot()
     mode = normalize_daily_loss_gate_mode(
         gate_mode,
         default=_paper_live_daily_loss_gate_mode(),
     )
-    tripped = bool(killswitch.get("tripped"))
+    raw_tripped = bool(killswitch.get("tripped"))
+    tripped = raw_tripped and host_authoritative
     advisory_active = tripped and gate_advisory(mode)
     held_by_stop = tripped and gate_enforced(mode)
     return {
@@ -4977,6 +7913,7 @@ def _paper_live_daily_loss_state(
         "held_by_daily_loss_stop": held_by_stop,
         "capital_lanes_held_by_daily_loss_stop": tripped,
         "daily_loss_killswitch": killswitch,
+        "suppressed_on_non_authoritative_gateway_host": raw_tripped and not host_authoritative,
     }
 
 
@@ -5011,6 +7948,8 @@ def _paper_live_transition_with_effective_holds(payload: dict) -> dict:
     raw_status = str(out.get("status") or "unknown")
     effective_status = str(out.get("effective_status") or raw_status)
     effective_detail = str(out.get("effective_detail") or "")
+    cache_stale = bool(out.get("cache_stale"))
+    source_age_s = out.get("source_age_s")
     launch_blocked_raw = out.get("operator_queue_launch_blocked_count")
     if launch_blocked_raw is None:
         launch_blocked_raw = out.get("operator_queue_blocked_count")
@@ -5019,7 +7958,9 @@ def _paper_live_transition_with_effective_holds(payload: dict) -> dict:
     except (TypeError, ValueError):
         launch_blocked = 0
 
-    daily_loss_state = _paper_live_daily_loss_state()
+    daily_loss_state = _paper_live_daily_loss_state(
+        host_authoritative=_host_allows_local_daily_loss_holds(out),
+    )
     daily_loss_killswitch = daily_loss_state["daily_loss_killswitch"]
     held_by_daily_loss_stop = bool(daily_loss_state["held_by_daily_loss_stop"]) and bool(out.get("critical_ready")) and (
         launch_blocked == 0
@@ -5049,6 +7990,20 @@ def _paper_live_transition_with_effective_holds(payload: dict) -> dict:
         daily_loss_state["capital_lanes_held_by_daily_loss_stop"]
     )
     out["daily_loss_killswitch"] = daily_loss_killswitch
+    out["daily_loss_suppressed_non_authoritative_gateway_host"] = bool(
+        daily_loss_state["suppressed_on_non_authoritative_gateway_host"]
+    )
+    stale_detail = ""
+    if cache_stale:
+        if isinstance(source_age_s, (int, float)):
+            stale_detail = (
+                "paper-live transition cache is stale "
+                f"({int(max(0.0, float(source_age_s)) // 60)}m old); refresh on the VPS before trusting blockers."
+            )
+        else:
+            stale_detail = "paper-live transition cache is stale; refresh on the VPS before trusting blockers."
+    out["stale_receipt"] = cache_stale
+    out["stale_detail"] = stale_detail
     return out
 
 
@@ -5133,6 +8088,100 @@ def _bot_strategy_readiness_payload() -> dict:
             "rows": [],
             "rows_by_bot": {},
             "top_actions": [],
+        }
+    )
+
+
+def _second_brain_payload() -> dict:
+    """Return JARVIS hierarchical-memory status without breaking the dashboard."""
+    try:
+        from eta_engine.scripts.jarvis_status import build_second_brain_summary
+
+        payload = build_second_brain_summary()
+    except Exception as exc:  # noqa: BLE001 -- dashboard should render degraded state
+        return {
+            "source": "jarvis_status.second_brain",
+            "status": "unavailable",
+            "error": str(exc),
+            "n_episodes": 0,
+            "win_rate": 0.0,
+            "avg_r": 0.0,
+            "semantic_patterns": 0,
+            "procedural_versions": 0,
+            "top_patterns": [],
+            "playbook": {
+                "eligible_patterns": 0,
+                "best_patterns": [],
+                "worst_patterns": [],
+                "favor_patterns": [],
+                "avoid_patterns": [],
+            },
+            "paths": {},
+            "sources": {},
+            "legacy_sources_active": False,
+        }
+    return (
+        payload
+        if isinstance(payload, dict)
+        else {
+            "source": "jarvis_status.second_brain",
+            "status": "unavailable",
+            "error": "second brain summary returned a non-object payload",
+            "n_episodes": 0,
+            "win_rate": 0.0,
+            "avg_r": 0.0,
+            "semantic_patterns": 0,
+            "procedural_versions": 0,
+            "top_patterns": [],
+            "playbook": {
+                "eligible_patterns": 0,
+                "best_patterns": [],
+                "worst_patterns": [],
+                "favor_patterns": [],
+                "avoid_patterns": [],
+            },
+            "paths": {},
+            "sources": {},
+            "legacy_sources_active": False,
+        }
+    )
+
+
+def _dirty_worktree_reconciliation_payload() -> dict:
+    """Return child-repo reconciliation status without breaking the dashboard."""
+    try:
+        from eta_engine.scripts.jarvis_status import build_dirty_worktree_reconciliation_summary
+
+        payload = build_dirty_worktree_reconciliation_summary()
+    except Exception as exc:  # noqa: BLE001 -- dashboard should render degraded state
+        return {
+            "source": "jarvis_status.dirty_worktree_reconciliation",
+            "status": "unavailable",
+            "error": str(exc),
+            "ready": False,
+            "action": "",
+            "dirty_modules": [],
+            "blocking_modules": [],
+            "module_summaries": [],
+            "review_batches": [],
+            "next_actions": [],
+            "safety": {},
+        }
+    return (
+        payload
+        if isinstance(payload, dict)
+        else {
+            "source": "jarvis_status.dirty_worktree_reconciliation",
+            "status": "unavailable",
+            "error": "dirty worktree reconciliation summary returned a non-object payload",
+            "ready": False,
+            "action": "",
+            "dirty_modules": [],
+            "blocking_modules": [],
+            "module_summaries": [],
+            "review_batches": [],
+            "next_actions": [],
+            "safety": {},
         }
     )
 
@@ -5659,7 +8708,20 @@ def api_data_status() -> dict:
     }
 
     # 1. Catalog
-    catalog_path = Path(r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\data_inventory.json")
+    from eta_engine.scripts import workspace_roots
+
+    catalog_candidates = [
+        _state_dir() / "data_inventory_latest.json",
+        _state_dir() / "data_inventory.json",
+    ]
+    if _state_dir() == _DEFAULT_STATE:
+        catalog_candidates.extend(
+            [
+                workspace_roots.ETA_DATA_INVENTORY_SNAPSHOT_PATH,
+                _LEGACY_STATE / "data_inventory.json",
+            ]
+        )
+    catalog_path = next((path for path in dict.fromkeys(catalog_candidates) if path.exists()), catalog_candidates[0])
     if catalog_path.exists():
         try:
             inv = json.loads(catalog_path.read_text(encoding="utf-8"))
@@ -5710,7 +8772,17 @@ def api_data_status() -> dict:
         out["catalog"] = {"error": "no data_inventory.json on disk"}
 
     # 2. Live signals (last 6h verdicts per subsystem)
-    verdicts_path = Path(r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\jarvis_intel\verdicts.jsonl")
+    from eta_engine.scripts import workspace_roots
+
+    verdict_candidates = [_state_dir() / "jarvis_intel" / "verdicts.jsonl"]
+    if _state_dir() == _DEFAULT_STATE:
+        verdict_candidates.extend(
+            [
+                workspace_roots.ETA_JARVIS_VERDICTS_PATH,
+                workspace_roots.ETA_LEGACY_JARVIS_VERDICTS_PATH,
+            ]
+        )
+    verdicts_path = next((path for path in verdict_candidates if path.exists()), verdict_candidates[0])
     if verdicts_path.exists():
         try:
             from collections import defaultdict
@@ -5964,6 +9036,8 @@ def dashboard_payload(response: Response) -> dict:
     payload["operator_queue"] = _operator_queue_payload()
     payload["paper_live_transition"] = _paper_live_transition_payload(refresh=False)
     payload["bot_strategy_readiness"] = _bot_strategy_readiness_payload()
+    payload["second_brain"] = _second_brain_payload()
+    payload["dirty_worktree_reconciliation"] = _dirty_worktree_reconciliation_payload()
     payload["symbol_intelligence"] = _symbol_intelligence_diagnostic_payload(_load_symbol_intelligence_snapshot())
     symbol_intelligence = (
         payload["symbol_intelligence"] if isinstance(payload.get("symbol_intelligence"), dict) else {}
@@ -6057,6 +9131,20 @@ def jarvis_operator_queue(response: Response) -> dict:
     """Current operator blockers, prioritized for dashboard rendering."""
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     return _operator_queue_payload()
+
+
+@app.get("/api/jarvis/second_brain")
+def jarvis_second_brain(response: Response) -> dict:
+    """Current JARVIS second-brain status and memory playbook."""
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    return _second_brain_payload()
+
+
+@app.get("/api/jarvis/dirty_worktree_reconciliation")
+def jarvis_dirty_worktree_reconciliation(response: Response) -> dict:
+    """Current child-repo reconciliation plan for safe gitlink wiring."""
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    return _dirty_worktree_reconciliation_payload()
 
 
 @app.get("/api/jarvis/paper_live_transition")
@@ -6559,24 +9647,28 @@ def jarvis_edge_leaderboard(bot: str | None = None, limit: int = 5) -> dict:
 @app.get("/api/jarvis/model_tier")
 def jarvis_model_tier() -> dict:
     """Most recent LLM tier routing decision from today's audit log."""
-    from datetime import UTC, datetime
-
-    today = datetime.now(UTC).strftime("%Y-%m-%d")
-    audit = _state_dir() / "jarvis_audit" / f"{today}.jsonl"
-    if not audit.exists():
-        return {"_warning": "no_data", "_path": str(audit)}
     last_llm: dict | None = None
-    try:
-        for line in audit.read_text(encoding="utf-8").splitlines():
-            if not line.strip():
-                continue
-            row = json.loads(line)
-            if row.get("request", {}).get("action") == "LLM_INVOCATION":
-                last_llm = row
-    except (json.JSONDecodeError, OSError) as exc:
-        return {"_error_code": "audit_parse_failed", "_error_detail": str(exc)}
+    audit_candidates = _jarvis_audit_log_candidates()
+    selected_audit = audit_candidates[0]
+    for audit in audit_candidates:
+        if not audit.exists():
+            continue
+        selected_audit = audit
+        try:
+            for line in audit.read_text(encoding="utf-8").splitlines():
+                if not line.strip():
+                    continue
+                row = json.loads(line)
+                if row.get("request", {}).get("action") == "LLM_INVOCATION":
+                    last_llm = row
+        except (json.JSONDecodeError, OSError) as exc:
+            return {"_error_code": "audit_parse_failed", "_error_detail": str(exc)}
+        if last_llm is not None:
+            break
+    if not selected_audit.exists():
+        return {"_warning": "no_data", "_path": str(selected_audit)}
     if last_llm is None:
-        return {"_warning": "no_llm_invocation_today"}
+        return {"_warning": "no_llm_invocation_today", "_path": str(selected_audit)}
     return {
         "tier": last_llm.get("response", {}).get("selected_model"),
         "ts": last_llm.get("ts"),
@@ -7246,6 +10338,8 @@ def bot_fleet_roster(
     fills_stats = _fills_activity_snapshot()
     now_ts = time.time()
     readiness_rows = _bot_strategy_readiness_rows_by_bot()
+    diamond_retune_status = _load_diamond_retune_status()
+    eta_readiness_snapshot = _eta_readiness_snapshot_payload(server_ts=now_ts)
     for bot_dir in sorted(bots_dir.iterdir()) if bots_dir.exists() else []:
         if not bot_dir.is_dir():
             continue
@@ -7371,6 +10465,7 @@ def bot_fleet_roster(
     for row in rows:
         row.update(_current_bot_block_state(row))
         row_bot_id = str(row.get("name") or row.get("id") or row.get("bot_id") or "").strip()
+        row.update(_retune_focus_overlay(diamond_retune_status, row_bot_id, eta_readiness_snapshot))
         if row_bot_id in registry_active:
             row["registry_active"] = registry_active[row_bot_id]
             row["registry_deactivated"] = registry_active[row_bot_id] is False
@@ -7383,12 +10478,18 @@ def bot_fleet_roster(
         1 for r in rows if r.get("source") == "jarvis_strategy_supervisor" or r.get("confirmed") is True
     )
     daily_loss_killswitch = _daily_loss_killswitch_snapshot()
-    _apply_global_daily_loss_killswitch_to_roster_rows(rows, daily_loss_killswitch)
+    paper_live_transition = _paper_live_transition_payload(refresh=False)
+    host_allows_local_daily_loss_holds = _host_allows_local_daily_loss_holds(paper_live_transition)
+    if host_allows_local_daily_loss_holds:
+        _apply_global_daily_loss_killswitch_to_roster_rows(rows, daily_loss_killswitch)
+    else:
+        _suppress_non_authoritative_local_daily_loss_row_blocks(rows)
     blocked_rollup = _blocked_bot_rollup(rows)
     lane_rollup = _lane_rollup(rows)
     paper_live_lane_state = _paper_live_daily_loss_state(
         snapshot=daily_loss_killswitch,
         gate_mode=str((lane_rollup.get(SHADOW_PAPER_LANE) or {}).get("daily_loss_gate_mode") or ""),
+        host_authoritative=host_allows_local_daily_loss_holds,
     )
     live_attached_rows = [r for r in rows if _is_live_attached_bot_row(r)]
     runtime_active_rows = [r for r in rows if _is_runtime_active_bot_row(r)]
@@ -7539,6 +10640,16 @@ def bot_fleet_roster(
         target_exit_summary=target_exit_summary,
         live_broker_state=live_broker_state,
     )
+    broker_bracket_audit = _maybe_promote_validated_broker_bracket_artifact(
+        broker_bracket_audit,
+        server_ts=now_ts,
+        target_exit_summary=target_exit_summary,
+        live_broker_state=live_broker_state,
+    )
+    broker_bracket_audit = _apply_authoritative_broker_bracket_advisory(
+        broker_bracket_audit,
+        eta_readiness_snapshot=eta_readiness_snapshot,
+    )
     broker_bracket_position_summary = (
         broker_bracket_audit.get("position_summary")
         if isinstance(broker_bracket_audit.get("position_summary"), dict)
@@ -7579,11 +10690,15 @@ def bot_fleet_roster(
         broker_bracket_actions[0] if broker_bracket_actions and isinstance(broker_bracket_actions[0], dict) else {}
     )
     broker_bracket_order_action = broker_bracket_order_actions[0] if broker_bracket_order_actions else {}
-    broker_bracket_prop_dry_run_blocked = bool(broker_bracket_audit.get("operator_action_required")) and not bool(
+    raw_broker_bracket_prop_dry_run_blocked = bool(broker_bracket_audit.get("operator_action_required")) and not bool(
         broker_bracket_audit.get("ready_for_prop_dry_run")
     )
-    paper_live_transition = _paper_live_transition_payload(refresh=False)
+    broker_bracket_prop_dry_run_blocked = bool(
+        broker_bracket_audit.get("effective_prop_dry_run_blocked")
+    ) or raw_broker_bracket_prop_dry_run_blocked
     paper_live_status = str(paper_live_transition.get("status") or "unknown")
+    paper_live_stale_receipt = bool(paper_live_transition.get("stale_receipt"))
+    paper_live_stale_detail = str(paper_live_transition.get("stale_detail") or "")
     paper_live_critical_ready = bool(paper_live_transition.get("critical_ready"))
     paper_live_held_by_bracket_audit = broker_bracket_prop_dry_run_blocked and paper_live_critical_ready
     paper_live_effective_status = "held_by_bracket_audit" if paper_live_held_by_bracket_audit else paper_live_status
@@ -7592,7 +10707,7 @@ def bot_fleet_roster(
         paper_live_effective_detail = (
             f"held by Bracket Audit: {' or '.join(broker_bracket_action_labels)}"
             if broker_bracket_action_labels
-            else "held by Bracket Audit"
+            else str(broker_bracket_audit.get("effective_detail") or "held by Bracket Audit")
         )
     paper_live_held_by_daily_loss_stop = bool(paper_live_lane_state["held_by_daily_loss_stop"])
     paper_live_daily_loss_advisory_active = bool(paper_live_lane_state["daily_loss_advisory_active"])
@@ -7618,6 +10733,9 @@ def bot_fleet_roster(
         paper_live_effective_detail = (
             f"live shadow paper lane active on {shadow_paper_attached_count} attached bot(s)"
         )
+    if paper_live_stale_receipt:
+        paper_live_effective_status = "stale_receipt"
+        paper_live_effective_detail = paper_live_stale_detail or paper_live_effective_detail
     vps_root_reconciliation = _vps_root_reconciliation_payload()
     vps_root_summary = (
         vps_root_reconciliation.get("summary") if isinstance(vps_root_reconciliation.get("summary"), dict) else {}
@@ -7629,6 +10747,10 @@ def bot_fleet_roster(
         vps_root_reconciliation.get("steps") if isinstance(vps_root_reconciliation.get("steps"), list) else []
     )
     vps_root_top_step = vps_root_steps[0] if vps_root_steps and isinstance(vps_root_steps[0], dict) else {}
+    vps_root_source_step = next(
+        (step for step in vps_root_steps if isinstance(step, dict) and step.get("id") == "restore-source-governance"),
+        {},
+    )
     vps_root_companion_step = next(
         (step for step in vps_root_steps if isinstance(step, dict) and step.get("id") == "align-submodules"),
         {},
@@ -7636,10 +10758,151 @@ def bot_fleet_roster(
     vps_root_top_step_evidence = (
         vps_root_top_step.get("evidence") if isinstance(vps_root_top_step.get("evidence"), list) else []
     )
+    vps_root_source_step_evidence = (
+        vps_root_source_step.get("evidence") if isinstance(vps_root_source_step.get("evidence"), list) else []
+    )
     vps_root_companion_step_evidence = (
         vps_root_companion_step.get("evidence") if isinstance(vps_root_companion_step.get("evidence"), list) else []
     )
+    vps_root_source_review_files = _vps_root_review_files_from_evidence(vps_root_source_step_evidence)
+    vps_root_source_review_items = (
+        vps_root_reconciliation.get("source_review_items")
+        if isinstance(vps_root_reconciliation.get("source_review_items"), list)
+        else []
+    )
+    vps_root_companion_review_targets = _vps_root_companion_targets_from_evidence(
+        vps_root_companion_step_evidence
+    )
+    vps_root_companion_review_items = (
+        vps_root_reconciliation.get("companion_review_items")
+        if isinstance(vps_root_reconciliation.get("companion_review_items"), list)
+        else []
+    )
+    vps_root_review_focus = (
+        vps_root_reconciliation.get("review_focus")
+        if isinstance(vps_root_reconciliation.get("review_focus"), dict)
+        else _vps_root_review_focus_payload(
+            vps_root_summary,
+            vps_root_counts,
+            vps_root_steps,
+            vps_root_source_review_items,
+            vps_root_companion_review_items,
+            vps_root_reconciliation.get("live_checkout"),
+        )
+    )
+    vps_root_review_focus_summary_line = str(
+        vps_root_reconciliation.get("review_focus_summary_line")
+        or vps_root_review_focus.get("summary_line")
+        or ""
+    )
+    vps_root_review_focus_primary_command = str(
+        vps_root_reconciliation.get("review_focus_primary_command")
+        or vps_root_review_focus.get("primary_review_command")
+        or ""
+    )
+    vps_root_review_focus_active_lane = str(
+        vps_root_reconciliation.get("review_focus_active_lane") or vps_root_review_focus.get("active_review_lane") or ""
+    )
+    vps_root_review_focus_primary_action = (
+        dict(vps_root_reconciliation.get("review_focus_primary_action"))
+        if isinstance(vps_root_reconciliation.get("review_focus_primary_action"), dict)
+        else (
+            dict(vps_root_review_focus.get("primary_review_action"))
+            if isinstance(vps_root_review_focus.get("primary_review_action"), dict)
+            else {}
+        )
+    )
+    vps_root_review_focus_primary_command = str(
+        vps_root_reconciliation.get("review_focus_primary_command")
+        or vps_root_review_focus.get("primary_review_command")
+        or ""
+    )
+    vps_root_review_focus_primary_action = (
+        dict(vps_root_reconciliation.get("review_focus_primary_action"))
+        if isinstance(vps_root_reconciliation.get("review_focus_primary_action"), dict)
+        else (
+            dict(vps_root_review_focus.get("primary_review_action"))
+            if isinstance(vps_root_review_focus.get("primary_review_action"), dict)
+            else {}
+        )
+    )
+    vps_root_source_review_decision_ready = bool(vps_root_reconciliation.get("source_review_decision_ready"))
+    vps_root_review_decision_ready = bool(vps_root_reconciliation.get("review_decision_ready"))
+    vps_root_review_decision_blocked_by_companion = bool(
+        vps_root_reconciliation.get("review_decision_blocked_by_companion")
+    )
+    vps_root_review_preserve_candidate_files = _string_list(
+        vps_root_reconciliation.get("review_preserve_candidate_files")
+    )
+    vps_root_review_revisit_required_files = _string_list(
+        vps_root_reconciliation.get("review_revisit_required_files")
+    )
+    vps_root_companion_review_status = str(vps_root_reconciliation.get("companion_review_status") or "")
+    vps_root_companion_review_decision_ready = bool(
+        vps_root_reconciliation.get("companion_review_decision_ready")
+    )
+    vps_root_companion_review_decision_summary = str(
+        vps_root_reconciliation.get("companion_review_decision_summary") or ""
+    )
+    vps_root_companion_review_decision_recommended_handling = str(
+        vps_root_reconciliation.get("companion_review_decision_recommended_handling") or ""
+    )
+    vps_root_companion_review_decision_next_action = str(
+        vps_root_reconciliation.get("companion_review_decision_next_action") or ""
+    )
+    vps_root_companion_review_decision_options = (
+        list(vps_root_reconciliation.get("companion_review_decision_options"))
+        if isinstance(vps_root_reconciliation.get("companion_review_decision_options"), list)
+        else []
+    )
+    vps_root_companion_review_decision_recommended_option = str(
+        vps_root_reconciliation.get("companion_review_decision_recommended_option") or ""
+    )
+    vps_root_companion_review_decision_recommended_reason = str(
+        vps_root_reconciliation.get("companion_review_decision_recommended_reason") or ""
+    )
+    vps_root_companion_review_decision_basis = str(
+        vps_root_reconciliation.get("companion_review_decision_basis") or ""
+    )
+    vps_root_companion_review_decision_recommended_paths = _string_list(
+        vps_root_reconciliation.get("companion_review_decision_recommended_paths")
+    )
+    vps_root_companion_review_decision_recommended_commit_message = str(
+        vps_root_reconciliation.get("companion_review_decision_recommended_commit_message") or ""
+    )
+    vps_root_companion_review_decision_recommended_stage_command = str(
+        vps_root_reconciliation.get("companion_review_decision_recommended_stage_command") or ""
+    )
+    vps_root_companion_review_decision_recommended_commit_command = str(
+        vps_root_reconciliation.get("companion_review_decision_recommended_commit_command") or ""
+    )
+    vps_root_companion_review_decision_recommended_commands = _string_list(
+        vps_root_reconciliation.get("companion_review_decision_recommended_commands")
+    )
+    vps_root_companion_review_summary_line = str(
+        vps_root_reconciliation.get("companion_review_summary_line") or ""
+    )
     ibkr_gateway = broker_gateway.get("ibkr") if isinstance(broker_gateway.get("ibkr"), dict) else {}
+    ibkr_gateway_raw_status = str(ibkr_gateway.get("status") or broker_gateway.get("status") or "unknown")
+    ibkr_gateway_raw_detail = str(ibkr_gateway.get("detail") or broker_gateway.get("detail") or "")
+    ibkr_gateway_non_authoritative_host = bool(
+        broker_gateway.get("non_authoritative_host") or ibkr_gateway.get("non_authoritative_host")
+    )
+    ibkr_gateway_authority = (
+        broker_gateway.get("gateway_authority") if isinstance(broker_gateway.get("gateway_authority"), dict) else {}
+    )
+    if not ibkr_gateway_authority and isinstance(ibkr_gateway.get("gateway_authority"), dict):
+        ibkr_gateway_authority = dict(ibkr_gateway.get("gateway_authority"))
+    ibkr_gateway_authority_reason = str(ibkr_gateway_authority.get("reason") or "").strip()
+    ibkr_gateway_effective_status = _gateway_summary_effective_status(
+        ibkr_gateway_raw_status,
+        non_authoritative_host=ibkr_gateway_non_authoritative_host,
+    )
+    ibkr_gateway_effective_detail = _gateway_summary_effective_detail(
+        ibkr_gateway_raw_detail,
+        non_authoritative_host=ibkr_gateway_non_authoritative_host,
+        authority_reason=ibkr_gateway_authority_reason,
+    )
     return {
         "bots": rows,
         "confirmed_bots": confirmed_bots,
@@ -7660,6 +10923,27 @@ def bot_fleet_roster(
             "current_blocked_kinds": blocked_rollup["kinds"],
             "current_blocked_summary_line": str(blocked_rollup["summary_line"] or ""),
             "current_blocked_preview": blocked_rollup["preview"],
+            "current_actionable_blocked_bots": int(blocked_rollup["actionable_count"]),
+            "current_actionable_blocked_kinds": blocked_rollup["actionable_kinds"],
+            "current_actionable_blocked_summary_line": str(blocked_rollup["actionable_summary_line"] or ""),
+            "current_actionable_blocked_preview": blocked_rollup["actionable_preview"],
+            "current_session_gated_bots": int(blocked_rollup["session_gated_count"]),
+            "current_session_gated_kinds": blocked_rollup["session_gated_kinds"],
+            "current_session_gated_summary_line": str(blocked_rollup["session_gated_summary_line"] or ""),
+            "current_session_gated_preview": blocked_rollup["session_gated_preview"],
+            "blocked_summary": str(
+                blocked_rollup["actionable_summary_line"] or blocked_rollup["summary_line"] or "",
+            ),
+            "session_gated_bots": int(blocked_rollup["session_gated_count"]),
+            "session_gated_kinds": blocked_rollup["session_gated_kinds"],
+            "session_gated_summary_line": str(blocked_rollup["session_gated_summary_line"] or ""),
+            "session_gated_preview": blocked_rollup["session_gated_preview"],
+            "command_center_watchdog_status": str(
+                eta_readiness_snapshot.get("command_center_issue_status") or "",
+            ),
+            "command_center_watchdog_detail": str(
+                eta_readiness_snapshot.get("command_center_issue_summary") or "",
+            ),
             "live_broker_probe_mode": "live" if live_broker_probe else "cached_diagnostics",
             "mnq_total": len(mnq_runtime_rows),
             "mnq_runtime_total": len(mnq_runtime_rows),
@@ -7672,6 +10956,35 @@ def bot_fleet_roster(
             "signal_cadence_status": signal_cadence["status"],
             "signal_update_count": signal_cadence["signal_update_count"],
             "unique_signal_seconds": signal_cadence["unique_signal_seconds"],
+            "retune_focus_bot_id": str(diamond_retune_status.get("focus_bot") or ""),
+            "retune_focus_state": str(diamond_retune_status.get("focus_state") or ""),
+            "retune_focus_issue": str(diamond_retune_status.get("focus_issue") or ""),
+            "retune_focus_next_action": str(diamond_retune_status.get("focus_next_action") or ""),
+            "retune_focus_active_experiment": (
+                dict(diamond_retune_status.get("focus_active_experiment"))
+                if isinstance(diamond_retune_status.get("focus_active_experiment"), dict)
+                else {}
+            ),
+            "retune_focus_active_experiment_summary_line": str(
+                (
+                    diamond_retune_status.get("summary")
+                    if isinstance(diamond_retune_status.get("summary"), dict)
+                    else {}
+                ).get("broker_truth_focus_active_experiment_summary_line")
+                or ""
+            ),
+            "retune_focus_active_experiment_outcome_line": str(
+                diamond_retune_status.get("focus_active_experiment_outcome_line") or ""
+            ),
+            "public_live_retune_focus_active_experiment_outcome_line": str(
+                eta_readiness_snapshot.get("public_live_retune_focus_active_experiment_outcome_line") or ""
+            ),
+            "local_retune_focus_active_experiment_outcome_line": str(
+                eta_readiness_snapshot.get("local_retune_focus_active_experiment_outcome_line") or ""
+            ),
+            "retune_focus_active_experiment_drift_display": str(
+                eta_readiness_snapshot.get("retune_focus_active_experiment_drift_display") or ""
+            ),
             "max_same_second": signal_cadence["max_same_second"],
             "target_exit_status": target_exit_summary["status"],
             "stale_position_status": target_exit_summary["stale_position_status"],
@@ -7697,12 +11010,36 @@ def bot_fleet_roster(
             "close_history_closed_outcome_count": close_history_window["closed_outcome_count"],
             "close_history_evaluated_outcome_count": close_history_window["evaluated_outcome_count"],
             "close_history_win_rate": close_history_window["win_rate"],
-            "broker_bracket_audit_status": broker_bracket_audit.get("summary"),
-            "broker_bracket_audit_ready": bool(broker_bracket_audit.get("ready_for_prop_dry_run")),
+            "broker_bracket_audit_status": broker_bracket_audit.get("effective_summary")
+            or broker_bracket_audit.get("summary"),
+            "broker_bracket_audit_raw_status": broker_bracket_audit.get("summary"),
+            "broker_bracket_audit_ready": bool(
+                broker_bracket_audit.get("effective_ready_for_prop_dry_run")
+            )
+            if broker_bracket_audit.get("effective_ready_for_prop_dry_run") is not None
+            else bool(broker_bracket_audit.get("ready_for_prop_dry_run")),
+            "broker_bracket_audit_raw_ready": bool(broker_bracket_audit.get("ready_for_prop_dry_run")),
             "broker_bracket_operator_action_required": bool(
                 broker_bracket_audit.get("operator_action_required"),
             ),
             "broker_bracket_prop_dry_run_blocked": broker_bracket_prop_dry_run_blocked,
+            "broker_bracket_raw_prop_dry_run_blocked": raw_broker_bracket_prop_dry_run_blocked,
+            "broker_bracket_audit_effective_card_status": str(
+                broker_bracket_audit.get("effective_card_status") or ""
+            ),
+            "broker_bracket_audit_effective_detail": str(broker_bracket_audit.get("effective_detail") or ""),
+            "broker_bracket_authoritative_advisory_active": bool(
+                broker_bracket_audit.get("authoritative_advisory_active")
+            ),
+            "broker_bracket_authoritative_advisory_stale": bool(
+                broker_bracket_audit.get("authoritative_public_fallback_stale")
+            ),
+            "broker_bracket_authoritative_public_fallback_summary": str(
+                broker_bracket_audit.get("authoritative_public_fallback_summary") or ""
+            ),
+            "broker_bracket_authoritative_public_fallback_primary_action": str(
+                broker_bracket_audit.get("authoritative_public_fallback_primary_action") or ""
+            ),
             "broker_bracket_missing_count": int(broker_bracket_position_summary.get("missing_bracket_count") or 0),
             "broker_bracket_unprotected_symbols": broker_bracket_unprotected_symbols,
             "broker_bracket_operator_action_count": len(broker_bracket_action_ids),
@@ -7714,7 +11051,11 @@ def bot_fleet_roster(
             "broker_bracket_primary_action_detail": str(broker_bracket_primary_action.get("detail") or ""),
             "broker_bracket_order_action_label": str(broker_bracket_order_action.get("label") or ""),
             "broker_bracket_order_action_detail": str(broker_bracket_order_action.get("detail") or ""),
-            "broker_bracket_next_action": str(broker_bracket_audit.get("next_action") or ""),
+            "broker_bracket_next_action": str(
+                broker_bracket_audit.get("effective_detail")
+                or broker_bracket_audit.get("next_action")
+                or ""
+            ),
             "broker_bracket_primary_symbol": str(broker_bracket_primary.get("symbol") or ""),
             "broker_bracket_primary_venue": str(broker_bracket_primary.get("venue") or ""),
             "broker_bracket_primary_sec_type": str(broker_bracket_primary.get("sec_type") or ""),
@@ -7726,12 +11067,17 @@ def bot_fleet_roster(
             "paper_live_status": paper_live_status,
             "paper_live_effective_status": paper_live_effective_status,
             "paper_live_effective_detail": paper_live_effective_detail,
+            "paper_live_stale_receipt": paper_live_stale_receipt,
+            "paper_live_stale_detail": paper_live_stale_detail,
             "paper_live_held_by_bracket_audit": paper_live_held_by_bracket_audit,
             "paper_live_held_by_daily_loss_stop": paper_live_held_by_daily_loss_stop,
             "paper_live_daily_loss_gate_mode": str(paper_live_lane_state["gate_mode"] or ""),
             "paper_live_daily_loss_advisory_active": paper_live_daily_loss_advisory_active,
             "paper_live_capital_lanes_held_by_daily_loss_stop": bool(
                 paper_live_lane_state["capital_lanes_held_by_daily_loss_stop"]
+            ),
+            "paper_live_daily_loss_suppressed_non_authoritative_gateway_host": bool(
+                paper_live_lane_state["suppressed_on_non_authoritative_gateway_host"]
             ),
             "daily_loss_killswitch": daily_loss_killswitch,
             "paper_live_critical_ready": paper_live_critical_ready,
@@ -7746,6 +11092,12 @@ def bot_fleet_roster(
             "vps_root_cleanup_allowed": bool(vps_root_reconciliation.get("cleanup_allowed")),
             "vps_root_artifact_stale": bool(vps_root_reconciliation.get("artifact_stale")),
             "vps_root_source_deleted_count": int(vps_root_summary.get("source_or_governance_deleted") or 0),
+            "vps_root_source_modified_count": int(vps_root_summary.get("source_or_governance_modified") or 0),
+            "vps_root_optional_dormant_deleted_count": int(
+                vps_root_summary.get("optional_dormant_deleted_tracked")
+                or vps_root_counts.get("optional_dormant_deleted_tracked")
+                or 0
+            ),
             "vps_root_submodule_drift": int(
                 vps_root_summary.get("submodule_drift") or vps_root_counts.get("submodule_drift") or 0
             ),
@@ -7760,14 +11112,67 @@ def bot_fleet_roster(
                 vps_root_summary.get("dirty_companion_repos") or vps_root_counts.get("dirty_companion_repos") or 0
             ),
             "vps_root_recommended_action": str(vps_root_reconciliation.get("recommended_action") or ""),
+            "vps_root_source_review_decision_ready": vps_root_source_review_decision_ready,
+            "vps_root_review_decision_ready": vps_root_review_decision_ready,
+            "vps_root_review_decision_blocked_by_companion": vps_root_review_decision_blocked_by_companion,
+            "vps_root_review_preserve_candidate_files": vps_root_review_preserve_candidate_files,
+            "vps_root_review_revisit_required_files": vps_root_review_revisit_required_files,
+            "vps_root_companion_review_status": vps_root_companion_review_status,
+            "vps_root_companion_review_decision_ready": vps_root_companion_review_decision_ready,
+            "vps_root_companion_review_decision_summary": vps_root_companion_review_decision_summary,
+            "vps_root_companion_review_decision_recommended_handling": vps_root_companion_review_decision_recommended_handling,
+            "vps_root_companion_review_decision_next_action": vps_root_companion_review_decision_next_action,
+            "vps_root_companion_review_decision_options": vps_root_companion_review_decision_options,
+            "vps_root_companion_review_decision_recommended_option": (
+                vps_root_companion_review_decision_recommended_option
+            ),
+            "vps_root_companion_review_decision_recommended_reason": (
+                vps_root_companion_review_decision_recommended_reason
+            ),
+            "vps_root_companion_review_decision_basis": vps_root_companion_review_decision_basis,
+            "vps_root_companion_review_decision_recommended_paths": (
+                vps_root_companion_review_decision_recommended_paths
+            ),
+            "vps_root_companion_review_decision_recommended_commit_message": (
+                vps_root_companion_review_decision_recommended_commit_message
+            ),
+            "vps_root_companion_review_decision_recommended_stage_command": (
+                vps_root_companion_review_decision_recommended_stage_command
+            ),
+            "vps_root_companion_review_decision_recommended_commit_command": (
+                vps_root_companion_review_decision_recommended_commit_command
+            ),
+            "vps_root_companion_review_decision_recommended_commands": (
+                vps_root_companion_review_decision_recommended_commands
+            ),
+            "vps_root_companion_review_summary_line": vps_root_companion_review_summary_line,
+            "vps_root_review_focus_summary_line": vps_root_review_focus_summary_line,
+            "vps_root_review_focus_active_lane": vps_root_review_focus_active_lane,
+            "vps_root_review_focus_primary_command": vps_root_review_focus_primary_command,
+            "vps_root_review_focus_primary_action": vps_root_review_focus_primary_action,
             "vps_root_review_step_count": len(vps_root_steps),
             "vps_root_top_step_id": str(vps_root_top_step.get("id") or ""),
             "vps_root_top_step_title": str(vps_root_top_step.get("title") or ""),
             "vps_root_top_step_risk": str(vps_root_top_step.get("risk") or ""),
             "vps_root_top_step_decision": str(vps_root_top_step.get("decision") or ""),
             "vps_root_top_step_action": str(vps_root_top_step.get("action") or ""),
+            "vps_root_reconciliation_top_step_summary": str(
+                vps_root_top_step.get("action") or vps_root_top_step.get("title") or ""
+            ),
             "vps_root_top_step_evidence_count": len(vps_root_top_step_evidence),
             "vps_root_top_step_evidence": vps_root_top_step_evidence,
+            "vps_root_source_step_id": str(vps_root_source_step.get("id") or ""),
+            "vps_root_source_step_title": str(vps_root_source_step.get("title") or ""),
+            "vps_root_source_step_risk": str(vps_root_source_step.get("risk") or ""),
+            "vps_root_source_step_decision": str(vps_root_source_step.get("decision") or ""),
+            "vps_root_source_step_action": str(vps_root_source_step.get("action") or ""),
+            "vps_root_source_step_evidence_count": len(vps_root_source_step_evidence),
+            "vps_root_source_step_evidence": vps_root_source_step_evidence,
+            "vps_root_source_review_files": vps_root_source_review_files,
+            "vps_root_source_review_items": vps_root_source_review_items,
+            "vps_root_companion_review_targets": vps_root_companion_review_targets,
+            "vps_root_companion_review_items": vps_root_companion_review_items,
+            "vps_root_review_focus": vps_root_review_focus,
             "vps_root_companion_step_id": str(vps_root_companion_step.get("id") or ""),
             "vps_root_companion_step_title": str(vps_root_companion_step.get("title") or ""),
             "vps_root_companion_step_risk": str(vps_root_companion_step.get("risk") or ""),
@@ -7778,8 +11183,11 @@ def bot_fleet_roster(
             "vps_root_companion_step_evidence_count": len(vps_root_companion_step_evidence),
             "vps_root_companion_step_evidence": vps_root_companion_step_evidence,
             "portfolio_hidden_disabled_count": portfolio_summary["hidden_disabled_count"],
-            "ibkr_gateway_status": ibkr_gateway.get("status") or broker_gateway.get("status"),
-            "ibkr_gateway_detail": ibkr_gateway.get("detail") or broker_gateway.get("detail"),
+            "ibkr_gateway_status": ibkr_gateway_effective_status,
+            "ibkr_gateway_detail": ibkr_gateway_effective_detail,
+            "ibkr_gateway_raw_status": ibkr_gateway_raw_status,
+            "ibkr_gateway_raw_detail": ibkr_gateway_raw_detail,
+            "ibkr_gateway_non_authoritative_host": ibkr_gateway_non_authoritative_host,
             **broker_summary,
         },
         "active_bots": active_bots,
@@ -8080,6 +11488,45 @@ def _apply_global_daily_loss_killswitch_to_roster_rows(rows: list[dict[str, Any]
         row["current_block_at"] = current_at
 
 
+def _suppress_non_authoritative_local_daily_loss_row_blocks(rows: list[dict[str, Any]]) -> None:
+    """Clear local daily-loss row blockers when this host is not the gateway authority."""
+    for row in rows:
+        kind = str(row.get("current_block_kind") or "").strip()
+        reason = str(row.get("current_block_reason") or "").strip()
+        if kind != "daily_kill_switch" and not reason.startswith("daily_kill_switch"):
+            continue
+
+        row["suppressed_current_block_source"] = str(row.get("current_block_source") or "").strip()
+        row["suppressed_current_block_kind"] = kind
+        row["suppressed_current_block_reason"] = reason
+        row["suppressed_current_block_summary"] = str(row.get("current_block_summary") or "").strip()
+        row["suppressed_current_block_at"] = str(row.get("current_block_at") or "").strip()
+
+        secondary_kind = str(row.get("current_block_secondary_kind") or "").strip()
+        if secondary_kind:
+            row["current_block_source"] = "secondary"
+            row["current_block_kind"] = secondary_kind
+            row["current_block_reason"] = str(row.get("current_block_secondary_reason") or "").strip()
+            row["current_block_summary"] = str(row.get("current_block_secondary_summary") or "").strip()
+            row["current_block_at"] = str(row.get("current_block_secondary_at") or "").strip()
+            row["current_block_secondary_kind"] = ""
+            row["current_block_secondary_reason"] = ""
+            row["current_block_secondary_summary"] = ""
+            row["current_block_secondary_at"] = ""
+        else:
+            row["current_block_source"] = ""
+            row["current_block_kind"] = ""
+            row["current_block_reason"] = ""
+            row["current_block_summary"] = ""
+            row["current_block_at"] = ""
+
+        row["daily_loss_gate_active"] = False
+        row["daily_loss_gate_reason"] = ""
+        row["daily_loss_advisory_active"] = False
+        row["capital_lanes_held_by_daily_loss_stop"] = False
+        row["daily_loss_suppressed_non_authoritative_gateway_host"] = True
+
+
 def _blocked_bot_rollup(rows: list[dict[str, Any]]) -> dict[str, Any]:
     blocked_rows = [row for row in rows if str(row.get("current_block_reason") or "").strip()]
     blocked_kinds: dict[str, int] = {}
@@ -8089,6 +11536,14 @@ def _blocked_bot_rollup(rows: list[dict[str, Any]]) -> dict[str, Any]:
             "kinds": blocked_kinds,
             "summary_line": "",
             "preview": [],
+            "actionable_count": 0,
+            "actionable_kinds": {},
+            "actionable_summary_line": "",
+            "actionable_preview": [],
+            "session_gated_count": 0,
+            "session_gated_kinds": {},
+            "session_gated_summary_line": "",
+            "session_gated_preview": [],
         }
 
     priority = {
@@ -8103,10 +11558,7 @@ def _blocked_bot_rollup(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "jarvis_not_bootstrapped": 5,
         "route_paper": 6,
     }
-
-    for row in blocked_rows:
-        kind = str(row.get("current_block_kind") or "unknown").strip() or "unknown"
-        blocked_kinds[kind] = blocked_kinds.get(kind, 0) + 1
+    expected_wait_kinds = {"session_gate"}
 
     def _sort_key(row: dict[str, Any]) -> tuple[int, str, str]:
         kind = str(row.get("current_block_kind") or "unknown").strip() or "unknown"
@@ -8114,37 +11566,108 @@ def _blocked_bot_rollup(rows: list[dict[str, Any]]) -> dict[str, Any]:
         at = str(row.get("current_block_at") or "").strip()
         return (priority.get(kind, 99), bot_id, at)
 
-    preview_rows = sorted(blocked_rows, key=_sort_key)[:5]
-    preview = [
-        {
+    def _preview_entry(row: dict[str, Any]) -> dict[str, str]:
+        return {
             "bot_id": str(row.get("name") or row.get("id") or row.get("bot_id") or "").strip(),
             "symbol": str(row.get("symbol") or "").strip(),
             "kind": str(row.get("current_block_kind") or "").strip(),
             "summary": str(row.get("current_block_summary") or "").strip(),
             "at": str(row.get("current_block_at") or "").strip(),
         }
-        for row in preview_rows
-    ]
-    kind_parts = [
-        f"{count} {kind.replace('_', ' ')}"
-        for kind, count in sorted(blocked_kinds.items(), key=lambda item: (priority.get(item[0], 99), item[0]))
-    ]
-    top_names = [entry["bot_id"] for entry in preview if entry["bot_id"]]
+
+    def _rollup_slice(slice_rows: list[dict[str, Any]]) -> tuple[dict[str, int], list[dict[str, str]], list[str], list[str]]:
+        slice_kinds: dict[str, int] = {}
+        for row in slice_rows:
+            kind = str(row.get("current_block_kind") or "unknown").strip() or "unknown"
+            slice_kinds[kind] = slice_kinds.get(kind, 0) + 1
+        preview_rows = sorted(slice_rows, key=_sort_key)[:5]
+        preview = [_preview_entry(row) for row in preview_rows]
+        kind_parts = [
+            f"{count} {kind.replace('_', ' ')}"
+            for kind, count in sorted(slice_kinds.items(), key=lambda item: (priority.get(item[0], 99), item[0]))
+        ]
+        top_names = [entry["bot_id"] for entry in preview if entry["bot_id"]]
+        return slice_kinds, preview, kind_parts, top_names
+
+    def _compose_summary(prefix: str, count: int, kind_parts: list[str], top_names: list[str]) -> str:
+        if count <= 0:
+            return ""
+        return (
+            f"{prefix}: {count} bot(s)"
+            + (f" - {', '.join(kind_parts)}" if kind_parts else "")
+            + (f". Top: {', '.join(top_names)}." if top_names else ".")
+        )
+
+    blocked_kinds, preview, kind_parts, top_names = _rollup_slice(blocked_rows)
     summary_line = (
         f"Current blockers: {len(blocked_rows)} bot(s) held"
         + (f" - {', '.join(kind_parts)}" if kind_parts else "")
         + (f". Top: {', '.join(top_names)}." if top_names else ".")
+    )
+    session_gated_rows = [
+        row
+        for row in blocked_rows
+        if str(row.get("current_block_kind") or "unknown").strip() in expected_wait_kinds
+    ]
+    actionable_rows = [
+        row
+        for row in blocked_rows
+        if str(row.get("current_block_kind") or "unknown").strip() not in expected_wait_kinds
+    ]
+    actionable_kinds, actionable_preview, actionable_kind_parts, actionable_top_names = _rollup_slice(actionable_rows)
+    session_gated_kinds, session_gated_preview, session_kind_parts, session_top_names = _rollup_slice(session_gated_rows)
+    actionable_summary_line = _compose_summary(
+        "Actionable blockers",
+        len(actionable_rows),
+        actionable_kind_parts,
+        actionable_top_names,
+    )
+    if actionable_summary_line and session_gated_rows:
+        actionable_summary_line = (
+            f"{actionable_summary_line} Awaiting session: {len(session_gated_rows)} bot(s)."
+        )
+    elif not actionable_summary_line and session_gated_rows:
+        actionable_summary_line = f"No actionable blockers; {len(session_gated_rows)} bot(s) await session reopen."
+    session_gated_summary_line = _compose_summary(
+        "Awaiting session",
+        len(session_gated_rows),
+        session_kind_parts,
+        session_top_names,
     )
     return {
         "count": len(blocked_rows),
         "kinds": blocked_kinds,
         "summary_line": summary_line,
         "preview": preview,
+        "actionable_count": len(actionable_rows),
+        "actionable_kinds": actionable_kinds,
+        "actionable_summary_line": actionable_summary_line,
+        "actionable_preview": actionable_preview,
+        "session_gated_count": len(session_gated_rows),
+        "session_gated_kinds": session_gated_kinds,
+        "session_gated_summary_line": session_gated_summary_line,
+        "session_gated_preview": session_gated_preview,
     }
 
 
 def _augment_bot_drilldown_payload(payload: dict[str, Any], *, status: Any) -> dict[str, Any]:
     payload.update(_current_bot_block_state(status))
+    if isinstance(status, dict):
+        for key in (
+            "retune_focus_bot_id",
+            "retune_focus_state",
+            "retune_focus_issue",
+            "retune_focus_strategy_kind",
+            "retune_focus_next_action",
+            "retune_focus_active_experiment",
+            "retune_focus_active_experiment_summary_line",
+            "retune_focus_active_experiment_outcome_line",
+            "public_live_retune_focus_active_experiment_outcome_line",
+            "local_retune_focus_active_experiment_outcome_line",
+            "retune_focus_active_experiment_drift_display",
+        ):
+            if key in status:
+                payload[key] = status[key]
     return payload
 
 
@@ -8293,6 +11816,39 @@ def _coerce_recent_verdict_row(record: dict, *, bot_id: str) -> dict:
     return row
 
 
+def _jarvis_audit_log_candidates(*, now: datetime | None = None) -> list[Path]:
+    when = now or datetime.now(UTC)
+    today = when.strftime("%Y-%m-%d")
+    paths = [
+        _state_dir() / "jarvis_audit" / f"{today}.jsonl",
+        _state_dir() / "jarvis_audit.jsonl",
+    ]
+    if _state_dir() == _DEFAULT_STATE:
+        paths.extend(
+            [
+                _LEGACY_STATE / "jarvis_audit" / f"{today}.jsonl",
+                _LEGACY_STATE / "jarvis_audit.jsonl",
+            ]
+        )
+    return list(dict.fromkeys(paths))
+
+
+def _load_jarvis_audit_lines(*, now: datetime | None = None) -> tuple[Path, list[str]]:
+    candidates = _jarvis_audit_log_candidates(now=now)
+    selected = candidates[0]
+    for path in candidates:
+        if not path.exists():
+            continue
+        selected = path
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except OSError as exc:
+            raise HTTPException(status_code=500, detail=f"cannot read audit log: {exc}") from exc
+        if any(line.strip() for line in lines):
+            return path, lines
+    return selected, []
+
+
 def _recent_verdict_rows_from_log(
     *,
     bot_id: str,
@@ -8302,11 +11858,22 @@ def _recent_verdict_rows_from_log(
     from eta_engine.scripts import workspace_roots
 
     subsystem_candidates = _candidate_verdict_subsystems(bot_id, status)
-    paths = [
-        _state_dir() / "jarvis_audit.jsonl",
-        workspace_roots.ETA_JARVIS_VERDICTS_PATH,
-        workspace_roots.ETA_LEGACY_JARVIS_VERDICTS_PATH,
-    ]
+    verdict_paths = [_state_dir() / "jarvis_intel" / "verdicts.jsonl"]
+    if _state_dir() == _DEFAULT_STATE:
+        verdict_paths.extend(
+            [
+                workspace_roots.ETA_JARVIS_VERDICTS_PATH,
+                workspace_roots.ETA_LEGACY_JARVIS_VERDICTS_PATH,
+            ]
+        )
+    paths = list(
+        dict.fromkeys(
+            [
+                *_jarvis_audit_log_candidates(),
+                *verdict_paths,
+            ]
+        )
+    )
     rows: list[dict] = []
     seen: set[str] = set()
     for path in paths:
@@ -8357,6 +11924,8 @@ def bot_fleet_drilldown(bot_id: str) -> dict:
 
     bot_dir = _state_dir() / "bots" / bot_id
     readiness_rows = _bot_strategy_readiness_rows_by_bot()
+    diamond_retune_status = _load_diamond_retune_status()
+    eta_readiness_snapshot = _eta_readiness_snapshot_payload(server_ts=time.time())
     supervisor_statuses = _supervisor_roster_rows(time.time(), bot=bot_id)
     supervisor_status = supervisor_statuses[0] if supervisor_statuses else None
     supervisor_overlay_keys = (
@@ -8402,6 +11971,9 @@ def bot_fleet_drilldown(bot_id: str) -> dict:
         strategy_readiness = {}
     if not bot_dir.exists():
         if supervisor_status is not None:
+            supervisor_status.update(
+                _retune_focus_overlay(diamond_retune_status, bot_id, eta_readiness_snapshot)
+            )
             return _augment_bot_drilldown_payload({
                 "status": supervisor_status,
                 "recent_fills": [],
@@ -8467,6 +12039,7 @@ def bot_fleet_drilldown(bot_id: str) -> dict:
         status,
         _lookup_bot_strategy_readiness(readiness_rows, status, bot_id),
     )
+    status.update(_retune_focus_overlay(diamond_retune_status, bot_id, eta_readiness_snapshot))
     strategy_readiness = status.get("strategy_readiness")
     if not isinstance(strategy_readiness, dict):
         strategy_readiness = {}
@@ -9126,6 +12699,37 @@ def _ibkr_client_portal_request(
     except json.JSONDecodeError as exc:
         preview = raw[:160].replace("\n", " ").strip()
         raise RuntimeError(f"invalid_json: {preview}") from exc
+
+
+def _public_operator_broker_state_payload(*, force: bool = False) -> dict:
+    """Best-effort public broker_state fetch for readiness drift overlays."""
+    base_url = _operator_url_base()
+    if not base_url:
+        return {}
+    now_ts = time.time()
+    with _PUBLIC_OPERATOR_BROKER_STATE_CACHE_LOCK:
+        cached = _PUBLIC_OPERATOR_BROKER_STATE_CACHE.get("payload")
+        cached_ts = float(_PUBLIC_OPERATOR_BROKER_STATE_CACHE.get("ts") or 0.0)
+        if not force and isinstance(cached, dict) and (now_ts - cached_ts) < _PUBLIC_OPERATOR_BROKER_STATE_CACHE_TTL_S:
+            return dict(cached)
+    request = urllib_request.Request(
+        f"{base_url}/api/live/broker_state",
+        headers={
+            "Accept": "application/json",
+            "User-Agent": "ETA-Operator/1.0",
+        },
+    )
+    try:
+        with urllib_request.urlopen(request, timeout=5.0) as response:
+            payload = json.loads(response.read().decode("utf-8", errors="replace"))
+    except Exception:  # noqa: BLE001 - diagnostics/master status must fail soft.
+        return {}
+    if not isinstance(payload, dict):
+        return {}
+    with _PUBLIC_OPERATOR_BROKER_STATE_CACHE_LOCK:
+        _PUBLIC_OPERATOR_BROKER_STATE_CACHE["payload"] = dict(payload)
+        _PUBLIC_OPERATOR_BROKER_STATE_CACHE["ts"] = now_ts
+    return payload
 
 
 def _series_last_numeric(values: Any) -> float | None:
@@ -9806,8 +13410,11 @@ def _closed_outcomes_from_filled_orders(orders: list[dict]) -> dict:
     lots_by_symbol: dict[str, list[dict[str, float | str]]] = defaultdict(list)
     outcomes: list[dict[str, object]] = []
 
+    def _fill_ts_value(row: dict) -> object:
+        return _first_present(row, ("broker_fill_ts", "filled_at", "ts", "submitted_at"))
+
     def _order_dt(row: dict) -> datetime:
-        parsed = _parse_fill_dt(row.get("filled_at") or row.get("ts") or row.get("submitted_at"))
+        parsed = _parse_fill_dt(_fill_ts_value(row))
         return parsed or datetime.min.replace(tzinfo=UTC)
 
     for order in sorted((o for o in orders if isinstance(o, dict)), key=_order_dt):
@@ -9834,7 +13441,7 @@ def _closed_outcomes_from_filled_orders(orders: list[dict]) -> dict:
                     "entry_price": round(entry_price, 8),
                     "exit_price": round(price, 8),
                     "realized_pnl": round(pnl, 6),
-                    "closed_at": order.get("filled_at") or order.get("ts"),
+                    "closed_at": _fill_ts_value(order),
                 },
             )
             remaining -= close_qty
@@ -10108,7 +13715,9 @@ def _broker_summary_fields(live_broker_state: dict) -> dict:
     broker_mtd_return_pct = _float_value(live_broker_state.get("broker_mtd_return_pct"))
     fills = _float_value(live_broker_state.get("today_actual_fills"))
     open_positions = _float_value(live_broker_state.get("open_position_count"))
+    open_orders = _extract_live_broker_open_order_count(live_broker_state)
     snapshot_age_s = _float_value(live_broker_state.get("broker_snapshot_age_s"))
+    checked_utc = _extract_live_broker_checked_at_utc(live_broker_state)
     win_rate = _float_value(live_broker_state.get("win_rate_30d"))
     win_rate_today = _float_value(live_broker_state.get("win_rate_today"))
     closed_outcomes_today = _float_value(live_broker_state.get("closed_outcome_count_today"))
@@ -10144,6 +13753,10 @@ def _broker_summary_fields(live_broker_state: dict) -> dict:
         out["broker_today_actual_fills"] = int(fills)
     if open_positions is not None:
         out["broker_open_position_count"] = int(open_positions)
+    if open_orders is not None:
+        out["broker_open_order_count"] = int(open_orders)
+    if checked_utc:
+        out["broker_checked_utc"] = checked_utc
     if win_rate is not None:
         out["broker_win_rate_30d"] = win_rate
         out["broker_win_rate_30d_source"] = str(live_broker_state.get("win_rate_30d_source") or "")
@@ -11040,6 +14653,7 @@ def _broker_bracket_audit_payload(
     *,
     target_exit_summary: dict | None = None,
     live_broker_state: dict | None = None,
+    validate_live_stale_orders: bool = False,
 ) -> dict:
     """Build the read-only broker bracket audit without writing artifacts."""
     try:
@@ -11050,7 +14664,7 @@ def _broker_bracket_audit_payload(
                 "target_exit_summary": target_exit_summary or {},
                 "live_broker_state": live_broker_state or {},
             },
-            validate_live_stale_orders=True,
+            validate_live_stale_orders=validate_live_stale_orders,
         )
         return _enrich_broker_bracket_audit_with_positions(
             report,
@@ -11087,6 +14701,96 @@ def _broker_bracket_audit_card_status(report: dict) -> str:
     return "YELLOW"
 
 
+def _broker_bracket_summary_is_ready(summary: object) -> bool:
+    return str(summary or "").strip().upper() in {
+        "READY",
+        "READY_NO_OPEN_EXPOSURE",
+        "READY_OPEN_EXPOSURE_BRACKETED",
+    }
+
+
+def _broker_bracket_status_phrase(status: object) -> str:
+    return str(status or "").strip().lower().replace("_", " ")
+
+
+def _apply_authoritative_broker_bracket_advisory(
+    report: dict,
+    *,
+    eta_readiness_snapshot: dict | None,
+) -> dict:
+    """Overlay authoritative public-fallback bracket truth without mutating raw local audit fields."""
+    out = dict(report) if isinstance(report, dict) else {}
+    local_summary = str(out.get("summary") or "").strip().upper()
+    local_ready = bool(out.get("ready_for_prop_dry_run")) or _broker_bracket_summary_is_ready(local_summary)
+    effective_summary = local_summary or "AUDIT_UNAVAILABLE"
+    effective_ready = bool(out.get("ready_for_prop_dry_run"))
+    effective_card_status = _broker_bracket_audit_card_status(out)
+    effective_detail = str(
+        out.get("next_action")
+        or out.get("operator_action")
+        or out.get("detail")
+        or effective_summary
+    ).strip()
+    snapshot = eta_readiness_snapshot if isinstance(eta_readiness_snapshot, dict) else {}
+    authoritative_summary = str(snapshot.get("public_fallback_brackets_summary") or "").strip().upper()
+    authoritative_action = str(
+        snapshot.get("public_fallback_primary_action")
+        or snapshot.get("public_fallback_brackets_next_action")
+        or snapshot.get("primary_action")
+        or ""
+    ).strip()
+    authoritative_public_fallback_active = bool(snapshot.get("public_fallback_active"))
+    authoritative_non_authoritative_host = bool(snapshot.get("non_authoritative_gateway_host"))
+    authoritative_stale = str(snapshot.get("status") or "").strip().lower() == "stale_receipt" or (
+        snapshot.get("fresh") is False
+    )
+    authoritative_blocked = bool(authoritative_summary) and not _broker_bracket_summary_is_ready(authoritative_summary)
+    authoritative_advisory_active = (
+        local_ready
+        and authoritative_blocked
+        and (authoritative_public_fallback_active or authoritative_non_authoritative_host)
+    )
+    if authoritative_advisory_active:
+        detail_prefix = "Local bracket audit clear on this host"
+        if authoritative_stale:
+            effective_summary = "AUTHORITATIVE_STALE_REVIEW"
+            effective_card_status = "YELLOW"
+            effective_detail = (
+                f"{detail_prefix}; authoritative public fallback snapshot is stale and last reported "
+                f"{_broker_bracket_status_phrase(authoritative_summary)}"
+            )
+        else:
+            effective_summary = authoritative_summary
+            effective_card_status = _broker_bracket_audit_card_status(
+                {
+                    "summary": authoritative_summary,
+                    "ready_for_prop_dry_run": False,
+                }
+            )
+            effective_detail = (
+                f"{detail_prefix}; authoritative public fallback reports "
+                f"{_broker_bracket_status_phrase(authoritative_summary)}"
+            )
+        effective_ready = False
+        if authoritative_action:
+            effective_detail = _append_detail_once(effective_detail, authoritative_action)
+    raw_prop_dry_run_blocked = bool(out.get("operator_action_required")) and not bool(out.get("ready_for_prop_dry_run"))
+    out["effective_summary"] = effective_summary
+    out["effective_ready_for_prop_dry_run"] = effective_ready
+    out["effective_card_status"] = effective_card_status
+    out["effective_detail"] = effective_detail
+    out["effective_prop_dry_run_blocked"] = raw_prop_dry_run_blocked or (
+        authoritative_advisory_active and not effective_ready
+    )
+    out["authoritative_advisory_active"] = authoritative_advisory_active
+    out["authoritative_public_fallback_summary"] = authoritative_summary
+    out["authoritative_public_fallback_primary_action"] = authoritative_action
+    out["authoritative_public_fallback_active"] = authoritative_public_fallback_active
+    out["authoritative_public_fallback_stale"] = authoritative_stale
+    out["authoritative_public_fallback_non_authoritative_host"] = authoritative_non_authoritative_host
+    return out
+
+
 def _broker_bracket_audit_needs_fresh_state_retry(report: dict) -> bool:
     """Return true when a stale-order hold may be based on stale cached broker state."""
     if str(report.get("summary") or "").upper() != "BLOCKED_STALE_FLAT_OPEN_ORDERS":
@@ -11094,6 +14798,89 @@ def _broker_bracket_audit_needs_fresh_state_retry(report: dict) -> bool:
     validation = report.get("stale_flat_open_order_validation")
     validation = validation if isinstance(validation, dict) else {}
     return str(validation.get("status") or "").lower() == "live_socket_validation_failed"
+
+
+def _broker_bracket_audit_validation_status(report: dict[str, Any]) -> str:
+    validation = report.get("stale_flat_open_order_validation")
+    validation = validation if isinstance(validation, dict) else {}
+    return str(validation.get("status") or "").strip().lower()
+
+
+def _broker_bracket_audit_fingerprint(report: dict[str, Any]) -> tuple[Any, ...]:
+    position_summary = report.get("position_summary") if isinstance(report.get("position_summary"), dict) else {}
+    stale_symbols = position_summary.get("stale_flat_open_order_symbols")
+    stale_symbols = stale_symbols if isinstance(stale_symbols, list) else []
+    return (
+        str(report.get("summary") or "").upper(),
+        int(position_summary.get("broker_open_position_count") or 0),
+        int(position_summary.get("broker_bracket_required_position_count") or 0),
+        int(position_summary.get("broker_bracket_count") or 0),
+        int(position_summary.get("missing_bracket_count") or 0),
+        int(position_summary.get("stale_flat_open_order_count") or 0),
+        tuple(sorted({str(symbol or "").upper() for symbol in stale_symbols if str(symbol or "").strip()})),
+    )
+
+
+def _read_recent_validated_broker_bracket_audit(
+    *,
+    server_ts: float,
+    max_age_s: float = 1800.0,
+) -> dict[str, Any] | None:
+    path = _broker_bracket_audit_artifact_path()
+    if not path.exists():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    if str(payload.get("summary") or "").upper() != "BLOCKED_STALE_FLAT_OPEN_ORDERS":
+        return None
+    validation_status = _broker_bracket_audit_validation_status(payload)
+    if validation_status in {"", "not_requested", "live_socket_validation_failed"}:
+        return None
+    generated_at = payload.get("generated_at_utc") or payload.get("generated_at")
+    age_s = _iso_age_s(generated_at, server_ts=server_ts)
+    if age_s is None or age_s > max_age_s:
+        return None
+    promoted = dict(payload)
+    promoted["artifact_path"] = str(path)
+    promoted["artifact_age_s"] = round(age_s, 1)
+    return promoted
+
+
+def _maybe_promote_validated_broker_bracket_artifact(
+    report: dict[str, Any],
+    *,
+    server_ts: float,
+    target_exit_summary: dict | None,
+    live_broker_state: dict | None,
+) -> dict[str, Any]:
+    if str(report.get("summary") or "").upper() != "BLOCKED_STALE_FLAT_OPEN_ORDERS":
+        return report
+    if _broker_bracket_audit_validation_status(report) not in {"", "not_requested", "live_socket_validation_failed"}:
+        return report
+    artifact = _read_recent_validated_broker_bracket_audit(server_ts=server_ts)
+    if artifact is None:
+        return report
+    if _broker_bracket_audit_fingerprint(artifact) != _broker_bracket_audit_fingerprint(report):
+        return report
+    promoted = _enrich_broker_bracket_audit_with_positions(
+        artifact,
+        live_broker_state=live_broker_state,
+        target_exit_summary=target_exit_summary,
+    )
+    promoted = dict(promoted)
+    promoted["promoted_validated_artifact"] = True
+    promoted["artifact_path"] = artifact.get("artifact_path")
+    promoted["artifact_age_s"] = artifact.get("artifact_age_s")
+    promoted["previous_stale_validation"] = (
+        report.get("stale_flat_open_order_validation")
+        if isinstance(report.get("stale_flat_open_order_validation"), dict)
+        else {}
+    )
+    return promoted
 
 
 def _broker_bracket_audit_endpoint_payload() -> dict:
@@ -11129,6 +14916,7 @@ def _broker_bracket_audit_endpoint_payload() -> dict:
     payload = _broker_bracket_audit_payload(
         target_exit_summary=target_exit_summary,
         live_broker_state=live_broker_state,
+        validate_live_stale_orders=True,
     )
     payload["source"] = "dashboard_api_direct_broker_bracket_audit"
     payload["target_exit_summary"] = target_exit_summary
@@ -11297,7 +15085,9 @@ def _router_fill_results_rows() -> list[dict]:
         except (TypeError, ValueError):
             avg_price = 0.0
         ts_value = (
-            result.get("filled_at")
+            payload.get("broker_fill_ts")
+            or result.get("filled_at")
+            or payload.get("result_written_ts")
             or result.get("ts")
             or payload.get("ts")
             or datetime.fromtimestamp(path.stat().st_mtime, tz=UTC).isoformat()
@@ -11342,7 +15132,10 @@ def _normalize_live_fill_row(row: dict, *, source: str, source_path: str | None 
     if source != "blotter" and source != "ibkr_execution" and not (is_fill_status or is_positive_fill):
         return None
 
-    ts_raw = _first_present(row, ("ts", "time", "filled_at", "execution_time", "submitted_at"))
+    ts_raw = _first_present(
+        row,
+        ("broker_fill_ts", "filled_at", "execution_time", "ts", "time", "submitted_at"),
+    )
     ts_dt = _parse_fill_dt(ts_raw)
     if ts_dt is None:
         return None
@@ -12972,20 +16765,14 @@ def jarvis_decisions(n: int = 20, subsystem: str | None = None) -> dict:
       * n: how many of the most recent records to return (default 20)
       * subsystem: optional filter like "bot.mnq" or "bot.btc_hybrid"
     """
-    audit_path = _state_dir() / "jarvis_audit.jsonl"
-    if not audit_path.exists():
+    audit_path, lines = _load_jarvis_audit_lines()
+    if not any(line.strip() for line in lines):
         return {
             "decisions": [],
             "total": 0,
             "source": str(audit_path),
             "note": "no jarvis audit log yet -- no bots have asked for approval",
         }
-    lines: list[str] = []
-    try:
-        with audit_path.open("r", encoding="utf-8") as fh:
-            lines = fh.readlines()
-    except OSError as exc:
-        raise HTTPException(status_code=500, detail=f"cannot read audit log: {exc}") from exc
 
     # Parse bottom-up so the most recent are first. Keep only valid JSON.
     decisions: list[dict] = []
@@ -13035,14 +16822,9 @@ def jarvis_summary(window: int = 500) -> dict:
     orders did JARVIS gate in the last 500 decisions, split across
     each bot and each verdict?"
     """
-    audit_path = _state_dir() / "jarvis_audit.jsonl"
-    if not audit_path.exists():
+    _, lines = _load_jarvis_audit_lines()
+    if not any(line.strip() for line in lines):
         return {"window": window, "total": 0, "by_subsystem": {}, "by_verdict": {}}
-    try:
-        with audit_path.open("r", encoding="utf-8") as fh:
-            lines = fh.readlines()
-    except OSError as exc:
-        raise HTTPException(status_code=500, detail=f"cannot read audit log: {exc}") from exc
 
     tail = lines[-window:] if window > 0 else lines
     by_subsystem: dict[str, int] = {}
@@ -13140,30 +16922,40 @@ def _resolve_fleet_dir() -> Path | None:
     2. ``STATE_DIR/broker_fleet`` -- the natural operator-scoped path.
     3. ``eta_engine`` subtrees under either ``STATE_DIR`` or
        ``Path.home()`` -- legacy layouts.
-    4. ``btc_broker_fleet.DEFAULT_OUT_DIR`` -- the package-relative
-       default (``docs/btc_live/broker_fleet`` under the installed
-       package). Last because it would otherwise shadow the operator
-       override when the dev tree happens to contain real fleet data.
+    4. ``btc_broker_fleet.DEFAULT_OUT_DIR`` -- the script default.
+       This is usually the same canonical ``STATE_DIR/broker_fleet``
+       surface, but we keep it last so an operator env pin still wins.
     """
     env_pin = os.environ.get("ETA_BTC_FLEET_DIR")
     if env_pin:
         pinned = Path(env_pin)
         return pinned if pinned.exists() else None
-    candidates: list[Path] = [
-        STATE_DIR / "broker_fleet",
-        STATE_DIR.parent / "eta_engine" / "docs" / "btc_live" / "broker_fleet",
-        Path.home() / "eta_engine" / "docs" / "btc_live" / "broker_fleet",
-    ]
+    state_dir = _state_dir()
+    candidates: list[Path] = [state_dir / "broker_fleet"]
+    if state_dir == _DEFAULT_STATE:
+        candidates.extend(
+            [
+                STATE_DIR.parent / "eta_engine" / "docs" / "btc_live" / "broker_fleet",
+                Path.home() / "eta_engine" / "docs" / "btc_live" / "broker_fleet",
+            ]
+        )
     try:
         from eta_engine.scripts.btc_broker_fleet import DEFAULT_OUT_DIR
 
-        candidates.append(DEFAULT_OUT_DIR)
+        if state_dir == _DEFAULT_STATE or (state_dir / "broker_fleet") == DEFAULT_OUT_DIR:
+            candidates.append(DEFAULT_OUT_DIR)
     except Exception:  # noqa: BLE001 -- import errors should not crash the endpoint
         pass
     for candidate in candidates:
         if candidate.exists():
             return candidate
     return None
+
+
+_BTC_FLEET_MANIFEST_STALE_AFTER_S = _positive_int_env(
+    "ETA_BTC_FLEET_MANIFEST_STALE_AFTER_S",
+    15 * 60,
+)
 
 
 @app.get("/api/btc/lanes")
@@ -13174,28 +16966,66 @@ def btc_lanes() -> dict:
     per-worker lane state files (written by PaperLaneRunner). Answers
     'what is each lane doing right now?' without exposing any secrets.
     """
+    worker_balance_tracking = "not_tracked"
+    worker_balance_note = ""
+    fleet_balance_tracking = "not_tracked"
+    fleet_balance_note = ""
+    server_ts = time.time()
+    try:
+        from eta_engine.scripts.btc_broker_fleet import (
+            FLEET_PAPER_BALANCE_NOTE,
+            PAPER_BALANCE_TRACKING,
+            WORKER_PAPER_BALANCE_NOTE,
+        )
+
+        worker_balance_tracking = PAPER_BALANCE_TRACKING
+        worker_balance_note = WORKER_PAPER_BALANCE_NOTE
+        fleet_balance_tracking = PAPER_BALANCE_TRACKING
+        fleet_balance_note = FLEET_PAPER_BALANCE_NOTE
+    except Exception:  # noqa: BLE001
+        pass
+    state_dir = _state_dir()
     chosen = _resolve_fleet_dir()
     if chosen is None:
-        # Surface the best-known default so operators see where we looked.
-        try:
-            from eta_engine.scripts.btc_broker_fleet import DEFAULT_OUT_DIR
+        default = str(state_dir / "broker_fleet")
+        if state_dir == _DEFAULT_STATE:
+            # Surface the best-known canonical default so operators see where we looked.
+            try:
+                from eta_engine.scripts.btc_broker_fleet import DEFAULT_OUT_DIR
 
-            default = str(DEFAULT_OUT_DIR)
-        except Exception:  # noqa: BLE001
-            default = str(STATE_DIR / "broker_fleet")
+                default = str(DEFAULT_OUT_DIR)
+            except Exception:  # noqa: BLE001
+                pass
         return {
             "fleet_dir": default,
             "manifest": None,
             "lanes": [],
+            "manifest_age_s": None,
+            "manifest_stale": None,
+            "manifest_stale_after_s": _BTC_FLEET_MANIFEST_STALE_AFTER_S,
+            "paper_balance_tracking": fleet_balance_tracking,
+            "paper_balance_note": fleet_balance_note,
             "note": "fleet dir not found; start the fleet via python -m eta_engine.scripts.btc_broker_fleet --start",
         }
     manifest_path = chosen / "btc_broker_fleet_latest.json"
     manifest: dict | None = None
+    manifest_age_s: int | None = None
+    manifest_stale = None
     if manifest_path.exists():
         try:
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
             manifest = None
+    if isinstance(manifest, dict):
+        generated_at = manifest.get("generated_at_utc") or manifest.get("generated_at")
+        raw_age_s = _iso_age_s(generated_at, server_ts=server_ts)
+        if raw_age_s is not None:
+            manifest_age_s = int(raw_age_s)
+            manifest_stale = raw_age_s > _BTC_FLEET_MANIFEST_STALE_AFTER_S
+        else:
+            manifest_stale = True
+        fleet_balance_tracking = str(manifest.get("paper_balance_tracking") or fleet_balance_tracking)
+        fleet_balance_note = str(manifest.get("paper_balance_note") or fleet_balance_note)
     workers: list[dict] = []
     lane_files = sorted(chosen.glob("*.lane.json"))
     for lane_file in lane_files:
@@ -13231,6 +17061,19 @@ def btc_lanes() -> dict:
                 "heartbeat_status": heartbeat.get("status") if heartbeat else None,
                 "pid": heartbeat.get("pid") if heartbeat else None,
                 "execution_state": (heartbeat.get("execution_state") if heartbeat else None),
+                "paper_starting_cash": heartbeat.get("paper_starting_cash") if heartbeat else None,
+                "paper_cash": heartbeat.get("paper_cash") if heartbeat else None,
+                "paper_equity": heartbeat.get("paper_equity") if heartbeat else None,
+                "paper_balance_tracking": (
+                    str(heartbeat.get("paper_balance_tracking") or worker_balance_tracking)
+                    if heartbeat
+                    else worker_balance_tracking
+                ),
+                "paper_balance_note": (
+                    str(heartbeat.get("paper_balance_note") or worker_balance_note)
+                    if heartbeat
+                    else worker_balance_note
+                ),
             }
         )
     return {
@@ -13238,6 +17081,11 @@ def btc_lanes() -> dict:
         "manifest": manifest,
         "lanes": workers,
         "lane_count": len(workers),
+        "manifest_age_s": manifest_age_s,
+        "manifest_stale": manifest_stale,
+        "manifest_stale_after_s": _BTC_FLEET_MANIFEST_STALE_AFTER_S,
+        "paper_balance_tracking": fleet_balance_tracking,
+        "paper_balance_note": fleet_balance_note,
     }
 
 
@@ -13295,13 +17143,15 @@ def _resolve_mnq_supervisor_dir() -> Path | None:
     Mirrors :func:`_resolve_fleet_dir` but for the MNQ side. Honors
     ``ETA_MNQ_SUPERVISOR_DIR`` as an operator pin + test isolation.
     """
+    from eta_engine.scripts import workspace_roots
+
     env_pin = os.environ.get("ETA_MNQ_SUPERVISOR_DIR")
     if env_pin:
         pinned = Path(env_pin)
         return pinned if pinned.exists() else None
     candidates: list[Path] = [
-        STATE_DIR / "mnq_live",
-        STATE_DIR.parent / "eta_engine" / "docs" / "mnq_live",
+        workspace_roots.ETA_MNQ_LIVE_STATE_DIR,
+        workspace_roots.ETA_LEGACY_MNQ_LIVE_STATE_DIR,
         Path.home() / "eta_engine" / "docs" / "mnq_live",
     ]
     try:
@@ -13328,12 +17178,14 @@ def mnq_supervisor() -> dict:
     """
     chosen = _resolve_mnq_supervisor_dir()
     if chosen is None:
+        from eta_engine.scripts import workspace_roots
+
         try:
             from eta_engine.scripts.mnq_live_supervisor import DEFAULT_OUT_DIR
 
             default = str(DEFAULT_OUT_DIR)
         except Exception:  # noqa: BLE001
-            default = str(STATE_DIR / "mnq_live")
+            default = str(workspace_roots.ETA_MNQ_LIVE_STATE_DIR)
         return {
             "supervisor_dir": default,
             "state": None,
@@ -13452,41 +17304,39 @@ def all_systems_status() -> dict:
             "detail": "no active futures-focus brokers ready; alpaca paused",
         }
 
-    # BTC fleet: count active lanes
-    fleet_dir = _resolve_fleet_dir()
-    if fleet_dir is None:
-        out["btc_fleet"] = {"status": "RED", "detail": "fleet dir not found"}
+    # BTC fleet: use the same canonical lanes snapshot + manifest freshness.
+    fleet_payload = btc_lanes()
+    lanes = fleet_payload.get("lanes") if isinstance(fleet_payload.get("lanes"), list) else []
+    manifest_present = isinstance(fleet_payload.get("manifest"), dict)
+    manifest_stale = fleet_payload.get("manifest_stale") is True
+    manifest_age_s = fleet_payload.get("manifest_age_s")
+    active = sum(1 for lane in lanes if lane.get("active_order_id"))
+    total = len(lanes)
+    if fleet_payload.get("note") and total == 0 and not manifest_present:
+        out["btc_fleet"] = {"status": "RED", "detail": str(fleet_payload.get("note") or "fleet dir not found")}
     else:
-        active = 0
-        total = 0
-        for lane_file in fleet_dir.glob("*.lane.json"):
-            total += 1
-            try:
-                state = json.loads(lane_file.read_text(encoding="utf-8"))
-                if state.get("active_order_id"):
-                    active += 1
-            except (OSError, json.JSONDecodeError):
-                continue
         if total == 0:
-            out["btc_fleet"] = {
-                "status": "YELLOW",
-                "detail": "0 lanes (fleet not started)",
-            }
+            status = "YELLOW"
+            detail = "0 lanes (fleet not started)"
         elif active == total:
-            out["btc_fleet"] = {
-                "status": "GREEN",
-                "detail": f"{active}/{total} lanes ACTIVE",
-            }
+            status = "GREEN"
+            detail = f"{active}/{total} lanes ACTIVE"
         elif active > 0:
-            out["btc_fleet"] = {
-                "status": "YELLOW",
-                "detail": f"{active}/{total} lanes ACTIVE",
-            }
+            status = "YELLOW"
+            detail = f"{active}/{total} lanes ACTIVE"
         else:
-            out["btc_fleet"] = {
-                "status": "YELLOW",
-                "detail": f"{total} lanes idle (no active orders)",
-            }
+            status = "YELLOW"
+            detail = f"{total} lanes idle (no active orders)"
+        if manifest_stale:
+            status = "YELLOW" if status == "GREEN" else status
+            if isinstance(manifest_age_s, (int, float)):
+                detail = f"{detail}; manifest stale ({int(manifest_age_s)}s old)"
+            else:
+                detail = f"{detail}; manifest stale"
+        out["btc_fleet"] = {
+            "status": status,
+            "detail": detail,
+        }
 
     # MNQ supervisor: state file existence + paused flag
     mnq_dir = _resolve_mnq_supervisor_dir()
@@ -13520,17 +17370,14 @@ def all_systems_status() -> dict:
                 }
 
     # JARVIS audit log: any recent activity?
-    audit_path = _state_dir() / "jarvis_audit.jsonl"
-    if not audit_path.exists():
+    audit_path, lines = _load_jarvis_audit_lines()
+    line_count = sum(1 for raw in lines if raw.strip())
+    if line_count == 0:
         out["jarvis"] = {
             "status": "YELLOW",
             "detail": "no audit log yet",
         }
     else:
-        try:
-            line_count = sum(1 for _ in audit_path.open("r", encoding="utf-8"))
-        except OSError:
-            line_count = 0
         out["jarvis"] = {
             "status": "GREEN" if line_count > 0 else "YELLOW",
             "detail": f"{line_count} decisions logged",
@@ -13642,6 +17489,23 @@ def _local_master_status_payload() -> dict[str, object]:
     paper = _paper_live_transition_payload(refresh=False)
     paper_ready = bool(paper.get("critical_ready"))
     operator_queue = _operator_queue_payload()
+    diamond_retune_status = _load_diamond_retune_status()
+    retune_focus_active_experiment = (
+        dict(diamond_retune_status.get("focus_active_experiment"))
+        if isinstance(diamond_retune_status.get("focus_active_experiment"), dict)
+        else {}
+    )
+    retune_focus_active_experiment_summary_line = str(
+        (
+            diamond_retune_status.get("summary")
+            if isinstance(diamond_retune_status.get("summary"), dict)
+            else {}
+        ).get("broker_truth_focus_active_experiment_summary_line")
+        or ""
+    )
+    retune_focus_active_experiment_outcome_line = str(
+        diamond_retune_status.get("focus_active_experiment_outcome_line") or ""
+    )
     launch_blocked_raw = paper.get("operator_queue_launch_blocked_count")
     if launch_blocked_raw is None:
         launch_blocked_raw = operator_queue.get("launch_blocked_count")
@@ -13651,6 +17515,7 @@ def _local_master_status_payload() -> dict[str, object]:
         launch_blocked = 0
     blocked = int(operator_queue.get("summary", {}).get("BLOCKED") or 0)
     runtime_mode = "paper_live" if paper_ready else "paper_sim"
+    server_ts = time.time()
     generated_at = datetime.now(UTC).isoformat()
     cached_live_broker_state = _cached_live_broker_state_for_gateway_reconcile()
     broker_gateway = _reconcile_broker_gateway_with_live_state(
@@ -13669,10 +17534,22 @@ def _local_master_status_payload() -> dict[str, object]:
         target_exit_summary=target_exit_summary,
         live_broker_state=cached_live_broker_state,
     )
+    broker_bracket_audit = _maybe_promote_validated_broker_bracket_artifact(
+        broker_bracket_audit,
+        server_ts=server_ts,
+        target_exit_summary=target_exit_summary,
+        live_broker_state=cached_live_broker_state,
+    )
     if _broker_bracket_audit_needs_fresh_state_retry(broker_bracket_audit):
         try:
             fresh_live_broker_state = _live_broker_state_payload()
             refreshed_broker_bracket_audit = _broker_bracket_audit_payload(
+                target_exit_summary=target_exit_summary,
+                live_broker_state=fresh_live_broker_state,
+            )
+            refreshed_broker_bracket_audit = _maybe_promote_validated_broker_bracket_artifact(
+                refreshed_broker_bracket_audit,
+                server_ts=server_ts,
                 target_exit_summary=target_exit_summary,
                 live_broker_state=fresh_live_broker_state,
             )
@@ -13685,10 +17562,25 @@ def _local_master_status_payload() -> dict[str, object]:
         except Exception as exc:  # noqa: BLE001 - master status must stay available.
             broker_bracket_audit = dict(broker_bracket_audit)
             broker_bracket_audit["fresh_state_retry_error"] = f"{type(exc).__name__}: {exc}"
-    broker_bracket_audit_status = str(
-        broker_bracket_audit.get("summary") or "AUDIT_UNAVAILABLE",
+    eta_readiness_snapshot = _augment_eta_readiness_snapshot_with_live_broker_state(
+        _eta_readiness_snapshot_payload(server_ts=server_ts),
+        cached_live_broker_state,
     )
-    broker_bracket_audit_card_status = _broker_bracket_audit_card_status(broker_bracket_audit)
+    broker_bracket_audit = _apply_authoritative_broker_bracket_advisory(
+        broker_bracket_audit,
+        eta_readiness_snapshot=eta_readiness_snapshot,
+    )
+    command_center_watchdog = _command_center_watchdog_payload(server_ts=server_ts)
+    daily_stop_reset_audit = _daily_stop_reset_audit_payload(server_ts=server_ts)
+    vps_ops_hardening = _vps_ops_hardening_payload(server_ts=server_ts)
+    broker_bracket_audit_status = str(
+        broker_bracket_audit.get("effective_summary")
+        or broker_bracket_audit.get("summary")
+        or "AUDIT_UNAVAILABLE",
+    )
+    broker_bracket_audit_card_status = str(
+        broker_bracket_audit.get("effective_card_status") or _broker_bracket_audit_card_status(broker_bracket_audit)
+    )
     broker_bracket_position_summary = (
         broker_bracket_audit.get("position_summary")
         if isinstance(broker_bracket_audit.get("position_summary"), dict)
@@ -13721,17 +17613,239 @@ def _local_master_status_payload() -> dict[str, object]:
         broker_bracket_actions[0] if broker_bracket_actions and isinstance(broker_bracket_actions[0], dict) else {}
     )
     broker_bracket_order_action = broker_bracket_order_actions[0] if broker_bracket_order_actions else {}
-    broker_bracket_prop_dry_run_blocked = bool(broker_bracket_audit.get("operator_action_required")) and not bool(
+    raw_broker_bracket_prop_dry_run_blocked = bool(broker_bracket_audit.get("operator_action_required")) and not bool(
         broker_bracket_audit.get("ready_for_prop_dry_run")
     )
+    broker_bracket_prop_dry_run_blocked = bool(
+        broker_bracket_audit.get("effective_prop_dry_run_blocked")
+    ) or raw_broker_bracket_prop_dry_run_blocked
     daily_loss_killswitch = _daily_loss_killswitch_snapshot()
     vps_root_reconciliation = _vps_root_reconciliation_payload()
+    vps_root_summary = (
+        vps_root_reconciliation.get("summary") if isinstance(vps_root_reconciliation.get("summary"), dict) else {}
+    )
+    vps_root_counts = (
+        vps_root_reconciliation.get("counts") if isinstance(vps_root_reconciliation.get("counts"), dict) else {}
+    )
+    vps_root_steps = (
+        vps_root_reconciliation.get("steps") if isinstance(vps_root_reconciliation.get("steps"), list) else []
+    )
+    vps_root_source_review_files = (
+        list(vps_root_reconciliation.get("source_review_files"))
+        if isinstance(vps_root_reconciliation.get("source_review_files"), list)
+        else _vps_root_review_files_from_evidence(
+            next(
+                (
+                    step.get("evidence")
+                    for step in vps_root_steps
+                    if isinstance(step, dict) and step.get("id") == "restore-source-governance"
+                ),
+                [],
+            )
+        )
+    )
+    vps_root_source_review_items = (
+        list(vps_root_reconciliation.get("source_review_items"))
+        if isinstance(vps_root_reconciliation.get("source_review_items"), list)
+        else []
+    )
+    vps_root_companion_review_targets = (
+        list(vps_root_reconciliation.get("companion_review_targets"))
+        if isinstance(vps_root_reconciliation.get("companion_review_targets"), list)
+        else _vps_root_companion_targets_from_evidence(
+            next(
+                (
+                    step.get("evidence")
+                    for step in vps_root_steps
+                    if isinstance(step, dict) and step.get("id") == "align-submodules"
+                ),
+                [],
+            )
+        )
+    )
+    vps_root_companion_review_items = (
+        list(vps_root_reconciliation.get("companion_review_items"))
+        if isinstance(vps_root_reconciliation.get("companion_review_items"), list)
+        else []
+    )
+    vps_root_review_focus = (
+        vps_root_reconciliation.get("review_focus")
+        if isinstance(vps_root_reconciliation.get("review_focus"), dict)
+        else _vps_root_review_focus_payload(
+            vps_root_summary,
+            vps_root_counts,
+            vps_root_steps,
+            vps_root_source_review_items,
+            vps_root_companion_review_items,
+            vps_root_reconciliation.get("live_checkout"),
+        )
+    )
+    vps_root_review_focus_summary_line = str(
+        vps_root_reconciliation.get("review_focus_summary_line")
+        or vps_root_review_focus.get("summary_line")
+        or ""
+    )
+    vps_root_review_focus_primary_command = str(
+        vps_root_reconciliation.get("review_focus_primary_command")
+        or vps_root_review_focus.get("primary_review_command")
+        or ""
+    )
+    vps_root_review_focus_primary_action = (
+        dict(vps_root_reconciliation.get("review_focus_primary_action"))
+        if isinstance(vps_root_reconciliation.get("review_focus_primary_action"), dict)
+        else (
+            dict(vps_root_review_focus.get("primary_review_action"))
+            if isinstance(vps_root_review_focus.get("primary_review_action"), dict)
+            else {}
+        )
+    )
+    vps_root_source_review_decision_ready = bool(vps_root_reconciliation.get("source_review_decision_ready"))
+    vps_root_review_decision_ready = bool(vps_root_reconciliation.get("review_decision_ready"))
+    vps_root_review_decision_blocked_by_companion = bool(
+        vps_root_reconciliation.get("review_decision_blocked_by_companion")
+    )
+    vps_root_review_preserve_candidate_files = _string_list(
+        vps_root_reconciliation.get("review_preserve_candidate_files")
+    )
+    vps_root_review_revisit_required_files = _string_list(
+        vps_root_reconciliation.get("review_revisit_required_files")
+    )
+    vps_root_companion_review_status = str(vps_root_reconciliation.get("companion_review_status") or "")
+    vps_root_companion_review_decision_ready = bool(
+        vps_root_reconciliation.get("companion_review_decision_ready")
+    )
+    vps_root_companion_review_decision_summary = str(
+        vps_root_reconciliation.get("companion_review_decision_summary") or ""
+    )
+    vps_root_companion_review_decision_recommended_handling = str(
+        vps_root_reconciliation.get("companion_review_decision_recommended_handling") or ""
+    )
+    vps_root_companion_review_decision_next_action = str(
+        vps_root_reconciliation.get("companion_review_decision_next_action") or ""
+    )
+    vps_root_companion_review_decision_options = (
+        list(vps_root_reconciliation.get("companion_review_decision_options"))
+        if isinstance(vps_root_reconciliation.get("companion_review_decision_options"), list)
+        else []
+    )
+    vps_root_companion_review_decision_recommended_option = str(
+        vps_root_reconciliation.get("companion_review_decision_recommended_option") or ""
+    )
+    vps_root_companion_review_decision_recommended_reason = str(
+        vps_root_reconciliation.get("companion_review_decision_recommended_reason") or ""
+    )
+    vps_root_companion_review_decision_basis = str(
+        vps_root_reconciliation.get("companion_review_decision_basis") or ""
+    )
+    vps_root_companion_review_decision_recommended_paths = _string_list(
+        vps_root_reconciliation.get("companion_review_decision_recommended_paths")
+    )
+    vps_root_companion_review_decision_recommended_commit_message = str(
+        vps_root_reconciliation.get("companion_review_decision_recommended_commit_message") or ""
+    )
+    vps_root_companion_review_decision_recommended_stage_command = str(
+        vps_root_reconciliation.get("companion_review_decision_recommended_stage_command") or ""
+    )
+    vps_root_companion_review_decision_recommended_commit_command = str(
+        vps_root_reconciliation.get("companion_review_decision_recommended_commit_command") or ""
+    )
+    vps_root_companion_review_decision_recommended_commands = _string_list(
+        vps_root_reconciliation.get("companion_review_decision_recommended_commands")
+    )
+    vps_root_companion_review_summary_line = str(
+        vps_root_reconciliation.get("companion_review_summary_line") or ""
+    )
 
-    def _gateway_card_status(status: str) -> str:
+    gateway_authority = broker_gateway.get("gateway_authority") if isinstance(broker_gateway.get("gateway_authority"), dict) else {}
+    gateway_non_authoritative_host = bool(
+        broker_gateway.get("non_authoritative_host") or gateway_ibkr.get("non_authoritative_host")
+    )
+    gateway_authority_reason = str(
+        gateway_authority.get("reason") or gateway_ibkr.get("detail") or broker_gateway.get("detail") or ""
+    ).strip()
+    gateway_effective_status = "vps_only" if gateway_non_authoritative_host else gateway_status
+    gateway_effective_detail = (
+        gateway_authority_reason
+        if gateway_non_authoritative_host and gateway_authority_reason
+        else (gateway_detail or gateway_status)
+    )
+    command_center_watchdog_status = str(command_center_watchdog.get("status") or "unknown").strip().lower()
+    command_center_watchdog_effective_status = _normalize_command_center_watchdog_status(
+        command_center_watchdog.get("issue_status")
+        or command_center_watchdog.get("primary_blocker")
+        or command_center_watchdog_status
+    ) or command_center_watchdog_status
+    command_center_watchdog_detail = str(
+        command_center_watchdog.get("display_summary")
+        or command_center_watchdog.get("display_issue_summary")
+        or command_center_watchdog.get("issue_summary")
+        or command_center_watchdog.get("summary")
+        or command_center_watchdog_status
+    ).strip()
+    eta_readiness_status = str(eta_readiness_snapshot.get("status") or "unknown").strip().lower()
+    eta_readiness_detail = str(
+        eta_readiness_snapshot.get("detail")
+        or eta_readiness_snapshot.get("summary")
+        or eta_readiness_snapshot.get("primary_action")
+        or eta_readiness_status
+    ).strip()
+    daily_stop_reset_status = str(daily_stop_reset_audit.get("status") or "unknown").strip().lower()
+    daily_stop_reset_detail = str(
+        daily_stop_reset_audit.get("detail")
+        or daily_stop_reset_audit.get("operator_next_action")
+        or daily_stop_reset_status
+    ).strip()
+    vps_ops_hardening_status = str(vps_ops_hardening.get("status") or "unknown").strip().lower()
+    vps_ops_hardening_detail = str(
+        vps_ops_hardening.get("detail")
+        or (
+            vps_ops_hardening.get("next_actions")[0]
+            if isinstance(vps_ops_hardening.get("next_actions"), list) and vps_ops_hardening.get("next_actions")
+            else ""
+        )
+        or vps_ops_hardening_status
+    ).strip()
+
+    def _gateway_card_status(status: str, *, non_authoritative_host: bool = False) -> str:
+        if non_authoritative_host:
+            return "YELLOW"
         if status == "connected":
             return "GREEN"
         if status == "down":
             return "RED"
+        return "YELLOW"
+
+    def _command_center_watchdog_card_status(status: str) -> str:
+        normalized = _normalize_command_center_watchdog_status(status)
+        if normalized == "healthy":
+            return "GREEN"
+        if normalized in {
+            "",
+            "missing_receipt",
+            "stale_receipt",
+            "repair_prompted",
+            "repair_attempted",
+            "contract_failure",
+            "unhealthy",
+            "unknown",
+        }:
+            return "YELLOW"
+        return "RED"
+
+    def _ops_audit_card_status(status: str, *, ready: bool = False) -> str:
+        normalized = str(status or "unknown").strip().lower()
+        if normalized in {"unreadable", "invalid"} or normalized.startswith("red_"):
+            return "RED"
+        if normalized in {
+            "stale_receipt",
+            "missing",
+            "missing_receipt",
+            "unknown",
+            "blocked",
+        } or normalized.startswith("yellow_"):
+            return "YELLOW"
+        if ready or normalized in {"healthy", "ok", "pass", "ready", "reset_cleared_ready"}:
+            return "GREEN"
         return "YELLOW"
 
     def _router_card_status(status: str) -> str:
@@ -13761,7 +17875,10 @@ def _local_master_status_payload() -> dict[str, object]:
     def _vps_root_card_detail(payload: dict[str, object]) -> str:
         summary = payload.get("summary") if isinstance(payload.get("summary"), dict) else {}
         counts = payload.get("counts") if isinstance(payload.get("counts"), dict) else {}
+        steps = payload.get("steps") if isinstance(payload.get("steps"), list) else []
         live_checkout = payload.get("live_checkout") if isinstance(payload.get("live_checkout"), dict) else {}
+        review_focus = payload.get("review_focus") if isinstance(payload.get("review_focus"), dict) else {}
+        live_checkout_wiring = live_checkout.get("wiring") if isinstance(live_checkout.get("wiring"), dict) else {}
         age = payload.get("plan_age_s") or payload.get("inventory_age_s")
         age_text = "unknown"
         if isinstance(age, (int, float)):
@@ -13773,18 +17890,194 @@ def _local_master_status_payload() -> dict[str, object]:
             if live_checkout_summary
             else f"live_checkout={live_checkout_status}"
         )
-        return (
+        live_checkout_wiring_detail = str(live_checkout_wiring.get("summary_line") or "").strip()
+        if live_checkout_wiring_detail and live_checkout_wiring_detail != "gitlink wiring ready":
+            live_checkout_detail = f"{live_checkout_detail}; wiring={live_checkout_wiring_detail}"
+        source_step = next(
+            (step for step in steps if isinstance(step, dict) and step.get("id") == "restore-source-governance"),
+            {},
+        )
+        source_step_evidence = (
+            source_step.get("evidence") if isinstance(source_step.get("evidence"), list) else []
+        )
+        companion_step = next(
+            (step for step in steps if isinstance(step, dict) and step.get("id") == "align-submodules"),
+            {},
+        )
+        companion_step_evidence = (
+            companion_step.get("evidence") if isinstance(companion_step.get("evidence"), list) else []
+        )
+        source_review_files = _vps_root_review_files_from_evidence(source_step_evidence)
+        source_review_detail = ""
+        if str(source_step.get("decision") or "") == "manual_review_required" and source_review_files:
+            source_review_detail = f"; source_review_files={','.join(source_review_files[:3])}"
+        companion_review_targets = _vps_root_companion_targets_from_evidence(companion_step_evidence)
+        companion_review_detail = ""
+        if str(companion_step.get("decision") or "") == "manual_review_required" and companion_review_targets:
+            companion_review_detail = f"; companion_review_targets={','.join(companion_review_targets[:3])}"
+        review_focus_summary = str(
+            payload.get("review_focus_summary_line") or review_focus.get("summary_line") or ""
+        ).strip()
+        review_focus_primary_command = str(
+            payload.get("review_focus_primary_command") or review_focus.get("primary_review_command") or ""
+        ).strip()
+        review_focus_primary_action = (
+            payload.get("review_focus_primary_action")
+            if isinstance(payload.get("review_focus_primary_action"), dict)
+            else (
+                review_focus.get("primary_review_action")
+                if isinstance(review_focus.get("primary_review_action"), dict)
+                else {}
+            )
+        )
+        source_review_decision_ready = bool(payload.get("source_review_decision_ready"))
+        review_decision_ready = bool(payload.get("review_decision_ready"))
+        review_decision_blocked_by_companion = bool(payload.get("review_decision_blocked_by_companion"))
+        preserve_candidate_files = _string_list(payload.get("review_preserve_candidate_files"))
+        revisit_required_files = _string_list(payload.get("review_revisit_required_files"))
+        companion_review_status = str(payload.get("companion_review_status") or "").strip()
+        companion_review_decision_ready = bool(payload.get("companion_review_decision_ready"))
+        companion_review_decision_summary = str(payload.get("companion_review_decision_summary") or "").strip()
+        companion_review_decision_recommended_handling = str(
+            payload.get("companion_review_decision_recommended_handling") or ""
+        ).strip()
+        companion_review_decision_next_action = str(
+            payload.get("companion_review_decision_next_action") or ""
+        ).strip()
+        companion_review_decision_recommended_commit_message = str(
+            payload.get("companion_review_decision_recommended_commit_message") or ""
+        ).strip()
+        companion_review_decision_recommended_stage_command = str(
+            payload.get("companion_review_decision_recommended_stage_command") or ""
+        ).strip()
+        companion_review_decision_recommended_commit_command = str(
+            payload.get("companion_review_decision_recommended_commit_command") or ""
+        ).strip()
+        companion_review_decision_recommended_option = str(
+            payload.get("companion_review_decision_recommended_option") or ""
+        ).strip()
+        companion_review_summary_line = str(payload.get("companion_review_summary_line") or "").strip()
+        review_focus_active_lane = str(
+            payload.get("review_focus_active_lane") or review_focus.get("active_review_lane") or ""
+        ).strip()
+        companion_review_details = (
+            review_focus.get("companion_review_details") if isinstance(review_focus.get("companion_review_details"), list) else []
+        )
+        primary_companion_detail = (
+            companion_review_details[0]
+            if companion_review_details and isinstance(companion_review_details[0], dict)
+            else {}
+        )
+        companion_change_group_summary = str(
+            primary_companion_detail.get("observed_change_group_summary") or ""
+        ).strip()
+        companion_focus_area_summary = str(
+            primary_companion_detail.get("observed_focus_area_summary") or ""
+        ).strip()
+        companion_batch_label = str(primary_companion_detail.get("observed_batch_label") or "").strip()
+        companion_batch_coherence = str(primary_companion_detail.get("observed_batch_coherence") or "").strip()
+        companion_batch_summary = str(primary_companion_detail.get("observed_batch_summary") or "").strip()
+        companion_batch_scope_paths = _string_list(primary_companion_detail.get("observed_batch_scope_paths"))
+        companion_batch_scope_shortstat = str(primary_companion_detail.get("observed_batch_scope_shortstat") or "").strip()
+        companion_sample_paths = _string_list(primary_companion_detail.get("inspection_sample_paths"))
+        companion_sample_basenames = [
+            Path(path).name for path in companion_sample_paths if str(path).strip()
+        ]
+        detail = (
             f"risk={payload.get('risk_level')}; cleanup_allowed={payload.get('cleanup_allowed')}; "
             f"artifact_stale={payload.get('artifact_stale')}; snapshot_age={age_text}; "
             f"source_deleted={summary.get('source_or_governance_deleted', 0)}; "
+            f"source_modified={summary.get('source_or_governance_modified', 0)}; "
+            "optional_dormant_deleted="
+            f"{summary.get('optional_dormant_deleted_tracked', counts.get('optional_dormant_deleted_tracked', 0))}; "
             f"submodule_drift={summary.get('submodule_drift', 0)}; "
             f"dirty_companions={summary.get('dirty_companion_repos', 0)}; "
             f"generated_untracked={summary.get('generated_untracked', 0)}; "
             f"status_rows={counts.get('status', 0)}; "
             "dormant_submodules="
-            f"{summary.get('submodule_uninitialized', counts.get('submodule_uninitialized', 0))}; "
-            f"{live_checkout_detail}"
+            f"{summary.get('submodule_uninitialized', counts.get('submodule_uninitialized', 0))}"
         )
+        if source_review_detail:
+            detail += source_review_detail
+        if companion_review_detail:
+            detail += companion_review_detail
+        if review_focus_summary:
+            detail += f"; review_focus={review_focus_summary}"
+        review_status = str(payload.get("review_status") or "").strip()
+        review_summary_line = str(payload.get("review_summary_line") or "").strip()
+        if review_status:
+            detail += f"; review_status={review_status}"
+        if review_summary_line:
+            detail += f"; review_verdict={review_summary_line}"
+        if companion_review_status:
+            detail += f"; companion_review_status={companion_review_status}"
+        if companion_review_summary_line:
+            detail += f"; companion_review_verdict={companion_review_summary_line}"
+        if companion_review_decision_ready:
+            detail += "; companion_decision_ready=true"
+        if companion_review_decision_summary:
+            detail += f"; companion_decision={companion_review_decision_summary}"
+        if companion_review_decision_recommended_handling:
+            detail += f"; companion_handling={companion_review_decision_recommended_handling}"
+        if companion_review_decision_recommended_option:
+            detail += f"; companion_preferred={companion_review_decision_recommended_option}"
+        if companion_review_decision_recommended_commit_message:
+            detail += f"; companion_commit_msg={companion_review_decision_recommended_commit_message}"
+        if companion_review_decision_recommended_stage_command:
+            detail += f"; companion_stage_cmd={companion_review_decision_recommended_stage_command}"
+        if companion_review_decision_recommended_commit_command:
+            detail += f"; companion_commit_cmd={companion_review_decision_recommended_commit_command}"
+        if companion_review_decision_next_action:
+            detail += f"; companion_next_action={companion_review_decision_next_action}"
+        if companion_change_group_summary:
+            detail += f"; companion_groups={companion_change_group_summary}"
+        if companion_focus_area_summary:
+            detail += f"; companion_areas={companion_focus_area_summary}"
+        if companion_batch_label:
+            batch_fragment = companion_batch_label
+            if companion_batch_coherence:
+                batch_fragment += f":{companion_batch_coherence}"
+            detail += f"; companion_batch={batch_fragment}"
+        if companion_batch_summary:
+            detail += f"; companion_batch_summary={companion_batch_summary}"
+        if companion_batch_scope_paths:
+            detail += f"; companion_batch_scope={','.join(companion_batch_scope_paths[:4])}"
+        if companion_batch_scope_shortstat:
+            detail += f"; companion_batch_stat={companion_batch_scope_shortstat}"
+        if companion_sample_basenames:
+            detail += f"; companion_samples={','.join(companion_sample_basenames[:3])}"
+        if review_focus_active_lane:
+            detail += f"; review_lane={review_focus_active_lane}"
+        if source_review_decision_ready:
+            detail += "; source_review_decision_ready=true"
+        if review_decision_ready:
+            detail += "; review_decision_ready=true"
+        if review_decision_blocked_by_companion:
+            detail += "; review_decision_blocked_by_companion=true"
+        if preserve_candidate_files:
+            detail += f"; preserve_candidates={','.join(preserve_candidate_files[:3])}"
+        if revisit_required_files:
+            detail += f"; revisit_required={','.join(revisit_required_files[:3])}"
+        if review_focus_primary_command:
+            detail += f"; review_cmd={review_focus_primary_command}"
+        if review_focus_primary_action:
+            review_scope = str(review_focus_primary_action.get("scope") or "").strip()
+            if review_scope:
+                detail += f"; review_scope={review_scope}"
+            review_overview = str(review_focus_primary_action.get("overview_summary") or "").strip()
+            if review_overview:
+                detail += f"; review_overview={review_overview}"
+            review_sequence_summary = str(review_focus_primary_action.get("review_sequence_summary") or "").strip()
+            if review_sequence_summary:
+                detail += f"; review_sequence={review_sequence_summary}"
+            review_drilldown_command = str(review_focus_primary_action.get("drilldown_command") or "").strip()
+            if review_drilldown_command and review_drilldown_command != review_focus_primary_command:
+                detail += f"; review_drilldown_cmd={review_drilldown_command}"
+            observed_outcome = str(review_focus_primary_action.get("observed_recommended_outcome") or "").strip()
+            if observed_outcome:
+                detail += f"; review_outcome={observed_outcome}"
+        detail += f"; {live_checkout_detail}"
+        return detail
 
     paper_live = dict(paper)
     paper_live.update(
@@ -13805,6 +18098,8 @@ def _local_master_status_payload() -> dict[str, object]:
     paper_daily_loss_advisory_active = bool(paper_live_lane_state["daily_loss_advisory_active"]) and paper_ready and (
         launch_blocked == 0
     )
+    paper_stale_receipt = bool(paper.get("stale_receipt"))
+    paper_stale_detail = str(paper.get("stale_detail") or "")
     paper_live_effective_status = (
         "held_by_bracket_audit" if paper_held_by_bracket_audit else str(paper.get("status") or "unknown")
     )
@@ -13813,7 +18108,7 @@ def _local_master_status_payload() -> dict[str, object]:
         paper_live_effective_detail = (
             f"held by Bracket Audit: {' or '.join(broker_bracket_action_labels)}"
             if broker_bracket_action_labels
-            else "held by Bracket Audit"
+            else str(broker_bracket_audit.get("effective_detail") or "held by Bracket Audit")
         )
     if paper_daily_loss_advisory_active and paper_live_effective_status in {
         "ready",
@@ -13833,6 +18128,9 @@ def _local_master_status_payload() -> dict[str, object]:
     if bool(shadow_runtime.get("active")) and paper_live_effective_status != "held_by_daily_loss_stop":
         paper_live_effective_status = "shadow_paper_active"
         paper_live_effective_detail = str(shadow_runtime.get("detail") or paper_live_effective_detail)
+    if paper_stale_receipt:
+        paper_live_effective_status = "stale_receipt"
+        paper_live_effective_detail = paper_stale_detail or paper_live_effective_detail
     paper_live.update(
         {
             "raw_status": str(paper.get("status") or "unknown"),
@@ -13849,7 +18147,9 @@ def _local_master_status_payload() -> dict[str, object]:
         }
     )
     paper_card_status = (
-        "RED"
+        "YELLOW"
+        if paper_stale_receipt
+        else "RED"
         if launch_blocked
         else "YELLOW"
         if paper_held_by_bracket_audit or paper_held_by_daily_loss_stop or paper_daily_loss_advisory_active
@@ -13870,6 +18170,71 @@ def _local_master_status_payload() -> dict[str, object]:
                 f"{int(target_exit_summary.get('missing_bracket_count') or 0)} missing bracket(s)"
             ),
         )
+    command_center_watchdog_system = {
+        "status": _command_center_watchdog_card_status(command_center_watchdog_status),
+        "detail": command_center_watchdog_detail,
+        "source": "command_center_watchdog",
+        "raw_status": command_center_watchdog_status,
+        "effective_status": command_center_watchdog_effective_status,
+        "recommended_action": str(command_center_watchdog.get("recommended_action") or ""),
+        "next_step": str(command_center_watchdog.get("next_step") or ""),
+        "next_reason": str(command_center_watchdog.get("next_reason") or ""),
+        "next_command": command_center_watchdog.get("next_command"),
+        "repair_required": bool(command_center_watchdog.get("repair_required")),
+        "requires_elevation": bool(command_center_watchdog.get("requires_elevation")),
+        "checked_at": command_center_watchdog.get("checked_at"),
+    }
+    eta_readiness_snapshot_system = {
+        "status": _ops_audit_card_status(
+            eta_readiness_status,
+            ready=bool(eta_readiness_snapshot.get("healthy")) and int(eta_readiness_snapshot.get("blocked_count") or 0) == 0,
+        ),
+        "detail": eta_readiness_detail,
+        "source": "eta_readiness_snapshot",
+        "raw_status": eta_readiness_status,
+        "effective_status": eta_readiness_status,
+        "fresh": bool(eta_readiness_snapshot.get("fresh")),
+        "healthy": bool(eta_readiness_snapshot.get("healthy")),
+        "blocked_count": int(eta_readiness_snapshot.get("blocked_count") or 0),
+        "primary_blocker": str(eta_readiness_snapshot.get("primary_blocker") or ""),
+        "primary_action": str(eta_readiness_snapshot.get("primary_action") or ""),
+        "checked_at": eta_readiness_snapshot.get("checked_at"),
+    }
+    daily_stop_reset_audit_system = {
+        "status": _ops_audit_card_status(
+            daily_stop_reset_status,
+            ready=bool(daily_stop_reset_audit.get("ready")),
+        ),
+        "detail": daily_stop_reset_detail,
+        "source": str(daily_stop_reset_audit.get("source") or "daily_stop_reset_audit"),
+        "raw_status": daily_stop_reset_status,
+        "effective_status": daily_stop_reset_status,
+        "fresh": bool(daily_stop_reset_audit.get("fresh")),
+        "ready": bool(daily_stop_reset_audit.get("ready")),
+        "operator_next_action": str(daily_stop_reset_audit.get("operator_next_action") or ""),
+        "checked_at": daily_stop_reset_audit.get("generated_at"),
+    }
+    vps_ops_hardening_system = {
+        "status": _ops_audit_card_status(
+            vps_ops_hardening_status,
+            ready=bool(vps_ops_hardening.get("ready")),
+        ),
+        "detail": vps_ops_hardening_detail,
+        "source": "vps_ops_hardening",
+        "raw_status": vps_ops_hardening_status,
+        "effective_status": vps_ops_hardening_status,
+        "fresh": bool(vps_ops_hardening.get("fresh")),
+        "ready": bool(vps_ops_hardening.get("ready")),
+        "admin_ai_status": str(
+            (
+                vps_ops_hardening.get("summary")
+                if isinstance(vps_ops_hardening.get("summary"), dict)
+                else {}
+            ).get("admin_ai_status")
+            or ""
+        ),
+        "checked_at": vps_ops_hardening.get("generated_at"),
+    }
     return {
         "status": "live",
         "mode": "autonomous",
@@ -13899,6 +18264,96 @@ def _local_master_status_payload() -> dict[str, object]:
         # rather than the older summary key.
         "target_exit": target_exit_summary,
         "broker_bracket_audit": broker_bracket_audit,
+        "diamond_retune_status": diamond_retune_status,
+        "retune_focus_active_experiment": retune_focus_active_experiment,
+        "retune_focus_active_experiment_summary_line": retune_focus_active_experiment_summary_line,
+        "retune_focus_active_experiment_outcome_line": retune_focus_active_experiment_outcome_line,
+        "command_center_watchdog": command_center_watchdog,
+        "surface_watch": command_center_watchdog,
+        "eta_readiness_snapshot": eta_readiness_snapshot,
+        "daily_stop_reset_audit": daily_stop_reset_audit,
+        "vps_ops_hardening": vps_ops_hardening,
+        "hardening": vps_ops_hardening,
+        "public_fallback_reason": str(eta_readiness_snapshot.get("public_fallback_reason") or ""),
+        "public_live_broker_ready": bool(eta_readiness_snapshot.get("public_live_broker_ready")),
+        "public_live_broker_snapshot_state": str(
+            eta_readiness_snapshot.get("public_live_broker_snapshot_state") or ""
+        ),
+        "public_live_broker_snapshot_source": str(
+            eta_readiness_snapshot.get("public_live_broker_snapshot_source") or ""
+        ),
+        "public_live_broker_source": str(
+            eta_readiness_snapshot.get("public_live_broker_source") or ""
+        ),
+        "public_live_broker_degraded_display": str(
+            eta_readiness_snapshot.get("public_live_broker_degraded_display") or ""
+        ),
+        "dashboard_api_runtime_current_live_broker_state_checked_utc": str(
+            eta_readiness_snapshot.get(
+                "dashboard_api_runtime_current_live_broker_state_checked_utc"
+            )
+            or ""
+        ),
+        "dashboard_api_runtime_current_live_broker_open_order_count": int(
+            eta_readiness_snapshot.get(
+                "dashboard_api_runtime_current_live_broker_open_order_count"
+            )
+            or 0
+        ),
+        "dashboard_api_runtime_public_live_broker_degraded_display": str(
+            eta_readiness_snapshot.get(
+                "dashboard_api_runtime_public_live_broker_degraded_display"
+            )
+            or ""
+        ),
+        "dashboard_api_runtime_drift_display": str(
+            eta_readiness_snapshot.get("dashboard_api_runtime_drift_display") or ""
+        ),
+        "dashboard_api_runtime_refresh_command": str(
+            eta_readiness_snapshot.get("dashboard_api_runtime_refresh_command") or ""
+        ),
+        "dashboard_api_runtime_refresh_requires_elevation": bool(
+            eta_readiness_snapshot.get("dashboard_api_runtime_refresh_requires_elevation")
+        ),
+        "public_live_broker_open_order_count": int(
+            eta_readiness_snapshot.get("public_live_broker_open_order_count") or 0
+        ),
+        "current_live_broker_state_checked_utc": str(
+            eta_readiness_snapshot.get("current_live_broker_state_checked_utc") or ""
+        ),
+        "current_live_broker_open_order_count": int(
+            eta_readiness_snapshot.get("current_live_broker_open_order_count") or 0
+        ),
+        "current_live_broker_open_order_drift_display": str(
+            eta_readiness_snapshot.get("current_live_broker_open_order_drift_display") or ""
+        ),
+        "public_fallback_broker_open_order_count": int(
+            eta_readiness_snapshot.get("public_fallback_broker_open_order_count") or 0
+        ),
+        "public_fallback_broker_open_order_drift_display": str(
+            eta_readiness_snapshot.get("public_fallback_broker_open_order_drift_display") or ""
+        ),
+        "public_fallback_stale_flat_open_order_count": int(
+            eta_readiness_snapshot.get("public_fallback_stale_flat_open_order_count") or 0
+        ),
+        "public_fallback_stale_flat_open_order_relation_display": str(
+            eta_readiness_snapshot.get("public_fallback_stale_flat_open_order_relation_display") or ""
+        ),
+        "public_live_retune_focus_active_experiment_outcome_line": str(
+            eta_readiness_snapshot.get("public_live_retune_focus_active_experiment_outcome_line") or ""
+        ),
+        "local_retune_focus_active_experiment_outcome_line": str(
+            eta_readiness_snapshot.get("local_retune_focus_active_experiment_outcome_line") or ""
+        ),
+        "retune_focus_active_experiment_drift_display": str(
+            eta_readiness_snapshot.get("retune_focus_active_experiment_drift_display") or ""
+        ),
+        "current_local_retune_generated_at_utc": str(
+            eta_readiness_snapshot.get("current_local_retune_generated_at_utc") or ""
+        ),
+        "local_retune_sync_drift_display": str(
+            eta_readiness_snapshot.get("local_retune_sync_drift_display") or ""
+        ),
         "vps_root_reconciliation": vps_root_reconciliation,
         "systems": {
             "dashboard": {
@@ -13908,12 +18363,22 @@ def _local_master_status_payload() -> dict[str, object]:
                 "checked_at": generated_at,
             },
             "ibkr": {
-                "status": _gateway_card_status(gateway_status),
-                "detail": gateway_detail or gateway_status,
+                "status": _gateway_card_status(gateway_status, non_authoritative_host=gateway_non_authoritative_host),
+                "detail": gateway_effective_detail,
                 "source": "broker_gateway",
                 "raw_status": gateway_status,
+                "effective_status": gateway_effective_status,
+                "effective_detail": gateway_effective_detail,
                 "checked_at": gateway_ibkr.get("checked_at") or broker_gateway.get("checked_at"),
+                "gateway_authority": gateway_authority,
+                "non_authoritative_host": gateway_non_authoritative_host,
             },
+            "command_center_watchdog": command_center_watchdog_system,
+            "surface_watch": dict(command_center_watchdog_system),
+            "eta_readiness_snapshot": eta_readiness_snapshot_system,
+            "daily_stop_reset_audit": daily_stop_reset_audit_system,
+            "vps_ops_hardening": vps_ops_hardening_system,
+            "hardening": dict(vps_ops_hardening_system),
             "broker": {
                 "status": broker_card_status,
                 "detail": broker_detail,
@@ -13940,15 +18405,40 @@ def _local_master_status_payload() -> dict[str, object]:
             },
             "broker_bracket_audit": {
                 "status": broker_bracket_audit_card_status,
-                "detail": str(broker_bracket_audit.get("next_action") or broker_bracket_audit_status),
+                "detail": str(
+                    broker_bracket_audit.get("effective_detail")
+                    or broker_bracket_audit.get("next_action")
+                    or broker_bracket_audit_status
+                ),
                 "source": "broker_bracket_audit",
-                "raw_status": broker_bracket_audit_status,
+                "raw_status": str(broker_bracket_audit.get("summary") or "AUDIT_UNAVAILABLE"),
+                "effective_status": broker_bracket_audit_status,
                 "operator_action_required": bool(
                     broker_bracket_audit.get("operator_action_required"),
                 ),
                 "prop_dry_run_blocked": broker_bracket_prop_dry_run_blocked,
+                "raw_prop_dry_run_blocked": raw_broker_bracket_prop_dry_run_blocked,
                 "ready_for_prop_dry_run": bool(
+                    broker_bracket_audit.get("effective_ready_for_prop_dry_run"),
+                )
+                if broker_bracket_audit.get("effective_ready_for_prop_dry_run") is not None
+                else bool(
                     broker_bracket_audit.get("ready_for_prop_dry_run"),
+                ),
+                "raw_ready_for_prop_dry_run": bool(
+                    broker_bracket_audit.get("ready_for_prop_dry_run"),
+                ),
+                "authoritative_advisory_active": bool(
+                    broker_bracket_audit.get("authoritative_advisory_active"),
+                ),
+                "authoritative_public_fallback_summary": str(
+                    broker_bracket_audit.get("authoritative_public_fallback_summary") or ""
+                ),
+                "authoritative_public_fallback_primary_action": str(
+                    broker_bracket_audit.get("authoritative_public_fallback_primary_action") or ""
+                ),
+                "authoritative_public_fallback_stale": bool(
+                    broker_bracket_audit.get("authoritative_public_fallback_stale"),
                 ),
                 "missing_bracket_count": int(broker_bracket_position_summary.get("missing_bracket_count") or 0),
                 "unprotected_symbols": broker_bracket_unprotected_symbols,
@@ -13971,11 +18461,14 @@ def _local_master_status_payload() -> dict[str, object]:
             },
             "paper_live": {
                 "status": paper_card_status,
-                "detail": paper_live_effective_status,
+                "detail": paper_stale_detail if paper_stale_receipt and paper_stale_detail else paper_live_effective_status,
                 "source": "paper_live_transition",
                 "critical_ready": paper_ready,
+                "raw_status": str(paper.get("status") or "unknown"),
                 "effective_status": paper_live_effective_status,
                 "effective_detail": paper_live_effective_detail,
+                "stale_receipt": paper_stale_receipt,
+                "stale_detail": paper_stale_detail,
                 "held_by_bracket_audit": paper_held_by_bracket_audit,
                 "held_by_daily_loss_stop": paper_held_by_daily_loss_stop,
                 "daily_loss_killswitch": daily_loss_killswitch,
@@ -13987,6 +18480,54 @@ def _local_master_status_payload() -> dict[str, object]:
                 "detail": _vps_root_card_detail(vps_root_reconciliation),
                 "source": "vps_root_reconciliation",
                 "checked_at": generated_at,
+                "recommended_action": str(vps_root_reconciliation.get("recommended_action") or ""),
+                "source_review_decision_ready": vps_root_source_review_decision_ready,
+                "review_decision_ready": vps_root_review_decision_ready,
+                "review_decision_blocked_by_companion": vps_root_review_decision_blocked_by_companion,
+                "review_preserve_candidate_files": vps_root_review_preserve_candidate_files,
+                "review_revisit_required_files": vps_root_review_revisit_required_files,
+                "companion_review_status": vps_root_companion_review_status,
+                "companion_review_decision_ready": vps_root_companion_review_decision_ready,
+                "companion_review_decision_summary": vps_root_companion_review_decision_summary,
+                "companion_review_decision_recommended_handling": vps_root_companion_review_decision_recommended_handling,
+                "companion_review_decision_next_action": vps_root_companion_review_decision_next_action,
+                "companion_review_decision_options": vps_root_companion_review_decision_options,
+                "companion_review_decision_recommended_option": (
+                    vps_root_companion_review_decision_recommended_option
+                ),
+                "companion_review_decision_recommended_reason": (
+                    vps_root_companion_review_decision_recommended_reason
+                ),
+                "companion_review_decision_basis": vps_root_companion_review_decision_basis,
+                "companion_review_decision_recommended_paths": (
+                    vps_root_companion_review_decision_recommended_paths
+                ),
+                "companion_review_decision_recommended_commit_message": (
+                    vps_root_companion_review_decision_recommended_commit_message
+                ),
+                "companion_review_decision_recommended_stage_command": (
+                    vps_root_companion_review_decision_recommended_stage_command
+                ),
+                "companion_review_decision_recommended_commit_command": (
+                    vps_root_companion_review_decision_recommended_commit_command
+                ),
+                "companion_review_decision_recommended_commands": (
+                    vps_root_companion_review_decision_recommended_commands
+                ),
+                "companion_review_summary_line": vps_root_companion_review_summary_line,
+                "review_focus_summary_line": vps_root_review_focus_summary_line,
+                "review_focus_active_lane": str(
+                    vps_root_reconciliation.get("review_focus_active_lane")
+                    or vps_root_review_focus.get("active_review_lane")
+                    or ""
+                ),
+                "review_focus_primary_command": vps_root_review_focus_primary_command,
+                "review_focus_primary_action": vps_root_review_focus_primary_action,
+                "source_review_files": vps_root_source_review_files,
+                "source_review_items": vps_root_source_review_items,
+                "companion_review_targets": vps_root_companion_review_targets,
+                "companion_review_items": vps_root_companion_review_items,
+                "review_focus": vps_root_review_focus,
             },
         },
         "daily": {
