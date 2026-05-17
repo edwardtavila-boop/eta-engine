@@ -204,6 +204,193 @@ def test_build_direct_ibkr_entry_plan_rejects_invalid_geometry() -> None:
         raise AssertionError("expected invalid geometry to raise ValueError")
 
 
+def test_direct_ibkr_result_reason_prefers_reason_then_dedup_note() -> None:
+    explicit = SimpleNamespace(raw={"reason": "paper_blocked"})
+    deduped = SimpleNamespace(raw={"deduped": True, "note": "already working"})
+    unknown = SimpleNamespace(raw={})
+
+    assert supervisor_entry_helpers.direct_ibkr_result_reason(explicit) == "paper_blocked"
+    assert supervisor_entry_helpers.direct_ibkr_result_reason(deduped) == "deduped: already working"
+    assert supervisor_entry_helpers.direct_ibkr_result_reason(unknown) == "n/a"
+
+
+def test_finalize_direct_ibkr_entry_result_marks_filled_position_and_records_fill() -> None:
+    record_signal_calls: list[tuple[object, object, object]] = []
+    record_fill_calls: list[dict[str, object]] = []
+    rollback_calls: list[str] = []
+    clear_calls: list[str] = []
+    bot = SimpleNamespace(
+        bot_id="mnq_entry",
+        open_position={"qty": 3.0},
+        consecutive_broker_rejects=4,
+    )
+    rec = SimpleNamespace(
+        signal_id="sig-entry",
+        side="BUY",
+        note="mode=paper_live",
+    )
+    result = SimpleNamespace(
+        status=SimpleNamespace(value="FILLED"),
+        filled_qty=2.0,
+        avg_price=100.5,
+        fees=1.25,
+        order_id="ibkr-1",
+        raw={"ibkr_order_id": 1234},
+    )
+
+    outcome = supervisor_entry_helpers.finalize_direct_ibkr_entry_result(
+        bot=bot,
+        rec=rec,
+        result=result,
+        logger=logging.getLogger("test_supervisor_entry_helpers"),
+        ref_price=100.25,
+        stop_price=95.0,
+        target_price=110.0,
+        bracket_src="atr",
+        record_signal_fn=lambda *args: record_signal_calls.append(args),
+        record_fill_fn=lambda **kwargs: record_fill_calls.append(kwargs),
+        rollback_recorded_entry_fn=rollback_calls.append,
+        clear_recorded_entry_without_reject_fn=clear_calls.append,
+    )
+
+    assert outcome.action == "filled"
+    assert outcome.reason == "n/a"
+    assert outcome.filled_qty == 2.0
+    assert bot.open_position["qty"] == 2.0
+    assert bot.open_position["broker_bracket"] is True
+    assert bot.open_position["bracket_stop"] == 95.0
+    assert bot.open_position["bracket_target"] == 110.0
+    assert bot.open_position["bracket_src"] == "atr"
+    assert bot.consecutive_broker_rejects == 0
+    assert len(record_signal_calls) == 1
+    assert record_fill_calls[0]["broker_exec_id"] == "1234"
+    assert record_fill_calls[0]["actual_fill_price"] == 100.5
+    assert rollback_calls == []
+    assert clear_calls == []
+
+
+def test_finalize_direct_ibkr_entry_result_clears_pending_without_reject() -> None:
+    clear_calls: list[str] = []
+    bot = SimpleNamespace(
+        bot_id="mnq_entry",
+        open_position={"qty": 1.0},
+        consecutive_broker_rejects=2,
+    )
+    rec = SimpleNamespace(
+        signal_id="sig-entry",
+        side="BUY",
+        note="mode=paper_live",
+    )
+    result = SimpleNamespace(
+        status=SimpleNamespace(value="OPEN"),
+        filled_qty=0.0,
+        raw={"reason": "working"},
+    )
+
+    outcome = supervisor_entry_helpers.finalize_direct_ibkr_entry_result(
+        bot=bot,
+        rec=rec,
+        result=result,
+        logger=logging.getLogger("test_supervisor_entry_helpers"),
+        ref_price=100.25,
+        stop_price=95.0,
+        target_price=110.0,
+        bracket_src="atr",
+        record_signal_fn=lambda *_args: None,
+        record_fill_fn=lambda **_kwargs: None,
+        rollback_recorded_entry_fn=lambda _reason: None,
+        clear_recorded_entry_without_reject_fn=clear_calls.append,
+    )
+
+    assert outcome.action == "pending"
+    assert outcome.reason == "working"
+    assert rec.note.endswith("direct_ibkr_pending_order")
+    assert clear_calls == ["direct_ibkr_open_without_fill"]
+
+
+def test_finalize_direct_ibkr_entry_result_fails_open_on_l2_callback_exceptions() -> None:
+    warnings: list[tuple[object, ...]] = []
+    bot = SimpleNamespace(
+        bot_id="mnq_entry",
+        open_position={"qty": 1.0},
+        consecutive_broker_rejects=2,
+    )
+    rec = SimpleNamespace(
+        signal_id="sig-entry",
+        side="BUY",
+        note="mode=paper_live",
+    )
+    result = SimpleNamespace(
+        status=SimpleNamespace(value="FILLED"),
+        filled_qty=1.0,
+        avg_price=100.5,
+        fees=1.25,
+        order_id="ibkr-1",
+        raw={"ibkr_order_id": 1234},
+    )
+    logger = SimpleNamespace(warning=lambda *args: warnings.append(args))
+
+    outcome = supervisor_entry_helpers.finalize_direct_ibkr_entry_result(
+        bot=bot,
+        rec=rec,
+        result=result,
+        logger=logger,  # type: ignore[arg-type]
+        ref_price=100.25,
+        stop_price=95.0,
+        target_price=110.0,
+        bracket_src="atr",
+        record_signal_fn=lambda *_args: (_ for _ in ()).throw(RuntimeError("signal_down")),
+        record_fill_fn=lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("fill_down")),
+        rollback_recorded_entry_fn=lambda _reason: (_ for _ in ()).throw(AssertionError("unexpected rollback")),
+        clear_recorded_entry_without_reject_fn=lambda _reason: (_ for _ in ()).throw(AssertionError("unexpected clear")),
+    )
+
+    assert outcome.action == "filled"
+    assert bot.open_position["broker_bracket"] is True
+    assert bot.consecutive_broker_rejects == 0
+    assert len(warnings) == 2
+    assert warnings[0][0] == "l2 record_signal failed for %s: %s"
+    assert warnings[1][0] == "l2 record_fill failed for %s: %s"
+
+
+def test_finalize_direct_ibkr_entry_result_rolls_back_rejected_status() -> None:
+    rollback_calls: list[str] = []
+    bot = SimpleNamespace(
+        bot_id="mnq_entry",
+        open_position={"qty": 1.0},
+        consecutive_broker_rejects=0,
+    )
+    rec = SimpleNamespace(
+        signal_id="sig-entry",
+        side="BUY",
+        note="mode=paper_live",
+    )
+    result = SimpleNamespace(
+        status=SimpleNamespace(value="REJECTED"),
+        filled_qty=0.0,
+        raw={"reason": "ibkr_reject"},
+    )
+
+    outcome = supervisor_entry_helpers.finalize_direct_ibkr_entry_result(
+        bot=bot,
+        rec=rec,
+        result=result,
+        logger=logging.getLogger("test_supervisor_entry_helpers"),
+        ref_price=100.25,
+        stop_price=95.0,
+        target_price=110.0,
+        bracket_src="atr",
+        record_signal_fn=lambda *_args: None,
+        record_fill_fn=lambda **_kwargs: None,
+        rollback_recorded_entry_fn=rollback_calls.append,
+        clear_recorded_entry_without_reject_fn=lambda _reason: (_ for _ in ()).throw(AssertionError("unexpected clear")),
+    )
+
+    assert outcome.action == "rejected"
+    assert outcome.reason == "ibkr_reject"
+    assert rollback_calls == ["broker_result=REJECTED; filled_qty=0.0; reason=ibkr_reject"]
+
+
 def test_rollback_recorded_entry_clears_state_and_counts_reject() -> None:
     cleared: list[object] = []
     bot = SimpleNamespace(

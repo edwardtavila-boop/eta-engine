@@ -17,6 +17,13 @@ class DirectIbkrEntryPlan:
     bracket_src: str
 
 
+@dataclass(frozen=True)
+class DirectIbkrEntryOutcome:
+    action: str
+    reason: str
+    filled_qty: float
+
+
 def build_entry_fill_record_payload(
     *,
     bot_id: str,
@@ -229,6 +236,90 @@ def build_direct_ibkr_entry_plan(
 def apply_entry_accounting(bot: object, *, fill_ts: str) -> None:
     bot.n_entries += 1
     bot.last_signal_at = fill_ts
+
+
+def direct_ibkr_result_reason(result: object) -> str:
+    raw = getattr(result, "raw", {}) or {}
+    if not isinstance(raw, dict):
+        raw = {}
+    return (
+        raw.get("reason")
+        or ("deduped: " + str(raw.get("note", "")) if raw.get("deduped") else "")
+        or "n/a"
+    )
+
+
+def finalize_direct_ibkr_entry_result(
+    *,
+    bot: object,
+    rec: object,
+    result: object,
+    logger: logging.Logger,
+    ref_price: float,
+    stop_price: float,
+    target_price: float,
+    bracket_src: str,
+    record_signal_fn: Callable[[object, object, object], None],
+    record_fill_fn: Callable[..., None],
+    rollback_recorded_entry_fn: Callable[[str], None],
+    clear_recorded_entry_without_reject_fn: Callable[[str], None],
+) -> DirectIbkrEntryOutcome:
+    reason = direct_ibkr_result_reason(result)
+    filled_qty = float(getattr(result, "filled_qty", 0) or 0)
+    status_value = str(getattr(getattr(result, "status", None), "value", "") or "")
+    filled_statuses = {"PARTIAL", "FILLED"}
+
+    if status_value in filled_statuses and filled_qty > 0 and bot.open_position is not None:
+        bot.open_position["qty"] = min(abs(float(bot.open_position.get("qty", 0) or 0)), filled_qty)
+        bot.open_position["broker_bracket"] = True
+        bot.open_position["bracket_stop"] = stop_price
+        bot.open_position["bracket_target"] = target_price
+        bot.open_position["bracket_src"] = bracket_src
+        bot.consecutive_broker_rejects = 0
+        try:
+            record_signal_fn(bot, rec, result)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("l2 record_signal failed for %s: %s", bot.bot_id, exc)
+        if status_value == "FILLED":
+            try:
+                record_fill_fn(
+                    signal_id=rec.signal_id,
+                    broker_exec_id=str(
+                        getattr(result, "raw", {}).get("ibkr_order_id", "") or getattr(result, "order_id", ""),
+                    ),
+                    exit_reason="ENTRY",
+                    side="LONG" if rec.side.upper() == "BUY" else "SHORT",
+                    actual_fill_price=float(getattr(result, "avg_price", 0) or ref_price),
+                    qty_filled=int(abs(float(getattr(result, "filled_qty", 0) or 0))),
+                    commission_usd=float(getattr(result, "fees", 0) or 0),
+                    intended_price=float(ref_price),
+                    tick_size=0.25,
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("l2 record_fill failed for %s: %s", bot.bot_id, exc)
+        return DirectIbkrEntryOutcome(
+            action="filled",
+            reason=reason,
+            filled_qty=filled_qty,
+        )
+
+    if status_value == "OPEN" and filled_qty <= 0:
+        rec.note = f"{rec.note};direct_ibkr_pending_order"
+        clear_recorded_entry_without_reject_fn("direct_ibkr_open_without_fill")
+        return DirectIbkrEntryOutcome(
+            action="pending",
+            reason=reason,
+            filled_qty=filled_qty,
+        )
+
+    rollback_recorded_entry_fn(
+        f"broker_result={status_value}; filled_qty={filled_qty}; reason={reason}",
+    )
+    return DirectIbkrEntryOutcome(
+        action="rejected",
+        reason=reason,
+        filled_qty=filled_qty,
+    )
 
 
 def rollback_recorded_entry(

@@ -6252,8 +6252,12 @@ class TestDashboardAPI:
         payload = r.json()
         assert payload["dashboard_proxy_watchdog"]["status"] == "ok"
         assert payload["systems"]["dashboard_proxy_watchdog"]["status"] == "GREEN"
+        assert payload["systems"]["dashboard_proxy_watchdog"]["heartbeat_path"].endswith(
+            "dashboard_proxy_watchdog_heartbeat.json"
+        )
         assert payload["systems"]["dashboard_proxy_watchdog"]["raw_status"] == "ok"
         assert payload["systems"]["dashboard_proxy_watchdog"]["effective_status"] == "ok"
+        assert payload["systems"]["dashboard_proxy_watchdog"]["summary"] == "noop: ok"
         assert payload["systems"]["dashboard_proxy_watchdog"]["detail"] == "noop: ok"
         assert payload["systems"]["dashboard_proxy_watchdog"]["task_name"] == "ETA-Proxy-8421"
         assert payload["systems"]["dashboard_proxy_watchdog"]["elapsed_ms"] == 15

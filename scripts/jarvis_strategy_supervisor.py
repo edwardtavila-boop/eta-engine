@@ -1330,11 +1330,7 @@ class ExecutionRouter:
                     )
                     return None
                 _result = _run_on_live_ibkr_loop(_venue.place_order(_req), timeout=30.0)
-                _reason = (
-                    _result.raw.get("reason")
-                    or ("deduped: " + str(_result.raw.get("note", "")) if _result.raw.get("deduped") else "")
-                    or "n/a"
-                )
+                _reason = supervisor_entry_helpers.direct_ibkr_result_reason(_result)
                 logger.info(
                     "DIRECT ORDER %s %s %.6f → %s (ibkr_id=%s, reason=%s)",
                     rec.symbol,
@@ -1344,69 +1340,35 @@ class ExecutionRouter:
                     _result.raw.get("ibkr_order_id", "?"),
                     _reason,
                 )
-                # Mark the open position as "broker-bracketed" so
-                # _maybe_exit defers to the broker's stop/target instead
-                # of double-exiting via supervisor-side logic. The flag
-                # is read in _maybe_exit; if True, only an emergency
-                # stop (drawdown beyond 2x the bracket stop) overrides.
-                # Only broker-confirmed fills may become supervisor-local
-                # exposure. ``OPEN`` with filled_qty=0 means the order is
-                # working at the broker, not that the account holds a
-                # position. Keeping it in bot.open_position creates phantom
-                # exposure and can resurrect stale brackets after an operator
-                # cancel/flatten.
-                _filled_qty = float(getattr(_result, "filled_qty", 0) or 0)
-                _filled_statuses = {"PARTIAL", "FILLED"}
-                if _result.status.value in _filled_statuses and _filled_qty > 0 and bot.open_position is not None:
-                    bot.open_position["qty"] = min(abs(float(bot.open_position.get("qty", 0) or 0)), _filled_qty)
-                    bot.open_position["broker_bracket"] = True
-                    bot.open_position["bracket_stop"] = round(_round_to_tick(_stop, rec.symbol), 4)
-                    bot.open_position["bracket_target"] = round(_round_to_tick(_target, rec.symbol), 4)
-                    bot.open_position["bracket_src"] = _bracket_src
-                    # Successful broker acknowledgement — reset the
-                    # consecutive-reject backpressure counter.
-                    bot.consecutive_broker_rejects = 0
-                    # L2 supercharge: persist signal for fill audit +
-                    # calibration. Always fail-OPEN on hook exception.
-                    l2hooks.record_signal(bot, rec, _result)
-                    # L2 supercharge: capture the ENTRY-leg fill from
-                    # the synchronous result so the slip audit + Brier
-                    # calibration pipelines see real numbers instead of
-                    # waiting on a separate execution callback we don't
-                    # have here.  Bracket EXITS (TARGET/STOP) still
-                    # require a separate IBKR fill handler — see
-                    # docs/L2_SUPERVISOR_WIRING.md step 4.
-                    if _result.status.value == "FILLED" and _filled_qty > 0:
-                        l2hooks.record_fill(
-                            signal_id=rec.signal_id,
-                            broker_exec_id=str(
-                                _result.raw.get("ibkr_order_id", "") or _result.order_id,
-                            ),
-                            exit_reason="ENTRY",
-                            side="LONG" if rec.side.upper() == "BUY" else "SHORT",
-                            actual_fill_price=float(_result.avg_price or _ref),
-                            qty_filled=int(abs(float(_result.filled_qty or 0))),
-                            commission_usd=float(getattr(_result, "fees", 0) or 0),
-                            intended_price=float(_ref),
-                            tick_size=0.25,  # MNQ default; per-symbol lookup TBD
+                _outcome = supervisor_entry_helpers.finalize_direct_ibkr_entry_result(
+                    bot=bot,
+                    rec=rec,
+                    result=_result,
+                    logger=logger,
+                    ref_price=_ref,
+                    stop_price=_stop,
+                    target_price=_target,
+                    bracket_src=_bracket_src,
+                    record_signal_fn=l2hooks.record_signal,
+                    record_fill_fn=l2hooks.record_fill,
+                    rollback_recorded_entry_fn=lambda reason: supervisor_entry_helpers.rollback_recorded_entry(
+                        bot=bot,
+                        rec=rec,
+                        reason=reason,
+                        logger=logger,
+                        clear_persisted_open_position_fn=self._clear_persisted_open_position,
+                    ),
+                    clear_recorded_entry_without_reject_fn=(
+                        lambda reason: supervisor_entry_helpers.clear_recorded_entry_without_reject(
+                            bot=bot,
+                            rec=rec,
+                            reason=reason,
+                            logger=logger,
+                            clear_persisted_open_position_fn=self._clear_persisted_open_position,
                         )
-                elif _result.status.value == "OPEN" and _filled_qty <= 0:
-                    rec.note = f"{rec.note};direct_ibkr_pending_order"
-                    supervisor_entry_helpers.clear_recorded_entry_without_reject(
-                        bot=bot,
-                        rec=rec,
-                        reason="direct_ibkr_open_without_fill",
-                        logger=logger,
-                        clear_persisted_open_position_fn=self._clear_persisted_open_position,
-                    )
-                else:
-                    supervisor_entry_helpers.rollback_recorded_entry(
-                        bot=bot,
-                        rec=rec,
-                        reason=f"broker_result={_result.status.value}; filled_qty={_filled_qty}; reason={_reason}",
-                        logger=logger,
-                        clear_persisted_open_position_fn=self._clear_persisted_open_position,
-                    )
+                    ),
+                )
+                if _outcome.action == "rejected":
                     return None
             except Exception as _exc:
                 logger.warning("DIRECT ORDER FAILED: %s %s: %s", rec.symbol, rec.side, _exc)

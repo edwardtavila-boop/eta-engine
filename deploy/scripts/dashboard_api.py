@@ -19750,7 +19750,9 @@ def _local_master_status_payload() -> dict[str, object]:
     dashboard_proxy_watchdog_system = {
         "status": _dashboard_proxy_watchdog_card_status(str(dashboard_proxy_watchdog.get("status") or "")),
         "detail": str(dashboard_proxy_watchdog.get("detail") or dashboard_proxy_watchdog.get("summary") or ""),
+        "summary": str(dashboard_proxy_watchdog.get("summary") or ""),
         "source": "dashboard_proxy_watchdog",
+        "heartbeat_path": dashboard_proxy_watchdog.get("heartbeat_path"),
         "raw_status": str(dashboard_proxy_watchdog.get("status") or ""),
         "effective_status": str(dashboard_proxy_watchdog.get("status") or ""),
         "fresh": bool(dashboard_proxy_watchdog.get("fresh")),
