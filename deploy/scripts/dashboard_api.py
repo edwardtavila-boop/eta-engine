@@ -19602,7 +19602,9 @@ def _local_master_status_payload() -> dict[str, object]:
         "healthy": command_center_watchdog.get("healthy"),
         "issue_status": str(command_center_watchdog.get("issue_status") or ""),
         "issue_summary": str(command_center_watchdog.get("issue_summary") or ""),
+        "display_issue_summary": str(command_center_watchdog.get("display_issue_summary") or ""),
         "display_summary": str(command_center_watchdog.get("display_summary") or ""),
+        "summary": str(command_center_watchdog.get("summary") or ""),
         "summary_line": str(command_center_watchdog.get("summary_line") or ""),
         "failure_detail": str(command_center_watchdog.get("failure_detail") or ""),
         "failure_summary": (
@@ -19617,6 +19619,10 @@ def _local_master_status_payload() -> dict[str, object]:
         "next_step": str(command_center_watchdog.get("next_step") or ""),
         "next_reason": str(command_center_watchdog.get("next_reason") or ""),
         "next_command": command_center_watchdog.get("next_command"),
+        "operator_next_step": str(command_center_watchdog.get("operator_next_step") or ""),
+        "operator_next_reason": str(command_center_watchdog.get("operator_next_reason") or ""),
+        "operator_next_command": command_center_watchdog.get("operator_next_command"),
+        "operator_next_requires_elevation": bool(command_center_watchdog.get("operator_next_requires_elevation")),
         "instruction": str(command_center_watchdog.get("instruction") or ""),
         "action_count": int(command_center_watchdog.get("action_count") or 0),
         "action_plan": [

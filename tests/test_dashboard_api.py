@@ -6143,7 +6143,13 @@ class TestDashboardAPI:
         assert payload["systems"]["command_center_watchdog"]["issue_summary"] == (
             "Command Center watchdog is healthy."
         )
+        assert payload["systems"]["command_center_watchdog"]["display_issue_summary"] == (
+            "Command Center watchdog is healthy."
+        )
         assert payload["systems"]["command_center_watchdog"]["display_summary"] == (
+            "Command Center watchdog is healthy."
+        )
+        assert payload["systems"]["command_center_watchdog"]["summary"] == (
             "Command Center watchdog is healthy."
         )
         assert payload["systems"]["command_center_watchdog"]["summary_line"] == (
@@ -6155,6 +6161,10 @@ class TestDashboardAPI:
         assert payload["systems"]["command_center_watchdog"]["failure_class"] == "healthy"
         assert payload["systems"]["command_center_watchdog"]["operator_contract_state"] == "healthy"
         assert payload["systems"]["command_center_watchdog"]["primary_blocker"] == "healthy"
+        assert payload["systems"]["command_center_watchdog"]["operator_next_step"] == "none"
+        assert payload["systems"]["command_center_watchdog"]["operator_next_reason"] == "healthy"
+        assert payload["systems"]["command_center_watchdog"]["operator_next_command"] is None
+        assert payload["systems"]["command_center_watchdog"]["operator_next_requires_elevation"] is False
         assert payload["systems"]["command_center_watchdog"]["instruction"] == "No operator command is required."
         assert payload["systems"]["command_center_watchdog"]["action_count"] == 0
         assert payload["systems"]["command_center_watchdog"]["action_plan"] == []

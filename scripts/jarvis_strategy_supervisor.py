@@ -101,7 +101,10 @@ from eta_engine.core.execution_lanes import (  # noqa: E402
     normalize_execution_lane,
 )
 from eta_engine.scripts import l2_supervisor_hooks as l2hooks  # noqa: E402
-from eta_engine.scripts import workspace_roots  # noqa: E402
+from eta_engine.scripts import (  # noqa: E402
+    supervisor_entry_helpers,
+    workspace_roots,
+)
 from eta_engine.scripts.l2_supervisor_state_persister import (  # noqa: E402
     persist_open_positions,
 )
@@ -1156,15 +1159,16 @@ class ExecutionRouter:
             qty = _hard_cap
 
         rec = FillRecord(
-            bot_id=bot.bot_id,
-            signal_id=signal_id,
-            side=side,
-            symbol=bot.symbol,
-            qty=qty,
-            fill_price=round(fill_price, 4),
-            fill_ts=datetime.now(UTC).isoformat(),
-            paper=True,
-            note=f"mode={self.cfg.mode}",
+            **supervisor_entry_helpers.build_entry_fill_record_payload(
+                bot_id=bot.bot_id,
+                signal_id=signal_id,
+                side=side,
+                symbol=bot.symbol,
+                qty=qty,
+                fill_price=fill_price,
+                fill_ts=datetime.now(UTC).isoformat(),
+                mode=self.cfg.mode,
+            )
         )
 
         # Record open position on the bot. The persist call below
@@ -1172,139 +1176,20 @@ class ExecutionRouter:
         # relaunch / crash) doesn't drop the position from memory and
         # cause the next tick to fire a fresh entry on top of the
         # broker-side position the supervisor would otherwise forget.
-        bot.open_position = {
-            "side": side,
-            "qty": qty,
-            "entry_price": rec.fill_price,
-            "entry_ts": rec.fill_ts,
-            "signal_id": signal_id,
-        }
-        self._persist_open_position(bot)
-        # Compute bracket levels at entry — ALWAYS, even for paper-only crypto
-        # bots that never round-trip through the broker. Without this, paper
-        # _maybe_exit falls through to a 1-in-15 random close that exits at
-        # trivial price moves (~$10 on BTC vs the bot's 2.0×ATR planned stop
-        # of ~$1000). Storing the planned bracket here lets _maybe_exit gate
-        # exits on the actual planned levels regardless of broker presence,
-        # so paper R-magnitudes finally match lab.
-        try:
-            from eta_engine.scripts.bracket_sizing import (
-                compute_bracket as _cb,
-            )
-            from eta_engine.scripts.bracket_sizing import (
-                lookup_bot_bracket_params as _lbp,
-            )
-
-            _sm, _tm = _lbp(bot.bot_id)
-            _ps, _pt, _psrc = _cb(
-                side=side,
-                entry_price=rec.fill_price,
-                bars=bot.sage_bars,
-                stop_mult_override=_sm,
-                target_mult_override=_tm,
-            )
-            bot.open_position["bracket_stop"] = round(_round_to_tick(_ps, bot.symbol), 4)
-            bot.open_position["bracket_target"] = round(_round_to_tick(_pt, bot.symbol), 4)
-            bot.open_position["bracket_src"] = f"paper:{_psrc}"
-            # ROOT CAUSE FIX 2026-05-13 (tick-leak upstream): record
-            # the INITIAL planned stop distance + computed risk_unit so
-            # that the close path can use it for realized_r even after
-            # ``_stale_tighten`` or trailing-stop logic has mutated
-            # ``bracket_stop``. Without this, ``realized_r = pnl /
-            # current_bracket_distance`` produces +69R / +21R phantom
-            # values once the stop has been ratcheted to within 1 tick
-            # of the entry price. This is what produced the
-            # mnq_futures_sage outliers the sanitizer was created to
-            # drop. The sanitizer remains as defense-in-depth.
-            try:
-                from eta_engine.feeds.instrument_specs import (  # noqa: PLC0415
-                    effective_point_value,
-                )
-
-                _pv_at_entry = float(
-                    effective_point_value(bot.symbol, route="auto") or 1.0,
-                )
-            except Exception:  # noqa: BLE001
-                _pv_at_entry = 1.0
-            initial_stop_distance = abs(
-                float(bot.open_position["bracket_stop"]) - float(rec.fill_price),
-            )
-            initial_risk_unit = initial_stop_distance * qty * _pv_at_entry
-            bot.open_position["initial_stop_distance"] = round(initial_stop_distance, 6)
-            bot.open_position["initial_risk_unit"] = round(initial_risk_unit, 4)
-            # Re-persist with bracket fields included so a restart
-            # restores the planned stop/target, not just side+qty.
-            self._persist_open_position(bot)
-        except Exception as _exc:  # noqa: BLE001 — best effort
-            # FIRST failure per bot logs at warning level so a systemic
-            # compute_bracket break doesn't disappear into debug. Subsequent
-            # failures from the same bot drop to debug to avoid log spam.
-            # Without this hardening (per risk-review), if compute_bracket
-            # ever broke, every paper bot would silently fall through to
-            # the legacy fallback gates and the operator would have no
-            # signal that brackets weren't actually being stored.
-            if not hasattr(self, "_paper_bracket_warned"):
-                self._paper_bracket_warned: set[str] = set()
-            if bot.bot_id not in self._paper_bracket_warned:
-                logger.warning(
-                    "paper-bracket compute failed for %s (first occurrence): %s",
-                    bot.bot_id,
-                    _exc,
-                )
-                self._paper_bracket_warned.add(bot.bot_id)
-            else:
-                logger.debug(
-                    "paper-bracket compute failed for %s: %s",
-                    bot.bot_id,
-                    _exc,
-                )
-        bot.n_entries += 1
-        bot.last_signal_at = rec.fill_ts
-
-        def _rollback_recorded_entry(reason: str) -> None:
-            """Undo the simulated entry when paper_live broker entry failed.
-
-            INVARIANT: bot.open_position must NEVER reflect a position the
-            broker has not accepted. We use PATTERN B from the audit —
-            optimistically set bot.open_position pre-call, then on any
-            non-success status OR exception, immediately clear it and
-            increment the per-bot reject counter. This keeps the
-            supervisor's belief about open positions strictly bounded by
-            broker-acknowledged fills.
-            """
-            if bot.open_position is not None and bot.open_position.get("signal_id") == rec.signal_id:
-                bot.open_position = None
-                self._clear_persisted_open_position(bot)
-            bot.n_entries = max(0, bot.n_entries - 1)
-            bot.consecutive_broker_rejects += 1
-            logger.critical(
-                "BROKER REJECT %s: paper_live entry rolled back (reason=%s "
-                "symbol=%s side=%s qty=%.6f signal_id=%s consecutive_rejects=%d)",
-                bot.bot_id,
-                reason,
-                rec.symbol,
-                rec.side,
-                rec.qty,
-                rec.signal_id,
-                bot.consecutive_broker_rejects,
-            )
-
-        def _clear_recorded_entry_without_reject(reason: str) -> None:
-            """Undo optimistic local-open state for broker-pending entries."""
-            if bot.open_position is not None and bot.open_position.get("signal_id") == rec.signal_id:
-                bot.open_position = None
-                self._clear_persisted_open_position(bot)
-            bot.n_entries = max(0, bot.n_entries - 1)
-            logger.info(
-                "BROKER PENDING %s: local open_position cleared until fill evidence arrives "
-                "(reason=%s symbol=%s side=%s qty=%.6f signal_id=%s)",
-                bot.bot_id,
-                reason,
-                rec.symbol,
-                rec.side,
-                rec.qty,
-                rec.signal_id,
-            )
+        # The helper also persists the planned bracket fields so paper
+        # exit logic and restart recovery share one entry contract.
+        self._paper_bracket_warned = supervisor_entry_helpers.record_optimistic_entry(
+            bot=bot,
+            rec=rec,
+            logger=logger,
+            persist_open_position_fn=self._persist_open_position,
+            round_to_tick_fn=_round_to_tick,
+            warned_bots=getattr(self, "_paper_bracket_warned", None),
+        )
+        supervisor_entry_helpers.apply_entry_accounting(
+            bot,
+            fill_ts=rec.fill_ts,
+        )
 
         if self.cfg.mode == "paper_live":
             _route = (self.cfg.paper_live_order_route or "direct_ibkr").strip().lower()
@@ -1318,7 +1203,13 @@ class ExecutionRouter:
             if _route in {"broker_router", "pending_file", "pending"}:
                 self._write_pending_order(bot, rec)
                 rec.note = f"{rec.note};broker_router_pending_order"
-                _clear_recorded_entry_without_reject("broker_router_pending_order")
+                supervisor_entry_helpers.clear_recorded_entry_without_reject(
+                    bot=bot,
+                    rec=rec,
+                    reason="broker_router_pending_order",
+                    logger=logger,
+                    clear_persisted_open_position_fn=self._clear_persisted_open_position,
+                )
                 return rec
             # ── direct_ibkr path ──────────────────────────────────
             # Now the allowlist applies — direct_ibkr only handles the
@@ -1333,7 +1224,13 @@ class ExecutionRouter:
                     _PAPER_LIVE_ALLOWED_SYMBOLS_ENV,
                     ",".join(sorted(_allowed_symbols or ())),
                 )
-                _rollback_recorded_entry("symbol_not_allowed_for_direct_ibkr_route")
+                supervisor_entry_helpers.rollback_recorded_entry(
+                    bot=bot,
+                    rec=rec,
+                    reason="symbol_not_allowed_for_direct_ibkr_route",
+                    logger=logger,
+                    clear_persisted_open_position_fn=self._clear_persisted_open_position,
+                )
                 return None
             if _route not in {"direct_ibkr", "direct", "ibkr"}:
                 logger.warning(
@@ -1347,10 +1244,7 @@ class ExecutionRouter:
             # This lets crypto bots fine-tune on simulated fills until
             # the IBKR account is upgraded; flipping ETA_IBKR_CRYPTO=1
             # then auto-routes to PAXOS without code changes.
-            _symbol_root = rec.symbol.upper().rstrip("0123456789").replace("USD", "")
-            _is_crypto = _symbol_root in {"BTC", "ETH", "SOL", "AVAX", "LINK", "DOGE", "MBT", "MET"}
-            _crypto_live = os.getenv("ETA_IBKR_CRYPTO", "").lower() in {"1", "true", "yes", "on"}
-            if _is_crypto and not _crypto_live:
+            if supervisor_entry_helpers.paper_live_direct_crypto_bypasses_broker(rec.symbol, crypto_live_env=os.getenv("ETA_IBKR_CRYPTO", "")):
                 logger.info(
                     "CRYPTO PAPER %s %s %.6f @ %.4f (no broker route — set ETA_IBKR_CRYPTO=1 to go live)",
                     rec.symbol,
@@ -1361,12 +1255,6 @@ class ExecutionRouter:
                 return rec
             # Also submit directly through LiveIbkrVenue (TWS API port 4002)
             try:
-                from eta_engine.scripts.bracket_sizing import (
-                    compute_bracket,
-                    lookup_bot_bracket_params,
-                )
-                from eta_engine.venues.base import OrderRequest, OrderType, Side
-
                 _venue = _get_live_ibkr_venue()
                 # ATR-based bracket if ≥15 bars in the bot's sage window,
                 # else fixed-percent fallback. ATR adapts stop width to
@@ -1375,39 +1263,22 @@ class ExecutionRouter:
                 # Per-bot atr_stop_mult / rr_target from per_bot_registry
                 # take precedence over the global env defaults so live
                 # and lab geometry match.
-                _stop_mult, _target_mult = lookup_bot_bracket_params(bot.bot_id)
-                _ref = float(rec.fill_price) if rec.fill_price else float(bar.get("close", 0.0)) or 1.0
-                _stop, _target, _bracket_src = compute_bracket(
-                    side=rec.side,
-                    entry_price=_ref,
-                    bars=bot.sage_bars,
-                    stop_mult_override=_stop_mult,
-                    target_mult_override=_target_mult,
-                )
-                # Pre-trade sanity: stop and target must straddle entry on
-                # the correct sides. ATR can degenerate (zero-volatility
-                # window, malformed bars) and produce stop=target=entry,
-                # which would ship a no-op bracket to the broker. Refuse
-                # to submit in that case.
-                _is_buy = rec.side.upper() == "BUY"
-                _bad = (
-                    _ref <= 0
-                    or _stop <= 0
-                    or _target <= 0
-                    or (_is_buy and not (_stop < _ref < _target))
-                    or (not _is_buy and not (_target < _ref < _stop))
-                )
-                if _bad:
-                    logger.warning(
-                        "%s skipped: insane bracket geometry (side=%s ref=%.4f stop=%.4f target=%.4f src=%s)",
-                        bot.bot_id,
-                        rec.side,
-                        _ref,
-                        _stop,
-                        _target,
-                        _bracket_src,
+                try:
+                    _entry_plan = supervisor_entry_helpers.build_direct_ibkr_entry_plan(
+                        bot=bot,
+                        rec=rec,
+                        bar=bar,
+                        round_to_tick_fn=_round_to_tick,
                     )
-                    _rollback_recorded_entry("invalid_bracket_geometry")
+                except ValueError as _exc:
+                    logger.warning("%s skipped: %s", bot.bot_id, _exc)
+                    supervisor_entry_helpers.rollback_recorded_entry(
+                        bot=bot,
+                        rec=rec,
+                        reason="invalid_bracket_geometry",
+                        logger=logger,
+                        clear_persisted_open_position_fn=self._clear_persisted_open_position,
+                    )
                     return None
                 logger.debug(
                     "bracket %s %s %s→%s (%s)",
@@ -1441,7 +1312,13 @@ class ExecutionRouter:
                 # hook bug can never freeze trading; an explicit False
                 # is a deliberate gate-down.
                 if not l2hooks.pre_trade_check(bot, rec):
-                    _rollback_recorded_entry("blocked_by_l2_trading_gate")
+                    supervisor_entry_helpers.rollback_recorded_entry(
+                        bot=bot,
+                        rec=rec,
+                        reason="blocked_by_l2_trading_gate",
+                        logger=logger,
+                        clear_persisted_open_position_fn=self._clear_persisted_open_position,
+                    )
                     return None
                 _result = _run_on_live_ibkr_loop(_venue.place_order(_req), timeout=30.0)
                 _reason = (
@@ -1506,15 +1383,31 @@ class ExecutionRouter:
                         )
                 elif _result.status.value == "OPEN" and _filled_qty <= 0:
                     rec.note = f"{rec.note};direct_ibkr_pending_order"
-                    _clear_recorded_entry_without_reject("direct_ibkr_open_without_fill")
+                    supervisor_entry_helpers.clear_recorded_entry_without_reject(
+                        bot=bot,
+                        rec=rec,
+                        reason="direct_ibkr_open_without_fill",
+                        logger=logger,
+                        clear_persisted_open_position_fn=self._clear_persisted_open_position,
+                    )
                 else:
-                    _rollback_recorded_entry(
-                        f"broker_result={_result.status.value}; filled_qty={_filled_qty}; reason={_reason}",
+                    supervisor_entry_helpers.rollback_recorded_entry(
+                        bot=bot,
+                        rec=rec,
+                        reason=f"broker_result={_result.status.value}; filled_qty={_filled_qty}; reason={_reason}",
+                        logger=logger,
+                        clear_persisted_open_position_fn=self._clear_persisted_open_position,
                     )
                     return None
             except Exception as _exc:
                 logger.warning("DIRECT ORDER FAILED: %s %s: %s", rec.symbol, rec.side, _exc)
-                _rollback_recorded_entry(f"broker_exception={_exc}")
+                supervisor_entry_helpers.rollback_recorded_entry(
+                    bot=bot,
+                    rec=rec,
+                    reason=f"broker_exception={_exc}",
+                    logger=logger,
+                    clear_persisted_open_position_fn=self._clear_persisted_open_position,
+                )
                 return None
 
         return rec
