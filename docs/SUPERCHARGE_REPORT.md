@@ -226,7 +226,7 @@ python -m eta_engine.scripts.fleet_realism_audit \
 python -m eta_engine.scripts.paper_trade_sim \
     --bot vwap_mr_mnq --days 90 --walk-forward --mode realistic
 
-# New-strategy gate (5 lights all green = paper-soak ready)
+# New-strategy gate (5 lights all green = historical paper-soak-ready snapshot; current launch surfaces still decide)
 python -m eta_engine.scripts.strategy_creation_harness \
     --bot my_new_strategy --days 90 --random-baseline
 
@@ -313,7 +313,7 @@ After all bug fixes + supercharges + walk-forward IS/OOS + 90-day cross-validati
 
 | Bot | Validity | Sample | OOS-Profit | OOS-Decay | Beats-Baseline | Verdict |
 |---|---|---|---|---|---|---|
-| `mnq_anchor_sweep` (post RR-cap fix) | [OK] | [OK] (50) | [OK] (+$175) | [OK] (+133%) | [OK] (+$175 vs -$233) | **ALL GREEN — promote to paper-soak** |
+| `mnq_anchor_sweep` (post RR-cap fix) | [OK] | [OK] (50) | [OK] (+$175) | [OK] (+133%) | [OK] (+$175 vs -$233) | **ALL GREEN in that historical audit window — paper-soak candidate in that snapshot** |
 | `cross_asset_mnq` | [OK] | [OK] (34) | [OK] (+$243) | **[!!] (-66%)** | [OK] (+$243 vs -$233) | RED — fix decay or revalidate on more data |
 
 **Caveats on `mnq_anchor_sweep`:**
