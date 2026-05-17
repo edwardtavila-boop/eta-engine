@@ -19602,6 +19602,12 @@ def _local_master_status_payload() -> dict[str, object]:
         "healthy": command_center_watchdog.get("healthy"),
         "issue_status": str(command_center_watchdog.get("issue_status") or ""),
         "summary_line": str(command_center_watchdog.get("summary_line") or ""),
+        "failure_detail": str(command_center_watchdog.get("failure_detail") or ""),
+        "failure_summary": (
+            dict(command_center_watchdog.get("failure_summary"))
+            if isinstance(command_center_watchdog.get("failure_summary"), dict)
+            else {}
+        ),
         "failure_class": str(command_center_watchdog.get("failure_class") or ""),
         "operator_contract_state": str(command_center_watchdog.get("operator_contract_state") or ""),
         "primary_blocker": str(command_center_watchdog.get("primary_blocker") or ""),
