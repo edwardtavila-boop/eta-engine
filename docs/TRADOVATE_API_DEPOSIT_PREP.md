@@ -208,9 +208,10 @@ Only after `READY_FOR_DRY_RUN`:
 4. Confirm the route stays behind `ETA_TRADOVATE_ENABLED=1`.
 5. Confirm no non-winning strategy can route to Tradovate.
 
-## First Prop Test
+## First Controlled Futures Prop Dry Run
 
-Only after dry-run evidence is clean:
+Only after dry-run evidence is clean and only for the controlled futures
+prop-ladder lane:
 
 1. Route only `volume_profile_mnq` to `blusky_50k`.
 2. Start with the smallest allowed MNQ exposure.
@@ -218,6 +219,9 @@ Only after dry-run evidence is clean:
 4. Operator watches the first fills.
 5. Pause immediately on auth errors, account mismatch, missing stop/target,
    daily-loss warning, or broker reconciliation mismatch.
+
+This still does not mean the separate Diamond/Wave-25 launch lane is `GO`;
+keep checking `prop_launch_check` before any broader launch decision.
 
 ## Official Requirements To Recheck
 

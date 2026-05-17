@@ -1768,7 +1768,6 @@ class TestDashboardAPI:
             ),
             encoding="utf-8",
         )
-
         r = app_client.get("/api/jarvis/paper_live_transition")
 
         assert r.status_code == 200
@@ -4229,6 +4228,8 @@ class TestDashboardAPI:
         assert watchdog["summary"] == "noop: ok"
         assert watchdog["detail"] == "noop: ok"
         assert watchdog["heartbeat_path"].endswith("dashboard_proxy_watchdog_heartbeat.json")
+        assert payload["bot_fleet"]["dashboard_proxy_watchdog_status"] == "ok"
+        assert payload["bot_fleet"]["dashboard_proxy_watchdog_detail"] == "noop: ok"
         assert payload["checks"]["dashboard_proxy_watchdog_contract"] is True
 
     def test_dashboard_diagnostics_distinguishes_proxy_probe_ok_from_stale_watchdog(
@@ -10576,7 +10577,6 @@ class TestDashboardAPI:
             ),
             encoding="utf-8",
         )
-
         r = app_client.get("/api/bot-fleet")
         assert r.status_code == 200
         data = r.json()
@@ -10812,6 +10812,8 @@ class TestDashboardAPI:
         assert payload["summary"]["paper_live_critical_ready"] is True
         assert payload["summary"]["paper_live_ready_bots"] == 12
         assert payload["summary"]["paper_live_launch_blocked_count"] == 0
+        assert payload["summary"]["dashboard_proxy_watchdog_status"] == "ok"
+        assert payload["summary"]["dashboard_proxy_watchdog_detail"] == "noop: ok"
 
     def test_bot_fleet_marks_stale_paper_live_summary_as_stale_receipt(self, app_client, tmp_path, monkeypatch):
         """Stale paper-live cache should not keep derived bot-fleet readiness blocked."""
@@ -10846,7 +10848,6 @@ class TestDashboardAPI:
             ),
             encoding="utf-8",
         )
-
         r = app_client.get("/api/bot-fleet")
 
         assert r.status_code == 200
@@ -10900,6 +10901,28 @@ class TestDashboardAPI:
                     "operator_queue_first_launch_blocker_op_id": "OP-19",
                     "operator_queue_first_launch_next_action": "apply authority on VPS",
                     "gates": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+        (tmp_path / "state" / "dashboard_proxy_watchdog_heartbeat.json").write_text(
+            json.dumps(
+                {
+                    "ts": datetime.now(UTC).isoformat(),
+                    "component": "dashboard_proxy_watchdog",
+                    "decision": {
+                        "checked_at": datetime.now(UTC).isoformat(),
+                        "action": "noop",
+                        "task_name": "ETA-Proxy-8421",
+                        "probe": {
+                            "healthy": True,
+                            "url": "http://127.0.0.1:8421/",
+                            "status_code": 200,
+                            "reason": "ok",
+                            "elapsed_ms": 15,
+                            "body_len": 77000,
+                        },
+                    },
                 }
             ),
             encoding="utf-8",
@@ -13397,6 +13420,7 @@ class TestDashboardAPI:
     def test_dashboard_live_summary_uses_cached_broker_without_live_probe(
         self,
         app_client,
+        tmp_path,
         monkeypatch,
     ):
         from datetime import UTC, datetime
@@ -13424,6 +13448,28 @@ class TestDashboardAPI:
                 "close_history": mod._close_history_windows([], now=datetime.now(UTC)),
             },
         )
+        (tmp_path / "state" / "dashboard_proxy_watchdog_heartbeat.json").write_text(
+            json.dumps(
+                {
+                    "ts": datetime.now(UTC).isoformat(),
+                    "component": "dashboard_proxy_watchdog",
+                    "decision": {
+                        "checked_at": datetime.now(UTC).isoformat(),
+                        "action": "noop",
+                        "task_name": "ETA-Proxy-8421",
+                        "probe": {
+                            "healthy": True,
+                            "url": "http://127.0.0.1:8421/",
+                            "status_code": 200,
+                            "reason": "ok",
+                            "elapsed_ms": 15,
+                            "body_len": 77000,
+                        },
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
 
         r = app_client.get("/api/dashboard/live-summary")
 
@@ -13432,6 +13478,8 @@ class TestDashboardAPI:
         assert payload["fast_summary"] is True
         assert payload["summary"]["dashboard_payload_tier"] == "live_summary"
         assert payload["summary"]["live_broker_probe_mode"] == "cached_diagnostics"
+        assert payload["summary"]["dashboard_proxy_watchdog_status"] == "ok"
+        assert payload["summary"]["dashboard_proxy_watchdog_detail"] == "noop: ok"
         assert payload["live_broker_state"]["probe_skipped"] is True
         assert payload["live_broker_state"]["broker_snapshot_age_s"] == 7.5
 

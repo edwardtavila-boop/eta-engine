@@ -15,7 +15,8 @@ welcome-email arrival to first live order in BluSky's funded account.
 > clean post-fix trades accumulate). Launch is **NO_GO** until ≥2 bots
 > qualify (R1 gate). Realistic launch date slipped to ~2026-06-01.
 > Use the latest prop dashboard and diamond readiness artifacts for
-> current status.
+> current status. Do not activate Tradovate routing or move any bot to a live
+> prop lane until `prop_launch_check` is truly `GO`.
 
 > **DORMANCY NOTE:** Tradovate remains in `DORMANT_BROKERS` per the
 > 2026-04-24 broker dormancy mandate. This runbook describes the
@@ -248,8 +249,10 @@ it errors, the most common causes:
 
 ## Step 5: Stage the BluSky routing config (un-dormancy commit)
 
-**This is the un-dormancy moment.** Tradovate moves from
-`DORMANT_BROKERS` to active for `volume_profile_mnq` only.
+**This is a future un-dormancy step, not a current action.** Tradovate moves
+from `DORMANT_BROKERS` to active only after the Diamond/Wave-25 launch lane
+turns `GO`, and it should target the approved launch-candidate bot set rather
+than legacy `volume_profile_mnq`.
 
 Add to `eta_engine/configs/bot_broker_routing.yaml`:
 
@@ -259,14 +262,17 @@ Add to `eta_engine/configs/bot_broker_routing.yaml`:
 # Route the current PROP_READY designations (per wave-25 diamond
 # leaderboard) to Tradovate for the BluSky funded lane. All other
 # futures bots stay on IBKR paper.
+# Activate this section only after `prop_launch_check` turns GO and the
+# operator has an approved Diamond launch bot set. Until then, leave the
+# funded lane dormant.
 # As of 2026-05-13 the only PROP_READY designation is
 # `mnq_futures_sage`; R1 launch gate requires ≥2, so wait for a
 # second diamond to qualify before activating this section.
 bots:
-  mnq_futures_sage:
+  <approved_diamond_launch_bot_1>:
     venue: tradovate
     account_alias: blusky_launch_50k_phase1
-  # second_prop_ready_bot:   # add when leaderboard designates one
+  # <approved_diamond_launch_bot_2>:   # add only after launch lane GO
   #   venue: tradovate
   #   account_alias: blusky_launch_50k_phase1
 ```
@@ -285,16 +291,16 @@ the firm limit while we gather soak data:
   `$150` of `55%` of the `$3,000` target-profit day cap.
 
 Update `eta_engine/venues/router.py` (or equivalent) to remove
-`tradovate` from `DORMANT_BROKERS` for the `volume_profile_mnq`
-specifically. Pair the code change with a docs commit per the
-dormancy mandate.
+`tradovate` from `DORMANT_BROKERS` only for the approved Diamond launch
+candidate bot set after `prop_launch_check` turns `GO`. Pair the code change
+with a docs commit per the dormancy mandate.
 
 Set the supervisor environment for live mode:
 
 ```
 ETA_TRADOVATE_ENABLED=1
 TRADOVATE_ENV=demo            # for eval phase; switch to "live" at funded
-ETA_VENUE_OVERRIDE_FUTURES=ibkr  # default stays IBKR; routing yaml pins specific bot
+ETA_VENUE_OVERRIDE_FUTURES=ibkr  # default stays IBKR; routing yaml pins specific launch bot(s)
 ```
 
 Restart the supervisor on VPS.
@@ -304,7 +310,11 @@ Restart the supervisor on VPS.
 ## Step 6: First live order (BluSky eval phase)
 
 Once the supervisor is running with `volume_profile_mnq → tradovate`,
-the next time the strategy generates a signal:
+read that as historical placeholder wording only. The current intended state
+is approved Diamond launch bot(s) routed to Tradovate after
+`prop_launch_check` turns `GO`.
+
+The next time the strategy generates a signal:
 
 1. Supervisor calls `tradovate.place_order(request)`
 2. Adapter authenticates → places order on BluSky Tradovate sub-account
@@ -348,8 +358,8 @@ When BluSky email confirms Funded status:
 After BluSky proves out (~Day 14-21), repeat Steps 1-5 for Elite
 Trader Funding. Use a SECOND set of Tradovate credentials (Elite's
 sub-account is separate from BluSky's). Update `bot_broker_routing.yaml`
-to use `routing: replicate` mode for `volume_profile_mnq`, listing
-both `blusky_launch_50k_phase1` and `elite_25k_static` as accounts.
+to use `routing: replicate` mode for the approved Diamond launch bot(s),
+listing both `blusky_launch_50k_phase1` and `elite_25k_static` as accounts.
 
 ---
 

@@ -63,6 +63,9 @@ from eta_engine.obs.decision_journal import (  # noqa: E402
     Outcome,
     default_journal,
 )
+from eta_engine.scripts.broker_router_errors import BrokerRouterErrorHandlers  # noqa: E402
+from eta_engine.scripts.broker_router_failover import BrokerRouterFailover  # noqa: E402
+from eta_engine.scripts.broker_router_routing import BrokerRouterRoutingResolver  # noqa: E402
 from eta_engine.scripts.broker_router_state import (  # noqa: E402
     EMPTY_RETRY_META,
     BrokerRouterStateIO,
@@ -1064,6 +1067,19 @@ class BrokerRouter:
             retry_meta_suffix=RETRY_META_SUFFIX,
             logger=logger,
         )
+        self._failover = BrokerRouterFailover(
+            routing_config=self.routing_config,
+            smart_router=self.smart_router,
+            resolve_venue_adapter=self._resolve_venue_adapter,
+            is_transient_failure=self._is_transient_failure,
+            logger=logger,
+        )
+        self._routing = BrokerRouterRoutingResolver(
+            smart_router=self.smart_router,
+            prop_venue_cache=self._prop_venue_cache,
+            secrets=SECRETS,
+            tradovate_venue_cls=TradovateVenue,
+        )
         self.processing_dir = self._state_io.processing_dir
         self.blocked_dir = self._state_io.blocked_dir
         self.archive_dir = self._state_io.archive_dir
@@ -1089,6 +1105,16 @@ class BrokerRouter:
             "quarantined": 0,
             "held": 0,
         }
+        self._errors = BrokerRouterErrorHandlers(
+            counts=self._counts,
+            dry_run=self.dry_run,
+            quarantine_dir=self.quarantine_dir,
+            failed_dir=self.failed_dir,
+            atomic_move=self._atomic_move,
+            clear_retry_meta=self._clear_retry_meta,
+            record_event=self._record_event,
+            safe_journal=self._safe_journal,
+        )
 
     # -- lifecycle ----------------------------------------------------------
 
@@ -1523,91 +1549,10 @@ class BrokerRouter:
         venue_name: str,
         order: PendingOrder,
     ) -> VenueBase | None:
-        """Look up a venue adapter on the SmartRouter by name.
-
-        Tries (in order): ``_venue_by_name(name)``, ``_venue_map[name]``,
-        ``venue_map[name]``, and ``getattr(smart_router, name)``. Returns
-        ``None`` when none of those expose the venue -- the caller then
-        falls back to the legacy ``choose_venue`` path.
-        """
-        _ = order  # reserved: future per-bot/per-qty hook
-        sr = self.smart_router
-        by_name = getattr(sr, "_venue_by_name", None)
-        if callable(by_name):
-            try:
-                venue = by_name(venue_name)
-            except Exception:  # noqa: BLE001
-                venue = None
-            if venue is not None:
-                return venue
-        for attr in ("_venue_map", "venue_map"):
-            mapping = getattr(sr, attr, None)
-            if isinstance(mapping, dict):
-                venue = mapping.get(venue_name)
-                if venue is not None:
-                    return venue
-        venue = getattr(sr, venue_name, None)
-        if venue is not None and hasattr(venue, "place_order"):
-            return venue
-        return None
+        return self._routing.resolve_venue_adapter(venue_name, order)
 
     def _resolve_prop_account_venue(self, account: dict[str, str]) -> VenueBase | None:
-        """Build/cache an account-scoped venue after DORMANT gate clearance."""
-        alias = (account.get("alias") or "").strip().lower()
-        venue_name = (account.get("venue") or "").strip().lower()
-        if not alias:
-            raise ValueError("prop account is missing alias")
-        if venue_name != "tradovate":
-            raise ValueError(f"unsupported prop account venue for {alias}: {venue_name!r}")
-        cached = self._prop_venue_cache.get(alias)
-        if cached is not None:
-            return cached
-
-        account_id_env = (account.get("account_id_env") or "").strip()
-        if not account_id_env:
-            raise ValueError(f"prop account {alias} missing account_id_env")
-
-        def _secret_value(key: str) -> str:
-            env_val = (os.environ.get(key) or "").strip()
-            if env_val:
-                return env_val
-            secret_val = SECRETS.get(key, required=False)
-            return str(secret_val or "").strip()
-
-        account_id = _secret_value(account_id_env)
-        if not account_id:
-            raise ValueError(f"prop account {alias} missing account id secret {account_id_env}")
-
-        prefix = (account.get("creds_env_prefix") or "").strip()
-
-        def _cred(name: str) -> str:
-            return _secret_value(f"{prefix}{name}")
-
-        required = (
-            "TRADOVATE_USERNAME",
-            "TRADOVATE_PASSWORD",
-            "TRADOVATE_APP_ID",
-            "TRADOVATE_APP_SECRET",
-            "TRADOVATE_CID",
-        )
-        # DORMANT context: never fall back to global credentials for prop aliases.
-        missing = [name for name in required if not _cred(name)]
-        if missing:
-            raise ValueError(f"prop account {alias} missing Tradovate credential envs: {', '.join(missing)}")
-
-        env_name = (account.get("env") or "demo").strip().lower()
-        demo = env_name != "live"
-        venue = TradovateVenue(
-            api_key=_cred("TRADOVATE_USERNAME"),
-            api_secret=_cred("TRADOVATE_PASSWORD"),
-            demo=demo,
-            app_id=_cred("TRADOVATE_APP_ID") or "EtaEngine",
-            cid=_cred("TRADOVATE_CID"),
-            app_secret=_cred("TRADOVATE_APP_SECRET"),
-            account_id=account_id,
-        )
-        self._prop_venue_cache[alias] = venue
-        return venue
+        return self._routing.resolve_prop_account_venue(account)
 
     def _handle_routing_config_unsupported(
         self,
@@ -1615,33 +1560,7 @@ class BrokerRouter:
         target: Path,
         reason: str,
     ) -> None:
-        """Quarantine an unmappable (bot, symbol, venue) triple. NOTED journal."""
-        self._counts["quarantined"] += 1
-        self._record_event(
-            target.name,
-            "quarantined",
-            "routing_config_unsupported_pair",
-        )
-        if not self.dry_run:
-            with contextlib.suppress(OSError):
-                self._atomic_move(target, self.quarantine_dir / target.name)
-            self._clear_retry_meta(target)
-        self._safe_journal(
-            actor=Actor.STRATEGY_ROUTER,
-            intent="pending_order_quarantined",
-            rationale=f"routing_config_unsupported_pair: {reason}",
-            outcome=Outcome.NOTED,
-            links=[
-                f"signal:{order.signal_id}",
-                f"bot:{order.bot_id}",
-                f"file:{target.name}",
-            ],
-            metadata={
-                "reason": "routing_config_unsupported_pair",
-                "detail": reason,
-                "order": order.to_dict(),
-            },
-        )
+        self._errors.handle_routing_config_unsupported(order, target, reason)
 
     def _handle_dormant_broker(
         self,
@@ -1649,42 +1568,10 @@ class BrokerRouter:
         target: Path,
         venue_name: str,
     ) -> None:
-        """Fail closed when routing config points at a dormant broker."""
-        reason = (
-            f"broker_dormancy: venue={venue_name!r} is dormant; set "
-            "ETA_TRADOVATE_ENABLED=1 only for approved prop-fund testing"
-        )
-        self._counts["failed"] += 1
-        self._record_event(target.name, "broker_dormant", reason)
-        if not self.dry_run:
-            with contextlib.suppress(OSError):
-                self._atomic_move(target, self.failed_dir / target.name)
-            self._clear_retry_meta(target)
-        self._safe_journal(
-            actor=Actor.STRATEGY_ROUTER,
-            intent="pending_order_broker_dormant",
-            rationale=reason,
-            outcome=Outcome.FAILED,
-            links=[f"signal:{order.signal_id}", f"bot:{order.bot_id}", f"venue:{venue_name}"],
-            metadata={"reason": "broker_dormant", "detail": reason, "order": order.to_dict()},
-        )
+        self._errors.handle_dormant_broker(order, target, venue_name)
 
     def _handle_processing_error(self, target: Path, reason: str) -> None:
-        """Fail one inconsistent work item without killing the router loop."""
-        self._counts["failed"] += 1
-        self._record_event(target.name, "processing_error", reason)
-        if not self.dry_run:
-            with contextlib.suppress(OSError):
-                self._atomic_move(target, self.failed_dir / target.name)
-            self._clear_retry_meta(target)
-        self._safe_journal(
-            actor=Actor.STRATEGY_ROUTER,
-            intent="pending_order_processing_error",
-            rationale=reason,
-            outcome=Outcome.FAILED,
-            links=[f"file:{target.name}"],
-            metadata={"reason": reason, "path": str(target)},
-        )
+        self._errors.handle_processing_error(target, reason)
 
     def _hold_blocks_file(self, path: Path) -> bool:
         """Return True when the runtime hold blocks this pending order.
@@ -1766,77 +1653,7 @@ class BrokerRouter:
         primary: VenueBase,
         request: OrderRequest,
     ) -> tuple[Any, VenueBase]:
-        """Submit ``request`` with failover across the configured chain.
-
-        Resolves the failover chain via
-        :meth:`RoutingConfig.failover_chain` (asset-class derived from
-        the symbol). The primary already comes resolved by the lifecycle
-        and is always tried first. If the primary's circuit is open OR
-        a transient failure raises, the next chain entry is consulted
-        in order. Deterministic rejects (REJECTED status, deterministic
-        exceptions) abort the chain immediately — those have to surface
-        through the normal retry-meta path so per-venue rejects don't
-        silently mask each other.
-
-        Returns ``(result, venue_used)``. Raises only on the LAST
-        venue's transient failure (so the caller still sees a real
-        exception when no fallback succeeds).
-        """
-        chain = self.routing_config.failover_chain(order.bot_id, order.symbol)
-        # Cap attempts at len(chain). When the chain is just (primary,),
-        # this collapses to a single attempt with no failover behaviour.
-        attempted: list[str] = []
-        last_exc: BaseException | None = None
-        venue: VenueBase | None = primary
-        chain_idx = 0
-
-        while venue is not None and chain_idx < len(chain):
-            attempted.append(venue.name)
-            # Per-venue circuit breaker check (when the SmartRouter
-            # exposes them).
-            circuit = self._venue_circuit(venue.name)
-            if circuit is not None and circuit.is_open():
-                logger.warning(
-                    "broker_router failover hop: venue=%s circuit OPEN; trying next-in-chain bot=%s signal=%s",
-                    venue.name,
-                    order.bot_id,
-                    order.signal_id,
-                )
-                chain_idx += 1
-                venue = self._next_chain_venue(chain, chain_idx, order)
-                continue
-
-            try:
-                result = await venue.place_order(request)
-                if circuit is not None:
-                    circuit.record_success()
-                return result, venue
-            except Exception as exc:  # noqa: BLE001
-                last_exc = exc
-                if circuit is not None:
-                    circuit.record_failure()
-                if not self._is_transient_failure(exc):
-                    # Deterministic — abort failover so rejection logic
-                    # records it on the resolved primary and the
-                    # retry-meta sidecar drives backoff there.
-                    raise
-                logger.warning(
-                    "broker_router failover hop: venue=%s transient failure "
-                    "(%s); trying next-in-chain bot=%s signal=%s",
-                    venue.name,
-                    exc,
-                    order.bot_id,
-                    order.signal_id,
-                )
-                chain_idx += 1
-                venue = self._next_chain_venue(chain, chain_idx, order)
-
-        # All venues in the chain raised transient failures — re-raise
-        # the last so the caller routes via _handle_routing_error.
-        if last_exc is not None:
-            raise last_exc
-        msg = f"failover chain exhausted with no attempts attempted={attempted!r} chain={chain!r}"
-        raise RuntimeError(msg)
+        return await self._failover.place_with_failover_chain(order, primary, request)
 
     def _next_chain_venue(
         self,
@@ -1844,51 +1661,13 @@ class BrokerRouter:
         idx: int,
         order: PendingOrder,
     ) -> VenueBase | None:
-        """Look up the venue adapter for ``chain[idx]``, or ``None``."""
-        if idx >= len(chain):
-            return None
-        return self._resolve_venue_adapter(chain[idx], order)
+        return self._failover.next_chain_venue(chain, idx, order)
 
     def _venue_circuit(self, venue_name: str) -> object | None:
-        """Return the per-venue CircuitBreaker on the SmartRouter, or None.
-
-        Defensive lookup: the SmartRouter normally exposes
-        ``_venue_circuits``, but tests may inject a stand-in router that
-        omits the attribute entirely.
-        """
-        circuits = getattr(self.smart_router, "_venue_circuits", None)
-        if isinstance(circuits, dict):
-            return circuits.get(venue_name)
-        return None
+        return self._failover.venue_circuit(venue_name)
 
     def venue_circuit_states(self) -> dict[str, str]:
-        """Snapshot every venue circuit as ``{name: closed|open|half-open}``.
-
-        ``half-open`` is reported when the breaker is configured but has
-        previously recorded failures shy of the threshold (i.e. partial
-        degradation). The dashboard ``/api/brokers`` reads this on its
-        next refresh via the heartbeat sidecar.
-        """
-        circuits = getattr(self.smart_router, "_venue_circuits", None)
-        if not isinstance(circuits, dict):
-            return {}
-        out: dict[str, str] = {}
-        for name, breaker in circuits.items():
-            try:
-                if breaker.is_open():
-                    out[name] = "open"
-                    continue
-                # ``_failures`` is a private internal but the public
-                # ``is_open()`` already exercised the half-open reset
-                # above; reading it here is forensic only.
-                failures = int(getattr(breaker, "_failures", 0) or 0)
-                if failures > 0:
-                    out[name] = "half-open"
-                else:
-                    out[name] = "closed"
-            except Exception:  # noqa: BLE001 — defensive read for ops surface
-                out[name] = "unknown"
-        return out
+        return self._failover.venue_circuit_states()
 
     async def _submit_and_finalize(
         self,
@@ -2014,21 +1793,7 @@ class BrokerRouter:
         target: Path,
         reason: str,
     ) -> None:
-        """Move to failed/, journal, increment counters."""
-        self._counts["failed"] += 1
-        self._record_event(target.name, "routing_error", reason)
-        if not self.dry_run:
-            with contextlib.suppress(OSError):
-                self._atomic_move(target, self.failed_dir / target.name)
-            self._clear_retry_meta(target)
-        self._safe_journal(
-            actor=Actor.STRATEGY_ROUTER,
-            intent="pending_order_routing_error",
-            rationale=reason,
-            outcome=Outcome.FAILED,
-            links=[f"signal:{order.signal_id}", f"bot:{order.bot_id}"],
-            metadata={"reason": reason, "order": order.to_dict()},
-        )
+        self._errors.handle_routing_error(order, target, reason)
 
     # -- gate chain ---------------------------------------------------------
 

@@ -68,6 +68,14 @@ logger = logging.getLogger("deploy.run_task")
 DEFAULT_STATE_DIR = workspace_roots.ETA_RUNTIME_STATE_DIR
 DEFAULT_LOG_DIR = workspace_roots.ETA_RUNTIME_LOG_DIR
 
+SUPERVISOR_TASK_FALLBACK = "ETA-Jarvis-Strategy-Supervisor"
+BOOT_RESTART_TASKS = (
+    SUPERVISOR_TASK_FALLBACK,
+    "ETA-Dashboard-API",
+    "ETA-Broker-Router",
+    "ETA-IBGateway",
+)
+
 
 # ---------------------------------------------------------------------------
 # Task handlers (one per BackgroundTask)
@@ -430,7 +438,7 @@ def _task_meta_upgrade(state_dir: Path) -> dict:
     # 4. Tests green -> restart services (Windows only; Linux systemd path TBD)
     restarted: list[str] = []
     if shutil.which("powershell"):
-        for svc in ("ETA-PaperLive-Supervisor", "ETA-Dashboard-API", "ETA-Broker-Router", "ETA-IBGateway"):
+        for svc in BOOT_RESTART_TASKS:
             try:
                 subprocess.run(
                     [
@@ -480,7 +488,7 @@ _SERVICE_HEALTH_PROBES: dict[str, tuple[str, object]] = {
     "ETA-IBGateway": ("port", 4002),
     "ETA-Dashboard-API": ("port", 8000),
     "ETA-Broker-Router": ("process_cmdline", "broker_router.py"),
-    "ETA-PaperLive-Supervisor": ("process_cmdline", "paperlive_supervisor"),
+    SUPERVISOR_TASK_FALLBACK: ("process_cmdline", "jarvis_strategy_supervisor.py"),
 }
 
 
@@ -550,7 +558,7 @@ def _task_health_watchdog(state_dir: Path) -> dict:
     import subprocess
 
     report: dict = {"ts": datetime.now(UTC).isoformat(), "actions": []}
-    services = ("ETA-PaperLive-Supervisor", "ETA-Dashboard-API", "ETA-Broker-Router", "ETA-IBGateway")
+    services = BOOT_RESTART_TASKS
     if os.name != "nt":
         return {"skipped": True, "reason": "watchdog is Windows-only"}
 

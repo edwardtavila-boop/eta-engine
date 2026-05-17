@@ -117,7 +117,9 @@ def test_mock_keepalive_stale_main_reports_paper_loop_stuck(tmp_path: Path) -> N
     assert report["status"] == "paper_main_loop_stuck"
     assert report["diagnosis"] == "mock_main_heartbeat_stale_keepalive_fresh"
     assert any("paper trading tick loop is blocked" in item for item in report["warnings"])
-    assert any("ETA-Watchdog" in item for item in report["action_items"])
+    assert any("ETAJarvisSupervisor WinSW service" in item for item in report["action_items"])
+    assert any("ETA-Jarvis-Strategy-Supervisor" in item for item in report["action_items"])
+    assert not any("ETA-Watchdog/SYSTEM task" in item for item in report["action_items"])
 
 
 def test_write_report_uses_canonical_health_dir(tmp_path: Path) -> None:

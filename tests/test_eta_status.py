@@ -92,7 +92,10 @@ def test_render_text_prints_readiness_freshness_and_gate_rationales() -> None:
                 "healthy": False,
                 "status": "paper_main_loop_stuck",
                 "diagnosis": "mock_main_heartbeat_stale_keepalive_fresh",
-                "action_items": ["Restart ETAJarvisSupervisor via the ETA-Watchdog/SYSTEM task."],
+                "action_items": [
+                    "Restart or inspect ETAJarvisSupervisor WinSW service "
+                    "(scheduled-task fallback: ETA-Jarvis-Strategy-Supervisor)."
+                ],
             },
         },
         "fm_cache": {"hits": 0, "misses": 0, "hit_rate_pct": 0.0, "size": 0, "ttl_seconds": 0},
@@ -133,7 +136,9 @@ def test_render_text_prints_readiness_freshness_and_gate_rationales() -> None:
 
     assert "freshness    : STALE" in text
     assert "health       : paper_main_loop_stuck" in text
-    assert "Restart ETAJarvisSupervisor" in text
+    assert "Restart or inspect ETAJarvisSupervisor WinSW service" in text
+    assert "ETA-Jarvis-Strategy-Supervisor" in text
+    assert "ETA-Watchdog/SYSTEM task" not in text
     assert "R1_PROP_READY_DESIGNATED: only 0 PROP_READY bot(s)" in text
     assert "R7_LEDGER_FRESH: ledger stale" in text
 

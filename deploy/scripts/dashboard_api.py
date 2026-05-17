@@ -2468,6 +2468,17 @@ def _dashboard_diagnostics_payload() -> dict:
                 or eta_readiness_snapshot.get("command_center_issue_summary")
                 or "",
             ),
+            "dashboard_proxy_watchdog_status": str(
+                roster_summary.get("dashboard_proxy_watchdog_status")
+                or dashboard_proxy_watchdog.get("status")
+                or ""
+            ),
+            "dashboard_proxy_watchdog_detail": str(
+                roster_summary.get("dashboard_proxy_watchdog_detail")
+                or dashboard_proxy_watchdog.get("detail")
+                or dashboard_proxy_watchdog.get("summary")
+                or ""
+            ),
             "vps_root_reconciliation_top_step_summary": str(
                 roster_summary.get("vps_root_reconciliation_top_step_summary")
                 or roster_summary.get("vps_root_top_step_action")
@@ -11167,6 +11178,7 @@ def bot_fleet_roster(
     mnq_runtime_rows = [r for r in mnq_rows if not _is_readiness_only_bot_row(r)]
     truth = _truth_snapshot(rows, server_ts=now_ts)
     signal_cadence = _signal_cadence_summary(rows, server_ts=now_ts)
+    dashboard_proxy_watchdog = _dashboard_proxy_watchdog_payload(server_ts=now_ts)
     if live_broker_probe:
         try:
             live_broker_state = _last_good_broker_state_after_failed_refresh(_live_broker_state_payload())
@@ -11610,6 +11622,10 @@ def bot_fleet_roster(
             ),
             "command_center_watchdog_detail": str(
                 eta_readiness_snapshot.get("command_center_issue_summary") or "",
+            ),
+            "dashboard_proxy_watchdog_status": str(dashboard_proxy_watchdog.get("status") or ""),
+            "dashboard_proxy_watchdog_detail": str(
+                dashboard_proxy_watchdog.get("detail") or dashboard_proxy_watchdog.get("summary") or "",
             ),
             "live_broker_probe_mode": "live" if live_broker_probe else "cached_diagnostics",
             "mnq_total": len(mnq_runtime_rows),

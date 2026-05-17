@@ -33,12 +33,15 @@ python -m eta_engine.scripts.prop_strategy_promotion_audit --json
 
 - [ ] **Run the launch check.** `python -m eta_engine.scripts.prop_launch_check` on VPS. Read the verdict.
 - [ ] **Set Telegram alert channel** if not already (see § Telegram one-time setup below). Verify with `verify_telegram --send-test`.
-- [ ] **Decide which bot(s) go EVAL_LIVE.** Recommended starting position: `mnq_futures_sage` only (it's the rank-1 PROP_READY bot with n=109, +1.26R avg, 64% WR on real paper data). Run:
-  ```powershell
-  python -m eta_engine.scripts.manage_lifecycle set mnq_futures_sage EVAL_LIVE
-  ```
-- [ ] **Confirm 2 PROP_READY bots designated.** If still only 1 in the leaderboard, you can either (a) wait one more day or (b) accept DEGRADED mode and launch with one bot.
-- [ ] **Final dry-run before bed.** Verdict should be GO or HOLD (HOLD is acceptable if the only blocker is "need 1 more PROP_READY designation"). NO_GO means do NOT launch.
+- [ ] **Do not promote any bot to EVAL_LIVE while `prop_launch_check` is `NO_GO`.**
+  The older `mnq_futures_sage`-only launch suggestion is now historical. Keep
+  the fleet in `paper_live` / `EVAL_PAPER` until the launch lane itself turns
+  `GO`.
+- [ ] **Confirm the launch lane still has zero live candidates before bed.**
+  If `n_candidates = 0` or `n_prop_ready < 2`, do not accept DEGRADED live
+  launch as a substitute.
+- [ ] **Final dry-run before bed.** Treat `NO_GO` as an absolute stop. Only a
+  real `GO` clears live launch.
 
 ---
 
@@ -52,7 +55,9 @@ ssh forex-vps "cd C:\EvolutionaryTradingAlgo\eta_engine && python -m eta_engine.
 
 Verify:
 - `drawdown_guard.signal = OK` (no overnight HALT)
-- `wave25_lifecycle.EVAL_LIVE >= 1`
+- `wave25_lifecycle.EVAL_LIVE = 0` while `prop_launch_check` remains `NO_GO`
+  or `HOLD`; only expect `>= 1` after a real `GO` plus an explicit lifecycle
+  promotion
 - `alert_channels` shows telegram configured
 - `freshness` is GO (cron tasks running)
 
@@ -72,6 +77,8 @@ If anything looks off, **DO NOT** intervene yet — read the action items first.
   - `EVAL_PAPER` bots → shadow signal log (no live order)
   - Soft-DD trip → fallback to paper
   - HALT signal → reject entirely
+- Current expected state while the launch lane is `NO_GO`: every bot remains
+  `EVAL_PAPER`, so signals should route to paper/shadow rather than live.
 - Watch the supervisor heartbeat for entries: `Get-Content $env:ETA_HEARTBEAT_PATH | ConvertFrom-Json`
 
 ### 09:31-10:30 ET — watch first 3-5 fills
@@ -164,8 +171,8 @@ paper/dry-run lane is still blocked, use `prop_live_readiness_gate`,
 # List current state of all bots
 python -m eta_engine.scripts.manage_lifecycle list
 
-# Promote a bot to live (the Monday opt-in)
-python -m eta_engine.scripts.manage_lifecycle set mnq_futures_sage EVAL_LIVE
+# Promote a bot to live (only after prop_launch_check turns GO)
+python -m eta_engine.scripts.manage_lifecycle set <bot_id> EVAL_LIVE
 
 # Park a bot in paper-only
 python -m eta_engine.scripts.manage_lifecycle set mes_sweep_reclaim_v2 EVAL_PAPER
@@ -173,8 +180,8 @@ python -m eta_engine.scripts.manage_lifecycle set mes_sweep_reclaim_v2 EVAL_PAPE
 # Retire a bot (refuse all signals)
 python -m eta_engine.scripts.manage_lifecycle set foo_bot RETIRED
 
-# Revert to default (EVAL_PAPER)
-python -m eta_engine.scripts.manage_lifecycle clear mnq_futures_sage
+# Revert a bot to default (EVAL_PAPER)
+python -m eta_engine.scripts.manage_lifecycle clear <bot_id>
 ```
 
 The CLI is idempotent — re-running with the same state is a no-op. Atomic writes mean a crash mid-set can't corrupt the JSON.

@@ -151,6 +151,11 @@ partial_profit_enabled = false
 Then paper-soak for 2 weeks. The Sunday-EOD `prop_launch_check` will show
 show whether the filtered book stays USD-positive at n≥50.
 
+Clarification: treat the older launch wording immediately above as historical
+context only; the live question is whether the corrected launch lane improves
+while the separate futures prop-ladder dry-run lane stays visible on its own
+surfaces.
+
 Correction: the older "filtered book" wording above is superseded. The current
 live experiment is the corrected `partial_profit_enabled=false` paper-soak,
 not a `vol_low_size_mult=0.0` config flip.

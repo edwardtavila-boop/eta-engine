@@ -437,7 +437,7 @@ def build_supervisor_heartbeat_report(
         )
         action_items.insert(
             0,
-            f"Restart {SUPERVISOR_SERVICE_NAME} via the ETA-Watchdog/SYSTEM task; live-money routes remain gated.",
+            f"Restart or inspect {SUPERVISOR_RESTART_TARGET}; live-money routes remain gated.",
         )
 
     return {

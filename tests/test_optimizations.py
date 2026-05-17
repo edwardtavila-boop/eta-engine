@@ -1041,6 +1041,47 @@ class TestSuperchargeTasks:
         assert alive is False
         assert detail == "no_probe_configured"
 
+    def test_health_watchdog_targets_canonical_supervisor_fallback(
+        self,
+        tmp_path,
+        monkeypatch,
+    ):
+        from eta_engine.deploy.scripts import run_task
+
+        state = tmp_path / "state"
+        state.mkdir()
+        queried: list[str] = []
+        started: list[str] = []
+
+        def fake_check_output(args, **_kwargs):
+            joined = " ".join(args) if isinstance(args, list) else str(args)
+            queried.append(joined)
+            return "Ready"
+
+        def fake_run(args, **_kwargs):
+            joined = " ".join(args) if isinstance(args, list) else str(args)
+            started.append(joined)
+            return None
+
+        monkeypatch.setattr("os.name", "nt", raising=False)
+        monkeypatch.setattr("subprocess.check_output", fake_check_output)
+        monkeypatch.setattr("subprocess.run", fake_run)
+        monkeypatch.setattr(
+            run_task,
+            "_service_alive_via_probe",
+            lambda _svc: (False, "test_probe_dead"),
+        )
+
+        run_task._task_health_watchdog(state)
+
+        assert run_task.SUPERVISOR_TASK_FALLBACK == "ETA-Jarvis-Strategy-Supervisor"
+        assert run_task.SUPERVISOR_TASK_FALLBACK in run_task._SERVICE_HEALTH_PROBES
+        assert "ETA-PaperLive-Supervisor" not in run_task.BOOT_RESTART_TASKS
+        assert "ETA-PaperLive-Supervisor" not in run_task._SERVICE_HEALTH_PROBES
+        assert any("ETA-Jarvis-Strategy-Supervisor" in item for item in queried)
+        assert any("ETA-Jarvis-Strategy-Supervisor" in item for item in started)
+        assert not any("ETA-PaperLive-Supervisor" in item for item in queried + started)
+
     def test_service_alive_probe_never_raises(self, monkeypatch):
         """Even with totally broken probe, helper returns (False, reason) cleanly."""
         from eta_engine.deploy.scripts import run_task
