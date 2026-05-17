@@ -2979,6 +2979,30 @@ def _dashboard_diagnostics_payload() -> dict:
                     or ""
                 )
             ),
+            "command_center_watchdog_dashboard_task_contract_status_details": (
+                dict(roster_summary.get("command_center_watchdog_dashboard_task_contract_status_details"))
+                if isinstance(
+                    roster_summary.get("command_center_watchdog_dashboard_task_contract_status_details"),
+                    dict,
+                )
+                else (
+                    dict(command_center_watchdog.get("dashboard_task_contract_status"))
+                    if isinstance(command_center_watchdog.get("dashboard_task_contract_status"), dict)
+                    else {}
+                )
+            ),
+            "command_center_watchdog_local_contract_status_details": (
+                dict(roster_summary.get("command_center_watchdog_local_contract_status_details"))
+                if isinstance(
+                    roster_summary.get("command_center_watchdog_local_contract_status_details"),
+                    dict,
+                )
+                else (
+                    dict(command_center_watchdog.get("local_contract_status"))
+                    if isinstance(command_center_watchdog.get("local_contract_status"), dict)
+                    else {}
+                )
+            ),
             "dashboard_proxy_watchdog_status": str(
                 roster_summary.get("dashboard_proxy_watchdog_status")
                 or dashboard_proxy_watchdog.get("status")
@@ -12445,7 +12469,7 @@ def bot_fleet_roster(
                 (
                     command_center_watchdog.get("dashboard_task_contract_status")
                     if isinstance(command_center_watchdog.get("dashboard_task_contract_status"), dict)
-                    else {}
+                else {}
                 ).get("status")
                 or ""
             ),
@@ -12456,6 +12480,16 @@ def bot_fleet_roster(
                     else {}
                 ).get("status")
                 or ""
+            ),
+            "command_center_watchdog_dashboard_task_contract_status_details": (
+                dict(command_center_watchdog.get("dashboard_task_contract_status"))
+                if isinstance(command_center_watchdog.get("dashboard_task_contract_status"), dict)
+                else {}
+            ),
+            "command_center_watchdog_local_contract_status_details": (
+                dict(command_center_watchdog.get("local_contract_status"))
+                if isinstance(command_center_watchdog.get("local_contract_status"), dict)
+                else {}
             ),
             "dashboard_proxy_watchdog_status": str(dashboard_proxy_watchdog.get("status") or ""),
             "dashboard_proxy_watchdog_detail": str(
