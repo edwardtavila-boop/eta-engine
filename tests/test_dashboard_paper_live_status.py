@@ -7,6 +7,8 @@ def test_resolve_paper_live_effective_state_surfaces_bracket_audit_detail() -> N
     resolved = resolve_paper_live_effective_state(
         raw_status="ready_to_launch_paper_live",
         effective_detail="",
+        operator_queue_launch_blocked_count=0,
+        operator_queue_blocked_detail="",
         stale_receipt=False,
         stale_detail="",
         held_by_bracket_audit=True,
@@ -25,6 +27,8 @@ def test_resolve_paper_live_effective_state_promotes_ready_advisory_to_shadow_pa
     resolved = resolve_paper_live_effective_state(
         raw_status="ready_to_launch_paper_live",
         effective_detail="",
+        operator_queue_launch_blocked_count=0,
+        operator_queue_blocked_detail="",
         stale_receipt=False,
         stale_detail="",
         held_by_bracket_audit=False,
@@ -43,6 +47,8 @@ def test_resolve_paper_live_effective_state_keeps_daily_loss_hold_over_shadow_ru
     resolved = resolve_paper_live_effective_state(
         raw_status="ready_to_launch_paper_live",
         effective_detail="",
+        operator_queue_launch_blocked_count=0,
+        operator_queue_blocked_detail="",
         stale_receipt=False,
         stale_detail="",
         held_by_bracket_audit=False,
@@ -63,6 +69,8 @@ def test_resolve_paper_live_effective_state_uses_shadow_attached_count_when_safe
     resolved = resolve_paper_live_effective_state(
         raw_status="blocked",
         effective_detail="still warming up",
+        operator_queue_launch_blocked_count=0,
+        operator_queue_blocked_detail="",
         stale_receipt=False,
         stale_detail="",
         held_by_bracket_audit=False,
@@ -82,6 +90,8 @@ def test_resolve_paper_live_effective_state_stale_receipt_wins_last() -> None:
     resolved = resolve_paper_live_effective_state(
         raw_status="ready_to_launch_paper_live",
         effective_detail="fresh",
+        operator_queue_launch_blocked_count=0,
+        operator_queue_blocked_detail="",
         stale_receipt=True,
         stale_detail="receipt is stale",
         held_by_bracket_audit=False,
@@ -96,3 +106,23 @@ def test_resolve_paper_live_effective_state_stale_receipt_wins_last() -> None:
 
     assert resolved["effective_status"] == "stale_receipt"
     assert resolved["effective_detail"] == "receipt is stale"
+
+
+def test_resolve_paper_live_effective_state_surfaces_operator_queue_launch_blocker() -> None:
+    resolved = resolve_paper_live_effective_state(
+        raw_status="ready_to_launch_paper_live",
+        effective_detail="",
+        operator_queue_launch_blocked_count=1,
+        operator_queue_blocked_detail="Seed IBC credentials and recover TWS API 4002.",
+        stale_receipt=False,
+        stale_detail="",
+        held_by_bracket_audit=False,
+        bracket_audit_detail="",
+        held_by_daily_loss_stop=False,
+        daily_loss_advisory_active=False,
+        daily_loss_shadow_detail="shadow detail",
+        daily_loss_hold_detail="hold detail",
+    )
+
+    assert resolved["effective_status"] == "blocked_by_operator_queue"
+    assert resolved["effective_detail"] == "Seed IBC credentials and recover TWS API 4002."

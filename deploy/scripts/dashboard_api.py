@@ -2049,6 +2049,79 @@ def _command_center_watchdog_payload(*, server_ts: float) -> dict:
     }
 
 
+def _command_center_watchdog_dashboard_task_contract_details(
+    *,
+    eta_readiness_snapshot: dict,
+    roster_summary: dict | None = None,
+    command_center_watchdog: dict,
+) -> dict:
+    """Return the richest dashboard task contract detail currently available."""
+    roster_summary = roster_summary if isinstance(roster_summary, dict) else {}
+    issue_status = str(eta_readiness_snapshot.get("command_center_issue_status") or "").strip()
+    if issue_status == "dashboard_task_contract_drift":
+        missing_task_names = (
+            [
+                str(name)
+                for name in eta_readiness_snapshot.get(
+                    "command_center_dashboard_task_missing_task_names",
+                    [],
+                )
+                if name
+            ]
+            if isinstance(
+                eta_readiness_snapshot.get("command_center_dashboard_task_missing_task_names"),
+                list,
+            )
+            else []
+        )
+        return {
+            "status": "missing_task",
+            "summary": str(eta_readiness_snapshot.get("command_center_issue_summary") or "").strip(),
+            "missing_task_names": missing_task_names,
+            "needs_reload": True,
+            "access_denied_task_names": [],
+            "drift_task_names": [],
+        }
+
+    roster_details = roster_summary.get("command_center_watchdog_dashboard_task_contract_status_details")
+    if isinstance(roster_details, dict):
+        return dict(roster_details)
+
+    watchdog_details = command_center_watchdog.get("dashboard_task_contract_status")
+    return dict(watchdog_details) if isinstance(watchdog_details, dict) else {}
+
+
+def _command_center_watchdog_local_contract_details(
+    *,
+    eta_readiness_snapshot: dict,
+    roster_summary: dict | None = None,
+    command_center_watchdog: dict,
+) -> dict:
+    """Return local 8421 contract details from the freshest watchdog truth."""
+    roster_summary = roster_summary if isinstance(roster_summary, dict) else {}
+    roster_details = roster_summary.get("command_center_watchdog_local_contract_status_details")
+    watchdog_details = command_center_watchdog.get("local_contract_status")
+    eta_status = str(eta_readiness_snapshot.get("command_center_local_contract_status") or "").strip()
+
+    if eta_status:
+        details: dict = {}
+        if isinstance(roster_details, dict) and str(roster_details.get("status") or "").strip() == eta_status:
+            details.update(roster_details)
+        elif isinstance(watchdog_details, dict) and str(watchdog_details.get("status") or "").strip() == eta_status:
+            details.update(watchdog_details)
+        details["status"] = eta_status
+        if not details.get("summary"):
+            if eta_status == "upstream_failure":
+                details["summary"] = "Local 8421 is reachable, but upstream is returning HTTP 5xx."
+            elif eta_status == "healthy":
+                details["summary"] = "Local 8421 exposes the canonical dashboard contract probes."
+        return details
+
+    if isinstance(roster_details, dict):
+        return dict(roster_details)
+    return dict(watchdog_details) if isinstance(watchdog_details, dict) else {}
+
+
 def _dashboard_diagnostics_payload() -> dict:
     """Single source-of-truth rollup for Command Center self-diagnostics."""
     server_ts = time.time()
@@ -2303,34 +2376,26 @@ def _dashboard_diagnostics_payload() -> dict:
     )
     paper_live_stale_receipt = bool(paper_live_transition.get("stale_receipt"))
     paper_live_stale_detail = str(paper_live_transition.get("stale_detail") or "")
-    if transition_launch_blocked > 0 and paper_live_effective_status in {
-        "ready",
-        "ready_to_launch_paper_live",
-        "green",
-    }:
-        paper_live_effective_status = "blocked_by_operator_queue"
-        paper_live_effective_detail = (
+    paper_live_effective = resolve_paper_live_effective_state(
+        raw_status=paper_live_effective_status,
+        effective_detail=paper_live_effective_detail,
+        operator_queue_launch_blocked_count=transition_launch_blocked,
+        operator_queue_blocked_detail=(
             transition_first_launch_next_action
             or str(first_launch_blocker.get("detail") or first_launch_blocker.get("title") or "")
             or "Fresh operator queue has a launch blocker."
-        )
-    if paper_live_daily_loss_advisory_active and paper_live_effective_status in {
-        "ready",
-        "ready_to_launch_paper_live",
-        "green",
-    }:
-        paper_live_effective_status = "shadow_paper_active"
-        paper_live_effective_detail = _paper_live_shadow_detail(daily_loss_killswitch)
-    elif paper_live_held_by_daily_loss_stop and paper_live_effective_status in {
-        "ready",
-        "ready_to_launch_paper_live",
-        "green",
-    }:
-        paper_live_effective_status = "held_by_daily_loss_stop"
-        paper_live_effective_detail = _daily_loss_hold_detail(daily_loss_killswitch)
-    if paper_live_stale_receipt:
-        paper_live_effective_status = "stale_receipt"
-        paper_live_effective_detail = paper_live_stale_detail or paper_live_effective_detail
+        ),
+        stale_receipt=paper_live_stale_receipt,
+        stale_detail=paper_live_stale_detail,
+        held_by_bracket_audit=False,
+        bracket_audit_detail="",
+        held_by_daily_loss_stop=paper_live_held_by_daily_loss_stop,
+        daily_loss_advisory_active=paper_live_daily_loss_advisory_active,
+        daily_loss_shadow_detail=_paper_live_shadow_detail(daily_loss_killswitch),
+        daily_loss_hold_detail=_daily_loss_hold_detail(daily_loss_killswitch),
+    )
+    paper_live_effective_status = str(paper_live_effective["effective_status"])
+    paper_live_effective_detail = str(paper_live_effective["effective_detail"])
     if not paper_live_detail:
         paper_live_detail = str(
             transition_first_launch_next_action
@@ -2981,27 +3046,17 @@ def _dashboard_diagnostics_payload() -> dict:
                 )
             ),
             "command_center_watchdog_dashboard_task_contract_status_details": (
-                dict(roster_summary.get("command_center_watchdog_dashboard_task_contract_status_details"))
-                if isinstance(
-                    roster_summary.get("command_center_watchdog_dashboard_task_contract_status_details"),
-                    dict,
-                )
-                else (
-                    dict(command_center_watchdog.get("dashboard_task_contract_status"))
-                    if isinstance(command_center_watchdog.get("dashboard_task_contract_status"), dict)
-                    else {}
+                _command_center_watchdog_dashboard_task_contract_details(
+                    eta_readiness_snapshot=eta_readiness_snapshot,
+                    roster_summary=roster_summary,
+                    command_center_watchdog=command_center_watchdog,
                 )
             ),
             "command_center_watchdog_local_contract_status_details": (
-                dict(roster_summary.get("command_center_watchdog_local_contract_status_details"))
-                if isinstance(
-                    roster_summary.get("command_center_watchdog_local_contract_status_details"),
-                    dict,
-                )
-                else (
-                    dict(command_center_watchdog.get("local_contract_status"))
-                    if isinstance(command_center_watchdog.get("local_contract_status"), dict)
-                    else {}
+                _command_center_watchdog_local_contract_details(
+                    eta_readiness_snapshot=eta_readiness_snapshot,
+                    roster_summary=roster_summary,
+                    command_center_watchdog=command_center_watchdog,
                 )
             ),
             "dashboard_proxy_watchdog_status": str(
@@ -11986,12 +12041,19 @@ def bot_fleet_roster(
         or paper_live_transition.get("operator_queue_first_next_action")
         or ""
     ).strip()
+    paper_live_launch_blocked_raw = paper_live_transition.get("operator_queue_launch_blocked_count")
+    try:
+        paper_live_launch_blocked_count = int(paper_live_launch_blocked_raw or 0)
+    except (TypeError, ValueError):
+        paper_live_launch_blocked_count = 0
     paper_live_held_by_bracket_audit = broker_bracket_prop_dry_run_blocked and paper_live_critical_ready
     paper_live_held_by_daily_loss_stop = bool(paper_live_lane_state["held_by_daily_loss_stop"])
     paper_live_daily_loss_advisory_active = bool(paper_live_lane_state["daily_loss_advisory_active"])
     paper_live_effective = resolve_paper_live_effective_state(
         raw_status=paper_live_status,
         effective_detail=str(paper_live_transition.get("effective_detail") or ""),
+        operator_queue_launch_blocked_count=paper_live_launch_blocked_count,
+        operator_queue_blocked_detail=paper_live_first_launch_next_action,
         stale_receipt=paper_live_stale_receipt,
         stale_detail=paper_live_stale_detail,
         held_by_bracket_audit=paper_live_held_by_bracket_audit,
@@ -12456,7 +12518,7 @@ def bot_fleet_roster(
                 (
                     command_center_watchdog.get("dashboard_task_contract_status")
                     if isinstance(command_center_watchdog.get("dashboard_task_contract_status"), dict)
-                else {}
+                    else {}
                 ).get("status")
                 or ""
             ),
@@ -12469,14 +12531,16 @@ def bot_fleet_roster(
                 or ""
             ),
             "command_center_watchdog_dashboard_task_contract_status_details": (
-                dict(command_center_watchdog.get("dashboard_task_contract_status"))
-                if isinstance(command_center_watchdog.get("dashboard_task_contract_status"), dict)
-                else {}
+                _command_center_watchdog_dashboard_task_contract_details(
+                    eta_readiness_snapshot=eta_readiness_snapshot,
+                    command_center_watchdog=command_center_watchdog,
+                )
             ),
             "command_center_watchdog_local_contract_status_details": (
-                dict(command_center_watchdog.get("local_contract_status"))
-                if isinstance(command_center_watchdog.get("local_contract_status"), dict)
-                else {}
+                _command_center_watchdog_local_contract_details(
+                    eta_readiness_snapshot=eta_readiness_snapshot,
+                    command_center_watchdog=command_center_watchdog,
+                )
             ),
             "dashboard_proxy_watchdog_status": str(dashboard_proxy_watchdog.get("status") or ""),
             "dashboard_proxy_watchdog_detail": str(
@@ -19709,6 +19773,8 @@ def _local_master_status_payload() -> dict[str, object]:
     paper_live_effective = resolve_paper_live_effective_state(
         raw_status=str(paper.get("status") or "unknown"),
         effective_detail=str(paper.get("effective_detail") or ""),
+        operator_queue_launch_blocked_count=launch_blocked,
+        operator_queue_blocked_detail=paper_first_launch_next_action,
         stale_receipt=paper_stale_receipt,
         stale_detail=paper_stale_detail,
         held_by_bracket_audit=paper_held_by_bracket_audit,

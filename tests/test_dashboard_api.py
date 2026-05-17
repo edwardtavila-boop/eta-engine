@@ -11265,6 +11265,51 @@ class TestDashboardAPI:
         assert payload["summary"]["paper_live_first_launch_next_action"] == ""
         assert "stale" in payload["summary"]["paper_live_stale_detail"].lower()
 
+    def test_bot_fleet_marks_ready_launch_blocker_as_blocked_by_operator_queue(
+        self,
+        app_client,
+        tmp_path,
+        monkeypatch,
+    ):
+        import time
+
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        mod._IBKR_PROBE_CACHE["snapshot"] = {"ready": True, "open_position_count": 0, "open_positions": []}
+        mod._IBKR_PROBE_CACHE["ts"] = time.time()
+        monkeypatch.setattr(
+            mod,
+            "_broker_bracket_audit_payload",
+            lambda **_: {
+                "summary": "READY_NO_OPEN_EXPOSURE",
+                "ready_for_prop_dry_run": True,
+                "operator_action_required": False,
+                "position_summary": {},
+            },
+        )
+        monkeypatch.setattr(
+            mod,
+            "_paper_live_transition_payload",
+            lambda *, refresh=False: {
+                "generated_at": datetime.now(UTC).isoformat(),
+                "status": "ready_to_launch_paper_live",
+                "critical_ready": True,
+                "paper_ready_bots": 12,
+                "operator_queue_launch_blocked_count": 1,
+                "operator_queue_first_launch_blocker_op_id": "OP-21",
+                "operator_queue_first_launch_next_action": "Apply gateway authority on VPS.",
+                "gates": [],
+            },
+        )
+
+        r = app_client.get("/api/bot-fleet")
+
+        assert r.status_code == 200
+        payload = r.json()
+        assert payload["summary"]["paper_live_status"] == "ready_to_launch_paper_live"
+        assert payload["summary"]["paper_live_effective_status"] == "blocked_by_operator_queue"
+        assert payload["summary"]["paper_live_effective_detail"] == "Apply gateway authority on VPS."
+
     def test_bot_fleet_marks_shadow_paper_active_when_attached_runtime_is_live(self, app_client, tmp_path):
         """Fresh attached shadow-paper rows should override a stale launch label in the summary."""
         now_iso = datetime.now(UTC).isoformat()

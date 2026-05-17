@@ -17,6 +17,8 @@ def resolve_paper_live_effective_state(
     *,
     raw_status: str,
     effective_detail: str,
+    operator_queue_launch_blocked_count: int = 0,
+    operator_queue_blocked_detail: str = "",
     stale_receipt: bool,
     stale_detail: str,
     held_by_bracket_audit: bool,
@@ -40,6 +42,10 @@ def resolve_paper_live_effective_state(
 
     if held_by_bracket_audit:
         detail = str(bracket_audit_detail or "held by Bracket Audit")
+
+    if operator_queue_launch_blocked_count > 0 and effective_status in _READY_PAPER_LIVE_STATUSES:
+        effective_status = "blocked_by_operator_queue"
+        detail = str(operator_queue_blocked_detail or "Fresh operator queue has a launch blocker.")
 
     if daily_loss_advisory_active and effective_status in _READY_PAPER_LIVE_STATUSES:
         effective_status = "shadow_paper_active"
