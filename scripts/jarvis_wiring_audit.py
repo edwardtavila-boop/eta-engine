@@ -36,6 +36,8 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from eta_engine.scripts import workspace_roots
+
 if TYPE_CHECKING:
     from types import ModuleType
 
@@ -45,16 +47,40 @@ logger = logging.getLogger("eta_engine.jarvis_wiring_audit")
 # Constants — overridable for tests via monkeypatching.
 # ---------------------------------------------------------------------------
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
-
-DEFAULT_MODULE_DIR: Path = REPO_ROOT / "eta_engine" / "brain" / "jarvis_v3"
+DEFAULT_MODULE_DIR: Path = workspace_roots.ETA_ENGINE_ROOT / "brain" / "jarvis_v3"
 DEFAULT_PACKAGE: str = "eta_engine.brain.jarvis_v3"
 
-DEFAULT_TRACE_PATH: Path = REPO_ROOT / "var" / "eta_engine" / "state" / "jarvis_trace.jsonl"
-AUDIT_OUTPUT_PATH: Path = REPO_ROOT / "var" / "eta_engine" / "state" / "jarvis_wiring_audit.json"
+DEFAULT_TRACE_PATH: Path = workspace_roots.ETA_JARVIS_TRACE_PATH
+AUDIT_OUTPUT_PATH: Path = workspace_roots.ETA_JARVIS_WIRING_AUDIT_PATH
 
-# Trace fields scanned for module-name substring matches.
-TRACE_FIELDS: tuple[str, ...] = ("schools", "clashes", "portfolio", "hot_learn", "context")
+# Trace fields scanned for module-name substring matches. Newer records carry
+# explicit `wiring` metadata; older records are still scanned for best-effort
+# evidence in their v1/v2 payload fields.
+TRACE_FIELDS: tuple[str, ...] = (
+    "wiring",
+    "schools",
+    "school_inputs",
+    "clashes",
+    "portfolio",
+    "portfolio_inputs",
+    "hot_learn",
+    "hot_weights_snapshot",
+    "overrides_snapshot",
+    "hermes_calls",
+    "context",
+)
+
+# Backward-compatible proof for records emitted before the explicit `wiring`
+# field existed. These fields are written by the conductor/trace hot path and
+# are enough to avoid false "dark" alarms on legacy v2 trace rows.
+IMPLICIT_TRACE_FIELD_MODULES: dict[str, tuple[str, ...]] = {
+    "jarvis_conductor": ("elapsed_ms", "final_size"),
+    "trace_emitter": ("consult_id", "schema_version"),
+    "context_enricher": ("context",),
+    "portfolio_brain": ("portfolio", "portfolio_inputs"),
+    "hot_learner": ("hot_learn", "hot_weights_snapshot"),
+    "hermes_overrides": ("overrides_snapshot",),
+}
 
 # Rotated trace files older than this many days are skipped.
 TRACE_LOOKBACK_DAYS: int = 7
@@ -164,6 +190,15 @@ def _resolve_trace_files(trace_path: Path) -> list[Path]:
     return files
 
 
+def _is_synthetic_test_record(rec: dict) -> bool:
+    """Return True for pytest/mock records accidentally written to live trace."""
+    for field in ("bot_id", "action"):
+        value = rec.get(field)
+        if isinstance(value, str) and "magicmock" in value.lower():
+            return True
+    return False
+
+
 def _iter_trace_records(files: list[Path]) -> list[dict]:
     """Read every JSON line from ``files``; malformed lines are dropped silently."""
     records: list[dict] = []
@@ -179,7 +214,7 @@ def _iter_trace_records(files: list[Path]) -> list[dict]:
                         rec = json.loads(line)
                     except json.JSONDecodeError:
                         continue
-                    if isinstance(rec, dict):
+                    if isinstance(rec, dict) and not _is_synthetic_test_record(rec):
                         records.append(rec)
         except OSError as exc:
             logger.debug("failed reading %s: %s", path, exc)
@@ -189,6 +224,12 @@ def _iter_trace_records(files: list[Path]) -> list[dict]:
 
 def _record_mentions(rec: dict, module_name: str) -> bool:
     """Case-insensitive substring match for ``module_name`` across the scanned fields."""
+    implicit_fields = IMPLICIT_TRACE_FIELD_MODULES.get(module_name)
+    if implicit_fields:
+        for field in implicit_fields:
+            if field in rec and rec[field] not in (None, "", {}, []):
+                return True
+
     needle = module_name.lower()
     for field in TRACE_FIELDS:
         if field not in rec:
@@ -361,7 +402,7 @@ def main(argv: list[str] | None = None) -> int:
         "--trace-path",
         type=Path,
         default=None,
-        help="Override the active trace path (defaults to var/eta_engine/state/jarvis_trace.jsonl).",
+        help=f"Override the active trace path (defaults to {workspace_roots.ETA_JARVIS_TRACE_PATH}).",
     )
     args = parser.parse_args(argv)
 

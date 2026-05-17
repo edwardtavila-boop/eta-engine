@@ -8,7 +8,7 @@ would normally approve.
 Behavior
 --------
   * scans audit files matching ``--audit-glob`` (default:
-    state/jarvis_audit/*.jsonl + var/jarvis_audit/*.jsonl)
+    var/eta_engine/state/jarvis_audit/*.jsonl plus legacy state/jarvis_audit/*.jsonl)
   * looks at the last ``--window-min`` minutes of records (default: 5)
   * computes denial-rate = (DENIED + DEFERRED) / total
   * if the rate exceeds ``--threshold`` (default: 0.50) AND there are
@@ -38,6 +38,8 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT.parent) not in sys.path:
     sys.path.insert(0, str(ROOT.parent))
+
+from eta_engine.scripts import workspace_roots
 
 logger = logging.getLogger("jarvis_denial_rate_alerter")
 
@@ -158,6 +160,20 @@ def fire_alert(stats: dict[str, Any], *, alerts_yaml: Path) -> bool:
         return False
 
 
+def _cooldown_probe_path(state_path: Path) -> Path:
+    if (
+        state_path == workspace_roots.ETA_JARVIS_DENIAL_RATE_ALERT_STATE_PATH
+        and not state_path.exists()
+        and workspace_roots.ETA_LEGACY_JARVIS_DENIAL_RATE_ALERT_STATE_PATH.exists()
+    ):
+        logger.info(
+            "using legacy denial-rate cooldown fallback: %s",
+            workspace_roots.ETA_LEGACY_JARVIS_DENIAL_RATE_ALERT_STATE_PATH,
+        )
+        return workspace_roots.ETA_LEGACY_JARVIS_DENIAL_RATE_ALERT_STATE_PATH
+    return state_path
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument(
@@ -165,7 +181,7 @@ def main(argv: list[str] | None = None) -> int:
         action="append",
         default=None,
         help="Glob(s) for JARVIS audit JSONL files. Repeatable. "
-        "Default: state/jarvis_audit/*.jsonl + var/jarvis_audit/*.jsonl",
+        "Default: var/eta_engine/state/jarvis_audit/*.jsonl plus legacy state/jarvis_audit/*.jsonl",
     )
     p.add_argument("--window-min", type=float, default=5.0, help="Look back this many minutes (default: 5)")
     p.add_argument("--threshold", type=float, default=0.50, help="Fire when denial_rate >= this (default: 0.50)")
@@ -181,8 +197,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument(
         "--state-file",
         type=Path,
-        default=ROOT / "var" / "alerter" / "jarvis_denial_rate_state.json",
-        help="State file for cooldown tracking",
+        default=workspace_roots.ETA_JARVIS_DENIAL_RATE_ALERT_STATE_PATH,
+        help="State file for cooldown tracking. Default: var/eta_engine/state/jarvis_denial_rate_state.json",
     )
     p.add_argument("--alerts-yaml", type=Path, default=ROOT / "configs" / "alerts.yaml", help="Path to alerts.yaml")
     p.add_argument("--dry-run", action="store_true", help="Compute + print stats but do not fire alert or update state")
@@ -199,8 +215,8 @@ def main(argv: list[str] | None = None) -> int:
         globs = args.audit_glob
     else:
         globs = [
-            str(ROOT / "state" / "jarvis_audit" / "*.jsonl"),
-            str(ROOT / "var" / "jarvis_audit" / "*.jsonl"),
+            str(workspace_roots.ETA_JARVIS_AUDIT_DIR / "*.jsonl"),
+            str(workspace_roots.ETA_LEGACY_JARVIS_AUDIT_DIR / "*.jsonl"),
         ]
     paths: list[Path] = []
     for g in globs:
@@ -236,7 +252,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     # Threshold breached
-    if in_cooldown(args.state_file, args.cooldown_min):
+    if in_cooldown(_cooldown_probe_path(args.state_file), args.cooldown_min):
         logger.info("threshold breached BUT in cooldown (%.1f min) -- skipping alert", args.cooldown_min)
         return 0
 

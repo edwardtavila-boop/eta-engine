@@ -57,6 +57,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from eta_engine.scripts import workspace_roots
+
 if TYPE_CHECKING:
     from collections.abc import Callable
 
@@ -64,8 +66,9 @@ logger = logging.getLogger("eta_engine.scripts.bridge_preflight")
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8642
-WORKSPACE = Path(r"C:\EvolutionaryTradingAlgo")
-STATE_ROOT = WORKSPACE / "var" / "eta_engine" / "state"
+WORKSPACE = workspace_roots.WORKSPACE_ROOT
+STATE_ROOT = workspace_roots.ETA_RUNTIME_STATE_DIR
+_REMOTE_MEMORY_BACKUP_DIR = str(workspace_roots.ETA_HERMES_MEMORY_BACKUP_DIR)
 
 LATENCY_CRITICAL_MS = 15000  # >15s LLM round-trip is a red flag
 AUDIT_LOG_MAX_OK_BYTES = 50 * 1024 * 1024  # >50MB without rotation = bug
@@ -375,15 +378,17 @@ def check_memory_backup_recent() -> tuple[str, str, dict]:
             [
                 "ssh",
                 "forex-vps",
-                'powershell -NoProfile -Command "'
-                "$d = 'C:\\EvolutionaryTradingAlgo\\var\\eta_engine\\state\\backups\\hermes_memory'; "
-                "if (Test-Path $d) { "
-                "  $b = Get-ChildItem $d -Filter 'hermes_memory_*.db' | Sort-Object LastWriteTime -Descending; "
-                "  if ($b) { "
-                "    $age_h = ([DateTime]::Now - $b[0].LastWriteTime).TotalHours; "
-                '    \\"count=$($b.Count) newest_age_h=$age_h\\" '
-                "  } else { 'no_backups' } "
-                "} else { 'no_dir' }\"",
+                (
+                    'powershell -NoProfile -Command "'
+                    f"$d = '{_REMOTE_MEMORY_BACKUP_DIR}'; "
+                    "if (Test-Path $d) { "
+                    "  $b = Get-ChildItem $d -Filter 'hermes_memory_*.db' | Sort-Object LastWriteTime -Descending; "
+                    "  if ($b) { "
+                    "    $age_h = ([DateTime]::Now - $b[0].LastWriteTime).TotalHours; "
+                    '    \\"count=$($b.Count) newest_age_h=$age_h\\" '
+                    "  } else { 'no_backups' } "
+                    "} else { 'no_dir' }\""
+                ),
             ],
             capture_output=True,
             text=True,

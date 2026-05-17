@@ -13,6 +13,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from eta_engine.scripts import workspace_roots
 from eta_engine.venues.base import (
     ConnectionStatus,
     OrderRequest,
@@ -486,7 +487,7 @@ def _runtime_secret_root(env: Mapping[str, str]) -> Path:
     runtime_root = (
         str(env.get("ETA_RUNTIME_ROOT") or "").strip()
         or str(env.get("FIRM_RUNTIME_ROOT") or "").strip()
-        or r"C:\EvolutionaryTradingAlgo\firm_command_center"
+        or str(workspace_roots.WORKSPACE_ROOT / "firm_command_center")
     )
     return Path(runtime_root) / "secrets"
 

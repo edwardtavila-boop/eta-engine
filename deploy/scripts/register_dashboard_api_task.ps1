@@ -49,7 +49,7 @@ if ($DryRun) {
     Write-Host "  State dir   : $StateDir"
     Write-Host "  Stdout log  : $StdoutLog"
     Write-Host "  Stderr log  : $StderrLog"
-    Write-Host "  Principal   : NT AUTHORITY\SYSTEM (Highest)"
+    Write-Host "  Principal   : NT AUTHORITY\SYSTEM (Highest), with current-user fallback"
     Write-Host "  Triggers    : AtStartup + AtLogOn"
     Write-Host "  Restart     : 999 attempts, 1-minute delay"
     exit 0
@@ -65,11 +65,15 @@ if ($existing) {
 New-Item -ItemType Directory -Force -Path $StateDir, $LogDir | Out-Null
 
 Get-CimInstance Win32_Process -Filter "name='python.exe'" -ErrorAction SilentlyContinue |
-    Where-Object { ([string]$_.CommandLine) -match "deploy\.scripts\.dashboard_api:app|deploy.scripts.dashboard_api:app" } |
+    Where-Object {
+        ([string]$_.CommandLine) -match "eta_engine\.deploy\.scripts\.dashboard_api:app|eta_engine.deploy.scripts.dashboard_api:app"
+    } |
     ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 
 Get-CimInstance Win32_Process -Filter "name='cmd.exe'" -ErrorAction SilentlyContinue |
-    Where-Object { ([string]$_.CommandLine) -match "run_dashboard_api_task\.cmd|deploy\.scripts\.dashboard_api:app|deploy.scripts.dashboard_api:app" } |
+    Where-Object {
+        ([string]$_.CommandLine) -match "run_dashboard_api_task\.cmd|eta_engine\.deploy\.scripts\.dashboard_api:app|eta_engine.deploy.scripts.dashboard_api:app"
+    } |
     ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 
 $action = New-ScheduledTaskAction -Execute $Runner -WorkingDirectory $WorkingDir
@@ -79,20 +83,36 @@ $settings = New-ScheduledTaskSettingsSet `
     -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) `
     -ExecutionTimeLimit ([TimeSpan]::Zero) `
     -MultipleInstances IgnoreNew
-$principal = New-ScheduledTaskPrincipal `
+$description = "Canonical ETA dashboard API on 127.0.0.1:8000 with state/logs under C:\EvolutionaryTradingAlgo."
+$systemPrincipal = New-ScheduledTaskPrincipal `
     -UserId "NT AUTHORITY\SYSTEM" -LogonType ServiceAccount -RunLevel Highest
+$principalLabel = "SYSTEM, AtStartup+AtLogOn"
 
-Register-ScheduledTask `
-    -TaskName $TaskName `
-    -Description "Canonical ETA dashboard API on 127.0.0.1:8000 with state/logs under C:\EvolutionaryTradingAlgo." `
-    -Action $action -Trigger $triggers -Settings $settings -Principal $principal `
-    -Force | Out-Null
+try {
+    Register-ScheduledTask `
+        -TaskName $TaskName `
+        -Description $description `
+        -Action $action -Trigger $triggers -Settings $settings -Principal $systemPrincipal `
+        -Force | Out-Null
+} catch {
+    $currentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+    Write-Warning "SYSTEM registration unavailable: $($_.Exception.Message)"
+    $fallbackPrincipal = New-ScheduledTaskPrincipal `
+        -UserId $currentUser -LogonType Interactive -RunLevel Limited
+    $fallbackTriggers = @((New-ScheduledTaskTrigger -AtLogOn -User $currentUser))
+    Register-ScheduledTask `
+        -TaskName $TaskName `
+        -Description "$description Current-user fallback because SYSTEM registration was unavailable." `
+        -Action $action -Trigger $fallbackTriggers -Settings $settings -Principal $fallbackPrincipal `
+        -Force | Out-Null
+    $principalLabel = "current_user:$currentUser, AtLogOn"
+}
 
 if ($Start) {
     Start-ScheduledTask -TaskName $TaskName
 }
 
-Write-Host "OK: Registered '$TaskName' as SYSTEM, AtStartup+AtLogOn, restart-on-fail."
+Write-Host "OK: Registered '$TaskName' as $principalLabel, restart-on-fail."
 Write-Host "    Runner: $Runner"
 Write-Host "    Logs:   $StdoutLog"
 Write-Host "            $StderrLog"

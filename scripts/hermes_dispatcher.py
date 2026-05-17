@@ -41,6 +41,8 @@ import threading
 from pathlib import Path
 from typing import Any
 
+from eta_engine.scripts import workspace_roots
+
 logger = logging.getLogger(__name__)
 
 
@@ -118,7 +120,7 @@ def tail_and_dispatch(
     optionally polls forever (--follow) or returns after one pass.
     """
     if path is None:
-        path = Path(r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\jarvis_v3_events.jsonl")
+        path = workspace_roots.ETA_JARVIS_V3_EVENTS_PATH
     path = Path(path)
     if not path.exists():
         logger.warning("no events file at %s", path)

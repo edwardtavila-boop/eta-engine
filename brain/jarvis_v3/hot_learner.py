@@ -40,7 +40,9 @@ from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
-STATE_PATH = Path(r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\hot_learner.json")
+from eta_engine.scripts import workspace_roots
+
+STATE_PATH = workspace_roots.ETA_HOT_LEARNER_STATE_PATH
 
 MIN_OBSERVATIONS_TO_ACT = 3
 CAP_LOW = 0.5

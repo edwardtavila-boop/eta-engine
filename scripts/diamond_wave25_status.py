@@ -28,16 +28,59 @@ import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from eta_engine.scripts import workspace_roots
+from eta_engine.scripts.retune_advisory_cache import build_retune_advisory, summarize_active_experiment
+
 ROOT = Path(__file__).resolve().parents[1]
 WORKSPACE_ROOT = ROOT.parent
 if str(WORKSPACE_ROOT) not in sys.path:
     sys.path.insert(0, str(WORKSPACE_ROOT))
 
-OUT_LATEST = WORKSPACE_ROOT / "var" / "eta_engine" / "state" / "diamond_wave25_status_latest.json"
+OUT_LATEST = workspace_roots.ETA_DIAMOND_WAVE25_STATUS_PATH
 
 
 def _safe_iso(dt: datetime) -> str:
     return dt.replace(microsecond=0).isoformat()
+
+
+def _state_dir() -> Path:
+    if WORKSPACE_ROOT == workspace_roots.WORKSPACE_ROOT:
+        return workspace_roots.ETA_RUNTIME_STATE_DIR
+    root = WORKSPACE_ROOT
+    return root / "var" / "eta_engine" / "state"
+
+
+def _health_dir() -> Path:
+    if WORKSPACE_ROOT == workspace_roots.WORKSPACE_ROOT:
+        return workspace_roots.ETA_RUNTIME_HEALTH_DIR
+    state_dir = _state_dir()
+    return state_dir / "health"
+
+
+def _read_json_dict(path: Path) -> dict:
+    if not path.exists():
+        return {}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    if isinstance(payload, dict):
+        return payload
+    return {}
+
+
+def _dict_field(payload: dict, key: str) -> dict:
+    value = payload.get(key)
+    if isinstance(value, dict):
+        return value
+    return {}
+
+
+def _string_list(payload: dict, key: str) -> list[str]:
+    value = payload.get(key)
+    if not isinstance(value, list):
+        return []
+    return [str(item) for item in value if str(item).strip()]
 
 
 def _bots_to_check() -> list[str]:
@@ -128,15 +171,12 @@ def _per_bot_status(bot_id: str) -> dict:
 
 def _alert_channel_status() -> dict:
     """Detect which push channels are configured (without leaking creds)."""
-    import os
+    from eta_engine.scripts import alert_channel_config  # noqa: PLC0415
 
-    telegram_ok = bool(
-        os.environ.get("ETA_TELEGRAM_BOT_TOKEN") and os.environ.get("ETA_TELEGRAM_CHAT_ID"),
-    )
     return {
-        "telegram_configured": telegram_ok,
-        "discord_configured": bool(os.environ.get("ETA_DISCORD_WEBHOOK_URL")),
-        "generic_webhook_configured": bool(os.environ.get("ETA_GENERIC_WEBHOOK_URL")),
+        "telegram_configured": alert_channel_config.telegram_configured(),
+        "discord_configured": alert_channel_config.discord_configured(),
+        "generic_webhook_configured": alert_channel_config.generic_configured(),
     }
 
 
@@ -178,6 +218,10 @@ def _ledger_truth_summary() -> dict:
     }
 
 
+def _retune_advisory_summary() -> dict:
+    return build_retune_advisory(_health_dir())
+
+
 def build_status_report() -> dict:
     bots = _bots_to_check()
     bot_status = [_per_bot_status(b) for b in bots]
@@ -208,6 +252,7 @@ def build_status_report() -> dict:
         },
         "alert_channels": _alert_channel_status(),
         "ledger_pollution_snapshot": _ledger_truth_summary(),
+        "retune_advisory": _retune_advisory_summary(),
         "per_bot": bot_status,
     }
 
@@ -239,6 +284,34 @@ def _print_table(report: dict) -> None:
     snap = report["ledger_pollution_snapshot"]
     print(f"  ledger view: production_strict={snap['production_strict_count']} (filter={snap['production_filter']})")
     print(f"               operator_inclusive={snap['operator_inclusive_count']} (filter={snap['operator_filter']})")
+    advisory = report.get("retune_advisory", {})
+    if advisory.get("available"):
+        focus_pnl = advisory.get("focus_total_realized_pnl")
+        focus_pf = advisory.get("focus_profit_factor")
+        broker_mtd = advisory.get("broker_mtd_pnl")
+        pnl_text = f"${focus_pnl:+.2f}" if isinstance(focus_pnl, int | float) else "n/a"
+        pf_text = f"{focus_pf:.2f}" if isinstance(focus_pf, int | float) else "n/a"
+        mtd_text = f"${broker_mtd:+.2f}" if isinstance(broker_mtd, int | float) else "n/a"
+        print(
+            f"  retune advisory: {advisory.get('focus_bot')} "
+            f"state={advisory.get('focus_state')} issue={advisory.get('focus_issue')}",
+        )
+        print(
+            f"                   closes={advisory.get('focus_closed_trade_count')} "
+            f"pnl={pnl_text} pf={pf_text} mtd={mtd_text}",
+        )
+        if advisory.get("diagnosis"):
+            print(f"                   drift={advisory.get('diagnosis')}")
+        experiment = summarize_active_experiment(advisory.get("active_experiment"))
+        if experiment:
+            print(f"                   post-fix experiment: {experiment['headline']}")
+            print(
+                "                                       "
+                f"partial_profit_enabled={experiment['partial_profit_enabled_text']} "
+                f"closes={experiment['post_change_closed_trade_count_text']} "
+                f"pnl={experiment['post_change_total_realized_pnl_text']} "
+                f"pf={experiment['post_change_profit_factor_text']}"
+            )
     print("  unfiltered counts by classification:")
     for ds, n in snap["unfiltered"].items():
         print(f"    {ds}: {n}")

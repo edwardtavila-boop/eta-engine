@@ -49,6 +49,10 @@ def compare_snapshots(
             "first_launch_blocker_changed": None,
             "first_next_action_changed": None,
             "first_launch_next_action_changed": None,
+            "second_brain_status_changed": None,
+            "second_brain_episodes_delta": None,
+            "second_brain_eligible_patterns_delta": None,
+            "second_brain_legacy_sources_changed": None,
             "summary": "no previous operator queue snapshot",
         }
 
@@ -76,6 +80,24 @@ def compare_snapshots(
     bot_blocked_data_delta = int(current.get("bot_strategy_blocked_data") or 0) - int(
         previous.get("bot_strategy_blocked_data") or 0
     )
+    has_second_brain_status = "second_brain_status" in previous and "second_brain_status" in current
+    has_second_brain_episodes = "second_brain_episodes" in previous and "second_brain_episodes" in current
+    has_second_brain_patterns = (
+        "second_brain_eligible_patterns" in previous and "second_brain_eligible_patterns" in current
+    )
+    has_second_brain_legacy = (
+        "second_brain_legacy_sources_active" in previous and "second_brain_legacy_sources_active" in current
+    )
+    second_brain_status_changed = current.get("second_brain_status") != previous.get("second_brain_status")
+    second_brain_episodes_delta = int(current.get("second_brain_episodes") or 0) - int(
+        previous.get("second_brain_episodes") or 0
+    )
+    second_brain_eligible_patterns_delta = int(current.get("second_brain_eligible_patterns") or 0) - int(
+        previous.get("second_brain_eligible_patterns") or 0
+    )
+    second_brain_legacy_sources_changed = current.get("second_brain_legacy_sources_active") != previous.get(
+        "second_brain_legacy_sources_active"
+    )
     if blocked_count_delta:
         changed_fields.append("blocked_count")
     if has_launch_blocked_count and launch_blocked_count_delta:
@@ -102,6 +124,14 @@ def compare_snapshots(
         changed_fields.append("bot_strategy_readiness_status")
     if bot_blocked_data_delta and ("bot_strategy_blocked_data" in previous or "bot_strategy_blocked_data" in current):
         changed_fields.append("bot_strategy_blocked_data")
+    if second_brain_status_changed and has_second_brain_status:
+        changed_fields.append("second_brain_status")
+    if second_brain_episodes_delta and has_second_brain_episodes:
+        changed_fields.append("second_brain_episodes")
+    if second_brain_eligible_patterns_delta and has_second_brain_patterns:
+        changed_fields.append("second_brain_eligible_patterns")
+    if second_brain_legacy_sources_changed and has_second_brain_legacy:
+        changed_fields.append("second_brain_legacy_sources_active")
     changed = bool(changed_fields)
     summary = "operator queue drift detected: " + ", ".join(changed_fields) if changed else "operator queue unchanged"
     return {
@@ -118,6 +148,14 @@ def compare_snapshots(
         "first_launch_next_action_changed": first_launch_next_action_changed,
         "bot_strategy_readiness_status_changed": bot_readiness_status_changed,
         "bot_strategy_blocked_data_delta": bot_blocked_data_delta,
+        "second_brain_status_changed": second_brain_status_changed if has_second_brain_status else None,
+        "second_brain_episodes_delta": second_brain_episodes_delta if has_second_brain_episodes else None,
+        "second_brain_eligible_patterns_delta": (
+            second_brain_eligible_patterns_delta if has_second_brain_patterns else None
+        ),
+        "second_brain_legacy_sources_changed": (
+            second_brain_legacy_sources_changed if has_second_brain_legacy else None
+        ),
         "previous": {
             "status": previous.get("status"),
             "launch_status": previous.get("launch_status"),
@@ -129,6 +167,10 @@ def compare_snapshots(
             "first_launch_next_action": previous.get("first_launch_next_action"),
             "bot_strategy_readiness_status": previous.get("bot_strategy_readiness_status"),
             "bot_strategy_blocked_data": previous.get("bot_strategy_blocked_data"),
+            "second_brain_status": previous.get("second_brain_status"),
+            "second_brain_episodes": previous.get("second_brain_episodes"),
+            "second_brain_eligible_patterns": previous.get("second_brain_eligible_patterns"),
+            "second_brain_legacy_sources_active": previous.get("second_brain_legacy_sources_active"),
             "generated_at": previous.get("generated_at"),
         },
         "summary": summary,
@@ -253,6 +295,57 @@ def _build_current_readiness_summary(*, limit: int) -> dict[str, Any]:
         return payload
 
 
+def _empty_second_brain_summary(*, status: str, error: str | None = None) -> dict[str, Any]:
+    """Return a stable second-brain payload when memory is temporarily unavailable."""
+    payload: dict[str, Any] = {
+        "source": "jarvis_status.second_brain",
+        "status": status,
+        "error": error,
+        "n_episodes": 0,
+        "win_rate": 0.0,
+        "avg_r": 0.0,
+        "semantic_patterns": 0,
+        "procedural_versions": 0,
+        "playbook": {
+            "eligible_patterns": 0,
+            "favor_patterns": [],
+            "avoid_patterns": [],
+        },
+        "truth_note": "",
+        "legacy_sources_active": False,
+        "top_patterns": [],
+    }
+    return payload
+
+
+def _second_brain_summary(*, limit: int) -> dict[str, Any]:
+    """Build a fail-soft second-brain payload for automation snapshots."""
+    try:
+        payload = jarvis_status.build_second_brain_summary(top_n=max(1, limit))
+    except Exception as exc:  # noqa: BLE001 - automation snapshots must keep running.
+        return _empty_second_brain_summary(status="unavailable", error=str(exc))
+    return dict(payload) if isinstance(payload, dict) else _empty_second_brain_summary(
+        status="unavailable",
+        error="second brain summary returned non-object",
+    )
+
+
+def _second_brain_counts(second_brain: dict[str, Any]) -> dict[str, Any]:
+    """Flatten high-signal second-brain fields for cheap drift checks."""
+    playbook = second_brain.get("playbook") if isinstance(second_brain.get("playbook"), dict) else {}
+    favor_patterns = playbook.get("favor_patterns") if isinstance(playbook.get("favor_patterns"), list) else []
+    avoid_patterns = playbook.get("avoid_patterns") if isinstance(playbook.get("avoid_patterns"), list) else []
+    return {
+        "second_brain_status": str(second_brain.get("status") or "unknown"),
+        "second_brain_episodes": int(second_brain.get("n_episodes") or 0),
+        "second_brain_eligible_patterns": int(playbook.get("eligible_patterns") or 0),
+        "second_brain_favor_patterns": len(favor_patterns),
+        "second_brain_avoid_patterns": len(avoid_patterns),
+        "second_brain_legacy_sources_active": bool(second_brain.get("legacy_sources_active")),
+        "second_brain_truth_note": str(second_brain.get("truth_note") or ""),
+    }
+
+
 def build_snapshot(*, limit: int = 5, refresh_readiness: bool = False) -> dict[str, Any]:
     """Return the canonical automation snapshot payload."""
     queue = jarvis_status.build_operator_queue_summary(limit=limit)
@@ -261,6 +354,8 @@ def build_snapshot(*, limit: int = 5, refresh_readiness: bool = False) -> dict[s
         if refresh_readiness
         else jarvis_status.build_bot_strategy_readiness_summary(limit=limit)
     )
+    second_brain = _second_brain_summary(limit=limit)
+    second_brain_counts = _second_brain_counts(second_brain)
     summary = queue.get("summary") if isinstance(queue, dict) else {}
     top_blockers = queue.get("top_blockers") if isinstance(queue, dict) else []
     top_launch_blockers = queue.get("top_launch_blockers") if isinstance(queue, dict) else []
@@ -304,6 +399,8 @@ def build_snapshot(*, limit: int = 5, refresh_readiness: bool = False) -> dict[s
         "bot_strategy_paper_ready": bot_paper_ready,
         "bot_strategy_can_live_any": bot_can_live_any,
         "bot_strategy_readiness": readiness,
+        **second_brain_counts,
+        "second_brain": second_brain,
         "operator_queue": queue,
     }
 
@@ -336,12 +433,17 @@ def _render_text(snapshot: dict[str, Any], path: Path | None) -> str:
     bot_status = snapshot.get("bot_strategy_readiness_status") or "unknown"
     bot_blocked = snapshot.get("bot_strategy_blocked_data")
     bot_paper = snapshot.get("bot_strategy_paper_ready")
+    second_brain_status = snapshot.get("second_brain_status") or "unknown"
+    second_brain_episodes = snapshot.get("second_brain_episodes")
+    second_brain_eligible = snapshot.get("second_brain_eligible_patterns")
     drift = snapshot.get("drift") if isinstance(snapshot.get("drift"), dict) else {}
     drift_line = drift.get("summary") if isinstance(drift, dict) else None
     return (
         f"operator_queue_snapshot status={snapshot['status']} "
         f"blocked={snapshot['blocked_count']} launch_blocked={launch_blocked} first={first} next={action}"
         f" bot_readiness={bot_status} bot_blocked_data={bot_blocked} bot_paper_ready={bot_paper}"
+        f" second_brain={second_brain_status} second_brain_episodes={second_brain_episodes}"
+        f" second_brain_eligible={second_brain_eligible}"
         f"{f' drift={drift_line}' if drift_line else ''}{target}"
     )
 

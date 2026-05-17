@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from eta_engine.scripts import jarvis_status, operator_queue_snapshot
 
 
@@ -29,6 +31,39 @@ def _readiness(
         },
         "top_actions": [],
     }
+
+
+def _second_brain(
+    *,
+    status: str = "warm",
+    episodes: int = 42,
+    eligible_patterns: int = 2,
+    favor_patterns: int = 1,
+    avoid_patterns: int = 1,
+    legacy_sources_active: bool = False,
+) -> dict[str, object]:
+    return {
+        "source": "jarvis_status.second_brain",
+        "status": status,
+        "n_episodes": episodes,
+        "win_rate": 0.61,
+        "avg_r": 0.27,
+        "semantic_patterns": eligible_patterns,
+        "procedural_versions": 3,
+        "playbook": {
+            "eligible_patterns": eligible_patterns,
+            "favor_patterns": [{"key": "trend_pullback"} for _ in range(favor_patterns)],
+            "avoid_patterns": [{"key": "late_chop"} for _ in range(avoid_patterns)],
+        },
+        "truth_note": "canonical memory under EvolutionaryTradingAlgo",
+        "legacy_sources_active": legacy_sources_active,
+        "top_patterns": [],
+    }
+
+
+@pytest.fixture(autouse=True)
+def _patch_second_brain(monkeypatch):  # type: ignore[no-untyped-def]
+    monkeypatch.setattr(jarvis_status, "build_second_brain_summary", lambda **_kwargs: _second_brain())
 
 
 def test_build_snapshot_summarizes_top_blocker(monkeypatch) -> None:  # type: ignore[no-untyped-def]
@@ -64,6 +99,12 @@ def test_build_snapshot_summarizes_top_blocker(monkeypatch) -> None:  # type: ig
     assert snapshot["bot_strategy_blocked_data"] == 0
     assert snapshot["bot_strategy_paper_ready"] == 10
     assert snapshot["bot_strategy_readiness"]["summary"]["can_paper_trade"] == 10
+    assert snapshot["second_brain_status"] == "warm"
+    assert snapshot["second_brain_episodes"] == 42
+    assert snapshot["second_brain_eligible_patterns"] == 2
+    assert snapshot["second_brain_favor_patterns"] == 1
+    assert snapshot["second_brain_avoid_patterns"] == 1
+    assert snapshot["second_brain"]["playbook"]["eligible_patterns"] == 2
 
 
 def test_build_snapshot_can_refresh_supervisor_pinned_readiness(monkeypatch) -> None:  # type: ignore[no-untyped-def]
@@ -235,6 +276,54 @@ def test_compare_snapshots_reports_bot_readiness_drift() -> None:
         "bot_strategy_readiness_status",
         "bot_strategy_blocked_data",
     ]
+
+
+def test_compare_snapshots_reports_second_brain_drift() -> None:
+    previous = {
+        "status": "clear",
+        "blocked_count": 0,
+        "first_blocker_op_id": None,
+        "first_next_action": None,
+        "second_brain_status": "cold",
+        "second_brain_episodes": 40,
+        "second_brain_eligible_patterns": 1,
+        "second_brain_legacy_sources_active": True,
+    }
+    current = {
+        **previous,
+        "second_brain_status": "warm",
+        "second_brain_episodes": 42,
+        "second_brain_eligible_patterns": 2,
+        "second_brain_legacy_sources_active": False,
+    }
+
+    drift = operator_queue_snapshot.compare_snapshots(previous, current)
+
+    assert drift["changed"] is True
+    assert drift["second_brain_status_changed"] is True
+    assert drift["second_brain_episodes_delta"] == 2
+    assert drift["second_brain_eligible_patterns_delta"] == 1
+    assert drift["second_brain_legacy_sources_changed"] is True
+    assert drift["changed_fields"] == [
+        "second_brain_status",
+        "second_brain_episodes",
+        "second_brain_eligible_patterns",
+        "second_brain_legacy_sources_active",
+    ]
+
+
+def test_second_brain_summary_fails_soft(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setattr(
+        jarvis_status,
+        "build_second_brain_summary",
+        lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("memory unavailable")),
+    )
+
+    payload = operator_queue_snapshot._second_brain_summary(limit=3)
+
+    assert payload["status"] == "unavailable"
+    assert payload["n_episodes"] == 0
+    assert "memory unavailable" in str(payload["error"])
 
 
 def test_compare_snapshots_reports_unchanged() -> None:

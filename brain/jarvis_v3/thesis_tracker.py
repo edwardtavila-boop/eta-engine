@@ -62,11 +62,12 @@ from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
+from eta_engine.scripts import workspace_roots
+
 logger = logging.getLogger(__name__)
 
-ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_THESES_PATH = ROOT / "state" / "jarvis_intel" / "open_theses.json"
-DEFAULT_BREACH_LOG = ROOT / "state" / "jarvis_intel" / "thesis_breaches.jsonl"
+DEFAULT_THESES_PATH = workspace_roots.ETA_JARVIS_INTEL_STATE_DIR / "open_theses.json"
+DEFAULT_BREACH_LOG = workspace_roots.ETA_JARVIS_INTEL_STATE_DIR / "thesis_breaches.jsonl"
 
 
 @dataclass

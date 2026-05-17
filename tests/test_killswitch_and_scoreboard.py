@@ -7,6 +7,7 @@ import os
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -24,7 +25,9 @@ def tmp_closes(tmp_path: Path):
 
 
 def _today_iso() -> str:
-    return datetime.now(UTC).date().isoformat()
+    from eta_engine.scripts import daily_loss_killswitch as ks
+
+    return ks._operator_now().date().isoformat()
 
 
 def _write_close(path: Path, *, ts: str, pnl: float, bot_id: str = "bot_a") -> None:
@@ -72,9 +75,10 @@ def test_killswitch_trips_below_floor(tmp_closes: Path) -> None:
 
 def test_killswitch_ignores_yesterday(tmp_closes: Path) -> None:
     """Losses from prior days don't count toward today's limit."""
+    from eta_engine.scripts import daily_loss_killswitch as ks
     from eta_engine.scripts.daily_loss_killswitch import is_killswitch_tripped
 
-    yesterday = (datetime.now(UTC) - timedelta(days=1)).date().isoformat()
+    yesterday = (ks._operator_now() - timedelta(days=1)).date().isoformat()
     _write_close(tmp_closes, ts=yesterday + "T09:00:00+00:00", pnl=-1000.0)
     _write_close(tmp_closes, ts=_today_iso() + "T09:00:00+00:00", pnl=-50.0)
     os.environ["ETA_KILLSWITCH_DAILY_LIMIT_USD"] = "-300"
@@ -83,6 +87,21 @@ def test_killswitch_ignores_yesterday(tmp_closes: Path) -> None:
     finally:
         os.environ.pop("ETA_KILLSWITCH_DAILY_LIMIT_USD", None)
     assert not tripped  # yesterday's -$1k doesn't apply
+
+
+def test_killswitch_uses_operator_timezone_for_trade_close_day_bucketing(
+    tmp_closes: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from eta_engine.scripts import daily_loss_killswitch as ks
+
+    fixed_now = datetime(2026, 5, 15, 22, 0, tzinfo=ZoneInfo("America/New_York"))
+    monkeypatch.setattr(ks, "_operator_now", lambda: fixed_now)
+
+    _write_close(tmp_closes, ts="2026-05-16T01:30:00+00:00", pnl=-200.0)
+    _write_close(tmp_closes, ts="2026-05-16T04:30:00+00:00", pnl=-999.0)
+
+    assert ks._today_realized_pnl_usd() == pytest.approx(-200.0)
 
 
 def test_killswitch_pct_spec_overrides_usd(tmp_closes: Path) -> None:

@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from eta_engine.scripts import eta_live_preflight as mod
+from eta_engine.scripts import workspace_roots
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -103,3 +104,22 @@ def test_check_kill_switch_detects_canonical_armed_file(
     assert result.ok is False
     assert result.name == "kill_switch_disarmed"
     assert str(kill_path) in result.detail
+
+
+def test_check_kaizen_recent_uses_canonical_runtime_ledger(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime_json = tmp_path / "var" / "eta_engine" / "state" / "kaizen_ledger.json"
+    runtime_json.parent.mkdir(parents=True)
+    runtime_json.write_text('{"tickets": [], "retrospectives": []}', encoding="utf-8")
+    runtime_jsonl = tmp_path / "var" / "eta_engine" / "state" / "kaizen_ledger.jsonl"
+
+    monkeypatch.setattr(workspace_roots, "ETA_KAIZEN_LEDGER_PATH", runtime_json)
+    monkeypatch.setattr(workspace_roots, "ETA_KAIZEN_LEDGER_JSONL_PATH", runtime_jsonl)
+
+    result = mod.check_kaizen_recent()
+
+    assert result.name == "kaizen_recent"
+    assert result.ok is False
+    assert "canonical" in result.detail or "latest retro" in result.detail

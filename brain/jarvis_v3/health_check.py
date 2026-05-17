@@ -29,7 +29,7 @@ Components checked:
   * decision journal: file existence + recent activity
   * calibrator artifact: file age (days) -- flag if stale > 30
   * macro calendar: presence of upcoming-event window flag
-  * model artifacts: most-recent retrain age in state/models/
+  * model artifacts: most-recent retrain age in var/eta_engine/state/models/
   * jarvis verdict log: existence + recent activity
 
 Pure stdlib + filesystem reads. No network, no async.
@@ -45,6 +45,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
 
+from eta_engine.scripts import workspace_roots
 from eta_engine.scripts.workspace_roots import ETA_RUNTIME_DECISION_JOURNAL_PATH
 
 logger = logging.getLogger(__name__)
@@ -164,7 +165,8 @@ def _check_memory() -> ComponentHealth:
         )
 
         mem = HierarchicalMemory()
-        n = len(mem._episodes)
+        snap = mem.snapshot(top_n=0)
+        n = int(snap.get("n_episodes", 0))
     except Exception as exc:  # noqa: BLE001
         return ComponentHealth(
             name="hierarchical_memory",
@@ -176,20 +178,29 @@ def _check_memory() -> ComponentHealth:
             name="hierarchical_memory",
             status=HealthStatus.DEGRADED,
             detail="no episodes recorded yet (cold-start)",
-            metrics={"n_episodes": 0},
+            metrics={"n_episodes": 0, "paths": snap.get("paths", {})},
         )
+    metrics = {
+        "n_episodes": n,
+        "win_rate": snap.get("win_rate", 0.0),
+        "avg_r": snap.get("avg_r", 0.0),
+        "semantic_patterns": snap.get("semantic_patterns", 0),
+        "procedural_versions": snap.get("procedural_versions", 0),
+        "paths": snap.get("paths", {}),
+        "sources": snap.get("sources", {}),
+    }
     if n < 30:
         return ComponentHealth(
             name="hierarchical_memory",
             status=HealthStatus.DEGRADED,
             detail=f"only {n} episodes; RAG retrieval will be weak",
-            metrics={"n_episodes": n},
+            metrics=metrics,
         )
     return ComponentHealth(
         name="hierarchical_memory",
         status=HealthStatus.OK,
         detail=f"{n} episodes in journal",
-        metrics={"n_episodes": n},
+        metrics=metrics,
     )
 
 
@@ -224,13 +235,23 @@ def _check_filter_bandit() -> ComponentHealth:
     )
 
 
+def _model_artifact_dirs() -> list[Path]:
+    dirs: list[Path] = []
+    for path in (workspace_roots.ETA_MODEL_ARTIFACT_DIR, workspace_roots.ETA_LEGACY_MODEL_ARTIFACT_DIR):
+        if path.exists() and path not in dirs:
+            dirs.append(path)
+    return dirs
+
+
 def _check_calibrator() -> ComponentHealth:
-    candidates = list((ROOT / "state" / "models").glob("calibrator_*.json"))
+    candidates: list[Path] = []
+    for model_dir in _model_artifact_dirs():
+        candidates.extend(model_dir.glob("calibrator_*.json"))
     if not candidates:
         return ComponentHealth(
             name="calibrator",
             status=HealthStatus.DEGRADED,
-            detail="no calibrator artifact found in state/models/",
+            detail="no calibrator artifact found in var/eta_engine/state/models/ or legacy state/models/",
         )
     latest = max(candidates, key=lambda p: p.stat().st_mtime)
     age_days = (time.time() - latest.stat().st_mtime) / 86_400
@@ -252,7 +273,8 @@ def _check_calibrator() -> ComponentHealth:
 def _check_decision_journal() -> ComponentHealth:
     candidates = [
         ETA_RUNTIME_DECISION_JOURNAL_PATH,
-        ROOT / "state" / "jarvis_audit",
+        workspace_roots.ETA_JARVIS_AUDIT_DIR,
+        workspace_roots.ETA_LEGACY_JARVIS_AUDIT_DIR,
     ]
     for p in candidates:
         if p.exists():
@@ -270,8 +292,18 @@ def _check_decision_journal() -> ComponentHealth:
 
 
 def _check_intel_verdict_log() -> ComponentHealth:
-    p = ROOT / "state" / "jarvis_intel" / "verdicts.jsonl"
-    if not p.exists():
+    p = next(
+        (
+            path
+            for path in (
+                workspace_roots.ETA_JARVIS_VERDICTS_PATH,
+                workspace_roots.ETA_LEGACY_JARVIS_VERDICTS_PATH,
+            )
+            if path.exists()
+        ),
+        None,
+    )
+    if p is None:
         return ComponentHealth(
             name="intel_verdict_log",
             status=HealthStatus.OK,
@@ -291,13 +323,13 @@ def _check_intel_verdict_log() -> ComponentHealth:
             name="intel_verdict_log",
             status=HealthStatus.DEGRADED,
             detail=f"no writes in {age_min / 60:.1f} hours",
-            metrics={"size_kb": round(size_kb, 1), "age_min": round(age_min, 1)},
+            metrics={"path": str(p), "size_kb": round(size_kb, 1), "age_min": round(age_min, 1)},
         )
     return ComponentHealth(
         name="intel_verdict_log",
         status=HealthStatus.OK,
         detail=f"last write {age_min:.1f} min ago, {size_kb:.1f} KB",
-        metrics={"size_kb": round(size_kb, 1), "age_min": round(age_min, 1)},
+        metrics={"path": str(p), "size_kb": round(size_kb, 1), "age_min": round(age_min, 1)},
     )
 
 

@@ -27,6 +27,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from eta_engine.scripts import workspace_roots
 from eta_engine.venues.base import (
     ConnectionStatus,
     OrderRequest,
@@ -112,6 +113,20 @@ _ALPACA_STATUS_MAP: dict[str, OrderStatus] = {
 
 def _map_alpaca_status(raw: Any) -> OrderStatus:  # noqa: ANN401 — server payload is untyped
     return _ALPACA_STATUS_MAP.get(str(raw or "").strip().lower(), OrderStatus.OPEN)
+
+
+def _alpaca_filled_at(order_dict: dict[str, Any], *, status: OrderStatus) -> str | None:
+    """Return a broker-reported fill timestamp for filled or partial orders."""
+    if status not in {OrderStatus.FILLED, OrderStatus.PARTIAL}:
+        return None
+    for candidate in (
+        order_dict.get("filled_at"),
+        order_dict.get("filled-at"),
+    ):
+        text = str(candidate or "").strip()
+        if text:
+            return text
+    return None
 
 
 class AlpacaConfigError(ValueError):
@@ -416,18 +431,23 @@ class AlpacaVenue(VenueBase):
         status = _map_alpaca_status(server.get("status"))
         filled_qty = float(server.get("filled_qty") or 0.0)
         avg_price = float(server.get("filled_avg_price") or 0.0)
+        filled_at = _alpaca_filled_at(server, status=status)
+        raw = {
+            "venue": self.name,
+            "payload": payload,
+            "mode": "paper",
+            "server": server,
+            "client_order_id": client_order_id,
+        }
+        if filled_at:
+            raw["filled_at"] = filled_at
         result = OrderResult(
             order_id=server_id,
             status=status,
             filled_qty=filled_qty,
             avg_price=avg_price,
-            raw={
-                "venue": self.name,
-                "payload": payload,
-                "mode": "paper",
-                "server": server,
-                "client_order_id": client_order_id,
-            },
+            filled_at=filled_at,
+            raw=raw,
         )
         self._mock_orders[server_id] = result
         self._mock_orders[client_order_id] = result
@@ -449,12 +469,17 @@ class AlpacaVenue(VenueBase):
                 status = _map_alpaca_status(resp.get("status"))
                 filled_qty = float(resp.get("filled_qty") or 0.0)
                 avg_price = float(resp.get("filled_avg_price") or 0.0)
+                filled_at = _alpaca_filled_at(resp, status=status)
+                raw = {"venue": self.name, "mode": "paper", "server": resp}
+                if filled_at:
+                    raw["filled_at"] = filled_at
                 result = OrderResult(
                     order_id=str(resp.get("id") or order_id),
                     status=status,
                     filled_qty=filled_qty,
                     avg_price=avg_price,
-                    raw={"venue": self.name, "mode": "paper", "server": resp},
+                    filled_at=filled_at,
+                    raw=raw,
                 )
                 self._mock_orders[result.order_id] = result
                 return result
@@ -928,7 +953,7 @@ def _runtime_secret_root(env: Mapping[str, str]) -> Path:
     runtime_root = (
         str(env.get("ETA_RUNTIME_ROOT") or "").strip()
         or str(env.get("FIRM_RUNTIME_ROOT") or "").strip()
-        or r"C:\EvolutionaryTradingAlgo\firm_command_center"
+        or str(workspace_roots.WORKSPACE_ROOT / "firm_command_center")
     )
     return Path(runtime_root) / "secrets"
 

@@ -62,6 +62,27 @@ def _is_paper_url(base_url: str) -> bool:
     return "paper" in (base_url or "").lower()
 
 
+def _order_fill_ts(order: dict[str, Any]) -> str:
+    return str(
+        order.get("broker_fill_ts")
+        or order.get("filled_at")
+        or order.get("filled-at")
+        or order.get("execution_time")
+        or order.get("execution-time")
+        or order.get("executed_at")
+        or order.get("executed-at")
+        or order.get("lastFillTime")
+        or order.get("timestamp")
+        or order.get("ts")
+        or order.get("time")
+        or order.get("updated_at")
+        or order.get("updated-at")
+        or order.get("submitted_at")
+        or order.get("created_at")
+        or "?"
+    )
+
+
 async def _list_recent_orders(
     venue: AlpacaVenue,
     *,
@@ -84,7 +105,7 @@ async def _list_recent_orders(
 
 def _format_order_row(order: dict[str, Any]) -> str:
     """One-line summary suitable for live console tail."""
-    ts = order.get("submitted_at") or order.get("created_at") or "?"
+    ts = _order_fill_ts(order)
     sym = order.get("symbol", "?")
     side = order.get("side", "?")
     qty = order.get("qty", "?")
@@ -173,7 +194,7 @@ async def watch(
             if is_crypto:
                 seen_new_crypto_ids.add(oid)
                 if first_fill_ts is None and order.get("filled_avg_price"):
-                    first_fill_ts = order.get("filled_at") or now_iso
+                    first_fill_ts = _order_fill_ts(order)
                     print(  # noqa: T201
                         f"[{now_iso}] FIRST CRYPTO FILL OBSERVED at filled_avg_price={order.get('filled_avg_price')}",
                         flush=True,

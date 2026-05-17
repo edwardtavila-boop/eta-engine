@@ -26,7 +26,7 @@ def _write_guard_state(
     daily_limit: float = 1500.0,
     static_buffer: float = 2500.0,
     signal: str = "OK",
-) -> None:
+    ) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         json.dumps(
@@ -54,6 +54,111 @@ def _write_guard_state(
 
 def _set_live_capital_today(monkeypatch: object, ca: object, iso_day: str) -> None:
     monkeypatch.setattr(ca, "_utc_today", lambda: date.fromisoformat(iso_day))
+
+
+def _write_leaderboard(path: Path, *, prop_ready_bots: list[str]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "ts": "2026-05-13T00:00:00+00:00",
+                "prop_ready_bots": prop_ready_bots,
+                "n_prop_ready": len(prop_ready_bots),
+            },
+        ),
+        encoding="utf-8",
+    )
+
+
+def _write_launch_readiness(
+    path: Path,
+    *,
+    verdict: str = "GO",
+    prop_ready_count: int = 2,
+    no_go_gates: tuple[str, ...] = (),
+    hold_gates: tuple[str, ...] = (),
+) -> None:
+    gates: list[dict[str, object]] = [
+        {
+            "name": "R0_LIVE_CAPITAL_CALENDAR",
+            "status": "GO",
+            "rationale": "calendar date reached",
+            "detail": {"paper_live_required": False},
+        },
+        {
+            "name": "R1_PROP_READY_DESIGNATED",
+            "status": "GO",
+            "rationale": f"{prop_ready_count} PROP_READY bots designated",
+            "detail": {"n": prop_ready_count, "prop_ready_bots": ["m2k"]},
+        },
+    ]
+    gates.extend(
+        {
+            "name": gate_name,
+            "status": "NO_GO",
+            "rationale": f"{gate_name} failing",
+        }
+        for gate_name in no_go_gates
+    )
+    gates.extend(
+        {
+            "name": gate_name,
+            "status": "HOLD",
+            "rationale": f"{gate_name} warning",
+        }
+        for gate_name in hold_gates
+    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "ts": "2026-07-08T00:00:00+00:00",
+                "launch_date": "2026-07-08",
+                "days_until_launch": 0,
+                "overall_verdict": verdict,
+                "summary": f"{verdict} launch status",
+                "gates": gates,
+            },
+        ),
+        encoding="utf-8",
+    )
+
+
+def _write_strategy_readiness(
+    path: Path,
+    *,
+    bot_id: str = "m2k",
+    can_paper_trade: bool = True,
+    can_live_trade: bool = True,
+    launch_lane: str = "live_preflight",
+) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "generated_at": "2026-07-08T00:00:00+00:00",
+                "source": "bot_strategy_readiness",
+                "summary": {
+                    "total_bots": 1,
+                    "can_live_any": can_live_trade,
+                    "can_paper_trade": int(can_paper_trade),
+                    "launch_lanes": {launch_lane: 1},
+                },
+                "rows": [
+                    {
+                        "bot_id": bot_id,
+                        "can_paper_trade": can_paper_trade,
+                        "can_live_trade": can_live_trade,
+                        "launch_lane": launch_lane,
+                        "promotion_status": "production" if can_live_trade else "paper_soak",
+                        "data_status": "ready",
+                    }
+                ],
+            },
+        ),
+        encoding="utf-8",
+    )
 
 
 # ────────────────────────────────────────────────────────────────────
@@ -329,14 +434,112 @@ def test_target_eval_live_with_safe_buffer_routes_live(
 
     lp = tmp_path / "lifecycle.json"
     gp = tmp_path / "guard.json"
+    lb = tmp_path / "leaderboard.json"
+    launch = tmp_path / "launch.json"
+    readiness = tmp_path / "readiness.json"
     monkeypatch.setattr(ca, "BOT_LIFECYCLE_STATE_PATH", lp)
     monkeypatch.setattr(ca, "PROP_DRAWDOWN_GUARD_RECEIPT", gp)
+    monkeypatch.setattr(ca, "LEADERBOARD_PATH", lb)
+    monkeypatch.setattr(ca, "PROP_LAUNCH_READINESS_RECEIPT", launch)
+    monkeypatch.setattr(ca, "BOT_STRATEGY_READINESS_SNAPSHOT_PATH", readiness)
     _set_live_capital_today(monkeypatch, ca, "2026-07-08")
     _write_guard_state(gp, daily_buffer=1500.0)
+    _write_leaderboard(lb, prop_ready_bots=["m2k"])
+    _write_launch_readiness(launch, verdict="GO")
+    _write_strategy_readiness(readiness, bot_id="m2k", can_live_trade=True)
     ca.set_bot_lifecycle("m2k", ca.LIFECYCLE_EVAL_LIVE)
 
     target, _ = ca.resolve_execution_target("m2k", prospective_loss_usd=100.0)
     assert target == "live"
+
+
+def test_target_eval_live_without_prop_ready_designation_routes_paper(
+    tmp_path: Path,
+    monkeypatch: object,
+) -> None:
+    from eta_engine.feeds import capital_allocator as ca
+
+    lp = tmp_path / "lifecycle.json"
+    gp = tmp_path / "guard.json"
+    lb = tmp_path / "leaderboard.json"
+    launch = tmp_path / "launch.json"
+    readiness = tmp_path / "readiness.json"
+    monkeypatch.setattr(ca, "BOT_LIFECYCLE_STATE_PATH", lp)
+    monkeypatch.setattr(ca, "PROP_DRAWDOWN_GUARD_RECEIPT", gp)
+    monkeypatch.setattr(ca, "LEADERBOARD_PATH", lb)
+    monkeypatch.setattr(ca, "PROP_LAUNCH_READINESS_RECEIPT", launch)
+    monkeypatch.setattr(ca, "BOT_STRATEGY_READINESS_SNAPSHOT_PATH", readiness)
+    _set_live_capital_today(monkeypatch, ca, "2026-07-08")
+    _write_guard_state(gp, daily_buffer=1500.0)
+    _write_leaderboard(lb, prop_ready_bots=[])
+    _write_launch_readiness(launch, verdict="GO")
+    _write_strategy_readiness(readiness, bot_id="m2k", can_live_trade=True)
+    ca.set_bot_lifecycle("m2k", ca.LIFECYCLE_EVAL_LIVE)
+
+    target, reason = ca.resolve_execution_target("m2k", prospective_loss_usd=100.0)
+    assert target == "paper"
+    assert reason == "launch_readiness_not_prop_ready"
+
+
+def test_target_eval_live_with_launch_blocker_routes_paper(
+    tmp_path: Path,
+    monkeypatch: object,
+) -> None:
+    from eta_engine.feeds import capital_allocator as ca
+
+    lp = tmp_path / "lifecycle.json"
+    gp = tmp_path / "guard.json"
+    lb = tmp_path / "leaderboard.json"
+    launch = tmp_path / "launch.json"
+    readiness = tmp_path / "readiness.json"
+    monkeypatch.setattr(ca, "BOT_LIFECYCLE_STATE_PATH", lp)
+    monkeypatch.setattr(ca, "PROP_DRAWDOWN_GUARD_RECEIPT", gp)
+    monkeypatch.setattr(ca, "LEADERBOARD_PATH", lb)
+    monkeypatch.setattr(ca, "PROP_LAUNCH_READINESS_RECEIPT", launch)
+    monkeypatch.setattr(ca, "BOT_STRATEGY_READINESS_SNAPSHOT_PATH", readiness)
+    _set_live_capital_today(monkeypatch, ca, "2026-07-08")
+    _write_guard_state(gp, daily_buffer=1500.0)
+    _write_leaderboard(lb, prop_ready_bots=["m2k"])
+    _write_launch_readiness(launch, verdict="NO_GO", no_go_gates=("R4_SIZING_NOT_BREACHED",))
+    _write_strategy_readiness(readiness, bot_id="m2k", can_live_trade=True)
+    ca.set_bot_lifecycle("m2k", ca.LIFECYCLE_EVAL_LIVE)
+
+    target, reason = ca.resolve_execution_target("m2k", prospective_loss_usd=100.0)
+    assert target == "paper"
+    assert reason == "launch_readiness_no_go:R4_SIZING_NOT_BREACHED"
+
+
+def test_target_eval_live_without_strategy_live_approval_routes_paper(
+    tmp_path: Path,
+    monkeypatch: object,
+) -> None:
+    from eta_engine.feeds import capital_allocator as ca
+
+    lp = tmp_path / "lifecycle.json"
+    gp = tmp_path / "guard.json"
+    lb = tmp_path / "leaderboard.json"
+    launch = tmp_path / "launch.json"
+    readiness = tmp_path / "readiness.json"
+    monkeypatch.setattr(ca, "BOT_LIFECYCLE_STATE_PATH", lp)
+    monkeypatch.setattr(ca, "PROP_DRAWDOWN_GUARD_RECEIPT", gp)
+    monkeypatch.setattr(ca, "LEADERBOARD_PATH", lb)
+    monkeypatch.setattr(ca, "PROP_LAUNCH_READINESS_RECEIPT", launch)
+    monkeypatch.setattr(ca, "BOT_STRATEGY_READINESS_SNAPSHOT_PATH", readiness)
+    _set_live_capital_today(monkeypatch, ca, "2026-07-08")
+    _write_guard_state(gp, daily_buffer=1500.0)
+    _write_leaderboard(lb, prop_ready_bots=["m2k"])
+    _write_launch_readiness(launch, verdict="GO")
+    _write_strategy_readiness(
+        readiness,
+        bot_id="m2k",
+        can_live_trade=False,
+        launch_lane="paper_soak",
+    )
+    ca.set_bot_lifecycle("m2k", ca.LIFECYCLE_EVAL_LIVE)
+
+    target, reason = ca.resolve_execution_target("m2k", prospective_loss_usd=100.0)
+    assert target == "paper"
+    assert reason == "strategy_readiness_live_block:paper_soak"
 
 
 def test_target_eval_live_with_soft_breach_routes_paper(
@@ -349,10 +552,19 @@ def test_target_eval_live_with_soft_breach_routes_paper(
 
     lp = tmp_path / "lifecycle.json"
     gp = tmp_path / "guard.json"
+    lb = tmp_path / "leaderboard.json"
+    launch = tmp_path / "launch.json"
+    readiness = tmp_path / "readiness.json"
     monkeypatch.setattr(ca, "BOT_LIFECYCLE_STATE_PATH", lp)
     monkeypatch.setattr(ca, "PROP_DRAWDOWN_GUARD_RECEIPT", gp)
+    monkeypatch.setattr(ca, "LEADERBOARD_PATH", lb)
+    monkeypatch.setattr(ca, "PROP_LAUNCH_READINESS_RECEIPT", launch)
+    monkeypatch.setattr(ca, "BOT_STRATEGY_READINESS_SNAPSHOT_PATH", readiness)
     _set_live_capital_today(monkeypatch, ca, "2026-07-08")
     _write_guard_state(gp, daily_buffer=1500.0, daily_limit=1500.0)
+    _write_leaderboard(lb, prop_ready_bots=["m2k"])
+    _write_launch_readiness(launch, verdict="GO")
+    _write_strategy_readiness(readiness, bot_id="m2k", can_live_trade=True)
     ca.set_bot_lifecycle("m2k", ca.LIFECYCLE_EVAL_LIVE)
 
     target, reason = ca.resolve_execution_target("m2k", prospective_loss_usd=800.0)
@@ -368,10 +580,19 @@ def test_target_eval_live_with_hard_breach_rejects(
 
     lp = tmp_path / "lifecycle.json"
     gp = tmp_path / "guard.json"
+    lb = tmp_path / "leaderboard.json"
+    launch = tmp_path / "launch.json"
+    readiness = tmp_path / "readiness.json"
     monkeypatch.setattr(ca, "BOT_LIFECYCLE_STATE_PATH", lp)
     monkeypatch.setattr(ca, "PROP_DRAWDOWN_GUARD_RECEIPT", gp)
+    monkeypatch.setattr(ca, "LEADERBOARD_PATH", lb)
+    monkeypatch.setattr(ca, "PROP_LAUNCH_READINESS_RECEIPT", launch)
+    monkeypatch.setattr(ca, "BOT_STRATEGY_READINESS_SNAPSHOT_PATH", readiness)
     _set_live_capital_today(monkeypatch, ca, "2026-07-08")
     _write_guard_state(gp, daily_buffer=400.0)
+    _write_leaderboard(lb, prop_ready_bots=["m2k"])
+    _write_launch_readiness(launch, verdict="GO")
+    _write_strategy_readiness(readiness, bot_id="m2k", can_live_trade=True)
     ca.set_bot_lifecycle("m2k", ca.LIFECYCLE_EVAL_LIVE)
 
     target, reason = ca.resolve_execution_target("m2k", prospective_loss_usd=600.0)

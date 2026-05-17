@@ -38,13 +38,15 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-STATE_DIR = Path(r"C:\EvolutionaryTradingAlgo\var\eta_engine\state")
-HEARTBEAT_PATH = STATE_DIR / "jarvis_intel" / "supervisor" / "heartbeat.json"
-LEADERBOARD_PATH = STATE_DIR / "diamond_leaderboard_latest.json"
-LAUNCH_READINESS_PATH = STATE_DIR / "diamond_prop_launch_readiness_latest.json"
+from eta_engine.scripts import workspace_roots
 
-EVENTS_LOG = STATE_DIR / "eta_events.jsonl"
-SNAPSHOT_PATH = STATE_DIR / "eta_alert_snapshot.json"
+STATE_DIR = workspace_roots.ETA_RUNTIME_STATE_DIR
+HEARTBEAT_PATH = workspace_roots.ETA_JARVIS_SUPERVISOR_HEARTBEAT_PATH
+LEADERBOARD_PATH = workspace_roots.ETA_DIAMOND_LEADERBOARD_PATH
+LAUNCH_READINESS_PATH = workspace_roots.ETA_DIAMOND_PROP_LAUNCH_READINESS_PATH
+
+EVENTS_LOG = workspace_roots.ETA_ETA_EVENTS_LOG_PATH
+SNAPSHOT_PATH = workspace_roots.ETA_ETA_ALERT_SNAPSHOT_PATH
 
 _WEBHOOK_URL = os.environ.get("ETA_ALERT_WEBHOOK_URL", "").strip()
 _WEBHOOK_TIMEOUT_S = 5.0

@@ -28,6 +28,16 @@ _GITLINK_BY_PREFIX = {
     "-": "uninitialized",
     "U": "conflict",
 }
+_CHANGE_COUNT_KEYS = (
+    "modified",
+    "added",
+    "deleted",
+    "renamed",
+    "copied",
+    "untracked",
+    "conflicted",
+    "other",
+)
 
 
 @dataclass(frozen=True)
@@ -64,6 +74,7 @@ class ModulePreflight:
             "exists": self.exists,
             "dirty": self.dirty,
             "dirty_entries": self.dirty_entries,
+            "dirty_summary": summarize_porcelain_status(self.dirty_entries),
             "blockers": self.blockers,
             "sha": self.sha,
             "label": self.label,
@@ -109,6 +120,89 @@ def parse_submodule_status_lines(
             label=match.group("label") or "",
         )
     return parsed
+
+
+def summarize_porcelain_status(lines: list[str]) -> dict[str, object]:
+    """Return a compact, operator-friendly summary of porcelain entries."""
+
+    entries = [line.rstrip() for line in lines if line.strip()]
+    counts = {key: 0 for key in _CHANGE_COUNT_KEYS}
+    change_type_preview: dict[str, list[str]] = {key: [] for key in _CHANGE_COUNT_KEYS}
+    groups: dict[str, int] = {}
+
+    for line in entries:
+        prefix = line[:2]
+        path = _porcelain_path(line)
+        group = _path_group(path)
+        groups[group] = groups.get(group, 0) + 1
+        if prefix == "??":
+            kind = "untracked"
+        elif "U" in prefix:
+            kind = "conflicted"
+        elif "M" in prefix:
+            kind = "modified"
+        elif "A" in prefix:
+            kind = "added"
+        elif "D" in prefix:
+            kind = "deleted"
+        elif "R" in prefix:
+            kind = "renamed"
+        elif "C" in prefix:
+            kind = "copied"
+        else:
+            kind = "other"
+        counts[kind] += 1
+        if len(change_type_preview[kind]) < 5:
+            change_type_preview[kind].append(path)
+
+    top_groups = [
+        {"group": name, "count": count}
+        for name, count in sorted(groups.items(), key=lambda item: (-item[1], item[0]))[:8]
+    ]
+    preview = [_porcelain_path(line) for line in entries[:5]]
+    detail = f"{len(entries)} dirty entries"
+    nonzero = {name: value for name, value in counts.items() if value}
+    if nonzero:
+        detail += " (" + ", ".join(f"{name}={value}" for name, value in nonzero.items()) + ")"
+    if top_groups:
+        detail += "; top_groups: " + ", ".join(f"{item['group']}={item['count']}" for item in top_groups[:5])
+
+    return {
+        "entry_count": len(entries),
+        "counts": counts,
+        "preview": preview,
+        "top_groups": top_groups,
+        "change_type_preview": {name: paths for name, paths in change_type_preview.items() if paths},
+        "review_action": _dirty_review_action(len(entries), counts),
+        "detail": detail,
+    }
+
+
+def _porcelain_path(line: str) -> str:
+    if len(line) > 3 and line[2] == " ":
+        return line[3:]
+    if len(line) > 2 and line[1] == " ":
+        return line[2:]
+    return line.strip()
+
+
+def _path_group(path: str) -> str:
+    normalized = path.replace("\\", "/")
+    if " -> " in normalized:
+        normalized = normalized.rsplit(" -> ", 1)[-1]
+    return normalized.split("/", 1)[0] or "root"
+
+
+def _dirty_review_action(entry_count: int, counts: dict[str, int]) -> str:
+    if entry_count == 0:
+        return "none"
+    if counts.get("conflicted", 0):
+        return "resolve_conflicts_before_gitlink_wiring"
+    if entry_count > 50:
+        return "split_dirty_worktree_by_group_before_gitlink_wiring"
+    if counts.get("untracked", 0):
+        return "review_untracked_files_before_gitlink_wiring"
+    return "review_dirty_files_before_gitlink_wiring"
 
 
 def evaluate_submodule_wiring(

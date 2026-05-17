@@ -88,6 +88,24 @@ def test_force_multiplier_health_non_live_codex_probe_is_path_only(monkeypatch):
     assert "skipped live call" in message
 
 
+def test_codex_command_keeps_bare_windows_shim_name(monkeypatch):
+    from eta_engine.brain import cli_provider, llm_provider
+
+    def fake_which(name: str) -> str | None:
+        if name == "codex":
+            return r"C:\Users\edwar\AppData\Roaming\npm\codex.CMD"
+        if name == "npx":
+            return r"C:\Program Files\nodejs\npx.cmd"
+        return None
+
+    monkeypatch.setattr(llm_provider, "_ensure_dotenv", lambda: None)
+    monkeypatch.setattr(cli_provider.os, "name", "nt", raising=False)
+    monkeypatch.setattr(cli_provider.shutil, "which", fake_which)
+    monkeypatch.delenv("ETA_CODEX_CLI", raising=False)
+
+    assert cli_provider._codex_command() == ["codex"]
+
+
 def test_force_multiplier_status():
     from eta_engine.brain.multi_model import force_multiplier_status
 

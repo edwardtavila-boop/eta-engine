@@ -23,13 +23,14 @@ from __future__ import annotations
 import json
 import logging
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Any
+
+from eta_engine.scripts import workspace_roots
 
 logger = logging.getLogger(__name__)
 
 
-EVENT_LOG_PATH = Path(r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\jarvis_v3_events.jsonl")
+EVENT_LOG_PATH = workspace_roots.ETA_JARVIS_V3_EVENTS_PATH
 
 
 def emit_event(

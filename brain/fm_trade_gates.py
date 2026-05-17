@@ -36,14 +36,13 @@ from __future__ import annotations
 import json
 import logging
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Any
+
+from eta_engine.scripts import workspace_roots
 
 logger = logging.getLogger(__name__)
 
-_SIDECAR_PATH = Path(
-    r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\fm_trade_gates.jsonl"
-)
+_SIDECAR_PATH = workspace_roots.ETA_FM_TRADE_GATES_LOG_PATH
 
 # Tight budgets — these are TINY calls (one-sentence outputs).
 _SANITY_MAX_COST_USD = 0.001  # ~7k tokens at deepseek rates; we use far less

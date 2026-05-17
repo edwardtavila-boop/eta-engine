@@ -248,6 +248,44 @@ def test_run_writes_json_receipt(tmp_path: Path, monkeypatch: object) -> None:
         assert syn["enrolled"] is True
 
 
+def test_run_includes_active_experiment_in_public_advisory_focus(tmp_path: Path, monkeypatch: object) -> None:
+    from eta_engine.scripts import diamond_ops_dashboard as dd
+
+    monkeypatch.setattr(dd, "_run_promotion_gate", lambda: {})  # type: ignore[attr-defined]
+    monkeypatch.setattr(dd, "_run_sizing_audit", lambda: {})  # type: ignore[attr-defined]
+    monkeypatch.setattr(dd, "_run_watchdog", lambda: {})  # type: ignore[attr-defined]
+    monkeypatch.setattr(dd, "_run_direction_stratify", lambda: {})  # type: ignore[attr-defined]
+    monkeypatch.setattr(
+        dd,
+        "build_retune_advisory",
+        lambda _path: {
+            "focus_bot": "mnq_futures_sage",
+            "focus_closed_trade_count": 141,
+            "focus_total_realized_pnl": -1939.75,
+            "focus_profit_factor": 0.3951,
+            "broker_mtd_pnl": 18116.0,
+            "today_realized_pnl": 0.0,
+            "active_experiment": {
+                "experiment_id": "partial_profit_disabled",
+                "started_at": "2026-05-16T01:44:06+00:00",
+                "partial_profit_enabled": False,
+                "post_change_closed_trade_count": 2,
+                "post_change_total_realized_pnl": 40.0,
+                "post_change_profit_factor": 1.5,
+            },
+        },
+    )  # type: ignore[attr-defined]
+    out_path = tmp_path / "out.json"
+    monkeypatch.setattr(dd, "OUT_LATEST", out_path)  # type: ignore[attr-defined]
+
+    summary = dd.run()
+
+    advisory = summary["public_advisory_focus"]
+    assert advisory["focus_bot"] == "mnq_futures_sage"
+    assert advisory["active_experiment"]["experiment_id"] == "partial_profit_disabled"
+    assert advisory["active_experiment_summary_line"] == "partial_profit_disabled since 2026-05-16T01:44:06+00:00"
+
+
 def test_cli_help_description_is_ascii_safe() -> None:
     from eta_engine.scripts import diamond_ops_dashboard as dd
 
@@ -255,6 +293,48 @@ def test_cli_help_description_is_ascii_safe() -> None:
 
     assert text.isascii()
     assert "?" in text
+
+
+def test_print_output_is_ascii_safe(capsys) -> None:
+    from eta_engine.scripts import diamond_ops_dashboard as dd
+
+    dd._print(
+        {
+            "ts": "2026-05-15T19:30:00+00:00",
+            "priority_counts": {"P1_REVIEW": 1},
+            "public_advisory_focus": {
+                "focus_bot": "mnq_futures_sage",
+                "focus_closed_trade_count": 141,
+                "focus_total_realized_pnl": -1939.75,
+                "focus_profit_factor": 0.3951,
+                "active_experiment": {
+                    "partial_profit_enabled": False,
+                    "post_change_closed_trade_count": 2,
+                    "post_change_total_realized_pnl": 40.0,
+                    "post_change_profit_factor": 1.5,
+                },
+                "active_experiment_summary_line": "partial_profit_disabled since 2026-05-16T01:44:06+00:00",
+            },
+            "syntheses": [
+                {
+                    "bot_id": "mnq_futures_sage",
+                    "priority": "P1_REVIEW",
+                    "cum_r": None,
+                    "cum_usd": None,
+                    "promotion_verdict": None,
+                    "sizing_verdict": None,
+                    "watchdog_classification": None,
+                    "direction_verdict": None,
+                    "recommended_action": "broker proof failed → keep paper-only — review",
+                },
+            ],
+        },
+    )
+
+    out = capsys.readouterr().out
+    assert out.isascii()
+    assert "-> broker proof failed -> keep paper-only - review" in out
+    assert "advisory experiment: partial_profit_disabled since 2026-05-16T01:44:06+00:00" in out
 
 
 def test_safe_run_swallows_exceptions() -> None:
@@ -299,3 +379,40 @@ def test_broker_truth_failure_is_human_visible_review_action() -> None:
     assert syn.broker_profit_factor == 0.5
     assert "broker proof failed" in syn.recommended_action
     assert "keep paper-only" in syn.recommended_action
+
+
+def test_public_advisory_broker_close_overrides_thin_local_sample() -> None:
+    from eta_engine.scripts import diamond_ops_dashboard as dash
+
+    syn = dash._synthesize(
+        "mnq_futures_sage",
+        enrolled=True,
+        promotion={
+            "verdict": "PROMOTE",
+            "rationale": "thin local sample",
+            "n_trades": 5,
+            "total_realized_pnl": 394.5,
+            "profit_factor": None,
+        },
+        sizing={"cum_r": 1.6, "cum_usd": 394.5, "n_trades_with_pnl": 5, "verdict": "SIZING_OK"},
+        watchdog={
+            "classification": "HEALTHY",
+            "classification_usd": "HEALTHY",
+            "classification_r": "HEALTHY",
+        },
+        direction={"verdict": "SYMMETRIC", "long": {"avg_r": 0.3}, "short": {"avg_r": 0.2}},
+        feed_sanity={"verdict": "OK", "flags": []},
+        public_broker_close={
+            "focus_bot": "mnq_futures_sage",
+            "focus_closed_trade_count": 141,
+            "focus_total_realized_pnl": -1939.75,
+            "focus_profit_factor": 0.3951,
+        },
+    )
+
+    assert syn.broker_trade_count == 141
+    assert syn.broker_total_realized_pnl == -1939.75
+    assert syn.broker_profit_factor == 0.3951
+    assert syn.broker_truth_source == "public_broker_close_truth_cache"
+    assert syn.priority == "P1_REVIEW"
+    assert any("public advisory close cache" in note for note in syn.notes)

@@ -54,7 +54,7 @@ eta_engine/
 └── docs/
     ├── ARCHITECTURE.md           # This file
     ├── firm_spec_crypto_perp.json # Firm board input spec
-    └── kill_log.json              # Board kill/promote decisions
+    └── ../var/eta_engine/state/kill_log.json  # Board kill/promote decisions
 ```
 
 ## Data Flow
@@ -106,5 +106,5 @@ Firm Board: Quant → Red Team → Risk → Macro → Micro → PM
 Verdict: GO / HOLD / MODIFY / KILL
     │
     ▼
-Kill log (docs/kill_log.json) or promotion to next gate
+Kill log (var/eta_engine/state/kill_log.json) or promotion to next gate
 ```

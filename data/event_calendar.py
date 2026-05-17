@@ -24,9 +24,11 @@ from pathlib import Path
 
 import yaml
 
+from eta_engine.scripts import workspace_roots
+
 logger = logging.getLogger("eta_engine.data.event_calendar")
 
-DEFAULT_YAML_PATH = Path(r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\event_calendar.yaml")
+DEFAULT_YAML_PATH = workspace_roots.ETA_EVENT_CALENDAR_PATH
 
 
 @dataclass(frozen=True)

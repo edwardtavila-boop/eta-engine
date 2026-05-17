@@ -60,22 +60,26 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from eta_engine.feeds.capital_allocator import DIAMOND_BOTS
+from eta_engine.scripts import workspace_roots
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKSPACE_ROOT = ROOT.parent
-STATE_DIR = WORKSPACE_ROOT / "var" / "eta_engine" / "state"
-LEGACY_STATE_DIR = ROOT / "state"
 
 TRADE_CLOSES_CANDIDATES = [
-    STATE_DIR / "jarvis_intel" / "trade_closes.jsonl",
-    LEGACY_STATE_DIR / "jarvis_intel" / "trade_closes.jsonl",
+    workspace_roots.ETA_JARVIS_TRADE_CLOSES_PATH,
+    workspace_roots.ETA_LEGACY_JARVIS_TRADE_CLOSES_PATH,
 ]
-OUT_LATEST = STATE_DIR / "diamond_regime_stratify_latest.json"
+OUT_LATEST = workspace_roots.ETA_DIAMOND_REGIME_STRATIFY_PATH
 
 MIN_N_FOR_BOOTSTRAP = 10
 STRONG_CI_LOWER_THRESHOLD = 0.10
 BOOTSTRAP_N = 1000
 RANDOM_SEED = 42
+
+
+def _console_help_description(text: str | None) -> str:
+    """Return argparse help text that is safe on Windows cp1252 consoles."""
+    return (text or "").encode("ascii", "replace").decode("ascii")
 
 
 @dataclass
@@ -249,7 +253,7 @@ def _print(summary: dict) -> None:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__)
+    ap = argparse.ArgumentParser(description=_console_help_description(__doc__))
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
     summary = run()

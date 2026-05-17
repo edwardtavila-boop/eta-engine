@@ -6,6 +6,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 
 def _alert(
     severity: str = "RED",
@@ -29,6 +31,11 @@ def _write_log(path: Path, alerts: list[dict]) -> None:
     with path.open("w", encoding="utf-8") as fh:
         for a in alerts:
             fh.write(json.dumps(a) + "\n")
+
+
+@pytest.fixture(autouse=True)
+def _isolated_workspace_root(monkeypatch: object, tmp_path: Path) -> None:
+    monkeypatch.setenv("ETA_WORKSPACE_ROOT", str(tmp_path))
 
 
 # ────────────────────────────────────────────────────────────────────
@@ -66,6 +73,24 @@ def test_telegram_NOT_detected_when_only_token_set(monkeypatch: object) -> None:
     monkeypatch.delenv("ETA_DISCORD_WEBHOOK_URL", raising=False)
     monkeypatch.delenv("ETA_GENERIC_WEBHOOK_URL", raising=False)
     assert "telegram" not in ad.configured_channels()
+
+
+def test_telegram_detected_from_canonical_secret_files(tmp_path: Path, monkeypatch: object) -> None:
+    from eta_engine.scripts import diamond_prop_alert_dispatcher as ad
+
+    secrets_dir = tmp_path / "secrets"
+    secrets_dir.mkdir(parents=True, exist_ok=True)
+    (secrets_dir / "telegram_bot_token.txt").write_text(
+        "123456789:ABCDEFGHIJKLMNOPQRSTUV_abcdefghi",
+        encoding="utf-8",
+    )
+    (secrets_dir / "telegram_chat_id.txt").write_text("-1001234567890", encoding="utf-8")
+    monkeypatch.delenv("ETA_TELEGRAM_BOT_TOKEN", raising=False)
+    monkeypatch.delenv("ETA_TELEGRAM_CHAT_ID", raising=False)
+    monkeypatch.delenv("ETA_DISCORD_WEBHOOK_URL", raising=False)
+    monkeypatch.delenv("ETA_GENERIC_WEBHOOK_URL", raising=False)
+
+    assert "telegram" in ad.configured_channels()
 
 
 # ────────────────────────────────────────────────────────────────────

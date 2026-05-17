@@ -17,6 +17,26 @@ if TYPE_CHECKING:
 def fake_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setattr(mod, "ROOT", tmp_path)
     (tmp_path / "docs").mkdir()
+    monkeypatch.setattr(
+        mod.workspace_roots,
+        "ETA_GO_TRIGGER_LOG_PATH",
+        tmp_path / "var" / "eta_engine" / "state" / "go_trigger_log.jsonl",
+    )
+    monkeypatch.setattr(
+        mod.workspace_roots,
+        "ETA_LEGACY_GO_TRIGGER_LOG_PATH",
+        tmp_path / "docs" / "go_trigger_log.jsonl",
+    )
+    monkeypatch.setattr(
+        mod.workspace_roots,
+        "ETA_PREFLIGHT_DRYRUN_REPORT_PATH",
+        tmp_path / "var" / "eta_engine" / "state" / "preflight" / "preflight_dryrun_report.json",
+    )
+    monkeypatch.setattr(
+        mod.workspace_roots,
+        "ETA_LEGACY_PREFLIGHT_DRYRUN_REPORT_PATH",
+        tmp_path / "docs" / "preflight_dryrun_report.json",
+    )
     (tmp_path / "docs" / "preflight_dryrun_report.json").write_text(
         json.dumps({"overall": "GO"}),
     )
@@ -69,6 +89,7 @@ def test_append_log_writes_jsonl(fake_root: Path):
     e = mod.handle("KILL APEX NOW", reason="test")
     path = mod._append_log(e)
     assert path.exists()
+    assert path == fake_root / "var" / "eta_engine" / "state" / "go_trigger_log.jsonl"
     lines = path.read_text(encoding="utf-8").strip().splitlines()
     assert len(lines) == 1
     parsed = json.loads(lines[0])
@@ -110,6 +131,14 @@ def test_preflight_verdict_unknown_when_missing(fake_root: Path):
     (fake_root / "docs" / "preflight_dryrun_report.json").unlink()
     v = mod._preflight_verdict()
     assert v == "UNKNOWN"
+
+
+def test_preflight_verdict_prefers_canonical_state(fake_root: Path):
+    canonical = fake_root / "var" / "eta_engine" / "state" / "preflight" / "preflight_dryrun_report.json"
+    canonical.parent.mkdir(parents=True)
+    canonical.write_text(json.dumps({"overall": "ABORT"}))
+    v = mod._preflight_verdict()
+    assert v == "ABORT"
 
 
 def test_case_insensitive_phrase(fake_root: Path):

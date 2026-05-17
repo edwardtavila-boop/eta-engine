@@ -121,7 +121,10 @@ def _shadow_outcome_report(
     evaluated_count: int = 33,
     shadow_signal_count: int | None = None,
     missing_bars: int = 0,
+    missing_bar_datasets: int = 0,
+    no_bar_after_signal: int = 0,
     missing_context: int = 0,
+    latest_bar_coverage_end_ts: str = "",
     verdict: str = "POSITIVE_COUNTERFACTUAL_EDGE",
 ) -> dict[str, object]:
     shadow_signal_count = evaluated_count if shadow_signal_count is None else shadow_signal_count
@@ -138,7 +141,10 @@ def _shadow_outcome_report(
                 "shadow_signal_count": shadow_signal_count,
                 "evaluated_count": evaluated_count,
                 "missing_bars": missing_bars,
+                "missing_bar_datasets": missing_bar_datasets,
+                "no_bar_after_signal": no_bar_after_signal,
                 "missing_context": missing_context,
+                "latest_bar_coverage_end_ts": latest_bar_coverage_end_ts,
                 "avg_r": 0.18,
                 "total_r": 5.94,
                 "profit_factor": 1.62,
@@ -718,7 +724,7 @@ def test_no_reviewable_runner_when_remaining_candidates_have_negative_small_samp
     assert "evaluate runner-up candidates" in report["operator_note"]
 
 
-def test_runner_up_candidate_names_bar_freshness_when_shadow_outcome_replay_cannot_evaluate() -> None:
+def test_runner_up_candidate_names_stale_replay_coverage_when_shadow_outcome_replay_cannot_evaluate() -> None:
     candidate = {
         **_candidate(launch_lane="deactivated", blockers=["bot row is deactivated via kaizen_sidecar"]),
         "active": False,
@@ -750,6 +756,8 @@ def test_runner_up_candidate_names_bar_freshness_when_shadow_outcome_replay_cann
             evaluated_count=0,
             shadow_signal_count=40,
             missing_bars=40,
+            no_bar_after_signal=40,
+            latest_bar_coverage_end_ts="2026-05-08T10:50:00+00:00",
             verdict="NO_EVALUATED_SIGNALS",
         ),
     )
@@ -759,8 +767,11 @@ def test_runner_up_candidate_names_bar_freshness_when_shadow_outcome_replay_cann
     assert evidence["shadow_signal_count"] == 40
     assert evidence["evaluated_count"] == 0
     assert evidence["missing_bars"] == 40
-    assert "Repair bar freshness" in report["next_runner_candidate"]["next_action"]
-    assert "cannot replay" in report["next_runner_candidate"]["operator_note"]
+    assert evidence["no_bar_after_signal"] == 40
+    assert evidence["latest_bar_coverage_end_ts"] == "2026-05-08T10:50:00+00:00"
+    assert "Refresh NQ1 5-minute replay bars" in report["next_runner_candidate"]["next_action"]
+    assert "2026-05-08T10:50:00+00:00" in report["next_runner_candidate"]["next_action"]
+    assert "local NQ1 5-minute replay bars end at 2026-05-08T10:50:00+00:00" in report["next_runner_candidate"]["operator_note"]
 
 
 def test_runner_up_candidate_names_missing_shadow_context_before_replay() -> None:

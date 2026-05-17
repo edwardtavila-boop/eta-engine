@@ -1,8 +1,8 @@
 """Supercharge fleet: apply optimal parameters from lab sweep + deactivate losers."""
 
-from pathlib import Path
+from eta_engine.scripts import workspace_roots
 
-REGISTRY = Path(r"C:\EvolutionaryTradingAlgo\eta_engine\strategies\per_bot_registry.py")
+REGISTRY = workspace_roots.ETA_ENGINE_ROOT / "strategies" / "per_bot_registry.py"
 content = REGISTRY.read_text(encoding="utf-8")
 
 # ─── Parameter overrides from heatmap analysis ────────────────────

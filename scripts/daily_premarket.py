@@ -6,8 +6,10 @@ EVOLUTIONARY TRADING ALGO  //  scripts.daily_premarket
 What it does
 ------------
 Reads the latest snapshot inputs (macro / equity / regime / journal) from
-``docs/premarket_inputs.json``, runs them through ``brain.jarvis_context``
-to compute a JarvisContext, and writes three outputs under ``docs/``:
+``var/eta_engine/state/premarket_inputs.json`` when present, otherwise
+falls back to ``docs/premarket_inputs.json``. It runs those inputs through
+``brain.jarvis_context`` to compute a JarvisContext, then writes three
+outputs under ``var/eta_engine/state/premarket/``:
 
   * ``premarket_latest.json``   -- full JarvisContext (machine-readable)
   * ``premarket_latest.txt``    -- 80-col human summary
@@ -17,8 +19,8 @@ Usage
 -----
     python -m eta_engine.scripts.daily_premarket
     python -m eta_engine.scripts.daily_premarket \
-        --inputs-path docs/premarket_inputs.json \
-        --out-dir docs/
+        --inputs-path var/eta_engine/state/premarket_inputs.json \
+        --out-dir var/eta_engine/state/premarket/
 
 The inputs file is a JSON object with four keys:
 ``macro``, ``equity``, ``regime``, ``journal``, each containing the
@@ -49,9 +51,10 @@ from eta_engine.brain.jarvis_context import (  # noqa: E402
     build_snapshot,
 )
 from eta_engine.scripts import jarvis_status  # noqa: E402
+from eta_engine.scripts import workspace_roots  # noqa: E402
 
-DEFAULT_INPUTS = ROOT / "docs" / "premarket_inputs.json"
-DEFAULT_OUT_DIR = ROOT / "docs"
+DEFAULT_INPUTS = workspace_roots.default_premarket_inputs_path()
+DEFAULT_OUT_DIR = workspace_roots.ETA_PREMARKET_REPORT_DIR
 _READINESS_LANE_ORDER = (
     "live_preflight",
     "paper_soak",

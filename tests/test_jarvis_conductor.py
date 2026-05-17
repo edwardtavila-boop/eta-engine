@@ -347,6 +347,20 @@ def test_orchestrate_with_school_inputs_emits_them_to_trace(monkeypatch, tmp_pat
     assert rec["school_inputs"]["mean_revert"]["score"] == -0.3
 
 
+def test_orchestrate_emits_wiring_metadata(monkeypatch, tmp_path) -> None:
+    """Trace records should explicitly name hot-path modules for audits."""
+    monkeypatch.setattr(portfolio_brain, "snapshot", _healthy_ctx)
+    trace_path = tmp_path / "trace.jsonl"
+
+    jc.orchestrate(req=_FakeReq(), base_size=1.0, trace_path=trace_path)
+    records = te.tail(n=1, path=trace_path)
+
+    wiring = records[0]["wiring"]
+    assert "jarvis_conductor" in wiring["modules"]
+    assert "trace_emitter" in wiring["modules"]
+    assert wiring["hooks"]["portfolio_brain"] == "snapshot/assess"
+
+
 def test_orchestrate_without_school_inputs_emits_empty(monkeypatch, tmp_path) -> None:
     """Backward-compat: calling orchestrate without school_inputs still works."""
     monkeypatch.setattr(portfolio_brain, "snapshot", _healthy_ctx)

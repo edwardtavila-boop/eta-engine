@@ -1,6 +1,6 @@
 # EVOLUTIONARY TRADING ALGO  //  configs/tastytrade.yaml
 # Tastytrade venue configuration — Tier-A bots (MNQ, NQ) FALLBACK
-# Decisions source: docs/decisions_v1.json (ETA_DECISIONS_v1)
+# Decisions source: var/eta_engine/state/decisions_v1.json (ETA_DECISIONS_v1)
 # Status: FALLBACK active futures broker per broker_dormancy_mandate
 # (2026-04-24). Active when IBKR (primary) circuit-breaker trips or
 # the operator pins preferred_futures_venue="tastytrade".

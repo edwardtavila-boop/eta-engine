@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from eta_engine.scripts import jarvis_status, operator_queue_heartbeat
 
 
@@ -35,6 +37,31 @@ def _readiness(*, blocked_data: int = 0, paper_ready: int = 10) -> dict[str, obj
     }
 
 
+def _second_brain(*, episodes: int = 42, eligible_patterns: int = 2) -> dict[str, object]:
+    return {
+        "source": "jarvis_status.second_brain",
+        "status": "warm",
+        "n_episodes": episodes,
+        "win_rate": 0.61,
+        "avg_r": 0.27,
+        "semantic_patterns": eligible_patterns,
+        "procedural_versions": 3,
+        "playbook": {
+            "eligible_patterns": eligible_patterns,
+            "favor_patterns": [{"key": "trend_pullback"}],
+            "avoid_patterns": [],
+        },
+        "truth_note": "canonical memory under EvolutionaryTradingAlgo",
+        "legacy_sources_active": False,
+        "top_patterns": [],
+    }
+
+
+@pytest.fixture(autouse=True)
+def _patch_second_brain(monkeypatch):  # type: ignore[no-untyped-def]
+    monkeypatch.setattr(jarvis_status, "build_second_brain_summary", lambda **_kwargs: _second_brain())
+
+
 def test_build_heartbeat_marks_notify_from_drift() -> None:
     heartbeat = operator_queue_heartbeat.build_heartbeat(
         {
@@ -46,11 +73,17 @@ def test_build_heartbeat_marks_notify_from_drift() -> None:
             "bot_strategy_readiness_status": "ready",
             "bot_strategy_blocked_data": 0,
             "bot_strategy_paper_ready": 10,
+            "second_brain_status": "warm",
+            "second_brain_episodes": 42,
+            "second_brain_eligible_patterns": 2,
+            "second_brain_legacy_sources_active": False,
             "drift": {
                 "changed": True,
                 "summary": "operator queue drift detected: blocked_count",
                 "changed_fields": ["blocked_count"],
                 "blocked_count_delta": 1,
+                "second_brain_episodes_delta": 2,
+                "second_brain_eligible_patterns_delta": 1,
             },
         },
         None,
@@ -63,6 +96,12 @@ def test_build_heartbeat_marks_notify_from_drift() -> None:
     assert heartbeat["bot_strategy_readiness_status"] == "ready"
     assert heartbeat["bot_strategy_blocked_data"] == 0
     assert heartbeat["bot_strategy_paper_ready"] == 10
+    assert heartbeat["second_brain_status"] == "warm"
+    assert heartbeat["second_brain_episodes"] == 42
+    assert heartbeat["second_brain_eligible_patterns"] == 2
+    assert heartbeat["second_brain_legacy_sources_active"] is False
+    assert heartbeat["second_brain_episodes_delta"] == 2
+    assert heartbeat["second_brain_eligible_patterns_delta"] == 1
 
 
 def test_render_text_includes_bot_readiness_fields() -> None:
@@ -78,12 +117,18 @@ def test_render_text_includes_bot_readiness_fields() -> None:
             "bot_strategy_readiness_status": "ready",
             "bot_strategy_blocked_data": 0,
             "bot_strategy_paper_ready": 10,
+            "second_brain_status": "warm",
+            "second_brain_episodes": 42,
+            "second_brain_eligible_patterns": 2,
         }
     )
 
     assert "bot_readiness=ready" in line
     assert "bot_blocked_data=0" in line
     assert "bot_paper_ready=10" in line
+    assert "second_brain=warm" in line
+    assert "second_brain_episodes=42" in line
+    assert "second_brain_eligible=2" in line
 
 
 def test_main_changed_only_suppresses_unchanged_output(monkeypatch, capsys, tmp_path) -> None:  # type: ignore[no-untyped-def]

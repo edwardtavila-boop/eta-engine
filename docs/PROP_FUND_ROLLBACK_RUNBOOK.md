@@ -53,6 +53,10 @@ schtasks /End /TN "ETA-Diamond-LeaderboardHourly"
 schtasks /Query /TN "ETA-Diamond-LedgerEvery15Min" /FO LIST | findstr Status
 ```
 
+These are the minimum entry-driving tasks. Observability-only ETA-Diamond tasks
+such as the ops dashboard, watchdog, and alert dispatcher can stay up if you want
+continued telemetry during the rollback.
+
 After pausing, the existing positions ride out per their stops/targets. The flag files (`prop_halt_active.flag`, `prop_watch_active.flag`) remain in their last-written state until you re-enable the cron.
 
 ---

@@ -8,8 +8,10 @@ must light green. This script probes each gate offline — no orders, no venue
 connections — and exercises the abort-on-red path for each one that fails. It
 produces:
 
-- docs/preflight_dryrun_report.json  — per-gate PASS/FAIL + reason
-- docs/preflight_dryrun_log.txt      — 80-col text tearsheet
+- var/eta_engine/state/preflight/preflight_dryrun_report.json
+  — per-gate PASS/FAIL + reason
+- var/eta_engine/state/preflight/preflight_dryrun_log.txt
+  — 80-col text tearsheet
 - non-zero exit code if any REQUIRED gate is RED
 
 Usage
@@ -20,8 +22,8 @@ Usage
 
 Gates checked
 -------------
-    kill_log_present        — docs/kill_log.json exists + valid JSON
-    paper_run_report        — docs/paper_run_report.json Tier-A PASS
+    kill_log_present        — canonical kill log exists + valid JSON
+    paper_run_report        — canonical paper-run report Tier-A PASS
     firm_board_verdict      — most recent Firm verdict == GO
     roadmap_state           — roadmap_state.json readable, in P9
     tradovate_creds         — optional: env TRADOVATE_CLIENT_ID + TRADOVATE_CLIENT_SECRET set (stub)
@@ -29,7 +31,7 @@ Gates checked
     telemetry_channels      — metrics/alerts dirs exist
     venue_health            — mock venue ping (synthetic)
     pytest_green            — smoke-test subset of eta_engine pytest passes
-    decisions_locked        — decisions_v1.json exists + complete
+    decisions_locked        — canonical decisions_v1 lock exists + complete
     env_template            — .env.example has all required keys
     go_trigger_armed        — go_trigger.py + schedule_weekly_review.py exist
     runtime_wired           — kill_switch + alerts + run_eta_live import cleanly
@@ -57,6 +59,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT.parent))
 
+from eta_engine.scripts import workspace_roots  # noqa: E402
+
 
 @dataclass
 class Gate:
@@ -69,7 +73,7 @@ class Gate:
 
 def _gate_kill_log() -> Gate:
     g = Gate(name="kill_log_present", required=True)
-    p = ROOT / "docs" / "kill_log.json"
+    p = workspace_roots.default_kill_log_path()
     if not p.exists():
         g.status, g.detail = "FAIL", f"missing {p}"
         return g
@@ -87,7 +91,7 @@ def _gate_kill_log() -> Gate:
 
 def _gate_paper_run() -> Gate:
     g = Gate(name="paper_run_report", required=True)
-    p = ROOT / "docs" / "paper_run_report.json"
+    p = workspace_roots.default_paper_run_report_path()
     if not p.exists():
         g.status, g.detail = "FAIL", f"missing {p}"
         return g
@@ -245,9 +249,9 @@ def _gate_venue_health() -> Gate:
 
 
 def _gate_decisions_locked() -> Gate:
-    """Decision record (docs/decisions_v1.json) must exist + be valid."""
+    """Decision record must exist + be valid at the canonical lock path."""
     g = Gate(name="decisions_locked", required=True)
-    p = ROOT / "docs" / "decisions_v1.json"
+    p = workspace_roots.default_decisions_v1_path()
     if not p.exists():
         g.status, g.detail = "FAIL", f"missing {p.name} — decisions not locked"
         return g
@@ -856,7 +860,7 @@ def main() -> int:
     p.add_argument(
         "--simulate-red", action="store_true", help="Shortcut: inject failure on tradovate_creds to prove abort path."
     )
-    p.add_argument("--out-dir", type=Path, default=ROOT / "docs")
+    p.add_argument("--out-dir", type=Path, default=workspace_roots.ETA_PREFLIGHT_DRYRUN_DIR)
     args = p.parse_args()
 
     print("EVOLUTIONARY TRADING ALGO -- Live-Tiny Preflight Dry Run")

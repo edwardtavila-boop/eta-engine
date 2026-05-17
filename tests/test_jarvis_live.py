@@ -184,6 +184,10 @@ def test_load_inputs_invalid_schema_returns_neutral(tmp_path: Path) -> None:
     assert inp.regime.regime == "UNKNOWN"
 
 
+def test_default_inputs_path_uses_workspace_root_helper() -> None:
+    assert jarvis_live.DEFAULT_INPUTS == jarvis_live.workspace_roots.default_premarket_inputs_path()
+
+
 # --------------------------------------------------------------------------- #
 # _FileBackedProviders hot-reload semantics
 # --------------------------------------------------------------------------- #
@@ -410,6 +414,32 @@ def test_run_live_bounded_by_max_ticks(tmp_path: Path) -> None:
     assert len(log_lines) == 3
 
 
+def test_run_live_does_not_overwrite_explicit_inputs_outside_out_dir(tmp_path: Path) -> None:
+    engine = _StubEngine()
+    sup = JarvisSupervisor(engine=engine, clock=_clock_fixed(_T0))
+    inputs_path = tmp_path / "operator" / "premarket_inputs.json"
+    out_dir = tmp_path / "state"
+    original = {"macro": {"vix_level": 99, "macro_bias": "operator_controlled"}}
+    inputs_path.parent.mkdir(parents=True, exist_ok=True)
+    inputs_path.write_text(json.dumps(original), encoding="utf-8")
+
+    reports = asyncio.run(
+        jarvis_live.run_live(
+            supervisor=sup,
+            alerter=None,
+            inputs_path=inputs_path,
+            out_dir=out_dir,
+            interval_s=0.01,
+            max_ticks=1,
+        )
+    )
+
+    assert len(reports) == 1
+    assert json.loads(inputs_path.read_text(encoding="utf-8")) == original
+    assert not (out_dir / "premarket_inputs.json").exists()
+    assert (out_dir / "jarvis_live_health.json").exists()
+
+
 def test_run_live_stop_event_exits(tmp_path: Path) -> None:
     engine = _StubEngine()
     sup = JarvisSupervisor(engine=engine, clock=_clock_fixed(_T0))
@@ -506,6 +536,31 @@ def test_run_live_alerts_on_red(tmp_path: Path) -> None:
         )
     )
     assert len(alerter.sent) == 1
+
+
+def test_check_data_freshness_reads_health_from_eta_out_dir(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from eta_engine.brain.jarvis_v3 import hermes_bridge
+
+    alerts: list[tuple[str, str, str]] = []
+
+    async def _fake_send_alert(title: str, message: str, level: str = "INFO") -> bool:
+        alerts.append((title, message, level))
+        return True
+
+    monkeypatch.setenv("ETA_OUT_DIR", str(tmp_path))
+    monkeypatch.setattr(hermes_bridge, "send_alert", _fake_send_alert)
+    (tmp_path / "jarvis_live_health.json").write_text(
+        json.dumps({"metrics": {"last_bar_ts": "2024-01-01T00:00:00+00:00"}}),
+        encoding="utf-8",
+    )
+
+    asyncio.run(jarvis_live._check_data_freshness(5))
+
+    assert alerts
+    assert alerts[0][0] == "Data Feed Stale"
 
 
 # --------------------------------------------------------------------------- #

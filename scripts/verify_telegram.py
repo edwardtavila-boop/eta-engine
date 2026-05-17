@@ -1,16 +1,20 @@
 """Operator CLI: verify Telegram alert channel is wired correctly.
 
 The wave-24 dispatcher pushes prop-fund HALT/WATCH alerts to whichever
-push channels are configured via env vars:
+push channels are configured via env vars or canonical Telegram secrets:
 
-  ETA_TELEGRAM_BOT_TOKEN  + ETA_TELEGRAM_CHAT_ID    → Telegram
-  ETA_DISCORD_WEBHOOK_URL                            → Discord
-  ETA_GENERIC_WEBHOOK_URL                            → generic POST
+  ETA_TELEGRAM_BOT_TOKEN  + ETA_TELEGRAM_CHAT_ID
+  secrets/telegram_bot_token.txt + secrets/telegram_chat_id.txt
+      -> Telegram
+  ETA_DISCORD_WEBHOOK_URL
+      -> Discord
+  ETA_GENERIC_WEBHOOK_URL
+      -> generic POST
 
 This script:
   1. Reports which channels are detected as configured.
   2. Optionally sends a test message to verify the credentials work
-     end-to-end (--send-test).
+     end-to-end (`--send-test`).
 
 Usage::
 
@@ -22,43 +26,44 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import UTC, datetime
 
+from eta_engine.scripts import alert_channel_config
+
 
 def _check_telegram() -> tuple[bool, str]:
-    token = os.environ.get("ETA_TELEGRAM_BOT_TOKEN", "").strip()
-    chat_id = os.environ.get("ETA_TELEGRAM_CHAT_ID", "").strip()
+    token = alert_channel_config.get_telegram_bot_token()
+    chat_id = alert_channel_config.get_telegram_chat_id()
     if not token and not chat_id:
-        return False, "ETA_TELEGRAM_BOT_TOKEN and ETA_TELEGRAM_CHAT_ID both unset"
+        return False, "ETA Telegram credentials not found in env or secrets/"
     if not token:
-        return False, "ETA_TELEGRAM_BOT_TOKEN unset (chat_id is set)"
+        return False, "ETA Telegram bot token missing from env and secrets/telegram_bot_token.txt"
     if not chat_id:
-        return False, "ETA_TELEGRAM_CHAT_ID unset (bot_token is set)"
+        return False, "ETA Telegram chat ID missing from env and secrets/telegram_chat_id.txt"
     return True, f"telegram configured (token=***{token[-6:]}, chat_id={chat_id})"
 
 
 def _check_discord() -> tuple[bool, str]:
-    url = os.environ.get("ETA_DISCORD_WEBHOOK_URL", "").strip()
+    url = alert_channel_config.get_discord_webhook_url()
     if not url:
         return False, "ETA_DISCORD_WEBHOOK_URL unset"
     return True, f"discord configured (url=***{url[-20:]})"
 
 
 def _check_generic() -> tuple[bool, str]:
-    url = os.environ.get("ETA_GENERIC_WEBHOOK_URL", "").strip()
+    url = alert_channel_config.get_generic_webhook_url()
     if not url:
         return False, "ETA_GENERIC_WEBHOOK_URL unset"
     return True, f"generic webhook configured (url=***{url[-20:]})"
 
 
 def _send_telegram_test() -> tuple[bool, str]:
-    token = os.environ.get("ETA_TELEGRAM_BOT_TOKEN", "").strip()
-    chat_id = os.environ.get("ETA_TELEGRAM_CHAT_ID", "").strip()
+    token = alert_channel_config.get_telegram_bot_token()
+    chat_id = alert_channel_config.get_telegram_chat_id()
     if not (token and chat_id):
         return False, "telegram not configured"
     text = (
@@ -87,7 +92,7 @@ def _send_telegram_test() -> tuple[bool, str]:
 
 
 def _send_discord_test() -> tuple[bool, str]:
-    url = os.environ.get("ETA_DISCORD_WEBHOOK_URL", "").strip()
+    url = alert_channel_config.get_discord_webhook_url()
     if not url:
         return False, "discord not configured"
     payload = {
@@ -142,7 +147,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"      test: [{outcome}] {detail}")
     print()
     if not any_configured:
-        print("  No channels configured. Set env vars per docs/WAVE25_PROP_LAUNCH_OPS.md")
+        print("  No channels configured. Seed env vars or canonical secrets per docs/WAVE25_PROP_LAUNCH_OPS.md")
         return 2
     if args.send_test:
         print("  Test messages dispatched (check your Telegram / Discord client).")

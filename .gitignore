@@ -76,7 +76,8 @@ docs/btc_live/broker_fleet/*.pending_order.json
 
 # Local BTC Command Center control-action logs. The durable status surfaces live
 # under docs/btc_live/*_latest.json; control attempts are runtime events.
-docs/btc_live/control/
+docs/btc_live/control/*
+!docs/btc_live/control/README.md
 
 # OneDrive lock files
 *.~lock.*

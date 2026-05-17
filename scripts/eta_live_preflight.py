@@ -45,6 +45,8 @@ WORKSPACE_ROOT = ROOT.parent
 if str(ROOT.parent) not in sys.path:
     sys.path.insert(0, str(ROOT.parent))
 
+from eta_engine.scripts import workspace_roots  # noqa: E402
+
 logger = logging.getLogger("eta_live_preflight")
 
 
@@ -257,9 +259,10 @@ def check_decision_journal() -> CheckResult:
 
 def check_kaizen_recent() -> CheckResult:
     """Most recent kaizen retro must be < 48h old."""
-    ledger_path = ROOT / "docs" / "kaizen_ledger.jsonl"
-    json_ledger = ROOT / "docs" / "kaizen_ledger.json"
-    candidates = [json_ledger, ledger_path]
+    candidates = [
+        workspace_roots.ETA_KAIZEN_LEDGER_PATH,
+        workspace_roots.ETA_KAIZEN_LEDGER_JSONL_PATH,
+    ]
     for p in candidates:
         if p.exists():
             try:
@@ -291,7 +294,7 @@ def check_kaizen_recent() -> CheckResult:
         name="kaizen_recent",
         ok=False,
         severity="info",
-        detail="no kaizen ledger found (run scripts/run_kaizen_close_cycle.py at least once)",
+        detail="no canonical kaizen ledger found (run scripts/run_kaizen_close_cycle.py at least once)",
     )
 
 

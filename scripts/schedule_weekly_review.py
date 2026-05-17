@@ -40,6 +40,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+from eta_engine.scripts import workspace_roots
+
 ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = ROOT.parent
 
@@ -60,7 +62,7 @@ def _within_window(now_et: datetime, tolerance_minutes: int = 30) -> bool:
 
 def _should_force_firm_reengage() -> tuple[bool, str]:
     """Decision #15: re-engage on RED preflight gate or new kill-log entry."""
-    pf = ROOT / "docs" / "preflight_dryrun_report.json"
+    pf = workspace_roots.default_preflight_dryrun_report_path()
     if pf.exists():
         try:
             raw = json.loads(pf.read_text())
@@ -68,14 +70,14 @@ def _should_force_firm_reengage() -> tuple[bool, str]:
                 return True, "preflight RED"
         except Exception:
             pass
-    kl = ROOT / "docs" / "kill_log.json"
+    kl = workspace_roots.default_kill_log_path()
     if kl.exists():
         try:
             raw = json.loads(kl.read_text())
             entries = raw.get("entries") if isinstance(raw, dict) else raw
             n = len(entries) if isinstance(entries, list) else 0
             # Compare vs last review's kill count, if present
-            wr = ROOT / "docs" / "weekly_review_latest.json"
+            wr = _weekly_review_latest_path()
             if wr.exists():
                 last = json.loads(wr.read_text())
                 last_n = int(last.get("kill_log_entries_at_time", 0))
@@ -84,6 +86,15 @@ def _should_force_firm_reengage() -> tuple[bool, str]:
         except Exception:
             pass
     return False, ""
+
+
+def _weekly_review_latest_path() -> Path:
+    """Prefer canonical weekly review latest, with docs fallback."""
+    canonical = ROOT.parent / "var" / "eta_engine" / "state" / "weekly_review" / "weekly_review_latest.json"
+    legacy = ROOT / "docs" / "weekly_review_latest.json"
+    if canonical.exists() or not legacy.exists():
+        return canonical
+    return legacy
 
 
 def _run_weekly_review(tier: str, force_engage: bool) -> int:
@@ -109,7 +120,7 @@ def emit_cron() -> str:
         f"# Sunday 20:00 America/New_York\n"
         f"{CRON_LINE} cd {REPO_ROOT} && "
         f"/usr/bin/env python -m eta_engine.scripts.schedule_weekly_review "
-        f">> eta_engine/logs/weekly_review_cron.log 2>&1\n"
+        f">> logs/eta_engine/weekly_review_cron.log 2>&1\n"
     )
 
 

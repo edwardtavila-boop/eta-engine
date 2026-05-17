@@ -32,4 +32,6 @@ def test_vps_bootstrap_registers_fm_status_server() -> None:
     assert 'Name="FmStatusServer"' in text
     assert 'Xml="FmStatusServer.xml"' in text
     assert r"deploy\FmStatusServer.xml" in text
+    assert "Update-FmStatusServiceXmlExecutable" in text
+    assert "Resolve-EtaPython" in text
     assert "127.0.0.1:8422" in text

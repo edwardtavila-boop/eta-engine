@@ -48,10 +48,11 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
 
+from eta_engine.scripts import workspace_roots
+
 logger = logging.getLogger(__name__)
 
-ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_STATE_PATH = ROOT / "state" / "jarvis_intel" / "skill_health.json"
+DEFAULT_STATE_PATH = workspace_roots.ETA_JARVIS_INTEL_STATE_DIR / "skill_health.json"
 
 ROLLING_WINDOW = 100
 

@@ -12,7 +12,8 @@ Purpose:
   - Produce per-bot metrics (expectancy_R, win_rate, max_dd_pct, trades).
   - Evaluate the paper-phase gate (trades >= 30, expectancy >= 0.30R,
     max_dd <= 15%, kill_switch_rate <= 1 per 30d, telemetry_gap = 0).
-  - Emit docs/paper_run_report.json and docs/paper_run_tearsheet.txt.
+  - Emit var/eta_engine/state/paper_run/paper_run_report.json and
+    var/eta_engine/state/paper_run/paper_run_tearsheet.txt.
 
 Usage:
     python -m eta_engine.scripts.paper_run_harness [--weeks 4] [--seed 11]
@@ -27,6 +28,8 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+from eta_engine.scripts import workspace_roots
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT.parent))
@@ -540,7 +543,7 @@ def main() -> int:
     p.add_argument(
         "--out-dir",
         type=Path,
-        default=ROOT / "docs",
+        default=workspace_roots.ETA_PAPER_RUN_DIR,
         help="Report output directory",
     )
     p.add_argument(

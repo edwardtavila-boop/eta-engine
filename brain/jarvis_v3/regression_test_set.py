@@ -31,13 +31,14 @@ from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from eta_engine.scripts import workspace_roots
+
 if TYPE_CHECKING:
     from collections.abc import Callable
 
 logger = logging.getLogger(__name__)
 
-ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_CASES_PATH = ROOT / "state" / "jarvis_intel" / "regression_cases.json"
+DEFAULT_CASES_PATH = workspace_roots.ETA_JARVIS_INTEL_STATE_DIR / "regression_cases.json"
 
 
 class CaseKind(StrEnum):

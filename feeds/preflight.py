@@ -36,6 +36,7 @@ if str(_PARENT) not in sys.path:
     sys.path.insert(0, str(_PARENT))
 
 import yaml  # noqa: E402
+from eta_engine.scripts import workspace_roots  # noqa: E402
 from eta_engine.core.kill_switch_runtime import (  # noqa: E402
     ApexTickCadenceError,
     validate_apex_tick_cadence,
@@ -53,9 +54,9 @@ from eta_engine.venues import BrokerConnectionManager, ConnectionStatus, write_b
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG_PATH = ROOT / "config.json"
 FIRM_VERDICT_PATH = ROOT / "docs" / "last_firm_verdict.json"
-VENUE_CONNECTION_REPORT_DIR = ROOT / "docs" / "broker_connections"
+VENUE_CONNECTION_REPORT_DIR = workspace_roots.ETA_BROKER_CONNECTION_REPORT_DIR
 KILL_SWITCH_YAML_PATH = ROOT / "configs" / "kill_switch.yaml"
-DEFAULT_AUDIT_LOG_DIR = ROOT / "state"
+DEFAULT_AUDIT_LOG_DIR = workspace_roots.ETA_RUNTIME_STATE_DIR
 DEFAULT_LIVE_TICK_INTERVAL_S = 1.0
 
 CheckResult = tuple[str, bool, str]

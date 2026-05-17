@@ -19,6 +19,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from eta_engine.scripts import workspace_roots
+
 log = logging.getLogger("verdict_miner")
 
 
@@ -213,12 +215,12 @@ def main() -> None:
     parser.add_argument(
         "--verdicts",
         type=Path,
-        default=Path("C:/EvolutionaryTradingAlgo/var/eta_engine/state/jarvis_live_log.jsonl"),
+        default=workspace_roots.ETA_RUNTIME_STATE_DIR / "jarvis_live_log.jsonl",
     )
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path("C:/EvolutionaryTradingAlgo/reports/verdict_patterns/daily_report.json"),
+        default=workspace_roots.WORKSPACE_ROOT / "reports" / "verdict_patterns" / "daily_report.json",
     )
     args = parser.parse_args()
 

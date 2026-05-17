@@ -21,6 +21,8 @@ from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from eta_engine.scripts import workspace_roots
+
 if TYPE_CHECKING:
     from collections.abc import Callable
 
@@ -33,14 +35,8 @@ logger = logging.getLogger(__name__)
 _LAST_BACKOFF_ALERT_AT: float = 0.0
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_HEALTH_FILE = ROOT / "docs" / "jarvis_live_health.json"
-# Canonical workspace-state path per CLAUDE.md hard rule #1. The legacy
-# in-repo location (under ``eta_engine/brain/state/jarvis_intel/``) is
-# defunct after the latch consolidation in ``_cmd_kill`` — this constant
-# now points at the single canonical hermes state file under
-# ``<workspace>/var/eta_engine/state/jarvis_intel/``.
-_WORKSPACE_ROOT = Path(__file__).resolve().parents[3]
-DEFAULT_STATE_FILE = _WORKSPACE_ROOT / "var" / "eta_engine" / "state" / "jarvis_intel" / "hermes_state.json"
+DEFAULT_HEALTH_FILE = workspace_roots.ETA_JARVIS_LIVE_HEALTH_PATH
+DEFAULT_STATE_FILE = workspace_roots.ETA_HERMES_STATE_PATH
 
 _LAST_UPDATE_ID = 0
 
@@ -266,7 +262,9 @@ async def _cmd_mode() -> str:
 
 async def _cmd_quantum() -> str:
     try:
-        state_dir = ROOT / "state" / "jarvis_intel"
+        from eta_engine.scripts import workspace_roots  # noqa: PLC0415
+
+        state_dir = workspace_roots.ETA_JARVIS_INTEL_STATE_DIR
         quantum_files = list(state_dir.glob("quantum*.json"))
         if quantum_files:
             latest = max(quantum_files, key=lambda f: f.stat().st_mtime)
@@ -279,7 +277,9 @@ async def _cmd_quantum() -> str:
 
 async def _cmd_kaizen() -> str:
     try:
-        state_dir = ROOT / "state" / "jarvis_intel"
+        from eta_engine.scripts import workspace_roots  # noqa: PLC0415
+
+        state_dir = workspace_roots.ETA_JARVIS_INTEL_STATE_DIR
         kaizen_log = state_dir / "kaizen_log.jsonl"
         if kaizen_log.exists():
             lines = kaizen_log.read_text().strip().splitlines()

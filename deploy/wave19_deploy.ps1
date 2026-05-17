@@ -1,6 +1,6 @@
-# Wave-19 Deploy — one-shot deployment to VPS
-# ============================================
-# Pushes all Wave-19 changes (Force Multiplier, Fleet integration, VPS bootstrap v2,
+# Wave-19 Deploy - one-shot deployment to VPS
+# ===========================================
+# Pushes all Wave-19 changes (Force Multiplier, Fleet integration, canonical VPS bootstrap,
 # security fixes, dashboard improvements) to the VPS in a single command.
 #
 # Usage from VPS host (as Administrator):
@@ -43,13 +43,13 @@ if (-not $pythonExe) {
 }
 
 Write-Host "====================================================" -ForegroundColor Cyan
-Write-Host "  WAVE-19 DEPLOY — Force Multiplier + Fleet + Dashboard" -ForegroundColor Cyan
+Write-Host "  WAVE-19 DEPLOY - Force Multiplier + Fleet + Dashboard" -ForegroundColor Cyan
 Write-Host "====================================================" -ForegroundColor Cyan
 Write-Host "Install root: $InstallRoot" -ForegroundColor Gray
 Write-Host "Python:       $pythonExe" -ForegroundColor Gray
 Write-Host ""
 
-# ── Step 1: Git pull ────────────────────────────────────
+# -- Step 1: Git pull -------------------------------------
 
 if (-not $SkipGitPull) {
     Write-Host "=== Step 1/7: Git Pull ===" -ForegroundColor Green
@@ -66,10 +66,11 @@ if (-not $SkipGitPull) {
     Pop-Location
 }
 
-# ── Step 2: Install CLIs ────────────────────────────────
+# -- Step 2: Install CLIs ---------------------------------
 
 if (-not $SkipCLIInstall) {
-    Write-Host ""; Write-Host "=== Step 2/7: Install Force Multiplier CLIs ===" -ForegroundColor Green
+    Write-Host ""
+    Write-Host "=== Step 2/7: Install Force Multiplier CLIs ===" -ForegroundColor Green
     Write-Host "  Installing Claude CLI (Lead Architect)..." -ForegroundColor Gray
     npm install -g @anthropic-ai/claude-code 2>&1 | Select-Object -Last 2
     Write-Host "  Installing Codex CLI (Systems Expert)..." -ForegroundColor Gray
@@ -85,10 +86,12 @@ if (-not $SkipCLIInstall) {
     if (-not $WhatIf) { Read-Host }
 }
 
-# ── Step 3: VPS Bootstrap ───────────────────────────────
+# -- Step 3: VPS Bootstrap --------------------------------
 
 if (-not $SkipBootstrap) {
-    Write-Host ""; Write-Host "=== Step 3/7: VPS Bootstrap (v2) ===" -ForegroundColor Green
+    Write-Host ""
+    Write-Host "=== Step 3/7: VPS Bootstrap ===" -ForegroundColor Green
+    # compatibility wrapper fallback: vps_bootstrap_v2.ps1 now forwards into the canonical bootstrap
     $bootstrapScript = "$EtaEngineDir\deploy\vps_bootstrap.ps1"
     if (Test-Path $bootstrapScript) {
         Write-Host "  Running vps_bootstrap.ps1..." -ForegroundColor Gray
@@ -96,7 +99,7 @@ if (-not $SkipBootstrap) {
             & $pwshPath -ExecutionPolicy Bypass -File $bootstrapScript
         }
     } else {
-        Write-Host "  vps_bootstrap.ps1 not found — checking for v2 fallback..." -ForegroundColor Yellow
+        Write-Host "  vps_bootstrap.ps1 not found -- checking compatibility wrapper fallback..." -ForegroundColor Yellow
         $v2Script = "$EtaEngineDir\deploy\vps_bootstrap_v2.ps1"
         if (Test-Path $v2Script) {
             & $pwshPath -ExecutionPolicy Bypass -File $v2Script
@@ -104,9 +107,10 @@ if (-not $SkipBootstrap) {
     }
 }
 
-# ── Step 4: Sync env ────────────────────────────────────
+# -- Step 4: Sync env -------------------------------------
 
-Write-Host ""; Write-Host "=== Step 4/7: Sync Environment Variables ===" -ForegroundColor Green
+Write-Host ""
+Write-Host "=== Step 4/7: Sync Environment Variables ===" -ForegroundColor Green
 $envSyncScript = "$EtaEngineDir\scripts\env_sync.py"
 if (Test-Path $envSyncScript) {
     if (-not $WhatIf) {
@@ -114,17 +118,19 @@ if (Test-Path $envSyncScript) {
     }
     Write-Host "  Env sync complete" -ForegroundColor Green
 } else {
-    Write-Host "  env_sync.py not found — skipping" -ForegroundColor Yellow
+    Write-Host "  env_sync.py not found -- skipping" -ForegroundColor Yellow
 }
 
-# ── Step 5: Validate ────────────────────────────────────
+# -- Step 5: Validate -------------------------------------
 
 if (-not $SkipValidation) {
-    Write-Host ""; Write-Host "=== Step 5/7: Validation ===" -ForegroundColor Green
+    Write-Host ""
+    Write-Host "=== Step 5/7: Validation ===" -ForegroundColor Green
+    $healthOutDir = "$InstallRoot\firm_command_center\var\health"
 
     Write-Host "  Running health_check.py..." -ForegroundColor Gray
     if (-not $WhatIf) {
-        & $pythonExe "$EtaEngineDir\scripts\health_check.py" 2>&1 | Select-Object -Last 5
+        & $pythonExe "$EtaEngineDir\scripts\health_check.py" --allow-remote-supervisor-truth --allow-remote-retune-truth --output-dir $healthOutDir 2>&1 | Select-Object -Last 5
     }
     $healthExit = $LASTEXITCODE
 
@@ -148,10 +154,11 @@ if (-not $SkipValidation) {
     }
 }
 
-# ── Step 6: Start services ──────────────────────────────
+# -- Step 6: Start services -------------------------------
 
 if (-not $SkipServices) {
-    Write-Host ""; Write-Host "=== Step 6/7: Start Services ===" -ForegroundColor Green
+    Write-Host ""
+    Write-Host "=== Step 6/7: Start Services ===" -ForegroundColor Green
 
     $services = @(
         "FirmCore",
@@ -173,20 +180,23 @@ if (-not $SkipServices) {
         }
     }
 
-    # Edge/Tunnel services (optional, start if present)
     foreach ($svc in @("FirmCommandCenterEdge", "FirmCommandCenterTunnel")) {
         $status = (Get-Service $svc -ErrorAction SilentlyContinue).Status
         if ($status) {
-            if (-not $WhatIf -and $status -ne "Running") { Start-Service $svc -ErrorAction SilentlyContinue }
-            Write-Host "  $svc : $(if($status -eq 'Running'){'ALREADY RUNNING'}else{'STARTED'})" -ForegroundColor Gray
+            if (-not $WhatIf -and $status -ne "Running") {
+                Start-Service $svc -ErrorAction SilentlyContinue
+            }
+            $label = if ($status -eq "Running") { "ALREADY RUNNING" } else { "STARTED" }
+            Write-Host "  $svc : $label" -ForegroundColor Gray
         }
     }
 }
 
-# ── Step 7: Shadow fleet validation ─────────────────────
+# -- Step 7: Shadow fleet validation ----------------------
 
 if (-not $SkipShadowFleet) {
-    Write-Host ""; Write-Host "=== Step 7/7: Shadow Fleet Validation ===" -ForegroundColor Green
+    Write-Host ""
+    Write-Host "=== Step 7/7: Shadow Fleet Validation ===" -ForegroundColor Green
     $shadowScript = "$EtaEngineDir\scripts\shadow_fleet_validator.py"
     if (Test-Path $shadowScript) {
         Write-Host "  Running shadow fleet comparison (36 tasks across 6 categories)..." -ForegroundColor Gray
@@ -194,13 +204,14 @@ if (-not $SkipShadowFleet) {
             & $pythonExe $shadowScript --tasks 6 --output var/shadow_validation.jsonl 2>&1 | Select-Object -Last 20
         }
     } else {
-        Write-Host "  shadow_fleet_validator.py not found — skipping" -ForegroundColor Yellow
+        Write-Host "  shadow_fleet_validator.py not found -- skipping" -ForegroundColor Yellow
     }
 }
 
-# ── Final status ────────────────────────────────────────
+# -- Final status -----------------------------------------
 
-Write-Host ""; Write-Host "====================================================" -ForegroundColor Cyan
+Write-Host ""
+Write-Host "====================================================" -ForegroundColor Cyan
 Write-Host "  WAVE-19 DEPLOY COMPLETE" -ForegroundColor Green
 Write-Host "====================================================" -ForegroundColor Cyan
 Write-Host ""

@@ -33,9 +33,11 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
+from eta_engine.scripts import workspace_roots
+
 logger = logging.getLogger("strategy_gauntlet")
 
-WORKSPACE = Path(r"C:\EvolutionaryTradingAlgo")
+WORKSPACE = workspace_roots.WORKSPACE_ROOT
 MNQ_BACKTEST = WORKSPACE / "mnq_backtest"
 
 

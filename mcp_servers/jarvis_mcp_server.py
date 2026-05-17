@@ -50,6 +50,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from eta_engine.scripts import workspace_roots
+
 if TYPE_CHECKING:
     from collections.abc import Callable
 
@@ -65,14 +67,14 @@ EXPECTED_HOOKS: tuple[str, ...] = ("serve",)
 # Tests monkeypatch these to ``tmp_path`` so they never touch live state.
 # ---------------------------------------------------------------------------
 
-_WORKSPACE_ROOT = Path(r"C:\EvolutionaryTradingAlgo")
-_STATE_ROOT = _WORKSPACE_ROOT / "var" / "eta_engine" / "state"
+_WORKSPACE_ROOT = workspace_roots.WORKSPACE_ROOT
+_STATE_ROOT = workspace_roots.ETA_RUNTIME_STATE_DIR
 
-_AUDIT_LOG_PATH: Path = _STATE_ROOT / "hermes_actions.jsonl"
-_KAIZEN_ACTION_LOG_PATH: Path = _STATE_ROOT / "kaizen_actions.jsonl"
-_KAIZEN_OVERRIDES_PATH: Path = _STATE_ROOT / "kaizen_overrides.json"
-_HERMES_STATE_PATH: Path = _STATE_ROOT / "jarvis_intel" / "hermes_state.json"
-_KAIZEN_LATEST_PATH: Path = _STATE_ROOT / "kaizen_latest.json"
+_AUDIT_LOG_PATH: Path = workspace_roots.ETA_HERMES_ACTIONS_LOG_PATH
+_KAIZEN_ACTION_LOG_PATH: Path = workspace_roots.ETA_KAIZEN_ACTIONS_LOG_PATH
+_KAIZEN_OVERRIDES_PATH: Path = workspace_roots.ETA_KAIZEN_OVERRIDES_PATH
+_HERMES_STATE_PATH: Path = workspace_roots.ETA_HERMES_STATE_PATH
+_KAIZEN_LATEST_PATH: Path = workspace_roots.ETA_KAIZEN_LATEST_PATH
 
 _CALLER = "hermes-mcp"
 _KILL_PHRASE = "kill all"
@@ -209,13 +211,13 @@ def _call_trace_tail(n: int) -> list[dict[str, Any]]:
 # added here without changing the tool surface. Keys are the user-facing
 # stream names accepted by the tool; values are absolute Paths.
 _EVENT_STREAMS: dict[str, Path] = {
-    "trace": _STATE_ROOT / "jarvis_trace.jsonl",
-    "dashboard": _STATE_ROOT / "dashboard_events.jsonl",
-    "decisions": _STATE_ROOT / "decision_journal.jsonl",
-    "kaizen": _STATE_ROOT / "kaizen_actions.jsonl",
+    "trace": workspace_roots.ETA_JARVIS_TRACE_PATH,
+    "dashboard": workspace_roots.ETA_DASHBOARD_EVENTS_PATH,
+    "decisions": workspace_roots.ETA_RUNTIME_DECISION_JOURNAL_PATH,
+    "kaizen": workspace_roots.ETA_KAIZEN_ACTIONS_LOG_PATH,
     "hermes": _AUDIT_LOG_PATH,  # what THIS server writes
-    "jarvis_v3": _STATE_ROOT / "jarvis_v3_events.jsonl",
-    "uptime": _STATE_ROOT / "uptime_events.jsonl",
+    "jarvis_v3": workspace_roots.ETA_JARVIS_V3_EVENTS_PATH,
+    "uptime": workspace_roots.ETA_UPTIME_EVENTS_PATH,
 }
 
 

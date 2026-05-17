@@ -36,6 +36,8 @@ import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
 
+from eta_engine.scripts import workspace_roots
+
 logger = logging.getLogger(__name__)
 
 
@@ -44,7 +46,7 @@ logger = logging.getLogger(__name__)
 # (which doesn't inherit .env). The supervisor itself loads .env from
 # its own startup; the watcher needs the same.
 def _bootstrap_env() -> None:
-    env_path = Path(r"C:\EvolutionaryTradingAlgo\eta_engine\.env")
+    env_path = workspace_roots.ETA_ENGINE_ROOT / ".env"
     if not env_path.exists():
         return
     try:
@@ -85,7 +87,7 @@ def _query_crypto_permission() -> tuple[bool, dict[str, object]]:
 
 def _crypto_currently_enabled_in_env() -> bool:
     """True iff ETA_IBKR_CRYPTO is set (uncommented) in the .env."""
-    env_path = Path(r"C:\EvolutionaryTradingAlgo\eta_engine\.env")
+    env_path = workspace_roots.ETA_ENGINE_ROOT / ".env"
     if not env_path.exists():
         return False
     for line in env_path.read_text(encoding="utf-8").splitlines():
@@ -100,7 +102,7 @@ def _crypto_currently_enabled_in_env() -> bool:
 def _enable_crypto_in_env() -> bool:
     """Flip ``# ETA_IBKR_CRYPTO=1`` → ``ETA_IBKR_CRYPTO=1`` (or append).
     Returns True iff the file was modified."""
-    env_path = Path(r"C:\EvolutionaryTradingAlgo\eta_engine\.env")
+    env_path = workspace_roots.ETA_ENGINE_ROOT / ".env"
     if not env_path.exists():
         env_path.write_text("ETA_IBKR_CRYPTO=1\n", encoding="utf-8")
         return True
@@ -141,7 +143,7 @@ def _restart_supervisor() -> bool:
             timeout=20,
         )
         # restart via Start-Process (detached)
-        log_dir = Path(r"C:\EvolutionaryTradingAlgo\var\eta_engine\logs")
+        log_dir = workspace_roots.ETA_RUNTIME_LOG_DIR
         log_dir.mkdir(parents=True, exist_ok=True)
         ts = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
         log_file = log_dir / f"supervisor_{ts}.log"
@@ -192,7 +194,7 @@ def _write_status(status: dict[str, object]) -> None:
     path = Path(
         os.getenv(
             "ETA_CUTOVER_STATUS_FILE",
-            r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\cutover_status.json",
+            str(workspace_roots.ETA_CUTOVER_STATUS_PATH),
         )
     )
     with contextlib.suppress(OSError):

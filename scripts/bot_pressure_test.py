@@ -34,11 +34,13 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from eta_engine.scripts import workspace_roots
+
 logger = logging.getLogger(__name__)
 
 
-_LAB_REPORTS_DIR = Path(r"C:\EvolutionaryTradingAlgo\reports\lab_reports")
-_TRADE_CLOSES = Path(r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\jarvis_intel\trade_closes.jsonl")
+_LAB_REPORTS_DIR = workspace_roots.WORKSPACE_ROOT / "reports" / "lab_reports"
+_TRADE_CLOSES = workspace_roots.ETA_JARVIS_TRADE_CLOSES_PATH
 
 
 _DIAMOND_BOT_IDS = (

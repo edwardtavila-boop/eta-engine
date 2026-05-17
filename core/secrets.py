@@ -10,6 +10,7 @@ on every access for compliance.
 from __future__ import annotations
 
 import os
+import re
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -53,6 +54,7 @@ REQUIRED_KEYS: list[str] = [
 ]
 
 _KEYRING_SERVICE = "eta_engine"
+_INLINE_COMMENT_RE = re.compile(r"\s+#")
 
 
 class SecretsManager:
@@ -73,9 +75,21 @@ class SecretsManager:
                 if not line or line.startswith("#") or "=" not in line:
                     continue
                 key, _, val = line.partition("=")
-                data[key.strip()] = val.strip().strip('"').strip("'")
+                data[key.strip()] = self._normalize_env_value(val)
         self._env_cache = data
         return data
+
+    def _normalize_env_value(self, value: str) -> str:
+        """Parse a dotenv value while ignoring trailing inline comments."""
+        raw = value.strip()
+        if not raw:
+            return ""
+        if raw.startswith("#"):
+            return ""
+        if len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in {'"', "'"}:
+            return raw[1:-1]
+        parts = _INLINE_COMMENT_RE.split(raw, maxsplit=1)
+        return parts[0].strip().strip('"').strip("'")
 
     def _try_keyring(self, key: str) -> str | None:
         try:

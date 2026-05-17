@@ -1,6 +1,6 @@
 # EVOLUTIONARY TRADING ALGO  //  configs/tradovate.yaml
 # Tradovate venue configuration - prop-test futures bots (MNQ first)
-# Decisions source: docs/decisions_v1.json (ETA_DECISIONS_v1)
+# Decisions source: var/eta_engine/state/decisions_v1.json (ETA_DECISIONS_v1)
 
 venue: tradovate
 environment: demo   # demo | live - keep demo until prop-account smoke passes

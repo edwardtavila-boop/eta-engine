@@ -10,17 +10,18 @@ import statistics
 import sys
 from pathlib import Path
 
-sys.path.insert(0, r"C:\EvolutionaryTradingAlgo")
-sys.path.insert(0, r"C:\EvolutionaryTradingAlgo\firm\eta_engine")
+WORKSPACE_ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(WORKSPACE_ROOT))
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
+from eta_engine.scripts import workspace_roots
 
-LEDGER_PATH = Path(r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\paper_soak_ledger.json")
-REGISTRY_PATH = Path(r"C:\EvolutionaryTradingAlgo\eta_engine\strategies\per_bot_registry.py")
+LEDGER_PATH = workspace_roots.ETA_PAPER_SOAK_LEDGER_PATH
+REGISTRY_PATH = workspace_roots.ETA_ENGINE_ROOT / "strategies" / "per_bot_registry.py"
 STATUS_PAGE_DIR = Path(__file__).resolve().parent
-WORKSPACE_ROOT = Path(r"C:\EvolutionaryTradingAlgo")
+WORKSPACE_ROOT = workspace_roots.WORKSPACE_ROOT
 ELITE_DASHBOARD_PATH = WORKSPACE_ROOT / "firm_command_center" / "var" / "elite_dashboard.html"
 SOAK_DASHBOARD_PATH = STATUS_PAGE_DIR / "soak_dashboard.html"
 HTML_PATHS = (ELITE_DASHBOARD_PATH, SOAK_DASHBOARD_PATH)

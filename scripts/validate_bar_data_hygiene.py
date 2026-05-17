@@ -47,6 +47,8 @@ from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from eta_engine.scripts import workspace_roots
+
 # Default per-asset-class threshold for the absolute log return between adjacent
 # bars. Anything above this is suspect.
 FUTURES_THRESHOLD_PCT = 5.0
@@ -622,7 +624,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     p.add_argument(
         "--workspace",
-        default=str(Path("C:/EvolutionaryTradingAlgo")),
+        default=str(workspace_roots.WORKSPACE_ROOT),
         help="Workspace root (used to resolve canonical history roots).",
     )
     p.add_argument(

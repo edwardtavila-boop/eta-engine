@@ -37,3 +37,8 @@ def test_l2_cron_registrar_start_now_is_explicit() -> None:
     assert "[switch]$StartNow" in text
     assert "if ($StartNow)" in text
     assert "Start-ScheduledTask -TaskName $t.Name" in text
+
+
+def test_l2_cron_registrar_verification_surfaces_diamond_tasks_too() -> None:
+    text = SCRIPT.read_text(encoding="utf-8")
+    assert 'Where-Object { $_.TaskName -like "ETA-L2-*" -or $_.TaskName -like "ETA-Diamond-*" }' in text

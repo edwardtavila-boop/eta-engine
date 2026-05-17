@@ -57,25 +57,47 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from eta_engine.feeds.capital_allocator import DIAMOND_BOTS
+from eta_engine.scripts import workspace_roots
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKSPACE_ROOT = ROOT.parent
-STATE_DIR = WORKSPACE_ROOT / "var" / "eta_engine" / "state"
-LOG_DIR = WORKSPACE_ROOT / "logs" / "eta_engine"
+STATE_DIR = workspace_roots.ETA_RUNTIME_STATE_DIR
+LOG_DIR = workspace_roots.ETA_RUNTIME_LOG_DIR
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
-CLOSED_LEDGER = STATE_DIR / "closed_trade_ledger_latest.json"
-PAPER_SOAK_LEDGER = STATE_DIR / "paper_soak_ledger.json"
-KAIZEN_LATEST = STATE_DIR / "kaizen_latest.json"
-BACKTEST_RUNS_LOG = LOG_DIR / "l2_backtest_runs.jsonl"
+CLOSED_LEDGER = workspace_roots.ETA_CLOSED_TRADE_LEDGER_PATH
+PAPER_SOAK_LEDGER = workspace_roots.ETA_PAPER_SOAK_LEDGER_PATH
+KAIZEN_LATEST = workspace_roots.ETA_KAIZEN_LATEST_PATH
+BACKTEST_RUNS_LOG = workspace_roots.ETA_L2_BACKTEST_RUNS_LOG_PATH
 
-OUT_LATEST = STATE_DIR / "diamond_authenticity_latest.json"
-OUT_LOG = LOG_DIR / "diamond_authenticity.jsonl"
+OUT_LATEST = workspace_roots.ETA_DIAMOND_AUTHENTICITY_PATH
+OUT_LOG = workspace_roots.ETA_DIAMOND_AUTHENTICITY_LOG_PATH
 
 BOOTSTRAP_N = 1000
 MC_SHUFFLE_N = 1000
 MIN_N_FOR_STATS = 20
 RANDOM_SEED = 42
+
+
+def _console_help_description(text: str | None) -> str:
+    """Return argparse help text that is safe on Windows cp1252 consoles."""
+    return (text or "").encode("ascii", "replace").decode("ascii")
+
+
+def _console_ascii(text: str | None) -> str:
+    """Return runtime console text that is safe on Windows cp1252 consoles."""
+    normalized = text or ""
+    replacements = {
+        "â†’": "->",
+        "â€”": "-",
+        "â€“": "-",
+        "â‰¥": ">=",
+        "â‰¤": "<=",
+        "…": "...",
+    }
+    for original, replacement in replacements.items():
+        normalized = normalized.replace(original, replacement)
+    return normalized.encode("ascii", "replace").decode("ascii")
 
 
 @dataclass
@@ -413,7 +435,7 @@ def _print(summary: dict) -> None:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__)
+    ap = argparse.ArgumentParser(description=_console_help_description(__doc__))
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
     summary = run_audit()

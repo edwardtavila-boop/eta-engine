@@ -13,7 +13,7 @@ POSTs to whatever exporter env vars are configured:
   ETA_AIRTABLE_TOKEN + ETA_AIRTABLE_BASE_ID + ETA_AIRTABLE_TABLE_NAME
 
 Both are optional. When neither is set, this script prints the digest
-to stdout + writes it to ``state/notion_export/<date>.json`` so the
+to stdout + writes it to ``var/eta_engine/notion_export/<date>.json`` so the
 operator can copy/paste manually.
 
 Operator sets up Notion via:
@@ -40,7 +40,16 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT.parent) not in sys.path:
     sys.path.insert(0, str(ROOT.parent))
 
+from eta_engine.scripts import workspace_roots
+
 logger = logging.getLogger("export_to_notion")
+
+
+def _prefer_legacy_input_dir(selected_dir: Path, *, canonical: Path, legacy: Path) -> Path:
+    if selected_dir == canonical and not selected_dir.exists() and legacy.exists():
+        logger.info("using legacy input dir fallback: %s", legacy)
+        return legacy
+    return selected_dir
 
 
 def _build_digest(*, audit_dir: Path, kaizen_ledger: Path, critique_dir: Path, bandit_dir: Path) -> dict[str, Any]:
@@ -58,7 +67,7 @@ def _build_digest(*, audit_dir: Path, kaizen_ledger: Path, critique_dir: Path, b
     try:
         from eta_engine.obs.jarvis_today_verdicts import aggregate_today
 
-        agg = aggregate_today()
+        agg = aggregate_today(audit_globs=[str(audit_dir / "*.jsonl")])
         digest["verdicts_today"] = {
             "totals": agg.get("totals", {}),
             "top_denial_reasons": agg.get("top_denial_reasons", [])[:3],
@@ -176,11 +185,26 @@ def _post_airtable(token: str, base_id: str, table_name: str, digest: dict[str, 
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--audit-dir", type=Path, default=ROOT / "state" / "jarvis_audit")
-    p.add_argument("--kaizen-ledger", type=Path, default=ROOT / "docs" / "kaizen_ledger.json")
-    p.add_argument("--critique-dir", type=Path, default=ROOT / "state" / "kaizen_critique")
-    p.add_argument("--bandit-dir", type=Path, default=ROOT / "state" / "bandit")
-    p.add_argument("--out-dir", type=Path, default=ROOT / "state" / "notion_export")
+    p.add_argument(
+        "--audit-dir",
+        type=Path,
+        default=workspace_roots.ETA_JARVIS_AUDIT_DIR,
+        help="Directory of JARVIS audit *.jsonl files. Default: var/eta_engine/state/jarvis_audit",
+    )
+    p.add_argument("--kaizen-ledger", type=Path, default=workspace_roots.ETA_KAIZEN_LEDGER_PATH)
+    p.add_argument(
+        "--critique-dir",
+        type=Path,
+        default=workspace_roots.ETA_KAIZEN_CRITIQUE_DIR,
+        help="Directory of daily critique JSON files. Default: var/eta_engine/state/kaizen_critique",
+    )
+    p.add_argument(
+        "--bandit-dir",
+        type=Path,
+        default=workspace_roots.ETA_BANDIT_PROMOTION_DIR,
+        help="Directory of bandit promotion check JSON files. Default: var/eta_engine/state/bandit",
+    )
+    p.add_argument("--out-dir", type=Path, default=workspace_roots.ETA_NOTION_EXPORT_DIR)
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("-v", "--verbose", action="store_true")
     args = p.parse_args(argv)
@@ -190,11 +214,27 @@ def main(argv: list[str] | None = None) -> int:
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     )
 
+    audit_dir = _prefer_legacy_input_dir(
+        args.audit_dir,
+        canonical=workspace_roots.ETA_JARVIS_AUDIT_DIR,
+        legacy=workspace_roots.ETA_LEGACY_JARVIS_AUDIT_DIR,
+    )
+    critique_dir = _prefer_legacy_input_dir(
+        args.critique_dir,
+        canonical=workspace_roots.ETA_KAIZEN_CRITIQUE_DIR,
+        legacy=workspace_roots.ETA_LEGACY_KAIZEN_CRITIQUE_DIR,
+    )
+    bandit_dir = _prefer_legacy_input_dir(
+        args.bandit_dir,
+        canonical=workspace_roots.ETA_BANDIT_PROMOTION_DIR,
+        legacy=workspace_roots.ETA_LEGACY_BANDIT_PROMOTION_DIR,
+    )
+
     digest = _build_digest(
-        audit_dir=args.audit_dir,
+        audit_dir=audit_dir,
         kaizen_ledger=args.kaizen_ledger,
-        critique_dir=args.critique_dir,
-        bandit_dir=args.bandit_dir,
+        critique_dir=critique_dir,
+        bandit_dir=bandit_dir,
     )
 
     if not args.dry_run:

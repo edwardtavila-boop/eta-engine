@@ -705,6 +705,121 @@ def test_bracket_audit_clears_stale_flat_orders_when_live_socket_has_none(monkey
     assert report["stale_flat_open_order_validation"]["status"] == "live_socket_no_open_orders"
 
 
+def test_bracket_audit_surfaces_pending_cancel_stale_orders_explicitly(monkeypatch) -> None:
+    monkeypatch.setattr(
+        audit,
+        "_adapter_support",
+        lambda: {
+            "ibkr_futures_server_oco": True,
+            "alpaca_equity_server_bracket": True,
+            "tradovate_order_payload_brackets": True,
+        },
+    )
+
+    report = audit.build_bracket_audit(
+        fleet={
+            "target_exit_summary": {
+                "status": "watching",
+                "broker_open_position_count": 1,
+                "broker_bracket_required_position_count": 1,
+                "broker_bracket_count": 1,
+                "missing_bracket_count": 0,
+                "supervisor_local_position_count": 0,
+            },
+            "live_broker_state": {
+                "ibkr": {
+                    "open_positions": [
+                        {"symbol": "MBTK6", "secType": "FUT", "position": 1, "broker_bracket_required": True},
+                    ],
+                    "open_orders": [
+                        {
+                            "symbol": "MCLN6",
+                            "action": "SELL",
+                            "status": "PendingCancel",
+                            "order_id": 1410,
+                            "perm_id": 581506503,
+                            "parent_id": 1409,
+                            "client_id": 188,
+                            "oca_group": "581506502",
+                        },
+                    ],
+                },
+            },
+        },
+        validate_live_stale_orders=False,
+    )
+
+    assert report["summary"] == "BLOCKED_STALE_FLAT_OPEN_ORDERS"
+    assert "Wait for or clear 1 stale PendingCancel broker order(s)" in report["next_action"]
+    assert report["operator_actions"][0]["label"] == "Clear pending stale flat-symbol orders"
+    assert "already show PendingCancel with IBKR" in report["operator_actions"][0]["detail"]
+
+
+def test_bracket_audit_mixed_pending_cancel_and_active_stale_orders_report_total_count(monkeypatch) -> None:
+    monkeypatch.setattr(
+        audit,
+        "_adapter_support",
+        lambda: {
+            "ibkr_futures_server_oco": True,
+            "alpaca_equity_server_bracket": True,
+            "tradovate_order_payload_brackets": True,
+        },
+    )
+
+    report = audit.build_bracket_audit(
+        fleet={
+            "target_exit_summary": {
+                "status": "watching",
+                "broker_open_position_count": 1,
+                "broker_bracket_required_position_count": 1,
+                "broker_bracket_count": 1,
+                "missing_bracket_count": 0,
+                "supervisor_local_position_count": 0,
+            },
+            "live_broker_state": {
+                "ibkr": {
+                    "open_positions": [
+                        {"symbol": "MBTK6", "secType": "FUT", "position": 1, "broker_bracket_required": True},
+                    ],
+                    "open_orders": [
+                        {
+                            "symbol": "MCLN6",
+                            "action": "SELL",
+                            "status": "PendingCancel",
+                            "order_id": 1410,
+                            "perm_id": 581506503,
+                            "parent_id": 1409,
+                            "client_id": 188,
+                            "oca_group": "581506502",
+                        },
+                        {
+                            "symbol": "NQM6",
+                            "action": "BUY",
+                            "status": "Submitted",
+                            "order_id": 1411,
+                            "perm_id": 581506504,
+                            "parent_id": 1410,
+                            "client_id": 188,
+                            "oca_group": "581506503",
+                        },
+                    ],
+                },
+            },
+        },
+        validate_live_stale_orders=False,
+    )
+
+    assert report["summary"] == "BLOCKED_STALE_FLAT_OPEN_ORDERS"
+    assert "Wait for or clear 2 stale broker order(s) for MCLN6, NQM6" in report["next_action"]
+    assert "1 already show PendingCancel with IBKR and 1 still have no matching broker open position" in report[
+        "next_action"
+    ]
+    assert report["operator_actions"][0]["label"] == "Clear pending stale flat-symbol orders"
+    assert "1 additional stale order remain active with no matching broker position" in report["operator_actions"][0][
+        "detail"
+    ]
+
+
 def test_live_stale_order_validation_uses_configured_timeout(monkeypatch) -> None:
     seen: dict[str, float] = {}
 
@@ -741,7 +856,98 @@ def test_live_stale_order_validation_uses_configured_timeout(monkeypatch) -> Non
 
     assert validated == []
     assert details["status"] == "live_socket_no_open_orders"
+    assert details["client_id_used"] in details["attempted_client_ids"]
     assert seen["timeout"] == 45.0
+
+
+def test_live_stale_order_validation_retries_when_client_id_is_already_in_use(monkeypatch) -> None:
+    seen: list[int] = []
+
+    class _FakeIB:
+        def connect(self, _host: str, _port: int, *, clientId: int, timeout: float) -> None:
+            seen.append(clientId)
+            if len(seen) == 1:
+                raise RuntimeError("client id is already in use")
+
+        @staticmethod
+        def reqAllOpenOrders() -> None:
+            return None
+
+        @staticmethod
+        def sleep(_seconds: float) -> None:
+            return None
+
+        @staticmethod
+        def openTrades() -> list[object]:
+            return []
+
+        @staticmethod
+        def openOrders() -> list[object]:
+            return []
+
+        @staticmethod
+        def disconnect() -> None:
+            return None
+
+    monkeypatch.setattr(audit, "_ensure_main_thread_event_loop", lambda: None)
+    monkeypatch.setitem(sys.modules, "ib_insync", SimpleNamespace(IB=_FakeIB))
+
+    validated, details = audit._validate_stale_flat_open_orders_live([{"symbol": "MBTK6"}], client_id=9034)  # noqa: SLF001
+
+    assert validated == []
+    assert details["status"] == "live_socket_no_open_orders"
+    assert seen[0] == 9034
+    assert details["attempted_client_ids"][:2] == seen
+    assert details["client_id_used"] == seen[1]
+    assert details["client_id_used"] != 9034
+
+
+def test_live_stale_order_validation_reconciles_partial_symbol_matches_by_order_id(monkeypatch) -> None:
+    class _FakeIB:
+        def connect(self, _host: str, _port: int, *, clientId: int, timeout: float) -> None:
+            return None
+
+        @staticmethod
+        def reqAllOpenOrders() -> None:
+            return None
+
+        @staticmethod
+        def sleep(_seconds: float) -> None:
+            return None
+
+        @staticmethod
+        def openTrades() -> list[object]:
+            return [
+                SimpleNamespace(
+                    contract=SimpleNamespace(symbol="MCL", localSymbol="MCLN6"),
+                    order=SimpleNamespace(orderId=1410, permId=581506503),
+                    orderStatus=SimpleNamespace(status="Submitted"),
+                ),
+            ]
+
+        @staticmethod
+        def openOrders() -> list[object]:
+            return [SimpleNamespace(orderId=1410, permId=581506503)]
+
+        @staticmethod
+        def disconnect() -> None:
+            return None
+
+    monkeypatch.setattr(audit, "_ensure_main_thread_event_loop", lambda: None)
+    monkeypatch.setitem(sys.modules, "ib_insync", SimpleNamespace(IB=_FakeIB))
+
+    validated, details = audit._validate_stale_flat_open_orders_live(  # noqa: SLF001
+        [
+            {"symbol": "MCLN6", "order_id": 1410, "perm_id": 581506503},
+            {"symbol": "MCLN6", "order_id": 1411, "perm_id": 581506504},
+        ],
+    )
+
+    assert [order["order_id"] for order in validated] == [1410]
+    assert details["status"] == "live_socket_validated"
+    assert details["validated_stale_flat_open_order_count"] == 1
+    assert details["live_open_trade_count"] == 1
+    assert details["live_open_order_count"] == 1
 
 
 def test_bracket_audit_keeps_incomplete_ibkr_open_order_coverage_blocked(monkeypatch) -> None:

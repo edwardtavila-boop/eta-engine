@@ -45,6 +45,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from eta_engine.brain.avengers.base import avengers_journal_read_path
 from eta_engine.brain.avengers.push import AlertLevel, PushBus, default_bus
+from eta_engine.scripts import workspace_roots
 
 # All four personas in the fleet. Kept as strings (not PersonaId) so the
 # watchdog can survive an import cycle if base.py is being changed.
@@ -100,8 +101,7 @@ class WatchdogRelauncher:
     ) -> None:
         if launcher_dir is None:
             # Project default -- matches what install_desktop_shortcuts.ps1 writes.
-            # post-OneDrive-migration 2026-04-26: launchers live under C:\EvolutionaryTradingAlgo\.
-            launcher_dir = Path("C:/EvolutionaryTradingAlgo/launchers")
+            launcher_dir = workspace_roots.WORKSPACE_ROOT / "launchers"
         self.launcher_dir = launcher_dir
         self._mapping: dict[str, Path] = {}
         for persona in FLEET_PERSONAS:

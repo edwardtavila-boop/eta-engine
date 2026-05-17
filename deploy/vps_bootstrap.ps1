@@ -29,6 +29,45 @@ $ErrorActionPreference = "Continue"
 
 # -- Path resolution ---------------------------------------
 
+function Resolve-EtaPython {
+    param([string]$EtaEngineDir)
+    $envPython = [Environment]::GetEnvironmentVariable("ETA_PYTHON_EXE", "Machine")
+    if (-not $envPython) {
+        $envPython = [Environment]::GetEnvironmentVariable("ETA_PYTHON_EXE", "User")
+    }
+    $venvPython = Join-Path $EtaEngineDir ".venv\Scripts\python.exe"
+    $machinePython = "C:\Python314\python.exe"
+    if ($envPython -and (Test-Path -LiteralPath $envPython)) {
+        return $envPython
+    }
+    if (Test-Path -LiteralPath $venvPython) {
+        return $venvPython
+    }
+    if (Test-Path -LiteralPath $machinePython) {
+        return $machinePython
+    }
+    $cmd = Get-Command python -ErrorAction SilentlyContinue
+    if ($cmd) {
+        return $cmd.Source
+    }
+    return ""
+}
+
+function Update-FmStatusServiceXmlExecutable {
+    param(
+        [string]$XmlPath,
+        [string]$PythonExe
+    )
+    $xmlText = Get-Content -LiteralPath $XmlPath -Raw -Encoding UTF8
+    $pattern = [regex]::new('<executable>.*?</executable>', [System.Text.RegularExpressions.RegexOptions]::Singleline)
+    if (-not $pattern.IsMatch($xmlText)) {
+        throw "FmStatusServer XML missing <executable> node: $XmlPath"
+    }
+    $escapedPython = [Security.SecurityElement]::Escape($PythonExe)
+    $updatedText = $pattern.Replace($xmlText, "<executable>$escapedPython</executable>", 1)
+    Set-Content -LiteralPath $XmlPath -Value $updatedText -Encoding UTF8
+}
+
 if (-not $EtaEngineDir) { $EtaEngineDir = "$InstallRoot\eta_engine" }
 if (-not $FirmDir) { $FirmDir = "$InstallRoot\firm\eta_engine" }
 $venvPython = "$EtaEngineDir\.venv\Scripts\python.exe"
@@ -36,14 +75,10 @@ $fccVenvPython = "$FirmDir\.venv\Scripts\python.exe"
 $fccServicesDir = "$InstallRoot\firm_command_center\services"
 $winswExe = "$fccServicesDir\winsw.exe"
 
-$pythonExe = (Get-Command python -ErrorAction SilentlyContinue).Source
+$pythonExe = Resolve-EtaPython -EtaEngineDir $EtaEngineDir
 if (-not $pythonExe -or -not (Test-Path $pythonExe)) {
-    if (Test-Path $venvPython) {
-        $pythonExe = $venvPython
-    } else {
-        Write-Error "Python not found. Ensure .venv exists at $venvPython"
-        if (-not $WhatIf) { exit 1 }
-    }
+    Write-Error "Python not found. Ensure ETA_PYTHON_EXE is set or .venv exists at $venvPython"
+    if (-not $WhatIf) { exit 1 }
 }
 
 $pwshPath = (Get-Command powershell -ErrorAction SilentlyContinue).Source
@@ -213,6 +248,9 @@ if (-not $SkipWinSW) {
                 if (-not (Test-Path $svcDir)) { New-Item -ItemType Directory -Force -Path $svcDir | Out-Null }
 
                 Copy-Item $xmlPath "$svcDir\$($svc.Xml)" -Force
+                if ($svc.Name -eq "FmStatusServer") {
+                    Update-FmStatusServiceXmlExecutable -XmlPath "$svcDir\$($svc.Xml)" -PythonExe $pythonExe
+                }
                 $serviceExe = "$svcDir\$($svc.Name).exe"
                 Copy-Item $winswExe $serviceExe -Force
 
@@ -451,10 +489,21 @@ if (-not $SkipETATasks) {
 if (-not $SkipHealthCheck) {
     Write-Host ""; Write-Host "=== Health Check ===" -ForegroundColor Green
     $healthScript = "$EtaEngineDir\scripts\health_check.py"
+    $jarvisMemoryMigrationScript = "$EtaEngineDir\scripts\jarvis_memory_migration.py"
     $healthOutDir = "$InstallRoot\firm_command_center\var\health"
+    $healthArgs = "`"$healthScript`" --allow-remote-supervisor-truth --allow-remote-retune-truth --output-dir `"$healthOutDir`""
 
     if (-not (Test-Path $healthOutDir)) {
         New-Item -ItemType Directory -Force -Path $healthOutDir | Out-Null
+    }
+
+    if (Test-Path $jarvisMemoryMigrationScript) {
+        Write-Host "  Seeding canonical JARVIS second-brain memory if needed..." -ForegroundColor Gray
+        if (-not $WhatIf) {
+            & $pythonExe $jarvisMemoryMigrationScript --apply --json 2>&1 | Select-Object -Last 8
+        } else {
+            Write-Host "  WOULD RUN: $pythonExe $jarvisMemoryMigrationScript --apply --json" -ForegroundColor Gray
+        }
     }
 
     if (Test-Path $healthScript) {
@@ -463,13 +512,13 @@ if (-not $SkipHealthCheck) {
         # Run once now
         Write-Host "  Running health check..." -ForegroundColor Gray
         if (-not $WhatIf) {
-            & $pythonExe $healthScript --output-dir $healthOutDir 2>&1 | Select-Object -Last 5
+            & $pythonExe $healthScript --allow-remote-supervisor-truth --allow-remote-retune-truth --output-dir $healthOutDir 2>&1 | Select-Object -Last 5
         }
 
         # Register daily task
         $action = New-ScheduledTaskAction -Execute $pythonExe `
-            -Argument "`"$healthScript`" --output-dir `"$healthOutDir`""
-        $trigger = New-ScheduledTaskTrigger -Daily -At "08:00" -RepetitionInterval (New-TimeSpan -Hours 4) -RepetitionDuration (New-TimeSpan -Hours 24)
+            -Argument $healthArgs
+        $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Hours 4) -RepetitionDuration (New-TimeSpan -Days 365)
         $principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
         $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -MultipleInstances IgnoreNew
 
@@ -602,7 +651,7 @@ if (-not $WhatIf) {
     $healthScript = "$EtaEngineDir\scripts\health_check.py"
     $healthOutDir = "$InstallRoot\firm_command_center\var\health"
     if (Test-Path $healthScript) {
-        & $pythonExe $healthScript --output-dir $healthOutDir 2>&1 | Select-Object -Last 15
+        & $pythonExe $healthScript --allow-remote-supervisor-truth --allow-remote-retune-truth --output-dir $healthOutDir 2>&1 | Select-Object -Last 15
     }
     $exitCode = $LASTEXITCODE
     if ($exitCode -eq 0) {

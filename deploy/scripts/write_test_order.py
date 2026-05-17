@@ -1,7 +1,8 @@
 import json
-from pathlib import Path
 
-d = Path("C:/EvolutionaryTradingAlgo/eta_engine/docs/btc_live/broker_fleet")
+from eta_engine.scripts import workspace_roots
+
+d = workspace_roots.ETA_BROKER_ROUTER_PENDING_DIR
 d.mkdir(parents=True, exist_ok=True)
 
 # Test order

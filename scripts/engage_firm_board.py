@@ -7,7 +7,8 @@ Usage:
         [--live --channel crypto_strategies]
 
 The board runs: Quant -> RedTeam -> Risk -> Macro -> Micro -> PM
-Output: verdict (GO / HOLD / MODIFY / KILL) persisted to kill_log.json
+Output: verdict (GO / HOLD / MODIFY / KILL) persisted to
+var/eta_engine/state/kill_log.json.
 """
 
 from __future__ import annotations
@@ -20,9 +21,9 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
-FIRM_DIR = Path("C:/EvolutionaryTradingAlgo/firm/the_firm_complete")  # post-OneDrive-migration 2026-04-26
-KILL_LOG = ROOT / "docs" / "kill_log.json"
+from eta_engine.scripts import workspace_roots
+
+FIRM_DIR = workspace_roots.WORKSPACE_ROOT / "firm" / "the_firm_complete"
 
 logger = logging.getLogger("firm_engage")
 
@@ -34,7 +35,7 @@ def extract_firm_spec(strategy_spec: dict) -> dict:
 
 def run_roundtable(firm_spec: dict, live: bool, channel: str) -> dict:
     """Run the firm roundtable orchestrator."""
-    spec_tmp = ROOT / "docs" / "_firm_spec_temp.json"
+    spec_tmp = workspace_roots.ensure_parent(workspace_roots.ETA_FIRM_BOARD_TEMP_SPEC_PATH)
     with open(spec_tmp, "w") as f:
         json.dump(firm_spec, f, indent=2)
 
@@ -58,8 +59,20 @@ def run_roundtable(firm_spec: dict, live: bool, channel: str) -> dict:
 
 def append_kill_log(spec_id: str, verdict: dict) -> None:
     """Persist verdict to the kill log."""
-    with open(KILL_LOG) as f:
-        log = json.load(f)
+    source = workspace_roots.default_kill_log_path()
+    dest = workspace_roots.ensure_parent(workspace_roots.ETA_KILL_LOG_PATH)
+    if source.exists():
+        with open(source) as f:
+            log = json.load(f)
+    else:
+        log = {"meta": {}, "entries": []}
+    if isinstance(log, list):
+        log = {"meta": {}, "entries": log}
+    elif not isinstance(log, dict):
+        log = {"meta": {}, "entries": []}
+    entries = log.get("entries")
+    if not isinstance(entries, list):
+        log["entries"] = []
     log["entries"].append(
         {
             "timestamp": datetime.now(UTC).isoformat(),
@@ -67,7 +80,7 @@ def append_kill_log(spec_id: str, verdict: dict) -> None:
             "verdict": verdict,
         }
     )
-    with open(KILL_LOG, "w") as f:
+    with open(dest, "w") as f:
         json.dump(log, f, indent=2)
 
 
@@ -88,7 +101,7 @@ def main() -> int:
     verdict = run_roundtable(firm_spec, args.live, args.channel)
 
     append_kill_log(strategy_spec["spec_id"], verdict)
-    logger.info("Verdict appended to kill_log.json")
+    logger.info("Verdict appended to %s", workspace_roots.ETA_KILL_LOG_PATH)
     logger.info("Verdict summary: %s", json.dumps(verdict, indent=2)[:500])
     return 0
 

@@ -638,7 +638,7 @@
       "tier_a_exp_r": 0.534,
       "tier_b_exp_r": 0.271,
       "history_count": 2,
-      "log_path": "eta_engine/docs/weekly_review_log.json"
+      "log_path": "var/eta_engine/state/weekly_review/weekly_review_log.json"
     },
     "eta_engine_sweep_sim": {
       "start_equity_usd": 27000,
@@ -1250,6 +1250,7 @@
         "eta_engine/brain/rationale_miner.py"
       ],
       "weekly_review_integration": "scripts/weekly_review.py gained _load_checklist / _write_checklist_stub / _write_checklist_report and a --checklist-answers CLI arg. Produces docs/weekly_checklist_latest.{json,txt}.",
+      "historical_runtime_surface_note": "Premarket and monthly review originally wrote checked-in docs snapshots in v0.1.25. Current canonical runtime writes are var/eta_engine/state/premarket and var/eta_engine/state/monthly_review, and weekly review/checklist outputs later moved to var/eta_engine/state/weekly_review.",
       "jarvis_action_vocabulary": [
         "TRADE",
         "STAND_ASIDE",
@@ -1338,7 +1339,7 @@
           "Command Center tab now shows Jarvis + Discipline KPIs in an expanded 7-column KPI row."
         ],
         "docs_sources_updated": [
-          "data_sources.md documents premarket_latest.json / weekly_checklist_latest.json / monthly_review_latest.json"
+          "Historical note only: data_sources.md documented premarket_latest.json / weekly_checklist_latest.json / monthly_review_latest.json before the later canonical runtime-path migrations for premarket, monthly review, and weekly review/checklist outputs."
         ]
       },
       "tests_passing_before_note": "1019 was the stale pre-bump value in roadmap_state.json; actual green-test count today is 1228, which includes the +123 Jarvis-bundle tests plus the trade_grader / decision_journal / exit_quality suites (Modules 1, 2, 6) that pre-existed this bundle."
@@ -1583,10 +1584,10 @@
       },
       "daemon": {
         "entrypoint": "python -m eta_engine.scripts.jarvis_live",
-        "inputs_file": "docs/premarket_inputs.json (hot-reloaded)",
+        "inputs_file": "var/eta_engine/state/premarket_inputs.json preferred, docs/premarket_inputs.json fallback (hot-reloaded)",
         "outputs": [
-          "docs/jarvis_live_health.json  (latest snapshot)",
-          "docs/jarvis_live_log.jsonl    (append-only history)"
+          "var/eta_engine/state/jarvis_live_health.json  (latest snapshot)",
+          "var/eta_engine/state/jarvis_live_log.jsonl    (append-only history)"
         ],
         "cadence_default_s": 60.0,
         "alerter_env_vars": [
@@ -1597,8 +1598,8 @@
         ],
         "signal_handling": "SIGINT/SIGTERM wired to asyncio.Event via loop.add_signal_handler; Windows falls back to KeyboardInterrupt via contextlib.suppress.",
         "cli_args": [
-          "--inputs PATH (default docs/premarket_inputs.json)",
-          "--out-dir PATH (default docs/)",
+          "--inputs PATH (default var/eta_engine/state/premarket_inputs.json when present, otherwise docs/premarket_inputs.json)",
+          "--out-dir PATH (default var/eta_engine/state)",
           "--interval SECONDS (default 60.0)",
           "--max-ticks N (default: run forever)",
           "--log-level LEVEL (default INFO)"
@@ -4262,7 +4263,7 @@
       "tests_passing_after": 3889,
       "tests_added_in_this_bundle": 8,
       "ruff_green_touched_files": true,
-      "pre_existing_flaky_dashboard_test": "test_dashboard_api.py::TestDashboardAPI::test_btc_lanes_empty_when_fleet_dir_absent reads from the real docs/btc_live/broker_fleet instead of tmp_path. Pre-existing test-isolation bug; unrelated to this bundle. Tracked for a dedicated cleanup pass."
+      "pre_existing_flaky_dashboard_test": "Historical note only: the docs/btc_live/broker_fleet tmp_path leak mentioned in this bundle was fixed in a later dashboard isolation batch. Keep this entry as bundle context, not current dashboard status."
     },
     "eta_engine_v0_1_62_broker_equity_adapter_protocol": {
       "timestamp_utc": "2026-04-24T21:57:06.088224+00:00",
@@ -4299,7 +4300,7 @@
       "tests_added_in_this_bundle": 24,
       "tests_delta_residual_from_other_modules": 7,
       "ruff_green_touched_files": true,
-      "pre_existing_flaky_dashboard_test": "test_dashboard_api.py::test_btc_lanes_empty_when_fleet_dir_absent reads from the real docs/btc_live/broker_fleet instead of tmp_path. Pre-existing test-isolation bug; unrelated to this bundle. Tracked for a dedicated cleanup pass."
+      "pre_existing_flaky_dashboard_test": "Historical note only: the docs/btc_live/broker_fleet tmp_path leak mentioned in this bundle was fixed in a later dashboard isolation batch. Keep this entry as bundle context, not current dashboard status."
     },
     "eta_engine_v0_1_63_r1_end_to_end": {
       "timestamp_utc": "2026-04-24T22:20:35.965090+00:00",

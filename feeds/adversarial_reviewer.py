@@ -18,10 +18,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from eta_engine.scripts import workspace_roots
+
 # Load .env from canonical workspace paths so the reviewer works from any CWD.
 _ENV_PATHS = [
-    Path(__file__).resolve().parents[1] / ".env",
-    Path(r"C:\EvolutionaryTradingAlgo\eta_engine\.env"),
+    workspace_roots.ETA_ENGINE_ROOT / ".env",
+    workspace_roots.WORKSPACE_ROOT / ".env",
 ]
 for _ep in _ENV_PATHS:
     if _ep.exists():
@@ -302,7 +304,7 @@ def main() -> None:
     p.add_argument(
         "--output",
         type=Path,
-        default=Path("C:/EvolutionaryTradingAlgo/reports/strategy_reviews"),
+        default=workspace_roots.WORKSPACE_ROOT / "reports" / "strategy_reviews",
     )
     args = p.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(levelname)s: %(message)s")

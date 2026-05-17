@@ -68,17 +68,13 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from eta_engine.scripts import workspace_roots
+
 ROOT = Path(__file__).resolve().parents[1]
 WORKSPACE_ROOT = ROOT.parent
-TRADE_CLOSES_CANONICAL = WORKSPACE_ROOT / "var" / "eta_engine" / "state" / "jarvis_intel" / "trade_closes.jsonl"
-TRADE_CLOSES_LEGACY = (
-    WORKSPACE_ROOT
-    / "eta_engine"
-    / "state"  # HISTORICAL-PATH-OK
-    / "jarvis_intel"
-    / "trade_closes.jsonl"
-)
-OUT_LATEST = WORKSPACE_ROOT / "var" / "eta_engine" / "state" / "diamond_demotion_gate_latest.json"
+TRADE_CLOSES_CANONICAL = workspace_roots.ETA_JARVIS_TRADE_CLOSES_PATH
+TRADE_CLOSES_LEGACY = workspace_roots.ETA_LEGACY_JARVIS_TRADE_CLOSES_PATH
+OUT_LATEST = workspace_roots.ETA_DIAMOND_DEMOTION_GATE_PATH
 
 #: Recent-window definitions
 RECENT_TRADES_WINDOW = 50  # trades for R_BLEED + R_DRIFT

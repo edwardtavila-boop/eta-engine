@@ -41,6 +41,7 @@ from eta_engine.scripts import workspace_roots  # noqa: E402
 SCHEMA_VERSION = 2  # bumped: records now carry data_source classification
 DEFAULT_OUT = workspace_roots.ETA_CLOSED_TRADE_LEDGER_PATH
 DEFAULT_RECENT_LIMIT = 50
+USE_DEFAULT_DATA_SOURCES = object()
 
 # Known test/fixture bot IDs that have polluted the canonical
 # trade_closes.jsonl. These records are excluded from production
@@ -303,7 +304,7 @@ def build_ledger_report(
     since_days: int | None = None,
     bot_filter: str | None = None,
     recent_limit: int = DEFAULT_RECENT_LIMIT,
-    data_sources: frozenset[str] | set[str] | None = None,
+    data_sources: frozenset[str] | set[str] | None | object = USE_DEFAULT_DATA_SOURCES,
 ) -> dict[str, Any]:
     paths = source_paths or _default_source_paths()
     # Pre-classification pass over ALL records so we can report the
@@ -318,9 +319,15 @@ def build_ledger_report(
     for row in all_raw:
         per_data_source_full[row.get("_data_source") or "?"] += 1
 
-    # Production filter defaults to strict live + paper if caller did not specify.
-    effective_filter = data_sources if data_sources is not None else DEFAULT_PRODUCTION_DATA_SOURCES
-    raw_records = [row for row in all_raw if row.get("_data_source") in effective_filter]
+    # Production filter defaults to strict live + paper ONLY when the caller
+    # omits the argument. An explicit ``None`` (or empty set) means "include
+    # all classifications", which the wave-25 pollution/status tools rely on.
+    effective_filter = DEFAULT_PRODUCTION_DATA_SOURCES if data_sources is USE_DEFAULT_DATA_SOURCES else data_sources
+    raw_records = (
+        [row for row in all_raw if row.get("_data_source") in effective_filter]
+        if effective_filter
+        else list(all_raw)
+    )
     closes = [_normalize_close(row) for row in raw_records]
     stats = _stats_for(closes)
     existing_sources = [str(path) for path in paths if path.exists()]

@@ -44,15 +44,17 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
-from eta_engine.scripts.workspace_roots import default_alerts_log_path
+from eta_engine.scripts.workspace_roots import (
+    default_alerts_log_path,
+    default_decisions_v1_path,
+    default_kill_log_path,
+    default_sharpe_baseline_path,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_BACKUP_DIR = ROOT / "docs" / "_backups"
 
 _STATIC_CRITICAL_FILES = [
-    ROOT / "docs" / "decisions_v1.json",
-    ROOT / "docs" / "kill_log.json",
-    ROOT / "docs" / "sharpe_baseline.json",
     ROOT / "docs" / "cross_regime" / "cross_regime_validation.json",
     ROOT / "docs" / "cross_regime" / "regime_exclusions.json",
 ]
@@ -60,7 +62,13 @@ _STATIC_CRITICAL_FILES = [
 
 def critical_files() -> list[Path]:
     """Return active state files, preferring canonical runtime alert logs."""
-    return [default_alerts_log_path(), *_STATIC_CRITICAL_FILES]
+    return [
+        default_alerts_log_path(),
+        default_kill_log_path(),
+        default_decisions_v1_path(),
+        default_sharpe_baseline_path(),
+        *_STATIC_CRITICAL_FILES,
+    ]
 
 
 def _utc_stamp() -> str:

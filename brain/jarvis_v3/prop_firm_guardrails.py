@@ -64,14 +64,13 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from eta_engine.scripts import workspace_roots
+
 logger = logging.getLogger("eta_engine.brain.jarvis_v3.prop_firm_guardrails")
 
-_WORKSPACE = Path(r"C:\EvolutionaryTradingAlgo")
-_STATE_ROOT = _WORKSPACE / "var" / "eta_engine" / "state"
-_LEGACY_STATE_ROOT = _WORKSPACE / "eta_engine" / "state"
-_TRADE_CLOSES = _STATE_ROOT / "jarvis_intel" / "trade_closes.jsonl"
-_LEGACY_TRADE_CLOSES = _LEGACY_STATE_ROOT / "jarvis_intel" / "trade_closes.jsonl"
-_ACCOUNT_MAP = _STATE_ROOT / "prop_firm_accounts.json"
+_TRADE_CLOSES = workspace_roots.ETA_JARVIS_TRADE_CLOSES_PATH
+_LEGACY_TRADE_CLOSES = workspace_roots.ETA_LEGACY_JARVIS_TRADE_CLOSES_PATH
+_ACCOUNT_MAP = workspace_roots.ETA_PROP_FIRM_ACCOUNT_MAP_PATH
 _ACCOUNT_DAY_TZ = ZoneInfo("America/New_York")
 
 EXPECTED_HOOKS = ("evaluate", "aggregate_status")

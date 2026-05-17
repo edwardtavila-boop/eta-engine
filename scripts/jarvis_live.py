@@ -14,8 +14,10 @@ watched end-to-end.
 Responsibilities
 ----------------
   * Build a ``JarvisContextBuilder`` from simple file-based providers
-    reading ``docs/premarket_inputs.json`` (hot-reloadable -- operator
-    can overwrite the file and the next tick picks it up).
+    reading ``var/eta_engine/state/premarket_inputs.json`` by default,
+    with legacy ``docs/premarket_inputs.json`` fallback when the
+    canonical file is absent. The inputs are hot-reloadable, so the
+    operator can overwrite the active file and the next tick picks it up.
   * Wrap in ``JarvisContextEngine`` and run through ``JarvisSupervisor``
     so staleness / dominance / flatline / invalid are all caught.
   * Fan out health alerts via Telegram / Discord / Slack when env is
@@ -23,8 +25,8 @@ Responsibilities
     ``DISCORD_WEBHOOK_URL`` / ``SLACK_WEBHOOK_URL``). No env -> no alerts,
     dry-run mode.
   * Emit per-tick health reports to:
-      - ``docs/jarvis_live_health.json``    (latest only)
-      - ``docs/jarvis_live_log.jsonl``      (append-only history)
+      - ``var/eta_engine/state/jarvis_live_health.json``    (latest only)
+      - ``var/eta_engine/state/jarvis_live_log.jsonl``      (append-only history)
 
 Usage
 -----
@@ -36,8 +38,8 @@ Usage
 
     # Explicit inputs file:
     python -m eta_engine.scripts.jarvis_live \\
-        --inputs docs/premarket_inputs.json \\
-        --out-dir docs/ \\
+        --inputs var/eta_engine/state/premarket_inputs.json \\
+        --out-dir var/eta_engine/state \\
         --interval 60
 
 Design
@@ -127,14 +129,15 @@ from eta_engine.obs.jarvis_supervisor import (  # noqa: E402
     SupervisorPolicy,
 )
 from eta_engine.scripts import jarvis_status  # noqa: E402
+from eta_engine.scripts import workspace_roots  # noqa: E402
 
 if TYPE_CHECKING:
     from eta_engine.obs.alerts import MultiAlerter
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_INPUTS = ROOT / "docs" / "premarket_inputs.json"
-DEFAULT_OUT_DIR = ROOT / "docs"
+DEFAULT_INPUTS = workspace_roots.default_premarket_inputs_path()
+DEFAULT_OUT_DIR = workspace_roots.ETA_RUNTIME_STATE_DIR
 
 
 # ---------------------------------------------------------------------------
@@ -242,8 +245,8 @@ def _write_health(
     bot_strategy_readiness: dict | None = None,
 ) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
-    latest = out_dir / "jarvis_live_health.json"
-    log = out_dir / "jarvis_live_log.jsonl"
+    latest = out_dir / workspace_roots.ETA_JARVIS_LIVE_HEALTH_PATH.name
+    log = out_dir / workspace_roots.ETA_JARVIS_LIVE_LOG_PATH.name
     payload = report.model_dump(mode="json")
     payload["bot_strategy_readiness"] = (
         bot_strategy_readiness if bot_strategy_readiness is not None else _bot_strategy_readiness_payload()
@@ -254,6 +257,12 @@ def _write_health(
     )
     with log.open("a", encoding="utf-8") as fh:
         fh.write(json.dumps(payload, default=str) + "\n")
+
+
+def _health_file_from_env() -> Path:
+    default_dir = workspace_roots.ETA_JARVIS_LIVE_HEALTH_PATH.parent
+    out_dir = Path(os.environ.get("ETA_OUT_DIR", str(default_dir)))
+    return out_dir / workspace_roots.ETA_JARVIS_LIVE_HEALTH_PATH.name
 
 
 # ---------------------------------------------------------------------------
@@ -339,7 +348,7 @@ def _build_heartbeat_message(
         import json
         from pathlib import Path
 
-        state_dir = os.environ.get("ETA_STATE_DIR", "C:/EvolutionaryTradingAlgo/var/eta_engine/state")
+        state_dir = os.environ.get("ETA_STATE_DIR", str(workspace_roots.ETA_RUNTIME_STATE_DIR))
         ledger_path = Path(state_dir) / "paper_soak_ledger.json"
         if ledger_path.exists():
             ledger = json.loads(ledger_path.read_text(encoding="utf-8"))
@@ -439,6 +448,7 @@ async def run_live(
     *,
     supervisor: JarvisSupervisor,
     alerter: MultiAlerter | None,
+    inputs_path: Path = DEFAULT_INPUTS,
     out_dir: Path = DEFAULT_OUT_DIR,
     interval_s: float = 60.0,
     max_ticks: int | None = None,
@@ -450,58 +460,64 @@ async def run_live(
     ``max_ticks`` elapses. Returns all health reports recorded.
 
     This is a lower-level primitive than ``JarvisSupervisor.run``:
-    we need per-tick output to ``docs/jarvis_live_*`` and an
+    we need per-tick output to ``var/eta_engine/state/jarvis_live_*`` and an
     externally-triggered stop (for signal handlers).
     """
     if interval_s <= 0.0:
         raise ValueError("interval_s must be > 0")
     stop_event = stop_event or asyncio.Event()
     reports: list[JarvisHealthReport] = []
-    inputs_file = out_dir / "premarket_inputs.json"
+    generated_inputs_file = out_dir / "premarket_inputs.json"
+    try:
+        writes_generated_inputs = inputs_path.resolve() == generated_inputs_file.resolve()
+    except OSError:
+        writes_generated_inputs = inputs_path == generated_inputs_file
     i = 0
     try:
         while not stop_event.is_set() and (max_ticks is None or i < max_ticks):
             # Inject varied data each tick (live IBKR data when available)
-            try:
-                _all_bars = getattr(live_feed, "all_bars", lambda: {})() if live_feed else {}
-                _mnq_bar = _all_bars.get("MNQ", {})
-                _btc_bar = _all_bars.get("BTC", {})
-                _nq_bar = _all_bars.get("NQ", {})
-                _es_bar = _all_bars.get("ES", {})
-                if _mnq_bar and _mnq_bar.get("close"):
-                    _mnq = _mnq_bar["close"]
-                    _vix = 15.0
-                    _bias = "intraday"
-                    _risk = 1.5
-                    _dd = 0.0
-                else:
-                    _phase = i % 12
-                    if _phase < 3:
-                        _risk, _dd, _vix, _bias = 2.5, 0.0, 12.0, "bullish"
-                    elif _phase < 6:
-                        _risk, _dd, _vix, _bias = 0.5, 4.0, 28.0, "bearish"
-                    elif _phase < 9:
-                        _risk, _dd, _vix, _bias = 1.5, 1.5, 18.0, "neutral"
+            if writes_generated_inputs:
+                try:
+                    _all_bars = getattr(live_feed, "all_bars", lambda: {})() if live_feed else {}
+                    _mnq_bar = _all_bars.get("MNQ", {})
+                    _btc_bar = _all_bars.get("BTC", {})
+                    _nq_bar = _all_bars.get("NQ", {})
+                    _es_bar = _all_bars.get("ES", {})
+                    if _mnq_bar and _mnq_bar.get("close"):
+                        _mnq = _mnq_bar["close"]
+                        _vix = 15.0
+                        _bias = "intraday"
+                        _risk = 1.5
+                        _dd = 0.0
                     else:
-                        _risk, _dd, _vix, _bias = 3.0, 0.5, 35.0, "crisis"
-                _pnl = (i % 8 - 3) * 50
-                _pos = (i % 4) + 1
-                _conf = 0.5 + (i % 5) * 0.08
-                varied = {
-                    "macro": {"vix_level": _vix, "macro_bias": _bias},
-                    "equity": {
-                        "account_equity": 100000.0,
-                        "daily_pnl": _pnl,
-                        "daily_drawdown_pct": _dd,
-                        "open_positions": _pos,
-                        "open_risk_r": _risk,
-                    },
-                    "regime": {"regime": _bias, "confidence": _conf},
-                    "journal": {"autopilot_mode": "ACTIVE", "executed_last_24h": i % 10},
-                }
-                inputs_file.write_text(__import__("json").dumps(varied, indent=2), encoding="utf-8")
-            except Exception:
-                pass
+                        _phase = i % 12
+                        if _phase < 3:
+                            _risk, _dd, _vix, _bias = 2.5, 0.0, 12.0, "bullish"
+                        elif _phase < 6:
+                            _risk, _dd, _vix, _bias = 0.5, 4.0, 28.0, "bearish"
+                        elif _phase < 9:
+                            _risk, _dd, _vix, _bias = 1.5, 1.5, 18.0, "neutral"
+                        else:
+                            _risk, _dd, _vix, _bias = 3.0, 0.5, 35.0, "crisis"
+                    _pnl = (i % 8 - 3) * 50
+                    _pos = (i % 4) + 1
+                    _conf = 0.5 + (i % 5) * 0.08
+                    varied = {
+                        "macro": {"vix_level": _vix, "macro_bias": _bias},
+                        "equity": {
+                            "account_equity": 100000.0,
+                            "daily_pnl": _pnl,
+                            "daily_drawdown_pct": _dd,
+                            "open_positions": _pos,
+                            "open_risk_r": _risk,
+                        },
+                        "regime": {"regime": _bias, "confidence": _conf},
+                        "journal": {"autopilot_mode": "ACTIVE", "executed_last_24h": i % 10},
+                    }
+                    generated_inputs_file.parent.mkdir(parents=True, exist_ok=True)
+                    generated_inputs_file.write_text(__import__("json").dumps(varied, indent=2), encoding="utf-8")
+                except Exception:
+                    pass
             try:
                 supervisor.tick()
             except Exception:
@@ -658,7 +674,7 @@ async def _execute_approved_verdicts(i: int) -> None:
     if i % 2 != 0 or i == 0:
         return
     try:
-        health_file = Path(os.environ.get("ETA_OUT_DIR", str(ROOT / "docs"))) / "jarvis_live_health.json"
+        health_file = _health_file_from_env()
         if not health_file.exists():
             return
         health = json.loads(health_file.read_text())
@@ -795,7 +811,7 @@ async def _check_data_freshness(i: int) -> None:
     if i % 5 != 0 or i == 0:
         return
     try:
-        health_file = ROOT / "docs" / "jarvis_live_health.json"
+        health_file = _health_file_from_env()
         if not health_file.exists():
             return
         health = json.loads(health_file.read_text())
@@ -841,7 +857,7 @@ async def _capture_market_data(i: int) -> None:
         import pyarrow as pa
         import pyarrow.parquet as pq
 
-        health_file = ROOT / "docs" / "jarvis_live_health.json"
+        health_file = _health_file_from_env()
         if not health_file.exists():
             return
         health = json.loads(health_file.read_text())
@@ -1031,6 +1047,7 @@ async def _async_main(
         reports = await run_live(
             supervisor=supervisor,
             alerter=alerter,
+            inputs_path=inputs_path,
             out_dir=out_dir,
             interval_s=interval_s,
             max_ticks=max_ticks,

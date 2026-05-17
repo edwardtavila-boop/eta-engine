@@ -170,6 +170,177 @@ def test_memory_persists_across_instances(tmp_path: Path) -> None:
     assert similar[0].signal_id == "x"
 
 
+def test_memory_reads_legacy_but_writes_canonical(tmp_path: Path) -> None:
+    import json
+
+    from eta_engine.brain.jarvis_v3.memory_hierarchy import HierarchicalMemory
+
+    canonical = tmp_path / "var" / "eta_engine" / "state" / "memory"
+    legacy = tmp_path / "eta_engine" / "state" / "memory"
+    legacy.mkdir(parents=True)
+    legacy_ep = legacy / "episodic.jsonl"
+    legacy_ep.write_text(
+        json.dumps(
+            {
+                "ts": "2026-05-16T12:00:00+00:00",
+                "signal_id": "legacy_winner",
+                "regime": "bullish_low_vol",
+                "session": "rth",
+                "stress": 0.2,
+                "direction": "long",
+                "realized_r": 1.25,
+                "narrative": "legacy analog still matters",
+                "extra": {},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    mem = HierarchicalMemory(
+        episodic_path=canonical / "episodic.jsonl",
+        semantic_path=canonical / "semantic.json",
+        procedural_path=canonical / "procedural.jsonl",
+        legacy_episodic_path=legacy_ep,
+        legacy_semantic_path=legacy / "semantic.json",
+        legacy_procedural_path=legacy / "procedural.jsonl",
+    )
+
+    assert mem.recall_similar(regime="bullish_low_vol", session="rth", stress=0.2)[0].signal_id == "legacy_winner"
+    assert mem.snapshot()["sources"]["episodic"] == str(legacy_ep)
+
+    mem.record_episode(
+        signal_id="canonical_new",
+        regime="bullish_low_vol",
+        session="rth",
+        stress=0.2,
+        direction="long",
+        realized_r=0.75,
+    )
+
+    assert (canonical / "episodic.jsonl").exists()
+    assert "canonical_new" in (canonical / "episodic.jsonl").read_text(encoding="utf-8")
+    assert "canonical_new" not in legacy_ep.read_text(encoding="utf-8")
+
+
+def test_memory_snapshot_exposes_second_brain_summary(tmp_path: Path) -> None:
+    from eta_engine.brain.jarvis_v3.memory_hierarchy import HierarchicalMemory
+
+    mem = HierarchicalMemory(
+        episodic_path=tmp_path / "ep.jsonl",
+        semantic_path=tmp_path / "sem.json",
+        procedural_path=tmp_path / "proc.jsonl",
+    )
+    mem.record_episode(
+        signal_id="x",
+        regime="neutral",
+        session="rth",
+        stress=0.5,
+        direction="long",
+        realized_r=1.0,
+        narrative="balanced auction reclaimed value",
+    )
+    mem.record_procedural_version(
+        version_id="v1",
+        parent_id=None,
+        params={"risk": 0.5},
+        realized_metric=0.8,
+    )
+
+    snap = mem.snapshot()
+
+    assert snap["status"] == "warm"
+    assert snap["n_episodes"] == 1
+    assert snap["semantic_patterns"] == 1
+    assert snap["procedural_versions"] == 1
+    assert snap["best_procedural_version"]["version_id"] == "v1"
+    assert snap["top_patterns"][0]["pattern"] == "neutral+rth+long"
+
+
+def test_admin_query_second_brain_snapshot_returns_plain_dict(tmp_path: Path) -> None:
+    from eta_engine.brain.jarvis_v3.admin_query import second_brain_snapshot
+    from eta_engine.brain.jarvis_v3.memory_hierarchy import HierarchicalMemory
+
+    mem = HierarchicalMemory(
+        episodic_path=tmp_path / "ep.jsonl",
+        semantic_path=tmp_path / "sem.json",
+        procedural_path=tmp_path / "proc.jsonl",
+    )
+    mem.record_episode(
+        signal_id="x",
+        regime="neutral",
+        session="rth",
+        stress=0.5,
+        direction="long",
+        realized_r=1.0,
+    )
+
+    snap = second_brain_snapshot(mem)
+
+    assert snap["status"] == "warm"
+    assert snap["n_episodes"] == 1
+
+
+def test_second_brain_playbook_ranks_favor_and_avoid_patterns(tmp_path: Path) -> None:
+    from eta_engine.brain.jarvis_v3.memory_hierarchy import HierarchicalMemory
+
+    mem = HierarchicalMemory(
+        episodic_path=tmp_path / "ep.jsonl",
+        semantic_path=tmp_path / "sem.json",
+        procedural_path=tmp_path / "proc.jsonl",
+    )
+    for i in range(6):
+        mem.record_episode(
+            signal_id=f"win_{i}",
+            regime="bullish_low_vol",
+            session="rth",
+            stress=0.2,
+            direction="long",
+            realized_r=1.0,
+        )
+    for i in range(6):
+        mem.record_episode(
+            signal_id=f"loss_{i}",
+            regime="bearish_high_vol",
+            session="overnight",
+            stress=0.9,
+            direction="long",
+            realized_r=-0.75,
+        )
+
+    playbook = mem.semantic_playbook(min_episodes=3, top_n=2)
+
+    assert playbook["eligible_patterns"] == 2
+    assert playbook["favor_patterns"][0]["pattern"] == "bullish_low_vol+rth+long"
+    assert playbook["avoid_patterns"][0]["pattern"] == "bearish_high_vol+overnight+long"
+    assert "broker-backed" in playbook["truth_note"]
+
+
+def test_admin_query_second_brain_playbook_returns_plain_dict(tmp_path: Path) -> None:
+    from eta_engine.brain.jarvis_v3.admin_query import second_brain_playbook
+    from eta_engine.brain.jarvis_v3.memory_hierarchy import HierarchicalMemory
+
+    mem = HierarchicalMemory(
+        episodic_path=tmp_path / "ep.jsonl",
+        semantic_path=tmp_path / "sem.json",
+        procedural_path=tmp_path / "proc.jsonl",
+    )
+    for i in range(3):
+        mem.record_episode(
+            signal_id=f"x_{i}",
+            regime="neutral",
+            session="rth",
+            stress=0.5,
+            direction="long",
+            realized_r=0.5,
+        )
+
+    playbook = second_brain_playbook(mem, min_episodes=1, top_n=1)
+
+    assert playbook["eligible_patterns"] == 1
+    assert playbook["best_patterns"][0]["pattern"] == "neutral+rth+long"
+
+
 # ─── Causal layer ─────────────────────────────────────────────────
 
 

@@ -12,6 +12,7 @@ param(
     [string]$Root = "C:\EvolutionaryTradingAlgo",
     [string]$PythonExe = "",
     [int]$RecoveryIntervalMinutes = 5,
+    [switch]$CurrentUser,
     [switch]$Start,
     [switch]$RestartExistingProcess
 )
@@ -106,25 +107,10 @@ $settings = New-ScheduledTaskSettingsSet `
     -DontStopIfGoingOnBatteries `
     -StartWhenAvailable `
     -ExecutionTimeLimit (New-TimeSpan -Minutes 2)
-$principal = New-ScheduledTaskPrincipal `
-    -UserId "NT AUTHORITY\SYSTEM" `
-    -LogonType ServiceAccount `
-    -RunLevel Highest
 
 if ($PSCmdlet.ShouldProcess($TaskName, "Register public edge route watchdog task")) {
-    try {
-        Register-ScheduledTask `
-            -TaskName $TaskName `
-            -Action $action `
-            -Trigger $triggers `
-            -Settings $settings `
-            -Principal $principal `
-            -Description "ETA public edge route watchdog. Probes 127.0.0.1:8081 against 127.0.0.1:8421 and repairs FirmCommandCenterEdge route drift." `
-            -Force | Out-Null
-        $principalLabel = "SYSTEM, AtStartup+AtLogOn+every-$RecoveryIntervalMinutes" + "m"
-    } catch {
+    if ($CurrentUser) {
         $currentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
-        Write-Warning "SYSTEM registration unavailable: $($_.Exception.Message)"
         $userTriggers = @(
             (New-ScheduledTaskTrigger -AtLogOn -User $currentUser),
             $recoveryTrigger
@@ -139,9 +125,28 @@ if ($PSCmdlet.ShouldProcess($TaskName, "Register public edge route watchdog task
             -Trigger $userTriggers `
             -Settings $settings `
             -Principal $userPrincipal `
-            -Description "ETA public edge route watchdog. Current-user fallback with recurring route checks." `
+            -Description "ETA public edge route watchdog. Explicit current-user fallback with recurring route checks." `
             -Force | Out-Null
         $principalLabel = "current_user:$currentUser, AtLogOn+every-$RecoveryIntervalMinutes" + "m"
+    } else {
+        $currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
+        $isAdmin = $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+        if (-not $isAdmin) {
+            throw "Administrator rights are required to register $TaskName as SYSTEM. Use repair_eta_public_edge_route_watchdog_admin.cmd or rerun from an elevated shell."
+        }
+        $systemPrincipal = New-ScheduledTaskPrincipal `
+            -UserId "NT AUTHORITY\SYSTEM" `
+            -LogonType ServiceAccount `
+            -RunLevel Highest
+        Register-ScheduledTask `
+            -TaskName $TaskName `
+            -Action $action `
+            -Trigger $triggers `
+            -Settings $settings `
+            -Principal $systemPrincipal `
+            -Description "ETA public edge route watchdog. Probes 127.0.0.1:8081 against 127.0.0.1:8421 and repairs FirmCommandCenterEdge route drift." `
+            -Force | Out-Null
+        $principalLabel = "SYSTEM, AtStartup+AtLogOn+every-$RecoveryIntervalMinutes" + "m"
     }
 
     if ($Start) {

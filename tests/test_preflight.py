@@ -7,6 +7,7 @@ import json
 from typing import TYPE_CHECKING
 
 from eta_engine.scripts import preflight
+from eta_engine.scripts import workspace_roots
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -61,6 +62,11 @@ def test_check_secrets_caps_missing_list_at_five_for_display(monkeypatch: pytest
 # ---------------------------------------------------------------------------
 # check_venues
 # ---------------------------------------------------------------------------
+
+
+def test_preflight_uses_canonical_runtime_report_and_audit_dirs() -> None:
+    assert preflight.VENUE_CONNECTION_REPORT_DIR == workspace_roots.ETA_BROKER_CONNECTION_REPORT_DIR
+    assert preflight.DEFAULT_AUDIT_LOG_DIR == workspace_roots.ETA_RUNTIME_STATE_DIR
 
 
 def test_check_venues_passes_when_config_missing(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

@@ -49,17 +49,15 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from eta_engine.scripts import workspace_roots
+
 if TYPE_CHECKING:
     from collections.abc import Callable
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8642
-DEFAULT_AUDIT_PATH = Path(
-    r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\hermes_actions.jsonl",
-)
-DEFAULT_MEMORY_DB = Path(
-    r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\hermes_memory_store.db",
-)
+DEFAULT_AUDIT_PATH = workspace_roots.ETA_HERMES_ACTIONS_LOG_PATH
+DEFAULT_MEMORY_DB = workspace_roots.ETA_HERMES_MEMORY_DB_PATH
 
 # All known layer names. Operator can skip any via --skip name1,name2.
 LAYER_NAMES = (

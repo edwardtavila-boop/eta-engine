@@ -173,7 +173,36 @@ def test_missing_bars_are_counted_without_evaluating_the_signal() -> None:
     assert stats["shadow_signal_count"] == 1
     assert stats["evaluated_count"] == 0
     assert stats["missing_bars"] == 1
+    assert stats["missing_bar_datasets"] == 1
+    assert stats["no_bar_after_signal"] == 0
+    assert stats["latest_bar_coverage_end_ts"] == ""
     assert stats["verdict"] == "NO_EVALUATED_SIGNALS"
+
+
+def test_shadow_signal_after_replay_coverage_tracks_stale_bar_gap() -> None:
+    ts = datetime(2026, 5, 15, 16, 0, tzinfo=UTC)
+    coverage_end = ts - timedelta(minutes=5)
+
+    report = audit.build_report(
+        shadow_signals=[_signal(ts=ts)],
+        bars_by_symbol={
+            "NQ1": [
+                _bar(coverage_end - timedelta(minutes=5), close=99.5),
+                _bar(coverage_end, close=100.0),
+            ],
+        },
+        generated_at=ts,
+    )
+
+    outcome = report["outcomes"][0]
+    stats = report["per_bot"]["volume_profile_nq"]
+
+    assert outcome["status"] == "NO_BAR_AFTER_SIGNAL"
+    assert outcome["bar_coverage_end_ts"] == coverage_end.isoformat()
+    assert stats["missing_bars"] == 1
+    assert stats["missing_bar_datasets"] == 0
+    assert stats["no_bar_after_signal"] == 1
+    assert stats["latest_bar_coverage_end_ts"] == coverage_end.isoformat()
 
 
 def test_positive_counterfactual_sample_stays_explicitly_non_broker_backed() -> None:

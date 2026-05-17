@@ -1,6 +1,6 @@
 # EVOLUTIONARY TRADING ALGO  //  configs/bybit.yaml
 # Bybit v5 venue configuration — Tier-B bots (crypto_seed + eth/sol/xrp perps)
-# Decisions source: docs/decisions_v1.json (ETA_DECISIONS_v1)
+# Decisions source: var/eta_engine/state/decisions_v1.json (ETA_DECISIONS_v1)
 
 venue: bybit
 environment: testnet   # testnet | mainnet_paper | mainnet_live

@@ -59,11 +59,11 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from eta_engine.scripts import workspace_roots
+
 logger = logging.getLogger("eta_engine.brain.jarvis_v3.agent_registry")
 
-DEFAULT_REGISTRY_PATH = Path(
-    r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\agent_registry.json",
-)
+DEFAULT_REGISTRY_PATH = workspace_roots.ETA_AGENT_REGISTRY_PATH
 DEFAULT_LOCK_TTL_SECONDS = 600  # 10 minutes
 DEFAULT_AGENT_LIVENESS_SECONDS = 600  # 10 min since heartbeat → "stale"
 

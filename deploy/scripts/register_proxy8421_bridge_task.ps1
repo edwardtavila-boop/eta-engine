@@ -87,21 +87,40 @@ $settings = New-ScheduledTaskSettingsSet `
 $principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
 
 if ($PSCmdlet.ShouldProcess($TaskName, "Register scheduled task for ${ListenHost}:${ListenPort} -> ${Target}")) {
-    Register-ScheduledTask `
-        -TaskName $TaskName `
-        -Action $action `
-        -Trigger $triggers `
-        -Settings $settings `
-        -Principal $principal `
-        -Description "ETA compatibility bridge for Cloudflare remote ops route: ${ListenHost}:${ListenPort} -> ${Target}" `
-        -Force | Out-Null
+    $description = "ETA compatibility bridge for Cloudflare remote ops route: ${ListenHost}:${ListenPort} -> ${Target}"
+    $principalLabel = "SYSTEM, AtStartup+AtLogOn"
+    try {
+        Register-ScheduledTask `
+            -TaskName $TaskName `
+            -Action $action `
+            -Trigger $triggers `
+            -Settings $settings `
+            -Principal $principal `
+            -Description $description `
+            -Force | Out-Null
+    } catch {
+        $currentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+        Write-Warning "SYSTEM registration unavailable: $($_.Exception.Message)"
+        $fallbackPrincipal = New-ScheduledTaskPrincipal `
+            -UserId $currentUser -LogonType Interactive -RunLevel Limited
+        $fallbackTriggers = @((New-ScheduledTaskTrigger -AtLogOn -User $currentUser))
+        Register-ScheduledTask `
+            -TaskName $TaskName `
+            -Action $action `
+            -Trigger $fallbackTriggers `
+            -Settings $settings `
+            -Principal $fallbackPrincipal `
+            -Description "$description Current-user fallback because SYSTEM registration was unavailable." `
+            -Force | Out-Null
+        $principalLabel = "current_user:$currentUser, AtLogOn"
+    }
 
     if ($Start) {
         Start-ScheduledTask -TaskName $TaskName
     }
 
     Get-ScheduledTask -TaskName $TaskName |
-        Select-Object TaskName,State,@{Name="UserId";Expression={$_.Principal.UserId}},@{Name="LogonType";Expression={$_.Principal.LogonType}},@{Name="Runner";Expression={$runner}},@{Name="Python";Expression={$python}}
+        Select-Object TaskName,State,@{Name="UserId";Expression={$_.Principal.UserId}},@{Name="LogonType";Expression={$_.Principal.LogonType}},@{Name="PrincipalLabel";Expression={$principalLabel}},@{Name="Runner";Expression={$runner}},@{Name="Python";Expression={$python}}
 } else {
     [pscustomobject]@{
         TaskName = $TaskName

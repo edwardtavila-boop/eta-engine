@@ -49,7 +49,7 @@ Configuration via env vars
   HERMES_VOICE_WAKE_WORD  = "hey jarvis"
   HERMES_VOICE_TIMEOUT_S  = "45"
   HERMES_VOICE_VAD_THRESHOLD = "0.02"
-  HERMES_VOICE_LOG_PATH   = "<workspace>/var/hermes_voice.log"
+  HERMES_VOICE_LOG_PATH   = "<workspace>/logs/eta_engine/hermes_voice.log"
 
 Cost
 ----
@@ -72,6 +72,8 @@ import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
+from eta_engine.scripts import workspace_roots
+
 logger = logging.getLogger("eta_engine.desktop.hermes_voice")
 
 
@@ -80,7 +82,7 @@ DEFAULT_MODEL = "deepseek-v4-pro"
 DEFAULT_WAKE_WORD = "hey jarvis"
 DEFAULT_TIMEOUT_S = 45
 DEFAULT_VAD_THRESHOLD = 0.02
-DEFAULT_LOG_PATH = Path(r"C:\EvolutionaryTradingAlgo\var\hermes_voice.log")
+DEFAULT_LOG_PATH = workspace_roots.ETA_HERMES_VOICE_LOG_PATH
 SAMPLE_RATE = 16000
 CHUNK_SECONDS = 0.5
 MAX_UTTERANCE_SECONDS = 12

@@ -51,8 +51,9 @@ import threading
 import time
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
+
+from eta_engine.scripts import workspace_roots
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -119,7 +120,7 @@ def _safe[T](fn: Callable[[], T], default: T) -> T:
 
 
 def _fetch_fleet_status() -> dict[str, Any]:
-    p = Path(r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\kaizen_latest.json")
+    p = workspace_roots.ETA_KAIZEN_LATEST_PATH
     if not p.exists():
         return {"n_bots": 0, "tier_counts": {}, "error": "no_kaizen_latest"}
     data = json.loads(p.read_text(encoding="utf-8"))

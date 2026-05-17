@@ -49,6 +49,7 @@ from eta_engine.core.secrets import (
     TRADOVATE_PASSWORD,
     TRADOVATE_USERNAME,
 )
+from eta_engine.scripts import workspace_roots
 from eta_engine.venues.base import ConnectionStatus, VenueBase, VenueConnectionReport
 from eta_engine.venues.bybit import BybitVenue
 from eta_engine.venues.ibkr import IbkrClientPortalVenue
@@ -70,7 +71,7 @@ _LOG = logging.getLogger(__name__)
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CONFIG_PATH = ROOT / "config.json"
-DEFAULT_OUT_DIR = ROOT / "docs" / "broker_connections"
+DEFAULT_OUT_DIR = workspace_roots.ETA_BROKER_CONNECTION_REPORT_DIR
 
 _UNAVAILABLE_NOTES: dict[str, str] = {
     "bitget": "Bitget adapter not implemented in the current repo",

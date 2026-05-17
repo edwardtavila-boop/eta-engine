@@ -1,26 +1,33 @@
 # Broker Connection Sweep
 
-This folder holds the operator-facing broker/exchange connection artifacts.
+This folder holds historical checked-in broker/exchange connection probe
+artifacts.
+
+Fresh local probe runs now write canonical runtime outputs under
+`var/eta_engine/state/broker_connections/`. Checked-in JSON files here are
+historical snapshots only and should not be re-staged into source history.
 
 ## Purpose
 
 - Probe configured brokers without placing trades.
 - Report supported venues as `READY`, `STUBBED`, or `DEGRADED`.
 - Report unsupported broker names explicitly as `UNAVAILABLE`.
-- Keep a timestamped JSON artifact plus a `*_latest.json` snapshot for automation.
+- Keep a timestamped JSON artifact plus a `*_latest.json` snapshot for
+  automation, without using checked-in `docs/` as the live truth surface.
 
 ## Primary entry point
 
-- Script: [`scripts/connect_brokers.py`](../../scripts/connect_brokers.py)
+- Module: `python -m eta_engine.scripts.connect_brokers`
 
 ## Common usage
 
 Run these from the repo root:
 
 ```powershell
-python scripts/connect_brokers.py
-python scripts/connect_brokers.py --brokers ibkr tastytrade bybit okx
-python scripts/connect_brokers.py --config .\config.json --json
+python -m eta_engine.scripts.connect_brokers --probe
+python -m eta_engine.scripts.connect_brokers --brokers ibkr tastytrade bybit okx
+python -m eta_engine.scripts.connect_brokers --config .\config.json --json
+python -m eta_engine.scripts.connect_brokers --reconnect ibkr
 ```
 
 > **Dormancy note (2026-04-24):** Tradovate is currently DORMANT (funding-blocked).
@@ -31,7 +38,8 @@ python scripts/connect_brokers.py --config .\config.json --json
 
 ## Output
 
-- Default report directory: `docs/broker_connections/`
+- Canonical report directory: `var/eta_engine/state/broker_connections/`
+- This `docs/broker_connections/` folder is historical/reference only
 - Latest JSON snapshot: `broker_connections_latest.json`
 - Timestamped artifact: `broker_connections_YYYYMMDDTHHMMSSZ.json`
 

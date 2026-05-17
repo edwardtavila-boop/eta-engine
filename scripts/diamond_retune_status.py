@@ -21,10 +21,21 @@ if str(WORKSPACE_ROOT) not in sys.path:
     sys.path.insert(0, str(WORKSPACE_ROOT))
 
 from eta_engine.scripts import workspace_roots  # noqa: E402
+from eta_engine.scripts.retune_advisory_cache import build_retune_advisory, summarize_active_experiment  # noqa: E402
 
 DEFAULT_CAMPAIGN_PATH = workspace_roots.ETA_RUNTIME_STATE_DIR / "diamond_retune_campaign_latest.json"
 DEFAULT_HISTORY_PATH = workspace_roots.ETA_RUNTIME_STATE_DIR / "diamond_retune_runner_history.jsonl"
 DEFAULT_LEDGER_PATH = workspace_roots.ETA_CLOSED_TRADE_LEDGER_PATH
+DEFAULT_RETUNE_TRUTH_CHECK_PATH = (
+    workspace_roots.ETA_RUNTIME_STATE_DIR / "health" / "diamond_retune_truth_check_latest.json"
+)
+DEFAULT_PUBLIC_RETUNE_TRUTH_PATH = (
+    workspace_roots.ETA_RUNTIME_STATE_DIR / "health" / "public_diamond_retune_truth_latest.json"
+)
+DEFAULT_PUBLIC_BROKER_CLOSE_CACHE_PATH = (
+    workspace_roots.ETA_RUNTIME_STATE_DIR / "health" / "public_broker_close_truth_latest.json"
+)
+DEFAULT_RETUNE_ADVISORY_HEALTH_DIR = workspace_roots.ETA_RUNTIME_HEALTH_DIR
 OUT_LATEST = workspace_roots.ETA_RUNTIME_STATE_DIR / "diamond_retune_status_latest.json"
 
 STUCK_ATTEMPT_FLOOR = 3
@@ -50,6 +61,46 @@ def _load_optional_json(path: Path) -> dict[str, Any]:
     except (OSError, json.JSONDecodeError):
         return {}
     return payload if isinstance(payload, dict) else {}
+
+
+def _public_retune_truth_override(payload: dict[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(payload, dict):
+        return {}
+    surface = payload.get("surface") if isinstance(payload.get("surface"), dict) else {}
+    source = "public_diamond_retune_truth_cache"
+    if not surface and isinstance(payload.get("public_surface"), dict):
+        surface = payload.get("public_surface")
+        source = "diamond_retune_truth_check_public_surface"
+    normalized = surface.get("normalized") if isinstance(surface.get("normalized"), dict) else {}
+    summary = surface.get("summary") if isinstance(surface.get("summary"), dict) else {}
+    focus_bot = str(normalized.get("focus_bot") or payload.get("focus_bot") or "").strip()
+    if not focus_bot:
+        return {}
+    override = {
+        "broker_truth_focus_bot_id": focus_bot,
+        "broker_truth_focus_issue_code": normalized.get("focus_issue"),
+        "broker_truth_focus_state": normalized.get("focus_state"),
+        "broker_truth_focus_strategy_kind": normalized.get("focus_strategy_kind"),
+        "broker_truth_focus_best_session": normalized.get("focus_best_session"),
+        "broker_truth_focus_worst_session": normalized.get("focus_worst_session"),
+        "broker_truth_focus_next_command": normalized.get("focus_command"),
+        "broker_truth_focus_closed_trade_count": normalized.get("focus_closed_trade_count"),
+        "broker_truth_focus_total_realized_pnl": normalized.get("focus_total_realized_pnl"),
+        "broker_truth_focus_profit_factor": normalized.get("focus_profit_factor"),
+        "broker_truth_summary_line": summary.get("broker_truth_summary_line"),
+        "safe_to_mutate_live": normalized.get("safe_to_mutate_live"),
+        "broker_truth_focus_source": source,
+        "broker_truth_focus_source_generated_at_utc": (
+            payload.get("generated_at_utc")
+            or surface.get("observed_ts")
+            or summary.get("generated_at_utc")
+        ),
+    }
+    return {
+        key: value
+        for key, value in override.items()
+        if value is not None and (not isinstance(value, str) or value.strip())
+    }
 
 
 def load_history(path: Path = DEFAULT_HISTORY_PATH) -> list[dict[str, Any]]:
@@ -146,6 +197,92 @@ def _broker_close_evidence(
         "profit_factor": stats.get("profit_factor"),
         "win_rate_pct": stats.get("win_rate_pct"),
     }
+
+
+def _public_broker_close_evidence(
+    cache: dict[str, Any] | None,
+    bot_id: str,
+    *,
+    required_closes: int = BROKER_PROOF_CLOSE_TARGET,
+) -> dict[str, Any]:
+    payload = cache if isinstance(cache, dict) else {}
+    surface = payload.get("surface") if isinstance(payload.get("surface"), dict) else {}
+    normalized = surface.get("normalized") if isinstance(surface.get("normalized"), dict) else {}
+    focus_bot = str(normalized.get("focus_bot") or payload.get("focus_bot") or "").strip()
+    if not focus_bot or focus_bot != bot_id:
+        return {}
+
+    close_count = int(_as_float(normalized.get("focus_closed_trade_count"), 0.0))
+    remaining = max(0, required_closes - close_count)
+    progress_pct = round(min(100.0, (close_count / required_closes) * 100.0), 2) if required_closes > 0 else 100.0
+    total_realized_pnl = round(_as_float(normalized.get("focus_total_realized_pnl")), 2)
+    profit_factor = _as_float(normalized.get("focus_profit_factor"), 0.0)
+    has_required_sample = remaining <= 0
+    has_positive_edge = has_required_sample and total_realized_pnl > 0.0 and profit_factor > 1.0
+    if has_positive_edge:
+        edge_status = "broker_edge_ready"
+    elif has_required_sample:
+        edge_status = "sample_met_negative_edge"
+    else:
+        edge_status = "needs_more_broker_closes"
+    return {
+        "source": "public_broker_close_truth_cache",
+        "source_generated_at_utc": payload.get("generated_at_utc"),
+        "data_sources_filter": ["public_broker_close_truth_cache"],
+        "closed_trade_count": close_count,
+        "required_closed_trade_count": required_closes,
+        "remaining_closed_trade_count": remaining,
+        "sample_progress_pct": progress_pct,
+        "has_required_sample": has_required_sample,
+        "has_positive_edge": has_positive_edge,
+        "edge_status": edge_status,
+        "total_realized_pnl": total_realized_pnl,
+        "cumulative_r": None,
+        "profit_factor": round(profit_factor, 4),
+        "win_rate_pct": None,
+        "broker_snapshot_source": str(normalized.get("broker_snapshot_source") or ""),
+        "reporting_timezone": str(normalized.get("reporting_timezone") or ""),
+    }
+
+
+def _should_prefer_public_broker_close_evidence(
+    local_evidence: dict[str, Any],
+    public_evidence: dict[str, Any],
+) -> bool:
+    public_count = int(_as_float(public_evidence.get("closed_trade_count"), 0.0))
+    local_count = int(_as_float(local_evidence.get("closed_trade_count"), 0.0))
+    if public_count <= local_count:
+        return False
+    if local_count <= 0:
+        return True
+    return local_count <= max(5, public_count // 4)
+
+
+def _select_broker_close_evidence(
+    ledger: dict[str, Any] | None,
+    bot_id: str,
+    *,
+    public_broker_close_cache: dict[str, Any] | None = None,
+    required_closes: int = BROKER_PROOF_CLOSE_TARGET,
+) -> dict[str, Any]:
+    local_evidence = _broker_close_evidence(ledger, bot_id, required_closes=required_closes)
+    public_evidence = _public_broker_close_evidence(
+        public_broker_close_cache,
+        bot_id,
+        required_closes=required_closes,
+    )
+    if public_evidence and _should_prefer_public_broker_close_evidence(local_evidence, public_evidence):
+        public_evidence["advisory_override_applied"] = True
+        public_evidence["advisory_override_reason"] = "public_sample_stronger_than_local"
+        public_evidence["local_source"] = str(local_evidence.get("source") or "")
+        public_evidence["local_closed_trade_count"] = int(_as_float(local_evidence.get("closed_trade_count"), 0.0))
+        public_evidence["local_total_realized_pnl"] = round(_as_float(local_evidence.get("total_realized_pnl")), 2)
+        public_evidence["local_profit_factor"] = local_evidence.get("profit_factor")
+        return public_evidence
+
+    local_evidence["advisory_override_applied"] = False
+    local_evidence["advisory_override_reason"] = ""
+    return local_evidence
 
 
 def _next_action(state: str, bot_id: str, *, broker_evidence: dict[str, Any] | None = None) -> str:
@@ -254,6 +391,8 @@ def _broker_truth_focus(bot_rows: list[dict[str, Any]]) -> dict[str, Any]:
         "broker_truth_focus_bot_id": bot_id,
         "broker_truth_focus_state": str(focus.get("retune_state") or ""),
         "broker_truth_focus_edge_status": edge_status,
+        "broker_truth_focus_source": str(evidence.get("source") or ""),
+        "broker_truth_focus_advisory_override_applied": bool(evidence.get("advisory_override_applied")),
         "broker_truth_focus_closed_trade_count": closed,
         "broker_truth_focus_required_closed_trade_count": required,
         "broker_truth_focus_remaining_closed_trade_count": remaining,
@@ -302,6 +441,10 @@ def build_status(
     campaign: dict[str, Any],
     history_rows: list[dict[str, Any]],
     closed_trade_ledger: dict[str, Any] | None = None,
+    public_retune_truth: dict[str, Any] | None = None,
+    public_retune_truth_check: dict[str, Any] | None = None,
+    public_broker_close_truth_cache: dict[str, Any] | None = None,
+    retune_advisory: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in history_rows:
@@ -318,7 +461,11 @@ def build_status(
         research_signal = latest.get("research_signal") if isinstance(latest.get("research_signal"), dict) else {}
         attempts = len(rows)
         state = _retune_state(attempts=attempts, latest_status=latest_status)
-        broker_evidence = _broker_close_evidence(closed_trade_ledger, bot_id)
+        broker_evidence = _select_broker_close_evidence(
+            closed_trade_ledger,
+            bot_id,
+            public_broker_close_cache=public_broker_close_truth_cache,
+        )
         bot_rows.append(
             {
                 "bot_id": bot_id,
@@ -357,48 +504,127 @@ def build_status(
     broker_sample_ready = [row for row in broker_proof_rows if bool(row.get("has_required_sample"))]
     broker_edge_ready = [row for row in broker_proof_rows if bool(row.get("has_positive_edge"))]
     broker_truth_focus = _broker_truth_focus(bot_rows)
+    summary = {
+        "n_targets": len(bot_rows),
+        "n_attempted_bots": len(attempted),
+        "n_unattempted_targets": sum(1 for row in bot_rows if int(row["attempts"]) == 0),
+        "n_research_backlog_targets": len(research_backlog),
+        "n_research_passed_broker_proof_required": sum(
+            1 for row in bot_rows if row["retune_state"] == "PASS_AWAITING_BROKER_PROOF"
+        ),
+        "n_low_sample_keep_collecting": sum(1 for row in bot_rows if row["retune_state"] == "COLLECT_MORE_SAMPLE"),
+        "n_near_miss_keep_tuning": sum(1 for row in bot_rows if row["retune_state"] == "NEAR_MISS_RETUNE"),
+        "n_unstable_positive_keep_tuning": sum(
+            1 for row in bot_rows if row["retune_state"] == "UNSTABLE_POSITIVE_RETUNE"
+        ),
+        "n_stuck_research_failing": sum(1 for row in bot_rows if row["retune_state"] == "STUCK_RESEARCH_FAILING"),
+        "n_timeout_retry": sum(1 for row in bot_rows if row["retune_state"] == "TIMEOUT_RETRY"),
+        "broker_proof_required_closes": BROKER_PROOF_CLOSE_TARGET,
+        "n_broker_sample_ready": len(broker_sample_ready),
+        "n_broker_edge_ready": len(broker_edge_ready),
+        "n_broker_proof_ready": len(broker_edge_ready),
+        "n_broker_sample_ready_negative_edge": len(broker_sample_ready) - len(broker_edge_ready),
+        "n_broker_proof_shortfall": sum(1 for gap in proof_gaps if gap > 0),
+        "largest_broker_proof_gap": max(proof_gaps, default=0),
+        "total_broker_proof_gap": sum(proof_gaps),
+        "safe_to_mutate_live": False,
+        "broker_truth_focus_issue_code": str(broker_truth_focus.get("issue_code") or ""),
+        "broker_truth_focus_priority_score": broker_truth_focus.get("priority_score"),
+        "broker_truth_focus_strategy_kind": str(broker_truth_focus.get("strategy_kind") or ""),
+        "broker_truth_focus_best_session": str(broker_truth_focus.get("best_session") or ""),
+        "broker_truth_focus_worst_session": str(broker_truth_focus.get("worst_session") or ""),
+        "broker_truth_focus_parameter_focus": broker_truth_focus.get("parameter_focus")
+        if isinstance(broker_truth_focus.get("parameter_focus"), list)
+        else [],
+        "broker_truth_focus_primary_experiment": str(
+            broker_truth_focus.get("primary_experiment") or "",
+        ),
+        "broker_truth_focus_next_command": str(broker_truth_focus.get("next_command") or ""),
+        **broker_truth_focus,
+    }
+    public_focus_override = _public_retune_truth_override(public_retune_truth)
+    if not public_focus_override:
+        public_focus_override = _public_retune_truth_override(public_retune_truth_check)
+    if public_focus_override:
+        summary["public_truth_override_applied"] = True
+        if summary.get("broker_truth_focus_bot_id") != public_focus_override.get("broker_truth_focus_bot_id"):
+            summary["local_broker_truth_focus_bot_id"] = summary.get("broker_truth_focus_bot_id")
+        summary.update(public_focus_override)
+        focus_bot = str(summary.get("broker_truth_focus_bot_id") or "")
+        focus_state = str(summary.get("broker_truth_focus_state") or "")
+        closed_trade_count = int(_as_float(summary.get("broker_truth_focus_closed_trade_count"), 0.0))
+        required_closed_trade_count = int(
+            _as_float(summary.get("broker_proof_required_closes"), BROKER_PROOF_CLOSE_TARGET),
+        )
+        remaining_closed_trade_count = max(0, required_closed_trade_count - closed_trade_count)
+        total_realized_pnl = _as_float(summary.get("broker_truth_focus_total_realized_pnl"), 0.0)
+        profit_factor = _as_float(summary.get("broker_truth_focus_profit_factor"), 0.0)
+        has_required_sample = remaining_closed_trade_count <= 0
+        has_positive_edge = has_required_sample and total_realized_pnl > 0.0 and profit_factor > 1.0
+        if has_positive_edge:
+            edge_status = "broker_edge_ready"
+        elif has_required_sample:
+            edge_status = "sample_met_negative_edge"
+        elif closed_trade_count > 0:
+            edge_status = "needs_more_broker_closes"
+        else:
+            edge_status = "missing_closed_trade_ledger"
+        focus_broker_evidence = {
+            "closed_trade_count": closed_trade_count,
+            "required_closed_trade_count": required_closed_trade_count,
+            "remaining_closed_trade_count": remaining_closed_trade_count,
+            "has_required_sample": has_required_sample,
+            "has_positive_edge": has_positive_edge,
+            "total_realized_pnl": round(total_realized_pnl, 2),
+            "profit_factor": summary.get("broker_truth_focus_profit_factor"),
+            "edge_status": edge_status,
+        }
+        summary["broker_truth_focus_required_closed_trade_count"] = required_closed_trade_count
+        summary["broker_truth_focus_remaining_closed_trade_count"] = remaining_closed_trade_count
+        summary["broker_truth_focus_edge_status"] = edge_status
+        summary["broker_truth_focus_next_action"] = _next_action(
+            focus_state,
+            focus_bot,
+            broker_evidence=focus_broker_evidence,
+        )
+    else:
+        summary["public_truth_override_applied"] = False
+
+    focus_bot = str(summary.get("broker_truth_focus_bot_id") or "")
+    advisory_focus_bot = str((retune_advisory or {}).get("focus_bot") or "")
+    active_experiment = (
+        (retune_advisory or {}).get("active_experiment")
+        if focus_bot and advisory_focus_bot == focus_bot and isinstance((retune_advisory or {}).get("active_experiment"), dict)
+        else None
+    )
+    advisory_preferred_action = str((retune_advisory or {}).get("preferred_action") or "")
+    if advisory_preferred_action:
+        summary["broker_truth_focus_next_action"] = advisory_preferred_action
+    if isinstance(active_experiment, dict) and active_experiment:
+        summary["broker_truth_focus_active_experiment"] = active_experiment
+        experiment_summary = summarize_active_experiment(active_experiment)
+        if experiment_summary:
+            summary["broker_truth_focus_active_experiment_summary_line"] = experiment_summary["headline"]
+
     return {
         "kind": "eta_diamond_retune_status",
         "generated_at_utc": datetime.now(UTC).isoformat(),
         "campaign_generated_at_utc": campaign.get("generated_at_utc"),
-        "summary": {
-            "n_targets": len(bot_rows),
-            "n_attempted_bots": len(attempted),
-            "n_unattempted_targets": sum(1 for row in bot_rows if int(row["attempts"]) == 0),
-            "n_research_backlog_targets": len(research_backlog),
-            "n_research_passed_broker_proof_required": sum(
-                1 for row in bot_rows if row["retune_state"] == "PASS_AWAITING_BROKER_PROOF"
-            ),
-            "n_low_sample_keep_collecting": sum(1 for row in bot_rows if row["retune_state"] == "COLLECT_MORE_SAMPLE"),
-            "n_near_miss_keep_tuning": sum(1 for row in bot_rows if row["retune_state"] == "NEAR_MISS_RETUNE"),
-            "n_unstable_positive_keep_tuning": sum(
-                1 for row in bot_rows if row["retune_state"] == "UNSTABLE_POSITIVE_RETUNE"
-            ),
-            "n_stuck_research_failing": sum(1 for row in bot_rows if row["retune_state"] == "STUCK_RESEARCH_FAILING"),
-            "n_timeout_retry": sum(1 for row in bot_rows if row["retune_state"] == "TIMEOUT_RETRY"),
-            "broker_proof_required_closes": BROKER_PROOF_CLOSE_TARGET,
-            "n_broker_sample_ready": len(broker_sample_ready),
-            "n_broker_edge_ready": len(broker_edge_ready),
-            "n_broker_proof_ready": len(broker_edge_ready),
-            "n_broker_sample_ready_negative_edge": len(broker_sample_ready) - len(broker_edge_ready),
-            "n_broker_proof_shortfall": sum(1 for gap in proof_gaps if gap > 0),
-            "largest_broker_proof_gap": max(proof_gaps, default=0),
-            "total_broker_proof_gap": sum(proof_gaps),
-            "safe_to_mutate_live": False,
-            "broker_truth_focus_issue_code": str(broker_truth_focus.get("issue_code") or ""),
-            "broker_truth_focus_priority_score": broker_truth_focus.get("priority_score"),
-            "broker_truth_focus_strategy_kind": str(broker_truth_focus.get("strategy_kind") or ""),
-            "broker_truth_focus_best_session": str(broker_truth_focus.get("best_session") or ""),
-            "broker_truth_focus_worst_session": str(broker_truth_focus.get("worst_session") or ""),
-            "broker_truth_focus_parameter_focus": broker_truth_focus.get("parameter_focus")
-            if isinstance(broker_truth_focus.get("parameter_focus"), list)
-            else [],
-            "broker_truth_focus_primary_experiment": str(
-                broker_truth_focus.get("primary_experiment") or "",
-            ),
-            "broker_truth_focus_next_command": str(broker_truth_focus.get("next_command") or ""),
-            **broker_truth_focus,
-        },
+        "focus_bot": summary.get("broker_truth_focus_bot_id"),
+        "focus_issue": summary.get("broker_truth_focus_issue_code"),
+        "focus_state": summary.get("broker_truth_focus_state"),
+        "focus_strategy_kind": summary.get("broker_truth_focus_strategy_kind"),
+        "focus_best_session": summary.get("broker_truth_focus_best_session"),
+        "focus_worst_session": summary.get("broker_truth_focus_worst_session"),
+        "focus_command": summary.get("broker_truth_focus_next_command"),
+        "focus_next_action": summary.get("broker_truth_focus_next_action"),
+        "focus_closed_trade_count": summary.get("broker_truth_focus_closed_trade_count"),
+        "focus_total_realized_pnl": summary.get("broker_truth_focus_total_realized_pnl"),
+        "focus_profit_factor": summary.get("broker_truth_focus_profit_factor"),
+        "focus_active_experiment": summary.get("broker_truth_focus_active_experiment"),
+        "focus_active_experiment_summary_line": summary.get("broker_truth_focus_active_experiment_summary_line"),
+        "safe_to_mutate_live": summary.get("safe_to_mutate_live"),
+        "summary": summary,
         "bots": bot_rows,
         "research_backlog": research_backlog,
     }
@@ -409,12 +635,20 @@ def run(
     campaign_path: Path = DEFAULT_CAMPAIGN_PATH,
     history_path: Path = DEFAULT_HISTORY_PATH,
     ledger_path: Path = DEFAULT_LEDGER_PATH,
+    public_retune_truth_check_path: Path = DEFAULT_RETUNE_TRUTH_CHECK_PATH,
+    public_retune_truth_path: Path = DEFAULT_PUBLIC_RETUNE_TRUTH_PATH,
+    public_broker_close_cache_path: Path = DEFAULT_PUBLIC_BROKER_CLOSE_CACHE_PATH,
+    retune_advisory_health_dir: Path = DEFAULT_RETUNE_ADVISORY_HEALTH_DIR,
     out_path: Path = OUT_LATEST,
 ) -> dict[str, Any]:
     report = build_status(
         campaign=_load_json(campaign_path),
         history_rows=load_history(history_path),
         closed_trade_ledger=_load_optional_json(ledger_path),
+        public_retune_truth_check=_load_optional_json(public_retune_truth_check_path),
+        public_retune_truth=_load_optional_json(public_retune_truth_path),
+        public_broker_close_truth_cache=_load_optional_json(public_broker_close_cache_path),
+        retune_advisory=build_retune_advisory(retune_advisory_health_dir),
     )
     workspace_roots.ensure_parent(out_path)
     out_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -452,6 +686,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--campaign-path", type=Path, default=DEFAULT_CAMPAIGN_PATH)
     parser.add_argument("--history-path", type=Path, default=DEFAULT_HISTORY_PATH)
     parser.add_argument("--ledger-path", type=Path, default=DEFAULT_LEDGER_PATH)
+    parser.add_argument("--public-retune-truth-check-path", type=Path, default=DEFAULT_RETUNE_TRUTH_CHECK_PATH)
+    parser.add_argument("--public-retune-truth-path", type=Path, default=DEFAULT_PUBLIC_RETUNE_TRUTH_PATH)
+    parser.add_argument("--public-broker-close-cache-path", type=Path, default=DEFAULT_PUBLIC_BROKER_CLOSE_CACHE_PATH)
     parser.add_argument("--out-path", type=Path, default=OUT_LATEST)
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)
@@ -459,6 +696,9 @@ def main(argv: list[str] | None = None) -> int:
         campaign_path=args.campaign_path,
         history_path=args.history_path,
         ledger_path=args.ledger_path,
+        public_retune_truth_check_path=args.public_retune_truth_check_path,
+        public_retune_truth_path=args.public_retune_truth_path,
+        public_broker_close_cache_path=args.public_broker_close_cache_path,
         out_path=args.out_path,
     )
     if args.json:

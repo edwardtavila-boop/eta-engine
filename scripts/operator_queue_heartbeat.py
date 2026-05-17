@@ -36,11 +36,17 @@ def build_heartbeat(snapshot: dict[str, Any], snapshot_path: Path | None) -> dic
         "bot_strategy_blocked_data": int(snapshot.get("bot_strategy_blocked_data") or 0),
         "bot_strategy_paper_ready": int(snapshot.get("bot_strategy_paper_ready") or 0),
         "bot_strategy_can_live_any": bool(snapshot.get("bot_strategy_can_live_any")),
+        "second_brain_status": snapshot.get("second_brain_status"),
+        "second_brain_episodes": int(snapshot.get("second_brain_episodes") or 0),
+        "second_brain_eligible_patterns": int(snapshot.get("second_brain_eligible_patterns") or 0),
+        "second_brain_legacy_sources_active": bool(snapshot.get("second_brain_legacy_sources_active")),
         "drift_changed": changed,
         "drift_summary": drift.get("summary"),
         "changed_fields": drift.get("changed_fields") or [],
         "blocked_count_delta": drift.get("blocked_count_delta"),
         "bot_strategy_blocked_data_delta": drift.get("bot_strategy_blocked_data_delta"),
+        "second_brain_episodes_delta": drift.get("second_brain_episodes_delta"),
+        "second_brain_eligible_patterns_delta": drift.get("second_brain_eligible_patterns_delta"),
         "snapshot_path": str(snapshot_path) if snapshot_path is not None else None,
     }
 
@@ -54,12 +60,17 @@ def render_text(heartbeat: dict[str, Any]) -> str:
     bot_status = heartbeat.get("bot_strategy_readiness_status") or "unknown"
     bot_blocked = heartbeat.get("bot_strategy_blocked_data")
     bot_paper = heartbeat.get("bot_strategy_paper_ready")
+    second_brain_status = heartbeat.get("second_brain_status") or "unknown"
+    second_brain_episodes = heartbeat.get("second_brain_episodes")
+    second_brain_eligible = heartbeat.get("second_brain_eligible_patterns")
     return (
         "operator_queue_heartbeat "
         f"notify={notify} status={heartbeat.get('status')} "
         f"blocked={heartbeat.get('blocked_count')} first={first} "
         f"bot_readiness={bot_status} bot_blocked_data={bot_blocked} "
-        f"bot_paper_ready={bot_paper} changed_fields={fields} next={action} "
+        f"bot_paper_ready={bot_paper} second_brain={second_brain_status} "
+        f"second_brain_episodes={second_brain_episodes} second_brain_eligible={second_brain_eligible} "
+        f"changed_fields={fields} next={action} "
         f"drift={heartbeat.get('drift_summary') or 'none'}"
     )
 

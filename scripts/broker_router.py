@@ -958,6 +958,67 @@ def pending_order_sanity_denial(order: PendingOrder) -> str:
     return ""
 
 
+def _first_nonempty_text(*values: Any) -> str:
+    """Return the first non-empty stringified value."""
+    for value in values:
+        if value in (None, ""):
+            continue
+        text = str(value).strip()
+        if text:
+            return text
+    return ""
+
+
+def _extract_broker_fill_ts(result: Any) -> str:
+    """Best-effort broker fill timestamp from an OrderResult.
+
+    Prefer the canonical ``OrderResult.filled_at`` field when the venue layer
+    exposes it. Older adapters still stash timing hints under ``raw``; keep
+    those legacy fallbacks so downstream telemetry can distinguish broker fill
+    time from router sidecar write time during cutover.
+    """
+    canonical = _first_nonempty_text(getattr(result, "filled_at", None))
+    if canonical:
+        return canonical
+    raw = getattr(result, "raw", None)
+    if not isinstance(raw, dict):
+        return ""
+    server = raw.get("server") if isinstance(raw.get("server"), dict) else {}
+    direct = _first_nonempty_text(
+        raw.get("filled_at"),
+        raw.get("execution_time"),
+        raw.get("executed_at"),
+        server.get("filled-at"),
+        server.get("filled_at"),
+        server.get("execution-time"),
+        server.get("execution_time"),
+        server.get("executed-at"),
+        server.get("executed_at"),
+        server.get("updated-at"),
+        server.get("updated_at"),
+    )
+    if direct:
+        return direct
+    ib_statuses = raw.get("ib_statuses")
+    if isinstance(ib_statuses, list):
+        for item in ib_statuses:
+            if not isinstance(item, dict):
+                continue
+            if str(item.get("status") or "").strip().lower() != "filled":
+                continue
+            candidate = _first_nonempty_text(
+                item.get("filled_at"),
+                item.get("execution_time"),
+                item.get("executed_at"),
+                item.get("time"),
+                item.get("timestamp"),
+                item.get("lastFillTime"),
+            )
+            if candidate:
+                return candidate
+    return ""
+
+
 # ---------------------------------------------------------------------------
 # BrokerRouter
 # ---------------------------------------------------------------------------
@@ -1885,13 +1946,18 @@ class BrokerRouter:
             self._handle_routing_error(order, target, f"venue.place_order raised: {exc}")
             return
 
+        result_written_ts = datetime.now(UTC).isoformat()
+        broker_fill_ts = _extract_broker_fill_ts(result)
         sidecar_payload = {
             "signal_id": order.signal_id,
             "bot_id": order.bot_id,
             "venue": venue.name,
+            "order_ts": order.ts,
+            "broker_fill_ts": broker_fill_ts,
             "request": json.loads(request.model_dump_json()),
             "result": json.loads(result.model_dump_json()),
-            "ts": datetime.now(UTC).isoformat(),
+            "result_written_ts": result_written_ts,
+            "ts": result_written_ts,
         }
         self._write_sidecar(
             self.fill_results_dir / f"{order.signal_id}_result.json",

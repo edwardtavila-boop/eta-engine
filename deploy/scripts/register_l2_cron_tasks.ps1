@@ -35,7 +35,12 @@ if (-not $PythonPath) {
     if (Test-Path $VenvPython) {
         $PythonPath = $VenvPython
     } else {
-        $PythonPath = "C:\Program Files\Python312\python.exe"
+        $PythonCmd = Get-Command python -ErrorAction SilentlyContinue
+        if ($PythonCmd) {
+            $PythonPath = $PythonCmd.Source
+        } else {
+            $PythonPath = "C:\Program Files\Python312\python.exe"
+        }
     }
 }
 
@@ -188,7 +193,8 @@ foreach ($t in $weeklyTasks) {
 
 Write-Host ""
 Write-Host "--- Verification ---"
-Get-ScheduledTask -TaskName "ETA-L2-*" -ErrorAction SilentlyContinue |
+Get-ScheduledTask -ErrorAction SilentlyContinue |
+    Where-Object { $_.TaskName -like "ETA-L2-*" -or $_.TaskName -like "ETA-Diamond-*" } |
     Select-Object TaskName, State |
     Format-Table -AutoSize | Out-String | Write-Host
 

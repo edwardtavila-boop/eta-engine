@@ -1163,7 +1163,12 @@ def _task_chaos_drill(state_dir: Path) -> dict:
 
 def _task_audit_summarize(state_dir: Path) -> dict:
     """ROBIN: daily rollup of yesterday's JARVIS audit log."""
-    audit_path = state_dir / "jarvis_audit.jsonl"
+    today = datetime.now(UTC).strftime("%Y-%m-%d")
+    audit_candidates = [
+        state_dir / "jarvis_audit" / f"{today}.jsonl",
+        state_dir / "jarvis_audit.jsonl",
+    ]
+    audit_path = next((path for path in audit_candidates if path.exists()), audit_candidates[0])
     if not audit_path.exists():
         return {"skipped": True, "reason": "no audit log"}
     from eta_engine.brain.jarvis_v3 import nl_query

@@ -39,14 +39,12 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
+from eta_engine.scripts import workspace_roots
+
 logger = logging.getLogger("eta_engine.scripts.hermes_memory_backup")
 
-DEFAULT_SRC = Path(
-    r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\hermes_memory_store.db",
-)
-DEFAULT_DEST_DIR = Path(
-    r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\backups\hermes_memory",
-)
+DEFAULT_SRC = workspace_roots.ETA_HERMES_MEMORY_DB_PATH
+DEFAULT_DEST_DIR = workspace_roots.ETA_HERMES_MEMORY_BACKUP_DIR
 DEFAULT_KEEP_LAST = 14
 
 

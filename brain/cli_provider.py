@@ -60,6 +60,22 @@ def _find_npx() -> str:
     return shutil.which("npx") or "npx"
 
 
+def _prefer_windows_shim_name(command: str, resolved: str) -> list[str]:
+    """Keep bare shim names on Windows when PATH resolves to a .cmd/.bat file.
+
+    `subprocess.run(["codex", ...])` succeeds here, while invoking the fully
+    resolved `codex.CMD` path exits non-zero after the startup banner. Preserve
+    the bare command token so CreateProcess + PATHEXT perform the lookup.
+    """
+    if os.name == "nt":
+        try:
+            if Path(resolved).suffix.lower() in {".cmd", ".bat"}:
+                return [command]
+        except OSError:
+            pass
+    return [resolved]
+
+
 def _resolve_cli(env_key: str, fallback_binary: str, npx_package: str) -> list[str]:
     """Resolve a CLI invocation in priority order.
 
@@ -82,12 +98,12 @@ def _resolve_cli(env_key: str, fallback_binary: str, npx_package: str) -> list[s
         if len(parts) == 1:
             resolved = shutil.which(parts[0])
             if resolved:
-                return [resolved]
+                return _prefer_windows_shim_name(parts[0], resolved)
         return parts
 
     direct = shutil.which(fallback_binary)
     if direct:
-        return [direct]
+        return _prefer_windows_shim_name(fallback_binary, direct)
 
     return [_find_npx(), npx_package]
 

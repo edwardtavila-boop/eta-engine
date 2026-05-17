@@ -50,8 +50,9 @@ from __future__ import annotations
 import json
 import logging
 import os
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
+
+from eta_engine.scripts import workspace_roots
 
 from eta_engine.brain.jarvis_admin import (
     ActionRequest,
@@ -165,7 +166,7 @@ def _is_overnight_eligible(assignment: dict[str, Any]) -> bool:
 
 def _load_active_regime() -> str:
     """Load the active global regime from regime_state.json. Returns "" on error."""
-    path = Path(r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\regime_state.json")
+    path = workspace_roots.ETA_REGIME_STATE_PATH
     if not path.exists():
         return ""
     try:

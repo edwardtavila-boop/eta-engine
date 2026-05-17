@@ -14,11 +14,12 @@ can render later.
 
 This dispatcher reads alerts_log.jsonl, finds NEW prop-guard alerts
 since the last cursor, and POSTs each to whatever webhook channels
-the operator has configured via environment variables.  Cursor-based
+the operator has configured via environment variables or canonical
+Telegram secrets files. Cursor-based
 de-dup means restarting the dispatcher never replays old alerts.
 
-Channels (auto-detected from env)
----------------------------------
+Channels (auto-detected from env / canonical secrets)
+-----------------------------------------------------
 
   ETA_TELEGRAM_BOT_TOKEN + ETA_TELEGRAM_CHAT_ID
       -> Telegram message via Bot API
@@ -32,8 +33,8 @@ Channels (auto-detected from env)
       -> Generic JSON POST (Slack-compatible payload format)
       -> POST {"text": "..."} to the URL
 
-If no env vars are set, the dispatcher logs and exits 0 -- the
-operator can configure channels later without breaking the cron.
+If no channels are configured, the dispatcher logs and exits 0 -- the
+operator can configure them later without breaking the cron.
 
 What it does NOT do
 -------------------
@@ -69,14 +70,14 @@ import urllib.error
 import urllib.request
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 from typing import Any
 
-ROOT = Path(__file__).resolve().parents[1]
-WORKSPACE_ROOT = ROOT.parent
-ALERTS_LOG = WORKSPACE_ROOT / "logs" / "eta_engine" / "alerts_log.jsonl"
-CURSOR_PATH = WORKSPACE_ROOT / "var" / "eta_engine" / "state" / "diamond_prop_alert_cursor.json"
-OUT_LATEST = WORKSPACE_ROOT / "var" / "eta_engine" / "state" / "diamond_prop_alert_dispatcher_latest.json"
+from eta_engine.scripts import alert_channel_config
+from eta_engine.scripts import workspace_roots
+
+ALERTS_LOG = workspace_roots.ETA_RUNTIME_ALERTS_LOG_PATH
+CURSOR_PATH = workspace_roots.ETA_DIAMOND_PROP_ALERT_CURSOR_PATH
+OUT_LATEST = workspace_roots.ETA_DIAMOND_PROP_ALERT_DISPATCHER_PATH
 
 #: Sources whose alerts the dispatcher pushes.  We're conservative --
 #: only the prop-guard for now.  Additional sources can be added as
@@ -127,29 +128,20 @@ class DispatcherSummary:
 
 
 def _telegram_configured() -> bool:
-    return bool(
-        os.environ.get("ETA_TELEGRAM_BOT_TOKEN") and os.environ.get("ETA_TELEGRAM_CHAT_ID"),
-    )
+    return alert_channel_config.telegram_configured()
 
 
 def _discord_configured() -> bool:
-    return bool(os.environ.get("ETA_DISCORD_WEBHOOK_URL"))
+    return alert_channel_config.discord_configured()
 
 
 def _generic_configured() -> bool:
-    return bool(os.environ.get("ETA_GENERIC_WEBHOOK_URL"))
+    return alert_channel_config.generic_configured()
 
 
 def configured_channels() -> list[str]:
-    """Return the list of channel names that have env vars set."""
-    out: list[str] = []
-    if _telegram_configured():
-        out.append("telegram")
-    if _discord_configured():
-        out.append("discord")
-    if _generic_configured():
-        out.append("generic")
-    return out
+    """Return the list of channel names that have env vars or canonical secrets set."""
+    return alert_channel_config.configured_channels()
 
 
 # ────────────────────────────────────────────────────────────────────
@@ -173,8 +165,8 @@ def _http_post_json(url: str, payload: dict[str, Any]) -> None:
 
 
 def _send_telegram(text: str) -> None:
-    token = os.environ.get("ETA_TELEGRAM_BOT_TOKEN", "")
-    chat_id = os.environ.get("ETA_TELEGRAM_CHAT_ID", "")
+    token = alert_channel_config.get_telegram_bot_token()
+    chat_id = alert_channel_config.get_telegram_chat_id()
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     _http_post_json(
         url,
@@ -187,12 +179,12 @@ def _send_telegram(text: str) -> None:
 
 
 def _send_discord(text: str) -> None:
-    url = os.environ.get("ETA_DISCORD_WEBHOOK_URL", "")
+    url = alert_channel_config.get_discord_webhook_url()
     _http_post_json(url, {"content": text})
 
 
 def _send_generic(text: str) -> None:
-    url = os.environ.get("ETA_GENERIC_WEBHOOK_URL", "")
+    url = alert_channel_config.get_generic_webhook_url()
     _http_post_json(url, {"text": text})
 
 
@@ -391,9 +383,9 @@ def _print(s: dict[str, Any]) -> None:
     )
     print("=" * 90)
     if not s["configured_channels"]:
-        print("  No channels configured -- set ETA_TELEGRAM_BOT_TOKEN +")
-        print("  ETA_TELEGRAM_CHAT_ID or ETA_DISCORD_WEBHOOK_URL or")
-        print("  ETA_GENERIC_WEBHOOK_URL to enable push delivery.")
+        print("  No channels configured -- seed ETA Telegram env vars or")
+        print("  canonical secrets/telegram_*.txt, or set")
+        print("  ETA_DISCORD_WEBHOOK_URL / ETA_GENERIC_WEBHOOK_URL to enable push delivery.")
     if s["n_alerts_skipped_no_channels"]:
         print(
             f"  {s['n_alerts_skipped_no_channels']} alerts seen but skipped (no channels) -- cursor advanced anyway",

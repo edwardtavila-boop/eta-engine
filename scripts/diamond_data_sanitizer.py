@@ -68,18 +68,17 @@ from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
+from eta_engine.scripts import workspace_roots
+
 ROOT = Path(__file__).resolve().parents[1]
 WORKSPACE_ROOT = ROOT.parent
-STATE_DIR = WORKSPACE_ROOT / "var" / "eta_engine" / "state"
-LEGACY_STATE_DIR = ROOT / "state"
-
 #: Candidate paths for trade_closes (canonical + legacy)
 TRADE_CLOSES_CANDIDATES = [
-    STATE_DIR / "jarvis_intel" / "trade_closes.jsonl",
-    LEGACY_STATE_DIR / "jarvis_intel" / "trade_closes.jsonl",
+    workspace_roots.ETA_JARVIS_TRADE_CLOSES_PATH,
+    workspace_roots.ETA_LEGACY_JARVIS_TRADE_CLOSES_PATH,
 ]
 
-OUT_LATEST = STATE_DIR / "diamond_sanitizer_latest.json"
+OUT_LATEST = workspace_roots.ETA_DIAMOND_SANITIZER_PATH
 
 #: USD per-trade magnitude over this = scale bug → quarantine.
 #: Matches diamond_authenticity_audit's threshold for consistency.
@@ -96,6 +95,11 @@ QUARANTINE_USD_THRESHOLD = 5_000.0
 #: with R=+50/+80/+100 on pnl=$1.25 — same root cause class as the USD
 #: scale bug but in the R dimension instead of the USD dimension.
 QUARANTINE_R_THRESHOLD = 20.0
+
+
+def _console_help_description(text: str | None) -> str:
+    """Return argparse help text that is safe on Windows cp1252 consoles."""
+    return (text or "").encode("ascii", "replace").decode("ascii")
 
 
 @dataclass
@@ -390,7 +394,7 @@ def _print(summary: dict) -> None:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__)
+    ap = argparse.ArgumentParser(description=_console_help_description(__doc__))
     ap.add_argument("--apply-backward", action="store_true", help="Rewrite trade_closes.jsonl with quarantine tags")
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()

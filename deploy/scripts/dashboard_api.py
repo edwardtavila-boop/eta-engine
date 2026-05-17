@@ -468,7 +468,11 @@ _DASHBOARD_DIAGNOSTICS_CACHE_TTL_S = _positive_int_env(
     30,
 )
 _DASHBOARD_DIAGNOSTICS_CACHE_LOCK = threading.Lock()
-_DASHBOARD_DIAGNOSTICS_CACHE: dict[str, Any] = {"ts": 0.0, "payload": None}
+_DASHBOARD_DIAGNOSTICS_CACHE: dict[str, Any] = {
+    "ts": 0.0,
+    "payload": None,
+    "dependency_stamp": None,
+}
 _WORKSPACE_CHECKOUT_CACHE_TTL_S = _positive_int_env(
     "ETA_WORKSPACE_CHECKOUT_CACHE_TTL_S",
     20,
@@ -508,6 +512,11 @@ _PUBLIC_OPERATOR_BROKER_STATE_CACHE: dict[str, object] = {"payload": None, "ts":
 _PUBLIC_OPERATOR_BROKER_STATE_CACHE_LOCK = threading.Lock()
 _PUBLIC_OPERATOR_BROKER_STATE_CACHE_TTL_S = float(
     os.environ.get("ETA_PUBLIC_OPERATOR_BROKER_STATE_CACHE_TTL_S", "60") or 60
+)
+_PUBLIC_OPERATOR_RETUNE_STATUS_CACHE: dict[str, object] = {"payload": None, "ts": 0.0}
+_PUBLIC_OPERATOR_RETUNE_STATUS_CACHE_LOCK = threading.Lock()
+_PUBLIC_OPERATOR_RETUNE_STATUS_CACHE_TTL_S = float(
+    os.environ.get("ETA_PUBLIC_OPERATOR_RETUNE_STATUS_CACHE_TTL_S", "60") or 60
 )
 
 
@@ -713,10 +722,12 @@ def _eta_readiness_snapshot_payload(*, server_ts: float) -> dict:
             "dashboard_api_runtime_current_live_broker_open_order_count": 0,
             "dashboard_api_runtime_public_live_broker_degraded_display": "",
             "dashboard_api_runtime_drift_display": "",
+            "dashboard_api_runtime_probe_display": "",
             "dashboard_api_runtime_refresh_command": "",
             "dashboard_api_runtime_refresh_requires_elevation": False,
             "public_live_broker_state_checked_utc": "",
             "public_live_broker_open_order_count": 0,
+            "current_live_broker_degraded_display": "",
             "public_fallback_broker_open_order_count": 0,
             "public_fallback_broker_open_order_drift_display": "",
             "public_fallback_stale_flat_open_order_count": 0,
@@ -725,6 +736,13 @@ def _eta_readiness_snapshot_payload(*, server_ts: float) -> dict:
             "public_fallback_stale_flat_open_order_relation_display": "",
             "public_live_retune_generated_at_utc": "",
             "public_live_retune_focus_active_experiment_outcome_line": "",
+            "public_live_retune_sync_drift_display": "",
+            "current_live_retune_generated_at_utc": "",
+            "current_live_retune_focus_active_experiment_outcome_line": "",
+            "current_live_retune_sync_drift_display": "",
+            "dashboard_api_runtime_public_live_retune_generated_at_utc": "",
+            "dashboard_api_runtime_public_live_retune_sync_drift_display": "",
+            "dashboard_api_runtime_retune_drift_display": "",
             "local_retune_generated_at_utc": "",
             "local_retune_focus_active_experiment_outcome_line": "",
             "retune_focus_active_experiment_drift_display": "",
@@ -756,6 +774,17 @@ def _eta_readiness_snapshot_payload(*, server_ts: float) -> dict:
     age_s = _iso_age_s(checked_at, server_ts=server_ts)
     fresh = age_s is not None and age_s <= _ETA_READINESS_SNAPSHOT_MAX_AGE_S
     raw_summary = str(receipt.get("summary") or "UNKNOWN")
+    receipt_status = str(receipt.get("status") or "").strip().lower()
+    if receipt_status not in {"blocked", "error", "ready", "stale_receipt", "unknown"}:
+        receipt_status = ""
+    receipt_detail = str(receipt.get("detail") or "").strip()
+    receipt_primary_blocker = str(receipt.get("primary_blocker") or "").strip()
+    receipt_primary_action = str(receipt.get("primary_action") or "").strip()
+    receipt_next_actions = [
+        str(item).strip()
+        for item in (receipt.get("next_actions") if isinstance(receipt.get("next_actions"), list) else [])
+        if str(item).strip()
+    ]
     checks = receipt.get("checks") if isinstance(receipt.get("checks"), list) else []
     pass_statuses = {"OK", "PASS", "READY", "READY_NO_OPEN_EXPOSURE"}
     blocked_checks = [
@@ -1056,6 +1085,9 @@ def _eta_readiness_snapshot_payload(*, server_ts: float) -> dict:
     dashboard_api_runtime_drift_display = str(
         receipt.get("dashboard_api_runtime_drift_display") or ""
     ).strip()
+    dashboard_api_runtime_probe_display = str(
+        receipt.get("dashboard_api_runtime_probe_display") or ""
+    ).strip()
     dashboard_api_runtime_refresh_command = str(
         receipt.get("dashboard_api_runtime_refresh_command") or ""
     ).strip()
@@ -1101,6 +1133,9 @@ def _eta_readiness_snapshot_payload(*, server_ts: float) -> dict:
     ).strip()
     public_live_retune_focus_active_experiment_outcome_line = str(
         receipt.get("public_live_retune_focus_active_experiment_outcome_line") or ""
+    ).strip()
+    public_live_retune_sync_drift_display = str(
+        receipt.get("public_live_retune_sync_drift_display") or ""
     ).strip()
     local_retune_generated_at_utc = str(receipt.get("local_retune_generated_at_utc") or "").strip()
     local_retune_focus_active_experiment_outcome_line = str(
@@ -1209,13 +1244,15 @@ def _eta_readiness_snapshot_payload(*, server_ts: float) -> dict:
         for item in reversed(public_fallback_next_actions):
             if item and item not in next_actions:
                 next_actions.insert(0, item)
+    if receipt_next_actions:
+        next_actions = list(receipt_next_actions)
 
-    primary_blocker = ""
-    if public_fallback_active and public_fallback_blocked_checks:
+    primary_blocker = receipt_primary_blocker
+    if not primary_blocker and public_fallback_active and public_fallback_blocked_checks:
         primary_blocker = str(public_fallback_blocked_checks[0].get("name") or "")
-    elif blocked_checks:
+    elif not primary_blocker and blocked_checks:
         primary_blocker = str(blocked_checks[0].get("name") or "")
-    primary_action = (
+    primary_action = receipt_primary_action or (
         next_actions[0]
         if next_actions
         else ("Clear blocked readiness checks." if blocked_checks else "No action required.")
@@ -1225,22 +1262,24 @@ def _eta_readiness_snapshot_payload(*, server_ts: float) -> dict:
     )
     if not fresh:
         status = "stale_receipt"
+    elif receipt_status:
+        status = receipt_status
     elif raw_summary.upper() == "READY" and not blocked_checks:
         status = "ready"
     elif raw_summary.upper().startswith("BLOCKED") or blocked_checks:
         status = "blocked"
     else:
         status = "unknown"
-    detail = raw_summary
+    detail = receipt_detail or raw_summary
     if status == "stale_receipt":
         detail = (
             "ETA readiness snapshot is stale; rerun .\\scripts\\eta-readiness-snapshot.ps1 "
             "before trusting this readiness state."
         )
-    elif primary_action and primary_action != "No action required.":
+    elif not receipt_detail and primary_action and primary_action != "No action required.":
         detail = primary_action
 
-    return {
+    out = {
         "status": status,
         "fresh": fresh,
         "healthy": status == "ready",
@@ -1281,6 +1320,7 @@ def _eta_readiness_snapshot_payload(*, server_ts: float) -> dict:
             dashboard_api_runtime_public_live_broker_degraded_display
         ),
         "dashboard_api_runtime_drift_display": dashboard_api_runtime_drift_display,
+        "dashboard_api_runtime_probe_display": dashboard_api_runtime_probe_display,
         "dashboard_api_runtime_refresh_command": dashboard_api_runtime_refresh_command,
         "dashboard_api_runtime_refresh_requires_elevation": (
             dashboard_api_runtime_refresh_requires_elevation
@@ -1297,6 +1337,16 @@ def _eta_readiness_snapshot_payload(*, server_ts: float) -> dict:
         "public_live_retune_focus_active_experiment_outcome_line": (
             public_live_retune_focus_active_experiment_outcome_line
         ),
+        "public_live_retune_sync_drift_display": public_live_retune_sync_drift_display,
+        "dashboard_api_runtime_public_live_retune_generated_at_utc": str(
+            receipt.get("dashboard_api_runtime_public_live_retune_generated_at_utc") or ""
+        ).strip(),
+        "dashboard_api_runtime_public_live_retune_sync_drift_display": str(
+            receipt.get("dashboard_api_runtime_public_live_retune_sync_drift_display") or ""
+        ).strip(),
+        "dashboard_api_runtime_retune_drift_display": str(
+            receipt.get("dashboard_api_runtime_retune_drift_display") or ""
+        ).strip(),
         "local_retune_generated_at_utc": local_retune_generated_at_utc,
         "local_retune_focus_active_experiment_outcome_line": (
             local_retune_focus_active_experiment_outcome_line
@@ -1357,6 +1407,7 @@ def _eta_readiness_snapshot_payload(*, server_ts: float) -> dict:
         "promotion_required_evidence": required_evidence[:5],
         "public_fallback_brackets_next_action": fallback_bracket_action,
     }
+    return _augment_eta_readiness_snapshot_with_current_live_retune(out)
 
 
 def _extract_live_broker_open_order_count(live_broker_state: dict | None) -> int | None:
@@ -1392,6 +1443,223 @@ def _extract_live_broker_checked_at_utc(live_broker_state: dict | None) -> str:
     return ""
 
 
+def _public_operator_diamond_retune_status_payload(*, force: bool = False) -> dict:
+    """Best-effort public diamond_retune_status fetch for stale receipt overlays."""
+    base_url = _operator_url_base()
+    if not base_url:
+        return {}
+    now_ts = time.time()
+    with _PUBLIC_OPERATOR_RETUNE_STATUS_CACHE_LOCK:
+        cached = _PUBLIC_OPERATOR_RETUNE_STATUS_CACHE.get("payload")
+        cached_ts = float(_PUBLIC_OPERATOR_RETUNE_STATUS_CACHE.get("ts") or 0.0)
+        if not force and isinstance(cached, dict) and (now_ts - cached_ts) < _PUBLIC_OPERATOR_RETUNE_STATUS_CACHE_TTL_S:
+            return dict(cached)
+    request = urllib_request.Request(
+        f"{base_url}/api/jarvis/diamond_retune_status",
+        headers={
+            "Accept": "application/json",
+            "User-Agent": "ETA-Operator/1.0",
+        },
+    )
+    try:
+        with urllib_request.urlopen(request, timeout=5.0) as response:
+            payload = json.loads(response.read().decode("utf-8", errors="replace"))
+    except Exception:  # noqa: BLE001 - diagnostics/master status must fail soft.
+        return {}
+    if not isinstance(payload, dict):
+        return {}
+    with _PUBLIC_OPERATOR_RETUNE_STATUS_CACHE_LOCK:
+        _PUBLIC_OPERATOR_RETUNE_STATUS_CACHE["payload"] = dict(payload)
+        _PUBLIC_OPERATOR_RETUNE_STATUS_CACHE["ts"] = now_ts
+    return payload
+
+
+def _extract_live_retune_generated_at_utc(retune_status: dict | None) -> str:
+    payload = retune_status if isinstance(retune_status, dict) else {}
+    for value in (
+        payload.get("generated_at_utc"),
+        payload.get("generated_at"),
+    ):
+        text = str(value or "").strip()
+        if text:
+            return text
+    return ""
+
+
+def _extract_live_retune_outcome_line(retune_status: dict | None) -> str:
+    payload = retune_status if isinstance(retune_status, dict) else {}
+    summary = payload.get("summary") if isinstance(payload.get("summary"), dict) else {}
+    for value in (
+        payload.get("focus_active_experiment_outcome_line"),
+        summary.get("broker_truth_focus_active_experiment_outcome_line"),
+    ):
+        text = str(value or "").strip()
+        if text:
+            return text
+    return ""
+
+
+def _augment_eta_readiness_snapshot_with_current_live_retune(snapshot: dict | None) -> dict:
+    """Overlay fresher public retune truth when the readiness receipt is stale."""
+    out = dict(snapshot) if isinstance(snapshot, dict) else {}
+    out.setdefault("current_live_retune_generated_at_utc", "")
+    out.setdefault("current_live_retune_focus_active_experiment_outcome_line", "")
+    out.setdefault("current_live_retune_sync_drift_display", "")
+    if bool(out.get("fresh")) and str(out.get("status") or "") != "stale_receipt":
+        return out
+
+    public_retune_status = _public_operator_diamond_retune_status_payload()
+    if not isinstance(public_retune_status, dict) or not public_retune_status:
+        return out
+
+    current_live_retune_generated_at_utc = _extract_live_retune_generated_at_utc(public_retune_status)
+    current_live_retune_focus_active_experiment_outcome_line = _extract_live_retune_outcome_line(
+        public_retune_status
+    )
+    receipt_public_live_retune_generated_at_utc = str(
+        out.get("public_live_retune_generated_at_utc") or ""
+    ).strip()
+    receipt_public_live_retune_focus_active_experiment_outcome_line = str(
+        out.get("public_live_retune_focus_active_experiment_outcome_line") or ""
+    ).strip()
+    current_live_retune_sync_drift_display = ""
+    if (
+        current_live_retune_generated_at_utc
+        and current_live_retune_generated_at_utc != receipt_public_live_retune_generated_at_utc
+    ):
+        try:
+            current_live_retune_dt = datetime.fromisoformat(
+                current_live_retune_generated_at_utc.replace("Z", "+00:00")
+            )
+        except ValueError:
+            current_live_retune_dt = None
+        try:
+            cached_public_retune_dt = datetime.fromisoformat(
+                receipt_public_live_retune_generated_at_utc.replace("Z", "+00:00")
+            )
+        except ValueError:
+            cached_public_retune_dt = None
+        if current_live_retune_dt is not None and cached_public_retune_dt is not None:
+            if current_live_retune_dt > cached_public_retune_dt:
+                current_live_retune_sync_drift_display = (
+                    "public retune truth now refreshed at "
+                    f"{current_live_retune_generated_at_utc} after readiness cached "
+                    f"{receipt_public_live_retune_generated_at_utc}"
+                )
+            else:
+                current_live_retune_sync_drift_display = (
+                    "public retune truth timestamp "
+                    f"{current_live_retune_generated_at_utc} differs from readiness cached "
+                    f"{receipt_public_live_retune_generated_at_utc}"
+                )
+        elif receipt_public_live_retune_generated_at_utc:
+            current_live_retune_sync_drift_display = (
+                "public retune truth timestamp "
+                f"{current_live_retune_generated_at_utc} differs from readiness cached "
+                f"{receipt_public_live_retune_generated_at_utc}"
+            )
+        else:
+            current_live_retune_sync_drift_display = (
+                "public retune truth now refreshed at "
+                f"{current_live_retune_generated_at_utc} while readiness cached no public retune timestamp"
+            )
+    elif (
+        current_live_retune_focus_active_experiment_outcome_line
+        and current_live_retune_focus_active_experiment_outcome_line
+        != receipt_public_live_retune_focus_active_experiment_outcome_line
+    ):
+        if receipt_public_live_retune_focus_active_experiment_outcome_line:
+            current_live_retune_sync_drift_display = (
+                "public retune outcome now says "
+                f"{current_live_retune_focus_active_experiment_outcome_line} vs readiness cached "
+                f"{receipt_public_live_retune_focus_active_experiment_outcome_line}"
+            )
+        else:
+            current_live_retune_sync_drift_display = (
+                "public retune outcome now says "
+                f"{current_live_retune_focus_active_experiment_outcome_line} while readiness cached no public retune outcome"
+            )
+
+    out["current_live_retune_generated_at_utc"] = current_live_retune_generated_at_utc
+    out["current_live_retune_focus_active_experiment_outcome_line"] = (
+        current_live_retune_focus_active_experiment_outcome_line
+    )
+    out["current_live_retune_sync_drift_display"] = current_live_retune_sync_drift_display
+    return out
+
+
+def _augment_eta_readiness_snapshot_with_runtime_alias_truth(snapshot: dict | None) -> dict:
+    """Mirror current broker/retune truth into runtime alias fields when stale receipts leave them blank."""
+    out = dict(snapshot) if isinstance(snapshot, dict) else {}
+
+    public_broker_degraded_display = str(out.get("public_live_broker_degraded_display") or "").strip()
+    runtime_public_broker_degraded_display = str(
+        out.get("dashboard_api_runtime_public_live_broker_degraded_display") or ""
+    ).strip()
+    if not runtime_public_broker_degraded_display and public_broker_degraded_display:
+        runtime_public_broker_degraded_display = public_broker_degraded_display
+        out["dashboard_api_runtime_public_live_broker_degraded_display"] = (
+            runtime_public_broker_degraded_display
+        )
+
+    current_broker_checked_at = str(out.get("current_live_broker_state_checked_utc") or "").strip()
+    runtime_current_broker_checked_at = str(
+        out.get("dashboard_api_runtime_current_live_broker_state_checked_utc") or ""
+    ).strip()
+    if not runtime_current_broker_checked_at and current_broker_checked_at:
+        out["dashboard_api_runtime_current_live_broker_state_checked_utc"] = current_broker_checked_at
+
+    current_broker_open_order_count = out.get("current_live_broker_open_order_count")
+    runtime_current_broker_open_order_count = out.get("dashboard_api_runtime_current_live_broker_open_order_count")
+    if (
+        isinstance(current_broker_open_order_count, int)
+        and not isinstance(current_broker_open_order_count, bool)
+        and current_broker_open_order_count > 0
+        and (
+            not isinstance(runtime_current_broker_open_order_count, int)
+            or isinstance(runtime_current_broker_open_order_count, bool)
+            or int(runtime_current_broker_open_order_count) <= 0
+        )
+    ):
+        out["dashboard_api_runtime_current_live_broker_open_order_count"] = current_broker_open_order_count
+
+    runtime_broker_drift_display = str(out.get("dashboard_api_runtime_drift_display") or "").strip()
+    if (
+        runtime_broker_drift_display
+        and "blank for public_live_broker_degraded_display" in runtime_broker_drift_display
+        and str(out.get("dashboard_api_runtime_public_live_broker_degraded_display") or "").strip()
+        == public_broker_degraded_display
+    ):
+        out["dashboard_api_runtime_drift_display"] = ""
+
+    public_retune_generated_at = str(out.get("public_live_retune_generated_at_utc") or "").strip()
+    runtime_public_retune_generated_at = str(
+        out.get("dashboard_api_runtime_public_live_retune_generated_at_utc") or ""
+    ).strip()
+    if not runtime_public_retune_generated_at and public_retune_generated_at:
+        out["dashboard_api_runtime_public_live_retune_generated_at_utc"] = public_retune_generated_at
+
+    public_retune_sync_drift_display = str(out.get("public_live_retune_sync_drift_display") or "").strip()
+    runtime_public_retune_sync_drift_display = str(
+        out.get("dashboard_api_runtime_public_live_retune_sync_drift_display") or ""
+    ).strip()
+    if not runtime_public_retune_sync_drift_display and public_retune_sync_drift_display:
+        out["dashboard_api_runtime_public_live_retune_sync_drift_display"] = (
+            public_retune_sync_drift_display
+        )
+
+    runtime_retune_drift_display = str(out.get("dashboard_api_runtime_retune_drift_display") or "").strip()
+    if (
+        runtime_retune_drift_display
+        and "blank for public_live_retune_generated_at_utc" in runtime_retune_drift_display
+        and str(out.get("dashboard_api_runtime_public_live_retune_generated_at_utc") or "").strip()
+        == public_retune_generated_at
+    ):
+        out["dashboard_api_runtime_retune_drift_display"] = ""
+
+    return out
+
+
 def _augment_eta_readiness_snapshot_with_live_broker_state(
     snapshot: dict | None,
     live_broker_state: dict | None,
@@ -1406,13 +1674,43 @@ def _augment_eta_readiness_snapshot_with_live_broker_state(
         and bool(out.get("public_fallback_active") or out.get("public_fallback_reason"))
     ):
         public_live_broker_state = _public_operator_broker_state_payload()
+        if isinstance(public_live_broker_state, dict) and public_live_broker_state:
+            effective_live_broker_state = public_live_broker_state
         public_live_broker_open_order_count = _extract_live_broker_open_order_count(public_live_broker_state)
         if public_live_broker_open_order_count is not None:
-            effective_live_broker_state = public_live_broker_state
             current_live_broker_open_order_count = public_live_broker_open_order_count
             current_live_broker_state_checked_utc = _extract_live_broker_checked_at_utc(public_live_broker_state)
+    current_live_broker_ready = bool(effective_live_broker_state.get("ready")) and not bool(
+        effective_live_broker_state.get("error")
+    )
+    current_live_broker_snapshot_state = str(
+        effective_live_broker_state.get("broker_snapshot_state") or ""
+    ).strip()
+    current_live_broker_snapshot_source = str(
+        effective_live_broker_state.get("broker_snapshot_source") or ""
+    ).strip()
+    current_live_broker_source = str(effective_live_broker_state.get("source") or "").strip()
     out["current_live_broker_open_order_count"] = int(current_live_broker_open_order_count or 0)
     out["current_live_broker_state_checked_utc"] = current_live_broker_state_checked_utc
+    receipt_public_live_broker_degraded_display = str(
+        out.get("public_live_broker_degraded_display") or ""
+    ).strip()
+    current_live_broker_degraded_display = ""
+    if effective_live_broker_state and not current_live_broker_ready:
+        degraded_reason = (
+            current_live_broker_snapshot_source
+            or current_live_broker_snapshot_state
+            or current_live_broker_source
+        )
+        if degraded_reason:
+            current_live_broker_degraded_display = f"live broker_state now degraded: {degraded_reason}"
+            if current_live_broker_source and current_live_broker_source != degraded_reason:
+                current_live_broker_degraded_display = (
+                    f"{current_live_broker_degraded_display}; via {current_live_broker_source}"
+                )
+    if current_live_broker_degraded_display == receipt_public_live_broker_degraded_display:
+        current_live_broker_degraded_display = ""
+    out["current_live_broker_degraded_display"] = current_live_broker_degraded_display
     public_live_broker_open_order_count = int(out.get("public_live_broker_open_order_count") or 0)
     public_fallback_stale_flat_open_order_count = int(
         out.get("public_fallback_stale_flat_open_order_count") or 0
@@ -1439,7 +1737,7 @@ def _augment_eta_readiness_snapshot_with_live_broker_state(
         )
     else:
         out["current_live_broker_open_order_drift_display"] = ""
-    return out
+    return _augment_eta_readiness_snapshot_with_runtime_alias_truth(out)
 
 
 def _command_center_watchdog_payload(*, server_ts: float) -> dict:
@@ -2335,18 +2633,34 @@ def _dashboard_diagnostics_with_cache_meta(payload: dict[str, Any], *, status: s
     return annotated
 
 
+def _dashboard_diagnostics_dependency_stamp() -> tuple[int | None, int | None]:
+    """Fingerprint short-lived artifact inputs that should invalidate cached diagnostics immediately."""
+    state_dir = _state_dir()
+    stamps: list[int | None] = []
+    for name in ("paper_live_transition_check.json", "operator_queue_snapshot.json"):
+        path = state_dir / name
+        try:
+            stamps.append(path.stat().st_mtime_ns)
+        except OSError:
+            stamps.append(None)
+    return tuple(stamps)  # type: ignore[return-value]
+
+
 def _dashboard_diagnostics_cached_payload(*, refresh: bool = False) -> dict[str, Any]:
     """Serve diagnostics from a short stale-safe cache for responsive operator loads."""
     now_ts = time.time()
+    dependency_stamp = _dashboard_diagnostics_dependency_stamp()
     with _DASHBOARD_DIAGNOSTICS_CACHE_LOCK:
         cached_payload = _DASHBOARD_DIAGNOSTICS_CACHE.get("payload")
         cached_ts = float(_DASHBOARD_DIAGNOSTICS_CACHE.get("ts") or 0.0)
+        cached_dependency_stamp = _DASHBOARD_DIAGNOSTICS_CACHE.get("dependency_stamp")
         cache_age_s = max(0.0, now_ts - cached_ts) if cached_ts > 0 else None
         if (
             not refresh
             and isinstance(cached_payload, dict)
             and cache_age_s is not None
             and cache_age_s <= _DASHBOARD_DIAGNOSTICS_CACHE_TTL_S
+            and cached_dependency_stamp == dependency_stamp
         ):
             return _dashboard_diagnostics_with_cache_meta(cached_payload, status="hit", age_s=cache_age_s)
 
@@ -2370,6 +2684,7 @@ def _dashboard_diagnostics_cached_payload(*, refresh: bool = False) -> dict[str,
     with _DASHBOARD_DIAGNOSTICS_CACHE_LOCK:
         _DASHBOARD_DIAGNOSTICS_CACHE["payload"] = fresh_payload
         _DASHBOARD_DIAGNOSTICS_CACHE["ts"] = completed_ts
+        _DASHBOARD_DIAGNOSTICS_CACHE["dependency_stamp"] = dependency_stamp
     return _dashboard_diagnostics_with_cache_meta(fresh_payload, status="miss", age_s=0.0)
 
 
@@ -3042,6 +3357,15 @@ def _retune_focus_overlay(
         "public_live_retune_focus_active_experiment_outcome_line": str(
             readiness.get("public_live_retune_focus_active_experiment_outcome_line") or ""
         ),
+        "current_live_retune_generated_at_utc": str(
+            readiness.get("current_live_retune_generated_at_utc") or ""
+        ),
+        "current_live_retune_focus_active_experiment_outcome_line": str(
+            readiness.get("current_live_retune_focus_active_experiment_outcome_line") or ""
+        ),
+        "current_live_retune_sync_drift_display": str(
+            readiness.get("current_live_retune_sync_drift_display") or ""
+        ),
         "local_retune_focus_active_experiment_outcome_line": str(
             readiness.get("local_retune_focus_active_experiment_outcome_line") or ""
         ),
@@ -3602,6 +3926,8 @@ def _vps_ops_hardening_payload(*, server_ts: float) -> dict:
     """Fail-soft summary of VPS hardening gates for the dashboard."""
     path = _vps_ops_hardening_audit_path()
     refresh_hint = "Run eta_engine.scripts.vps_ops_hardening_audit --json-out on the VPS"
+    fm_repair_command = r"eta_engine\deploy\scripts\repair_force_multiplier_control_plane_admin.cmd /RestartService"
+    fm_refresh_command = "python -m eta_engine.scripts.force_multiplier_health --json-out --quiet"
     if not path.exists():
         return {
             "status": "missing",
@@ -3680,6 +4006,103 @@ def _vps_ops_hardening_payload(*, server_ts: float) -> dict:
             "divergent_symbols": [],
             "mismatch_count": 0,
         }
+    runtime = payload.get("runtime") if isinstance(payload.get("runtime"), dict) else {}
+    services = runtime.get("services") if isinstance(runtime.get("services"), dict) else {}
+    tasks = runtime.get("tasks") if isinstance(runtime.get("tasks"), dict) else {}
+    service_config = payload.get("service_config") if isinstance(payload.get("service_config"), dict) else {}
+    fm_service_config = (
+        service_config.get("fm_status_server")
+        if isinstance(service_config.get("fm_status_server"), dict)
+        else {}
+    )
+    service_down = _string_list(summary.get("service_down")) or _string_list(services.get("down"))
+    service_runtime_drift = _string_list(summary.get("service_runtime_drift")) or _string_list(
+        services.get("runtime_drift")
+    )
+    service_config_drift = _string_list(summary.get("service_config_drift"))
+    if fm_service_config and fm_service_config.get("matches_expected") is False:
+        service_config_drift = list(dict.fromkeys([*service_config_drift, "fm_status_server"]))
+    missing_ports = summary.get("missing_ports") if isinstance(summary.get("missing_ports"), list) else []
+    critical_endpoint_failures = _string_list(summary.get("critical_endpoint_failures"))
+    dashboard_schema_drift = _string_list(summary.get("dashboard_schema_drift"))
+    service_runtime_drift_detail = (
+        services.get("runtime_drift_detail")
+        if isinstance(services.get("runtime_drift_detail"), dict)
+        else {}
+    )
+    missing_dashboard_tasks = _string_list(summary.get("missing_dashboard_durable")) or _string_list(
+        tasks.get("missing_dashboard_durable")
+    )
+    missing_force_multiplier_tasks = _string_list(summary.get("missing_force_multiplier_durable")) or _string_list(
+        tasks.get("missing_force_multiplier_durable")
+    )
+    missing_paper_live_tasks = _string_list(summary.get("missing_paper_live_durable")) or _string_list(
+        tasks.get("missing_paper_live_durable")
+    )
+    missing_data_pipeline_tasks = _string_list(summary.get("missing_data_pipeline")) or _string_list(
+        tasks.get("missing_data_pipeline")
+    )
+    observed_missing_force_multiplier_tasks = _string_list(tasks.get("observed_missing_force_multiplier_durable"))
+    artifact_backed_force_multiplier_tasks = _string_list(tasks.get("artifact_backed_missing_force_multiplier_durable"))
+    stale_artifact_backed_dashboard_tasks = _string_list(
+        summary.get("stale_artifact_backed_dashboard_durable")
+    ) or _string_list(tasks.get("stale_artifact_backed_dashboard_durable"))
+    stale_artifact_backed_force_multiplier_tasks = _string_list(
+        summary.get("stale_artifact_backed_force_multiplier_durable")
+    ) or _string_list(
+        tasks.get("stale_artifact_backed_force_multiplier_durable")
+    )
+    stale_artifact_backed_paper_live_tasks = _string_list(
+        summary.get("stale_artifact_backed_paper_live_durable")
+    ) or _string_list(tasks.get("stale_artifact_backed_paper_live_durable"))
+    stale_artifact_backed_data_pipeline_tasks = _string_list(
+        summary.get("stale_artifact_backed_data_pipeline")
+    ) or _string_list(tasks.get("stale_artifact_backed_data_pipeline"))
+    source_next_actions = payload.get("next_actions") if isinstance(payload.get("next_actions"), list) else []
+    source_next_actions = [str(action) for action in source_next_actions if str(action).strip()]
+    fm_action = next(
+        (
+            action
+            for action in source_next_actions
+            if "force multiplier" in action.lower()
+            or "fmstatusserver" in action.lower()
+            or "fm_status_server" in action.lower()
+            or "repair_force_multiplier_control_plane_admin.cmd" in action.lower()
+        ),
+        "",
+    )
+    fm_service_restart_required = "FmStatusServer" in service_runtime_drift or bool(
+        fm_service_config and fm_service_config.get("matches_expected") is False
+    )
+    fm_durability_gap = bool(missing_force_multiplier_tasks)
+    fm_watch_stale = bool(stale_artifact_backed_force_multiplier_tasks)
+    fm_repair_required = fm_service_restart_required or fm_durability_gap
+    if fm_service_restart_required:
+        fm_status = "restart_required"
+        fm_detail = fm_action or f"Restart supervised Force Multiplier service with {fm_repair_command}"
+        fm_next_command = fm_repair_command
+    elif fm_durability_gap:
+        fm_status = "durability_gap"
+        fm_detail = fm_action or (
+            "Register Force Multiplier scheduled task lane: "
+            + ", ".join(missing_force_multiplier_tasks)
+        )
+        fm_next_command = fm_repair_command
+    elif fm_watch_stale:
+        fm_status = "watch_stale"
+        fm_detail = fm_action or (
+            "Refresh Force Multiplier watch artifact: "
+            + ", ".join(stale_artifact_backed_force_multiplier_tasks)
+        )
+        fm_next_command = fm_refresh_command
+    elif summary.get("force_multiplier_durable") is True:
+        fm_status = "ready"
+        fm_detail = "Force Multiplier control plane durable; no repair command required."
+        fm_next_command = ""
+    else:
+        fm_status = "unknown"
+        fm_detail = "Force Multiplier control-plane durability is not confirmed."
+        fm_next_command = fm_refresh_command
     generated_at = payload.get("generated_at_utc") or payload.get("generated_at")
     source_status = str(summary.get("status") or payload.get("status") or "unknown")
     age_s = _iso_age_s(generated_at, server_ts=server_ts)
@@ -3711,7 +4134,23 @@ def _vps_ops_hardening_payload(*, server_ts: float) -> dict:
         "detail": detail,
         "summary": {
             "runtime_ready": bool(summary.get("runtime_ready")),
+            "service_down": service_down,
+            "service_runtime_drift": service_runtime_drift,
+            "service_config_drift": service_config_drift,
+            "missing_ports": missing_ports,
+            "critical_endpoint_failures": critical_endpoint_failures,
             "dashboard_durable": bool(summary.get("dashboard_durable")),
+            "force_multiplier_durable": bool(summary.get("force_multiplier_durable")),
+            "missing_dashboard_durable": missing_dashboard_tasks,
+            "missing_force_multiplier_durable": missing_force_multiplier_tasks,
+            "missing_paper_live_durable": missing_paper_live_tasks,
+            "missing_data_pipeline": missing_data_pipeline_tasks,
+            "stale_artifact_backed_dashboard_durable": stale_artifact_backed_dashboard_tasks,
+            "stale_artifact_backed_force_multiplier_durable": stale_artifact_backed_force_multiplier_tasks,
+            "stale_artifact_backed_paper_live_durable": stale_artifact_backed_paper_live_tasks,
+            "stale_artifact_backed_data_pipeline": stale_artifact_backed_data_pipeline_tasks,
+            "dashboard_schema_current": bool(summary.get("dashboard_schema_current", True)),
+            "dashboard_schema_drift": dashboard_schema_drift,
             "paper_live_gate_ready": bool(summary.get("paper_live_gate_ready")),
             "paper_live_status": str(summary.get("paper_live_status") or "unknown"),
             "trading_gate_ready": bool(summary.get("trading_gate_ready")),
@@ -3764,7 +4203,29 @@ def _vps_ops_hardening_payload(*, server_ts: float) -> dict:
                 else []
             ),
         },
-        "source_next_actions": payload.get("next_actions") if isinstance(payload.get("next_actions"), list) else [],
+        "force_multiplier_control_plane": {
+            "status": "stale_receipt" if not fresh else fm_status,
+            "source_status": fm_status,
+            "ready": bool(fm_status == "ready" and fresh),
+            "restart_required": bool(fm_service_restart_required and fresh),
+            "repair_required": bool(fm_repair_required and fresh),
+            "durability_gap": bool(fm_durability_gap),
+            "watch_stale": bool(fm_watch_stale),
+            "durable": bool(summary.get("force_multiplier_durable")),
+            "service_runtime_drift": service_runtime_drift,
+            "service_config_drift": service_config_drift,
+            "service_config": fm_service_config,
+            "service_runtime_drift_detail": service_runtime_drift_detail,
+            "missing_tasks": missing_force_multiplier_tasks,
+            "observed_missing_tasks": observed_missing_force_multiplier_tasks,
+            "artifact_backed_missing_tasks": artifact_backed_force_multiplier_tasks,
+            "stale_artifact_backed_tasks": stale_artifact_backed_force_multiplier_tasks,
+            "repair_command": fm_repair_command if fm_repair_required and fresh else "",
+            "refresh_command": fm_refresh_command,
+            "next_command": "" if not fresh else fm_next_command,
+            "detail": stale_detail or fm_detail,
+        },
+        "source_next_actions": source_next_actions,
         "next_actions": next_actions,
     }
 
@@ -6675,6 +7136,55 @@ def _truthful_router_fill_fields(result: dict, raw: dict) -> tuple[object, objec
     return raw_filled, raw_avg_price
 
 
+def _preferred_router_legacy_raw_fill_ts(raw: dict) -> object:
+    server = raw.get("server") if isinstance(raw.get("server"), dict) else {}
+    direct = _first_present(
+        server,
+        (
+            "filled-at",
+            "filled_at",
+            "execution-time",
+            "execution_time",
+            "executed-at",
+            "executed_at",
+            "updated-at",
+            "updated_at",
+        ),
+    )
+    if direct is not None:
+        return direct
+    ib_statuses = raw.get("ib_statuses")
+    if isinstance(ib_statuses, list):
+        for item in ib_statuses:
+            if not isinstance(item, dict):
+                continue
+            if str(item.get("status") or "").strip().lower() != "filled":
+                continue
+            candidate = _first_present(
+                item,
+                ("filled_at", "execution_time", "executed_at", "time", "timestamp", "lastFillTime"),
+            )
+            if candidate is not None:
+                return candidate
+    return None
+
+
+def _preferred_router_result_ts(payload: dict, result: dict, raw: dict | None = None) -> object:
+    raw = raw if isinstance(raw, dict) else {}
+    return (
+        payload.get("broker_fill_ts")
+        or result.get("filled_at")
+        or raw.get("filled_at")
+        or result.get("execution_time")
+        or raw.get("execution_time")
+        or _preferred_router_legacy_raw_fill_ts(raw)
+        or payload.get("result_written_ts")
+        or result.get("ts")
+        or payload.get("ts")
+        or payload.get("submitted_at")
+    )
+
+
 def _normalize_router_result(path: Path, payload: dict) -> dict:
     result = payload.get("result") if isinstance(payload.get("result"), dict) else {}
     request = payload.get("request") if isinstance(payload.get("request"), dict) else {}
@@ -6692,7 +7202,7 @@ def _normalize_router_result(path: Path, payload: dict) -> dict:
         "order_id": result.get("order_id"),
         "filled_qty": filled_qty,
         "avg_price": avg_price,
-        "ts": payload.get("broker_fill_ts") or result.get("filled_at") or payload.get("result_written_ts") or payload.get("ts") or payload.get("submitted_at"),
+        "ts": _preferred_router_result_ts(payload, result, raw),
         "reason": reason,
         "source_path": str(path),
     }
@@ -7948,6 +8458,9 @@ def _paper_live_transition_with_effective_holds(payload: dict) -> dict:
     raw_status = str(out.get("status") or "unknown")
     effective_status = str(out.get("effective_status") or raw_status)
     effective_detail = str(out.get("effective_detail") or "")
+    first_launch_next_action = str(
+        out.get("operator_queue_first_launch_next_action") or out.get("operator_queue_first_next_action") or ""
+    ).strip()
     cache_stale = bool(out.get("cache_stale"))
     source_age_s = out.get("source_age_s")
     launch_blocked_raw = out.get("operator_queue_launch_blocked_count")
@@ -7979,6 +8492,16 @@ def _paper_live_transition_with_effective_holds(payload: dict) -> dict:
     if bool(shadow_runtime.get("active")) and effective_status != "held_by_daily_loss_stop":
         effective_status = "shadow_paper_active"
         effective_detail = str(shadow_runtime.get("detail") or effective_detail)
+
+    if not effective_detail and effective_status == raw_status:
+        first_failed_gate = _first_failed_gate(out)
+        effective_detail = str(
+            first_launch_next_action
+            or first_failed_gate.get("next_action")
+            or first_failed_gate.get("detail")
+            or out.get("operator_queue_first_next_action")
+            or ""
+        ).strip()
 
     out["raw_status"] = raw_status
     out["effective_status"] = effective_status
@@ -10702,7 +11225,7 @@ def bot_fleet_roster(
     paper_live_critical_ready = bool(paper_live_transition.get("critical_ready"))
     paper_live_held_by_bracket_audit = broker_bracket_prop_dry_run_blocked and paper_live_critical_ready
     paper_live_effective_status = "held_by_bracket_audit" if paper_live_held_by_bracket_audit else paper_live_status
-    paper_live_effective_detail = ""
+    paper_live_effective_detail = str(paper_live_transition.get("effective_detail") or "")
     if paper_live_held_by_bracket_audit:
         paper_live_effective_detail = (
             f"held by Bracket Audit: {' or '.join(broker_bracket_action_labels)}"
@@ -11663,6 +12186,9 @@ def _augment_bot_drilldown_payload(payload: dict[str, Any], *, status: Any) -> d
             "retune_focus_active_experiment_summary_line",
             "retune_focus_active_experiment_outcome_line",
             "public_live_retune_focus_active_experiment_outcome_line",
+            "current_live_retune_generated_at_utc",
+            "current_live_retune_focus_active_experiment_outcome_line",
+            "current_live_retune_sync_drift_display",
             "local_retune_focus_active_experiment_outcome_line",
             "retune_focus_active_experiment_drift_display",
         ):
@@ -13399,6 +13925,29 @@ def _sanitize_trade_close_r(row: dict) -> float | None:
             return None
 
 
+def _preferred_fill_ts(row: dict) -> object:
+    return _first_present(
+        row,
+        (
+            "broker_fill_ts",
+            "filled_at",
+            "filled-at",
+            "execution_time",
+            "execution-time",
+            "executed_at",
+            "executed-at",
+            "lastFillTime",
+            "timestamp",
+            "ts",
+            "time",
+            "updated_at",
+            "updated-at",
+            "submitted_at",
+            "created_at",
+        ),
+    )
+
+
 def _closed_outcomes_from_filled_orders(orders: list[dict]) -> dict:
     """Derive same-day closed outcomes from broker filled-order pairs.
 
@@ -13410,11 +13959,8 @@ def _closed_outcomes_from_filled_orders(orders: list[dict]) -> dict:
     lots_by_symbol: dict[str, list[dict[str, float | str]]] = defaultdict(list)
     outcomes: list[dict[str, object]] = []
 
-    def _fill_ts_value(row: dict) -> object:
-        return _first_present(row, ("broker_fill_ts", "filled_at", "ts", "submitted_at"))
-
     def _order_dt(row: dict) -> datetime:
-        parsed = _parse_fill_dt(_fill_ts_value(row))
+        parsed = _parse_fill_dt(_preferred_fill_ts(row))
         return parsed or datetime.min.replace(tzinfo=UTC)
 
     for order in sorted((o for o in orders if isinstance(o, dict)), key=_order_dt):
@@ -13441,7 +13987,7 @@ def _closed_outcomes_from_filled_orders(orders: list[dict]) -> dict:
                     "entry_price": round(entry_price, 8),
                     "exit_price": round(price, 8),
                     "realized_pnl": round(pnl, 6),
-                    "closed_at": _fill_ts_value(order),
+                    "closed_at": _preferred_fill_ts(order),
                 },
             )
             remaining -= close_qty
@@ -15074,24 +15620,22 @@ def _router_fill_results_rows() -> list[dict]:
             continue
         result = payload.get("result") if isinstance(payload.get("result"), dict) else {}
         request = payload.get("request") if isinstance(payload.get("request"), dict) else {}
+        raw = result.get("raw") if isinstance(result.get("raw"), dict) else {}
+        filled_qty_raw, avg_price_raw = _truthful_router_fill_fields(result, raw)
         try:
-            filled_qty = float(result.get("filled_qty") or 0)
+            filled_qty = float(filled_qty_raw or 0)
         except (TypeError, ValueError):
             filled_qty = 0.0
         if filled_qty <= 0:
             continue
         try:
-            avg_price = float(result.get("avg_price") or 0)
+            avg_price = float(avg_price_raw or 0)
         except (TypeError, ValueError):
             avg_price = 0.0
-        ts_value = (
-            payload.get("broker_fill_ts")
-            or result.get("filled_at")
-            or payload.get("result_written_ts")
-            or result.get("ts")
-            or payload.get("ts")
-            or datetime.fromtimestamp(path.stat().st_mtime, tz=UTC).isoformat()
-        )
+        ts_value = _preferred_router_result_ts(payload, result, raw) or datetime.fromtimestamp(
+            path.stat().st_mtime,
+            tz=UTC,
+        ).isoformat()
         flattened = {
             "ts": ts_value,
             "status": "FILLED",
@@ -15132,10 +15676,7 @@ def _normalize_live_fill_row(row: dict, *, source: str, source_path: str | None 
     if source != "blotter" and source != "ibkr_execution" and not (is_fill_status or is_positive_fill):
         return None
 
-    ts_raw = _first_present(
-        row,
-        ("broker_fill_ts", "filled_at", "execution_time", "ts", "time", "submitted_at"),
-    )
+    ts_raw = _preferred_fill_ts(row)
     ts_dt = _parse_fill_dt(ts_raw)
     if ts_dt is None:
         return None
@@ -15411,7 +15952,7 @@ def _alpaca_live_state_snapshot(*, today_start_iso: str) -> dict:
                             "side": o.get("side"),
                             "filled_qty": _float_value(o.get("filled_qty")),
                             "filled_avg_price": _float_value(o.get("filled_avg_price")),
-                            "filled_at": o.get("filled_at"),
+                            "filled_at": _preferred_fill_ts(o),
                             "client_order_id": o.get("client_order_id"),
                         }
                     )
@@ -17783,6 +18324,12 @@ def _local_master_status_payload() -> dict[str, object]:
         or command_center_watchdog_status
     ).strip()
     eta_readiness_status = str(eta_readiness_snapshot.get("status") or "unknown").strip().lower()
+    eta_readiness_brackets_summary = str(
+        eta_readiness_snapshot.get("brackets_summary") or ""
+    ).strip()
+    eta_readiness_brackets_next_action = str(
+        eta_readiness_snapshot.get("brackets_next_action") or ""
+    ).strip()
     eta_readiness_detail = str(
         eta_readiness_snapshot.get("detail")
         or eta_readiness_snapshot.get("summary")
@@ -18098,12 +18645,17 @@ def _local_master_status_payload() -> dict[str, object]:
     paper_daily_loss_advisory_active = bool(paper_live_lane_state["daily_loss_advisory_active"]) and paper_ready and (
         launch_blocked == 0
     )
+    paper_non_authoritative_gateway_host = bool(paper.get("non_authoritative_gateway_host"))
+    paper_first_failed_gate = _first_failed_gate(paper)
+    paper_first_launch_next_action = str(
+        paper.get("operator_queue_first_launch_next_action") or paper.get("operator_queue_first_next_action") or ""
+    ).strip()
     paper_stale_receipt = bool(paper.get("stale_receipt"))
     paper_stale_detail = str(paper.get("stale_detail") or "")
     paper_live_effective_status = (
         "held_by_bracket_audit" if paper_held_by_bracket_audit else str(paper.get("status") or "unknown")
     )
-    paper_live_effective_detail = ""
+    paper_live_effective_detail = str(paper.get("effective_detail") or "")
     if paper_held_by_bracket_audit:
         paper_live_effective_detail = (
             f"held by Bracket Audit: {' or '.join(broker_bracket_action_labels)}"
@@ -18149,6 +18701,8 @@ def _local_master_status_payload() -> dict[str, object]:
     paper_card_status = (
         "YELLOW"
         if paper_stale_receipt
+        else "YELLOW"
+        if paper_non_authoritative_gateway_host and paper_live_effective_status == "blocked"
         else "RED"
         if launch_blocked
         else "YELLOW"
@@ -18159,6 +18713,17 @@ def _local_master_status_payload() -> dict[str, object]:
     )
     if bool(shadow_runtime.get("active")):
         paper_card_status = "YELLOW"
+    paper_card_detail = paper_live_effective_status
+    if paper_stale_receipt and paper_stale_detail:
+        paper_card_detail = paper_stale_detail
+    elif paper_non_authoritative_gateway_host and paper_live_effective_status == "blocked":
+        paper_card_detail = str(
+            paper_first_launch_next_action
+            or paper_first_failed_gate.get("next_action")
+            or paper.get("operator_queue_first_launch_next_action")
+            or paper_first_failed_gate.get("name")
+            or paper_card_detail
+        )
     router_card_status = _router_card_status(router_status)
     broker_card_status = _worst_card_status(router_card_status, target_exit_card_status)
     broker_detail = router_status
@@ -18198,6 +18763,15 @@ def _local_master_status_payload() -> dict[str, object]:
         "blocked_count": int(eta_readiness_snapshot.get("blocked_count") or 0),
         "primary_blocker": str(eta_readiness_snapshot.get("primary_blocker") or ""),
         "primary_action": str(eta_readiness_snapshot.get("primary_action") or ""),
+        "brackets_summary": eta_readiness_brackets_summary,
+        "brackets_next_action": eta_readiness_brackets_next_action,
+        "public_fallback_reason": str(eta_readiness_snapshot.get("public_fallback_reason") or ""),
+        "public_fallback_brackets_summary": str(
+            eta_readiness_snapshot.get("public_fallback_brackets_summary") or ""
+        ),
+        "public_fallback_brackets_next_action": str(
+            eta_readiness_snapshot.get("public_fallback_brackets_next_action") or ""
+        ),
         "checked_at": eta_readiness_snapshot.get("checked_at"),
     }
     daily_stop_reset_audit_system = {
@@ -18214,6 +18788,14 @@ def _local_master_status_payload() -> dict[str, object]:
         "operator_next_action": str(daily_stop_reset_audit.get("operator_next_action") or ""),
         "checked_at": daily_stop_reset_audit.get("generated_at"),
     }
+    vps_ops_summary = (
+        vps_ops_hardening.get("summary") if isinstance(vps_ops_hardening.get("summary"), dict) else {}
+    )
+    vps_ops_fm_control = (
+        vps_ops_hardening.get("force_multiplier_control_plane")
+        if isinstance(vps_ops_hardening.get("force_multiplier_control_plane"), dict)
+        else {}
+    )
     vps_ops_hardening_system = {
         "status": _ops_audit_card_status(
             vps_ops_hardening_status,
@@ -18225,13 +18807,27 @@ def _local_master_status_payload() -> dict[str, object]:
         "effective_status": vps_ops_hardening_status,
         "fresh": bool(vps_ops_hardening.get("fresh")),
         "ready": bool(vps_ops_hardening.get("ready")),
-        "admin_ai_status": str(
-            (
-                vps_ops_hardening.get("summary")
-                if isinstance(vps_ops_hardening.get("summary"), dict)
-                else {}
-            ).get("admin_ai_status")
-            or ""
+        "admin_ai_status": str(vps_ops_summary.get("admin_ai_status") or ""),
+        "service_runtime_drift": _string_list(vps_ops_summary.get("service_runtime_drift")),
+        "service_config_drift": _string_list(vps_ops_summary.get("service_config_drift")),
+        "missing_dashboard_durable": _string_list(vps_ops_summary.get("missing_dashboard_durable")),
+        "missing_force_multiplier_durable": _string_list(
+            vps_ops_summary.get("missing_force_multiplier_durable")
+        ),
+        "missing_paper_live_durable": _string_list(vps_ops_summary.get("missing_paper_live_durable")),
+        "missing_data_pipeline": _string_list(vps_ops_summary.get("missing_data_pipeline")),
+        "stale_artifact_backed_dashboard_durable": _string_list(
+            vps_ops_summary.get("stale_artifact_backed_dashboard_durable")
+        ),
+        "stale_artifact_backed_force_multiplier_durable": _string_list(
+            vps_ops_summary.get("stale_artifact_backed_force_multiplier_durable")
+        ),
+        "force_multiplier_control_plane": vps_ops_fm_control,
+        "force_multiplier_status": str(vps_ops_fm_control.get("status") or ""),
+        "force_multiplier_next_command": str(vps_ops_fm_control.get("next_command") or ""),
+        "operator_next_action": str(
+            vps_ops_fm_control.get("detail")
+            or vps_ops_hardening_detail
         ),
         "checked_at": vps_ops_hardening.get("generated_at"),
     }
@@ -18274,7 +18870,19 @@ def _local_master_status_payload() -> dict[str, object]:
         "daily_stop_reset_audit": daily_stop_reset_audit,
         "vps_ops_hardening": vps_ops_hardening,
         "hardening": vps_ops_hardening,
+        "eta_readiness_status": str(eta_readiness_snapshot.get("status") or ""),
+        "eta_readiness_detail": str(eta_readiness_snapshot.get("detail") or ""),
+        "eta_readiness_primary_blocker": str(eta_readiness_snapshot.get("primary_blocker") or ""),
+        "eta_readiness_primary_action": str(eta_readiness_snapshot.get("primary_action") or ""),
         "public_fallback_reason": str(eta_readiness_snapshot.get("public_fallback_reason") or ""),
+        "public_fallback_brackets_summary": str(
+            eta_readiness_snapshot.get("public_fallback_brackets_summary") or ""
+        ),
+        "public_fallback_brackets_next_action": str(
+            eta_readiness_snapshot.get("public_fallback_brackets_next_action") or ""
+        ),
+        "brackets_summary": str(eta_readiness_snapshot.get("brackets_summary") or ""),
+        "brackets_next_action": str(eta_readiness_snapshot.get("brackets_next_action") or ""),
         "public_live_broker_ready": bool(eta_readiness_snapshot.get("public_live_broker_ready")),
         "public_live_broker_snapshot_state": str(
             eta_readiness_snapshot.get("public_live_broker_snapshot_state") or ""
@@ -18309,6 +18917,9 @@ def _local_master_status_payload() -> dict[str, object]:
         "dashboard_api_runtime_drift_display": str(
             eta_readiness_snapshot.get("dashboard_api_runtime_drift_display") or ""
         ),
+        "dashboard_api_runtime_probe_display": str(
+            eta_readiness_snapshot.get("dashboard_api_runtime_probe_display") or ""
+        ),
         "dashboard_api_runtime_refresh_command": str(
             eta_readiness_snapshot.get("dashboard_api_runtime_refresh_command") or ""
         ),
@@ -18323,6 +18934,9 @@ def _local_master_status_payload() -> dict[str, object]:
         ),
         "current_live_broker_open_order_count": int(
             eta_readiness_snapshot.get("current_live_broker_open_order_count") or 0
+        ),
+        "current_live_broker_degraded_display": str(
+            eta_readiness_snapshot.get("current_live_broker_degraded_display") or ""
         ),
         "current_live_broker_open_order_drift_display": str(
             eta_readiness_snapshot.get("current_live_broker_open_order_drift_display") or ""
@@ -18339,8 +18953,36 @@ def _local_master_status_payload() -> dict[str, object]:
         "public_fallback_stale_flat_open_order_relation_display": str(
             eta_readiness_snapshot.get("public_fallback_stale_flat_open_order_relation_display") or ""
         ),
+        "public_live_retune_generated_at_utc": str(
+            eta_readiness_snapshot.get("public_live_retune_generated_at_utc") or ""
+        ),
         "public_live_retune_focus_active_experiment_outcome_line": str(
             eta_readiness_snapshot.get("public_live_retune_focus_active_experiment_outcome_line") or ""
+        ),
+        "public_live_retune_sync_drift_display": str(
+            eta_readiness_snapshot.get("public_live_retune_sync_drift_display") or ""
+        ),
+        "current_live_retune_generated_at_utc": str(
+            eta_readiness_snapshot.get("current_live_retune_generated_at_utc") or ""
+        ),
+        "current_live_retune_focus_active_experiment_outcome_line": str(
+            eta_readiness_snapshot.get("current_live_retune_focus_active_experiment_outcome_line") or ""
+        ),
+        "current_live_retune_sync_drift_display": str(
+            eta_readiness_snapshot.get("current_live_retune_sync_drift_display") or ""
+        ),
+        "dashboard_api_runtime_public_live_retune_generated_at_utc": str(
+            eta_readiness_snapshot.get("dashboard_api_runtime_public_live_retune_generated_at_utc") or ""
+        ),
+        "dashboard_api_runtime_public_live_retune_sync_drift_display": str(
+            eta_readiness_snapshot.get("dashboard_api_runtime_public_live_retune_sync_drift_display")
+            or ""
+        ),
+        "dashboard_api_runtime_retune_drift_display": str(
+            eta_readiness_snapshot.get("dashboard_api_runtime_retune_drift_display") or ""
+        ),
+        "local_retune_generated_at_utc": str(
+            eta_readiness_snapshot.get("local_retune_generated_at_utc") or ""
         ),
         "local_retune_focus_active_experiment_outcome_line": str(
             eta_readiness_snapshot.get("local_retune_focus_active_experiment_outcome_line") or ""
@@ -18461,7 +19103,7 @@ def _local_master_status_payload() -> dict[str, object]:
             },
             "paper_live": {
                 "status": paper_card_status,
-                "detail": paper_stale_detail if paper_stale_receipt and paper_stale_detail else paper_live_effective_status,
+                "detail": paper_card_detail,
                 "source": "paper_live_transition",
                 "critical_ready": paper_ready,
                 "raw_status": str(paper.get("status") or "unknown"),
@@ -18469,6 +19111,8 @@ def _local_master_status_payload() -> dict[str, object]:
                 "effective_detail": paper_live_effective_detail,
                 "stale_receipt": paper_stale_receipt,
                 "stale_detail": paper_stale_detail,
+                "non_authoritative_gateway_host": paper_non_authoritative_gateway_host,
+                "first_launch_next_action": paper_first_launch_next_action,
                 "held_by_bracket_audit": paper_held_by_bracket_audit,
                 "held_by_daily_loss_stop": paper_held_by_daily_loss_stop,
                 "daily_loss_killswitch": daily_loss_killswitch,

@@ -35,17 +35,19 @@ gate silently falls through to stale policy.
 `scripts/jarvis_live.py` is the long-running daemon that keeps JARVIS
 alive. It:
 
-1. Builds a `JarvisContextBuilder` from `docs/premarket_inputs.json`
-   (hot-reloadable -- operator can overwrite the file and the next tick
-   picks it up).
+1. Builds a `JarvisContextBuilder` from
+   `var/eta_engine/state/premarket_inputs.json`, falling back to
+   `docs/premarket_inputs.json` when the canonical file is absent
+   (hot-reloadable -- operator can overwrite the active file and the next
+   tick picks it up).
 2. Wraps the context engine in `JarvisSupervisor` so staleness /
    dominance / flatline / invalid are all caught.
 3. Fans out health alerts via Telegram / Discord / Slack when env
    credentials are present (`TELEGRAM_BOT_TOKEN`, `DISCORD_WEBHOOK_URL`,
    `SLACK_WEBHOOK_URL`). Without env -> dry-run mode (no transport).
 4. Emits per-tick health to:
-   - `docs/jarvis_live_health.json` (latest only)
-   - `docs/jarvis_live_log.jsonl` (append-only history)
+   - `var/eta_engine/state/jarvis_live_health.json` (latest only)
+   - `var/eta_engine/state/jarvis_live_log.jsonl` (append-only history)
 
 When JARVIS health is GREEN, the bots' `request_approval()` calls
 return immediately. When it goes YELLOW/RED (staleness, dominance,
@@ -147,7 +149,7 @@ live trading.
 # Start of session (one terminal, leave running):
 cd C:\EvolutionaryTradingAlgo\eta_engine
 python scripts/jarvis_live.py
-# Long-running. Tail docs/jarvis_live_health.json for state.
+# Long-running. Tail var/eta_engine/state/jarvis_live_health.json for state.
 
 # Open a SECOND terminal:
 cd C:\EvolutionaryTradingAlgo\eta_engine
@@ -161,10 +163,11 @@ python scripts/live_sim.py --variant r5_real_wide_target --n-days 5
 # data/live_sim/journal.sqlite (the canonical path the gate chain reads).
 ```
 
-End of session: `Ctrl+C` JARVIS, copy any artifacts you care about
-out of `docs/btc_live/` and `data/live_sim/`. State files (kill
-switch latch, consistency guard, trailing DD tracker) persist across
-sessions and are read by the next boot.
+End of session: `Ctrl+C` JARVIS, then review any BTC paper/live
+artifacts under `var/eta_engine/state/btc_live/` and MNQ paper artifacts
+under `data/live_sim/`. State files (kill switch latch, consistency
+guard, trailing DD tracker) persist across sessions and are read by the
+next boot.
 
 ---
 

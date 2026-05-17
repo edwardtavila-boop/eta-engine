@@ -63,6 +63,17 @@ FORBIDDEN_STAGED_PATHS = frozenset(
         "docs/alerts_log.jsonl",
         "docs/runtime_log.jsonl",
         "docs/drift_watchdog.jsonl",
+        "docs/premarket_latest.json",
+        "docs/premarket_latest.txt",
+        "docs/premarket_log.jsonl",
+        "docs/monthly_review_latest.json",
+        "docs/monthly_review_latest.txt",
+        "docs/weekly_review_log.json",
+        "docs/weekly_review_latest.json",
+        "docs/weekly_review_latest.txt",
+        "docs/weekly_checklist_latest.json",
+        "docs/weekly_checklist_latest.txt",
+        "docs/weekly_checklist_template.json",
     }
 )
 FORBIDDEN_STAGED_PREFIXES = ("docs/live_data/",)
@@ -70,6 +81,14 @@ FORBIDDEN_STAGED_REGEXES = (
     re.compile(
         r"^docs/(broker_connections|btc_live|btc_paper|btc_inventory)/.*_20\d{6}T.*Z\.json$",
     ),
+    re.compile(r"^docs/broker_connections/.+_latest\.json$"),
+    re.compile(r"^docs/btc_paper/.+\.(json|jsonl)$"),
+    re.compile(r"^docs/btc_inventory/.+\.(json|jsonl)$"),
+    re.compile(r"^docs/monthly_review_\d{4}_\d{2}\.(json|txt)$"),
+    # Historical BTC docs keep README warning markers, but checked-in JSON/JSONL
+    # runtime snapshots must not become the source of truth again.
+    re.compile(r"^docs/btc_live/(btc_live_(latest|gate_decision)\.json|btc_live_decisions\.jsonl)$"),
+    re.compile(r"^docs/btc_live/(broker_fleet|ecosystem|control|broker_connections)/.+\.(json|jsonl)$"),
 )
 STALE_PATH_LINT_EXTENSIONS = frozenset(
     {
@@ -127,6 +146,42 @@ def _forbidden_staged_files_from_lines(lines: list[str]) -> list[str]:
     ]
 
 
+def _forbidden_staged_guidance_lines(paths: list[str]) -> list[str]:
+    """Return operator guidance for forbidden staged runtime artifacts."""
+    guidance = [
+        "[pre-commit]   leave runtime journal/state files unstaged; canonical live writes belong under var/eta_engine/state or logs/eta_engine.",
+    ]
+    if any(path.startswith("docs/btc_live/") for path in paths):
+        guidance.append(
+            "[pre-commit]   BTC docs snapshots are historical only; keep README warning markers, but write live BTC state under var/eta_engine/state/btc_live or var/eta_engine/state/broker_fleet.",
+        )
+    if any(path.startswith("docs/btc_paper/") for path in paths):
+        guidance.append(
+            "[pre-commit]   BTC paper docs snapshots are historical only; keep README warning markers, but write live BTC paper state under var/eta_engine/state/btc_paper or var/eta_engine/state/broker_fleet.",
+        )
+    if any(path.startswith("docs/broker_connections/") for path in paths):
+        guidance.append(
+            "[pre-commit]   Broker connection docs snapshots are generated probe artifacts; keep README/docs changes only, leave *_latest.json or timestamped probe JSON unstaged, and write fresh reports under var/eta_engine/state/broker_connections.",
+        )
+    if any(path.startswith("docs/premarket_") for path in paths):
+        guidance.append(
+            "[pre-commit]   Premarket docs snapshots are historical only; keep operator inputs under docs/premarket_inputs.json when needed, but write fresh premarket outputs under var/eta_engine/state/premarket.",
+        )
+    if any(path.startswith("docs/monthly_review") for path in paths):
+        guidance.append(
+            "[pre-commit]   Monthly review docs snapshots are historical only; write fresh monthly review outputs under var/eta_engine/state/monthly_review.",
+        )
+    if any(path.startswith("docs/weekly_review") or path.startswith("docs/weekly_checklist") for path in paths):
+        guidance.append(
+            "[pre-commit]   Weekly review and checklist docs snapshots are historical only; keep explicit operator answers JSON where you manage it, but write fresh weekly review outputs under var/eta_engine/state/weekly_review.",
+        )
+    if any(path.startswith("docs/btc_inventory/") for path in paths):
+        guidance.append(
+            "[pre-commit]   BTC inventory docs are historical artifact catalogs; keep README/docs changes only, and leave checked-in inventory JSON or JSONL snapshots unstaged.",
+        )
+    return guidance
+
+
 def _forbidden_staged_check(*, root: Path) -> int:
     """Block tracked runtime artifacts from slipping into source history."""
     forbidden = _forbidden_staged_files_from_lines(_staged_files(root=root))
@@ -138,10 +193,8 @@ def _forbidden_staged_check(*, root: Path) -> int:
     )
     for path in forbidden:
         print(f"[pre-commit]   {path}", file=sys.stderr)
-    print(
-        "[pre-commit]   leave runtime journal/state files unstaged; canonical live writes belong under var/.",
-        file=sys.stderr,
-    )
+    for line in _forbidden_staged_guidance_lines(forbidden):
+        print(line, file=sys.stderr)
     return 4
 
 

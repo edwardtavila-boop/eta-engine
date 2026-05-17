@@ -8,7 +8,7 @@ What it does
 ------------
 Invokes :func:`eta_engine.funnel.integrations.build_integrations_report`
 with an optional live-status overlay (``--live-status FILE``) and writes
-two outputs under ``docs/``:
+two outputs under ``var/eta_engine/state/integrations/``:
 
   * ``integrations_latest.json``   -- full IntegrationsReport (JSON)
   * ``integrations_latest.txt``    -- 80-col human summary
@@ -22,8 +22,8 @@ Usage
 -----
     python -m eta_engine.scripts.build_integrations_report
     python -m eta_engine.scripts.build_integrations_report \
-        --out-dir docs/ \
-        --live-status docs/integrations_live_status.json
+        --out-dir var/eta_engine/state/integrations/ \
+        --live-status var/eta_engine/state/integrations/integrations_live_status.json
 
 The ``--live-status`` file is an optional JSON object merged on top of
 the canonical topology. Known keys (all optional):
@@ -56,9 +56,10 @@ from eta_engine.funnel.integrations import (  # noqa: E402
     build_integrations_report,
     render_text,
 )
+from eta_engine.scripts import workspace_roots  # noqa: E402
 
-DEFAULT_OUT_DIR = ROOT / "docs"
-DEFAULT_LIVE_STATUS = ROOT / "docs" / "integrations_live_status.json"
+DEFAULT_OUT_DIR = workspace_roots.ETA_INTEGRATIONS_REPORT_DIR
+DEFAULT_LIVE_STATUS = workspace_roots.default_integrations_live_status_path()
 
 logger = logging.getLogger("build_integrations_report")
 
@@ -110,7 +111,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--out-dir",
         type=Path,
         default=DEFAULT_OUT_DIR,
-        help="Directory for integrations_latest.json + .txt (default: docs/).",
+        help="Directory for integrations_latest.json + .txt (default: var/eta_engine/state/integrations/).",
     )
     p.add_argument(
         "--live-status",

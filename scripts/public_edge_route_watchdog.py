@@ -21,6 +21,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+import urllib.parse
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -50,13 +51,8 @@ EXPECTED_SUMMARY_FIELDS = (
     "truth_status",
 )
 REVERSE_PROXY_RE = re.compile(r"(?im)^(\s*reverse_proxy\s+)([^\s{]+)(.*)$")
-DEFAULT_PUBLIC_URL = os.getenv("ETA_PUBLIC_EDGE_URL", "http://127.0.0.1:8081/api/bot-fleet")
-DEFAULT_CANONICAL_URL = os.getenv(
-    "ETA_PUBLIC_EDGE_CANONICAL_URL",
-    "http://127.0.0.1:8421/api/bot-fleet",
-)
-DEFAULT_EXPECTED_TARGET = os.getenv("ETA_PUBLIC_EDGE_EXPECTED_TARGET", "127.0.0.1:8421")
-DEFAULT_TIMEOUT_S = float(os.getenv("ETA_PUBLIC_EDGE_TIMEOUT_S", "8"))
+DEFAULT_PUBLIC_HOSTNAME = os.getenv("ETA_PUBLIC_EDGE_HOSTNAME", "ops.evolutionarytradingalgo.com")
+DEFAULT_TIMEOUT_S = float(os.getenv("ETA_PUBLIC_EDGE_TIMEOUT_S", "20"))
 DEFAULT_RESTART_DELAY_S = float(os.getenv("ETA_PUBLIC_EDGE_RESTART_DELAY_S", "3"))
 DEFAULT_SERVICE_NAME = os.getenv("ETA_PUBLIC_EDGE_SERVICE_NAME", "FirmCommandCenterEdge")
 DEFAULT_CADDYFILE_PATH = Path(
@@ -70,9 +66,48 @@ DEFAULT_CADDY_EXE = Path(
     os.getenv("ETA_PUBLIC_EDGE_CADDY_EXE", "").strip()
     or workspace_roots.WORKSPACE_ROOT / "firm_command_center" / "services" / "caddy.exe"
 )
+DEFAULT_CLOUDFLARED_CONFIG_PATH = Path(
+    os.getenv("ETA_PUBLIC_EDGE_CLOUDFLARED_CONFIG", "").strip()
+    or workspace_roots.WORKSPACE_ROOT / "var" / "cloudflare" / "eta-engine-cloudflared.yml"
+)
+DEFAULT_CLOUDFLARED_SERVICE_NAME = os.getenv("ETA_PUBLIC_EDGE_CLOUDFLARED_SERVICE_NAME", "Cloudflared")
+DEFAULT_DIRECT_TARGET = os.getenv("ETA_PUBLIC_EDGE_DIRECT_TARGET", "127.0.0.1:8000")
 DEFAULT_HEARTBEAT_PATH = (
     workspace_roots.ETA_RUNTIME_STATE_DIR / "public_edge_route_watchdog_heartbeat.json"
 )
+
+
+def _normalize_service_target(raw_value: str | None) -> str | None:
+    """Normalize a route target to ``host:port`` when possible."""
+    value = str(raw_value or "").strip().strip('"').strip("'")
+    if not value or value.startswith("http_status:"):
+        return None
+    parsed = urllib.parse.urlparse(value)
+    if parsed.scheme and parsed.hostname:
+        if parsed.port is not None:
+            return f"{parsed.hostname}:{parsed.port}"
+        if parsed.scheme == "https":
+            return f"{parsed.hostname}:443"
+        if parsed.scheme == "http":
+            return f"{parsed.hostname}:80"
+    if "://" not in value:
+        return value
+    return None
+
+
+def _service_url_from_target(target: str, *, path: str = "/api/bot-fleet") -> str:
+    """Convert ``host:port`` into a local HTTP probe URL."""
+    return f"http://{target}{path}"
+
+
+def _cloudflare_mode_active(
+    *,
+    caddyfile_path: Path = DEFAULT_CADDYFILE_PATH,
+    cloudflared_config_path: Path = DEFAULT_CLOUDFLARED_CONFIG_PATH,
+    public_hostname: str = DEFAULT_PUBLIC_HOSTNAME,
+) -> bool:
+    target, reason = read_cloudflare_ingress_target(cloudflared_config_path, public_hostname)
+    return target is not None and reason == "ok"
 
 
 @dataclass(slots=True)
@@ -218,6 +253,84 @@ def read_reverse_proxy_target(caddyfile_path: Path) -> tuple[str | None, str]:
     return match.group(2).strip(), "ok"
 
 
+def read_cloudflare_ingress_target(
+    cloudflared_config_path: Path,
+    public_hostname: str,
+) -> tuple[str | None, str]:
+    """Return the configured Cloudflare ingress target for one hostname."""
+    path = Path(cloudflared_config_path)
+    if not path.exists():
+        return None, "missing_cloudflared_config"
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError as exc:
+        return None, f"read_cloudflared_failed:{type(exc).__name__}:{exc}"
+
+    current_hostname: str | None = None
+    for raw_line in lines:
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("- hostname:") or line.startswith("hostname:"):
+            current_hostname = line.split(":", 1)[1].strip().strip('"').strip("'")
+            continue
+        if line.startswith("service:") and current_hostname == public_hostname:
+            target = _normalize_service_target(line.split(":", 1)[1].strip())
+            if target is None:
+                return None, "invalid_cloudflared_service"
+            return target, "ok"
+    return None, "missing_cloudflared_hostname"
+
+
+def read_active_route_target(
+    caddyfile_path: Path,
+    *,
+    cloudflared_config_path: Path = DEFAULT_CLOUDFLARED_CONFIG_PATH,
+    public_hostname: str = DEFAULT_PUBLIC_HOSTNAME,
+) -> tuple[str | None, str]:
+    """Read the active route target from legacy Caddy or direct tunnel config."""
+    direct_target, direct_reason = read_cloudflare_ingress_target(cloudflared_config_path, public_hostname)
+    if direct_target is not None:
+        return direct_target, "cloudflared_ingress_ok"
+    target, reason = read_reverse_proxy_target(caddyfile_path)
+    if target is not None:
+        return target, reason
+    if reason not in {"missing_caddyfile", "missing_reverse_proxy"}:
+        return target, reason
+    return None, direct_reason if direct_reason != "missing_cloudflared_config" else reason
+
+
+def _default_public_edge_url() -> str:
+    explicit = os.getenv("ETA_PUBLIC_EDGE_URL", "").strip()
+    if explicit:
+        return explicit
+    direct_target, direct_reason = read_cloudflare_ingress_target(
+        DEFAULT_CLOUDFLARED_CONFIG_PATH,
+        DEFAULT_PUBLIC_HOSTNAME,
+    )
+    if direct_target is not None and direct_reason == "ok":
+        return _service_url_from_target(direct_target, path="/api/dashboard/live-summary")
+    return "http://127.0.0.1:8081/api/dashboard/live-summary"
+
+
+def _default_canonical_edge_url() -> str:
+    return os.getenv("ETA_PUBLIC_EDGE_CANONICAL_URL", "http://127.0.0.1:8421/api/dashboard/live-summary")
+
+
+def _default_expected_target() -> str:
+    explicit = os.getenv("ETA_PUBLIC_EDGE_EXPECTED_TARGET", "").strip()
+    if explicit:
+        return explicit
+    if _cloudflare_mode_active():
+        return DEFAULT_DIRECT_TARGET
+    return "127.0.0.1:8421"
+
+
+DEFAULT_PUBLIC_URL = _default_public_edge_url()
+DEFAULT_CANONICAL_URL = _default_canonical_edge_url()
+DEFAULT_EXPECTED_TARGET = _default_expected_target()
+
+
 def evaluate_route(
     *,
     public_probe: EndpointProbe,
@@ -305,26 +418,120 @@ def restart_edge_service(service_name: str = DEFAULT_SERVICE_NAME) -> tuple[bool
     return False, f"service_restart_rc={result.returncode}:{message[:240]}"
 
 
+def rewrite_cloudflare_ingress_target(
+    cloudflared_config_path: Path,
+    *,
+    public_hostname: str,
+    expected_target: str,
+) -> tuple[bool, str | None, str | None, str | None, str]:
+    """Rewrite one Cloudflare ingress service target in-place."""
+    path = Path(cloudflared_config_path)
+    if not path.exists():
+        return False, None, None, None, "missing_cloudflared_config"
+    try:
+        original_lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError as exc:
+        return False, None, None, None, f"read_cloudflared_failed:{type(exc).__name__}:{exc}"
+
+    lines = list(original_lines)
+    current_hostname: str | None = None
+    previous_target: str | None = None
+    line_index: int | None = None
+    for idx, raw_line in enumerate(lines):
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("- hostname:") or line.startswith("hostname:"):
+            current_hostname = line.split(":", 1)[1].strip().strip('"').strip("'")
+            continue
+        if line.startswith("service:") and current_hostname == public_hostname:
+            previous_target = _normalize_service_target(line.split(":", 1)[1].strip())
+            line_index = idx
+            break
+
+    if line_index is None or previous_target is None:
+        return False, previous_target, previous_target, None, "missing_cloudflared_hostname"
+
+    if previous_target == expected_target:
+        return True, previous_target, previous_target, None, "cloudflared_unchanged"
+
+    indent = lines[line_index][: len(lines[line_index]) - len(lines[line_index].lstrip())]
+    updated_lines = list(lines)
+    updated_lines[line_index] = f"{indent}service: http://{expected_target}"
+    stamp = datetime.now(UTC).strftime("%Y%m%d%H%M%S")
+    backup = Path(f"{path}.route_watchdog_backup.{stamp}")
+    try:
+        backup.write_text("\n".join(original_lines) + "\n", encoding="utf-8")
+        path.write_text("\n".join(updated_lines) + "\n", encoding="utf-8")
+    except OSError as exc:
+        return False, previous_target, previous_target, None, f"write_cloudflared_failed:{type(exc).__name__}:{exc}"
+    return True, previous_target, expected_target, str(backup), "cloudflared_rewrite_ok"
+
+
 def repair_public_edge_route(
     *,
     caddyfile_path: Path = DEFAULT_CADDYFILE_PATH,
     expected_target: str = DEFAULT_EXPECTED_TARGET,
     caddy_exe: Path = DEFAULT_CADDY_EXE,
     service_name: str = DEFAULT_SERVICE_NAME,
+    cloudflared_config_path: Path = DEFAULT_CLOUDFLARED_CONFIG_PATH,
+    public_hostname: str = DEFAULT_PUBLIC_HOSTNAME,
+    cloudflared_service_name: str = DEFAULT_CLOUDFLARED_SERVICE_NAME,
     validate_fn: Callable[[Path, Path], tuple[bool, str]] = validate_caddyfile,
     restart_fn: Callable[[str], tuple[bool, str]] = restart_edge_service,
 ) -> RepairResult:
     """Normalize the Caddy reverse proxy target and restart the edge service."""
+    direct_target, direct_reason = read_cloudflare_ingress_target(
+        Path(cloudflared_config_path),
+        public_hostname,
+    )
+    if direct_target is not None:
+        changed, previous_target, current_target, backup_path, rewrite_reason = rewrite_cloudflare_ingress_target(
+            cloudflared_config_path,
+            public_hostname=public_hostname,
+            expected_target=expected_target,
+        )
+        restart_ok, restart_reason = restart_fn(cloudflared_service_name)
+        return RepairResult(
+            ok=changed and restart_ok,
+            changed_caddyfile=bool(previous_target != current_target),
+            previous_target=previous_target,
+            current_target=current_target,
+            restart_ok=restart_ok,
+            reason="ok" if changed and restart_ok else "restart_failed",
+            backup_path=backup_path,
+            validation_reason=rewrite_reason if direct_reason == "ok" else direct_reason,
+            restart_reason=restart_reason,
+        )
+
     path = Path(caddyfile_path)
     previous_target, target_reason = read_reverse_proxy_target(path)
     if previous_target is None:
+        changed, previous_target, current_target, backup_path, rewrite_reason = rewrite_cloudflare_ingress_target(
+            cloudflared_config_path,
+            public_hostname=public_hostname,
+            expected_target=expected_target,
+        )
+        if rewrite_reason in {"missing_cloudflared_config", "missing_cloudflared_hostname"}:
+            return RepairResult(
+                ok=False,
+                changed_caddyfile=False,
+                previous_target=None,
+                current_target=None,
+                restart_ok=False,
+                reason=target_reason if target_reason != "missing_caddyfile" else rewrite_reason,
+            )
+        restart_ok, restart_reason = restart_fn(cloudflared_service_name)
         return RepairResult(
-            ok=False,
-            changed_caddyfile=False,
-            previous_target=None,
-            current_target=None,
-            restart_ok=False,
-            reason=target_reason,
+            ok=changed and restart_ok,
+            changed_caddyfile=bool(previous_target != current_target),
+            previous_target=previous_target,
+            current_target=current_target,
+            restart_ok=restart_ok,
+            reason="ok" if changed and restart_ok else "restart_failed",
+            backup_path=backup_path,
+            validation_reason=rewrite_reason,
+            restart_reason=restart_reason,
         )
 
     try:
@@ -428,17 +635,28 @@ def run_once(
     caddyfile_path: Path = DEFAULT_CADDYFILE_PATH,
     caddy_exe: Path = DEFAULT_CADDY_EXE,
     service_name: str = DEFAULT_SERVICE_NAME,
+    cloudflared_config_path: Path = DEFAULT_CLOUDFLARED_CONFIG_PATH,
+    public_hostname: str = DEFAULT_PUBLIC_HOSTNAME,
+    cloudflared_service_name: str = DEFAULT_CLOUDFLARED_SERVICE_NAME,
     timeout_s: float = DEFAULT_TIMEOUT_S,
     restart_delay_s: float = DEFAULT_RESTART_DELAY_S,
     heartbeat_path: Path = DEFAULT_HEARTBEAT_PATH,
     probe_fn: Callable[[str], EndpointProbe] | None = None,
-    inspect_target_fn: Callable[[Path], tuple[str | None, str]] = read_reverse_proxy_target,
+    inspect_target_fn: Callable[[Path], tuple[str | None, str]] | None = None,
     repair_fn: Callable[..., RepairResult] = repair_public_edge_route,
 ) -> RouteWatchdogDecision:
     """Run one public-edge route watchdog tick and write the canonical heartbeat."""
     if probe_fn is None:
         def probe_fn(url: str) -> EndpointProbe:
             return probe_endpoint(url, timeout_s=timeout_s)
+
+    if inspect_target_fn is None:
+        def inspect_target_fn(_path: Path) -> tuple[str | None, str]:
+            return read_active_route_target(
+                Path(caddyfile_path),
+                cloudflared_config_path=Path(cloudflared_config_path),
+                public_hostname=public_hostname,
+            )
 
     target_before, _ = inspect_target_fn(Path(caddyfile_path))
     public_probe = probe_fn(public_url)
@@ -468,6 +686,9 @@ def run_once(
             expected_target=expected_target,
             caddy_exe=Path(caddy_exe),
             service_name=service_name,
+            cloudflared_config_path=Path(cloudflared_config_path),
+            public_hostname=public_hostname,
+            cloudflared_service_name=cloudflared_service_name,
         )
         decision.repair = repair
         if repair.ok and restart_delay_s > 0:
@@ -513,6 +734,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--caddyfile", type=Path, default=DEFAULT_CADDYFILE_PATH)
     parser.add_argument("--caddy-exe", type=Path, default=DEFAULT_CADDY_EXE)
     parser.add_argument("--service-name", default=DEFAULT_SERVICE_NAME)
+    parser.add_argument("--cloudflared-config", type=Path, default=DEFAULT_CLOUDFLARED_CONFIG_PATH)
+    parser.add_argument("--public-hostname", default=DEFAULT_PUBLIC_HOSTNAME)
+    parser.add_argument("--cloudflared-service-name", default=DEFAULT_CLOUDFLARED_SERVICE_NAME)
     parser.add_argument("--timeout-s", type=float, default=DEFAULT_TIMEOUT_S)
     parser.add_argument("--restart-delay-s", type=float, default=DEFAULT_RESTART_DELAY_S)
     parser.add_argument("--heartbeat-path", type=Path, default=DEFAULT_HEARTBEAT_PATH)
@@ -534,6 +758,9 @@ def main(argv: list[str] | None = None) -> int:
             caddyfile_path=args.caddyfile,
             caddy_exe=args.caddy_exe,
             service_name=args.service_name,
+            cloudflared_config_path=args.cloudflared_config,
+            public_hostname=args.public_hostname,
+            cloudflared_service_name=args.cloudflared_service_name,
             timeout_s=args.timeout_s,
             restart_delay_s=args.restart_delay_s,
             heartbeat_path=args.heartbeat_path,

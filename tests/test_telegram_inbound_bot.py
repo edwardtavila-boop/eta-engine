@@ -602,18 +602,11 @@ def test_cmd_ack_removes_matching_key(
         + "\n",
         encoding="utf-8",
     )
-    monkeypatch.setattr(telegram_inbound_bot, "_WORKSPACE", tmp_path.parent)
-    # The handler hard-codes _WORKSPACE / "var" / "anomaly_watcher.jsonl"
-    # so monkeypatch the lookup directly via _WORKSPACE; recreate the
-    # expected path under tmp_path.parent.
-    var_dir = tmp_path.parent / "var"
-    var_dir.mkdir(parents=True, exist_ok=True)
-    target = var_dir / "anomaly_watcher.jsonl"
-    target.write_text(hits_log.read_text(encoding="utf-8"), encoding="utf-8")
+    monkeypatch.setattr(telegram_inbound_bot, "_ANOMALY_HITS_LOG", hits_log)
 
     reply = telegram_inbound_bot.dispatch_command("/ack loss_streak:bot_a:3")
     assert "Cleared" in reply or "cleared" in reply
-    lines = target.read_text(encoding="utf-8").strip().split("\n")
+    lines = hits_log.read_text(encoding="utf-8").strip().split("\n")
     assert len(lines) == 1
     assert "bot_b" in lines[0]
 
@@ -932,10 +925,10 @@ def test_cmd_killall_writes_state_with_reason(
 ) -> None:
     from eta_engine.scripts import telegram_inbound_bot
 
-    monkeypatch.setattr(telegram_inbound_bot, "_WORKSPACE", tmp_path)
+    state_path = tmp_path / "var" / "eta_engine" / "state" / "jarvis_intel" / "hermes_state.json"
+    monkeypatch.setattr(telegram_inbound_bot, "_HERMES_STATE_PATH", state_path)
     reply = telegram_inbound_bot.dispatch_command("/killall approaching daily loss limit")
     assert "KILL SWITCH ENGAGED" in reply
-    state_path = tmp_path / "var" / "eta_engine" / "state" / "jarvis_intel" / "hermes_state.json"
     assert state_path.exists()
     state = json.loads(state_path.read_text(encoding="utf-8"))
     assert state["kill_all"] is True

@@ -989,6 +989,74 @@ def test_propagate_close_uses_live_regime_label(tmp_path, monkeypatch) -> None:
 # ─── Sage-driven side override (LONG/SHORT per market regime) ─────
 
 
+def test_propagate_close_threads_entry_fill_latency_into_close_extra(tmp_path) -> None:
+    from unittest.mock import patch
+
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        BotInstance,
+        FillRecord,
+        JarvisStrategySupervisor,
+        SupervisorConfig,
+    )
+
+    cfg = SupervisorConfig()
+    cfg.state_dir = tmp_path / "state"
+    sup = JarvisStrategySupervisor(cfg=cfg)
+
+    bot = BotInstance(
+        bot_id="mnq_latency",
+        symbol="MNQ1",
+        strategy_kind="orb_sage_gated",
+        direction="long",
+        cash=5000.0,
+    )
+    rec = FillRecord(
+        bot_id="mnq_latency",
+        signal_id="sig-latency",
+        side="SELL",
+        symbol="MNQ1",
+        qty=1.0,
+        fill_price=21025.0,
+        fill_ts="2026-05-16T14:00:00Z",
+        realized_r=0.25,
+        realized_pnl=12.5,
+        paper=False,
+        note="",
+    )
+    entry_snapshot = {
+        "side": "BUY",
+        "entry_price": 21000.0,
+        "qty": 1.0,
+        "signal_id": "sig-latency",
+        "entry_fill_age_s": 185.0,
+        "entry_fill_latency_source": "broker_router_fill_result",
+        "entry_fill_age_precision": "broker_fill_ts",
+        "broker_fill_ts": "2026-05-16T13:56:55Z",
+        "broker_router_result_ts": "2026-05-16T13:57:05Z",
+        "fill_to_adopt_delay_s": 65.0,
+        "fill_result_write_delay_s": 10.0,
+    }
+
+    with (
+        patch.object(
+            sup,
+            "_load_live_regime",
+            return_value={"primary_regime": "trending_up", "macro_bias": "risk_on"},
+        ),
+        patch("eta_engine.brain.jarvis_v3.feedback_loop.close_trade") as mock_close,
+    ):
+        sup._propagate_close(bot, rec, entry_snapshot=entry_snapshot)
+
+    kwargs = mock_close.call_args.kwargs
+    assert kwargs["extra"]["entry_fill_age_s"] == 185.0
+    assert kwargs["extra"]["entry_fill_latency_source"] == "broker_router_fill_result"
+    assert kwargs["extra"]["entry_fill_age_precision"] == "broker_fill_ts"
+    assert kwargs["extra"]["broker_fill_ts"] == "2026-05-16T13:56:55Z"
+    assert kwargs["extra"]["broker_router_result_ts"] == "2026-05-16T13:57:05Z"
+    assert kwargs["extra"]["fill_to_adopt_delay_s"] == 65.0
+    assert kwargs["extra"]["fill_result_write_delay_s"] == 10.0
+
+
 def test_maybe_enter_uses_sage_bias_to_pick_side(tmp_path, monkeypatch) -> None:
     """When ETA_SAGE_DRIVEN_SIDE=1 and Sage's composite bias is SHORT
     with conviction >=0.30, the supervisor should flip a long-registered

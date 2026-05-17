@@ -14,16 +14,23 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from eta_engine.scripts import workspace_roots
+
 #: Canonical workspace state root (workspace hard rule: everything writes
 #: under ``C:\EvolutionaryTradingAlgo``). The bot-position files live at
 #: ``<state_root>/bots/<bot_name>/positions.json`` so the position
 #: reconciler can glob them in one pass.
-DEFAULT_BOT_STATE_ROOT: Path = Path("C:/EvolutionaryTradingAlgo/var/eta_engine/state")
+DEFAULT_BOT_STATE_ROOT: Path = workspace_roots.ETA_BOT_STATE_ROOT
 
 #: Default rolling sage-bar buffer length. Sage's MarketContext needs
 #: at least 30 bars; we keep 200 by default so the multi-timeframe
 #: schools (Elliott / Wyckoff / dow-theory) get enough lookback.
 DEFAULT_SAGE_BAR_BUFFER: int = 200
+
+
+def _utc_now() -> datetime:
+    """Return a timezone-aware UTC timestamp for shared model defaults."""
+    return datetime.now(UTC)
 
 
 class Tier(StrEnum):
@@ -59,7 +66,7 @@ class Signal(BaseModel):
     size: float = 0.0
     confidence: float = 0.0
     meta: dict[str, Any] = Field(default_factory=dict)
-    ts: datetime = Field(default_factory=datetime.utcnow)
+    ts: datetime = Field(default_factory=_utc_now)
 
 
 class SweepResult(BaseModel):
@@ -75,7 +82,7 @@ class Position(BaseModel):
     entry_price: float
     size: float
     unrealized_pnl: float = 0.0
-    opened_at: datetime = Field(default_factory=datetime.utcnow)
+    opened_at: datetime = Field(default_factory=_utc_now)
 
 
 class Fill(BaseModel):
@@ -86,7 +93,7 @@ class Fill(BaseModel):
     fee: float = 0.0
     realized_pnl: float = 0.0
     risk_at_entry: float = 0.0
-    ts: datetime = Field(default_factory=datetime.utcnow)
+    ts: datetime = Field(default_factory=_utc_now)
 
 
 class BotConfig(BaseModel):

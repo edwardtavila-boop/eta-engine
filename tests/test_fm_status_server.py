@@ -5,7 +5,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from eta_engine.deploy import fm_status_server
+from eta_engine.deploy import fm_status_http_server, fm_status_payload, fm_status_server
 
 
 def test_fm_status_server_exposes_cached_health_snapshot(tmp_path, monkeypatch):
@@ -23,11 +23,6 @@ def test_fm_status_server_exposes_cached_health_snapshot(tmp_path, monkeypatch):
         encoding="utf-8",
     )
     monkeypatch.setenv("ETA_FM_HEALTH_SNAPSHOT_PATH", str(snapshot_path))
-    monkeypatch.setattr(
-        fm_status_server,
-        "_force_multiplier_status",
-        lambda: {"mode": "force_multiplier", "providers": {"codex": {"available": True}}},
-    )
 
     response = TestClient(fm_status_server.app).get("/api/fm/status")
 
@@ -41,10 +36,41 @@ def test_fm_status_server_exposes_cached_health_snapshot(tmp_path, monkeypatch):
     assert "no-store" in response.headers["Cache-Control"]
 
 
-def test_fm_status_server_xml_uses_existing_command_center_runtime():
+def test_fm_status_server_xml_keeps_canonical_launch_shape():
     xml = (Path(__file__).resolve().parents[1] / "deploy" / "FmStatusServer.xml").read_text(encoding="utf-8")
 
     assert r"C:\EvolutionaryTradingAlgo\eta_engine\.venv\Scripts\python.exe" in xml
-    assert r"C:\Python314\python.exe" not in xml
-    assert "-m uvicorn eta_engine.deploy.fm_status_server:app" in xml
+    assert "-m eta_engine.deploy.fm_status_http_server" in xml
     assert "--host 127.0.0.1 --port 8422" in xml
+
+
+def test_stdlib_fm_status_handler_uses_same_payload(monkeypatch):
+    captured: dict[str, object] = {}
+
+    class FakeHandler(fm_status_http_server.ForceMultiplierStatusHandler):
+        path = "/api/fm/status"
+
+        def _send_json(self, payload, status=fm_status_http_server.HTTPStatus.OK):  # type: ignore[override]
+            captured["payload"] = payload
+            captured["status"] = status
+
+    monkeypatch.setattr(
+        fm_status_http_server,
+        "build_status_payload",
+        lambda: {"mode": "force_multiplier", "status": "ok"},
+    )
+
+    handler = object.__new__(FakeHandler)
+    handler.do_GET()
+
+    assert captured == {
+        "payload": {"mode": "force_multiplier", "status": "ok"},
+        "status": fm_status_http_server.HTTPStatus.OK,
+    }
+
+
+def test_status_payload_module_has_no_fastapi_or_uvicorn_dependency():
+    payload_source = Path(fm_status_payload.__file__).read_text(encoding="utf-8")
+
+    assert "fastapi" not in payload_source
+    assert "uvicorn" not in payload_source

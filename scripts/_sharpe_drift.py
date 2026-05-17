@@ -1,9 +1,10 @@
 """Per-bot Sharpe / Sortino drift alarm.
 
-Reads the latest ``docs/paper_run_report.json`` and compares each bot's
-Sharpe + Sortino + expectancy_r against a rolling baseline persisted at
-``docs/sharpe_baseline.json``. If a metric has degraded materially since
-the baseline, a YELLOW or RED level is emitted.
+Reads the latest canonical paper-run report, with legacy docs fallback,
+and compares each bot's Sharpe + Sortino + expectancy_r against a
+rolling baseline persisted at the canonical runtime baseline path. If a
+metric has degraded materially since the baseline, a YELLOW or RED
+level is emitted.
 
 How the baseline is maintained
 ------------------------------
@@ -45,9 +46,11 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
+from eta_engine.scripts import workspace_roots
+
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_REPORT = ROOT / "docs" / "paper_run_report.json"
-DEFAULT_BASELINE = ROOT / "docs" / "sharpe_baseline.json"
+DEFAULT_REPORT = workspace_roots.default_paper_run_report_path()
+DEFAULT_BASELINE = workspace_roots.ETA_SHARPE_BASELINE_PATH
 
 ALPHA = 0.2  # EMA smoothing
 METRICS = ("sharpe", "sortino", "expectancy_r")

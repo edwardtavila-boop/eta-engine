@@ -39,3 +39,18 @@ python scripts\codex_overnight_operator.py --json
 ```
 
 Use `--no-health` for a fast coordination-only smoke.
+
+## Desktop Truth Refresh
+
+When the desktop workspace needs the authoritative VPS broker-proof close
+stream, pull it into the local canonical path and refresh the dependent local
+receipts:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\eta_engine\deploy\scripts\sync_trade_closes_from_vps.ps1
+```
+
+This refreshes the local canonical `trade_closes.jsonl` plus the local
+`closed_trade_ledger`, `diamond_edge_audit`, `diamond_leaderboard`,
+`diamond_retune_status`, and `diamond_ops_dashboard` receipts under
+`C:\EvolutionaryTradingAlgo\var\eta_engine\state`.

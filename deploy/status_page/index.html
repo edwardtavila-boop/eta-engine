@@ -561,22 +561,57 @@ function blockedFleetRollup(summary = {}, diagnostics = {}) {
   const diagFleet = diagnostics?.bot_fleet && typeof diagnostics.bot_fleet === 'object'
     ? diagnostics.bot_fleet
     : {};
-  const count = Number(diagFleet.current_blocked_bots ?? summary.current_blocked_bots ?? 0) || 0;
-  const kinds = diagFleet.current_blocked_kinds && typeof diagFleet.current_blocked_kinds === 'object'
-    ? diagFleet.current_blocked_kinds
-    : (summary.current_blocked_kinds && typeof summary.current_blocked_kinds === 'object'
-      ? summary.current_blocked_kinds
-      : {});
-  const summaryLine = String(
-    diagFleet.current_blocked_summary_line
-    || summary.current_blocked_summary_line
-    || ''
-  ).trim();
+  const pickNumber = (key, fallback = 0) => Number(diagFleet?.[key] ?? summary?.[key] ?? fallback) || 0;
+  const pickObject = (key) => {
+    const value = diagFleet?.[key] ?? summary?.[key];
+    return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  };
+  const pickText = (key) => String(diagFleet?.[key] ?? summary?.[key] ?? '').trim();
+  const totalCount = pickNumber('current_blocked_bots');
+  const totalKinds = pickObject('current_blocked_kinds');
+  const count = pickNumber('current_actionable_blocked_bots', totalCount);
+  const kinds = pickObject('current_actionable_blocked_kinds');
+  const sessionGatedCount = pickNumber('current_session_gated_bots');
+  const sessionGatedKinds = pickObject('current_session_gated_kinds');
+  const totalSummaryLine = pickText('current_blocked_summary_line');
+  const actionableSummaryLine = pickText('current_actionable_blocked_summary_line');
+  const sessionGatedSummaryLine = pickText('current_session_gated_summary_line');
   const kindsLine = blockedKindsSummary(kinds);
-  const statusLine = count > 0
-    ? `Held: ${count} bot${count === 1 ? '' : 's'}${kindsLine ? ` | ${kindsLine}` : ''}`
-    : 'Held: none';
-  return {count, kinds, summaryLine, kindsLine, statusLine};
+  const totalKindsLine = blockedKindsSummary(totalKinds);
+  const sessionGatedKindsLine = blockedKindsSummary(sessionGatedKinds);
+  let breakdownLine = 'no current entry holds';
+  let statusLine = 'Held: none';
+  if (count > 0) {
+    breakdownLine = `${count} actionable hold${count === 1 ? '' : 's'}`;
+    if (kindsLine) breakdownLine += ` | ${kindsLine}`;
+    if (sessionGatedCount > 0) breakdownLine += ` | ${sessionGatedCount} awaiting session`;
+    statusLine = `Held: ${breakdownLine}`;
+  } else if (sessionGatedCount > 0) {
+    breakdownLine = `${sessionGatedCount} awaiting session`;
+    if (sessionGatedKindsLine) breakdownLine += ` | ${sessionGatedKindsLine}`;
+    statusLine = `Awaiting session: ${sessionGatedCount} bot${sessionGatedCount === 1 ? '' : 's'}`;
+  }
+  const summaryLine = count > 0
+    ? (actionableSummaryLine || totalSummaryLine || statusLine)
+    : (sessionGatedCount > 0
+      ? (sessionGatedSummaryLine || statusLine)
+      : (actionableSummaryLine || totalSummaryLine || statusLine));
+  return {
+    count,
+    kinds,
+    kindsLine,
+    summaryLine,
+    statusLine,
+    breakdownLine,
+    totalCount,
+    totalKinds,
+    totalKindsLine,
+    totalSummaryLine,
+    sessionGatedCount,
+    sessionGatedKinds,
+    sessionGatedKindsLine,
+    sessionGatedSummaryLine
+  };
 }
 
 function finiteNumber(value) {
@@ -1112,6 +1147,190 @@ function readinessSnapshotPerformanceEvidence(diagnostics) {
     status: String(snapshot.status || '').toLowerCase(),
     source
   };
+}
+
+function readinessCommandCenterHint(snapshot) {
+  const issue = String(snapshot?.command_center_issue_status || '').toLowerCase();
+  const nextStep = String(snapshot?.command_center_operator_next_step || '').toLowerCase();
+  const missingTasks = Array.isArray(snapshot?.command_center_dashboard_task_missing_task_names)
+    ? snapshot.command_center_dashboard_task_missing_task_names.map((name) => String(name || '').trim()).filter(Boolean)
+    : [];
+  if (!issue && !nextStep) return '';
+  if (issue === 'dashboard_task_contract_drift' || nextStep === 'reload_operator_service') {
+    return missingTasks.length
+      ? `ops reload required (${missingTasks.join(', ')})`
+      : 'ops reload required';
+  }
+  if (issue === 'local_dependency_gap' || issue === 'service_dependency_gap') return 'local deps repair required';
+  if (issue === 'public_tunnel_service_drift' || issue === 'public_tunnel_token_rejected') return 'tunnel repair required';
+  if (issue === 'upstream_failure') return 'local proxy 5xx';
+  return humanizeStatusText(issue || nextStep);
+}
+
+function readinessSnapshotStrategyHint(snapshot) {
+  const parts = [];
+  const add = (value) => {
+    const text = humanizeStatusText(value);
+    if (!text) return;
+    const lower = text.toLowerCase();
+    if (lower === 'blocked' || parts.includes(text)) return;
+    parts.push(text);
+  };
+  const publicLiveBrokerDegradedDisplay = String(
+    snapshot?.public_live_broker_degraded_display || ''
+  ).trim();
+  const publicLiveBrokerReady = snapshot?.public_live_broker_ready === true;
+  const publicLiveBrokerSnapshotState = String(
+    snapshot?.public_live_broker_snapshot_state || ''
+  ).trim();
+  const publicLiveBrokerSnapshotSource = String(
+    snapshot?.public_live_broker_snapshot_source || ''
+  ).trim();
+  const publicLiveBrokerSource = String(
+    snapshot?.public_live_broker_source || ''
+  ).trim();
+  const publicLiveBrokerCacheHint = !publicLiveBrokerReady &&
+    (publicLiveBrokerSnapshotState || publicLiveBrokerSnapshotSource)
+    ? `broker cache ${publicLiveBrokerSnapshotState || 'degraded'}${publicLiveBrokerSnapshotSource ? ` via ${publicLiveBrokerSnapshotSource}` : ''}${publicLiveBrokerSource && publicLiveBrokerSource !== publicLiveBrokerSnapshotSource ? ` (${publicLiveBrokerSource})` : ''}`
+    : '';
+  const dashboardApiRuntimeDriftDisplay = String(
+    snapshot?.dashboard_api_runtime_drift_display || ''
+  ).trim();
+  const dashboardApiRuntimeRetuneDriftDisplay = String(
+    snapshot?.dashboard_api_runtime_retune_drift_display || ''
+  ).trim();
+  const dashboardApiRuntimeProbeDisplay = String(
+    snapshot?.dashboard_api_runtime_probe_display || ''
+  ).trim();
+  const dashboardApiRuntimeRefreshCommand = String(
+    snapshot?.dashboard_api_runtime_refresh_command || ''
+  ).trim();
+  const dashboardApiRuntimeRefreshRequiresElevation =
+    snapshot?.dashboard_api_runtime_refresh_requires_elevation === true;
+  const fallbackBrokerOrderDriftDisplay = String(
+    snapshot?.public_fallback_broker_open_order_drift_display || ''
+  ).trim();
+  const primaryBlocker = String(snapshot?.primary_blocker || '').trim();
+  const primaryAction = String(snapshot?.primary_action || snapshot?.detail || '').trim();
+  const primaryBlockedHint = primaryBlocker === 'prop_live_readiness_gate'
+    ? (primaryAction.toLowerCase().includes('paper_soak')
+        ? 'prop gate blocked; keep paper soak'
+        : 'prop gate blocked')
+    : primaryBlocker === 'broker_bracket_audit'
+      ? 'exit protection blocked'
+      : primaryBlocker === 'broker_bracket_audit_public_fallback'
+        ? 'public bracket audit blocked'
+        : '';
+  const bracketsSummary = String(snapshot?.brackets_summary || '').trim();
+  const bracketsNextAction = String(snapshot?.brackets_next_action || '').trim();
+  const bracketsPrimaryHint = bracketsSummary.toUpperCase() === 'BLOCKED_FLEET_TRUTH_UNAVAILABLE'
+    ? (bracketsNextAction.includes('/api/bot-fleet')
+        ? 'fleet truth unavailable; restore /api/bot-fleet'
+        : 'fleet truth unavailable')
+    : '';
+  const currentLiveBrokerOrderDriftDisplay = String(
+    snapshot?.current_live_broker_open_order_drift_display || ''
+  ).trim();
+  const currentLiveBrokerDegradedDisplay = String(
+    snapshot?.current_live_broker_degraded_display || ''
+  ).trim();
+  const currentLiveBrokerDegradedHint = currentLiveBrokerDegradedDisplay
+    ? (currentLiveBrokerDegradedDisplay.includes('missing_ibkr_probe_cache')
+        ? 'live broker cache missing'
+        : (currentLiveBrokerDegradedDisplay.includes('ibkr_probe_cache')
+            ? 'live broker cache degraded'
+            : 'live broker degraded'))
+    : '';
+  const currentLiveRetuneSyncDriftDisplay = String(
+    snapshot?.current_live_retune_sync_drift_display || ''
+  ).trim();
+  const currentLiveRetuneSyncHint = currentLiveRetuneSyncDriftDisplay
+    ? 'current public retune newer'
+    : '';
+  const publicRetuneSyncDriftDisplay = String(
+    snapshot?.public_live_retune_sync_drift_display || ''
+  ).trim();
+  const readinessReceiptAgeSeconds = finiteNumber(snapshot?.age_s);
+  const readinessReceiptStale =
+    snapshot?.status === 'stale_receipt' || snapshot?.fresh === false;
+  const readinessReceiptHint = readinessReceiptStale
+    ? 'readiness receipt stale'
+    : '';
+  const dashboardApiRuntimeBrokerHint = dashboardApiRuntimeDriftDisplay
+    ? 'local 8421 broker stale'
+    : '';
+  const dashboardApiRuntimeRetuneHint = dashboardApiRuntimeRetuneDriftDisplay
+    ? 'local 8421 retune stale'
+    : '';
+  const dashboardApiRuntimeProbeHint = dashboardApiRuntimeProbeDisplay
+    ? 'local 8421 probe failed'
+    : '';
+  const retuneExperimentDriftDisplay = String(
+    snapshot?.retune_focus_active_experiment_drift_display || ''
+  ).trim();
+  const localRetuneSyncDriftDisplay = String(
+    snapshot?.local_retune_sync_drift_display || ''
+  ).trim();
+  add(primaryBlockedHint);
+  if (snapshot?.public_fallback_active) {
+    add(bracketsPrimaryHint || snapshot?.public_fallback_reason || '');
+    add(readinessReceiptHint);
+    add(currentLiveBrokerDegradedHint || currentLiveBrokerDegradedDisplay || publicLiveBrokerCacheHint || publicLiveBrokerDegradedDisplay);
+    add(dashboardApiRuntimeBrokerHint);
+    add(dashboardApiRuntimeRetuneHint);
+    add(dashboardApiRuntimeProbeHint);
+    if ((dashboardApiRuntimeDriftDisplay || dashboardApiRuntimeRetuneDriftDisplay || dashboardApiRuntimeProbeDisplay) && dashboardApiRuntimeRefreshCommand) {
+      add('refresh local 8421 runtime');
+      if (dashboardApiRuntimeRefreshRequiresElevation) {
+        add('8421 refresh needs elevation');
+      }
+    }
+    add(currentLiveBrokerOrderDriftDisplay);
+    const fallbackBracketSummary = String(snapshot?.public_fallback_brackets_summary || '');
+    const fallbackStaleCount = Number(snapshot?.public_fallback_stale_flat_open_order_count || 0);
+    const fallbackStaleDisplay = String(snapshot?.public_fallback_stale_flat_open_order_display || '').trim();
+    const fallbackStaleRelationDisplay = String(
+      snapshot?.public_fallback_stale_flat_open_order_relation_display || ''
+    ).trim();
+    const fallbackStaleSymbols = Array.isArray(snapshot?.public_fallback_stale_flat_open_order_symbols)
+      ? snapshot.public_fallback_stale_flat_open_order_symbols
+        .map((symbol) => String(symbol || '').trim())
+        .filter(Boolean)
+      : [];
+    if (
+      fallbackBracketSummary.toUpperCase() === 'BLOCKED_STALE_FLAT_OPEN_ORDERS' &&
+      fallbackStaleRelationDisplay
+    ) {
+      add(fallbackStaleRelationDisplay);
+    } else if (
+      fallbackBracketSummary.toUpperCase() === 'BLOCKED_STALE_FLAT_OPEN_ORDERS' &&
+      fallbackStaleDisplay
+    ) {
+      add(fallbackStaleDisplay);
+    } else if (
+      fallbackBracketSummary.toUpperCase() === 'BLOCKED_STALE_FLAT_OPEN_ORDERS' &&
+      fallbackStaleSymbols.length
+    ) {
+      if (fallbackStaleCount > 0) {
+        add(`${fallbackStaleCount} stale broker orders (${fallbackStaleSymbols.join(', ')})`);
+      } else {
+        add(`stale broker orders (${fallbackStaleSymbols.join(', ')})`);
+      }
+    } else if (
+      fallbackBracketSummary.toUpperCase() === 'BLOCKED_STALE_FLAT_OPEN_ORDERS' &&
+      fallbackStaleCount > 0
+    ) {
+      add(`${fallbackStaleCount} stale broker orders`);
+    } else {
+      add(fallbackBracketSummary);
+    }
+  }
+  add(fallbackBrokerOrderDriftDisplay);
+  add(currentLiveRetuneSyncHint || currentLiveRetuneSyncDriftDisplay || publicRetuneSyncDriftDisplay);
+  add(retuneExperimentDriftDisplay);
+  add(localRetuneSyncDriftDisplay);
+  add(snapshot?.promotion_summary || '');
+  return parts.slice(0, 3).join(' | ');
 }
 
 function lifetimePnlEvidence(summary, portfolioSummary, fleetEquity, diagnostics = {}) {
@@ -1671,6 +1890,10 @@ function humanizeStatusText(value) {
     [/broker data probe timed out/gi, 'broker read timed out'],
     [/Jarvis\/Hermes admin-AI bridge passes static safety readiness; keep live-money gates separate\./gi, 'AI bridge is ready; live-money gates remain separate.'],
     [/prop dry-run/gi, 'live-money test'],
+    [/BLOCKED_STALE_FLAT_OPEN_ORDERS/gi, 'stale broker orders'],
+    [/BLOCKED_KAIZEN_RETIRED/gi, 'promotion retired'],
+    [/non_authoritative_gateway_host/gi, 'authoritative gateway required'],
+    [/local_fleet_truth_unavailable/gi, 'live fleet truth fallback'],
     [/\bnoop\b/gi, 'no action needed'],
     [/\bOP-\d+\s*/g, '']
   ];
@@ -2269,19 +2492,26 @@ function renderPortfolioCommand(bots, hiddenCount, liveBroker, summary, d, today
   const offLane = engagement?.offLane ?? Math.max(0, active - liveRuntime);
   const blockedRollup = blockedFleetRollup(summary, diagnostics || {});
   const blockedBots = blockedRollup.count;
+  const blockedOrWaiting = blockedBots > 0 || blockedRollup.sessionGatedCount > 0;
   const blockedLine = blockedRollup.summaryLine || blockedRollup.statusLine;
   const paperStatus = String(paperLive?.status || 'unknown').toLowerCase();
   const paperEffectiveStatus = String(paperLive?.effective_status || paperLive?.status || 'unknown').toLowerCase();
-  const paperDailyLossHold = paperLive?.held_by_daily_loss_stop === true
-    || paperEffectiveStatus === 'held_by_daily_loss_stop';
-  const paperCapitalHold = paperDailyLossHold
+  const paperCacheStale = paperLive?.cache_stale === true
+    || paperLive?.stale_receipt === true
+    || paperStatus === 'stale_receipt'
+    || paperEffectiveStatus === 'stale_receipt';
+  const paperDailyLossHold = !paperCacheStale && (
+    paperLive?.held_by_daily_loss_stop === true
+    || paperEffectiveStatus === 'held_by_daily_loss_stop'
+  );
+  const paperCapitalHold = !paperCacheStale && (paperDailyLossHold
     || paperLive?.capital_lanes_held_by_daily_loss_stop === true
     || paperLive?.daily_loss_advisory_active === true
-    || (paperEffectiveStatus === 'shadow_paper_active' && paperLive?.daily_loss_killswitch?.tripped === true);
+    || (paperEffectiveStatus === 'shadow_paper_active' && paperLive?.daily_loss_killswitch?.tripped === true));
   const paperTransitionLaunchBlocked = Number(
     paperLive?.operator_queue_launch_blocked_count ?? (paperLive?.operator_queue_first_launch_blocker_op_id ? 1 : 0)
   );
-  const paperLaunchBlocked = paperStatus === 'blocked' || paperTransitionLaunchBlocked > 0;
+  const paperLaunchBlocked = !paperCacheStale && (paperStatus === 'blocked' || paperTransitionLaunchBlocked > 0);
   const realized = finiteNumber(liveBroker?.today_realized_pnl);
   const unrealized = finiteNumber(liveBroker?.total_unrealized_pnl);
   const focusPolicy = liveBroker?.focus_policy && typeof liveBroker.focus_policy === 'object'
@@ -2340,6 +2570,8 @@ function renderPortfolioCommand(bots, hiddenCount, liveBroker, summary, d, today
         ? 'launch blocked'
         : blockedBots > 0
           ? `${blockedBots} held`
+          : blockedRollup.sessionGatedCount > 0
+            ? `${blockedRollup.sessionGatedCount} awaiting session`
           : `${paperReady} ready`;
     const scopeLine = [
       `${bots.length} focus`,
@@ -2360,6 +2592,9 @@ function renderPortfolioCommand(bots, hiddenCount, liveBroker, summary, d, today
       offLane > 0 ? `<span class="hero-chip"><strong>${offLane}</strong> stale</span>` : '',
       `<span class="hero-chip"><strong>${paperReady}</strong> paper-ready</span>`,
       blockedBots > 0 ? `<span class="hero-chip blocked-chip"><strong>${blockedBots}</strong> held</span>` : '',
+      blockedBots <= 0 && blockedRollup.sessionGatedCount > 0
+        ? `<span class="hero-chip"><strong>${blockedRollup.sessionGatedCount}</strong> awaiting session</span>`
+        : '',
       `<span class="hero-chip"><strong>${brokerPositions.length}</strong> open</span>`,
       `<span class="hero-chip"><strong>${formatMoney(portfolioExposure ?? openExposure, 0)}</strong> risk</span>`,
       ...brokerVenueChipMarkup(focusPolicy, liveBroker),
@@ -2373,11 +2608,13 @@ function renderPortfolioCommand(bots, hiddenCount, liveBroker, summary, d, today
       ? diagnostics.eta_readiness_snapshot
       : {};
     const readinessStatus = String(readinessSnapshot.status || '').toLowerCase();
-    const readinessText = paperCapitalHold
+    const readinessText = paperCacheStale
+      ? 'Snapshot Stale'
+      : paperCapitalHold
       ? 'Held'
       : paperLaunchBlocked
         ? 'Blocked'
-        : readinessStatus === 'blocked'
+      : readinessStatus === 'blocked'
       ? 'Blocked'
       : readinessStatus === 'ready'
         ? 'Ready'
@@ -2385,19 +2622,28 @@ function renderPortfolioCommand(bots, hiddenCount, liveBroker, summary, d, today
           ? 'Snapshot Stale'
           : `${paperReady} paper-ready`;
     const bracketCount = Number(readinessSnapshot.broker_missing_bracket_count || 0);
-    const readinessSub = paperCapitalHold
+    const commandCenterHint = readinessCommandCenterHint(readinessSnapshot);
+    const readinessStrategyHint = readinessSnapshotStrategyHint(readinessSnapshot);
+    const readinessBlockedParts = [
+      readinessStrategyHint,
+      readinessSnapshot.detail || readinessSnapshot.primary_action || readinessSnapshot.promotion_summary || 'gates blocked',
+      commandCenterHint
+    ].filter((value, index, arr) => value && arr.indexOf(value) === index);
+    const readinessSub = paperCacheStale
+      ? `${paperReady} paper-ready | ${compactText(humanizeStatusText(paperLive?.stale_detail || 'paper-live snapshot stale'), 72)}`
+      : paperCapitalHold
       ? `${paperReady} paper-ready | capital held by daily stop`
       : paperLaunchBlocked
         ? `${paperReady} paper-ready | launch blocked`
       : readinessStatus === 'blocked'
       ? (bracketCount > 0
-        ? `${bracketCount} exit-protection gap | ${readinessSnapshot.prop_primary_bot || 'prop bot'} held`
-        : readinessSnapshot.primary_action || readinessSnapshot.promotion_summary || 'gates blocked')
+        ? `${bracketCount} exit-protection gap | ${readinessSnapshot.prop_primary_bot || 'prop bot'} held${commandCenterHint ? ` | ${commandCenterHint}` : ''}`
+        : readinessBlockedParts.join(' | '))
       : readinessStatus === 'ready'
         ? `${paperReady} paper-ready | ${attached} connected${offLane > 0 ? ` | ${offLane} stale` : ''}`
         : connectedFleetLine(0, {runtimeActive: active, attached, offLane});
-    const readinessSubWithBlocks = blockedBots > 0
-      ? compactText(`${blockedBots} held | ${blockedRollup.kindsLine || blockedLine}`, 86)
+    const readinessSubWithBlocks = blockedOrWaiting
+      ? compactText(blockedRollup.breakdownLine || blockedLine, 86)
       : readinessSub;
     const dataReadout = dataIntelligenceReadout(d.symbol_intelligence || diagnostics?.symbol_intelligence || {});
     heroMetrics.innerHTML = [
@@ -2985,10 +3231,16 @@ function renderDataIntelligence(snapshot) {
   subEl.textContent = readout.sub;
 }
 
-function retuneFactoryReadout(snapshot) {
+function retuneFactoryReadout(snapshot, diagnostics = {}) {
   const payload = snapshot && typeof snapshot === 'object' ? snapshot : {};
   const summary = payload.summary && typeof payload.summary === 'object' ? payload.summary : payload;
+  const readinessSnapshot = diagnostics?.eta_readiness_snapshot && typeof diagnostics.eta_readiness_snapshot === 'object'
+    ? diagnostics.eta_readiness_snapshot
+    : {};
   const bots = Array.isArray(payload.bots) ? payload.bots : [];
+  const activeExperiment = payload.focus_active_experiment && typeof payload.focus_active_experiment === 'object'
+    ? payload.focus_active_experiment
+    : {};
   const targets = finiteNumber(summary.n_targets) ?? bots.length ?? 0;
   const attempted = finiteNumber(summary.n_attempted_bots) ?? 0;
   const unattempted = finiteNumber(summary.n_unattempted_targets) ?? Math.max(0, targets - attempted);
@@ -2997,6 +3249,111 @@ function retuneFactoryReadout(snapshot) {
   const timeout = finiteNumber(summary.n_timeout_retry) ?? 0;
   const status = String(payload.status || '').toLowerCase();
   const topBot = payload.top_bot_id || bots.find(bot => bot && typeof bot === 'object')?.bot_id || '';
+  const publicRetuneExperimentOutcomeLine = String(
+    readinessSnapshot.public_live_retune_focus_active_experiment_outcome_line || ''
+  ).trim();
+  const localRetuneExperimentOutcomeLine = String(
+    readinessSnapshot.local_retune_focus_active_experiment_outcome_line || ''
+  ).trim();
+  const publicRetuneGeneratedAt = String(
+    readinessSnapshot.public_live_retune_generated_at_utc || ''
+  ).trim();
+  const currentPublicRetuneGeneratedAt = String(
+    readinessSnapshot.current_live_retune_generated_at_utc || ''
+  ).trim();
+  const currentPublicRetuneExperimentOutcomeLine = String(
+    readinessSnapshot.current_live_retune_focus_active_experiment_outcome_line || ''
+  ).trim();
+  const currentPublicRetuneSyncDriftDisplay = String(
+    readinessSnapshot.current_live_retune_sync_drift_display || ''
+  ).trim();
+  const publicRetuneSyncDriftDisplay = String(
+    readinessSnapshot.public_live_retune_sync_drift_display || ''
+  ).trim();
+  const dashboardApiRuntimeRetuneDriftDisplay = String(
+    readinessSnapshot.dashboard_api_runtime_retune_drift_display || ''
+  ).trim();
+  const dashboardApiRuntimeProbeDisplay = String(
+    readinessSnapshot.dashboard_api_runtime_probe_display || ''
+  ).trim();
+  const dashboardApiRuntimeRefreshRequiresElevation =
+    readinessSnapshot.dashboard_api_runtime_refresh_requires_elevation === true;
+  const cachedLocalRetuneGeneratedAt = String(
+    readinessSnapshot.local_retune_generated_at_utc || ''
+  ).trim();
+  const currentLocalRetuneGeneratedAt = String(
+    readinessSnapshot.current_local_retune_generated_at_utc || ''
+  ).trim();
+  const retuneMirrorDriftDisplay = String(
+    readinessSnapshot.retune_focus_active_experiment_drift_display || ''
+  ).trim();
+  const localRetuneSyncDriftDisplay = String(
+    readinessSnapshot.local_retune_sync_drift_display || ''
+  ).trim();
+  const readinessReceiptAgeSeconds = finiteNumber(readinessSnapshot.age_s);
+  const readinessReceiptStale = readinessSnapshot?.status === 'stale_receipt' || readinessSnapshot?.fresh === false;
+  const canonicalExperimentOutcome = String(
+    payload.focus_active_experiment_outcome_line
+    || summary.broker_truth_focus_active_experiment_outcome_line
+    || ''
+  ).trim();
+  const experimentId = String(activeExperiment.experiment_id || '').trim();
+  const postChangeCloses = Number(activeExperiment.post_change_closed_trade_count || 0);
+  const awaitingFirstPostChangeClose = activeExperiment.awaiting_first_post_change_close === true;
+  const postChangeCumulativeR = finiteNumber(activeExperiment.post_change_cumulative_r);
+  const postChangeProfitFactor = finiteNumber(activeExperiment.post_change_profit_factor);
+  const postChangePnl = finiteNumber(activeExperiment.post_change_total_realized_pnl);
+  let experimentSummary = currentPublicRetuneExperimentOutcomeLine
+    || publicRetuneExperimentOutcomeLine
+    || canonicalExperimentOutcome;
+  if (!experimentSummary && experimentId && awaitingFirstPostChangeClose) {
+    experimentSummary = `${experimentId}: awaiting first post-change close`;
+  } else if (!experimentSummary && experimentId && postChangeCloses > 0) {
+    const experimentParts = [`${experimentId}: ${postChangeCloses} post-change close${postChangeCloses === 1 ? '' : 's'}`];
+    if (postChangeCumulativeR !== null) experimentParts.push(`R ${formatSignedCompact(postChangeCumulativeR, 2)}`);
+    if (postChangePnl !== null) experimentParts.push(`PnL ${formatCurrency(postChangePnl)}`);
+    if (postChangeProfitFactor !== null) experimentParts.push(`PF ${postChangeProfitFactor.toFixed(2)}`);
+    experimentSummary = experimentParts.join(' | ');
+  } else if (!experimentSummary && experimentId) {
+    experimentSummary = experimentId;
+  }
+  const retuneMirrorDriftHint = readinessReceiptStale
+    ? 'readiness receipt stale'
+    : (retuneMirrorDriftDisplay ? 'local retune mirror stale' : '');
+  const retuneRuntimeDriftHint = dashboardApiRuntimeRetuneDriftDisplay
+    ? 'local 8421 retune stale'
+    : '';
+  const retuneRuntimeProbeHint = dashboardApiRuntimeProbeDisplay
+    ? 'local 8421 probe failed'
+    : '';
+  const currentPublicRetuneHint = currentPublicRetuneSyncDriftDisplay
+    ? 'current public retune newer'
+    : '';
+  const retuneRuntimeRefreshElevationHint = dashboardApiRuntimeRefreshRequiresElevation &&
+    (dashboardApiRuntimeRetuneDriftDisplay || dashboardApiRuntimeProbeDisplay)
+    ? '8421 refresh needs elevation'
+    : '';
+  const retuneMirrorTimingHint = (
+    currentPublicRetuneSyncDriftDisplay
+    || publicRetuneSyncDriftDisplay
+    || localRetuneSyncDriftDisplay
+    || dashboardApiRuntimeRetuneDriftDisplay
+    || dashboardApiRuntimeProbeDisplay
+  )
+    ? [
+      currentPublicRetuneGeneratedAt ? `current public ${formatTimeCompact(currentPublicRetuneGeneratedAt)}` : '',
+      publicRetuneGeneratedAt && publicRetuneGeneratedAt !== currentPublicRetuneGeneratedAt
+        ? `receipt public ${formatTimeCompact(publicRetuneGeneratedAt)}`
+        : (publicRetuneGeneratedAt ? `public ${formatTimeCompact(publicRetuneGeneratedAt)}` : ''),
+      cachedLocalRetuneGeneratedAt ? `cached local ${formatTimeCompact(cachedLocalRetuneGeneratedAt)}` : '',
+      currentLocalRetuneGeneratedAt && currentLocalRetuneGeneratedAt !== cachedLocalRetuneGeneratedAt
+        ? `current local ${formatTimeCompact(currentLocalRetuneGeneratedAt)}`
+        : '',
+    ].filter(Boolean).join(' | ')
+    : '';
+  const readinessReceiptFreshnessHint = readinessReceiptAgeSeconds !== null
+    ? `${readinessReceiptStale ? 'receipt stale' : 'receipt fresh'} ${formatAgeSeconds(readinessReceiptAgeSeconds)}`
+    : '';
   let label = 'Waiting';
   let className = 'dim';
   if (status === 'missing' || targets <= 0) {
@@ -3021,6 +3378,14 @@ function retuneFactoryReadout(snapshot) {
     proof > 0 ? `${proof} need proof` : '',
     timeout > 0 ? `${timeout} retry` : '',
     topBot ? topBot : '',
+    experimentSummary,
+    readinessReceiptFreshnessHint,
+    retuneMirrorDriftHint,
+    currentPublicRetuneHint,
+    retuneRuntimeDriftHint,
+    retuneRuntimeProbeHint,
+    retuneRuntimeRefreshElevationHint,
+    retuneMirrorTimingHint,
   ].filter(Boolean);
   return {
     label,
@@ -3029,11 +3394,11 @@ function retuneFactoryReadout(snapshot) {
   };
 }
 
-function renderRetuneFactory(snapshot) {
+function renderRetuneFactory(snapshot, diagnostics = {}) {
   const statusEl = document.getElementById('retuneFactoryStatus');
   const subEl = document.getElementById('retuneFactorySub');
   if (!statusEl || !subEl) return;
-  const readout = retuneFactoryReadout(snapshot);
+  const readout = retuneFactoryReadout(snapshot, diagnostics);
   statusEl.textContent = readout.label;
   statusEl.className = 'stat ' + readout.className;
   subEl.textContent = readout.sub;
@@ -3160,6 +3525,7 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
   const usingFallback = isFallbackSource(dataSource);
   const blockedRollup = blockedFleetRollup(summary, diagnostics || {});
   const blockedBots = blockedRollup.count;
+  const blockedOrWaiting = blockedBots > 0 || blockedRollup.sessionGatedCount > 0;
   const blockedSummaryLine = blockedRollup.summaryLine || blockedRollup.statusLine;
   const engagement = focusEngagementSummary(bots);
   const active = engagement.runtimeActive;
@@ -3169,12 +3535,15 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
   const staged = engagement.staged;
   const runtimeStatusLine = connectedFleetLine(bots.length, engagement);
   document.getElementById('statusDot').className = 'status-dot ' + (stale ? 'stale' : blockedBots > 0 ? 'blocked' : 'live');
+  const statusHoldSuffix = blockedBots > 0
+    ? `${blockedBots} held${blockedRollup.sessionGatedCount > 0 ? ` | ${blockedRollup.sessionGatedCount} awaiting session` : ''}`
+    : (blockedRollup.sessionGatedCount > 0 ? `${blockedRollup.sessionGatedCount} awaiting session` : '');
   document.getElementById('statusText').textContent =
     truthStatus === 'working'
-      ? `${runtimeStatusLine}${blockedBots > 0 ? ` | ${blockedBots} held` : ''}`
+      ? `${runtimeStatusLine}${statusHoldSuffix ? ` | ${statusHoldSuffix}` : ''}`
       : stale
-        ? `Feed stale${blockedBots > 0 ? ` | ${blockedBots} held` : ''}`
-        : `${runtimeStatusLine}${blockedBots > 0 ? ` | ${blockedBots} held` : ''}`;
+        ? `Feed stale${statusHoldSuffix ? ` | ${statusHoldSuffix}` : ''}`
+        : `${runtimeStatusLine}${statusHoldSuffix ? ` | ${statusHoldSuffix}` : ''}`;
   document.getElementById('apiSourceText').textContent = usingFallback ? 'Focus sync | mirror' : 'Focus sync...';
   const sessionAudit = diagnostics?.session_gate_signal_audit || {};
   const sessionAuditStatus = String(sessionAudit.status || 'unknown').toLowerCase();
@@ -3184,7 +3553,7 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
     : null;
   const blockerStatusText = document.getElementById('blockerStatusText');
   if (blockerStatusText) {
-    if (blockedBots > 0) {
+    if (blockedOrWaiting) {
       blockerStatusText.textContent = compactText(blockedSummaryLine, 118);
     } else if (sessionAuditStatus === 'warn' && sessionAuditViolations > 0 && latestSessionViolation) {
       const reasonText = String(latestSessionViolation.reason || 'outside session')
@@ -3223,7 +3592,7 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
     );
   }
   if (heldBotsSub) {
-    heldBotsSub.textContent = blockedBots > 0
+    heldBotsSub.textContent = blockedOrWaiting
       ? compactText(blockedSummaryLine, 78)
       : 'no current entry holds';
   }
@@ -3384,7 +3753,7 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
   const approved = verdicts.filter(v => v === 'APPROVED' || v === 'CONDITIONAL').length;
   const denied = verdicts.filter(v => v === 'DENIED' || v === 'KILL' || v === 'REDUCE').length;
   const approvedCountSub = document.getElementById('approvedCountSub');
-  const blockedKindsText = blockedRollup.kindsLine || blockedSummaryLine || blockedRollup.statusLine;
+  const blockedKindsText = blockedRollup.breakdownLine || blockedSummaryLine || blockedRollup.statusLine;
   const dailyKillSwitchCount = Number(blockedRollup.kinds.daily_kill_switch || 0);
   document.getElementById('approvedCount').textContent = approved;
   document.getElementById('approvedCount').className = 'stat ' + (
@@ -3393,12 +3762,12 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
       : (approved > 0 ? 'green' : 'dim')
   );
   if (approvedCountSub) {
-    approvedCountSub.textContent = blockedBots > 0
+    approvedCountSub.textContent = blockedOrWaiting
       ? compactText(
           humanizeStatusText(
             approved > 0
               ? `${approved} ready | ${blockedKindsText}`
-              : `${blockedBots} held | ${blockedKindsText}`
+              : blockedKindsText
           ),
           72
         )
@@ -3473,6 +3842,14 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
   // when present -- that is the same probe the supervisor uses, so it
   // matches reality. Otherwise fall back to the broker_gateway snapshot.
   const ibkrGateway = (d.broker_gateway && d.broker_gateway.ibkr) || {};
+  const gatewayAuthority = (ibkrGateway.gateway_authority && typeof ibkrGateway.gateway_authority === 'object')
+    ? ibkrGateway.gateway_authority
+    : ((d.broker_gateway && d.broker_gateway.gateway_authority && typeof d.broker_gateway.gateway_authority === 'object')
+      ? d.broker_gateway.gateway_authority
+      : {});
+  const gatewayNonAuthoritative = ibkrGateway.non_authoritative_host === true
+    || d?.broker_gateway?.non_authoritative_host === true
+    || gatewayAuthority.allowed === false;
   const gatewayKnown = ibkrGateway.status && ibkrGateway.status !== 'unknown';
   let gatewayLabel;
   let gatewayClass;
@@ -3530,6 +3907,18 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
         ),
         112,
       );
+    } else if (gatewayNonAuthoritative) {
+      gatewayLabel = 'VPS Only';
+      gatewayClass = 'yellow';
+      gatewayMeta = '24/7 VPS authority';
+      gatewaySub = compactText(
+        humanizeStatusText(
+          gatewayAuthority.reason
+          || ibkrGateway.detail
+          || 'Local desktop is not the authoritative IBKR Gateway host.'
+        ),
+        112,
+      );
     } else {
       gatewayLabel = 'Down';
       gatewayClass = 'red';
@@ -3539,6 +3928,18 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
       );
       gatewaySub = compactText(humanizeStatusText(liveBroker.ibkr.error || 'live REST probe failed'), 112);
     }
+  } else if (gatewayNonAuthoritative) {
+    gatewayLabel = 'VPS Only';
+    gatewayClass = 'yellow';
+    gatewayMeta = '24/7 VPS authority';
+    gatewaySub = compactText(
+      humanizeStatusText(
+        gatewayAuthority.reason
+        || ibkrGateway.detail
+        || 'Local desktop is not the authoritative IBKR Gateway host.'
+      ),
+      112,
+    );
   } else if (gatewayKnown) {
     gatewayLabel = ibkrGateway.status === 'connected' ? 'Gateway Up' : 'Down';
     gatewayClass = ibkrGateway.status === 'connected' ? 'yellow' : 'red';
@@ -3643,13 +4044,20 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
     .filter(Boolean)
     .join(', ') || unprotectedPositions.map(position => position.symbol).filter(Boolean).join(', ');
   const bracketSummary = String(
-    bracketAudit.summary || summary.broker_bracket_audit_status || 'unknown'
+    bracketAudit.effective_summary
+    || summary.broker_bracket_audit_status
+    || bracketAudit.summary
+    || summary.broker_bracket_audit_raw_status
+    || 'unknown'
   ).toUpperCase();
   const bracketReady = Boolean(
-    bracketAudit.ready_for_prop_dry_run ?? summary.broker_bracket_audit_ready
+    bracketAudit.effective_ready_for_prop_dry_run
+    ?? summary.broker_bracket_audit_ready
+    ?? bracketAudit.ready_for_prop_dry_run
   );
   const propDryRunBlocked = Boolean(
-    bracketAudit.prop_dry_run_blocked
+    bracketAudit.effective_prop_dry_run_blocked
+      ?? bracketAudit.prop_dry_run_blocked
       ?? summary.broker_bracket_prop_dry_run_blocked
       ?? (bracketSummary === 'BLOCKED_UNBRACKETED_EXPOSURE')
   );
@@ -3668,7 +4076,9 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
     READY_NO_OPEN_EXPOSURE: 'Ready',
     READY_OPEN_EXPOSURE_BRACKETED: 'Ready',
     BLOCKED_UNBRACKETED_EXPOSURE: 'Blocked',
+    BLOCKED_STALE_FLAT_OPEN_ORDERS: 'Blocked',
     BLOCKED_ADAPTER_SUPPORT: 'Adapter',
+    AUTHORITATIVE_STALE_REVIEW: 'VPS Review',
     AUDIT_UNAVAILABLE: 'Review',
     UNKNOWN: 'Review'
   };
@@ -3676,14 +4086,26 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
     READY_NO_OPEN_EXPOSURE: 'green',
     READY_OPEN_EXPOSURE_BRACKETED: 'green',
     BLOCKED_UNBRACKETED_EXPOSURE: 'yellow',
+    BLOCKED_STALE_FLAT_OPEN_ORDERS: 'yellow',
     BLOCKED_ADAPTER_SUPPORT: 'red',
+    AUTHORITATIVE_STALE_REVIEW: 'yellow',
     AUDIT_UNAVAILABLE: 'yellow',
     UNKNOWN: 'yellow'
   };
+  const bracketCardClasses = {
+    GREEN: 'green',
+    YELLOW: 'yellow',
+    RED: 'red'
+  };
   const bracketStatusEl = document.getElementById('bracketAuditStatus');
   const bracketSubEl = document.getElementById('bracketAuditSub');
+  const bracketCardStatus = String(
+    bracketAudit.effective_card_status || summary.broker_bracket_audit_effective_card_status || ''
+  ).toUpperCase();
   const auditAction = (
-    bracketAudit.next_action
+    bracketAudit.effective_detail
+    || summary.broker_bracket_audit_effective_detail
+    || bracketAudit.next_action
     || summary.broker_bracket_next_action
     || bracketAudit.detail
     || bracketAudit.reason
@@ -3713,7 +4135,7 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
       conciseAuditAction
     ].filter(Boolean);
     bracketStatusEl.textContent = bracketLabels[bracketKey] || 'Review';
-    bracketStatusEl.className = 'stat ' + (bracketClasses[bracketKey] || 'yellow');
+    bracketStatusEl.className = 'stat ' + (bracketCardClasses[bracketCardStatus] || bracketClasses[bracketKey] || 'yellow');
     bracketSubEl.textContent = compactText(
       humanizeStatusText(bracketSubParts.length ? bracketSubParts.join('; ') : 'target + stop coverage verified'),
       145
@@ -3864,12 +4286,18 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
   const paperStatus = String(paperLive?.status || 'unknown');
   const paperEffectiveStatus = String(paperLive?.effective_status || paperStatus);
   const paperEffectiveDetail = String(paperLive?.effective_detail || '').trim();
-  const paperDailyLossHold = paperLive?.held_by_daily_loss_stop === true
-    || paperEffectiveStatus === 'held_by_daily_loss_stop';
-  const paperCapitalHold = paperDailyLossHold
+  const paperCacheStale = paperLive?.cache_stale === true
+    || paperLive?.stale_receipt === true
+    || paperStatus.toLowerCase() === 'stale_receipt'
+    || paperEffectiveStatus.toLowerCase() === 'stale_receipt';
+  const paperDailyLossHold = !paperCacheStale && (
+    paperLive?.held_by_daily_loss_stop === true
+    || paperEffectiveStatus === 'held_by_daily_loss_stop'
+  );
+  const paperCapitalHold = !paperCacheStale && (paperDailyLossHold
     || paperLive?.capital_lanes_held_by_daily_loss_stop === true
     || paperLive?.daily_loss_advisory_active === true
-    || (paperEffectiveStatus === 'shadow_paper_active' && paperLive?.daily_loss_killswitch?.tripped === true);
+    || (paperEffectiveStatus === 'shadow_paper_active' && paperLive?.daily_loss_killswitch?.tripped === true));
   const paperReady = !!paperLive?.critical_ready;
   const firstPaperGate = Array.isArray(paperLive?.gates) ? paperLive.gates.find((gate) => gate && gate.passed === false) : null;
   const paperTransitionLaunchBlocked = Number(
@@ -3882,14 +4310,17 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
     ? (paperLive?.operator_queue_first_launch_next_action || paperLive?.operator_queue_first_next_action || '')
     : '';
   const paperReadyBots = Number(paperLive?.paper_ready_bots || 0);
-  const paperLaunchBlocked = paperStatus === 'blocked' || paperTransitionLaunchBlocked > 0 || opLaunchBlocked > 0;
+  const paperLaunchBlocked = !paperCacheStale && (paperStatus === 'blocked' || paperTransitionLaunchBlocked > 0 || opLaunchBlocked > 0);
   const paperGateHeld = propDryRunBlocked && paperReady;
-  const paperBracketHold = actionChoices.length
+  const paperBracketHold = paperEffectiveDetail || (actionChoices.length
     ? `held by Bracket Audit: ${actionChoices.join(' or ')}`
-    : 'held by Bracket Audit';
+    : 'held by Bracket Audit');
   let paperLabel = 'Unknown';
   let paperClass = 'yellow';
-  if (paperLaunchBlocked) {
+  if (paperCacheStale) {
+    paperLabel = 'Snapshot Stale';
+    paperClass = 'yellow';
+  } else if (paperLaunchBlocked) {
     paperLabel = 'Blocked';
     paperClass = 'red';
   } else if (paperCapitalHold) {
@@ -3913,7 +4344,9 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
   }
   const paperDetail = compactText(
     humanizeStatusText(
-      paperDailyLossHold
+      paperCacheStale
+        ? (paperLive?.stale_detail || 'paper-live snapshot stale')
+        : paperDailyLossHold
         ? paperEffectiveDetail || 'Daily-loss soft stop is active'
         : paperCapitalHold
           ? 'shadow live | capital held by daily stop'
@@ -3926,14 +4359,16 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
   document.getElementById('paperLiveStatus').className = 'stat ' + paperClass;
   document.getElementById('paperLiveSub').textContent = compactText(
     humanizeStatusText(
-      paperCapitalHold
+      paperCacheStale
+        ? `${paperReadyBots} paper-ready | ${paperDetail}`
+        : paperCapitalHold
         ? `${paperReadyBots} paper-ready | shadow live | capital held by daily stop`
         : `${paperReadyBots} paper-ready${paperBlocker ? ' | ' + paperBlocker : ''} | ${paperDetail}`
     )
   );
 
   renderDataIntelligence(d.symbol_intelligence || diagnostics?.symbol_intelligence || {});
-  renderRetuneFactory(d.diamond_retune_status || diagnostics?.diamond_retune_status || {});
+  renderRetuneFactory(d.diamond_retune_status || diagnostics?.diamond_retune_status || {}, diagnostics);
 
   const proxyWatchdog = diagnostics?.dashboard_proxy_watchdog || {};
   const proxyStatus = String(proxyWatchdog.status || 'unknown').toLowerCase();
@@ -3958,9 +4393,18 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
     stale_receipt: 'Stale',
     stale_service: 'Reload',
     service_unreachable: 'Down',
+    upstream_failure: 'Proxy 5xx',
+    dashboard_task_contract_drift: 'Reload',
+    local_dependency_gap: 'Deps',
+    service_dependency_gap: 'Deps',
     public_operator_drift: 'Drift',
+    public_tunnel_service_drift: 'Tunnel',
+    public_tunnel_token_rejected: 'Tunnel',
+    repair_prompted: 'Repair',
+    repair_attempted: 'Repair',
     contract_failure: 'Review',
     secret_surface: 'Blocked',
+    unhealthy: 'Review',
     unknown: 'Unknown',
   };
   const commandWatchdogClasses = {
@@ -3970,15 +4414,50 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
     stale_receipt: 'yellow',
     stale_service: 'red',
     service_unreachable: 'red',
+    upstream_failure: 'red',
+    dashboard_task_contract_drift: 'red',
+    local_dependency_gap: 'red',
+    service_dependency_gap: 'red',
     public_operator_drift: 'red',
+    public_tunnel_service_drift: 'red',
+    public_tunnel_token_rejected: 'red',
+    repair_prompted: 'yellow',
+    repair_attempted: 'yellow',
     contract_failure: 'yellow',
     secret_surface: 'red',
+    unhealthy: 'yellow',
     unknown: 'yellow',
   };
   const commandWatchdogStep = commandWatchdog.next_step || commandWatchdog.recommended_action || 'inspect';
+  const commandWatchdogCommand = String(commandWatchdog.next_command || '').trim();
   const commandWatchdogAge = formatAgeSeconds(commandWatchdog.age_s);
-  const commandWatchdogDetail = commandWatchdog.summary
-    || `${friendlySourceLabel(commandWatchdogStep)}; ${friendlySourceLabel(commandWatchdog.failure_class || 'unknown')}; ${commandWatchdogAge}`;
+  const commandWatchdogSummary = String(
+    commandWatchdog.display_issue_summary ||
+    commandWatchdog.display_summary ||
+    commandWatchdog.issue_summary ||
+    commandWatchdog.summary ||
+    ''
+  ).trim();
+  const commandWatchdogMissingTasks = Array.isArray(commandWatchdog.dashboard_task_missing_task_names)
+    ? commandWatchdog.dashboard_task_missing_task_names.map((name) => String(name || '').trim()).filter(Boolean)
+    : [];
+  const commandWatchdogSummaryLower = commandWatchdogSummary.toLowerCase();
+  const commandWatchdogMissingTasksAlreadyNamed = commandWatchdogMissingTasks.length > 0
+    && commandWatchdogMissingTasks.every((name) =>
+      commandWatchdogSummaryLower.includes(name.toLowerCase())
+    );
+  const commandWatchdogMissingTasksDetail = commandWatchdogMissingTasks.length > 0
+    && !commandWatchdogMissingTasksAlreadyNamed
+    ? `missing runtime tasks: ${commandWatchdogMissingTasks.join(', ')}`
+    : '';
+  const commandWatchdogDetail = [
+    commandWatchdogSummary || null,
+    commandWatchdogMissingTasksDetail || null,
+    !commandWatchdogSummary ? friendlySourceLabel(commandWatchdogStep) : null,
+    commandWatchdogCommand,
+    !commandWatchdogSummary ? friendlySourceLabel(commandWatchdog.failure_class || 'unknown') : null,
+    !commandWatchdogSummary ? commandWatchdogAge : null
+  ].filter(Boolean).join(' | ');
   document.getElementById('opsWatchdogStatus').textContent = commandWatchdogLabels[commandWatchdogStatus] || commandWatchdogStatus.toUpperCase();
   document.getElementById('opsWatchdogStatus').className = 'stat ' + (commandWatchdogClasses[commandWatchdogStatus] || 'yellow');
   document.getElementById('opsWatchdogSub').textContent = compactText(
@@ -3989,14 +4468,27 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
   );
 
   const opsHardening = diagnostics?.vps_ops_hardening || {};
+  const opsHardeningStatus = String(opsHardening.status || 'unknown').toLowerCase();
   const adminAi = opsHardening?.jarvis_hermes_admin_ai || {};
-  const adminStatus = String(adminAi.status || opsHardening.summary?.admin_ai_status || 'unknown').toLowerCase();
-  const adminReady = adminAi.ready === true || opsHardening.summary?.admin_ai_ready === true;
+  const fmControl = opsHardening?.force_multiplier_control_plane || {};
+  const fmControlStatus = String(fmControl.status || '').toLowerCase();
+  const fmNeedsAttention = fmControl.restart_required === true
+    || fmControl.repair_required === true
+    || ['restart_required', 'durability_gap', 'watch_stale'].includes(fmControlStatus);
+  const adminStatus = opsHardeningStatus === 'stale_receipt'
+    ? 'stale_receipt'
+    : fmNeedsAttention
+    ? 'warn'
+    : String(adminAi.status || opsHardening.summary?.admin_ai_status || 'unknown').toLowerCase();
+  const adminReady = opsHardeningStatus !== 'stale_receipt'
+    && !fmNeedsAttention
+    && (adminAi.ready === true || opsHardening.summary?.admin_ai_ready === true);
   const adminLabels = {
     pass: 'Ready',
     ready: 'Ready',
     warn: 'Review',
     blocked: 'Blocked',
+    stale_receipt: 'Stale',
     missing: 'Missing',
     unreadable: 'Review',
     invalid: 'Review',
@@ -4007,20 +4499,51 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
     ready: 'green',
     warn: 'yellow',
     blocked: 'red',
+    stale_receipt: 'yellow',
     missing: 'yellow',
     unreadable: 'yellow',
     invalid: 'yellow',
     unknown: 'yellow',
   };
   const adminActions = Array.isArray(adminAi.next_actions) ? adminAi.next_actions : [];
+  const hardeningActions = Array.isArray(opsHardening.next_actions) ? opsHardening.next_actions : [];
   const hardeningAge = formatAgeSeconds(opsHardening.age_s);
-  const adminDetail = adminActions[0]
+  const fmRuntimeDrift = Array.isArray(fmControl.service_runtime_drift)
+    ? fmControl.service_runtime_drift
+    : Array.isArray(opsHardening.summary?.service_runtime_drift)
+    ? opsHardening.summary.service_runtime_drift
+    : [];
+  const fmConfigDrift = Array.isArray(fmControl.service_config_drift)
+    ? fmControl.service_config_drift
+    : Array.isArray(opsHardening.summary?.service_config_drift)
+    ? opsHardening.summary.service_config_drift
+    : [];
+  const fmDriftDetail = [
+    fmRuntimeDrift.length ? `runtime drift: ${fmRuntimeDrift.slice(0, 2).join(', ')}` : '',
+    fmConfigDrift.length ? `config drift: ${fmConfigDrift.slice(0, 2).join(', ')}` : '',
+    fmControl.next_command ? `next: ${fmControl.next_command}` : '',
+  ].filter(Boolean).join(' | ');
+  const fmPrimaryDetail = fmControl.detail
+    || fmControl.next_command
+    || opsHardening.detail
+    || hardeningActions[0]
+    || 'Force Multiplier control plane needs attention';
+  const fmAttentionDetail = [fmDriftDetail, fmPrimaryDetail].filter(Boolean).join(' | ');
+  const adminDetail = opsHardeningStatus === 'stale_receipt'
+    ? (opsHardening.stale_detail || adminActions[0] || 'VPS audit snapshot stale')
+    : fmNeedsAttention
+    ? fmAttentionDetail
+    : adminActions[0]
     || (adminReady ? 'Jarvis/Hermes bridge audit passed' : 'VPS audit pending');
   document.getElementById('adminAiStatus').textContent = adminLabels[adminStatus] || adminStatus.toUpperCase();
   document.getElementById('adminAiStatus').className = 'stat ' + (adminClasses[adminStatus] || 'yellow');
   document.getElementById('adminAiSub').textContent = compactText(
     humanizeStatusText(
-      adminReady
+      opsHardeningStatus === 'stale_receipt'
+        ? `snapshot stale | ${adminDetail} | ${hardeningAge}`
+        : fmNeedsAttention
+        ? `FM control plane | ${adminDetail} | ${hardeningAge}`
+        : adminReady
         ? `AI bridge ready | ${hardeningAge}`
         : `${opsHardening.status || 'unknown'} | ${adminDetail} | ${hardeningAge}`
     ),
@@ -4144,8 +4667,10 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
   const botRosterSummary = document.getElementById('botRosterSummary');
   if (botRosterSummary) {
     const heldText = blockedBots > 0
-      ? `, ${blockedBots} held${blockedRollup.kindsLine ? ` | ${blockedRollup.kindsLine}` : ''}`
-      : '';
+      ? `, ${blockedBots} held${blockedRollup.kindsLine ? ` | ${blockedRollup.kindsLine}` : ''}${blockedRollup.sessionGatedCount > 0 ? ` | ${blockedRollup.sessionGatedCount} awaiting session` : ''}`
+      : (blockedRollup.sessionGatedCount > 0
+        ? `, ${blockedRollup.sessionGatedCount} awaiting session`
+        : '');
     botRosterSummary.textContent = `${bots.length} focus visible, ${attached} connected${offLane > 0 ? `, ${offLane} stale` : ''}, ${hiddenCount} hidden/backburner${heldText}`;
   }
   document.getElementById('botTable').innerHTML = html || '<tr><td colspan="12" class="loading">No visible active/staged bots after disabled and removed filters.</td></tr>';

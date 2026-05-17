@@ -4,8 +4,9 @@ Hermes proactive auto-investigator — cron entrypoint.
 Bridges the anomaly_watcher's hit log to Hermes's diagnosis skill. Every
 5 minutes:
 
-  1. Scan ``var/anomaly_watcher.jsonl`` for hits that appeared since the
-     last cycle (cursor stored in ``var/hermes_proactive_cursor.json``)
+  1. Scan ``var/eta_engine/state/anomaly_watcher.jsonl`` for hits that
+     appeared since the last cycle (cursor stored in
+     ``var/eta_engine/state/hermes_proactive_cursor.json``)
   2. For each NEW hit that warrants investigation (warn or critical), call
      ``hermes chat -q <prompt> --source tool --continue auto-investigator``
      where the prompt asks Hermes to use the ``jarvis-anomaly-investigator``
@@ -43,13 +44,13 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from eta_engine.scripts import workspace_roots
+
 logger = logging.getLogger("eta_engine.scripts.hermes_proactive_investigator")
 
-_WORKSPACE = Path(r"C:\EvolutionaryTradingAlgo")
-_VAR_ROOT = _WORKSPACE / "var"
-_HITS_LOG = _VAR_ROOT / "anomaly_watcher.jsonl"
-_CURSOR_PATH = _VAR_ROOT / "hermes_proactive_cursor.json"
-_AUDIT_PATH = _VAR_ROOT / "hermes_proactive_audit.jsonl"
+_HITS_LOG = workspace_roots.ETA_ANOMALY_HITS_LOG_PATH
+_CURSOR_PATH = workspace_roots.ETA_HERMES_PROACTIVE_CURSOR_PATH
+_AUDIT_PATH = workspace_roots.ETA_HERMES_PROACTIVE_AUDIT_PATH
 
 _HERMES_EXE = r"C:\Users\Administrator\.hermes\hermes-agent\.venv\Scripts\hermes.exe"
 _HERMES_TIMEOUT_S = 120
@@ -75,12 +76,14 @@ def _now_iso() -> str:
 
 
 def _read_json(path: Path) -> dict[str, Any] | None:
-    if not path.exists():
-        return None
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return None
+    for candidate in _json_candidates(path):
+        if not candidate.exists():
+            continue
+        try:
+            return json.loads(candidate.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+    return None
 
 
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
@@ -111,26 +114,49 @@ def _save_cursor(seen_keys: list[str]) -> None:
 
 def _read_new_hits(seen_keys: set[str]) -> list[dict[str, Any]]:
     """Read anomaly_watcher hits not yet seen by this cron."""
-    if not _HITS_LOG.exists():
-        return []
     out: list[dict[str, Any]] = []
-    try:
-        with _HITS_LOG.open(encoding="utf-8") as fh:
-            for raw in fh:
-                line = raw.strip()
-                if not line:
-                    continue
-                try:
-                    rec = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                key = str(rec.get("key") or "")
-                if not key or key in seen_keys:
-                    continue
-                out.append(rec)
-    except OSError as exc:
-        logger.warning("hits log read failed: %s", exc)
+    seen_in_pass: set[str] = set()
+    for candidate in _hits_log_candidates():
+        try:
+            with candidate.open(encoding="utf-8") as fh:
+                for raw in fh:
+                    line = raw.strip()
+                    if not line:
+                        continue
+                    try:
+                        rec = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    key = str(rec.get("key") or "")
+                    if not key or key in seen_keys or key in seen_in_pass:
+                        continue
+                    seen_in_pass.add(key)
+                    out.append(rec)
+        except OSError as exc:
+            logger.warning("hits log read failed: %s", exc)
     return out
+
+
+def _json_candidates(path: Path) -> list[Path]:
+    candidates = [path]
+    if (
+        path == _CURSOR_PATH
+        and workspace_roots.ETA_LEGACY_HERMES_PROACTIVE_CURSOR_PATH.exists()
+        and workspace_roots.ETA_LEGACY_HERMES_PROACTIVE_CURSOR_PATH not in candidates
+    ):
+        candidates.append(workspace_roots.ETA_LEGACY_HERMES_PROACTIVE_CURSOR_PATH)
+    return candidates
+
+
+def _hits_log_candidates() -> list[Path]:
+    candidates = [_HITS_LOG]
+    if (
+        _HITS_LOG == workspace_roots.ETA_ANOMALY_HITS_LOG_PATH
+        and workspace_roots.ETA_LEGACY_ANOMALY_HITS_LOG_PATH.exists()
+        and workspace_roots.ETA_LEGACY_ANOMALY_HITS_LOG_PATH not in candidates
+    ):
+        candidates.append(workspace_roots.ETA_LEGACY_ANOMALY_HITS_LOG_PATH)
+    return [path for path in candidates if path.exists()]
 
 
 def _is_silenced() -> bool:

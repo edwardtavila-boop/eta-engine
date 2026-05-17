@@ -19,10 +19,10 @@
 
 Do NOT start this runbook unless ALL of the following are true:
 
-1. `docs/kill_log.json` exists, valid JSON, has at least one review entry.
-2. `docs/paper_run_report.json` shows Tier-A (MNQ+NQ) PASS.
+1. `var/eta_engine/state/kill_log.json` exists, valid JSON, has at least one review entry.
+2. `var/eta_engine/state/paper_run/paper_run_report.json` shows Tier-A (MNQ+NQ) PASS.
 3. `roadmap_state.json` → `current_phase` starts with `P9`.
-4. `docs/decisions_v1.json` exists with all 3 required tier sections.
+4. `var/eta_engine/state/decisions_v1.json` exists with all 3 required tier sections.
 5. `.env.example` present with all 9 required secret names.
 6. `eta_engine/configs/` contains `bybit.yaml`, `alerts.yaml`, `kill_switch.yaml`, AND every yaml for the active futures brokers (i.e. for each broker in `ACTIVE_FUTURES_VENUES` from `venues/router.py`). With the current `DORMANT_BROKERS = {"tradovate"}` mandate this is `ibkr.yaml` + `tastytrade.yaml`. `tradovate.yaml` is NOT required while the broker is dormant.
 7. `eta_engine/scripts/live_supervisor.py` importable cleanly (`from eta_engine.scripts.live_supervisor import JarvisAwareRouter`).
@@ -232,8 +232,10 @@ python -m eta_engine.scripts.daily_premarket
 python -m eta_engine.scripts.jarvis_live --max-ticks 1 --interval 1
 ```
 
-`premarket_latest.json`, `premarket_latest.txt`, and `jarvis_live_health.json`
-include bot strategy readiness notes/payloads so premarket and live-supervisor
+`var/eta_engine/state/premarket/premarket_latest.json`,
+`var/eta_engine/state/premarket/premarket_latest.txt`, and
+`var/eta_engine/state/jarvis_live_health.json` include bot strategy
+readiness notes/payloads so premarket and live-supervisor
 automation can see the launch posture without opening the dashboard.
 
 The JARVIS strategy supervisor heartbeat also enriches each bot row with
@@ -542,7 +544,7 @@ pkill -f run_eta_live
 After ANY emergency stop:
 1. Snapshot `logs/eta_engine/alerts_log.jsonl` to `docs/incidents/<date>.jsonl`.
 2. Run `python eta_engine/scripts/_trade_journal_reconcile.py --hours 24 > docs/incidents/<date>_reconcile.txt`.
-3. Append kill reason + root cause to `docs/kill_log.json`.
+3. Append kill reason + root cause to `var/eta_engine/state/kill_log.json`.
 4. Do NOT resume for at least 1 session (4h market hours). Use the pause to debug.
 
 ---

@@ -47,6 +47,8 @@ from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Any
 
+from eta_engine.scripts import workspace_roots
+
 logger = logging.getLogger("eta_engine.scripts.jarvis_status_server")
 
 DEFAULT_HOST = "127.0.0.1"
@@ -1043,7 +1045,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     _setup_logging()
     # Ensure eta_engine is importable when launched directly
-    sys.path.insert(0, os.environ.get("PYTHONPATH", r"C:\EvolutionaryTradingAlgo"))
+    sys.path.insert(0, os.environ.get("PYTHONPATH", str(workspace_roots.WORKSPACE_ROOT)))
     try:
         serve(host=args.host, port=args.port)
         return 0

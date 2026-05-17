@@ -53,13 +53,15 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from eta_engine.scripts import workspace_roots
+
 logger = logging.getLogger("eta_engine.scripts.bridge_autoheal")
 
-WORKSPACE = Path(r"C:\EvolutionaryTradingAlgo")
-STATE_ROOT = WORKSPACE / "var" / "eta_engine" / "state"
-AUTOHEAL_LOG = WORKSPACE / "var" / "bridge_autoheal_actions.jsonl"
-AUDIT_LOG_PATH = STATE_ROOT / "hermes_actions.jsonl"
-MEMORY_BACKUP_DIR = STATE_ROOT / "backups" / "hermes_memory"
+WORKSPACE = workspace_roots.WORKSPACE_ROOT
+STATE_ROOT = workspace_roots.ETA_RUNTIME_STATE_DIR
+AUTOHEAL_LOG = workspace_roots.ETA_BRIDGE_AUTOHEAL_ACTIONS_LOG_PATH
+AUDIT_LOG_PATH = workspace_roots.ETA_HERMES_ACTIONS_LOG_PATH
+MEMORY_BACKUP_DIR = workspace_roots.ETA_HERMES_MEMORY_BACKUP_DIR
 HERMES_PORT = 8642
 STATUS_SERVER_PORT = 8643
 AUDIT_LOG_FORCE_ROTATE_BYTES = 50 * 1024 * 1024
@@ -317,27 +319,31 @@ def autoheal_once() -> list[AutohealAction]:
 
 def recent_actions(since_hours: int = 24) -> list[dict[str, Any]]:
     """Read the autoheal log and return entries newer than since_hours."""
-    if not AUTOHEAL_LOG.exists():
-        return []
     cutoff = datetime.now(UTC) - timedelta(hours=since_hours)
     out: list[dict[str, Any]] = []
+    seen_lines: set[str] = set()
+    paths = [AUTOHEAL_LOG]
     try:
-        with AUTOHEAL_LOG.open(encoding="utf-8") as fh:
-            for raw in fh:
-                line = raw.strip()
-                if not line:
-                    continue
-                try:
-                    rec = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                ts_str = rec.get("asof")
-                try:
-                    ts = datetime.fromisoformat(str(ts_str))
-                except ValueError:
-                    continue
-                if ts >= cutoff:
-                    out.append(rec)
+        for path in paths:
+            if not path.exists():
+                continue
+            with path.open(encoding="utf-8") as fh:
+                for raw in fh:
+                    line = raw.strip()
+                    if not line or line in seen_lines:
+                        continue
+                    seen_lines.add(line)
+                    try:
+                        rec = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    ts_str = rec.get("asof")
+                    try:
+                        ts = datetime.fromisoformat(str(ts_str))
+                    except ValueError:
+                        continue
+                    if ts >= cutoff:
+                        out.append(rec)
     except OSError as exc:
         logger.warning("autoheal recent_actions read failed: %s", exc)
     return out

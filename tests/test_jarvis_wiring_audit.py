@@ -102,6 +102,116 @@ def test_empirical_count_from_trace(tmp_path: Path) -> None:
     assert pb.fires_per_consult_empirical == pytest.approx(1.0)
 
 
+def test_empirical_count_from_wiring_metadata(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Explicit trace wiring metadata is enough to prove a module fired."""
+    temp_pkg = tmp_path / "fake_jarvis_v3"
+    temp_pkg.mkdir()
+    (temp_pkg / "__init__.py").write_text("", encoding="utf-8")
+    (temp_pkg / "core_module.py").write_text(
+        'EXPECTED_HOOKS = ("run",)\n',
+        encoding="utf-8",
+    )
+    monkeypatch.syspath_prepend(str(tmp_path))
+
+    trace_path = tmp_path / "jarvis_trace.jsonl"
+    _write_trace_records(
+        trace_path,
+        [
+            {
+                "ts": datetime.now(UTC).isoformat(),
+                "bot_id": "live_bot",
+                "wiring": {"modules": ["core_module"], "hooks": {"core_module": "run"}},
+            }
+        ],
+    )
+
+    statuses = jwa.audit(
+        trace_path=trace_path,
+        module_dir=temp_pkg,
+        package_name="fake_jarvis_v3",
+    )
+
+    core = next(s for s in statuses if s.module == "core_module")
+    assert core.fires_per_consult_empirical == pytest.approx(1.0)
+    assert core.dark_for_days == 0
+
+
+def test_legacy_trace_fields_imply_core_wiring(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pre-wiring-field trace rows still prove core hot-path modules fired."""
+    temp_pkg = tmp_path / "fake_jarvis_v3"
+    temp_pkg.mkdir()
+    (temp_pkg / "__init__.py").write_text("", encoding="utf-8")
+    for module in (
+        "jarvis_conductor",
+        "trace_emitter",
+        "context_enricher",
+        "portfolio_brain",
+        "hot_learner",
+        "hermes_overrides",
+    ):
+        (temp_pkg / f"{module}.py").write_text('EXPECTED_HOOKS = ("run",)\n', encoding="utf-8")
+    monkeypatch.syspath_prepend(str(tmp_path))
+
+    trace_path = tmp_path / "jarvis_trace.jsonl"
+    _write_trace_records(
+        trace_path,
+        [
+            {
+                "ts": datetime.now(UTC).isoformat(),
+                "bot_id": "live_bot",
+                "consult_id": "abc123",
+                "elapsed_ms": 12.3,
+                "final_size": 0.0,
+                "schema_version": 2,
+                "context": {"session": "NY_AM"},
+                "portfolio": {"size_modifier": 1.0},
+                "hot_learn": {"weights": {}},
+                "overrides_snapshot": {"size_modifier": None, "school_weights": {}},
+            }
+        ],
+    )
+
+    statuses = jwa.audit(
+        trace_path=trace_path,
+        module_dir=temp_pkg,
+        package_name="fake_jarvis_v3",
+    )
+
+    assert {s.module for s in statuses if s.dark_for_days == 0} == {
+        "jarvis_conductor",
+        "trace_emitter",
+        "context_enricher",
+        "portfolio_brain",
+        "hot_learner",
+        "hermes_overrides",
+    }
+
+
+def test_iter_trace_records_ignores_magicmock_pollution(tmp_path: Path) -> None:
+    """Synthetic pytest consults should not count as live JARVIS evidence."""
+    trace_path = tmp_path / "jarvis_trace.jsonl"
+    _write_trace_records(
+        trace_path,
+        [
+            {
+                "ts": datetime.now(UTC).isoformat(),
+                "bot_id": "<MagicMock name='mock.bot_id'>",
+                "wiring": {"modules": ["portfolio_brain"]},
+            },
+            {
+                "ts": datetime.now(UTC).isoformat(),
+                "bot_id": "mnq_anchor_sweep",
+                "wiring": {"modules": ["portfolio_brain"]},
+            },
+        ],
+    )
+
+    records = jwa._iter_trace_records([trace_path])
+
+    assert len(records) == 1
+    assert records[0]["bot_id"] == "mnq_anchor_sweep"
+
+
 def test_dark_module_flagged(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """An expected-to-fire module never mentioned in trace → dark_for_days >= 7."""
     # Build a temp module dir with one expected-to-fire module so the test is

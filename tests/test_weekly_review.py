@@ -89,10 +89,30 @@ def test_metrics_from_spec_tier_b_falls_through_chain(fake_docs: Path):
     assert abs(dd - 13.14) < 1e-9
 
 
-def test_kill_log_count(fake_docs: Path):
+def test_kill_log_count(fake_docs: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(
+        mod.workspace_roots,
+        "ETA_KILL_LOG_PATH",
+        fake_docs.parent / "var" / "eta_engine" / "state" / "kill_log.json",
+    )
+    monkeypatch.setattr(mod.workspace_roots, "ETA_LEGACY_KILL_LOG_PATH", fake_docs / "kill_log.json")
     assert mod._kill_log_count() == 2
     (fake_docs / "kill_log.json").unlink()
     assert mod._kill_log_count() == 0
+
+
+def test_kill_log_count_prefers_canonical_state(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(mod, "ROOT", tmp_path)
+    canonical = tmp_path / "var" / "eta_engine" / "state" / "kill_log.json"
+    canonical.parent.mkdir(parents=True)
+    canonical.write_text(json.dumps({"meta": {}, "entries": [{"id": 1}, {"id": 2}, {"id": 3}]}))
+    legacy_dir = tmp_path / "docs"
+    legacy_dir.mkdir()
+    (legacy_dir / "kill_log.json").write_text(json.dumps({"meta": {}, "entries": [{"id": 1}]}))
+    monkeypatch.setattr(mod.workspace_roots, "ETA_KILL_LOG_PATH", canonical)
+    monkeypatch.setattr(mod.workspace_roots, "ETA_LEGACY_KILL_LOG_PATH", legacy_dir / "kill_log.json")
+
+    assert mod._kill_log_count() == 3
 
 
 def test_actions_from_verdict_covers_branches():

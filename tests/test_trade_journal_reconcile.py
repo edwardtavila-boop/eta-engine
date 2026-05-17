@@ -1,6 +1,11 @@
 from __future__ import annotations
 
+from eta_engine.scripts import workspace_roots
 from eta_engine.scripts import _trade_journal_reconcile as mod
+
+
+def test_trade_journal_reconcile_defaults_to_canonical_btc_live_journal() -> None:
+    assert mod.DEFAULT_BTC == workspace_roots.ETA_BTC_LIVE_DECISIONS_PATH
 
 
 def test_btc_freshness_ignores_dev_runtime_churn_without_live_starts() -> None:

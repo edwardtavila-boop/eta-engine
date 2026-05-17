@@ -53,13 +53,12 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from eta_engine.scripts import workspace_roots
+
 logger = logging.getLogger("eta_engine.brain.jarvis_v3.pnl_summary")
 
-_WORKSPACE = Path(r"C:\EvolutionaryTradingAlgo")
-_STATE_ROOT = _WORKSPACE / "var" / "eta_engine" / "state"
-_LEGACY_STATE_ROOT = _WORKSPACE / "eta_engine" / "state"
-DEFAULT_TRADE_CLOSES_PATH = _STATE_ROOT / "jarvis_intel" / "trade_closes.jsonl"
-LEGACY_TRADE_CLOSES_PATH = _LEGACY_STATE_ROOT / "jarvis_intel" / "trade_closes.jsonl"
+DEFAULT_TRADE_CLOSES_PATH = workspace_roots.ETA_JARVIS_TRADE_CLOSES_PATH
+LEGACY_TRADE_CLOSES_PATH = workspace_roots.ETA_LEGACY_JARVIS_TRADE_CLOSES_PATH
 
 # Material-event thresholds — when has_material_events_since() trips True.
 BIG_WIN_R = 2.0  # single trade ≥ +2R is "celebrate-worthy"

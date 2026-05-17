@@ -40,10 +40,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from eta_engine.scripts import workspace_roots
+
 logger = logging.getLogger("drift_alarm_alerter")
 
 # ---- canonical paths (CLAUDE.md hard rule #1: workspace-only writes) ----
-_WORKSPACE_ROOT = Path(os.environ.get("ETA_WORKSPACE_ROOT", r"C:\EvolutionaryTradingAlgo"))
+_WORKSPACE_ROOT = Path(os.environ.get("ETA_WORKSPACE_ROOT", str(workspace_roots.WORKSPACE_ROOT)))
 _STATE_DIR = _WORKSPACE_ROOT / "var" / "eta_engine" / "state"
 _STATE_FILE = _STATE_DIR / "drift_alert_state.json"
 

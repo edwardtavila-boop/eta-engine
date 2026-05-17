@@ -315,7 +315,7 @@ Every promotion gate runs through The Firm (6-agent board). Path:
 3. **Paper approve** — 3-6mo paper forward with adversarial stress.
 4. **Live approve** — tiny size with circuit breakers, then scale.
 
-Kill log lives at `eta_engine/docs/kill_log.json`. No bot goes live without PM signoff.
+Kill log lives at `var/eta_engine/state/kill_log.json`. No bot goes live without PM signoff.
 
 ---
 

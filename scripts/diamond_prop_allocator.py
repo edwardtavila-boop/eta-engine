@@ -62,13 +62,12 @@ import json
 import sys
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Any
 
-ROOT = Path(__file__).resolve().parents[1]
-WORKSPACE_ROOT = ROOT.parent
-LEADERBOARD_PATH = WORKSPACE_ROOT / "var" / "eta_engine" / "state" / "diamond_leaderboard_latest.json"
-OUT_LATEST = WORKSPACE_ROOT / "var" / "eta_engine" / "state" / "diamond_prop_allocator_latest.json"
+from eta_engine.scripts import workspace_roots
+
+LEADERBOARD_PATH = workspace_roots.ETA_DIAMOND_LEADERBOARD_PATH
+OUT_LATEST = workspace_roots.ETA_DIAMOND_PROP_ALLOCATOR_PATH
 
 #: Default prop-account size. Operator overrides via --account-size.
 DEFAULT_ACCOUNT_SIZE = 50_000.0

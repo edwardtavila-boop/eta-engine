@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from scripts import submodule_wiring_preflight
+from eta_engine.scripts import submodule_wiring_preflight
 
 
 def test_parse_submodule_status_prefixes() -> None:
@@ -79,3 +79,32 @@ def test_payload_is_machine_readable(tmp_path: Path) -> None:
     assert payload["ready"] is True
     assert payload["action"] == "safe_to_wire_gitlinks"
     assert payload["modules"]["eta_engine"]["dirty_entries"] == []
+    assert payload["modules"]["eta_engine"]["dirty_summary"]["entry_count"] == 0
+    assert payload["modules"]["eta_engine"]["dirty_summary"]["review_action"] == "none"
+
+
+def test_dirty_summary_groups_porcelain_entries_for_operator_review() -> None:
+    summary = submodule_wiring_preflight.summarize_porcelain_status(
+        [
+            " M scripts/health_check.py",
+            " M scripts/project_kaizen_closeout.py",
+            "?? tests/test_health_check.py",
+            "?? tests/test_project_kaizen_closeout.py",
+            "R  docs/old.md -> docs/new.md",
+            "UU feeds/runtime.py",
+        ]
+    )
+
+    assert summary["entry_count"] == 6
+    assert summary["counts"]["modified"] == 2
+    assert summary["counts"]["untracked"] == 2
+    assert summary["counts"]["renamed"] == 1
+    assert summary["counts"]["conflicted"] == 1
+    assert summary["top_groups"] == [
+        {"group": "scripts", "count": 2},
+        {"group": "tests", "count": 2},
+        {"group": "docs", "count": 1},
+        {"group": "feeds", "count": 1},
+    ]
+    assert summary["change_type_preview"]["renamed"] == ["docs/old.md -> docs/new.md"]
+    assert summary["review_action"] == "resolve_conflicts_before_gitlink_wiring"

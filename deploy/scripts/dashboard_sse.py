@@ -40,7 +40,7 @@ async def tail_follow(
     """Yield SSE-formatted events as new lines appear in ``path``.
 
     Re-resolves the path each iteration so midnight rotation
-    (state/jarvis_audit/<today>.jsonl) is handled transparently.
+    (var/eta_engine/state/jarvis_audit/<today>.jsonl) is handled transparently.
 
     ``max_iterations`` lets tests bound the loop; None = run forever.
     """

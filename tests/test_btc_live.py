@@ -13,9 +13,14 @@ from pathlib import Path
 import pytest
 
 from eta_engine.scripts.btc_live import (
+    DEFAULT_LIVE_DECISIONS_PATH,
+    DEFAULT_LIVE_LOG_DIR,
+    DEFAULT_VERIFY_PATH,
     LiveGateDecision,
+    _parse_args,
     evaluate_live_gate,
 )
+from eta_engine.scripts import workspace_roots
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -257,3 +262,12 @@ def test_live_gate_decision_is_frozen() -> None:
     )
     with pytest.raises((AttributeError, TypeError)):
         decision.allow_live = True  # type: ignore[misc]
+
+
+def test_btc_live_cli_defaults_to_canonical_paths() -> None:
+    args = _parse_args([])
+    assert args.verify_path == str(workspace_roots.ETA_BTC_PAPER_RUN_LATEST_PATH)
+    assert args.out_dir == str(workspace_roots.ETA_BTC_LIVE_STATE_DIR)
+    assert DEFAULT_VERIFY_PATH == workspace_roots.ETA_BTC_PAPER_RUN_LATEST_PATH
+    assert DEFAULT_LIVE_LOG_DIR == workspace_roots.ETA_BTC_LIVE_STATE_DIR
+    assert DEFAULT_LIVE_DECISIONS_PATH == workspace_roots.ETA_BTC_LIVE_DECISIONS_PATH

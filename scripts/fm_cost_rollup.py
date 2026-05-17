@@ -30,9 +30,9 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-LOG = Path(
-    r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\multi_model_telemetry.jsonl"
-)
+from eta_engine.scripts import workspace_roots
+
+LOG = workspace_roots.ETA_MULTI_MODEL_TELEMETRY_LOG_PATH
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:

@@ -14,7 +14,6 @@ WatchdogSec=60
 WorkingDirectory=__INSTALL_DIR__
 EnvironmentFile=__INSTALL_DIR__/.env
 ExecStart=__INSTALL_DIR__/.venv/bin/python -m eta_engine.scripts.jarvis_live \
-  --inputs __INSTALL_DIR__/docs/premarket_inputs.json \
   --out-dir __INSTALL_DIR__/../var/eta_engine/state \
   --interval 60
 Restart=always

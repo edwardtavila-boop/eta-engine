@@ -16,7 +16,7 @@ A lane runner:
     ``get_order_status`` and reflects the current state
     (Routed -> Live -> Cancelled/Replaced) into the worker's heartbeat;
   * writes one line per status transition to
-    ``docs/btc_live/broker_fleet/btc_paper_trades.jsonl``;
+    ``var/eta_engine/state/broker_fleet/btc_paper_trades.jsonl``;
   * cancels the probe order on clean shutdown.
 
 Auto-submission is gated by the ``BTC_PAPER_LANE_AUTO_SUBMIT`` env

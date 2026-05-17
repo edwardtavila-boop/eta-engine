@@ -6,7 +6,7 @@ Runtime kill-switch evaluator.
 Reads configs/kill_switch.yaml and evaluates every tick against live bot state.
 Returns a KillVerdict describing what action (if any) the runtime must take.
 
-Decisions source: docs/decisions_v1.json (#4, #12, #13, #16).
+Decisions source: var/eta_engine/state/decisions_v1.json (#4, #12, #13, #16).
 
 The contract is explicit:
   - per_bucket.max_loss_usd           → flatten bot + pause until next session

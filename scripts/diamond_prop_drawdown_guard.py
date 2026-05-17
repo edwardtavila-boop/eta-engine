@@ -72,25 +72,21 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from eta_engine.scripts import workspace_roots
+
 ROOT = Path(__file__).resolve().parents[1]
 WORKSPACE_ROOT = ROOT.parent
-TRADE_CLOSES_CANONICAL = WORKSPACE_ROOT / "var" / "eta_engine" / "state" / "jarvis_intel" / "trade_closes.jsonl"
-TRADE_CLOSES_LEGACY = (
-    WORKSPACE_ROOT
-    / "eta_engine"
-    / "state"  # HISTORICAL-PATH-OK
-    / "jarvis_intel"
-    / "trade_closes.jsonl"
-)
-OUT_LATEST = WORKSPACE_ROOT / "var" / "eta_engine" / "state" / "diamond_prop_drawdown_guard_latest.json"
+TRADE_CLOSES_CANONICAL = workspace_roots.ETA_JARVIS_TRADE_CLOSES_PATH
+TRADE_CLOSES_LEGACY = workspace_roots.ETA_LEGACY_JARVIS_TRADE_CLOSES_PATH
+OUT_LATEST = workspace_roots.ETA_DIAMOND_PROP_DRAWDOWN_GUARD_PATH
 #: Alerts log feeds the dashboard's daily summary + operator alerts.
-ALERTS_LOG = WORKSPACE_ROOT / "logs" / "eta_engine" / "alerts_log.jsonl"
+ALERTS_LOG = workspace_roots.ETA_RUNTIME_ALERTS_LOG_PATH
 #: Halt flag file — supervisor reads this BEFORE every prop-fund entry.
 #: When the file exists, prop-fund entries are BLOCKED. The flag is
 #: re-emitted every cron cycle while signal=HALT; cleared otherwise.
-PROP_HALT_FLAG_PATH = WORKSPACE_ROOT / "var" / "eta_engine" / "state" / "prop_halt_active.flag"
+PROP_HALT_FLAG_PATH = workspace_roots.ETA_PROP_HALT_FLAG_PATH
 #: WATCH flag — supervisor halves position size while present.
-PROP_WATCH_FLAG_PATH = WORKSPACE_ROOT / "var" / "eta_engine" / "state" / "prop_watch_active.flag"
+PROP_WATCH_FLAG_PATH = workspace_roots.ETA_PROP_WATCH_FLAG_PATH
 
 #: Default prop account configuration ($50K eval/funded — typical
 #: BluSky / Apex / Topstep style).

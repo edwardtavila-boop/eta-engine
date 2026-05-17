@@ -27,10 +27,11 @@ from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
+from eta_engine.scripts import workspace_roots
+
 logger = logging.getLogger(__name__)
 
-ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_STATE_PATH = ROOT / "state" / "jarvis_intel" / "operator_coach.json"
+DEFAULT_STATE_PATH = workspace_roots.ETA_JARVIS_INTEL_STATE_DIR / "operator_coach.json"
 
 
 @dataclass

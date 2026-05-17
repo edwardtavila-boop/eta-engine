@@ -24,6 +24,9 @@ To retire a bot (refuse all signals)::
 
 Before 2026-07-08, keep staged prop-firm candidates in paper routing. Runtime
 policy forces ``EVAL_LIVE`` / ``FUNDED_LIVE`` back to paper until that date.
+After the date floor, live routing is still fail-closed unless the bot is
+``PROP_READY``, marked ``can_live_trade=true`` in the strategy-readiness
+snapshot, and the launch-readiness receipt has no non-calendar blockers.
 
 Legacy pre-cutover example::
 
@@ -73,6 +76,7 @@ def _print_table(state_path: Path) -> None:
     print()
     print(f"  Default for unlisted bots: {LIFECYCLE_EVAL_PAPER}")
     print("  States that can route LIVE after calendar/date gates: EVAL_LIVE, FUNDED_LIVE (* marked)")
+    print("  Live routing still requires PROP_READY + can_live_trade=true + launch_readiness=GO.")
     print()
 
 

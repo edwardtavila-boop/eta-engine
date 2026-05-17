@@ -340,7 +340,59 @@ def _trade_submit_snapshot(trade: Any) -> dict[str, Any]:  # noqa: ANN401 - ib_i
         "filled": float(getattr(status, "filled", 0.0) or 0.0),
         "remaining": float(getattr(status, "remaining", 0.0) or 0.0),
         "avg_fill_price": float(getattr(status, "avgFillPrice", 0.0) or 0.0),
+        "filled_at": _trade_filled_at(trade),
     }
+
+
+def _normalize_fill_timestamp(value: Any) -> str:
+    if value in (None, ""):
+        return ""
+    if isinstance(value, datetime):
+        dt = value if value.tzinfo is not None else value.replace(tzinfo=UTC)
+        return dt.astimezone(UTC).isoformat()
+    text = str(value).strip()
+    if not text:
+        return ""
+    with contextlib.suppress(ValueError):
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=UTC)
+        return parsed.astimezone(UTC).isoformat()
+    return text
+
+
+def _trade_filled_at(trade: Any) -> str:  # noqa: ANN401 - ib_insync Trade is dynamic
+    fills = getattr(trade, "fills", None)
+    if isinstance(fills, list):
+        for fill in reversed(fills):
+            execution = getattr(fill, "execution", None)
+            candidate = _normalize_fill_timestamp(
+                getattr(execution, "time", None) or getattr(execution, "filledTime", None),
+            )
+            if candidate:
+                return candidate
+    trade_log = getattr(trade, "log", None)
+    if isinstance(trade_log, list):
+        for entry in reversed(trade_log):
+            if str(getattr(entry, "status", "") or "").strip().lower() != "filled":
+                continue
+            candidate = _normalize_fill_timestamp(getattr(entry, "time", None))
+            if candidate:
+                return candidate
+    status = getattr(trade, "orderStatus", None)
+    return _normalize_fill_timestamp(
+        getattr(status, "completedTime", None)
+        or getattr(status, "completedTimeStr", None)
+        or getattr(status, "lastFillTime", None),
+    )
+
+
+def _latest_filled_at_from_statuses(statuses: list[dict[str, Any]]) -> str | None:
+    for item in reversed(statuses):
+        candidate = _normalize_fill_timestamp(item.get("filled_at"))
+        if candidate:
+            return candidate
+    return None
 
 
 def _filled_summary_from_statuses(statuses: list[dict[str, Any]]) -> tuple[float, float]:
@@ -1222,6 +1274,7 @@ class LiveIbkrVenue(VenueBase):
                 await asyncio.sleep(submit_confirm_seconds)
             ib_statuses = [_trade_submit_snapshot(item) for item in submitted_trades]
             filled_qty, avg_price = _filled_summary_from_statuses(ib_statuses)
+            filled_at = _latest_filled_at_from_statuses(ib_statuses)
             reject_reason = _ibkr_submission_reject_reason(ib_statuses)
             if reject_reason:
                 logger.warning(
@@ -1245,27 +1298,32 @@ class LiveIbkrVenue(VenueBase):
                             "target_price": target_price,
                             "filled_qty": filled_qty,
                             "avg_price": avg_price,
+                            "filled_at": filled_at,
                             "ib_statuses": ib_statuses,
                             "reason": reject_reason,
                         },
                     )
+                raw = {
+                    "venue": self.name,
+                    "reason": reject_reason,
+                    "ibkr_order_id": trade.order.orderId,
+                    "symbol": request.symbol,
+                    "action": action,
+                    "qty": qty,
+                    "is_bracket": is_entry,
+                    "stop_price": stop_price,
+                    "target_price": target_price,
+                    "filled_qty": filled_qty,
+                    "avg_price": avg_price,
+                    "ib_statuses": ib_statuses,
+                }
+                if filled_at:
+                    raw["filled_at"] = filled_at
                 return OrderResult(
                     order_id=order_id,
                     status=OrderStatus.REJECTED,
-                    raw={
-                        "venue": self.name,
-                        "reason": reject_reason,
-                        "ibkr_order_id": trade.order.orderId,
-                        "symbol": request.symbol,
-                        "action": action,
-                        "qty": qty,
-                        "is_bracket": is_entry,
-                        "stop_price": stop_price,
-                        "target_price": target_price,
-                        "filled_qty": filled_qty,
-                        "avg_price": avg_price,
-                        "ib_statuses": ib_statuses,
-                    },
+                    filled_at=filled_at,
+                    raw=raw,
                 )
 
             # ── RECORD RESULT ─────────────────────────────────────
@@ -1286,29 +1344,34 @@ class LiveIbkrVenue(VenueBase):
                         "target_price": target_price,
                         "filled_qty": filled_qty,
                         "avg_price": avg_price,
+                        "filled_at": filled_at,
                         "ib_statuses": ib_statuses,
                     },
                 )
 
+            raw = {
+                "venue": self.name,
+                "mode": "paper_live",
+                "ibkr_order_id": trade.order.orderId,
+                "symbol": request.symbol,
+                "action": action,
+                "qty": qty,
+                "is_bracket": is_entry,
+                "stop_price": stop_price,
+                "target_price": target_price,
+                "filled_qty": filled_qty,
+                "avg_price": avg_price,
+                "ib_statuses": ib_statuses,
+            }
+            if filled_at:
+                raw["filled_at"] = filled_at
             return OrderResult(
                 order_id=order_id,
                 status=OrderStatus.OPEN,
                 filled_qty=filled_qty,
                 avg_price=avg_price,
-                raw={
-                    "venue": self.name,
-                    "mode": "paper_live",
-                    "ibkr_order_id": trade.order.orderId,
-                    "symbol": request.symbol,
-                    "action": action,
-                    "qty": qty,
-                    "is_bracket": is_entry,
-                    "stop_price": stop_price,
-                    "target_price": target_price,
-                    "filled_qty": filled_qty,
-                    "avg_price": avg_price,
-                    "ib_statuses": ib_statuses,
-                },
+                filled_at=filled_at,
+                raw=raw,
             )
         except Exception as exc:
             logger.error("LiveIbkrVenue order failed: %s", exc)
@@ -1388,12 +1451,21 @@ class LiveIbkrVenue(VenueBase):
             "Cancelled": OrderStatus.REJECTED,
         }
         ib_status = str(trade.orderStatus.status) if trade.orderStatus else "Unknown"
+        filled_qty = float(trade.orderStatus.filled or 0.0) if trade.orderStatus else 0.0
+        avg_price = float(trade.orderStatus.avgFillPrice or 0.0) if trade.orderStatus else 0.0
+        filled_at = _trade_filled_at(trade) or None
+        raw = {
+            "venue": self.name,
+            "ib_status": ib_status,
+            "filled": trade.orderStatus.filled if trade.orderStatus else 0,
+        }
+        if filled_at:
+            raw["filled_at"] = filled_at
         return OrderResult(
             order_id=order_id,
             status=status_map.get(ib_status, OrderStatus.OPEN),
-            raw={
-                "venue": self.name,
-                "ib_status": ib_status,
-                "filled": trade.orderStatus.filled if trade.orderStatus else 0,
-            },
+            filled_qty=filled_qty,
+            avg_price=avg_price,
+            filled_at=filled_at,
+            raw=raw,
         )

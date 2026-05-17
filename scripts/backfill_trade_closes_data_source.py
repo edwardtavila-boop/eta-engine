@@ -26,6 +26,8 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
+from eta_engine.scripts import workspace_roots
+
 TEST_BOT_IDS = frozenset(
     {
         "t1",
@@ -46,7 +48,7 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument(
         "--ledger",
-        default=r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\jarvis_intel\trade_closes.jsonl",
+        default=str(workspace_roots.ETA_JARVIS_TRADE_CLOSES_PATH),
     )
     ap.add_argument("--backup", default=None)
     ap.add_argument("--dry-run", action="store_true")

@@ -40,9 +40,9 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
-_TRADE_CLOSES = Path(
-    r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\jarvis_intel\trade_closes.jsonl",
-)
+from eta_engine.scripts import workspace_roots
+
+_TRADE_CLOSES = workspace_roots.ETA_JARVIS_TRADE_CLOSES_PATH
 
 
 def _load_closes(since_iso: str | None = None) -> list[dict[str, Any]]:

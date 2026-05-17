@@ -48,11 +48,11 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from eta_engine.scripts import workspace_roots
+
 logger = logging.getLogger("eta_engine.brain.jarvis_v3.sentiment_overlay")
 
-DEFAULT_CACHE_DIR = Path(
-    r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\sentiment",
-)
+DEFAULT_CACHE_DIR = workspace_roots.ETA_SENTIMENT_CACHE_DIR
 STALE_AFTER_MIN = 60
 
 # Asset → cache file mapping. The Hermes scheduled task writes to these

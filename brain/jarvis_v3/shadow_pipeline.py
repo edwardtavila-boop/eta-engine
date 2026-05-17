@@ -8,11 +8,12 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
+from eta_engine.scripts import workspace_roots
+
 logger = logging.getLogger(__name__)
 
-ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_PIPELINE_STATE = ROOT / "state" / "jarvis_intel" / "shadow_pipeline.json"
-DEFAULT_FILLS_JOURNAL = ROOT / "var" / "eta_engine" / "state" / "shadow_fills.jsonl"
+DEFAULT_PIPELINE_STATE = workspace_roots.ETA_JARVIS_INTEL_STATE_DIR / "shadow_pipeline.json"
+DEFAULT_FILLS_JOURNAL = workspace_roots.ETA_RUNTIME_STATE_DIR / "shadow_fills.jsonl"
 
 _SHADOW_ENABLED = "SHADOW_OBSERVER_ENABLED"
 

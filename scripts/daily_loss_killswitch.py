@@ -29,9 +29,11 @@ from datetime import UTC, datetime, time, timedelta, tzinfo
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+from eta_engine.scripts import workspace_roots
+
 logger = logging.getLogger(__name__)
 
-_TRADE_CLOSES_PATH = Path(r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\jarvis_intel\trade_closes.jsonl")
+_TRADE_CLOSES_PATH = workspace_roots.ETA_JARVIS_TRADE_CLOSES_PATH
 _DEFAULT_TIMEZONE = "America/New_York"
 
 
@@ -53,6 +55,16 @@ def _operator_now() -> datetime:
     return datetime.now(_operator_timezone())
 
 
+def _trade_closes_path() -> Path:
+    override = os.getenv("ETA_JARVIS_TRADE_CLOSES_PATH", "").strip()
+    if override:
+        return Path(override)
+    state_override = os.getenv("ETA_STATE_DIR", "").strip()
+    if state_override:
+        return Path(state_override) / "jarvis_intel" / "trade_closes.jsonl"
+    return _TRADE_CLOSES_PATH
+
+
 def _next_reset_at(now: datetime | None = None) -> datetime:
     local_now = now or _operator_now()
     return datetime.combine(local_now.date() + timedelta(days=1), time.min, tzinfo=local_now.tzinfo)
@@ -63,11 +75,25 @@ def _today_utc_date_str() -> str:
     return _operator_now().date().isoformat()
 
 
-def _is_today(ts_str: str) -> bool:
-    today = _today_utc_date_str()
+def _parse_trade_close_ts(ts_str: str, *, operator_tz: tzinfo | None = None) -> datetime | None:
     if not ts_str:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(ts_str).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+    local_tz = operator_tz or _operator_timezone()
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=local_tz)
+    return parsed.astimezone(local_tz)
+
+
+def _is_today(ts_str: str, *, today: str | None = None, operator_tz: tzinfo | None = None) -> bool:
+    parsed = _parse_trade_close_ts(ts_str, operator_tz=operator_tz)
+    if parsed is None:
         return False
-    return str(ts_str).startswith(today)
+    return parsed.date().isoformat() == (today or _today_utc_date_str())
 
 
 def _today_realized_pnl_usd() -> float:
@@ -84,10 +110,12 @@ def _today_realized_pnl_usd() -> float:
     )
 
     rows = load_close_records(
-        source_paths=[_TRADE_CLOSES_PATH],
+        source_paths=[_trade_closes_path()],
         data_sources=frozenset({DATA_SOURCE_LIVE}),
     )
     total = 0.0
+    today = _today_utc_date_str()
+    operator_tz = _operator_timezone()
     for rec in rows:
         extra = rec.get("extra") or {}
         ts = (
@@ -97,7 +125,7 @@ def _today_realized_pnl_usd() -> float:
             or rec.get("fill_ts")
             or ""
         )
-        if not _is_today(ts):
+        if not _is_today(ts, today=today, operator_tz=operator_tz):
             continue
         pnl = rec.get("realized_pnl")
         if pnl is None and isinstance(extra, dict):

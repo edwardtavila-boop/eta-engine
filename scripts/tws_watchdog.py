@@ -37,11 +37,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from eta_engine.scripts import ibgateway_reauth_controller
+from eta_engine.scripts import workspace_roots
 
 logger = logging.getLogger(__name__)
 
 
-_STATUS_PATH = Path(r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\tws_watchdog.json")
+_STATUS_PATH = workspace_roots.ETA_TWS_WATCHDOG_STATUS_PATH
 _DEFAULT_CRASH_LOG_DIR = Path(r"C:\Jts\ibgateway\1046")
 _DEFAULT_WATCHDOG_CLIENT_IDS = (9011, 9012, 9013, 9014)
 _GATEWAY_PROCESS_NAMES = ("ibgateway.exe", "ibgateway1.exe")
@@ -50,7 +51,7 @@ _LAST_ACCOUNT_SNAPSHOT: dict | None = None
 
 
 def _bootstrap_env() -> None:
-    env_path = Path(r"C:\EvolutionaryTradingAlgo\eta_engine\.env")
+    env_path = workspace_roots.ETA_ENGINE_ROOT / ".env"
     if not env_path.exists():
         return
     try:

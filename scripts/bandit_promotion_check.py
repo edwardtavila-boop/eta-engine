@@ -31,16 +31,39 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT.parent) not in sys.path:
     sys.path.insert(0, str(ROOT.parent))
 
+from eta_engine.scripts import workspace_roots
+
 logger = logging.getLogger("bandit_promotion_check")
+
+
+def _resolve_audit_dir(audit_dir: Path) -> Path:
+    if (
+        audit_dir == workspace_roots.ETA_JARVIS_AUDIT_DIR
+        and not audit_dir.exists()
+        and workspace_roots.ETA_LEGACY_JARVIS_AUDIT_DIR.exists()
+    ):
+        logger.info("using legacy audit dir fallback: %s", workspace_roots.ETA_LEGACY_JARVIS_AUDIT_DIR)
+        return workspace_roots.ETA_LEGACY_JARVIS_AUDIT_DIR
+    return audit_dir
 
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--audit-dir", type=Path, default=ROOT / "state" / "jarvis_audit")
+    p.add_argument(
+        "--audit-dir",
+        type=Path,
+        default=workspace_roots.ETA_JARVIS_AUDIT_DIR,
+        help="Directory of JARVIS audit *.jsonl files. Default: var/eta_engine/state/jarvis_audit",
+    )
     p.add_argument("--window-days", type=int, default=30)
     p.add_argument("--min-decisions", type=int, default=100)
     p.add_argument("--approval-delta", type=float, default=0.05, help="Max acceptable abs diff in approval_rate")
-    p.add_argument("--out-dir", type=Path, default=ROOT / "state" / "bandit")
+    p.add_argument(
+        "--out-dir",
+        type=Path,
+        default=workspace_roots.ETA_BANDIT_PROMOTION_DIR,
+        help="Directory for promotion-check outputs. Default: var/eta_engine/state/bandit",
+    )
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("-v", "--verbose", action="store_true")
     args = p.parse_args(argv)
@@ -59,8 +82,9 @@ def main(argv: list[str] | None = None) -> int:
         load_audit_records,
     )
 
+    audit_dir = _resolve_audit_dir(args.audit_dir)
     cutoff = datetime.now(UTC) - timedelta(days=args.window_days)
-    audit_files = list(args.audit_dir.glob("*.jsonl")) if args.audit_dir.exists() else []
+    audit_files = list(audit_dir.glob("*.jsonl")) if audit_dir.exists() else []
     records = load_audit_records(audit_files, since=cutoff)
     logger.info("scoring %d records over %dd window", len(records), args.window_days)
 

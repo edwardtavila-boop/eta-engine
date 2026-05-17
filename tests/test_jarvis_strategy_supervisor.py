@@ -328,7 +328,7 @@ def test_supervisor_adopts_broker_router_filled_entry(
     monkeypatch,
 ) -> None:
     import json
-    from datetime import UTC, datetime
+    from datetime import UTC, datetime, timedelta
 
     from eta_engine.scripts import jarvis_strategy_supervisor as mod
     from eta_engine.scripts.jarvis_strategy_supervisor import (
@@ -354,6 +354,9 @@ def test_supervisor_adopts_broker_router_filled_entry(
     monkeypatch.setattr(sup._router, "_get_broker_position_qty", lambda _bot: 1.0)  # noqa: SLF001
     persisted: list[list[dict]] = []
     monkeypatch.setattr(mod, "persist_open_positions", lambda rows: persisted.append(rows))
+    now = datetime(2026, 5, 16, 14, 0, tzinfo=UTC)
+    order_ts = now - timedelta(seconds=95)
+    broker_fill_ts = now - timedelta(seconds=20)
 
     signal_id = "mnq_futures_sage_adopt"
     fill_dir = cfg.broker_router_pending_dir.parent / "fill_results"
@@ -364,6 +367,9 @@ def test_supervisor_adopts_broker_router_filled_entry(
                 "signal_id": signal_id,
                 "bot_id": bot.bot_id,
                 "venue": "ibkr",
+                "order_ts": order_ts.isoformat(),
+                "broker_fill_ts": broker_fill_ts.isoformat(),
+                "result_written_ts": (now - timedelta(seconds=5)).isoformat(),
                 "request": {
                     "symbol": "MNQ",
                     "side": "BUY",
@@ -380,13 +386,13 @@ def test_supervisor_adopts_broker_router_filled_entry(
                     "filled_qty": 1.0,
                     "avg_price": 29300.25,
                 },
-                "ts": datetime.now(UTC).isoformat(),
+                "ts": now.isoformat(),
             },
         ),
         encoding="utf-8",
     )
 
-    adopted = sup._adopt_broker_router_fill_if_needed(bot, now=datetime.now(UTC))  # noqa: SLF001
+    adopted = sup._adopt_broker_router_fill_if_needed(bot, now=now)  # noqa: SLF001
 
     assert adopted is True
     assert bot.open_position is not None
@@ -397,6 +403,14 @@ def test_supervisor_adopts_broker_router_filled_entry(
     assert bot.open_position["bracket_stop"] == 29250.25
     assert bot.open_position["bracket_target"] == 29400.25
     assert bot.open_position["broker_router_adopted"] is True
+    assert bot.open_position["broker_router_fill_age_s"] == 75.0
+    assert bot.open_position["entry_fill_age_s"] == 75.0
+    assert bot.open_position["entry_fill_latency_source"] == "broker_router_fill_result"
+    assert bot.open_position["entry_fill_age_precision"] == "broker_fill_ts"
+    assert bot.open_position["broker_fill_ts"] == broker_fill_ts.isoformat()
+    assert bot.open_position["broker_router_result_ts"] == (now - timedelta(seconds=5)).isoformat()
+    assert bot.open_position["fill_to_adopt_delay_s"] == 20.0
+    assert bot.open_position["fill_result_write_delay_s"] == 15.0
     assert (cfg.state_dir / "bots" / bot.bot_id / "open_position.json").exists()
     assert persisted[-1][0]["bot_id"] == bot.bot_id
 
@@ -475,6 +489,10 @@ def test_supervisor_adopts_stale_shadow_pending_entry(
     assert bot.open_position["bracket_stop"] == 29250.25
     assert bot.open_position["bracket_target"] == 29400.25
     assert bot.open_position["shadow_pending_adopted"] is True
+    assert bot.open_position["shadow_pending_age_s"] >= 300.0
+    assert bot.open_position["entry_fill_age_s"] >= 300.0
+    assert bot.open_position["entry_fill_latency_source"] == "shadow_pending_fallback"
+    assert bot.open_position["entry_fill_age_precision"] == "pending_file_ts_to_supervisor_adopt"
     assert bot.open_position["broker_bracket"] is False
     assert bot.n_entries == 1
     assert bot.last_signal_at == stale_ts.isoformat()
@@ -3082,6 +3100,94 @@ def test_supervisor_loads_exit_watch_bot_without_entry_permission(tmp_path: Path
     assert bots["volume_profile_mnq"].entry_enabled is True
     assert bots["mbt_funding_basis"].entry_enabled is False
     assert bots["mbt_funding_basis"].entry_disabled_reason == "exit_watch_only"
+
+
+def test_supervisor_load_bots_carries_registry_extras_for_mnq_futures_sage(tmp_path: Path) -> None:
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        JarvisStrategySupervisor,
+        SupervisorConfig,
+    )
+
+    cfg = SupervisorConfig()
+    cfg.mode = "paper_live"
+    cfg.data_feed = "mock"
+    cfg.state_dir = tmp_path / "state"
+    cfg.bots_env = "mnq_futures_sage"
+    sup = JarvisStrategySupervisor(cfg=cfg)
+
+    sup.load_bots()
+
+    bots = {bot.bot_id: bot for bot in sup.bots}
+    assert bots["mnq_futures_sage"].registry_extras["partial_profit_enabled"] is False
+    assert bots["mnq_futures_sage"].partial_profit_enabled is False
+
+
+def test_partial_profit_respects_bot_scoped_disable(monkeypatch, tmp_path: Path) -> None:
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        BotInstance,
+        JarvisStrategySupervisor,
+        SupervisorConfig,
+    )
+
+    monkeypatch.setenv("ETA_PARTIAL_PROFIT_ENABLED", "true")
+    cfg = SupervisorConfig()
+    cfg.state_dir = tmp_path / "state"
+    sup = JarvisStrategySupervisor(cfg=cfg)
+    calls = {"submit_exit": 0}
+
+    def _submit_exit(*, bot, bar):  # noqa: ARG001
+        calls["submit_exit"] += 1
+        return None
+
+    monkeypatch.setattr(sup._router, "submit_exit", _submit_exit)
+    bot = BotInstance(
+        bot_id="mnq_futures_sage",
+        symbol="MNQ1",
+        strategy_kind="orb_sage_gated",
+        direction="long",
+        cash=50_000.0,
+        registry_extras={"partial_profit_enabled": False},
+        open_position={
+            "entry_price": 100.0,
+            "bracket_stop": 99.0,
+            "qty": 1.0,
+            "side": "BUY",
+        },
+    )
+    before = dict(bot.open_position)
+
+    sup._maybe_take_partial_profit(
+        bot,
+        bot.open_position,
+        {"close": 101.25, "high": 101.25, "low": 100.5},
+    )
+
+    assert calls["submit_exit"] == 0
+    assert bot.open_position == before
+
+
+def test_supervisor_heartbeat_exposes_effective_partial_profit_flag(tmp_path: Path) -> None:
+    import json
+
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        JarvisStrategySupervisor,
+        SupervisorConfig,
+    )
+
+    cfg = SupervisorConfig()
+    cfg.mode = "paper_live"
+    cfg.data_feed = "mock"
+    cfg.state_dir = tmp_path / "state"
+    cfg.bots_env = "mnq_futures_sage"
+    sup = JarvisStrategySupervisor(cfg=cfg)
+
+    sup.load_bots()
+    sup._write_heartbeat(1)  # noqa: SLF001
+
+    payload = json.loads((cfg.state_dir / "heartbeat.json").read_text(encoding="utf-8"))
+    bot = next(row for row in payload["bots"] if row["bot_id"] == "mnq_futures_sage")
+    assert bot["partial_profit_enabled"] is False
+    assert "registry_extras" not in bot
 
 
 def test_supervisor_heartbeat_per_bot_mode_inherits_cfg_mode(tmp_path: Path) -> None:

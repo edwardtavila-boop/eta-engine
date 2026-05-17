@@ -56,16 +56,17 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from eta_engine.feeds.capital_allocator import DIAMOND_BOTS
+from eta_engine.scripts import workspace_roots
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKSPACE_ROOT = ROOT.parent
-STATE_DIR = WORKSPACE_ROOT / "var" / "eta_engine" / "state"
-LOG_DIR = WORKSPACE_ROOT / "logs" / "eta_engine"
+STATE_DIR = workspace_roots.ETA_RUNTIME_STATE_DIR
+LOG_DIR = workspace_roots.ETA_RUNTIME_LOG_DIR
 
-CLOSED_LEDGER = STATE_DIR / "closed_trade_ledger_latest.json"
-OUT_LATEST = STATE_DIR / "diamond_watchdog_latest.json"
+CLOSED_LEDGER = workspace_roots.ETA_CLOSED_TRADE_LEDGER_PATH
+OUT_LATEST = workspace_roots.ETA_DIAMOND_WATCHDOG_PATH
 OUT_LOG = LOG_DIR / "diamond_watchdog.jsonl"
-ALERTS_LOG = LOG_DIR / "alerts_log.jsonl"
+ALERTS_LOG = workspace_roots.ETA_RUNTIME_ALERTS_LOG_PATH
 
 #: Pre-committed retirement thresholds from the operator's 2026-05-12
 #: decision memo.  Each is the 30-day rolling P&L floor; falling below

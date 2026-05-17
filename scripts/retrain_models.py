@@ -10,7 +10,7 @@ also covers:
   * online-updater alphas (per-bot)
 
 Each retrained artifact is versioned and persisted to
-``state/models/<artifact>_<date>.json``. The runtime checks for the
+``var/eta_engine/state/models/<artifact>_<date>.json``. The runtime checks for the
 latest version on startup but doesn't auto-promote -- the operator
 approves promotion via Resend ``model_retrain_complete`` alert.
 
@@ -30,13 +30,31 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT.parent) not in sys.path:
     sys.path.insert(0, str(ROOT.parent))
 
+from eta_engine.scripts import workspace_roots
+
 logger = logging.getLogger("retrain_models")
+
+
+def _resolve_audit_dir(audit_dir: Path) -> Path:
+    if (
+        audit_dir == workspace_roots.ETA_JARVIS_AUDIT_DIR
+        and not audit_dir.exists()
+        and workspace_roots.ETA_LEGACY_JARVIS_AUDIT_DIR.exists()
+    ):
+        logger.info("using legacy audit dir fallback: %s", workspace_roots.ETA_LEGACY_JARVIS_AUDIT_DIR)
+        return workspace_roots.ETA_LEGACY_JARVIS_AUDIT_DIR
+    return audit_dir
 
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--lookback-days", type=int, default=90)
-    p.add_argument("--out-dir", type=Path, default=ROOT / "state" / "models")
+    p.add_argument(
+        "--out-dir",
+        type=Path,
+        default=workspace_roots.ETA_MODEL_ARTIFACT_DIR,
+        help="Model artifact output directory. Default: var/eta_engine/state/models",
+    )
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("-v", "--verbose", action="store_true")
     args = p.parse_args(argv)
@@ -59,7 +77,7 @@ def main(argv: list[str] | None = None) -> int:
         from eta_engine.brain.jarvis_v3.calibration import fit_from_audit
 
         cutoff = datetime.now(UTC) - timedelta(days=args.lookback_days)
-        audit_dir = ROOT / "state" / "jarvis_audit"
+        audit_dir = _resolve_audit_dir(workspace_roots.ETA_JARVIS_AUDIT_DIR)
         audit_files = list(audit_dir.glob("*.jsonl")) if audit_dir.exists() else []
         if audit_files:
             sigmoid = fit_from_audit(audit_files, since=cutoff)
@@ -90,7 +108,10 @@ def main(argv: list[str] | None = None) -> int:
                 cwd=str(ROOT),
             )
             summary["artifacts"].append(
-                {"name": "correlation_matrix", "path": str(ROOT / "state" / "correlation" / "learned.json")}
+                {
+                    "name": "correlation_matrix",
+                    "path": str(workspace_roots.ETA_CORRELATION_ARTIFACT_DIR / "learned.json"),
+                }
             )
             logger.info("correlation_matrix refreshed")
     except Exception as exc:  # noqa: BLE001

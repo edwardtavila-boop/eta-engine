@@ -8,8 +8,8 @@ Catches the silent decay modes that no other sentinel covers:
    silently disabled. The baseline self-updates UPWARDS only.
 
 2. **Bloated state files** -- ``logs/eta_engine/alerts_log.jsonl``,
-   ``logs/eta_engine/runtime_log.jsonl``, ``docs/jarvis_live_log.jsonl``,
-   and ``docs/decisions_v1.json`` over ``--max-mb`` (default 25MB).
+   ``logs/eta_engine/runtime_log.jsonl``, ``var/eta_engine/state/jarvis_live_log.jsonl``,
+   and the canonical decisions lock over ``--max-mb`` (default 25MB).
    Indicates rotation/pruning is missing.
 
 3. **Pre-commit hook missing** -- ``.git/hooks/pre-commit`` does not
@@ -45,23 +45,24 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
-from eta_engine.scripts.workspace_roots import default_alerts_log_path, default_runtime_log_path
+from eta_engine.scripts import workspace_roots
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_BASELINE = ROOT / "docs" / "repo_health_baseline.json"
 
-_STATIC_LOG_FILES = [
-    ROOT / "docs" / "jarvis_live_log.jsonl",
-    ROOT / "docs" / "decisions_v1.json",
-]
+def _static_log_files() -> list[Path]:
+    return [
+        workspace_roots.ETA_JARVIS_LIVE_LOG_PATH,
+        workspace_roots.default_decisions_v1_path(),
+    ]
 
 
 def log_files() -> list[Path]:
     """Return state/log files for size checks, preferring live runtime logs."""
     return [
-        default_alerts_log_path(),
-        default_runtime_log_path(),
-        *_STATIC_LOG_FILES,
+        workspace_roots.default_alerts_log_path(),
+        workspace_roots.default_runtime_log_path(),
+        *_static_log_files(),
     ]
 
 

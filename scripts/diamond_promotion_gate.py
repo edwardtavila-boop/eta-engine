@@ -82,13 +82,13 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from eta_engine.scripts import workspace_roots
+
 ROOT = Path(__file__).resolve().parents[1]
 WORKSPACE_ROOT = ROOT.parent
-TRADE_CLOSES_CANONICAL = WORKSPACE_ROOT / "var" / "eta_engine" / "state" / "jarvis_intel" / "trade_closes.jsonl"
-TRADE_CLOSES_LEGACY = (
-    WORKSPACE_ROOT / "eta_engine" / "state" / "jarvis_intel" / "trade_closes.jsonl"  # noqa: ERA001  (canonical archive — see HISTORICAL-PATH-OK)
-)
-OUT_LATEST = WORKSPACE_ROOT / "var" / "eta_engine" / "state" / "diamond_promotion_gate_latest.json"
+TRADE_CLOSES_CANONICAL = workspace_roots.ETA_JARVIS_TRADE_CLOSES_PATH
+TRADE_CLOSES_LEGACY = workspace_roots.ETA_LEGACY_JARVIS_TRADE_CLOSES_PATH
+OUT_LATEST = workspace_roots.ETA_DIAMOND_PROMOTION_GATE_PATH
 
 # Bot ids that are not real bots (internal layer-propagation events,
 # pseudo-rows). Exclude from promotion analysis.

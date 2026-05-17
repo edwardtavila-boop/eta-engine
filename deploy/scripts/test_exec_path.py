@@ -1,7 +1,8 @@
 """Test the exact execution path the supervisor uses."""
 
 import asyncio
-from pathlib import Path
+
+from eta_engine.scripts import workspace_roots
 
 
 async def main() -> None:
@@ -36,12 +37,13 @@ async def main() -> None:
         traceback.print_exc()
 
     # 3. Check the pending directory the supervisor writes to
-    bf = Path("C:/EvolutionaryTradingAlgo/eta_engine/docs/btc_live/broker_fleet")
-    print(f"\n3. Pending dir: {bf} (exists={bf.exists()})")
+    pending_dir = workspace_roots.ETA_BROKER_ROUTER_PENDING_DIR
+    print(f"\n3. Pending dir: {pending_dir} (exists={pending_dir.exists()})")
 
     # 4. Check if we can write to the pending dir
     try:
-        test_file = bf / "test_perm_check.json"
+        test_file = pending_dir / "test_perm_check.json"
+        test_file.parent.mkdir(parents=True, exist_ok=True)
         test_file.write_text('{"test": true}')
         test_file.unlink()
         print("   Writable: YES")

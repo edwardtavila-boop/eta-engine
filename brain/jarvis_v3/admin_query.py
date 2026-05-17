@@ -35,14 +35,15 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from eta_engine.scripts import workspace_roots
+
 if TYPE_CHECKING:
     from eta_engine.brain.jarvis_v3.memory_hierarchy import HierarchicalMemory
 
 logger = logging.getLogger(__name__)
 
-ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_VERDICT_LOG = ROOT / "state" / "jarvis_intel" / "verdicts.jsonl"
-DEFAULT_TRADE_LOG = ROOT / "state" / "jarvis_intel" / "trade_closes.jsonl"
+DEFAULT_VERDICT_LOG = workspace_roots.ETA_JARVIS_VERDICTS_PATH
+DEFAULT_TRADE_LOG = workspace_roots.ETA_JARVIS_TRADE_CLOSES_PATH
 
 
 # ─── Helpers ─────────────────────────────────────────────────────
@@ -253,6 +254,58 @@ def memory_regime_stats(
             )
         )
     return sorted(out, key=lambda s: s.n_episodes, reverse=True)
+
+
+def second_brain_snapshot(
+    memory: HierarchicalMemory | None = None,
+    *,
+    top_n: int = 5,
+) -> dict:
+    """Return Jarvis's hierarchical-memory status as plain JSON."""
+    if memory is None:
+        from eta_engine.brain.jarvis_v3.memory_hierarchy import (
+            HierarchicalMemory,
+        )
+
+        memory = HierarchicalMemory()
+    try:
+        return memory.snapshot(top_n=top_n)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("admin_query: second brain snapshot failed (%s)", exc)
+        return {
+            "status": "unavailable",
+            "error": str(exc),
+            "n_episodes": 0,
+            "semantic_patterns": 0,
+            "procedural_versions": 0,
+        }
+
+
+def second_brain_playbook(
+    memory: HierarchicalMemory | None = None,
+    *,
+    min_episodes: int = 30,
+    top_n: int = 5,
+) -> dict:
+    """Return best/worst historical setup patterns from Jarvis memory."""
+    if memory is None:
+        from eta_engine.brain.jarvis_v3.memory_hierarchy import (
+            HierarchicalMemory,
+        )
+
+        memory = HierarchicalMemory()
+    try:
+        return memory.semantic_playbook(min_episodes=min_episodes, top_n=top_n)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("admin_query: second brain playbook failed (%s)", exc)
+        return {
+            "eligible_patterns": 0,
+            "best_patterns": [],
+            "worst_patterns": [],
+            "favor_patterns": [],
+            "avoid_patterns": [],
+            "error": str(exc),
+        }
 
 
 def top_analog_episodes(

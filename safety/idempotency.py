@@ -59,6 +59,8 @@ from dataclasses import dataclass, field
 from pathlib import Path as _Path
 from typing import Any
 
+from eta_engine.scripts import workspace_roots
+
 
 class IdempotencyError(RuntimeError):
     """Raised when the dedup store cannot service a request.
@@ -165,7 +167,7 @@ def _is_expired(rec: IdempotencyRecord, *, now: float | None = None) -> bool:
 # or legacy paths.
 
 # default-on persistence; set ETA_IDEMPOTENCY_STORE=disabled to opt out
-_DEFAULT_PERSIST_PATH: _Path = _Path("C:/EvolutionaryTradingAlgo/var/eta_engine/state/idempotency.jsonl")
+_DEFAULT_PERSIST_PATH: _Path = workspace_roots.ETA_IDEMPOTENCY_STORE_PATH
 
 
 def _persist_path() -> _Path | None:

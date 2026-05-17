@@ -23,14 +23,11 @@ import argparse
 import json
 import sys
 from datetime import UTC, datetime
-from pathlib import Path
 
-_OVERRIDES_PATH = Path(
-    r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\kaizen_overrides.json",
-)
-_REACTIVATE_LOG = Path(
-    r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\kaizen_reactivate.log",
-)
+from eta_engine.scripts import workspace_roots
+
+_OVERRIDES_PATH = workspace_roots.ETA_KAIZEN_OVERRIDES_PATH
+_REACTIVATE_LOG = workspace_roots.ETA_KAIZEN_REACTIVATE_LOG_PATH
 
 
 def _read() -> dict[str, dict]:

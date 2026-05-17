@@ -19,7 +19,7 @@ Aggregates ALL prop-fund pre-launch signals into a single output:
   8. Cron freshness — every receipt must be < its cadence + 5 min
   9. Supervisor wiring sanity (regex-checks the integration block
      is present in jarvis_strategy_supervisor.py)
- 10. Alert dispatcher channel availability (env var detection)
+ 10. Alert dispatcher channel availability (env + canonical Telegram secrets)
 
 Output
 ------
@@ -41,33 +41,93 @@ from __future__ import annotations
 # ruff: noqa: PLR2004
 import argparse
 import json
+import subprocess
 import sys
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from eta_engine.scripts import workspace_roots
+from eta_engine.scripts.retune_advisory_cache import build_retune_advisory
+
 ROOT = Path(__file__).resolve().parents[1]
 WORKSPACE_ROOT = ROOT.parent
-STATE_DIR = WORKSPACE_ROOT / "var" / "eta_engine" / "state"
+STATE_DIR = workspace_roots.ETA_RUNTIME_STATE_DIR
 
-OUT_LATEST = STATE_DIR / "diamond_prop_prelaunch_dryrun_latest.json"
+OUT_LATEST = workspace_roots.ETA_DIAMOND_PROP_PRELAUNCH_DRYRUN_PATH
 
-#: Per-receipt freshness limits in HOURS (cron cadence + 5 min slack).
-FRESHNESS_LIMITS_HOURS = {
-    "diamond_leaderboard_latest.json": 1.5,  # hourly + slack
-    "diamond_prop_allocator_latest.json": 1.5,  # hourly + slack
-    "diamond_ops_dashboard_latest.json": 1.5,  # hourly + slack
-    "diamond_feed_sanity_audit_latest.json": 1.5,  # hourly + slack
-    "diamond_prop_drawdown_guard_latest.json": 0.5,  # 15-min + slack
-    "closed_trade_ledger_latest.json": 0.5,  # 15-min + slack
-    "diamond_prop_launch_readiness_latest.json": 0.5,  # 15-min + slack
-    "diamond_sizing_audit_latest.json": 25.0,  # daily + 1h slack
-    "diamond_direction_stratify_latest.json": 25.0,  # daily + 1h slack
-    "diamond_promotion_gate_latest.json": 25.0,  # daily
-    "diamond_demotion_gate_latest.json": 25.0,  # daily
-    "diamond_watchdog_latest.json": 25.0,  # daily
-}
+#: Launch-critical receipts and the scheduled tasks that keep them fresh.
+SCHEDULED_RECEIPT_SURFACES = (
+    {
+        "receipt": "closed_trade_ledger_latest.json",
+        "task_name": "ETA-Diamond-LedgerEvery15Min",
+        "freshness_limit_h": 0.5,  # 15-min + slack
+    },
+    {
+        "receipt": "diamond_prop_drawdown_guard_latest.json",
+        "task_name": "ETA-Diamond-PropDrawdownGuardEvery15Min",
+        "freshness_limit_h": 0.5,  # 15-min + slack
+    },
+    {
+        "receipt": "diamond_prop_launch_readiness_latest.json",
+        "task_name": "ETA-Diamond-LaunchReadinessEvery15Min",
+        "freshness_limit_h": 0.5,  # 15-min + slack
+    },
+    {
+        "receipt": "diamond_leaderboard_latest.json",
+        "task_name": "ETA-Diamond-LeaderboardHourly",
+        "freshness_limit_h": 1.5,  # hourly + slack
+    },
+    {
+        "receipt": "diamond_prop_allocator_latest.json",
+        "task_name": "ETA-Diamond-PropAllocatorHourly",
+        "freshness_limit_h": 1.5,  # hourly + slack
+    },
+    {
+        "receipt": "diamond_ops_dashboard_latest.json",
+        "task_name": "ETA-Diamond-OpsDashboardHourly",
+        "freshness_limit_h": 1.5,  # hourly + slack
+    },
+    {
+        "receipt": "diamond_feed_sanity_audit_latest.json",
+        "task_name": "ETA-Diamond-FeedSanityHourly",
+        "freshness_limit_h": 1.5,  # hourly + slack
+    },
+    {
+        "receipt": "diamond_sizing_audit_latest.json",
+        "task_name": "ETA-Diamond-SizingAuditDaily",
+        "freshness_limit_h": 25.0,  # daily + 1h slack
+    },
+    {
+        "receipt": "diamond_direction_stratify_latest.json",
+        "task_name": "ETA-Diamond-DirectionStratifyDaily",
+        "freshness_limit_h": 25.0,  # daily + 1h slack
+    },
+    {
+        "receipt": "diamond_promotion_gate_latest.json",
+        "task_name": "ETA-Diamond-PromotionGateDaily",
+        "freshness_limit_h": 25.0,  # daily
+    },
+    {
+        "receipt": "diamond_demotion_gate_latest.json",
+        "task_name": "ETA-Diamond-DemotionGateDaily",
+        "freshness_limit_h": 25.0,  # daily
+    },
+    {
+        "receipt": "diamond_watchdog_latest.json",
+        "task_name": "ETA-Diamond-WatchdogDaily",
+        "freshness_limit_h": 25.0,  # daily
+    },
+)
+
+ADDITIONAL_REQUIRED_SCHEDULED_TASKS = (
+    "ETA-Diamond-PropAlertDispatcherEvery15Min",
+)
+
+EXPECTED_SCHEDULED_TASKS = tuple(
+    surface["task_name"] for surface in SCHEDULED_RECEIPT_SURFACES
+) + ADDITIONAL_REQUIRED_SCHEDULED_TASKS
 
 
 @dataclass
@@ -84,6 +144,7 @@ class DryRunReceipt:
     overall_verdict: str
     summary: str
     sections: list[SectionResult] = field(default_factory=list)
+    retune_advisory: dict[str, Any] = field(default_factory=dict)
 
 
 def _load_json(path: Path) -> dict[str, Any] | None:
@@ -95,11 +156,111 @@ def _load_json(path: Path) -> dict[str, Any] | None:
         return None
 
 
+def _load_json_dict(path: Path) -> dict[str, Any]:
+    payload = _load_json(path)
+    if isinstance(payload, dict):
+        return payload
+    return {}
+
+
+def _dict_field(payload: dict[str, Any], key: str) -> dict[str, Any]:
+    value = payload.get(key)
+    if isinstance(value, dict):
+        return value
+    return {}
+
+
+def _string_list(payload: dict[str, Any], key: str) -> list[str]:
+    value = payload.get(key)
+    if not isinstance(value, list):
+        return []
+    return [str(item) for item in value if str(item).strip()]
+
+
 def _file_age_hours(path: Path) -> float | None:
     if not path.exists():
         return None
     mtime = datetime.fromtimestamp(path.stat().st_mtime, tz=UTC)
     return (datetime.now(UTC) - mtime).total_seconds() / 3600.0
+
+
+def _collect_task_registration() -> dict[str, Any]:
+    """Return scheduled-task presence/state for the launch-critical ETA-Diamond lane."""
+    quoted = ", ".join(f"'{name}'" for name in EXPECTED_SCHEDULED_TASKS)
+    command = f"""
+$names = @({quoted})
+$results = foreach ($name in $names) {{
+  $task = Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue
+  if ($null -eq $task) {{
+    [pscustomobject]@{{TaskName=$name;State='Missing';LastTaskResult=$null;LastRunTime=$null;NextRunTime=$null}}
+  }} else {{
+    $info = Get-ScheduledTaskInfo -TaskName $name -ErrorAction SilentlyContinue
+    [pscustomobject]@{{
+      TaskName=$task.TaskName
+      State=[string]$task.State
+      LastTaskResult=$info.LastTaskResult
+      LastRunTime=$info.LastRunTime
+      NextRunTime=$info.NextRunTime
+    }}
+  }}
+}}
+$results | ConvertTo-Json -Depth 4
+"""
+    try:
+        result = subprocess.run(
+            ["powershell", "-NoProfile", "-Command", command],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=30,
+            check=False,
+        )
+    except OSError as exc:
+        return {"available": False, "error": f"powershell_unavailable:{exc}"}
+    except subprocess.TimeoutExpired:
+        return {"available": False, "error": "powershell_timeout"}
+
+    if result.returncode != 0:
+        stderr = (result.stderr or result.stdout or "").strip()
+        return {"available": False, "error": f"powershell_rc={result.returncode}:{stderr[:240]}"}
+
+    raw = result.stdout.strip()
+    if not raw:
+        return {"available": False, "error": "empty_scheduler_probe"}
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        return {"available": False, "error": f"invalid_scheduler_probe_json:{exc}"}
+
+    rows = payload if isinstance(payload, list) else [payload]
+    tasks: list[dict[str, Any]] = []
+    missing: list[str] = []
+    nonready: list[str] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        name = str(row.get("TaskName") or "")
+        state = str(row.get("State") or "Unknown")
+        if not name:
+            continue
+        record = {
+            "task_name": name,
+            "state": state,
+            "last_task_result": row.get("LastTaskResult"),
+            "last_run_time": row.get("LastRunTime"),
+            "next_run_time": row.get("NextRunTime"),
+        }
+        tasks.append(record)
+        if state == "Missing":
+            missing.append(name)
+        elif state not in {"Ready", "Running", "Queued"}:
+            nonready.append(name)
+    return {
+        "available": True,
+        "tasks": tasks,
+        "missing": missing,
+        "nonready": nonready,
+    }
 
 
 # ────────────────────────────────────────────────────────────────────
@@ -191,7 +352,9 @@ def _check_freshness() -> SectionResult:
     """Every cron receipt must be within its expected cadence + slack."""
     stale: list[str] = []
     fresh: list[str] = []
-    for fname, limit_h in FRESHNESS_LIMITS_HOURS.items():
+    for surface in SCHEDULED_RECEIPT_SURFACES:
+        fname = str(surface["receipt"])
+        limit_h = float(surface["freshness_limit_h"])
         path = STATE_DIR / fname
         age = _file_age_hours(path)
         if age is None:
@@ -214,6 +377,45 @@ def _check_freshness() -> SectionResult:
         "GO",
         rationale=f"all {len(fresh)} cron receipts fresh",
         detail={"fresh_count": len(fresh)},
+    )
+
+
+def _check_task_registration() -> SectionResult:
+    """Launch-critical ETA-Diamond scheduled tasks should exist on the runtime host."""
+    report = _collect_task_registration()
+    if not report.get("available"):
+        return SectionResult(
+            "task_registration",
+            "HOLD",
+            rationale="scheduled-task probe unavailable; verify ETA-Diamond tasks on the intended Windows runtime host",
+            detail={"error": report.get("error")},
+        )
+    missing = report.get("missing", [])
+    nonready = report.get("nonready", [])
+    if missing:
+        return SectionResult(
+            "task_registration",
+            "NO_GO",
+            rationale=(
+                f"{len(missing)} ETA-Diamond scheduled task(s) missing; receipts may stay fresh only after manual runs"
+            ),
+            detail={"missing": missing, "nonready": nonready, "tasks": report.get("tasks", [])},
+        )
+    if nonready:
+        return SectionResult(
+            "task_registration",
+            "HOLD",
+            rationale=(
+                f"{len(nonready)} ETA-Diamond scheduled task(s) registered but not "
+                "ready/running; inspect Task Scheduler state"
+            ),
+            detail={"missing": missing, "nonready": nonready, "tasks": report.get("tasks", [])},
+        )
+    return SectionResult(
+        "task_registration",
+        "GO",
+        rationale=f"all {len(report.get('tasks', []))} launch-critical ETA-Diamond scheduled tasks registered",
+        detail={"missing": missing, "nonready": nonready, "tasks": report.get("tasks", [])},
     )
 
 
@@ -271,8 +473,8 @@ def _check_alert_channels() -> SectionResult:
             "HOLD",
             rationale=(
                 "no push channels configured; HALT will only show on "
-                "the dashboard. Set ETA_TELEGRAM_BOT_TOKEN + "
-                "ETA_TELEGRAM_CHAT_ID or ETA_DISCORD_WEBHOOK_URL"
+                "the dashboard. Seed ETA Telegram env vars or canonical "
+                "secrets/telegram_*.txt, or set ETA_DISCORD_WEBHOOK_URL"
             ),
         )
     return SectionResult(
@@ -458,6 +660,10 @@ def _check_watchdog(prop_ready: list[str]) -> SectionResult:
     )
 
 
+def _retune_advisory() -> dict[str, Any]:
+    return build_retune_advisory(STATE_DIR / "health")
+
+
 # ────────────────────────────────────────────────────────────────────
 # Aggregator
 # ────────────────────────────────────────────────────────────────────
@@ -482,6 +688,7 @@ def run() -> dict[str, Any]:
         _check_drawdown_guard(),
         _check_allocator(),
         _check_freshness(),
+        _check_task_registration(),
         _check_supervisor_wiring(),
         _check_alert_channels(),
         _check_wave25_lifecycle(),
@@ -496,6 +703,7 @@ def run() -> dict[str, Any]:
         overall_verdict=verdict,
         summary=summary_text,
         sections=sections,
+        retune_advisory=_retune_advisory(),
     )
     summary = asdict(receipt)
     try:
@@ -524,6 +732,28 @@ def _print(s: dict[str, Any]) -> None:
         if len(sec["rationale"]) > 60:
             print(f" {'':22s}  {'':6s}  {sec['rationale'][60:]}")
     print()
+    advisory = s.get("retune_advisory", {})
+    if advisory.get("available"):
+        focus_pnl = advisory.get("focus_total_realized_pnl")
+        focus_pf = advisory.get("focus_profit_factor")
+        broker_mtd = advisory.get("broker_mtd_pnl")
+        pnl_text = f"${focus_pnl:+.2f}" if isinstance(focus_pnl, int | float) else "n/a"
+        pf_text = f"{focus_pf:.2f}" if isinstance(focus_pf, int | float) else "n/a"
+        mtd_text = f"${broker_mtd:+.2f}" if isinstance(broker_mtd, int | float) else "n/a"
+        print(" broker-backed retune advisory")
+        print(
+            f"   focus={advisory.get('focus_bot')} state={advisory.get('focus_state')} "
+            f"issue={advisory.get('focus_issue')}",
+        )
+        print(
+            f"   closes={advisory.get('focus_closed_trade_count')} pnl={pnl_text} "
+            f"pf={pf_text} mtd={mtd_text}",
+        )
+        if advisory.get("diagnosis"):
+            print(f"   local drift={advisory.get('diagnosis')}")
+        if advisory.get("preferred_warning"):
+            print(f"   warning={advisory.get('preferred_warning')}")
+        print()
     if s["overall_verdict"] == "GO":
         print(" >>> CLEARED FOR LIVE CUTOVER MONDAY <<<")
     elif s["overall_verdict"] == "HOLD":

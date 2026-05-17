@@ -98,11 +98,12 @@ WATCHED_DAEMONS = [
 
 
 def heartbeat_paths_for(name: str) -> list[Path]:
-    """Common locations a daemon may have written its heartbeat to."""
-    return [
-        workspace_roots.ETA_RUNTIME_STATE_DIR / name,
-        workspace_roots.ETA_ENGINE_ROOT / "state" / name,
-    ]
+    """Return the canonical heartbeat path for a watched daemon.
+
+    The watchdog is a live safety surface, so it reads only the canonical
+    workspace runtime state instead of merging legacy in-repo heartbeats.
+    """
+    return [workspace_roots.ETA_RUNTIME_STATE_DIR / name]
 
 
 def heartbeat_age_seconds(spec: DaemonSpec) -> float | None:

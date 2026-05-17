@@ -5,7 +5,7 @@ The hardcoded ``_CORRELATIONS`` table in
 ``brain/jarvis_correlation.py`` is a long-run static estimate. This
 script computes the rolling 90-day daily-return correlation matrix
 from parquet bar data + writes the result to
-``state/correlation/learned.json``.
+``var/eta_engine/state/correlation/learned.json``.
 
 The runtime correlation helper checks the learned file FIRST; if it
 exists and is < 30 days old, uses those values. Otherwise falls back
@@ -36,6 +36,8 @@ logger = logging.getLogger("refresh_correlation_matrix")
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT.parent) not in sys.path:
     sys.path.insert(0, str(ROOT.parent))
+
+from eta_engine.scripts import workspace_roots
 
 #: Symbols we track. Aliases (MBT/MET) collapse to BTCUSDT/ETHUSDT.
 TRACKED_SYMBOLS = ["MNQ", "NQ", "BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT"]
@@ -90,7 +92,12 @@ def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--parquet-dir", type=Path, default=ROOT.parent / "data" / "parquet")
     p.add_argument("--days", type=int, default=90)
-    p.add_argument("--out", type=Path, default=ROOT / "state" / "correlation" / "learned.json")
+    p.add_argument(
+        "--out",
+        type=Path,
+        default=workspace_roots.ETA_CORRELATION_ARTIFACT_DIR / "learned.json",
+        help="Correlation artifact output path. Default: var/eta_engine/state/correlation/learned.json",
+    )
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("-v", "--verbose", action="store_true")
     args = p.parse_args(argv)

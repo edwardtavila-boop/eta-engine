@@ -69,21 +69,27 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from eta_engine.scripts import workspace_roots
+
 logger = logging.getLogger("eta_engine.brain.jarvis_v3.preflight")
 
-_WORKSPACE = Path(r"C:\EvolutionaryTradingAlgo")
-_STATE_ROOT = _WORKSPACE / "var" / "eta_engine" / "state"
-_LEGACY_STATE_ROOT = _WORKSPACE / "eta_engine" / "state"
-_VAR_ROOT = _WORKSPACE / "var"
-
-_TRADE_CLOSES_PATH = _STATE_ROOT / "jarvis_intel" / "trade_closes.jsonl"
-_LEGACY_TRADE_CLOSES_PATH = _LEGACY_STATE_ROOT / "jarvis_intel" / "trade_closes.jsonl"
-_MEMORY_BACKUP_DIR = _STATE_ROOT / "backups" / "hermes_memory"
-_KAIZEN_LATEST = _STATE_ROOT / "kaizen_latest.json"
-_HERMES_STATE = _STATE_ROOT / "jarvis_intel" / "hermes_state.json"
-_OVERRIDES_PATH = _STATE_ROOT / "kaizen_overrides.json"
-_ANOMALY_HITS_LOG = _VAR_ROOT / "anomaly_watcher.jsonl"
-_PREFLIGHT_LOG = _VAR_ROOT / "preflight_runs.jsonl"
+_WORKSPACE = workspace_roots.WORKSPACE_ROOT
+_STATE_ROOT = workspace_roots.ETA_RUNTIME_STATE_DIR
+_TRADE_CLOSES_PATH = workspace_roots.ETA_JARVIS_TRADE_CLOSES_PATH
+_LEGACY_TRADE_CLOSES_PATH = workspace_roots.ETA_LEGACY_JARVIS_TRADE_CLOSES_PATH
+_MEMORY_BACKUP_DIR = workspace_roots.ETA_HERMES_MEMORY_BACKUP_DIR
+_KAIZEN_LATEST = workspace_roots.ETA_KAIZEN_LATEST_PATH
+_HERMES_STATE = workspace_roots.ETA_HERMES_STATE_PATH
+_OVERRIDES_PATH = workspace_roots.ETA_KAIZEN_OVERRIDES_PATH
+_ANOMALY_HITS_LOG = workspace_roots.ETA_ANOMALY_HITS_LOG_PATH
+_LEGACY_ANOMALY_HITS_LOG = workspace_roots.ETA_LEGACY_ANOMALY_HITS_LOG_PATH
+_PREFLIGHT_LOG = workspace_roots.ETA_PREFLIGHT_RUNS_LOG_PATH
+_TELEGRAM_INBOUND_OFFSET_PATH = workspace_roots.ETA_TELEGRAM_INBOUND_OFFSET_PATH
+_TELEGRAM_INBOUND_AUDIT_LOG_PATH = workspace_roots.ETA_TELEGRAM_INBOUND_AUDIT_LOG_PATH
+_LEGACY_TELEGRAM_INBOUND_OFFSET_PATH = workspace_roots.ETA_LEGACY_TELEGRAM_INBOUND_OFFSET_PATH
+_LEGACY_TELEGRAM_INBOUND_AUDIT_LOG_PATH = workspace_roots.ETA_LEGACY_TELEGRAM_INBOUND_AUDIT_LOG_PATH
+_LEGACY_TELEGRAM_INBOUND_LOG_PATH = workspace_roots.ETA_LEGACY_TELEGRAM_INBOUND_LOG_PATH
+_LEGACY_TELEGRAM_INBOUND_ERR_PATH = workspace_roots.ETA_LEGACY_TELEGRAM_INBOUND_ERR_PATH
 
 _HERMES_PORT = 8642
 _STATUS_SERVER_PORT = 8643
@@ -241,6 +247,33 @@ def _read_json(path: Path) -> dict[str, Any] | None:
         return json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return None
+
+
+def _unique_paths(*paths: Path) -> list[Path]:
+    seen: set[str] = set()
+    unique: list[Path] = []
+    for path in paths:
+        key = str(path)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(path)
+    return unique
+
+
+def _telegram_inbound_candidate_files() -> list[tuple[str, Path]]:
+    return [
+        ("offset", _TELEGRAM_INBOUND_OFFSET_PATH),
+        ("audit_jsonl", _TELEGRAM_INBOUND_AUDIT_LOG_PATH),
+        ("legacy_offset", _LEGACY_TELEGRAM_INBOUND_OFFSET_PATH),
+        ("legacy_audit_jsonl", _LEGACY_TELEGRAM_INBOUND_AUDIT_LOG_PATH),
+        ("legacy_log", _LEGACY_TELEGRAM_INBOUND_LOG_PATH),
+        ("legacy_err", _LEGACY_TELEGRAM_INBOUND_ERR_PATH),
+    ]
+
+
+def _anomaly_hits_log_candidates() -> list[Path]:
+    return _unique_paths(_ANOMALY_HITS_LOG, _LEGACY_ANOMALY_HITS_LOG)
 
 
 # ---------------------------------------------------------------------------
@@ -459,47 +492,35 @@ def check_telegram_inbound_running() -> PreflightCheck:
     not stuck.
     """
     name = "telegram_inbound_alive"
-    offset_path = _VAR_ROOT / "telegram_inbound_offset.json"
-    log_path = _VAR_ROOT / "telegram_inbound.log"
-    err_path = _VAR_ROOT / "telegram_inbound.err"
-    jsonl_path = _VAR_ROOT / "telegram_inbound.jsonl"
-    extras: dict[str, Any] = {}
-
-    if (
-        not offset_path.exists()
-        and not log_path.exists()
-        and not err_path.exists()
-    ):
+    candidate_files = _telegram_inbound_candidate_files()
+    present_candidates = [(label, path) for label, path in candidate_files if path.exists()]
+    if not present_candidates:
         return PreflightCheck(
             name=name,
             status="WARN",
-            detail="no offset file or log — bot may not have started yet",
+            detail="no inbound offset/audit surface yet — bot may not have started",
         )
-    # 2026-05-13: use the FRESHEST of the bot's four state files. The
-    # bot writes to .log only on inbound messages (silent on quiet
-    # days), but .err captures every poll cycle's stderr — which keeps
-    # ticking even when nobody sends commands. The offset file ticks on
-    # every Telegram getUpdates call. Either one being fresh proves
-    # the bot is alive.
-    candidate_files = [
-        ("log", log_path),
-        ("err", err_path),
-        ("jsonl", jsonl_path),
-        ("offset", offset_path),
-    ]
+    # 2026-05-13 / wave-operator-unification: use the freshest of the
+    # canonical offset/audit files plus the legacy root-var surfaces
+    # during cutover. The legacy .err file ticks every poll cycle, the
+    # offset file ticks on every Telegram getUpdates call, and the
+    # canonical audit JSONL advances when commands land. Any one being
+    # fresh proves the bot is alive.
     ages: dict[str, float] = {}
-    for label, p in candidate_files:
-        if p.exists():
-            ages[label] = _file_age_hours(p)
+    for label, path in present_candidates:
+        age = _file_age_hours(path)
+        if age is None:
+            continue
+        ages[label] = age
     if not ages:
         return PreflightCheck(
             name=name,
             status="WARN",
-            detail="no inbound state files present — bot may not have started yet",
+            detail="inbound state files exist but could not be aged",
         )
     freshest_label = min(ages, key=lambda k: ages[k])
     freshest_age = ages[freshest_label]
-    extras = {
+    extras: dict[str, Any] = {
         "freshest_file": freshest_label,
         "freshest_age_hours": round(freshest_age, 2),
         "all_ages_hours": {k: round(v, 2) for k, v in ages.items()},
@@ -632,7 +653,8 @@ def check_no_open_critical_anomalies() -> PreflightCheck:
     investigating. WARN-severity hits are tolerated (informational).
     """
     name = "no_open_critical_anomalies"
-    if not _ANOMALY_HITS_LOG.exists():
+    log_paths = [path for path in _anomaly_hits_log_candidates() if path.exists()]
+    if not log_paths:
         return PreflightCheck(name=name, status="PASS", detail="no anomaly log yet")
     cutoff = _now() - timedelta(hours=24)
 
@@ -673,26 +695,37 @@ def check_no_open_critical_anomalies() -> PreflightCheck:
 
     crits: list[dict[str, Any]] = []
     skipped_deactivated = 0
+    seen_keys: set[tuple[str, str, str, str]] = set()
     try:
-        with _ANOMALY_HITS_LOG.open(encoding="utf-8") as fh:
-            for raw in fh:
-                line = raw.strip()
-                if not line:
-                    continue
-                try:
-                    rec = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if str(rec.get("severity") or "").lower() != "critical":
-                    continue
-                ts = _parse_iso(rec.get("asof"))
-                if ts is None or ts < cutoff:
-                    continue
-                bot_id = str(rec.get("bot_id") or "")
-                if bot_id and not _bot_is_active(bot_id):
-                    skipped_deactivated += 1
-                    continue
-                crits.append(rec)
+        for log_path in log_paths:
+            with log_path.open(encoding="utf-8") as fh:
+                for raw in fh:
+                    line = raw.strip()
+                    if not line:
+                        continue
+                    try:
+                        rec = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if str(rec.get("severity") or "").lower() != "critical":
+                        continue
+                    ts = _parse_iso(rec.get("asof"))
+                    if ts is None or ts < cutoff:
+                        continue
+                    bot_id = str(rec.get("bot_id") or "")
+                    if bot_id and not _bot_is_active(bot_id):
+                        skipped_deactivated += 1
+                        continue
+                    dedupe_key = (
+                        bot_id,
+                        str(rec.get("pattern") or ""),
+                        str(rec.get("asof") or ""),
+                        str(rec.get("detail") or ""),
+                    )
+                    if dedupe_key in seen_keys:
+                        continue
+                    seen_keys.add(dedupe_key)
+                    crits.append(rec)
     except OSError as exc:
         return PreflightCheck(
             name=name,
@@ -704,6 +737,7 @@ def check_no_open_critical_anomalies() -> PreflightCheck:
             name=name,
             status="PASS",
             detail="no critical anomalies in last 24h",
+            extras={"skipped_deactivated": skipped_deactivated} if skipped_deactivated else {},
         )
     if MAX_OPEN_CRITICAL_ANOMALIES <= 0:
         return PreflightCheck(
@@ -714,13 +748,17 @@ def check_no_open_critical_anomalies() -> PreflightCheck:
                 "n_critical": len(crits),
                 "first": crits[0],
                 "patterns": sorted({str(c.get("pattern")) for c in crits}),
+                "skipped_deactivated": skipped_deactivated,
             },
         )
     return PreflightCheck(
         name=name,
         status="WARN",
         detail=f"{len(crits)} critical hits (over threshold)",
-        extras={"n_critical": len(crits)},
+        extras={
+            "n_critical": len(crits),
+            "skipped_deactivated": skipped_deactivated,
+        },
     )
 
 

@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 
 import yaml
 
@@ -113,6 +115,32 @@ def test_git_surface_ignores_inherited_git_hook_env(tmp_path: Path, monkeypatch)
 
     assert surface.status == "dirty"
     assert surface.dirty_count == 1
+
+
+def test_health_probe_uses_remote_truth_allowances(tmp_path: Path, monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class _FakeReport:
+        def to_dict(self) -> dict[str, object]:
+            return {"overall_status": "healthy", "exit_code": 0}
+
+    def _fake_run_health_check(**kwargs):
+        captured.update(kwargs)
+        return _FakeReport()
+
+    monkeypatch.setitem(
+        sys.modules,
+        "eta_engine.scripts.health_check",
+        SimpleNamespace(run_health_check=_fake_run_health_check),
+    )
+
+    payload = operator._run_health_probe(tmp_path)
+
+    assert payload["overall_status"] == "healthy"
+    assert payload["exit_code"] == 0
+    assert captured["output_dir"] == tmp_path / "health"
+    assert captured["allow_remote_supervisor_truth"] is True
+    assert captured["allow_remote_retune_truth"] is True
 
 
 def test_main_writes_report_and_returns_zero(tmp_path: Path, capsys) -> None:

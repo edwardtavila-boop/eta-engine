@@ -65,6 +65,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from eta_engine.scripts import workspace_roots
 from eta_engine.strategies.orb_strategy import ORBConfig, ORBStrategy
 from eta_engine.strategies.sage_consensus_strategy import SageConsensusConfig
 
@@ -121,9 +122,7 @@ class SageGatedORBConfig:
 
 # Default canonical path for VIX 5m bars. The class-cache fallback
 # loads this once; tests inject a callable instead.
-_DEFAULT_VIX_CSV = Path(
-    r"C:\EvolutionaryTradingAlgo\mnq_data\history\VIX_5m.csv",
-)
+_DEFAULT_VIX_CSV = workspace_roots.MNQ_HISTORY_ROOT / "VIX_5m.csv"
 
 # Cache: ts (epoch seconds) → close. Loaded once per process by
 # ``_load_vix_csv`` and reused. Tests should bypass this entirely

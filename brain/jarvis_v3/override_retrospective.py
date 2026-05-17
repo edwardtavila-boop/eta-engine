@@ -7,13 +7,14 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from eta_engine.scripts import workspace_roots
+
 if TYPE_CHECKING:
     from eta_engine.brain.jarvis_v3.operator_coach import OperatorCoach
 
 logger = logging.getLogger(__name__)
 
-ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_LOG_PATH = ROOT / "state" / "jarvis_intel" / "override_retros.jsonl"
+DEFAULT_LOG_PATH = workspace_roots.ETA_JARVIS_INTEL_STATE_DIR / "override_retros.jsonl"
 
 
 @dataclass

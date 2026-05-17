@@ -485,6 +485,47 @@ class TestStatusCli:
         assert payload["rows_by_bot"] == {}
         assert payload["top_actions"] == []
 
+    def test_second_brain_summary_builds_memory_playbook(self) -> None:
+        from eta_engine.scripts.jarvis_status import build_second_brain_summary
+
+        class FakeMemory:
+            def snapshot(self, *, top_n: int) -> dict:
+                assert top_n == 2
+                return {
+                    "status": "warm",
+                    "n_episodes": 42,
+                    "win_rate": 0.5714,
+                    "avg_r": 0.23456,
+                    "semantic_patterns": 3,
+                    "procedural_versions": 1,
+                    "top_patterns": [{"pattern": "neutral+rth+long", "avg_r": 0.3}],
+                    "paths": {"episodic": r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\memory\episodic.jsonl"},
+                    "sources": {"episodic": r"C:\EvolutionaryTradingAlgo\eta_engine\state\memory\episodic.jsonl"},  # HISTORICAL-PATH-OK
+                }
+
+            def semantic_playbook(self, *, min_episodes: int, top_n: int) -> dict:
+                assert min_episodes == 12
+                assert top_n == 2
+                return {
+                    "eligible_patterns": 1,
+                    "best_patterns": [{"pattern": "neutral+rth+long"}],
+                    "worst_patterns": [],
+                    "favor_patterns": [{"pattern": "neutral+rth+long"}],
+                    "avoid_patterns": [],
+                    "truth_note": "test truth gate",
+                }
+
+        payload = build_second_brain_summary(memory=FakeMemory(), top_n=2, min_episodes=12)
+
+        assert payload["source"] == "jarvis_status.second_brain"
+        assert payload["status"] == "warm"
+        assert payload["n_episodes"] == 42
+        assert payload["win_rate"] == 0.571
+        assert payload["avg_r"] == 0.2346
+        assert payload["playbook"]["eligible_patterns"] == 1
+        assert payload["truth_note"] == "test truth gate"
+        assert payload["legacy_sources_active"] is True
+
     def test_json_subcommand_surfaces_bot_strategy_readiness(self, monkeypatch, capsys) -> None:
         from eta_engine.scripts import jarvis_status
 
@@ -498,6 +539,16 @@ class TestStatusCli:
                 "top_actions": [],
             },
         )
+        monkeypatch.setattr(
+            jarvis_status,
+            "build_second_brain_summary",
+            lambda **_kwargs: {
+                "source": "jarvis_status.second_brain",
+                "status": "warm",
+                "n_episodes": 42,
+                "playbook": {"eligible_patterns": 2},
+            },
+        )
 
         ret = jarvis_status.main(["--json"])
 
@@ -506,6 +557,7 @@ class TestStatusCli:
         readiness = payload["bot_strategy_readiness"]
         assert readiness["status"] == "ready"
         assert readiness["summary"]["launch_lanes"]["live_preflight"] == 6
+        assert payload["second_brain"]["n_episodes"] == 42
 
     def test_default_status_prints_bot_strategy_readiness(self, monkeypatch, capsys) -> None:
         from eta_engine.scripts import jarvis_status
@@ -530,11 +582,25 @@ class TestStatusCli:
                 "top_actions": [],
             },
         )
+        monkeypatch.setattr(
+            jarvis_status,
+            "build_second_brain_summary",
+            lambda **_kwargs: {
+                "source": "jarvis_status.second_brain",
+                "status": "warm",
+                "n_episodes": 42,
+                "win_rate": 0.571,
+                "avg_r": 0.2346,
+                "playbook": {"eligible_patterns": 2, "favor_patterns": [{}], "avoid_patterns": []},
+            },
+        )
 
         ret = jarvis_status.main([])
 
         assert ret == 0
         out = capsys.readouterr().out
+        assert "Second brain:" in out
+        assert "episodes=42" in out
         assert "Bot readiness:" in out
         assert "live_preflight=6" in out
         assert "paper_soak=4" in out

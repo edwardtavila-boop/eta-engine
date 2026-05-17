@@ -35,10 +35,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from eta_engine.scripts import workspace_roots
+
 logger = logging.getLogger("eta_engine.scripts.anomaly_telegram_pulse")
 
-_WORKSPACE = Path(r"C:\EvolutionaryTradingAlgo")
-_PULSE_LOG = _WORKSPACE / "var" / "anomaly_pulse.jsonl"
+_PULSE_LOG = workspace_roots.ETA_ANOMALY_PULSE_LOG_PATH
 
 _SEV_EMOJI = {
     "critical": "\U0001f6a8",  # 🚨 — fleet drawdown, loss streak ≥5
@@ -161,7 +162,7 @@ def _format_message(hits: list[dict[str, Any]]) -> str:
 
 
 def _append_pulse_log(record: dict[str, Any]) -> None:
-    """Best-effort write to var/anomaly_pulse.jsonl. Never raises."""
+    """Best-effort write to the canonical anomaly-pulse audit log. Never raises."""
     try:
         _PULSE_LOG.parent.mkdir(parents=True, exist_ok=True)
         with _PULSE_LOG.open("a", encoding="utf-8") as fh:
@@ -186,7 +187,7 @@ def run_pulse(*, dry_run: bool = False) -> dict[str, Any]:
     Side effects:
       * Calls anomaly_watcher.scan() (which itself dedupes + appends hits)
       * If hits exist and not dry-run: sends one Telegram message
-      * Appends a JSONL line to var/anomaly_pulse.jsonl for audit
+      * Appends a JSONL line to logs/eta_engine/anomaly_pulse.jsonl for audit
       * Respects operator /silence command — if silenced, scans still
         run (so dedup state stays current) but the send is suppressed.
     """

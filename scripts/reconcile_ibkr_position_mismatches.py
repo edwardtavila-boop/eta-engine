@@ -19,8 +19,11 @@ import logging
 import sys
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
+from importlib import import_module
 from pathlib import Path
 from typing import Any
+
+from ib_insync import IB, MarketOrder
 
 ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
@@ -36,10 +39,8 @@ def _ensure_main_thread_event_loop() -> None:
 
 _ensure_main_thread_event_loop()
 
-from ib_insync import IB, MarketOrder  # noqa: E402
-
-from eta_engine.scripts import workspace_roots  # noqa: E402
-from eta_engine.venues.ibkr_live import FUTURES_MAP  # noqa: E402
+workspace_roots = import_module("eta_engine.scripts.workspace_roots")
+FUTURES_MAP = import_module("eta_engine.venues.ibkr_live").FUTURES_MAP
 
 logger = logging.getLogger(__name__)
 

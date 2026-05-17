@@ -383,7 +383,7 @@
     <span><span style="color:var(--dim)">Go phrase:</span> <b>"GO APEX MNQ LIVE-TINY"</b></span>
     <span><span style="color:var(--dim)">Weekly:</span> <b>Sun 20:00 ET</b></span>
     <span><span style="color:var(--dim)">Alerts:</span> <b>Pushover + email + SMS</b></span>
-    <span style="color:var(--dim); margin-left:auto; font-size:10px;">docs/decisions_v1.json · configs/*.yaml · .env.example</span>
+    <span style="color:var(--dim); margin-left:auto; font-size:10px;">var/eta_engine/state/decisions_v1.json · configs/*.yaml · .env.example</span>
   </div>
   <div class="mono" style="margin-top:8px; font-size:11px; display:grid; grid-template-columns: repeat(4,1fr); gap:6px;">
     <span><span class="pill done" style="font-size:9px;">✓</span> Tier-1 blockers (8 of 8)</span>
@@ -523,7 +523,7 @@
     <span><span style="color:var(--dim)">Required RED:</span> <b class="status-done">0</b></span>
     <span><span style="color:var(--dim)">Optional FAIL:</span> <b class="status-prog">1</b> <span style="color:var(--dim)">(tradovate_creds — .env pending)</span></span>
     <span><span style="color:var(--dim)">New gates:</span> <b>decisions_locked · env_template · go_trigger_armed</b></span>
-    <span style="color:var(--dim); font-size:10px; margin-left:auto;">docs/preflight_dryrun_report.json</span>
+    <span style="color:var(--dim); font-size:10px; margin-left:auto;">var/eta_engine/state/preflight/preflight_dryrun_report.json</span>
   </div>
   <div class="mono" style="margin-top:8px; font-size:11px; display:grid; grid-template-columns: repeat(5,1fr); gap:6px;">
     <span><span class="pill done" style="font-size:9px;">✓</span> kill_log_present (4 entries)</span>
@@ -636,7 +636,7 @@
     <span><span style="color:var(--dim)">Max DD:</span> <b>15.55%</b></span>
     <span><span style="color:var(--dim)">Kills:</span> <b class="status-done">0</b></span>
     <span><span style="color:var(--dim)">Gate:</span> <b class="status-done">2/6 PASS</b></span>
-    <span style="color:var(--dim); font-size:10px; margin-left:auto;">docs/paper_run_{report.json,tearsheet.txt}</span>
+    <span style="color:var(--dim); font-size:10px; margin-left:auto;">var/eta_engine/state/paper_run/{paper_run_report.json,paper_run_tearsheet.txt}</span>
   </div>
   <div class="mono" style="margin-top:8px; font-size:11px; display:grid; grid-template-columns: repeat(6,1fr); gap:6px;">
     <span><b>MNQ</b> 168t · <span class="status-done">+0.473R</span> · PASS</span>
@@ -679,7 +679,7 @@
     <span><span style="color:var(--dim)">Visible required:</span> <b class="status-done">7 shown / 11 required</b></span>
     <span><span style="color:var(--dim)">Visible optional:</span> <b class="status-done">2 PASS</b> <span style="color:var(--dim)">/</span> <b class="status-prog">1 SKIP</b></span>
     <span><span style="color:var(--dim)">Injection-tested:</span> <b class="status-done">abort on RED verified</b></span>
-    <span style="color:var(--dim); font-size:10px; margin-left:auto;">docs/preflight_dryrun_{report.json,log.txt}</span>
+    <span style="color:var(--dim); font-size:10px; margin-left:auto;">var/eta_engine/state/preflight/{preflight_dryrun_report.json,preflight_dryrun_log.txt}</span>
   </div>
   <div class="mono" style="margin-top:8px; font-size:11px; display:grid; grid-template-columns: repeat(5,1fr); gap:6px;">
     <span><span class="pill done" style="font-size:9px;">✓</span> kill_log_present</span>
@@ -720,7 +720,7 @@
     <span><span style="color:var(--dim)">Spec chain:</span> <b>v2 → v1 (parent)</b></span>
     <span><span style="color:var(--dim)">Verdict:</span> <b class="status-done">GO</b></span>
     <span><span style="color:var(--dim)">Kill log @ review:</span> <b>4</b></span>
-    <span style="color:var(--dim); font-size:10px; margin-left:auto;">docs/weekly_review_{log.json,latest.json,latest.txt}</span>
+    <span style="color:var(--dim); font-size:10px; margin-left:auto;">var/eta_engine/state/weekly_review/{weekly_review_log.json,weekly_review_latest.json,weekly_review_latest.txt}</span>
   </div>
   <div class="mono" style="margin-top:6px; font-size:10px; color:var(--dim);">
     Auto-picks latest firm_spec_paper_results_*.json, follows parent_spec chain for metric fallback, engages 6-agent Firm board, appends to immutable weekly_review_log.json. Runs Tier A and Tier B independently.

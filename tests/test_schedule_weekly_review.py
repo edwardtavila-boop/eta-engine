@@ -45,6 +45,16 @@ def test_within_window_rejects_sunday_far_off():
 def test_should_force_reengage_on_abort(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(mod, "ROOT", tmp_path)
     (tmp_path / "docs").mkdir()
+    monkeypatch.setattr(
+        mod.workspace_roots,
+        "ETA_PREFLIGHT_DRYRUN_REPORT_PATH",
+        tmp_path / "var" / "eta_engine" / "state" / "preflight" / "preflight_dryrun_report.json",
+    )
+    monkeypatch.setattr(
+        mod.workspace_roots,
+        "ETA_LEGACY_PREFLIGHT_DRYRUN_REPORT_PATH",
+        tmp_path / "docs" / "preflight_dryrun_report.json",
+    )
     (tmp_path / "docs" / "preflight_dryrun_report.json").write_text(
         json.dumps({"overall": "ABORT"}),
     )
@@ -56,13 +66,29 @@ def test_should_force_reengage_on_abort(tmp_path: Path, monkeypatch: pytest.Monk
 def test_should_force_reengage_on_go(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(mod, "ROOT", tmp_path)
     (tmp_path / "docs").mkdir()
+    monkeypatch.setattr(
+        mod.workspace_roots,
+        "ETA_PREFLIGHT_DRYRUN_REPORT_PATH",
+        tmp_path / "var" / "eta_engine" / "state" / "preflight" / "preflight_dryrun_report.json",
+    )
+    monkeypatch.setattr(
+        mod.workspace_roots,
+        "ETA_LEGACY_PREFLIGHT_DRYRUN_REPORT_PATH",
+        tmp_path / "docs" / "preflight_dryrun_report.json",
+    )
     (tmp_path / "docs" / "preflight_dryrun_report.json").write_text(
         json.dumps({"overall": "GO"}),
     )
-    (tmp_path / "docs" / "kill_log.json").write_text(
+    canonical_kill_log = tmp_path / "var" / "eta_engine" / "state" / "kill_log.json"
+    canonical_kill_log.parent.mkdir(parents=True)
+    canonical_kill_log.write_text(
         json.dumps({"meta": {}, "entries": [{"id": 1}]}),
     )
-    (tmp_path / "docs" / "weekly_review_latest.json").write_text(
+    monkeypatch.setattr(mod.workspace_roots, "ETA_KILL_LOG_PATH", canonical_kill_log)
+    monkeypatch.setattr(mod.workspace_roots, "ETA_LEGACY_KILL_LOG_PATH", tmp_path / "docs" / "kill_log.json")
+    canonical = tmp_path / "var" / "eta_engine" / "state" / "weekly_review"
+    canonical.mkdir(parents=True)
+    (canonical / "weekly_review_latest.json").write_text(
         json.dumps({"kill_log_entries_at_time": 1}),
     )
     force, reason = mod._should_force_firm_reengage()
@@ -72,6 +98,16 @@ def test_should_force_reengage_on_go(tmp_path: Path, monkeypatch: pytest.MonkeyP
 def test_should_force_reengage_on_new_kill(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(mod, "ROOT", tmp_path)
     (tmp_path / "docs").mkdir()
+    monkeypatch.setattr(
+        mod.workspace_roots,
+        "ETA_PREFLIGHT_DRYRUN_REPORT_PATH",
+        tmp_path / "var" / "eta_engine" / "state" / "preflight" / "preflight_dryrun_report.json",
+    )
+    monkeypatch.setattr(
+        mod.workspace_roots,
+        "ETA_LEGACY_PREFLIGHT_DRYRUN_REPORT_PATH",
+        tmp_path / "docs" / "preflight_dryrun_report.json",
+    )
     (tmp_path / "docs" / "preflight_dryrun_report.json").write_text(
         json.dumps({"overall": "GO"}),
     )
@@ -85,6 +121,66 @@ def test_should_force_reengage_on_new_kill(tmp_path: Path, monkeypatch: pytest.M
     force, reason = mod._should_force_firm_reengage()
     assert force is True
     assert "1 -> 4" in reason or "1 -> 4" in reason.replace("->", " -> ")
+
+
+def test_should_force_reengage_falls_back_to_legacy_kill_log(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(mod, "ROOT", tmp_path)
+    (tmp_path / "docs").mkdir()
+    monkeypatch.setattr(
+        mod.workspace_roots,
+        "ETA_PREFLIGHT_DRYRUN_REPORT_PATH",
+        tmp_path / "var" / "eta_engine" / "state" / "preflight" / "preflight_dryrun_report.json",
+    )
+    monkeypatch.setattr(
+        mod.workspace_roots,
+        "ETA_LEGACY_PREFLIGHT_DRYRUN_REPORT_PATH",
+        tmp_path / "docs" / "preflight_dryrun_report.json",
+    )
+    (tmp_path / "docs" / "preflight_dryrun_report.json").write_text(
+        json.dumps({"overall": "GO"}),
+    )
+    legacy_kill_log = tmp_path / "docs" / "kill_log.json"
+    legacy_kill_log.write_text(
+        json.dumps({"meta": {}, "entries": [{"id": i} for i in range(4)]}),
+    )
+    monkeypatch.setattr(mod.workspace_roots, "ETA_KILL_LOG_PATH", tmp_path / "var" / "eta_engine" / "state" / "kill_log.json")
+    monkeypatch.setattr(mod.workspace_roots, "ETA_LEGACY_KILL_LOG_PATH", legacy_kill_log)
+    (tmp_path / "docs" / "weekly_review_latest.json").write_text(
+        json.dumps({"kill_log_entries_at_time": 1}),
+    )
+
+    force, reason = mod._should_force_firm_reengage()
+
+    assert force is True
+    assert "1 -> 4" in reason or "1 -> 4" in reason.replace("->", " -> ")
+
+
+def test_should_force_reengage_prefers_canonical_preflight_report(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(mod, "ROOT", tmp_path)
+    (tmp_path / "docs").mkdir()
+    canonical = tmp_path / "var" / "eta_engine" / "state" / "preflight" / "preflight_dryrun_report.json"
+    canonical.parent.mkdir(parents=True)
+    canonical.write_text(json.dumps({"overall": "ABORT"}))
+    (tmp_path / "docs" / "preflight_dryrun_report.json").write_text(json.dumps({"overall": "GO"}))
+    monkeypatch.setattr(mod.workspace_roots, "ETA_PREFLIGHT_DRYRUN_REPORT_PATH", canonical)
+    monkeypatch.setattr(
+        mod.workspace_roots,
+        "ETA_LEGACY_PREFLIGHT_DRYRUN_REPORT_PATH",
+        tmp_path / "docs" / "preflight_dryrun_report.json",
+    )
+
+    force, reason = mod._should_force_firm_reengage()
+
+    assert force is True
+    assert "preflight" in reason.lower()
+
+
+def test_weekly_review_latest_path_falls_back_to_legacy_docs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(mod, "ROOT", tmp_path)
+    (tmp_path / "docs").mkdir()
+    legacy = tmp_path / "docs" / "weekly_review_latest.json"
+    legacy.write_text(json.dumps({"kill_log_entries_at_time": 1}))
+    assert mod._weekly_review_latest_path() == legacy
 
 
 def test_emit_cron_includes_sunday_2000():

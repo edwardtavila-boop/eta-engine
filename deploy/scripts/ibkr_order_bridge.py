@@ -11,12 +11,15 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import time
 from pathlib import Path
 
+from eta_engine.scripts import workspace_roots
+
 # VPS paths
-PENDING_DIR = Path("C:/EvolutionaryTradingAlgo/eta_engine/docs/btc_live/broker_fleet")
-PROCESSED_DIR = PENDING_DIR / "processed"
+PENDING_DIR = Path(os.environ.get("ETA_BROKER_ROUTER_PENDING_DIR", str(workspace_roots.ETA_BROKER_ROUTER_PENDING_DIR)))
+PROCESSED_DIR = PENDING_DIR.parent / "processed"
 
 
 async def process_order(venue: object, fpath: Path) -> None:
@@ -31,10 +34,7 @@ async def process_order(venue: object, fpath: Path) -> None:
     qty = data.get("qty", 1)
 
     from eta_engine.venues.base import OrderRequest, OrderType, Side
-    from eta_engine.venues.ibkr_live import LiveIbkrVenue
-
-    venue = LiveIbkrVenue()
-    await venue.connect()
+    await venue._ensure_connected()
 
     req = OrderRequest(
         symbol=symbol,

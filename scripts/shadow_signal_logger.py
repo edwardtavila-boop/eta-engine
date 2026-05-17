@@ -47,14 +47,14 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from eta_engine.scripts import workspace_roots
+
 logger = logging.getLogger(__name__)
 
 #: Canonical path for the shadow signal log. Sits under jarvis_intel/
 #: alongside trade_closes.jsonl so audit consumers can find it
 #: predictably.
-SHADOW_SIGNALS_PATH = Path(
-    r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\jarvis_intel\shadow_signals.jsonl",
-)
+SHADOW_SIGNALS_PATH = workspace_roots.ETA_JARVIS_SHADOW_SIGNALS_PATH
 
 
 def log_shadow_signal(

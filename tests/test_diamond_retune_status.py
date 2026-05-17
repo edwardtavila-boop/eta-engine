@@ -241,6 +241,288 @@ def test_status_surfaces_research_backlog_without_mixing_broker_targets() -> Non
     assert report["research_backlog"][0]["safe_to_mutate_live"] is False
 
 
+def test_status_surfaces_focus_active_experiment_from_retune_advisory() -> None:
+    from eta_engine.scripts import diamond_retune_status as status
+
+    campaign = {
+        "generated_at_utc": "2026-05-16T01:44:06+00:00",
+        "targets": [
+            {
+                "rank": 1,
+                "bot_id": "mnq_futures_sage",
+                "strategy_kind": "orb_sage_gated",
+                "issue_code": "broker_pnl_negative",
+                "primary_experiment": "Disable partial profit and resoak.",
+                "next_command": "python -m eta_engine.scripts.run_research_grid --bots mnq_futures_sage",
+                "promotion_block": "broker_proof_required",
+                "safe_to_mutate_live": False,
+            }
+        ],
+    }
+
+    report = status.build_status(
+        campaign=campaign,
+        history_rows=[],
+        retune_advisory={
+            "focus_bot": "mnq_futures_sage",
+            "preferred_action": (
+                "Await the first post-fix close for mnq_futures_sage; latest broker-proof close for this bot was "
+                "2026-05-15T20:59:35.998873+00:00, before experiment start 2026-05-16T01:44:06+00:00."
+            ),
+            "active_experiment": {
+                "experiment_id": "partial_profit_disabled",
+                "started_at": "2026-05-16T01:44:06+00:00",
+                "partial_profit_enabled": False,
+                "post_change_closed_trade_count": 2,
+                "post_change_total_realized_pnl": 40.0,
+                "post_change_profit_factor": 1.5,
+            },
+        },
+    )
+
+    assert report["summary"]["broker_truth_focus_active_experiment"]["experiment_id"] == "partial_profit_disabled"
+    assert report["summary"]["broker_truth_focus_active_experiment"]["partial_profit_enabled"] is False
+    assert report["summary"]["broker_truth_focus_active_experiment_summary_line"] == (
+        "partial_profit_disabled since 2026-05-16T01:44:06+00:00"
+    )
+    assert report["focus_next_action"] == (
+        "Await the first post-fix close for mnq_futures_sage; latest broker-proof close for this bot was "
+        "2026-05-15T20:59:35.998873+00:00, before experiment start 2026-05-16T01:44:06+00:00."
+    )
+    assert report["focus_active_experiment"]["post_change_closed_trade_count"] == 2
+    assert report["focus_active_experiment_summary_line"] == (
+        "partial_profit_disabled since 2026-05-16T01:44:06+00:00"
+    )
+
+
+def test_status_prefers_public_retune_truth_for_operator_focus_summary() -> None:
+    from eta_engine.scripts import diamond_retune_status as status
+
+    campaign = {
+        "generated_at_utc": "2026-05-15T20:00:00+00:00",
+        "targets": [
+            {
+                "rank": 1,
+                "bot_id": "mcl_sweep_reclaim",
+                "symbol": "MCL1",
+                "asset_sleeve": "energy",
+                "priority_score": 50.0,
+                "promotion_block": "broker_proof_required",
+                "safe_to_mutate_live": False,
+            },
+        ],
+    }
+    local_ledger = {
+        "generated_at_utc": "2026-05-15T20:05:00+00:00",
+        "per_bot": {
+            "mcl_sweep_reclaim": {
+                "closed_trade_count": 5,
+                "total_realized_pnl": -151.0,
+                "profit_factor": 0.0,
+                "win_rate_pct": 0.0,
+            },
+        },
+    }
+    public_retune_truth = {
+        "generated_at_utc": "2026-05-15T20:10:00+00:00",
+        "surface": {
+            "observed_ts": "2026-05-15T20:09:30+00:00",
+            "normalized": {
+                "focus_bot": "mnq_futures_sage",
+                "focus_issue": "broker_pnl_negative",
+                "focus_state": "COLLECT_MORE_SAMPLE",
+                "focus_strategy_kind": "orb_sage_gated",
+                "focus_best_session": "close",
+                "focus_worst_session": "overnight",
+                "focus_command": "python -m eta_engine.scripts.run_research_grid --bots mnq_futures_sage",
+                "focus_closed_trade_count": 141,
+                "focus_total_realized_pnl": -1939.75,
+                "focus_profit_factor": 0.3951,
+                "safe_to_mutate_live": False,
+            },
+            "summary": {
+                "broker_truth_summary_line": (
+                    "mnq_futures_sage: sample met (141/100) but broker edge is negative; retune or demote."
+                ),
+            },
+        },
+    }
+
+    report = status.build_status(
+        campaign=campaign,
+        history_rows=[],
+        closed_trade_ledger=local_ledger,
+        public_retune_truth=public_retune_truth,
+    )
+
+    assert report["focus_bot"] == "mnq_futures_sage"
+    assert report["focus_issue"] == "broker_pnl_negative"
+    assert report["focus_state"] == "COLLECT_MORE_SAMPLE"
+    assert report["focus_strategy_kind"] == "orb_sage_gated"
+    assert report["focus_command"] == "python -m eta_engine.scripts.run_research_grid --bots mnq_futures_sage"
+    assert report["focus_closed_trade_count"] == 141
+    assert report["summary"]["public_truth_override_applied"] is True
+    assert report["summary"]["broker_truth_focus_source"] == "public_diamond_retune_truth_cache"
+    assert report["summary"]["local_broker_truth_focus_bot_id"] == "mcl_sweep_reclaim"
+    assert report["summary"]["broker_truth_focus_edge_status"] == "sample_met_negative_edge"
+    assert report["summary"]["broker_truth_focus_remaining_closed_trade_count"] == 0
+    assert "sample met (141/100) but broker edge is negative" in report["summary"]["broker_truth_focus_next_action"]
+    assert "broker edge is negative" in report["summary"]["broker_truth_summary_line"]
+
+
+def test_status_prefers_public_broker_close_cache_when_local_sample_is_thin() -> None:
+    from eta_engine.scripts import diamond_retune_status as status
+
+    campaign = {
+        "generated_at_utc": "2026-05-15T20:00:00+00:00",
+        "targets": [
+            {
+                "rank": 1,
+                "bot_id": "mnq_futures_sage",
+                "symbol": "MNQ1",
+                "asset_sleeve": "equity_index",
+                "strategy_kind": "orb_sage_gated",
+                "issue_code": "broker_pnl_negative",
+                "priority_score": 1000.0,
+                "best_session": "close",
+                "worst_session": "overnight",
+                "parameter_focus": ["session predicate", "rr_target"],
+                "primary_experiment": "Bias fresh sample toward close and block overnight.",
+                "next_command": (
+                    "python -m eta_engine.scripts.run_research_grid "
+                    "--source registry --bots mnq_futures_sage --report-policy runtime"
+                ),
+                "promotion_block": "broker_proof_required",
+                "safe_to_mutate_live": False,
+            },
+        ],
+    }
+    local_ledger = {
+        "generated_at_utc": "2026-05-15T20:05:00+00:00",
+        "data_sources_filter": ["live", "paper"],
+        "per_bot": {
+            "mnq_futures_sage": {
+                "closed_trade_count": 5,
+                "total_realized_pnl": -151.0,
+                "profit_factor": 0.0,
+                "win_rate_pct": 0.0,
+            },
+        },
+    }
+    public_broker_close_truth_cache = {
+        "generated_at_utc": "2026-05-15T20:10:00+00:00",
+        "surface": {
+            "normalized": {
+                "focus_bot": "mnq_futures_sage",
+                "focus_issue": "broker_pnl_negative",
+                "focus_state": "COLLECT_MORE_SAMPLE",
+                "focus_closed_trade_count": 141,
+                "focus_total_realized_pnl": -1939.75,
+                "focus_profit_factor": 0.3951,
+                "broker_snapshot_source": "ibkr_probe_cache",
+                "reporting_timezone": "America/New_York",
+            },
+        },
+    }
+
+    report = status.build_status(
+        campaign=campaign,
+        history_rows=[],
+        closed_trade_ledger=local_ledger,
+        public_broker_close_truth_cache=public_broker_close_truth_cache,
+    )
+
+    assert report["focus_bot"] == "mnq_futures_sage"
+    assert report["focus_closed_trade_count"] == 141
+    assert report["summary"]["broker_truth_focus_source"] == "public_broker_close_truth_cache"
+    assert report["summary"]["broker_truth_focus_advisory_override_applied"] is True
+    assert report["bots"][0]["broker_close_evidence"]["source"] == "public_broker_close_truth_cache"
+    assert report["bots"][0]["broker_close_evidence"]["advisory_override_applied"] is True
+    assert report["bots"][0]["broker_close_evidence"]["advisory_override_reason"] == "public_sample_stronger_than_local"
+    assert report["bots"][0]["broker_close_evidence"]["local_closed_trade_count"] == 5
+    assert report["bots"][0]["broker_close_evidence"]["closed_trade_count"] == 141
+    assert report["bots"][0]["broker_close_evidence"]["edge_status"] == "sample_met_negative_edge"
+    assert "sample met (141/100) but broker edge is negative" in report["summary"]["broker_truth_summary_line"]
+
+
+def test_status_falls_back_to_retune_truth_check_when_public_retune_cache_is_skinny() -> None:
+    from eta_engine.scripts import diamond_retune_status as status
+
+    campaign = {
+        "generated_at_utc": "2026-05-15T20:00:00+00:00",
+        "targets": [
+            {
+                "rank": 1,
+                "bot_id": "mcl_sweep_reclaim",
+                "symbol": "MCL1",
+                "asset_sleeve": "energy",
+                "priority_score": 50.0,
+                "promotion_block": "broker_proof_required",
+                "safe_to_mutate_live": False,
+            },
+        ],
+    }
+    local_ledger = {
+        "generated_at_utc": "2026-05-15T20:05:00+00:00",
+        "per_bot": {
+            "mcl_sweep_reclaim": {
+                "closed_trade_count": 5,
+                "total_realized_pnl": -151.0,
+                "profit_factor": 0.0,
+            },
+        },
+    }
+    skinny_public_retune_truth = {
+        "generated_at_utc": "2026-05-15T20:10:00+00:00",
+        "surface": {
+            "available": True,
+            "readable": True,
+        },
+        "focus_bot": None,
+        "focus_issue": None,
+        "focus_state": None,
+    }
+    public_retune_truth_check = {
+        "public_surface": {
+            "available": True,
+            "readable": True,
+            "normalized": {
+                "focus_bot": "mnq_futures_sage",
+                "focus_issue": "broker_pnl_negative",
+                "focus_state": "COLLECT_MORE_SAMPLE",
+                "focus_strategy_kind": "orb_sage_gated",
+                "focus_best_session": "close",
+                "focus_worst_session": "overnight",
+                "focus_command": "python -m eta_engine.scripts.run_research_grid --bots mnq_futures_sage",
+                "focus_closed_trade_count": 141,
+                "focus_total_realized_pnl": -1939.75,
+                "focus_profit_factor": 0.3951,
+                "safe_to_mutate_live": False,
+            },
+            "summary": {
+                "broker_truth_summary_line": (
+                    "mnq_futures_sage: sample met (141/100) but broker edge is negative; retune or demote."
+                ),
+            },
+        },
+    }
+
+    report = status.build_status(
+        campaign=campaign,
+        history_rows=[],
+        closed_trade_ledger=local_ledger,
+        public_retune_truth=skinny_public_retune_truth,
+        public_retune_truth_check=public_retune_truth_check,
+    )
+
+    assert report["focus_bot"] == "mnq_futures_sage"
+    assert report["focus_issue"] == "broker_pnl_negative"
+    assert report["focus_closed_trade_count"] == 141
+    assert report["summary"]["public_truth_override_applied"] is True
+    assert report["summary"]["broker_truth_focus_source"] == "diamond_retune_truth_check_public_surface"
+    assert report["summary"]["local_broker_truth_focus_bot_id"] == "mcl_sweep_reclaim"
+
+
 def test_status_surfaces_near_miss_tuning_without_live_mutation() -> None:
     from eta_engine.scripts import diamond_retune_status as status
 

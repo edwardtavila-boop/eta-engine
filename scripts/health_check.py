@@ -6,11 +6,15 @@ Checks:
   3. Quantum rebalance freshness.
   4. Hermes bridge queue health.
   5. Jarvis strategy supervisor heartbeat freshness.
-  6. Diamond artifact surface freshness.
-  7. Git repo drift.
+  6. Jarvis second-brain memory/playbook health.
+  7. Diamond artifact surface freshness.
+  8. Git repo drift.
 
-Run daily via: schtasks /Create /TN "ETA-VPS-HealthCheck" /TR ".../health_check.py" /SC DAILY /ST 08:00
-Or invoke directly from any automation: python eta_engine/scripts/health_check.py
+Canonical task: ETA-HealthCheck
+Recommended direct invocation:
+  python eta_engine/scripts/health_check.py
+    --allow-remote-supervisor-truth --allow-remote-retune-truth
+    --output-dir C:\\EvolutionaryTradingAlgo\\firm_command_center\\var\\health
 
 Exit codes: 0 = healthy, 1 = warning, 2 = critical
 """
@@ -30,6 +34,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT.parent) not in sys.path:
     sys.path.insert(0, str(ROOT.parent))
 
+from eta_engine.scripts import jarvis_status  # noqa: E402
 from eta_engine.scripts.diamond_artifact_surface_check import build_diamond_artifact_surface_report  # noqa: E402
 from eta_engine.scripts.diamond_retune_truth_check import (  # noqa: E402
     build_diamond_retune_truth_report,
@@ -267,6 +272,68 @@ def _check_supervisor_heartbeat() -> HealthComponent:
     return HealthComponent("supervisor_heartbeat", False, status, detail, score)
 
 
+def _safe_int(value: object) -> int:
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _check_second_brain() -> HealthComponent:
+    """Surface Jarvis memory/playbook readiness in the deploy health gate."""
+    try:
+        payload = jarvis_status.build_second_brain_summary(top_n=3)
+    except Exception as exc:  # noqa: BLE001 - health checks must return a component.
+        return HealthComponent(
+            "jarvis_second_brain",
+            False,
+            "unavailable",
+            f"second brain summary failed: {exc}",
+            0.2,
+        )
+
+    if not isinstance(payload, dict):
+        return HealthComponent(
+            "jarvis_second_brain",
+            False,
+            "unavailable",
+            "second brain summary returned non-object",
+            0.2,
+        )
+
+    status = str(payload.get("status") or "unknown")
+    error = str(payload.get("error") or "")
+    playbook = payload.get("playbook") if isinstance(payload.get("playbook"), dict) else {}
+    episodes = _safe_int(payload.get("n_episodes"))
+    eligible_patterns = _safe_int(playbook.get("eligible_patterns"))
+    favor_patterns = playbook.get("favor_patterns") if isinstance(playbook.get("favor_patterns"), list) else []
+    avoid_patterns = playbook.get("avoid_patterns") if isinstance(playbook.get("avoid_patterns"), list) else []
+    legacy_sources_active = bool(payload.get("legacy_sources_active"))
+    detail = (
+        f"status={status}; episodes={episodes}; eligible_patterns={eligible_patterns}; "
+        f"favor={len(favor_patterns)} avoid={len(avoid_patterns)}; "
+        f"legacy_sources_active={legacy_sources_active}"
+    )
+    if error:
+        detail = f"{detail}; error={error}"
+
+    if status == "unavailable":
+        return HealthComponent("jarvis_second_brain", False, "unavailable", detail, 0.2)
+    if episodes <= 0:
+        return HealthComponent("jarvis_second_brain", False, "cold", f"{detail}; no episodes recorded", 0.3)
+    if episodes < 30:
+        return HealthComponent(
+            "jarvis_second_brain",
+            False,
+            "degraded",
+            f"{detail}; fewer than 30 episodes weakens playbook retrieval",
+            0.5,
+        )
+    if legacy_sources_active:
+        return HealthComponent("jarvis_second_brain", True, "legacy_migration", detail, 0.8)
+    return HealthComponent("jarvis_second_brain", True, "healthy", detail, 1.0)
+
+
 def _check_diamond_artifact_surface() -> HealthComponent:
     try:
         report = build_diamond_artifact_surface_report(state_root=_STATE_DIR)
@@ -424,6 +491,7 @@ def run_health_check(
         _check_quantum_freshness(),
         _check_hermes_connectivity(),
         _check_supervisor_heartbeat(),
+        _check_second_brain(),
         _check_diamond_artifact_surface(),
         _check_diamond_retune_truth(allow_remote_retune_truth=allow_remote_retune_truth),
         _check_repo_health(),

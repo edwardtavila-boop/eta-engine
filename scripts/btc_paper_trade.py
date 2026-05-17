@@ -5,9 +5,10 @@ router ("PaperRouter"). Every directional-overlay signal gates through
 ``JarvisAdmin.request_approval`` before the paper fill. Every decision
 (gate, approval, block, paper fill) lands in the ``DecisionJournal``.
 
-When the run completes we write a single JSON verification artifact:
+When the run completes we write a single JSON verification artifact under the
+canonical runtime state root:
 
-  docs/btc_paper/btc_paper_run_<timestamp>.json
+  var/eta_engine/state/btc_paper/btc_paper_run_<timestamp>.json
 
 with an equity curve, trade log, and a PASS/FAIL verdict. The verdict
 is the precondition for the BTC go-live script (``scripts/btc_live.py``).
@@ -41,6 +42,7 @@ from eta_engine.obs.decision_journal import (  # noqa: E402
     DecisionJournal,
     Outcome,
 )
+from eta_engine.scripts import workspace_roots  # noqa: E402
 from eta_engine.venues.base import (  # noqa: E402
     OrderRequest,
     OrderResult,
@@ -603,7 +605,7 @@ def _cli_parse(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument(
         "--out-dir",
         type=str,
-        default=str(ROOT / "docs" / "btc_paper"),
+        default=str(workspace_roots.ETA_BTC_PAPER_STATE_DIR),
         help="artifact output directory",
     )
     return p.parse_args(argv)

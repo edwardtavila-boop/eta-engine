@@ -5,7 +5,7 @@ the operator + inner circle can see live decisions without opening
 the dashboard. Polls audit JSONL files every N seconds, fires one
 webhook POST per new line.
 
-State persists to ``state/verdict_webhook/cursor.json`` so we don't
+State persists to ``var/eta_engine/state/verdict_webhook/cursor.json`` so we don't
 re-fire on restart.
 
 Configure via env vars:
@@ -35,10 +35,40 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT.parent) not in sys.path:
     sys.path.insert(0, str(ROOT.parent))
 
+from eta_engine.scripts import workspace_roots
+
 logger = logging.getLogger("jarvis_verdict_webhook")
 
 #: Default verdict levels we forward. Operator can broaden via env.
 DEFAULT_FORWARD_VERDICTS = {"DENIED"}
+
+
+def _resolve_audit_dir(audit_dir: Path) -> Path:
+    if (
+        audit_dir == workspace_roots.ETA_JARVIS_AUDIT_DIR
+        and not audit_dir.exists()
+        and workspace_roots.ETA_LEGACY_JARVIS_AUDIT_DIR.exists()
+    ):
+        logger.info("using legacy audit dir fallback: %s", workspace_roots.ETA_LEGACY_JARVIS_AUDIT_DIR)
+        return workspace_roots.ETA_LEGACY_JARVIS_AUDIT_DIR
+    return audit_dir
+
+
+def _load_cursor(cursor_path: Path) -> dict[str, int]:
+    candidates = [cursor_path]
+    if (
+        cursor_path == workspace_roots.ETA_VERDICT_WEBHOOK_CURSOR_PATH
+        and workspace_roots.ETA_LEGACY_VERDICT_WEBHOOK_CURSOR_PATH.exists()
+    ):
+        candidates.append(workspace_roots.ETA_LEGACY_VERDICT_WEBHOOK_CURSOR_PATH)
+    for candidate in candidates:
+        if not candidate.exists():
+            continue
+        try:
+            return json.loads(candidate.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            continue
+    return {}
 
 
 def _format_for_slack(rec: dict[str, Any]) -> dict[str, Any]:
@@ -112,8 +142,18 @@ def _is_discord(url: str) -> bool:
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--audit-dir", type=Path, default=ROOT / "state" / "jarvis_audit")
-    p.add_argument("--cursor", type=Path, default=ROOT / "state" / "verdict_webhook" / "cursor.json")
+    p.add_argument(
+        "--audit-dir",
+        type=Path,
+        default=workspace_roots.ETA_JARVIS_AUDIT_DIR,
+        help="Directory of JARVIS audit *.jsonl files. Default: var/eta_engine/state/jarvis_audit",
+    )
+    p.add_argument(
+        "--cursor",
+        type=Path,
+        default=workspace_roots.ETA_VERDICT_WEBHOOK_CURSOR_PATH,
+        help="Cursor file for replay suppression. Default: var/eta_engine/state/verdict_webhook/cursor.json",
+    )
     p.add_argument("--max-per-run", type=int, default=20, help="Cap number of webhook posts per invocation (anti-spam)")
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("-v", "--verbose", action="store_true")
@@ -133,15 +173,11 @@ def main(argv: list[str] | None = None) -> int:
     forward = {v.strip().upper() for v in level_str.split(",") if v.strip()} if level_str else DEFAULT_FORWARD_VERDICTS
 
     # Load cursor
-    cursor: dict[str, int] = {}
-    if args.cursor.exists():
-        try:
-            cursor = json.loads(args.cursor.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
-            cursor = {}
+    cursor = _load_cursor(args.cursor)
 
     posted = 0
-    for f in sorted(args.audit_dir.glob("*.jsonl")) if args.audit_dir.exists() else []:
+    audit_dir = _resolve_audit_dir(args.audit_dir)
+    for f in sorted(audit_dir.glob("*.jsonl")) if audit_dir.exists() else []:
         last_offset = cursor.get(f.name, 0)
         try:
             text = f.read_text(encoding="utf-8")

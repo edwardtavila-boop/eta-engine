@@ -110,9 +110,6 @@ ALLOWLIST: frozenset[str] = frozenset(
         "scripts/fetch_tradingview_bars.py",
         "scripts/paper_run_harness.py",
         "scripts/_jarvis_final_revision.py",
-        # live_vs_paper_drift parses a Tradovate fill CSV format; the
-        # CLI flag and parser stay regardless of dormancy.
-        "scripts/live_vs_paper_drift.py",
         # mnq_live_supervisor exposes --tradovate-symbol; CLI flag-name
         # stays through dormancy.
         "scripts/mnq_live_supervisor.py",

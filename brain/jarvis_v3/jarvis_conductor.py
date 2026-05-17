@@ -248,6 +248,24 @@ def orchestrate(
             final_size=final_size,
             block_reason=block_reason,
             elapsed_ms=elapsed_ms,
+            wiring={
+                "modules": [
+                    "jarvis_conductor",
+                    "trace_emitter",
+                    "context_enricher",
+                    "portfolio_brain",
+                    "hot_learner",
+                    "hermes_overrides",
+                ],
+                "hooks": {
+                    "jarvis_conductor": "orchestrate",
+                    "trace_emitter": "emit",
+                    "context_enricher": "enrich",
+                    "portfolio_brain": "snapshot/assess",
+                    "hot_learner": "current_weights",
+                    "hermes_overrides": "snapshot",
+                },
+            },
             **v2_extras,
         )
         trace_emitter.emit(rec, path=trace_path)

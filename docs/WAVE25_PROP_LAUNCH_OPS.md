@@ -214,9 +214,16 @@ Daily cron tasks already running on VPS:
 
 - ETA-Diamond-LedgerEvery15Min — refreshes closed_trade_ledger
 - ETA-Diamond-PropDrawdownGuardEvery15Min — HALT/WATCH/OK signal
+- ETA-Diamond-LaunchReadinessEvery15Min — pre-launch GO/HOLD/NO_GO receipt
 - ETA-Diamond-PropAlertDispatcherEvery15Min — pushes to Telegram (once configured)
 - ETA-Diamond-LeaderboardHourly — composite scoring + PROP_READY designation
 - ETA-Diamond-OpsDashboardHourly — unified status surface
+- ETA-Diamond-WatchdogDaily — buffer-to-retirement falsification check
+
+`register_diamond_cron_tasks.ps1` installs a broader ETA-Diamond suite as well
+(feed sanity, allocator, retune, direction, sizing, demotion, drift, and
+first-light checks). The list above is the launch-critical subset that the
+prelaunch dryrun expects to stay registered and fresh on the runtime host.
 
 Operator should glance at the dashboard at:
 - Pre-open (8:30 ET): verify GO from prelaunch dryrun

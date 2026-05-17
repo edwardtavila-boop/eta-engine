@@ -280,6 +280,7 @@ class TestTastytradePaperExecution:
                     "status": "Filled",
                     "filled-quantity": 1,
                     "average-fill-price": 91234.5,
+                    "filled-at": "2026-05-16T14:00:00+00:00",
                 },
             },
         }
@@ -293,6 +294,7 @@ class TestTastytradePaperExecution:
         assert result.status == OrderStatus.FILLED
         assert result.filled_qty == 1.0
         assert result.avg_price == 91234.5
+        assert result.filled_at == "2026-05-16T14:00:00+00:00"
 
     def test_reconcile_batches_multiple_orders(
         self,
@@ -310,6 +312,7 @@ class TestTastytradePaperExecution:
                             "status": "Filled",
                             "filled-quantity": 1,
                             "average-fill-price": 90000.0,
+                            "filled-at": "2026-05-16T14:01:00+00:00",
                         },
                     },
                 },
@@ -322,6 +325,7 @@ class TestTastytradePaperExecution:
         results = asyncio.run(venue.reconcile_orders(["a", "b", "c"]))
         assert len(results) == 3
         assert all(r.status == OrderStatus.FILLED for r in results)
+        assert all(r.filled_at == "2026-05-16T14:01:00+00:00" for r in results)
         assert len(stub.get_calls) == 3
 
 

@@ -450,9 +450,9 @@ def _build_funding_rate_provider() -> object:
         return _FUNDING_RATE_PROVIDER_CACHE[cache_key]
 
     funding_paths = [
-        Path(r"C:\EvolutionaryTradingAlgo\data\crypto\history\BTCFUND_8h.csv"),
-        Path(r"C:\EvolutionaryTradingAlgo\mnq_data\BTCFUND_8h.csv"),
-        Path(r"C:\EvolutionaryTradingAlgo\data\crypto\history\btc_funding_8h.csv"),
+        workspace_roots.CRYPTO_HISTORY_ROOT / "BTCFUND_8h.csv",
+        workspace_roots.MNQ_DATA_ROOT / "BTCFUND_8h.csv",
+        workspace_roots.CRYPTO_HISTORY_ROOT / "btc_funding_8h.csv",
     ]
 
     funding_rows: list[tuple[int, float]] = []

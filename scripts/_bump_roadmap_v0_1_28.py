@@ -44,15 +44,17 @@ What v0.1.28 adds
   * ``scripts/jarvis_live.py`` (new, ~330 lines)
 
     Long-running daemon that keeps Jarvis TICKING live under
-    supervision. Reads ``docs/premarket_inputs.json`` each tick
-    (hot-reloadable), builds providers -> JarvisContextBuilder ->
-    JarvisContextEngine -> JarvisSupervisor, runs at 60s cadence,
-    fans out alerts through MultiAlerter (Telegram / Discord / Slack
-    assembled from env, or dry-run if no transport configured).
+    supervision. Prefers ``var/eta_engine/state/premarket_inputs.json``
+    each tick, with ``docs/premarket_inputs.json`` as a legacy fallback
+    when the canonical file is absent (hot-reloadable), builds providers
+    -> JarvisContextBuilder -> JarvisContextEngine -> JarvisSupervisor,
+    runs at 60s cadence, fans out alerts through MultiAlerter (Telegram /
+    Discord / Slack assembled from env, or dry-run if no transport
+    configured).
 
     Per-tick outputs:
-      - ``docs/jarvis_live_health.json``    (latest only)
-      - ``docs/jarvis_live_log.jsonl``      (append-only history)
+      - ``var/eta_engine/state/jarvis_live_health.json``    (latest only)
+      - ``var/eta_engine/state/jarvis_live_log.jsonl``      (append-only history)
 
     SIGINT / SIGTERM wired to an asyncio.Event for graceful shutdown
     on POSIX; Windows falls back to KeyboardInterrupt.
@@ -156,10 +158,13 @@ def main() -> None:
         },
         "daemon": {
             "entrypoint": "python -m eta_engine.scripts.jarvis_live",
-            "inputs_file": "docs/premarket_inputs.json (hot-reloaded)",
+            "inputs_file": (
+                "var/eta_engine/state/premarket_inputs.json preferred, "
+                "docs/premarket_inputs.json fallback (hot-reloaded)"
+            ),
             "outputs": [
-                "docs/jarvis_live_health.json  (latest snapshot)",
-                "docs/jarvis_live_log.jsonl    (append-only history)",
+                "var/eta_engine/state/jarvis_live_health.json  (latest snapshot)",
+                "var/eta_engine/state/jarvis_live_log.jsonl    (append-only history)",
             ],
             "cadence_default_s": 60.0,
             "alerter_env_vars": [
@@ -174,8 +179,12 @@ def main() -> None:
                 "KeyboardInterrupt via contextlib.suppress."
             ),
             "cli_args": [
-                "--inputs PATH (default docs/premarket_inputs.json)",
-                "--out-dir PATH (default docs/)",
+                (
+                    "--inputs PATH (default "
+                    "var/eta_engine/state/premarket_inputs.json when present, "
+                    "otherwise docs/premarket_inputs.json)"
+                ),
+                "--out-dir PATH (default var/eta_engine/state)",
                 "--interval SECONDS (default 60.0)",
                 "--max-ticks N (default: run forever)",
                 "--log-level LEVEL (default INFO)",

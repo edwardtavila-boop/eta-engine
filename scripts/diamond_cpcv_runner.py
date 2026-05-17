@@ -57,18 +57,17 @@ from pathlib import Path
 
 from eta_engine.feeds.capital_allocator import DIAMOND_BOTS
 from eta_engine.scripts.l2_cpcv import cpcv
+from eta_engine.scripts import workspace_roots
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKSPACE_ROOT = ROOT.parent
-STATE_DIR = WORKSPACE_ROOT / "var" / "eta_engine" / "state"
-LEGACY_STATE_DIR = ROOT / "state"
 
 TRADE_CLOSES_CANDIDATES = [
-    STATE_DIR / "jarvis_intel" / "trade_closes.jsonl",
-    LEGACY_STATE_DIR / "jarvis_intel" / "trade_closes.jsonl",
+    workspace_roots.ETA_JARVIS_TRADE_CLOSES_PATH,
+    workspace_roots.ETA_LEGACY_JARVIS_TRADE_CLOSES_PATH,
 ]
 
-OUT_LATEST = STATE_DIR / "diamond_cpcv_latest.json"
+OUT_LATEST = workspace_roots.ETA_DIAMOND_CPCV_PATH
 
 #: CPCV defaults — operator can override.  n=6 k=2 → 15 splits per bot
 DEFAULT_N_FOLDS = 6
@@ -79,6 +78,26 @@ DEFAULT_K_TEST = 2
 #: splits AND have positive mean test sharpe across all splits.
 ROBUST_SHARE_THRESHOLD = 0.60
 MIN_SAMPLES_FOR_CPCV = 20
+
+
+def _console_help_description(text: str | None) -> str:
+    """Return argparse help text that is safe on Windows cp1252 consoles."""
+    return (text or "").encode("ascii", "replace").decode("ascii")
+
+
+def _console_ascii(text: str | None) -> str:
+    """Return runtime console text that is safe on Windows cp1252 consoles."""
+    normalized = text or ""
+    replacements = {
+        "â€”": "-",
+        "â†’": "->",
+        "â‰¥": ">=",
+        "â‰¤": "<=",
+        "…": "...",
+    }
+    for original, replacement in replacements.items():
+        normalized = normalized.replace(original, replacement)
+    return normalized.encode("ascii", "replace").decode("ascii")
 
 
 @dataclass
@@ -273,7 +292,7 @@ def _print(summary: dict) -> None:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__)
+    ap = argparse.ArgumentParser(description=_console_help_description(__doc__))
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
     summary = run()

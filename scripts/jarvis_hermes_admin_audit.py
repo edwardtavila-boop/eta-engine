@@ -16,7 +16,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-DEFAULT_WORKSPACE_ROOT = Path(r"C:\EvolutionaryTradingAlgo")
+from eta_engine.scripts import workspace_roots
+
+DEFAULT_WORKSPACE_ROOT = workspace_roots.WORKSPACE_ROOT
 DEFAULT_HERMES_PORT = 8642
 
 CORE_MCP_TOOLS = (

@@ -47,11 +47,11 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from eta_engine.scripts import workspace_roots
+
 logger = logging.getLogger("eta_engine.brain.jarvis_v3.hermes_overrides")
 
-DEFAULT_OVERRIDES_PATH = Path(
-    r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\hermes_overrides.json",
-)
+DEFAULT_OVERRIDES_PATH = workspace_roots.ETA_HERMES_OVERRIDES_PATH
 
 # Clamp ranges — readers re-apply these even if writer didn't.
 # Size write-backs are intentionally de-risk-only for prop-fund discipline.

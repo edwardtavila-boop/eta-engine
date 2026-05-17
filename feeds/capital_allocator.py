@@ -29,6 +29,8 @@ from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
+from eta_engine.scripts import workspace_roots
+
 
 @dataclass
 class BotAllocation:
@@ -163,7 +165,7 @@ DIAMOND_MIN_CAPITAL: float = 2000.0
 MIN_SESSIONS = 2
 
 # Path to allocation state
-ALLOCATION_PATH = Path(r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\capital_allocation.json")
+ALLOCATION_PATH = workspace_roots.ETA_CAPITAL_ALLOCATION_PATH
 
 # ────────────────────────────────────────────────────────────────────
 # Wave-18: TIER SYSTEM
@@ -201,10 +203,7 @@ PROP_READY_CAPITAL_PER_BOT: float = 2500.0
 
 #: Leaderboard receipt path.  capital_allocator reads this to know
 #: which bots earned PROP_READY status in the most recent run.
-LEADERBOARD_PATH = Path(
-    r"C:\EvolutionaryTradingAlgo\var\eta_engine\state"
-    r"\diamond_leaderboard_latest.json",
-)
+LEADERBOARD_PATH = workspace_roots.ETA_DIAMOND_LEADERBOARD_PATH
 
 
 def classify_pool(bot_id: str) -> str:
@@ -226,7 +225,7 @@ def classify_pool(bot_id: str) -> str:
 
 
 def load_prop_ready_bots(
-    leaderboard_path: Path = LEADERBOARD_PATH,
+    leaderboard_path: Path | None = None,
 ) -> frozenset[str]:
     """Read the most recent leaderboard receipt and return the set of
     bots currently designated PROP_READY.
@@ -235,10 +234,11 @@ def load_prop_ready_bots(
     allocator never crashes — it just degrades to no-PROP_READY routing
     instead of mis-allocating real capital).
     """
-    if not leaderboard_path.exists():
+    target = leaderboard_path or LEADERBOARD_PATH
+    if not target.exists():
         return frozenset()
     try:
-        data = json.loads(leaderboard_path.read_text(encoding="utf-8"))
+        data = json.loads(target.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return frozenset()
     bots = data.get("prop_ready_bots") or []
@@ -278,12 +278,8 @@ def get_bot_tier(
 #:    signal = get_prop_guard_signal()
 #:    if signal == "HALT": skip entry
 #:    elif signal == "WATCH": qty = qty // 2
-PROP_HALT_FLAG_PATH = Path(
-    r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\prop_halt_active.flag",
-)
-PROP_WATCH_FLAG_PATH = Path(
-    r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\prop_watch_active.flag",
-)
+PROP_HALT_FLAG_PATH = workspace_roots.ETA_PROP_HALT_FLAG_PATH
+PROP_WATCH_FLAG_PATH = workspace_roots.ETA_PROP_WATCH_FLAG_PATH
 
 
 def get_prop_guard_signal() -> str:
@@ -365,12 +361,10 @@ def prop_entry_size_multiplier(bot_id: str) -> float:
 #      ``"paper"``, or ``"reject"`` plus a reason string.
 # ────────────────────────────────────────────────────────────────────
 
-PROP_DRAWDOWN_GUARD_RECEIPT = Path(
-    r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\diamond_prop_drawdown_guard_latest.json",
-)
-BOT_LIFECYCLE_STATE_PATH = Path(
-    r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\bot_lifecycle.json",
-)
+PROP_DRAWDOWN_GUARD_RECEIPT = workspace_roots.ETA_DIAMOND_PROP_DRAWDOWN_GUARD_PATH
+PROP_LAUNCH_READINESS_RECEIPT = workspace_roots.ETA_DIAMOND_PROP_LAUNCH_READINESS_PATH
+BOT_LIFECYCLE_STATE_PATH = workspace_roots.ETA_BOT_LIFECYCLE_STATE_PATH
+BOT_STRATEGY_READINESS_SNAPSHOT_PATH = workspace_roots.ETA_BOT_STRATEGY_READINESS_SNAPSHOT_PATH
 
 # Lifecycle states.
 LIFECYCLE_EVAL_LIVE = "EVAL_LIVE"
@@ -457,6 +451,113 @@ def _read_drawdown_guard_state() -> dict[str, Any]:
         return json.loads(PROP_DRAWDOWN_GUARD_RECEIPT.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return {}
+
+
+def _read_launch_readiness_state() -> tuple[dict[str, Any], str]:
+    """Read the latest prop launch-readiness receipt.
+
+    Returns ``(<payload>, <status>)`` where status is one of:
+      - ``ok``
+      - ``missing``
+      - ``unreadable``
+      - ``malformed``
+    """
+    try:
+        payload = json.loads(PROP_LAUNCH_READINESS_RECEIPT.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return {}, "missing"
+    except (OSError, json.JSONDecodeError):
+        return {}, "unreadable"
+    if not isinstance(payload, dict):
+        return {}, "malformed"
+    return payload, "ok"
+
+
+def _read_strategy_readiness_row(bot_id: str) -> tuple[dict[str, Any] | None, str]:
+    """Return the readiness row for ``bot_id`` from the canonical snapshot."""
+    try:
+        payload = json.loads(BOT_STRATEGY_READINESS_SNAPSHOT_PATH.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return None, "snapshot_missing"
+    except (OSError, json.JSONDecodeError):
+        return None, "snapshot_unreadable"
+    if not isinstance(payload, dict):
+        return None, "snapshot_malformed"
+    rows = payload.get("rows")
+    if not isinstance(rows, list):
+        return None, "rows_missing"
+    match = next(
+        (
+            row
+            for row in rows
+            if isinstance(row, dict) and str(row.get("bot_id") or "") == bot_id
+        ),
+        None,
+    )
+    if not isinstance(match, dict):
+        return None, "bot_missing"
+    return match, "ok"
+
+
+def _launch_blocking_gate_names(receipt: dict[str, Any]) -> tuple[list[str], list[str]]:
+    """Return non-calendar NO_GO and HOLD gates from the launch receipt."""
+    gates = receipt.get("gates")
+    if not isinstance(gates, list):
+        return [], []
+
+    no_go: list[str] = []
+    hold: list[str] = []
+    for gate in gates:
+        if not isinstance(gate, dict):
+            continue
+        name = str(gate.get("name") or "")
+        status = str(gate.get("status") or "").upper()
+        if not name or name == "R0_LIVE_CAPITAL_CALENDAR":
+            continue
+        if status == "NO_GO":
+            no_go.append(name)
+        elif status == "HOLD":
+            hold.append(name)
+    return no_go, hold
+
+
+def live_routing_readiness_gate(bot_id: str) -> tuple[bool, str]:
+    """Return whether ``bot_id`` is allowed to route to real capital now.
+
+    The live lane must agree across all three truth surfaces:
+      1. Strategy readiness row marks ``can_live_trade=true``.
+      2. Leaderboard still designates the bot ``PROP_READY``.
+      3. Launch-readiness receipt has no non-calendar HOLD/NO_GO gates.
+
+    Any disagreement downgrades the bot back to paper routing.
+    """
+    readiness_row, readiness_status = _read_strategy_readiness_row(bot_id)
+    if readiness_status != "ok" or readiness_row is None:
+        return False, f"strategy_readiness_{readiness_status}"
+
+    if not bool(readiness_row.get("can_live_trade")):
+        lane = str(
+            readiness_row.get("launch_lane")
+            or readiness_row.get("promotion_status")
+            or readiness_row.get("data_status")
+            or "not_approved"
+        )
+        return False, f"strategy_readiness_live_block:{lane}"
+
+    prop_ready = load_prop_ready_bots()
+    if bot_id not in prop_ready:
+        return False, "launch_readiness_not_prop_ready"
+
+    receipt, launch_status = _read_launch_readiness_state()
+    if launch_status != "ok":
+        return False, f"launch_readiness_{launch_status}"
+
+    no_go_gates, hold_gates = _launch_blocking_gate_names(receipt)
+    if no_go_gates:
+        return False, f"launch_readiness_no_go:{','.join(no_go_gates)}"
+    if hold_gates:
+        return False, f"launch_readiness_hold:{','.join(hold_gates)}"
+    return True, "launch_readiness_go"
 
 
 def get_bot_lifecycle(bot_id: str) -> str:
@@ -623,10 +724,12 @@ def resolve_execution_target(
     Order of precedence:
       1. Lifecycle RETIRED → reject ("retired bot")
       2. Lifecycle EVAL_PAPER → paper ("eval_paper lifecycle")
-      3. Prop guard HALT for prop_ready → reject ("prop_guard_halt")
-      4. Pre-trade risk reject → reject (passes through reason)
-      5. Pre-trade risk route_to_paper → paper (passes through reason)
-      6. Default → live ("ok")
+      3. Calendar hold → paper
+      4. Strategy/leaderboard/launch truth disagreement → paper
+      5. Prop guard HALT for prop_ready → reject ("prop_guard_halt")
+      6. Pre-trade risk reject → reject (passes through reason)
+      7. Pre-trade risk route_to_paper → paper (passes through reason)
+      8. Default → live ("ok")
     """
     lifecycle = get_bot_lifecycle(bot_id)
     if lifecycle == LIFECYCLE_RETIRED:
@@ -637,6 +740,10 @@ def resolve_execution_target(
     calendar_ok, calendar_reason = live_capital_calendar_gate()
     if not calendar_ok:
         return ("paper", calendar_reason)
+
+    live_ready, live_reason = live_routing_readiness_gate(bot_id)
+    if not live_ready:
+        return ("paper", live_reason)
 
     if should_block_prop_entry(bot_id):
         return ("reject", "prop_guard_halt")
@@ -835,7 +942,7 @@ def _read_registry_map() -> dict[str, dict[str, str]]:
     """Parse per_bot_registry for bot->symbol mapping."""
     import re
 
-    reg_path = Path(r"C:\EvolutionaryTradingAlgo\eta_engine\strategies\per_bot_registry.py")
+    reg_path = workspace_roots.ETA_ENGINE_ROOT / "strategies" / "per_bot_registry.py"
     reg_map = {}
     if reg_path.exists():
         content = reg_path.read_text(encoding="utf-8")
@@ -851,7 +958,7 @@ if __name__ == "__main__":
     # Compute and save allocations from current soak data
     import sys
 
-    ledger = Path(r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\paper_soak_ledger.json")
+    ledger = workspace_roots.ETA_PAPER_SOAK_LEDGER_PATH
     total = float(sys.argv[1]) if len(sys.argv) > 1 else 100_000.0
     alloc = compute_allocations(ledger, total)
     save_allocation(alloc)

@@ -31,31 +31,33 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from eta_engine.scripts import workspace_roots
+
 logger = logging.getLogger(__name__)
 
 
 # Bar data lookup. Falls back gracefully when a symbol's data is missing.
 _BAR_PATHS = {
     # Crypto spot (Coinbase / IBKR history)
-    ("BTC", "1h"): Path(r"C:\EvolutionaryTradingAlgo\data\crypto\ibkr\history\BTC_1h.csv"),
-    ("BTC", "5m"): Path(r"C:\EvolutionaryTradingAlgo\data\crypto\ibkr\history\BTC_5m.csv"),
-    ("BTC", "1m"): Path(r"C:\EvolutionaryTradingAlgo\data\crypto\ibkr\history\BTC_1m.csv"),
-    ("BTC", "1d"): Path(r"C:\EvolutionaryTradingAlgo\data\crypto\ibkr\history\BTC_D.csv"),
-    ("ETH", "1h"): Path(r"C:\EvolutionaryTradingAlgo\data\crypto\ibkr\history\ETH_1h.csv"),
-    ("ETH", "5m"): Path(r"C:\EvolutionaryTradingAlgo\data\crypto\ibkr\history\ETH_5m.csv"),
-    ("ETH", "1d"): Path(r"C:\EvolutionaryTradingAlgo\data\crypto\ibkr\history\ETH_D.csv"),
-    ("SOL", "1h"): Path(r"C:\EvolutionaryTradingAlgo\data\crypto\ibkr\history\SOL_1h.csv"),
+    ("BTC", "1h"): workspace_roots.CRYPTO_IBKR_HISTORY_ROOT / "BTC_1h.csv",
+    ("BTC", "5m"): workspace_roots.CRYPTO_IBKR_HISTORY_ROOT / "BTC_5m.csv",
+    ("BTC", "1m"): workspace_roots.CRYPTO_IBKR_HISTORY_ROOT / "BTC_1m.csv",
+    ("BTC", "1d"): workspace_roots.CRYPTO_IBKR_HISTORY_ROOT / "BTC_D.csv",
+    ("ETH", "1h"): workspace_roots.CRYPTO_IBKR_HISTORY_ROOT / "ETH_1h.csv",
+    ("ETH", "5m"): workspace_roots.CRYPTO_IBKR_HISTORY_ROOT / "ETH_5m.csv",
+    ("ETH", "1d"): workspace_roots.CRYPTO_IBKR_HISTORY_ROOT / "ETH_D.csv",
+    ("SOL", "1h"): workspace_roots.CRYPTO_IBKR_HISTORY_ROOT / "SOL_1h.csv",
     # Equity-index futures
-    ("MNQ", "5m"): Path(r"C:\EvolutionaryTradingAlgo\data\MNQ_5m.csv"),
-    ("MNQ1", "5m"): Path(r"C:\EvolutionaryTradingAlgo\data\MNQ_5m.csv"),
-    ("NQ", "5m"): Path(r"C:\EvolutionaryTradingAlgo\data\NQ_5m.csv"),
-    ("NQ1", "5m"): Path(r"C:\EvolutionaryTradingAlgo\data\NQ_5m.csv"),
+    ("MNQ", "5m"): workspace_roots.WORKSPACE_ROOT / "data" / "MNQ_5m.csv",
+    ("MNQ1", "5m"): workspace_roots.WORKSPACE_ROOT / "data" / "MNQ_5m.csv",
+    ("NQ", "5m"): workspace_roots.WORKSPACE_ROOT / "data" / "NQ_5m.csv",
+    ("NQ1", "5m"): workspace_roots.WORKSPACE_ROOT / "data" / "NQ_5m.csv",
 }
 
 
 def _resolve_root() -> Path:
     """Project data root."""
-    return Path(r"C:\EvolutionaryTradingAlgo\data")
+    return workspace_roots.WORKSPACE_ROOT / "data"
 
 
 def _resolve_bar_path(symbol: str, timeframe: str) -> Path | None:
@@ -74,10 +76,10 @@ def _resolve_bar_path(symbol: str, timeframe: str) -> Path | None:
                 return p
     # last-ditch: any csv matching SYMBOL_TF in standard data dirs
     _roots = (
-        Path(r"C:\EvolutionaryTradingAlgo\data"),
-        Path(r"C:\EvolutionaryTradingAlgo\data\crypto\ibkr\history"),
-        Path(r"C:\EvolutionaryTradingAlgo\data\futures"),
-        Path(r"C:\EvolutionaryTradingAlgo\data\futures\ibkr\history"),
+        workspace_roots.WORKSPACE_ROOT / "data",
+        workspace_roots.CRYPTO_IBKR_HISTORY_ROOT,
+        workspace_roots.WORKSPACE_ROOT / "data" / "futures",
+        workspace_roots.WORKSPACE_ROOT / "data" / "futures" / "ibkr" / "history",
     )
     sym_root = symbol.upper().rstrip("0123456789")
     for root in _roots:

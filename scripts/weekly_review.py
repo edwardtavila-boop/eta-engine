@@ -4,15 +4,19 @@ EVOLUTIONARY TRADING ALGO  //  scripts.weekly_review
 Firm re-review cadence artifact.
 
 Once a week, drive The Firm board against the most recent paper-run or live-tiny
-result, record the verdict, and append to docs/weekly_review_log.json. Designed
+result, record the verdict, and append to
+var/eta_engine/state/weekly_review/weekly_review_log.json by default. Designed
 to be safe to run from a scheduler — creates its own directory, appends deltas,
 does NOT mutate prior rows.
 
 Outputs
 -------
-- docs/weekly_review_log.json      — append-only history of weekly reviews
-- docs/weekly_review_latest.json   — single-file latest entry (dashboard-friendly)
-- docs/weekly_review_latest.txt    — 80-col text summary
+- var/eta_engine/state/weekly_review/weekly_review_log.json
+  - append-only history of weekly reviews
+- var/eta_engine/state/weekly_review/weekly_review_latest.json
+  - single-file latest entry (dashboard-friendly)
+- var/eta_engine/state/weekly_review/weekly_review_latest.txt
+  - 80-col text summary
 
 Usage
 -----
@@ -38,12 +42,15 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT.parent))
 
+from eta_engine.scripts import workspace_roots  # noqa: E402
 from eta_engine.core.principles_checklist import (  # noqa: E402
     DEFAULT_PRINCIPLES,
     ChecklistAnswer,
     ChecklistReport,
     build_report,
 )
+
+DEFAULT_OUT_DIR = workspace_roots.ETA_WEEKLY_REVIEW_DIR
 
 
 @dataclass
@@ -270,7 +277,7 @@ def _write_checklist_report(report: ChecklistReport, out_dir: Path) -> Path:
 
 
 def _kill_log_count() -> int:
-    klp = ROOT / "docs" / "kill_log.json"
+    klp = workspace_roots.default_kill_log_path()
     if not klp.exists():
         return 0
     try:
@@ -375,7 +382,7 @@ def main() -> int:
     p.add_argument("--spec", type=Path, default=None)
     p.add_argument("--tier", choices=("A", "B", "BOTH"), default="BOTH")
     p.add_argument("--auto", action="store_true", help="Pick newest firm_spec_paper_results_*.json under docs/")
-    p.add_argument("--out-dir", type=Path, default=ROOT / "docs")
+    p.add_argument("--out-dir", type=Path, default=DEFAULT_OUT_DIR)
     p.add_argument("--skip-engage", action="store_true", help="Do not call engage_firm_board; read verdict from spec")
     p.add_argument(
         "--checklist-answers",

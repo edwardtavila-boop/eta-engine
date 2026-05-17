@@ -41,11 +41,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from eta_engine.scripts import workspace_roots
+
 logger = logging.getLogger("eta_engine.scripts.hermes_evening_journal")
 
-_WORKSPACE = Path(r"C:\EvolutionaryTradingAlgo")
-_VAR_ROOT = _WORKSPACE / "var"
-_AUDIT_PATH = _VAR_ROOT / "hermes_evening_journal.jsonl"
+_AUDIT_PATH = workspace_roots.ETA_HERMES_EVENING_JOURNAL_AUDIT_PATH
 
 _HERMES_EXE = r"C:\Users\Administrator\.hermes\hermes-agent\.venv\Scripts\hermes.exe"
 _HERMES_TIMEOUT_S = 180

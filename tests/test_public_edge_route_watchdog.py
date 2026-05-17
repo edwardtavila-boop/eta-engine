@@ -112,6 +112,141 @@ def test_repair_public_edge_route_rewrites_stale_8420_target(tmp_path: Path) -> 
     assert restart_calls == ["FirmCommandCenterEdge"]
 
 
+def test_public_edge_route_watchdog_accepts_cloudflare_direct_ingress(tmp_path: Path) -> None:
+    from eta_engine.scripts import public_edge_route_watchdog as wd
+
+    cloudflared = tmp_path / "eta-engine-cloudflared.yml"
+    cloudflared.write_text(
+        (
+            "tunnel: example\n"
+            "ingress:\n"
+            "  - hostname: ops.evolutionarytradingalgo.com\n"
+            "    service: http://127.0.0.1:8000\n"
+            "  - service: http_status:404\n"
+        ),
+        encoding="utf-8",
+    )
+
+    def probe(url: str) -> wd.EndpointProbe:
+        return _probe(wd, url=url, summary=GOOD_SUMMARY, truth=GOOD_TRUTH_LINE)
+
+    decision = wd.run_once(
+        public_url="http://127.0.0.1:8000/api/bot-fleet",
+        canonical_url="http://127.0.0.1:8421/api/bot-fleet",
+        expected_target="127.0.0.1:8000",
+        caddyfile_path=tmp_path / "missing.Caddyfile",
+        cloudflared_config_path=cloudflared,
+        public_hostname="ops.evolutionarytradingalgo.com",
+        heartbeat_path=tmp_path / "heartbeat.json",
+        probe_fn=probe,
+    )
+
+    assert decision.action == "noop"
+    assert decision.route_ok_before is True
+    assert decision.target_before == "127.0.0.1:8000"
+    assert decision.mismatch_reasons == []
+
+
+def test_read_active_route_target_prefers_cloudflare_when_legacy_caddyfile_exists(tmp_path: Path) -> None:
+    from eta_engine.scripts import public_edge_route_watchdog as wd
+
+    caddyfile = tmp_path / "FirmCommandCenter.Caddyfile"
+    caddyfile.write_text(
+        "https://ops.example.com {\n    reverse_proxy 127.0.0.1:8421\n}\n",
+        encoding="utf-8",
+    )
+    cloudflared = tmp_path / "eta-engine-cloudflared.yml"
+    cloudflared.write_text(
+        (
+            "tunnel: example\n"
+            "ingress:\n"
+            "  - hostname: ops.evolutionarytradingalgo.com\n"
+            "    service: http://127.0.0.1:8000\n"
+            "  - service: http_status:404\n"
+        ),
+        encoding="utf-8",
+    )
+
+    target, reason = wd.read_active_route_target(
+        caddyfile,
+        cloudflared_config_path=cloudflared,
+        public_hostname="ops.evolutionarytradingalgo.com",
+    )
+
+    assert target == "127.0.0.1:8000"
+    assert reason == "cloudflared_ingress_ok"
+
+
+def test_repair_public_edge_route_rewrites_cloudflare_direct_target(tmp_path: Path) -> None:
+    from eta_engine.scripts import public_edge_route_watchdog as wd
+
+    cloudflared = tmp_path / "eta-engine-cloudflared.yml"
+    cloudflared.write_text(
+        (
+            "tunnel: example\n"
+            "ingress:\n"
+            "  - hostname: ops.evolutionarytradingalgo.com\n"
+            "    service: http://127.0.0.1:8420\n"
+            "  - service: http_status:404\n"
+        ),
+        encoding="utf-8",
+    )
+
+    restart_calls: list[str] = []
+    result = wd.repair_public_edge_route(
+        caddyfile_path=tmp_path / "missing.Caddyfile",
+        expected_target="127.0.0.1:8000",
+        cloudflared_config_path=cloudflared,
+        public_hostname="ops.evolutionarytradingalgo.com",
+        cloudflared_service_name="Cloudflared",
+        restart_fn=lambda service_name: restart_calls.append(service_name) or (True, "service_restart_ok"),
+    )
+
+    assert result.ok is True
+    assert result.changed_caddyfile is True
+    assert result.previous_target == "127.0.0.1:8420"
+    assert result.current_target == "127.0.0.1:8000"
+    assert result.restart_ok is True
+    assert "service: http://127.0.0.1:8000" in cloudflared.read_text(encoding="utf-8")
+    assert restart_calls == ["Cloudflared"]
+
+
+def test_repair_public_edge_route_prefers_cloudflare_over_legacy_caddyfile(tmp_path: Path) -> None:
+    from eta_engine.scripts import public_edge_route_watchdog as wd
+
+    caddyfile = tmp_path / "FirmCommandCenter.Caddyfile"
+    original_caddy = "https://ops.example.com {\n    reverse_proxy 127.0.0.1:8421\n}\n"
+    caddyfile.write_text(original_caddy, encoding="utf-8")
+    cloudflared = tmp_path / "eta-engine-cloudflared.yml"
+    cloudflared.write_text(
+        (
+            "tunnel: example\n"
+            "ingress:\n"
+            "  - hostname: ops.evolutionarytradingalgo.com\n"
+            "    service: http://127.0.0.1:8421\n"
+            "  - service: http_status:404\n"
+        ),
+        encoding="utf-8",
+    )
+
+    restart_calls: list[str] = []
+    result = wd.repair_public_edge_route(
+        caddyfile_path=caddyfile,
+        expected_target="127.0.0.1:8000",
+        cloudflared_config_path=cloudflared,
+        public_hostname="ops.evolutionarytradingalgo.com",
+        cloudflared_service_name="Cloudflared",
+        restart_fn=lambda service_name: restart_calls.append(service_name) or (True, "service_restart_ok"),
+    )
+
+    assert result.ok is True
+    assert result.previous_target == "127.0.0.1:8421"
+    assert result.current_target == "127.0.0.1:8000"
+    assert restart_calls == ["Cloudflared"]
+    assert "service: http://127.0.0.1:8000" in cloudflared.read_text(encoding="utf-8")
+    assert caddyfile.read_text(encoding="utf-8") == original_caddy
+
+
 def test_public_edge_route_watchdog_repairs_drift_and_confirms_match(tmp_path: Path) -> None:
     from eta_engine.scripts import public_edge_route_watchdog as wd
 

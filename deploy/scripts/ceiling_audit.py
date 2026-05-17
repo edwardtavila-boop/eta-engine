@@ -8,6 +8,8 @@ import urllib.request
 from datetime import datetime
 from pathlib import Path
 
+from eta_engine.scripts import workspace_roots
+
 try:
     from .process_diagnostics import (
         collect_windows_processes,
@@ -23,9 +25,9 @@ except ImportError:
         summarize_process_commands,
     )
 
-ROOT = Path(r"C:\EvolutionaryTradingAlgo")
-STATE_ROOT = ROOT / "var" / "eta_engine" / "state"
-ENGINE_ROOT = ROOT / "eta_engine"
+ROOT = workspace_roots.WORKSPACE_ROOT
+STATE_ROOT = workspace_roots.ETA_RUNTIME_STATE_DIR
+ENGINE_ROOT = workspace_roots.ETA_ENGINE_ROOT
 PASS_COUNT = 0
 WARN_COUNT = 0
 FAIL_COUNT = 0
@@ -141,7 +143,7 @@ for state_dir in [STATE_ROOT, ENGINE_ROOT / "state"]:
 else:
     say("No state files", False)
 
-verdict_path = ENGINE_ROOT / "state" / "jarvis_intel" / "verdicts.jsonl"
+verdict_path = workspace_roots.ETA_JARVIS_VERDICTS_PATH
 if verdict_path.exists():
     age_minutes = minutes_since(verdict_path)
     say(f"Verdicts log: {age_minutes:.0f}m old", age_minutes < 15)

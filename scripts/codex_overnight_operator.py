@@ -9,7 +9,7 @@ or run git. The cycle makes Codex visible as an operator on the VPS by:
 - optionally running the existing VPS health check, and
 - writing a canonical latest report plus append-only JSONL history.
 
-All default writes stay under C:/EvolutionaryTradingAlgo/var/eta_engine/state.
+All default writes stay under the canonical workspace state root.
 """
 
 from __future__ import annotations
@@ -96,7 +96,7 @@ class CodexOperatorReport:
         default_factory=lambda: {
             "no_live_orders": True,
             "no_git_mutation": True,
-            "canonical_write_root": "C:/EvolutionaryTradingAlgo",
+            "canonical_write_root": str(WORKSPACE_ROOT),
         }
     )
     reclaimed_tasks: list[str] = field(default_factory=list)
@@ -163,7 +163,11 @@ def _run_health_probe(report_dir: Path) -> dict[str, object]:
         from eta_engine.scripts.health_check import run_health_check
 
         health_dir = report_dir / "health"
-        report = run_health_check(output_dir=health_dir)
+        report = run_health_check(
+            output_dir=health_dir,
+            allow_remote_supervisor_truth=True,
+            allow_remote_retune_truth=True,
+        )
         return report.to_dict()
     except Exception as exc:  # pragma: no cover - defensive VPS safety net.
         return {

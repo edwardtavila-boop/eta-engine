@@ -381,6 +381,55 @@ def test_corr_regime_no_shift_when_stable() -> None:
     assert detect_shifts(rolling, baseline) == []
 
 
+def test_corr_regime_load_baseline_falls_back_to_legacy_correlation_dir(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from eta_engine.brain.jarvis_v3 import corr_regime_detector as crd
+
+    canonical = tmp_path / "var" / "eta_engine" / "state" / "correlation"
+    legacy = tmp_path / "eta_engine" / "state" / "correlation"
+    legacy.mkdir(parents=True, exist_ok=True)
+    (legacy / "learned.json").write_text(
+        '{"pairs":{"MNQ|NQ":0.88,"BTCUSDT|ETHUSDT":0.64}}',
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(crd.workspace_roots, "ETA_CORRELATION_ARTIFACT_DIR", canonical)
+    monkeypatch.setattr(crd.workspace_roots, "ETA_LEGACY_CORRELATION_ARTIFACT_DIR", legacy)
+
+    assert crd.load_baseline() == {
+        "MNQ|NQ": 0.88,
+        "BTCUSDT|ETHUSDT": 0.64,
+    }
+
+
+def test_corr_regime_write_shift_report_uses_canonical_runtime_dir(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from eta_engine.brain.jarvis_v3 import corr_regime_detector as crd
+
+    out_dir = tmp_path / "var" / "eta_engine" / "state" / "correlation_regime"
+    monkeypatch.setattr(crd.workspace_roots, "ETA_CORRELATION_REGIME_DIR", out_dir)
+
+    path = crd.write_shift_report(
+        [
+            crd.CorrRegimeShift(
+                pair="BTCUSDT|ETHUSDT",
+                baseline=0.85,
+                rolling=0.52,
+                delta=-0.33,
+                severity="extreme",
+            )
+        ]
+    )
+
+    assert path.parent == out_dir
+    assert path.exists()
+    assert "BTCUSDT|ETHUSDT" in path.read_text(encoding="utf-8")
+
+
 # ─── Pyramid planner ───────────────────────────────────────────────
 
 

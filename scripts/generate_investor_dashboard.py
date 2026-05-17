@@ -22,13 +22,13 @@ What it does NOT show
   * Internal kill-switch reasons (just "armed" / "not armed")
 
 The dashboard is regenerated nightly by ``Eta-Investor-Dashboard-Daily``
-and pushed to ``state/investor_dashboard/index.html``. The Cloudflare
+and pushed to ``var/eta_engine/investor_dashboard/index.html``. The Cloudflare
 tunnel serves that file behind basic auth (operator-controlled).
 
 Usage::
 
     python scripts/generate_investor_dashboard.py
-    python scripts/generate_investor_dashboard.py --output state/investor_dashboard/index.html
+    python scripts/generate_investor_dashboard.py --output var/eta_engine/investor_dashboard/index.html
 """
 
 from __future__ import annotations
@@ -44,6 +44,7 @@ from typing import Any
 logger = logging.getLogger("generate_investor_dashboard")
 
 ROOT = Path(__file__).resolve().parents[1]
+from eta_engine.scripts import workspace_roots
 
 
 def gather_payload() -> dict[str, Any]:
@@ -67,7 +68,7 @@ def gather_payload() -> dict[str, Any]:
     }
 
     # Recent kaizen tickets (titles only; rationale hidden)
-    ledger_path = ROOT / "docs" / "kaizen_ledger.json"
+    ledger_path = workspace_roots.ETA_KAIZEN_LEDGER_PATH
     if ledger_path.exists():
         try:
             from eta_engine.brain.jarvis_v3.kaizen import KaizenLedger
@@ -197,7 +198,9 @@ def render_html(payload: dict[str, Any]) -> str:
             for t in kaizen
         )
     else:
-        kaizen_rows = '<div class="ticket-meta">No kaizen ledger yet -- run scripts/run_kaizen_close_cycle.py.</div>'
+        kaizen_rows = (
+            '<div class="ticket-meta">No canonical kaizen ledger yet -- run scripts/run_kaizen_close_cycle.py.</div>'
+        )
 
     totals = payload.get("todays_verdicts", {}).get("totals", {})
     verdict_total = sum(totals.values()) if totals else 0
@@ -238,7 +241,7 @@ def render_html(payload: dict[str, Any]) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--output", type=Path, default=ROOT / "state" / "investor_dashboard" / "index.html")
+    p.add_argument("--output", type=Path, default=workspace_roots.ETA_INVESTOR_DASHBOARD_PATH)
     p.add_argument(
         "--json-payload",
         type=Path,

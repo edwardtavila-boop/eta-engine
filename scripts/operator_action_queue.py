@@ -27,7 +27,8 @@ State sources scanned
 * ``configs/tradovate.yaml`` presence (DORMANT; informational)
 * env-var presence for the per-venue credential keys
 * ``venues/router.py::DORMANT_BROKERS`` for the dormancy mandate state
-* ``docs/preflight_dryrun_report.json`` for the most recent T-minus
+* ``var/eta_engine/state/preflight/preflight_dryrun_report.json`` for the
+  most recent T-minus (with legacy docs fallback)
 
 Usage
 -----
@@ -104,8 +105,8 @@ def _read_roadmap_state() -> dict[str, Any]:
 
 
 def _read_preflight_report() -> dict[str, Any]:
-    """Return ``docs/preflight_dryrun_report.json`` parsed, or empty dict."""
-    p = ROOT / "docs" / "preflight_dryrun_report.json"
+    """Return the latest preflight dryrun report parsed, or empty dict."""
+    p = workspace_roots.default_preflight_dryrun_report_path()
     if not p.exists():
         return {}
     try:

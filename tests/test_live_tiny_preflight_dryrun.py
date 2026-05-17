@@ -19,8 +19,32 @@ def fake_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     (tmp_path / "docs").mkdir()
     (tmp_path / "configs").mkdir()
     # kill_log
-    (tmp_path / "docs" / "kill_log.json").write_text(
+    kill_log = tmp_path / "var" / "eta_engine" / "state" / "kill_log.json"
+    kill_log.parent.mkdir(parents=True)
+    kill_log.write_text(
         json.dumps({"meta": {}, "entries": [{"id": 1}, {"id": 2}, {"id": 3}]}),
+    )
+    monkeypatch.setattr(mod.workspace_roots, "ETA_KILL_LOG_PATH", kill_log)
+    monkeypatch.setattr(mod.workspace_roots, "ETA_LEGACY_KILL_LOG_PATH", tmp_path / "docs" / "kill_log.json")
+    monkeypatch.setattr(
+        mod.workspace_roots,
+        "ETA_PAPER_RUN_REPORT_PATH",
+        tmp_path / "var" / "eta_engine" / "state" / "paper_run" / "paper_run_report.json",
+    )
+    monkeypatch.setattr(
+        mod.workspace_roots,
+        "ETA_LEGACY_PAPER_RUN_REPORT_PATH",
+        tmp_path / "docs" / "paper_run_report.json",
+    )
+    monkeypatch.setattr(
+        mod.workspace_roots,
+        "ETA_DECISIONS_V1_PATH",
+        tmp_path / "var" / "eta_engine" / "state" / "decisions_v1.json",
+    )
+    monkeypatch.setattr(
+        mod.workspace_roots,
+        "ETA_LEGACY_DECISIONS_V1_PATH",
+        tmp_path / "docs" / "decisions_v1.json",
     )
     # paper_run_report with Tier-A passing
     (tmp_path / "docs" / "paper_run_report.json").write_text(
@@ -72,7 +96,7 @@ def test_gate_kill_log_passes(fake_root: Path):
 
 
 def test_gate_kill_log_fails_when_missing(fake_root: Path):
-    (fake_root / "docs" / "kill_log.json").unlink()
+    (fake_root / "var" / "eta_engine" / "state" / "kill_log.json").unlink()
     g = mod._gate_kill_log()
     assert g.status == "FAIL"
 
@@ -90,6 +114,23 @@ def test_gate_paper_run_tier_a_fail_if_any_tier_a_fails(fake_root: Path):
                 "per_bot": [
                     {"bot": "mnq", "gate_pass": True},
                     {"bot": "nq", "gate_pass": False},
+                ],
+            }
+        ),
+    )
+    g = mod._gate_paper_run()
+    assert g.status == "FAIL"
+
+
+def test_gate_paper_run_prefers_canonical_runtime_state(fake_root: Path):
+    canonical = fake_root / "var" / "eta_engine" / "state" / "paper_run" / "paper_run_report.json"
+    canonical.parent.mkdir(parents=True)
+    canonical.write_text(
+        json.dumps(
+            {
+                "per_bot": [
+                    {"bot": "mnq", "gate_pass": False},
+                    {"bot": "nq", "gate_pass": True},
                 ],
             }
         ),
@@ -243,6 +284,24 @@ def test_gate_decisions_locked_fail_on_missing_section(fake_root: Path):
     )
     g = mod._gate_decisions_locked()
     assert g.status == "FAIL"
+
+
+def test_gate_decisions_locked_prefers_canonical_runtime_state(fake_root: Path):
+    canonical = fake_root / "var" / "eta_engine" / "state" / "decisions_v1.json"
+    canonical.parent.mkdir(parents=True, exist_ok=True)
+    canonical.write_text(
+        json.dumps(
+            {
+                "spec_id": "ETA_DECISIONS_CANONICAL",
+                "tier_1_live_tiny_blockers": {},
+                "tier_2_tier_b_blockers": {},
+                "tier_3_operational_cadence": {},
+            }
+        )
+    )
+    g = mod._gate_decisions_locked()
+    assert g.status == "PASS"
+    assert "ETA_DECISIONS_CANONICAL" in g.detail
 
 
 def test_gate_decisions_locked_fail_if_missing_file(fake_root: Path):

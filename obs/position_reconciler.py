@@ -27,19 +27,29 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from eta_engine.scripts import workspace_roots
+
 logger = logging.getLogger("position_reconciler")
 
 ROOT = Path(__file__).resolve().parents[1]
 
-#: Canonical workspace state root. Bots persist their open positions to
-#: ``<state_root>/bots/<bot_name>/positions.json`` from
-#: ``BaseBot.persist_positions``; this module aggregates them.
-DEFAULT_STATE_ROOT: Path = Path("C:/EvolutionaryTradingAlgo/var/eta_engine/state")
+#: Canonical workspace state root. Position truth currently lands in a
+#: few compatible formats:
+#:
+#: * legacy bot state: ``<state_root>/bots/<bot_name>/positions.json``
+#: * supervisor per-bot state: ``<state_root>/bots/<bot_id>/open_position.json``
+#: * supervisor aggregate belief: ``<state_root>/supervisor_open_positions.json``
+#:
+#: This reconciler reads all three so the router/gates stay aligned with the
+#: active Jarvis supervisor lane instead of only the older BaseBot layout.
+DEFAULT_STATE_ROOT: Path = workspace_roots.ETA_RUNTIME_STATE_DIR
 
-#: Glob pattern that picks up every per-bot positions file under the
+#: Glob pattern that picks up every legacy BaseBot positions file under the
 #: state root. ``*`` matches ``self.config.name`` (no recursion -- the
 #: per-bot directory is always exactly one level deep).
 BOT_POSITIONS_GLOB: str = "bots/*/positions.json"
+SUPERVISOR_OPEN_POSITION_GLOB: str = "bots/*/open_position.json"
+SUPERVISOR_STATE_FILE: str = "supervisor_open_positions.json"
 
 
 @dataclass
@@ -90,10 +100,20 @@ def fetch_bot_positions(
     :func:`fetch_broker_positions`. The diff between the two is what
     :func:`diff_positions` operates on.
 
-    **Contract (2026-05-04):** ``BaseBot.persist_positions`` writes
-    ``<state_root>/bots/<bot.config.name>/positions.json`` after every
-    fill (see ``eta_engine/bots/base_bot.py``). This function globs
-    those files and aggregates per-bot signed quantities by symbol.
+    **Supported state contracts:**
+
+    * ``BaseBot.persist_positions`` writes
+      ``<state_root>/bots/<bot.config.name>/positions.json`` after every
+      fill (see ``eta_engine/bots/base_bot.py``).
+    * ``jarvis_strategy_supervisor`` writes
+      ``<state_root>/bots/<bot_id>/open_position.json`` for each active
+      bot, plus the aggregate heartbeat
+      ``<state_root>/supervisor_open_positions.json``.
+
+    This function merges all compatible sources into a single
+    ``{symbol: {bot_name: signed_qty}}`` map so the router/correlation
+    gates see the active supervisor truth instead of only the legacy bot
+    layout.
 
     Behavior:
 
@@ -120,24 +140,48 @@ def fetch_bot_positions(
         return {}
 
     root = Path(state_root) if state_root is not None else DEFAULT_STATE_ROOT
-    files = sorted(root.glob(BOT_POSITIONS_GLOB))
+    legacy_files = sorted(root.glob(BOT_POSITIONS_GLOB))
+    supervisor_open_position_files = sorted(root.glob(SUPERVISOR_OPEN_POSITION_GLOB))
+    supervisor_state_path = root / SUPERVISOR_STATE_FILE
 
-    if not files:
+    if not legacy_files and not supervisor_open_position_files and not supervisor_state_path.exists():
         if os.environ.get("ETA_RECONCILE_ALLOW_EMPTY_STATE") == "1":
             logger.info(
-                "no bot positions files under %s; ETA_RECONCILE_ALLOW_EMPTY_STATE=1 honored (first-boot case)",
+                "no bot position state files under %s; ETA_RECONCILE_ALLOW_EMPTY_STATE=1 honored (first-boot case)",
                 root / "bots",
             )
             return {}
         raise RuntimeError(
-            f"no per-bot positions files found under {root / 'bots'!s} "
-            f"(glob '{BOT_POSITIONS_GLOB}'); a wiped state dir silently "
+            f"no bot position state files found under {root / 'bots'!s} "
+            f"(globs '{BOT_POSITIONS_GLOB}' / '{SUPERVISOR_OPEN_POSITION_GLOB}') "
+            f"and no aggregate state at {supervisor_state_path!s}; a wiped state dir silently "
             "looks 'all reconciled'. Set ETA_RECONCILE_ALLOW_EMPTY_STATE=1 "
             "for first-boot, or ETA_RECONCILE_DISABLED=1 to skip entirely."
         )
 
     out: dict[str, dict[str, float]] = {}
-    for path in files:
+
+    def _record(symbol: object, bot_name: object, qty: float) -> None:
+        if abs(qty) <= 0.0:
+            return
+        symbol_key = str(symbol or "").upper().strip()
+        bot_key = str(bot_name or "").strip()
+        if not symbol_key or not bot_key:
+            return
+        out.setdefault(symbol_key, {})[bot_key] = qty
+
+    def _signed_qty(qty: object, side: object | None = None) -> float:
+        qty_value = float(qty or 0.0)
+        if qty_value == 0.0:
+            return 0.0
+        if qty_value < 0.0:
+            return qty_value
+        side_norm = str(side or "").strip().upper()
+        if side_norm in {"SELL", "SHORT"}:
+            return -abs(qty_value)
+        return abs(qty_value)
+
+    for path in legacy_files:
         # Bot name is the parent-directory name -- mirrors the layout
         # written by ``BaseBot._positions_path``.
         bot_name = path.parent.name
@@ -157,12 +201,48 @@ def fetch_bot_positions(
         for entry in payload.get("positions", []) or []:
             try:
                 symbol = str(entry["symbol"]).upper()
-                qty = float(entry.get("qty", 0.0))
+                qty = _signed_qty(entry.get("qty", 0.0), entry.get("side"))
             except (KeyError, TypeError, ValueError):
                 continue
-            if not symbol:
-                continue
-            out.setdefault(symbol, {})[recorded_name] = qty
+            _record(symbol, recorded_name, qty)
+
+    if supervisor_state_path.exists():
+        try:
+            payload = json.loads(supervisor_state_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            logger.warning(
+                "skipping unreadable supervisor aggregate positions file (%s): %s",
+                supervisor_state_path,
+                exc,
+            )
+        else:
+            for entry in payload.get("positions", []) or []:
+                try:
+                    symbol = str(entry["symbol"]).upper()
+                    qty = _signed_qty(entry.get("qty", 0.0), entry.get("side"))
+                except (KeyError, TypeError, ValueError):
+                    continue
+                bot_name = entry.get("bot_id") or entry.get("bot_name")
+                _record(symbol, bot_name, qty)
+
+    for path in supervisor_open_position_files:
+        bot_name = path.parent.name
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            logger.warning(
+                "skipping unreadable supervisor open-position file for bot=%s (%s): %s",
+                bot_name,
+                path,
+                exc,
+            )
+            continue
+        try:
+            symbol = str(payload["symbol"]).upper()
+            qty = _signed_qty(payload.get("qty", 0.0), payload.get("side"))
+        except (KeyError, TypeError, ValueError):
+            continue
+        _record(symbol, bot_name, qty)
     return out
 
 

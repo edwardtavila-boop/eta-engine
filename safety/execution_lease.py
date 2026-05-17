@@ -18,10 +18,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from eta_engine.scripts import workspace_roots
+
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-_DEFAULT_ROOT = Path("C:/EvolutionaryTradingAlgo/var/eta_engine/state/execution_leases")
+_DEFAULT_ROOT = workspace_roots.ETA_RUNTIME_STATE_DIR / "execution_leases"
 _DEFAULT_TTL_S = 300.0
 _LOCK_WAIT_S = 5.0
 

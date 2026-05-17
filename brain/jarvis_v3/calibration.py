@@ -34,6 +34,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, Field
+from eta_engine.scripts import workspace_roots
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -225,7 +226,7 @@ def predict_batch(
 # fit re-reads this JSONL to refresh the Platt sigmoid parameters.
 
 
-_DEFAULT_LABEL_LOG = Path(r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\calibrator_labels.jsonl")
+_DEFAULT_LABEL_LOG = workspace_roots.ETA_CALIBRATOR_LABELS_PATH
 
 
 class CalibratorRecorder:

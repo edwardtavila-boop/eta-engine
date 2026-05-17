@@ -25,6 +25,7 @@ from eta_engine.funnel.integrations import (
     render_text,
 )
 from eta_engine.scripts import build_integrations_report as cli
+from eta_engine.scripts import workspace_roots
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -337,6 +338,16 @@ def test_render_text_handles_empty_report() -> None:
 
 def test_cli_load_live_status_missing_returns_none(tmp_path: Path) -> None:
     assert cli._load_live_status(tmp_path / "nope.json") is None
+
+
+def test_cli_defaults_use_canonical_runtime_paths() -> None:
+    parser = cli.build_parser()
+    args = parser.parse_args([])
+
+    assert cli.DEFAULT_OUT_DIR == workspace_roots.ETA_INTEGRATIONS_REPORT_DIR
+    assert cli.DEFAULT_LIVE_STATUS == workspace_roots.default_integrations_live_status_path()
+    assert args.out_dir == workspace_roots.ETA_INTEGRATIONS_REPORT_DIR
+    assert args.live_status == workspace_roots.default_integrations_live_status_path()
 
 
 def test_cli_load_live_status_valid(tmp_path: Path) -> None:

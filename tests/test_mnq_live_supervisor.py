@@ -32,7 +32,9 @@ from eta_engine.brain.jarvis_context import (
     build_snapshot,
 )
 from eta_engine.obs.decision_journal import DecisionJournal
+from eta_engine.scripts import workspace_roots
 from eta_engine.scripts.mnq_live_supervisor import (
+    DEFAULT_OUT_DIR,
     JsonlBarSource,
     MnqLiveSupervisor,
 )
@@ -43,6 +45,10 @@ if TYPE_CHECKING:
 
 
 _ET = ZoneInfo("America/New_York")
+
+
+def test_mnq_supervisor_defaults_to_canonical_runtime_dir() -> None:
+    assert DEFAULT_OUT_DIR == workspace_roots.ETA_MNQ_LIVE_STATE_DIR
 
 
 def _trade_ctx():  # type: ignore[no-untyped-def]

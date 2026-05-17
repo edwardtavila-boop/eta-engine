@@ -36,11 +36,11 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from eta_engine.scripts import workspace_roots
+
 logger = logging.getLogger("eta_engine.brain.jarvis_v3.risk_topology")
 
-_WORKSPACE = Path(r"C:\EvolutionaryTradingAlgo")
-_STATE_ROOT = _WORKSPACE / "var" / "eta_engine" / "state"
-DEFAULT_KAIZEN_LATEST = _STATE_ROOT / "kaizen_latest.json"
+DEFAULT_KAIZEN_LATEST = workspace_roots.ETA_KAIZEN_LATEST_PATH
 
 EXPECTED_HOOKS = ("build_topology",)
 

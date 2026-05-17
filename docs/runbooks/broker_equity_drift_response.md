@@ -1,4 +1,4 @@
-# Runbook — Broker-equity drift alert response
+﻿# Runbook â€” Broker-equity drift alert response
 
 **Trigger:** You received a Pushover / email alert with title
 `broker_equity_drift` (level: warn). The R1 reconciler observed that
@@ -8,7 +8,7 @@ logical equity by more than the configured tolerance.
 **Audience:** Edward Avila (operator). Solo founder, no escalation
 chain. You are also the responder.
 
-**Last updated:** 2026-04-24 (v0.1.65 — process gap #5 closure from
+**Last updated:** 2026-04-24 (v0.1.65 â€” process gap #5 closure from
 the v0.1.64 R1 Red Team review).
 
 ---
@@ -19,15 +19,15 @@ the v0.1.64 R1 Red Team review).
 2. **Open `logs/eta_engine/runtime_log.jsonl` and tail the last 60 entries.** Look at
    the `broker_equity` block in each tick.
 3. **Decide:**
-   - `broker_below_logical` (cushion over-stated) — this is the dangerous
+   - `broker_below_logical` (cushion over-stated) â€” this is the dangerous
      direction. Apex eval bust risk. **Stop adding new entries; consider
      flatten.**
-   - `broker_above_logical` (cushion under-stated) — usually MTM lag,
+   - `broker_above_logical` (cushion under-stated) â€” usually MTM lag,
      funding accrual, or an unbooked credit. Less urgent; verify and
      keep running.
 4. **Reconcile the discrepancy** before placing new orders. The tools
    below help.
-5. **Resolve.** When drift returns to `within_tolerance` for ≥5
+5. **Resolve.** When drift returns to `within_tolerance` for â‰¥5
    consecutive ticks, the latch clears and re-entry of the band will
    re-fire the alert.
 
@@ -37,10 +37,10 @@ the v0.1.64 R1 Red Team review).
 
 | `reason`               | Sign of `drift_usd` | Severity | What it implies |
 |------------------------|---------------------|----------|-----------------|
-| `within_tolerance`     | abs ≤ tol           | INFO     | Healthy. No alert. |
+| `within_tolerance`     | abs â‰¤ tol           | INFO     | Healthy. No alert. |
 | `broker_below_logical` | positive            | **WARN** | Bot books say you have more cushion than the broker confirms. Risk: silent commission/funding bleed, unbooked partial fill, broker-side risk hold. **Most dangerous direction for Apex eval.** |
 | `broker_above_logical` | negative            | INFO     | Broker shows more than the bot books expect. Usually MTM lag, dividend/funding credit, or rebate. **Verify; not immediately dangerous.** |
-| `no_broker_data`       | n/a                 | INFO     | Broker source returned `None` — adapter dormant, network failure, or null adapter is wired. **Drift detection is OFF this tick** — check why. |
+| `no_broker_data`       | n/a                 | INFO     | Broker source returned `None` â€” adapter dormant, network failure, or null adapter is wired. **Drift detection is OFF this tick** â€” check why. |
 
 ---
 
@@ -62,9 +62,9 @@ The Pushover / email body contains a `payload` JSON dict like:
 ```
 
 Make a note of:
-- `drift_usd` — magnitude in USD
-- `reason` — direction
-- `ts` — exactly when it tripped
+- `drift_usd` â€” magnitude in USD
+- `reason` â€” direction
+- `ts` â€” exactly when it tripped
 
 ### 2. Tail the runtime log
 
@@ -89,7 +89,7 @@ You're looking for:
   on transition; the tick log captures the leading edge)
 - **Whether drift is growing, stable, or oscillating**
 - **Whether other classifications (no_broker_data, broker_above) are
-  interleaved** — that suggests broker-side latency, not real drift
+  interleaved** â€” that suggests broker-side latency, not real drift
 
 ### 3. Decide direction-of-travel response
 
@@ -98,18 +98,18 @@ You're looking for:
 Treat this like a developing fire. Most likely causes, in order of
 operational frequency:
 
-1. **Silent commission or slippage bleed** — IBKR debited per-trade
+1. **Silent commission or slippage bleed** â€” IBKR debited per-trade
    commissions that haven't propagated into the bot's fill journal
-   yet. Check `docs/btc_live/btc_paper_journal.jsonl` (or the
+   yet. Check `var/eta_engine/state/btc_paper/btc_paper_journal.jsonl` (or the
    equivalent for the active bot) for unexplained commission rows.
-2. **Unbooked partial fill** — broker filled part of an order, the
+2. **Unbooked partial fill** â€” broker filled part of an order, the
    ack came back with quantity=0, the bot's fill journal records
    the order as still pending, but the broker has already cleared
    the trade and updated net-liq.
-3. **Broker-side risk hold** — IBKR / Tastytrade put a margin hold
+3. **Broker-side risk hold** â€” IBKR / Tastytrade put a margin hold
    on a position they consider risky. Logical equity doesn't see
    this; broker net-liq does.
-4. **Funding/carry accrual that underflows the threshold** — for
+4. **Funding/carry accrual that underflows the threshold** â€” for
    futures this is rare but non-zero overnight.
 
 **Action:**
@@ -118,65 +118,65 @@ operational frequency:
   `python -m eta_engine.scripts.go_trigger --pause-tier-a`. This
   blocks NEW entries; existing positions keep running.
 - **Inspect open positions** via the broker UI directly:
-  - IBKR: Client Portal → Account → Portfolio
-  - Tastytrade: web app → Positions tab
+  - IBKR: Client Portal â†’ Account â†’ Portfolio
+  - Tastytrade: web app â†’ Positions tab
 - **Pull the latest balance** to confirm the alert wasn't stale:
   ```bash
   python -m eta_engine.scripts.connect_brokers --probe
   ```
-- **If drift > $500 sustained for ≥5 minutes:** flatten tier-A
+- **If drift > $500 sustained for â‰¥5 minutes:** flatten tier-A
   preemptively rather than waiting for the kill switch:
   ```bash
   python -m eta_engine.scripts.run_eta_live --flatten-tier-a \
       --reason "broker drift sustained 5min, manual flatten"
   ```
-  (This emits a `kill_switch` event — operator gets a sms confirmation.)
+  (This emits a `kill_switch` event â€” operator gets a sms confirmation.)
 
 #### `broker_above_logical` (USUALLY BENIGN)
 
 Most likely causes:
 
-1. **MTM lag** — broker's snapshot is from N seconds ago and the
+1. **MTM lag** â€” broker's snapshot is from N seconds ago and the
    market moved against your open positions; the bot's tick-mark
    logic already captured the new price.
-2. **Dividend / funding credit** — broker credited an interest /
+2. **Dividend / funding credit** â€” broker credited an interest /
    dividend payment that the bot doesn't track.
-3. **Rebate** — IBKR Smart Routing rebates can show up unannounced.
+3. **Rebate** â€” IBKR Smart Routing rebates can show up unannounced.
 
 **Action:**
 - **Verify it's transient.** Tail the runtime log for the next 60
   ticks; the classification should drift back toward `within_tolerance`
   within minutes. If it sticks at `broker_above_logical` for >30 min,
   the bot's logical equity calculation is undercount-ing something
-  systematic — open a kaizen ticket.
+  systematic â€” open a kaizen ticket.
 - **No urgent flatten.** This direction does not threaten the eval.
 
 #### `no_broker_data`
 
 Drift detection is OFF for the tick. Causes:
 
-1. **Adapter dormant** — `NullBrokerEquityAdapter` is wired (e.g.
+1. **Adapter dormant** â€” `NullBrokerEquityAdapter` is wired (e.g.
    live mode but IBKR + Tastytrade creds are both missing). Check
    the boot banner: `broker_equity : <name> ...`. If the name
    contains `null` or `paper-null`, the adapter cannot fetch.
-2. **Network / API failure** — IBKR Client Portal session expired,
+2. **Network / API failure** â€” IBKR Client Portal session expired,
    Tastytrade auth token rotated. The poller log line will show
    the underlying exception.
-3. **Stale cache** — the poller's TTL elapsed without a successful
+3. **Stale cache** â€” the poller's TTL elapsed without a successful
    fetch.
 
 **Action:**
 - **If single-tick:** ignore. The next successful poll re-engages
   the detector.
-- **If sustained (>1 min):** the adapter is broken. Restart the
-  broker session:
+- **If sustained (>1 min):** the adapter is broken. Re-run the
+  canonical broker connection/auth probe:
   ```bash
-  # IBKR Client Portal session refresh
+  # IBKR Client Portal / auth probe refresh
   python -m eta_engine.scripts.connect_brokers --reconnect ibkr
   # OR Tastytrade
   python -m eta_engine.scripts.connect_brokers --reconnect tastytrade
   ```
-  If reconnection fails, you are **flying blind on drift** — pause
+  If the follow-up probe still fails, you are **flying blind on drift** â€” pause
   new entries until the adapter recovers.
 
 ---
@@ -208,11 +208,11 @@ eta_engine.scripts.jarvis_cli kaizen open ...`) when:
 - Drift sustains >$500 / >5 min and the cause is not in the
   list above (i.e. genuinely novel).
 - The same ticker / bot / venue surfaces drift alerts >3 times
-  in 7 days — pattern, not incident.
+  in 7 days â€” pattern, not incident.
 - The alert fires while `no_broker_data` is also being logged in
-  the same window — race condition between poller and reconciler.
+  the same window â€” race condition between poller and reconciler.
 - Drift was caught only by the reconciler and NOT by Apex's
-  own books at the same time — gap in our detection coverage.
+  own books at the same time â€” gap in our detection coverage.
 
 ---
 

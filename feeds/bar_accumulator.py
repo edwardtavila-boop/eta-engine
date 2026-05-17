@@ -17,11 +17,12 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import numpy as np
+from eta_engine.scripts import workspace_roots
 
 log = logging.getLogger("bar_accumulator")
 
-DATA_DIR = Path("C:/EvolutionaryTradingAlgo/data")
-STATE_DIR = Path("C:/EvolutionaryTradingAlgo/var/eta_engine/state")
+DATA_DIR = workspace_roots.WORKSPACE_ROOT / "data"
+STATE_DIR = workspace_roots.ETA_RUNTIME_STATE_DIR
 LOCK_PATH = STATE_DIR / "bar_accumulator.lock"
 
 # All symbols we track — mapped to TWS contract specs

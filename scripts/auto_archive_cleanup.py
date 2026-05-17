@@ -25,9 +25,11 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 
+from eta_engine.scripts import workspace_roots
+
 logger = logging.getLogger("auto_archive_cleanup")
 
-WORKSPACE = Path(r"C:\EvolutionaryTradingAlgo")
+WORKSPACE = workspace_roots.WORKSPACE_ROOT
 
 
 def parse_archive_date(name: str) -> datetime | None:

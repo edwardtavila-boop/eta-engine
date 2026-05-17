@@ -26,6 +26,8 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT.parent) not in sys.path:
     sys.path.insert(0, str(ROOT.parent))
 
+from eta_engine.scripts import workspace_roots
+
 logger = logging.getLogger("jarvis_ask")
 
 
@@ -49,7 +51,13 @@ def _print_result(result: object, *, text: bool) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--audit-glob", default=str(ROOT / "state" / "jarvis_audit" / "*.jsonl"))
+    canonical_audit_glob = str(workspace_roots.ETA_JARVIS_AUDIT_DIR / "*.jsonl")
+    legacy_audit_glob = str(workspace_roots.ETA_LEGACY_JARVIS_AUDIT_DIR / "*.jsonl")
+    p.add_argument(
+        "--audit-glob",
+        default=canonical_audit_glob,
+        help="Audit file glob. Default: var/eta_engine/state/jarvis_audit/*.jsonl",
+    )
     p.add_argument("--text", action="store_true", help="Human-readable output (default: JSON)")
     p.add_argument("-v", "--verbose", action="store_true")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -89,6 +97,9 @@ def main(argv: list[str] | None = None) -> int:
         audit_path = glob
     else:
         matches = list(glob.parent.glob(glob.name))
+        if not matches and args.audit_glob == canonical_audit_glob:
+            legacy_glob = Path(legacy_audit_glob)
+            matches = list(legacy_glob.parent.glob(legacy_glob.name))
         if not matches:
             print(f"  no audit files at {args.audit_glob}", file=sys.stderr)
             return 1

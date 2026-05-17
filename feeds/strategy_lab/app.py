@@ -1,6 +1,6 @@
 """Strategy Lab — Streamlit UI for walk-forward backtesting.
 
-Run: streamlit run C:/EvolutionaryTradingAlgo/eta_engine/feeds/strategy_lab/app.py
+Run: streamlit run eta_engine/feeds/strategy_lab/app.py
 """
 
 import sys
@@ -8,13 +8,14 @@ from pathlib import Path
 
 import streamlit as st
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from eta_engine.feeds.strategy_lab.engine import (
     WalkForwardEngine,
     parse_strategy_yaml,
     save_lab_report,
 )
+from eta_engine.scripts import workspace_roots
 
 st.set_page_config(page_title="ETA Strategy Lab", page_icon="🧪", layout="wide")
 st.title("🧪 ETA Strategy Lab — Walk-Forward Sandbox")
@@ -29,12 +30,12 @@ symbol: MNQ
 entry: ema_cross
 atr_period: 14
 stop_loss: atr*1.5
-take_profit: atr*3.0
+    take_profit: atr*3.0
 description: EMA 9/21 cross with ATR-based stop/target
 """
     yaml_text = st.text_area("YAML", default_yaml, height=300)
     symbol = st.selectbox("Symbol", ["MNQ", "NQ", "BTC", "ETH", "SOL"])
-    bar_dir = st.text_input("Bar Data Directory", "C:/EvolutionaryTradingAlgo/data")
+    bar_dir = st.text_input("Bar Data Directory", str(workspace_roots.WORKSPACE_ROOT / "data"))
     run_btn = st.button("▶ Run Walk-Forward", type="primary")
 
 with col2:
@@ -70,7 +71,7 @@ if run_btn:
                     st.json(result.regime_conditional_pnl)
 
                 if result.passed:
-                    out_dir = Path("C:/EvolutionaryTradingAlgo/reports/lab_reports")
+                    out_dir = workspace_roots.WORKSPACE_ROOT / "reports" / "lab_reports"
                     path = save_lab_report(result, out_dir)
                     st.success(f"Lab report saved: {path}")
                     st.info("Strategy passed — can be promoted to paper_soak.")

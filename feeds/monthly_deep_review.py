@@ -14,10 +14,10 @@ Pipeline
      * gate telemetry     -> override rate
 3. Distil top-3 proposed parameter tweaks from the findings.
 4. Emit:
-     * docs/monthly_review_YYYY_MM.json
-     * docs/monthly_review_YYYY_MM.txt
-     * docs/monthly_review_latest.json
-     * docs/monthly_review_latest.txt
+     * var/eta_engine/state/monthly_review/monthly_review_YYYY_MM.json
+     * var/eta_engine/state/monthly_review/monthly_review_YYYY_MM.txt
+     * var/eta_engine/state/monthly_review/monthly_review_latest.json
+     * var/eta_engine/state/monthly_review/monthly_review_latest.txt
 
 Not perfect but pays rent each month.
 
@@ -58,8 +58,9 @@ from eta_engine.core.trade_grader import (  # noqa: E402
     grade_many,
     leak_distribution,
 )
+from eta_engine.scripts import workspace_roots  # noqa: E402
 
-DEFAULT_OUT_DIR = ROOT / "docs"
+DEFAULT_OUT_DIR = workspace_roots.ETA_MONTHLY_REVIEW_DIR
 
 
 # ---------------------------------------------------------------------------

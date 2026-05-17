@@ -43,6 +43,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+$workspaceRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $results = [ordered]@{
     timestamp = (Get-Date -Format 'yyyy-MM-ddTHH:mm:ssZ')
     services = @()
@@ -178,8 +179,7 @@ foreach ($p in $pyprocs) {
 
 # -- Layer 4: decision journal ----------------------------------------------
 $journal_paths = @(
-    'C:\EvolutionaryTradingAlgo\var\eta_engine\state\decision_journal.jsonl',
-    'C:\EvolutionaryTradingAlgo\firm_command_center\var\reports\decision_journal.jsonl'
+    (Join-Path $workspaceRoot 'var\eta_engine\state\decision_journal.jsonl')
 )
 foreach ($jp in $journal_paths) {
     if (Test-Path -LiteralPath $jp) {

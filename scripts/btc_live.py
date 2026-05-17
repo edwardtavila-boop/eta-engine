@@ -11,7 +11,7 @@ LIVE (explicit, double-gated)
     Requires ALL of:
       1. ``--live`` flag
       2. ``ETA_BTC_LIVE=1`` environment variable
-      3. A PASS verdict in ``docs/btc_paper/btc_paper_run_latest.json``
+      3. A PASS verdict in ``var/eta_engine/state/btc_paper/btc_paper_run_latest.json``
          produced by ``scripts/btc_paper_trade.py`` that is ``--max-age-h``
          (default 48) hours old or younger.
       4. A Bybit venue adapter importable at ``eta_engine.venues.bybit``.
@@ -47,6 +47,7 @@ from eta_engine.obs.decision_journal import (  # noqa: E402
     DecisionJournal,
     Outcome,
 )
+from eta_engine.scripts import workspace_roots  # noqa: E402
 from eta_engine.scripts.btc_paper_trade import (  # noqa: E402
     AlwaysApproveGate,
     BtcPaperRunner,
@@ -59,8 +60,9 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
 
-DEFAULT_VERIFY_PATH = ROOT / "docs" / "btc_paper" / "btc_paper_run_latest.json"
-DEFAULT_LIVE_LOG_DIR = ROOT / "docs" / "btc_live"
+DEFAULT_VERIFY_PATH = workspace_roots.ETA_BTC_PAPER_RUN_LATEST_PATH
+DEFAULT_LIVE_LOG_DIR = workspace_roots.ETA_BTC_LIVE_STATE_DIR
+DEFAULT_LIVE_DECISIONS_PATH = workspace_roots.ETA_BTC_LIVE_DECISIONS_PATH
 
 
 # ---------------------------------------------------------------------------
@@ -341,7 +343,7 @@ async def _amain(argv: list[str] | None = None) -> int:
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    journal = DecisionJournal(out_dir / "btc_live_decisions.jsonl")
+    journal = DecisionJournal(out_dir / DEFAULT_LIVE_DECISIONS_PATH.name)
     journal.record(
         actor=Actor.RISK_GATE,
         outcome=Outcome.NOTED,

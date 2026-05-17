@@ -34,10 +34,11 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
+from eta_engine.scripts import workspace_roots
+
 logger = logging.getLogger(__name__)
 
-ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_DECISIONS_LOG = ROOT / "state" / "jarvis_intel" / "promotion_decisions.jsonl"
+DEFAULT_DECISIONS_LOG = workspace_roots.ETA_JARVIS_INTEL_STATE_DIR / "promotion_decisions.jsonl"
 
 
 @dataclass

@@ -5,7 +5,7 @@ across MNQ/NQ/BTC/ETH/SOL/DXY/VIX, and emits a 6-state regime classification
 to a JSON file that JARVIS consumes (replacing hardcoded neutral regime).
 
 States: trending_up, trending_down, chop, crisis, vol_expansion, vol_compression
-Output: state/jarvis_intel/regime_state.json
+Output: var/eta_engine/state/regime_state.json
 """
 
 from __future__ import annotations
@@ -18,6 +18,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import numpy as np
+from eta_engine.scripts import workspace_roots
 
 log = logging.getLogger("regime_detector")
 
@@ -324,13 +325,13 @@ def main() -> None:
     parser.add_argument(
         "--bar-dir",
         type=Path,
-        default=Path("C:/EvolutionaryTradingAlgo/data"),
+        default=workspace_roots.WORKSPACE_ROOT / "data",
         help="Directory containing bar CSV files",
     )
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path("C:/EvolutionaryTradingAlgo/var/eta_engine/state/jarvis_intel/regime_state.json"),
+        default=workspace_roots.ETA_REGIME_STATE_PATH,
         help="Output path for regime_state.json",
     )
     parser.add_argument("--interval", type=int, default=0, help="Run every N seconds (0 = one-shot)")

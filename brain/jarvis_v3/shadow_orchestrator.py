@@ -15,11 +15,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from eta_engine.brain.jarvis_v3.shadow_pipeline import ShadowPipeline
+from eta_engine.scripts import workspace_roots
 
 logger = logging.getLogger(__name__)
 
-ROOT = Path(__file__).resolve().parents[2]
-STATE_DIR = ROOT / "state" / "jarvis_intel"
+STATE_DIR = workspace_roots.ETA_JARVIS_INTEL_STATE_DIR
 
 
 @dataclass

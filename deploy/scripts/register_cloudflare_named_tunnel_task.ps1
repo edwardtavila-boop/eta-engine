@@ -19,6 +19,35 @@ function Assert-CanonicalEtaPath {
     }
 }
 
+function Sync-ShadowCloudflaredConfig {
+    param([Parameter(Mandatory = $true)][string]$CanonicalConfigPath)
+
+    $canonicalText = Get-Content -LiteralPath $CanonicalConfigPath -Raw
+    $credentialLine = [regex]::Match($canonicalText, '(?mi)^credentials-file:\s*(.+)\s*$')
+    if (-not $credentialLine.Success) {
+        return $null
+    }
+
+    $credentialsPath = $credentialLine.Groups[1].Value.Trim()
+    if ([string]::IsNullOrWhiteSpace($credentialsPath)) {
+        return $null
+    }
+
+    $credentialDir = Split-Path -Parent $credentialsPath
+    if ([string]::IsNullOrWhiteSpace($credentialDir)) {
+        return $null
+    }
+
+    $shadowConfigPath = Join-Path $credentialDir "config.yml"
+    if ([System.StringComparer]::OrdinalIgnoreCase.Equals($shadowConfigPath, $CanonicalConfigPath)) {
+        return $null
+    }
+
+    New-Item -ItemType Directory -Force -Path $credentialDir | Out-Null
+    Set-Content -LiteralPath $shadowConfigPath -Value $canonicalText -Encoding ASCII
+    return $shadowConfigPath
+}
+
 $RootFull = [System.IO.Path]::GetFullPath($Root).TrimEnd("\")
 if ($RootFull -ne "C:\EvolutionaryTradingAlgo") {
     throw "Expected canonical ETA root C:\EvolutionaryTradingAlgo, got: $RootFull"
@@ -41,6 +70,7 @@ if ($PreferInstalledService -and $cloudflaredService) {
     $servicePath = [string]$cloudflaredService.PathName
     $serviceOwnsConfig = $servicePath.IndexOf($ConfigPath, [System.StringComparison]::OrdinalIgnoreCase) -ge 0
     if ($serviceOwnsConfig) {
+        $shadowConfigPath = Sync-ShadowCloudflaredConfig -CanonicalConfigPath $ConfigPath
         $existingTask = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
         if ($existingTask) {
             Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
@@ -61,6 +91,8 @@ if ($PreferInstalledService -and $cloudflaredService) {
             UserId = "NT AUTHORITY\SYSTEM"
             ConfigPath = $ConfigPath
             CloudflaredExe = $CloudflaredExe
+            ShadowConfigPath = $shadowConfigPath
+            ShadowConfigSynced = -not [string]::IsNullOrWhiteSpace($shadowConfigPath)
             ScheduledTaskRemoved = [bool]$existingTask
         }
         return
@@ -97,6 +129,7 @@ $principal = New-ScheduledTaskPrincipal `
     -RunLevel Highest
 
 if ($PSCmdlet.ShouldProcess($TaskName, "Register named Cloudflare tunnel task")) {
+    $shadowConfigPath = Sync-ShadowCloudflaredConfig -CanonicalConfigPath $ConfigPath
     Register-ScheduledTask `
         -TaskName $TaskName `
         -Action $action `
@@ -111,5 +144,5 @@ if ($PSCmdlet.ShouldProcess($TaskName, "Register named Cloudflare tunnel task"))
     }
 
     Get-ScheduledTask -TaskName $TaskName |
-        Select-Object TaskName,State,@{Name="UserId";Expression={$_.Principal.UserId}},@{Name="ConfigPath";Expression={$ConfigPath}},@{Name="CloudflaredExe";Expression={$CloudflaredExe}}
+        Select-Object TaskName,State,@{Name="UserId";Expression={$_.Principal.UserId}},@{Name="ConfigPath";Expression={$ConfigPath}},@{Name="CloudflaredExe";Expression={$CloudflaredExe}},@{Name="ShadowConfigPath";Expression={$shadowConfigPath}}
 }

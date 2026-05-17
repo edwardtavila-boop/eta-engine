@@ -20,11 +20,9 @@ import json
 import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from pathlib import Path
+from eta_engine.scripts import workspace_roots
 
 logger = logging.getLogger(__name__)
-
-ROOT = Path(__file__).resolve().parents[2]
 
 
 @dataclass(frozen=True)
@@ -79,13 +77,18 @@ def detect_shifts(
 def load_baseline() -> dict[str, float]:
     """Pull baseline correlations from the learned file (or fall back
     to the hardcoded jarvis_correlation defaults)."""
-    learned_path = ROOT / "state" / "correlation" / "learned.json"
-    if learned_path.exists():
+    candidate_paths = (
+        workspace_roots.ETA_CORRELATION_ARTIFACT_DIR / "learned.json",
+        workspace_roots.ETA_LEGACY_CORRELATION_ARTIFACT_DIR / "learned.json",
+    )
+    for learned_path in candidate_paths:
+        if not learned_path.exists():
+            continue
         try:
             data = json.loads(learned_path.read_text(encoding="utf-8"))
             return data.get("pairs", {})
         except (json.JSONDecodeError, OSError):
-            pass
+            continue
     # Fallback: hardcoded defaults from jarvis_correlation
     from eta_engine.brain.jarvis_correlation import _CORRELATIONS
 
@@ -94,8 +97,7 @@ def load_baseline() -> dict[str, float]:
 
 def write_shift_report(shifts: list[CorrRegimeShift]) -> Path:
     """Persist the shift list for the daily kaizen pickup."""
-    out = ROOT / "state" / "correlation_regime"
-    out.mkdir(parents=True, exist_ok=True)
+    out = workspace_roots.ensure_dir(workspace_roots.ETA_CORRELATION_REGIME_DIR)
     path = out / f"shifts_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}.json"
     path.write_text(
         json.dumps(

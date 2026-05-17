@@ -258,8 +258,8 @@ def main() -> None:
         "ruff_green_touched_files": True,
         "pre_existing_flaky_dashboard_test": (
             "test_dashboard_api.py::test_btc_lanes_empty_when_fleet_"
-            "dir_absent reads from the real docs/btc_live/broker_"
-            "fleet instead of tmp_path. Pre-existing test-isolation "
+            "dir_absent read stale broker_fleet state outside tmp_path. "
+            "Pre-existing test-isolation "
             "bug; unrelated to this bundle. Tracked for a dedicated "
             "cleanup pass."
         ),

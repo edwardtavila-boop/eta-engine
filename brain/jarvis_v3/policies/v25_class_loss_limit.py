@@ -26,8 +26,9 @@ import json
 import logging
 import os
 import time
-from pathlib import Path
 from typing import TYPE_CHECKING
+
+from eta_engine.scripts import workspace_roots
 
 from eta_engine.brain.jarvis_admin import (
     ActionRequest,
@@ -44,7 +45,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-HEARTBEAT_PATH = Path(r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\jarvis_intel\supervisor\heartbeat.json")
+HEARTBEAT_PATH = workspace_roots.ETA_JARVIS_SUPERVISOR_HEARTBEAT_PATH
 _CACHE_TTL_SECONDS = 30.0
 _HEARTBEAT_CACHE: dict[str, float | dict] = {"loaded_at": 0.0, "data": {}}
 

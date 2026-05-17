@@ -6,7 +6,9 @@ import sys
 import time
 from pathlib import Path
 
-ROOT = Path(r"C:\EvolutionaryTradingAlgo")
+from eta_engine.scripts import workspace_roots
+
+ROOT = workspace_roots.WORKSPACE_ROOT
 print("=== ETA Dashboard Fix ===")
 
 # 1. Fix branding in all HTML files

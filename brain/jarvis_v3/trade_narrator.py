@@ -40,11 +40,11 @@ from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from eta_engine.scripts import workspace_roots
+
 logger = logging.getLogger("eta_engine.brain.jarvis_v3.trade_narrator")
 
-DEFAULT_JOURNAL_DIR = Path(
-    r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\trade_journal",
-)
+DEFAULT_JOURNAL_DIR = workspace_roots.ETA_TRADE_JOURNAL_DIR
 
 EXPECTED_HOOKS = (
     "narrate",

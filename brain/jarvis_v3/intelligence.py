@@ -54,6 +54,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from eta_engine.scripts import workspace_roots
+
 if TYPE_CHECKING:
     from eta_engine.brain.jarvis_admin import (
         ActionRequest,
@@ -67,8 +69,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_VERDICT_LOG = ROOT / "state" / "jarvis_intel" / "verdicts.jsonl"
+DEFAULT_VERDICT_LOG = workspace_roots.ETA_JARVIS_VERDICTS_PATH
 
 
 # ─── Output schema ────────────────────────────────────────────────

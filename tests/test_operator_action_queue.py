@@ -253,6 +253,23 @@ class TestMcpOauthProbeUnderSyntheticState:
         assert all(i.verdict == VERDICT_UNKNOWN for i in items)
 
 
+class TestPreflightReportProbe:
+    def test_read_preflight_report_prefers_canonical_runtime_state(self, monkeypatch, tmp_path) -> None:
+        from eta_engine.scripts import operator_action_queue
+
+        canonical = tmp_path / "var" / "eta_engine" / "state" / "preflight" / "preflight_dryrun_report.json"
+        legacy = tmp_path / "docs" / "preflight_dryrun_report.json"
+        canonical.parent.mkdir(parents=True)
+        legacy.parent.mkdir(parents=True)
+        canonical.write_text(json.dumps({"overall": "ABORT"}), encoding="utf-8")
+        legacy.write_text(json.dumps({"overall": "GO"}), encoding="utf-8")
+
+        monkeypatch.setattr(operator_action_queue.workspace_roots, "ETA_PREFLIGHT_DRYRUN_REPORT_PATH", canonical)
+        monkeypatch.setattr(operator_action_queue.workspace_roots, "ETA_LEGACY_PREFLIGHT_DRYRUN_REPORT_PATH", legacy)
+
+        assert operator_action_queue._read_preflight_report()["overall"] == "ABORT"
+
+
 class TestActiveBrokerCredentialProbes:
     def test_ibkr_probe_uses_runtime_consumed_cp_base_url(self, monkeypatch) -> None:
         from eta_engine.scripts import operator_action_queue

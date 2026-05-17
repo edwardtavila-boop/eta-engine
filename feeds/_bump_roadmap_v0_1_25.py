@@ -33,8 +33,11 @@ Command Center integration
 --------------------------
 firm-tracker skill (artifact_template.jsx) grew a "Jarvis" tab +
 top-bar JARVIS <ACTION> pill + Command Center Jarvis/Discipline KPIs,
-pulling from docs/premarket_latest.json, docs/weekly_checklist_latest.json,
-and docs/monthly_review_latest.json.
+originally pulling from docs/premarket_latest.json,
+docs/weekly_checklist_latest.json, and docs/monthly_review_latest.json.
+Historical note: premarket and monthly review later moved to canonical
+runtime state under var/eta_engine/state/, and weekly review/checklist
+outputs later moved to var/eta_engine/state/weekly_review.
 
 Tests
 -----
@@ -96,6 +99,13 @@ def main() -> None:
             "_write_checklist_stub / _write_checklist_report and a "
             "--checklist-answers CLI arg. Produces "
             "docs/weekly_checklist_latest.{json,txt}."
+        ),
+        "historical_runtime_surface_note": (
+            "Premarket and monthly review originally wrote checked-in docs "
+            "snapshots in v0.1.25. Current canonical runtime writes are "
+            "var/eta_engine/state/premarket and "
+            "var/eta_engine/state/monthly_review, and weekly review/checklist "
+            "outputs later moved to var/eta_engine/state/weekly_review."
         ),
         "jarvis_action_vocabulary": [
             "TRADE",
@@ -189,9 +199,11 @@ def main() -> None:
                 "Command Center tab now shows Jarvis + Discipline KPIs in an expanded 7-column KPI row.",
             ],
             "docs_sources_updated": [
-                "data_sources.md documents premarket_latest.json / "
-                "weekly_checklist_latest.json / "
-                "monthly_review_latest.json",
+                "Historical note only: data_sources.md documented "
+                "premarket_latest.json / weekly_checklist_latest.json / "
+                "monthly_review_latest.json before the later canonical "
+                "runtime-path migrations for premarket, monthly review, "
+                "and weekly review/checklist outputs.",
             ],
         },
     }

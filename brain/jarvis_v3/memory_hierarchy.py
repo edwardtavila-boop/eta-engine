@@ -55,12 +55,22 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
+from eta_engine.scripts import workspace_roots
+
 logger = logging.getLogger(__name__)
 
-ROOT = Path(__file__).resolve().parents[2]
-EPISODIC_PATH = ROOT / "state" / "memory" / "episodic.jsonl"
-SEMANTIC_PATH = ROOT / "state" / "memory" / "semantic.json"
-PROCEDURAL_PATH = ROOT / "state" / "memory" / "procedural.jsonl"
+MEMORY_DIR = workspace_roots.ETA_RUNTIME_STATE_DIR / "memory"
+EPISODIC_PATH = MEMORY_DIR / "episodic.jsonl"
+SEMANTIC_PATH = MEMORY_DIR / "semantic.json"
+PROCEDURAL_PATH = MEMORY_DIR / "procedural.jsonl"
+CANONICAL_EPISODIC_PATH = EPISODIC_PATH
+CANONICAL_SEMANTIC_PATH = SEMANTIC_PATH
+CANONICAL_PROCEDURAL_PATH = PROCEDURAL_PATH
+
+LEGACY_MEMORY_DIR = workspace_roots.ETA_ENGINE_ROOT / "state" / "memory"
+LEGACY_EPISODIC_PATH = LEGACY_MEMORY_DIR / "episodic.jsonl"
+LEGACY_SEMANTIC_PATH = LEGACY_MEMORY_DIR / "semantic.json"
+LEGACY_PROCEDURAL_PATH = LEGACY_MEMORY_DIR / "procedural.jsonl"
 
 
 @dataclass
@@ -159,14 +169,27 @@ class HierarchicalMemory:
         episodic_path: Path = EPISODIC_PATH,
         semantic_path: Path = SEMANTIC_PATH,
         procedural_path: Path = PROCEDURAL_PATH,
+        legacy_episodic_path: Path | None = None,
+        legacy_semantic_path: Path | None = None,
+        legacy_procedural_path: Path | None = None,
     ) -> None:
         self.episodic_path = episodic_path
         self.semantic_path = semantic_path
         self.procedural_path = procedural_path
+        self.legacy_episodic_path = legacy_episodic_path
+        self.legacy_semantic_path = legacy_semantic_path
+        self.legacy_procedural_path = legacy_procedural_path
+        if self.episodic_path == CANONICAL_EPISODIC_PATH:
+            self.legacy_episodic_path = self.legacy_episodic_path or LEGACY_EPISODIC_PATH
+        if self.semantic_path == CANONICAL_SEMANTIC_PATH:
+            self.legacy_semantic_path = self.legacy_semantic_path or LEGACY_SEMANTIC_PATH
+        if self.procedural_path == CANONICAL_PROCEDURAL_PATH:
+            self.legacy_procedural_path = self.legacy_procedural_path or LEGACY_PROCEDURAL_PATH
         self._lock = threading.Lock()
         self._episodes: list[Episode] = []
         self._semantic: dict[str, SemanticFact] = {}
         self._procedural: list[ProceduralVersion] = []
+        self._sources: dict[str, str] = {}
         self._load()
 
     @classmethod
@@ -271,6 +294,95 @@ class HierarchicalMemory:
         with self._lock:
             return self._semantic.get(f"{regime}+{session}+{direction}")
 
+    def snapshot(self, *, top_n: int = 5) -> dict:
+        """Return an operator-readable second-brain status summary."""
+        with self._lock:
+            episodes = list(self._episodes)
+            semantic = list(self._semantic.values())
+            procedural = list(self._procedural)
+            sources = dict(self._sources)
+
+        n = len(episodes)
+        wins = sum(1 for ep in episodes if ep.realized_r > 0)
+        avg_r = sum(ep.realized_r for ep in episodes) / n if n else 0.0
+        last_episode = episodes[-1] if episodes else None
+        best_proc = max(
+            (v for v in procedural if v.realized_metric is not None),
+            key=lambda v: v.realized_metric or float("-inf"),
+            default=None,
+        )
+        top_patterns = sorted(
+            semantic,
+            key=lambda f: (f.n_episodes, f.avg_r),
+            reverse=True,
+        )[:top_n]
+        return {
+            "status": "warm" if n else "cold_start",
+            "n_episodes": n,
+            "win_rate": round(wins / n, 3) if n else 0.0,
+            "avg_r": round(avg_r, 4),
+            "semantic_patterns": len(semantic),
+            "procedural_versions": len(procedural),
+            "last_episode": asdict(last_episode) if last_episode else None,
+            "best_procedural_version": asdict(best_proc) if best_proc else None,
+            "top_patterns": [asdict(f) for f in top_patterns],
+            "playbook": self._build_semantic_playbook(semantic, min_episodes=30, top_n=top_n),
+            "paths": {
+                "episodic": str(self.episodic_path),
+                "semantic": str(self.semantic_path),
+                "procedural": str(self.procedural_path),
+            },
+            "sources": sources,
+        }
+
+    def semantic_playbook(self, *, min_episodes: int = 30, top_n: int = 5) -> dict:
+        """Rank memory patterns into operator-facing favor/avoid lanes."""
+        with self._lock:
+            semantic = list(self._semantic.values())
+        return self._build_semantic_playbook(semantic, min_episodes=min_episodes, top_n=top_n)
+
+    @staticmethod
+    def _fact_dict(fact: SemanticFact, *, bias: str) -> dict:
+        return {
+            "pattern": fact.pattern,
+            "n_episodes": fact.n_episodes,
+            "win_rate": round(fact.win_rate, 3),
+            "avg_r": round(fact.avg_r, 4),
+            "bias": bias,
+            "last_updated": fact.last_updated,
+        }
+
+    @classmethod
+    def _build_semantic_playbook(
+        cls,
+        facts: list[SemanticFact],
+        *,
+        min_episodes: int,
+        top_n: int,
+    ) -> dict:
+        eligible = [f for f in facts if f.n_episodes >= min_episodes]
+        best = sorted(eligible, key=lambda f: (f.avg_r, f.win_rate, f.n_episodes), reverse=True)[:top_n]
+        worst = sorted(eligible, key=lambda f: (f.avg_r, f.win_rate, -f.n_episodes))[:top_n]
+        favor = [
+            f
+            for f in eligible
+            if f.avg_r >= 0.5 and f.win_rate >= 0.55
+        ][:top_n]
+        avoid = [
+            f
+            for f in eligible
+            if f.avg_r <= -0.25 or f.win_rate <= 0.35
+        ][:top_n]
+        return {
+            "min_episodes": min_episodes,
+            "eligible_patterns": len(eligible),
+            "best_patterns": [cls._fact_dict(f, bias="favor_watch") for f in best],
+            "worst_patterns": [cls._fact_dict(f, bias="avoid_watch") for f in worst],
+            "favor_patterns": [cls._fact_dict(f, bias="favor") for f in favor],
+            "avoid_patterns": [cls._fact_dict(f, bias="avoid") for f in avoid],
+            "truth_note": "Memory-derived pattern stats only; require broker-backed closes and live gates before promotion.",
+        }
+
     # ── Procedural ──────────────────────────────────────────────
 
     def record_procedural_version(
@@ -320,6 +432,23 @@ class HierarchicalMemory:
         self._load_semantic()
         self._load_procedural()
 
+    @staticmethod
+    def _select_read_path(primary: Path, legacy: Path | None) -> Path | None:
+        """Prefer canonical state, falling back to legacy read-only memory."""
+        try:
+            if primary.exists() and primary.stat().st_size > 0:
+                return primary
+        except OSError:
+            return primary if primary.exists() else None
+        if legacy is None:
+            return None
+        try:
+            if legacy.exists() and legacy.stat().st_size > 0:
+                return legacy
+        except OSError:
+            return legacy if legacy.exists() else None
+        return primary if primary.exists() else None
+
     def _append_episodic(self, ep: Episode) -> None:
         try:
             self.episodic_path.parent.mkdir(parents=True, exist_ok=True)
@@ -329,15 +458,20 @@ class HierarchicalMemory:
             logger.warning("memory: episodic append failed (%s)", exc)
 
     def _load_episodic(self) -> None:
-        if not self.episodic_path.exists():
+        path = self._select_read_path(self.episodic_path, self.legacy_episodic_path)
+        if path is None:
             return
+        self._sources["episodic"] = str(path)
         try:
-            for line in self.episodic_path.read_text(encoding="utf-8").splitlines():
+            for line in path.read_text(encoding="utf-8").splitlines():
                 if not line.strip():
                     continue
-                d = json.loads(line)
-                self._episodes.append(Episode(**d))
-        except (OSError, json.JSONDecodeError) as exc:
+                try:
+                    d = json.loads(line)
+                    self._episodes.append(Episode(**d))
+                except (TypeError, json.JSONDecodeError):
+                    continue
+        except OSError as exc:
             logger.warning("memory: episodic load failed (%s); fresh start", exc)
 
     def _save_semantic(self) -> None:
@@ -354,10 +488,12 @@ class HierarchicalMemory:
             logger.warning("memory: semantic save failed (%s)", exc)
 
     def _load_semantic(self) -> None:
-        if not self.semantic_path.exists():
+        path = self._select_read_path(self.semantic_path, self.legacy_semantic_path)
+        if path is None:
             return
+        self._sources["semantic"] = str(path)
         try:
-            data = json.loads(self.semantic_path.read_text(encoding="utf-8"))
+            data = json.loads(path.read_text(encoding="utf-8"))
             for k, v in data.items():
                 self._semantic[k] = SemanticFact(**v)
         except (OSError, json.JSONDecodeError) as exc:
@@ -372,13 +508,18 @@ class HierarchicalMemory:
             logger.warning("memory: procedural append failed (%s)", exc)
 
     def _load_procedural(self) -> None:
-        if not self.procedural_path.exists():
+        path = self._select_read_path(self.procedural_path, self.legacy_procedural_path)
+        if path is None:
             return
+        self._sources["procedural"] = str(path)
         try:
-            for line in self.procedural_path.read_text(encoding="utf-8").splitlines():
+            for line in path.read_text(encoding="utf-8").splitlines():
                 if not line.strip():
                     continue
-                d = json.loads(line)
-                self._procedural.append(ProceduralVersion(**d))
-        except (OSError, json.JSONDecodeError) as exc:
+                try:
+                    d = json.loads(line)
+                    self._procedural.append(ProceduralVersion(**d))
+                except (TypeError, json.JSONDecodeError):
+                    continue
+        except OSError as exc:
             logger.warning("memory: procedural load failed (%s); fresh start", exc)

@@ -28,7 +28,7 @@ Telegram-pulse, and MCP-tool infrastructure.
 
 When a pattern fires, the watcher:
   1. Returns a ``AnomalyHit`` summary
-  2. Logs it to ``var/anomaly_watcher.jsonl``
+  2. Logs it to ``var/eta_engine/state/anomaly_watcher.jsonl``
   3. Returns the suggested skill to activate (anomaly_investigator,
      drawdown_response, win_streak_review, etc.)
 
@@ -63,14 +63,13 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from eta_engine.scripts import workspace_roots
+
 logger = logging.getLogger("eta_engine.brain.jarvis_v3.anomaly_watcher")
 
-_WORKSPACE = Path(r"C:\EvolutionaryTradingAlgo")
-_STATE_ROOT = _WORKSPACE / "var" / "eta_engine" / "state"
-_LEGACY_STATE_ROOT = _WORKSPACE / "eta_engine" / "state"
-DEFAULT_TRADE_CLOSES_PATH = _STATE_ROOT / "jarvis_intel" / "trade_closes.jsonl"
-LEGACY_TRADE_CLOSES_PATH = _LEGACY_STATE_ROOT / "jarvis_intel" / "trade_closes.jsonl"
-DEFAULT_HITS_LOG = _WORKSPACE / "var" / "anomaly_watcher.jsonl"
+DEFAULT_TRADE_CLOSES_PATH = workspace_roots.ETA_JARVIS_TRADE_CLOSES_PATH
+LEGACY_TRADE_CLOSES_PATH = workspace_roots.ETA_LEGACY_JARVIS_TRADE_CLOSES_PATH
+DEFAULT_HITS_LOG = workspace_roots.ETA_ANOMALY_HITS_LOG_PATH
 
 LOSS_STREAK_THRESHOLD = 3  # 3 losses in a row = anomaly
 LOSS_RATE_WINDOW = 8  # look-back window for loss-rate check
@@ -196,28 +195,27 @@ def _recent_keys(
     within_hours: float = DEDUP_HOURS,
 ) -> set[str]:
     """Return the set of anomaly keys logged within the dedup window."""
-    if not hits_log.exists():
-        return set()
     cutoff = datetime.now(UTC) - timedelta(hours=within_hours)
     keys: set[str] = set()
-    try:
-        with hits_log.open(encoding="utf-8") as fh:
-            for raw in fh:
-                line = raw.strip()
-                if not line:
-                    continue
-                try:
-                    rec = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                ts = _parse_iso(rec.get("asof"))
-                if ts is None or ts < cutoff:
-                    continue
-                k = rec.get("key")
-                if k:
-                    keys.add(str(k))
-    except OSError as exc:
-        logger.warning("anomaly_watcher._recent_keys read failed: %s", exc)
+    for candidate in _hits_log_candidates(hits_log):
+        try:
+            with candidate.open(encoding="utf-8") as fh:
+                for raw in fh:
+                    line = raw.strip()
+                    if not line:
+                        continue
+                    try:
+                        rec = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    ts = _parse_iso(rec.get("asof"))
+                    if ts is None or ts < cutoff:
+                        continue
+                    k = rec.get("key")
+                    if k:
+                        keys.add(str(k))
+        except OSError as exc:
+            logger.warning("anomaly_watcher._recent_keys read failed: %s", exc)
     return keys
 
 
@@ -229,6 +227,18 @@ def _append_hit(hit: AnomalyHit, hits_log: Path = DEFAULT_HITS_LOG) -> None:
             fh.write(json.dumps(hit.to_dict(), default=str) + "\n")
     except OSError as exc:
         logger.warning("anomaly_watcher: hit log append failed: %s", exc)
+
+
+def _hits_log_candidates(hits_log: Path = DEFAULT_HITS_LOG) -> list[Path]:
+    """Preferred anomaly-hit logs, with legacy read fallback during cutover."""
+    candidates = [hits_log]
+    if (
+        hits_log == DEFAULT_HITS_LOG
+        and workspace_roots.ETA_LEGACY_ANOMALY_HITS_LOG_PATH.exists()
+        and workspace_roots.ETA_LEGACY_ANOMALY_HITS_LOG_PATH not in candidates
+    ):
+        candidates.append(workspace_roots.ETA_LEGACY_ANOMALY_HITS_LOG_PATH)
+    return [path for path in candidates if path.exists()]
 
 
 # ---------------------------------------------------------------------------
@@ -653,24 +663,29 @@ def recent_hits(
     hits_log: Path = DEFAULT_HITS_LOG,
 ) -> list[dict[str, Any]]:
     """Return logged hits newer than ``since_hours`` for operator review."""
-    if not hits_log.exists():
-        return []
     cutoff = datetime.now(UTC) - timedelta(hours=since_hours)
     out: list[dict[str, Any]] = []
-    try:
-        with hits_log.open(encoding="utf-8") as fh:
-            for raw in fh:
-                line = raw.strip()
-                if not line:
-                    continue
-                try:
-                    rec = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                ts = _parse_iso(rec.get("asof"))
-                if ts is None or ts < cutoff:
-                    continue
-                out.append(rec)
-    except OSError as exc:
-        logger.warning("anomaly_watcher.recent_hits read failed: %s", exc)
+    seen_keys: set[str] = set()
+    for candidate in _hits_log_candidates(hits_log):
+        try:
+            with candidate.open(encoding="utf-8") as fh:
+                for raw in fh:
+                    line = raw.strip()
+                    if not line:
+                        continue
+                    try:
+                        rec = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    ts = _parse_iso(rec.get("asof"))
+                    if ts is None or ts < cutoff:
+                        continue
+                    key = str(rec.get("key") or "")
+                    if key and key in seen_keys:
+                        continue
+                    if key:
+                        seen_keys.add(key)
+                    out.append(rec)
+        except OSError as exc:
+            logger.warning("anomaly_watcher.recent_hits read failed: %s", exc)
     return out

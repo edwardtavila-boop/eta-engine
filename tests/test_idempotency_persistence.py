@@ -198,6 +198,7 @@ def test_default_path_when_env_unset() -> None:
     os.environ.pop("ETA_IDEMPOTENCY_STORE", None)
     try:
         from eta_engine.safety import idempotency
+        from eta_engine.scripts import workspace_roots
 
         reload(idempotency)
         path = idempotency._persist_path()
@@ -205,7 +206,7 @@ def test_default_path_when_env_unset() -> None:
         # state dir isn't writable (CI sandbox, etc.); on a real
         # workspace we expect the canonical path.
         if path is not None:
-            assert path == Path("C:/EvolutionaryTradingAlgo/var/eta_engine/state/idempotency.jsonl")
+            assert path == workspace_roots.ETA_IDEMPOTENCY_STORE_PATH
     finally:
         # leave the env in the unset state we want for hermetic isolation
         os.environ.pop("ETA_IDEMPOTENCY_STORE", None)

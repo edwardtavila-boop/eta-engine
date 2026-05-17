@@ -16,7 +16,7 @@ Architecture:
                                                execution_router
                                                        |
                                                        v
-                                            broker_fleet adapter
+                                            broker_router / broker adapter
                                                        |
                                                        v
                                                paper-broker order
@@ -43,7 +43,7 @@ Data feeds:
 
 Mode of operation:
   * paper_sim (default) -- supervisor logs simulated fills; no broker
-  * paper_live -- routes orders to broker_fleet workers (requires creds)
+  * paper_live -- routes orders through broker_router to the paper broker
   * live -- gated behind ``ETA_LIVE_MONEY=1`` + operator override clear
 
 Usage:
@@ -54,7 +54,7 @@ Usage:
     # Pin to specific bots
     ETA_SUPERVISOR_BOTS=mnq_futures,btc_hybrid python ...
 
-    # Switch to paper_live (real broker fleet)
+    # Switch to paper_live (broker-backed paper routing)
     ETA_SUPERVISOR_MODE=paper_live python ...
 
     # Custom tick interval (default 60s)
@@ -431,6 +431,8 @@ class BotInstance:
     daily_loss_gate_mode: str = ""
     daily_loss_gate_active: bool = False
     daily_loss_gate_reason: str = ""
+    registry_extras: dict[str, Any] = field(default_factory=dict)
+    partial_profit_enabled: bool = True
 
     def to_state(self, *, mode: str | None = None) -> dict:
         # Per-bot ``mode`` field is REQUIRED in the heartbeat so the
@@ -445,6 +447,7 @@ class BotInstance:
         # session_state is a runtime helper struct (gate handle + PnL
         # anchor) — never serialize it into the heartbeat / journal.
         d.pop("session_state", None)
+        d.pop("registry_extras", None)
         if mode is not None:
             d["mode"] = mode
         return d
@@ -1851,6 +1854,13 @@ class ExecutionRouter:
             "bracket_stop": pos.get("bracket_stop"),
             "bracket_target": pos.get("bracket_target"),
             "signal_id": pos.get("signal_id"),
+            "entry_fill_age_s": pos.get("entry_fill_age_s"),
+            "entry_fill_latency_source": pos.get("entry_fill_latency_source"),
+            "entry_fill_age_precision": pos.get("entry_fill_age_precision"),
+            "broker_fill_ts": pos.get("broker_fill_ts"),
+            "broker_router_result_ts": pos.get("broker_router_result_ts"),
+            "fill_to_adopt_delay_s": pos.get("fill_to_adopt_delay_s"),
+            "fill_result_write_delay_s": pos.get("fill_result_write_delay_s"),
         }
         # Attach as an attribute (rather than a new field on FillRecord)
         # to avoid touching the FillRecord dataclass — keeps the change
@@ -2299,7 +2309,7 @@ class JarvisStrategySupervisor:
         self._daily_halt_logged: dict[tuple[str, str], bool] = {}
         # Fleet-state JSON path — written after every tick so portfolio_brain
         # has current notional exposure even when fleet_allocator is unavailable.
-        self._FLEET_STATE_PATH = Path(r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\fleet_state.json")
+        self._FLEET_STATE_PATH = workspace_roots.ETA_FLEET_STATE_PATH
         self._strategy_readiness_mtime_ns: int | None = None
         self._strategy_readiness_by_bot: dict[str, dict[str, Any]] = {}
         self._strategy_readiness_block_logged: set[tuple[str, str]] = set()
@@ -2418,8 +2428,7 @@ class JarvisStrategySupervisor:
                 calendar=events_calendar,
             )
             session_state = BotSessionState(gate=gate)
-            self.bots.append(
-                BotInstance(
+            bot = BotInstance(
                     bot_id=a.bot_id,
                     symbol=symbol,
                     strategy_kind=getattr(a, "strategy_kind", "unknown"),
@@ -2429,8 +2438,10 @@ class JarvisStrategySupervisor:
                     session_state=session_state,
                     entry_enabled=entry_enabled,
                     entry_disabled_reason=("exit_watch_only" if not entry_enabled else ""),
+                    registry_extras=extras,
                 )
-            )
+            bot.partial_profit_enabled = self._partial_profit_enabled_for_bot(bot)
+            self.bots.append(bot)
         logger.info(
             "loaded %d bots (pinned filter: %s; exit-watch: %s)",
             len(self.bots),
@@ -4294,6 +4305,9 @@ class JarvisStrategySupervisor:
                 "symbol": bot.symbol,
                 "shadow_pending_adopted": True,
                 "shadow_pending_age_s": round(age_s, 1),
+                "entry_fill_age_s": round(age_s, 1),
+                "entry_fill_latency_source": "shadow_pending_fallback",
+                "entry_fill_age_precision": "pending_file_ts_to_supervisor_adopt",
                 "shadow_pending_order_path": str(adopted_path),
                 "broker_bracket": False,
                 "bracket_src": "shadow_pending_fallback",
@@ -4477,6 +4491,26 @@ class JarvisStrategySupervisor:
                 continue
             signal_id = str(payload.get("signal_id") or request.get("client_order_id") or path.stem)
             entry_ts = str(payload.get("ts") or now.astimezone(UTC).isoformat())
+            order_ts = self._parse_open_position_ts(payload.get("order_ts"))
+            broker_fill_ts = self._parse_open_position_ts(payload.get("broker_fill_ts"))
+            result_written_ts = self._parse_open_position_ts(payload.get("result_written_ts") or payload.get("ts"))
+            fill_age_ref = broker_fill_ts or result_written_ts or now.astimezone(UTC)
+            entry_fill_age_s: float | None = None
+            entry_fill_age_precision = ""
+            fill_to_adopt_delay_s: float | None = None
+            fill_result_write_delay_s: float | None = None
+            if order_ts is not None:
+                entry_fill_age_s = max(0.0, (fill_age_ref - order_ts).total_seconds())
+                if broker_fill_ts is not None:
+                    entry_fill_age_precision = "broker_fill_ts"
+                elif result_written_ts is not None:
+                    entry_fill_age_precision = "router_result_sidecar_ts"
+                else:
+                    entry_fill_age_precision = "supervisor_adopt_now"
+            if broker_fill_ts is not None:
+                fill_to_adopt_delay_s = max(0.0, (now.astimezone(UTC) - broker_fill_ts).total_seconds())
+                if result_written_ts is not None:
+                    fill_result_write_delay_s = max(0.0, (result_written_ts - broker_fill_ts).total_seconds())
             pos: dict[str, Any] = {
                 "side": side,
                 "qty": qty,
@@ -4489,6 +4523,19 @@ class JarvisStrategySupervisor:
                 "broker_bracket": True,
                 "bracket_src": f"broker_router:{payload.get('venue') or 'unknown'}",
             }
+            if entry_fill_age_s is not None:
+                pos["broker_router_fill_age_s"] = round(entry_fill_age_s, 1)
+                pos["entry_fill_age_s"] = round(entry_fill_age_s, 1)
+                pos["entry_fill_latency_source"] = "broker_router_fill_result"
+                pos["entry_fill_age_precision"] = entry_fill_age_precision
+            if broker_fill_ts is not None:
+                pos["broker_fill_ts"] = broker_fill_ts.isoformat()
+            if result_written_ts is not None:
+                pos["broker_router_result_ts"] = result_written_ts.isoformat()
+            if fill_to_adopt_delay_s is not None:
+                pos["fill_to_adopt_delay_s"] = round(fill_to_adopt_delay_s, 1)
+            if fill_result_write_delay_s is not None:
+                pos["fill_result_write_delay_s"] = round(fill_result_write_delay_s, 1)
             stop_price = request.get("stop_price")
             target_price = request.get("target_price")
             with contextlib.suppress(TypeError, ValueError):
@@ -5447,6 +5494,31 @@ class JarvisStrategySupervisor:
         except (TypeError, ValueError):
             return default
 
+    @staticmethod
+    def _coerce_bool(value: Any, default: bool) -> bool:
+        if isinstance(value, bool):
+            return value
+        if value is None:
+            return default
+        if isinstance(value, (int, float)):
+            return value != 0
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in {"1", "true", "yes", "on"}:
+                return True
+            if normalized in {"0", "false", "no", "off"}:
+                return False
+        return default
+
+    def _partial_profit_enabled_for_bot(self, bot: BotInstance) -> bool:
+        extras = bot.registry_extras if isinstance(bot.registry_extras, dict) else {}
+        if "partial_profit_enabled" in extras:
+            enabled = self._coerce_bool(extras.get("partial_profit_enabled"), True)
+        else:
+            enabled = self._env_flag("ETA_PARTIAL_PROFIT_ENABLED", "true")
+        bot.partial_profit_enabled = enabled
+        return enabled
+
     def _compute_realized_r(
         self,
         pos: dict[str, Any],
@@ -5556,7 +5628,7 @@ class JarvisStrategySupervisor:
         runner can still hit the original target or the trailing-stop
         breakeven move on the leftover qty.
         """
-        if not self._env_flag("ETA_PARTIAL_PROFIT_ENABLED", "true"):
+        if not self._partial_profit_enabled_for_bot(bot):
             return
         if pos.get("partial_taken"):
             return
@@ -6437,6 +6509,53 @@ class JarvisStrategySupervisor:
                 _close_data_source = "backtest"
             else:
                 _close_data_source = "live"
+            _entry_fill_age_s: float | None = None
+            _entry_fill_latency_source = ""
+            _entry_fill_age_precision = ""
+            _broker_fill_ts = ""
+            _broker_router_result_ts = ""
+            _fill_to_adopt_delay_s: float | None = None
+            _fill_result_write_delay_s: float | None = None
+            if isinstance(entry_snapshot, dict):
+                with contextlib.suppress(TypeError, ValueError):
+                    raw_entry_fill_age_s = entry_snapshot.get("entry_fill_age_s")
+                    if raw_entry_fill_age_s not in (None, ""):
+                        _entry_fill_age_s = round(float(raw_entry_fill_age_s), 1)
+                _entry_fill_latency_source = str(entry_snapshot.get("entry_fill_latency_source") or "").strip()
+                _entry_fill_age_precision = str(entry_snapshot.get("entry_fill_age_precision") or "").strip()
+                _broker_fill_ts = str(entry_snapshot.get("broker_fill_ts") or "").strip()
+                _broker_router_result_ts = str(entry_snapshot.get("broker_router_result_ts") or "").strip()
+                with contextlib.suppress(TypeError, ValueError):
+                    raw_fill_to_adopt_delay_s = entry_snapshot.get("fill_to_adopt_delay_s")
+                    if raw_fill_to_adopt_delay_s not in (None, ""):
+                        _fill_to_adopt_delay_s = round(float(raw_fill_to_adopt_delay_s), 1)
+                with contextlib.suppress(TypeError, ValueError):
+                    raw_fill_result_write_delay_s = entry_snapshot.get("fill_result_write_delay_s")
+                    if raw_fill_result_write_delay_s not in (None, ""):
+                        _fill_result_write_delay_s = round(float(raw_fill_result_write_delay_s), 1)
+            close_extra = {
+                "realized_pnl": rec.realized_pnl,
+                "fill_price": rec.fill_price,
+                "qty": rec.qty,
+                "symbol": rec.symbol,
+                "side": rec.side,
+                "close_ts": rec.fill_ts,
+                "macro_bias": macro_bias,
+            }
+            if _entry_fill_age_s is not None:
+                close_extra["entry_fill_age_s"] = _entry_fill_age_s
+            if _entry_fill_latency_source:
+                close_extra["entry_fill_latency_source"] = _entry_fill_latency_source
+            if _entry_fill_age_precision:
+                close_extra["entry_fill_age_precision"] = _entry_fill_age_precision
+            if _broker_fill_ts:
+                close_extra["broker_fill_ts"] = _broker_fill_ts
+            if _broker_router_result_ts:
+                close_extra["broker_router_result_ts"] = _broker_router_result_ts
+            if _fill_to_adopt_delay_s is not None:
+                close_extra["fill_to_adopt_delay_s"] = _fill_to_adopt_delay_s
+            if _fill_result_write_delay_s is not None:
+                close_extra["fill_result_write_delay_s"] = _fill_result_write_delay_s
             close_trade(
                 signal_id=rec.signal_id,
                 realized_r=rec.realized_r or 0.0,
@@ -6448,15 +6567,7 @@ class JarvisStrategySupervisor:
                 bot_id=bot.bot_id,
                 memory=self._memory,
                 narrative=f"close after {bot.n_exits} exits, pnl={bot.realized_pnl:+.2f}",
-                extra={
-                    "realized_pnl": rec.realized_pnl,
-                    "fill_price": rec.fill_price,
-                    "qty": rec.qty,
-                    "symbol": rec.symbol,
-                    "side": rec.side,
-                    "close_ts": rec.fill_ts,
-                    "macro_bias": macro_bias,
-                },
+                extra=close_extra,
                 data_source=_close_data_source,
             )
         except Exception as exc:  # noqa: BLE001
@@ -6931,9 +7042,9 @@ def _load_env_file_if_present() -> None:
     failure is logged at warning and the supervisor continues.
     """
     candidates = (
-        Path(r"C:\EvolutionaryTradingAlgo\var\eta_engine\.env"),
-        Path(r"C:\EvolutionaryTradingAlgo\eta_engine\.env"),
-        Path(r"C:\EvolutionaryTradingAlgo\.env"),
+        workspace_roots.ROOT_VAR_DIR / "eta_engine" / ".env",
+        workspace_roots.ETA_ENGINE_ROOT / ".env",
+        workspace_roots.WORKSPACE_ROOT / ".env",
     )
     for path in candidates:
         try:

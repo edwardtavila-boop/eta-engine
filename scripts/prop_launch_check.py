@@ -15,12 +15,12 @@ What it surfaces
 ----------------
 
   1. Overall verdict: ``GO`` / ``HOLD`` / ``NO_GO`` (from prelaunch dryrun)
-  2. Wave-25 lifecycle table — which bots route to live vs paper
+  2. Wave-25 lifecycle table â€” which bots route to live vs paper
   3. Leaderboard top-5 with PROP_READY designation
   4. Drawdown guard signal + buffer state
   5. Alert channel configuration
   6. Cron task freshness (which receipts are stale)
-  7. **Actionable next steps** — exactly what the operator needs to do
+  7. **Actionable next steps** â€” exactly what the operator needs to do
      to flip remaining HOLD/NO_GO items to GO.
 
 Exit codes
@@ -38,10 +38,46 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
+from eta_engine.scripts.retune_advisory_cache import build_retune_advisory
+
 ROOT = Path(__file__).resolve().parents[1]
 WORKSPACE_ROOT = ROOT.parent
 if str(WORKSPACE_ROOT) not in sys.path:
     sys.path.insert(0, str(WORKSPACE_ROOT))
+
+
+def _state_dir() -> Path:
+    return WORKSPACE_ROOT / "var" / "eta_engine" / "state"
+
+
+def _health_dir() -> Path:
+    return _state_dir() / "health"
+
+
+def _read_json_dict(path: Path) -> dict:
+    if not path.exists():
+        return {}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    if isinstance(payload, dict):
+        return payload
+    return {}
+
+
+def _dict_field(payload: dict, key: str) -> dict:
+    value = payload.get(key)
+    if isinstance(value, dict):
+        return value
+    return {}
+
+
+def _string_list(payload: dict, key: str) -> list[str]:
+    value = payload.get(key)
+    if not isinstance(value, list):
+        return []
+    return [str(item) for item in value if str(item).strip()]
 
 
 def _print_section_header(title: str) -> None:
@@ -99,12 +135,12 @@ def _check_leaderboard() -> dict:
 
 def _check_alert_channels() -> dict:
     """Detect configured alert channels without sending."""
-    import os  # noqa: PLC0415
+    from eta_engine.scripts import alert_channel_config  # noqa: PLC0415
 
     return {
-        "telegram": bool(os.environ.get("ETA_TELEGRAM_BOT_TOKEN") and os.environ.get("ETA_TELEGRAM_CHAT_ID")),
-        "discord": bool(os.environ.get("ETA_DISCORD_WEBHOOK_URL")),
-        "generic": bool(os.environ.get("ETA_GENERIC_WEBHOOK_URL")),
+        "telegram": alert_channel_config.telegram_configured(),
+        "discord": alert_channel_config.discord_configured(),
+        "generic": alert_channel_config.generic_configured(),
     }
 
 
@@ -133,6 +169,10 @@ def _check_live_capital_calendar() -> dict:
     return build_live_capital_calendar_status()
 
 
+def _check_retune_advisory() -> dict:
+    return build_retune_advisory(_health_dir())
+
+
 def _check_launch_candidates() -> dict:
     """Scan every diamond bot for the launch-candidate profile.
 
@@ -144,17 +184,18 @@ def _check_launch_candidates() -> dict:
       * NOT flagged ASYMMETRY_BUG by the qty audit (if available)
 
     Also computes a per-qty-band breakdown to surface "vol-regime filter
-    candidates" — bots whose qty<1 (high-vol, vol_adjusted_sizing-halved)
-    sub-cohort meets the launch profile even though the aggregate fails
-    (wave-25o). A filter-candidate has:
+    candidates" â€” bots whose qty<1 sub-cohort meets the launch profile
+    even though the aggregate fails (wave-25o). A filter-candidate has:
       * qty<1 band n >= 20
       * qty<1 band cum_USD > 0
       * qty<1 band WR >= 80%
-    The operator can flip ``vol_low_size_mult=0.0`` to capture only the
-    high-vol sub-cohort. See docs/MNQ_FUTURES_SAGE_VOL_REGIME_FORENSIC.md.
+    This is a diagnostic lead, not a universal config prescription. For
+    ``mnq_futures_sage`` specifically, the corrected remediation is the
+    bot-scoped partial-profit experiment in
+    ``docs/MNQ_FUTURES_SAGE_VOL_REGIME_FORENSIC_CORRECTION_2026_05_13.md``.
 
     Returns counts + the candidate list so the action-builder can
-    surface "no candidates yet — don't launch" as a priority item.
+    surface "no candidates yet â€” don't launch" as a priority item.
     """
     from eta_engine.feeds.capital_allocator import (  # noqa: PLC0415
         DIAMOND_BOTS,
@@ -225,9 +266,9 @@ def _check_launch_candidates() -> dict:
         if n < 5:
             continue
         agg = _band_stats(rows)
-        # Per-qty-band breakdown (wave-25o): vol_adjusted_sizing halves
-        # qty to 0.5 on high-vol bars; the resulting band split often
-        # explains R-vs-USD divergence (one band profitable, one churning).
+        # Per-qty-band breakdown (wave-25o): a qty split often exposes
+        # a useful regime/provenance clue (one band profitable, one
+        # churning), but the remediation is bot-specific.
         rows_full = [r for r in rows if _row_qty(r) >= 1.0]
         rows_half = [r for r in rows if _row_qty(r) < 1.0]
         band_full = _band_stats(rows_full)
@@ -241,8 +282,7 @@ def _check_launch_candidates() -> dict:
             and not is_asym
         )
         # Vol-regime filter candidate: qty<1 band meets launch profile
-        # even though aggregate fails. Operator can flip
-        # vol_low_size_mult=0.0 to skip normal-vol setups entirely.
+        # even though aggregate fails.
         is_filter_candidate = (
             not is_candidate
             and band_half["n"] >= 20
@@ -319,6 +359,7 @@ def _build_action_list(
     supervisor: dict | None = None,
     candidates: dict | None = None,
     live_capital_calendar: dict | None = None,
+    retune_advisory: dict | None = None,
 ) -> list[str]:
     """Translate HOLD / NO_GO sections into operator-actionable steps."""
     actions: list[str] = []
@@ -334,7 +375,7 @@ def _build_action_list(
                 "and use the next week for prop-firm readiness drills only.",
             )
 
-    # Launch-candidate scan — if no bot meets the safety profile, that's the
+    # Launch-candidate scan â€” if no bot meets the safety profile, that's the
     # #1 reason not to launch live. Surface this prominently.
     if candidates is not None:
         n = candidates.get("n_candidates", 0)
@@ -358,10 +399,10 @@ def _build_action_list(
                 "meets the profile. See docs/LAUNCH_CANDIDATE_SCAN_*.md.",
             )
 
-        # Wave-25o: surface vol-regime filter candidates — bots whose qty<1
-        # band is launch-profile-quality even when aggregate fails. One
-        # config flip (vol_low_size_mult=0.0) makes them eligible after a
-        # 2-week paper-soak confirms the high-vol-only book stays stable.
+        # Wave-25o: surface qty-band filter candidates â€” bots whose qty<1
+        # band is launch-profile-quality even when aggregate fails. The
+        # remediation is bot-specific; do not assume every lane has a
+        # strategy-native vol-size knob.
         for fc in candidates.get("filter_candidates", []) or []:
             half = fc.get("qty_band_half", {}) or {}
             full = fc.get("qty_band_full", {}) or {}
@@ -369,20 +410,73 @@ def _build_action_list(
             full_usd = full.get("cum_usd")
             half_usd_fmt = f"${half_usd:+.0f}" if half_usd is not None else "n/a"
             full_usd_fmt = f"${full_usd:+.0f}" if full_usd is not None else "n/a"
-            actions.append(
-                f"VOL-REGIME FILTER candidate: {fc['bot_id']} — "
-                f"qty<1 band (high-vol, half-size) shows "
-                f"n={half.get('n', 0)}, WR={half.get('wr', 0.0):.1f}%, "
-                f"cum_USD={half_usd_fmt}. "
+            lead = (
+                f"VOL-REGIME FILTER candidate: {fc['bot_id']} - "
+                f"qty<1 band shows n={half.get('n', 0)}, "
+                f"WR={half.get('wr', 0.0):.1f}%, cum_USD={half_usd_fmt}. "
                 f"qty=1 band churns "
                 f"(n={full.get('n', 0)}, WR={full.get('wr', 0.0):.1f}%, "
                 f"cum_USD={full_usd_fmt}). "
-                "Set vol_low_size_mult=0.0 in the bot's strategy config to "
-                "skip normal-vol setups; paper-soak for 2 weeks before EVAL_LIVE. "
-                "See docs/MNQ_FUTURES_SAGE_VOL_REGIME_FORENSIC.md.",
             )
+            if fc.get("bot_id") == "mnq_futures_sage":
+                actions.append(
+                    lead
+                    + "Do not use the legacy normal-vol skip knob here: this bot runs "
+                    + "orb_sage_gated, and the qty split traced to supervisor "
+                    + "partial-profit slicing rather than a strategy vol-size "
+                    + "knob. Run the corrected paper-soak with "
+                    + "partial_profit_enabled=false and review "
+                    + "docs/MNQ_FUTURES_SAGE_VOL_REGIME_FORENSIC_CORRECTION_2026_05_13.md."
+                )
+            else:
+                actions.append(
+                    lead
+                    + "Treat this as a qty-band divergence investigation lead. "
+                    + "Confirm whether the split comes from strategy sizing, "
+                    + "execution geometry, or supervisor features before "
+                    + "changing launch config, then paper-soak the bot-specific "
+                    + "remediation before EVAL_LIVE."
+                )
 
-    # Supervisor health — front of queue if hung/missing
+    # Supervisor health â€” front of queue if hung/missing
+    if retune_advisory and retune_advisory.get("available"):
+        focus_bot = retune_advisory.get("focus_bot") or "unknown"
+        focus_state = retune_advisory.get("focus_state") or "unknown"
+        focus_issue = retune_advisory.get("focus_issue") or "unknown"
+        focus_closes = retune_advisory.get("focus_closed_trade_count")
+        focus_pnl = retune_advisory.get("focus_total_realized_pnl")
+        focus_pf = retune_advisory.get("focus_profit_factor")
+        if focus_issue == "broker_pnl_negative" or retune_advisory.get("diagnosis"):
+            closes_text = focus_closes if focus_closes is not None else "n/a"
+            pnl_text = f"${focus_pnl:+.2f}" if isinstance(focus_pnl, int | float) else "n/a"
+            pf_text = f"{focus_pf:.2f}" if isinstance(focus_pf, int | float) else "n/a"
+            action = (
+                f"Broker-backed retune truth still flags {focus_bot} "
+                f"({focus_state}; issue={focus_issue}; closes={closes_text}; "
+                f"pnl={pnl_text}; PF={pf_text}). "
+                "Do not treat it as a launch candidate yet."
+            )
+            preferred_action = retune_advisory.get("preferred_action")
+            if isinstance(preferred_action, str) and preferred_action.strip():
+                action += f" {preferred_action}"
+            actions.append(action)
+        experiment = retune_advisory.get("active_experiment") or {}
+        if isinstance(experiment, dict) and experiment:
+            started_at = experiment.get("started_at") or "unknown"
+            sample_n = experiment.get("post_change_closed_trade_count")
+            sample_pnl = experiment.get("post_change_total_realized_pnl")
+            sample_pf = experiment.get("post_change_profit_factor")
+            n_text = sample_n if isinstance(sample_n, int) else "n/a"
+            pnl_text = f"${sample_pnl:+.2f}" if isinstance(sample_pnl, int | float) else "n/a"
+            pf_text = f"{sample_pf:.2f}" if isinstance(sample_pf, int | float) else "n/a"
+            if focus_bot == "mnq_futures_sage" and experiment.get("partial_profit_enabled") is False:
+                actions.append(
+                    f"Corrected {focus_bot} experiment active since {started_at}: "
+                    f"partial_profit_enabled=false, post-fix sample n={n_text}, "
+                    f"pnl={pnl_text}, PF={pf_text}. Let fresh post-fix closes "
+                    "accumulate before treating the legacy aggregate as the new verdict."
+                )
+
     if supervisor is not None:
         if supervisor.get("missing"):
             actions.append(
@@ -399,9 +493,8 @@ def _build_action_list(
     # Alert channels
     if not (channels["telegram"] or channels["discord"] or channels["generic"]):
         actions.append(
-            "Set Telegram credentials (5 min): "
-            '[Environment]::SetEnvironmentVariable("ETA_TELEGRAM_BOT_TOKEN", "<token>", "Machine"); '
-            "ditto for ETA_TELEGRAM_CHAT_ID. "
+            "Set Telegram credentials (5 min): seed ETA_TELEGRAM_BOT_TOKEN + ETA_TELEGRAM_CHAT_ID as machine env vars, "
+            "or populate `eta_engine/secrets/telegram_bot_token.txt` + `eta_engine/secrets/telegram_chat_id.txt`. "
             "Verify with `python -m eta_engine.scripts.verify_telegram --send-test`.",
         )
 
@@ -439,13 +532,13 @@ def _build_action_list(
     sig = drawdown.get("signal")
     if sig == "HALT":
         actions.append(
-            "Drawdown guard is HALT — investigate "
+            "Drawdown guard is HALT â€” investigate "
             f"({drawdown.get('rationale', 'no detail')}). "
             "Consult docs/PROP_FUND_ROLLBACK_RUNBOOK.md before any live activity.",
         )
     elif sig == "WATCH":
         actions.append(
-            "Drawdown guard is WATCH — supervisor will halve all entry sizes. "
+            "Drawdown guard is WATCH â€” supervisor will halve all entry sizes. "
             "Acceptable for cautious start; review live PnL vs buffer before scaling.",
         )
 
@@ -461,6 +554,33 @@ def _build_action_list(
                 )
             break
 
+    for sec in dryrun.get("sections", []):
+        if sec.get("name") != "task_registration" or sec.get("status") not in {"HOLD", "NO_GO"}:
+            continue
+        detail = sec.get("detail", {}) or {}
+        missing = detail.get("missing", []) or []
+        nonready = detail.get("nonready", []) or []
+        if missing:
+            actions.append(
+                "Register the missing ETA-Diamond scheduled tasks on the intended Windows runtime host: "
+                "`powershell -ExecutionPolicy Bypass -File eta_engine/deploy/scripts/register_diamond_cron_tasks.ps1 "
+                "-WorkspaceRoot C:\\EvolutionaryTradingAlgo -StartNow`. "
+                f"Missing: {missing[:5]}{'...' if len(missing) > 5 else ''}",
+            )
+        elif nonready:
+            actions.append(
+                "Inspect the registered ETA-Diamond scheduled tasks in Task Scheduler "
+                "and restore them to Ready/Running. "
+                f"Non-ready: {nonready[:5]}{'...' if len(nonready) > 5 else ''}",
+            )
+        else:
+            actions.append(
+                "Scheduled-task probe was unavailable. Verify the ETA-Diamond task lane "
+                "on the intended Windows runtime host "
+                "before treating fresh receipts as self-sustaining automation.",
+            )
+        break
+
     return actions
 
 
@@ -475,6 +595,7 @@ def _print_human(report: dict) -> None:
     channels = report["alert_channels"]
     drawdown = report["drawdown_guard"]
     actions = report["actions"]
+    retune_advisory = report.get("retune_advisory", {})
 
     verdict = dryrun.get("overall_verdict", "?")
     summary_text = dryrun.get("summary", "")
@@ -514,18 +635,63 @@ def _print_human(report: dict) -> None:
         )
         print(f"  {calendar.get('reason', '')}")
 
+    _print_section_header("Broker-backed retune advisory")
+    if not retune_advisory.get("available"):
+        print("  (no public retune advisory cache)")
+    else:
+        focus_pnl = retune_advisory.get("focus_total_realized_pnl")
+        focus_pf = retune_advisory.get("focus_profit_factor")
+        broker_mtd = retune_advisory.get("broker_mtd_pnl")
+        today_realized = retune_advisory.get("today_realized_pnl")
+        total_unrealized = retune_advisory.get("total_unrealized_pnl")
+        print(
+            f"  focus={retune_advisory.get('focus_bot')} "
+            f"state={retune_advisory.get('focus_state')} "
+            f"issue={retune_advisory.get('focus_issue')}",
+        )
+        print(
+            f"  broker proof: closes={retune_advisory.get('focus_closed_trade_count')} "
+            f"pnl={f'${focus_pnl:+.2f}' if isinstance(focus_pnl, int | float) else 'n/a'} "
+            f"pf={f'{focus_pf:.2f}' if isinstance(focus_pf, int | float) else 'n/a'}",
+        )
+        print(
+            f"  broker state: mtd={f'${broker_mtd:+.2f}' if isinstance(broker_mtd, int | float) else 'n/a'} "
+            f"today={f'${today_realized:+.2f}' if isinstance(today_realized, int | float) else 'n/a'} "
+            f"open={f'${total_unrealized:+.2f}' if isinstance(total_unrealized, int | float) else 'n/a'} "
+            f"positions={retune_advisory.get('open_position_count')} "
+            f"source={retune_advisory.get('broker_snapshot_source')}",
+        )
+        if retune_advisory.get("diagnosis"):
+            print(f"  local drift: {retune_advisory.get('diagnosis')}")
+        if retune_advisory.get("preferred_warning"):
+            print(f"  warning: {retune_advisory.get('preferred_warning')}")
+        experiment = retune_advisory.get("active_experiment") or {}
+        if isinstance(experiment, dict) and experiment:
+            sample_pnl = experiment.get("post_change_total_realized_pnl")
+            sample_pf = experiment.get("post_change_profit_factor")
+            pnl_text = f"${sample_pnl:+.2f}" if isinstance(sample_pnl, int | float) else "n/a"
+            pf_text = f"{sample_pf:.2f}" if isinstance(sample_pf, int | float) else "n/a"
+            print(
+                f"  experiment: id={experiment.get('experiment_id')} "
+                f"started={experiment.get('started_at')} "
+                f"partial_profit_enabled={experiment.get('partial_profit_enabled')} "
+                f"post_fix_n={experiment.get('post_change_closed_trade_count')} "
+                f"post_fix_pnl={pnl_text} post_fix_pf={pf_text}",
+            )
+
     # Launch candidates
     candidates = report.get("launch_candidates", {})
     _print_section_header("Launch candidates (n>=50, cum_USD>0, cum_R>0, WR>=50%, !ASYM)")
     n_c = candidates.get("n_candidates", 0)
     n_fc = candidates.get("n_filter_candidates", 0)
     if n_c == 0:
-        print("  ZERO strict candidates — system says DO NOT LAUNCH live yet")
+        print("  ZERO strict candidates â€” system says DO NOT LAUNCH live yet")
         if n_fc > 0:
             print(
                 f"  {n_fc} VOL-REGIME FILTER candidate(s): aggregate fails but the "
-                "qty<1 (high-vol) band passes. See action items + "
-                "docs/MNQ_FUTURES_SAGE_VOL_REGIME_FORENSIC.md.",
+                "qty<1 band passes. See action items for bot-specific remediation; "
+                "mnq_futures_sage uses the corrected partial-profit experiment in "
+                "docs/MNQ_FUTURES_SAGE_VOL_REGIME_FORENSIC_CORRECTION_2026_05_13.md.",
             )
         top5 = candidates.get("rejected_top5", [])
         if top5:
@@ -538,7 +704,7 @@ def _print_human(report: dict) -> None:
                     f"    {r['bot_id']:<28} n={r['n']:>4} WR={r['wr']:>4.1f}% "
                     f"cum_R={r['cum_r']:>+7.1f} cum_USD={usd}{asym}{fc_marker}",
                 )
-                # Per-qty-band split (wave-25o) — surface only when both
+                # Per-qty-band split (wave-25o) â€” surface only when both
                 # bands have material samples; this is where the
                 # vol_adjusted_sizing asymmetry is most visible.
                 half = r.get("qty_band_half", {}) or {}
@@ -567,13 +733,13 @@ def _print_human(report: dict) -> None:
             )
         if n_fc > 0:
             print(
-                f"  {n_fc} additional VOL-REGIME FILTER candidate(s) — see action items.",
+                f"  {n_fc} additional VOL-REGIME FILTER candidate(s) - see action items.",
             )
 
     # Drawdown guard
     _print_section_header("Drawdown guard")
     if drawdown.get("missing"):
-        print("  (no receipt — run python -m eta_engine.scripts.diamond_prop_drawdown_guard)")
+        print("  (no receipt â€” run python -m eta_engine.scripts.diamond_prop_drawdown_guard)")
     else:
         sig = drawdown.get("signal", "?")
         print(f"  signal: {sig}  ({drawdown.get('rationale', '')})")
@@ -619,7 +785,7 @@ def _print_human(report: dict) -> None:
     if channels["generic"]:
         print("  generic_webhook: configured")
     if not any(channels.values()):
-        print("  (NONE configured — HALT will only show on dashboard)")
+        print("  (NONE configured â€” HALT will only show on dashboard)")
 
     # Dryrun sections summary
     _print_section_header("Dryrun sections")
@@ -631,7 +797,7 @@ def _print_human(report: dict) -> None:
     # Actionable next steps
     _print_section_header("Action items (in priority order)")
     if not actions:
-        print("  None — all gates clear.")
+        print("  None â€” all gates clear.")
     else:
         for i, a in enumerate(actions, 1):
             print(f"  {i}. {a}")
@@ -652,6 +818,7 @@ def main(argv: list[str] | None = None) -> int:
     supervisor = _check_supervisor()
     candidates = _check_launch_candidates()
     live_capital_calendar = _check_live_capital_calendar()
+    retune_advisory = _check_retune_advisory()
     actions = _build_action_list(
         dryrun,
         lifecycle,
@@ -661,6 +828,7 @@ def main(argv: list[str] | None = None) -> int:
         supervisor=supervisor,
         candidates=candidates,
         live_capital_calendar=live_capital_calendar,
+        retune_advisory=retune_advisory,
     )
 
     report = {
@@ -673,6 +841,7 @@ def main(argv: list[str] | None = None) -> int:
         "supervisor": supervisor,
         "live_capital_calendar": live_capital_calendar,
         "launch_candidates": candidates,
+        "retune_advisory": retune_advisory,
         "actions": actions,
     }
 

@@ -23,7 +23,7 @@ Usage
 
 Outputs
 -------
-- docs/go_trigger_log.jsonl   append-only event log (one JSON per line)
+- var/eta_engine/state/go_trigger_log.jsonl   append-only event log (one JSON per line)
 - roadmap_state.json patched: shared_artifacts.eta_go_state
 - exit 0 on accepted phrase, 2 on rejected, 3 on preflight block
 
@@ -39,6 +39,8 @@ import sys
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+
+from eta_engine.scripts import workspace_roots
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -68,7 +70,7 @@ class TriggerEvent:
 
 def _preflight_verdict() -> str:
     """Read latest preflight dryrun report; return GO/ABORT/UNKNOWN."""
-    p = ROOT / "docs" / "preflight_dryrun_report.json"
+    p = workspace_roots.default_preflight_dryrun_report_path()
     if not p.exists():
         return "UNKNOWN"
     try:
@@ -79,8 +81,7 @@ def _preflight_verdict() -> str:
 
 
 def _append_log(event: TriggerEvent) -> Path:
-    log_p = ROOT / "docs" / "go_trigger_log.jsonl"
-    log_p.parent.mkdir(parents=True, exist_ok=True)
+    log_p = workspace_roots.ensure_parent(workspace_roots.ETA_GO_TRIGGER_LOG_PATH)
     with log_p.open("a", encoding="utf-8") as fh:
         fh.write(json.dumps(asdict(event)) + "\n")
     return log_p

@@ -48,6 +48,8 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT.parent) not in sys.path:
     sys.path.insert(0, str(ROOT.parent))
 
+from eta_engine.scripts import workspace_roots
+
 
 def load_audit_records(audit_paths: list[Path], *, since: datetime) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
@@ -296,13 +298,24 @@ def compare(champ: dict[str, float], cand: dict[str, float]) -> dict[str, str]:
     return verdicts
 
 
+def _resolve_audit_dir(audit_dir: Path) -> Path:
+    if (
+        audit_dir == workspace_roots.ETA_JARVIS_AUDIT_DIR
+        and not audit_dir.exists()
+        and workspace_roots.ETA_LEGACY_JARVIS_AUDIT_DIR.exists()
+    ):
+        logger.info("using legacy audit dir fallback: %s", workspace_roots.ETA_LEGACY_JARVIS_AUDIT_DIR)
+        return workspace_roots.ETA_LEGACY_JARVIS_AUDIT_DIR
+    return audit_dir
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument(
         "--audit-dir",
         type=Path,
-        default=ROOT / "state" / "jarvis_audit",
-        help="Directory containing JARVIS audit *.jsonl files",
+        default=workspace_roots.ETA_JARVIS_AUDIT_DIR,
+        help="Directory containing JARVIS audit *.jsonl files. Default: var/eta_engine/state/jarvis_audit",
     )
     p.add_argument("--window-days", type=int, default=30)
     p.add_argument("--candidate", type=str, default=None, help="Registered candidate policy name, e.g. v18")
@@ -316,7 +329,8 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     since = datetime.now(UTC) - timedelta(days=args.window_days)
-    audit_paths = list(args.audit_dir.glob("*.jsonl")) if args.audit_dir.exists() else []
+    audit_dir = _resolve_audit_dir(args.audit_dir)
+    audit_paths = list(audit_dir.glob("*.jsonl")) if audit_dir.exists() else []
     records = load_audit_records(audit_paths, since=since)
 
     champ = champion_metrics(records)

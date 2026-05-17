@@ -51,32 +51,24 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from eta_engine.scripts import workspace_roots
+
 logger = logging.getLogger("eta_engine.kaizen_loop")
 
-_REPORT_DIR = Path(
-    r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\kaizen_reports",
-)
-_LATEST_PATH = Path(
-    r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\kaizen_latest.json",
-)
-_ACTION_LOG = Path(
-    r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\kaizen_actions.jsonl",
-)
+_REPORT_DIR = workspace_roots.ETA_KAIZEN_REPORT_DIR
+_LATEST_PATH = workspace_roots.ETA_KAIZEN_LATEST_PATH
+_ACTION_LOG = workspace_roots.ETA_KAIZEN_ACTIONS_LOG_PATH
 # Sidecar that ``per_bot_registry.is_active()`` reads — bot_ids listed
 # here are dropped from the supervisor's load_bots() filter on next
 # supervisor restart. The 2-run confirmation gate (in run_loop) is the
 # only writer; operator can re-enable a bot via
 # ``python -m eta_engine.scripts.kaizen_reactivate <bot_id>``.
-_OVERRIDES_PATH = Path(
-    r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\kaizen_overrides.json",
-)
+_OVERRIDES_PATH = workspace_roots.ETA_KAIZEN_OVERRIDES_PATH
 # JARVIS<->Hermes audit log (written by Half 1's MCP server). Read here
 # in the morning kaizen pass to surface 24h Hermes activity in the
 # operator report. Module-level so tests can monkeypatch to redirect
 # the read at a tmp_path fixture.
-_HERMES_AUDIT_LOG_PATH = Path(
-    r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\hermes_actions.jsonl",
-)
+_HERMES_AUDIT_LOG_PATH = workspace_roots.ETA_HERMES_ACTIONS_LOG_PATH
 
 
 def _run_elite_scoreboard(since_iso: str | None) -> dict[str, Any]:
@@ -574,14 +566,17 @@ def run_loop(
     try:
         from eta_engine.brain.jarvis_v3 import hermes_client  # type: ignore[import-not-found]
 
-        hermes_health["hermes_available"] = hermes_client.health()
-        # Backoff state is module-level inside hermes_client; expose
-        # via a helper if it's defined, else fall back to False.
-        hermes_health["backoff_active"] = getattr(
-            hermes_client,
-            "_backoff_active_for_kaizen",
-            lambda: False,
-        )()
+        available = bool(hermes_client.health())
+        hermes_health["hermes_available"] = available
+        # Only surface live backoff when the bridge itself is available;
+        # otherwise a stale local module flag can make report-only kaizen
+        # passes look unhealthy even though the live probe never came up.
+        if available:
+            hermes_health["backoff_active"] = getattr(
+                hermes_client,
+                "_backoff_active_for_kaizen",
+                lambda: False,
+            )()
     except Exception as exc:  # noqa: BLE001
         logger.warning("hermes_health: hermes_client probe failed: %s", exc)
 

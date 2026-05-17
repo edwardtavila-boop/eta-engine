@@ -4,9 +4,9 @@ Diamond receipts are written under the canonical workspace state tree:
 ``C:/EvolutionaryTradingAlgo/var/eta_engine/state``.
 
 Some local watch surfaces historically looked for the same filenames directly
-under ``C:/EvolutionaryTradingAlgo/var``. When that compatibility mirror is
-missing, a fresh canonical artifact can be misread as stale strategy truth.
-This script makes that distinction explicit.
+under ``C:/EvolutionaryTradingAlgo/var``. Those mirrors are non-authoritative.
+By default, a fresh canonical artifact is treated as healthy even when the
+legacy mirror is absent; use compatibility mode when auditing legacy readers.
 """
 
 from __future__ import annotations
@@ -205,6 +205,7 @@ def _assess_artifact(
     state_root: Path,
     root_var_dir: Path,
     now: datetime,
+    warn_on_missing_root_var_alias: bool,
 ) -> dict[str, Any]:
     canonical = inspect_artifact_candidate(
         "canonical_state",
@@ -228,30 +229,35 @@ def _assess_artifact(
         if root_var_alias.exists and root_var_alias.readable and root_var_alias.fresh:
             status = "fresh"
             diagnosis = "canonical_fresh_root_var_alias_present"
-        elif root_var_alias.exists and not root_var_alias.readable:
-            status = "fresh"
-            diagnosis = "canonical_fresh_root_var_alias_invalid"
-            surface_status = "warning"
-            warnings.append(
-                "Canonical artifact is fresh, but the root-var compatibility alias is unreadable. "
-                "Do not treat this as stale strategy truth."
-            )
-            action_items.append(
-                "Repair or remove the unreadable root-var compatibility alias; local watch surfaces should prefer "
-                "var/eta_engine/state."
-            )
         else:
-            status = "canonical_only"
-            diagnosis = "canonical_ready_root_var_missing"
-            surface_status = "warning"
-            warnings.append(
-                "Canonical artifact is fresh, but the root-var compatibility alias is missing. "
-                "This is a local watch-surface gap, not stale strategy truth."
-            )
-            action_items.append(
-                "Update local watch surfaces to read var/eta_engine/state first, or intentionally mirror this "
-                "artifact into root var/ if a compatibility consumer still depends on it."
-            )
+            status = "fresh"
+            if warn_on_missing_root_var_alias:
+                if root_var_alias.exists and not root_var_alias.readable:
+                    diagnosis = "canonical_fresh_root_var_alias_invalid"
+                    surface_status = "warning"
+                    warnings.append(
+                        "Canonical artifact is fresh, but the root-var compatibility alias is unreadable. "
+                        "Do not treat this as stale strategy truth."
+                    )
+                    action_items.append(
+                        "Repair or remove the unreadable root-var compatibility alias; local watch surfaces should prefer "
+                        "var/eta_engine/state."
+                    )
+                else:
+                    diagnosis = "canonical_ready_root_var_missing"
+                    surface_status = "warning"
+                    warnings.append(
+                        "Canonical artifact is fresh, but the root-var compatibility alias is missing. "
+                        "This is a local watch-surface gap, not stale strategy truth."
+                    )
+                    action_items.append(
+                        "Update local watch surfaces to read var/eta_engine/state first, or intentionally mirror this "
+                        "artifact into root var/ if a compatibility consumer still depends on it."
+                    )
+            elif root_var_alias.exists and not root_var_alias.readable:
+                diagnosis = "canonical_fresh_root_var_alias_ignored"
+            else:
+                diagnosis = "canonical_fresh_root_var_alias_not_required"
     elif not canonical.exists:
         status = "missing"
         if root_var_alias.exists and root_var_alias.readable and root_var_alias.fresh:
@@ -321,6 +327,7 @@ def build_diamond_artifact_surface_report(
     state_root: Path | None = None,
     root_var_dir: Path | None = None,
     now: datetime | None = None,
+    warn_on_missing_root_var_alias: bool = False,
 ) -> dict[str, Any]:
     now = now or datetime.now(UTC)
     if now.tzinfo is None:
@@ -330,7 +337,13 @@ def build_diamond_artifact_surface_report(
     root_var_dir = root_var_dir or ROOT_VAR_DIR
 
     artifacts = [
-        _assess_artifact(spec, state_root=state_root, root_var_dir=root_var_dir, now=now)
+        _assess_artifact(
+            spec,
+            state_root=state_root,
+            root_var_dir=root_var_dir,
+            now=now,
+            warn_on_missing_root_var_alias=warn_on_missing_root_var_alias,
+        )
         for spec in _artifact_specs()
     ]
 
@@ -402,11 +415,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--write-report", action="store_true", help="Write latest report under canonical state/health.")
     parser.add_argument("--state-root", type=Path, default=ETA_RUNTIME_STATE_DIR)
     parser.add_argument("--root-var-dir", type=Path, default=ROOT_VAR_DIR)
+    parser.add_argument(
+        "--warn-on-missing-root-var-alias",
+        action="store_true",
+        help="Audit legacy root-var compatibility mirrors instead of treating them as non-authoritative.",
+    )
     args = parser.parse_args(argv)
 
     report = build_diamond_artifact_surface_report(
         state_root=args.state_root,
         root_var_dir=args.root_var_dir,
+        warn_on_missing_root_var_alias=args.warn_on_missing_root_var_alias,
     )
     if args.write_report:
         report["report_path"] = str(write_diamond_artifact_surface_report(report, state_root=args.state_root))

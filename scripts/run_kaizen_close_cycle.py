@@ -12,7 +12,7 @@ What it does
   3. Computes KPIs (per-Outcome counts, override rate)
   4. Calls ``kaizen.close_cycle(...)`` to produce the Retrospective + the
      mandated +1 ticket
-  5. Appends both to the kaizen ledger JSONL
+  5. Persists both to the canonical kaizen ledger JSON
   6. Fires a Resend ``kaizen_plus_one`` alert with the +1 ticket title
 
 Doctrine: every cycle MUST emit at least one +1 ticket -- Kaizen = +1 always.
@@ -53,6 +53,7 @@ from eta_engine.obs.decision_journal import (  # noqa: E402
     Outcome,
     default_journal,
 )
+from eta_engine.scripts import workspace_roots  # noqa: E402
 
 logger = logging.getLogger("kaizen_close_cycle")
 
@@ -177,8 +178,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument(
         "--ledger",
         type=Path,
-        default=ROOT / "docs" / "kaizen_ledger.jsonl",
-        help="Kaizen ledger JSONL (default: eta_engine/docs/kaizen_ledger.jsonl)",
+        default=workspace_roots.ETA_KAIZEN_LEDGER_PATH,
+        help="Kaizen ledger JSON (default: var/eta_engine/state/kaizen_ledger.json)",
     )
     p.add_argument(
         "--window-hours", type=float, default=24.0, help="Look back this many hours for events (default: 24)"

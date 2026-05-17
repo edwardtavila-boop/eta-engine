@@ -9,16 +9,18 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 
-ROOT = Path(r"C:\EvolutionaryTradingAlgo\eta_engine")
+ROOT = Path(__file__).resolve().parents[1]
+WORKSPACE_ROOT = ROOT.parent
 os.chdir(str(ROOT))
-sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(WORKSPACE_ROOT))
 
+from eta_engine.scripts import workspace_roots  # noqa: E402
 from eta_engine.strategies.per_bot_registry import all_assignments, is_active  # noqa: E402
 
-LEDGER = Path(r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\paper_soak_ledger.json")
-LOG = Path(r"C:\EvolutionaryTradingAlgo\firm_command_center\var\soak_direct.log")
-PYTHON = r"C:\EvolutionaryTradingAlgo\eta_engine\.venv\Scripts\python.exe"
-SIM = r"C:\EvolutionaryTradingAlgo\eta_engine\scripts\paper_trade_sim.py"
+LEDGER = workspace_roots.ensure_parent(workspace_roots.ETA_PAPER_SOAK_LEDGER_PATH)
+LOG = workspace_roots.ensure_parent(workspace_roots.ETA_RUNTIME_LOG_DIR / "soak_direct.log")
+PYTHON = str(ROOT / ".venv" / "Scripts" / "python.exe")
+SIM = str(ROOT / "scripts" / "paper_trade_sim.py")
 
 DAYS = 60
 TIMEOUT = 1200

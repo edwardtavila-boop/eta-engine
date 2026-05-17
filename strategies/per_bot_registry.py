@@ -662,6 +662,12 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "enable_vix_filter": True,
             "vix_lookback_bars": 252,
             "vix_pct_threshold": 0.90,
+            # 2026-05-13 forensic correction: this bot's qty-band split was
+            # traced to supervisor partial-profit slicing, not an
+            # orb_sage_gated vol_low_size_mult control. Keep the bot in soak,
+            # but disable the partial-profit feature for this lane while the
+            # corrected experiment runs.
+            "partial_profit_enabled": False,
             "alpha_sniper": {
                 "enable_tape_reading": True,
                 "enable_intermarket": True,

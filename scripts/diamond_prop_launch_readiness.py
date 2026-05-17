@@ -27,6 +27,8 @@ Pre-launch checklist (each must be GO):
                               (proves the cron is firing)
   R7_LEDGER_FRESH             closed_trade_ledger < AGE_LIMIT_HOURS old
                               (proves the data feed is alive)
+  R8_BROKER_TRUTH_CONFIRMED   broker-truth retune focus is not negative-edge
+                              and does not still need broker-proof closes
 
 Verdict bands:
   GO            All 7 gates pass — safe to cut over Monday
@@ -59,18 +61,17 @@ from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-ROOT = Path(__file__).resolve().parents[1]
-WORKSPACE_ROOT = ROOT.parent
-STATE_DIR = WORKSPACE_ROOT / "var" / "eta_engine" / "state"
+from eta_engine.scripts import workspace_roots
 
-LEADERBOARD_PATH = STATE_DIR / "diamond_leaderboard_latest.json"
-PROP_ALLOCATOR_PATH = STATE_DIR / "diamond_prop_allocator_latest.json"
-DRAWDOWN_GUARD_PATH = STATE_DIR / "diamond_prop_drawdown_guard_latest.json"
-SIZING_AUDIT_PATH = STATE_DIR / "diamond_sizing_audit_latest.json"
-WATCHDOG_PATH = STATE_DIR / "diamond_watchdog_latest.json"
-FEED_SANITY_PATH = STATE_DIR / "diamond_feed_sanity_audit_latest.json"
-LEDGER_PATH = STATE_DIR / "closed_trade_ledger_latest.json"
-OUT_LATEST = STATE_DIR / "diamond_prop_launch_readiness_latest.json"
+LEADERBOARD_PATH = workspace_roots.ETA_DIAMOND_LEADERBOARD_PATH
+PROP_ALLOCATOR_PATH = workspace_roots.ETA_DIAMOND_PROP_ALLOCATOR_PATH
+DRAWDOWN_GUARD_PATH = workspace_roots.ETA_DIAMOND_PROP_DRAWDOWN_GUARD_PATH
+SIZING_AUDIT_PATH = workspace_roots.ETA_DIAMOND_SIZING_AUDIT_PATH
+WATCHDOG_PATH = workspace_roots.ETA_DIAMOND_WATCHDOG_PATH
+FEED_SANITY_PATH = workspace_roots.ETA_DIAMOND_FEED_SANITY_AUDIT_PATH
+LEDGER_PATH = workspace_roots.ETA_CLOSED_TRADE_LEDGER_PATH
+RETUNE_STATUS_PATH = workspace_roots.ETA_DIAMOND_RETUNE_STATUS_PATH
+OUT_LATEST = workspace_roots.ETA_DIAMOND_PROP_LAUNCH_READINESS_PATH
 
 #: Default operator-set launch target.
 #: Operator directive (2026-05-14): no live capital before 2026-07-08.
@@ -408,6 +409,102 @@ def _check_R7_ledger_fresh(ledger_path: Path) -> GateResult:
     )
 
 
+def _check_R8_broker_truth(retune_status: dict[str, Any] | None) -> GateResult:
+    """Require broker-truth focus to be clean before live cutover."""
+    if not retune_status:
+        return GateResult(
+            "R8_BROKER_TRUTH_CONFIRMED",
+            "NO_GO",
+            rationale="diamond retune status missing — broker-truth launch surface unavailable",
+        )
+
+    summary = retune_status.get("summary") if isinstance(retune_status.get("summary"), dict) else {}
+    focus_bot = str(summary.get("broker_truth_focus_bot_id") or retune_status.get("focus_bot") or "").strip()
+    edge_status = str(summary.get("broker_truth_focus_edge_status") or "").strip()
+    closes = int(summary.get("broker_truth_focus_closed_trade_count") or retune_status.get("focus_closed_trade_count") or 0)
+    required = int(summary.get("broker_truth_focus_required_closed_trade_count") or 100)
+    remaining = int(
+        summary.get("broker_truth_focus_remaining_closed_trade_count")
+        or max(required - closes, 0)
+    )
+    total_realized_pnl = float(
+        summary.get("broker_truth_focus_total_realized_pnl") or retune_status.get("focus_total_realized_pnl") or 0.0
+    )
+    profit_factor = float(
+        summary.get("broker_truth_focus_profit_factor") or retune_status.get("focus_profit_factor") or 0.0
+    )
+    active_experiment = summary.get("broker_truth_focus_active_experiment")
+    if not isinstance(active_experiment, dict):
+        active_experiment = retune_status.get("focus_active_experiment")
+    active_experiment = active_experiment if isinstance(active_experiment, dict) else {}
+    detail = {
+        "focus_bot": focus_bot,
+        "edge_status": edge_status or "unknown",
+        "closed_trade_count": closes,
+        "required_closed_trade_count": required,
+        "remaining_closed_trade_count": remaining,
+        "total_realized_pnl": round(total_realized_pnl, 2),
+        "profit_factor": round(profit_factor, 4),
+        "next_action": str(summary.get("broker_truth_focus_next_action") or retune_status.get("focus_next_action") or ""),
+    }
+    if active_experiment:
+        detail["active_experiment"] = active_experiment
+
+    if not focus_bot or not edge_status:
+        return GateResult(
+            "R8_BROKER_TRUTH_CONFIRMED",
+            "HOLD",
+            rationale="broker-truth focus is missing key fields — review retune status before launch",
+            detail=detail,
+        )
+    if edge_status == "sample_met_negative_edge":
+        return GateResult(
+            "R8_BROKER_TRUTH_CONFIRMED",
+            "NO_GO",
+            rationale=(
+                f"broker truth negative on {focus_bot}: sample met ({closes}/{required}) "
+                f"but PnL=${total_realized_pnl:,.2f} PF={profit_factor:.2f}"
+            ),
+            detail=detail,
+        )
+    if edge_status in {"needs_more_broker_closes", "missing_closed_trade_ledger"}:
+        return GateResult(
+            "R8_BROKER_TRUTH_CONFIRMED",
+            "HOLD",
+            rationale=(
+                f"broker proof incomplete for {focus_bot}: {remaining} more closes needed "
+                f"({closes}/{required}) before launch confidence"
+            ),
+            detail=detail,
+        )
+    if edge_status == "broker_edge_ready":
+        if active_experiment.get("partial_profit_enabled") is True:
+            return GateResult(
+                "R8_BROKER_TRUTH_CONFIRMED",
+                "HOLD",
+                rationale=(
+                    f"broker sample is positive for {focus_bot}, but the active experiment still has "
+                    "partial_profit_enabled=true; verify unsliced USD truth before launch"
+                ),
+                detail=detail,
+            )
+        return GateResult(
+            "R8_BROKER_TRUTH_CONFIRMED",
+            "GO",
+            rationale=(
+                f"broker truth clean for {focus_bot}: positive sample ({closes}/{required}) "
+                f"PnL=${total_realized_pnl:,.2f} PF={profit_factor:.2f}"
+            ),
+            detail=detail,
+        )
+    return GateResult(
+        "R8_BROKER_TRUTH_CONFIRMED",
+        "HOLD",
+        rationale=f"broker truth for {focus_bot or 'focus bot'} is inconclusive ({edge_status}); review before launch",
+        detail=detail,
+    )
+
+
 # ────────────────────────────────────────────────────────────────────
 # Aggregator
 # ────────────────────────────────────────────────────────────────────
@@ -430,6 +527,7 @@ def run(launch_date_str: str = DEFAULT_LAUNCH_DATE) -> dict[str, Any]:
     sizing = _load_json(SIZING_AUDIT_PATH)
     watchdog = _load_json(WATCHDOG_PATH)
     feed = _load_json(FEED_SANITY_PATH)
+    retune_status = _load_json(RETUNE_STATUS_PATH)
 
     prop_ready = set(leaderboard.get("prop_ready_bots") or [])
     today = datetime.now(UTC).date()
@@ -448,6 +546,7 @@ def run(launch_date_str: str = DEFAULT_LAUNCH_DATE) -> dict[str, Any]:
         _check_R5_watchdog(watchdog, prop_ready),
         _check_R6_allocator_fresh(PROP_ALLOCATOR_PATH),
         _check_R7_ledger_fresh(LEDGER_PATH),
+        _check_R8_broker_truth(retune_status),
     ]
 
     verdict, summary = _aggregate_verdict(gates)

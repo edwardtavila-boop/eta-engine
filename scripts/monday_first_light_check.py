@@ -26,7 +26,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 import urllib.error
 import urllib.parse
@@ -35,10 +34,14 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-WORKSPACE_ROOT = Path(r"C:\EvolutionaryTradingAlgo")
-HEARTBEAT_PATH = WORKSPACE_ROOT / "var" / "eta_engine" / "state" / "jarvis_intel" / "supervisor" / "heartbeat.json"
-DRAWDOWN_PATH = WORKSPACE_ROOT / "var" / "eta_engine" / "state" / "diamond_prop_drawdown_guard_latest.json"
-SHADOW_SIGNALS_PATH = WORKSPACE_ROOT / "var" / "eta_engine" / "state" / "jarvis_intel" / "shadow_signals.jsonl"
+from eta_engine.scripts.retune_advisory_cache import build_retune_advisory, summarize_active_experiment
+from eta_engine.scripts import workspace_roots
+
+WORKSPACE_ROOT = workspace_roots.WORKSPACE_ROOT
+HEALTH_DIR = workspace_roots.ETA_RUNTIME_HEALTH_DIR
+HEARTBEAT_PATH = workspace_roots.ETA_JARVIS_SUPERVISOR_HEARTBEAT_PATH
+DRAWDOWN_PATH = workspace_roots.ETA_DIAMOND_PROP_DRAWDOWN_GUARD_PATH
+SHADOW_SIGNALS_PATH = workspace_roots.ETA_JARVIS_SHADOW_SIGNALS_PATH
 
 HEARTBEAT_STALE_SECONDS = 300  # 5 min
 SHADOW_RECENT_SECONDS = 600  # 10 min
@@ -61,6 +64,35 @@ def _safe_load_json(path: Path) -> dict | None:
         return json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return None
+
+
+def _health_dir() -> Path:
+    return HEALTH_DIR
+
+
+def _load_json_dict(path: Path) -> dict:
+    payload = _safe_load_json(path)
+    if isinstance(payload, dict):
+        return payload
+    return {}
+
+
+def _dict_field(payload: dict, key: str) -> dict:
+    value = payload.get(key)
+    if isinstance(value, dict):
+        return value
+    return {}
+
+
+def _string_list(payload: dict, key: str) -> list[str]:
+    value = payload.get(key)
+    if not isinstance(value, list):
+        return []
+    return [str(item) for item in value if str(item).strip()]
+
+
+def _retune_advisory() -> dict:
+    return build_retune_advisory(_health_dir())
 
 
 def _check_supervisor_alive() -> Check:
@@ -108,9 +140,11 @@ def _check_lifecycle_opt_in() -> Check:
 
 
 def _check_alert_channel() -> Check:
-    telegram = bool(os.environ.get("ETA_TELEGRAM_BOT_TOKEN") and os.environ.get("ETA_TELEGRAM_CHAT_ID"))
-    discord = bool(os.environ.get("ETA_DISCORD_WEBHOOK_URL"))
-    generic = bool(os.environ.get("ETA_GENERIC_WEBHOOK_URL"))
+    from eta_engine.scripts import alert_channel_config  # noqa: PLC0415
+
+    telegram = alert_channel_config.telegram_configured()
+    discord = alert_channel_config.discord_configured()
+    generic = alert_channel_config.generic_configured()
     if not (telegram or discord or generic):
         return Check(
             "alert_channel",
@@ -138,8 +172,10 @@ def _check_recent_shadow_activity() -> Check:
 
 
 def _push_telegram(message: str) -> tuple[bool, str]:
-    token = os.environ.get("ETA_TELEGRAM_BOT_TOKEN", "").strip()
-    chat_id = os.environ.get("ETA_TELEGRAM_CHAT_ID", "").strip()
+    from eta_engine.scripts import alert_channel_config  # noqa: PLC0415
+
+    token = alert_channel_config.get_telegram_bot_token()
+    chat_id = alert_channel_config.get_telegram_chat_id()
     if not (token and chat_id):
         return False, "telegram not configured"
     url = f"https://api.telegram.org/bot{token}/sendMessage"
@@ -165,7 +201,12 @@ def _aggregate(checks: list[Check]) -> tuple[str, str]:
     return "GO", "all checks green"
 
 
-def _format_telegram_body(verdict: str, summary: str, checks: list[Check]) -> str:
+def _format_telegram_body(
+    verdict: str,
+    summary: str,
+    checks: list[Check],
+    retune_advisory: dict | None = None,
+) -> str:
     emoji = {"GO": "🟢", "HOLD": "🟡", "NO_GO": "🔴"}.get(verdict, "❓")
     lines = [
         f"{emoji} *FIRST LIGHT {verdict}*",
@@ -173,6 +214,36 @@ def _format_telegram_body(verdict: str, summary: str, checks: list[Check]) -> st
         f"`{summary}`",
         "",
     ]
+    if retune_advisory and retune_advisory.get("available"):
+        focus_pnl = retune_advisory.get("focus_total_realized_pnl")
+        focus_pf = retune_advisory.get("focus_profit_factor")
+        pnl_text = f"${focus_pnl:+.2f}" if isinstance(focus_pnl, int | float) else "n/a"
+        pf_text = f"{focus_pf:.2f}" if isinstance(focus_pf, int | float) else "n/a"
+        lines.append(
+            "Retune truth: "
+            f"{retune_advisory.get('focus_bot')} "
+            f"{retune_advisory.get('focus_state')} "
+            f"issue={retune_advisory.get('focus_issue')}"
+        )
+        lines.append(
+            "Broker proof: "
+            f"closes={retune_advisory.get('focus_closed_trade_count')} "
+            f"pnl={pnl_text} pf={pf_text}"
+        )
+        if retune_advisory.get("diagnosis"):
+            lines.append(f"Local drift: {retune_advisory.get('diagnosis')}")
+        if retune_advisory.get("preferred_warning"):
+            lines.append(f"Warning: {retune_advisory.get('preferred_warning')}")
+        experiment = summarize_active_experiment(retune_advisory.get("active_experiment"))
+        if experiment:
+            lines.append(f"Post-fix experiment: {experiment['headline']}")
+            lines.append(
+                f"partial_profit_enabled={experiment['partial_profit_enabled_text']} "
+                f"closes={experiment['post_change_closed_trade_count_text']} "
+                f"pnl={experiment['post_change_total_realized_pnl_text']} "
+                f"pf={experiment['post_change_profit_factor_text']}"
+            )
+        lines.append("")
     for c in checks:
         mark = {"GO": "OK", "HOLD": "??", "NO_GO": "XX"}.get(c.status, "?")
         lines.append(f"[{mark}] {c.name}: {c.detail}")
@@ -196,6 +267,7 @@ def main(argv: list[str] | None = None) -> int:
         _check_alert_channel(),
         _check_recent_shadow_activity(),
     ]
+    retune_advisory = _retune_advisory()
     verdict, summary = _aggregate(checks)
 
     report = {
@@ -203,12 +275,13 @@ def main(argv: list[str] | None = None) -> int:
         "verdict": verdict,
         "summary": summary,
         "checks": [{"name": c.name, "status": c.status, "detail": c.detail} for c in checks],
+        "retune_advisory": retune_advisory,
     }
 
     # Push to Telegram unless --no-push
     push_result = None
     if not args.no_push:
-        body = _format_telegram_body(verdict, summary, checks)
+        body = _format_telegram_body(verdict, summary, checks, retune_advisory=retune_advisory)
         ok, detail = _push_telegram(body)
         push_result = {"sent": ok, "detail": detail}
         report["telegram"] = push_result
@@ -226,6 +299,37 @@ def main(argv: list[str] | None = None) -> int:
         for c in checks:
             mark = {"GO": " OK", "HOLD": " ??", "NO_GO": " XX"}.get(c.status, "  ?")
             print(f"  [{mark}] {c.name:<18}  {c.detail}")
+        if retune_advisory.get("available"):
+            focus_pnl = retune_advisory.get("focus_total_realized_pnl")
+            focus_pf = retune_advisory.get("focus_profit_factor")
+            broker_mtd = retune_advisory.get("broker_mtd_pnl")
+            pnl_text = f"${focus_pnl:+.2f}" if isinstance(focus_pnl, int | float) else "n/a"
+            pf_text = f"{focus_pf:.2f}" if isinstance(focus_pf, int | float) else "n/a"
+            mtd_text = f"${broker_mtd:+.2f}" if isinstance(broker_mtd, int | float) else "n/a"
+            print()
+            print(
+                "  retune advisory: "
+                f"{retune_advisory.get('focus_bot')} "
+                f"{retune_advisory.get('focus_state')} "
+                f"issue={retune_advisory.get('focus_issue')}"
+            )
+            print(
+                "                   "
+                f"closes={retune_advisory.get('focus_closed_trade_count')} "
+                f"pnl={pnl_text} pf={pf_text} mtd={mtd_text}"
+            )
+            if retune_advisory.get("diagnosis"):
+                print(f"                   drift={retune_advisory.get('diagnosis')}")
+            experiment = summarize_active_experiment(retune_advisory.get("active_experiment"))
+            if experiment:
+                print(f"                   post-fix experiment: {experiment['headline']}")
+                print(
+                    "                                       "
+                    f"partial_profit_enabled={experiment['partial_profit_enabled_text']} "
+                    f"closes={experiment['post_change_closed_trade_count_text']} "
+                    f"pnl={experiment['post_change_total_realized_pnl_text']} "
+                    f"pf={experiment['post_change_profit_factor_text']}"
+                )
         if push_result is not None:
             sent_mark = "OK" if push_result["sent"] else "FAIL"
             print()

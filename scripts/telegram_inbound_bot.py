@@ -43,9 +43,10 @@ State
 -----
 
 The bot persists its last-seen update_id to
-``var/telegram_inbound_offset.json`` so a restart doesn't replay old
-messages. The silence file ``var/telegram_silence_until.json`` is read
-by the outbound pulse to suppress sends.
+``var/eta_engine/state/telegram_inbound_offset.json`` so a restart
+doesn't replay old messages. The silence file
+``var/eta_engine/state/telegram_silence_until.json`` is read by the
+outbound pulse to suppress sends.
 
 Failure modes
 -------------
@@ -72,18 +73,27 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from eta_engine.scripts import workspace_roots
+
 logger = logging.getLogger("eta_engine.scripts.telegram_inbound_bot")
 
-_WORKSPACE = Path(r"C:\EvolutionaryTradingAlgo")
-_VAR_ROOT = _WORKSPACE / "var"
-_OFFSET_PATH = _VAR_ROOT / "telegram_inbound_offset.json"
-_SILENCE_PATH = _VAR_ROOT / "telegram_silence_until.json"
-_LOG_PATH = _VAR_ROOT / "telegram_inbound.jsonl"
+_WORKSPACE = workspace_roots.WORKSPACE_ROOT
+_VAR_ROOT = workspace_roots.ROOT_VAR_DIR
+_OFFSET_PATH = workspace_roots.ETA_TELEGRAM_INBOUND_OFFSET_PATH
+_SILENCE_PATH = workspace_roots.ETA_TELEGRAM_SILENCE_UNTIL_PATH
+_LOG_PATH = workspace_roots.ETA_TELEGRAM_INBOUND_AUDIT_LOG_PATH
+_ANOMALY_HITS_LOG = workspace_roots.ETA_ANOMALY_HITS_LOG_PATH
+_HERMES_STATE_PATH = workspace_roots.ETA_HERMES_STATE_PATH
 
 POLL_TIMEOUT_S = 25  # Telegram long-poll
 SHORT_BACKOFF_S = 5
 LONG_BACKOFF_S = 60
 MAX_REPLY_BODY = 3500  # keep below Telegram 4000 ceiling
+
+_LEGACY_JSON_PATHS = {
+    _OFFSET_PATH: workspace_roots.ETA_LEGACY_TELEGRAM_INBOUND_OFFSET_PATH,
+    _SILENCE_PATH: workspace_roots.ETA_LEGACY_TELEGRAM_SILENCE_UNTIL_PATH,
+}
 
 
 # ---------------------------------------------------------------------------
@@ -96,12 +106,18 @@ def _now_iso() -> str:
 
 
 def _read_json(path: Path) -> dict[str, Any] | None:
-    if not path.exists():
-        return None
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return None
+    candidates = [path]
+    legacy = _LEGACY_JSON_PATHS.get(path)
+    if legacy is not None and legacy.exists():
+        candidates.append(legacy)
+    for candidate in candidates:
+        if not candidate.exists():
+            continue
+        try:
+            return json.loads(candidate.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+    return None
 
 
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
@@ -716,8 +732,6 @@ def _cmd_killall(reason: str) -> str:
     reason = reason.strip()
     if not reason:
         return "_usage: `/killall <reason>` — reason is required for prop-firm audit_"
-    workspace = _WORKSPACE
-    state_path = workspace / "var" / "eta_engine" / "state" / "jarvis_intel" / "hermes_state.json"
     payload = {
         "kill_all": True,
         "reason": f"telegram /killall: {reason}",
@@ -725,10 +739,10 @@ def _cmd_killall(reason: str) -> str:
         "source": "telegram_inbound_bot",
     }
     try:
-        state_path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = state_path.with_suffix(state_path.suffix + ".tmp")
+        _HERMES_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        tmp = _HERMES_STATE_PATH.with_suffix(_HERMES_STATE_PATH.suffix + ".tmp")
         tmp.write_text(json.dumps(payload), encoding="utf-8")
-        os.replace(tmp, state_path)
+        os.replace(tmp, _HERMES_STATE_PATH)
     except OSError as exc:
         return f"_killall FAILED to write state file_: `{exc}`"
     return (
@@ -743,7 +757,7 @@ def _cmd_ack(key: str) -> str:
     key = key.strip()
     if not key:
         return "_usage: `/ack PATTERN:BOT:STREAK` (copy from /anomalies output)_"
-    hits_log = _WORKSPACE / "var" / "anomaly_watcher.jsonl"
+    hits_log = _resolve_anomaly_hits_log()
     if not hits_log.exists():
         return "_no anomaly log to ack against_"
     try:
@@ -754,6 +768,13 @@ def _cmd_ack(key: str) -> str:
     except (OSError, json.JSONDecodeError) as exc:
         return f"_ack failed_: `{exc}`"
     return f"_Cleared dedup key `{key}` — will re-fire on next scan._"
+
+def _resolve_anomaly_hits_log() -> Path:
+    if _ANOMALY_HITS_LOG.exists() or _ANOMALY_HITS_LOG != workspace_roots.ETA_ANOMALY_HITS_LOG_PATH:
+        return _ANOMALY_HITS_LOG
+    if workspace_roots.ETA_LEGACY_ANOMALY_HITS_LOG_PATH.exists():
+        return workspace_roots.ETA_LEGACY_ANOMALY_HITS_LOG_PATH
+    return _ANOMALY_HITS_LOG
 
 
 # Public registry for tests
@@ -828,7 +849,8 @@ _HERMES_SESSION_PREFIX = "telegram"
 # Resets the conversation on big gaps so Hermes doesn't try to thread
 # yesterday's questions with tonight's, which usually hurts more than helps.
 _HERMES_SESSION_TTL_S = 6 * 60 * 60  # 6 hours
-_HERMES_LAST_CHAT_PATH = _VAR_ROOT / "telegram_hermes_last_chat.json"
+_HERMES_LAST_CHAT_PATH = workspace_roots.ETA_TELEGRAM_HERMES_LAST_CHAT_PATH
+_LEGACY_JSON_PATHS[_HERMES_LAST_CHAT_PATH] = workspace_roots.ETA_LEGACY_TELEGRAM_HERMES_LAST_CHAT_PATH
 
 
 def _session_name_for_chat(chat_id: int | str | None) -> str:

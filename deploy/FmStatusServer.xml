@@ -3,7 +3,7 @@
   <name>FmStatusServer</name>
   <description>ETA Force Multiplier Status Server</description>
   <executable>C:\EvolutionaryTradingAlgo\eta_engine\.venv\Scripts\python.exe</executable>
-  <arguments>-m uvicorn eta_engine.deploy.fm_status_server:app --host 127.0.0.1 --port 8422 --proxy-headers --forwarded-allow-ips=127.0.0.1</arguments>
+  <arguments>-m eta_engine.deploy.fm_status_http_server --host 127.0.0.1 --port 8422</arguments>
   <workingdirectory>C:\EvolutionaryTradingAlgo</workingdirectory>
   <env name="PYTHONPATH" value="C:\EvolutionaryTradingAlgo;C:\EvolutionaryTradingAlgo\eta_engine;C:\EvolutionaryTradingAlgo\mnq_bot\src"/>
   <env name="PYTHONUTF8" value="1"/>

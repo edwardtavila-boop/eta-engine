@@ -49,11 +49,13 @@ from typing import Any
 import numpy as np
 import yaml
 
+from eta_engine.scripts import workspace_roots
+
 log = logging.getLogger("strategy_lab")
 
 # ─── Canonical roots ──────────────────────────────────────────────
 
-_WS = Path(os.environ.get("ETA_WORKSPACE", r"C:\EvolutionaryTradingAlgo"))
+_WS = Path(os.environ.get("ETA_WORKSPACE", str(workspace_roots.WORKSPACE_ROOT)))
 MNQ_HISTORY_ROOT = _WS / "mnq_data" / "history"
 # Coinbase recurring-refresh mirror (1m/5m/1h/D up to 12mo via merge fetcher)
 CRYPTO_HISTORY_ROOT = _WS / "data" / "crypto" / "ibkr" / "history"

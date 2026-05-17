@@ -228,7 +228,7 @@ foreach ($t in $scheduledTasks) {
 Write-Log "Step 7/8 -- boot-time tasks (jarvis-live, avengers-fleet, dashboard)"
 
 $bootTasks = @(
-    @{ Name = "ETA-Jarvis-Live";       Script = "eta_engine.scripts.jarvis_live"; Args = "--inputs docs\premarket_inputs.json --out-dir `"$stateDir`" --interval 60" },
+    @{ Name = "ETA-Jarvis-Live";       Script = "eta_engine.scripts.jarvis_live"; Args = "--out-dir `"$stateDir`" --interval 60" },
     @{ Name = "ETA-Avengers-Fleet";    Script = "deploy.scripts.avengers_daemon";    Args = "--state-dir `"$stateDir`" --log-dir `"$logDir`"" },
     @{ Name = "ETA-Dashboard";         Script = "uvicorn";                            Args = "eta_engine.main:app --host 127.0.0.1 --port 8000" }
 )

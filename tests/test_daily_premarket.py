@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 from eta_engine.brain.jarvis_context import ActionSuggestion
 from eta_engine.scripts import daily_premarket
+from eta_engine.scripts import workspace_roots
 from eta_engine.scripts.daily_premarket import _render_text, run
 
 if TYPE_CHECKING:
@@ -49,6 +50,11 @@ def _green_inputs() -> dict:
 # --------------------------------------------------------------------------- #
 # run()
 # --------------------------------------------------------------------------- #
+
+
+def test_daily_premarket_defaults_use_canonical_output_and_resolved_inputs() -> None:
+    assert daily_premarket.DEFAULT_OUT_DIR == workspace_roots.ETA_PREMARKET_REPORT_DIR
+    assert daily_premarket.DEFAULT_INPUTS == workspace_roots.default_premarket_inputs_path()
 
 
 def test_run_produces_three_outputs(tmp_path: Path) -> None:

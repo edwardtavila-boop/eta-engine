@@ -16,6 +16,35 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     import pytest
 
+
+def _patch_anomaly_log_paths(
+    monkeypatch: pytest.MonkeyPatch,
+    preflight,
+    *,
+    canonical: Path,
+    legacy: Path,
+) -> None:
+    monkeypatch.setattr(preflight, "_ANOMALY_HITS_LOG", canonical)
+    monkeypatch.setattr(preflight, "_LEGACY_ANOMALY_HITS_LOG", legacy)
+
+
+def _patch_telegram_paths(
+    monkeypatch: pytest.MonkeyPatch,
+    preflight,
+    root: Path,
+) -> dict[str, Path]:
+    paths = {
+        "_TELEGRAM_INBOUND_OFFSET_PATH": root / "telegram_inbound_offset.json",
+        "_TELEGRAM_INBOUND_AUDIT_LOG_PATH": root / "logs" / "telegram_inbound.jsonl",
+        "_LEGACY_TELEGRAM_INBOUND_OFFSET_PATH": root / "legacy_telegram_inbound_offset.json",
+        "_LEGACY_TELEGRAM_INBOUND_AUDIT_LOG_PATH": root / "legacy_telegram_inbound.jsonl",
+        "_LEGACY_TELEGRAM_INBOUND_LOG_PATH": root / "telegram_inbound.log",
+        "_LEGACY_TELEGRAM_INBOUND_ERR_PATH": root / "telegram_inbound.err",
+    }
+    for attr, path in paths.items():
+        monkeypatch.setattr(preflight, attr, path)
+    return paths
+
 # ---------------------------------------------------------------------------
 # Fundamentals
 # ---------------------------------------------------------------------------
@@ -273,7 +302,12 @@ def test_check_open_critical_anomalies_passes_when_no_log(
 ) -> None:
     from eta_engine.brain.jarvis_v3 import preflight
 
-    monkeypatch.setattr(preflight, "_ANOMALY_HITS_LOG", tmp_path / "no_log.jsonl")
+    _patch_anomaly_log_paths(
+        monkeypatch,
+        preflight,
+        canonical=tmp_path / "no_log.jsonl",
+        legacy=tmp_path / "no_legacy_log.jsonl",
+    )
     check = preflight.check_no_open_critical_anomalies()
     assert check.status == "PASS"
 
@@ -298,7 +332,12 @@ def test_check_open_critical_anomalies_fails_on_recent_critical(
             )
             + "\n"
         )
-    monkeypatch.setattr(preflight, "_ANOMALY_HITS_LOG", log)
+    _patch_anomaly_log_paths(
+        monkeypatch,
+        preflight,
+        canonical=log,
+        legacy=tmp_path / "legacy_missing.jsonl",
+    )
     check = preflight.check_no_open_critical_anomalies()
     assert check.status == "FAIL"
     assert check.extras["n_critical"] == 1
@@ -324,7 +363,12 @@ def test_check_open_critical_anomalies_ignores_old_hits(
             )
             + "\n"
         )
-    monkeypatch.setattr(preflight, "_ANOMALY_HITS_LOG", log)
+    _patch_anomaly_log_paths(
+        monkeypatch,
+        preflight,
+        canonical=log,
+        legacy=tmp_path / "legacy_missing.jsonl",
+    )
     check = preflight.check_no_open_critical_anomalies()
     assert check.status == "PASS"
 
@@ -349,9 +393,45 @@ def test_check_open_critical_anomalies_ignores_warn_severity(
             )
             + "\n"
         )
-    monkeypatch.setattr(preflight, "_ANOMALY_HITS_LOG", log)
+    _patch_anomaly_log_paths(
+        monkeypatch,
+        preflight,
+        canonical=log,
+        legacy=tmp_path / "legacy_missing.jsonl",
+    )
     check = preflight.check_no_open_critical_anomalies()
     assert check.status == "PASS"
+
+
+def test_check_open_critical_anomalies_reads_legacy_fallback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from eta_engine.brain.jarvis_v3 import preflight
+
+    now = datetime.now(UTC)
+    legacy_log = tmp_path / "legacy_hits.jsonl"
+    legacy_log.write_text(
+        json.dumps(
+            {
+                "asof": (now - timedelta(hours=1)).isoformat(),
+                "pattern": "fleet_drawdown",
+                "severity": "critical",
+                "detail": "legacy critical hit",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    _patch_anomaly_log_paths(
+        monkeypatch,
+        preflight,
+        canonical=tmp_path / "missing.jsonl",
+        legacy=legacy_log,
+    )
+    check = preflight.check_no_open_critical_anomalies()
+    assert check.status == "FAIL"
+    assert check.extras["n_critical"] == 1
 
 
 def test_check_telegram_inbound_warns_when_no_evidence(
@@ -361,10 +441,10 @@ def test_check_telegram_inbound_warns_when_no_evidence(
     """No offset file AND no log → bot has not started yet."""
     from eta_engine.brain.jarvis_v3 import preflight
 
-    monkeypatch.setattr(preflight, "_VAR_ROOT", tmp_path)
+    _patch_telegram_paths(monkeypatch, preflight, tmp_path)
     check = preflight.check_telegram_inbound_running()
     assert check.status == "WARN"
-    assert "may not have started" in check.detail or "no offset" in check.detail
+    assert "may not have started" in check.detail or "no inbound" in check.detail
 
 
 def test_check_telegram_inbound_passes_with_recent_log(
@@ -374,9 +454,10 @@ def test_check_telegram_inbound_passes_with_recent_log(
     """Recent inbound log → bot is alive."""
     from eta_engine.brain.jarvis_v3 import preflight
 
-    log = tmp_path / "telegram_inbound.log"
+    paths = _patch_telegram_paths(monkeypatch, preflight, tmp_path)
+    log = paths["_TELEGRAM_INBOUND_AUDIT_LOG_PATH"]
+    log.parent.mkdir(parents=True, exist_ok=True)
     log.write_text("starting...\n", encoding="utf-8")
-    monkeypatch.setattr(preflight, "_VAR_ROOT", tmp_path)
     check = preflight.check_telegram_inbound_running()
     assert check.status == "PASS"
 
@@ -388,12 +469,27 @@ def test_check_telegram_inbound_warns_when_log_stale(
     """Log older than 12h → WARN even with offset file present."""
     from eta_engine.brain.jarvis_v3 import preflight
 
-    log = tmp_path / "telegram_inbound.log"
+    paths = _patch_telegram_paths(monkeypatch, preflight, tmp_path)
+    log = paths["_TELEGRAM_INBOUND_AUDIT_LOG_PATH"]
+    log.parent.mkdir(parents=True, exist_ok=True)
     log.write_text("old\n", encoding="utf-8")
-    monkeypatch.setattr(preflight, "_VAR_ROOT", tmp_path)
     monkeypatch.setattr(preflight, "_file_age_hours", lambda p: 24.0)
     check = preflight.check_telegram_inbound_running()
     assert check.status == "WARN"
+
+
+def test_check_telegram_inbound_passes_with_legacy_log_fallback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Legacy root-var log still counts during cutover."""
+    from eta_engine.brain.jarvis_v3 import preflight
+
+    paths = _patch_telegram_paths(monkeypatch, preflight, tmp_path)
+    legacy_log = paths["_LEGACY_TELEGRAM_INBOUND_LOG_PATH"]
+    legacy_log.write_text("legacy activity\n", encoding="utf-8")
+    check = preflight.check_telegram_inbound_running()
+    assert check.status == "PASS"
 
 
 def test_check_prop_firm_accounts_passes_when_all_ok(

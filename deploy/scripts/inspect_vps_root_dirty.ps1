@@ -11,6 +11,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$RuntimeOptionalSubmodules = @("mnq_backtest")
 
 function Assert-CanonicalEtaPath {
     param([Parameter(Mandatory = $true)][string]$Path)
@@ -26,10 +27,38 @@ function Assert-CanonicalEtaPath {
 
 function Invoke-GitLines {
     param([Parameter(Mandatory = $true)][string[]]$Arguments)
-    $lines = @(& git @Arguments 2>$null)
-    if ($LASTEXITCODE -ne 0) {
+
+    # Use ProcessStartInfo instead of native PowerShell invocation so benign
+    # Git stderr warnings (for example line-ending normalization on Windows)
+    # do not become terminating inventory failures.
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = "git"
+    $quotedArgs = @($Arguments | ForEach-Object {
+        if ("$_" -match "\s") {
+            '"' + ("$_" -replace '"', '\"') + '"'
+        }
+        else {
+            "$_"
+        }
+    })
+    $psi.Arguments = [string]::Join(" ", $quotedArgs)
+    $psi.WorkingDirectory = (Get-Location).Path
+    $psi.UseShellExecute = $false
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+
+    $proc = New-Object System.Diagnostics.Process
+    $proc.StartInfo = $psi
+    [void]$proc.Start()
+    $stdout = $proc.StandardOutput.ReadToEnd()
+    $stderr = $proc.StandardError.ReadToEnd()
+    $proc.WaitForExit()
+
+    if ($proc.ExitCode -ne 0) {
         return @()
     }
+
+    $lines = @($stdout -split "`r?`n")
     return @($lines | Where-Object { $_ -ne $null -and "$_".Trim() -ne "" })
 }
 
@@ -104,6 +133,8 @@ function Get-CompanionStatusMeaning {
 function Get-DirtyCompanionStatus {
     param(
         [AllowEmptyCollection()][string[]]$PorcelainLines = @(),
+        [AllowEmptyCollection()][string[]]$OptionalDormantSubmodules = @(),
+        [AllowEmptyCollection()][string[]]$UninitializedSubmodulePaths = @(),
         [Parameter(Mandatory = $true)][int]$Limit
     )
     $items = New-Object System.Collections.Generic.List[object]
@@ -116,9 +147,15 @@ function Get-DirtyCompanionStatus {
         if ((Get-PathCategory -Path $path) -ne "submodule_or_companion_repo") {
             continue
         }
+        $trimmedStatus = $statusCode.Trim()
+        $isOptionalDormant = @($OptionalDormantSubmodules) -contains $path
+        $isUninitialized = @($UninitializedSubmodulePaths) -contains $path
+        if ($isOptionalDormant -and $isUninitialized -and $trimmedStatus -eq "D") {
+            continue
+        }
         [void]$items.Add([ordered]@{
             path = $path
-            status = $statusCode.Trim()
+            status = $trimmedStatus
             meaning = Get-CompanionStatusMeaning -Status $statusCode
             line = "$line"
         })
@@ -140,8 +177,41 @@ try {
     $submodules = Invoke-GitLines -Arguments @("submodule", "status")
     $submoduleDrift = @($submodules | Where-Object { $_ -match "^\+" })
     $submoduleUninitialized = @($submodules | Where-Object { $_ -match "^-" })
+    $submoduleUninitializedPaths = @(
+        $submoduleUninitialized | ForEach-Object {
+            $parts = "$_".TrimStart("-").Trim() -split "\s+"
+            if ($parts.Length -ge 2) {
+                $parts[1].Trim()
+            }
+        } | Where-Object { $_ -and "$_".Trim() -ne "" }
+    )
+    $optionalDormantSubmodules = @(
+        $submoduleUninitializedPaths | Where-Object { @($RuntimeOptionalSubmodules) -contains $_ }
+    )
+    $optionalDormantDeletedTracked = @(
+        $deletedTracked | Where-Object { @($optionalDormantSubmodules) -contains $_ }
+    )
+    $effectiveDeletedTracked = @(
+        $deletedTracked | Where-Object { @($optionalDormantSubmodules) -notcontains $_ }
+    )
+    $effectivePorcelain = New-Object System.Collections.Generic.List[string]
+    foreach ($line in $porcelain) {
+        if ($null -eq $line -or "$line".Trim() -eq "") {
+            continue
+        }
+        if ("$line".Length -lt 4) {
+            [void]$effectivePorcelain.Add("$line")
+            continue
+        }
+        $statusCode = "$line".Substring(0, 2).Trim()
+        $path = "$line".Substring(3).Trim().Trim('"')
+        if ((@($optionalDormantSubmodules) -contains $path) -and $statusCode -eq "D") {
+            continue
+        }
+        [void]$effectivePorcelain.Add("$line")
+    }
 
-    $deletedSummary = New-CategorySummary -Paths $deletedTracked -Limit $SampleLimit
+    $deletedSummary = New-CategorySummary -Paths $effectiveDeletedTracked -Limit $SampleLimit
     $modifiedSummary = New-CategorySummary -Paths $modifiedTracked -Limit $SampleLimit
     $untrackedSummary = New-CategorySummary -Paths $untracked -Limit $SampleLimit
 
@@ -156,11 +226,17 @@ try {
     if ($modifiedSummary.Contains("unknown")) {
         $unknownCount += [int]$modifiedSummary["unknown"].count
     }
-    $dirtyCompanionStatus = @(Get-DirtyCompanionStatus -PorcelainLines $porcelain -Limit $SampleLimit)
+    $dirtyCompanionStatus = @(
+        Get-DirtyCompanionStatus `
+            -PorcelainLines $porcelain `
+            -OptionalDormantSubmodules $RuntimeOptionalSubmodules `
+            -UninitializedSubmodulePaths $submoduleUninitializedPaths `
+            -Limit $SampleLimit
+    )
 
     $riskLevel = "low"
     $recommendedAction = "Generated/runtime drift only; review before cleanup."
-    if ($sourceDeletedCount -gt 0 -or $deletedTracked.Count -gt 25) {
+    if ($sourceDeletedCount -gt 0 -or $effectiveDeletedTracked.Count -gt 25) {
         $riskLevel = "high"
         $recommendedAction = "Manual reconciliation required before cleanup: tracked source/governance deletions are present."
     }
@@ -181,12 +257,14 @@ try {
         risk_level = $riskLevel
         recommended_action = $recommendedAction
         counts = [ordered]@{
-            status = $porcelain.Count
-            deleted_tracked = $deletedTracked.Count
+            status = $effectivePorcelain.Count
+            deleted_tracked = $effectiveDeletedTracked.Count
+            optional_dormant_deleted_tracked = $optionalDormantDeletedTracked.Count
             modified_tracked = $modifiedTracked.Count
             untracked = $untracked.Count
             submodule_drift = $submoduleDrift.Count
             submodule_uninitialized = $submoduleUninitialized.Count
+            optional_dormant_submodules = $optionalDormantSubmodules.Count
             dirty_companion_repos = $dirtyCompanionStatus.Count
         }
         deleted_tracked = $deletedSummary
@@ -197,6 +275,10 @@ try {
             sample = @($submoduleDrift | Select-Object -First $SampleLimit)
             uninitialized_count = $submoduleUninitialized.Count
             uninitialized_sample = @($submoduleUninitialized | Select-Object -First $SampleLimit)
+            optional_dormant_count = $optionalDormantSubmodules.Count
+            optional_dormant_sample = @($optionalDormantSubmodules | Select-Object -First $SampleLimit)
+            optional_dormant_deleted_tracked_count = $optionalDormantDeletedTracked.Count
+            optional_dormant_deleted_tracked_sample = @($optionalDormantDeletedTracked | Select-Object -First $SampleLimit)
             dirty_worktree_count = $dirtyCompanionStatus.Count
             dirty_worktree_sample = @($dirtyCompanionStatus)
         }

@@ -30,12 +30,14 @@ from collections import defaultdict
 from datetime import UTC, datetime
 from pathlib import Path
 
+from eta_engine.scripts import workspace_roots
+
 ROOT = Path(__file__).resolve().parents[1]
 WORKSPACE_ROOT = ROOT.parent
 if str(WORKSPACE_ROOT) not in sys.path:
     sys.path.insert(0, str(WORKSPACE_ROOT))
 
-OUT_LATEST = WORKSPACE_ROOT / "var" / "eta_engine" / "state" / "diamond_qty_asymmetry_latest.json"
+OUT_LATEST = workspace_roots.ETA_DIAMOND_QTY_ASYMMETRY_PATH
 
 MIN_SAMPLE_PER_BAND = 50
 ASYMMETRY_THRESHOLD_PP = 10.0
@@ -45,8 +47,8 @@ EXCLUDED_TEST_BOTS = frozenset({"t1", "propagate_bot", "t2", "t3", "test_bot", "
 
 def _load_records() -> dict[str, list[dict]]:
     """Read every record from canonical + legacy; group by bot_id, drop test fixtures."""
-    canonical = WORKSPACE_ROOT / "var" / "eta_engine" / "state" / "jarvis_intel" / "trade_closes.jsonl"
-    legacy = WORKSPACE_ROOT / "eta_engine" / "state" / "jarvis_intel" / "trade_closes.jsonl"  # HISTORICAL-PATH-OK
+    canonical = workspace_roots.ETA_JARVIS_TRADE_CLOSES_PATH
+    legacy = workspace_roots.ETA_LEGACY_JARVIS_TRADE_CLOSES_PATH
     by_bot: dict[str, list[dict]] = defaultdict(list)
     for p in (canonical, legacy):
         if not p.exists():

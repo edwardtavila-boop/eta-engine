@@ -7,13 +7,23 @@ import subprocess
 import sys
 from pathlib import Path
 
-CANONICAL = Path(r"C:\EvolutionaryTradingAlgo")
+from eta_engine.scripts import workspace_roots
+
+CANONICAL = workspace_roots.WORKSPACE_ROOT
 OLD = Path(r"C:\TheFirm")
+HEALTH_SCRIPT = workspace_roots.ETA_ENGINE_ROOT / "scripts" / "health_check.py"
+HEALTH_OUTPUT_DIR = workspace_roots.WORKSPACE_ROOT / "firm_command_center" / "var" / "health"
+HEALTH_ARGS = [
+    "--allow-remote-supervisor-truth",
+    "--allow-remote-retune-truth",
+    "--output-dir",
+    str(HEALTH_OUTPUT_DIR),
+]
 
 XML_SEARCH = [
-    CANONICAL / "firm" / "eta_engine" / "deploy" / "windows",
-    CANONICAL / "firm_command_center" / "services",
-    CANONICAL / "firm_command_center",
+    workspace_roots.WORKSPACE_ROOT / "firm" / "eta_engine" / "deploy" / "windows",
+    workspace_roots.WORKSPACE_ROOT / "firm_command_center" / "services",
+    workspace_roots.WORKSPACE_ROOT / "firm_command_center",
 ]
 
 
@@ -130,7 +140,7 @@ def main() -> int | None:
     python_exe = CANONICAL / "eta_engine" / ".venv" / "Scripts" / "python.exe"
     if python_exe.exists():
         result = subprocess.run(
-            [str(python_exe), str(CANONICAL / "eta_engine" / "scripts" / "health_check.py")],
+            [str(python_exe), str(HEALTH_SCRIPT), *HEALTH_ARGS],
             capture_output=True,
             text=True,
             timeout=30,

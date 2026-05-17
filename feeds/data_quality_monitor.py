@@ -25,6 +25,7 @@ from eta_engine.core.control_plane import (
     overall_status_from_gate_states,
     quality_tier_from_feed_status,
 )
+from eta_engine.scripts import workspace_roots
 
 log = logging.getLogger("data_quality_monitor")
 
@@ -278,11 +279,11 @@ def main() -> None:
     from argparse import ArgumentParser
 
     parser = ArgumentParser(description="Live Data Quality Monitor")
-    parser.add_argument("--bar-dir", type=Path, default=Path("C:/EvolutionaryTradingAlgo/data"))
+    parser.add_argument("--bar-dir", type=Path, default=workspace_roots.WORKSPACE_ROOT / "data")
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path("C:/EvolutionaryTradingAlgo/var/eta_engine/state/data_health/feed_health.json"),
+        default=workspace_roots.ETA_RUNTIME_STATE_DIR / "data_health" / "feed_health.json",
     )
     parser.add_argument("--interval", type=int, default=60, help="Check every N seconds")
     parser.add_argument("--verbose", action="store_true")

@@ -134,6 +134,7 @@ class OrderResult(BaseModel):
     status: OrderStatus
     filled_qty: float = 0.0
     avg_price: float = 0.0
+    filled_at: str | None = None
     fees: float = 0.0
     latency_ms: float = 0.0
     raw: dict[str, Any] = Field(default_factory=dict)

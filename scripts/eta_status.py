@@ -19,32 +19,44 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from eta_engine.scripts.retune_advisory_cache import build_retune_advisory, summarize_active_experiment
 from eta_engine.scripts.supervisor_heartbeat_check import build_supervisor_heartbeat_report
+from eta_engine.scripts import workspace_roots
 
 # wave-25q post-review: derive STATE_DIR from __file__ rather than
 # hardcoding an absolute Windows path. The previous hardcode broke on
 # the VPS (different drive root in some deploys) and on dev machines
 # where the workspace lives under a non-C: path. ETA_STATE_DIR env-var
 # override is the canonical "I know better" escape hatch.
-import os  # noqa: E402,PLC0415,I001
 _STATE_DIR_ENV = os.environ.get("ETA_STATE_DIR")
 if _STATE_DIR_ENV:
     STATE_DIR = Path(_STATE_DIR_ENV)
 else:
-    _SCRIPT_ROOT = Path(__file__).resolve()
-    # scripts/<file> -> eta_engine -> workspace_root
-    _WORKSPACE_ROOT = _SCRIPT_ROOT.parents[2]
-    STATE_DIR = _WORKSPACE_ROOT / "var" / "eta_engine" / "state"
-HEARTBEAT_PATH = STATE_DIR / "jarvis_intel" / "supervisor" / "heartbeat.json"
-LEADERBOARD = STATE_DIR / "diamond_leaderboard_latest.json"
-LAUNCH_READINESS = STATE_DIR / "diamond_prop_launch_readiness_latest.json"
-KAIZEN_LATEST = STATE_DIR / "kaizen_latest.json"
-EVENTS_LOG = STATE_DIR / "eta_events.jsonl"
-QUANTUM_DIR = STATE_DIR / "quantum"
+    STATE_DIR = workspace_roots.ETA_RUNTIME_STATE_DIR
+HEARTBEAT_PATH = STATE_DIR / workspace_roots.ETA_JARVIS_SUPERVISOR_HEARTBEAT_PATH.relative_to(
+    workspace_roots.ETA_RUNTIME_STATE_DIR
+)
+LEADERBOARD = STATE_DIR / workspace_roots.ETA_DIAMOND_LEADERBOARD_PATH.relative_to(workspace_roots.ETA_RUNTIME_STATE_DIR)
+LAUNCH_READINESS = STATE_DIR / workspace_roots.ETA_DIAMOND_PROP_LAUNCH_READINESS_PATH.relative_to(
+    workspace_roots.ETA_RUNTIME_STATE_DIR
+)
+KAIZEN_LATEST = STATE_DIR / workspace_roots.ETA_KAIZEN_LATEST_PATH.relative_to(workspace_roots.ETA_RUNTIME_STATE_DIR)
+EVENTS_LOG = STATE_DIR / workspace_roots.ETA_ETA_EVENTS_LOG_PATH.relative_to(workspace_roots.ETA_RUNTIME_STATE_DIR)
+QUANTUM_DIR = STATE_DIR / workspace_roots.ETA_QUANTUM_STATE_DIR.relative_to(workspace_roots.ETA_RUNTIME_STATE_DIR)
+RETUNE_TRUTH_CHECK = STATE_DIR / workspace_roots.ETA_RUNTIME_HEALTH_DIR.relative_to(
+    workspace_roots.ETA_RUNTIME_STATE_DIR
+) / "diamond_retune_truth_check_latest.json"
+PUBLIC_RETUNE_CACHE = STATE_DIR / workspace_roots.ETA_RUNTIME_HEALTH_DIR.relative_to(
+    workspace_roots.ETA_RUNTIME_STATE_DIR
+) / "public_diamond_retune_truth_latest.json"
+PUBLIC_BROKER_CLOSE_CACHE = STATE_DIR / workspace_roots.ETA_RUNTIME_HEALTH_DIR.relative_to(
+    workspace_roots.ETA_RUNTIME_STATE_DIR
+) / "public_broker_close_truth_latest.json"
 LAUNCH_READINESS_MAX_AGE_SECONDS = 30 * 60
 
 
@@ -142,6 +154,22 @@ def _gate_details(gates: list[Any], status: str | None = None) -> list[dict[str,
     return out
 
 
+def _preferred_message(messages: list[Any], *needles: str) -> str:
+    text_messages = [str(item) for item in messages if str(item).strip()]
+    for needle in needles:
+        for message in text_messages:
+            if needle in message:
+                return message
+    return text_messages[0] if text_messages else ""
+
+
+def _public_advisory_retune_truth() -> dict[str, Any]:
+    advisory = build_retune_advisory(RETUNE_TRUTH_CHECK.parent)
+    advisory["primary_warning"] = advisory.get("preferred_warning")
+    advisory["primary_action"] = advisory.get("preferred_action")
+    return advisory
+
+
 def gather() -> dict[str, Any]:
     hb = _load_json(HEARTBEAT_PATH)
     supervisor_health = _supervisor_health_summary()
@@ -167,6 +195,7 @@ def gather() -> dict[str, Any]:
     lr_gates = lr.get("gates") or []
     lr_age = _age_seconds(lr.get("ts"))
     lr_stale = lr_age is None or lr_age > LAUNCH_READINESS_MAX_AGE_SECONDS
+    retune_advisory = _public_advisory_retune_truth()
 
     return {
         "ts": datetime.now(UTC).isoformat(),
@@ -195,6 +224,7 @@ def gather() -> dict[str, Any]:
             "n_prop_ready": lb.get("n_prop_ready"),
             "prop_ready_bots": lb.get("prop_ready_bots"),
         },
+        "retune_advisory": retune_advisory,
         "launch_readiness": {
             "ts": lr.get("ts"),
             "age_seconds": lr_age,
@@ -274,6 +304,53 @@ def render_text(state: dict[str, Any]) -> str:
         f"Diamonds        : {d.get('n_diamonds')} in fleet, "
         f"{d.get('n_prop_ready')} PROP_READY: {d.get('prop_ready_bots') or '(none)'}"
     )
+
+    retune = state.get("retune_advisory") if isinstance(state.get("retune_advisory"), dict) else {}
+    if retune.get("focus_bot"):
+        pnl = retune.get("focus_total_realized_pnl")
+        pf = retune.get("focus_profit_factor")
+        broker_mtd = retune.get("broker_mtd_pnl")
+        today_realized = retune.get("today_realized_pnl")
+        open_unrealized = retune.get("total_unrealized_pnl")
+        lines.append(
+            "Retune truth    : "
+            f"{retune.get('focus_bot')}  {retune.get('focus_state')}  issue={retune.get('focus_issue')}"
+        )
+        lines.append(
+            "  broker proof  : "
+            f"closes={retune.get('focus_closed_trade_count')}  "
+            f"pnl=${float(pnl):+,.2f}  pf={float(pf):.2f}"
+            if pnl is not None and pf is not None
+            else "  broker proof  : unavailable"
+        )
+        if broker_mtd is not None:
+            lines.append(
+                "  broker state  : "
+                f"mtd=${float(broker_mtd):+,.2f}  today=${float(today_realized or 0.0):+,.2f}  "
+                f"open=${float(open_unrealized or 0.0):+,.2f}  "
+                f"positions={retune.get('open_position_count')}  tz={retune.get('reporting_timezone')}"
+            )
+        if retune.get("diagnosis"):
+            lines.append(f"  local drift   : {retune.get('diagnosis')}")
+        primary_warning = str(retune.get("primary_warning") or "")
+        if primary_warning:
+            lines.append(f"  warning       : {primary_warning}")
+        action_items = retune.get("action_items") if isinstance(retune.get("action_items"), list) else []
+        primary_action = str(retune.get("primary_action") or "")
+        if primary_action:
+            lines.append(f"  action        : {primary_action}")
+        elif action_items:
+            lines.append(f"  action        : {action_items[0]}")
+        experiment = summarize_active_experiment(retune.get("active_experiment"))
+        if experiment:
+            lines.append(f"  post-fix exp  : {experiment['headline']}")
+            lines.append(
+                "  post-fix data : "
+                f"partial_profit_enabled={experiment['partial_profit_enabled_text']}  "
+                f"closes={experiment['post_change_closed_trade_count_text']}  "
+                f"pnl={experiment['post_change_total_realized_pnl_text']}  "
+                f"pf={experiment['post_change_profit_factor_text']}"
+            )
 
     launch = state["launch_readiness"]
     lines.append(

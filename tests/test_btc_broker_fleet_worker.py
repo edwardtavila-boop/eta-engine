@@ -28,7 +28,9 @@ from eta_engine.scripts.btc_broker_fleet import (
     FleetWorkerSpec,
     _build_lane_runner,
     _execute_worker_tick,
+    build_fleet_status,
     fleet_workers,
+    format_summary,
     worker_ledger_path,
     worker_status_path,
 )
@@ -114,6 +116,32 @@ class TestFleetWorkers:
         assert all(w.symbol == "BTCUSD" for w in workers)
         assert all(w.paper_starting_cash == 1000.0 for w in workers)
 
+    def test_fleet_status_and_summary_mark_balance_as_not_tracked(self, tmp_path: Path) -> None:
+        payload = build_fleet_status(
+            workers=[
+                {
+                    "worker_id": "btc-grid-ibkr",
+                    "status": "RUNNING",
+                    "pid": 12345,
+                    "broker": "ibkr",
+                    "lane": "grid",
+                    "execution_state": "ACTIVE",
+                    "paper_cash": None,
+                    "position_state": {"in_trade": False},
+                    "order_submission_ready": True,
+                    "fill_lifecycle_ready": True,
+                }
+            ],
+            broker_preflight={},
+            starting_cash=5_000.0,
+            out_dir=tmp_path,
+        )
+
+        assert payload["paper_balance_tracking"] == "not_tracked"
+        assert "not tracked" in payload["paper_balance_note"]
+        summary = format_summary(payload)
+        assert "cash=n/a" in summary
+
 
 # --------------------------------------------------------------------------- #
 # _execute_worker_tick: single-tick surface
@@ -149,6 +177,9 @@ class TestWorkerTickLifecycle:
         assert on_disk["lane_runner"]["active_order_id"] == "srv-X"
         assert on_disk["execution_state"] == "ACTIVE"
         assert on_disk["fill_lifecycle_ready"] is True
+        assert on_disk["paper_cash"] is None
+        assert on_disk["paper_equity"] is None
+        assert on_disk["paper_balance_tracking"] == "not_tracked"
 
         # Payload returned matches what was written
         assert payload["worker_id"] == spec.worker_id
@@ -277,6 +308,8 @@ class TestWorkerTickLifecycle:
         # Heartbeat still written even when the runner failed to construct.
         assert payload["worker_id"] == spec.worker_id
         assert payload["note"].startswith("ConfigError")
+        assert payload["paper_cash"] is None
+        assert payload["paper_equity"] is None
         # No lane_runner snapshot
         assert "lane_runner" not in payload
 

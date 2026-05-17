@@ -12,6 +12,7 @@ from eta_engine.scripts import (
     _kill_switch_drift,
     _repo_health,
     _trade_journal_reconcile,
+    engage_firm_board,
     vps_failover_drill,
     workspace_roots,
 )
@@ -46,9 +47,36 @@ def test_default_alerts_log_falls_back_to_legacy_snapshot(monkeypatch, tmp_path:
     assert workspace_roots.default_alerts_log_path() == legacy
 
 
+def test_default_btc_live_decisions_path_prefers_canonical_runtime_path(monkeypatch, tmp_path: Path) -> None:
+    canonical = tmp_path / "var" / "eta_engine" / "state" / "btc_live" / "btc_live_decisions.jsonl"
+    legacy = tmp_path / "eta_engine" / "docs" / "btc_live" / "btc_live_decisions.jsonl"
+    canonical.parent.mkdir(parents=True)
+    legacy.parent.mkdir(parents=True)
+    canonical.write_text('{"intent":"canonical"}\n', encoding="utf-8")
+    legacy.write_text('{"intent":"legacy"}\n', encoding="utf-8")
+
+    monkeypatch.setattr(workspace_roots, "ETA_BTC_LIVE_DECISIONS_PATH", canonical)
+    monkeypatch.setattr(workspace_roots, "ETA_LEGACY_BTC_LIVE_DECISIONS_PATH", legacy)
+
+    assert workspace_roots.default_btc_live_decisions_path() == canonical
+
+
+def test_default_btc_live_decisions_path_falls_back_to_legacy_snapshot(monkeypatch, tmp_path: Path) -> None:
+    canonical = tmp_path / "var" / "eta_engine" / "state" / "btc_live" / "missing.jsonl"
+    legacy = tmp_path / "eta_engine" / "docs" / "btc_live" / "btc_live_decisions.jsonl"
+    legacy.parent.mkdir(parents=True)
+    legacy.write_text('{"intent":"legacy"}\n', encoding="utf-8")
+
+    monkeypatch.setattr(workspace_roots, "ETA_BTC_LIVE_DECISIONS_PATH", canonical)
+    monkeypatch.setattr(workspace_roots, "ETA_LEGACY_BTC_LIVE_DECISIONS_PATH", legacy)
+
+    assert workspace_roots.default_btc_live_decisions_path() == legacy
+
+
 def test_alert_readers_default_to_canonical_runtime_log() -> None:
     assert _kill_switch_drift.DEFAULT_LOG == workspace_roots.ETA_RUNTIME_ALERTS_LOG_PATH
     assert _trade_journal_reconcile.DEFAULT_ALERTS == workspace_roots.ETA_RUNTIME_ALERTS_LOG_PATH
+    assert _trade_journal_reconcile.DEFAULT_BTC == workspace_roots.ETA_BTC_LIVE_DECISIONS_PATH
 
 
 def test_trade_journal_reconcile_runs_as_script_from_child_root(tmp_path: Path) -> None:
@@ -126,19 +154,83 @@ def test_backup_state_tracks_resolved_alert_log_first(monkeypatch, tmp_path: Pat
     assert _backup_state.critical_files()[0] == canonical
 
 
+def test_backup_state_tracks_resolved_kill_log_second(monkeypatch, tmp_path: Path) -> None:
+    alerts = tmp_path / "logs" / "eta_engine" / "alerts_log.jsonl"
+    kill_log = tmp_path / "var" / "eta_engine" / "state" / "kill_log.json"
+    alerts.parent.mkdir(parents=True)
+    kill_log.parent.mkdir(parents=True)
+    alerts.write_text('{"event":"runtime_start"}\n', encoding="utf-8")
+    kill_log.write_text('{"meta": {}, "entries": [{"id": 1}]}\n', encoding="utf-8")
+
+    monkeypatch.setattr(workspace_roots, "ETA_RUNTIME_ALERTS_LOG_PATH", alerts)
+    monkeypatch.setattr(workspace_roots, "ETA_KILL_LOG_PATH", kill_log)
+    monkeypatch.setattr(workspace_roots, "ETA_LEGACY_DOCS_ALERTS_LOG_PATH", tmp_path / "legacy_alerts.jsonl")
+    monkeypatch.setattr(workspace_roots, "ETA_LEGACY_KILL_LOG_PATH", tmp_path / "legacy_kill_log.json")
+
+    assert _backup_state.critical_files()[1] == kill_log
+
+
+def test_backup_state_tracks_resolved_decisions_and_baseline_next(monkeypatch, tmp_path: Path) -> None:
+    alerts = tmp_path / "logs" / "eta_engine" / "alerts_log.jsonl"
+    kill_log = tmp_path / "var" / "eta_engine" / "state" / "kill_log.json"
+    decisions = tmp_path / "var" / "eta_engine" / "state" / "decisions_v1.json"
+    baseline = tmp_path / "var" / "eta_engine" / "state" / "sharpe_baseline.json"
+    alerts.parent.mkdir(parents=True)
+    kill_log.parent.mkdir(parents=True)
+    alerts.write_text('{"event":"runtime_start"}\n', encoding="utf-8")
+    kill_log.write_text('{"meta": {}, "entries": [{"id": 1}]}\n', encoding="utf-8")
+    decisions.write_text('{"tier_1_live_tiny_blockers": {}, "tier_2_tier_b_blockers": {}, "tier_3_operational_cadence": {}}\n', encoding="utf-8")
+    baseline.write_text('{"per_bot": {}, "samples": 0, "last_updated": null}\n', encoding="utf-8")
+
+    monkeypatch.setattr(workspace_roots, "ETA_RUNTIME_ALERTS_LOG_PATH", alerts)
+    monkeypatch.setattr(workspace_roots, "ETA_KILL_LOG_PATH", kill_log)
+    monkeypatch.setattr(workspace_roots, "ETA_DECISIONS_V1_PATH", decisions)
+    monkeypatch.setattr(workspace_roots, "ETA_SHARPE_BASELINE_PATH", baseline)
+    monkeypatch.setattr(workspace_roots, "ETA_LEGACY_DOCS_ALERTS_LOG_PATH", tmp_path / "legacy_alerts.jsonl")
+    monkeypatch.setattr(workspace_roots, "ETA_LEGACY_KILL_LOG_PATH", tmp_path / "legacy_kill_log.json")
+    monkeypatch.setattr(workspace_roots, "ETA_LEGACY_DECISIONS_V1_PATH", tmp_path / "legacy_decisions_v1.json")
+    monkeypatch.setattr(workspace_roots, "ETA_LEGACY_SHARPE_BASELINE_PATH", tmp_path / "legacy_sharpe_baseline.json")
+
+    files = _backup_state.critical_files()
+    assert files[2] == decisions
+    assert files[3] == baseline
+
+
+def test_engage_firm_board_appends_to_canonical_kill_log(monkeypatch, tmp_path: Path) -> None:
+    canonical = tmp_path / "var" / "eta_engine" / "state" / "kill_log.json"
+    legacy = tmp_path / "docs" / "kill_log.json"
+    legacy.parent.mkdir(parents=True)
+    legacy.write_text('{"meta": {}, "entries": [{"spec_id": "legacy"}]}', encoding="utf-8")
+
+    monkeypatch.setattr(workspace_roots, "ETA_KILL_LOG_PATH", canonical)
+    monkeypatch.setattr(workspace_roots, "ETA_LEGACY_KILL_LOG_PATH", legacy)
+
+    engage_firm_board.append_kill_log("ETA_TEST", {"final_verdict": "GO"})
+
+    payload = json.loads(canonical.read_text(encoding="utf-8"))
+    assert [entry["spec_id"] for entry in payload["entries"]] == ["legacy", "ETA_TEST"]
+
+
 def test_repo_health_tracks_resolved_runtime_logs_first(monkeypatch, tmp_path: Path) -> None:
     alerts = tmp_path / "logs" / "eta_engine" / "alerts_log.jsonl"
     runtime = tmp_path / "logs" / "eta_engine" / "runtime_log.jsonl"
+    jarvis_live = tmp_path / "var" / "eta_engine" / "state" / "jarvis_live_log.jsonl"
     alerts.parent.mkdir(parents=True)
+    jarvis_live.parent.mkdir(parents=True)
     alerts.write_text('{"event":"runtime_start"}\n', encoding="utf-8")
     runtime.write_text('{"kind":"tick"}\n', encoding="utf-8")
+    jarvis_live.write_text('{"health":"GREEN"}\n', encoding="utf-8")
 
     monkeypatch.setattr(workspace_roots, "ETA_RUNTIME_ALERTS_LOG_PATH", alerts)
     monkeypatch.setattr(workspace_roots, "ETA_RUNTIME_LOG_PATH", runtime)
+    monkeypatch.setattr(workspace_roots, "ETA_JARVIS_LIVE_LOG_PATH", jarvis_live)
+    monkeypatch.setattr(workspace_roots, "ETA_DECISIONS_V1_PATH", tmp_path / "var" / "eta_engine" / "state" / "decisions_v1.json")
     monkeypatch.setattr(workspace_roots, "ETA_LEGACY_DOCS_ALERTS_LOG_PATH", tmp_path / "legacy_alerts.jsonl")
     monkeypatch.setattr(workspace_roots, "ETA_LEGACY_DOCS_RUNTIME_LOG_PATH", tmp_path / "legacy_runtime.jsonl")
+    monkeypatch.setattr(workspace_roots, "ETA_LEGACY_DECISIONS_V1_PATH", tmp_path / "legacy_decisions_v1.json")
 
-    assert _repo_health.log_files()[:2] == [alerts, runtime]
+    assert _repo_health.log_files()[:3] == [alerts, runtime, jarvis_live]
+    assert _repo_health.log_files()[3] == workspace_roots.ETA_DECISIONS_V1_PATH
 
 
 def test_vps_failover_tracks_workspace_runtime_logs(monkeypatch, tmp_path: Path) -> None:

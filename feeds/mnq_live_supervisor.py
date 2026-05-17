@@ -54,6 +54,7 @@ if str(PARENT) not in sys.path:
 from eta_engine.bots.mnq.bot import MnqBot  # noqa: E402
 from eta_engine.brain.jarvis_admin import JarvisAdmin  # noqa: E402
 from eta_engine.obs.decision_journal import DecisionJournal  # noqa: E402
+from eta_engine.scripts import workspace_roots  # noqa: E402
 from eta_engine.venues.ibkr import (  # noqa: E402
     IbkrClientPortalConfig,
     IbkrClientPortalVenue,
@@ -71,7 +72,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_OUT_DIR = ROOT / "docs" / "mnq_live"
+DEFAULT_OUT_DIR = workspace_roots.ETA_MNQ_LIVE_STATE_DIR
 DEFAULT_HEARTBEAT_NAME = "mnq_live"
 DEFAULT_POLL_INTERVAL_S = 1.0
 

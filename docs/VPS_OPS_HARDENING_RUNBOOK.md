@@ -34,6 +34,7 @@ powershell -ExecutionPolicy Bypass -File eta_engine\deploy\scripts\register_inde
 powershell -ExecutionPolicy Bypass -File eta_engine\deploy\scripts\register_broker_state_refresh_task.ps1 -Start
 powershell -ExecutionPolicy Bypass -File eta_engine\deploy\scripts\register_supervisor_broker_reconcile_task.ps1 -Start
 powershell -ExecutionPolicy Bypass -File eta_engine\deploy\scripts\register_operator_queue_heartbeat_task.ps1 -Start
+powershell -ExecutionPolicy Bypass -File eta_engine\deploy\scripts\repair_eta_healthcheck_task.ps1
 ```
 
 `ETA-VpsOpsHardeningAudit` refreshes the safety-gate audit.
@@ -56,6 +57,12 @@ the current supervisor heartbeat; it also writes
 refreshes the read-only operator queue snapshot that dashboard diagnostics use
 for blocker counts and stale-state detection. These tasks never submit, cancel,
 flatten, acknowledge, or promote orders.
+`ETA-HealthCheck` should point at the canonical
+`eta_engine\scripts\health_check.py` task with
+`--allow-remote-supervisor-truth`, `--allow-remote-retune-truth`, and
+`--output-dir C:\EvolutionaryTradingAlgo\firm_command_center\var\health`.
+If that task drifts, run
+`powershell -ExecutionPolicy Bypass -File eta_engine\deploy\scripts\repair_eta_healthcheck_task.ps1`.
 
 The VPS bootstrap now registers the same task:
 
@@ -96,6 +103,41 @@ start `ETA-BrokerStateRefreshHeartbeat` or run
 `python -m eta_engine.scripts.broker_state_refresh_heartbeat --json`. This is a
 read-only cache refresh against `/api/live/broker_state?refresh=1`; it must never
 be used as an order-entry path.
+
+If `audit_vps_scheduled_tasks.ps1` reports `ETA-WeeklySharpe` as
+`operator_refused_request_interactive_principal`, re-register it under the
+durable SYSTEM lane with:
+`eta_engine\deploy\scripts\repair_eta_weekly_sharpe_admin.cmd`
+or, from an already elevated shell,
+`powershell -ExecutionPolicy Bypass -File eta_engine\deploy\scripts\repair_eta_weekly_sharpe_task.ps1 -Start`.
+That task should no longer sit on an interactive-user principal if it is meant
+to run unattended on the VPS.
+
+If `audit_vps_scheduled_tasks.ps1` reports `ETA-Public-Edge-Route-Watchdog`
+under an interactive principal, or the task needs service-control rights to
+repair `FirmCommandCenterEdge`, re-register it under the durable SYSTEM lane
+with:
+`eta_engine\deploy\scripts\repair_eta_public_edge_route_watchdog_admin.cmd`
+or, from an already elevated shell,
+`powershell -ExecutionPolicy Bypass -File eta_engine\deploy\scripts\repair_eta_public_edge_route_watchdog_task.ps1 -Start`.
+That watchdog should not stay on a limited interactive principal if it is
+expected to restart the public edge unattended.
+
+If the scheduled-task audit has narrowed down to the remaining unattended-task
+repairs for `ETA-Public-Edge-Route-Watchdog` and `ETA-WeeklySharpe`, use the
+combined wrapper:
+`eta_engine\deploy\scripts\repair_eta_scheduler_attention_admin.cmd`
+This dry-runs or applies both canonical admin repairs together.
+
+If diagnostics show `FirmCommandCenter dependency gap: missing module ...`,
+repair the service mirror environment with:
+`eta_engine\deploy\scripts\repair_firm_command_center_env_admin.cmd`
+or, from an already elevated shell,
+`powershell -ExecutionPolicy Bypass -File eta_engine\deploy\scripts\repair_firm_command_center_env.ps1 -Start`.
+That repair runs `uv sync --locked` in
+`C:\EvolutionaryTradingAlgo\eta_engine`, validates the
+dashboard import path against the live service environment, and then restarts
+`FirmCommandCenter`.
 
 If the dashboard shows `BTC`, `ETH`, or `SOL` bar-feed staleness while the main
 IBKR/PAXOS accumulator is otherwise healthy, start

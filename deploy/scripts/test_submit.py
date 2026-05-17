@@ -15,7 +15,7 @@ async def main() -> None:
     print(f"Mode: {cfg.mode}")
     print(f"Starting cash: {cfg.starting_cash_per_bot}")
 
-    bf_dir = Path("C:/EvolutionaryTradingAlgo/eta_engine/docs/btc_live/broker_fleet")
+    bf_dir = cfg.broker_router_pending_dir
     router = ExecutionRouter(cfg=cfg, bf_dir=bf_dir)
 
     # Create a test bot

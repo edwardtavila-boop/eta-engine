@@ -48,9 +48,11 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from eta_engine.scripts import workspace_roots
+
 logger = logging.getLogger(__name__)
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = workspace_roots.ETA_ENGINE_ROOT
 if str(ROOT.parent) not in sys.path:
     sys.path.insert(0, str(ROOT.parent))
 
@@ -186,7 +188,7 @@ def main(argv: list[str] | None = None) -> int:
         "--report-dir",
         default=os.getenv(
             "ETA_OOS_REPORT_DIR",
-            str(Path(r"C:\EvolutionaryTradingAlgo\reports\oos_validation")),
+            str(workspace_roots.WORKSPACE_ROOT / "reports" / "oos_validation"),
         ),
     )
     args = p.parse_args(argv)

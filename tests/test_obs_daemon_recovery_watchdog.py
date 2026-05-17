@@ -1,6 +1,13 @@
 from __future__ import annotations
 
 from eta_engine.obs import daemon_recovery_watchdog as watchdog
+from eta_engine.scripts import workspace_roots
+
+
+def test_heartbeat_paths_for_uses_only_canonical_runtime_state() -> None:
+    assert watchdog.heartbeat_paths_for("daemon_heartbeat.json") == [
+        workspace_roots.ETA_RUNTIME_STATE_DIR / "daemon_heartbeat.json"
+    ]
 
 
 def test_heartbeat_age_seconds_uses_first_available_heartbeat(tmp_path, monkeypatch) -> None:

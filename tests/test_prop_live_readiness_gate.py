@@ -269,6 +269,65 @@ def test_prop_live_gate_does_not_double_count_bracket_hold_as_broker_surface_fai
     assert bracket_check["status"] == "BLOCKED"
 
 
+def test_prop_live_gate_accepts_shadow_paper_active_when_critical_ready() -> None:
+    payloads = _ready_payloads()
+    payloads["master"]["systems"]["paper_live"] = {
+        "status": "YELLOW",
+        "critical_ready": True,
+        "effective_status": "shadow_paper_active",
+        "effective_detail": "live shadow paper lane active on 9 attached bot(s)",
+        "held_by_bracket_audit": False,
+        "held_by_daily_loss_stop": False,
+    }
+
+    report = gate.build_gate_report(**payloads)
+
+    assert report["summary"] == "READY_FOR_CONTROLLED_PROP_DRY_RUN"
+    surface_check = next(check for check in report["checks"] if check["name"] == "broker_surfaces")
+    assert surface_check["status"] == "PASS"
+    assert "shadow paper lane is active" in surface_check["detail"]
+
+
+def test_prop_live_gate_does_not_double_count_stale_flat_order_bracket_hold() -> None:
+    payloads = _ready_payloads()
+    payloads["master"]["systems"]["broker"] = {
+        "status": "YELLOW",
+        "raw_status": "ok",
+        "target_exit_status": "watching",
+        "active_blocker_count": 0,
+    }
+    payloads["master"]["systems"]["paper_live"] = {
+        "status": "YELLOW",
+        "critical_ready": True,
+        "held_by_bracket_audit": True,
+        "held_by_daily_loss_stop": False,
+        "effective_status": "shadow_paper_active",
+        "effective_detail": "live shadow paper lane active on 9 attached bot(s)",
+    }
+    payloads["fleet"]["summary"]["broker_open_position_count"] = 1
+    payloads["fleet"]["summary"]["broker_bracket_count"] = 1
+    payloads["broker_bracket_audit"] = {
+        "summary": "BLOCKED_STALE_FLAT_OPEN_ORDERS",
+        "ready_for_prop_dry_run": False,
+        "next_action": "Cancel stale active broker order(s) for NQM6",
+        "position_summary": {
+            "broker_open_position_count": 1,
+            "broker_bracket_count": 1,
+            "missing_bracket_count": 0,
+            "stale_flat_open_order_count": 2,
+        },
+    }
+
+    report = gate.build_gate_report(**payloads)
+
+    assert report["summary"] == "BLOCKED"
+    surface_check = next(check for check in report["checks"] if check["name"] == "broker_surfaces")
+    bracket_check = next(check for check in report["checks"] if check["name"] == "broker_native_brackets")
+    assert surface_check["status"] == "PASS"
+    assert "held by bracket audit" in surface_check["detail"]
+    assert bracket_check["status"] == "BLOCKED"
+
+
 def test_prop_live_gate_blocks_missing_fleet_truth_in_bracket_audit() -> None:
     payloads = _ready_payloads()
     payloads["broker_bracket_audit"] = {
@@ -287,6 +346,28 @@ def test_prop_live_gate_blocks_missing_fleet_truth_in_bracket_audit() -> None:
     assert bracket_check["evidence"]["audit_summary"] == "BLOCKED_FLEET_TRUTH_UNAVAILABLE"
     assert "/api/bot-fleet" in actions
     assert "do not infer flat exposure" in actions
+
+
+def test_prop_live_gate_ignores_dormant_tradovate_only_secret_gap() -> None:
+    payloads = _ready_payloads()
+    payloads["prop"] = {
+        "summary": "BLOCKED",
+        "phase": "cutover",
+        "prop_account": "blusky_50k",
+        "secret_presence": {
+            "missing": [
+                "BLUSKY_TRADOVATE_ACCOUNT_ID",
+                "BLUSKY_TRADOVATE_APP_SECRET",
+            ],
+        },
+    }
+
+    report = gate.build_gate_report(**payloads)
+
+    assert report["summary"] == "READY_FOR_CONTROLLED_PROP_DRY_RUN"
+    prop_check = next(check for check in report["checks"] if check["name"] == "prop_readiness")
+    assert prop_check["status"] == "PASS"
+    assert prop_check["evidence"]["venue_policy"] == "tradovate_dormant"
 
 
 def test_prop_live_gate_next_actions_respect_dormant_tradovate_policy() -> None:
@@ -328,13 +409,14 @@ def test_prop_live_gate_next_actions_respect_dormant_tradovate_policy() -> None:
     prop_check = next(check for check in report["checks"] if check["name"] == "prop_readiness")
 
     assert actions_list[0].startswith("After visually confirming broker-native TP/SL OCO")
-    assert actions_list[-1].startswith("Tradovate remains DORMANT")
     assert "setup_tradovate_secrets --prop-account blusky_50k" not in actions
-    assert "Tradovate remains DORMANT" in actions
-    assert "explicit code/docs reactivation" in actions
-    assert "BLUSKY_TRADOVATE_ACCOUNT_ID" in actions
-    assert "BLUSKY_TRADOVATE_APP_SECRET" in actions
+    assert "Tradovate remains DORMANT" not in actions
     assert prop_check["evidence"]["venue_policy"] == "tradovate_dormant"
+    assert prop_check["status"] == "PASS"
+    assert prop_check["evidence"]["missing_secrets"] == [
+        "BLUSKY_TRADOVATE_ACCOUNT_ID",
+        "BLUSKY_TRADOVATE_APP_SECRET",
+    ]
     assert "--ack-manual-oco --symbol MNQM6 --venue ibkr" in actions
     assert "--ack-manual-oco --symbol MCLM6 --venue ibkr" in actions
     assert "--ack-manual-oco --symbol NQM6 --venue ibkr" in actions
@@ -365,3 +447,82 @@ def test_prop_live_gate_fetch_json_retries_transient_live_failure(monkeypatch) -
 
     assert gate._fetch_json("https://ops.example.invalid/api/bot-fleet") == {"truth_status": "live"}  # noqa: SLF001
     assert calls["count"] == 2
+
+
+def test_load_gate_inputs_uses_broker_bracket_audit_fleet_loader(monkeypatch) -> None:
+    from eta_engine.scripts import broker_bracket_audit
+
+    calls: dict[str, object] = {}
+
+    monkeypatch.setattr(gate, "_build_current_prop", lambda _prop_account: {})
+    monkeypatch.setattr(gate, "_build_current_ladder", lambda _prop: {})
+    monkeypatch.setattr(gate, "_build_current_ledger", lambda: {})
+    monkeypatch.setattr(gate, "_build_current_broker_bracket_audit", lambda fleet: {"fleet": fleet})
+    monkeypatch.setattr(gate, "_fetch_json", lambda _url, timeout_s=10.0, attempts=2: {"status": "ok"})
+
+    def _fake_load_fleet_payload(url: str) -> dict[str, object]:
+        calls["fleet_url"] = url
+        return {"summary": {"broker_open_position_count": 3}}
+
+    monkeypatch.setattr(broker_bracket_audit, "load_fleet_payload", _fake_load_fleet_payload)
+
+    inputs = gate.load_gate_inputs(fleet_url="https://ops.example.invalid/api/bot-fleet")
+
+    assert calls["fleet_url"] == "https://ops.example.invalid/api/bot-fleet"
+    assert inputs["fleet"]["summary"]["broker_open_position_count"] == 3
+    assert inputs["broker_bracket_audit"]["fleet"]["summary"]["broker_open_position_count"] == 3
+
+
+def test_load_gate_inputs_uses_local_dashboard_fleet_fallback_when_http_truth_is_unavailable(monkeypatch) -> None:
+    monkeypatch.setattr(gate, "_build_current_prop", lambda _prop_account: {})
+    monkeypatch.setattr(gate, "_build_current_ladder", lambda _prop: {})
+    monkeypatch.setattr(gate, "_build_current_ledger", lambda: {})
+    monkeypatch.setattr(gate, "_fetch_json", lambda _url, timeout_s=10.0, attempts=2: {"status": "ok"})
+    monkeypatch.setattr(gate, "_load_fleet_payload", lambda _url: {})
+    monkeypatch.setattr(
+        gate,
+        "_load_local_dashboard_fleet_payload",
+        lambda: {"summary": {"broker_open_position_count": 1}, "bots": [{"id": "volume_profile_nq"}]},
+    )
+    monkeypatch.setattr(
+        gate,
+        "_build_current_broker_bracket_audit",
+        lambda fleet: (
+            {"summary": "BLOCKED_FLEET_TRUTH_UNAVAILABLE", "fleet": fleet}
+            if not fleet
+            else {"summary": "READY_NO_OPEN_EXPOSURE", "fleet": fleet}
+        ),
+    )
+
+    inputs = gate.load_gate_inputs(fleet_url="https://ops.example.invalid/api/bot-fleet")
+
+    assert inputs["fleet"]["summary"]["broker_open_position_count"] == 1
+    assert inputs["broker_bracket_audit"]["summary"] == "READY_NO_OPEN_EXPOSURE"
+    assert inputs["broker_bracket_audit"]["fleet"]["summary"]["broker_open_position_count"] == 1
+
+
+def test_load_gate_inputs_uses_local_master_and_live_readiness_fallbacks_when_public_fetch_fails(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(gate, "_build_current_prop", lambda _prop_account: {})
+    monkeypatch.setattr(gate, "_build_current_ladder", lambda _prop: {})
+    monkeypatch.setattr(gate, "_build_current_ledger", lambda: {})
+    monkeypatch.setattr(gate, "_load_fleet_payload", lambda _url: {"summary": {"broker_open_position_count": 0}})
+    monkeypatch.setattr(gate, "_build_current_broker_bracket_audit", lambda fleet: {"summary": "READY", "fleet": fleet})
+    monkeypatch.setattr(gate, "_fetch_json", lambda _url, timeout_s=10.0, attempts=2: {})
+    monkeypatch.setattr(
+        gate,
+        "_load_local_master_payload",
+        lambda: {"systems": {"ibkr": {"status": "GREEN"}, "broker": {"status": "GREEN"}, "paper_live": {"status": "GREEN"}}},
+    )
+    monkeypatch.setattr(
+        gate,
+        "_load_local_live_readiness_payload",
+        lambda: {"source": "bot_strategy_readiness", "found": True, "bot_id": "volume_profile_mnq"},
+    )
+
+    inputs = gate.load_gate_inputs()
+
+    assert inputs["master"]["systems"]["ibkr"]["status"] == "GREEN"
+    assert inputs["live_readiness"]["source"] == "bot_strategy_readiness"
+    assert inputs["live_readiness"]["found"] is True

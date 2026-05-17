@@ -147,7 +147,7 @@
 
   "firm_integration": {
     "board_agents": ["quant", "red_team", "risk", "macro", "micro", "pm"],
-    "kill_log_path": "eta_engine/docs/kill_log.json",
+    "kill_log_path": "var/eta_engine/state/kill_log.json",
     "decision_gates": ["spec_approve", "backtest_approve", "paper_approve", "live_approve"]
   },
 

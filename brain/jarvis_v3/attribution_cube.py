@@ -39,18 +39,17 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from eta_engine.scripts import workspace_roots
+
 logger = logging.getLogger("eta_engine.brain.jarvis_v3.attribution_cube")
 
-_WORKSPACE = Path(r"C:\EvolutionaryTradingAlgo")
-_STATE_ROOT = _WORKSPACE / "var" / "eta_engine" / "state"
-_LEGACY_STATE_ROOT = _WORKSPACE / "eta_engine" / "state"
-DEFAULT_TRACE_PATH = _STATE_ROOT / "jarvis_trace.jsonl"
-DEFAULT_TRADE_CLOSES_PATH = _STATE_ROOT / "jarvis_intel" / "trade_closes.jsonl"
+DEFAULT_TRACE_PATH = workspace_roots.ETA_JARVIS_TRACE_PATH
+DEFAULT_TRADE_CLOSES_PATH = workspace_roots.ETA_JARVIS_TRADE_CLOSES_PATH
 # Bulk historical trade archive — see kelly_optimizer.py for the same
 # dual-source rationale. closed_trade_ledger.py reads both and dedupes;
 # attribution_cube must do the same or the analytics silently miss
 # the bulk of historical data.
-_LEGACY_TRADE_CLOSES_PATH = _LEGACY_STATE_ROOT / "jarvis_intel" / "trade_closes.jsonl"
+_LEGACY_TRADE_CLOSES_PATH = workspace_roots.ETA_LEGACY_JARVIS_TRADE_CLOSES_PATH
 
 EXPECTED_HOOKS = ("query",)
 

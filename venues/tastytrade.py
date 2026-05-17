@@ -25,6 +25,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from eta_engine.scripts import workspace_roots
 from eta_engine.venues.base import (
     ConnectionStatus,
     OrderRequest,
@@ -72,6 +73,39 @@ _TASTY_STATUS_MAP: dict[str, OrderStatus] = {
 def _map_tasty_status(raw: Any) -> OrderStatus:  # noqa: ANN401 -- server payload is untyped
     text = str(raw or "").strip().lower()
     return _TASTY_STATUS_MAP.get(text, OrderStatus.OPEN)
+
+
+def _first_nonempty_text(*values: Any) -> str:
+    for value in values:
+        if value in (None, ""):
+            continue
+        text = str(value).strip()
+        if text:
+            return text
+    return ""
+
+
+def _tasty_filled_at(order_dict: dict[str, Any], *, status: OrderStatus) -> str | None:
+    """Best-effort canonical fill timestamp from a Tastytrade order payload."""
+
+    explicit = _first_nonempty_text(
+        order_dict.get("filled-at"),
+        order_dict.get("filled_at"),
+        order_dict.get("execution-time"),
+        order_dict.get("execution_time"),
+        order_dict.get("executed-at"),
+        order_dict.get("executed_at"),
+    )
+    if explicit:
+        return explicit
+    if status in {OrderStatus.FILLED, OrderStatus.PARTIAL}:
+        fallback = _first_nonempty_text(
+            order_dict.get("updated-at"),
+            order_dict.get("updated_at"),
+        )
+        if fallback:
+            return fallback
+    return None
 
 
 class TastytradeConfigError(ValueError):
@@ -186,17 +220,18 @@ class TastytradeVenue(VenueBase):
         """Resolve the default token file path from env conventions."""
         import os
 
+        default_runtime_root = str(workspace_roots.WORKSPACE_ROOT / "firm_command_center")
         roots = [
             os.environ.get("FIRM_RUNTIME_ROOT", ""),
             os.environ.get("ETA_RUNTIME_ROOT", ""),
-            r"C:\EvolutionaryTradingAlgo\firm_command_center",
+            default_runtime_root,
         ]
         for r in roots:
             if r:
                 p = Path(r) / "secrets" / "tastytrade_session_token.txt"
                 if p.parent.exists():
                     return str(p)
-        return r"C:\EvolutionaryTradingAlgo\firm_command_center\secrets\tastytrade_session_token.txt"
+        return str(workspace_roots.WORKSPACE_ROOT / "firm_command_center" / "secrets" / "tastytrade_session_token.txt")
 
     def has_credentials(self) -> bool:
         return not self.config.missing_requirements()
@@ -265,18 +300,23 @@ class TastytradeVenue(VenueBase):
         avg_price = float(
             order_dict.get("average-fill-price") or order_dict.get("average_fill_price") or 0.0,
         )
+        filled_at = _tasty_filled_at(order_dict, status=status)
+        raw = {
+            "venue": self.name,
+            "payload": payload,
+            "mode": "paper",
+            "server": order_dict,
+            "client_order_id": client_order_id,
+        }
+        if filled_at:
+            raw["filled_at"] = filled_at
         result = OrderResult(
             order_id=server_id,
             status=status,
             filled_qty=filled_qty,
             avg_price=avg_price,
-            raw={
-                "venue": self.name,
-                "payload": payload,
-                "mode": "paper",
-                "server": order_dict,
-                "client_order_id": client_order_id,
-            },
+            filled_at=filled_at,
+            raw=raw,
         )
         # Cache by both server_id and client_order_id so lookups from
         # either side work.
@@ -358,16 +398,21 @@ class TastytradeVenue(VenueBase):
                     avg_price = float(
                         order_dict.get("average-fill-price") or order_dict.get("average_fill_price") or 0.0,
                     )
+                    filled_at = _tasty_filled_at(order_dict, status=status)
+                    raw = {
+                        "venue": self.name,
+                        "mode": "paper",
+                        "server": order_dict,
+                    }
+                    if filled_at:
+                        raw["filled_at"] = filled_at
                     result = OrderResult(
                         order_id=str(order_dict.get("id") or order_id),
                         status=status,
                         filled_qty=filled_qty,
                         avg_price=avg_price,
-                        raw={
-                            "venue": self.name,
-                            "mode": "paper",
-                            "server": order_dict,
-                        },
+                        filled_at=filled_at,
+                        raw=raw,
                     )
                     self._mock_orders[result.order_id] = result
                     return result
@@ -577,7 +622,7 @@ def _runtime_secret_root(env: Mapping[str, str]) -> Path:
     runtime_root = (
         str(env.get("ETA_RUNTIME_ROOT") or "").strip()
         or str(env.get("FIRM_RUNTIME_ROOT") or "").strip()
-        or r"C:\EvolutionaryTradingAlgo\firm_command_center"
+        or str(workspace_roots.WORKSPACE_ROOT / "firm_command_center")
     )
     return Path(runtime_root) / "secrets"
 

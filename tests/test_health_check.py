@@ -34,9 +34,38 @@ def _patch_baseline_components(monkeypatch) -> None:
     monkeypatch.setattr(health_check, "_check_kaizen_state", _healthy_component("kaizen_engine"))
     monkeypatch.setattr(health_check, "_check_quantum_freshness", _healthy_component("quantum_rebalance"))
     monkeypatch.setattr(health_check, "_check_hermes_connectivity", _healthy_component("hermes_bridge"))
+    monkeypatch.setattr(health_check, "_check_second_brain", _healthy_component("jarvis_second_brain"))
     monkeypatch.setattr(health_check, "_check_diamond_artifact_surface", _healthy_component("diamond_artifact_surface"))
     monkeypatch.setattr(health_check, "_check_diamond_retune_truth", _healthy_component("diamond_retune_truth"))
     monkeypatch.setattr(health_check, "_check_repo_health", _healthy_component("repo_health"))
+
+
+def _second_brain_payload(
+    *,
+    status: str = "warm",
+    episodes: int = 100,
+    eligible_patterns: int = 4,
+    legacy_sources_active: bool = False,
+    error: str | None = None,
+) -> dict[str, object]:
+    return {
+        "source": "jarvis_status.second_brain",
+        "status": status,
+        "error": error,
+        "n_episodes": episodes,
+        "win_rate": 0.62,
+        "avg_r": 0.31,
+        "semantic_patterns": eligible_patterns,
+        "procedural_versions": 3,
+        "playbook": {
+            "eligible_patterns": eligible_patterns,
+            "favor_patterns": [{"key": "trend_pullback"}],
+            "avoid_patterns": [{"key": "late_chop"}],
+        },
+        "truth_note": "canonical memory under EvolutionaryTradingAlgo",
+        "legacy_sources_active": legacy_sources_active,
+        "top_patterns": [],
+    }
 
 
 def test_default_output_dir_is_canonical_runtime_health_dir() -> None:
@@ -105,6 +134,61 @@ def test_quantum_health_uses_legacy_allocation_as_migration_fallback(tmp_path, m
     assert component.status == "legacy_migration"
     assert component.score == 0.8
     assert "legacy allocation fallback" in component.detail
+
+
+def test_second_brain_health_reports_warm_memory(monkeypatch) -> None:
+    monkeypatch.setattr(
+        health_check.jarvis_status,
+        "build_second_brain_summary",
+        lambda **_kwargs: _second_brain_payload(episodes=100, eligible_patterns=4),
+    )
+
+    component = health_check._check_second_brain()
+
+    assert component.name == "jarvis_second_brain"
+    assert component.healthy is True
+    assert component.status == "healthy"
+    assert component.score == 1.0
+    assert "episodes=100" in component.detail
+    assert "eligible_patterns=4" in component.detail
+
+
+def test_second_brain_health_surfaces_legacy_read_only_migration(monkeypatch) -> None:
+    monkeypatch.setattr(
+        health_check.jarvis_status,
+        "build_second_brain_summary",
+        lambda **_kwargs: _second_brain_payload(episodes=100, legacy_sources_active=True),
+    )
+
+    component = health_check._check_second_brain()
+
+    assert component.name == "jarvis_second_brain"
+    assert component.healthy is True
+    assert component.status == "legacy_migration"
+    assert component.score == 0.8
+    assert "legacy_sources_active=True" in component.detail
+
+
+def test_second_brain_health_unavailable_adds_action_item(monkeypatch) -> None:
+    _patch_baseline_components(monkeypatch)
+    monkeypatch.setattr(
+        health_check,
+        "_check_second_brain",
+        lambda: health_check.HealthComponent(
+            name="jarvis_second_brain",
+            healthy=False,
+            status="unavailable",
+            detail="status=unavailable; episodes=0; error=memory unavailable",
+            score=0.2,
+        ),
+    )
+
+    report = health_check.run_health_check(output_dir=None)
+
+    second_brain = next(component for component in report.components if component.name == "jarvis_second_brain")
+    assert second_brain.healthy is False
+    assert second_brain.status == "unavailable"
+    assert any("jarvis_second_brain" in item for item in report.action_items)
 
 
 def test_main_honors_output_dir_cli_and_writes_report(tmp_path, monkeypatch, capsys) -> None:

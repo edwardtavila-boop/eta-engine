@@ -42,7 +42,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-DEFAULT_TRACE_PATH = Path(r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\jarvis_trace.jsonl")
+from eta_engine.scripts import workspace_roots
+
+DEFAULT_TRACE_PATH = workspace_roots.ETA_JARVIS_TRACE_PATH
 MAX_BYTES_PER_FILE = 10 * 1024 * 1024  # 10 MB
 
 EXPECTED_HOOKS = ("emit", "tail")
@@ -91,6 +93,9 @@ class TraceRecord:
     # unreachable / backoff active / no site fired. Mirrors the field on
     # ConductorResult so the trace stream captures the full picture.
     hermes_calls: dict = field(default_factory=dict)
+    # Audit-facing module evidence for this consult. The wiring audit scans
+    # this instead of inferring hot-path health from prose fields.
+    wiring: dict = field(default_factory=dict)
 
     # ── v2 schema fields (T6/T7 prereq) — see TRACE_SCHEMA_V2_DESIGN.md ──
     schema_version: int = 1

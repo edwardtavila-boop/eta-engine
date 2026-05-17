@@ -74,6 +74,52 @@ def _fetch_json(url: str, timeout_s: float = 10.0, attempts: int = 2) -> Any:  #
     return None
 
 
+def _load_fleet_payload(url: str) -> dict[str, Any]:
+    try:
+        from eta_engine.scripts import broker_bracket_audit  # noqa: PLC0415
+
+        return _as_dict(broker_bracket_audit.load_fleet_payload(url))
+    except Exception:  # noqa: BLE001
+        return _as_dict(_fetch_json(url))
+
+
+def _fleet_payload_has_usable_truth(payload: dict[str, Any]) -> bool:
+    payload = _as_dict(payload)
+    return bool(
+        _as_dict(payload.get("summary"))
+        or _as_dict(payload.get("target_exit_summary"))
+        or _as_list(payload.get("bots"))
+    )
+
+
+def _load_local_dashboard_fleet_payload() -> dict[str, Any]:
+    try:
+        from fastapi import Response  # noqa: PLC0415
+        from eta_engine.deploy.scripts import dashboard_api  # noqa: PLC0415
+
+        return _as_dict(dashboard_api.bot_fleet_roster(Response(), since_days=1, live_broker_probe=False))
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def _load_local_master_payload() -> dict[str, Any]:
+    try:
+        from eta_engine.deploy.scripts import dashboard_api  # noqa: PLC0415
+
+        return _as_dict(dashboard_api._local_master_status_payload())  # noqa: SLF001
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def _load_local_live_readiness_payload(bot_id: str = PRIMARY_BOT) -> dict[str, Any]:
+    try:
+        from eta_engine.deploy.scripts import dashboard_api  # noqa: PLC0415
+
+        return _as_dict(dashboard_api._bot_strategy_readiness_bot_payload(bot_id))  # noqa: SLF001
+    except Exception:  # noqa: BLE001
+        return {}
+
+
 def _check(name: str, status: str, detail: str, **evidence: Any) -> dict[str, Any]:  # noqa: ANN401
     payload: dict[str, Any] = {"name": name, "status": status, "detail": detail}
     if evidence:
@@ -84,6 +130,10 @@ def _check(name: str, status: str, detail: str, **evidence: Any) -> dict[str, An
 def _has_tradovate_secret_gap(missing_secrets: list[Any]) -> bool:
     # Tradovate is DORMANT by policy; this only classifies stale prop-secret gaps.
     return any("TRADOVATE" in str(secret).upper() for secret in missing_secrets)
+
+
+def _dormant_tradovate_only_gap(missing_secrets: list[Any]) -> bool:
+    return bool(missing_secrets) and all("TRADOVATE" in str(secret).upper() for secret in missing_secrets)
 
 
 def _primary_candidate(ladder: dict[str, Any]) -> dict[str, Any]:
@@ -124,8 +174,6 @@ def _primary_ladder_check(ladder: dict[str, Any]) -> dict[str, Any]:
 
 def _prop_readiness_check(prop: dict[str, Any]) -> dict[str, Any]:
     summary = str(prop.get("summary") or "UNKNOWN")
-    if summary == "READY_FOR_DRY_RUN":
-        return _check("prop_readiness", "PASS", "prop account credentials/auth are ready for dry-run")
     secret_presence = _as_dict(prop.get("secret_presence"))
     missing_secrets = _as_list(secret_presence.get("missing"))
     evidence: dict[str, Any] = {
@@ -136,6 +184,15 @@ def _prop_readiness_check(prop: dict[str, Any]) -> dict[str, Any]:
     if _has_tradovate_secret_gap(missing_secrets):
         evidence["venue_policy"] = DORMANT_PROP_VENUE_POLICY
         evidence["active_futures_brokers"] = list(ACTIVE_FUTURES_BROKERS)
+    if summary == "READY_FOR_DRY_RUN":
+        return _check("prop_readiness", "PASS", "prop account credentials/auth are ready for dry-run")
+    if summary == "BLOCKED" and _dormant_tradovate_only_gap(missing_secrets):
+        return _check(
+            "prop_readiness",
+            "PASS",
+            "Tradovate-only prop secret gaps are ignored while the venue remains dormant by policy",
+            **evidence,
+        )
     return _check(
         "prop_readiness",
         "BLOCKED",
@@ -152,20 +209,35 @@ def _broker_surfaces_check(master: dict[str, Any]) -> dict[str, Any]:
         return _check("broker_surfaces", "PASS", "IBKR, broker router, and paper-live surfaces are green", **statuses)
     broker = _as_dict(systems.get("broker"))
     paper_live = _as_dict(systems.get("paper_live"))
-    bracket_hold = (
+    shadow_paper_ready = (
+        statuses.get("ibkr") == "GREEN"
+        and statuses.get("broker") == "GREEN"
+        and statuses.get("paper_live") == "YELLOW"
+        and bool(paper_live.get("critical_ready"))
+        and not bool(paper_live.get("held_by_bracket_audit"))
+        and not bool(paper_live.get("held_by_daily_loss_stop"))
+        and str(paper_live.get("effective_status") or "") == "shadow_paper_active"
+    )
+    if shadow_paper_ready:
+        return _check(
+            "broker_surfaces",
+            "PASS",
+            "IBKR, broker router, and paper-live are operational; shadow paper lane is active",
+            **statuses,
+            paper_live_effective_status=paper_live.get("effective_status"),
+            paper_live_effective_detail=paper_live.get("effective_detail"),
+        )
+    bracket_audit_hold = (
         statuses.get("ibkr") == "GREEN"
         and statuses.get("broker") == "YELLOW"
         and statuses.get("paper_live") == "YELLOW"
         and str(broker.get("raw_status") or "").lower() == "ok"
-        and str(broker.get("target_exit_status") or "") == "missing_brackets"
         and _as_int(broker.get("active_blocker_count")) == 0
         and bool(paper_live.get("critical_ready"))
-        and (
-            bool(paper_live.get("held_by_bracket_audit"))
-            or str(paper_live.get("effective_status") or "") == "held_by_bracket_audit"
-        )
+        and bool(paper_live.get("held_by_bracket_audit"))
+        and not bool(paper_live.get("held_by_daily_loss_stop"))
     )
-    if bracket_hold:
+    if bracket_audit_hold:
         return _check(
             "broker_surfaces",
             "PASS",
@@ -640,18 +712,39 @@ def load_gate_inputs(
     prop = _build_current_prop(prop_account) or _as_dict(_load_json(prop_path))
     ladder = _build_current_ladder(prop) or _as_dict(_load_json(ladder_path))
     ledger = _build_current_ledger() or _as_dict(_load_json(ledger_path))
-    fleet = _as_dict(_fetch_json(fleet_url))
+    fleet = _load_fleet_payload(fleet_url)
     broker_bracket_audit = _build_current_broker_bracket_audit(fleet) or _as_dict(
         _load_json(bracket_audit_path),
     )
+    if (
+        not _fleet_payload_has_usable_truth(fleet)
+        or str(broker_bracket_audit.get("summary") or "") == "BLOCKED_FLEET_TRUTH_UNAVAILABLE"
+    ):
+        local_fleet = _load_local_dashboard_fleet_payload()
+        if _fleet_payload_has_usable_truth(local_fleet):
+            local_audit = _build_current_broker_bracket_audit(local_fleet) or _as_dict(
+                _load_json(bracket_audit_path),
+            )
+            fleet = local_fleet
+            broker_bracket_audit = local_audit or broker_bracket_audit
+    master = _as_dict(_fetch_json(master_url))
+    if not _as_dict(master.get("systems")):
+        local_master = _load_local_master_payload()
+        if _as_dict(local_master.get("systems")):
+            master = local_master
+    live_readiness = _as_dict(_fetch_json(live_readiness_url))
+    if not str(live_readiness.get("source") or ""):
+        local_live_readiness = _load_local_live_readiness_payload()
+        if str(local_live_readiness.get("source") or ""):
+            live_readiness = local_live_readiness
     return {
         "ladder": ladder,
         "prop": prop,
-        "master": _as_dict(_fetch_json(master_url)),
+        "master": master,
         "fleet": fleet,
         "ledger": ledger,
         "broker_bracket_audit": broker_bracket_audit,
-        "live_readiness": _as_dict(_fetch_json(live_readiness_url)),
+        "live_readiness": live_readiness,
     }
 
 

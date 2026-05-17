@@ -42,17 +42,17 @@ import json
 import logging
 import sys
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
+
+from eta_engine.scripts import workspace_roots
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
 logger = logging.getLogger("eta_engine.scripts.daily_debrief")
 
-_WORKSPACE = Path(r"C:\EvolutionaryTradingAlgo")
-_VAR_ROOT = _WORKSPACE / "var"
-_DEBRIEF_LOG = _VAR_ROOT / "daily_debrief.jsonl"
+_DEBRIEF_LOG = workspace_roots.ETA_DAILY_DEBRIEF_LOG_PATH
+_HERMES_ACTIONS_LOG_PATH = workspace_roots.ETA_HERMES_ACTIONS_LOG_PATH
 
 
 # ---------------------------------------------------------------------------
@@ -174,7 +174,7 @@ def section_notable_events() -> tuple[str, str, dict[str, Any]]:
 
 def section_override_activity() -> tuple[str, str, dict[str, Any]]:
     """Hermes overrides applied today."""
-    path = _WORKSPACE / "var" / "eta_engine" / "state" / "hermes_actions.jsonl"
+    path = _HERMES_ACTIONS_LOG_PATH
     if not path.exists():
         return "⚙️ *Override activity*", "_(no audit log yet)_", {}
 

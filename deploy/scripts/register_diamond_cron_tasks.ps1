@@ -50,7 +50,12 @@ if (-not $PythonPath) {
     if (Test-Path $VenvPython) {
         $PythonPath = $VenvPython
     } else {
-        $PythonPath = "C:\Program Files\Python312\python.exe"
+        $PythonCmd = Get-Command python -ErrorAction SilentlyContinue
+        if ($PythonCmd) {
+            $PythonPath = $PythonCmd.Source
+        } else {
+            $PythonPath = "C:\Program Files\Python312\python.exe"
+        }
     }
 }
 
@@ -82,6 +87,8 @@ $settings = New-ScheduledTaskSettingsSet `
     -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
     -ExecutionTimeLimit (New-TimeSpan -Minutes 30)
 
+$currentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+
 # Use the SYSTEM service account (matches the existing
 # ETA-Diamond-WatchdogDaily and other ETA-Diamond-* tasks).
 # WORKGROUP\trader fails account-name-to-SID lookup on this VPS.
@@ -107,13 +114,29 @@ function Register-DiamondTask {
         -Execute $PythonPath `
         -Argument $TaskArgs `
         -WorkingDirectory $WorkspaceRoot
-    Register-ScheduledTask -TaskName $Name `
-        -Action $action `
-        -Trigger $Trigger `
-        -Settings $settings `
-        -Principal $principal `
-        -Description $Desc | Out-Null
-    Write-Host "  registered (SYSTEM)"
+    try {
+        Register-ScheduledTask -TaskName $Name `
+            -Action $action `
+            -Trigger $Trigger `
+            -Settings $settings `
+            -Principal $principal `
+            -Description $Desc | Out-Null
+        $principalLabel = "SYSTEM"
+    } catch {
+        Write-Warning "SYSTEM registration unavailable for ${Name}: $($_.Exception.Message)"
+        $userPrincipal = New-ScheduledTaskPrincipal `
+            -UserId $currentUser `
+            -LogonType Interactive `
+            -RunLevel Limited
+        Register-ScheduledTask -TaskName $Name `
+            -Action $action `
+            -Trigger $Trigger `
+            -Settings $settings `
+            -Principal $userPrincipal `
+            -Description "$Desc (current-user fallback)" | Out-Null
+        $principalLabel = "current_user:$currentUser"
+    }
+    Write-Host "  registered ($principalLabel)"
     if ($StartNow) {
         Start-ScheduledTask -TaskName $Name
         Write-Host "  started"

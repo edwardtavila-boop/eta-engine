@@ -76,9 +76,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from eta_engine.scripts import workspace_roots
+
 ROOT = Path(__file__).resolve().parents[1]
 WORKSPACE_ROOT = ROOT.parent
-OUT_LATEST = WORKSPACE_ROOT / "var" / "eta_engine" / "state" / "diamond_leaderboard_latest.json"
+OUT_LATEST = workspace_roots.ETA_DIAMOND_LEADERBOARD_PATH
 
 #: How many top bots get the PROP_READY badge.
 TOP_PROP_READY_N = 3

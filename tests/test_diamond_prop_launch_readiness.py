@@ -175,6 +175,93 @@ def test_R7_HOLD_when_ledger_over_30_min_old(tmp_path: Path) -> None:
     assert g.status == "HOLD"
 
 
+def test_R8_BROKER_TRUTH_NO_GO_when_sample_met_negative_edge() -> None:
+    from eta_engine.scripts import diamond_prop_launch_readiness as lr
+
+    retune_status = {
+        "summary": {
+            "broker_truth_focus_bot_id": "mnq_futures_sage",
+            "broker_truth_focus_edge_status": "sample_met_negative_edge",
+            "broker_truth_focus_closed_trade_count": 126,
+            "broker_truth_focus_required_closed_trade_count": 100,
+            "broker_truth_focus_total_realized_pnl": -250.0,
+            "broker_truth_focus_profit_factor": 0.82,
+        },
+    }
+
+    g = lr._check_R8_broker_truth(retune_status)
+    assert g.status == "NO_GO"
+    assert g.detail["focus_bot"] == "mnq_futures_sage"
+    assert g.detail["closed_trade_count"] == 126
+    assert "negative" in g.rationale
+
+
+def test_R8_BROKER_TRUTH_HOLD_when_more_broker_closes_needed() -> None:
+    from eta_engine.scripts import diamond_prop_launch_readiness as lr
+
+    retune_status = {
+        "summary": {
+            "broker_truth_focus_bot_id": "mnq_futures_sage",
+            "broker_truth_focus_edge_status": "needs_more_broker_closes",
+            "broker_truth_focus_closed_trade_count": 12,
+            "broker_truth_focus_required_closed_trade_count": 100,
+            "broker_truth_focus_remaining_closed_trade_count": 88,
+        },
+    }
+
+    g = lr._check_R8_broker_truth(retune_status)
+    assert g.status == "HOLD"
+    assert g.detail["remaining_closed_trade_count"] == 88
+    assert "88 more closes" in g.rationale
+
+
+def test_R8_BROKER_TRUTH_HOLD_when_partial_profit_still_enabled() -> None:
+    from eta_engine.scripts import diamond_prop_launch_readiness as lr
+
+    retune_status = {
+        "summary": {
+            "broker_truth_focus_bot_id": "mnq_futures_sage",
+            "broker_truth_focus_edge_status": "broker_edge_ready",
+            "broker_truth_focus_closed_trade_count": 120,
+            "broker_truth_focus_required_closed_trade_count": 100,
+            "broker_truth_focus_total_realized_pnl": 480.0,
+            "broker_truth_focus_profit_factor": 1.42,
+            "broker_truth_focus_active_experiment": {
+                "experiment_id": "partial_profit_old_baseline",
+                "partial_profit_enabled": True,
+            },
+        },
+    }
+
+    g = lr._check_R8_broker_truth(retune_status)
+    assert g.status == "HOLD"
+    assert g.detail["active_experiment"]["partial_profit_enabled"] is True
+    assert "partial_profit_enabled=true" in g.rationale
+
+
+def test_R8_BROKER_TRUTH_GO_when_positive_sample_and_unsliced_experiment() -> None:
+    from eta_engine.scripts import diamond_prop_launch_readiness as lr
+
+    retune_status = {
+        "summary": {
+            "broker_truth_focus_bot_id": "mnq_futures_sage",
+            "broker_truth_focus_edge_status": "broker_edge_ready",
+            "broker_truth_focus_closed_trade_count": 120,
+            "broker_truth_focus_required_closed_trade_count": 100,
+            "broker_truth_focus_total_realized_pnl": 480.0,
+            "broker_truth_focus_profit_factor": 1.42,
+            "broker_truth_focus_active_experiment": {
+                "experiment_id": "partial_profit_disabled",
+                "partial_profit_enabled": False,
+            },
+        },
+    }
+
+    g = lr._check_R8_broker_truth(retune_status)
+    assert g.status == "GO"
+    assert "positive sample" in g.rationale
+
+
 # ────────────────────────────────────────────────────────────────────
 # Aggregator semantics
 # ────────────────────────────────────────────────────────────────────

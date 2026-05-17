@@ -14925,6 +14925,11 @@ class TestDashboardAPI:
                     "critical_ready": False,
                     "non_authoritative_gateway_host": True,
                     "operator_queue_launch_blocked_count": 1,
+                    "operator_queue_first_launch_next_action": (
+                        "On the VPS only: powershell.exe -NoProfile -ExecutionPolicy Bypass "
+                        "-File .\\eta_engine\\deploy\\scripts\\set_gateway_authority.ps1 "
+                        "-Apply -Role vps"
+                    ),
                     "paper_ready_bots": 9,
                     "gates": [],
                 },
@@ -14940,6 +14945,11 @@ class TestDashboardAPI:
         assert nq["current_block_kind"] == ""
         assert data["summary"]["current_blocked_bots"] == 0
         assert data["summary"]["current_blocked_kinds"] == {}
+        assert (
+            data["summary"]["paper_live_effective_detail"]
+            == "On the VPS only: powershell.exe -NoProfile -ExecutionPolicy Bypass "
+            "-File .\\eta_engine\\deploy\\scripts\\set_gateway_authority.ps1 -Apply -Role vps"
+        )
         assert data["summary"]["paper_live_capital_lanes_held_by_daily_loss_stop"] is False
         assert data["summary"]["paper_live_daily_loss_advisory_active"] is False
         assert data["summary"]["paper_live_daily_loss_suppressed_non_authoritative_gateway_host"] is True

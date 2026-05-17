@@ -55,11 +55,13 @@ from typing import Any
 
 import yaml
 
+from eta_engine.scripts import workspace_roots
+
 # --------------------------------------------------------------------------
 # Constants
 # --------------------------------------------------------------------------
 
-WORKSPACE_ROOT = Path("C:/EvolutionaryTradingAlgo")
+WORKSPACE_ROOT = workspace_roots.WORKSPACE_ROOT
 DEFAULT_STATE_ROOT = WORKSPACE_ROOT / "var" / "eta_engine" / "state" / "agent_coordination"
 KNOWN_AGENTS: tuple[str, ...] = ("claude", "codex", "deepseek", "autopilot")
 DEFAULT_HEARTBEAT_STALE_MIN = 30

@@ -82,6 +82,110 @@ function New-PlanStep {
     }
 }
 
+function Get-LeafName {
+    param([Parameter(Mandatory = $true)][string]$Path)
+    $normalized = ($Path -replace "/", "\").Trim()
+    if ([string]::IsNullOrWhiteSpace($normalized)) {
+        return ""
+    }
+    return [System.IO.Path]::GetFileName($normalized)
+}
+
+function New-SourceReviewItem {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$ChangeClass
+    )
+    $basename = Get-LeafName -Path $Path
+    if ([string]::IsNullOrWhiteSpace($basename)) {
+        return $null
+    }
+
+    $area = "root_source_governance"
+    $rationale = "Tracked root source/governance $ChangeClass needs manual review before root branch updates."
+    $changeSummary = "Tracked root source/governance change requires manual review before root branch updates."
+    $verificationCommand = "git -C C:\EvolutionaryTradingAlgo diff -- $Path"
+    $verificationGoal = "Inspect the exact tracked root diff before deciding whether to preserve, commit, or revert it."
+    $verificationMode = "read_only_diff"
+    $verificationSideEffects = "none"
+    $suggestedDecision = if ($ChangeClass -eq "deleted") {
+        "confirm_delete_or_restore_before_root_update"
+    }
+    else {
+        "preserve_if_intentional_or_commit_before_root_update"
+    }
+
+    switch ($basename) {
+        "command-center-watchdog-status.ps1" {
+            $area = "operator_watchdog_truth"
+            $rationale = "Tracks Command Center watchdog truth, task contract drift, and public route health semantics."
+            $changeSummary = "Adds runtime dependency-gap probing, watchdog/dashboard task-contract checks, and display-safe operator summaries."
+            $verificationCommand = "powershell -ExecutionPolicy Bypass -File .\scripts\command-center-watchdog-status.ps1 -Json"
+            $verificationGoal = "Confirm the live watchdog contract, task-contract status, and display-safe operator summary on the authoritative host."
+            $verificationMode = "status_probe"
+            $verificationSideEffects = "refreshes the canonical watchdog receipt"
+            $suggestedDecision = "preserve_if_it_matches_live_watchdog_contract"
+            break
+        }
+        "reload-operator-service.ps1" {
+            $area = "operator_reload_runtime"
+            $rationale = "Controls canonical 8421 reload behavior and the task-owned Command Center runtime path on the VPS."
+            $changeSummary = "Replaces brittle raw 8421 waits with unified local-truth verification and uses the canonical runtime Python."
+            $verificationCommand = "powershell -ExecutionPolicy Bypass -File .\scripts\reload-operator-service.ps1 -SkipPublicCheck -SkipWatchdogRegistration -NoAutoElevate -TimeoutSeconds 30"
+            $verificationGoal = "Confirm the VPS reload flow exits cleanly and re-verifies the local 8421 operator contract."
+            $verificationMode = "runtime_reload"
+            $verificationSideEffects = "re-registers dashboard tasks, refreshes live service wiring, and reloads the 8421 operator surface"
+            $suggestedDecision = "preserve_if_it_matches_live_8421_reload_flow"
+            break
+        }
+        "verify_operator_source_of_truth.py" {
+            $area = "operator_contract_verification"
+            $rationale = "Verifies operator truth surfaces, including transient endpoint retries and upstream failure classification."
+            $changeSummary = "Adds transient endpoint retries, upstream 5xx classification, and display-summary leakage checks."
+            $verificationCommand = "python .\scripts\verify_operator_source_of_truth.py --base-url http://127.0.0.1:8421 --timeout 30"
+            $verificationGoal = "Confirm the canonical local operator verifier accepts the live 8421 payloads and failure classification contract."
+            $verificationMode = "read_only_contract_probe"
+            $verificationSideEffects = "none"
+            $suggestedDecision = "preserve_if_it_matches_current_operator_contract"
+            break
+        }
+    }
+
+    return [ordered]@{
+        path = $Path
+        basename = $basename
+        change_class = $ChangeClass
+        area = $area
+        rationale = $rationale
+        change_summary = $changeSummary
+        verification_command = $verificationCommand
+        verification_goal = $verificationGoal
+        verification_mode = $verificationMode
+        verification_side_effects = $verificationSideEffects
+        suggested_decision = $suggestedDecision
+    }
+}
+
+function New-CompanionReviewItem {
+    param([Parameter(Mandatory = $true)][string]$Entry)
+    $parts = $Entry -split ":", 2
+    $target = $parts[0].Trim()
+    if ([string]::IsNullOrWhiteSpace($target)) {
+        return $null
+    }
+    $reason = if ($parts.Length -gt 1) { $parts[1].Trim() } else { "dirty_worktree" }
+    $rationale = "Dirty/diverged companion repo state must be committed, preserved, or intentionally pinned before the root gitlink is updated."
+    if ($target -eq "eta_engine") {
+        $rationale = "The authoritative ETA child repo is dirty/diverged and needs a child-repo decision before the root gitlink is updated."
+    }
+    return [ordered]@{
+        target = $target
+        reason = $reason
+        rationale = $rationale
+        suggested_decision = "commit_preserve_or_pin_before_root_update"
+    }
+}
+
 $RootFull = Assert-CanonicalEtaPath -Path $Root
 if (-not $InventoryPath.Trim()) {
     $InventoryPath = Join-Path $RootFull "var\eta_engine\state\vps_root_dirty_inventory.json"
@@ -111,6 +215,7 @@ $untracked = $inventory.untracked
 $submodules = $inventory.submodules
 
 $sourceDeleted = Get-Count -Node $deleted -Name "source_or_governance"
+$sourceModified = Get-Count -Node $modified -Name "source_or_governance"
 $unknownDeleted = Get-Count -Node $deleted -Name "unknown"
 $generatedDeleted = Get-Count -Node $deleted -Name "generated_market_or_research_artifact"
 $generatedUntracked = Get-Count -Node $untracked -Name "generated_market_or_research_artifact"
@@ -124,6 +229,14 @@ if ($null -ne $counts -and $null -ne $counts.PSObject.Properties["submodule_drif
 $submoduleUninitialized = 0
 if ($null -ne $counts -and $null -ne $counts.PSObject.Properties["submodule_uninitialized"]) {
     $submoduleUninitialized = [int]$counts.submodule_uninitialized
+}
+$optionalDormantSubmodules = 0
+if ($null -ne $counts -and $null -ne $counts.PSObject.Properties["optional_dormant_submodules"]) {
+    $optionalDormantSubmodules = [int]$counts.optional_dormant_submodules
+}
+$optionalDormantDeletedTracked = 0
+if ($null -ne $counts -and $null -ne $counts.PSObject.Properties["optional_dormant_deleted_tracked"]) {
+    $optionalDormantDeletedTracked = [int]$counts.optional_dormant_deleted_tracked
 }
 $dirtyCompanionRepos = 0
 if ($null -ne $counts -and $null -ne $counts.PSObject.Properties["dirty_companion_repos"]) {
@@ -144,16 +257,39 @@ if (
         }
     })
 }
+$sourceReviewItems = New-Object System.Collections.Generic.List[object]
+foreach ($path in (Get-Sample -Node $deleted -Name "source_or_governance")) {
+    $item = New-SourceReviewItem -Path $path -ChangeClass "deleted"
+    if ($null -ne $item) {
+        [void]$sourceReviewItems.Add($item)
+    }
+}
+foreach ($path in (Get-Sample -Node $modified -Name "source_or_governance")) {
+    $item = New-SourceReviewItem -Path $path -ChangeClass "modified"
+    if ($null -ne $item) {
+        [void]$sourceReviewItems.Add($item)
+    }
+}
+$companionReviewItems = New-Object System.Collections.Generic.List[object]
+foreach ($entry in $dirtyCompanionSample) {
+    $item = New-CompanionReviewItem -Entry "$entry"
+    if ($null -ne $item) {
+        [void]$companionReviewItems.Add($item)
+    }
+}
+$sourceReviewItemsArray = @($sourceReviewItems | ForEach-Object { $_ })
+$companionReviewItemsArray = @($companionReviewItems | ForEach-Object { $_ })
 
 $risk = "low"
 if ($sourceDeleted -gt 0 -or $unknownDeleted -gt 0) {
     $risk = "high"
 }
-elseif ($submoduleDrift -gt 0 -or $dirtyCompanionRepos -gt 0 -or $sourceUntracked -gt 0) {
+elseif ($sourceModified -gt 0 -or $submoduleDrift -gt 0 -or $dirtyCompanionRepos -gt 0 -or $sourceUntracked -gt 0) {
     $risk = "medium"
 }
 
 $hasTrackedSourceRisk = $sourceDeleted -gt 0 -or $unknownDeleted -gt 0
+$hasTrackedSourceDrift = $sourceModified -gt 0
 $hasCompanionRisk = $submoduleDrift -gt 0 -or $dirtyCompanionRepos -gt 0
 $hasGeneratedOrLocalArtifactRisk = (
     $generatedDeleted -gt 0 -or
@@ -163,6 +299,7 @@ $hasGeneratedOrLocalArtifactRisk = (
 )
 $hasRootReconciliationRisk = (
     $hasTrackedSourceRisk -or
+    $hasTrackedSourceDrift -or
     $hasCompanionRisk -or
     $sourceUntracked -gt 0 -or
     $hasGeneratedOrLocalArtifactRisk
@@ -173,6 +310,14 @@ $freezeAction = "No root cleanup is needed; keep destructive cleanup disabled an
 if ($hasTrackedSourceRisk) {
     $freezeTitle = "Freeze root cleanup until source deletions are reviewed"
     $freezeAction = "Keep root cleanup disabled; preserve the current VPS working tree until the operator approves a source restore plan."
+}
+elseif ($hasTrackedSourceDrift -and $hasCompanionRisk) {
+    $freezeTitle = "Freeze root cleanup until tracked source changes and companion drift are reviewed"
+    $freezeAction = "Keep root cleanup disabled; review tracked root source/governance modifications alongside dirty companion worktrees before branch updates or cleanup."
+}
+elseif ($hasTrackedSourceDrift) {
+    $freezeTitle = "Freeze root cleanup until tracked source changes are reviewed"
+    $freezeAction = "Keep root cleanup disabled; review tracked root source/governance modifications before branch updates or cleanup."
 }
 elseif ($hasCompanionRisk) {
     $freezeTitle = "Freeze root cleanup until companion repo drift is reviewed"
@@ -199,11 +344,22 @@ if ($hasTrackedSourceRisk) {
     $sourceStepDecision = "manual_review_required"
     $sourceStepAction = "Compare the deleted tracked source/governance files against the intended root branch before restoring or replacing the VPS root."
 }
+elseif ($hasTrackedSourceDrift) {
+    $sourceStepTitle = "Review tracked source and governance modifications"
+    $sourceStepRisk = "medium"
+    $sourceStepDecision = "manual_review_required"
+    $sourceStepAction = "Review tracked root source/governance modifications and decide whether they should be committed, preserved as local runtime edits, or reverted before branch updates."
+}
 
 $submoduleStepDecision = if ($hasCompanionRisk) { "manual_review_required" } else { "clear" }
 $submoduleStepRisk = if ($hasCompanionRisk) { "medium" } else { "low" }
 $submoduleStepAction = if ($hasCompanionRisk) {
-    "Review dirty companion worktrees and submodule drift; choose whether each companion repo should follow the root branch, its own live branch, or remain pinned for VPS runtime."
+    if ($optionalDormantSubmodules -gt 0) {
+        "Review dirty companion worktrees and submodule drift; optional dormant submodules can remain pinned for VPS runtime while each active companion repo is committed, preserved, or intentionally pinned."
+    }
+    else {
+        "Review dirty companion worktrees and submodule drift; choose whether each companion repo should follow the root branch, its own live branch, or remain pinned for VPS runtime."
+    }
 }
 else {
     if ($submoduleUninitialized -gt 0) {
@@ -225,7 +381,7 @@ else {
 
 $approvalGates = [ordered]@{
     cleanup = "blocked_until_manual_approval"
-    branch_update = if ($hasTrackedSourceRisk -or $sourceUntracked -gt 0) { "blocked_until_source_review" } elseif ($hasCompanionRisk) { "blocked_until_companion_review" } else { "clear" }
+    branch_update = if ($hasTrackedSourceRisk -or $hasTrackedSourceDrift -or $sourceUntracked -gt 0) { "blocked_until_source_review" } elseif ($hasCompanionRisk) { "blocked_until_companion_review" } else { "clear" }
     submodule_alignment = if ($submoduleDrift -gt 0 -or $dirtyCompanionRepos -gt 0) { "manual_review_required" } else { "clear" }
     generated_artifact_cleanup = if ($hasGeneratedOrLocalArtifactRisk -or $sourceUntracked -gt 0) { "blocked_until_source_safe" } else { "clear" }
     credential_rotation = "reserved_for_go_live"
@@ -234,6 +390,12 @@ $approvalGates = [ordered]@{
 $recommendedAction = "Rerun the read-only inventory and live probes; no root cleanup is authorized by this plan."
 if ($sourceDeleted -gt 0 -or $unknownDeleted -gt 0) {
     $recommendedAction = "Review tracked source/governance deletions before branch updates, cleanup, or root replacement."
+}
+elseif ($sourceModified -gt 0 -and ($submoduleDrift -gt 0 -or $dirtyCompanionRepos -gt 0)) {
+    $recommendedAction = "Review tracked root source/governance modifications and dirty companion worktrees before updating the superproject root."
+}
+elseif ($sourceModified -gt 0) {
+    $recommendedAction = "Review tracked root source/governance modifications before branch updates or cleanup."
 }
 elseif ($submoduleDrift -gt 0 -or $dirtyCompanionRepos -gt 0) {
     $recommendedAction = "Review dirty companion worktrees and commit, preserve, or intentionally pin them before updating the superproject root."
@@ -256,14 +418,23 @@ $steps = @(
         -Risk $sourceStepRisk `
         -Decision $sourceStepDecision `
         -Action $sourceStepAction `
-        -Evidence (@("source_or_governance_deleted=$sourceDeleted") + (Get-Sample -Node $deleted -Name "source_or_governance"))
+        -Evidence (@(
+            "source_or_governance_deleted=$sourceDeleted",
+            "source_or_governance_modified=$sourceModified"
+        ) + (Get-Sample -Node $deleted -Name "source_or_governance") + (Get-Sample -Node $modified -Name "source_or_governance"))
     New-PlanStep `
         -Id "align-submodules" `
         -Title "Align companion repositories after source state is understood" `
         -Risk $submoduleStepRisk `
         -Decision $submoduleStepDecision `
         -Action $submoduleStepAction `
-        -Evidence (@("submodule_drift=$submoduleDrift", "submodule_uninitialized=$submoduleUninitialized", "dirty_companion_repos=$dirtyCompanionRepos") + @($submodules.sample) + @($dirtyCompanionSample))
+        -Evidence (@(
+            "submodule_drift=$submoduleDrift",
+            "submodule_uninitialized=$submoduleUninitialized",
+            "optional_dormant_submodules=$optionalDormantSubmodules",
+            "optional_dormant_deleted_tracked=$optionalDormantDeletedTracked",
+            "dirty_companion_repos=$dirtyCompanionRepos"
+        ) + @($submodules.sample) + @($dirtyCompanionSample))
     New-PlanStep `
         -Id "classify-generated-artifacts" `
         -Title "Separate generated market/research artifacts from source" `
@@ -299,11 +470,16 @@ $plan = [ordered]@{
         generated_untracked = $generatedUntracked
         local_backup_untracked = $localBackupUntracked
         local_diagnostic_untracked = $localDiagnosticUntracked
+        source_or_governance_modified = $sourceModified
         source_or_governance_untracked = $sourceUntracked
         submodule_drift = $submoduleDrift
         submodule_uninitialized = $submoduleUninitialized
+        optional_dormant_submodules = $optionalDormantSubmodules
+        optional_dormant_deleted_tracked = $optionalDormantDeletedTracked
         dirty_companion_repos = $dirtyCompanionRepos
     }
+    source_review_items = $sourceReviewItemsArray
+    companion_review_items = $companionReviewItemsArray
     steps = $steps
 }
 
@@ -329,8 +505,14 @@ $markdown = @(
     "- Local diagnostic untracked artifacts: $localDiagnosticUntracked"
     "- Source/governance untracked files: $sourceUntracked"
     "- Submodule drift entries: $submoduleDrift"
-    "- Optional dormant submodules: $submoduleUninitialized"
+    "- Optional dormant submodules: $optionalDormantSubmodules"
+    "- Optional dormant deleted tracked rows excluded from review: $optionalDormantDeletedTracked"
     "- Dirty companion worktrees: $dirtyCompanionRepos"
+    ""
+    "## Review focus"
+    ""
+    "- Source review items: $($sourceReviewItemsArray.Count)"
+    "- Companion review items: $($companionReviewItemsArray.Count)"
     ""
     "## Approval gates"
     ""
@@ -354,6 +536,29 @@ foreach ($step in $steps) {
         foreach ($item in $step.evidence) {
             $markdown += "  - $item"
         }
+    }
+}
+if ($sourceReviewItemsArray.Count -gt 0) {
+    $markdown += ""
+    $markdown += "## Source review items"
+    foreach ($item in $sourceReviewItemsArray) {
+        $markdown += ""
+        $markdown += "- $($item.basename) [$($item.change_class)]"
+        $markdown += "  - Path: $($item.path)"
+        $markdown += "  - Area: $($item.area)"
+        $markdown += "  - Rationale: $($item.rationale)"
+        $markdown += "  - Suggested decision: $($item.suggested_decision)"
+    }
+}
+if ($companionReviewItemsArray.Count -gt 0) {
+    $markdown += ""
+    $markdown += "## Companion review items"
+    foreach ($item in $companionReviewItemsArray) {
+        $markdown += ""
+        $markdown += "- $($item.target)"
+        $markdown += "  - Reason: $($item.reason)"
+        $markdown += "  - Rationale: $($item.rationale)"
+        $markdown += "  - Suggested decision: $($item.suggested_decision)"
     }
 }
 $markdownText = ($markdown -join [Environment]::NewLine)

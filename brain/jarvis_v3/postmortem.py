@@ -37,11 +37,12 @@ from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
+from eta_engine.scripts import workspace_roots
+
 logger = logging.getLogger(__name__)
 
-ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_VERDICT_LOG = ROOT / "state" / "jarvis_intel" / "verdicts.jsonl"
-DEFAULT_POSTMORTEM_DIR = ROOT / "state" / "jarvis_intel" / "postmortems"
+DEFAULT_VERDICT_LOG = workspace_roots.ETA_JARVIS_VERDICTS_PATH
+DEFAULT_POSTMORTEM_DIR = workspace_roots.ETA_JARVIS_POSTMORTEM_DIR
 
 
 @dataclass

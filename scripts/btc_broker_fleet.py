@@ -26,6 +26,7 @@ if str(PARENT) not in sys.path:
     sys.path.insert(0, str(PARENT))
 
 from eta_engine.scripts import btc_paper_lane as _btc_paper_lane  # noqa: E402
+from eta_engine.scripts import workspace_roots  # noqa: E402
 from eta_engine.venues.base import ConnectionStatus  # noqa: E402
 from eta_engine.venues.connection import BrokerConnectionManager  # noqa: E402
 from eta_engine.venues.ibkr import IbkrClientPortalConfig  # noqa: E402
@@ -35,13 +36,20 @@ PaperLaneRunner = _btc_paper_lane.PaperLaneRunner
 run_one_tick = _btc_paper_lane.run_one_tick
 shutdown_lane = _btc_paper_lane.shutdown
 
-DEFAULT_OUT_DIR = ROOT / "docs" / "btc_live" / "broker_fleet"
+DEFAULT_OUT_DIR = workspace_roots.ETA_BTC_BROKER_FLEET_STATE_DIR
 DEFAULT_STARTING_CASH = 5_000.0
 DEFAULT_HEARTBEAT_INTERVAL_S = 5.0
 FLEET_MANIFEST = "btc_broker_fleet_latest.json"
 PAPER_TRADE_LEDGER = "btc_paper_trades.jsonl"
 PAPER_BROKER_ORDER_ROUTING = "paper_broker_enabled"
 OPEN_POSITION_STATUSES = {"OPEN", "PARTIAL"}
+PAPER_BALANCE_TRACKING = "not_tracked"
+WORKER_PAPER_BALANCE_NOTE = (
+    "starting cash is configuration only; worker heartbeat does not mark cash/equity to market"
+)
+FLEET_PAPER_BALANCE_NOTE = (
+    "starting cash is configuration only; current worker cash/equity is not tracked by the BTC broker-paper heartbeat"
+)
 
 
 @dataclass(frozen=True)
@@ -294,8 +302,10 @@ def build_worker_payload(
         "mode": "BTC_BROKER_PAPER",
         "paper_runtime": True,
         "paper_starting_cash": round(float(spec.paper_starting_cash), 2),
-        "paper_cash": round(float(spec.paper_starting_cash), 2),
-        "paper_equity": round(float(spec.paper_starting_cash), 2),
+        "paper_cash": None,
+        "paper_equity": None,
+        "paper_balance_tracking": PAPER_BALANCE_TRACKING,
+        "paper_balance_note": WORKER_PAPER_BALANCE_NOTE,
         "order_routing": PAPER_BROKER_ORDER_ROUTING,
         "live_money_orders": "blocked",
         "paper_broker_orders": "allowed",
@@ -338,6 +348,8 @@ def build_fleet_status(
         "in_trade_workers": len(in_trade_workers),
         "paper_starting_cash_per_worker": round(float(starting_cash), 2),
         "paper_starting_cash_total": round(float(starting_cash) * 4, 2),
+        "paper_balance_tracking": PAPER_BALANCE_TRACKING,
+        "paper_balance_note": FLEET_PAPER_BALANCE_NOTE,
         "order_routing": PAPER_BROKER_ORDER_ROUTING,
         "live_money_orders": "blocked",
         "paper_broker_orders": "allowed",
@@ -659,10 +671,15 @@ def format_summary(payload: dict[str, Any]) -> str:
     for worker in payload.get("workers", []):
         position = worker.get("position_state", {})
         trade_label = "IN_TRADE" if position.get("in_trade") else "FLAT"
+        cash_value = worker.get("paper_cash")
+        if isinstance(cash_value, (int, float)):
+            cash_label = f"${float(cash_value):,.2f}"
+        else:
+            cash_label = "n/a"
         lines.append(
             f"{worker.get('worker_id', '?'):<28} {worker.get('status', '?'):<8} "
             f"pid={worker.get('pid', 0)} broker={worker.get('broker', '?'):<11} "
-            f"lane={worker.get('lane', '?'):<11} cash=${float(worker.get('paper_cash', 0.0)):,.2f} "
+            f"lane={worker.get('lane', '?'):<11} cash={cash_label} "
             f"position={trade_label} exec={worker.get('execution_state', '?')}"
         )
     lines.append("=" * 72)

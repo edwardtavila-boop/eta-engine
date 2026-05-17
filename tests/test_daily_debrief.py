@@ -259,8 +259,7 @@ def test_section_override_activity_counts_overrides_today(
 ) -> None:
     from eta_engine.scripts import daily_debrief
 
-    audit_log = tmp_path / "var" / "eta_engine" / "state" / "hermes_actions.jsonl"
-    audit_log.parent.mkdir(parents=True, exist_ok=True)
+    audit_log = tmp_path / "hermes_actions.jsonl"
     recent_ts = datetime.now(UTC).isoformat()
     audit_log.write_text(
         json.dumps({"ts": recent_ts, "tool": "jarvis_set_size_modifier"})
@@ -271,7 +270,7 @@ def test_section_override_activity_counts_overrides_today(
         + "\n",
         encoding="utf-8",
     )
-    monkeypatch.setattr(daily_debrief, "_WORKSPACE", tmp_path)
+    monkeypatch.setattr(daily_debrief, "_HERMES_ACTIONS_LOG_PATH", audit_log)
     title, body, raw = daily_debrief.section_override_activity()
     assert "3 overrides today" in body
     assert raw["n"] == 3
@@ -283,14 +282,13 @@ def test_section_override_activity_ignores_old_audit_lines(
 ) -> None:
     from eta_engine.scripts import daily_debrief
 
-    audit_log = tmp_path / "var" / "eta_engine" / "state" / "hermes_actions.jsonl"
-    audit_log.parent.mkdir(parents=True, exist_ok=True)
+    audit_log = tmp_path / "hermes_actions.jsonl"
     old_ts = (datetime.now(UTC) - timedelta(hours=48)).isoformat()
     audit_log.write_text(
         json.dumps({"ts": old_ts, "tool": "jarvis_set_size_modifier"}) + "\n",
         encoding="utf-8",
     )
-    monkeypatch.setattr(daily_debrief, "_WORKSPACE", tmp_path)
+    monkeypatch.setattr(daily_debrief, "_HERMES_ACTIONS_LOG_PATH", audit_log)
     title, body, _raw = daily_debrief.section_override_activity()
     assert "no overrides applied" in body
 
@@ -301,7 +299,7 @@ def test_section_override_activity_missing_log(
 ) -> None:
     from eta_engine.scripts import daily_debrief
 
-    monkeypatch.setattr(daily_debrief, "_WORKSPACE", tmp_path)
+    monkeypatch.setattr(daily_debrief, "_HERMES_ACTIONS_LOG_PATH", tmp_path / "missing.jsonl")
     title, body, _raw = daily_debrief.section_override_activity()
     assert "no audit log" in body
 

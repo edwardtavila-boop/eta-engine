@@ -6,8 +6,18 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
+import pytest
+
 if TYPE_CHECKING:
     from pathlib import Path
+
+
+@pytest.fixture(autouse=True)
+def _redirect_default_trace_path(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Keep full-consult tests from appending mock records to live Jarvis trace."""
+    from eta_engine.brain.jarvis_v3 import trace_emitter
+
+    monkeypatch.setattr(trace_emitter, "DEFAULT_TRACE_PATH", tmp_path / "jarvis_trace.jsonl")
 
 
 def _stub_request(**overrides):

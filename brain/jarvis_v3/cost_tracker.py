@@ -49,11 +49,11 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from eta_engine.scripts import workspace_roots
+
 logger = logging.getLogger("eta_engine.brain.jarvis_v3.cost_tracker")
 
-_WORKSPACE = Path(r"C:\EvolutionaryTradingAlgo")
-_STATE_ROOT = _WORKSPACE / "var" / "eta_engine" / "state"
-DEFAULT_AUDIT_PATH = _STATE_ROOT / "hermes_actions.jsonl"
+DEFAULT_AUDIT_PATH = workspace_roots.ETA_HERMES_ACTIONS_LOG_PATH
 
 # Per-1K-token prices (DeepSeek-V4-Pro, 2026-05-12)
 DEFAULT_INPUT_PRICE_PER_1K = 0.0005

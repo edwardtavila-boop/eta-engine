@@ -218,6 +218,12 @@ class TestStatusPage:
         assert "Retune Factory" in html
         assert "need broker proof" in html
         assert "/api/jarvis/diamond_retune_status" in html
+        assert "focus_active_experiment" in html
+        assert "focus_active_experiment_outcome_line" in html
+        assert "post_change_closed_trade_count" in html
+        assert "awaiting first post-change close" in html
+        assert "PnL ${formatCurrency(postChangePnl)}" in html
+        assert "PF ${postChangeProfitFactor.toFixed(2)}" in html
         assert 'data-panel-id="cc-strategy-supercharge-results"' not in html
         assert 'id="strategyNearMisses"' not in html
         assert 'id="strategyRetuneQueue"' not in html
@@ -274,6 +280,13 @@ class TestStatusPage:
         assert "Admin AI" in html
         assert "adminAiStatus" in html
         assert "vps_ops_hardening" in html
+        assert "force_multiplier_control_plane" in html
+        assert "fmNeedsAttention" in html
+        assert "FM control plane" in html
+        assert "service_runtime_drift" in html
+        assert "service_config_drift" in html
+        assert "runtime drift:" in html
+        assert "config drift:" in html
         assert "endpointCandidates(" in html
         assert "cache: 'no-store'" in html
         assert "FETCH_TIMEOUT_MS" in html
@@ -519,6 +532,155 @@ class TestStatusPage:
         assert "R score" in html
         assert "ops-priority-section .card" in html
         assert "mobile-card-table" in html
+        assert "dashboard_task_contract_drift: 'Reload'" in html
+        assert "upstream_failure: 'Proxy 5xx'" in html
+        assert "local_dependency_gap: 'Deps'" in html
+        assert "public_tunnel_token_rejected: 'Tunnel'" in html
+        assert "repair_prompted: 'Repair'" in html
+        assert "commandWatchdog.next_command" in html
+        assert "commandWatchdog.display_issue_summary ||" in html
+        assert "commandWatchdog.display_summary ||" in html
+        assert "commandWatchdog.issue_summary ||" in html
+        assert "commandWatchdog.summary ||" in html
+        assert "dashboard_task_missing_task_names" in html
+        assert "const commandWatchdogMissingTasksAlreadyNamed =" in html
+        assert "!commandWatchdogMissingTasksAlreadyNamed" in html
+        assert "missing runtime tasks:" in html
+        assert "commandWatchdogCommand," in html
+        assert "function readinessCommandCenterHint" in html
+        assert "command_center_dashboard_task_missing_task_names" in html
+        assert "ops reload required (${missingTasks.join(', ')})" in html
+        assert "ops reload required" in html
+        assert "local deps repair required" in html
+        assert "local proxy 5xx" in html
+        assert "function readinessSnapshotStrategyHint" in html
+        assert "BLOCKED_STALE_FLAT_OPEN_ORDERS" in html
+        assert "public_live_broker_ready" in html
+        assert "public_live_broker_snapshot_state" in html
+        assert "public_live_broker_snapshot_source" in html
+        assert "public_live_broker_source" in html
+        assert "public_live_broker_degraded_display" in html
+        assert "dashboard_api_runtime_drift_display" in html
+        assert "dashboard_api_runtime_retune_drift_display" in html
+        assert "dashboard_api_runtime_probe_display" in html
+        assert "dashboard_api_runtime_refresh_command" in html
+        assert "dashboard_api_runtime_refresh_requires_elevation" in html
+        assert "public_fallback_broker_open_order_drift_display" in html
+        assert "primary_blocker" in html
+        assert "const primaryBlocker = String(snapshot?.primary_blocker || '').trim();" in html
+        assert "const primaryAction = String(snapshot?.primary_action || snapshot?.detail || '').trim();" in html
+        assert "const primaryBlockedHint = primaryBlocker === 'prop_live_readiness_gate'" in html
+        assert "brackets_summary" in html
+        assert "brackets_next_action" in html
+        assert "current_live_broker_degraded_display" in html
+        assert "current_live_broker_open_order_drift_display" in html
+        assert "public_fallback_stale_flat_open_order_count" in html
+        assert "public_fallback_stale_flat_open_order_symbols" in html
+        assert "public_fallback_stale_flat_open_order_display" in html
+        assert "public_fallback_stale_flat_open_order_relation_display" in html
+        assert "retune_focus_active_experiment_drift_display" in html
+        assert "publicLiveBrokerDegradedDisplay" in html
+        assert "dashboardApiRuntimeDriftDisplay" in html
+        assert "dashboardApiRuntimeRetuneDriftDisplay" in html
+        assert "dashboardApiRuntimeProbeDisplay" in html
+        assert "dashboardApiRuntimeRefreshCommand" in html
+        assert "dashboardApiRuntimeRefreshRequiresElevation" in html
+        assert "dashboardApiRuntimeBrokerHint" in html
+        assert "dashboardApiRuntimeRetuneHint" in html
+        assert "dashboardApiRuntimeProbeHint" in html
+        assert "readinessReceiptHint" in html
+        assert "bracketsPrimaryHint" in html
+        assert "currentLiveBrokerDegradedDisplay" in html
+        assert "currentLiveBrokerDegradedHint" in html
+        assert "fallbackBrokerOrderDriftDisplay" in html
+        assert "currentLiveBrokerOrderDriftDisplay" in html
+        assert "prop gate blocked; keep paper soak" in html
+        assert "add(primaryBlockedHint);" in html
+        assert "fleet truth unavailable; restore /api/bot-fleet" in html
+        assert "live broker cache missing" in html
+        assert "add(readinessReceiptHint);" in html
+        assert "add(bracketsPrimaryHint || snapshot?.public_fallback_reason || '');" in html
+        assert (
+            "add(currentLiveBrokerDegradedHint || currentLiveBrokerDegradedDisplay || "
+            "publicLiveBrokerCacheHint || publicLiveBrokerDegradedDisplay);"
+        ) in html
+        assert "refresh local 8421 runtime" in html
+        assert "8421 refresh needs elevation" in html
+        assert "add(dashboardApiRuntimeBrokerHint);" in html
+        assert "add(dashboardApiRuntimeRetuneHint);" in html
+        assert "add(dashboardApiRuntimeProbeHint);" in html
+        assert "local 8421 broker stale" in html
+        assert "local 8421 retune stale" in html
+        assert "local 8421 probe failed" in html
+        assert "retuneExperimentDriftDisplay" in html
+        assert "const publicLiveBrokerCacheHint = !publicLiveBrokerReady" in html
+        assert "broker cache ${publicLiveBrokerSnapshotState || 'degraded'}" in html
+        assert "via ${publicLiveBrokerSnapshotSource}" in html
+        assert "public_live_retune_focus_active_experiment_outcome_line" in html
+        assert "current_live_retune_focus_active_experiment_outcome_line" in html
+        assert "local_retune_focus_active_experiment_outcome_line" in html
+        assert "public_live_retune_generated_at_utc" in html
+        assert "current_live_retune_generated_at_utc" in html
+        assert "public_live_retune_sync_drift_display" in html
+        assert "current_live_retune_sync_drift_display" in html
+        assert "dashboard_api_runtime_retune_drift_display" in html
+        assert "local_retune_generated_at_utc" in html
+        assert "current_local_retune_generated_at_utc" in html
+        assert "local_retune_sync_drift_display" in html
+        assert "currentPublicRetuneGeneratedAt" in html
+        assert "currentPublicRetuneExperimentOutcomeLine" in html
+        assert "currentPublicRetuneSyncDriftDisplay" in html
+        assert "current public retune newer" in html
+        assert (
+            "add(currentLiveRetuneSyncHint || currentLiveRetuneSyncDriftDisplay || "
+            "publicRetuneSyncDriftDisplay);"
+        ) in html
+        assert "publicRetuneSyncDriftDisplay" in html
+        assert "dashboardApiRuntimeRetuneDriftDisplay" in html
+        assert "const readinessReceiptAgeSeconds = finiteNumber(readinessSnapshot.age_s);" in html
+        assert (
+            "const readinessReceiptStale = readinessSnapshot?.status === "
+            "'stale_receipt' || readinessSnapshot?.fresh === false;"
+        ) in html
+        assert "const readinessReceiptFreshnessHint = readinessReceiptAgeSeconds !== null" in html
+        assert "receipt stale" in html
+        assert "receipt fresh" in html
+        assert "const retuneMirrorDriftHint = readinessReceiptStale" in html
+        assert "const retuneMirrorTimingHint = (" in html
+        assert "publicRetuneSyncDriftDisplay" in html
+        assert "localRetuneSyncDriftDisplay" in html
+        assert "|| dashboardApiRuntimeRetuneDriftDisplay" in html
+        assert "|| dashboardApiRuntimeProbeDisplay" in html
+        assert "public ${formatTimeCompact(publicRetuneGeneratedAt)}" in html
+        assert "cached local ${formatTimeCompact(cachedLocalRetuneGeneratedAt)}" in html
+        assert "current local ${formatTimeCompact(currentLocalRetuneGeneratedAt)}" in html
+        assert "local retune mirror stale" in html
+        assert "const retuneRuntimeDriftHint = dashboardApiRuntimeRetuneDriftDisplay" in html
+        assert "const retuneRuntimeProbeHint = dashboardApiRuntimeProbeDisplay" in html
+        assert (
+            "const retuneRuntimeRefreshElevationHint = "
+            "dashboardApiRuntimeRefreshRequiresElevation &&"
+        ) in html
+        assert "readiness receipt stale" in html
+        assert "fallbackStaleRelationDisplay" in html
+        assert "stale broker orders (" in html
+        assert "fallbackStaleCount} stale broker orders (" in html
+        assert "promotion retired" in html
+        assert "authoritative gateway required" in html
+        assert "live fleet truth fallback" in html
+        assert "parts.slice(0, 3).join(' | ')" in html
+        assert "function retuneFactoryReadout(snapshot, diagnostics = {})" in html
+        assert "function renderRetuneFactory(snapshot, diagnostics = {})" in html
+        assert (
+            "renderRetuneFactory(d.diamond_retune_status || diagnostics?.diamond_retune_status || {}, diagnostics);"
+            in html
+        )
+        assert "const readinessBlockedParts = [" in html
+        assert (
+            "readinessSnapshot.detail || readinessSnapshot.primary_action || "
+            "readinessSnapshot.promotion_summary || 'gates blocked'"
+        ) in html
+        assert "readinessBlockedParts.join(' | ')" in html
 
     def test_status_page_surfaces_broker_truth_freshness(self):
         root = Path(__file__).resolve().parent.parent / "deploy" / "status_page"

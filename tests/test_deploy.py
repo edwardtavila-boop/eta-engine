@@ -4,6 +4,8 @@ Tests for the deploy/ package -- task runner, smoke check, daemon.
 
 from __future__ import annotations
 
+import json
+from datetime import UTC, datetime
 from pathlib import Path
 
 from eta_engine.brain.avengers import BackgroundTask
@@ -108,6 +110,37 @@ class TestRunTask:
         out = (tmp_path / "state" / "doctrine_review.md").read_text(encoding="utf-8")
         assert "EVOLUTIONARY TRADING ALGO DOCTRINE" in out
         assert "CAPITAL_FIRST" in out
+
+    def test_audit_summarize_prefers_canonical_daily_audit_dir(self, tmp_path, monkeypatch):
+        from eta_engine.brain.jarvis_v3 import nl_query
+        from eta_engine.deploy.scripts.run_task import _task_audit_summarize
+
+        class _FakeReasonFreqResult:
+            summary = "daily audit summary ok"
+
+            def model_dump(self, mode: str = "json") -> dict[str, str]:
+                return {"summary": self.summary, "mode": mode}
+
+        state = tmp_path / "state"
+        today = datetime.now(UTC).strftime("%Y-%m-%d")
+        audit_path = state / "jarvis_audit" / f"{today}.jsonl"
+        audit_path.parent.mkdir(parents=True, exist_ok=True)
+        audit_path.write_text(json.dumps({"verdict": "APPROVED"}) + "\n", encoding="utf-8")
+        calls: dict[str, object] = {}
+
+        def _fake_reason_freq(path: Path, *, hours: float):  # type: ignore[no-untyped-def]
+            calls["path"] = path
+            calls["hours"] = hours
+            return _FakeReasonFreqResult()
+
+        monkeypatch.setattr(nl_query, "reason_freq", _fake_reason_freq)
+
+        result = _task_audit_summarize(state)
+
+        assert calls["path"] == audit_path
+        assert calls["hours"] == 24.0
+        assert result["summary"] == "daily audit summary ok"
+        assert (state / "audit_daily_summary.json").exists()
 
 
 class TestSmokeCheck:

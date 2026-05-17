@@ -77,7 +77,7 @@ foreach ($t in $tasks) {
 
 # ----- 3 boot-time services -------------------------------------------------
 $bootTasks = @(
-    @{ Name="ETA-Jarvis-Live";    Module="eta_engine.scripts.jarvis_live"; Args="--inputs docs\premarket_inputs.json --out-dir `"$StateDir`" --interval 60" },
+    @{ Name="ETA-Jarvis-Live";    Module="eta_engine.scripts.jarvis_live"; Args="--out-dir `"$StateDir`" --interval 60" },
     @{ Name="ETA-Avengers-Fleet"; Module="deploy.scripts.avengers_daemon";    Args="--state-dir `"$StateDir`" --log-dir `"$LogDir`"" },
     @{ Name="ETA-Dashboard";      Module="uvicorn";                           Args="deploy.scripts.dashboard_api:app --host 127.0.0.1 --port 8000" }
 )

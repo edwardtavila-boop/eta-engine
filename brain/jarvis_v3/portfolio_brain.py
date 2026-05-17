@@ -33,6 +33,8 @@ from pathlib import Path
 from types import ModuleType  # noqa: TC003 -- used at runtime in helpers
 from typing import Any
 
+from eta_engine.scripts import workspace_roots
+
 logger = logging.getLogger("eta_engine.portfolio_brain")
 
 EXPECTED_HOOKS = ("assess", "snapshot")
@@ -42,7 +44,7 @@ _BUDGET_SENTINEL = 1e9
 
 # Fallback fleet-state JSON path (used when fleet_allocator.current_exposure
 # is not available at runtime).
-_FLEET_STATE_PATH = Path(r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\fleet_state.json")
+_FLEET_STATE_PATH = workspace_roots.ETA_FLEET_STATE_PATH
 
 # Rule thresholds (kept module-level for easy operator override + testing).
 _DRAWDOWN_TIGHTEN_R = -2.0

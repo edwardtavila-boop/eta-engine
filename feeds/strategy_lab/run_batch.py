@@ -10,12 +10,13 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from eta_engine.feeds.strategy_lab.engine import (  # noqa: E402  (sys.path side-effect above)
     WalkForwardEngine,
     save_lab_report,
 )
+from eta_engine.scripts import workspace_roots
 
 SPECS: list[dict] = [
     {
@@ -44,8 +45,8 @@ SPECS: list[dict] = [
     },
 ]
 
-BAR_DIR = Path("C:/EvolutionaryTradingAlgo/data")
-OUT_DIR = Path("C:/EvolutionaryTradingAlgo/reports/lab_reports")
+BAR_DIR = workspace_roots.WORKSPACE_ROOT / "data"
+OUT_DIR = workspace_roots.WORKSPACE_ROOT / "reports" / "lab_reports"
 
 
 def main() -> None:

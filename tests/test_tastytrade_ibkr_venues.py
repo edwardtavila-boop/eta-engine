@@ -19,6 +19,8 @@ from eta_engine.venues import (
     ibkr_paper_readiness,
     tastytrade_paper_readiness,
 )
+from eta_engine.feeds import tastytrade as feed_tastytrade
+from eta_engine.venues import tastytrade as venue_tastytrade
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -40,6 +42,11 @@ def test_tastytrade_config_reads_secret_files(tmp_path: Path) -> None:
     assert config.account_number == "5WT12345"
     assert config.session_token == "session-token"
     assert config.missing_requirements() == []
+
+
+def test_feed_tastytrade_shim_exposes_canonical_adapter() -> None:
+    assert feed_tastytrade.TastytradeVenue is venue_tastytrade.TastytradeVenue
+    assert feed_tastytrade.TastytradeConfig is venue_tastytrade.TastytradeConfig
 
 
 def test_tastytrade_config_reads_broker_paper_env_file(tmp_path: Path) -> None:

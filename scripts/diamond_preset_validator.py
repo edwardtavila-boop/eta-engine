@@ -47,9 +47,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-ROOT = Path(__file__).resolve().parents[1]
-WORKSPACE_ROOT = ROOT.parent
-OUT_LATEST = WORKSPACE_ROOT / "var" / "eta_engine" / "state" / "diamond_preset_validation_latest.json"
+from eta_engine.scripts import workspace_roots
+
+OUT_LATEST = workspace_roots.ETA_DIAMOND_PRESET_VALIDATION_PATH
 
 
 @dataclass

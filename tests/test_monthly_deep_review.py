@@ -6,6 +6,8 @@ import json
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
+from eta_engine.scripts import monthly_deep_review
+from eta_engine.scripts import workspace_roots
 from eta_engine.scripts.monthly_deep_review import run
 
 if TYPE_CHECKING:
@@ -86,6 +88,10 @@ def test_run_empty_inputs_produces_stub(tmp_path: Path) -> None:
     assert payload["exit_quality"]["n"] == 0
     assert payload["rationales"]["n"] == 0
     assert (out_dir / "monthly_review_2026_04.json").exists()
+
+
+def test_monthly_review_defaults_to_canonical_runtime_dir() -> None:
+    assert monthly_deep_review.DEFAULT_OUT_DIR == workspace_roots.ETA_MONTHLY_REVIEW_DIR
 
 
 def test_run_with_trades_only(tmp_path: Path) -> None:

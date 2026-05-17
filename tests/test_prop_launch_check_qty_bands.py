@@ -258,3 +258,34 @@ def test_action_list_allows_live_promotion_after_calendar_floor() -> None:
     joined = "\n".join(actions)
     assert "NO LIVE CAPITAL BEFORE" not in joined
     assert "Promote at least one PROP_READY bot to EVAL_LIVE" in joined
+
+
+def test_action_list_uses_corrected_mnq_futures_sage_filter_guidance() -> None:
+    """mnq_futures_sage must point at the corrected partial-profit experiment."""
+    inputs = _minimal_action_inputs()
+    inputs["candidates"] = {
+        "n_candidates": 0,
+        "filter_candidates": [
+            {
+                "bot_id": "mnq_futures_sage",
+                "qty_band_half": {"n": 25, "wr": 100.0, "cum_usd": 625.0},
+                "qty_band_full": {"n": 30, "wr": 0.0, "cum_usd": -900.0},
+            }
+        ],
+        "rejected_top5": [],
+    }
+
+    actions = mod._build_action_list(
+        inputs["dryrun"],
+        inputs["lifecycle"],
+        inputs["leaderboard"],
+        inputs["channels"],
+        inputs["drawdown"],
+        supervisor=inputs["supervisor"],
+        candidates=inputs["candidates"],
+    )
+
+    joined = "\n".join(actions)
+    assert "partial_profit_enabled=false" in joined
+    assert "MNQ_FUTURES_SAGE_VOL_REGIME_FORENSIC_CORRECTION_2026_05_13.md" in joined
+    assert "vol_low_size_mult=0.0" not in joined

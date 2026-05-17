@@ -10,6 +10,8 @@ from __future__ import annotations
 import argparse
 import contextlib
 import json
+import os
+import shutil
 import subprocess
 import sys
 import urllib.error
@@ -28,6 +30,12 @@ from eta_engine.scripts import jarvis_hermes_admin_audit, workspace_roots  # noq
 DEFAULT_OUT = workspace_roots.ETA_VPS_OPS_HARDENING_AUDIT_PATH
 ETA_ENGINE_REPO_ROOT = workspace_roots.ETA_ENGINE_ROOT
 CURRENT_JARVIS_HERMES_BRIDGE_TASK_COUNT = 8
+FM_STATUS_TEMPLATE_XML = workspace_roots.ETA_ENGINE_ROOT / "deploy" / "FmStatusServer.xml"
+FM_STATUS_INSTALLED_XML = (
+    workspace_roots.WORKSPACE_ROOT / "firm_command_center" / "services" / "FmStatusServer" / "FmStatusServer.xml"
+)
+FM_STATUS_INSTALLED_XML_LEGACY = workspace_roots.WORKSPACE_ROOT / "firm_command_center" / "services" / "FmStatusServer.xml"
+DEFAULT_MACHINE_PYTHON = Path(r"C:\Python314\python.exe")
 CRITICAL_SERVICES = ("FmStatusServer",)
 LEGACY_COMPAT_SERVICES = (
     "FirmCommandCenter",
@@ -40,6 +48,14 @@ LEGACY_COMPAT_SERVICES = (
 OPTIONAL_SERVICES = ("HermesJarvisTelegram",) + LEGACY_COMPAT_SERVICES
 REQUIRED_PORTS = (8000, 8421, 8422)
 BROKER_PORTS = (4002,)
+DEFAULT_ENDPOINT_READ_MAX_BYTES = 65_536
+BROKER_STATE_READ_MAX_BYTES = 4_000_000
+CRITICAL_SERVICE_RUNTIME_PROBES: dict[str, dict[str, Any]] = {
+    "FmStatusServer": {
+        "port": 8422,
+        "endpoint": "local_fm_status",
+    }
+}
 DASHBOARD_DURABLE_TASKS = (
     "ETA-Dashboard-API",
     "ETA-Proxy-8421",
@@ -58,6 +74,88 @@ DATA_PIPELINE_TASKS = (
     "ETA-SymbolIntelCollector",
     "ETA-IndexFutures-Bar-Refresh",
 )
+FORCE_MULTIPLIER_DURABLE_TASKS = (
+    "ETA-ThreeAI-Sync",
+)
+NON_AUTHORITATIVE_TASK_ARTIFACTS: dict[str, dict[str, Any]] = {
+    "ETA-SupervisorBrokerReconcile": {
+        "max_age_s": 15 * 60,
+        "artifacts": (
+            {
+                "name": "supervisor_reconcile",
+                "path": workspace_roots.ETA_JARVIS_SUPERVISOR_RECONCILE_PATH,
+            },
+        ),
+    },
+    "ETA-OperatorQueueHeartbeat": {
+        "max_age_s": 6 * 60 * 60,
+        "artifacts": (
+            {
+                "name": "operator_queue_snapshot",
+                "path": workspace_roots.ETA_OPERATOR_QUEUE_SNAPSHOT_PATH,
+            },
+        ),
+    },
+    "ETA-PaperLiveTransitionCheck": {
+        "max_age_s": 12 * 60 * 60,
+        "artifacts": (
+            {
+                "name": "paper_live_transition_check",
+                "path": workspace_roots.ETA_RUNTIME_STATE_DIR / "paper_live_transition_check.json",
+            },
+        ),
+    },
+    "ETA-ThreeAI-Sync": {
+        "max_age_s": 12 * 60 * 60,
+        "artifacts": (
+            {
+                "name": "fm_health_snapshot",
+                "path": workspace_roots.ETA_FM_HEALTH_SNAPSHOT_PATH,
+            },
+        ),
+    },
+    "ETA-PaperLive-Supervisor": {
+        "max_age_s": 12 * 60 * 60,
+        "artifacts": (
+            {
+                "name": "paper_live_transition_check",
+                "path": workspace_roots.ETA_RUNTIME_STATE_DIR / "paper_live_transition_check.json",
+            },
+            {
+                "name": "paper_live_launch_check",
+                "path": workspace_roots.ETA_PAPER_LIVE_LAUNCH_CHECK_SNAPSHOT_PATH,
+            },
+        ),
+    },
+    "ETA-IndexFutures-Bar-Refresh": {
+        "max_age_s": 6 * 60 * 60,
+        "artifacts": (
+            {
+                "name": "index_futures_bar_refresh",
+                "path": workspace_roots.ETA_INDEX_FUTURES_BAR_REFRESH_STATUS_PATH,
+            },
+            {
+                "name": "symbol_intelligence_collector",
+                "path": workspace_roots.ETA_SYMBOL_INTELLIGENCE_COLLECTOR_STATUS_PATH,
+            },
+            {
+                "name": "symbol_intelligence_snapshot",
+                "path": workspace_roots.ETA_SYMBOL_INTELLIGENCE_SNAPSHOT_PATH,
+            },
+        ),
+    },
+}
+NON_AUTHORITATIVE_TASK_REFRESH_COMMANDS = {
+    "ETA-SupervisorBrokerReconcile": (
+        "run eta_engine\\deploy\\scripts\\run_supervisor_broker_reconcile_task.cmd "
+        "on the VPS/Gateway-authoritative host"
+    ),
+    "ETA-OperatorQueueHeartbeat": "run eta_engine\\deploy\\scripts\\run_operator_queue_heartbeat_task.cmd",
+    "ETA-PaperLiveTransitionCheck": "run eta_engine\\deploy\\scripts\\run_paper_live_transition_check.cmd",
+    "ETA-ThreeAI-Sync": "run python -B -m eta_engine.scripts.force_multiplier_health --json-out --quiet",
+    "ETA-PaperLive-Supervisor": "run eta_engine\\deploy\\scripts\\run_paper_live_transition_check.cmd",
+    "ETA-IndexFutures-Bar-Refresh": "run eta_engine\\deploy\\scripts\\run_index_futures_bar_refresh_task.cmd",
+}
 IBGATEWAY_TASKS = (
     "ETA-IBGateway",
     "ETA-IBGateway-Autostart",
@@ -72,17 +170,25 @@ CANONICAL_SUPERVISOR_TASK = "ETA-Jarvis-Strategy-Supervisor"
 LEGACY_PAPERLIVE_SUPERVISOR_TASK = "ETA-PaperLive-Supervisor"
 SUPERVISOR_RECONCILE_MAX_AGE_S = 15 * 60
 BROKER_STATE_URL = "http://127.0.0.1:8421/api/live/broker_state"
+BROKER_STATE_REFRESH_URL = f"{BROKER_STATE_URL}?refresh=1"
 FUTURES_MONTH_CODES = frozenset("FGHJKMNQUVXZ")
+DASHBOARD_SCHEMA_RELOAD_COMMAND = (
+    r"scripts\reload-command-center-admin.cmd -SkipPublicCheck -SkipWatchdogRegistration"
+)
 ENDPOINTS = (
     {
         "name": "local_dashboard_api_diagnostics",
         "url": "http://127.0.0.1:8000/api/dashboard/diagnostics",
         "critical": True,
+        "timeout_s": 15.0,
+        "retries": 1,
     },
     {
         "name": "local_dashboard_proxy_diagnostics",
         "url": "http://127.0.0.1:8421/api/dashboard/diagnostics",
         "critical": True,
+        "timeout_s": 15.0,
+        "retries": 1,
     },
     {
         "name": "local_fm_status",
@@ -103,6 +209,34 @@ def _as_dict(value: Any) -> dict[str, Any]:  # noqa: ANN401
 
 def _as_list(value: Any) -> list[Any]:  # noqa: ANN401
     return value if isinstance(value, list) else []
+
+
+def _owner_details_list(value: Any) -> list[dict[str, Any]]:  # noqa: ANN401
+    if isinstance(value, list):
+        return [_as_dict(item) for item in value if isinstance(item, dict)]
+    if isinstance(value, dict):
+        return [value]
+    return []
+
+
+def _port_owner_runner_kind(owner_details: list[dict[str, Any]]) -> str:
+    for item in owner_details:
+        command_line = str(item.get("CommandLine") or item.get("command_line") or "")
+        lowered = command_line.lower()
+        if "-m eta_engine.deploy.fm_status_server" in lowered:
+            return "manual_module_runner"
+        if "uvicorn eta_engine.deploy.fm_status_server:app" in lowered:
+            return "manual_uvicorn_runner"
+    return ""
+
+
+def _port_owner_runner_label(owner_details: list[dict[str, Any]]) -> str:
+    kind = _port_owner_runner_kind(owner_details)
+    if kind == "manual_module_runner":
+        return "manual module runner"
+    if kind == "manual_uvicorn_runner":
+        return "manual uvicorn runner"
+    return ""
 
 
 def _iso_age_seconds(value: object, *, now: datetime | None = None) -> float | None:
@@ -225,7 +359,16 @@ $ports = @({quoted})
 $results = foreach ($port in $ports) {{
   $connections = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue
   $owners = @($connections | ForEach-Object {{ $_.OwningProcess }} | Sort-Object -Unique)
-  [pscustomobject]@{{Port=$port;Listening=($null -ne $connections);Owners=$owners}}
+  $ownerDetails = @($owners | ForEach-Object {{
+     $proc = Get-Process -Id $_ -ErrorAction SilentlyContinue
+     $procCim = Get-CimInstance Win32_Process -Filter "ProcessId=$_" -ErrorAction SilentlyContinue
+     if ($null -eq $proc) {{
+       [pscustomobject]@{{Pid=$_;Name=$null;Path=$null;CommandLine=$procCim.CommandLine}}
+     }} else {{
+       [pscustomobject]@{{Pid=$proc.Id;Name=$proc.ProcessName;Path=$proc.Path;CommandLine=$procCim.CommandLine}}
+     }}
+  }})
+  [pscustomobject]@{{Port=$port;Listening=($null -ne $connections);Owners=$owners;OwnerDetails=$ownerDetails}}
 }}
 $results | ConvertTo-Json -Depth 4
 """
@@ -246,6 +389,7 @@ $results | ConvertTo-Json -Depth 4
             "port": port,
             "listening": bool(item.get("Listening")),
             "owners": _as_list(item.get("Owners")),
+            "owner_details": _owner_details_list(item.get("OwnerDetails")),
         }
     return ports
 
@@ -256,6 +400,7 @@ def collect_task_status() -> dict[str, dict[str, Any]]:
         DASHBOARD_DURABLE_TASKS
         + PAPER_LIVE_DURABLE_TASKS
         + DATA_PIPELINE_TASKS
+        + FORCE_MULTIPLIER_DURABLE_TASKS
         + IBGATEWAY_TASKS
         + WATCHDOG_OBSERVED_TASKS
         + ("ETA-Autopilot",)
@@ -264,9 +409,34 @@ def collect_task_status() -> dict[str, dict[str, Any]]:
     command = f"""
 $names = @({quoted})
 $results = foreach ($name in $names) {{
-  $task = Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue
+  try {{
+    $task = Get-ScheduledTask -TaskName $name -ErrorAction Stop
+  }} catch {{
+    $task = $null
+  }}
   if ($null -eq $task) {{
-    [pscustomobject]@{{TaskName=$name;State='Missing';LastTaskResult=$null;LastRunTime=$null;NextRunTime=$null}}
+    $schedulerProbe = ((& schtasks.exe /query /tn $name /fo LIST /v 2>&1) | Out-String).Trim()
+    $state = 'Unknown'
+    $probeError = $schedulerProbe
+    if ($schedulerProbe -match 'Access is denied') {{
+      $state = 'AccessDenied'
+      $probeError = 'Access is denied.'
+    }} elseif ($schedulerProbe -match 'cannot find the file specified') {{
+      $state = 'Missing'
+      $probeError = 'The system cannot find the file specified.'
+    }} elseif (-not $schedulerProbe) {{
+      $probeError = $null
+    }}
+    [pscustomobject]@{{
+      TaskName=$name
+      State=$state
+      LastTaskResult=$null
+      LastRunTime=$null
+      NextRunTime=$null
+      Actions=$null
+      Error=$probeError
+      QuerySource='schtasks'
+    }}
   }} else {{
     $info = Get-ScheduledTaskInfo -TaskName $name -ErrorAction SilentlyContinue
     $actions = (($task.Actions | ForEach-Object {{ "$($_.Execute) $($_.Arguments)" }}) -join " || ")
@@ -277,6 +447,8 @@ $results = foreach ($name in $names) {{
       LastRunTime=$info.LastRunTime
       NextRunTime=$info.NextRunTime
       Actions=$actions
+      Error=$null
+      QuerySource='Get-ScheduledTask'
     }}
   }}
 }}
@@ -298,15 +470,22 @@ $results | ConvertTo-Json -Depth 4
                 "last_run_time": item.get("LastRunTime"),
                 "next_run_time": item.get("NextRunTime"),
                 "actions": str(item.get("Actions") or ""),
+                "error": str(item.get("Error") or ""),
+                "query_source": str(item.get("QuerySource") or ""),
             }
     return tasks
 
 
-def _probe_endpoint(url: str, *, timeout_s: float = 8.0) -> dict[str, Any]:
+def _probe_endpoint(
+    url: str,
+    *,
+    timeout_s: float = 8.0,
+    max_bytes: int = DEFAULT_ENDPOINT_READ_MAX_BYTES,
+) -> dict[str, Any]:
     request = urllib.request.Request(url, headers={"User-Agent": "eta-vps-ops-hardening"})
     try:
         with urllib.request.urlopen(request, timeout=timeout_s) as response:  # noqa: S310
-            body = response.read(65_536).decode("utf-8", errors="replace")
+            body = response.read(max_bytes).decode("utf-8", errors="replace")
             payload: Any
             try:
                 payload = json.loads(body)
@@ -323,17 +502,23 @@ def _probe_endpoint(url: str, *, timeout_s: float = 8.0) -> dict[str, Any]:
 
 def collect_endpoint_status() -> dict[str, dict[str, Any]]:
     """Probe local and public read-only health endpoints."""
-    return {
-        str(endpoint["name"]): {
-            **_probe_endpoint(
+    observed: dict[str, dict[str, Any]] = {}
+    for endpoint in ENDPOINTS:
+        attempts = max(1, int(endpoint.get("retries", 0)) + 1)
+        probe: dict[str, Any] = {}
+        for _ in range(attempts):
+            probe = _probe_endpoint(
                 str(endpoint["url"]),
                 timeout_s=float(endpoint.get("timeout_s", 8.0)),
-            ),
+            )
+            if bool(probe.get("ok")):
+                break
+        observed[str(endpoint["name"])] = {
+            **probe,
             "url": str(endpoint["url"]),
             "critical": bool(endpoint["critical"]),
         }
-        for endpoint in ENDPOINTS
-    }
+    return observed
 
 
 def _xml_field(path: Path, field: str) -> str | None:
@@ -347,11 +532,42 @@ def _xml_field(path: Path, field: str) -> str | None:
     return value.strip() if value else None
 
 
+def _resolve_eta_python() -> Path | None:
+    """Mirror the Force Multiplier repair script's canonical Python resolution."""
+    candidates: list[Path] = []
+    explicit = os.environ.get("ETA_PYTHON_EXE")
+    if explicit:
+        candidates.append(Path(explicit))
+    candidates.append(workspace_roots.ETA_ENGINE_ROOT / ".venv" / "Scripts" / "python.exe")
+    candidates.append(DEFAULT_MACHINE_PYTHON)
+    which_python = shutil.which("python")
+    if which_python:
+        candidates.append(Path(which_python))
+    seen: set[str] = set()
+    for candidate in candidates:
+        key = str(candidate).lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        with contextlib.suppress(OSError):
+            if candidate.exists():
+                return candidate
+    return None
+
+
+def _resolve_fm_status_installed_xml() -> Path:
+    if FM_STATUS_INSTALLED_XML.exists():
+        return FM_STATUS_INSTALLED_XML
+    return FM_STATUS_INSTALLED_XML_LEGACY
+
+
 def collect_service_config_status() -> dict[str, dict[str, Any]]:
     """Compare tracked and installed FmStatusServer WinSW XML."""
-    expected = workspace_roots.ETA_ENGINE_ROOT / "deploy" / "FmStatusServer.xml"
-    installed = workspace_roots.WORKSPACE_ROOT / "firm_command_center" / "services" / "FmStatusServer.xml"
-    expected_executable = _xml_field(expected, "executable")
+    expected = FM_STATUS_TEMPLATE_XML
+    installed = _resolve_fm_status_installed_xml()
+    template_executable = _xml_field(expected, "executable")
+    resolved_python = _resolve_eta_python()
+    expected_executable = str(resolved_python) if resolved_python else template_executable
     installed_executable = _xml_field(installed, "executable")
     expected_arguments = _xml_field(expected, "arguments")
     installed_arguments = _xml_field(installed, "arguments")
@@ -366,46 +582,259 @@ def collect_service_config_status() -> dict[str, dict[str, Any]]:
             "matches_expected": matches,
             "expected_xml": str(expected),
             "installed_xml": str(installed),
+            "template_executable": template_executable,
             "expected_executable": expected_executable,
             "installed_executable": installed_executable,
+            "expected_executable_source": "resolved_python" if resolved_python else "template_xml",
+            "installed_xml_source": "service_sidecar" if installed == FM_STATUS_INSTALLED_XML else "legacy_flat_xml",
             "expected_arguments": expected_arguments,
             "installed_arguments": installed_arguments,
         }
     }
 
 
-def _service_down(services: dict[str, dict[str, Any]]) -> list[str]:
+def _artifact_file_status(path: Path, *, now: datetime | None = None) -> dict[str, Any]:
+    if not path.exists():
+        return {"path": str(path), "present": False, "age_s": None, "modified_at": None}
+    try:
+        modified = datetime.fromtimestamp(path.stat().st_mtime, tz=UTC)
+    except OSError as exc:
+        return {
+            "path": str(path),
+            "present": False,
+            "age_s": None,
+            "modified_at": None,
+            "error": str(exc),
+        }
+    age_s = max(0.0, ((now or datetime.now(UTC)) - modified).total_seconds())
+    return {
+        "path": str(path),
+        "present": True,
+        "age_s": round(age_s, 1),
+        "modified_at": modified.isoformat(),
+    }
+
+
+def _live_broker_state_refresh_coverage(
+    live_broker_state: dict[str, Any] | None,
+    *,
+    now: datetime,
+) -> dict[str, Any] | None:
+    payload = live_broker_state if isinstance(live_broker_state, dict) else {}
+    if not payload:
+        return None
+    snapshot_state = str(payload.get("broker_snapshot_state") or "").strip().lower()
+    source = str(payload.get("source") or "").strip()
+    server_ts = payload.get("server_ts")
+    age_s = _float_value(payload.get("broker_snapshot_age_s"))
+    modified_at: str | None = None
+    if isinstance(server_ts, (int, float)):
+        observed = datetime.fromtimestamp(float(server_ts), tz=UTC)
+        modified_at = observed.isoformat()
+        age_s = max(0.0, (now - observed).total_seconds())
+    if age_s is None:
+        age_s = 0.0
+    if not snapshot_state and not source and not bool(payload.get("close_history")):
+        return None
+    max_age_s = 15 * 60
+    fresh_state = snapshot_state in {"", "fresh", "ready", "live"}
+    stale = bool(age_s > max_age_s or not fresh_state)
+    return {
+        "task_name": "ETA-BrokerStateRefreshHeartbeat",
+        "covered": True,
+        "stale": stale,
+        "status": snapshot_state or ("stale" if stale else "fresh"),
+        "max_age_s": max_age_s,
+        "path": BROKER_STATE_REFRESH_URL,
+        "source": source or "live_broker_state_endpoint",
+        "modified_at": modified_at,
+        "age_s": round(age_s, 1),
+        "artifacts": [
+            {
+                "name": "live_broker_state_endpoint",
+                "path": BROKER_STATE_REFRESH_URL,
+                "present": True,
+                "age_s": round(age_s, 1),
+                "modified_at": modified_at,
+            }
+        ],
+        "broker_snapshot_state": snapshot_state,
+        "broker_ready": bool(payload.get("ready")),
+    }
+
+
+def collect_non_authoritative_task_artifacts(
+    *,
+    now: datetime | None = None,
+    live_broker_state: dict[str, Any] | None = None,
+) -> dict[str, dict[str, Any]]:
+    """Capture cached local artifacts that can truthfully back non-authoritative watch surfaces."""
+    observed_now = now or datetime.now(UTC)
+    coverage: dict[str, dict[str, Any]] = {}
+    for task_name, spec in NON_AUTHORITATIVE_TASK_ARTIFACTS.items():
+        max_age_s = int(spec.get("max_age_s") or 0)
+        candidates: list[dict[str, Any]] = []
+        selected: dict[str, Any] | None = None
+        for raw_artifact in spec.get("artifacts") or ():
+            artifact = _as_dict(raw_artifact)
+            path_value = artifact.get("path")
+            if not isinstance(path_value, Path):
+                continue
+            candidate = _artifact_file_status(path_value, now=observed_now)
+            candidate["name"] = str(artifact.get("name") or path_value.name)
+            candidates.append(candidate)
+            if selected is None and candidate.get("present"):
+                selected = candidate
+        coverage_entry: dict[str, Any] = {
+            "task_name": task_name,
+            "covered": False,
+            "stale": False,
+            "status": "missing",
+            "max_age_s": max_age_s,
+            "artifacts": candidates,
+        }
+        if selected is not None:
+            age_s = float(selected.get("age_s") or 0.0)
+            stale = bool(max_age_s and age_s > max_age_s)
+            coverage_entry.update(
+                {
+                    "covered": True,
+                    "stale": stale,
+                    "status": "stale" if stale else "fresh",
+                    "path": selected.get("path"),
+                    "source": selected.get("name"),
+                    "modified_at": selected.get("modified_at"),
+                    "age_s": selected.get("age_s"),
+                }
+            )
+        coverage[task_name] = coverage_entry
+    broker_refresh_coverage = _live_broker_state_refresh_coverage(live_broker_state, now=observed_now)
+    if broker_refresh_coverage is not None:
+        coverage["ETA-BrokerStateRefreshHeartbeat"] = broker_refresh_coverage
+    return coverage
+
+
+def _critical_services_not_running(services: dict[str, dict[str, Any]]) -> list[str]:
     return [
         name for name in CRITICAL_SERVICES if str(_as_dict(services.get(name)).get("status") or "").lower() != "running"
     ]
+
+
+def _service_runtime_drift(
+    services: dict[str, dict[str, Any]],
+    ports: dict[int, dict[str, Any]],
+    endpoints: dict[str, dict[str, Any]],
+) -> list[str]:
+    return list(_service_runtime_drift_detail(services, ports, endpoints))
+
+
+def _service_runtime_drift_detail(
+    services: dict[str, dict[str, Any]],
+    ports: dict[int, dict[str, Any]],
+    endpoints: dict[str, dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    detail: dict[str, dict[str, Any]] = {}
+    for name in _critical_services_not_running(services):
+        probe = _as_dict(CRITICAL_SERVICE_RUNTIME_PROBES.get(name))
+        port = probe.get("port")
+        endpoint_name = str(probe.get("endpoint") or "")
+        if not isinstance(port, int) or not endpoint_name:
+            continue
+        port_status = _as_dict(ports.get(port))
+        endpoint_status = _as_dict(endpoints.get(endpoint_name))
+        service_status = _as_dict(services.get(name))
+        port_ok = bool(port_status.get("listening"))
+        endpoint_ok = bool(endpoint_status.get("ok"))
+        if port_ok and endpoint_ok:
+            owner_details = _owner_details_list(port_status.get("owner_details"))
+            runner_label = _port_owner_runner_label(owner_details)
+            reason = "critical endpoint is alive while the supervised Windows service is not running"
+            if runner_label:
+                reason = (
+                    "critical endpoint is alive via a "
+                    + runner_label
+                    + " while the supervised Windows service is not running"
+                )
+            detail[name] = {
+                "service_status": service_status.get("status"),
+                "service_start_type": service_status.get("start_type"),
+                "port": port,
+                "port_listening": port_ok,
+                "port_owners": _as_list(port_status.get("owners")),
+                "port_owner_details": owner_details,
+                "port_owner_runner": _port_owner_runner_kind(owner_details),
+                "port_owner_runner_label": runner_label,
+                "endpoint": endpoint_name,
+                "endpoint_ok": endpoint_ok,
+                "reason": reason,
+            }
+    return detail
 
 
 def _missing_ports(ports: dict[int, dict[str, Any]]) -> list[int]:
     return [port for port in REQUIRED_PORTS if not bool(_as_dict(ports.get(port)).get("listening"))]
 
 
+def _tasks_with_state(task_names: tuple[str, ...], tasks: dict[str, dict[str, Any]], state: str) -> list[str]:
+    expected = state.lower()
+    return [name for name in task_names if str(_as_dict(tasks.get(name)).get("state") or "").lower() == expected]
+
+
 def _missing_dashboard_tasks(tasks: dict[str, dict[str, Any]]) -> list[str]:
-    return [
-        name
-        for name in DASHBOARD_DURABLE_TASKS
-        if str(_as_dict(tasks.get(name)).get("state") or "").lower() == "missing"
-    ]
+    return _tasks_with_state(DASHBOARD_DURABLE_TASKS, tasks, "Missing")
 
 
 def _missing_paper_live_tasks(tasks: dict[str, dict[str, Any]]) -> list[str]:
-    return [
-        name
-        for name in PAPER_LIVE_DURABLE_TASKS
-        if str(_as_dict(tasks.get(name)).get("state") or "").lower() == "missing"
-    ]
+    return _tasks_with_state(PAPER_LIVE_DURABLE_TASKS, tasks, "Missing")
 
 
 def _missing_data_pipeline_tasks(tasks: dict[str, dict[str, Any]]) -> list[str]:
-    return [
-        name
-        for name in DATA_PIPELINE_TASKS
-        if str(_as_dict(tasks.get(name)).get("state") or "").lower() == "missing"
+    return _tasks_with_state(DATA_PIPELINE_TASKS, tasks, "Missing")
+
+
+def _missing_force_multiplier_tasks(tasks: dict[str, dict[str, Any]]) -> list[str]:
+    return _tasks_with_state(FORCE_MULTIPLIER_DURABLE_TASKS, tasks, "Missing")
+
+
+def _access_denied_dashboard_tasks(tasks: dict[str, dict[str, Any]]) -> list[str]:
+    return _tasks_with_state(DASHBOARD_DURABLE_TASKS, tasks, "AccessDenied")
+
+
+def _access_denied_paper_live_tasks(tasks: dict[str, dict[str, Any]]) -> list[str]:
+    return _tasks_with_state(PAPER_LIVE_DURABLE_TASKS, tasks, "AccessDenied")
+
+
+def _access_denied_data_pipeline_tasks(tasks: dict[str, dict[str, Any]]) -> list[str]:
+    return _tasks_with_state(DATA_PIPELINE_TASKS, tasks, "AccessDenied")
+
+
+def _access_denied_force_multiplier_tasks(tasks: dict[str, dict[str, Any]]) -> list[str]:
+    return _tasks_with_state(FORCE_MULTIPLIER_DURABLE_TASKS, tasks, "AccessDenied")
+
+
+def _artifact_backed_missing_tasks(
+    missing_tasks: list[str],
+    task_artifacts: dict[str, dict[str, Any]],
+) -> list[str]:
+    return [name for name in missing_tasks if bool(_as_dict(task_artifacts.get(name)).get("covered"))]
+
+
+def _stale_artifact_backed_tasks(
+    task_names: list[str],
+    task_artifacts: dict[str, dict[str, Any]],
+) -> list[str]:
+    return [name for name in task_names if bool(_as_dict(task_artifacts.get(name)).get("stale"))]
+
+
+def _artifact_refresh_guidance(task_names: list[str]) -> str:
+    commands = [
+        command
+        for name in task_names
+        if (command := NON_AUTHORITATIVE_TASK_REFRESH_COMMANDS.get(name))
     ]
+    if not commands:
+        return ""
+    return "; " + "; ".join(dict.fromkeys(commands))
 
 
 def _stale_supervisor_restart_hooks(tasks: dict[str, dict[str, Any]]) -> list[str]:
@@ -442,10 +871,18 @@ def _dashboard_schema_drift(endpoints: dict[str, dict[str, Any]]) -> list[str]:
         if not payload:
             continue
         checks = _as_dict(payload.get("checks"))
+        hardening = _as_dict(payload.get("vps_ops_hardening"))
         if (
-            "hardening" not in payload
+            "command_center_watchdog" not in payload
+            or "eta_readiness_snapshot" not in payload
+            or "daily_stop_reset_audit" not in payload
+            or "hardening" not in payload
             or payload.get("hardening") != payload.get("vps_ops_hardening")
+            or checks.get("command_center_watchdog_contract") is not True
+            or checks.get("eta_readiness_snapshot_contract") is not True
+            or checks.get("daily_stop_reset_audit_contract") is not True
             or checks.get("hardening_contract") is not True
+            or checks.get("vps_ops_hardening_contract") is not True
         ):
             drifted.append(name)
     return drifted
@@ -519,11 +956,48 @@ def _promotion_gate_summary(promotion_audit: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _replay_bar_label(symbol: str) -> str:
+    clean = str(symbol or "").strip().upper()
+    if clean:
+        return f"{clean} 5-minute replay bars"
+    return "5-minute replay bars"
+
+
+def _runner_shadow_bar_gap_action(label: str, symbol: str, outcome_evidence: dict[str, Any]) -> str:
+    bar_label = _replay_bar_label(symbol)
+    no_bar_after_signal = int(outcome_evidence.get("no_bar_after_signal") or 0)
+    missing_bar_datasets = int(outcome_evidence.get("missing_bar_datasets") or 0)
+    coverage_end = str(outcome_evidence.get("latest_bar_coverage_end_ts") or "").strip()
+    if no_bar_after_signal > 0:
+        if coverage_end:
+            return (
+                f"Refresh {bar_label} for runner-up {label}; latest available replay bar is {coverage_end} "
+                f"and {no_bar_after_signal} shadow signals arrived after coverage ended"
+            )
+        return (
+            f"Refresh {bar_label} for runner-up {label}; {no_bar_after_signal} shadow signals arrived after "
+            "available replay coverage ended"
+        )
+    if missing_bar_datasets > 0:
+        return (
+            f"Repair replay bar sourcing for runner-up {label}; no {bar_label} are available for "
+            f"{missing_bar_datasets} shadow signals"
+        )
+    missing_bars = int(outcome_evidence.get("missing_bars") or 0)
+    return (
+        f"Repair shadow outcome replay for runner-up {label}; {missing_bars} shadow signals "
+        "cannot replay into outcomes"
+    )
+
+
 def _promotion_gate_action(gate: dict[str, Any]) -> str:
     runner = _as_dict(gate.get("next_runner_candidate"))
     runner_id = str(runner.get("bot_id") or "").strip()
     runner_symbol = str(runner.get("symbol") or "").strip()
     if runner_id:
+        next_action = str(runner.get("next_action") or "").strip()
+        if next_action:
+            return next_action
         label = f"{runner_id} ({runner_symbol})" if runner_symbol else runner_id
         close_evidence = _as_dict(runner.get("broker_close_evidence"))
         if int(close_evidence.get("closed_trade_count") or 0) <= 0:
@@ -541,10 +1015,7 @@ def _promotion_gate_action(gate: dict[str, Any]) -> str:
                         f"{missing_context} older shadow signals lack planned entry/risk context"
                     )
                 if missing_bars > 0:
-                    return (
-                        f"Repair bar freshness/source mapping for runner-up {label}; "
-                        f"{missing_bars} shadow signals cannot replay into outcomes"
-                    )
+                    return _runner_shadow_bar_gap_action(label, runner_symbol, outcome_evidence)
                 if insufficient_future_bars > 0:
                     return f"Wait for enough future bars for runner-up {label}; replay window is incomplete"
                 return f"Repair shadow outcome replay for runner-up {label}; signals exist but no outcomes evaluated"
@@ -613,6 +1084,7 @@ def _ibgateway_summary(
             "port": 4002,
             "port_listening": bool(_as_dict(ports.get(4002)).get("listening")),
             "reason": None,
+            "non_authoritative_host": False,
         }
     status = str(ibgateway_reauth.get("status") or ibgateway_reauth.get("artifact_status") or "UNKNOWN")
     port_listening = bool(_as_dict(ports.get(4002)).get("listening"))
@@ -761,16 +1233,26 @@ def _current_supervisor_reconcile_snapshot(
     supervisor_heartbeat: dict[str, Any] | None,
     live_broker_state: dict[str, Any] | None,
 ) -> dict[str, Any] | None:
-    if not isinstance(live_broker_state, dict) or not live_broker_state.get("ready"):
+    if not isinstance(live_broker_state, dict):
+        return None
+    broker_state_source = str(live_broker_state.get("source") or "").strip()
+    broker_snapshot_state = str(live_broker_state.get("broker_snapshot_state") or "").strip().lower()
+    fresh_non_authoritative_zero_position_truth = (
+        broker_state_source == "live_broker_rest" and broker_snapshot_state == "fresh"
+    )
+    if not live_broker_state.get("ready") and not fresh_non_authoritative_zero_position_truth:
         return None
     broker_by_root = _broker_positions_by_root(live_broker_state)
     supervisor_by_root = _supervisor_positions_by_root(supervisor_heartbeat)
-    if not broker_by_root and not supervisor_by_root:
-        return None
     ibkr_state = _as_dict(live_broker_state.get("ibkr"))
     reported_open_count = _float_value(live_broker_state.get("open_position_count"))
     if reported_open_count is None:
         reported_open_count = _float_value(ibkr_state.get("open_position_count"))
+    if not broker_by_root and not supervisor_by_root:
+        if reported_open_count is None:
+            return None
+        if reported_open_count > 0:
+            return None
     if not broker_by_root and reported_open_count is not None and reported_open_count > 0:
         return None
     if not broker_by_root and supervisor_by_root and reported_open_count is None:
@@ -780,7 +1262,12 @@ def _current_supervisor_reconcile_snapshot(
         supervisor_by_root=supervisor_by_root,
         checked_at=datetime.now(UTC).isoformat(),
         source="supervisor_heartbeat_and_live_broker_state",
-        brokers_queried=["ibkr"] if _as_dict((live_broker_state or {}).get("ibkr")).get("ready") else [],
+        brokers_queried=["ibkr"]
+        if (
+            _as_dict((live_broker_state or {}).get("ibkr")).get("ready")
+            or fresh_non_authoritative_zero_position_truth
+        )
+        else [],
     )
     snapshot["broker_roots"] = dict(sorted(broker_by_root.items()))
     snapshot["supervisor_roots"] = dict(sorted(supervisor_by_root.items()))
@@ -808,6 +1295,38 @@ def _effective_supervisor_reconcile(
     if _reconcile_mismatch_count(supervisor_reconcile):
         return supervisor_reconcile
     return current
+
+
+def _current_supervisor_reconcile_coverage(gate: dict[str, Any]) -> dict[str, Any] | None:
+    source = str(gate.get("source") or "").strip()
+    if source != "supervisor_heartbeat_and_live_broker_state":
+        return None
+    checked_at = str(gate.get("checked_at") or "").strip() or None
+    age_s = _float_value(gate.get("age_s"))
+    max_age_s = int(gate.get("max_age_s") or SUPERVISOR_RECONCILE_MAX_AGE_S)
+    return {
+        "task_name": "ETA-SupervisorBrokerReconcile",
+        "covered": True,
+        "stale": False,
+        "status": "fresh",
+        "max_age_s": max_age_s,
+        "path": "",
+        "source": source,
+        "modified_at": checked_at,
+        "age_s": round(age_s, 1) if age_s is not None else None,
+        "artifacts": [
+            {
+                "name": "supervisor_heartbeat_and_live_broker_state",
+                "path": "",
+                "present": True,
+                "age_s": round(age_s, 1) if age_s is not None else None,
+                "modified_at": checked_at,
+            }
+        ],
+        "heartbeat_ts": gate.get("heartbeat_ts"),
+        "broker_state_source": gate.get("broker_state_source"),
+        "brokers_queried": [str(item) for item in _as_list(gate.get("brokers_queried")) if str(item)],
+    }
 
 
 def _supervisor_code_summary(
@@ -1014,6 +1533,7 @@ def build_report(
     service_config: dict[str, dict[str, Any]],
     tasks: dict[str, dict[str, Any]] | None = None,
     ibgateway_reauth: dict[str, Any] | None = None,
+    non_authoritative_task_artifacts: dict[str, dict[str, Any]] | None = None,
     jarvis_hermes_admin: dict[str, Any] | None = None,
     supervisor_reconcile: dict[str, Any] | None = None,
     supervisor_heartbeat: dict[str, Any] | None = None,
@@ -1022,11 +1542,23 @@ def build_report(
 ) -> dict[str, Any]:
     """Build the deterministic hardening report from collected inputs."""
     tasks = tasks or {}
-    service_down = _service_down(services)
+    non_authoritative_task_artifacts = {
+        str(name): dict(_as_dict(entry))
+        for name, entry in (non_authoritative_task_artifacts or {}).items()
+    }
+    service_runtime_drift_detail = _service_runtime_drift_detail(services, ports, endpoints)
+    service_runtime_drift = list(service_runtime_drift_detail)
+    service_down = [name for name in _critical_services_not_running(services) if name not in service_runtime_drift]
     missing_ports = _missing_ports(ports)
     missing_dashboard_tasks = _missing_dashboard_tasks(tasks)
-    missing_paper_live_tasks = _missing_paper_live_tasks(tasks)
-    missing_data_pipeline_tasks = _missing_data_pipeline_tasks(tasks)
+    observed_missing_dashboard_tasks = list(missing_dashboard_tasks)
+    observed_missing_paper_live_tasks = _missing_paper_live_tasks(tasks)
+    observed_missing_data_pipeline_tasks = _missing_data_pipeline_tasks(tasks)
+    observed_missing_force_multiplier_tasks = _missing_force_multiplier_tasks(tasks)
+    access_denied_dashboard_tasks = _access_denied_dashboard_tasks(tasks)
+    access_denied_paper_live_tasks = _access_denied_paper_live_tasks(tasks)
+    access_denied_data_pipeline_tasks = _access_denied_data_pipeline_tasks(tasks)
+    access_denied_force_multiplier_tasks = _access_denied_force_multiplier_tasks(tasks)
     stale_restart_hooks = _stale_supervisor_restart_hooks(tasks)
     endpoint_failures = _critical_endpoint_failures(endpoints)
     dashboard_schema_drift = _dashboard_schema_drift(endpoints)
@@ -1034,6 +1566,61 @@ def build_report(
     broker_gate = _broker_gate_summary(broker_bracket_audit)
     promotion_gate = _promotion_gate_summary(promotion_audit)
     ibgateway_gate = _ibgateway_summary(ibgateway_reauth, ports)
+    artifact_backed_dashboard_tasks: list[str] = []
+    artifact_backed_paper_live_tasks: list[str] = []
+    artifact_backed_data_pipeline_tasks: list[str] = []
+    artifact_backed_force_multiplier_tasks: list[str] = []
+    stale_artifact_backed_dashboard_tasks: list[str] = []
+    stale_artifact_backed_paper_live_tasks: list[str] = []
+    stale_artifact_backed_data_pipeline_tasks: list[str] = []
+    stale_artifact_backed_force_multiplier_tasks: list[str] = []
+    if ibgateway_gate["non_authoritative_host"]:
+        artifact_backed_dashboard_tasks = _artifact_backed_missing_tasks(
+            observed_missing_dashboard_tasks,
+            non_authoritative_task_artifacts,
+        )
+        artifact_backed_paper_live_tasks = _artifact_backed_missing_tasks(
+            observed_missing_paper_live_tasks,
+            non_authoritative_task_artifacts,
+        )
+        artifact_backed_data_pipeline_tasks = _artifact_backed_missing_tasks(
+            observed_missing_data_pipeline_tasks,
+            non_authoritative_task_artifacts,
+        )
+        artifact_backed_force_multiplier_tasks = _artifact_backed_missing_tasks(
+            observed_missing_force_multiplier_tasks,
+            non_authoritative_task_artifacts,
+        )
+        stale_artifact_backed_dashboard_tasks = _stale_artifact_backed_tasks(
+            artifact_backed_dashboard_tasks,
+            non_authoritative_task_artifacts,
+        )
+        stale_artifact_backed_paper_live_tasks = _stale_artifact_backed_tasks(
+            artifact_backed_paper_live_tasks,
+            non_authoritative_task_artifacts,
+        )
+        stale_artifact_backed_data_pipeline_tasks = _stale_artifact_backed_tasks(
+            artifact_backed_data_pipeline_tasks,
+            non_authoritative_task_artifacts,
+        )
+        stale_artifact_backed_force_multiplier_tasks = _stale_artifact_backed_tasks(
+            artifact_backed_force_multiplier_tasks,
+            non_authoritative_task_artifacts,
+        )
+    missing_dashboard_tasks = [
+        name for name in observed_missing_dashboard_tasks if name not in artifact_backed_dashboard_tasks
+    ]
+    missing_paper_live_tasks = [
+        name for name in observed_missing_paper_live_tasks if name not in artifact_backed_paper_live_tasks
+    ]
+    missing_data_pipeline_tasks = [
+        name for name in observed_missing_data_pipeline_tasks if name not in artifact_backed_data_pipeline_tasks
+    ]
+    missing_force_multiplier_tasks = [
+        name
+        for name in observed_missing_force_multiplier_tasks
+        if name not in artifact_backed_force_multiplier_tasks
+    ]
     admin_ai_gate = _jarvis_hermes_admin_summary(jarvis_hermes_admin)
     effective_supervisor_reconcile = _effective_supervisor_reconcile(
         supervisor_reconcile=supervisor_reconcile,
@@ -1041,6 +1628,16 @@ def build_report(
         live_broker_state=live_broker_state,
     )
     supervisor_reconcile_gate = _supervisor_reconcile_summary(effective_supervisor_reconcile)
+    current_supervisor_reconcile_coverage = _current_supervisor_reconcile_coverage(supervisor_reconcile_gate)
+    if current_supervisor_reconcile_coverage is not None:
+        non_authoritative_task_artifacts["ETA-SupervisorBrokerReconcile"] = current_supervisor_reconcile_coverage
+    if (
+        supervisor_reconcile_gate.get("source") == "supervisor_heartbeat_and_live_broker_state"
+        and "ETA-SupervisorBrokerReconcile" in stale_artifact_backed_dashboard_tasks
+    ):
+        stale_artifact_backed_dashboard_tasks = [
+            name for name in stale_artifact_backed_dashboard_tasks if name != "ETA-SupervisorBrokerReconcile"
+        ]
     supervisor_code_gate = _supervisor_code_summary(
         supervisor_heartbeat=supervisor_heartbeat,
         repo_revision=repo_revision,
@@ -1054,6 +1651,7 @@ def build_report(
         and not stale_restart_hooks
     )
     dashboard_durable = not missing_dashboard_tasks
+    force_multiplier_durable = not missing_force_multiplier_tasks
     paper_live_status = _paper_live_status(
         runtime_ready=runtime_ready,
         broker_gate=broker_gate,
@@ -1069,6 +1667,21 @@ def build_report(
 
     for name in service_down:
         next_actions.append(f"Start or repair Windows service: {name}")
+    for name in service_runtime_drift:
+        drift = _as_dict(service_runtime_drift_detail.get(name))
+        owner_details = _owner_details_list(drift.get("port_owner_details"))
+        owner_names = ", ".join(
+            str(item.get("Name") or item.get("name") or item.get("Pid") or item.get("pid"))
+            for item in owner_details[:3]
+        )
+        runner_label = str(drift.get("port_owner_runner_label") or "").strip()
+        runner_hint = f", {runner_label}" if runner_label else ""
+        owner_hint = f" (port {drift.get('port')} owner={owner_names}{runner_hint})" if owner_names else ""
+        next_actions.append(
+            "Repair supervised Windows service ownership for live endpoint: "
+            f"{name}{owner_hint}; run eta_engine\\deploy\\scripts\\repair_force_multiplier_control_plane_admin.cmd "
+            "/RestartService"
+        )
     for port in missing_ports:
         next_actions.append(f"Restore listener on port {port}")
     for name in endpoint_failures:
@@ -1079,6 +1692,12 @@ def build_report(
             "eta_engine\\deploy\\scripts\\repair_dashboard_durability_admin.cmd "
             "(registers " + ", ".join(missing_dashboard_tasks) + ")"
         )
+    if stale_artifact_backed_dashboard_tasks:
+        next_actions.append(
+            "Refresh local non-authoritative dashboard watch artifacts; cached authoritative coverage is stale for "
+            + ", ".join(stale_artifact_backed_dashboard_tasks)
+            + _artifact_refresh_guidance(stale_artifact_backed_dashboard_tasks)
+        )
     if missing_paper_live_tasks:
         next_actions.append(
             "Repair paper-live scheduled task lane: " + ", ".join(missing_paper_live_tasks)
@@ -1086,6 +1705,30 @@ def build_report(
     if missing_data_pipeline_tasks:
         next_actions.append(
             "Repair data-pipeline scheduled task lane: " + ", ".join(missing_data_pipeline_tasks)
+        )
+    if missing_force_multiplier_tasks:
+        next_actions.append(
+            "Repair Force Multiplier scheduled task lane: "
+            + ", ".join(missing_force_multiplier_tasks)
+            + "; run eta_engine\\deploy\\scripts\\repair_force_multiplier_control_plane_admin.cmd /RestartService"
+        )
+    if stale_artifact_backed_force_multiplier_tasks:
+        next_actions.append(
+            "Refresh local non-authoritative Force Multiplier watch artifacts; cached authoritative coverage is stale for "
+            + ", ".join(stale_artifact_backed_force_multiplier_tasks)
+            + _artifact_refresh_guidance(stale_artifact_backed_force_multiplier_tasks)
+        )
+    if stale_artifact_backed_paper_live_tasks:
+        next_actions.append(
+            "Refresh local non-authoritative paper-live watch artifacts; cached authoritative coverage is stale for "
+            + ", ".join(stale_artifact_backed_paper_live_tasks)
+            + _artifact_refresh_guidance(stale_artifact_backed_paper_live_tasks)
+        )
+    if stale_artifact_backed_data_pipeline_tasks:
+        next_actions.append(
+            "Refresh local non-authoritative data-pipeline watch artifacts; cached authoritative coverage is stale for "
+            + ", ".join(stale_artifact_backed_data_pipeline_tasks)
+            + _artifact_refresh_guidance(stale_artifact_backed_data_pipeline_tasks)
         )
     if stale_restart_hooks:
         next_actions.append(
@@ -1095,8 +1738,9 @@ def build_report(
         )
     if dashboard_schema_drift:
         next_actions.append(
-            "Reload dashboard API/proxy so live diagnostics schema includes the hardening alias: "
+            "Reload dashboard API/proxy so live diagnostics schema includes the compatibility aliases and audit contracts: "
             + ", ".join(dashboard_schema_drift)
+            + f"; run {DASHBOARD_SCHEMA_RELOAD_COMMAND}"
         )
     if drifted_configs:
         next_actions.append("Run an elevated restart/install for drifted WinSW services: " + ", ".join(drifted_configs))
@@ -1149,9 +1793,9 @@ def build_report(
 
     if not runtime_ready:
         status = "RED_RUNTIME_DEGRADED"
-    elif drifted_configs or (dashboard_schema_drift and trading_gate_ready):
+    elif drifted_configs or service_runtime_drift or (dashboard_schema_drift and trading_gate_ready):
         status = "YELLOW_RESTART_REQUIRED"
-    elif not dashboard_durable and trading_gate_ready:
+    elif not (dashboard_durable and force_multiplier_durable) and trading_gate_ready:
         status = "YELLOW_DURABILITY_GAP"
     elif not trading_gate_ready:
         status = "YELLOW_SAFETY_BLOCKED"
@@ -1169,8 +1813,23 @@ def build_report(
         "summary": {
             "status": status,
             "runtime_ready": runtime_ready,
+            "service_down": service_down,
+            "service_runtime_drift": service_runtime_drift,
+            "service_config_drift": drifted_configs,
+            "missing_ports": missing_ports,
+            "critical_endpoint_failures": endpoint_failures,
             "dashboard_durable": dashboard_durable,
+            "force_multiplier_durable": force_multiplier_durable,
+            "missing_dashboard_durable": missing_dashboard_tasks,
+            "missing_force_multiplier_durable": missing_force_multiplier_tasks,
+            "missing_paper_live_durable": missing_paper_live_tasks,
+            "missing_data_pipeline": missing_data_pipeline_tasks,
+            "stale_artifact_backed_dashboard_durable": stale_artifact_backed_dashboard_tasks,
+            "stale_artifact_backed_force_multiplier_durable": stale_artifact_backed_force_multiplier_tasks,
+            "stale_artifact_backed_paper_live_durable": stale_artifact_backed_paper_live_tasks,
+            "stale_artifact_backed_data_pipeline": stale_artifact_backed_data_pipeline_tasks,
             "dashboard_schema_current": not dashboard_schema_drift,
+            "dashboard_schema_drift": dashboard_schema_drift,
             "paper_live_gate_ready": paper_live_gate_ready,
             "paper_live_status": paper_live_status,
             "trading_gate_ready": trading_gate_ready,
@@ -1190,6 +1849,8 @@ def build_report(
                 "optional": list(OPTIONAL_SERVICES),
                 "legacy_compatibility": list(LEGACY_COMPAT_SERVICES),
                 "down": service_down,
+                "runtime_drift": service_runtime_drift,
+                "runtime_drift_detail": service_runtime_drift_detail,
                 "observed": services,
             },
             "ports": {
@@ -1206,12 +1867,31 @@ def build_report(
                 "dashboard_durable": list(DASHBOARD_DURABLE_TASKS),
                 "paper_live_durable": list(PAPER_LIVE_DURABLE_TASKS),
                 "data_pipeline": list(DATA_PIPELINE_TASKS),
+                "force_multiplier_durable": list(FORCE_MULTIPLIER_DURABLE_TASKS),
                 "ibgateway": list(IBGATEWAY_TASKS),
                 "watchdog_observed": list(WATCHDOG_OBSERVED_TASKS),
+                "observed_missing_dashboard_durable": observed_missing_dashboard_tasks,
                 "missing_dashboard_durable": missing_dashboard_tasks,
+                "artifact_backed_missing_dashboard_durable": artifact_backed_dashboard_tasks,
+                "stale_artifact_backed_dashboard_durable": stale_artifact_backed_dashboard_tasks,
+                "observed_missing_paper_live_durable": observed_missing_paper_live_tasks,
                 "missing_paper_live_durable": missing_paper_live_tasks,
+                "artifact_backed_missing_paper_live_durable": artifact_backed_paper_live_tasks,
+                "stale_artifact_backed_paper_live_durable": stale_artifact_backed_paper_live_tasks,
+                "observed_missing_data_pipeline": observed_missing_data_pipeline_tasks,
                 "missing_data_pipeline": missing_data_pipeline_tasks,
+                "observed_missing_force_multiplier_durable": observed_missing_force_multiplier_tasks,
+                "missing_force_multiplier_durable": missing_force_multiplier_tasks,
+                "artifact_backed_missing_force_multiplier_durable": artifact_backed_force_multiplier_tasks,
+                "stale_artifact_backed_force_multiplier_durable": stale_artifact_backed_force_multiplier_tasks,
+                "artifact_backed_missing_data_pipeline": artifact_backed_data_pipeline_tasks,
+                "stale_artifact_backed_data_pipeline": stale_artifact_backed_data_pipeline_tasks,
+                "access_denied_dashboard_durable": access_denied_dashboard_tasks,
+                "access_denied_paper_live_durable": access_denied_paper_live_tasks,
+                "access_denied_data_pipeline": access_denied_data_pipeline_tasks,
+                "access_denied_force_multiplier_durable": access_denied_force_multiplier_tasks,
                 "stale_supervisor_restart_hooks": stale_restart_hooks,
+                "non_authoritative_task_artifacts": non_authoritative_task_artifacts,
                 "observed": tasks,
             },
         },
@@ -1241,8 +1921,18 @@ def collect_jarvis_hermes_admin_status() -> dict[str, Any]:
 
 def collect_live_report() -> dict[str, Any]:
     """Collect live read-only inputs and build the hardening report."""
-    broker_state_probe = _probe_endpoint(BROKER_STATE_URL, timeout_s=8.0)
+    broker_state_probe = _probe_endpoint(
+        BROKER_STATE_URL,
+        timeout_s=8.0,
+        max_bytes=BROKER_STATE_READ_MAX_BYTES,
+    )
     live_broker_state = _as_dict(broker_state_probe.get("payload"))
+    broker_state_refresh_probe = _probe_endpoint(
+        BROKER_STATE_REFRESH_URL,
+        timeout_s=8.0,
+        max_bytes=BROKER_STATE_READ_MAX_BYTES,
+    )
+    live_broker_refresh_state = _as_dict(broker_state_refresh_probe.get("payload")) or live_broker_state
     return build_report(
         services=collect_service_status(),
         ports=collect_port_status(),
@@ -1252,10 +1942,13 @@ def collect_live_report() -> dict[str, Any]:
         service_config=collect_service_config_status(),
         tasks=collect_task_status(),
         ibgateway_reauth=_read_json(workspace_roots.ETA_RUNTIME_STATE_DIR / "ibgateway_reauth.json"),
+        non_authoritative_task_artifacts=collect_non_authoritative_task_artifacts(
+            live_broker_state=live_broker_refresh_state,
+        ),
         jarvis_hermes_admin=collect_jarvis_hermes_admin_status(),
         supervisor_reconcile=_read_json(workspace_roots.ETA_JARVIS_SUPERVISOR_RECONCILE_PATH),
         supervisor_heartbeat=_read_json(workspace_roots.ETA_JARVIS_SUPERVISOR_HEARTBEAT_PATH),
-        live_broker_state=live_broker_state,
+        live_broker_state=live_broker_refresh_state,
         repo_revision=collect_repo_revision(),
     )
 

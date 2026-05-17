@@ -66,14 +66,36 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from eta_engine.scripts import workspace_roots
+from eta_engine.scripts.retune_advisory_cache import build_retune_advisory, summarize_active_experiment
+
 ROOT = Path(__file__).resolve().parents[1]
 WORKSPACE_ROOT = ROOT.parent
-OUT_LATEST = WORKSPACE_ROOT / "var" / "eta_engine" / "state" / "diamond_ops_dashboard_latest.json"
+OUT_LATEST = workspace_roots.ETA_DIAMOND_OPS_DASHBOARD_PATH
+PUBLIC_BROKER_CLOSE_CACHE = workspace_roots.ETA_PUBLIC_BROKER_CLOSE_TRUTH_CACHE_PATH
+HEALTH_DIR = workspace_roots.ETA_RUNTIME_HEALTH_DIR
 
 
 def _console_help_description(text: str | None) -> str:
     """Return argparse help text that is safe on Windows cp1252 consoles."""
     return (text or "").encode("ascii", "replace").decode("ascii")
+
+
+def _console_ascii(text: str | None) -> str:
+    """Return runtime console text that is safe on Windows cp1252 consoles."""
+    normalized = text or ""
+    replacements = {
+        "→": "->",
+        "↳": "->",
+        "—": "-",
+        "–": "-",
+        "≥": ">=",
+        "≤": "<=",
+        "…": "...",
+    }
+    for original, replacement in replacements.items():
+        normalized = normalized.replace(original, replacement)
+    return normalized.encode("ascii", "replace").decode("ascii")
 
 
 @dataclass
@@ -88,6 +110,7 @@ class DiamondSynthesis:
     broker_total_realized_pnl: float | None = None
     broker_profit_factor: float | None = None
     broker_trade_count: int | None = None
+    broker_truth_source: str | None = None
     sizing_verdict: str | None = None
     watchdog_classification: str | None = None
     watchdog_classification_usd: str | None = None
@@ -185,6 +208,34 @@ def _float_or_none(value: Any) -> float | None:  # noqa: ANN401
         return None
 
 
+def _int_or_none(value: Any) -> int | None:  # noqa: ANN401
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _load_json(path: Path) -> dict[str, Any]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _load_public_broker_close_cache() -> dict[str, Any]:
+    payload = _load_json(PUBLIC_BROKER_CLOSE_CACHE)
+    if payload.get("kind") != "eta_public_broker_close_truth_cache":
+        return {}
+    return payload
+
+
+def _public_broker_close_focus_for_bot(bot_id: str, cache: dict[str, Any]) -> dict[str, Any]:
+    if str(cache.get("focus_bot") or "") != bot_id:
+        return {}
+    return cache
+
+
 def _synthesize(
     bot_id: str,
     enrolled: bool,
@@ -193,6 +244,7 @@ def _synthesize(
     watchdog: dict[str, Any] | None,
     direction: dict[str, Any] | None,
     feed_sanity: dict[str, Any] | None = None,
+    public_broker_close: dict[str, Any] | None = None,
 ) -> DiamondSynthesis:
     syn = DiamondSynthesis(bot_id=bot_id, enrolled=enrolled)
 
@@ -225,9 +277,18 @@ def _synthesize(
             syn.broker_trade_count = int(promotion.get("n_trades") or 0)
         except (TypeError, ValueError):
             syn.broker_trade_count = None
+        syn.broker_truth_source = "promotion_gate"
     if feed_sanity is not None:
         syn.feed_sanity_verdict = feed_sanity.get("verdict")
         syn.feed_sanity_flags = list(feed_sanity.get("flags") or [])
+
+    advisory_trade_count = _int_or_none((public_broker_close or {}).get("focus_closed_trade_count"))
+    if advisory_trade_count is not None and advisory_trade_count > (syn.broker_trade_count or 0):
+        syn.broker_trade_count = advisory_trade_count
+        syn.broker_total_realized_pnl = _float_or_none((public_broker_close or {}).get("focus_total_realized_pnl"))
+        syn.broker_profit_factor = _float_or_none((public_broker_close or {}).get("focus_profit_factor"))
+        syn.broker_truth_source = "public_broker_close_truth_cache"
+        syn.notes.append("broker proof refreshed from public advisory close cache")
 
     # ── Compute priority and action ──────────────────────────────────
     cls = syn.watchdog_classification or "INCONCLUSIVE"
@@ -348,6 +409,12 @@ def run() -> dict[str, Any]:
     watch = _run_watchdog()
     direction = _run_direction_stratify()
     feed = _run_feed_sanity()
+    public_broker_close_cache = _load_public_broker_close_cache()
+    retune_advisory = build_retune_advisory(HEALTH_DIR)
+    active_experiment = (
+        retune_advisory.get("active_experiment") if isinstance(retune_advisory.get("active_experiment"), dict) else None
+    )
+    active_experiment_summary = summarize_active_experiment(active_experiment)
 
     syntheses: list[DiamondSynthesis] = []
     for bot_id in sorted(DIAMOND_BOTS):
@@ -359,6 +426,7 @@ def run() -> dict[str, Any]:
             watchdog=watch.get(bot_id),
             direction=direction.get(bot_id),
             feed_sanity=feed.get(bot_id),
+            public_broker_close=_public_broker_close_focus_for_bot(bot_id, public_broker_close_cache),
         )
         syntheses.append(syn)
 
@@ -378,6 +446,18 @@ def run() -> dict[str, Any]:
         "ts": datetime.now(UTC).isoformat(),
         "n_diamonds": len(syntheses),
         "priority_counts": dict(counts),
+        "public_advisory_focus": {
+            "focus_bot": retune_advisory.get("focus_bot"),
+            "focus_closed_trade_count": retune_advisory.get("focus_closed_trade_count"),
+            "focus_total_realized_pnl": retune_advisory.get("focus_total_realized_pnl"),
+            "focus_profit_factor": retune_advisory.get("focus_profit_factor"),
+            "broker_mtd_pnl": retune_advisory.get("broker_mtd_pnl"),
+            "today_realized_pnl": retune_advisory.get("today_realized_pnl"),
+            "active_experiment": active_experiment or {},
+            "active_experiment_summary_line": active_experiment_summary["headline"] if active_experiment_summary else "",
+        }
+        if retune_advisory.get("focus_bot")
+        else {},
         "syntheses": [asdict(s) for s in syntheses],
     }
     try:
@@ -392,33 +472,70 @@ def run() -> dict[str, Any]:
 
 
 def _print(summary: dict[str, Any]) -> None:
-    print("=" * 130)
+    print(_console_ascii("=" * 130))
     print(
-        f" DIAMOND OPS DASHBOARD  ({summary['ts']})  "
-        + ", ".join(f"{k}={v}" for k, v in summary["priority_counts"].items()),
+        _console_ascii(
+            f" DIAMOND OPS DASHBOARD  ({summary['ts']})  "
+            + ", ".join(f"{k}={v}" for k, v in summary["priority_counts"].items()),
+        ),
     )
-    print("=" * 130)
+    print(_console_ascii("=" * 130))
     print(
-        f" {'bot':25s} {'priority':22s} {'cum_R':>8s} {'cum_USD':>10s} | "
-        f"{'promo':18s} {'sizing':18s} {'watchdog':10s} {'direction':22s}",
+        _console_ascii(
+            f" {'bot':25s} {'priority':22s} {'cum_R':>8s} {'cum_USD':>10s} | "
+            f"{'promo':18s} {'sizing':18s} {'watchdog':10s} {'direction':22s}",
+        ),
     )
-    print("-" * 130)
+    advisory = summary.get("public_advisory_focus") if isinstance(summary.get("public_advisory_focus"), dict) else {}
+    if advisory.get("focus_bot"):
+        pnl = _float_or_none(advisory.get("focus_total_realized_pnl"))
+        pf = _float_or_none(advisory.get("focus_profit_factor"))
+        trade_count = advisory.get("focus_closed_trade_count")
+        pnl_text = f"${pnl:+,.2f}" if pnl is not None else "n/a"
+        pf_text = f"{pf:.2f}" if pf is not None else "n/a"
+        print(
+            _console_ascii(
+                " advisory focus: "
+                f"{advisory.get('focus_bot')} closes={trade_count} pnl={pnl_text} pf={pf_text}"
+            ),
+        )
+        experiment_summary_line = str(advisory.get("active_experiment_summary_line") or "")
+        experiment = advisory.get("active_experiment") if isinstance(advisory.get("active_experiment"), dict) else {}
+        if experiment_summary_line:
+            print(_console_ascii(f" advisory experiment: {experiment_summary_line}"))
+            partial_profit_enabled = experiment.get("partial_profit_enabled")
+            closes = experiment.get("post_change_closed_trade_count")
+            pnl = _float_or_none(experiment.get("post_change_total_realized_pnl"))
+            pf = _float_or_none(experiment.get("post_change_profit_factor"))
+            closes_text = str(closes) if closes is not None else "n/a"
+            pnl_text = f"${pnl:+,.2f}" if pnl is not None else "n/a"
+            pf_text = f"{pf:.2f}" if pf is not None else "n/a"
+            print(
+                _console_ascii(
+                    "                   "
+                    f"partial_profit_enabled={partial_profit_enabled} "
+                    f"closes={closes_text} pnl={pnl_text} pf={pf_text}"
+                ),
+            )
+    print(_console_ascii("-" * 130))
     for s in summary["syntheses"]:
         cum_r = s.get("cum_r")
         cum_usd = s.get("cum_usd")
-        cum_r_s = f"{cum_r:>+8.2f}" if cum_r is not None else f"{'—':>8s}"
-        cum_usd_s = f"{cum_usd:>+10.0f}" if cum_usd is not None else f"{'—':>10s}"
-        promo = (s.get("promotion_verdict") or "—")[:18]
-        sizing = (s.get("sizing_verdict") or "—")[:18]
-        watch = (s.get("watchdog_classification") or "—")[:10]
-        direction = (s.get("direction_verdict") or "—")[:22]
+        cum_r_s = f"{cum_r:>+8.2f}" if cum_r is not None else f"{'-':>8s}"
+        cum_usd_s = f"{cum_usd:>+10.0f}" if cum_usd is not None else f"{'-':>10s}"
+        promo = (s.get("promotion_verdict") or "-")[:18]
+        sizing = (s.get("sizing_verdict") or "-")[:18]
+        watch = (s.get("watchdog_classification") or "-")[:10]
+        direction = (s.get("direction_verdict") or "-")[:22]
         print(
-            f" {s['bot_id']:25s} {s['priority']:22s} {cum_r_s} {cum_usd_s} | "
-            f"{promo:18s} {sizing:18s} {watch:10s} {direction:22s}",
+            _console_ascii(
+                f" {s['bot_id']:25s} {s['priority']:22s} {cum_r_s} {cum_usd_s} | "
+                f"{promo:18s} {sizing:18s} {watch:10s} {direction:22s}",
+            ),
         )
         if s.get("recommended_action"):
-            print(f"   ↳ {s['recommended_action']}")
-    print()
+            print(_console_ascii(f"   -> {s['recommended_action']}"))
+    print(_console_ascii(""))
 
 
 def main() -> int:

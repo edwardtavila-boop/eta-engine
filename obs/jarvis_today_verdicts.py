@@ -27,6 +27,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from eta_engine.scripts import workspace_roots
+
 logger = logging.getLogger(__name__)
 
 
@@ -86,8 +88,8 @@ def aggregate_today(
     now = now or datetime.now(UTC)
     since = now.replace(hour=0, minute=0, second=0, microsecond=0)
     audit_globs = audit_globs or [
-        str(Path(__file__).resolve().parents[1] / "state" / "jarvis_audit" / "*.jsonl"),
-        str(Path(__file__).resolve().parents[1] / "var" / "jarvis_audit" / "*.jsonl"),
+        str(workspace_roots.ETA_JARVIS_AUDIT_DIR / "*.jsonl"),
+        str(workspace_roots.ETA_LEGACY_JARVIS_AUDIT_DIR / "*.jsonl"),
     ]
 
     records = _load_audit_records(audit_globs, since=since)

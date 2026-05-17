@@ -169,6 +169,20 @@ def test_eta_readiness_snapshot_runner_refreshes_canonical_ops_receipt_without_o
     assert "exit /b %SNAPSHOT_RC%" in text
 
 
+def test_eta_readiness_snapshot_wrapper_keeps_live_readiness_url_on_same_base() -> None:
+    wrapper = (ROOT.parent / "scripts" / "eta-readiness-snapshot.ps1").read_text(encoding="utf-8")
+
+    assert '$LiveReadinessUrl = "$BaseUrl/api/jarvis/bot_strategy_readiness/volume_profile_mnq"' in wrapper
+    assert '--live-readiness-url", $LiveReadinessUrl' in wrapper
+    assert (
+        '--live-readiness-url", "$PublicFallbackUrl/api/jarvis/bot_strategy_readiness/volume_profile_mnq"'
+        in wrapper
+    )
+    assert "paper_live_transition_check" in wrapper
+    assert "non_authoritative_gateway_host" in wrapper
+    assert '$publicFallbackReason = "non_authoritative_gateway_host"' in wrapper
+
+
 def test_eta_readiness_snapshot_registrar_is_wired_into_bootstrap() -> None:
     registrar = READINESS_REGISTRAR.read_text(encoding="utf-8")
     bootstrap = BOOTSTRAP.read_text(encoding="utf-8")

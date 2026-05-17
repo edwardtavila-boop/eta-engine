@@ -356,6 +356,8 @@ def _shadow_outcome_evidence(shadow_outcome_report: dict[str, Any], bot_id: str)
         "shadow_signal_count": int(stats.get("shadow_signal_count") or 0),
         "evaluated_count": int(stats.get("evaluated_count") or 0),
         "missing_bars": int(stats.get("missing_bars") or 0),
+        "missing_bar_datasets": int(stats.get("missing_bar_datasets") or 0),
+        "no_bar_after_signal": int(stats.get("no_bar_after_signal") or 0),
         "missing_context": int(stats.get("missing_context") or 0),
         "insufficient_future_bars": int(stats.get("insufficient_future_bars") or 0),
         "skipped_bad_signals": int(stats.get("skipped_bad_signals") or 0),
@@ -365,6 +367,7 @@ def _shadow_outcome_evidence(shadow_outcome_report: dict[str, Any], bot_id: str)
         "profit_factor": stats.get("profit_factor") or 0.0,
         "latest_signal_ts": stats.get("latest_signal_ts") or "",
         "latest_evaluated_ts": stats.get("latest_evaluated_ts") or "",
+        "latest_bar_coverage_end_ts": stats.get("latest_bar_coverage_end_ts") or "",
         "verdict": stats.get("verdict") or "UNKNOWN_SHADOW_OUTCOME",
         "broker_backed": bool(stats.get("broker_backed")),
         "promotion_proof": bool(stats.get("promotion_proof")),
@@ -388,6 +391,66 @@ def _index_futures_refresh_command(symbol: str) -> str:
             "--symbols NQ MNQ --json --write-default-status"
         )
     return ""
+
+
+def _replay_bar_label(symbol: str) -> str:
+    clean = str(symbol or "").strip().upper()
+    if clean:
+        return f"{clean} 5-minute replay bars"
+    return "5-minute replay bars"
+
+
+def _shadow_bar_gap_action(bot_id: str, symbol: str, outcome_evidence: dict[str, Any]) -> str:
+    bar_label = _replay_bar_label(symbol)
+    no_bar_after_signal = int(outcome_evidence.get("no_bar_after_signal") or 0)
+    missing_bar_datasets = int(outcome_evidence.get("missing_bar_datasets") or 0)
+    coverage_end = str(outcome_evidence.get("latest_bar_coverage_end_ts") or "").strip()
+    if no_bar_after_signal > 0:
+        if coverage_end:
+            return (
+                f"Refresh {bar_label} for {bot_id}; latest available replay bar is {coverage_end} "
+                f"and {no_bar_after_signal} shadow signals arrived after coverage ended"
+            )
+        return (
+            f"Refresh {bar_label} for {bot_id}; {no_bar_after_signal} shadow signals arrived after "
+            "available replay coverage ended"
+        )
+    if missing_bar_datasets > 0:
+        return (
+            f"Repair replay bar sourcing for {bot_id}; no {bar_label} are available for "
+            f"{missing_bar_datasets} shadow signals"
+        )
+    missing_bars = int(outcome_evidence.get("missing_bars") or 0)
+    return (
+        f"Repair shadow outcome replay for {bot_id}; {missing_bars} shadow signals "
+        "cannot replay into paper-close outcomes"
+    )
+
+
+def _shadow_bar_gap_note(symbol: str, outcome_evidence: dict[str, Any]) -> str:
+    bar_label = _replay_bar_label(symbol)
+    no_bar_after_signal = int(outcome_evidence.get("no_bar_after_signal") or 0)
+    missing_bar_datasets = int(outcome_evidence.get("missing_bar_datasets") or 0)
+    coverage_end = str(outcome_evidence.get("latest_bar_coverage_end_ts") or "").strip()
+    if no_bar_after_signal > 0:
+        if coverage_end:
+            return (
+                f"Outcome audit ran, but local {bar_label} end at {coverage_end}; refresh replay "
+                "coverage before judging edge."
+            )
+        return (
+            f"Outcome audit ran, but the shadow signals are newer than the available {bar_label}; "
+            "refresh replay coverage before judging edge."
+        )
+    if missing_bar_datasets > 0:
+        return (
+            f"Outcome audit ran, but no local {bar_label} are available yet; repair replay bar "
+            "sourcing before judging edge."
+        )
+    return (
+        "Outcome audit ran, but the signals cannot replay into outcomes yet; repair replay coverage "
+        "before judging edge."
+    )
 
 
 def _research_retest_evidence(research_retest_rows: dict[str, Any], bot_id: str) -> dict[str, Any]:
@@ -536,10 +599,7 @@ def _runner_next_action(
                     f"{missing_context} older shadow signals lack planned entry/risk/stop context"
                 )
             if missing_bars > 0:
-                return (
-                    f"Repair bar freshness/source mapping for {bot_id}; {missing_bars} shadow signals "
-                    "cannot replay into paper-close outcomes"
-                )
+                return _shadow_bar_gap_action(bot_id, str(candidate.get("symbol") or ""), outcome_evidence)
             if insufficient_future_bars > 0:
                 return (
                     f"Wait for enough future bars or extend capture for {bot_id}; shadow replay has "
@@ -613,10 +673,7 @@ def _runner_operator_note(
                     "Outcome audit ran, but older shadow signals lack planned entry/risk context; "
                     "wait for fresh bracket-context shadow signals before judging replay edge."
                 )
-            return (
-                "Outcome audit ran, but the signals cannot replay into outcomes yet; repair bar "
-                "freshness/source mapping before judging edge."
-            )
+            return _shadow_bar_gap_note(str(candidate.get("symbol") or ""), outcome_evidence)
         if outcome_count > 0:
             verdict = str(outcome_evidence.get("verdict") or "")
             if verdict == "POSITIVE_COUNTERFACTUAL_EDGE":

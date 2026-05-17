@@ -4,10 +4,11 @@ import json
 import math
 import statistics
 import time
-from pathlib import Path
 
-LEDGER_PATH = Path("var/eta_engine/state/paper_soak_ledger.json")
-REGISTRY_PATH = Path("eta_engine/strategies/per_bot_registry.py")
+from eta_engine.scripts import workspace_roots
+
+LEDGER_PATH = workspace_roots.ETA_PAPER_SOAK_LEDGER_PATH
+REGISTRY_PATH = workspace_roots.ETA_ENGINE_ROOT / "strategies" / "per_bot_registry.py"
 
 
 def read_registry_map() -> dict[str, dict[str, str]]:

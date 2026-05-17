@@ -54,6 +54,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, Union
 
+from eta_engine.scripts import workspace_roots
+
 if TYPE_CHECKING:
     from collections.abc import Callable
 
@@ -301,12 +303,8 @@ class LogReturnFallbackProvider:
 
 # Default location for BTC 5m spot bars in this workspace. Centralized
 # so that downstream callers don't hardcode the path.
-DEFAULT_BTC_SPOT_CSV: Path = Path(
-    r"C:\EvolutionaryTradingAlgo\data\crypto\history\BTC_5m.csv",
-)
-DEFAULT_ETH_SPOT_CSV: Path = Path(
-    r"C:\EvolutionaryTradingAlgo\data\crypto\history\ETH_5m.csv",
-)
+DEFAULT_BTC_SPOT_CSV: Path = workspace_roots.CRYPTO_HISTORY_ROOT / "BTC_5m.csv"
+DEFAULT_ETH_SPOT_CSV: Path = workspace_roots.CRYPTO_HISTORY_ROOT / "ETH_5m.csv"
 
 
 def build_basis_provider(

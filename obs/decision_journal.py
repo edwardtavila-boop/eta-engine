@@ -7,9 +7,10 @@ Why this exists
 ---------------
 Kill-switch events, firm-board verdicts, trade entries/exits, transfer
 approvals, on-ramp pipeline steps, gate overrides -- they all live in
-separate logs today (docs/kill_log.json, docs/decisions_v1.json,
-TransferLedger, etc.). Pattern mining is impossible if the truth is
-fragmented. This module unifies them.
+separate logs today (var/eta_engine/state/kill_log.json,
+var/eta_engine/state/decisions_v1.json, TransferLedger, etc.). Pattern
+mining is impossible if the truth is fragmented. This module unifies
+them.
 
 Design
 ------

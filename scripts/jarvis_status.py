@@ -133,6 +133,283 @@ def build_operator_queue_summary(*, limit: int = 5) -> dict[str, object]:
     return _operator_queue_summary(limit=limit)
 
 
+def _empty_second_brain_payload(
+    *,
+    status: str,
+    error: str | None = None,
+) -> dict[str, object]:
+    playbook = {
+        "eligible_patterns": 0,
+        "best_patterns": [],
+        "worst_patterns": [],
+        "favor_patterns": [],
+        "avoid_patterns": [],
+        "truth_note": "Memory-derived pattern stats only; require broker-backed closes and live gates before promotion.",
+    }
+    payload: dict[str, object] = {
+        "source": "jarvis_status.second_brain",
+        "status": status,
+        "error": error,
+        "n_episodes": 0,
+        "win_rate": 0.0,
+        "avg_r": 0.0,
+        "semantic_patterns": 0,
+        "procedural_versions": 0,
+        "last_episode": None,
+        "best_procedural_version": None,
+        "top_patterns": [],
+        "playbook": playbook,
+        "truth_note": playbook["truth_note"],
+        "paths": {},
+        "sources": {},
+        "legacy_sources_active": False,
+    }
+    return payload
+
+
+def _coerce_int(value: object, default: int = 0) -> int:
+    try:
+        return int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return default
+
+
+def _coerce_float(value: object, default: float = 0.0) -> float:
+    try:
+        return float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return default
+
+
+def _dict_list(value: object) -> list[dict[str, object]]:
+    if not isinstance(value, list):
+        return []
+    return [dict(item) for item in value if isinstance(item, dict)]
+
+
+def build_second_brain_summary(
+    *,
+    top_n: int = 5,
+    min_episodes: int = 30,
+    memory: object | None = None,
+) -> dict[str, object]:
+    """Public dashboard helper for JARVIS hierarchical memory."""
+    try:
+        from eta_engine.brain.jarvis_v3.admin_query import (
+            second_brain_playbook,
+            second_brain_snapshot,
+        )
+
+        if memory is None:
+            from eta_engine.brain.jarvis_v3.memory_hierarchy import HierarchicalMemory
+
+            memory = HierarchicalMemory()
+        snapshot_payload = second_brain_snapshot(memory, top_n=top_n)  # type: ignore[arg-type]
+        playbook_payload = second_brain_playbook(  # type: ignore[arg-type]
+            memory,
+            min_episodes=min_episodes,
+            top_n=top_n,
+        )
+    except Exception as exc:  # noqa: BLE001 -- status JSON must stay readable
+        return _empty_second_brain_payload(status="unavailable", error=str(exc))
+
+    if not isinstance(snapshot_payload, dict):
+        return _empty_second_brain_payload(status="unavailable", error="second brain snapshot returned non-object")
+    if not isinstance(playbook_payload, dict):
+        playbook_payload = (
+            snapshot_payload.get("playbook")
+            if isinstance(snapshot_payload.get("playbook"), dict)
+            else _empty_second_brain_payload(status="unavailable")["playbook"]
+        )
+
+    paths = snapshot_payload.get("paths") if isinstance(snapshot_payload.get("paths"), dict) else {}
+    sources = snapshot_payload.get("sources") if isinstance(snapshot_payload.get("sources"), dict) else {}
+    legacy_sources_active = any(
+        str(source_path or "") and str(source_path or "") != str(paths.get(name) or "")
+        for name, source_path in sources.items()
+    )
+    playbook = dict(playbook_payload)
+    truth_note = str(
+        playbook.get("truth_note")
+        or "Memory-derived pattern stats only; require broker-backed closes and live gates before promotion."
+    )
+
+    return {
+        "source": "jarvis_status.second_brain",
+        "status": str(snapshot_payload.get("status") or "unknown"),
+        "error": snapshot_payload.get("error") or playbook.get("error"),
+        "n_episodes": _coerce_int(snapshot_payload.get("n_episodes")),
+        "win_rate": round(_coerce_float(snapshot_payload.get("win_rate")), 3),
+        "avg_r": round(_coerce_float(snapshot_payload.get("avg_r")), 4),
+        "semantic_patterns": _coerce_int(snapshot_payload.get("semantic_patterns")),
+        "procedural_versions": _coerce_int(snapshot_payload.get("procedural_versions")),
+        "last_episode": (
+            snapshot_payload.get("last_episode") if isinstance(snapshot_payload.get("last_episode"), dict) else None
+        ),
+        "best_procedural_version": (
+            snapshot_payload.get("best_procedural_version")
+            if isinstance(snapshot_payload.get("best_procedural_version"), dict)
+            else None
+        ),
+        "top_patterns": _dict_list(snapshot_payload.get("top_patterns")),
+        "playbook": playbook,
+        "truth_note": truth_note,
+        "paths": dict(paths),
+        "sources": dict(sources),
+        "legacy_sources_active": legacy_sources_active,
+    }
+
+
+def _format_second_brain_summary(payload: dict[str, object]) -> str:
+    status = str(payload.get("status") or "unknown")
+    n_episodes = _coerce_int(payload.get("n_episodes"))
+    win_rate = _coerce_float(payload.get("win_rate"))
+    avg_r = _coerce_float(payload.get("avg_r"))
+    playbook = payload.get("playbook") if isinstance(payload.get("playbook"), dict) else {}
+    eligible = _coerce_int(playbook.get("eligible_patterns") if isinstance(playbook, dict) else 0)
+    favor_count = (
+        len(playbook.get("favor_patterns") or []) if isinstance(playbook.get("favor_patterns"), list) else 0
+    )
+    avoid_count = (
+        len(playbook.get("avoid_patterns") or []) if isinstance(playbook.get("avoid_patterns"), list) else 0
+    )
+    source_note = " legacy_source" if payload.get("legacy_sources_active") else ""
+    return (
+        f"{status} episodes={n_episodes} win_rate={win_rate:.3f} avg_r={avg_r:.4f} "
+        f"eligible_patterns={eligible} favor={favor_count} avoid={avoid_count}{source_note}"
+    )
+
+
+def _empty_dirty_worktree_reconciliation_payload(
+    *,
+    status: str,
+    path: Path,
+    error: str | None = None,
+) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "source": "jarvis_status.dirty_worktree_reconciliation",
+        "path": str(path),
+        "status": status,
+        "error": error,
+        "ready": False,
+        "action": "",
+        "dirty_modules": [],
+        "blocking_modules": [],
+        "module_summaries": [],
+        "review_batches": [],
+        "review_slices": [],
+        "next_actions": [],
+        "safety": {},
+    }
+    return payload
+
+
+def build_dirty_worktree_reconciliation_summary(
+    *,
+    path: Path | None = None,
+    limit: int = 3,
+) -> dict[str, object]:
+    """Load the canonical dirty-worktree reconciliation plan for JARVIS surfaces."""
+    from eta_engine.scripts import workspace_roots
+
+    target = Path(path) if path is not None else workspace_roots.ETA_DIRTY_WORKTREE_RECONCILIATION_PATH
+    try:
+        raw_payload = json.loads(target.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return _empty_dirty_worktree_reconciliation_payload(status="missing", path=target)
+    except (OSError, json.JSONDecodeError) as exc:
+        return _empty_dirty_worktree_reconciliation_payload(status="unreadable", path=target, error=str(exc))
+
+    if not isinstance(raw_payload, dict):
+        return _empty_dirty_worktree_reconciliation_payload(
+            status="unreadable",
+            path=target,
+            error="dirty worktree reconciliation plan must be a JSON object",
+        )
+
+    modules = raw_payload.get("modules") if isinstance(raw_payload.get("modules"), dict) else {}
+    dirty_modules = [str(item) for item in raw_payload.get("dirty_modules", []) if str(item).strip()] if isinstance(
+        raw_payload.get("dirty_modules"),
+        list,
+    ) else []
+    blocking_modules = [
+        str(item) for item in raw_payload.get("blocking_modules", []) if str(item).strip()
+    ] if isinstance(raw_payload.get("blocking_modules"), list) else []
+    module_summaries: list[dict[str, object]] = []
+    for name in dirty_modules:
+        module = modules.get(name)
+        if not isinstance(module, dict):
+            continue
+        dirty_summary = module.get("dirty_summary") if isinstance(module.get("dirty_summary"), dict) else {}
+        review_groups = module.get("review_groups") if isinstance(module.get("review_groups"), list) else []
+        module_summaries.append(
+            {
+                "module": name,
+                "gitlink": module.get("gitlink"),
+                "recommended_handling": module.get("recommended_handling"),
+                "entry_count": _coerce_int(dirty_summary.get("entry_count") if isinstance(dirty_summary, dict) else 0),
+                "top_groups": _dict_list(dirty_summary.get("top_groups") if isinstance(dirty_summary, dict) else [])[
+                    : max(0, limit)
+                ],
+                "review_groups": _dict_list(review_groups)[: max(0, limit)],
+            }
+        )
+
+    ready = bool(raw_payload.get("ready"))
+    raw_status = str(raw_payload.get("status") or "").strip()
+    status = raw_status or ("ready" if ready else "review_required" if dirty_modules or blocking_modules else "unknown")
+    next_actions = (
+        [str(item) for item in raw_payload.get("next_actions", []) if str(item).strip()]
+        if isinstance(raw_payload.get("next_actions"), list)
+        else []
+    )
+    review_batches = _dict_list(raw_payload.get("review_batches"))[: max(0, limit)]
+    review_slices = _dict_list(raw_payload.get("review_slices"))[: max(0, limit)]
+    safety = raw_payload.get("safety") if isinstance(raw_payload.get("safety"), dict) else {}
+    return {
+        "source": "jarvis_status.dirty_worktree_reconciliation",
+        "path": str(target),
+        "status": status,
+        "error": None,
+        "generated_at": raw_payload.get("generated_at"),
+        "ready": ready,
+        "action": str(raw_payload.get("action") or ""),
+        "dirty_modules": dirty_modules,
+        "blocking_modules": blocking_modules,
+        "module_summaries": module_summaries,
+        "review_batches": review_batches,
+        "review_slices": review_slices,
+        "next_actions": next_actions[: max(0, limit)],
+        "safety": dict(safety),
+    }
+
+
+def _format_dirty_worktree_reconciliation(payload: dict[str, object]) -> str:
+    status = str(payload.get("status") or "unknown")
+    dirty_modules = payload.get("dirty_modules") if isinstance(payload.get("dirty_modules"), list) else []
+    module_summaries = (
+        payload.get("module_summaries") if isinstance(payload.get("module_summaries"), list) else []
+    )
+    group_bits: list[str] = []
+    for module in module_summaries:
+        if not isinstance(module, dict):
+            continue
+        module_name = str(module.get("module") or "")
+        top_groups = module.get("top_groups") if isinstance(module.get("top_groups"), list) else []
+        groups = [
+            f"{item.get('group')}={item.get('count')}"
+            for item in top_groups
+            if isinstance(item, dict) and item.get("group") and item.get("count") is not None
+        ]
+        if module_name and groups:
+            group_bits.append(f"{module_name}:{','.join(groups)}")
+    if group_bits:
+        return f"{status} {'; '.join(group_bits)}"
+    if dirty_modules:
+        return f"{status} dirty_modules={','.join(str(item) for item in dirty_modules)}"
+    return status
+
+
 def _empty_bot_strategy_readiness_payload(
     *,
     status: str,
@@ -288,6 +565,8 @@ def _print_status() -> int:
     print(f"Gate report:           {summary['gate_report']} ({summary['auto_gates']})")
     print(f"Gate report stale:     {summary['gate_report_stale']}")
     print(f"Applicable lessons:    {summary['applicable_lessons']}")
+    second_brain = build_second_brain_summary(top_n=3)
+    print(f"Second brain:          {_format_second_brain_summary(second_brain)}")
     op_queue = build_operator_queue_summary(limit=1)
     op_summary = op_queue.get("summary") if isinstance(op_queue, dict) else {}
     op_blocked = op_summary.get("BLOCKED", 0) if isinstance(op_summary, dict) else 0
@@ -300,6 +579,8 @@ def _print_status() -> int:
     print(f"Operator blockers:     {op_blocked}{f' (top {op_first})' if op_first else ''}")
     bot_readiness = build_bot_strategy_readiness_summary(limit=3)
     print(f"Bot readiness:         {_format_bot_strategy_readiness(bot_readiness)}")
+    dirty_worktree = build_dirty_worktree_reconciliation_summary(limit=3)
+    print(f"Repo reconciliation:   {_format_dirty_worktree_reconciliation(dirty_worktree)}")
     print()
     if recs:
         print(f"=== {len(recs)} RECOMMENDATION(S) ===")
@@ -369,7 +650,9 @@ def _print_json() -> int:
         "health_verdict": verdict.value,
         "health_results": [r.model_dump(mode="json") for r in health_results],
         "operator_queue": build_operator_queue_summary(),
+        "second_brain": build_second_brain_summary(),
         "bot_strategy_readiness": build_bot_strategy_readiness_summary(),
+        "dirty_worktree_reconciliation": build_dirty_worktree_reconciliation_summary(),
         "sage": _collect_sage_state(),
     }
     print(json.dumps(out, indent=2, default=str))

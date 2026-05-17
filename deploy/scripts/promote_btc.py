@@ -1,8 +1,8 @@
 """Promote BTC-related bots from research_candidate → production_candidate."""
 
-from pathlib import Path
+from eta_engine.scripts import workspace_roots
 
-fpath = Path(r"C:\EvolutionaryTradingAlgo\eta_engine\strategies\per_bot_registry.py")
+fpath = workspace_roots.ETA_ENGINE_ROOT / "strategies" / "per_bot_registry.py"
 content = fpath.read_text(encoding="utf-8")
 
 # BTC bots that have research_candidate status:

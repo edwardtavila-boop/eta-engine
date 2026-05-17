@@ -24,14 +24,37 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT.parent) not in sys.path:
     sys.path.insert(0, str(ROOT.parent))
 
+from eta_engine.scripts import workspace_roots
+
 logger = logging.getLogger("run_calibration_fit")
+
+
+def _resolve_audit_dir(audit_dir: Path) -> Path:
+    if (
+        audit_dir == workspace_roots.ETA_JARVIS_AUDIT_DIR
+        and not audit_dir.exists()
+        and workspace_roots.ETA_LEGACY_JARVIS_AUDIT_DIR.exists()
+    ):
+        logger.info("using legacy audit dir fallback: %s", workspace_roots.ETA_LEGACY_JARVIS_AUDIT_DIR)
+        return workspace_roots.ETA_LEGACY_JARVIS_AUDIT_DIR
+    return audit_dir
 
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--audit-dir", type=Path, default=ROOT / "state" / "jarvis_audit")
+    p.add_argument(
+        "--audit-dir",
+        type=Path,
+        default=workspace_roots.ETA_JARVIS_AUDIT_DIR,
+        help="Directory of JARVIS audit *.jsonl files. Default: var/eta_engine/state/jarvis_audit",
+    )
     p.add_argument("--window-days", type=int, default=14)
-    p.add_argument("--out-path", type=Path, default=ROOT / "state" / "calibration" / "platt_sigmoid.json")
+    p.add_argument(
+        "--out-path",
+        type=Path,
+        default=workspace_roots.ETA_CALIBRATION_MODEL_PATH,
+        help="Calibration model output path. Default: var/eta_engine/state/calibration/platt_sigmoid.json",
+    )
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("-v", "--verbose", action="store_true")
     args = p.parse_args(argv)
@@ -43,8 +66,9 @@ def main(argv: list[str] | None = None) -> int:
 
     from eta_engine.brain.jarvis_v3.calibration import fit_from_audit
 
+    audit_dir = _resolve_audit_dir(args.audit_dir)
     cutoff = datetime.now(UTC) - timedelta(days=args.window_days)
-    audit_files = list(args.audit_dir.glob("*.jsonl")) if args.audit_dir.exists() else []
+    audit_files = list(audit_dir.glob("*.jsonl")) if audit_dir.exists() else []
     logger.info(
         "fitting calibrator over %d audit files (window=%dd, cutoff=%s)",
         len(audit_files),

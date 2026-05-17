@@ -1,7 +1,7 @@
-"""Layer 4: Data health check — full inventory of every CSV bar file on disk,
-cross-referenced against per-bot registry data requirements.
+"""Layer 4: Data health check - full inventory of CSV bar files on disk.
 
-Produces a per-bot GREEN/AMBER/RED status with row counts, time spans, and
+Cross-reference on-disk datasets against per-bot registry data requirements and
+emit a per-bot GREEN/AMBER/RED status with row counts, time spans, and
 missing-critical detail. Designed as both a standalone CLI and a library
 callable from fleet_supervisor.
 
@@ -35,6 +35,9 @@ from eta_engine.data.library import default_library  # noqa: E402
 if TYPE_CHECKING:
     from eta_engine.data.audit import BotAudit
     from eta_engine.data.library import DataLibrary, DatasetMeta
+
+EMPTY_MARKER = "-"
+CATALOG_ARROW = "->"
 
 
 @dataclass
@@ -112,20 +115,36 @@ def run_health_check(
     return rows
 
 
-def _summary_line(rows: list[BotHealthRow]) -> dict:
+def _summary_line(rows: list[BotHealthRow]) -> dict[str, int]:
     green = sum(1 for r in rows if r.status == "GREEN")
     amber = sum(1 for r in rows if r.status == "AMBER")
     red = sum(1 for r in rows if r.status == "RED")
     deact = sum(1 for r in rows if r.status == "DEACTIVATED")
     unk = sum(1 for r in rows if r.status == "UNKNOWN")
-    return {"green": green, "amber": amber, "red": red, "deactivated": deact, "unknown": unk, "total": len(rows)}
+    return {
+        "green": green,
+        "amber": amber,
+        "red": red,
+        "deactivated": deact,
+        "unknown": unk,
+        "total": len(rows),
+    }
+
+
+def _format_critical_available(row: BotHealthRow) -> str:
+    values = [f"{d.symbol}/{d.timeframe}({d.row_count}r,{d.days_span:.0f}d)" for d in row.critical_available]
+    return ", ".join(values) or EMPTY_MARKER
+
+
+def _format_missing_critical(row: BotHealthRow) -> str:
+    return ", ".join(row.critical_missing) or EMPTY_MARKER
 
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(prog="data_health_check")
-    p.add_argument("--json", action="store_true")
-    p.add_argument("--bot", type=str, default=None)
-    args = p.parse_args(argv)
+    parser = argparse.ArgumentParser(prog="data_health_check")
+    parser.add_argument("--json", action="store_true")
+    parser.add_argument("--bot", type=str, default=None)
+    args = parser.parse_args(argv)
 
     rows = run_health_check(bot_filter=args.bot)
     if args.json:
@@ -147,41 +166,41 @@ def main(argv: list[str] | None = None) -> int:
             "generated": datetime.now(tz=UTC).isoformat(),
         }
         print(json.dumps(payload, indent=2, default=str))
-    else:
-        header = f"{'Bot':<24} {'Status':<12} {'Critical datasets':<60} {'Missing critical'}"
-        print(header)
-        print("-" * 140)
-        for r in rows:
-            avail_str = (
-                ", ".join(f"{d.symbol}/{d.timeframe}({d.row_count}r,{d.days_span:.0f}d)" for d in r.critical_available)
-                or "—"
-            )
-            miss_str = ", ".join(r.critical_missing) or "—"
-            status_icon = {
-                "GREEN": "GREEN",
-                "AMBER": "AMBER",
-                "RED": "RED  ",
-                "DEACTIVATED": "DEACT",
-                "UNKNOWN": "?????",
-            }.get(r.status, r.status)
-            print(f"{r.bot_id:<24} {status_icon:<12} {avail_str:<60} {miss_str}")
-        summary = _summary_line(rows)
+        return 0
+
+    header = f"{'Bot':<24} {'Status':<12} {'Critical datasets':<60} {'Missing critical'}"
+    print(header)
+    print("-" * 140)
+    for row in rows:
+        status_icon = {
+            "GREEN": "GREEN",
+            "AMBER": "AMBER",
+            "RED": "RED  ",
+            "DEACTIVATED": "DEACT",
+            "UNKNOWN": "?????",
+        }.get(row.status, row.status)
         print(
-            f"\nGREEN={summary['green']} AMBER={summary['amber']} RED={summary['red']} "
-            f"DEACT={summary['deactivated']} / {summary['total']} total"
+            f"{row.bot_id:<24} {status_icon:<12} "
+            f"{_format_critical_available(row):<60} {_format_missing_critical(row)}"
         )
 
-        # Show the global data catalog
-        print(f"\n{'=' * 60}")
-        print("Global data catalog")
-        print("=" * 60)
-        lib = default_library()
-        for ds in sorted(lib.list(), key=lambda d: (d.symbol, d.timeframe)):
-            days = (ds.end_ts - ds.start_ts).total_seconds() / 86400
-            print(
-                f"  {ds.symbol:<20} {ds.timeframe:<6} {ds.row_count:>8} rows  {days:>8.0f}d  "
-                f"{ds.start_ts.strftime('%Y-%m-%d')} → {ds.end_ts.strftime('%Y-%m-%d')}  {ds.path}"
-            )
+    summary = _summary_line(rows)
+    print(
+        f"\nGREEN={summary['green']} AMBER={summary['amber']} RED={summary['red']} "
+        f"DEACT={summary['deactivated']} / {summary['total']} total"
+    )
+
+    print(f"\n{'=' * 60}")
+    print("Global data catalog")
+    print("=" * 60)
+    library = default_library()
+    for dataset in sorted(library.list(), key=lambda d: (d.symbol, d.timeframe)):
+        days = (dataset.end_ts - dataset.start_ts).total_seconds() / 86400
+        print(
+            f"  {dataset.symbol:<20} {dataset.timeframe:<6} {dataset.row_count:>8} rows  {days:>8.0f}d  "
+            f"{dataset.start_ts.strftime('%Y-%m-%d')} {CATALOG_ARROW} "
+            f"{dataset.end_ts.strftime('%Y-%m-%d')}  {dataset.path}"
+        )
     return 0
 
 

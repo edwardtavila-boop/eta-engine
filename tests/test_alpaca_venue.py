@@ -302,6 +302,74 @@ def test_place_order_skips_cost_basis_check_for_market_orders() -> None:
 # ---------------------------------------------------------------------------
 
 
+def test_place_order_surfaces_canonical_filled_at(
+    monkeypatch,  # type: ignore[no-untyped-def]
+) -> None:
+    venue = AlpacaVenue(AlpacaConfig(api_key_id="PK1", api_secret_key="SECRET1"))
+
+    async def _fake_post_order_with_error(
+        payload: dict[str, object],
+    ) -> tuple[dict[str, object] | None, dict[str, object] | None]:
+        assert payload["symbol"] == "BTC/USD"
+        return (
+            {
+                "id": "alpaca-fill-1",
+                "status": "filled",
+                "filled_qty": "0.001",
+                "filled_avg_price": "81234.5",
+                "filled_at": "2026-05-16T14:10:00+00:00",
+            },
+            None,
+        )
+
+    monkeypatch.setattr(venue, "_post_order_with_error", _fake_post_order_with_error)
+
+    req = OrderRequest(
+        symbol="BTC",
+        side=Side.SELL,
+        qty=0.001,
+        order_type=OrderType.MARKET,
+        reduce_only=True,
+        client_order_id="alpaca-fill-1",
+    )
+    result = asyncio.run(venue.place_order(req))
+
+    assert result.order_id == "alpaca-fill-1"
+    assert result.status is OrderStatus.FILLED
+    assert result.filled_qty == 0.001
+    assert result.avg_price == 81234.5
+    assert result.filled_at == "2026-05-16T14:10:00+00:00"
+    assert result.raw["filled_at"] == "2026-05-16T14:10:00+00:00"
+
+
+def test_get_order_status_surfaces_canonical_filled_at(
+    monkeypatch,  # type: ignore[no-untyped-def]
+) -> None:
+    venue = AlpacaVenue(AlpacaConfig(api_key_id="PK1", api_secret_key="SECRET1"))
+
+    async def _fake_get(path: str) -> object:
+        assert path == "/v2/orders/alpaca-fill-2"
+        return {
+            "id": "alpaca-fill-2",
+            "status": "partially_filled",
+            "filled_qty": "0.002",
+            "filled_avg_price": "81321.0",
+            "filled-at": "2026-05-16T14:11:00+00:00",
+        }
+
+    monkeypatch.setattr(venue, "_get", _fake_get)
+
+    result = asyncio.run(venue.get_order_status("BTC", "alpaca-fill-2"))
+
+    assert result is not None
+    assert result.order_id == "alpaca-fill-2"
+    assert result.status is OrderStatus.PARTIAL
+    assert result.filled_qty == 0.002
+    assert result.avg_price == 81321.0
+    assert result.filled_at == "2026-05-16T14:11:00+00:00"
+    assert result.raw["filled_at"] == "2026-05-16T14:11:00+00:00"
+
+
 def test_connect_reports_stub_without_credentials() -> None:
     venue = AlpacaVenue(AlpacaConfig())
 

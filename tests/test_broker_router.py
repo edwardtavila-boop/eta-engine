@@ -523,6 +523,57 @@ def _block_gate_chain(*, gate: str = "heartbeat", reason: str = "heartbeat_stale
     return _FakeGateChain(result=(False, [_FakeGateResult(allow=False, gate=gate, reason=reason)]))
 
 
+def _neutralize_router_local_pre_gates(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep focused tests from being pre-empted by live-machine safety state.
+
+    These reconciliation tests are specifically about what reaches the fake
+    gate chain. They should not fail just because the operator machine has a
+    tripped killswitch or readiness env active in the surrounding shell.
+    """
+    monkeypatch.setattr(
+        broker_router.BrokerRouter,
+        "_readiness_denial",
+        lambda self, order: "",
+        raising=False,
+    )
+    monkeypatch.setattr(
+        broker_router,
+        "router_daily_loss_killswitch_denial",
+        lambda order: None,
+        raising=False,
+    )
+
+
+@pytest.fixture(autouse=True)
+def _isolate_router_local_pre_gates(
+    request: pytest.FixtureRequest,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Keep ambient machine safety state out of local router tests by default.
+
+    The operator workstation may have a real daily-loss trip or readiness
+    enforcement configured in the surrounding shell. Most router tests are
+    verifying lifecycle, routing, or gate-chain behavior and should not be
+    pre-empted by that ambient state. Dedicated killswitch/readiness tests opt
+    back into the real pre-gates by name.
+    """
+    test_name = request.node.name
+    if "daily_killswitch" not in test_name:
+        monkeypatch.setattr(
+            broker_router,
+            "router_daily_loss_killswitch_denial",
+            lambda order: None,
+            raising=False,
+        )
+    if "readiness_gate" not in test_name:
+        monkeypatch.setattr(
+            broker_router.BrokerRouter,
+            "_readiness_denial",
+            lambda self, order: "",
+            raising=False,
+        )
+
+
 class TestLifecycle:
     def test_order_entry_hold_leaves_pending_file_unsubmitted(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -658,6 +709,7 @@ class TestLifecycle:
                     status=OrderStatus.FILLED,
                     filled_qty=1.0,
                     avg_price=25_000.0,
+                    filled_at="2026-05-16T13:58:45+00:00",
                 ),
             ]
         )
@@ -684,6 +736,11 @@ class TestLifecycle:
         # Sidecar fill_result exists
         sidecar = _find_under(state_root, "sig-001_result.json")
         assert sidecar is not None
+        sidecar_payload = json.loads(sidecar.read_text(encoding="utf-8"))
+        assert sidecar_payload["order_ts"]
+        assert sidecar_payload["broker_fill_ts"] == "2026-05-16T13:58:45+00:00"
+        assert sidecar_payload["result"]["filled_at"] == "2026-05-16T13:58:45+00:00"
+        assert sidecar_payload["result_written_ts"] == sidecar_payload["ts"]
         # Venue called exactly once
         assert len(venue.calls) == 1
         req = venue.calls[0]
@@ -1277,6 +1334,7 @@ class TestPositionReconciliation:
     def test_open_positions_from_fetch_bot_positions_used_for_gate_chain(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        _neutralize_router_local_pre_gates(monkeypatch)
         pending_dir = tmp_path / "pending"
         state_root = tmp_path / "state"
         path = _write_pending(pending_dir)
@@ -1307,6 +1365,7 @@ class TestPositionReconciliation:
     def test_reconcile_disabled_falls_through_to_empty_dict(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        _neutralize_router_local_pre_gates(monkeypatch)
         pending_dir = tmp_path / "pending"
         state_root = tmp_path / "state"
         path = _write_pending(pending_dir)
@@ -1334,6 +1393,7 @@ class TestPositionReconciliation:
         assert seen == {}, f"with ETA_RECONCILE_DISABLED=1 expected empty positions; got {seen!r}"
 
     def test_not_implemented_with_allow_empty_state(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        _neutralize_router_local_pre_gates(monkeypatch)
         pending_dir = tmp_path / "pending"
         state_root = tmp_path / "state"
         path = _write_pending(pending_dir)
@@ -1374,6 +1434,7 @@ class TestPositionReconciliation:
     def test_not_implemented_without_allow_empty_state_aborts(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        _neutralize_router_local_pre_gates(monkeypatch)
         pending_dir = tmp_path / "pending"
         state_root = tmp_path / "state"
         path = _write_pending(pending_dir)

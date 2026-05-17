@@ -62,12 +62,14 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from eta_engine.scripts import workspace_roots
+
 ROOT = Path(__file__).resolve().parents[1]
 WORKSPACE_ROOT = ROOT.parent
 if str(WORKSPACE_ROOT) not in sys.path:
     sys.path.insert(0, str(WORKSPACE_ROOT))
 
-OUT_LATEST = WORKSPACE_ROOT / "var" / "eta_engine" / "state" / "diamond_live_paper_drift_latest.json"
+OUT_LATEST = workspace_roots.ETA_DIAMOND_LIVE_PAPER_DRIFT_PATH
 
 # Drift thresholds (fraction of paper value)
 DRIFT_WARN = 0.05

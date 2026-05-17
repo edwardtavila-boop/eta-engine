@@ -50,22 +50,21 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from eta_engine.scripts import workspace_roots
+
 logger = logging.getLogger("eta_engine.brain.jarvis_v3.kelly_optimizer")
 
-_WORKSPACE = Path(r"C:\EvolutionaryTradingAlgo")
-_STATE_ROOT = _WORKSPACE / "var" / "eta_engine" / "state"
-_LEGACY_STATE_ROOT = _WORKSPACE / "eta_engine" / "state"
 # Primary canonical writer path.  Kept as a module-level export for
 # back-compat — tests and external callers can override via the
 # ``trade_closes_path=`` parameter on ``recommend_sizing``.
-DEFAULT_TRADE_CLOSES_PATH = _STATE_ROOT / "jarvis_intel" / "trade_closes.jsonl"
+DEFAULT_TRADE_CLOSES_PATH = workspace_roots.ETA_JARVIS_TRADE_CLOSES_PATH
 # Legacy archive path.  Despite the "legacy" name, this is where 99% of
 # historical trade-close records actually live (22.8 MB / 43,450 rows
 # vs the canonical's 180 KB / 422 rows as of 2026-05-12).  The closed
 # trade ledger reads from BOTH and dedupes; kelly_optimizer must do
 # the same or it silently sees only the recent shim and reports
 # ``insufficient_data`` for bots that actually have thousands of trades.
-_LEGACY_TRADE_CLOSES_PATH = _LEGACY_STATE_ROOT / "jarvis_intel" / "trade_closes.jsonl"
+_LEGACY_TRADE_CLOSES_PATH = workspace_roots.ETA_LEGACY_JARVIS_TRADE_CLOSES_PATH
 
 MIN_OBS = 20  # bots with fewer than 20 closed trades over the lookback window get insufficient_data
 SIZE_MOD_LOW, SIZE_MOD_HIGH = 0.0, 1.0

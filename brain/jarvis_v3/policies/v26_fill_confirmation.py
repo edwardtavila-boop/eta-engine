@@ -32,8 +32,9 @@ import logging
 import os
 import time
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import TYPE_CHECKING
+
+from eta_engine.scripts import workspace_roots
 
 from eta_engine.brain.jarvis_admin import (
     ActionRequest,
@@ -50,12 +51,12 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-HEARTBEAT_PATH = Path(r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\jarvis_intel\supervisor\heartbeat.json")
+HEARTBEAT_PATH = workspace_roots.ETA_JARVIS_SUPERVISOR_HEARTBEAT_PATH
 # Secondary signal: broker_router fills journal. If supervisor's path goes
 # through broker_router (queue-based), failed/rejected fills land here.
 # DeepSeek's LiveIbkrVenue path bypasses this — heartbeat n_entries is the
 # primary signal; broker_router_fills is corroborating evidence when present.
-BROKER_ROUTER_FILLS_PATH = Path(r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\broker_router_fills.jsonl")
+BROKER_ROUTER_FILLS_PATH = workspace_roots.ETA_BROKER_ROUTER_FILLS_PATH
 _CACHE_TTL_SECONDS = 30.0
 _HEARTBEAT_CACHE: dict[str, float | dict] = {"loaded_at": 0.0, "data": {}}
 _BROKER_FILLS_CACHE: dict[str, float | list] = {"loaded_at": 0.0, "data": []}

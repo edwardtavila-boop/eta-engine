@@ -69,17 +69,13 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from eta_engine.scripts import workspace_roots
+
 ROOT = Path(__file__).resolve().parents[1]
 WORKSPACE_ROOT = ROOT.parent
-TRADE_CLOSES_CANONICAL = WORKSPACE_ROOT / "var" / "eta_engine" / "state" / "jarvis_intel" / "trade_closes.jsonl"
-TRADE_CLOSES_LEGACY = (
-    WORKSPACE_ROOT
-    / "eta_engine"
-    / "state"  # HISTORICAL-PATH-OK
-    / "jarvis_intel"
-    / "trade_closes.jsonl"
-)
-OUT_LATEST = WORKSPACE_ROOT / "var" / "eta_engine" / "state" / "diamond_feed_sanity_audit_latest.json"
+TRADE_CLOSES_CANONICAL = workspace_roots.ETA_JARVIS_TRADE_CLOSES_PATH
+TRADE_CLOSES_LEGACY = workspace_roots.ETA_LEGACY_JARVIS_TRADE_CLOSES_PATH
+OUT_LATEST = workspace_roots.ETA_DIAMOND_FEED_SANITY_AUDIT_PATH
 
 #: Below this trade count, we don't have enough samples to detect
 #: a pattern. Below SAMPLE_THRESHOLD records the verdict is INSUFFICIENT_DATA.

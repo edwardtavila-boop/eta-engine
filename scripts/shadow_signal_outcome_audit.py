@@ -73,6 +73,16 @@ def _bar_ts(bar: Any) -> datetime | None:
     return _parse_dt(getattr(bar, "timestamp", None) or getattr(bar, "ts", None))
 
 
+def _latest_iso(current: str, candidate: datetime | str | None) -> str:
+    candidate_dt = _parse_dt(candidate)
+    if candidate_dt is None:
+        return current or ""
+    current_dt = _parse_dt(current)
+    if current_dt is None or candidate_dt >= current_dt:
+        return candidate_dt.isoformat()
+    return current_dt.isoformat()
+
+
 def _bar_value(bar: Any, name: str, default: float = 0.0) -> float:
     if isinstance(bar, dict):
         return _as_float(bar.get(name), default)
@@ -208,12 +218,14 @@ def replay_signal(
         }
     entry_idx = _entry_index(ordered, signal_time)
     if entry_idx is None:
+        coverage_end = _bar_ts(ordered[-1])
         return {
             "bot_id": bot_id,
             "symbol": symbol,
             "signal_id": signal.get("signal_id") or "",
             "signal_ts": signal_time.isoformat(),
             "status": "NO_BAR_AFTER_SIGNAL",
+            "bar_coverage_end_ts": coverage_end.isoformat() if coverage_end else "",
             "broker_backed": False,
             "promotion_proof": False,
         }
@@ -335,6 +347,8 @@ def _empty_bot_stats(bot_id: str) -> dict[str, Any]:
         "losses": 0,
         "flats": 0,
         "missing_bars": 0,
+        "missing_bar_datasets": 0,
+        "no_bar_after_signal": 0,
         "missing_context": 0,
         "insufficient_future_bars": 0,
         "skipped_bad_signals": 0,
@@ -344,6 +358,7 @@ def _empty_bot_stats(bot_id: str) -> dict[str, Any]:
         "profit_factor": 0.0,
         "latest_signal_ts": "",
         "latest_evaluated_ts": "",
+        "latest_bar_coverage_end_ts": "",
         "verdict": "NO_EVALUATED_SIGNALS",
         "broker_backed": False,
         "promotion_proof": False,
@@ -397,7 +412,7 @@ def build_report(
         stats["shadow_signal_count"] += 1
         signal_time = _signal_ts(signal)
         if signal_time is not None:
-            stats["latest_signal_ts"] = signal_time.isoformat()
+            stats["latest_signal_ts"] = _latest_iso(str(stats.get("latest_signal_ts") or ""), signal_time)
 
         outcome = replay_signal(
             signal,
@@ -411,7 +426,10 @@ def build_report(
             realized_r = _as_float(outcome.get("realized_r"))
             stats["evaluated_count"] += 1
             stats["total_r"] += realized_r
-            stats["latest_evaluated_ts"] = outcome.get("exit_ts") or ""
+            stats["latest_evaluated_ts"] = _latest_iso(
+                str(stats.get("latest_evaluated_ts") or ""),
+                outcome.get("exit_ts"),
+            )
             if realized_r > 0:
                 stats["wins"] += 1
                 totals["positive_r"] += realized_r
@@ -420,8 +438,16 @@ def build_report(
                 totals["negative_r"] += realized_r
             else:
                 stats["flats"] += 1
-        elif status in {"MISSING_BARS", "NO_BAR_AFTER_SIGNAL"}:
+        elif status == "MISSING_BARS":
             stats["missing_bars"] += 1
+            stats["missing_bar_datasets"] += 1
+        elif status == "NO_BAR_AFTER_SIGNAL":
+            stats["missing_bars"] += 1
+            stats["no_bar_after_signal"] += 1
+            stats["latest_bar_coverage_end_ts"] = _latest_iso(
+                str(stats.get("latest_bar_coverage_end_ts") or ""),
+                outcome.get("bar_coverage_end_ts"),
+            )
         elif status == "MISSING_SIGNAL_CONTEXT":
             stats["missing_context"] += 1
         elif status == "INSUFFICIENT_FUTURE_BARS":

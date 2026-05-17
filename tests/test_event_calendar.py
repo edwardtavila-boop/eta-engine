@@ -5,6 +5,11 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 from eta_engine.data import event_calendar as ec
+from eta_engine.scripts import workspace_roots
+
+
+def test_default_yaml_path_uses_canonical_workspace_state() -> None:
+    assert ec.DEFAULT_YAML_PATH == workspace_roots.ETA_EVENT_CALENDAR_PATH
 
 
 def test_load_missing_file_returns_empty(tmp_path) -> None:

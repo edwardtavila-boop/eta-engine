@@ -69,6 +69,36 @@ def _default_live_validation_timeout_s() -> float:
     return 30.0
 
 
+def _live_validation_client_id_candidates(preferred: int | None = None) -> list[int]:
+    raw_primary = os.getenv("ETA_BROKER_BRACKET_AUDIT_VALIDATE_CLIENT_ID", "").strip()
+    raw_fallback_base = os.getenv("ETA_BROKER_BRACKET_AUDIT_VALIDATE_CLIENT_ID_BASE", "").strip()
+
+    env_primary = None
+    with contextlib.suppress(ValueError):
+        if raw_primary:
+            env_primary = int(raw_primary)
+
+    fallback_base = 12000
+    with contextlib.suppress(ValueError):
+        if raw_fallback_base:
+            fallback_base = max(1, int(raw_fallback_base))
+
+    pid_offset = max(0, os.getpid() % 1000)
+    dynamic_primary = fallback_base + pid_offset
+    if isinstance(preferred, int) and preferred > 0:
+        candidates = [preferred, dynamic_primary, dynamic_primary + 1, dynamic_primary + 2]
+    elif isinstance(env_primary, int) and env_primary > 0:
+        candidates = [env_primary, dynamic_primary, dynamic_primary + 1, dynamic_primary + 2]
+    else:
+        candidates = [dynamic_primary, dynamic_primary + 1, dynamic_primary + 2, 9034]
+    unique: list[int] = []
+    for candidate in candidates:
+        if candidate <= 0 or candidate in unique:
+            continue
+        unique.append(candidate)
+    return unique
+
+
 def _as_dict(value: Any) -> dict[str, Any]:  # noqa: ANN401
     return value if isinstance(value, dict) else {}
 
@@ -268,6 +298,17 @@ def _trade_symbol_keys(trade: object) -> set[str]:
     return keys
 
 
+def _identifier_keys(order_id: object, perm_id: object) -> set[tuple[str, int]]:
+    keys: set[tuple[str, int]] = set()
+    normalized_order_id = _as_optional_int(order_id)
+    if normalized_order_id is not None:
+        keys.add(("order_id", normalized_order_id))
+    normalized_perm_id = _as_optional_int(perm_id)
+    if normalized_perm_id is not None:
+        keys.add(("perm_id", normalized_perm_id))
+    return keys
+
+
 def _stale_order_keys(order: dict[str, Any]) -> set[str]:
     symbol = _clean_symbol(order.get("symbol"))
     if not symbol:
@@ -276,49 +317,85 @@ def _stale_order_keys(order: dict[str, Any]) -> set[str]:
     return {symbol, root} if root else {symbol}
 
 
+def _stale_order_identifier_keys(order: dict[str, Any]) -> set[tuple[str, int]]:
+    return _identifier_keys(order.get("order_id"), order.get("perm_id"))
+
+
+def _trade_identifier_keys(trade: object) -> set[tuple[str, int]]:
+    order = getattr(trade, "order", None)
+    return _identifier_keys(
+        getattr(order, "orderId", None) if order is not None else None,
+        getattr(order, "permId", None) if order is not None else None,
+    )
+
+
+def _open_order_identifier_keys(order: object) -> set[tuple[str, int]]:
+    return _identifier_keys(getattr(order, "orderId", None), getattr(order, "permId", None))
+
+
 def _validate_stale_flat_open_orders_live(
     stale_orders: list[dict[str, Any]],
     *,
     host: str = "127.0.0.1",
     port: int = 4002,
-    client_id: int = 9034,
+    client_id: int | None = None,
     connect_timeout_s: float | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Cross-check stale cached orders against the live TWS order socket."""
     if not stale_orders:
         return [], {"status": "not_needed"}
-    try:
-        _ensure_main_thread_event_loop()
-        from ib_insync import IB  # noqa: PLC0415
+    _ensure_main_thread_event_loop()
+    from ib_insync import IB  # noqa: PLC0415
 
-        ib = IB()
+    timeout_s = connect_timeout_s if connect_timeout_s is not None else _default_live_validation_timeout_s()
+    attempted_client_ids: list[int] = []
+    last_exc: Exception | None = None
+    open_trades: list[object] = []
+    open_orders: list[object] = []
+    client_id_used: int | None = None
+    for candidate_client_id in _live_validation_client_id_candidates(client_id):
+        attempted_client_ids.append(candidate_client_id)
         try:
-            timeout_s = connect_timeout_s if connect_timeout_s is not None else _default_live_validation_timeout_s()
-            ib.connect(host, port, clientId=client_id, timeout=max(5.0, float(timeout_s)))
-            ib.reqAllOpenOrders()
-            ib.sleep(1.0)
-            open_trades = list(ib.openTrades())
-            open_orders = list(ib.openOrders())
-        finally:
-            with contextlib.suppress(Exception):
-                ib.disconnect()
-    except Exception as exc:  # noqa: BLE001 -- safety audit fails closed on socket ambiguity
+            ib = IB()
+            try:
+                ib.connect(host, port, clientId=candidate_client_id, timeout=max(5.0, float(timeout_s)))
+                ib.reqAllOpenOrders()
+                ib.sleep(1.0)
+                open_trades = list(ib.openTrades())
+                open_orders = list(ib.openOrders())
+                client_id_used = candidate_client_id
+                break
+            finally:
+                with contextlib.suppress(Exception):
+                    ib.disconnect()
+        except Exception as exc:  # noqa: BLE001 -- safety audit fails closed on socket ambiguity
+            last_exc = exc
+            continue
+    if client_id_used is None:
+        detail = f"{type(last_exc).__name__}: {last_exc}" if last_exc is not None else "unknown live validation error"
         return stale_orders, {
             "status": "live_socket_validation_failed",
-            "detail": f"{type(exc).__name__}: {exc}",
+            "detail": detail,
+            "attempted_client_ids": attempted_client_ids,
             "input_stale_flat_open_order_count": len(stale_orders),
             "validated_stale_flat_open_order_count": len(stale_orders),
         }
 
     active_trade_keys: set[str] = set()
+    active_identifier_keys: set[tuple[str, int]] = set()
     for trade in open_trades:
         if _trade_status(trade).lower() in _OPEN_ORDER_DONE_STATUSES:
             continue
         active_trade_keys.update(_trade_symbol_keys(trade))
+        active_identifier_keys.update(_trade_identifier_keys(trade))
+    for order in open_orders:
+        active_identifier_keys.update(_open_order_identifier_keys(order))
 
     if not open_trades and not open_orders:
         return [], {
             "status": "live_socket_no_open_orders",
+            "client_id_used": client_id_used,
+            "attempted_client_ids": attempted_client_ids,
             "live_open_trade_count": 0,
             "live_open_order_count": 0,
             "input_stale_flat_open_order_count": len(stale_orders),
@@ -328,15 +405,27 @@ def _validate_stale_flat_open_orders_live(
     if not active_trade_keys:
         return stale_orders, {
             "status": "live_socket_open_orders_without_trade_contracts",
+            "client_id_used": client_id_used,
+            "attempted_client_ids": attempted_client_ids,
             "live_open_trade_count": len(open_trades),
             "live_open_order_count": len(open_orders),
             "input_stale_flat_open_order_count": len(stale_orders),
             "validated_stale_flat_open_order_count": len(stale_orders),
         }
 
-    validated = [order for order in stale_orders if _stale_order_keys(order) & active_trade_keys]
+    validated: list[dict[str, Any]] = []
+    for order in stale_orders:
+        stale_identifier_keys = _stale_order_identifier_keys(order)
+        if stale_identifier_keys and active_identifier_keys:
+            if stale_identifier_keys & active_identifier_keys:
+                validated.append(order)
+            continue
+        if _stale_order_keys(order) & active_trade_keys:
+            validated.append(order)
     return validated, {
         "status": "live_socket_validated",
+        "client_id_used": client_id_used,
+        "attempted_client_ids": attempted_client_ids,
         "live_open_trade_count": len(open_trades),
         "live_open_order_count": len(open_orders),
         "input_stale_flat_open_order_count": len(stale_orders),
@@ -945,6 +1034,14 @@ def _stale_cancel_command(
     return command
 
 
+def _pending_cancel_stale_orders(stale_orders: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        order
+        for order in stale_orders
+        if str(order.get("status") or "").strip().lower() == "pendingcancel"
+    ]
+
+
 def _operator_actions(
     summary: str,
     positions: list[dict[str, Any]],
@@ -965,6 +1062,7 @@ def _operator_actions(
         ]
     if summary == "BLOCKED_STALE_FLAT_OPEN_ORDERS":
         stale_orders = stale_flat_open_orders or []
+        stale_order_count = len(stale_orders)
         symbols = sorted(
             {
                 str(order.get("symbol") or "").strip().upper()
@@ -990,11 +1088,42 @@ def _operator_actions(
             if owner_client_ids
             else " Run the dry-run command to discover the owner IBKR clientId(s)."
         )
+        pending_cancel_orders = _pending_cancel_stale_orders(stale_orders)
+        label = "Cancel stale flat-symbol orders"
+        detail_prefix = (
+            f"Cancel {stale_order_count} stale broker order"
+            f"{'' if stale_order_count == 1 else 's'} for {descriptor};"
+            " no matching broker position is open."
+        )
+        pending_cancel_note = ""
+        if pending_cancel_orders:
+            pending_cancel_count = len(pending_cancel_orders)
+            active_stale_count = max(0, stale_order_count - pending_cancel_count)
+            label = "Clear pending stale flat-symbol orders"
+            detail_prefix = (
+                f"Clear {stale_order_count} stale broker order"
+                f"{'' if stale_order_count == 1 else 's'} for {descriptor};"
+                " no matching broker position is open."
+            )
+            if active_stale_count > 0:
+                pending_cancel_note = (
+                    f" {pending_cancel_count} order"
+                    f"{'' if pending_cancel_count == 1 else 's'} already show PendingCancel with IBKR;"
+                    f" {active_stale_count} additional stale order"
+                    f"{'' if active_stale_count == 1 else 's'} remain active with no matching broker position;"
+                    " wait for settlement or review the owner session before resubmitting cancel."
+                )
+            else:
+                pending_cancel_note = (
+                    f" {pending_cancel_count} order"
+                    f"{'' if pending_cancel_count == 1 else 's'} already show PendingCancel with IBKR;"
+                    " wait for settlement or review the owner session before resubmitting cancel."
+                )
         confirm_client_id: int | str = owner_client_ids[0] if len(owner_client_ids) == 1 else "<owner-client-id>"
         return [
             {
                 "id": "cancel_stale_flat_open_orders",
-                "label": "Cancel stale flat-symbol orders",
+                "label": label,
                 "manual": True,
                 "order_action": True,
                 "blocks_prop_dry_run": True,
@@ -1012,8 +1141,8 @@ def _operator_actions(
                 "confirm_requires_matching_owner_client_id": True,
                 "no_global_cancel": True,
                 "detail": (
-                    f"Cancel active broker orders for {descriptor}; no matching broker position is open."
-                    f"{owner_detail} Dry-run first; submit --confirm only after explicit operator approval."
+                    f"{detail_prefix}{owner_detail}{pending_cancel_note}"
+                    " Dry-run first; submit --confirm only after explicit operator approval."
                 ),
             },
         ]
@@ -1202,10 +1331,27 @@ def build_bracket_audit(
             sorted({str(order.get("symbol") or "") for order in stale_flat_open_orders if order.get("symbol")}),
         )
         descriptor = symbols or "flat-symbol broker orders"
-        next_action = (
-            f"Cancel stale active broker order(s) for {descriptor}; "
-            "they have no matching broker open position and can create surprise exposure."
-        )
+        pending_cancel_orders = _pending_cancel_stale_orders(stale_flat_open_orders)
+        stale_order_count = len(stale_flat_open_orders)
+        if pending_cancel_orders:
+            pending_cancel_count = len(pending_cancel_orders)
+            active_stale_count = max(0, stale_order_count - pending_cancel_count)
+            if active_stale_count > 0:
+                next_action = (
+                    f"Wait for or clear {stale_order_count} stale broker order(s) for {descriptor}; "
+                    f"{pending_cancel_count} already show PendingCancel with IBKR and {active_stale_count} still "
+                    "have no matching broker open position, so prop dry-run stays blocked until the stale set clears."
+                )
+            else:
+                next_action = (
+                    f"Wait for or clear {pending_cancel_count} stale PendingCancel broker order(s) for {descriptor}; "
+                    "they still have no matching broker open position and block prop dry-run until IBKR fully cancels them."
+                )
+        else:
+            next_action = (
+                f"Cancel stale active broker order(s) for {descriptor}; "
+                "they have no matching broker open position and can create surprise exposure."
+            )
     elif summary == "READY_OPEN_EXPOSURE_MANUAL_OCO_VERIFIED":
         next_action = "Broker-native bracket/OCO audit is clear via manual OCO verification."
     else:
