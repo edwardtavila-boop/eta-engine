@@ -255,10 +255,7 @@ def finalize_direct_ibkr_entry_result(
     rec: object,
     result: object,
     logger: logging.Logger,
-    ref_price: float,
-    stop_price: float,
-    target_price: float,
-    bracket_src: str,
+    entry_plan: DirectIbkrEntryPlan,
     record_signal_fn: Callable[[object, object, object], None],
     record_fill_fn: Callable[..., None],
     rollback_recorded_entry_fn: Callable[[str], None],
@@ -272,9 +269,9 @@ def finalize_direct_ibkr_entry_result(
     if status_value in filled_statuses and filled_qty > 0 and bot.open_position is not None:
         bot.open_position["qty"] = min(abs(float(bot.open_position.get("qty", 0) or 0)), filled_qty)
         bot.open_position["broker_bracket"] = True
-        bot.open_position["bracket_stop"] = stop_price
-        bot.open_position["bracket_target"] = target_price
-        bot.open_position["bracket_src"] = bracket_src
+        bot.open_position["bracket_stop"] = entry_plan.stop_price
+        bot.open_position["bracket_target"] = entry_plan.target_price
+        bot.open_position["bracket_src"] = entry_plan.bracket_src
         bot.consecutive_broker_rejects = 0
         try:
             record_signal_fn(bot, rec, result)
@@ -289,10 +286,10 @@ def finalize_direct_ibkr_entry_result(
                     ),
                     exit_reason="ENTRY",
                     side="LONG" if rec.side.upper() == "BUY" else "SHORT",
-                    actual_fill_price=float(getattr(result, "avg_price", 0) or ref_price),
+                    actual_fill_price=float(getattr(result, "avg_price", 0) or entry_plan.ref_price),
                     qty_filled=int(abs(float(getattr(result, "filled_qty", 0) or 0))),
                     commission_usd=float(getattr(result, "fees", 0) or 0),
-                    intended_price=float(ref_price),
+                    intended_price=float(entry_plan.ref_price),
                     tick_size=0.25,
                 )
             except Exception as exc:  # noqa: BLE001

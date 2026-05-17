@@ -2334,9 +2334,10 @@ def test_router_paper_live_direct_order_uses_result_finalizer(
     assert call["bot"] is bot
     assert call["rec"] is rec
     assert call["result"] is result
-    assert call["ref_price"] == rec.fill_price
-    assert call["stop_price"] is not None
-    assert call["target_price"] is not None
+    assert call["entry_plan"].request is venue.request
+    assert call["entry_plan"].ref_price == rec.fill_price
+    assert call["entry_plan"].stop_price is not None
+    assert call["entry_plan"].target_price is not None
 
 
 def test_router_paper_live_filled_entry_records_l2_fill(

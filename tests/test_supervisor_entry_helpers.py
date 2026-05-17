@@ -237,16 +237,20 @@ def test_finalize_direct_ibkr_entry_result_marks_filled_position_and_records_fil
         order_id="ibkr-1",
         raw={"ibkr_order_id": 1234},
     )
+    plan = supervisor_entry_helpers.DirectIbkrEntryPlan(
+        request=object(),
+        ref_price=100.25,
+        stop_price=95.0,
+        target_price=110.0,
+        bracket_src="atr",
+    )
 
     outcome = supervisor_entry_helpers.finalize_direct_ibkr_entry_result(
         bot=bot,
         rec=rec,
         result=result,
         logger=logging.getLogger("test_supervisor_entry_helpers"),
-        ref_price=100.25,
-        stop_price=95.0,
-        target_price=110.0,
-        bracket_src="atr",
+        entry_plan=plan,
         record_signal_fn=lambda *args: record_signal_calls.append(args),
         record_fill_fn=lambda **kwargs: record_fill_calls.append(kwargs),
         rollback_recorded_entry_fn=rollback_calls.append,
@@ -286,16 +290,20 @@ def test_finalize_direct_ibkr_entry_result_clears_pending_without_reject() -> No
         filled_qty=0.0,
         raw={"reason": "working"},
     )
+    plan = supervisor_entry_helpers.DirectIbkrEntryPlan(
+        request=object(),
+        ref_price=100.25,
+        stop_price=95.0,
+        target_price=110.0,
+        bracket_src="atr",
+    )
 
     outcome = supervisor_entry_helpers.finalize_direct_ibkr_entry_result(
         bot=bot,
         rec=rec,
         result=result,
         logger=logging.getLogger("test_supervisor_entry_helpers"),
-        ref_price=100.25,
-        stop_price=95.0,
-        target_price=110.0,
-        bracket_src="atr",
+        entry_plan=plan,
         record_signal_fn=lambda *_args: None,
         record_fill_fn=lambda **_kwargs: None,
         rollback_recorded_entry_fn=lambda _reason: None,
@@ -329,20 +337,26 @@ def test_finalize_direct_ibkr_entry_result_fails_open_on_l2_callback_exceptions(
         raw={"ibkr_order_id": 1234},
     )
     logger = SimpleNamespace(warning=lambda *args: warnings.append(args))
+    plan = supervisor_entry_helpers.DirectIbkrEntryPlan(
+        request=object(),
+        ref_price=100.25,
+        stop_price=95.0,
+        target_price=110.0,
+        bracket_src="atr",
+    )
 
     outcome = supervisor_entry_helpers.finalize_direct_ibkr_entry_result(
         bot=bot,
         rec=rec,
         result=result,
         logger=logger,  # type: ignore[arg-type]
-        ref_price=100.25,
-        stop_price=95.0,
-        target_price=110.0,
-        bracket_src="atr",
+        entry_plan=plan,
         record_signal_fn=lambda *_args: (_ for _ in ()).throw(RuntimeError("signal_down")),
         record_fill_fn=lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("fill_down")),
         rollback_recorded_entry_fn=lambda _reason: (_ for _ in ()).throw(AssertionError("unexpected rollback")),
-        clear_recorded_entry_without_reject_fn=lambda _reason: (_ for _ in ()).throw(AssertionError("unexpected clear")),
+        clear_recorded_entry_without_reject_fn=(
+            lambda _reason: (_ for _ in ()).throw(AssertionError("unexpected clear"))
+        ),
     )
 
     assert outcome.action == "filled"
@@ -370,20 +384,26 @@ def test_finalize_direct_ibkr_entry_result_rolls_back_rejected_status() -> None:
         filled_qty=0.0,
         raw={"reason": "ibkr_reject"},
     )
+    plan = supervisor_entry_helpers.DirectIbkrEntryPlan(
+        request=object(),
+        ref_price=100.25,
+        stop_price=95.0,
+        target_price=110.0,
+        bracket_src="atr",
+    )
 
     outcome = supervisor_entry_helpers.finalize_direct_ibkr_entry_result(
         bot=bot,
         rec=rec,
         result=result,
         logger=logging.getLogger("test_supervisor_entry_helpers"),
-        ref_price=100.25,
-        stop_price=95.0,
-        target_price=110.0,
-        bracket_src="atr",
+        entry_plan=plan,
         record_signal_fn=lambda *_args: None,
         record_fill_fn=lambda **_kwargs: None,
         rollback_recorded_entry_fn=rollback_calls.append,
-        clear_recorded_entry_without_reject_fn=lambda _reason: (_ for _ in ()).throw(AssertionError("unexpected clear")),
+        clear_recorded_entry_without_reject_fn=(
+            lambda _reason: (_ for _ in ()).throw(AssertionError("unexpected clear"))
+        ),
     )
 
     assert outcome.action == "rejected"

@@ -1283,17 +1283,13 @@ class ExecutionRouter:
                         clear_persisted_open_position_fn=self._clear_persisted_open_position,
                     )
                     return None
-                _ref = _entry_plan.ref_price
-                _stop = _entry_plan.stop_price
-                _target = _entry_plan.target_price
-                _bracket_src = _entry_plan.bracket_src
                 logger.debug(
                     "bracket %s %s %s→%s (%s)",
                     bot.bot_id,
-                    _ref,
-                    _stop,
-                    _target,
-                    _bracket_src,
+                    _entry_plan.ref_price,
+                    _entry_plan.stop_price,
+                    _entry_plan.target_price,
+                    _entry_plan.bracket_src,
                 )
                 _req = _entry_plan.request
                 # L2 supercharge: circuit breaker
@@ -1311,25 +1307,12 @@ class ExecutionRouter:
                     )
                     return None
                 _result = _run_on_live_ibkr_loop(_venue.place_order(_req), timeout=30.0)
-                _reason = supervisor_entry_helpers.direct_ibkr_result_reason(_result)
-                logger.info(
-                    "DIRECT ORDER %s %s %.6f → %s (ibkr_id=%s, reason=%s)",
-                    rec.symbol,
-                    rec.side,
-                    rec.qty,
-                    _result.status.value,
-                    _result.raw.get("ibkr_order_id", "?"),
-                    _reason,
-                )
                 _outcome = supervisor_entry_helpers.finalize_direct_ibkr_entry_result(
                     bot=bot,
                     rec=rec,
                     result=_result,
                     logger=logger,
-                    ref_price=_ref,
-                    stop_price=_stop,
-                    target_price=_target,
-                    bracket_src=_bracket_src,
+                    entry_plan=_entry_plan,
                     record_signal_fn=l2hooks.record_signal,
                     record_fill_fn=l2hooks.record_fill,
                     rollback_recorded_entry_fn=lambda reason: supervisor_entry_helpers.rollback_recorded_entry(
@@ -1348,6 +1331,15 @@ class ExecutionRouter:
                             clear_persisted_open_position_fn=self._clear_persisted_open_position,
                         )
                     ),
+                )
+                logger.info(
+                    "DIRECT ORDER %s %s %.6f → %s (ibkr_id=%s, reason=%s)",
+                    rec.symbol,
+                    rec.side,
+                    rec.qty,
+                    _result.status.value,
+                    _result.raw.get("ibkr_order_id", "?"),
+                    _outcome.reason,
                 )
                 if _outcome.action == "rejected":
                     return None
