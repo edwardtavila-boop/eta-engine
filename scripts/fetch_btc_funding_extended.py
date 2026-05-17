@@ -39,6 +39,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT.parent))
 
+from eta_engine.scripts import workspace_roots  # noqa: E402
 from eta_engine.scripts.workspace_roots import CRYPTO_HISTORY_ROOT  # noqa: E402
 
 # Binance + Bybit are US-geo-blocked. BitMEX is fully US-friendly
@@ -249,12 +250,16 @@ def write_csv(path: Path, rows: list[dict]) -> int:
     return len(rows)
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--symbol", default="BTCUSDT")
     p.add_argument("--years", type=int, default=5)
     p.add_argument("--out", type=Path, default=CRYPTO_HISTORY_ROOT / "BTCFUND_8h.csv")
-    args = p.parse_args()
+    args = p.parse_args(argv)
+    try:
+        args.out = workspace_roots.resolve_under_workspace(args.out, label="--out")
+    except ValueError as exc:
+        p.error(str(exc))
 
     end = datetime.now(UTC)
     start = end - timedelta(days=365 * args.years)

@@ -11,7 +11,16 @@
 
 **Audience:** operator on their own account.
 **Scope:** MNQ + NQ Tier-A only. Tier-B crypto (Bybit) deferred pending bootstrap pass on redesign.
-**Decision gate:** this runbook assumes `docs/canonical_v1_verdict_full.md` still says "cautious MNQ only". Re-read it before each run.
+**Decision gate:** historical assumption was that
+`docs/canonical_v1_verdict_full.md` still said "cautious MNQ only". Re-check
+current readiness and launch surfaces before each run instead of relying on
+that older assumption.
+
+> **Historical snapshot note:** This runbook reflects an older IBKR-primary
+> live-tiny cutover flow. Treat current ETA readiness and launch surfaces as
+> authoritative first, especially
+> `python -m eta_engine.scripts.prop_launch_check --json`, before acting on any
+> older broker, funding, or cutover assumptions here.
 
 ---
 

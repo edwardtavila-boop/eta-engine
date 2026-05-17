@@ -1,6 +1,10 @@
 # Monday Morning Operator Runbook
 
-**Target launch:** Monday 2026-05-18 — BluSky 50K eval, conditional-routing architecture (wave-25)
+**Target launch:** Historical planning snapshot for Monday 2026-05-18 — BluSky 50K eval, conditional-routing architecture (wave-25)
+
+> **Safety note:** Treat `python -m eta_engine.scripts.prop_launch_check` as
+> the current Diamond/Wave-25 launch authority. Do not promote any bot to
+> `EVAL_LIVE` unless that surface is actually `GO`.
 
 **This is your bedside guide.** Print it. Have your phone open to Telegram. Open the VPS dashboard. Read every section before you start.
 
@@ -14,7 +18,8 @@ ssh forex-vps "cd C:\EvolutionaryTradingAlgo\eta_engine && python -m eta_engine.
 
 Run this. Read the **Action items**. Do them in order. Re-run. Done.
 
-If the verdict is `GO`, you're cleared. If it's `HOLD` or `NO_GO`, the script tells you exactly what's still in the way.
+If the verdict is `GO`, continue with the explicit launch checklist below. If
+it's `HOLD` or `NO_GO`, the script tells you exactly what's still in the way.
 
 Scope note: `prop_launch_check` is the Diamond/Wave-25 launch-candidate
 cutover lane. The separate futures prop-ladder controlled dry-run lane for

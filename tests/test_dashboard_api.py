@@ -4230,6 +4230,17 @@ class TestDashboardAPI:
         assert watchdog["heartbeat_path"].endswith("dashboard_proxy_watchdog_heartbeat.json")
         assert payload["bot_fleet"]["dashboard_proxy_watchdog_status"] == "ok"
         assert payload["bot_fleet"]["dashboard_proxy_watchdog_detail"] == "noop: ok"
+        assert payload["bot_fleet"]["dashboard_proxy_watchdog_fresh"] is True
+        assert payload["bot_fleet"]["dashboard_proxy_watchdog_action"] == "noop"
+        assert payload["bot_fleet"]["dashboard_proxy_watchdog_task_name"] == "ETA-Proxy-8421"
+        assert payload["bot_fleet"]["dashboard_proxy_watchdog_probe_healthy"] is True
+        assert payload["bot_fleet"]["dashboard_proxy_watchdog_probe_reason"] == "ok"
+        assert payload["bot_fleet"]["dashboard_proxy_watchdog_status_code"] == 200
+        assert payload["bot_fleet"]["dashboard_proxy_watchdog_elapsed_ms"] == 15
+        assert payload["bot_fleet"]["dashboard_proxy_watchdog_heartbeat_age_s"] >= 0
+        assert payload["bot_fleet"]["dashboard_proxy_watchdog_checked_age_s"] >= 0
+        assert payload["bot_fleet"]["dashboard_proxy_watchdog_checked_at"]
+        assert payload["bot_fleet"]["dashboard_proxy_watchdog_heartbeat_ts"]
         assert payload["checks"]["dashboard_proxy_watchdog_contract"] is True
 
     def test_dashboard_diagnostics_distinguishes_proxy_probe_ok_from_stale_watchdog(
@@ -4414,6 +4425,37 @@ class TestDashboardAPI:
         assert payload["bot_fleet"]["command_center_watchdog_detail"] == (
             "Canonical dashboard runtime task(s) missing: ETA-Dashboard-API, ETA-Proxy-8421."
         )
+        assert payload["bot_fleet"]["command_center_watchdog_age_s"] >= 0
+        assert payload["bot_fleet"]["command_center_watchdog_healthy"] is False
+        assert payload["bot_fleet"]["command_center_watchdog_checked_at"]
+        assert payload["bot_fleet"]["command_center_watchdog_next_step"] == "reload_operator_service"
+        assert payload["bot_fleet"]["command_center_watchdog_next_reason"] == "dashboard_task_contract_drift"
+        assert payload["bot_fleet"]["command_center_watchdog_next_command"].startswith(
+            ".\\scripts\\reload-command-center-admin.cmd"
+        )
+        assert payload["bot_fleet"]["command_center_watchdog_failure_class"] == "stale_service"
+        assert payload["bot_fleet"]["command_center_watchdog_operator_contract_state"] == "stale_service"
+        assert payload["bot_fleet"]["command_center_watchdog_recommended_action"] == "reload_operator_service"
+        assert payload["bot_fleet"]["command_center_watchdog_primary_blocker"] == (
+            "dashboard_task_contract_drift"
+        )
+        assert payload["bot_fleet"]["command_center_watchdog_instruction"] == (
+            "Run the launcher and approve the UAC prompt."
+        )
+        assert payload["bot_fleet"]["command_center_watchdog_action_count"] == 2
+        assert payload["bot_fleet"]["command_center_watchdog_follow_up_count"] == 1
+        assert payload["bot_fleet"]["command_center_watchdog_dashboard_task_missing_task_names"] == [
+            "ETA-Dashboard-API",
+            "ETA-Proxy-8421",
+        ]
+        assert payload["bot_fleet"]["command_center_watchdog_repair_required"] is True
+        assert payload["bot_fleet"]["command_center_watchdog_requires_elevation"] is True
+        assert payload["bot_fleet"]["command_center_watchdog_watchdog_registered"] is False
+        assert payload["bot_fleet"]["command_center_watchdog_watchdog_state"] == "missing"
+        assert payload["bot_fleet"]["command_center_watchdog_can_launch_from_desktop"] is True
+        assert payload["bot_fleet"]["command_center_watchdog_launch_context"] == "interactive_uac_launcher"
+        assert payload["bot_fleet"]["command_center_watchdog_dashboard_task_contract_status"] == "missing_task"
+        assert payload["bot_fleet"]["command_center_watchdog_local_contract_status"] == "upstream_failure"
         assert payload["checks"]["eta_readiness_snapshot_contract"] is True
 
     def test_dashboard_diagnostics_allows_readiness_scheduler_grace(
@@ -6016,6 +6058,18 @@ class TestDashboardAPI:
                     "display_summary": "Command Center watchdog is healthy.",
                     "operator_next_step": "none",
                     "operator_next_reason": "healthy",
+                    "operator_next_instruction": "No operator command is required.",
+                    "operator_action_count": 0,
+                    "operator_follow_up_count": 0,
+                    "operator_next_can_launch_from_desktop": True,
+                    "operator_next_launch_context": "ready",
+                    "local_contract_status": {
+                        "status": "healthy",
+                    },
+                    "dashboard_task_contract_status": {
+                        "status": "access_denied",
+                    },
+                    "dashboard_task_missing_task_names": [],
                     "watchdog_registered": True,
                     "watchdog_state": "Running",
                 }
@@ -6046,7 +6100,23 @@ class TestDashboardAPI:
         assert payload["systems"]["surface_watch"] == payload["systems"]["command_center_watchdog"]
         assert payload["systems"]["command_center_watchdog"]["raw_status"] == "healthy"
         assert payload["systems"]["command_center_watchdog"]["effective_status"] == "healthy"
+        assert payload["systems"]["command_center_watchdog"]["fresh"] is True
+        assert payload["systems"]["command_center_watchdog"]["age_s"] >= 0
+        assert payload["systems"]["command_center_watchdog"]["healthy"] is True
         assert payload["systems"]["command_center_watchdog"]["detail"] == "Command Center watchdog is healthy."
+        assert payload["systems"]["command_center_watchdog"]["failure_class"] == "healthy"
+        assert payload["systems"]["command_center_watchdog"]["operator_contract_state"] == "healthy"
+        assert payload["systems"]["command_center_watchdog"]["primary_blocker"] == "healthy"
+        assert payload["systems"]["command_center_watchdog"]["instruction"] == "No operator command is required."
+        assert payload["systems"]["command_center_watchdog"]["action_count"] == 0
+        assert payload["systems"]["command_center_watchdog"]["follow_up_count"] == 0
+        assert payload["systems"]["command_center_watchdog"]["watchdog_registered"] is True
+        assert payload["systems"]["command_center_watchdog"]["watchdog_state"] == "Running"
+        assert payload["systems"]["command_center_watchdog"]["can_launch_from_desktop"] is True
+        assert payload["systems"]["command_center_watchdog"]["launch_context"] == "ready"
+        assert payload["systems"]["command_center_watchdog"]["dashboard_task_contract_status"] == "access_denied"
+        assert payload["systems"]["command_center_watchdog"]["local_contract_status"] == "healthy"
+        assert payload["systems"]["command_center_watchdog"]["dashboard_task_missing_task_names"] == []
 
     def test_master_status_includes_dashboard_proxy_watchdog_system(self, app_client, tmp_path, monkeypatch):
         import eta_engine.deploy.scripts.dashboard_api as mod
@@ -6102,6 +6172,9 @@ class TestDashboardAPI:
         assert payload["systems"]["dashboard_proxy_watchdog"]["effective_status"] == "ok"
         assert payload["systems"]["dashboard_proxy_watchdog"]["detail"] == "noop: ok"
         assert payload["systems"]["dashboard_proxy_watchdog"]["task_name"] == "ETA-Proxy-8421"
+        assert payload["systems"]["dashboard_proxy_watchdog"]["elapsed_ms"] == 15
+        assert payload["systems"]["dashboard_proxy_watchdog"]["heartbeat_age_s"] >= 0
+        assert payload["systems"]["dashboard_proxy_watchdog"]["checked_age_s"] >= 0
 
     def test_master_status_includes_stale_audit_systems(self, app_client, tmp_path, monkeypatch):
         import eta_engine.deploy.scripts.dashboard_api as mod
@@ -10786,8 +10859,48 @@ class TestDashboardAPI:
             "_dashboard_proxy_watchdog_payload",
             lambda server_ts=None: {
                 "status": "ok",
+                "fresh": True,
+                "action": "noop",
+                "task_name": "ETA-Proxy-8421",
+                "probe_healthy": True,
+                "probe_reason": "ok",
+                "status_code": 200,
+                "elapsed_ms": 15,
+                "heartbeat_age_s": 4,
+                "checked_age_s": 3,
+                "checked_at": "2026-05-17T00:00:00+00:00",
+                "heartbeat_ts": "2026-05-17T00:00:01+00:00",
                 "detail": "noop: ok",
                 "summary": "noop: ok",
+            },
+        )
+        monkeypatch.setattr(
+            mod,
+            "_command_center_watchdog_payload",
+            lambda server_ts=None: {
+                "status": "healthy",
+                "issue_status": "healthy",
+                "display_summary": "Command Center watchdog is healthy.",
+                "fresh": True,
+                "age_s": 0,
+                "healthy": True,
+                "checked_at": "2026-05-17T00:00:00+00:00",
+                "operator_next_step": "none",
+                "operator_next_reason": "healthy",
+                "operator_next_command": None,
+                "failure_class": "healthy",
+                "operator_contract_state": "healthy",
+                "recommended_action": "none",
+                "instruction": "",
+                "repair_required": False,
+                "operator_next_requires_elevation": False,
+                "requires_elevation": False,
+                "watchdog_registered": True,
+                "watchdog_state": "Ready",
+                "can_launch_from_desktop": True,
+                "launch_context": "ready",
+                "dashboard_task_contract_status": {"status": "access_denied"},
+                "local_contract_status": {"status": "healthy"},
             },
         )
         (tmp_path / "state" / "paper_live_transition_check.json").write_text(
@@ -10821,8 +10934,42 @@ class TestDashboardAPI:
         assert payload["summary"]["paper_live_critical_ready"] is True
         assert payload["summary"]["paper_live_ready_bots"] == 12
         assert payload["summary"]["paper_live_launch_blocked_count"] == 0
+        assert payload["summary"]["command_center_watchdog_fresh"] is True
+        assert payload["summary"]["command_center_watchdog_age_s"] == 0
+        assert payload["summary"]["command_center_watchdog_healthy"] is True
+        assert payload["summary"]["command_center_watchdog_checked_at"] == "2026-05-17T00:00:00+00:00"
+        assert payload["summary"]["command_center_watchdog_next_step"] == "none"
+        assert payload["summary"]["command_center_watchdog_next_reason"] == "healthy"
+        assert payload["summary"]["command_center_watchdog_next_command"] == ""
+        assert payload["summary"]["command_center_watchdog_failure_class"] == "healthy"
+        assert payload["summary"]["command_center_watchdog_operator_contract_state"] == "healthy"
+        assert payload["summary"]["command_center_watchdog_recommended_action"] == "none"
+        assert payload["summary"]["command_center_watchdog_primary_blocker"] == "healthy"
+        assert payload["summary"]["command_center_watchdog_instruction"] == ""
+        assert payload["summary"]["command_center_watchdog_action_count"] == 0
+        assert payload["summary"]["command_center_watchdog_follow_up_count"] == 0
+        assert payload["summary"]["command_center_watchdog_dashboard_task_missing_task_names"] == []
+        assert payload["summary"]["command_center_watchdog_repair_required"] is False
+        assert payload["summary"]["command_center_watchdog_requires_elevation"] is False
+        assert payload["summary"]["command_center_watchdog_watchdog_registered"] is True
+        assert payload["summary"]["command_center_watchdog_watchdog_state"] == "Ready"
+        assert payload["summary"]["command_center_watchdog_can_launch_from_desktop"] is True
+        assert payload["summary"]["command_center_watchdog_launch_context"] == "ready"
+        assert payload["summary"]["command_center_watchdog_dashboard_task_contract_status"] == "access_denied"
+        assert payload["summary"]["command_center_watchdog_local_contract_status"] == "healthy"
         assert payload["summary"]["dashboard_proxy_watchdog_status"] == "ok"
         assert payload["summary"]["dashboard_proxy_watchdog_detail"] == "noop: ok"
+        assert payload["summary"]["dashboard_proxy_watchdog_fresh"] is True
+        assert payload["summary"]["dashboard_proxy_watchdog_action"] == "noop"
+        assert payload["summary"]["dashboard_proxy_watchdog_task_name"] == "ETA-Proxy-8421"
+        assert payload["summary"]["dashboard_proxy_watchdog_probe_healthy"] is True
+        assert payload["summary"]["dashboard_proxy_watchdog_probe_reason"] == "ok"
+        assert payload["summary"]["dashboard_proxy_watchdog_status_code"] == 200
+        assert payload["summary"]["dashboard_proxy_watchdog_elapsed_ms"] == 15
+        assert payload["summary"]["dashboard_proxy_watchdog_heartbeat_age_s"] == 4
+        assert payload["summary"]["dashboard_proxy_watchdog_checked_age_s"] == 3
+        assert payload["summary"]["dashboard_proxy_watchdog_checked_at"] == "2026-05-17T00:00:00+00:00"
+        assert payload["summary"]["dashboard_proxy_watchdog_heartbeat_ts"] == "2026-05-17T00:00:01+00:00"
 
     def test_bot_fleet_marks_stale_paper_live_summary_as_stale_receipt(self, app_client, tmp_path, monkeypatch):
         """Stale paper-live cache should not keep derived bot-fleet readiness blocked."""
@@ -13434,6 +13581,35 @@ class TestDashboardAPI:
                 "close_history": mod._close_history_windows([], now=datetime.now(UTC)),
             },
         )
+        monkeypatch.setattr(
+            mod,
+            "_command_center_watchdog_payload",
+            lambda server_ts=None: {
+                "status": "healthy",
+                "issue_status": "healthy",
+                "display_summary": "Command Center watchdog is healthy.",
+                "fresh": True,
+                "age_s": 0,
+                "healthy": True,
+                "checked_at": "2026-05-17T00:00:00+00:00",
+                "operator_next_step": "none",
+                "operator_next_reason": "healthy",
+                "operator_next_command": None,
+                "failure_class": "healthy",
+                "operator_contract_state": "healthy",
+                "recommended_action": "none",
+                "instruction": "",
+                "repair_required": False,
+                "operator_next_requires_elevation": False,
+                "requires_elevation": False,
+                "watchdog_registered": True,
+                "watchdog_state": "Ready",
+                "can_launch_from_desktop": True,
+                "launch_context": "ready",
+                "dashboard_task_contract_status": {"status": "access_denied"},
+                "local_contract_status": {"status": "healthy"},
+            },
+        )
         (tmp_path / "state" / "dashboard_proxy_watchdog_heartbeat.json").write_text(
             json.dumps(
                 {
@@ -13464,8 +13640,42 @@ class TestDashboardAPI:
         assert payload["fast_summary"] is True
         assert payload["summary"]["dashboard_payload_tier"] == "live_summary"
         assert payload["summary"]["live_broker_probe_mode"] == "cached_diagnostics"
+        assert payload["summary"]["command_center_watchdog_fresh"] is True
+        assert payload["summary"]["command_center_watchdog_age_s"] == 0
+        assert payload["summary"]["command_center_watchdog_healthy"] is True
+        assert payload["summary"]["command_center_watchdog_checked_at"] == "2026-05-17T00:00:00+00:00"
+        assert payload["summary"]["command_center_watchdog_next_step"] == "none"
+        assert payload["summary"]["command_center_watchdog_next_reason"] == "healthy"
+        assert payload["summary"]["command_center_watchdog_next_command"] == ""
+        assert payload["summary"]["command_center_watchdog_failure_class"] == "healthy"
+        assert payload["summary"]["command_center_watchdog_operator_contract_state"] == "healthy"
+        assert payload["summary"]["command_center_watchdog_recommended_action"] == "none"
+        assert payload["summary"]["command_center_watchdog_primary_blocker"] == "healthy"
+        assert payload["summary"]["command_center_watchdog_instruction"] == ""
+        assert payload["summary"]["command_center_watchdog_action_count"] == 0
+        assert payload["summary"]["command_center_watchdog_follow_up_count"] == 0
+        assert payload["summary"]["command_center_watchdog_dashboard_task_missing_task_names"] == []
+        assert payload["summary"]["command_center_watchdog_repair_required"] is False
+        assert payload["summary"]["command_center_watchdog_requires_elevation"] is False
+        assert payload["summary"]["command_center_watchdog_watchdog_registered"] is True
+        assert payload["summary"]["command_center_watchdog_watchdog_state"] == "Ready"
+        assert payload["summary"]["command_center_watchdog_can_launch_from_desktop"] is True
+        assert payload["summary"]["command_center_watchdog_launch_context"] == "ready"
+        assert payload["summary"]["command_center_watchdog_dashboard_task_contract_status"] == "access_denied"
+        assert payload["summary"]["command_center_watchdog_local_contract_status"] == "healthy"
         assert payload["summary"]["dashboard_proxy_watchdog_status"] == "ok"
         assert payload["summary"]["dashboard_proxy_watchdog_detail"] == "noop: ok"
+        assert payload["summary"]["dashboard_proxy_watchdog_fresh"] is True
+        assert payload["summary"]["dashboard_proxy_watchdog_action"] == "noop"
+        assert payload["summary"]["dashboard_proxy_watchdog_task_name"] == "ETA-Proxy-8421"
+        assert payload["summary"]["dashboard_proxy_watchdog_probe_healthy"] is True
+        assert payload["summary"]["dashboard_proxy_watchdog_probe_reason"] == "ok"
+        assert payload["summary"]["dashboard_proxy_watchdog_status_code"] == 200
+        assert payload["summary"]["dashboard_proxy_watchdog_elapsed_ms"] == 15
+        assert payload["summary"]["dashboard_proxy_watchdog_heartbeat_age_s"] >= 0
+        assert payload["summary"]["dashboard_proxy_watchdog_checked_age_s"] >= 0
+        assert payload["summary"]["dashboard_proxy_watchdog_checked_at"]
+        assert payload["summary"]["dashboard_proxy_watchdog_heartbeat_ts"]
         assert payload["live_broker_state"]["probe_skipped"] is True
         assert payload["live_broker_state"]["broker_snapshot_age_s"] == 7.5
 

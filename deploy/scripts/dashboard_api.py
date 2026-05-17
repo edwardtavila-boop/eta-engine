@@ -2465,8 +2465,165 @@ def _dashboard_diagnostics_payload() -> dict:
             ),
             "command_center_watchdog_detail": str(
                 roster_summary.get("command_center_watchdog_detail")
+                or command_center_watchdog.get("display_summary")
+                or command_center_watchdog.get("display_issue_summary")
+                or command_center_watchdog.get("issue_summary")
+                or command_center_watchdog.get("summary")
                 or eta_readiness_snapshot.get("command_center_issue_summary")
                 or "",
+            ),
+            "command_center_watchdog_fresh": bool(
+                roster_summary.get("command_center_watchdog_fresh")
+                if roster_summary.get("command_center_watchdog_fresh") is not None
+                else command_center_watchdog.get("fresh")
+            ),
+            "command_center_watchdog_age_s": (
+                roster_summary.get("command_center_watchdog_age_s")
+                if roster_summary.get("command_center_watchdog_age_s") is not None
+                else command_center_watchdog.get("age_s")
+            ),
+            "command_center_watchdog_healthy": (
+                roster_summary.get("command_center_watchdog_healthy")
+                if roster_summary.get("command_center_watchdog_healthy") is not None
+                else command_center_watchdog.get("healthy")
+            ),
+            "command_center_watchdog_checked_at": (
+                roster_summary.get("command_center_watchdog_checked_at")
+                if roster_summary.get("command_center_watchdog_checked_at") is not None
+                else command_center_watchdog.get("checked_at")
+            ),
+            "command_center_watchdog_next_step": str(
+                roster_summary.get("command_center_watchdog_next_step")
+                or command_center_watchdog.get("operator_next_step")
+                or command_center_watchdog.get("next_step")
+                or ""
+            ),
+            "command_center_watchdog_next_reason": str(
+                roster_summary.get("command_center_watchdog_next_reason")
+                or command_center_watchdog.get("operator_next_reason")
+                or command_center_watchdog.get("next_reason")
+                or ""
+            ),
+            "command_center_watchdog_next_command": str(
+                roster_summary.get("command_center_watchdog_next_command")
+                or command_center_watchdog.get("operator_next_command")
+                or command_center_watchdog.get("next_command")
+                or ""
+            ),
+            "command_center_watchdog_failure_class": str(
+                roster_summary.get("command_center_watchdog_failure_class")
+                or command_center_watchdog.get("failure_class")
+                or ""
+            ),
+            "command_center_watchdog_operator_contract_state": str(
+                roster_summary.get("command_center_watchdog_operator_contract_state")
+                or command_center_watchdog.get("operator_contract_state")
+                or ""
+            ),
+            "command_center_watchdog_recommended_action": str(
+                roster_summary.get("command_center_watchdog_recommended_action")
+                or command_center_watchdog.get("recommended_action")
+                or ""
+            ),
+            "command_center_watchdog_primary_blocker": str(
+                roster_summary.get("command_center_watchdog_primary_blocker")
+                or command_center_watchdog.get("primary_blocker")
+                or command_center_watchdog.get("issue_status")
+                or command_center_watchdog.get("status")
+                or ""
+            ),
+            "command_center_watchdog_instruction": str(
+                roster_summary.get("command_center_watchdog_instruction")
+                or command_center_watchdog.get("instruction")
+                or ""
+            ),
+            "command_center_watchdog_action_count": int(
+                roster_summary.get("command_center_watchdog_action_count")
+                if roster_summary.get("command_center_watchdog_action_count") is not None
+                else (command_center_watchdog.get("action_count") or 0)
+            ),
+            "command_center_watchdog_follow_up_count": int(
+                roster_summary.get("command_center_watchdog_follow_up_count")
+                if roster_summary.get("command_center_watchdog_follow_up_count") is not None
+                else (command_center_watchdog.get("follow_up_count") or 0)
+            ),
+            "command_center_watchdog_dashboard_task_missing_task_names": (
+                [str(name) for name in roster_summary.get("command_center_watchdog_dashboard_task_missing_task_names", []) if name]
+                if isinstance(roster_summary.get("command_center_watchdog_dashboard_task_missing_task_names"), list)
+                else (
+                    [
+                        str(name)
+                        for name in command_center_watchdog.get("dashboard_task_missing_task_names", [])
+                        if name
+                    ]
+                    if isinstance(command_center_watchdog.get("dashboard_task_missing_task_names"), list)
+                    else [
+                        str(name)
+                        for name in (
+                            (
+                                command_center_watchdog.get("dashboard_task_contract_status")
+                                if isinstance(command_center_watchdog.get("dashboard_task_contract_status"), dict)
+                                else {}
+                            ).get("missing_task_names", [])
+                        )
+                        if name
+                    ]
+                )
+            ),
+            "command_center_watchdog_repair_required": bool(
+                roster_summary.get("command_center_watchdog_repair_required")
+                if roster_summary.get("command_center_watchdog_repair_required") is not None
+                else command_center_watchdog.get("repair_required")
+            ),
+            "command_center_watchdog_requires_elevation": bool(
+                roster_summary.get("command_center_watchdog_requires_elevation")
+                if roster_summary.get("command_center_watchdog_requires_elevation") is not None
+                else (
+                    command_center_watchdog.get("operator_next_requires_elevation")
+                    or command_center_watchdog.get("requires_elevation")
+                )
+            ),
+            "command_center_watchdog_watchdog_registered": (
+                roster_summary.get("command_center_watchdog_watchdog_registered")
+                if roster_summary.get("command_center_watchdog_watchdog_registered") is not None
+                else command_center_watchdog.get("watchdog_registered")
+            ),
+            "command_center_watchdog_watchdog_state": str(
+                roster_summary.get("command_center_watchdog_watchdog_state")
+                or command_center_watchdog.get("watchdog_state")
+                or ""
+            ),
+            "command_center_watchdog_can_launch_from_desktop": bool(
+                roster_summary.get("command_center_watchdog_can_launch_from_desktop")
+                if roster_summary.get("command_center_watchdog_can_launch_from_desktop") is not None
+                else command_center_watchdog.get("can_launch_from_desktop")
+            ),
+            "command_center_watchdog_launch_context": str(
+                roster_summary.get("command_center_watchdog_launch_context")
+                or command_center_watchdog.get("launch_context")
+                or ""
+            ),
+            "command_center_watchdog_dashboard_task_contract_status": str(
+                roster_summary.get("command_center_watchdog_dashboard_task_contract_status")
+                or (
+                    (
+                        command_center_watchdog.get("dashboard_task_contract_status")
+                        if isinstance(command_center_watchdog.get("dashboard_task_contract_status"), dict)
+                        else {}
+                    ).get("status")
+                    or ""
+                )
+            ),
+            "command_center_watchdog_local_contract_status": str(
+                roster_summary.get("command_center_watchdog_local_contract_status")
+                or (
+                    (
+                        command_center_watchdog.get("local_contract_status")
+                        if isinstance(command_center_watchdog.get("local_contract_status"), dict)
+                        else {}
+                    ).get("status")
+                    or ""
+                )
             ),
             "dashboard_proxy_watchdog_status": str(
                 roster_summary.get("dashboard_proxy_watchdog_status")
@@ -2478,6 +2635,61 @@ def _dashboard_diagnostics_payload() -> dict:
                 or dashboard_proxy_watchdog.get("detail")
                 or dashboard_proxy_watchdog.get("summary")
                 or ""
+            ),
+            "dashboard_proxy_watchdog_fresh": bool(
+                roster_summary.get("dashboard_proxy_watchdog_fresh")
+                if roster_summary.get("dashboard_proxy_watchdog_fresh") is not None
+                else dashboard_proxy_watchdog.get("fresh")
+            ),
+            "dashboard_proxy_watchdog_action": str(
+                roster_summary.get("dashboard_proxy_watchdog_action")
+                or dashboard_proxy_watchdog.get("action")
+                or ""
+            ),
+            "dashboard_proxy_watchdog_task_name": str(
+                roster_summary.get("dashboard_proxy_watchdog_task_name")
+                or dashboard_proxy_watchdog.get("task_name")
+                or ""
+            ),
+            "dashboard_proxy_watchdog_probe_healthy": bool(
+                roster_summary.get("dashboard_proxy_watchdog_probe_healthy")
+                if roster_summary.get("dashboard_proxy_watchdog_probe_healthy") is not None
+                else dashboard_proxy_watchdog.get("probe_healthy")
+            ),
+            "dashboard_proxy_watchdog_probe_reason": str(
+                roster_summary.get("dashboard_proxy_watchdog_probe_reason")
+                or dashboard_proxy_watchdog.get("probe_reason")
+                or ""
+            ),
+            "dashboard_proxy_watchdog_status_code": (
+                roster_summary.get("dashboard_proxy_watchdog_status_code")
+                if roster_summary.get("dashboard_proxy_watchdog_status_code") is not None
+                else dashboard_proxy_watchdog.get("status_code")
+            ),
+            "dashboard_proxy_watchdog_elapsed_ms": (
+                roster_summary.get("dashboard_proxy_watchdog_elapsed_ms")
+                if roster_summary.get("dashboard_proxy_watchdog_elapsed_ms") is not None
+                else dashboard_proxy_watchdog.get("elapsed_ms")
+            ),
+            "dashboard_proxy_watchdog_heartbeat_age_s": (
+                roster_summary.get("dashboard_proxy_watchdog_heartbeat_age_s")
+                if roster_summary.get("dashboard_proxy_watchdog_heartbeat_age_s") is not None
+                else dashboard_proxy_watchdog.get("heartbeat_age_s")
+            ),
+            "dashboard_proxy_watchdog_checked_age_s": (
+                roster_summary.get("dashboard_proxy_watchdog_checked_age_s")
+                if roster_summary.get("dashboard_proxy_watchdog_checked_age_s") is not None
+                else dashboard_proxy_watchdog.get("checked_age_s")
+            ),
+            "dashboard_proxy_watchdog_checked_at": (
+                roster_summary.get("dashboard_proxy_watchdog_checked_at")
+                if roster_summary.get("dashboard_proxy_watchdog_checked_at") is not None
+                else dashboard_proxy_watchdog.get("checked_at")
+            ),
+            "dashboard_proxy_watchdog_heartbeat_ts": (
+                roster_summary.get("dashboard_proxy_watchdog_heartbeat_ts")
+                if roster_summary.get("dashboard_proxy_watchdog_heartbeat_ts") is not None
+                else dashboard_proxy_watchdog.get("heartbeat_ts")
             ),
             "vps_root_reconciliation_top_step_summary": str(
                 roster_summary.get("vps_root_reconciliation_top_step_summary")
@@ -11178,6 +11390,7 @@ def bot_fleet_roster(
     mnq_runtime_rows = [r for r in mnq_rows if not _is_readiness_only_bot_row(r)]
     truth = _truth_snapshot(rows, server_ts=now_ts)
     signal_cadence = _signal_cadence_summary(rows, server_ts=now_ts)
+    command_center_watchdog = _command_center_watchdog_payload(server_ts=now_ts)
     dashboard_proxy_watchdog = _dashboard_proxy_watchdog_payload(server_ts=now_ts)
     if live_broker_probe:
         try:
@@ -11618,15 +11831,125 @@ def bot_fleet_roster(
             "session_gated_summary_line": str(blocked_rollup["session_gated_summary_line"] or ""),
             "session_gated_preview": blocked_rollup["session_gated_preview"],
             "command_center_watchdog_status": str(
-                eta_readiness_snapshot.get("command_center_issue_status") or "",
+                eta_readiness_snapshot.get("command_center_issue_status")
+                or command_center_watchdog.get("issue_status")
+                or command_center_watchdog.get("status")
+                or "",
             ),
             "command_center_watchdog_detail": str(
-                eta_readiness_snapshot.get("command_center_issue_summary") or "",
+                eta_readiness_snapshot.get("command_center_issue_summary")
+                or command_center_watchdog.get("display_summary")
+                or command_center_watchdog.get("display_issue_summary")
+                or command_center_watchdog.get("issue_summary")
+                or command_center_watchdog.get("summary")
+                or "",
+            ),
+            "command_center_watchdog_fresh": bool(command_center_watchdog.get("fresh")),
+            "command_center_watchdog_age_s": command_center_watchdog.get("age_s"),
+            "command_center_watchdog_healthy": command_center_watchdog.get("healthy"),
+            "command_center_watchdog_checked_at": command_center_watchdog.get("checked_at"),
+            "command_center_watchdog_next_step": str(
+                command_center_watchdog.get("operator_next_step")
+                or command_center_watchdog.get("next_step")
+                or ""
+            ),
+            "command_center_watchdog_next_reason": str(
+                command_center_watchdog.get("operator_next_reason")
+                or command_center_watchdog.get("next_reason")
+                or ""
+            ),
+            "command_center_watchdog_next_command": str(
+                command_center_watchdog.get("operator_next_command")
+                or command_center_watchdog.get("next_command")
+                or ""
+            ),
+            "command_center_watchdog_failure_class": str(
+                command_center_watchdog.get("failure_class") or ""
+            ),
+            "command_center_watchdog_operator_contract_state": str(
+                command_center_watchdog.get("operator_contract_state") or ""
+            ),
+            "command_center_watchdog_recommended_action": str(
+                command_center_watchdog.get("recommended_action") or ""
+            ),
+            "command_center_watchdog_primary_blocker": str(
+                command_center_watchdog.get("primary_blocker")
+                or command_center_watchdog.get("issue_status")
+                or command_center_watchdog.get("status")
+                or ""
+            ),
+            "command_center_watchdog_instruction": str(
+                command_center_watchdog.get("instruction") or ""
+            ),
+            "command_center_watchdog_action_count": int(command_center_watchdog.get("action_count") or 0),
+            "command_center_watchdog_follow_up_count": int(
+                command_center_watchdog.get("follow_up_count") or 0
+            ),
+            "command_center_watchdog_dashboard_task_missing_task_names": (
+                [
+                    str(name)
+                    for name in command_center_watchdog.get("dashboard_task_missing_task_names", [])
+                    if name
+                ]
+                if isinstance(command_center_watchdog.get("dashboard_task_missing_task_names"), list)
+                else [
+                    str(name)
+                    for name in (
+                        (
+                            command_center_watchdog.get("dashboard_task_contract_status")
+                            if isinstance(command_center_watchdog.get("dashboard_task_contract_status"), dict)
+                            else {}
+                        ).get("missing_task_names", [])
+                    )
+                    if name
+                ]
+            ),
+            "command_center_watchdog_repair_required": bool(
+                command_center_watchdog.get("repair_required")
+            ),
+            "command_center_watchdog_requires_elevation": bool(
+                command_center_watchdog.get("operator_next_requires_elevation")
+                or command_center_watchdog.get("requires_elevation")
+            ),
+            "command_center_watchdog_watchdog_registered": command_center_watchdog.get("watchdog_registered"),
+            "command_center_watchdog_watchdog_state": str(command_center_watchdog.get("watchdog_state") or ""),
+            "command_center_watchdog_can_launch_from_desktop": bool(
+                command_center_watchdog.get("can_launch_from_desktop")
+            ),
+            "command_center_watchdog_launch_context": str(
+                command_center_watchdog.get("launch_context") or ""
+            ),
+            "command_center_watchdog_dashboard_task_contract_status": str(
+                (
+                    command_center_watchdog.get("dashboard_task_contract_status")
+                    if isinstance(command_center_watchdog.get("dashboard_task_contract_status"), dict)
+                    else {}
+                ).get("status")
+                or ""
+            ),
+            "command_center_watchdog_local_contract_status": str(
+                (
+                    command_center_watchdog.get("local_contract_status")
+                    if isinstance(command_center_watchdog.get("local_contract_status"), dict)
+                    else {}
+                ).get("status")
+                or ""
             ),
             "dashboard_proxy_watchdog_status": str(dashboard_proxy_watchdog.get("status") or ""),
             "dashboard_proxy_watchdog_detail": str(
                 dashboard_proxy_watchdog.get("detail") or dashboard_proxy_watchdog.get("summary") or "",
             ),
+            "dashboard_proxy_watchdog_fresh": bool(dashboard_proxy_watchdog.get("fresh")),
+            "dashboard_proxy_watchdog_action": str(dashboard_proxy_watchdog.get("action") or ""),
+            "dashboard_proxy_watchdog_task_name": str(dashboard_proxy_watchdog.get("task_name") or ""),
+            "dashboard_proxy_watchdog_probe_healthy": bool(dashboard_proxy_watchdog.get("probe_healthy")),
+            "dashboard_proxy_watchdog_probe_reason": str(dashboard_proxy_watchdog.get("probe_reason") or ""),
+            "dashboard_proxy_watchdog_status_code": dashboard_proxy_watchdog.get("status_code"),
+            "dashboard_proxy_watchdog_elapsed_ms": dashboard_proxy_watchdog.get("elapsed_ms"),
+            "dashboard_proxy_watchdog_heartbeat_age_s": dashboard_proxy_watchdog.get("heartbeat_age_s"),
+            "dashboard_proxy_watchdog_checked_age_s": dashboard_proxy_watchdog.get("checked_age_s"),
+            "dashboard_proxy_watchdog_checked_at": dashboard_proxy_watchdog.get("checked_at"),
+            "dashboard_proxy_watchdog_heartbeat_ts": dashboard_proxy_watchdog.get("heartbeat_ts"),
             "live_broker_probe_mode": "live" if live_broker_probe else "cached_diagnostics",
             "mnq_total": len(mnq_runtime_rows),
             "mnq_runtime_total": len(mnq_runtime_rows),
@@ -18925,12 +19248,46 @@ def _local_master_status_payload() -> dict[str, object]:
         "source": "command_center_watchdog",
         "raw_status": command_center_watchdog_status,
         "effective_status": command_center_watchdog_effective_status,
+        "fresh": bool(command_center_watchdog.get("fresh")),
+        "age_s": command_center_watchdog.get("age_s"),
+        "healthy": command_center_watchdog.get("healthy"),
+        "failure_class": str(command_center_watchdog.get("failure_class") or ""),
+        "operator_contract_state": str(command_center_watchdog.get("operator_contract_state") or ""),
+        "primary_blocker": str(command_center_watchdog.get("primary_blocker") or ""),
         "recommended_action": str(command_center_watchdog.get("recommended_action") or ""),
         "next_step": str(command_center_watchdog.get("next_step") or ""),
         "next_reason": str(command_center_watchdog.get("next_reason") or ""),
         "next_command": command_center_watchdog.get("next_command"),
+        "instruction": str(command_center_watchdog.get("instruction") or ""),
+        "action_count": int(command_center_watchdog.get("action_count") or 0),
+        "follow_up_count": int(command_center_watchdog.get("follow_up_count") or 0),
         "repair_required": bool(command_center_watchdog.get("repair_required")),
         "requires_elevation": bool(command_center_watchdog.get("requires_elevation")),
+        "watchdog_registered": command_center_watchdog.get("watchdog_registered"),
+        "watchdog_state": command_center_watchdog.get("watchdog_state"),
+        "can_launch_from_desktop": command_center_watchdog.get("can_launch_from_desktop"),
+        "launch_context": command_center_watchdog.get("launch_context"),
+        "dashboard_task_contract_status": str(
+            (
+                command_center_watchdog.get("dashboard_task_contract_status")
+                if isinstance(command_center_watchdog.get("dashboard_task_contract_status"), dict)
+                else {}
+            ).get("status")
+            or ""
+        ),
+        "local_contract_status": str(
+            (
+                command_center_watchdog.get("local_contract_status")
+                if isinstance(command_center_watchdog.get("local_contract_status"), dict)
+                else {}
+            ).get("status")
+            or ""
+        ),
+        "dashboard_task_missing_task_names": [
+            str(name) for name in command_center_watchdog.get("dashboard_task_missing_task_names", []) if name
+        ]
+        if isinstance(command_center_watchdog.get("dashboard_task_missing_task_names"), list)
+        else [],
         "checked_at": command_center_watchdog.get("checked_at"),
     }
     dashboard_proxy_watchdog_system = {
@@ -18945,6 +19302,9 @@ def _local_master_status_payload() -> dict[str, object]:
         "probe_healthy": dashboard_proxy_watchdog.get("probe_healthy"),
         "probe_reason": str(dashboard_proxy_watchdog.get("probe_reason") or ""),
         "status_code": dashboard_proxy_watchdog.get("status_code"),
+        "elapsed_ms": dashboard_proxy_watchdog.get("elapsed_ms"),
+        "heartbeat_age_s": dashboard_proxy_watchdog.get("heartbeat_age_s"),
+        "checked_age_s": dashboard_proxy_watchdog.get("checked_age_s"),
         "restart_ok": dashboard_proxy_watchdog.get("restart_ok"),
         "restart_reason": dashboard_proxy_watchdog.get("restart_reason"),
         "checked_at": dashboard_proxy_watchdog.get("checked_at"),

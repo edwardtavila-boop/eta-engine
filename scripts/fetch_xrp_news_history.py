@@ -74,6 +74,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT.parent))
 
+from eta_engine.scripts import workspace_roots  # noqa: E402
 from eta_engine.scripts.workspace_roots import CRYPTO_SENTIMENT_ROOT as SENTIMENT_ROOT  # noqa: E402
 
 # SEC EDGAR full-text search endpoint. Public, no auth required, but
@@ -215,7 +216,7 @@ def write_csv(  # noqa: PLR0913 - explicit args keep CSV shape intentional
             cursor += timedelta(days=1)
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="fetch_xrp_news_history")
     p.add_argument("--days", type=int, default=365)
     p.add_argument(
@@ -230,7 +231,11 @@ def main() -> int:
         default=["ripple", "XRP"],
         help="EDGAR full-text search terms (whitespace separates terms)",
     )
-    args = p.parse_args()
+    args = p.parse_args(argv)
+    try:
+        args.root = workspace_roots.resolve_under_workspace(args.root, label="--root")
+    except ValueError as exc:
+        p.error(str(exc))
 
     print(
         f"[fetch_xrp_news_history] last {args.days}d, queries={args.queries} -> {args.root}",

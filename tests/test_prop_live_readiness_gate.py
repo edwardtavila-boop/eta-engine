@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
+import pytest
+
 from eta_engine.scripts import prop_live_readiness_gate as gate
+from eta_engine.scripts import workspace_roots
 
 
 def _ready_payloads() -> dict[str, object]:
@@ -538,3 +543,20 @@ def test_load_gate_inputs_uses_local_master_and_live_readiness_fallbacks_when_pu
     assert inputs["master"]["systems"]["ibkr"]["status"] == "GREEN"
     assert inputs["live_readiness"]["source"] == "bot_strategy_readiness"
     assert inputs["live_readiness"]["found"] is True
+
+
+def test_cli_rejects_output_path_outside_workspace(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    fake_workspace = tmp_path / "workspace"
+    outside_workspace = tmp_path / "outside" / "prop_live_readiness_latest.json"
+    fake_workspace.mkdir()
+    monkeypatch.setattr(workspace_roots, "WORKSPACE_ROOT", fake_workspace)
+    monkeypatch.setattr(
+        gate,
+        "load_gate_inputs",
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("gate inputs should not load")),
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        gate.main(["--out", str(outside_workspace)])
+
+    assert exc.value.code == 2

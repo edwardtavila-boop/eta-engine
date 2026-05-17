@@ -4,6 +4,12 @@
 
 **Last updated:** 2026-05-12 (wave-24, pre-launch)
 
+> **Safety note:** Treat `python -m eta_engine.scripts.prop_launch_check --json`
+> as the current Diamond/Wave-25 launch authority. If it is `NO_GO` or `HOLD`,
+> keep all bots in `EVAL_PAPER` after recovery. The separate futures
+> prop-ladder controlled dry-run lane remains a parallel story and does not
+> override the launch gate.
+
 ---
 
 ## When to use this runbook
@@ -123,7 +129,7 @@ After lockdown, follow §B Step 2 to manually flatten any remaining positions.
 Only proceed when:
 - The root cause of the incident is understood
 - Daily DD has reset (next trading day)
-- The launch readiness gate returns GO
+- `python -m eta_engine.scripts.prop_launch_check --json` returns `GO`
 
 ```powershell
 # 1. Clear any stale halt flag
@@ -135,13 +141,13 @@ schtasks /Run /TN "ETA-Diamond-LedgerEvery15Min"
 schtasks /Run /TN "ETA-Diamond-PropDrawdownGuardEvery15Min"
 schtasks /Run /TN "ETA-Diamond-LeaderboardHourly"
 
-# 3. Run the readiness gate
-python -m eta_engine.scripts.diamond_prop_launch_readiness
+# 3. Run the current launch gate
+python -m eta_engine.scripts.prop_launch_check --json
 
-# 4. Run the dry-run
-python -m eta_engine.scripts.diamond_prop_prelaunch_dryrun
+# 4. Optional: inspect the separate futures prop-ladder dry-run lane
+python -m eta_engine.scripts.prop_live_readiness_gate --json
 
-# 5. If both return GO, supervisor is free to trade prop again
+# 5. Only if the launch gate returns GO is the supervisor free to trade prop again
 ```
 
 ---
@@ -152,7 +158,7 @@ python -m eta_engine.scripts.diamond_prop_prelaunch_dryrun
 2. `python -m eta_engine.scripts.diamond_prop_drawdown_guard` — current signal + per-rule status
 3. `Get-Content C:\EvolutionaryTradingAlgo\logs\eta_engine\alerts_log.jsonl | Select-Object -Last 20` — recent alerts
 4. `Get-Content C:\EvolutionaryTradingAlgo\var\eta_engine\state\diamond_prop_drawdown_guard_latest.json` — latest receipt
-5. `python -m eta_engine.scripts.diamond_prop_launch_readiness` — overall verdict
+5. `python -m eta_engine.scripts.prop_launch_check --json` — current Diamond/Wave-25 launch verdict
 
 ---
 
@@ -163,7 +169,7 @@ If the system shows these AND the prop-fund account looks stable, you're fine:
 - `prop_halt_active.flag` does NOT exist
 - `prop_watch_active.flag` does NOT exist
 - Drawdown guard signal: `OK`
-- Launch readiness: `GO`
+- Launch readiness: `GO` from `python -m eta_engine.scripts.prop_launch_check --json`
 - Daily PnL within ±$1500 (3% of $50K)
 - Total PnL within -$2500 to +$3000 envelope
 

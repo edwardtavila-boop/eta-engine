@@ -152,7 +152,8 @@ as P0 before any capital.
 5. Then paper-soak with `paper_soak_tracker --days 30`.
 6. After 30+ unique-window sessions, run `fleet_realism_audit --strict`.
 7. If audit passes and falsification criteria are written, candidate
-   is ready for live consideration.
+   is ready for the current readiness/launch-surface review
+   (`prop_launch_check`, plus any parallel controlled dry-run surfaces).
 
 ## Memory: what NOT to do
 

@@ -3,7 +3,10 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
+
 from eta_engine.scripts import supervisor_broker_reconcile_heartbeat as mod
+from eta_engine.scripts import workspace_roots
 
 
 def test_reconcile_snapshot_uses_current_broker_and_supervisor_positions() -> None:
@@ -130,3 +133,30 @@ def test_symbol_root_normalizes_supervisor_and_crypto_symbols() -> None:
     assert mod._symbol_root("MNQ1") == "MNQ"
     assert mod._symbol_root("BTCUSD") == "BTC"
     assert mod._symbol_root("ETHUSDT") == "ETH"
+
+
+def test_cli_rejects_output_paths_outside_workspace(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    fake_workspace = tmp_path / "workspace"
+    outside_workspace = tmp_path / "outside"
+    fake_workspace.mkdir()
+    monkeypatch.setattr(workspace_roots, "WORKSPACE_ROOT", fake_workspace)
+    monkeypatch.setattr(
+        mod,
+        "load_supervisor_positions",
+        lambda: (_ for _ in ()).throw(AssertionError("supervisor positions should not load")),
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        mod.main(
+            [
+                "--out",
+                str(outside_workspace / "reconcile_last.json"),
+                "--status-out",
+                str(outside_workspace / "supervisor_broker_reconcile_heartbeat.json"),
+            ]
+        )
+
+    assert exc.value.code == 2

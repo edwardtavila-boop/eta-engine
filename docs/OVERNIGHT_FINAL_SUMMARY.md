@@ -4,6 +4,12 @@
 **Branch:** `claude/epic-stonebraker-67ab77`
 **Trigger:** Operator instruction to "make this thread automatic" + "keep going until done"
 
+> **Historical snapshot note:** This overnight summary captures a 2026-05-05
+> autonomous audit state. Use current leaderboard/readiness artifacts and
+> `python -m eta_engine.scripts.prop_launch_check --json` before treating older
+> “ALL 5 LIGHTS GREEN” or direct live-start recommendations here as still
+> current.
+
 This document is the autonomous-loop final synthesis after all parallel
 backtest streams went quiet. Read alongside [SUPERCHARGE_REPORT.md](SUPERCHARGE_REPORT.md)
 for full bug-and-fix history.
@@ -33,7 +39,7 @@ for full bug-and-fix history.
 | 4 | `cross_asset_mnq` | **+$1,196** | +$1,411 | 32.8% | 125 | Triple-verified. Walk-forward OOS +$243 / 34T. 4/5 lights GREEN, decay -66% flagged. |
 | 5 | `btc_hybrid` (= 2 dups) | **+$1,116** | +$1,238 | 27.4% | 135 | BIT-FOR-BIT IDENTICAL to btc_regime_trend_etf and btc_sage_daily_etf. Pick ONE. |
 | 6 | `btc_optimized` | **+$984** | +$1,001 | 42.9% | 14 | NEW from overnight. Tiny realism gap ($17). Selective 1h. |
-| 7 | `mnq_anchor_sweep` | **+$680** | +$1,042 | 25.5% | 145 | **ALL 5 LIGHTS GREEN** — only bot to fully clear elite gate. Built this session. |
+| 7 | `mnq_anchor_sweep` | **+$680** | +$1,042 | 25.5% | 145 | **ALL 5 LIGHTS GREEN in that historical audit window** — only bot to fully clear the elite gate in that session. |
 | 8 | `mnq_futures_optimized` | **+$166** | +$177 | 38.5% | 13 | MARGINAL — 13 trades insufficient for confidence. WF OOS suspiciously good (75% on 4T = lottery). |
 
 ### Marginal (positive but unconvincing)
@@ -88,14 +94,16 @@ Paper-soak v2 with **offset windows** (running the same strategy on bars from 30
 
 ## Pre-live cutover recommendation
 
-Start live with **TWO strategies**, sized small, with tight per-strategy daily-loss limits:
+Historical recommendation from this overnight audit window:
+start live with **TWO strategies**, sized small, with tight per-strategy
+daily-loss limits, only if the current launch surfaces independently agree:
 
 1. **`eth_sage_daily`** (1h ETH; +$3,364 pessimistic, +$3,548 realistic, walk-forward OOS WR 50%)
    - Highest absolute PnL with smallest realism gap
    - Run at 0.10R per trade; max 1 ETH-equivalent position
    - Falsification: kill if WR drops below 25% over rolling 30 trades
 
-2. **`mnq_anchor_sweep`** (5m MNQ; only bot with ALL 5 LIGHTS GREEN)
+2. **`mnq_anchor_sweep`** (5m MNQ; only bot with ALL 5 LIGHTS GREEN in that historical audit window)
    - Walk-forward OOS WR (32.0%) > IS WR (23.3%) — strategy gets BETTER on unseen data
    - Run at 0.10R per trade; max 1 MNQ contract
    - Falsification: kill if 30-trade rolling WR < 20%

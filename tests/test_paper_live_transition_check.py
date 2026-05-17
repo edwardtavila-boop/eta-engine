@@ -4,6 +4,10 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
+
+from eta_engine.scripts import workspace_roots
+
 
 def _surface(*, ready: bool) -> dict[str, object]:
     return {
@@ -454,6 +458,7 @@ def test_transition_check_accepts_daily_close_cadence(tmp_path: Path, monkeypatc
 def test_transition_check_writes_canonical_payload(tmp_path: Path, monkeypatch) -> None:
     from eta_engine.scripts import paper_live_transition_check as mod
 
+    monkeypatch.setattr(workspace_roots, "WORKSPACE_ROOT", tmp_path)
     monkeypatch.setattr(mod.ibkr_surface_status, "build_status", lambda **_kwargs: _surface(ready=True))
     monkeypatch.setattr(mod.ibgateway_release_guard, "run_guard", lambda **_kwargs: _release(ready=True))
     monkeypatch.setattr(
@@ -469,3 +474,22 @@ def test_transition_check_writes_canonical_payload(tmp_path: Path, monkeypatch) 
     payload = json.loads(output.read_text(encoding="utf-8"))
     assert payload["status"] == "ready_to_launch_paper_live"
     assert payload["critical_ready"] is True
+
+
+def test_cli_rejects_output_path_outside_workspace(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    from eta_engine.scripts import paper_live_transition_check as mod
+
+    fake_workspace = tmp_path / "workspace"
+    outside_workspace = tmp_path / "outside" / "paper_live_transition_check.json"
+    fake_workspace.mkdir()
+    monkeypatch.setattr(workspace_roots, "WORKSPACE_ROOT", fake_workspace)
+    monkeypatch.setattr(
+        mod,
+        "build_transition_check",
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("transition check should not build")),
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        mod.main(["--out", str(outside_workspace)])
+
+    assert exc.value.code == 2

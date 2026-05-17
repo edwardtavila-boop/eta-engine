@@ -52,8 +52,8 @@ The consolidated `prop_live_readiness_gate` is expected to stay `BLOCKED`
 before funding. It is the hard go/no-go latch for the full automated prop
 lane and should block until all of these are true:
 
-- `volume_profile_mnq` is the only primary futures prop candidate cleared by
-  the ladder.
+- `volume_profile_mnq` is the primary futures prop candidate selected by the
+  ladder for this controlled dry-run lane.
 - Tradovate/BluSky cutover readiness is `READY_FOR_DRY_RUN`.
 - IBKR, broker-router, and paper-live surfaces are green.
 - Historical failed/quarantined/rejected router residue has been resolved or

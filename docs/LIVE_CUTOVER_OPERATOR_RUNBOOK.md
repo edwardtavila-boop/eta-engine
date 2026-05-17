@@ -1,6 +1,13 @@
 # Live Capital Cutover — Operator Runbook
 
-Target window: **~2026-05-15** (3 days from now).
+Target window: **Historical planning window ~2026-05-15** (3 days from the
+original draft).
+
+> **Historical snapshot note:** This runbook captures an older live-cutover
+> planning flow. Before acting on it, check current readiness and launch
+> authority surfaces, especially
+> `python -m eta_engine.scripts.prop_launch_check --json`, plus the current
+> operator/runbook lane used by the VPS-facing ETA runtime.
 
 This is the operator's step-by-step playbook for the moment paper-soak
 ends and real capital begins flowing through ONE selected bot. The
@@ -340,8 +347,9 @@ Print this. Check each box. Don't proceed without all checked.
 □ Operator memory has cutover decision saved as fact: yes / no
 □ Operator has cleared the next 4 hours to monitor: yes / no
 
-If ALL checked: pull the broker-side live switch.
-If ANY unchecked: hold for next session.
+Historical flow note: even if ALL boxes here are checked, confirm the current
+ETA launch/readiness authority surfaces still agree before pulling the
+broker-side live switch. If ANY unchecked: hold for next session.
 ```
 
 ---

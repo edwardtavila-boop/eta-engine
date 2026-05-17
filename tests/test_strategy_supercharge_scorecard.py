@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
+import pytest
+
+from eta_engine.scripts import workspace_roots
 from eta_engine.scripts.bot_strategy_readiness import ReadinessRow
 
 
@@ -85,3 +89,26 @@ def test_scorecard_write_snapshot_round_trips(tmp_path) -> None:  # type: ignore
     payload = json.loads(out.read_text(encoding="utf-8"))
     assert payload["summary"]["next_best_bot"] == "btc_sage_daily_etf"
     assert payload["rows_by_bot"]["btc_sage_daily_etf"]["supercharge_phase"] == "A_C_PAPER_SOAK"
+
+
+def test_cli_rejects_output_path_outside_workspace(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from eta_engine.scripts import strategy_supercharge_scorecard as scorecard
+
+    fake_workspace = tmp_path / "workspace"
+    outside_workspace = tmp_path / "outside" / "strategy_supercharge_scorecard_latest.json"
+    fake_workspace.mkdir()
+    monkeypatch.setattr(workspace_roots, "WORKSPACE_ROOT", fake_workspace)
+    monkeypatch.setattr(
+        scorecard,
+        "build_scorecard",
+        lambda: (_ for _ in ()).throw(AssertionError("scorecard should not build for rejected output")),
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        scorecard.main(["--out", str(outside_workspace)])
+
+    assert exc.value.code == 2
+    assert not outside_workspace.exists()

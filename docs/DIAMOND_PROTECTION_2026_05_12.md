@@ -2,6 +2,11 @@
 
 **Status:** 14 diamond bots locked (8 initial + m2k + 5 wave-14 expansion bots, all IBKR-futures-routable). Three-layer protection live. Top 3 by composite score earn PROP_READY designation. Operator-only retirement. Falsification criteria pre-committed per bot.
 
+> **Historical snapshot note:** This memo captures the 2026-05-12 diamond-set
+> truth surface. Treat `python -m eta_engine.scripts.prop_launch_check --json`
+> and the current leaderboard/readiness artifacts as the live Diamond/Wave-25
+> launch authority before acting on older PROP_READY, tier, or promotion labels.
+
 **Wave-16 mandate (2026-05-12):** PROP_READY routing is **IBKR-futures-only**. Alpaca spot is cellared (POOL_SPLIT["spot"]=0.0); Tradovate dormant. Crypto exposure comes from CME micro crypto futures (MET, MBT) routed through IBKR — NOT from BTC/ETH/SOL spot via Alpaca. The `is_ibkr_futures_eligible()` helper in `capital_allocator` enforces this at the leaderboard eligibility layer.
 
 > "Diamonds can only IMPROVE, never disappear" — the runtime gives
@@ -9,9 +14,9 @@
 
 ---
 
-## The 9 Diamonds
+## Diamond Set Snapshot (2026-05-12)
 
-| Bot | Symbol | Tier | Lifetime P&L (paper) | Sessions | Strategy kind |
+| Bot | Symbol | Historical tier (2026-05-12) | Lifetime P&L (paper) | Sessions | Strategy kind |
 |---|---|---|---|---|---|
 | `mnq_futures_sage` | MNQ1 | ROBUST · **GOD TIER** | +$11,246 | 14 | sage_corb (ORB + retest + sage) |
 | `nq_futures_sage` | NQ1 | ROBUST | +$2,557 | 7 | sage_corb |
@@ -27,6 +32,11 @@
 | `eur_range` | 6E1 | **wave-14 (FX)** | +64R (n=124, 71% WR) | — | range_revert |
 | `ng_sweep_reclaim` | NG1 | **wave-14 (COMMODITY_NG)** | +91R (n=243, 65% WR) | — | sweep_reclaim |
 | `mes_sweep_reclaim` | MES1 | **wave-14 (FUT_INDEX, paired with v2)** | +56R (n=197, 61% WR) | — | sweep_reclaim |
+
+Historical label note: names such as `GOD TIER`, `PROMOTED 2026-05-12`, and
+wave tags in this table are preserved snapshot labels, not current launch
+clearance. Use current leaderboard/readiness artifacts plus
+`python -m eta_engine.scripts.prop_launch_check --json` for the live verdict.
 
 **Wave-16 demoted (NOT in DIAMOND_BOTS):**
 | `volume_profile_btc` | BTC SPOT | **DEMOTED (Alpaca cellared)** | +121R (n=339, 66% WR) | — | volume_profile |
@@ -126,7 +136,7 @@ These are the operator-only kill triggers. Auto-disable cannot retire a
 diamond; only the operator removing it from `DIAMOND_BOTS` after one of
 these is hit retires it.
 
-### `mnq_futures_sage` (GOD TIER)
+### `mnq_futures_sage` (historical 2026-05-12 GOD TIER label)
 - Retire if 30-day rolling P&L < -$5,000 (~half the lifetime gain)
 - Retire if 30-day WR < 25% (current peers run 28–35%)
 - Retire if 90-day deflated Sharpe < 0

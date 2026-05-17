@@ -22,6 +22,15 @@ from typing import Any
 import pytest
 
 from eta_engine.scripts import fetch_tws_historical_bars as mod
+from eta_engine.scripts import workspace_roots
+
+
+@pytest.fixture(autouse=True)
+def _allow_tmp_output_roots(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(workspace_roots, "WORKSPACE_ROOT", tmp_path.parent)
 
 
 # --- Mock IB ---
@@ -410,6 +419,21 @@ def test_dry_run_chunk_total_for_540d_two_symbols(
     assert rc == 0
     out = capsys.readouterr().out
     assert "total chunks across symbols: 36" in out
+
+
+def test_run_rejects_output_root_outside_workspace(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    fake_workspace = tmp_path / "workspace"
+    outside_workspace = tmp_path / "outside"
+    fake_workspace.mkdir()
+    monkeypatch.setattr(workspace_roots, "WORKSPACE_ROOT", fake_workspace)
+
+    with pytest.raises(SystemExit) as exc:
+        mod.run(["--symbols", "MBT", "--root", str(outside_workspace), "--dry-run"])
+
+    assert exc.value.code == 2
 
 
 # --- End-to-end ---

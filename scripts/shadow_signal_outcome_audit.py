@@ -572,6 +572,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--no-write", action="store_true")
     args = parser.parse_args(argv)
+    selected_out = _output_path_for_filters(args.out, bot=args.bot, symbol=args.symbol)
+    if not args.no_write:
+        try:
+            selected_out = workspace_roots.resolve_under_workspace(selected_out, label="--out")
+        except ValueError as exc:
+            parser.error(str(exc))
 
     signals = _current_shadow_signals(
         bot=args.bot,
@@ -586,7 +592,6 @@ def main(argv: list[str] | None = None) -> int:
         target_r=args.target_r,
         stop_r=args.stop_r,
     )
-    selected_out = _output_path_for_filters(args.out, bot=args.bot, symbol=args.symbol)
     out_path = None if args.no_write else write_report(report, selected_out)
     if args.json:
         print(json.dumps(report, indent=2, sort_keys=True, default=str))

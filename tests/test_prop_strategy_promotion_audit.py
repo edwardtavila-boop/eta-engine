@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
+import pytest
+
 from eta_engine.scripts import prop_strategy_promotion_audit as audit
+from eta_engine.scripts import workspace_roots
 
 
 def _check(name: str, status: str, detail: str = "detail", **evidence: object) -> dict[str, object]:
@@ -867,3 +872,20 @@ def test_promotion_audit_prefers_live_gate_deactivation_over_stale_ladder_candid
     assert report["primary"]["deactivation_source"] == "kaizen_sidecar"
     assert "review Kaizen retirement evidence" in required
     assert "set volume_profile_mnq can_live_trade=true" not in required
+
+
+def test_cli_rejects_output_path_outside_workspace(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    fake_workspace = tmp_path / "workspace"
+    outside_workspace = tmp_path / "outside" / "prop_strategy_promotion_audit_latest.json"
+    fake_workspace.mkdir()
+    monkeypatch.setattr(workspace_roots, "WORKSPACE_ROOT", fake_workspace)
+    monkeypatch.setattr(
+        audit,
+        "_current_reports",
+        lambda _prop_account: (_ for _ in ()).throw(AssertionError("current reports should not load")),
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        audit.main(["--out", str(outside_workspace)])
+
+    assert exc.value.code == 2

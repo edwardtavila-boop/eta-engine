@@ -5,12 +5,17 @@
 **Audit method:** scan every bot's trade-close stream for the
 "winners cluster at qty<1, losers cluster at qty=1" pattern
 
+> **Historical snapshot note:** This audit captures the 2026-05-13 qty-bug
+> state. Use current leaderboard/readiness artifacts and
+> `python -m eta_engine.scripts.prop_launch_check --json` before treating older
+> PROP_READY labels or launch timing references as still current.
+
 ---
 
 ## Critical headline
 
-**`mnq_futures_sage` — the operator's only currently-PROP_READY bot —
-has the bug.** Promoting it to `EVAL_LIVE` on Monday would bleed the
+**`mnq_futures_sage` — the operator's then-current PROP_READY bot in this
+snapshot — has the bug.** Promoting it to `EVAL_LIVE` in that state would bleed the
 eval account in USD even though the R-metric is strongly positive.
 
 | Bot | n | WR @ qty=1 | WR @ qty<1 | Δ | cum_R | cum_USD |
@@ -28,8 +33,8 @@ and looks profitable; the USD-metric is brutal.
 
 ## Implications for Monday
 
-1. **DO NOT promote mnq_futures_sage to `EVAL_LIVE`.** It is the
-   only bot the leaderboard currently designates PROP_READY (n=109,
+1. **DO NOT promote mnq_futures_sage to `EVAL_LIVE` in the audited state.** It was the
+   only bot the leaderboard designated PROP_READY in that window (n=109,
    +1.26R avg in the leaderboard window — but the wider 218-trade
    window shows the qty bug clearly). The leaderboard's R-edge
    designation is honest; the bot's USD edge is negative due to the
@@ -121,7 +126,8 @@ Always size qty=1; adjust the stop distance to fit the USD risk.
       EVAL_LIVE`** until the qty bug is patched.
 - [ ] **OPERATOR: decide between:**
   - **(a) Patch the supervisor with Fix A or B** (one-line change,
-      can ship today), then launch Monday
+      can ship immediately in that historical context), then re-check the
+      current launch gate
   - **(b) Delay launch** until the bug is properly investigated
   - **(c) Find a different bot** that doesn't show the qty asymmetry
       (currently NONE qualifies — all PROP_READY-tier bots either

@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 
-from eta_engine.scripts import flaw_hardening_heartbeat
+import pytest
+
+from eta_engine.scripts import flaw_hardening_heartbeat, workspace_roots
 
 
 def _scorecard(*, status: str = "limited", blocker: str = "R8_BROKER_TRUTH_CONFIRMED") -> dict[str, object]:
@@ -91,6 +93,7 @@ def test_build_heartbeat_marks_notify_from_drift() -> None:
 
 def test_main_changed_only_suppresses_unchanged_output(monkeypatch, capsys, tmp_path) -> None:  # type: ignore[no-untyped-def]
     target = tmp_path / "flaw_hardening_snapshot.json"
+    monkeypatch.setattr(workspace_roots, "WORKSPACE_ROOT", tmp_path)
     target.write_text(
         json.dumps(
             {
@@ -135,6 +138,7 @@ def test_main_changed_only_suppresses_unchanged_output(monkeypatch, capsys, tmp_
 
 
 def test_main_strict_blockers_returns_two(monkeypatch, tmp_path) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setattr(workspace_roots, "WORKSPACE_ROOT", tmp_path)
     monkeypatch.setattr(
         flaw_hardening_heartbeat,
         "build_snapshot",
@@ -157,3 +161,20 @@ def test_main_strict_blockers_returns_two(monkeypatch, tmp_path) -> None:  # typ
     rc = flaw_hardening_heartbeat.main(["--out", str(tmp_path / "snapshot.json"), "--strict-blockers"])
 
     assert rc == 2
+
+
+def test_cli_rejects_output_path_outside_workspace(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    fake_workspace = tmp_path / "workspace"
+    outside_workspace = tmp_path / "outside" / "flaw_hardening_snapshot.json"
+    fake_workspace.mkdir()
+    monkeypatch.setattr(workspace_roots, "WORKSPACE_ROOT", fake_workspace)
+    monkeypatch.setattr(
+        flaw_hardening_heartbeat,
+        "build_snapshot_with_drift",
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("snapshot should not build")),
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        flaw_hardening_heartbeat.main(["--out", str(outside_workspace)])
+
+    assert exc.value.code == 2

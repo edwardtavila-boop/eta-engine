@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from eta_engine.scripts import workspace_roots
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -9,6 +11,27 @@ ROOT = Path(__file__).resolve().parents[2]
 
 def _read(rel_path: str) -> str:
     return (ROOT / rel_path).read_text(encoding="utf-8")
+
+
+def test_resolve_under_workspace_accepts_relative_paths(tmp_path: Path) -> None:
+    workspace = tmp_path / "EvolutionaryTradingAlgo"
+    workspace.mkdir()
+
+    resolved = workspace_roots.resolve_under_workspace(
+        Path("data") / "crypto" / "ibkr",
+        workspace_root=workspace,
+    )
+
+    assert resolved == (workspace / "data" / "crypto" / "ibkr").resolve()
+
+
+def test_resolve_under_workspace_rejects_external_paths(tmp_path: Path) -> None:
+    workspace = tmp_path / "EvolutionaryTradingAlgo"
+    outside = tmp_path / "outside"
+    workspace.mkdir()
+
+    with pytest.raises(ValueError, match="canonical workspace root"):
+        workspace_roots.resolve_under_workspace(outside, label="--root", workspace_root=workspace)
 
 
 def test_workspace_roots_point_inside_canonical_repo() -> None:

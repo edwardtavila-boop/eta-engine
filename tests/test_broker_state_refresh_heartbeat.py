@@ -3,7 +3,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from eta_engine.scripts import broker_state_refresh_heartbeat as heartbeat
+from eta_engine.scripts import workspace_roots
 
 
 def test_refresh_heartbeat_uses_first_successful_dashboard_endpoint(monkeypatch, tmp_path: Path) -> None:
@@ -72,3 +75,23 @@ def test_refresh_heartbeat_records_failure_without_raising(monkeypatch, tmp_path
     assert payload["ok"] is False
     assert "failed http://127.0.0.1:8421" in payload["error"]
     assert json.loads(out.read_text(encoding="utf-8"))["status"] == "failed"
+
+
+def test_cli_rejects_output_path_outside_workspace(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    fake_workspace = tmp_path / "workspace"
+    outside_workspace = tmp_path / "outside" / "broker_state_refresh_heartbeat.json"
+    fake_workspace.mkdir()
+    monkeypatch.setattr(workspace_roots, "WORKSPACE_ROOT", fake_workspace)
+    monkeypatch.setattr(
+        heartbeat,
+        "refresh_broker_state",
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("refresh should not run")),
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        heartbeat.main(["--out", str(outside_workspace)])
+
+    assert exc.value.code == 2

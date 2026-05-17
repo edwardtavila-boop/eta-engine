@@ -35,6 +35,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT.parent))
 
+from eta_engine.scripts import workspace_roots  # noqa: E402
 from eta_engine.scripts.workspace_roots import MNQ_HISTORY_ROOT  # noqa: E402
 
 _YF_SYMBOL: dict[str, str] = {
@@ -187,6 +188,10 @@ def main(argv: list[str] | None = None) -> int:
     timeframe = _output_timeframe(args.timeframe)
     period = args.period or _YF_PERIOD_BY_TF[timeframe]
     out_path = args.out or (MNQ_HISTORY_ROOT / f"{symbol}_{timeframe}.csv")
+    try:
+        out_path = workspace_roots.resolve_under_workspace(out_path, label="--out")
+    except ValueError as exc:
+        parser.error(str(exc))
 
     print(f"[context-bars] {symbol} {timeframe} out={out_path}")
     rows = _fetch_via_yfinance(symbol, timeframe, period)

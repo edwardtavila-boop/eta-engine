@@ -3,6 +3,11 @@
 **Date:** 2026-05-13 (wave-25l)
 **Sample:** 416 closed-trade records from canonical + legacy ledger streams
 
+> **Historical snapshot note:** This forensic captures the 2026-05-13
+> sizing-bug state. Use current leaderboard/readiness artifacts and
+> `python -m eta_engine.scripts.prop_launch_check --json` before treating older
+> promotion or launch-timing implications as still current.
+
 ---
 
 ## Headline
@@ -65,7 +70,7 @@ bug stayed hidden. It works in simulation but fails in live execution.
 
 ## Operator implications
 
-1. **Do NOT promote `mes_sweep_reclaim_v2` to `EVAL_LIVE`** until the
+1. **Do NOT promote `mes_sweep_reclaim_v2` to `EVAL_LIVE` in the audited state** until the
    sizing is fixed. Even if the R-edge is real, the USD outcome will
    be net negative on a 416-trade window.
 
@@ -117,7 +122,7 @@ is losing the qty-scaling lever for very high-conviction setups.
 
 ## Action item for the operator
 
-Until a fix lands:
+Until a fix lands and the current launch gate is re-checked:
 
 ```powershell
 python -m eta_engine.scripts.manage_lifecycle set mes_sweep_reclaim_v2 EVAL_PAPER

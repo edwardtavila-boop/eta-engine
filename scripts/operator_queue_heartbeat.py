@@ -115,6 +115,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--strict-blockers", action="store_true", help="exit 2 when blockers are present")
     parser.add_argument("--strict-drift", action="store_true", help="exit 3 when operator queue drift is detected")
     args = parser.parse_args(argv)
+    try:
+        args.out = workspace_roots.resolve_under_workspace(args.out, label="--out")
+        if args.previous is not None:
+            args.previous = workspace_roots.resolve_under_workspace(args.previous, label="--previous")
+    except ValueError as exc:
+        parser.error(str(exc))
 
     previous_path = args.previous or operator_queue_snapshot.default_previous_path_for(args.out)
     snapshot = build_snapshot_with_drift(

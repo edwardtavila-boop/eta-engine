@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from eta_engine.scripts import jarvis_status, operator_queue_heartbeat
+from eta_engine.scripts import jarvis_status, operator_queue_heartbeat, workspace_roots
 
 
 def test_feed_heartbeat_entrypoint_delegates_to_canonical_script() -> None:
@@ -133,6 +133,7 @@ def test_render_text_includes_bot_readiness_fields() -> None:
 
 def test_main_changed_only_suppresses_unchanged_output(monkeypatch, capsys, tmp_path) -> None:  # type: ignore[no-untyped-def]
     target = tmp_path / "operator_queue_snapshot.json"
+    monkeypatch.setattr(workspace_roots, "WORKSPACE_ROOT", tmp_path)
     target.write_text(
         json.dumps(
             {
@@ -157,6 +158,7 @@ def test_main_changed_only_suppresses_unchanged_output(monkeypatch, capsys, tmp_
 
 def test_main_changed_only_emits_json_when_drift_changes(monkeypatch, capsys, tmp_path) -> None:  # type: ignore[no-untyped-def]
     target = tmp_path / "operator_queue_snapshot.json"
+    monkeypatch.setattr(workspace_roots, "WORKSPACE_ROOT", tmp_path)
     target.write_text(
         json.dumps(
             {
@@ -184,6 +186,7 @@ def test_main_changed_only_emits_json_when_drift_changes(monkeypatch, capsys, tm
 
 def test_main_strict_drift_returns_three(monkeypatch, tmp_path) -> None:  # type: ignore[no-untyped-def]
     target = tmp_path / "operator_queue_snapshot.json"
+    monkeypatch.setattr(workspace_roots, "WORKSPACE_ROOT", tmp_path)
     target.write_text(
         json.dumps(
             {
@@ -206,9 +209,27 @@ def test_main_strict_drift_returns_three(monkeypatch, tmp_path) -> None:  # type
 
 
 def test_main_strict_blockers_returns_two(monkeypatch, tmp_path) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setattr(workspace_roots, "WORKSPACE_ROOT", tmp_path)
     monkeypatch.setattr(jarvis_status, "build_operator_queue_summary", lambda **_kwargs: _queue(1))
     monkeypatch.setattr(jarvis_status, "build_bot_strategy_readiness_summary", lambda **_kwargs: _readiness())
 
     rc = operator_queue_heartbeat.main(["--out", str(tmp_path / "snapshot.json"), "--strict-blockers"])
 
     assert rc == 2
+
+
+def test_cli_rejects_output_path_outside_workspace(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    fake_workspace = tmp_path / "workspace"
+    outside_workspace = tmp_path / "outside" / "operator_queue_snapshot.json"
+    fake_workspace.mkdir()
+    monkeypatch.setattr(workspace_roots, "WORKSPACE_ROOT", fake_workspace)
+    monkeypatch.setattr(
+        operator_queue_heartbeat,
+        "build_snapshot_with_drift",
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("snapshot should not build")),
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        operator_queue_heartbeat.main(["--out", str(outside_workspace)])
+
+    assert exc.value.code == 2

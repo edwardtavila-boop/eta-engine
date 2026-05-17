@@ -4,6 +4,12 @@
 
 This document is the current un-dormancy path for prop-firm futures testing. It does not place trades by itself. Tradovate remains dormant by default unless the live process explicitly sets `ETA_TRADOVATE_ENABLED=1`.
 
+> **Safety note:** This plan governs the separate futures prop-ladder
+> controlled dry-run lane centered on `volume_profile_mnq`. It does not
+> authorize the Diamond/Wave-25 launch lane by itself. Keep checking
+> `python -m eta_engine.scripts.prop_launch_check --json` for the separate
+> launch-candidate cutover verdict.
+
 ## Activation Gate
 
 Tradovate was dormant under the 2026-04-24 broker mandate. The approved reactivation is now narrow:
@@ -59,7 +65,10 @@ Tastytrade, then Alpaca for spot-crypto paper/personal lanes.
 | `mbt_funding_basis` | Later CME crypto-futures lane | Futures contract, not spot crypto, but still lower priority than index/commodity work |
 | `sol_optimized` | Non-prop diversifier | Alpaca/personal crypto lane, not a futures prop lane |
 
-Initial live prop capital goes to `volume_profile_mnq` only. Other strategies keep optimizing in paper/Kaizen until their live-fill evidence is strong enough.
+Within this controlled futures prop-ladder lane, any initial prop-test capital
+goes to `volume_profile_mnq` only. Other strategies keep optimizing in
+paper/Kaizen until their live-fill evidence is strong enough. This does not
+mean the separate Diamond/Wave-25 launch lane is `GO`.
 
 ## Automated Ladder And Hard Gate
 

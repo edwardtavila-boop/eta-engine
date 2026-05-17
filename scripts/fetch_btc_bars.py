@@ -76,6 +76,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT.parent))
 
+from eta_engine.scripts import workspace_roots  # noqa: E402
 from eta_engine.scripts.workspace_roots import CRYPTO_HISTORY_ROOT as HISTORY_ROOT  # noqa: E402
 
 # Coinbase Exchange (formerly Pro) public REST. No auth needed for
@@ -195,7 +196,7 @@ def _filename(symbol: str, timeframe: str) -> str:
     return f"{symbol.upper()}_{tf_for_filename}.csv"
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="fetch_btc_bars")
     p.add_argument("--symbol", default="BTC", choices=sorted(_SYMBOL_TO_PRODUCT))
     p.add_argument("--timeframe", default="1h", choices=sorted(_TF_TO_SECONDS))
@@ -205,7 +206,11 @@ def main() -> int:
     p.add_argument(
         "--root", type=Path, default=HISTORY_ROOT, help="output directory (default: canonical ETA crypto history root)"
     )
-    args = p.parse_args()
+    args = p.parse_args(argv)
+    try:
+        args.root = workspace_roots.resolve_under_workspace(args.root, label="--root")
+    except ValueError as exc:
+        p.error(str(exc))
 
     if args.start:
         start = datetime.fromisoformat(args.start).replace(tzinfo=UTC)

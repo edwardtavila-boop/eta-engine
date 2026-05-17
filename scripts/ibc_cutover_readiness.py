@@ -292,7 +292,13 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    if not args.no_write:
+        try:
+            args.out = workspace_roots.resolve_under_workspace(args.out, label="--out")
+        except ValueError as exc:
+            parser.error(str(exc))
     payload = build_readiness()
     if not args.no_write:
         write_readiness(payload, args.out)

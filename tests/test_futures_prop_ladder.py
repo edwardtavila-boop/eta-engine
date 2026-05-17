@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
+import pytest
+
 from eta_engine.scripts import futures_prop_ladder as ladder
+from eta_engine.scripts import workspace_roots
 
 
 def _row(
@@ -140,3 +145,20 @@ def test_latest_strict_gate_metrics_merges_newest_evidence_per_bot(tmp_path) -> 
 
     assert metrics["volume_profile_mnq"]["trades"] == 2916
     assert metrics["mym_sweep_reclaim"]["trades"] == 11
+
+
+def test_cli_rejects_output_path_outside_workspace(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    fake_workspace = tmp_path / "workspace"
+    outside_workspace = tmp_path / "outside" / "futures_prop_ladder_latest.json"
+    fake_workspace.mkdir()
+    monkeypatch.setattr(workspace_roots, "WORKSPACE_ROOT", fake_workspace)
+    monkeypatch.setattr(
+        ladder,
+        "_readiness_rows_from_snapshot",
+        lambda: (_ for _ in ()).throw(AssertionError("readiness should not load")),
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        ladder.main(["--out", str(outside_workspace)])
+
+    assert exc.value.code == 2

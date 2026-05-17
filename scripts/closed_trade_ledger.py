@@ -391,6 +391,11 @@ def main(argv: list[str] | None = None) -> int:
         help="Include ALL data sources (legacy/test/historical). Use only for diagnostic dumps.",
     )
     args = parser.parse_args(argv)
+    if not args.no_write:
+        try:
+            args.out = workspace_roots.resolve_under_workspace(args.out, label="--out")
+        except ValueError as exc:
+            parser.error(str(exc))
 
     if args.include_all:
         data_sources = None

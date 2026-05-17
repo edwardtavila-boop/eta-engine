@@ -5,7 +5,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from eta_engine.scripts import closed_trade_ledger as ledger
+from eta_engine.scripts import workspace_roots
 
 
 def _write_jsonl(path: Path, rows: list[dict]) -> None:
@@ -333,3 +336,23 @@ def test_ledger_cumulative_r_excludes_tick_leak(tmp_path: Path) -> None:
     # Trade count still includes both (we keep the row for forensics
     # in the ledger; it just doesn't contribute to cumulative_r)
     assert report["closed_trade_count"] == 2
+
+
+def test_cli_rejects_output_path_outside_workspace(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    fake_workspace = tmp_path / "workspace"
+    outside_workspace = tmp_path / "outside" / "closed_trade_ledger_latest.json"
+    fake_workspace.mkdir()
+    monkeypatch.setattr(workspace_roots, "WORKSPACE_ROOT", fake_workspace)
+    monkeypatch.setattr(
+        ledger,
+        "build_ledger_report",
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("ledger should not build")),
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        ledger.main(["--out", str(outside_workspace)])
+
+    assert exc.value.code == 2

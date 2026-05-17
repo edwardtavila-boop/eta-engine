@@ -21,6 +21,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from eta_engine.scripts import workspace_roots
+
 _WORKSPACE_ROOT = Path(__file__).resolve().parents[2]
 _ETA_RUNTIME_STATE_DIR = _WORKSPACE_ROOT / "var" / "eta_engine" / "state"
 _STATUS_PATH = _ETA_RUNTIME_STATE_DIR / "ibkr_surface_status.json"
@@ -283,6 +285,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--tws-watchdog-path", type=Path, default=_TWS_WATCHDOG_PATH)
     parser.add_argument("--client-portal-reauth-path", type=Path, default=_CLIENT_PORTAL_REAUTH_PATH)
     args = parser.parse_args(argv)
+    if not args.no_write:
+        try:
+            args.output = workspace_roots.resolve_under_workspace(args.output, label="--output")
+        except ValueError as exc:
+            parser.error(str(exc))
 
     status = build_status(
         tws_host=args.tws_host,

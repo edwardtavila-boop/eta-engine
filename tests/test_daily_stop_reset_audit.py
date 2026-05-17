@@ -3,6 +3,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
+from eta_engine.scripts import workspace_roots
+
 
 def _killswitch(
     *,
@@ -132,3 +136,25 @@ def test_reset_audit_write_round_trips_json(tmp_path: Path) -> None:
     assert loaded["schema_version"] == 1
     assert loaded["status"] == "reset_cleared_ready"
     assert loaded["source"] == "daily_stop_reset_audit"
+
+
+def test_cli_rejects_output_path_outside_workspace(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from eta_engine.scripts import daily_stop_reset_audit as mod
+
+    fake_workspace = tmp_path / "workspace"
+    outside_workspace = tmp_path / "outside" / "daily_stop_reset_audit_latest.json"
+    fake_workspace.mkdir()
+    monkeypatch.setattr(workspace_roots, "WORKSPACE_ROOT", fake_workspace)
+    monkeypatch.setattr(
+        mod,
+        "build_reset_audit",
+        lambda: (_ for _ in ()).throw(AssertionError("audit should not build")),
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        mod.main(["--out", str(outside_workspace)])
+
+    assert exc.value.code == 2

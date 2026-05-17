@@ -4,6 +4,11 @@
 **Branch:** `claude/epic-stonebraker-67ab77` (worktree)
 **Trigger:** Operator going live with real capital; "no space for errors"
 
+> **Historical snapshot note:** This report captures a 2026-05-04 pre-live
+> hardening pass. Use current ETA readiness and launch surfaces, especially
+> `python -m eta_engine.scripts.prop_launch_check --json`, before treating
+> older "fully verified for go-live" or elite-gate phrasing as still current.
+
 This document captures every change made during the pre-live audit
 + supercharge pass.  Read alongside [PAPER_SOAK_README.md](PAPER_SOAK_README.md)
 which describes the hardened simulator + tooling.
@@ -295,14 +300,14 @@ After all bug fixes + supercharges + walk-forward IS/OOS + 90-day cross-validati
 | `cross_asset_mnq` | +$1,411 | +$1,196 | 32.8% | 125 | Walk-forward IS+OOS both positive |
 | `btc_hybrid` (= ETF + sage_daily_etf) | +$1,238 | +$1,116 | 27.4% | 135 | Three duplicate bot_ids — pick one |
 | `nq_futures_sage` | +$1,252 | +$1,218 | 32.6% | 43 | Same pattern as mnq_futures_sage |
-| `mnq_anchor_sweep` | +$1,042 | +$680 | 25.5% | 145 | **ALL 5 LIGHTS GREEN** — only one to fully clear elite gate |
+| `mnq_anchor_sweep` | +$1,042 | +$680 | 25.5% | 145 | **ALL 5 LIGHTS GREEN in that historical audit window** — only one to fully clear the elite gate there |
 | `btc_optimized` | +$1,001 | +$984 | 42.9% | 14 | NEW from overnight audit. Tiny realism gap ($17). 1h timeframe, very selective. |
 | `mnq_futures_optimized` | +$177 | +$166 | 38.5% | 13 | MARGINAL — 13 trades over 90d is too few for confidence; OOS WF surprised at 75% WR but only 4 trades. |
 
-**Two strategies are now fully verified for go-live consideration:**
+**Two strategies were historical standouts in this report's audit window:**
 
 1. `cross_asset_mnq` — walk-forward + 90d single-window both positive (4/5 lights GREEN, OOS-decay -66% flagged RED)
-2. `mnq_anchor_sweep` — walk-forward + 90d single-window both positive, with OOS *better than* IS (rare positive-decay) — **ALL 5 LIGHTS GREEN, cleared for paper-soak**
+2. `mnq_anchor_sweep` — walk-forward + 90d single-window both positive, with OOS *better than* IS (rare positive-decay) — **ALL 5 LIGHTS GREEN in that historical audit window; still requires current readiness/launch-surface confirmation**
 
 ### 5-light elite gate results
 
@@ -325,13 +330,13 @@ This is the elite picture going into live evaluation:
 - Decay -66% (OOS smaller than IS but still positive)
 - 30-day pessimistic mode also positive (+$1,251)
 
-This is the only strategy that should be considered for paper-soak → live cutover.
+In this historical audit window, this was the only strategy that stood out for paper-soak -> future live-cutover review. Current ETA readiness and launch surfaces still decide whether it can progress beyond paper.
 
-**Recommended pre-live workflow for `cross_asset_mnq`:**
+**Historical pre-live workflow sketch for `cross_asset_mnq`:**
 1. Run `strategy_creation_harness --bot cross_asset_mnq --random-baseline` — verify all 5 lights green
 2. Pre-commit falsification criteria (when to kill the strategy): WR < 25% rolling 30, monthly net PnL < -2% equity
 3. 30-day forward-only paper run with NO parameter changes
-4. Start live at 0.10R per trade, 1-contract MNQ cap
+4. If later cleared by the current launch/readiness surfaces, start at 0.10R per trade with a 1-contract MNQ cap
 5. Daily reconciliation must run + alert on any divergence
 6. Re-evaluate after 30 live trades, NOT before
 

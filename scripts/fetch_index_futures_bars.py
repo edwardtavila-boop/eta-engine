@@ -63,6 +63,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT.parent))
 
+from eta_engine.scripts import workspace_roots  # noqa: E402
 from eta_engine.scripts.workspace_roots import MNQ_HISTORY_ROOT  # noqa: E402
 
 
@@ -240,7 +241,7 @@ def _write_csv(path: Path, rows: list[dict]) -> int:
     return len(rows)
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--symbol", default="MNQ", choices=sorted(_YF_SYMBOL))
     p.add_argument("--timeframe", default="5m", choices=sorted(_YF_PERIOD_BY_TF))
@@ -257,7 +258,7 @@ def main() -> int:
         help="Output CSV path. Default: canonical ETA MNQ history root/{SYMBOL}1_{TF}.csv",
     )
     p.add_argument("--no-merge", action="store_true", help="Overwrite existing file instead of merging")
-    args = p.parse_args()
+    args = p.parse_args(argv)
 
     period = args.period or _YF_PERIOD_BY_TF[args.timeframe]
     # Match DataLibrary's _HISTORY_RE convention: daily/weekly files use
@@ -265,6 +266,10 @@ def main() -> int:
     # accepts. Without this, GC1_1d.csv gets skipped by the library scan.
     tf_for_filename = {"1d": "D", "1w": "W"}.get(args.timeframe.lower(), args.timeframe)
     out_path = args.out or (MNQ_HISTORY_ROOT / f"{args.symbol}1_{tf_for_filename}.csv")
+    try:
+        out_path = workspace_roots.resolve_under_workspace(out_path, label="--out")
+    except ValueError as exc:
+        p.error(str(exc))
 
     print(f"[index-futures] {args.symbol} {args.timeframe}  source={args.source}")
     print(f"[index-futures] period={period}  out={out_path}")

@@ -309,6 +309,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--json", action="store_true", help="Print machine-readable status.")
     parser.add_argument("--no-write", action="store_true", help="Do not write artifacts.")
     args = parser.parse_args(argv)
+    if not args.no_write:
+        try:
+            args.out = workspace_roots.resolve_under_workspace(args.out, label="--out")
+            args.status_out = workspace_roots.resolve_under_workspace(args.status_out, label="--status-out")
+        except ValueError as exc:
+            parser.error(str(exc))
 
     started_at = _utc_now()
     try:

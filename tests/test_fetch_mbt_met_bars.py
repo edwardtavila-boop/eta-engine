@@ -16,6 +16,7 @@ from typing import Any
 import pytest
 
 from eta_engine.scripts import fetch_mbt_met_bars as mod
+from eta_engine.scripts import workspace_roots
 
 
 def test_module_imports_cleanly() -> None:
@@ -191,6 +192,7 @@ def test_run_dry_run_does_not_hit_network(
         raise AssertionError("network must not be hit in --dry-run")
 
     monkeypatch.setattr(mod, "_http_get_json", boom)
+    monkeypatch.setattr(workspace_roots, "WORKSPACE_ROOT", tmp_path.parent)
     rc = mod.run(
         [
             "--symbols",
@@ -210,6 +212,21 @@ def test_run_dry_run_does_not_hit_network(
     assert "MET" in out
     # No CSV created
     assert not list(tmp_path.glob("*.csv"))
+
+
+def test_run_rejects_output_root_outside_workspace(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    fake_workspace = tmp_path / "workspace"
+    outside_workspace = tmp_path / "outside"
+    fake_workspace.mkdir()
+    monkeypatch.setattr(workspace_roots, "WORKSPACE_ROOT", fake_workspace)
+
+    with pytest.raises(SystemExit) as exc:
+        mod.run(["--symbols", "MBT", "--root", str(outside_workspace), "--dry-run"])
+
+    assert exc.value.code == 2
 
 
 def test_run_writes_canonical_csv_with_mocked_gateway(
@@ -253,6 +270,7 @@ def test_run_writes_canonical_csv_with_mocked_gateway(
 
     monkeypatch.setattr(mod, "_http_get_json", fake_get)
     monkeypatch.setattr(mod.time, "sleep", lambda *_a, **_kw: None)
+    monkeypatch.setattr(workspace_roots, "WORKSPACE_ROOT", tmp_path.parent)
 
     rc = mod.run(
         [
@@ -297,6 +315,7 @@ def test_run_returns_nonzero_when_gateway_returns_no_data(
         ),
     )
     monkeypatch.setattr(mod.time, "sleep", lambda *_a, **_kw: None)
+    monkeypatch.setattr(workspace_roots, "WORKSPACE_ROOT", tmp_path.parent)
 
     rc = mod.run(
         [

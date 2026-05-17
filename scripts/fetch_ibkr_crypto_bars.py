@@ -75,6 +75,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT.parent))
 
+from eta_engine.scripts import workspace_roots  # noqa: E402
 from eta_engine.scripts.workspace_roots import CRYPTO_IBKR_HISTORY_ROOT as IBKR_HISTORY_ROOT  # noqa: E402
 
 # Default Client Portal Gateway URL. Override via --base-url or the
@@ -359,7 +360,7 @@ def write_csv(path: Path, rows: list[dict]) -> None:
 # ---------------------------------------------------------------------------
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="fetch_ibkr_crypto_bars")
     p.add_argument(
         "--symbol",
@@ -392,7 +393,11 @@ def main() -> int:
         default=_DEFAULT_BASE_URL,
         help="Client Portal gateway URL",
     )
-    args = p.parse_args()
+    args = p.parse_args(argv)
+    try:
+        args.root = workspace_roots.resolve_under_workspace(args.root, label="--root")
+    except ValueError as exc:
+        p.error(str(exc))
 
     if args.start:
         start = datetime.fromisoformat(args.start).replace(tzinfo=UTC)

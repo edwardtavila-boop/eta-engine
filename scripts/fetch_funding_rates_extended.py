@@ -106,6 +106,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT.parent))
 
+from eta_engine.scripts import workspace_roots  # noqa: E402
 from eta_engine.scripts.workspace_roots import (  # noqa: E402
     CRYPTO_HISTORY_ROOT,
     ensure_dir,
@@ -429,6 +430,10 @@ def main(argv: list[str] | None = None) -> int:
         help="Python log level (default: INFO).",
     )
     args = p.parse_args(argv)
+    try:
+        args.root = workspace_roots.resolve_under_workspace(args.root, label="--root")
+    except ValueError as exc:
+        p.error(str(exc))
 
     logging.basicConfig(level=args.log_level.upper(), format="%(message)s")
 

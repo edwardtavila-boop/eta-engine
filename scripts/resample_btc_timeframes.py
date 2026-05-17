@@ -45,6 +45,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT.parent))
 
+from eta_engine.scripts import workspace_roots  # noqa: E402
 from eta_engine.scripts.workspace_roots import CRYPTO_HISTORY_ROOT  # noqa: E402
 
 _DEFAULT_HISTORY_ROOT = CRYPTO_HISTORY_ROOT
@@ -177,13 +178,17 @@ def synthesize_one(
     return n
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--symbol", default="BTC")
     p.add_argument("--tf", default=None, help="target tf (15m, 4h, 1W). Omit to synthesize all defaults.")
     p.add_argument("--src-tf", default=None, help="source tf (default: smallest practical for target)")
     p.add_argument("--root", type=Path, default=_DEFAULT_HISTORY_ROOT)
-    args = p.parse_args()
+    args = p.parse_args(argv)
+    try:
+        args.root = workspace_roots.resolve_under_workspace(args.root, label="--root")
+    except ValueError as exc:
+        p.error(str(exc))
 
     if args.tf:
         src_tf = args.src_tf or _DEFAULT_SOURCE.get(args.tf)

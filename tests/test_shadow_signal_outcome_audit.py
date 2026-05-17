@@ -6,7 +6,10 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from eta_engine.scripts import shadow_signal_outcome_audit as audit
+from eta_engine.scripts import workspace_roots
 
 
 def _bar(
@@ -242,3 +245,20 @@ def test_filtered_shadow_outcome_probes_do_not_clobber_canonical_latest() -> Non
 
     explicit = Path(r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\custom_shadow_outcomes.json")
     assert audit._output_path_for_filters(explicit, bot="volume_profile_nq", symbol="NQ1") == explicit
+
+
+def test_cli_rejects_output_path_outside_workspace(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    fake_workspace = tmp_path / "workspace"
+    outside_workspace = tmp_path / "outside" / "shadow_signal_outcomes_latest.json"
+    fake_workspace.mkdir()
+    monkeypatch.setattr(workspace_roots, "WORKSPACE_ROOT", fake_workspace)
+    monkeypatch.setattr(
+        audit,
+        "_current_shadow_signals",
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("shadow signals should not load")),
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        audit.main(["--out", str(outside_workspace)])
+
+    assert exc.value.code == 2

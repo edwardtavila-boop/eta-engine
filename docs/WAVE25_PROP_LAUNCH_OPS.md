@@ -1,6 +1,15 @@
 # Wave-25 Prop Launch Ops Guide
 
+> **Safety note:** This guide contains historical launch-planning context.
+> Treat `prop_launch_check` as the current Diamond/Wave-25 launch authority.
+> Do not move any bot to `EVAL_LIVE` unless `prop_launch_check` is actually
+> `GO` and the operator has approved specific launch-candidate bot IDs.
+
 **Last updated:** 2026-05-13 (wave-25)
+
+**Target context:** Historical planning snapshot for the original
+Monday 2026-05-18 cutover idea; the preserved target-launch line below is
+historical context, not a current launch date.
 **Target launch:** Monday 2026-05-18 — BluSky 50K eval, conditional-routing architecture
 
 ---
@@ -45,14 +54,14 @@ Defaults: any bot **not** explicitly listed defaults to `EVAL_PAPER` —
 # Show the current table
 python -m eta_engine.scripts.manage_lifecycle list
 
-# Promote m2k to live eval trading
-python -m eta_engine.scripts.manage_lifecycle set m2k_sweep_reclaim EVAL_LIVE
+# Promote an approved launch bot to live eval trading
+python -m eta_engine.scripts.manage_lifecycle set <launch_bot_1> EVAL_LIVE
 
-# Park mes_v2 in paper-only
-python -m eta_engine.scripts.manage_lifecycle set mes_sweep_reclaim_v2 EVAL_PAPER
+# Park a non-launch bot in paper-only
+python -m eta_engine.scripts.manage_lifecycle set <paper_bot_1> EVAL_PAPER
 
 # Revert to the EVAL_PAPER default
-python -m eta_engine.scripts.manage_lifecycle clear m2k_sweep_reclaim
+python -m eta_engine.scripts.manage_lifecycle clear <launch_bot_1>
 ```
 
 The CLI is **idempotent** — `set` with an unchanged value returns
@@ -175,19 +184,24 @@ PROP_READY. Until Monday open, that threshold is not met.
 
 The operator's bootstrap procedure:
 
-1. Decide which bots to launch live: edit lifecycle state per the
-   recommendations in the launch checklist below
-2. Accept that the dryrun returns NO_GO. The override is your
-   `set_bot_lifecycle()` call combined with operator judgment that
-   the wave-25 conditional routing + soft DD threshold + manual
-   monitoring is sufficient compensating control
-3. Open the BluSky/Tradovate platform in front of you for Monday morning
-   as an operator-side view only; ETA Tradovate routing remains DORMANT
-   until code and docs are explicitly reactivated together
-4. Watch the first 3-5 m2k trades manually before stepping away
-5. Once ~100 live trades accumulate (could take 2-3 sessions), the
-   leaderboard auto-promotes m2k to PROP_READY and the dryrun flips
-   to GO without intervention
+Current safety correction: if the launch lane is still `NO_GO` or `HOLD`,
+keep every bot in `EVAL_PAPER`. Do not use the historical Monday-specific
+override posture below. The current flow is to wait for
+`python -m eta_engine.scripts.prop_launch_check --json` to return `GO`, then
+promote only approved launch-candidate bot IDs.
+
+1. Run `python -m eta_engine.scripts.prop_launch_check --json` and confirm the
+   launch lane is truly `GO`.
+2. Decide which approved launch-candidate bot IDs, if any, move to
+   `EVAL_LIVE`; leave all others in `EVAL_PAPER`.
+3. Open the BluSky/Tradovate platform in front of you for operator-side
+   visibility only; ETA Tradovate routing remains DORMANT until code and docs
+   are explicitly reactivated together.
+4. Watch the first 3-5 approved launch-bot trades manually before stepping
+   away.
+5. If the launch lane falls back to `HOLD` or `NO_GO`, demote the launch bot
+   back to `EVAL_PAPER` immediately and return to the pre-launch readiness
+   surfaces.
 
 The system is *correctly* refusing to auto-GO without evidence. Wave-25's
 job is to make that refusal accurate and actionable, not to override it.
@@ -196,16 +210,16 @@ job is to make that refusal accurate and actionable, not to override it.
 
 Run from operator's local workstation; the bullets are operator-side acks:
 
-- [ ] Operator decision: which bots are EVAL_LIVE vs EVAL_PAPER for Monday open
-  - Recommended: m2k=EVAL_LIVE, met=EVAL_PAPER, mes_v2=EVAL_PAPER
-  - Rationale: m2k has 70% WR / 0.46 avg R / strongest CPCV; met has 1-day sample; mes_v2 has R-vs-USD translation bug unreconciled
+- [ ] Operator decision: which approved launch-candidate bots, if any, are
+  `EVAL_LIVE` vs `EVAL_PAPER` for the current session open
+  - Keep this list empty unless `prop_launch_check` is truly `GO`
 - [ ] `set_bot_lifecycle` called on each bot per the decision above
 - [ ] Telegram credentials set on VPS (`ETA_TELEGRAM_BOT_TOKEN`, `ETA_TELEGRAM_CHAT_ID`)
 - [ ] Test alert sent manually via dispatcher (verify operator receives it)
 - [ ] BluSky/Tradovate sub-account credentials confirmed for operator-side
   visibility only; ETA Tradovate routing remains DORMANT until explicit
   reactivation
-- [ ] Pre-launch dryrun = GO (`python -m eta_engine.scripts.diamond_prop_prelaunch_dryrun`)
+- [ ] `prop_launch_check` = GO (`python -m eta_engine.scripts.prop_launch_check --json`)
 - [ ] First-day plan documented: which time window does the operator monitor?
 
 ## Post-launch monitoring (continuous)

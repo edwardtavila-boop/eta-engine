@@ -334,6 +334,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--no-write", action="store_true")
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
     args = parser.parse_args(argv)
+    if not args.no_write:
+        try:
+            args.out = workspace_roots.resolve_under_workspace(args.out, label="--out")
+        except ValueError as exc:
+            parser.error(str(exc))
 
     report = build_ladder_report(
         readiness_rows=_readiness_rows_from_snapshot(),

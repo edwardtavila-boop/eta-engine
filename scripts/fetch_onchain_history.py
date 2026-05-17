@@ -74,6 +74,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT.parent))
 
+from eta_engine.scripts import workspace_roots  # noqa: E402
 from eta_engine.scripts.workspace_roots import CRYPTO_ONCHAIN_ROOT as ONCHAIN_ROOT  # noqa: E402
 
 
@@ -321,6 +322,10 @@ def main(argv: list[str] | None = None) -> int:
         help="output directory (default: canonical ETA crypto on-chain root)",
     )
     args = p.parse_args(argv)
+    try:
+        args.root = workspace_roots.resolve_under_workspace(args.root, label="--root")
+    except ValueError as exc:
+        p.error(str(exc))
 
     targets = [args.symbol] if args.symbol else ["BTC", "ETH", "SOL"]
     today = datetime.now(UTC).date()

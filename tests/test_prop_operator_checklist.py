@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
+import pytest
+
 from eta_engine.scripts import prop_operator_checklist as checklist
+from eta_engine.scripts import workspace_roots
 
 
 def _blocked_gate_report() -> dict[str, object]:
@@ -159,3 +164,20 @@ def test_prop_operator_checklist_ready_has_no_blocking_steps() -> None:
     assert report["blocking_step_count"] == 0
     assert report["parallel_launch_command"] == "python -m eta_engine.scripts.prop_launch_check --json"
     assert report["checklist"] == []
+
+
+def test_cli_rejects_output_path_outside_workspace(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    fake_workspace = tmp_path / "workspace"
+    outside_workspace = tmp_path / "outside" / "prop_operator_checklist_latest.json"
+    fake_workspace.mkdir()
+    monkeypatch.setattr(workspace_roots, "WORKSPACE_ROOT", fake_workspace)
+    monkeypatch.setattr(
+        checklist,
+        "_current_gate_report",
+        lambda: (_ for _ in ()).throw(AssertionError("gate report should not load")),
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        checklist.main(["--out", str(outside_workspace)])
+
+    assert exc.value.code == 2

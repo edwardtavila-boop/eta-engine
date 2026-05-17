@@ -95,6 +95,7 @@ from typing import Any, Protocol
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT.parent))
 
+from eta_engine.scripts import workspace_roots  # noqa: E402
 from eta_engine.scripts.workspace_roots import MNQ_HISTORY_ROOT  # noqa: E402
 
 log = logging.getLogger("fetch_tws_historical_bars")
@@ -1263,6 +1264,10 @@ def run(argv: list[str] | None = None, *, ib: _IbProto | None = None) -> int:
     """
     parser = build_parser()
     args = parser.parse_args(argv)
+    try:
+        args.root = workspace_roots.resolve_under_workspace(args.root, label="--root")
+    except ValueError as exc:
+        parser.error(str(exc))
 
     logging.basicConfig(
         level=getattr(logging, args.log_level),

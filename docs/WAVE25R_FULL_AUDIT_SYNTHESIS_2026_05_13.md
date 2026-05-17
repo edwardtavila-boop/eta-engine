@@ -16,6 +16,12 @@ Until then, `paper_live`/`paper_sim` execution remains the operating lane; any
 `EVAL_LIVE`/`FUNDED_LIVE` staging is dry-run visibility only and must route to
 paper by runtime policy.
 
+> **Historical snapshot note:** This audit memo captures the 2026-05-13/14
+> wave-25r review state. Some findings reference older launch-surface names
+> such as `diamond_prop_launch_readiness.py`. Treat
+> `python -m eta_engine.scripts.prop_launch_check --json` as the current
+> Diamond/Wave-25 launch authority before acting on older launch-gate wording.
+
 ## Test status after fixes
 
 - **Ruff lint:** CLEAN (exit 0) across full codebase

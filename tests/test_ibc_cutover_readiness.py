@@ -3,6 +3,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
+from eta_engine.scripts import workspace_roots
+
 
 def test_readiness_waits_for_credentials_when_runtime_is_installed(monkeypatch) -> None:
     from eta_engine.scripts import ibc_cutover_readiness as mod
@@ -209,6 +213,7 @@ def test_collect_credential_sources_ignores_placeholder_private_password(
 def test_main_writes_canonical_payload(tmp_path, monkeypatch, capsys) -> None:
     from eta_engine.scripts import ibc_cutover_readiness as mod
 
+    monkeypatch.setattr(workspace_roots, "WORKSPACE_ROOT", tmp_path)
     monkeypatch.setattr(
         mod,
         "build_readiness",
@@ -227,3 +232,22 @@ def test_main_writes_canonical_payload(tmp_path, monkeypatch, capsys) -> None:
     assert rc == 2
     assert payload["status"] == "staged_waiting_for_credentials"
     assert json.loads(capsys.readouterr().out)["status"] == "staged_waiting_for_credentials"
+
+
+def test_cli_rejects_output_path_outside_workspace(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    from eta_engine.scripts import ibc_cutover_readiness as mod
+
+    fake_workspace = tmp_path / "workspace"
+    outside_workspace = tmp_path / "outside" / "ibc_cutover_readiness.json"
+    fake_workspace.mkdir()
+    monkeypatch.setattr(workspace_roots, "WORKSPACE_ROOT", fake_workspace)
+    monkeypatch.setattr(
+        mod,
+        "build_readiness",
+        lambda: (_ for _ in ()).throw(AssertionError("readiness should not build")),
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        mod.main(["--out", str(outside_workspace)])
+
+    assert exc.value.code == 2

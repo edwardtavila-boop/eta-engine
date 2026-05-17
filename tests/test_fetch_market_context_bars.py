@@ -5,7 +5,10 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
+
 from eta_engine.scripts import fetch_market_context_bars as mod
+from eta_engine.scripts import workspace_roots
 
 
 class _FakeTimestamp:
@@ -92,3 +95,18 @@ def test_merge_with_existing_keeps_unique_sorted_rows(tmp_path: Path) -> None:
     assert existing == 1
     assert new == 1
     assert [row["time"] for row in merged] == [10, 20]
+
+
+def test_main_rejects_output_path_outside_workspace(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    fake_workspace = tmp_path / "workspace"
+    outside_workspace = tmp_path / "outside" / "DXY_5m.csv"
+    fake_workspace.mkdir()
+    monkeypatch.setattr(workspace_roots, "WORKSPACE_ROOT", fake_workspace)
+
+    with pytest.raises(SystemExit) as exc:
+        mod.main(["--out", str(outside_workspace)])
+
+    assert exc.value.code == 2

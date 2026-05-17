@@ -9,6 +9,12 @@
 - **Decision date:** **2026-06-12** (T+30 calendar days). First scheduled checkpoint at which retirement criteria are evaluated.
 - **Companion truth surfaces:** `eta_engine/docs/DIAMOND_PROTECTION_2026_05_12.md`, `var/eta_engine/decisions/diamond_set_2026_05_12.md`, `eta_engine/scripts/diamond_falsification_watchdog.py` (early-warning buffer monitor).
 
+> **Historical snapshot note:** This pre-commit memo is anchored to the
+> 2026-05-12 diamond allocation snapshot. Use current leaderboard, readiness,
+> and `python -m eta_engine.scripts.prop_launch_check --json` outputs before
+> treating any older promotion thesis or implied launch-readiness label as
+> still current.
+
 ---
 
 ## Roll-up table

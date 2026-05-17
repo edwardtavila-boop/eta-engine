@@ -1,6 +1,11 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
+
+import pytest
+
+from eta_engine.scripts import workspace_roots
 
 
 def _row(
@@ -179,3 +184,26 @@ def test_manifest_declares_cross_asset_multi_style_scope() -> None:
     assert manifest["scope"]["strategy_kinds"] == ["crypto_orb", "drb", "ensemble_voting"]
     assert manifest["groups"]["by_symbol"]["NQ1"]["b_deferred"] == 1
     assert manifest["groups"]["by_strategy_kind"]["crypto_orb"]["a_c_now"] == 1
+
+
+def test_cli_rejects_output_path_outside_workspace(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from eta_engine.scripts import strategy_supercharge_manifest as manifest
+
+    fake_workspace = tmp_path / "workspace"
+    outside_workspace = tmp_path / "outside" / "strategy_supercharge_manifest_latest.json"
+    fake_workspace.mkdir()
+    monkeypatch.setattr(workspace_roots, "WORKSPACE_ROOT", fake_workspace)
+    monkeypatch.setattr(
+        manifest,
+        "build_manifest",
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("manifest should not build for rejected output")),
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        manifest.main(["--out", str(outside_workspace)])
+
+    assert exc.value.code == 2
+    assert not outside_workspace.exists()

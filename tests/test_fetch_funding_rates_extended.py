@@ -31,6 +31,7 @@ from unittest.mock import patch
 
 import pytest
 
+from eta_engine.scripts import workspace_roots
 from eta_engine.scripts.fetch_funding_rates_extended import (
     MissingApiKeyError,
     UnsupportedSymbolError,
@@ -38,6 +39,14 @@ from eta_engine.scripts.fetch_funding_rates_extended import (
     main,
     merge_and_write,
 )
+
+
+@pytest.fixture(autouse=True)
+def _allow_tmp_output_roots(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(workspace_roots, "WORKSPACE_ROOT", tmp_path.parent)
 
 # ── HTTP mocking helpers ────────────────────────────────────────────
 
@@ -345,6 +354,21 @@ def test_cli_main_writes_expected_csvs(tmp_path: Path):
     btc_rows = _read_csv(btc_csv)
     assert btc_rows[0] == (1_700_000_000, pytest.approx(0.0001))
     assert btc_rows[1] == (1_700_028_800, pytest.approx(0.0002))
+
+
+def test_cli_main_rejects_output_root_outside_workspace(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+):
+    fake_workspace = tmp_path / "workspace"
+    outside_workspace = tmp_path / "outside"
+    fake_workspace.mkdir()
+    monkeypatch.setattr(workspace_roots, "WORKSPACE_ROOT", fake_workspace)
+
+    with pytest.raises(SystemExit) as exc:
+        main(["--symbols", "BTC", "--root", str(outside_workspace)])
+
+    assert exc.value.code == 2
 
 
 def test_cli_main_aborts_when_coinglass_without_api_key(monkeypatch, tmp_path: Path):

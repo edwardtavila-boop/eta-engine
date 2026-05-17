@@ -114,7 +114,11 @@ def build_snapshot(
         "prop_live_readiness_status": current_prop.get("summary") or "missing",
         "prop_live_readiness_primary_blocker": prop_blocker.get("name"),
         "prop_live_readiness_primary_blocker_detail": prop_blocker.get("detail"),
-        "prop_live_readiness_next_actions": current_prop.get("next_actions") if isinstance(current_prop.get("next_actions"), list) else [],
+        "prop_live_readiness_next_actions": (
+            current_prop.get("next_actions")
+            if isinstance(current_prop.get("next_actions"), list)
+            else []
+        ),
         "launch_readiness_verdict": current_launch.get("overall_verdict") or "missing",
         "launch_readiness_primary_blocker": launch_primary_blocker,
         "architecture_hotspot_lines": hotspot_lines,
@@ -140,8 +144,16 @@ def compare_snapshots(previous: dict[str, Any] | None, current: dict[str, Any]) 
     ):
         if previous.get(field) != current.get(field):
             changed_fields.append(field)
-    previous_hotspots = previous.get("architecture_hotspot_lines") if isinstance(previous.get("architecture_hotspot_lines"), dict) else {}
-    current_hotspots = current.get("architecture_hotspot_lines") if isinstance(current.get("architecture_hotspot_lines"), dict) else {}
+    previous_hotspots = (
+        previous.get("architecture_hotspot_lines")
+        if isinstance(previous.get("architecture_hotspot_lines"), dict)
+        else {}
+    )
+    current_hotspots = (
+        current.get("architecture_hotspot_lines")
+        if isinstance(current.get("architecture_hotspot_lines"), dict)
+        else {}
+    )
     for name, current_value in current_hotspots.items():
         if previous_hotspots.get(name) != current_value:
             changed_fields.append(f"architecture_hotspot_lines.{name}")
@@ -239,6 +251,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--strict-blockers", action="store_true", help="exit 2 when the top-level status is blocked")
     parser.add_argument("--strict-drift", action="store_true", help="exit 3 when snapshot drift is detected")
     args = parser.parse_args(argv)
+    try:
+        args.out = workspace_roots.resolve_under_workspace(args.out, label="--out")
+        if args.previous is not None:
+            args.previous = workspace_roots.resolve_under_workspace(args.previous, label="--previous")
+    except ValueError as exc:
+        parser.error(str(exc))
 
     previous_path = args.previous or default_previous_path_for(args.out)
     snapshot = build_snapshot_with_drift(out_path=args.out, previous_path=previous_path)

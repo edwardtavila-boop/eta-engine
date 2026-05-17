@@ -259,8 +259,8 @@ Add to `eta_engine/configs/bot_broker_routing.yaml`:
 ```yaml
 # ── Prop-firm funded lanes (BluSky / Elite via Tradovate) ─────────
 # Un-dormancy 2026-05-XX: operator-purchased BluSky Launch 50K eval.
-# Route the current PROP_READY designations (per wave-25 diamond
-# leaderboard) to Tradovate for the BluSky funded lane. All other
+# Route only the approved Diamond launch bot set to Tradovate for the
+# BluSky funded lane after `prop_launch_check` turns `GO`. All other
 # futures bots stay on IBKR paper.
 # Activate this section only after `prop_launch_check` turns GO and the
 # operator has an approved Diamond launch bot set. Until then, leave the
@@ -310,8 +310,8 @@ Restart the supervisor on VPS.
 ## Step 6: First live order (BluSky eval phase)
 
 Once the supervisor is running with `volume_profile_mnq → tradovate`,
-read that as historical placeholder wording only. The current intended state
-is approved Diamond launch bot(s) routed to Tradovate after
+read that as historical placeholder wording only; the current intended state
+is approved Diamond launch bot(s) routed to Tradovate only after
 `prop_launch_check` turns `GO`.
 
 The next time the strategy generates a signal:

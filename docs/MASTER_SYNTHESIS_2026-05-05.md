@@ -3,6 +3,11 @@
 **Branch:** `claude/epic-stonebraker-67ab77`
 **Trigger:** "Double check them all and give them a supercharge — this is the core of our project, it needs to be super hardened and polished."
 
+> **Historical snapshot note:** This sprint synthesis captures a 2026-05-05
+> pre-live audit state. Use current leaderboard/readiness artifacts and
+> `python -m eta_engine.scripts.prop_launch_check --json` before treating older
+> “gate-cleared” or “ready for live” phrasing here as still current.
+
 ---
 
 ## What the operator was told vs. what was true
@@ -191,7 +196,7 @@ After the initial pass, ran the harness on the remaining 9 active bots that had 
 ```
 7 active bots (down from 21 at session start)
 
-paper_soak (gate-cleared, ready for live):
+paper_soak (historical gate-cleared snapshot; check the current launch gate before acting):
   mnq_anchor_sweep   MNQ1 5m  ALL GREEN — 50T OOS, +$175, 32% WR
   mnq_sweep_reclaim  MNQ1 5m  ALL GREEN — 63T OOS, +$1,355, 31.7% WR
 
@@ -253,7 +258,7 @@ The signal IS real (all 4 have 41-75% WR + positive OOS + beats baseline), just 
 ```
 9 active bots (was 7 at end of round 2; vwap_mr_mnq + vwap_mr_nq returned)
 
-paper_soak (gate-cleared, ALL GREEN):
+paper_soak (historical ALL-GREEN snapshot; check the current launch gate before acting):
   mnq_anchor_sweep   MNQ1 5m  50T OOS, +$175, 32% WR
   mnq_sweep_reclaim  MNQ1 5m  63T OOS, +$1,355, 31.7% WR
 

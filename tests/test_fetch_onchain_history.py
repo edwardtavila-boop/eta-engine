@@ -4,7 +4,10 @@ import csv
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
+
 from eta_engine.scripts import fetch_onchain_history as mod
+from eta_engine.scripts import workspace_roots
 
 
 def test_sol_daily_series_uses_coingecko_and_defillama(monkeypatch) -> None:
@@ -91,6 +94,7 @@ def test_main_clamps_future_dated_provider_rows(monkeypatch, tmp_path: Path) -> 
             future: {"price_usd": 151.0},
         },
     )
+    monkeypatch.setattr(workspace_roots, "WORKSPACE_ROOT", tmp_path.parent)
 
     rc = mod.main(["--symbol", "SOL", "--days", "2", "--root", str(tmp_path)])
 
@@ -99,3 +103,18 @@ def test_main_clamps_future_dated_provider_rows(monkeypatch, tmp_path: Path) -> 
         rows = list(csv.DictReader(fh))
     assert len(rows) == 1
     assert datetime.fromtimestamp(int(rows[0]["time"]), UTC).date() == today
+
+
+def test_main_rejects_output_root_outside_workspace(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    fake_workspace = tmp_path / "workspace"
+    outside_workspace = tmp_path / "outside"
+    fake_workspace.mkdir()
+    monkeypatch.setattr(workspace_roots, "WORKSPACE_ROOT", fake_workspace)
+
+    with pytest.raises(SystemExit) as exc:
+        mod.main(["--symbol", "SOL", "--root", str(outside_workspace)])
+
+    assert exc.value.code == 2

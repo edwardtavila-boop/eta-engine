@@ -61,6 +61,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT.parent))
 
+from eta_engine.scripts import workspace_roots  # noqa: E402
 from eta_engine.scripts.workspace_roots import CRYPTO_HISTORY_ROOT  # noqa: E402
 
 
@@ -170,12 +171,16 @@ def compute_and_write(
     return n
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--in", dest="in_path", type=Path, default=_DEFAULT_INPUT)
     p.add_argument("--out", type=Path, default=_DEFAULT_OUTPUT)
     p.add_argument("--dry-run", action="store_true")
-    args = p.parse_args()
+    args = p.parse_args(argv)
+    try:
+        args.out = workspace_roots.resolve_under_workspace(args.out, label="--out")
+    except ValueError as exc:
+        p.error(str(exc))
     n = compute_and_write(args.in_path, args.out, dry_run=args.dry_run)
     return 0 if n > 0 else 2
 

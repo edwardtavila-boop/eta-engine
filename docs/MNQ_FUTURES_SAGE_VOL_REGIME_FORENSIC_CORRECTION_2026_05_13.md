@@ -9,7 +9,12 @@ mnq_futures_sage is a **structural artifact of the supervisor's
 partial-profit mechanism**, not evidence of a vol-regime edge. Setting
 `vol_low_size_mult=0.0` would be a no-op AND would not address the
 USD-negative outcome anyway. The bot is not "one config flip" away from
-launch-ready.
+a current `prop_launch_check` GO verdict.
+
+> **Current-launch note:** Treat `python -m eta_engine.scripts.prop_launch_check --json`
+> as the current Diamond/Wave-25 launch authority. This memo explains one
+> strategy-specific blocker; it does not by itself make `mnq_futures_sage`
+> launchable.
 
 ---
 
@@ -114,7 +119,7 @@ the winner column = 24 × $20 gain = $480. Net USD = −$240. Matches the
 were designed to address** (constant-USD risk sizing), not a vol-regime
 filter problem.
 
-## What would actually move mnq_futures_sage toward launch-ready
+## What would actually move mnq_futures_sage toward a future launch review
 
 Three honest options, none "one config flip":
 
@@ -155,7 +160,7 @@ the time-stop window per bot.
 mnq_futures_sage's broader history (1267 trades, +0.82R avg, 55% WR
 per per_bot_registry.py:614) was profitable BEFORE partial-profit was
 enabled supervisor-wide. The right move may be to retire this bot
-from the EVAL_LIVE pin and find a strategy that doesn't have the
+ from live-candidate consideration and find a strategy that doesn't have the
 partial-profit/full-stop asymmetry baked in.
 
 ## Pre-committed falsification (unchanged)
@@ -164,6 +169,11 @@ partial-profit/full-stop asymmetry baked in.
 > the strategy family is structurally unprofitable in USD terms, and
 > the operator must redesign the qty sizing logic before any further
 > launch attempt.
+
+Historical timing note: the 2026-06-01 falsification date above is preserved
+as the original quote. The broader wave-25r audit later extended that review
+window to 2026-07-15 in
+`WAVE25R_FULL_AUDIT_SYNTHESIS_2026_05_13.md`.
 
 **Setting `vol_low_size_mult=0.0` does not satisfy this falsification.**
 Don't make that change and call it a paper-soak experiment.

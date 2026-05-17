@@ -188,7 +188,7 @@ edge IF the high-vol regime stays stable. But:
   wider historical windows is unknown.
 - The corrected `partial_profit_enabled=false` experiment still needs a
   broker-backed post-fix sample. A tiny post-fix close count is not enough
-  to reclassify the bot as launch-ready.
+  to support a current `prop_launch_check` GO verdict for this bot.
 
 **These caveats are why the recommendation is paper-soak, not Monday
 launch.**

@@ -139,6 +139,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--json", action="store_true", help="print JSON heartbeat")
     parser.add_argument("--no-write", action="store_true", help="do not write heartbeat artifact")
     args = parser.parse_args(argv)
+    if not args.no_write:
+        try:
+            args.out = workspace_roots.resolve_under_workspace(args.out, label="--out")
+        except ValueError as exc:
+            parser.error(str(exc))
 
     heartbeat = refresh_broker_state(
         urls=list(args.url or DEFAULT_URLS),

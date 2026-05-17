@@ -21,6 +21,28 @@ CRYPTO_ONCHAIN_ROOT = CRYPTO_DATA_ROOT / "onchain"
 CRYPTO_SENTIMENT_ROOT = CRYPTO_DATA_ROOT / "sentiment"
 CRYPTO_MACRO_ROOT = CRYPTO_DATA_ROOT / "macro"
 
+
+def resolve_under_workspace(
+    path: Path | str,
+    *,
+    label: str = "path",
+    workspace_root: Path | str | None = None,
+) -> Path:
+    """Resolve a write target and refuse paths outside the ETA workspace."""
+    workspace = Path(workspace_root) if workspace_root is not None else WORKSPACE_ROOT
+    workspace = workspace.resolve()
+    candidate = Path(path)
+    if not candidate.is_absolute():
+        candidate = workspace / candidate
+    resolved = candidate.resolve(strict=False)
+    try:
+        resolved.relative_to(workspace)
+    except ValueError as exc:
+        raise ValueError(
+            f"{label} must stay under canonical workspace root {workspace}: {resolved}",
+        ) from exc
+    return resolved
+
 BACKTEST_CACHE_ROOT = WORKSPACE_ROOT / "mnq_backtest" / ".cache" / "parquet"
 BACKTEST_RUNS_ROOT = WORKSPACE_ROOT / "mnq_backtest" / "runs"
 BACKTEST_DATA_ROOT = WORKSPACE_ROOT / "mnq_backtest" / "data"

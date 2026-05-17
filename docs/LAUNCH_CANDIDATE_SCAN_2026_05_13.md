@@ -5,6 +5,10 @@
 
 **Answer:** None. The data is honest about not being ready.
 
+> **Historical snapshot note:** This memo captures a dated 2026-05-13 scan.
+> Use `python -m eta_engine.scripts.prop_launch_check --json` as the current
+> Diamond/Wave-25 launch authority before acting on any older scan result.
+
 ---
 
 ## Method
@@ -111,8 +115,9 @@ While paper data accumulates:
    structural about the qty<1 setup conditions that genuinely
    produces 100% winners (verify by checking distinct signal IDs).
 
-3. **Re-run this scan weekly.** When `n_launch_candidates >= 1`,
-   the operator has the green light. Until then, paper-only.
+3. **Re-run this scan weekly.** When `n_launch_candidates >= 1` and
+   `prop_launch_check` turns `GO`, the operator has a real launch review
+   signal. Until then, paper-only.
 
 ---
 

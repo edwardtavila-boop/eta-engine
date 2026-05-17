@@ -198,6 +198,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", type=Path, default=workspace_roots.ETA_STRATEGY_SUPERCHARGE_SCORECARD_PATH)
     args = parser.parse_args(argv)
 
+    if not args.no_write:
+        try:
+            args.out = workspace_roots.resolve_under_workspace(args.out, label="--out")
+        except ValueError as exc:
+            parser.error(str(exc))
+
     scorecard = build_scorecard()
     written = None if args.no_write else write_scorecard(scorecard, args.out)
     if args.json:

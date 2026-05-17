@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from eta_engine.scripts import jarvis_status, operator_queue_snapshot
+from eta_engine.scripts import jarvis_status, operator_queue_snapshot, workspace_roots
 
 
 def test_feed_snapshot_entrypoint_delegates_to_canonical_script() -> None:
@@ -215,6 +215,23 @@ def test_write_snapshot_preserves_previous_target(tmp_path) -> None:
     assert json.loads(target.read_text(encoding="utf-8"))["blocked_count"] == 0
 
 
+def test_cli_rejects_output_path_outside_workspace(monkeypatch, tmp_path) -> None:
+    fake_workspace = tmp_path / "workspace"
+    outside_workspace = tmp_path / "outside" / "operator_queue_snapshot.json"
+    fake_workspace.mkdir()
+    monkeypatch.setattr(workspace_roots, "WORKSPACE_ROOT", fake_workspace)
+    monkeypatch.setattr(
+        operator_queue_snapshot,
+        "build_snapshot",
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("snapshot should not build")),
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        operator_queue_snapshot.main(["--out", str(outside_workspace)])
+
+    assert exc.value.code == 2
+
+
 def test_compare_snapshots_reports_changed_fields() -> None:
     previous = {
         "status": "blocked",
@@ -354,6 +371,7 @@ def test_custom_out_uses_sibling_previous_path(tmp_path) -> None:
 
 def test_main_no_write_json_does_not_create_default(monkeypatch, capsys, tmp_path) -> None:  # type: ignore[no-untyped-def]
     target = tmp_path / "operator_queue_snapshot.json"
+    monkeypatch.setattr(workspace_roots, "WORKSPACE_ROOT", tmp_path)
     monkeypatch.setattr(
         jarvis_status,
         "build_operator_queue_summary",
@@ -376,6 +394,7 @@ def test_main_no_write_json_does_not_create_default(monkeypatch, capsys, tmp_pat
 
 
 def test_main_strict_returns_two_when_blocked(monkeypatch, tmp_path) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setattr(workspace_roots, "WORKSPACE_ROOT", tmp_path)
     monkeypatch.setattr(
         jarvis_status,
         "build_operator_queue_summary",

@@ -462,6 +462,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--strict", action="store_true", help="exit 2 when blockers are present")
     args = parser.parse_args(argv)
+    try:
+        args.out = workspace_roots.resolve_under_workspace(args.out, label="--out")
+        if args.previous is not None:
+            args.previous = workspace_roots.resolve_under_workspace(args.previous, label="--previous")
+    except ValueError as exc:
+        parser.error(str(exc))
 
     snapshot = build_snapshot(limit=max(1, args.limit), refresh_readiness=not args.cached_readiness)
     previous_path = args.previous or default_previous_path_for(args.out)
