@@ -60,7 +60,10 @@ from eta_engine.core.execution_lanes import (
     gate_enforced,
     normalize_daily_loss_gate_mode,
 )
-from eta_engine.deploy.scripts.dashboard_paper_live_status import resolve_paper_live_effective_state
+from eta_engine.deploy.scripts.dashboard_paper_live_status import (
+    resolve_paper_live_card,
+    resolve_paper_live_effective_state,
+)
 from eta_engine.deploy.scripts.dashboard_services import ensure_dir_writable, read_jsonl_tail, run_background_task
 from eta_engine.scripts.submodule_wiring_preflight import inspect_submodule_wiring
 
@@ -19807,32 +19810,27 @@ def _local_master_status_payload() -> dict[str, object]:
             "daily_loss_killswitch": daily_loss_killswitch,
         }
     )
-    paper_card_status = (
-        "YELLOW"
-        if paper_stale_receipt
-        else "YELLOW"
-        if paper_non_authoritative_gateway_host and paper_live_effective_status == "blocked"
-        else "RED"
-        if launch_blocked
-        else "YELLOW"
-        if paper_held_by_bracket_audit or paper_held_by_daily_loss_stop or paper_daily_loss_advisory_active
-        else "GREEN"
-        if paper_ready
-        else "YELLOW"
-    )
-    if bool(shadow_runtime.get("active")):
-        paper_card_status = "YELLOW"
-    paper_card_detail = paper_live_effective_status
-    if paper_stale_receipt and paper_stale_detail:
-        paper_card_detail = paper_stale_detail
-    elif paper_non_authoritative_gateway_host and paper_live_effective_status == "blocked":
-        paper_card_detail = str(
+    paper_card = resolve_paper_live_card(
+        effective_status=paper_live_effective_status,
+        stale_receipt=paper_stale_receipt,
+        stale_detail=paper_stale_detail,
+        non_authoritative_gateway_host=paper_non_authoritative_gateway_host,
+        launch_blocked_count=launch_blocked,
+        held_by_bracket_audit=paper_held_by_bracket_audit,
+        held_by_daily_loss_stop=paper_held_by_daily_loss_stop,
+        daily_loss_advisory_active=paper_daily_loss_advisory_active,
+        critical_ready=paper_ready,
+        shadow_runtime_active=bool(shadow_runtime.get("active")),
+        blocked_detail=str(
             paper_first_launch_next_action
             or paper_first_failed_gate.get("next_action")
             or paper.get("operator_queue_first_launch_next_action")
             or paper_first_failed_gate.get("name")
-            or paper_card_detail
-        )
+            or paper_live_effective_status
+        ),
+    )
+    paper_card_status = str(paper_card["status"])
+    paper_card_detail = str(paper_card["detail"])
     router_card_status = _router_card_status(router_status)
     broker_card_status = _worst_card_status(router_card_status, target_exit_card_status)
     broker_detail = router_status

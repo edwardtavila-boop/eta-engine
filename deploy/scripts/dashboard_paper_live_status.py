@@ -72,3 +72,51 @@ def resolve_paper_live_effective_state(
         "effective_status": effective_status,
         "effective_detail": detail,
     }
+
+
+def resolve_paper_live_card(
+    *,
+    effective_status: str,
+    stale_receipt: bool,
+    stale_detail: str,
+    non_authoritative_gateway_host: bool,
+    launch_blocked_count: int,
+    held_by_bracket_audit: bool,
+    held_by_daily_loss_stop: bool,
+    daily_loss_advisory_active: bool,
+    critical_ready: bool,
+    shadow_runtime_active: bool = False,
+    blocked_detail: str = "",
+) -> dict[str, str]:
+    """Resolve the paper-live system-card presentation.
+
+    This is the operator-facing `systems.paper_live` layer that sits on top of
+    the effective paper-live state.
+    """
+
+    card_status = (
+        "YELLOW"
+        if stale_receipt
+        else "YELLOW"
+        if non_authoritative_gateway_host and effective_status == "blocked"
+        else "RED"
+        if launch_blocked_count
+        else "YELLOW"
+        if held_by_bracket_audit or held_by_daily_loss_stop or daily_loss_advisory_active
+        else "GREEN"
+        if critical_ready
+        else "YELLOW"
+    )
+    if shadow_runtime_active:
+        card_status = "YELLOW"
+
+    card_detail = str(effective_status or "unknown")
+    if stale_receipt and stale_detail:
+        card_detail = str(stale_detail)
+    elif non_authoritative_gateway_host and effective_status == "blocked":
+        card_detail = str(blocked_detail or card_detail)
+
+    return {
+        "status": card_status,
+        "detail": card_detail,
+    }

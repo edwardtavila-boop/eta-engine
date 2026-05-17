@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from eta_engine.deploy.scripts.dashboard_paper_live_status import resolve_paper_live_effective_state
+from eta_engine.deploy.scripts.dashboard_paper_live_status import (
+    resolve_paper_live_card,
+    resolve_paper_live_effective_state,
+)
 
 
 def test_resolve_paper_live_effective_state_surfaces_bracket_audit_detail() -> None:
@@ -126,3 +129,73 @@ def test_resolve_paper_live_effective_state_surfaces_operator_queue_launch_block
 
     assert resolved["effective_status"] == "blocked_by_operator_queue"
     assert resolved["effective_detail"] == "Seed IBC credentials and recover TWS API 4002."
+
+
+def test_resolve_paper_live_card_marks_ready_runtime_green() -> None:
+    resolved = resolve_paper_live_card(
+        effective_status="ready_to_launch_paper_live",
+        stale_receipt=False,
+        stale_detail="",
+        non_authoritative_gateway_host=False,
+        launch_blocked_count=0,
+        held_by_bracket_audit=False,
+        held_by_daily_loss_stop=False,
+        daily_loss_advisory_active=False,
+        critical_ready=True,
+    )
+
+    assert resolved["status"] == "GREEN"
+    assert resolved["detail"] == "ready_to_launch_paper_live"
+
+
+def test_resolve_paper_live_card_prefers_stale_detail() -> None:
+    resolved = resolve_paper_live_card(
+        effective_status="stale_receipt",
+        stale_receipt=True,
+        stale_detail="receipt is stale",
+        non_authoritative_gateway_host=False,
+        launch_blocked_count=0,
+        held_by_bracket_audit=False,
+        held_by_daily_loss_stop=False,
+        daily_loss_advisory_active=False,
+        critical_ready=True,
+    )
+
+    assert resolved["status"] == "YELLOW"
+    assert resolved["detail"] == "receipt is stale"
+
+
+def test_resolve_paper_live_card_surfaces_non_authoritative_block_detail() -> None:
+    resolved = resolve_paper_live_card(
+        effective_status="blocked",
+        stale_receipt=False,
+        stale_detail="",
+        non_authoritative_gateway_host=True,
+        launch_blocked_count=1,
+        held_by_bracket_audit=False,
+        held_by_daily_loss_stop=False,
+        daily_loss_advisory_active=False,
+        critical_ready=False,
+        blocked_detail="On the VPS only: apply gateway authority.",
+    )
+
+    assert resolved["status"] == "YELLOW"
+    assert resolved["detail"] == "On the VPS only: apply gateway authority."
+
+
+def test_resolve_paper_live_card_marks_shadow_runtime_yellow() -> None:
+    resolved = resolve_paper_live_card(
+        effective_status="shadow_paper_active",
+        stale_receipt=False,
+        stale_detail="",
+        non_authoritative_gateway_host=False,
+        launch_blocked_count=1,
+        held_by_bracket_audit=False,
+        held_by_daily_loss_stop=False,
+        daily_loss_advisory_active=False,
+        critical_ready=False,
+        shadow_runtime_active=True,
+    )
+
+    assert resolved["status"] == "YELLOW"
+    assert resolved["detail"] == "shadow_paper_active"
