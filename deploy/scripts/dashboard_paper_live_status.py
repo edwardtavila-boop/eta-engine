@@ -120,3 +120,64 @@ def resolve_paper_live_card(
         "status": card_status,
         "detail": card_detail,
     }
+
+
+def reconcile_paper_live_transition_launch_block(
+    *,
+    paper_live_transition: dict[str, Any],
+    operator_queue: dict[str, Any],
+    first_launch_blocker: dict[str, Any],
+) -> dict[str, Any]:
+    """Reconcile launch-blocker truth between transition cache and operator queue."""
+
+    transition_launch_blocked_raw = paper_live_transition.get("operator_queue_launch_blocked_count")
+    if transition_launch_blocked_raw is None:
+        transition_launch_blocked_raw = operator_queue.get("launch_blocked_count")
+    try:
+        transition_launch_blocked = int(transition_launch_blocked_raw or 0)
+    except (TypeError, ValueError):
+        transition_launch_blocked = 0
+
+    transition_first_launch_blocker = ""
+    transition_first_launch_next_action = ""
+    if transition_launch_blocked > 0:
+        transition_first_launch_blocker = str(
+            paper_live_transition.get("operator_queue_first_launch_blocker_op_id")
+            or paper_live_transition.get("operator_queue_first_blocker_op_id")
+            or ""
+        )
+        transition_first_launch_next_action = str(
+            paper_live_transition.get("operator_queue_first_launch_next_action")
+            or paper_live_transition.get("operator_queue_first_next_action")
+            or ""
+        )
+        fresh_operator_queue = not operator_queue.get("cache_stale")
+        if fresh_operator_queue and not transition_first_launch_blocker:
+            transition_first_launch_blocker = str(first_launch_blocker.get("op_id") or "")
+        if fresh_operator_queue and not transition_first_launch_next_action:
+            launch_actions = first_launch_blocker.get("next_actions")
+            if isinstance(launch_actions, list) and launch_actions:
+                transition_first_launch_next_action = str(launch_actions[0])
+            else:
+                transition_first_launch_next_action = str(
+                    first_launch_blocker.get("detail")
+                    or first_launch_blocker.get("title")
+                    or transition_first_launch_next_action
+                )
+        if paper_live_transition.get("cache_stale") and fresh_operator_queue:
+            transition_first_launch_blocker = str(first_launch_blocker.get("op_id") or "")
+            launch_actions = first_launch_blocker.get("next_actions")
+            if isinstance(launch_actions, list) and launch_actions:
+                transition_first_launch_next_action = str(launch_actions[0])
+            else:
+                transition_first_launch_next_action = str(
+                    first_launch_blocker.get("detail")
+                    or first_launch_blocker.get("title")
+                    or transition_first_launch_next_action
+                )
+
+    return {
+        "launch_blocked_count": transition_launch_blocked,
+        "first_launch_blocker_op_id": transition_first_launch_blocker,
+        "first_launch_next_action": transition_first_launch_next_action,
+    }

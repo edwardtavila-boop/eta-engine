@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from eta_engine.deploy.scripts.dashboard_paper_live_status import (
+    reconcile_paper_live_transition_launch_block,
     resolve_paper_live_card,
     resolve_paper_live_effective_state,
 )
@@ -199,3 +200,54 @@ def test_resolve_paper_live_card_marks_shadow_runtime_yellow() -> None:
 
     assert resolved["status"] == "YELLOW"
     assert resolved["detail"] == "shadow_paper_active"
+
+
+def test_reconcile_paper_live_transition_launch_block_prefers_fresh_queue_when_cache_stale() -> None:
+    resolved = reconcile_paper_live_transition_launch_block(
+        paper_live_transition={
+            "cache_stale": True,
+            "operator_queue_launch_blocked_count": 1,
+            "operator_queue_first_launch_blocker_op_id": "OP-18",
+            "operator_queue_first_launch_next_action": "python -m stale_probe",
+        },
+        operator_queue={
+            "cache_stale": False,
+            "launch_blocked_count": 1,
+        },
+        first_launch_blocker={
+            "op_id": "OP-19",
+            "detail": "Seed IBC credentials and recover TWS API 4002.",
+        },
+    )
+
+    assert resolved["launch_blocked_count"] == 1
+    assert resolved["first_launch_blocker_op_id"] == "OP-19"
+    assert resolved["first_launch_next_action"] == "Seed IBC credentials and recover TWS API 4002."
+
+
+def test_reconcile_paper_live_transition_launch_block_fills_missing_action_from_fresh_queue() -> None:
+    resolved = reconcile_paper_live_transition_launch_block(
+        paper_live_transition={
+            "operator_queue_launch_blocked_count": 1,
+            "operator_queue_first_launch_blocker_op_id": "",
+            "operator_queue_first_launch_next_action": "",
+        },
+        operator_queue={
+            "cache_stale": False,
+            "launch_blocked_count": 1,
+        },
+        first_launch_blocker={
+            "op_id": "OP-20",
+            "next_actions": [
+                "Do not unlock new entries until broker/supervisor positions reconcile.",
+            ],
+            "detail": "3 broker/supervisor mismatch(es).",
+        },
+    )
+
+    assert resolved["launch_blocked_count"] == 1
+    assert resolved["first_launch_blocker_op_id"] == "OP-20"
+    assert (
+        resolved["first_launch_next_action"]
+        == "Do not unlock new entries until broker/supervisor positions reconcile."
+    )
