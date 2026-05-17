@@ -95,20 +95,20 @@ Paper-soak v2 with **offset windows** (running the same strategy on bars from 30
 ## Pre-live cutover recommendation
 
 Historical recommendation from this overnight audit window:
-start live with **TWO strategies**, sized small, with tight per-strategy
-daily-loss limits, only if the current launch surfaces independently agree:
+the next **TWO strategies** to review for any future live-cutover path were
+the following, sized small and still subject to current launch-surface approval:
 
 1. **`eth_sage_daily`** (1h ETH; +$3,364 pessimistic, +$3,548 realistic, walk-forward OOS WR 50%)
    - Highest absolute PnL with smallest realism gap
-   - Run at 0.10R per trade; max 1 ETH-equivalent position
+   - If later cleared again by the current launch surfaces, start at 0.10R per trade; max 1 ETH-equivalent position
    - Falsification: kill if WR drops below 25% over rolling 30 trades
 
 2. **`mnq_anchor_sweep`** (5m MNQ; only bot with ALL 5 LIGHTS GREEN in that historical audit window)
    - Walk-forward OOS WR (32.0%) > IS WR (23.3%) — strategy gets BETTER on unseen data
-   - Run at 0.10R per trade; max 1 MNQ contract
+   - If later cleared again by the current launch surfaces, start at 0.10R per trade; max 1 MNQ contract
    - Falsification: kill if 30-trade rolling WR < 20%
 
-Hold the other 6 verified candidates in **paper-soak shadow** for 30 more days
+Historical next step from that audit window: hold the other 6 verified candidates in **paper-soak shadow** for 30 more days
 to confirm walk-forward edge. Specifically:
 - The 3 sage_daily_gated 5m bots (mnq_futures_sage, nq_futures_sage, mnq_futures_optimized) need 180+ days for adequate OOS sample
 - cross_asset_mnq has -66% decay flagged — confirm with longer window before promoting

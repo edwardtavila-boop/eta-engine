@@ -9,14 +9,15 @@ original draft).
 > `python -m eta_engine.scripts.prop_launch_check --json`, plus the current
 > operator/runbook lane used by the VPS-facing ETA runtime.
 
-This is the operator's step-by-step playbook for the moment paper-soak
-ends and real capital begins flowing through ONE selected bot. The
-Hermes-JARVIS brain-OS is already complete and operating — this runbook
-is about pulling the actual live-trading switch.
+This historical draft is the operator's step-by-step playbook for the
+moment paper-soak ends and real capital begins flowing through ONE
+selected bot. The Hermes-JARVIS brain-OS was treated here as already
+complete and operating — this runbook is about the live-trading switch
+scenario, not a current launch clearance by itself.
 
-The runbook assumes:
+The historical draft assumed:
 
-* All 33 MCP tools, 12 skills, 5 cron tasks are live (they are).
+* All 33 MCP tools, 12 skills, 5 cron tasks are live for the cutover scenario; re-check current VPS/runtime truth before acting.
 * The 9-layer health check + the pre-flight gate-check both PASS.
 * The 12-bot paper soak has produced enough data to pick a winner.
 
@@ -235,7 +236,7 @@ For the first week of live trading, operator's daily flow:
 06:30 UTC — morning_briefing auto-fires (existing)
 09:30 ET  — zeus_briefing auto-fires (new)
             → operator reads, decides
-            → if all green, no action
+            → if the current launch/readiness surfaces still agree, continue the approved plan without ad hoc changes
             → if anything off, drill into specific skill
 during the day:
             → optional: "subscribe to consults" for live awareness
@@ -244,7 +245,7 @@ during the day:
 20:00 UTC Sun — weekly_review auto-fires (after first full week)
 ```
 
-After 1 week, decide:
+After 1 week of an already-approved live run, decide:
 * Continue with same bot/sizing → run weekly_review, save the learnings
 * Scale up sizing → use jarvis_kelly_recommend with the week's new data
 * Add a second bot → run the full T-minus 24h checklist for the candidate

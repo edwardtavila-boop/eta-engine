@@ -40,7 +40,7 @@ The dashboard was not lying intentionally — three independent bugs compounded:
 - `backtest/engine.py` `_Open.__post_init__` — universal invariant: stop on wrong side of entry → `ValueError` at construction
 
 ### Strategy creation
-- `strategies/anchor_sweep_strategy.py` — named PDH/PDL/PMH/PML/ONH/ONL liquidity sweep + reclaim. Cleared all 5 lights of the elite gate; first new strategy promoted via the harness (10 tests)
+- `strategies/anchor_sweep_strategy.py` — named PDH/PDL/PMH/PML/ONH/ONL liquidity sweep + reclaim. Cleared all 5 lights of the elite gate in that historical sprint snapshot; first new strategy promoted via the harness there (10 tests)
 - `scripts/strategy_creation_harness.py` — 5-light gate (Signal validity / Sample size / OOS profitability / OOS decay / Beats baseline)
 - `scripts/strategy_optimizer.py` — walk-forward grid search
 - `scripts/fleet_realism_audit.py` — fleet-wide realism scorer

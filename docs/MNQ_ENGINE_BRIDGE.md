@@ -5,6 +5,10 @@
 mnq_bot work (Claude Code workspace) to the Evolutionary Trading Algo roadmap
 (Claude Cowork + Claude Code). Both sides read from this file.
 
+> **Historical snapshot note:** This bridge captures a 2026-04-16 integration
+> view. Treat its candidate, gauntlet, and promotion phrasing as historical
+> context, not as current ETA readiness or launch authority.
+
 ---
 
 ## 1. What the MNQ engine provides to Evolutionary Trading Algo
@@ -52,8 +56,9 @@ contract from here, not from inherited prose.
 | C002-B (xasset momentum) | **SURVIVES (marginal)** | 1.08 | 1,262 |
 | C002-C (VIX Donchian 4h) | **KILL** | 0.90 | 354 |
 
-**C002-B is the only live candidate** that could be promoted to paper
-once DSR clears with `n_trials_prior = 22` (see `statistical_constraints.md §2.1`).
+**C002-B was the only live candidate in that gauntlet snapshot** that looked
+eligible for future paper-promotion review once DSR cleared with
+`n_trials_prior = 22` (see `statistical_constraints.md section 2.1`).
 
 ### Evolutionary Trading Algo roadmap side
 - **P0_SCAFFOLD: 70% done.** Scaffold + config + 39-section blueprint
