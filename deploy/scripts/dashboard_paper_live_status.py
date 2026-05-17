@@ -546,3 +546,81 @@ def build_master_status_paper_live_state(
         "paper_live": paper_live,
         "paper_card": paper_card,
     }
+
+
+def build_bot_fleet_paper_live_summary(
+    *,
+    paper_live_transition: dict[str, Any],
+    broker_bracket_prop_dry_run_blocked: bool,
+    broker_bracket_action_labels: list[str],
+    broker_bracket_effective_detail: str,
+    paper_live_lane_state: dict[str, Any],
+    daily_loss_shadow_detail: str,
+    daily_loss_hold_detail: str,
+    shadow_paper_attached_count: int = 0,
+) -> dict[str, Any]:
+    """Build the shared paper-live rollup used by `/api/bot-fleet` summaries."""
+
+    paper_live_status = str(paper_live_transition.get("status") or "unknown")
+    paper_live_stale_receipt = bool(paper_live_transition.get("stale_receipt"))
+    paper_live_stale_detail = str(paper_live_transition.get("stale_detail") or "")
+    paper_live_critical_ready = bool(paper_live_transition.get("critical_ready"))
+    paper_live_detail = str(paper_live_transition.get("detail") or "")
+    paper_live_first_launch_next_action = str(
+        paper_live_transition.get("first_launch_next_action")
+        or paper_live_transition.get("operator_queue_first_launch_next_action")
+        or paper_live_transition.get("operator_queue_first_next_action")
+        or ""
+    ).strip()
+    paper_live_launch_blocked_raw = paper_live_transition.get("operator_queue_launch_blocked_count")
+    try:
+        paper_live_launch_blocked_count = int(paper_live_launch_blocked_raw or 0)
+    except (TypeError, ValueError):
+        paper_live_launch_blocked_count = 0
+    paper_live_held_by_bracket_audit = broker_bracket_prop_dry_run_blocked and paper_live_critical_ready
+    paper_live_held_by_daily_loss_stop = bool(paper_live_lane_state.get("held_by_daily_loss_stop"))
+    paper_live_daily_loss_advisory_active = bool(paper_live_lane_state.get("daily_loss_advisory_active"))
+    paper_live_effective = resolve_paper_live_effective_state(
+        raw_status=paper_live_status,
+        effective_detail=str(paper_live_transition.get("effective_detail") or ""),
+        operator_queue_launch_blocked_count=paper_live_launch_blocked_count,
+        operator_queue_blocked_detail=paper_live_first_launch_next_action,
+        stale_receipt=paper_live_stale_receipt,
+        stale_detail=paper_live_stale_detail,
+        held_by_bracket_audit=paper_live_held_by_bracket_audit,
+        bracket_audit_detail=(
+            f"held by Bracket Audit: {' or '.join(broker_bracket_action_labels)}"
+            if broker_bracket_action_labels
+            else str(broker_bracket_effective_detail or "held by Bracket Audit")
+        ),
+        held_by_daily_loss_stop=paper_live_held_by_daily_loss_stop,
+        daily_loss_advisory_active=paper_live_daily_loss_advisory_active,
+        daily_loss_shadow_detail=daily_loss_shadow_detail,
+        daily_loss_hold_detail=daily_loss_hold_detail,
+        shadow_paper_attached_count=shadow_paper_attached_count,
+    )
+    return {
+        "status": paper_live_status,
+        "detail": paper_live_detail,
+        "effective_status": str(paper_live_effective["effective_status"]),
+        "effective_detail": str(paper_live_effective["effective_detail"]),
+        "first_launch_next_action": paper_live_first_launch_next_action,
+        "non_authoritative_gateway_host": bool(paper_live_transition.get("non_authoritative_gateway_host")),
+        "stale_receipt": paper_live_stale_receipt,
+        "stale_detail": paper_live_stale_detail,
+        "held_by_bracket_audit": paper_live_held_by_bracket_audit,
+        "held_by_daily_loss_stop": paper_live_held_by_daily_loss_stop,
+        "daily_loss_gate_mode": str(paper_live_lane_state.get("gate_mode") or ""),
+        "daily_loss_advisory_active": paper_live_daily_loss_advisory_active,
+        "capital_lanes_held_by_daily_loss_stop": bool(
+            paper_live_lane_state.get("capital_lanes_held_by_daily_loss_stop")
+        ),
+        "daily_loss_suppressed_non_authoritative_gateway_host": bool(
+            paper_live_transition.get("daily_loss_suppressed_non_authoritative_gateway_host")
+        )
+        or bool(paper_live_lane_state.get("suppressed_on_non_authoritative_gateway_host")),
+        "critical_ready": paper_live_critical_ready,
+        "ready_bots": int(paper_live_transition.get("paper_ready_bots") or 0),
+        "launch_blocked_count": paper_live_launch_blocked_count,
+        "source_age_s": paper_live_transition.get("source_age_s"),
+    }

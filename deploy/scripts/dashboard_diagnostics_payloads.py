@@ -51,3 +51,32 @@ def build_dashboard_diagnostics_second_brain_payload(
         "truth_note": str(truth_note or ""),
         "error": second_brain.get("error"),
     }
+
+
+def build_dashboard_diagnostics_dirty_worktree_payload(
+    *,
+    dirty_worktree_reconciliation: dict[str, Any],
+) -> dict[str, Any]:
+    """Build the diagnostics `dirty_worktree_reconciliation` payload."""
+
+    return {
+        "status": str(dirty_worktree_reconciliation.get("status") or "unknown"),
+        "ready": bool(dirty_worktree_reconciliation.get("ready")),
+        "action": str(dirty_worktree_reconciliation.get("action") or ""),
+        "dirty_modules": dirty_worktree_reconciliation.get("dirty_modules")
+        if isinstance(dirty_worktree_reconciliation.get("dirty_modules"), list)
+        else [],
+        "blocking_modules": dirty_worktree_reconciliation.get("blocking_modules")
+        if isinstance(dirty_worktree_reconciliation.get("blocking_modules"), list)
+        else [],
+        "next_actions": dirty_worktree_reconciliation.get("next_actions")
+        if isinstance(dirty_worktree_reconciliation.get("next_actions"), list)
+        else [],
+        "module_summaries": dirty_worktree_reconciliation.get("module_summaries")
+        if isinstance(dirty_worktree_reconciliation.get("module_summaries"), list)
+        else [],
+        "review_batches": dirty_worktree_reconciliation.get("review_batches")
+        if isinstance(dirty_worktree_reconciliation.get("review_batches"), list)
+        else [],
+        "error": dirty_worktree_reconciliation.get("error"),
+    }

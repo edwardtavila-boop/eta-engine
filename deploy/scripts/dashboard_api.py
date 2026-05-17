@@ -66,6 +66,7 @@ from eta_engine.deploy.scripts.dashboard_diagnostics_contracts import (
     build_dashboard_diagnostics_checks,
 )
 from eta_engine.deploy.scripts.dashboard_diagnostics_payloads import (
+    build_dashboard_diagnostics_dirty_worktree_payload,
     build_dashboard_diagnostics_readiness_payload,
     build_dashboard_diagnostics_second_brain_payload,
 )
@@ -75,10 +76,10 @@ from eta_engine.deploy.scripts.dashboard_diagnostics_sources import (
     extract_dashboard_readiness_second_brain_rollups,
 )
 from eta_engine.deploy.scripts.dashboard_paper_live_status import (
+    build_bot_fleet_paper_live_summary,
     build_dashboard_paper_live_transition_diagnostics_summary,
     build_master_status_paper_live_state,
     build_operator_queue_diagnostics_summary,
-    resolve_paper_live_effective_state,
 )
 from eta_engine.deploy.scripts.dashboard_services import ensure_dir_writable, read_jsonl_tail, run_background_task
 from eta_engine.scripts.submodule_wiring_preflight import inspect_submodule_wiring
@@ -2995,27 +2996,11 @@ def _dashboard_diagnostics_payload() -> dict:
             avoid_pattern_count=readiness_second_brain_rollups["second_brain_avoid_pattern_count"],
             truth_note=readiness_second_brain_rollups["second_brain_truth_note"],
         ),
-        "dirty_worktree_reconciliation": {
-            "status": str(dirty_worktree_reconciliation.get("status") or "unknown"),
-            "ready": bool(dirty_worktree_reconciliation.get("ready")),
-            "action": str(dirty_worktree_reconciliation.get("action") or ""),
-            "dirty_modules": dirty_worktree_reconciliation.get("dirty_modules")
-            if isinstance(dirty_worktree_reconciliation.get("dirty_modules"), list)
-            else [],
-            "blocking_modules": dirty_worktree_reconciliation.get("blocking_modules")
-            if isinstance(dirty_worktree_reconciliation.get("blocking_modules"), list)
-            else [],
-            "next_actions": dirty_worktree_reconciliation.get("next_actions")
-            if isinstance(dirty_worktree_reconciliation.get("next_actions"), list)
-            else [],
-            "module_summaries": dirty_worktree_reconciliation.get("module_summaries")
-            if isinstance(dirty_worktree_reconciliation.get("module_summaries"), list)
-            else [],
-            "review_batches": dirty_worktree_reconciliation.get("review_batches")
-            if isinstance(dirty_worktree_reconciliation.get("review_batches"), list)
-            else [],
-            "error": dirty_worktree_reconciliation.get("error"),
-        },
+        "dirty_worktree_reconciliation": build_dashboard_diagnostics_dirty_worktree_payload(
+            dirty_worktree_reconciliation=(
+                dirty_worktree_reconciliation if isinstance(dirty_worktree_reconciliation, dict) else {}
+            ),
+        ),
         "symbol_intelligence": _symbol_intelligence_diagnostic_payload(symbol_intelligence),
         "diamond_retune_status": _diamond_retune_diagnostic_payload(diamond_retune_status),
         "retune_focus_bot_id": str(diamond_retune_status.get("focus_bot") or ""),
@@ -11713,46 +11698,16 @@ def bot_fleet_roster(
     broker_bracket_prop_dry_run_blocked = bool(
         broker_bracket_audit.get("effective_prop_dry_run_blocked")
     ) or raw_broker_bracket_prop_dry_run_blocked
-    paper_live_status = str(paper_live_transition.get("status") or "unknown")
-    paper_live_stale_receipt = bool(paper_live_transition.get("stale_receipt"))
-    paper_live_stale_detail = str(paper_live_transition.get("stale_detail") or "")
-    paper_live_critical_ready = bool(paper_live_transition.get("critical_ready"))
-    paper_live_detail = str(paper_live_transition.get("detail") or "")
-    paper_live_first_launch_next_action = str(
-        paper_live_transition.get("first_launch_next_action")
-        or paper_live_transition.get("operator_queue_first_launch_next_action")
-        or paper_live_transition.get("operator_queue_first_next_action")
-        or ""
-    ).strip()
-    paper_live_launch_blocked_raw = paper_live_transition.get("operator_queue_launch_blocked_count")
-    try:
-        paper_live_launch_blocked_count = int(paper_live_launch_blocked_raw or 0)
-    except (TypeError, ValueError):
-        paper_live_launch_blocked_count = 0
-    paper_live_held_by_bracket_audit = broker_bracket_prop_dry_run_blocked and paper_live_critical_ready
-    paper_live_held_by_daily_loss_stop = bool(paper_live_lane_state["held_by_daily_loss_stop"])
-    paper_live_daily_loss_advisory_active = bool(paper_live_lane_state["daily_loss_advisory_active"])
-    paper_live_effective = resolve_paper_live_effective_state(
-        raw_status=paper_live_status,
-        effective_detail=str(paper_live_transition.get("effective_detail") or ""),
-        operator_queue_launch_blocked_count=paper_live_launch_blocked_count,
-        operator_queue_blocked_detail=paper_live_first_launch_next_action,
-        stale_receipt=paper_live_stale_receipt,
-        stale_detail=paper_live_stale_detail,
-        held_by_bracket_audit=paper_live_held_by_bracket_audit,
-        bracket_audit_detail=(
-            f"held by Bracket Audit: {' or '.join(broker_bracket_action_labels)}"
-            if broker_bracket_action_labels
-            else str(broker_bracket_audit.get("effective_detail") or "held by Bracket Audit")
-        ),
-        held_by_daily_loss_stop=paper_live_held_by_daily_loss_stop,
-        daily_loss_advisory_active=paper_live_daily_loss_advisory_active,
+    paper_live_summary = build_bot_fleet_paper_live_summary(
+        paper_live_transition=paper_live_transition if isinstance(paper_live_transition, dict) else {},
+        broker_bracket_prop_dry_run_blocked=broker_bracket_prop_dry_run_blocked,
+        broker_bracket_action_labels=broker_bracket_action_labels,
+        broker_bracket_effective_detail=str(broker_bracket_audit.get("effective_detail") or ""),
+        paper_live_lane_state=paper_live_lane_state if isinstance(paper_live_lane_state, dict) else {},
         daily_loss_shadow_detail=_paper_live_shadow_detail(daily_loss_killswitch),
         daily_loss_hold_detail=_daily_loss_hold_detail(daily_loss_killswitch),
         shadow_paper_attached_count=shadow_paper_attached_count,
     )
-    paper_live_effective_status = str(paper_live_effective["effective_status"])
-    paper_live_effective_detail = str(paper_live_effective["effective_detail"])
     vps_root_reconciliation = _vps_root_reconciliation_payload()
     vps_root_summary = (
         vps_root_reconciliation.get("summary") if isinstance(vps_root_reconciliation.get("summary"), dict) else {}
@@ -12363,36 +12318,33 @@ def bot_fleet_roster(
             "broker_bracket_primary_market_value": broker_bracket_primary.get("market_value"),
             "broker_bracket_primary_unrealized_pnl": broker_bracket_primary.get("unrealized_pnl"),
             "broker_bracket_primary_coverage_status": str(broker_bracket_primary.get("coverage_status") or ""),
-            "paper_live_status": paper_live_status,
-            "paper_live_detail": paper_live_detail,
-            "paper_live_effective_status": paper_live_effective_status,
-            "paper_live_effective_detail": paper_live_effective_detail,
-            "paper_live_first_launch_next_action": paper_live_first_launch_next_action,
+            "paper_live_status": str(paper_live_summary.get("status") or "unknown"),
+            "paper_live_detail": str(paper_live_summary.get("detail") or ""),
+            "paper_live_effective_status": str(paper_live_summary.get("effective_status") or "unknown"),
+            "paper_live_effective_detail": str(paper_live_summary.get("effective_detail") or ""),
+            "paper_live_first_launch_next_action": str(paper_live_summary.get("first_launch_next_action") or ""),
             "paper_live_non_authoritative_gateway_host": bool(
-                paper_live_transition.get("non_authoritative_gateway_host")
+                paper_live_summary.get("non_authoritative_gateway_host")
             ),
-            "paper_live_stale_receipt": paper_live_stale_receipt,
-            "paper_live_stale_detail": paper_live_stale_detail,
-            "paper_live_held_by_bracket_audit": paper_live_held_by_bracket_audit,
-            "paper_live_held_by_daily_loss_stop": paper_live_held_by_daily_loss_stop,
-            "paper_live_daily_loss_gate_mode": str(paper_live_lane_state["gate_mode"] or ""),
-            "paper_live_daily_loss_advisory_active": paper_live_daily_loss_advisory_active,
+            "paper_live_stale_receipt": bool(paper_live_summary.get("stale_receipt")),
+            "paper_live_stale_detail": str(paper_live_summary.get("stale_detail") or ""),
+            "paper_live_held_by_bracket_audit": bool(paper_live_summary.get("held_by_bracket_audit")),
+            "paper_live_held_by_daily_loss_stop": bool(paper_live_summary.get("held_by_daily_loss_stop")),
+            "paper_live_daily_loss_gate_mode": str(paper_live_summary.get("daily_loss_gate_mode") or ""),
+            "paper_live_daily_loss_advisory_active": bool(
+                paper_live_summary.get("daily_loss_advisory_active")
+            ),
             "paper_live_capital_lanes_held_by_daily_loss_stop": bool(
-                paper_live_lane_state["capital_lanes_held_by_daily_loss_stop"]
+                paper_live_summary.get("capital_lanes_held_by_daily_loss_stop")
             ),
             "paper_live_daily_loss_suppressed_non_authoritative_gateway_host": bool(
-                paper_live_transition.get("daily_loss_suppressed_non_authoritative_gateway_host")
-            )
-            or bool(
-                paper_live_lane_state["suppressed_on_non_authoritative_gateway_host"]
+                paper_live_summary.get("daily_loss_suppressed_non_authoritative_gateway_host")
             ),
             "daily_loss_killswitch": daily_loss_killswitch,
-            "paper_live_critical_ready": paper_live_critical_ready,
-            "paper_live_ready_bots": int(paper_live_transition.get("paper_ready_bots") or 0),
-            "paper_live_launch_blocked_count": int(
-                paper_live_transition.get("operator_queue_launch_blocked_count") or 0
-            ),
-            "paper_live_source_age_s": paper_live_transition.get("source_age_s"),
+            "paper_live_critical_ready": bool(paper_live_summary.get("critical_ready")),
+            "paper_live_ready_bots": int(paper_live_summary.get("ready_bots") or 0),
+            "paper_live_launch_blocked_count": int(paper_live_summary.get("launch_blocked_count") or 0),
+            "paper_live_source_age_s": paper_live_summary.get("source_age_s"),
             "execution_lanes": lane_rollup,
             "vps_root_reconciliation_status": str(vps_root_reconciliation.get("status") or "unknown"),
             "vps_root_risk_level": str(vps_root_reconciliation.get("risk_level") or "unknown"),

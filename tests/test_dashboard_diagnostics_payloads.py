@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from eta_engine.deploy.scripts.dashboard_diagnostics_payloads import (
+    build_dashboard_diagnostics_dirty_worktree_payload,
     build_dashboard_diagnostics_readiness_payload,
     build_dashboard_diagnostics_second_brain_payload,
 )
@@ -67,4 +68,60 @@ def test_build_dashboard_diagnostics_second_brain_payload_uses_rollup_counts() -
         "paths": {"playbook": "var/eta_engine/state/second_brain.json"},
         "truth_note": "playbook truth",
         "error": "",
+    }
+
+
+def test_build_dashboard_diagnostics_dirty_worktree_payload_sanitizes_lists() -> None:
+    payload = build_dashboard_diagnostics_dirty_worktree_payload(
+        dirty_worktree_reconciliation={
+            "status": "review_required",
+            "ready": False,
+            "action": "review_child_dirty_groups_before_gitlink_wiring",
+            "dirty_modules": ["eta_engine", "mnq_backtest"],
+            "blocking_modules": ["eta_engine"],
+            "next_actions": ["eta_engine: start with scripts=130"],
+            "module_summaries": [{"module": "eta_engine", "entry_count": 444}],
+            "review_batches": [{"batch_id": "eta_engine:scripts", "count": 130}],
+            "error": "",
+        }
+    )
+
+    assert payload == {
+        "status": "review_required",
+        "ready": False,
+        "action": "review_child_dirty_groups_before_gitlink_wiring",
+        "dirty_modules": ["eta_engine", "mnq_backtest"],
+        "blocking_modules": ["eta_engine"],
+        "next_actions": ["eta_engine: start with scripts=130"],
+        "module_summaries": [{"module": "eta_engine", "entry_count": 444}],
+        "review_batches": [{"batch_id": "eta_engine:scripts", "count": 130}],
+        "error": "",
+    }
+
+
+def test_build_dashboard_diagnostics_dirty_worktree_payload_coerces_bad_lists_to_empty() -> None:
+    payload = build_dashboard_diagnostics_dirty_worktree_payload(
+        dirty_worktree_reconciliation={
+            "status": "unavailable",
+            "ready": True,
+            "action": None,
+            "dirty_modules": "bad",
+            "blocking_modules": None,
+            "next_actions": "bad",
+            "module_summaries": {"module": "eta_engine"},
+            "review_batches": "bad",
+            "error": "reconciliation probe exploded",
+        }
+    )
+
+    assert payload == {
+        "status": "unavailable",
+        "ready": True,
+        "action": "",
+        "dirty_modules": [],
+        "blocking_modules": [],
+        "next_actions": [],
+        "module_summaries": [],
+        "review_batches": [],
+        "error": "reconciliation probe exploded",
     }

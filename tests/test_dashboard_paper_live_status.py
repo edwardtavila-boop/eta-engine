@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from eta_engine.deploy.scripts.dashboard_paper_live_status import (
+    build_bot_fleet_paper_live_summary,
     build_dashboard_paper_live_transition_diagnostics_summary,
     build_master_status_paper_live_state,
     build_operator_queue_diagnostics_summary,
@@ -639,3 +640,69 @@ def test_build_master_status_paper_live_state_marks_bracket_audit_hold() -> None
         "status": "YELLOW",
         "detail": "held_by_bracket_audit",
     }
+
+
+def test_build_bot_fleet_paper_live_summary_blocks_ready_launch_queue() -> None:
+    payload = build_bot_fleet_paper_live_summary(
+        paper_live_transition={
+            "status": "ready_to_launch_paper_live",
+            "detail": "",
+            "effective_detail": "",
+            "critical_ready": True,
+            "operator_queue_launch_blocked_count": 1,
+            "operator_queue_first_launch_next_action": "Apply gateway authority on VPS.",
+            "paper_ready_bots": 12,
+        },
+        broker_bracket_prop_dry_run_blocked=False,
+        broker_bracket_action_labels=[],
+        broker_bracket_effective_detail="",
+        paper_live_lane_state={
+            "gate_mode": "warn",
+            "held_by_daily_loss_stop": False,
+            "daily_loss_advisory_active": False,
+            "capital_lanes_held_by_daily_loss_stop": False,
+            "suppressed_on_non_authoritative_gateway_host": False,
+        },
+        daily_loss_shadow_detail="shadow detail",
+        daily_loss_hold_detail="hold detail",
+    )
+
+    assert payload["status"] == "ready_to_launch_paper_live"
+    assert payload["effective_status"] == "blocked_by_operator_queue"
+    assert payload["effective_detail"] == "Apply gateway authority on VPS."
+    assert payload["launch_blocked_count"] == 1
+    assert payload["ready_bots"] == 12
+
+
+def test_build_bot_fleet_paper_live_summary_preserves_daily_loss_suppression_flags() -> None:
+    payload = build_bot_fleet_paper_live_summary(
+        paper_live_transition={
+            "status": "ready_to_launch_paper_live",
+            "detail": "",
+            "effective_detail": "",
+            "critical_ready": True,
+            "operator_queue_launch_blocked_count": 0,
+            "daily_loss_suppressed_non_authoritative_gateway_host": True,
+            "non_authoritative_gateway_host": True,
+        },
+        broker_bracket_prop_dry_run_blocked=False,
+        broker_bracket_action_labels=[],
+        broker_bracket_effective_detail="",
+        paper_live_lane_state={
+            "gate_mode": "warn",
+            "held_by_daily_loss_stop": False,
+            "daily_loss_advisory_active": True,
+            "capital_lanes_held_by_daily_loss_stop": True,
+            "suppressed_on_non_authoritative_gateway_host": False,
+        },
+        daily_loss_shadow_detail="Shadow paper remains live until reset",
+        daily_loss_hold_detail="hold detail",
+    )
+
+    assert payload["effective_status"] == "shadow_paper_active"
+    assert payload["effective_detail"] == "Shadow paper remains live until reset"
+    assert payload["daily_loss_gate_mode"] == "warn"
+    assert payload["daily_loss_advisory_active"] is True
+    assert payload["capital_lanes_held_by_daily_loss_stop"] is True
+    assert payload["daily_loss_suppressed_non_authoritative_gateway_host"] is True
+    assert payload["non_authoritative_gateway_host"] is True
