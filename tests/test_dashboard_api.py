@@ -6140,6 +6140,12 @@ class TestDashboardAPI:
         assert payload["systems"]["command_center_watchdog"]["age_s"] >= 0
         assert payload["systems"]["command_center_watchdog"]["healthy"] is True
         assert payload["systems"]["command_center_watchdog"]["issue_status"] == "healthy"
+        assert payload["systems"]["command_center_watchdog"]["issue_summary"] == (
+            "Command Center watchdog is healthy."
+        )
+        assert payload["systems"]["command_center_watchdog"]["display_summary"] == (
+            "Command Center watchdog is healthy."
+        )
         assert payload["systems"]["command_center_watchdog"]["summary_line"] == (
             "Command Center watchdog is healthy."
         )

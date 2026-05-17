@@ -19601,6 +19601,8 @@ def _local_master_status_payload() -> dict[str, object]:
         "age_s": command_center_watchdog.get("age_s"),
         "healthy": command_center_watchdog.get("healthy"),
         "issue_status": str(command_center_watchdog.get("issue_status") or ""),
+        "issue_summary": str(command_center_watchdog.get("issue_summary") or ""),
+        "display_summary": str(command_center_watchdog.get("display_summary") or ""),
         "summary_line": str(command_center_watchdog.get("summary_line") or ""),
         "failure_detail": str(command_center_watchdog.get("failure_detail") or ""),
         "failure_summary": (
