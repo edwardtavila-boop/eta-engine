@@ -72,7 +72,10 @@ def test_reconciliation_plan_groups_dirty_child_repos(tmp_path: Path) -> None:
             "shortstat_command": f'git -C "{tmp_path / "eta_engine"}" diff --shortstat -- "feeds"',
         },
     ]
-    assert plan["modules"]["eta_engine"]["recommended_handling"] == "commit_child_repo_before_superproject_gitlink_update"
+    assert (
+        plan["modules"]["eta_engine"]["recommended_handling"]
+        == "commit_child_repo_before_superproject_gitlink_update"
+    )
     assert plan["review_batches"][:3] == [
         {
             "batch_id": "eta_engine:scripts",
@@ -123,7 +126,10 @@ def test_reconciliation_plan_groups_dirty_child_repos(tmp_path: Path) -> None:
             ),
         },
     ]
-    assert "eta_engine: commit_child_repo_before_superproject_gitlink_update; start with scripts=2" in plan["next_actions"][0]
+    assert (
+        "eta_engine: commit_child_repo_before_superproject_gitlink_update; start with scripts=2"
+        in plan["next_actions"][0]
+    )
 
 
 def test_reconciliation_plan_ranks_review_slices_inside_large_groups(tmp_path: Path) -> None:
@@ -282,3 +288,27 @@ def test_reconciliation_write_uses_canonical_root_relative_output(tmp_path: Path
 
     assert written == output
     assert json.loads(output.read_text(encoding="utf-8"))["action"] == "safe_to_wire_gitlinks"
+
+
+def test_main_rejects_root_outside_workspace_before_inspection(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    fake_workspace = tmp_path / "workspace"
+    outside_workspace = tmp_path / "outside"
+    fake_workspace.mkdir()
+    outside_workspace.mkdir()
+    monkeypatch.setattr(reconciliation.workspace_roots, "WORKSPACE_ROOT", fake_workspace)
+    monkeypatch.setattr(
+        reconciliation.submodule_wiring_preflight,
+        "inspect_submodule_wiring",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            AssertionError("repo inspection should not run for rejected root"),
+        ),
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        reconciliation.main(["--root", str(outside_workspace)])
+
+    assert exc.value.code == 2
+    assert not (outside_workspace / "var").exists()

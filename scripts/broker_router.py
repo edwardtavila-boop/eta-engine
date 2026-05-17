@@ -28,10 +28,9 @@ from __future__ import annotations
 # ruff: noqa: I001
 
 import logging
-import os
 import sys
 from collections import deque
-from collections.abc import Callable  # noqa: TC003 -- runtime annotation on lazy-loader return
+from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -43,11 +42,6 @@ PARENT = ROOT.parent
 if str(PARENT) not in sys.path:
     sys.path.insert(0, str(PARENT))
 
-from eta_engine.core.execution_lanes import (  # noqa: E402
-    daily_loss_gate_mode_for_lane,
-    gate_advisory,
-    gate_inactive,
-)
 from eta_engine.core.secrets import SECRETS  # noqa: E402
 from eta_engine.obs.decision_journal import (  # noqa: E402
     Actor,
@@ -63,7 +57,6 @@ from eta_engine.scripts.broker_router_config import (  # noqa: E402
     normalize_symbol as _normalize_symbol,
 )
 from eta_engine.scripts.broker_router_entrypoint import (  # noqa: E402
-    load_build_default_chain,
     main as broker_router_main,
     resolve_dry_run,
     resolve_interval,
@@ -77,6 +70,17 @@ from eta_engine.scripts.broker_router_pending import (  # noqa: E402
     _normalize_futures_symbol as _normalize_futures_symbol_impl,
     parse_pending_file as _parse_pending_file,
     pending_order_sanity_denial as _pending_order_sanity_denial,
+)
+from eta_engine.scripts.broker_router_policy import (  # noqa: E402
+    router_daily_loss_killswitch_denial as _router_daily_loss_killswitch_denial,
+)
+from eta_engine.scripts.broker_router_utils import (  # noqa: E402
+    env_float as _env_float_impl,
+    env_int as _env_int_impl,
+    extract_broker_fill_ts as _extract_broker_fill_ts,
+    gate_bootstrap_enabled as _gate_bootstrap_enabled,
+    load_build_default_chain_for_router as _load_build_default_chain_impl,
+    readiness_enforced as _readiness_enforced,
 )
 from eta_engine.scripts.broker_router_routing import BrokerRouterRoutingResolver  # noqa: E402
 from eta_engine.scripts.broker_router_state import BrokerRouterStateIO  # noqa: E402
@@ -125,99 +129,22 @@ _GATE_BOOTSTRAP_ENV = "ETA_GATE_BOOTSTRAP"
 _READINESS_ENFORCE_ENV = "ETA_BROKER_ROUTER_ENFORCE_READINESS"
 _LIVE_MONEY_ENV = "ETA_LIVE_MONEY"
 
+_env_int = partial(_env_int_impl, logger=logger)
+_env_float = partial(_env_float_impl, logger=logger)
 
-def _env_int(name: str, default: int) -> int:
-    try:
-        return int(os.environ.get(name, "").strip() or default)
-    except ValueError:
-        logger.warning("invalid integer env %s=%r; using %s", name, os.environ.get(name), default)
-        return default
-
-
-def _env_float(name: str, default: float) -> float:
-    try:
-        return float(os.environ.get(name, "").strip() or default)
-    except ValueError:
-        logger.warning("invalid float env %s=%r; using %s", name, os.environ.get(name), default)
-        return default
-
-
-def _gate_bootstrap_enabled() -> bool:
-    """True iff ``ETA_GATE_BOOTSTRAP=1`` is set in the environment."""
-    return os.environ.get(_GATE_BOOTSTRAP_ENV, "").strip() == "1"
-
-
-def router_daily_loss_killswitch_denial(order: PendingOrder) -> dict[str, Any] | None:
-    """Return a router-side daily-loss denial for new entries.
-
-    The supervisor also checks this, but the router is the last process
-    before the broker. Enforcing here protects against stale pending files
-    and paper-live advisory supervisor modes. Reduce-only exits remain
-    allowed so already-open risk can still be flattened.
-    """
-    if order.reduce_only:
-        return None
-    gate_mode = str(order.daily_loss_gate_mode or "").strip().lower()
-    if not gate_mode:
-        gate_mode = daily_loss_gate_mode_for_lane(order.execution_lane)
-    if gate_advisory(gate_mode) or gate_inactive(gate_mode):
-        return None
-    try:
-        from eta_engine.scripts.daily_loss_killswitch import (  # noqa: PLC0415
-            is_killswitch_tripped,
-        )
-    except Exception as exc:  # noqa: BLE001
-        return {
-            "gate": "daily_loss_killswitch",
-            "allow": False,
-            "reason": f"daily_loss_killswitch_unavailable:{type(exc).__name__}:{exc}",
-            "context": {"order": order.to_dict()},
-        }
-    try:
-        tripped, reason = is_killswitch_tripped()
-    except Exception as exc:  # noqa: BLE001
-        return {
-            "gate": "daily_loss_killswitch",
-            "allow": False,
-            "reason": f"daily_loss_killswitch_error:{type(exc).__name__}:{exc}",
-            "context": {"order": order.to_dict()},
-        }
-    if not tripped:
-        return None
-    return {
-        "gate": "daily_loss_killswitch",
-        "allow": False,
-        "reason": str(reason),
-        "context": {"order": order.to_dict()},
-    }
-
-
-def _readiness_enforced() -> bool:
-    """True iff broker routing must honor the strategy-readiness matrix."""
-    return os.environ.get(_READINESS_ENFORCE_ENV, "").strip() == "1"
-
-
-def _truthy_env(name: str) -> bool:
-    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on", "y"}
-
-
-def _load_build_default_chain() -> Callable[..., object]:
-    """Compatibility shim for the extracted entrypoint import helper."""
-    return load_build_default_chain(root=ROOT, sys_path=sys.path)
+_load_build_default_chain = partial(_load_build_default_chain_impl, root=ROOT, sys_path=sys.path)
 
 
 # Routing config + pending-order parsing now live in dedicated helper modules.
 # Keep this compatibility shim explicit so downstream imports do not silently
 # drift while ``broker_router`` continues shrinking.
-_COMPAT_EXPORTS: dict[str, object] = {
-    "PendingOrder": _PendingOrder,
-    "normalize_symbol": _normalize_symbol,
-    "parse_pending_file": _parse_pending_file,
-    "pending_order_sanity_denial": _pending_order_sanity_denial,
-    "_normalize_futures_symbol": _normalize_futures_symbol_impl,
-    "ETA_BOT_STRATEGY_READINESS_SNAPSHOT_PATH": _ETA_BOT_STRATEGY_READINESS_SNAPSHOT_PATH,
-}
-globals().update(_COMPAT_EXPORTS)
+PendingOrder = _PendingOrder
+normalize_symbol = _normalize_symbol
+parse_pending_file = _parse_pending_file
+pending_order_sanity_denial = _pending_order_sanity_denial
+router_daily_loss_killswitch_denial = _router_daily_loss_killswitch_denial
+_normalize_futures_symbol = _normalize_futures_symbol_impl
+ETA_BOT_STRATEGY_READINESS_SNAPSHOT_PATH = _ETA_BOT_STRATEGY_READINESS_SNAPSHOT_PATH
 
 __all__ = [
     "BACKOFF_CAP_S",
@@ -238,66 +165,6 @@ __all__ = [
     "router_daily_loss_killswitch_denial",
 ]
 
-
-def _first_nonempty_text(*values: object) -> str:
-    """Return the first non-empty stringified value."""
-    for value in values:
-        if value in (None, ""):
-            continue
-        text = str(value).strip()
-        if text:
-            return text
-    return ""
-
-
-def _extract_broker_fill_ts(result: object) -> str:
-    """Best-effort broker fill timestamp from an OrderResult.
-
-    Prefer the canonical ``OrderResult.filled_at`` field when the venue layer
-    exposes it. Older adapters still stash timing hints under ``raw``; keep
-    those legacy fallbacks so downstream telemetry can distinguish broker fill
-    time from router sidecar write time during cutover.
-    """
-    canonical = _first_nonempty_text(getattr(result, "filled_at", None))
-    if canonical:
-        return canonical
-    raw = getattr(result, "raw", None)
-    if not isinstance(raw, dict):
-        return ""
-    server = raw.get("server") if isinstance(raw.get("server"), dict) else {}
-    direct = _first_nonempty_text(
-        raw.get("filled_at"),
-        raw.get("execution_time"),
-        raw.get("executed_at"),
-        server.get("filled-at"),
-        server.get("filled_at"),
-        server.get("execution-time"),
-        server.get("execution_time"),
-        server.get("executed-at"),
-        server.get("executed_at"),
-        server.get("updated-at"),
-        server.get("updated_at"),
-    )
-    if direct:
-        return direct
-    ib_statuses = raw.get("ib_statuses")
-    if isinstance(ib_statuses, list):
-        for item in ib_statuses:
-            if not isinstance(item, dict):
-                continue
-            if str(item.get("status") or "").strip().lower() != "filled":
-                continue
-            candidate = _first_nonempty_text(
-                item.get("filled_at"),
-                item.get("execution_time"),
-                item.get("executed_at"),
-                item.get("time"),
-                item.get("timestamp"),
-                item.get("lastFillTime"),
-            )
-            if candidate:
-                return candidate
-    return ""
 
 
 # ---------------------------------------------------------------------------
@@ -698,39 +565,28 @@ class BrokerRouter:
 # ---------------------------------------------------------------------------
 
 
-def _resolve_pending_dir(arg: str | None) -> Path:
-    return resolve_pending_dir(arg, default_pending_dir=DEFAULT_PENDING_DIR)
+_resolve_pending_dir = partial(resolve_pending_dir, default_pending_dir=DEFAULT_PENDING_DIR)
+_resolve_state_root = partial(resolve_state_root, default_state_root=DEFAULT_STATE_ROOT)
+_resolve_interval = partial(resolve_interval, default_interval_s=DEFAULT_INTERVAL_S, logger=logger)
+_resolve_dry_run = resolve_dry_run
+_resolve_max_retries = partial(resolve_max_retries, default_max_retries=DEFAULT_MAX_RETRIES)
 
-
-def _resolve_state_root(arg: str | None) -> Path:
-    return resolve_state_root(arg, default_state_root=DEFAULT_STATE_ROOT)
-
-
-def _resolve_interval(arg: float | None) -> float:
-    return resolve_interval(arg, default_interval_s=DEFAULT_INTERVAL_S, logger=logger)
-
-
-def _resolve_dry_run(arg: bool) -> bool:
-    return resolve_dry_run(arg)
-
-
-def _resolve_max_retries(arg: int | None) -> int:
-    return resolve_max_retries(arg, default_max_retries=DEFAULT_MAX_RETRIES)
+_broker_router_main = partial(
+    broker_router_main,
+    description=__doc__.split("\n", 1)[0],
+    default_pending_dir=DEFAULT_PENDING_DIR,
+    default_state_root=DEFAULT_STATE_ROOT,
+    default_interval_s=DEFAULT_INTERVAL_S,
+    default_max_retries=DEFAULT_MAX_RETRIES,
+    broker_router_cls=BrokerRouter,
+    smart_router_cls=SmartRouter,
+    default_journal_factory=default_journal,
+    logger=logger,
+)
 
 
 def main(argv: list[str] | None = None) -> int:
-    return broker_router_main(
-        argv,
-        description=__doc__.split("\n", 1)[0],
-        default_pending_dir=DEFAULT_PENDING_DIR,
-        default_state_root=DEFAULT_STATE_ROOT,
-        default_interval_s=DEFAULT_INTERVAL_S,
-        default_max_retries=DEFAULT_MAX_RETRIES,
-        broker_router_cls=BrokerRouter,
-        smart_router_cls=SmartRouter,
-        default_journal_factory=default_journal,
-        logger=logger,
-    )
+    return _broker_router_main(argv)
 
 
 if __name__ == "__main__":

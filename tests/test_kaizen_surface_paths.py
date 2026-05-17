@@ -1,13 +1,18 @@
 from __future__ import annotations
 
 import inspect
+from pathlib import Path
+
+import pytest
 
 from eta_engine.obs import jarvis_today_verdicts
-from eta_engine.scripts import bandit_promotion_check
-from eta_engine.scripts import export_to_notion
-from eta_engine.scripts import generate_investor_dashboard
-from eta_engine.scripts import run_critique_nightly
-from eta_engine.scripts import workspace_roots
+from eta_engine.scripts import (
+    bandit_promotion_check,
+    export_to_notion,
+    generate_investor_dashboard,
+    run_critique_nightly,
+    workspace_roots,
+)
 
 
 def test_generate_investor_dashboard_reads_canonical_kaizen_ledger() -> None:
@@ -53,3 +58,54 @@ def test_export_to_notion_build_digest_uses_selected_audit_dir(monkeypatch, tmp_
     )
 
     assert seen["audit_globs"] == [str(tmp_path / "audit" / "*.jsonl")]
+
+
+def test_generate_investor_dashboard_rejects_output_outside_workspace(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    fake_workspace = tmp_path / "workspace"
+    outside_workspace = tmp_path / "outside" / "index.html"
+    fake_workspace.mkdir()
+    monkeypatch.setattr(workspace_roots, "WORKSPACE_ROOT", fake_workspace)
+    monkeypatch.setattr(
+        generate_investor_dashboard,
+        "gather_payload",
+        lambda: (_ for _ in ()).throw(AssertionError("payload should not build for rejected output")),
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        generate_investor_dashboard.main(["--output", str(outside_workspace)])
+
+    assert exc.value.code == 2
+    assert not outside_workspace.exists()
+
+
+def test_generate_investor_dashboard_rejects_json_payload_outside_workspace(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    fake_workspace = tmp_path / "workspace"
+    output = fake_workspace / "var" / "eta_engine" / "investor_dashboard" / "index.html"
+    outside_payload = tmp_path / "outside" / "payload.json"
+    fake_workspace.mkdir()
+    monkeypatch.setattr(workspace_roots, "WORKSPACE_ROOT", fake_workspace)
+    monkeypatch.setattr(
+        generate_investor_dashboard,
+        "gather_payload",
+        lambda: (_ for _ in ()).throw(AssertionError("payload should not build for rejected JSON payload")),
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        generate_investor_dashboard.main(
+            [
+                "--output",
+                str(output),
+                "--json-payload",
+                str(outside_payload),
+            ],
+        )
+
+    assert exc.value.code == 2
+    assert not output.exists()
+    assert not outside_payload.exists()

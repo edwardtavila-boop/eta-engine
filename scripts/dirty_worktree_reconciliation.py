@@ -201,8 +201,14 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
     root = args.root.resolve()
+    if not args.no_write:
+        try:
+            root = workspace_roots.resolve_under_workspace(root, label="--root")
+        except ValueError as exc:
+            parser.error(str(exc))
     modules = tuple(args.modules) if args.modules else submodule_wiring_preflight.DEFAULT_MODULES
     report = submodule_wiring_preflight.inspect_submodule_wiring(root=root, required_modules=modules)
     plan = build_reconciliation_plan(report)

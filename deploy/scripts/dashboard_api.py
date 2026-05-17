@@ -2570,6 +2570,131 @@ def _dashboard_diagnostics_payload() -> dict:
                     ]
                 )
             ),
+            "command_center_watchdog_dashboard_task_summary": str(
+                roster_summary.get("command_center_watchdog_dashboard_task_summary")
+                or (
+                    (
+                        command_center_watchdog.get("dashboard_task_contract_status")
+                        if isinstance(command_center_watchdog.get("dashboard_task_contract_status"), dict)
+                        else {}
+                    ).get("summary")
+                    or ""
+                )
+            ),
+            "command_center_watchdog_dashboard_task_needs_reload": bool(
+                roster_summary.get("command_center_watchdog_dashboard_task_needs_reload")
+                if roster_summary.get("command_center_watchdog_dashboard_task_needs_reload") is not None
+                else (
+                    (
+                        command_center_watchdog.get("dashboard_task_contract_status")
+                        if isinstance(command_center_watchdog.get("dashboard_task_contract_status"), dict)
+                        else {}
+                    ).get("needs_reload")
+                )
+            ),
+            "command_center_watchdog_dashboard_task_access_denied_task_names": (
+                [
+                    str(name)
+                    for name in roster_summary.get(
+                        "command_center_watchdog_dashboard_task_access_denied_task_names", []
+                    )
+                    if name
+                ]
+                if isinstance(
+                    roster_summary.get("command_center_watchdog_dashboard_task_access_denied_task_names"),
+                    list,
+                )
+                else [
+                    str(name)
+                    for name in (
+                        (
+                            command_center_watchdog.get("dashboard_task_contract_status")
+                            if isinstance(command_center_watchdog.get("dashboard_task_contract_status"), dict)
+                            else {}
+                        ).get("access_denied_task_names", [])
+                    )
+                    if name
+                ]
+            ),
+            "command_center_watchdog_dashboard_task_drift_task_names": (
+                [
+                    str(name)
+                    for name in roster_summary.get(
+                        "command_center_watchdog_dashboard_task_drift_task_names", []
+                    )
+                    if name
+                ]
+                if isinstance(
+                    roster_summary.get("command_center_watchdog_dashboard_task_drift_task_names"),
+                    list,
+                )
+                else [
+                    str(name)
+                    for name in (
+                        (
+                            command_center_watchdog.get("dashboard_task_contract_status")
+                            if isinstance(command_center_watchdog.get("dashboard_task_contract_status"), dict)
+                            else {}
+                        ).get("drift_task_names", [])
+                    )
+                    if name
+                ]
+            ),
+            "command_center_watchdog_dependency_gap_status": str(
+                roster_summary.get("command_center_watchdog_dependency_gap_status")
+                or (
+                    (
+                        command_center_watchdog.get("firm_command_center_dependency_gap_status")
+                        if isinstance(command_center_watchdog.get("firm_command_center_dependency_gap_status"), dict)
+                        else {}
+                    ).get("status")
+                    or ""
+                )
+            ),
+            "command_center_watchdog_dependency_gap_summary": str(
+                roster_summary.get("command_center_watchdog_dependency_gap_summary")
+                or (
+                    (
+                        command_center_watchdog.get("firm_command_center_dependency_gap_status")
+                        if isinstance(command_center_watchdog.get("firm_command_center_dependency_gap_status"), dict)
+                        else {}
+                    ).get("summary")
+                    or ""
+                )
+            ),
+            "command_center_watchdog_dependency_gap_live_probe_status": str(
+                roster_summary.get("command_center_watchdog_dependency_gap_live_probe_status")
+                or (
+                    (
+                        command_center_watchdog.get("firm_command_center_dependency_gap_status")
+                        if isinstance(command_center_watchdog.get("firm_command_center_dependency_gap_status"), dict)
+                        else {}
+                    ).get("live_probe_status")
+                    or ""
+                )
+            ),
+            "command_center_watchdog_dependency_gap_missing_module": str(
+                roster_summary.get("command_center_watchdog_dependency_gap_missing_module")
+                or (
+                    (
+                        command_center_watchdog.get("firm_command_center_dependency_gap_status")
+                        if isinstance(command_center_watchdog.get("firm_command_center_dependency_gap_status"), dict)
+                        else {}
+                    ).get("missing_module")
+                    or ""
+                )
+            ),
+            "command_center_watchdog_dependency_gap_repair_command": str(
+                roster_summary.get("command_center_watchdog_dependency_gap_repair_command")
+                or (
+                    (
+                        command_center_watchdog.get("firm_command_center_dependency_gap_status")
+                        if isinstance(command_center_watchdog.get("firm_command_center_dependency_gap_status"), dict)
+                        else {}
+                    ).get("repair_command")
+                    or ""
+                )
+            ),
             "command_center_watchdog_repair_required": bool(
                 roster_summary.get("command_center_watchdog_repair_required")
                 if roster_summary.get("command_center_watchdog_repair_required") is not None
@@ -11904,6 +12029,83 @@ def bot_fleet_roster(
                     if name
                 ]
             ),
+            "command_center_watchdog_dashboard_task_summary": str(
+                (
+                    command_center_watchdog.get("dashboard_task_contract_status")
+                    if isinstance(command_center_watchdog.get("dashboard_task_contract_status"), dict)
+                    else {}
+                ).get("summary")
+                or ""
+            ),
+            "command_center_watchdog_dashboard_task_needs_reload": bool(
+                (
+                    command_center_watchdog.get("dashboard_task_contract_status")
+                    if isinstance(command_center_watchdog.get("dashboard_task_contract_status"), dict)
+                    else {}
+                ).get("needs_reload")
+            ),
+            "command_center_watchdog_dashboard_task_access_denied_task_names": [
+                str(name)
+                for name in (
+                    (
+                        command_center_watchdog.get("dashboard_task_contract_status")
+                        if isinstance(command_center_watchdog.get("dashboard_task_contract_status"), dict)
+                        else {}
+                    ).get("access_denied_task_names", [])
+                )
+                if name
+            ],
+            "command_center_watchdog_dashboard_task_drift_task_names": [
+                str(name)
+                for name in (
+                    (
+                        command_center_watchdog.get("dashboard_task_contract_status")
+                        if isinstance(command_center_watchdog.get("dashboard_task_contract_status"), dict)
+                        else {}
+                    ).get("drift_task_names", [])
+                )
+                if name
+            ],
+            "command_center_watchdog_dependency_gap_status": str(
+                (
+                    command_center_watchdog.get("firm_command_center_dependency_gap_status")
+                    if isinstance(command_center_watchdog.get("firm_command_center_dependency_gap_status"), dict)
+                    else {}
+                ).get("status")
+                or ""
+            ),
+            "command_center_watchdog_dependency_gap_summary": str(
+                (
+                    command_center_watchdog.get("firm_command_center_dependency_gap_status")
+                    if isinstance(command_center_watchdog.get("firm_command_center_dependency_gap_status"), dict)
+                    else {}
+                ).get("summary")
+                or ""
+            ),
+            "command_center_watchdog_dependency_gap_live_probe_status": str(
+                (
+                    command_center_watchdog.get("firm_command_center_dependency_gap_status")
+                    if isinstance(command_center_watchdog.get("firm_command_center_dependency_gap_status"), dict)
+                    else {}
+                ).get("live_probe_status")
+                or ""
+            ),
+            "command_center_watchdog_dependency_gap_missing_module": str(
+                (
+                    command_center_watchdog.get("firm_command_center_dependency_gap_status")
+                    if isinstance(command_center_watchdog.get("firm_command_center_dependency_gap_status"), dict)
+                    else {}
+                ).get("missing_module")
+                or ""
+            ),
+            "command_center_watchdog_dependency_gap_repair_command": str(
+                (
+                    command_center_watchdog.get("firm_command_center_dependency_gap_status")
+                    if isinstance(command_center_watchdog.get("firm_command_center_dependency_gap_status"), dict)
+                    else {}
+                ).get("repair_command")
+                or ""
+            ),
             "command_center_watchdog_repair_required": bool(
                 command_center_watchdog.get("repair_required")
             ),
@@ -19275,6 +19477,21 @@ def _local_master_status_payload() -> dict[str, object]:
             ).get("status")
             or ""
         ),
+        "dashboard_task_summary": str(
+            (
+                command_center_watchdog.get("dashboard_task_contract_status")
+                if isinstance(command_center_watchdog.get("dashboard_task_contract_status"), dict)
+                else {}
+            ).get("summary")
+            or ""
+        ),
+        "dashboard_task_needs_reload": bool(
+            (
+                command_center_watchdog.get("dashboard_task_contract_status")
+                if isinstance(command_center_watchdog.get("dashboard_task_contract_status"), dict)
+                else {}
+            ).get("needs_reload")
+        ),
         "local_contract_status": str(
             (
                 command_center_watchdog.get("local_contract_status")
@@ -19283,11 +19500,73 @@ def _local_master_status_payload() -> dict[str, object]:
             ).get("status")
             or ""
         ),
+        "dependency_gap_status": str(
+            (
+                command_center_watchdog.get("firm_command_center_dependency_gap_status")
+                if isinstance(command_center_watchdog.get("firm_command_center_dependency_gap_status"), dict)
+                else {}
+            ).get("status")
+            or ""
+        ),
+        "dependency_gap_summary": str(
+            (
+                command_center_watchdog.get("firm_command_center_dependency_gap_status")
+                if isinstance(command_center_watchdog.get("firm_command_center_dependency_gap_status"), dict)
+                else {}
+            ).get("summary")
+            or ""
+        ),
+        "dependency_gap_live_probe_status": str(
+            (
+                command_center_watchdog.get("firm_command_center_dependency_gap_status")
+                if isinstance(command_center_watchdog.get("firm_command_center_dependency_gap_status"), dict)
+                else {}
+            ).get("live_probe_status")
+            or ""
+        ),
+        "dependency_gap_missing_module": str(
+            (
+                command_center_watchdog.get("firm_command_center_dependency_gap_status")
+                if isinstance(command_center_watchdog.get("firm_command_center_dependency_gap_status"), dict)
+                else {}
+            ).get("missing_module")
+            or ""
+        ),
+        "dependency_gap_repair_command": str(
+            (
+                command_center_watchdog.get("firm_command_center_dependency_gap_status")
+                if isinstance(command_center_watchdog.get("firm_command_center_dependency_gap_status"), dict)
+                else {}
+            ).get("repair_command")
+            or ""
+        ),
         "dashboard_task_missing_task_names": [
             str(name) for name in command_center_watchdog.get("dashboard_task_missing_task_names", []) if name
         ]
         if isinstance(command_center_watchdog.get("dashboard_task_missing_task_names"), list)
         else [],
+        "dashboard_task_access_denied_task_names": [
+            str(name)
+            for name in (
+                (
+                    command_center_watchdog.get("dashboard_task_contract_status")
+                    if isinstance(command_center_watchdog.get("dashboard_task_contract_status"), dict)
+                    else {}
+                ).get("access_denied_task_names", [])
+            )
+            if name
+        ],
+        "dashboard_task_drift_task_names": [
+            str(name)
+            for name in (
+                (
+                    command_center_watchdog.get("dashboard_task_contract_status")
+                    if isinstance(command_center_watchdog.get("dashboard_task_contract_status"), dict)
+                    else {}
+                ).get("drift_task_names", [])
+            )
+            if name
+        ],
         "checked_at": command_center_watchdog.get("checked_at"),
     }
     dashboard_proxy_watchdog_system = {

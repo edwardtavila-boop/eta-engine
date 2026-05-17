@@ -863,6 +863,11 @@ def main() -> int:
     p.add_argument("--out-dir", type=Path, default=workspace_roots.ETA_PREFLIGHT_DRYRUN_DIR)
     args = p.parse_args()
 
+    try:
+        args.out_dir = workspace_roots.resolve_under_workspace(args.out_dir, label="--out-dir")
+    except ValueError as exc:
+        p.error(str(exc))
+
     print("EVOLUTIONARY TRADING ALGO -- Live-Tiny Preflight Dry Run")
     print("=" * 80)
     print(f"Generated: {datetime.now(UTC).isoformat()}")

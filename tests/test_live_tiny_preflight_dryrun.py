@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from typing import TYPE_CHECKING
 
 import pytest
@@ -384,3 +385,32 @@ def test_gate_crash_recovery_simulated_detects_orphaned_runtime() -> None:
     g = mod._gate_crash_recovery_simulated()
     assert g.status == "PASS", g.detail
     assert "orphan detected" in g.detail
+
+
+def test_main_rejects_out_dir_outside_workspace_before_running_gates(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    fake_workspace = tmp_path / "workspace"
+    outside_workspace = tmp_path / "outside" / "preflight"
+    fake_workspace.mkdir()
+    monkeypatch.setattr(mod.workspace_roots, "WORKSPACE_ROOT", fake_workspace)
+    monkeypatch.setattr(
+        mod,
+        "GATE_FNS",
+        [
+            (
+                "must_not_run",
+                lambda: (_ for _ in ()).throw(
+                    AssertionError("gates should not run for rejected out-dir"),
+                ),
+            ),
+        ],
+    )
+    monkeypatch.setattr(sys, "argv", ["live_tiny_preflight_dryrun", "--out-dir", str(outside_workspace)])
+
+    with pytest.raises(SystemExit) as exc:
+        mod.main()
+
+    assert exc.value.code == 2
+    assert not outside_workspace.exists()

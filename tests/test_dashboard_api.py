@@ -4448,6 +4448,19 @@ class TestDashboardAPI:
             "ETA-Dashboard-API",
             "ETA-Proxy-8421",
         ]
+        assert payload["bot_fleet"]["command_center_watchdog_dashboard_task_access_denied_task_names"] == []
+        assert payload["bot_fleet"]["command_center_watchdog_dashboard_task_drift_task_names"] == []
+        assert payload["bot_fleet"]["command_center_watchdog_dashboard_task_summary"].startswith(
+            "Canonical dashboard runtime task(s) missing"
+        )
+        assert payload["bot_fleet"]["command_center_watchdog_dashboard_task_needs_reload"] is True
+        assert payload["bot_fleet"]["command_center_watchdog_dependency_gap_status"] == "missing_module"
+        assert payload["bot_fleet"]["command_center_watchdog_dependency_gap_summary"] == ""
+        assert payload["bot_fleet"]["command_center_watchdog_dependency_gap_live_probe_status"] == ""
+        assert payload["bot_fleet"]["command_center_watchdog_dependency_gap_missing_module"] == "portalocker"
+        assert payload["bot_fleet"]["command_center_watchdog_dependency_gap_repair_command"] == (
+            ".\\eta_engine\\deploy\\scripts\\repair_firm_command_center_env_admin.cmd"
+        )
         assert payload["bot_fleet"]["command_center_watchdog_repair_required"] is True
         assert payload["bot_fleet"]["command_center_watchdog_requires_elevation"] is True
         assert payload["bot_fleet"]["command_center_watchdog_watchdog_registered"] is False
@@ -5389,10 +5402,14 @@ class TestDashboardAPI:
                             "ETA-Dashboard-API, ETA-Proxy-8421."
                         ),
                         "missing_task_names": ["ETA-Dashboard-API", "ETA-Proxy-8421"],
+                        "needs_reload": True,
+                        "access_denied_task_names": [],
+                        "drift_task_names": [],
                     },
                     "firm_command_center_dependency_gap_status": {
                         "status": "missing_module",
                         "missing_module": "portalocker",
+                        "repair_command": ".\\eta_engine\\deploy\\scripts\\repair_firm_command_center_env_admin.cmd",
                     },
                     "operator_action_plan": [
                         {
@@ -6068,6 +6085,16 @@ class TestDashboardAPI:
                     },
                     "dashboard_task_contract_status": {
                         "status": "access_denied",
+                        "summary": "Canonical dashboard runtime task(s) require elevation to inspect.",
+                        "needs_reload": False,
+                        "access_denied_task_names": ["ETA-Dashboard-API", "ETA-Proxy-8421"],
+                        "drift_task_names": [],
+                    },
+                    "firm_command_center_dependency_gap_status": {
+                        "status": "healthy",
+                        "summary": "FirmCommandCenter runtime import probe succeeded.",
+                        "live_probe_status": "ok",
+                        "repair_command": ".\\eta_engine\\deploy\\scripts\\repair_firm_command_center_env_admin.cmd",
                     },
                     "dashboard_task_missing_task_names": [],
                     "watchdog_registered": True,
@@ -6115,8 +6142,26 @@ class TestDashboardAPI:
         assert payload["systems"]["command_center_watchdog"]["can_launch_from_desktop"] is True
         assert payload["systems"]["command_center_watchdog"]["launch_context"] == "ready"
         assert payload["systems"]["command_center_watchdog"]["dashboard_task_contract_status"] == "access_denied"
+        assert payload["systems"]["command_center_watchdog"]["dashboard_task_summary"] == (
+            "Canonical dashboard runtime task(s) require elevation to inspect."
+        )
+        assert payload["systems"]["command_center_watchdog"]["dashboard_task_needs_reload"] is False
         assert payload["systems"]["command_center_watchdog"]["local_contract_status"] == "healthy"
+        assert payload["systems"]["command_center_watchdog"]["dependency_gap_status"] == "healthy"
+        assert payload["systems"]["command_center_watchdog"]["dependency_gap_summary"] == (
+            "FirmCommandCenter runtime import probe succeeded."
+        )
+        assert payload["systems"]["command_center_watchdog"]["dependency_gap_live_probe_status"] == "ok"
+        assert payload["systems"]["command_center_watchdog"]["dependency_gap_missing_module"] == ""
+        assert payload["systems"]["command_center_watchdog"]["dependency_gap_repair_command"] == (
+            ".\\eta_engine\\deploy\\scripts\\repair_firm_command_center_env_admin.cmd"
+        )
         assert payload["systems"]["command_center_watchdog"]["dashboard_task_missing_task_names"] == []
+        assert payload["systems"]["command_center_watchdog"]["dashboard_task_access_denied_task_names"] == [
+            "ETA-Dashboard-API",
+            "ETA-Proxy-8421",
+        ]
+        assert payload["systems"]["command_center_watchdog"]["dashboard_task_drift_task_names"] == []
 
     def test_master_status_includes_dashboard_proxy_watchdog_system(self, app_client, tmp_path, monkeypatch):
         import eta_engine.deploy.scripts.dashboard_api as mod
@@ -10899,7 +10944,19 @@ class TestDashboardAPI:
                 "watchdog_state": "Ready",
                 "can_launch_from_desktop": True,
                 "launch_context": "ready",
-                "dashboard_task_contract_status": {"status": "access_denied"},
+                "dashboard_task_contract_status": {
+                    "status": "access_denied",
+                    "summary": "Canonical dashboard runtime task(s) require elevation to inspect.",
+                    "needs_reload": False,
+                    "access_denied_task_names": ["ETA-Dashboard-API", "ETA-Proxy-8421"],
+                    "drift_task_names": [],
+                },
+                "firm_command_center_dependency_gap_status": {
+                    "status": "healthy",
+                    "summary": "FirmCommandCenter runtime import probe succeeded.",
+                    "live_probe_status": "ok",
+                    "repair_command": ".\\eta_engine\\deploy\\scripts\\repair_firm_command_center_env_admin.cmd",
+                },
                 "local_contract_status": {"status": "healthy"},
             },
         )
@@ -10949,6 +11006,24 @@ class TestDashboardAPI:
         assert payload["summary"]["command_center_watchdog_action_count"] == 0
         assert payload["summary"]["command_center_watchdog_follow_up_count"] == 0
         assert payload["summary"]["command_center_watchdog_dashboard_task_missing_task_names"] == []
+        assert payload["summary"]["command_center_watchdog_dashboard_task_access_denied_task_names"] == [
+            "ETA-Dashboard-API",
+            "ETA-Proxy-8421",
+        ]
+        assert payload["summary"]["command_center_watchdog_dashboard_task_drift_task_names"] == []
+        assert payload["summary"]["command_center_watchdog_dashboard_task_summary"] == (
+            "Canonical dashboard runtime task(s) require elevation to inspect."
+        )
+        assert payload["summary"]["command_center_watchdog_dashboard_task_needs_reload"] is False
+        assert payload["summary"]["command_center_watchdog_dependency_gap_status"] == "healthy"
+        assert payload["summary"]["command_center_watchdog_dependency_gap_summary"] == (
+            "FirmCommandCenter runtime import probe succeeded."
+        )
+        assert payload["summary"]["command_center_watchdog_dependency_gap_live_probe_status"] == "ok"
+        assert payload["summary"]["command_center_watchdog_dependency_gap_missing_module"] == ""
+        assert payload["summary"]["command_center_watchdog_dependency_gap_repair_command"] == (
+            ".\\eta_engine\\deploy\\scripts\\repair_firm_command_center_env_admin.cmd"
+        )
         assert payload["summary"]["command_center_watchdog_repair_required"] is False
         assert payload["summary"]["command_center_watchdog_requires_elevation"] is False
         assert payload["summary"]["command_center_watchdog_watchdog_registered"] is True
@@ -13606,7 +13681,19 @@ class TestDashboardAPI:
                 "watchdog_state": "Ready",
                 "can_launch_from_desktop": True,
                 "launch_context": "ready",
-                "dashboard_task_contract_status": {"status": "access_denied"},
+                "dashboard_task_contract_status": {
+                    "status": "access_denied",
+                    "summary": "Canonical dashboard runtime task(s) require elevation to inspect.",
+                    "needs_reload": False,
+                    "access_denied_task_names": ["ETA-Dashboard-API", "ETA-Proxy-8421"],
+                    "drift_task_names": [],
+                },
+                "firm_command_center_dependency_gap_status": {
+                    "status": "healthy",
+                    "summary": "FirmCommandCenter runtime import probe succeeded.",
+                    "live_probe_status": "ok",
+                    "repair_command": ".\\eta_engine\\deploy\\scripts\\repair_firm_command_center_env_admin.cmd",
+                },
                 "local_contract_status": {"status": "healthy"},
             },
         )
@@ -13655,6 +13742,24 @@ class TestDashboardAPI:
         assert payload["summary"]["command_center_watchdog_action_count"] == 0
         assert payload["summary"]["command_center_watchdog_follow_up_count"] == 0
         assert payload["summary"]["command_center_watchdog_dashboard_task_missing_task_names"] == []
+        assert payload["summary"]["command_center_watchdog_dashboard_task_access_denied_task_names"] == [
+            "ETA-Dashboard-API",
+            "ETA-Proxy-8421",
+        ]
+        assert payload["summary"]["command_center_watchdog_dashboard_task_drift_task_names"] == []
+        assert payload["summary"]["command_center_watchdog_dashboard_task_summary"] == (
+            "Canonical dashboard runtime task(s) require elevation to inspect."
+        )
+        assert payload["summary"]["command_center_watchdog_dashboard_task_needs_reload"] is False
+        assert payload["summary"]["command_center_watchdog_dependency_gap_status"] == "healthy"
+        assert payload["summary"]["command_center_watchdog_dependency_gap_summary"] == (
+            "FirmCommandCenter runtime import probe succeeded."
+        )
+        assert payload["summary"]["command_center_watchdog_dependency_gap_live_probe_status"] == "ok"
+        assert payload["summary"]["command_center_watchdog_dependency_gap_missing_module"] == ""
+        assert payload["summary"]["command_center_watchdog_dependency_gap_repair_command"] == (
+            ".\\eta_engine\\deploy\\scripts\\repair_firm_command_center_env_admin.cmd"
+        )
         assert payload["summary"]["command_center_watchdog_repair_required"] is False
         assert payload["summary"]["command_center_watchdog_requires_elevation"] is False
         assert payload["summary"]["command_center_watchdog_watchdog_registered"] is True

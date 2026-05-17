@@ -41,10 +41,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from eta_engine.scripts import workspace_roots
+
 logger = logging.getLogger("generate_investor_dashboard")
 
 ROOT = Path(__file__).resolve().parents[1]
-from eta_engine.scripts import workspace_roots
 
 
 def gather_payload() -> dict[str, Any]:
@@ -250,6 +251,13 @@ def main(argv: list[str] | None = None) -> int:
     )
     p.add_argument("-v", "--verbose", action="store_true")
     args = p.parse_args(argv)
+
+    try:
+        args.output = workspace_roots.resolve_under_workspace(args.output, label="--output")
+        if args.json_payload is not None:
+            args.json_payload = workspace_roots.resolve_under_workspace(args.json_payload, label="--json-payload")
+    except ValueError as exc:
+        p.error(str(exc))
 
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO,

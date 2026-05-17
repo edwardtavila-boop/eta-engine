@@ -124,8 +124,8 @@ After landing the registry hardening, ran the harness on every active research_c
 
 | Bot | Symbol | OOS trades | OOS PnL | WR | Verdict |
 |-----|--------|-----------|---------|-----|---------|
-| **mnq_sweep_reclaim** | MNQ1 5m | 63 | **+$1,355** | 31.7% | **ALL GREEN — promoted** |
-| **mnq_anchor_sweep** | MNQ1 5m | 50 | **+$175** | 32% | **ALL GREEN — promoted** |
+| **mnq_sweep_reclaim** | MNQ1 5m | 63 | **+$1,355** | 31.7% | **ALL GREEN in that historical snapshot — promoted there** |
+| **mnq_anchor_sweep** | MNQ1 5m | 50 | **+$175** | 32% | **ALL GREEN in that historical snapshot — promoted there** |
 | btc_optimized | BTC 1h | 4 | +$397 | 50% | YELLOW — sample size only |
 | funding_rate_btc | BTC 1h | 11 | +$376 | 45.5% | YELLOW — sample size only |
 | btc_regime_trend_etf (TIGHT) | BTC 1h | 0 | $0 | — | RED — deactivated |
@@ -197,8 +197,8 @@ After the initial pass, ran the harness on the remaining 9 active bots that had 
 7 active bots (down from 21 at session start)
 
 paper_soak (historical gate-cleared snapshot; check the current launch gate before acting):
-  mnq_anchor_sweep   MNQ1 5m  ALL GREEN — 50T OOS, +$175, 32% WR
-  mnq_sweep_reclaim  MNQ1 5m  ALL GREEN — 63T OOS, +$1,355, 31.7% WR
+  mnq_anchor_sweep   MNQ1 5m  ALL GREEN in that snapshot — 50T OOS, +$175, 32% WR
+  mnq_sweep_reclaim  MNQ1 5m  ALL GREEN in that snapshot — 63T OOS, +$1,355, 31.7% WR
 
 YELLOW (sample size only — kept active):
   btc_optimized           BTC 1h    4T OOS, +$397, 50% WR
@@ -381,7 +381,7 @@ The validator catches #1 immediately. The harness mirror-fix is #2. The instrume
 
 ---
 
-## Round 6: bridge fix + ng_sweep_reclaim ALL GREEN (`ad1f843`)
+## Round 6: bridge fix + ng_sweep_reclaim historical ALL GREEN snapshot (`ad1f843`)
 
 ### Bug E: confluence_scorecard bridge gap
 
@@ -391,13 +391,13 @@ Fix: bridge now mirrors the cell-level pattern — detects `kind=confluence_scor
 
 Verified: `vwap_mr_btc` + `volume_profile_btc` now build through bridge. They still fail elite-gate empirically (vwap never fires on BTC 1h, volume_profile has 1 OOS losing trade) — but that's strategy quality, not infrastructure. The bug fix exposed real underperformance that had been hidden behind the bridge error.
 
-### ng_sweep_reclaim — 4th ALL GREEN
+### ng_sweep_reclaim — 4th ALL GREEN in that audit window
 
 365-day elite-gate verdict (commodity sweep post spec fix):
 
 | Bot | OOS trades | OOS PnL | WR | Decay | Verdict |
 |-----|-----------|---------|-----|-------|---------|
-| **ng_sweep_reclaim** | **30** | **+$589** | **36.7%** | **+248%** | **ALL GREEN** |
+| **ng_sweep_reclaim** | **30** | **+$589** | **36.7%** | **+248%** | **ALL GREEN in that historical snapshot** |
 | gc_sweep_reclaim | 17 | +$550 | 35.3% | +138% | RED (doesn't beat baseline +$27,558 in bull market) |
 | cl_sweep_reclaim | 22 | -$181 | 27.3% | -150% | RED (severe overfit) |
 | 6e_sweep_reclaim | — | — | — | — | RED (typo: bot_id is `eur_sweep_reclaim`, not `6e_sweep_reclaim`) |
@@ -408,7 +408,7 @@ Verified: `vwap_mr_btc` + `volume_profile_btc` now build through bridge. They st
 
 Without round 5, NG would have been deactivated as catastrophically losing. Without round 6, it would have been deactivated as sample-size YELLOW. The infrastructure protected against TWO false-negative deactivation paths and surfaced a genuine commodity edge.
 
-### Final paper_soak fleet (4 ALL GREEN edges)
+### Historical paper_soak fleet snapshot (4 ALL GREEN edges in that audit window)
 
 ```
 btc_anchor_sweep    BTC 1h    (referenced; first reference strategy)
@@ -492,7 +492,7 @@ After parallel work substantially restructured the registry (eth_sweep_reclaim, 
 
 | Bot | Symbol | OOS trades | OOS PnL | WR | Decay | Verdict |
 |-----|--------|-----------|---------|----|----|---------|
-| **mnq_anchor_sweep** | MNQ1 5m | **47** | **+$135** | **34.0%** | **+105%** | **ALL GREEN — paper_soak holds** |
+| **mnq_anchor_sweep** | MNQ1 5m | **47** | **+$135** | **34.0%** | **+105%** | **ALL GREEN in that historical snapshot — paper_soak held there** |
 | **ng_sweep_reclaim** | NG1 1h | **30** | **+$589** | **36.7%** | **+174%** | **ALL GREEN (fresh) BUT quant demote stands due to rollover artifacts** |
 | sol_optimized | SOL 1h | 21 | +$198 | 28.6% | +112% | YELLOW — 4/5 GREEN, sample 21 < 30 |
 | mnq_futures_optimized | MNQ1 5m | 4 | +$496 | 75% | +488% | RED — sample frozen at 4 (low frequency) |
@@ -520,7 +520,7 @@ Separate ops cleanup: 20 → 8 enabled, all 8 renamed `eta:` and re-pointed at c
 - Compute saved: ~12 fewer remote-CCR sessions per week
 - All 8 prompts rewritten with submodule-init step, canonical script paths (`eta_engine/scripts/`), canonical alerts log (`logs/eta_engine/alerts_log.jsonl`), and two-step submodule-bump commit pattern per CLAUDE.md submodule discipline
 
-### Final paper_soak fleet (verified ALL GREEN edges)
+### Historical final paper_soak fleet snapshot (verified ALL GREEN edges in that audit window)
 
 ```
 mnq_anchor_sweep    MNQ1 5m   47T (365d) +$135   34.0% WR  +105% decay
@@ -528,7 +528,7 @@ ng_sweep_reclaim    NG1 1h    30T (365d) +$589   36.7% WR  +174% decay
                               ↑ fresh-harness GREEN, but research_candidate per data-quality demote
 ```
 
-**Honest final count: 1 fully-promoted ALL GREEN edge in paper_soak (mnq_anchor_sweep) + 1 disputed-data GREEN under data-quality hold (ng_sweep_reclaim).**
+**Honest final count in that historical snapshot: 1 fully-promoted ALL GREEN edge in paper_soak (mnq_anchor_sweep) + 1 disputed-data GREEN under data-quality hold (ng_sweep_reclaim).**
 
 The quant-agent demote of ng_sweep_reclaim is the right call — paper-soaking on rollover-contaminated data would propagate the bias into live decisions. The fix is loading rollover-adjusted NG1 history, not arguing with the demote.
 

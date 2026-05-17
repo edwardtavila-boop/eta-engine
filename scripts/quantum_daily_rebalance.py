@@ -287,6 +287,12 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("-v", "--verbose", action="store_true")
     args = p.parse_args(argv)
 
+    try:
+        args.out_dir = workspace_roots.resolve_under_workspace(args.out_dir, label="--out-dir")
+        args.state_dir = workspace_roots.resolve_under_workspace(args.state_dir, label="--state-dir")
+    except ValueError as exc:
+        p.error(str(exc))
+
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO,
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
