@@ -6221,7 +6221,17 @@ class TestDashboardAPI:
             "Canonical dashboard runtime task(s) require elevation to inspect."
         )
         assert payload["systems"]["command_center_watchdog"]["dashboard_task_needs_reload"] is False
+        assert payload["systems"]["command_center_watchdog"]["dashboard_task_contract_status_details"] == {
+            "status": "access_denied",
+            "summary": "Canonical dashboard runtime task(s) require elevation to inspect.",
+            "needs_reload": False,
+            "access_denied_task_names": ["ETA-Dashboard-API", "ETA-Proxy-8421"],
+            "drift_task_names": [],
+        }
         assert payload["systems"]["command_center_watchdog"]["local_contract_status"] == "healthy"
+        assert payload["systems"]["command_center_watchdog"]["local_contract_status_details"] == {
+            "status": "healthy"
+        }
         assert payload["systems"]["command_center_watchdog"]["firm_command_center_dependency_gap_status"] == {
             "status": "healthy",
             "summary": "FirmCommandCenter runtime import probe succeeded.",

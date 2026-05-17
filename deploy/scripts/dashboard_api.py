@@ -19877,6 +19877,11 @@ def _local_master_status_payload() -> dict[str, object]:
                 else {}
             ).get("needs_reload")
         ),
+        "dashboard_task_contract_status_details": (
+            dict(command_center_watchdog.get("dashboard_task_contract_status"))
+            if isinstance(command_center_watchdog.get("dashboard_task_contract_status"), dict)
+            else {}
+        ),
         "local_contract_status": str(
             (
                 command_center_watchdog.get("local_contract_status")
@@ -19884,6 +19889,11 @@ def _local_master_status_payload() -> dict[str, object]:
                 else {}
             ).get("status")
             or ""
+        ),
+        "local_contract_status_details": (
+            dict(command_center_watchdog.get("local_contract_status"))
+            if isinstance(command_center_watchdog.get("local_contract_status"), dict)
+            else {}
         ),
         "firm_command_center_dependency_gap_status": (
             dict(command_center_watchdog.get("firm_command_center_dependency_gap_status"))
