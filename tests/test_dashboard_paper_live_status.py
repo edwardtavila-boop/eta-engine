@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from eta_engine.deploy.scripts.dashboard_paper_live_status import (
+    build_operator_queue_diagnostics_summary,
     build_paper_live_transition_summary,
     reconcile_paper_live_transition_launch_block,
     resolve_paper_live_card,
@@ -362,3 +363,99 @@ def test_build_paper_live_transition_summary_falls_back_to_launch_or_gate_detail
     assert payload["detail"] == "Apply gateway authority on VPS."
     assert payload["first_failed_gate"]["name"] == "tws_api_4002"
     assert payload["first_launch_blocker_op_id"] == "OP-19"
+
+
+def test_build_operator_queue_diagnostics_summary_preserves_stale_fallback_launch_blocker() -> None:
+    payload = build_operator_queue_diagnostics_summary(
+        operator_summary={"BLOCKED": 3, "OBSERVED": 11, "UNKNOWN": 0},
+        operator_queue={
+            "source": "operator_action_queue",
+            "launch_blocked_count": 1,
+            "cache_status": "stale_fallback",
+            "cache_stale": False,
+            "stale_cache_age_s": 3600,
+        },
+        first_operator_blocker={"op_id": "OP-19", "title": "IB Gateway API blocked"},
+        first_operator_evidence={},
+        first_operator_blocked_bots=[],
+        first_operator_next_actions=[],
+        first_launch_blocker={
+            "op_id": "OP-19",
+            "detail": "Seed IBC credentials and recover TWS API 4002.",
+        },
+        first_operator_advisory={},
+        first_operator_advisory_evidence={},
+        first_operator_advisory_blocked_bots=[],
+        first_operator_advisory_next_actions=[],
+    )
+
+    assert payload["blocked"] == 3
+    assert payload["launch_blocked"] == 1
+    assert payload["top_launch_blocker_op_id"] == "OP-19"
+    assert payload["top_launch_blocker_detail"] == "Seed IBC credentials and recover TWS API 4002."
+    assert payload["cache_status"] == "stale_fallback"
+    assert payload["cache_stale"] is False
+    assert payload["stale_cache_age_s"] == 3600
+
+
+def test_build_operator_queue_diagnostics_summary_keeps_advisory_lane_separate() -> None:
+    payload = build_operator_queue_diagnostics_summary(
+        operator_summary={"BLOCKED": 1, "OBSERVED": 11, "UNKNOWN": 0},
+        operator_queue={
+            "source": "operator_action_queue",
+            "non_launch_blocked_count": 1,
+            "launch_blocked_count": 0,
+        },
+        first_operator_blocker={
+            "op_id": "OP-16",
+            "title": "Research candidates need promotion proof",
+            "detail": "4 research candidate bot(s) still below promotion gate.",
+        },
+        first_operator_evidence={
+            "launch_blocker": False,
+            "launch_role": "strategy_optimization_backlog",
+        },
+        first_operator_blocked_bots=[
+            "mbt_overnight_gap",
+            "mbt_rth_orb",
+            "mgc_sweep_reclaim",
+            "mes_sweep_reclaim_v2",
+        ],
+        first_operator_next_actions=[
+            "python -m eta_engine.scripts.paper_live_launch_check --bots mbt_overnight_gap --json",
+            "python -m eta_engine.scripts.paper_live_launch_check --bots mgc_sweep_reclaim --json",
+        ],
+        first_launch_blocker={},
+        first_operator_advisory={
+            "op_id": "OP-16",
+            "title": "Research candidates need promotion proof",
+            "detail": "4 research candidate bot(s) still below promotion gate.",
+        },
+        first_operator_advisory_evidence={
+            "launch_role": "strategy_optimization_backlog",
+        },
+        first_operator_advisory_blocked_bots=[
+            "mbt_overnight_gap",
+            "mbt_rth_orb",
+            "mgc_sweep_reclaim",
+            "mes_sweep_reclaim_v2",
+        ],
+        first_operator_advisory_next_actions=[
+            "python -m eta_engine.scripts.paper_live_launch_check --bots mbt_overnight_gap --json",
+            "python -m eta_engine.scripts.paper_live_launch_check --bots mgc_sweep_reclaim --json",
+        ],
+    )
+
+    assert payload["advisory_count"] == 1
+    assert payload["advisory_only"] is True
+    assert payload["top_blocker_op_id"] == "OP-16"
+    assert payload["top_blocker_launch_blocker"] is False
+    assert payload["top_blocker_launch_role"] == "strategy_optimization_backlog"
+    assert payload["top_advisory_op_id"] == "OP-16"
+    assert payload["top_advisory_detail"] == "4 research candidate bot(s) still below promotion gate."
+    assert payload["top_advisory_blocked_bots"] == [
+        "mbt_overnight_gap",
+        "mbt_rth_orb",
+        "mgc_sweep_reclaim",
+        "mes_sweep_reclaim_v2",
+    ]

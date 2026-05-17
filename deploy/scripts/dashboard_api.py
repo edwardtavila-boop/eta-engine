@@ -2293,15 +2293,6 @@ def _dashboard_diagnostics_payload() -> dict:
     second_brain_playbook = (
         second_brain.get("playbook") if isinstance(second_brain.get("playbook"), dict) else {}
     )
-    operator_advisory_count_raw = operator_queue.get("advisory_count")
-    if operator_advisory_count_raw is None:
-        operator_advisory_count_raw = operator_queue.get("non_launch_blocked_count")
-    if operator_advisory_count_raw is None:
-        operator_advisory_count_raw = max(0, int(operator_summary.get("BLOCKED") or 0))
-    try:
-        operator_advisory_count = int(operator_advisory_count_raw or 0)
-    except (TypeError, ValueError):
-        operator_advisory_count = 0
     transition_launch = reconcile_paper_live_transition_launch_block(
         paper_live_transition=paper_live_transition if isinstance(paper_live_transition, dict) else {},
         operator_queue=operator_queue if isinstance(operator_queue, dict) else {},
@@ -2398,6 +2389,27 @@ def _dashboard_diagnostics_payload() -> dict:
             "detail": str(first_failed_gate.get("detail") or ""),
             "next_action": str(first_failed_gate.get("next_action") or ""),
         },
+    )
+    operator_queue_summary = build_operator_queue_diagnostics_summary(
+        operator_summary=operator_summary if isinstance(operator_summary, dict) else {},
+        operator_queue=operator_queue if isinstance(operator_queue, dict) else {},
+        first_operator_blocker=first_operator_blocker if isinstance(first_operator_blocker, dict) else {},
+        first_operator_evidence=first_operator_evidence if isinstance(first_operator_evidence, dict) else {},
+        first_operator_blocked_bots=first_operator_blocked_bots if isinstance(first_operator_blocked_bots, list) else [],
+        first_operator_next_actions=first_operator_next_actions if isinstance(first_operator_next_actions, list) else [],
+        first_launch_blocker=first_launch_blocker if isinstance(first_launch_blocker, dict) else {},
+        first_operator_advisory=first_operator_advisory if isinstance(first_operator_advisory, dict) else {},
+        first_operator_advisory_evidence=(
+            first_operator_advisory_evidence if isinstance(first_operator_advisory_evidence, dict) else {}
+        ),
+        first_operator_advisory_blocked_bots=(
+            first_operator_advisory_blocked_bots
+            if isinstance(first_operator_advisory_blocked_bots, list)
+            else []
+        ),
+        first_operator_advisory_next_actions=(
+            first_operator_advisory_next_actions if isinstance(first_operator_advisory_next_actions, list) else []
+        ),
     )
 
     return {
@@ -3257,40 +3269,7 @@ def _dashboard_diagnostics_payload() -> dict:
         "local_retune_sync_drift_display": str(eta_readiness_snapshot.get("local_retune_sync_drift_display") or ""),
         "daily_loss_killswitch": daily_loss_killswitch,
         "live_broker_state": live_broker_diagnostics,
-        "operator_queue": {
-            "blocked": int(operator_summary.get("BLOCKED") or 0),
-            "observed": int(operator_summary.get("OBSERVED") or 0),
-            "unknown": int(operator_summary.get("UNKNOWN") or 0),
-            "launch_blocked": int(operator_queue.get("launch_blocked_count") or 0),
-            "advisory_count": operator_advisory_count,
-            "advisory_only": bool(operator_queue.get("advisory_only")) or (
-                operator_advisory_count > 0 and int(operator_queue.get("launch_blocked_count") or 0) == 0
-            ),
-            "top_blocker_op_id": str(first_operator_blocker.get("op_id") or ""),
-            "top_blocker_title": str(first_operator_blocker.get("title") or ""),
-            "top_blocker_detail": str(first_operator_blocker.get("detail") or ""),
-            "top_blocker_launch_blocker": bool(first_operator_evidence.get("launch_blocker")),
-            "top_blocker_launch_role": str(first_operator_evidence.get("launch_role") or ""),
-            "top_blocker_blocked_bots": [str(bot) for bot in first_operator_blocked_bots],
-            "top_blocker_next_actions": [str(action) for action in first_operator_next_actions],
-            "top_launch_blocker_op_id": str(first_launch_blocker.get("op_id") or ""),
-            "top_launch_blocker_detail": str(
-                first_launch_blocker.get("detail") or first_launch_blocker.get("title") or ""
-            ),
-            "top_advisory_op_id": str(first_operator_advisory.get("op_id") or ""),
-            "top_advisory_title": str(first_operator_advisory.get("title") or ""),
-            "top_advisory_detail": str(first_operator_advisory.get("detail") or ""),
-            "top_advisory_launch_role": str(first_operator_advisory_evidence.get("launch_role") or ""),
-            "top_advisory_blocked_bots": [str(bot) for bot in first_operator_advisory_blocked_bots],
-            "top_advisory_next_actions": [str(action) for action in first_operator_advisory_next_actions],
-            "source": str(operator_queue.get("source") or "unknown"),
-            "cache_status": str(operator_queue.get("cache_status") or ""),
-            "cache_age_s": operator_queue.get("cache_age_s"),
-            "cache_stale": bool(operator_queue.get("cache_stale")),
-            "stale_cache_age_s": operator_queue.get("stale_cache_age_s"),
-            "stale_cache_path": operator_queue.get("stale_cache_path"),
-            "error": operator_queue.get("error"),
-        },
+        "operator_queue": operator_queue_summary,
         "paper_live_transition": {
             **paper_live_transition_summary,
             "operator_queue_blocked_count": int(operator_summary.get("BLOCKED") or 0),
