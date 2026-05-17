@@ -80,3 +80,26 @@ def build_dashboard_diagnostics_dirty_worktree_payload(
         else [],
         "error": dirty_worktree_reconciliation.get("error"),
     }
+
+
+def build_dashboard_diagnostics_paper_live_payload(
+    *,
+    paper_live_transition_summary: dict[str, Any],
+    operator_summary: dict[str, Any],
+    paper_live_transition: dict[str, Any],
+) -> dict[str, Any]:
+    """Build the diagnostics `paper_live_transition` payload."""
+
+    blocked_raw = (operator_summary if isinstance(operator_summary, dict) else {}).get("BLOCKED")
+    try:
+        blocked_count = int(blocked_raw or 0)
+    except (TypeError, ValueError):
+        blocked_count = 0
+
+    return {
+        **(paper_live_transition_summary if isinstance(paper_live_transition_summary, dict) else {}),
+        "operator_queue_blocked_count": blocked_count,
+        "source_age_s": (
+            paper_live_transition.get("source_age_s") if isinstance(paper_live_transition, dict) else None
+        ),
+    }

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from eta_engine.deploy.scripts.dashboard_diagnostics_payloads import (
     build_dashboard_diagnostics_dirty_worktree_payload,
+    build_dashboard_diagnostics_paper_live_payload,
     build_dashboard_diagnostics_readiness_payload,
     build_dashboard_diagnostics_second_brain_payload,
 )
@@ -124,4 +125,35 @@ def test_build_dashboard_diagnostics_dirty_worktree_payload_coerces_bad_lists_to
         "module_summaries": [],
         "review_batches": [],
         "error": "reconciliation probe exploded",
+    }
+
+
+def test_build_dashboard_diagnostics_paper_live_payload_merges_blocked_count_and_age() -> None:
+    payload = build_dashboard_diagnostics_paper_live_payload(
+        paper_live_transition_summary={
+            "status": "ready_to_launch_paper_live",
+            "effective_status": "blocked_by_operator_queue",
+        },
+        operator_summary={"BLOCKED": 3},
+        paper_live_transition={"source_age_s": 42.5},
+    )
+
+    assert payload == {
+        "status": "ready_to_launch_paper_live",
+        "effective_status": "blocked_by_operator_queue",
+        "operator_queue_blocked_count": 3,
+        "source_age_s": 42.5,
+    }
+
+
+def test_build_dashboard_diagnostics_paper_live_payload_coerces_missing_inputs() -> None:
+    payload = build_dashboard_diagnostics_paper_live_payload(
+        paper_live_transition_summary={},
+        operator_summary={"BLOCKED": "bad"},
+        paper_live_transition="bad",  # type: ignore[arg-type]
+    )
+
+    assert payload == {
+        "operator_queue_blocked_count": 0,
+        "source_age_s": None,
     }

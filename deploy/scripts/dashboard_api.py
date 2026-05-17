@@ -67,6 +67,7 @@ from eta_engine.deploy.scripts.dashboard_diagnostics_contracts import (
 )
 from eta_engine.deploy.scripts.dashboard_diagnostics_payloads import (
     build_dashboard_diagnostics_dirty_worktree_payload,
+    build_dashboard_diagnostics_paper_live_payload,
     build_dashboard_diagnostics_readiness_payload,
     build_dashboard_diagnostics_second_brain_payload,
 )
@@ -3059,11 +3060,11 @@ def _dashboard_diagnostics_payload() -> dict:
         "daily_loss_killswitch": daily_loss_killswitch,
         "live_broker_state": live_broker_diagnostics,
         "operator_queue": operator_queue_summary,
-        "paper_live_transition": {
-            **paper_live_transition_summary,
-            "operator_queue_blocked_count": int(operator_summary.get("BLOCKED") or 0),
-            "source_age_s": paper_live_transition.get("source_age_s"),
-        },
+        "paper_live_transition": build_dashboard_diagnostics_paper_live_payload(
+            paper_live_transition_summary=paper_live_transition_summary,
+            operator_summary=operator_summary,
+            paper_live_transition=paper_live_transition if isinstance(paper_live_transition, dict) else {},
+        ),
         "dashboard_proxy_watchdog": dashboard_proxy_watchdog,
         "command_center_watchdog": command_center_watchdog,
         "eta_readiness_snapshot": eta_readiness_snapshot,
