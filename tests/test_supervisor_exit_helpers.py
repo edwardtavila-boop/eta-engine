@@ -368,3 +368,61 @@ def test_maybe_route_paper_live_exit_emits_reduce_only() -> None:
     )
 
     assert calls == [(bot, rec, True)]
+
+
+def test_record_cross_bot_exit_records_normalized_symbol() -> None:
+    calls: list[dict[str, object]] = []
+
+    class _Tracker:
+        def record_exit(self, *, symbol_root: str, side: str, qty: float) -> None:
+            calls.append({"symbol_root": symbol_root, "side": side, "qty": qty})
+
+    logger = logging.getLogger("test_supervisor_exit_helpers")
+    tracker = _Tracker()
+
+    supervisor_exit_helpers.record_cross_bot_exit(
+        bot_id="mnq_exit",
+        symbol="MNQ1",
+        side="SELL",
+        qty=1.0,
+        logger=logger,
+        get_tracker_fn=lambda: tracker,
+        normalize_root_fn=lambda symbol: symbol.rstrip("1"),
+    )
+
+    assert calls == [{"symbol_root": "MNQ", "side": "SELL", "qty": 1.0}]
+
+
+def test_record_cross_bot_exit_swallows_failures() -> None:
+    warnings: list[tuple[object, ...]] = []
+
+    class _Logger:
+        def warning(self, *args) -> None:
+            warnings.append(args)
+
+    supervisor_exit_helpers.record_cross_bot_exit(
+        bot_id="btc_exit",
+        symbol="BTC",
+        side="BUY",
+        qty=0.25,
+        logger=_Logger(),  # type: ignore[arg-type]
+        get_tracker_fn=lambda: (_ for _ in ()).throw(RuntimeError("tracker_down")),
+        normalize_root_fn=lambda symbol: symbol,
+    )
+
+    assert warnings
+    assert warnings[0][0] == "cross_bot_tracker.record_exit(%s) failed: %s"
+    assert warnings[0][1] == "btc_exit"
+
+
+def test_clear_exit_position_state_clears_bot_and_persistence() -> None:
+    cleared: list[object] = []
+    bot = SimpleNamespace(open_position={"side": "BUY"})
+
+    supervisor_exit_helpers.clear_exit_position_state(
+        bot=bot,
+        clear_persisted_open_position_fn=lambda current_bot: cleared.append(current_bot),
+    )
+
+    assert bot.open_position is None
+    assert cleared == [bot]

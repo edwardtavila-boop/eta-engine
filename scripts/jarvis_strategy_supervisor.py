@@ -130,10 +130,12 @@ from eta_engine.scripts.supervisor_exit_helpers import (  # noqa: E402
     apply_exit_accounting,
     build_entry_snapshot,
     build_exit_fill_record_payload,
+    clear_exit_position_state,
     compute_exit_realization,
     compute_paper_exit_fill_price,
     maybe_route_paper_live_exit,
     reconcile_exit_qty,
+    record_cross_bot_exit,
 )
 from eta_engine.scripts.supervisor_persistence import SupervisorPersistenceStore  # noqa: E402
 from eta_engine.scripts.uptime_events import record_uptime_event  # noqa: E402
@@ -1770,27 +1772,17 @@ class ExecutionRouter:
         # at entry AND the close size was reconciled against broker
         # truth (see _get_broker_position_qty above), so this is the
         # broker-acked exit boundary.
-        try:
-            from eta_engine.safety.cross_bot_position_tracker import (  # noqa: I001
-                get_cross_bot_position_tracker,
-                normalize_root as _cbpt_normalize_root,
-            )
-
-            tracker = get_cross_bot_position_tracker()
-            if tracker is not None:
-                tracker.record_exit(
-                    symbol_root=_cbpt_normalize_root(rec.symbol),
-                    side=rec.side,
-                    qty=rec.qty,
-                )
-        except Exception as exc:  # noqa: BLE001 -- never block on tracker write
-            logger.warning(
-                "cross_bot_tracker.record_exit(%s) failed: %s",
-                bot.bot_id,
-                exc,
-            )
-        bot.open_position = None
-        self._clear_persisted_open_position(bot)
+        record_cross_bot_exit(
+            bot_id=bot.bot_id,
+            symbol=rec.symbol,
+            side=rec.side,
+            qty=rec.qty,
+            logger=logger,
+        )
+        clear_exit_position_state(
+            bot=bot,
+            clear_persisted_open_position_fn=self._clear_persisted_open_position,
+        )
         return rec
 
     # ── Open-position persistence (survives supervisor restarts) ─────

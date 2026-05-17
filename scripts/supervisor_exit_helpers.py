@@ -171,6 +171,54 @@ def maybe_route_paper_live_exit(
         write_pending_order_fn(bot, rec, reduce_only=True)
 
 
+def record_cross_bot_exit(
+    *,
+    bot_id: str,
+    symbol: str,
+    side: str,
+    qty: float,
+    logger: logging.Logger,
+    get_tracker_fn: Callable[[], Any] | None = None,
+    normalize_root_fn: Callable[[str], str] | None = None,
+) -> None:
+    try:
+        tracker_getter = get_tracker_fn
+        normalizer = normalize_root_fn
+        if tracker_getter is None or normalizer is None:
+            from eta_engine.safety.cross_bot_position_tracker import (
+                get_cross_bot_position_tracker,
+            )
+            from eta_engine.safety.cross_bot_position_tracker import (
+                normalize_root as normalize_root_impl,
+            )
+
+            tracker_getter = tracker_getter or get_cross_bot_position_tracker
+            normalizer = normalizer or normalize_root_impl
+
+        tracker = tracker_getter()
+        if tracker is not None:
+            tracker.record_exit(
+                symbol_root=normalizer(symbol),
+                side=side,
+                qty=qty,
+            )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "cross_bot_tracker.record_exit(%s) failed: %s",
+            bot_id,
+            exc,
+        )
+
+
+def clear_exit_position_state(
+    *,
+    bot: object,
+    clear_persisted_open_position_fn: Callable[[object], None],
+) -> None:
+    bot.open_position = None
+    clear_persisted_open_position_fn(bot)
+
+
 def compute_exit_realization(
     pos: dict[str, Any],
     *,
