@@ -1244,7 +1244,10 @@ class ExecutionRouter:
             # This lets crypto bots fine-tune on simulated fills until
             # the IBKR account is upgraded; flipping ETA_IBKR_CRYPTO=1
             # then auto-routes to PAXOS without code changes.
-            if supervisor_entry_helpers.paper_live_direct_crypto_bypasses_broker(rec.symbol, crypto_live_env=os.getenv("ETA_IBKR_CRYPTO", "")):
+            if supervisor_entry_helpers.paper_live_direct_crypto_bypasses_broker(
+                rec.symbol,
+                crypto_live_env=os.getenv("ETA_IBKR_CRYPTO", ""),
+            ):
                 logger.info(
                     "CRYPTO PAPER %s %s %.6f @ %.4f (no broker route — set ETA_IBKR_CRYPTO=1 to go live)",
                     rec.symbol,
@@ -1255,6 +1258,8 @@ class ExecutionRouter:
                 return rec
             # Also submit directly through LiveIbkrVenue (TWS API port 4002)
             try:
+                from eta_engine.venues.base import OrderRequest, OrderType, Side
+
                 _venue = _get_live_ibkr_venue()
                 # ATR-based bracket if ≥15 bars in the bot's sage window,
                 # else fixed-percent fallback. ATR adapts stop width to
@@ -1280,6 +1285,10 @@ class ExecutionRouter:
                         clear_persisted_open_position_fn=self._clear_persisted_open_position,
                     )
                     return None
+                _ref = _entry_plan.ref_price
+                _stop = _entry_plan.stop_price
+                _target = _entry_plan.target_price
+                _bracket_src = _entry_plan.bracket_src
                 logger.debug(
                     "bracket %s %s %s→%s (%s)",
                     bot.bot_id,

@@ -104,6 +104,106 @@ def test_apply_entry_accounting_updates_bot_state() -> None:
     assert bot.last_signal_at == "2026-05-17T20:02:00+00:00"
 
 
+def test_paper_live_direct_crypto_bypasses_broker_when_disabled() -> None:
+    assert (
+        supervisor_entry_helpers.paper_live_direct_crypto_bypasses_broker(
+            "BTC",
+            crypto_live_env="",
+        )
+        is True
+    )
+    assert (
+        supervisor_entry_helpers.paper_live_direct_crypto_bypasses_broker(
+            "MNQ1",
+            crypto_live_env="",
+        )
+        is False
+    )
+    assert (
+        supervisor_entry_helpers.paper_live_direct_crypto_bypasses_broker(
+            "ETH",
+            crypto_live_env="true",
+        )
+        is False
+    )
+
+
+def test_build_direct_ibkr_entry_plan_builds_market_request() -> None:
+    class _Request:
+        def __init__(self, **kwargs) -> None:
+            self.__dict__.update(kwargs)
+
+    bot = SimpleNamespace(
+        bot_id="mnq_entry",
+        symbol="MNQ1",
+        sage_bars=[{"close": 100.0}],
+    )
+    rec = SimpleNamespace(
+        side="BUY",
+        qty=2.0,
+        fill_price=100.25,
+        signal_id="sig-entry",
+        symbol="MNQ1",
+    )
+
+    plan = supervisor_entry_helpers.build_direct_ibkr_entry_plan(
+        bot=bot,
+        rec=rec,
+        bar={"close": 100.0},
+        round_to_tick_fn=lambda price, _symbol: round(price, 2),
+        compute_bracket_fn=lambda **_kwargs: (95.0, 110.0, "atr"),
+        lookup_bot_bracket_params_fn=lambda _bot_id: (1.5, 2.5),
+        order_request_cls=_Request,
+        order_type_market="MARKET",
+        side_buy="BUY_SIDE",
+        side_sell="SELL_SIDE",
+    )
+
+    assert plan.ref_price == 100.25
+    assert plan.stop_price == 95.0
+    assert plan.target_price == 110.0
+    assert plan.bracket_src == "atr"
+    assert plan.request.symbol == "MNQ1"
+    assert plan.request.side == "BUY_SIDE"
+    assert plan.request.order_type == "MARKET"
+    assert plan.request.price == 100.25
+    assert plan.request.stop_price == 95.0
+    assert plan.request.target_price == 110.0
+
+
+def test_build_direct_ibkr_entry_plan_rejects_invalid_geometry() -> None:
+    bot = SimpleNamespace(
+        bot_id="mnq_entry",
+        symbol="MNQ1",
+        sage_bars=[{"close": 100.0}],
+    )
+    rec = SimpleNamespace(
+        side="BUY",
+        qty=1.0,
+        fill_price=100.25,
+        signal_id="sig-entry",
+        symbol="MNQ1",
+    )
+
+    try:
+        supervisor_entry_helpers.build_direct_ibkr_entry_plan(
+            bot=bot,
+            rec=rec,
+            bar={"close": 100.0},
+            round_to_tick_fn=lambda price, _symbol: round(price, 2),
+            compute_bracket_fn=lambda **_kwargs: (101.0, 99.0, "broken"),
+            lookup_bot_bracket_params_fn=lambda _bot_id: (1.5, 2.5),
+            order_request_cls=dict,
+            order_type_market="MARKET",
+            side_buy="BUY_SIDE",
+            side_sell="SELL_SIDE",
+        )
+    except ValueError as exc:
+        assert "insane bracket geometry" in str(exc)
+    else:
+        raise AssertionError("expected invalid geometry to raise ValueError")
+
+
 def test_rollback_recorded_entry_clears_state_and_counts_reject() -> None:
     cleared: list[object] = []
     bot = SimpleNamespace(

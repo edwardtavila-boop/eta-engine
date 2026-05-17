@@ -19673,6 +19673,11 @@ def _local_master_status_payload() -> dict[str, object]:
             ).get("status")
             or ""
         ),
+        "firm_command_center_dependency_gap_status": (
+            dict(command_center_watchdog.get("firm_command_center_dependency_gap_status"))
+            if isinstance(command_center_watchdog.get("firm_command_center_dependency_gap_status"), dict)
+            else {}
+        ),
         "dependency_gap_status": str(
             (
                 command_center_watchdog.get("firm_command_center_dependency_gap_status")

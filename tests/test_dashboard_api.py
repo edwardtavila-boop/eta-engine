@@ -6180,6 +6180,12 @@ class TestDashboardAPI:
         )
         assert payload["systems"]["command_center_watchdog"]["dashboard_task_needs_reload"] is False
         assert payload["systems"]["command_center_watchdog"]["local_contract_status"] == "healthy"
+        assert payload["systems"]["command_center_watchdog"]["firm_command_center_dependency_gap_status"] == {
+            "status": "healthy",
+            "summary": "FirmCommandCenter runtime import probe succeeded.",
+            "live_probe_status": "ok",
+            "repair_command": ".\\eta_engine\\deploy\\scripts\\repair_firm_command_center_env_admin.cmd",
+        }
         assert payload["systems"]["command_center_watchdog"]["dependency_gap_status"] == "healthy"
         assert payload["systems"]["command_center_watchdog"]["dependency_gap_summary"] == (
             "FirmCommandCenter runtime import probe succeeded."
