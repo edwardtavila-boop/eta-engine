@@ -2481,6 +2481,15 @@ def _dashboard_diagnostics_payload() -> dict:
                 or eta_readiness_snapshot.get("command_center_issue_summary")
                 or "",
             ),
+            "command_center_watchdog_display_issue_summary": str(
+                roster_summary.get("command_center_watchdog_display_issue_summary")
+                or command_center_watchdog.get("display_issue_summary")
+                or command_center_watchdog.get("display_summary")
+                or command_center_watchdog.get("issue_summary")
+                or command_center_watchdog.get("summary")
+                or eta_readiness_snapshot.get("command_center_issue_summary")
+                or "",
+            ),
             "command_center_watchdog_display_summary": str(
                 roster_summary.get("command_center_watchdog_display_summary")
                 or command_center_watchdog.get("display_summary")
@@ -2489,6 +2498,49 @@ def _dashboard_diagnostics_payload() -> dict:
                 or command_center_watchdog.get("summary")
                 or eta_readiness_snapshot.get("command_center_issue_summary")
                 or "",
+            ),
+            "command_center_watchdog_summary": str(
+                roster_summary.get("command_center_watchdog_summary")
+                or command_center_watchdog.get("summary")
+                or command_center_watchdog.get("summary_line")
+                or command_center_watchdog.get("display_summary")
+                or command_center_watchdog.get("display_issue_summary")
+                or command_center_watchdog.get("issue_summary")
+                or eta_readiness_snapshot.get("command_center_issue_summary")
+                or "",
+            ),
+            "command_center_watchdog_failure_detail": str(
+                roster_summary.get("command_center_watchdog_failure_detail")
+                or command_center_watchdog.get("failure_detail")
+                or ""
+            ),
+            "command_center_watchdog_failure_summary": (
+                dict(roster_summary.get("command_center_watchdog_failure_summary"))
+                if isinstance(roster_summary.get("command_center_watchdog_failure_summary"), dict)
+                else (
+                    dict(command_center_watchdog.get("failure_summary"))
+                    if isinstance(command_center_watchdog.get("failure_summary"), dict)
+                    else {}
+                )
+            ),
+            "command_center_watchdog_receipt_path": (
+                roster_summary.get("command_center_watchdog_receipt_path")
+                if roster_summary.get("command_center_watchdog_receipt_path") is not None
+                else command_center_watchdog.get("receipt_path")
+            ),
+            "command_center_watchdog_status_receipt_path": (
+                roster_summary.get("command_center_watchdog_status_receipt_path")
+                if roster_summary.get("command_center_watchdog_status_receipt_path") is not None
+                else command_center_watchdog.get("status_receipt_path")
+            ),
+            "command_center_watchdog_firm_command_center_dependency_gap_status": (
+                dict(roster_summary.get("command_center_watchdog_firm_command_center_dependency_gap_status"))
+                if isinstance(roster_summary.get("command_center_watchdog_firm_command_center_dependency_gap_status"), dict)
+                else (
+                    dict(command_center_watchdog.get("firm_command_center_dependency_gap_status"))
+                    if isinstance(command_center_watchdog.get("firm_command_center_dependency_gap_status"), dict)
+                    else {}
+                )
             ),
             "command_center_watchdog_fresh": bool(
                 roster_summary.get("command_center_watchdog_fresh")
@@ -12169,6 +12221,14 @@ def bot_fleet_roster(
                 or eta_readiness_snapshot.get("command_center_issue_summary")
                 or "",
             ),
+            "command_center_watchdog_display_issue_summary": str(
+                command_center_watchdog.get("display_issue_summary")
+                or command_center_watchdog.get("display_summary")
+                or command_center_watchdog.get("issue_summary")
+                or command_center_watchdog.get("summary")
+                or eta_readiness_snapshot.get("command_center_issue_summary")
+                or "",
+            ),
             "command_center_watchdog_display_summary": str(
                 command_center_watchdog.get("display_summary")
                 or command_center_watchdog.get("display_issue_summary")
@@ -12176,6 +12236,33 @@ def bot_fleet_roster(
                 or command_center_watchdog.get("summary")
                 or eta_readiness_snapshot.get("command_center_issue_summary")
                 or "",
+            ),
+            "command_center_watchdog_summary": str(
+                command_center_watchdog.get("summary")
+                or command_center_watchdog.get("summary_line")
+                or command_center_watchdog.get("display_summary")
+                or command_center_watchdog.get("display_issue_summary")
+                or command_center_watchdog.get("issue_summary")
+                or eta_readiness_snapshot.get("command_center_issue_summary")
+                or "",
+            ),
+            "command_center_watchdog_failure_detail": str(
+                command_center_watchdog.get("failure_detail")
+                or ""
+            ),
+            "command_center_watchdog_failure_summary": (
+                dict(command_center_watchdog.get("failure_summary"))
+                if isinstance(command_center_watchdog.get("failure_summary"), dict)
+                else {}
+            ),
+            "command_center_watchdog_receipt_path": command_center_watchdog.get("receipt_path"),
+            "command_center_watchdog_status_receipt_path": command_center_watchdog.get(
+                "status_receipt_path"
+            ),
+            "command_center_watchdog_firm_command_center_dependency_gap_status": (
+                dict(command_center_watchdog.get("firm_command_center_dependency_gap_status"))
+                if isinstance(command_center_watchdog.get("firm_command_center_dependency_gap_status"), dict)
+                else {}
             ),
             "command_center_watchdog_fresh": bool(command_center_watchdog.get("fresh")),
             "command_center_watchdog_age_s": command_center_watchdog.get("age_s"),

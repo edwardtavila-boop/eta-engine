@@ -104,6 +104,61 @@ def test_apply_entry_accounting_updates_bot_state() -> None:
     assert bot.last_signal_at == "2026-05-17T20:02:00+00:00"
 
 
+def test_build_entry_state_callbacks_delegates_to_cleanup_helpers() -> None:
+    rollback_calls: list[str] = []
+    clear_calls: list[str] = []
+    bot = SimpleNamespace(bot_id="mnq_entry")
+    rec = SimpleNamespace(signal_id="sig-entry")
+
+    callbacks = supervisor_entry_helpers.build_entry_state_callbacks(
+        bot=bot,
+        rec=rec,
+        logger=logging.getLogger("test_supervisor_entry_helpers"),
+        clear_persisted_open_position_fn=lambda _bot: None,
+    )
+
+    original_rollback = supervisor_entry_helpers.rollback_recorded_entry
+    original_clear = supervisor_entry_helpers.clear_recorded_entry_without_reject
+    try:
+        supervisor_entry_helpers.rollback_recorded_entry = lambda **kwargs: rollback_calls.append(kwargs["reason"])  # type: ignore[assignment]
+        supervisor_entry_helpers.clear_recorded_entry_without_reject = (  # type: ignore[assignment]
+            lambda **kwargs: clear_calls.append(kwargs["reason"])
+        )
+        callbacks.rollback_recorded_entry("broker_reject")
+        callbacks.clear_recorded_entry_without_reject("pending")
+    finally:
+        supervisor_entry_helpers.rollback_recorded_entry = original_rollback  # type: ignore[assignment]
+        supervisor_entry_helpers.clear_recorded_entry_without_reject = original_clear  # type: ignore[assignment]
+
+    assert rollback_calls == ["broker_reject"]
+    assert clear_calls == ["pending"]
+
+
+def test_route_paper_live_broker_router_entry_writes_pending_and_clears_local_state() -> None:
+    writes: list[tuple[object, object]] = []
+    clear_calls: list[str] = []
+    bot = SimpleNamespace(bot_id="paperlive")
+    rec = SimpleNamespace(note="mode=paper_live")
+    callbacks = supervisor_entry_helpers.EntryStateCallbacks(
+        rollback_recorded_entry=lambda _reason: (_ for _ in ()).throw(
+            AssertionError("unexpected rollback"),
+        ),
+        clear_recorded_entry_without_reject=clear_calls.append,
+    )
+
+    routed = supervisor_entry_helpers.route_paper_live_broker_router_entry(
+        bot=bot,
+        rec=rec,
+        write_pending_order_fn=lambda current_bot, current_rec: writes.append((current_bot, current_rec)),
+        callbacks=callbacks,
+    )
+
+    assert routed is rec
+    assert writes == [(bot, rec)]
+    assert rec.note == "mode=paper_live;broker_router_pending_order"
+    assert clear_calls == ["broker_router_pending_order"]
+
+
 def test_paper_live_direct_crypto_bypasses_broker_when_disabled() -> None:
     assert (
         supervisor_entry_helpers.paper_live_direct_crypto_bypasses_broker(
@@ -212,6 +267,148 @@ def test_direct_ibkr_result_reason_prefers_reason_then_dedup_note() -> None:
     assert supervisor_entry_helpers.direct_ibkr_result_reason(explicit) == "paper_blocked"
     assert supervisor_entry_helpers.direct_ibkr_result_reason(deduped) == "deduped: already working"
     assert supervisor_entry_helpers.direct_ibkr_result_reason(unknown) == "n/a"
+
+
+def test_route_paper_live_direct_entry_warns_and_bypasses_crypto_without_broker() -> None:
+    warnings: list[tuple[object, ...]] = []
+    infos: list[tuple[object, ...]] = []
+    logger = SimpleNamespace(
+        warning=lambda *args: warnings.append(args),
+        info=lambda *args: infos.append(args),
+        debug=lambda *_args: None,
+    )
+    callbacks = supervisor_entry_helpers.EntryStateCallbacks(
+        rollback_recorded_entry=lambda _reason: (_ for _ in ()).throw(AssertionError("unexpected rollback")),
+        clear_recorded_entry_without_reject=lambda _reason: (_ for _ in ()).throw(AssertionError("unexpected clear")),
+    )
+    bot = SimpleNamespace(bot_id="btc_entry")
+    rec = SimpleNamespace(symbol="BTC", side="BUY", qty=0.5, fill_price=50000.0)
+
+    dispatch = supervisor_entry_helpers.route_paper_live_direct_entry(
+        bot=bot,
+        rec=rec,
+        bar={"close": 50000.0},
+        logger=logger,  # type: ignore[arg-type]
+        allowed_symbols={"BTC"},
+        paper_live_allowed_symbols_env="ETA_PAPER_LIVE_ALLOWED_SYMBOLS",
+        paper_live_symbol_allowed_fn=lambda _symbol, _allowed: True,
+        paper_live_order_route="mystery_route",
+        crypto_live_env="",
+        round_to_tick_fn=lambda price, _symbol: price,
+        get_live_ibkr_venue_fn=lambda: (_ for _ in ()).throw(AssertionError("venue should not be resolved")),
+        run_on_live_ibkr_loop_fn=lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("live loop should not run"),
+        ),
+        pre_trade_check_fn=lambda *_args: True,
+        record_signal_fn=lambda *_args: None,
+        record_fill_fn=lambda **_kwargs: None,
+        callbacks=callbacks,
+    )
+
+    assert dispatch.bypassed_to_paper is True
+    assert dispatch.outcome is None
+    assert warnings[0][0] == "unknown ETA_PAPER_LIVE_ORDER_ROUTE=%r; using direct_ibkr"
+    assert infos[0][0] == "CRYPTO PAPER %s %s %.6f @ %.4f (no broker route — set ETA_IBKR_CRYPTO=1 to go live)"
+
+
+def test_route_paper_live_direct_entry_rolls_back_when_symbol_not_allowed() -> None:
+    warnings: list[tuple[object, ...]] = []
+    rollback_calls: list[str] = []
+    logger = SimpleNamespace(
+        warning=lambda *args: warnings.append(args),
+        info=lambda *_args: None,
+        debug=lambda *_args: None,
+    )
+    callbacks = supervisor_entry_helpers.EntryStateCallbacks(
+        rollback_recorded_entry=rollback_calls.append,
+        clear_recorded_entry_without_reject=lambda _reason: (_ for _ in ()).throw(
+            AssertionError("unexpected clear"),
+        ),
+    )
+    bot = SimpleNamespace(bot_id="mnq_entry")
+    rec = SimpleNamespace(symbol="MNQ1", side="BUY", qty=1.0, fill_price=100.0)
+
+    dispatch = supervisor_entry_helpers.route_paper_live_direct_entry(
+        bot=bot,
+        rec=rec,
+        bar={"close": 100.0},
+        logger=logger,  # type: ignore[arg-type]
+        allowed_symbols={"ES", "NQ"},
+        paper_live_allowed_symbols_env="ETA_PAPER_LIVE_ALLOWED_SYMBOLS",
+        paper_live_symbol_allowed_fn=lambda _symbol, _allowed: False,
+        paper_live_order_route="direct_ibkr",
+        crypto_live_env="1",
+        round_to_tick_fn=lambda price, _symbol: price,
+        get_live_ibkr_venue_fn=lambda: (_ for _ in ()).throw(AssertionError("venue should not be resolved")),
+        run_on_live_ibkr_loop_fn=lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("live loop should not run"),
+        ),
+        pre_trade_check_fn=lambda *_args: True,
+        record_signal_fn=lambda *_args: None,
+        record_fill_fn=lambda **_kwargs: None,
+        callbacks=callbacks,
+    )
+
+    assert dispatch.bypassed_to_paper is False
+    assert dispatch.outcome is None
+    assert rollback_calls == ["symbol_not_allowed_for_direct_ibkr_route"]
+    assert warnings[0][0] == "%s direct_ibkr route SKIPPED: %s not in %s=%s"
+
+
+def test_execute_direct_ibkr_entry_rolls_back_when_l2_gate_blocks(monkeypatch) -> None:
+    class _Venue:
+        def __init__(self) -> None:
+            self.request = None
+
+        def place_order(self, request):
+            self.request = request
+            raise AssertionError("venue should not be called when l2 gate blocks")
+
+    venue = _Venue()
+    rollback_calls: list[str] = []
+    plan = supervisor_entry_helpers.DirectIbkrEntryPlan(
+        request=object(),
+        ref_price=100.25,
+        stop_price=95.0,
+        target_price=110.0,
+        bracket_src="atr",
+    )
+    monkeypatch.setattr(
+        supervisor_entry_helpers,
+        "build_direct_ibkr_entry_plan",
+        lambda **_kwargs: plan,
+    )
+    bot = SimpleNamespace(bot_id="mnq_entry")
+    rec = SimpleNamespace(symbol="MNQ1", side="BUY", qty=1.0, note="mode=paper_live")
+    logger = SimpleNamespace(
+        debug=lambda *_args: None,
+        info=lambda *_args: None,
+        warning=lambda *_args: None,
+    )
+    callbacks = supervisor_entry_helpers.EntryStateCallbacks(
+        rollback_recorded_entry=rollback_calls.append,
+        clear_recorded_entry_without_reject=lambda _reason: None,
+    )
+
+    outcome = supervisor_entry_helpers.execute_direct_ibkr_entry(
+        bot=bot,
+        rec=rec,
+        bar={"close": 100.0},
+        logger=logger,  # type: ignore[arg-type]
+        round_to_tick_fn=lambda price, _symbol: round(price, 2),
+        get_live_ibkr_venue_fn=lambda: venue,
+        run_on_live_ibkr_loop_fn=lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("live loop should not run when l2 gate blocks"),
+        ),
+        pre_trade_check_fn=lambda *_args: False,
+        record_signal_fn=lambda *_args: None,
+        record_fill_fn=lambda **_kwargs: None,
+        callbacks=callbacks,
+    )
+
+    assert outcome is None
+    assert rollback_calls == ["blocked_by_l2_trading_gate"]
+    assert venue.request is None
 
 
 def test_finalize_direct_ibkr_entry_result_marks_filled_position_and_records_fill() -> None:

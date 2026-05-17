@@ -24,6 +24,18 @@ class DirectIbkrEntryOutcome:
     filled_qty: float
 
 
+@dataclass(frozen=True)
+class EntryStateCallbacks:
+    rollback_recorded_entry: Callable[[str], None]
+    clear_recorded_entry_without_reject: Callable[[str], None]
+
+
+@dataclass(frozen=True)
+class DirectIbkrRouteDispatch:
+    bypassed_to_paper: bool
+    outcome: DirectIbkrEntryOutcome | None = None
+
+
 def build_entry_fill_record_payload(
     *,
     bot_id: str,
@@ -238,6 +250,44 @@ def apply_entry_accounting(bot: object, *, fill_ts: str) -> None:
     bot.last_signal_at = fill_ts
 
 
+def build_entry_state_callbacks(
+    *,
+    bot: object,
+    rec: object,
+    logger: logging.Logger,
+    clear_persisted_open_position_fn: Callable[[object], None],
+) -> EntryStateCallbacks:
+    return EntryStateCallbacks(
+        rollback_recorded_entry=lambda reason: rollback_recorded_entry(
+            bot=bot,
+            rec=rec,
+            reason=reason,
+            logger=logger,
+            clear_persisted_open_position_fn=clear_persisted_open_position_fn,
+        ),
+        clear_recorded_entry_without_reject=lambda reason: clear_recorded_entry_without_reject(
+            bot=bot,
+            rec=rec,
+            reason=reason,
+            logger=logger,
+            clear_persisted_open_position_fn=clear_persisted_open_position_fn,
+        ),
+    )
+
+
+def route_paper_live_broker_router_entry(
+    *,
+    bot: object,
+    rec: object,
+    write_pending_order_fn: Callable[[object, object], None],
+    callbacks: EntryStateCallbacks,
+) -> object:
+    write_pending_order_fn(bot, rec)
+    rec.note = f"{rec.note};broker_router_pending_order"
+    callbacks.clear_recorded_entry_without_reject("broker_router_pending_order")
+    return rec
+
+
 def direct_ibkr_result_reason(result: object) -> str:
     raw = getattr(result, "raw", {}) or {}
     if not isinstance(raw, dict):
@@ -247,6 +297,143 @@ def direct_ibkr_result_reason(result: object) -> str:
         or ("deduped: " + str(raw.get("note", "")) if raw.get("deduped") else "")
         or "n/a"
     )
+
+
+def route_paper_live_direct_entry(
+    *,
+    bot: object,
+    rec: object,
+    bar: dict[str, Any],
+    logger: logging.Logger,
+    allowed_symbols: set[str] | None,
+    paper_live_allowed_symbols_env: str,
+    paper_live_symbol_allowed_fn: Callable[[str, set[str] | None], bool],
+    paper_live_order_route: str | None,
+    crypto_live_env: str | None,
+    round_to_tick_fn: Callable[[float, str], float],
+    get_live_ibkr_venue_fn: Callable[[], object],
+    run_on_live_ibkr_loop_fn: Callable[..., object],
+    pre_trade_check_fn: Callable[[object, object], bool],
+    record_signal_fn: Callable[[object, object, object], None],
+    record_fill_fn: Callable[..., None],
+    callbacks: EntryStateCallbacks,
+) -> DirectIbkrRouteDispatch:
+    if not paper_live_symbol_allowed_fn(rec.symbol, allowed_symbols):
+        logger.warning(
+            "%s direct_ibkr route SKIPPED: %s not in %s=%s",
+            bot.bot_id,
+            rec.symbol,
+            paper_live_allowed_symbols_env,
+            ",".join(sorted(allowed_symbols or ())),
+        )
+        callbacks.rollback_recorded_entry("symbol_not_allowed_for_direct_ibkr_route")
+        return DirectIbkrRouteDispatch(bypassed_to_paper=False, outcome=None)
+
+    route = str(paper_live_order_route or "")
+    if route.strip().lower() not in {"direct_ibkr", "direct", "ibkr"}:
+        logger.warning(
+            "unknown ETA_PAPER_LIVE_ORDER_ROUTE=%r; using direct_ibkr",
+            paper_live_order_route,
+        )
+    if paper_live_direct_crypto_bypasses_broker(
+        rec.symbol,
+        crypto_live_env=crypto_live_env,
+    ):
+        logger.info(
+            "CRYPTO PAPER %s %s %.6f @ %.4f (no broker route — set ETA_IBKR_CRYPTO=1 to go live)",
+            rec.symbol,
+            rec.side,
+            rec.qty,
+            rec.fill_price,
+        )
+        return DirectIbkrRouteDispatch(bypassed_to_paper=True)
+
+    return DirectIbkrRouteDispatch(
+        bypassed_to_paper=False,
+        outcome=execute_direct_ibkr_entry(
+            bot=bot,
+            rec=rec,
+            bar=bar,
+            logger=logger,
+            round_to_tick_fn=round_to_tick_fn,
+            get_live_ibkr_venue_fn=get_live_ibkr_venue_fn,
+            run_on_live_ibkr_loop_fn=run_on_live_ibkr_loop_fn,
+            pre_trade_check_fn=pre_trade_check_fn,
+            record_signal_fn=record_signal_fn,
+            record_fill_fn=record_fill_fn,
+            callbacks=callbacks,
+        ),
+    )
+
+
+def execute_direct_ibkr_entry(
+    *,
+    bot: object,
+    rec: object,
+    bar: dict[str, Any],
+    logger: logging.Logger,
+    round_to_tick_fn: Callable[[float, str], float],
+    get_live_ibkr_venue_fn: Callable[[], object],
+    run_on_live_ibkr_loop_fn: Callable[..., object],
+    pre_trade_check_fn: Callable[[object, object], bool],
+    record_signal_fn: Callable[[object, object, object], None],
+    record_fill_fn: Callable[..., None],
+    callbacks: EntryStateCallbacks,
+) -> DirectIbkrEntryOutcome | None:
+    try:
+        venue = get_live_ibkr_venue_fn()
+        try:
+            entry_plan = build_direct_ibkr_entry_plan(
+                bot=bot,
+                rec=rec,
+                bar=bar,
+                round_to_tick_fn=round_to_tick_fn,
+            )
+        except ValueError as exc:
+            logger.warning("%s skipped: %s", bot.bot_id, exc)
+            callbacks.rollback_recorded_entry("invalid_bracket_geometry")
+            return None
+
+        logger.debug(
+            "bracket %s %s %s→%s (%s)",
+            bot.bot_id,
+            entry_plan.ref_price,
+            entry_plan.stop_price,
+            entry_plan.target_price,
+            entry_plan.bracket_src,
+        )
+        if not pre_trade_check_fn(bot, rec):
+            callbacks.rollback_recorded_entry("blocked_by_l2_trading_gate")
+            return None
+
+        result = run_on_live_ibkr_loop_fn(venue.place_order(entry_plan.request), timeout=30.0)
+        outcome = finalize_direct_ibkr_entry_result(
+            bot=bot,
+            rec=rec,
+            result=result,
+            logger=logger,
+            entry_plan=entry_plan,
+            record_signal_fn=record_signal_fn,
+            record_fill_fn=record_fill_fn,
+            rollback_recorded_entry_fn=callbacks.rollback_recorded_entry,
+            clear_recorded_entry_without_reject_fn=callbacks.clear_recorded_entry_without_reject,
+        )
+        raw = getattr(result, "raw", {}) or {}
+        ibkr_order_id = raw.get("ibkr_order_id", "?") if isinstance(raw, dict) else "?"
+        logger.info(
+            "DIRECT ORDER %s %s %.6f → %s (ibkr_id=%s, reason=%s)",
+            rec.symbol,
+            rec.side,
+            rec.qty,
+            result.status.value,
+            ibkr_order_id,
+            outcome.reason,
+        )
+        return outcome
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("DIRECT ORDER FAILED: %s %s: %s", rec.symbol, rec.side, exc)
+        callbacks.rollback_recorded_entry(f"broker_exception={exc}")
+        return None
 
 
 def finalize_direct_ibkr_entry_result(

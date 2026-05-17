@@ -4247,9 +4247,24 @@ class TestDashboardAPI:
         assert payload["bot_fleet"]["command_center_watchdog_issue_summary"] == (
             "Command Center doctor receipt missing"
         )
+        assert payload["bot_fleet"]["command_center_watchdog_display_issue_summary"] == (
+            "Command Center doctor receipt missing"
+        )
         assert payload["bot_fleet"]["command_center_watchdog_display_summary"] == (
             "Command Center doctor receipt missing"
         )
+        assert payload["bot_fleet"]["command_center_watchdog_summary"] == (
+            "Command Center doctor receipt missing"
+        )
+        assert payload["bot_fleet"]["command_center_watchdog_failure_detail"] == ""
+        assert payload["bot_fleet"]["command_center_watchdog_failure_summary"] == {}
+        assert payload["bot_fleet"]["command_center_watchdog_receipt_path"].endswith(
+            "command_center_doctor_latest.json"
+        )
+        assert payload["bot_fleet"]["command_center_watchdog_status_receipt_path"].endswith(
+            "command_center_watchdog_status_latest.json"
+        )
+        assert payload["bot_fleet"]["command_center_watchdog_firm_command_center_dependency_gap_status"] == {}
         assert payload["bot_fleet"]["command_center_watchdog_summary_line"] == (
             "Command Center doctor receipt missing"
         )
@@ -10984,10 +10999,27 @@ class TestDashboardAPI:
             lambda server_ts=None: {
                 "status": "healthy",
                 "issue_status": "healthy",
+                "summary": "Command Center watchdog is healthy.",
                 "display_summary": "Command Center watchdog is healthy.",
+                "failure_detail": "",
+                "failure_summary": {
+                    "total_findings": 0,
+                    "endpoint_failures": 0,
+                    "transport_failures": 0,
+                    "contract_findings": 0,
+                    "v1_contract_findings": 0,
+                    "legacy_markers": 0,
+                    "secret_markers": 0,
+                    "truncated": False,
+                },
                 "fresh": True,
                 "age_s": 0,
                 "healthy": True,
+                "receipt_path": "C:\\EvolutionaryTradingAlgo\\var\\ops\\command_center_doctor_latest.json",
+                "status_receipt_path": (
+                    "C:\\EvolutionaryTradingAlgo\\var\\ops\\"
+                    "command_center_watchdog_status_latest.json"
+                ),
                 "checked_at": "2026-05-17T00:00:00+00:00",
                 "operator_next_step": "none",
                 "operator_next_reason": "healthy",
@@ -11056,9 +11088,38 @@ class TestDashboardAPI:
         assert payload["summary"]["command_center_watchdog_issue_summary"] == (
             "Command Center watchdog is healthy."
         )
+        assert payload["summary"]["command_center_watchdog_display_issue_summary"] == (
+            "Command Center watchdog is healthy."
+        )
         assert payload["summary"]["command_center_watchdog_display_summary"] == (
             "Command Center watchdog is healthy."
         )
+        assert payload["summary"]["command_center_watchdog_summary"] == (
+            "Command Center watchdog is healthy."
+        )
+        assert payload["summary"]["command_center_watchdog_failure_detail"] == ""
+        assert payload["summary"]["command_center_watchdog_failure_summary"] == {
+            "total_findings": 0,
+            "endpoint_failures": 0,
+            "transport_failures": 0,
+            "contract_findings": 0,
+            "v1_contract_findings": 0,
+            "legacy_markers": 0,
+            "secret_markers": 0,
+            "truncated": False,
+        }
+        assert payload["summary"]["command_center_watchdog_receipt_path"].endswith(
+            "command_center_doctor_latest.json"
+        )
+        assert payload["summary"]["command_center_watchdog_status_receipt_path"].endswith(
+            "command_center_watchdog_status_latest.json"
+        )
+        assert payload["summary"]["command_center_watchdog_firm_command_center_dependency_gap_status"] == {
+            "status": "healthy",
+            "summary": "FirmCommandCenter runtime import probe succeeded.",
+            "live_probe_status": "ok",
+            "repair_command": ".\\eta_engine\\deploy\\scripts\\repair_firm_command_center_env_admin.cmd",
+        }
         assert payload["summary"]["command_center_watchdog_summary_line"] == (
             "Command Center watchdog is healthy."
         )
@@ -13737,10 +13798,27 @@ class TestDashboardAPI:
             lambda server_ts=None: {
                 "status": "healthy",
                 "issue_status": "healthy",
+                "summary": "Command Center watchdog is healthy.",
                 "display_summary": "Command Center watchdog is healthy.",
+                "failure_detail": "",
+                "failure_summary": {
+                    "total_findings": 0,
+                    "endpoint_failures": 0,
+                    "transport_failures": 0,
+                    "contract_findings": 0,
+                    "v1_contract_findings": 0,
+                    "legacy_markers": 0,
+                    "secret_markers": 0,
+                    "truncated": False,
+                },
                 "fresh": True,
                 "age_s": 0,
                 "healthy": True,
+                "receipt_path": "C:\\EvolutionaryTradingAlgo\\var\\ops\\command_center_doctor_latest.json",
+                "status_receipt_path": (
+                    "C:\\EvolutionaryTradingAlgo\\var\\ops\\"
+                    "command_center_watchdog_status_latest.json"
+                ),
                 "checked_at": "2026-05-17T00:00:00+00:00",
                 "operator_next_step": "none",
                 "operator_next_reason": "healthy",
@@ -13808,9 +13886,38 @@ class TestDashboardAPI:
         assert payload["summary"]["command_center_watchdog_issue_summary"] == (
             "Command Center watchdog is healthy."
         )
+        assert payload["summary"]["command_center_watchdog_display_issue_summary"] == (
+            "Command Center watchdog is healthy."
+        )
         assert payload["summary"]["command_center_watchdog_display_summary"] == (
             "Command Center watchdog is healthy."
         )
+        assert payload["summary"]["command_center_watchdog_summary"] == (
+            "Command Center watchdog is healthy."
+        )
+        assert payload["summary"]["command_center_watchdog_failure_detail"] == ""
+        assert payload["summary"]["command_center_watchdog_failure_summary"] == {
+            "total_findings": 0,
+            "endpoint_failures": 0,
+            "transport_failures": 0,
+            "contract_findings": 0,
+            "v1_contract_findings": 0,
+            "legacy_markers": 0,
+            "secret_markers": 0,
+            "truncated": False,
+        }
+        assert payload["summary"]["command_center_watchdog_receipt_path"].endswith(
+            "command_center_doctor_latest.json"
+        )
+        assert payload["summary"]["command_center_watchdog_status_receipt_path"].endswith(
+            "command_center_watchdog_status_latest.json"
+        )
+        assert payload["summary"]["command_center_watchdog_firm_command_center_dependency_gap_status"] == {
+            "status": "healthy",
+            "summary": "FirmCommandCenter runtime import probe succeeded.",
+            "live_probe_status": "ok",
+            "repair_command": ".\\eta_engine\\deploy\\scripts\\repair_firm_command_center_env_admin.cmd",
+        }
         assert payload["summary"]["command_center_watchdog_summary_line"] == (
             "Command Center watchdog is healthy."
         )

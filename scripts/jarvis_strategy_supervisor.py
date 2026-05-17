@@ -1193,6 +1193,12 @@ class ExecutionRouter:
 
         if self.cfg.mode == "paper_live":
             _route = (self.cfg.paper_live_order_route or "direct_ibkr").strip().lower()
+            _entry_callbacks = supervisor_entry_helpers.build_entry_state_callbacks(
+                bot=bot,
+                rec=rec,
+                logger=logger,
+                clear_persisted_open_position_fn=self._clear_persisted_open_position,
+            )
             # broker_router route bypasses ETA_PAPER_LIVE_ALLOWED_SYMBOLS
             # entirely. The routing yaml is the source of truth for
             # which (bot, symbol) pairs go where; the allowlist was a
@@ -1201,157 +1207,49 @@ class ExecutionRouter:
             # would block crypto bots whose symbols (BTC/ETH/...) are
             # not in the allowlist that's curated for IBKR futures.
             if _route in {"broker_router", "pending_file", "pending"}:
-                self._write_pending_order(bot, rec)
-                rec.note = f"{rec.note};broker_router_pending_order"
-                supervisor_entry_helpers.clear_recorded_entry_without_reject(
+                return supervisor_entry_helpers.route_paper_live_broker_router_entry(
                     bot=bot,
                     rec=rec,
-                    reason="broker_router_pending_order",
-                    logger=logger,
-                    clear_persisted_open_position_fn=self._clear_persisted_open_position,
+                    write_pending_order_fn=self._write_pending_order,
+                    callbacks=_entry_callbacks,
                 )
-                return rec
             # ── direct_ibkr path ──────────────────────────────────
             # Now the allowlist applies — direct_ibkr only handles the
             # operator-curated futures set the IBKR account is
             # provisioned for.
             _allowed_symbols = _paper_live_allowed_symbols()
-            if not _paper_live_symbol_allowed(rec.symbol, _allowed_symbols):
-                logger.warning(
-                    "%s direct_ibkr route SKIPPED: %s not in %s=%s",
-                    bot.bot_id,
-                    rec.symbol,
-                    _PAPER_LIVE_ALLOWED_SYMBOLS_ENV,
-                    ",".join(sorted(_allowed_symbols or ())),
-                )
-                supervisor_entry_helpers.rollback_recorded_entry(
-                    bot=bot,
-                    rec=rec,
-                    reason="symbol_not_allowed_for_direct_ibkr_route",
-                    logger=logger,
-                    clear_persisted_open_position_fn=self._clear_persisted_open_position,
-                )
-                return None
-            if _route not in {"direct_ibkr", "direct", "ibkr"}:
-                logger.warning(
-                    "unknown ETA_PAPER_LIVE_ORDER_ROUTE=%r; using direct_ibkr",
-                    self.cfg.paper_live_order_route,
-                )
             # Crypto paper-test path: when ETA_IBKR_CRYPTO is not enabled
-            # (paper account lacks crypto trading permissions), skip the
-            # broker round-trip but keep the simulated FillRecord +
-            # bot.open_position recorded above so paper P&L still tracks.
-            # This lets crypto bots fine-tune on simulated fills until
-            # the IBKR account is upgraded; flipping ETA_IBKR_CRYPTO=1
-            # then auto-routes to PAXOS without code changes.
-            if supervisor_entry_helpers.paper_live_direct_crypto_bypasses_broker(
-                rec.symbol,
-                crypto_live_env=os.getenv("ETA_IBKR_CRYPTO", ""),
-            ):
-                logger.info(
-                    "CRYPTO PAPER %s %s %.6f @ %.4f (no broker route — set ETA_IBKR_CRYPTO=1 to go live)",
-                    rec.symbol,
-                    rec.side,
-                    rec.qty,
-                    rec.fill_price,
-                )
-                return rec
+            # Route warning, allowlist fail-close, and crypto paper bypass
+            # now live in supervisor_entry_helpers.route_paper_live_direct_entry(...).
             # Also submit directly through LiveIbkrVenue (TWS API port 4002)
-            try:
-                _venue = _get_live_ibkr_venue()
-                # ATR-based bracket if ≥15 bars in the bot's sage window,
-                # else fixed-percent fallback. ATR adapts stop width to
-                # actual symbol volatility (BTC needs ~5x more room than
-                # MNQ for the same number of "ticks of breathing room").
-                # Per-bot atr_stop_mult / rr_target from per_bot_registry
-                # take precedence over the global env defaults so live
-                # and lab geometry match.
-                try:
-                    _entry_plan = supervisor_entry_helpers.build_direct_ibkr_entry_plan(
-                        bot=bot,
-                        rec=rec,
-                        bar=bar,
-                        round_to_tick_fn=_round_to_tick,
-                    )
-                except ValueError as _exc:
-                    logger.warning("%s skipped: %s", bot.bot_id, _exc)
-                    supervisor_entry_helpers.rollback_recorded_entry(
-                        bot=bot,
-                        rec=rec,
-                        reason="invalid_bracket_geometry",
-                        logger=logger,
-                        clear_persisted_open_position_fn=self._clear_persisted_open_position,
-                    )
-                    return None
-                logger.debug(
-                    "bracket %s %s %s→%s (%s)",
-                    bot.bot_id,
-                    _entry_plan.ref_price,
-                    _entry_plan.stop_price,
-                    _entry_plan.target_price,
-                    _entry_plan.bracket_src,
-                )
-                _req = _entry_plan.request
-                # L2 supercharge: circuit breaker
-                # (disk RED/CRITICAL or capture RED or stale-digest blocks).
-                # pre_trade_check fails OPEN on its own exceptions so a
-                # hook bug can never freeze trading; an explicit False
-                # is a deliberate gate-down.
-                if not l2hooks.pre_trade_check(bot, rec):
-                    supervisor_entry_helpers.rollback_recorded_entry(
-                        bot=bot,
-                        rec=rec,
-                        reason="blocked_by_l2_trading_gate",
-                        logger=logger,
-                        clear_persisted_open_position_fn=self._clear_persisted_open_position,
-                    )
-                    return None
-                _result = _run_on_live_ibkr_loop(_venue.place_order(_req), timeout=30.0)
-                _outcome = supervisor_entry_helpers.finalize_direct_ibkr_entry_result(
-                    bot=bot,
-                    rec=rec,
-                    result=_result,
-                    logger=logger,
-                    entry_plan=_entry_plan,
-                    record_signal_fn=l2hooks.record_signal,
-                    record_fill_fn=l2hooks.record_fill,
-                    rollback_recorded_entry_fn=lambda reason: supervisor_entry_helpers.rollback_recorded_entry(
-                        bot=bot,
-                        rec=rec,
-                        reason=reason,
-                        logger=logger,
-                        clear_persisted_open_position_fn=self._clear_persisted_open_position,
-                    ),
-                    clear_recorded_entry_without_reject_fn=(
-                        lambda reason: supervisor_entry_helpers.clear_recorded_entry_without_reject(
-                            bot=bot,
-                            rec=rec,
-                            reason=reason,
-                            logger=logger,
-                            clear_persisted_open_position_fn=self._clear_persisted_open_position,
-                        )
-                    ),
-                )
-                logger.info(
-                    "DIRECT ORDER %s %s %.6f → %s (ibkr_id=%s, reason=%s)",
-                    rec.symbol,
-                    rec.side,
-                    rec.qty,
-                    _result.status.value,
-                    _result.raw.get("ibkr_order_id", "?"),
-                    _outcome.reason,
-                )
-                if _outcome.action == "rejected":
-                    return None
-            except Exception as _exc:
-                logger.warning("DIRECT ORDER FAILED: %s %s: %s", rec.symbol, rec.side, _exc)
-                supervisor_entry_helpers.rollback_recorded_entry(
-                    bot=bot,
-                    rec=rec,
-                    reason=f"broker_exception={_exc}",
-                    logger=logger,
-                    clear_persisted_open_position_fn=self._clear_persisted_open_position,
-                )
+            # ATR-based bracket if ≥15 bars in the bot's sage window,
+            # else fixed-percent fallback. ATR adapts stop width to
+            # actual symbol volatility (BTC needs ~5x more room than
+            # MNQ for the same number of "ticks of breathing room").
+            # Per-bot atr_stop_mult / rr_target from per_bot_registry
+            # take precedence over the global env defaults so live
+            # and lab geometry match.
+            _dispatch = supervisor_entry_helpers.route_paper_live_direct_entry(
+                bot=bot,
+                rec=rec,
+                bar=bar,
+                logger=logger,
+                allowed_symbols=_allowed_symbols,
+                paper_live_allowed_symbols_env=_PAPER_LIVE_ALLOWED_SYMBOLS_ENV,
+                paper_live_symbol_allowed_fn=_paper_live_symbol_allowed,
+                paper_live_order_route=self.cfg.paper_live_order_route,
+                crypto_live_env=os.getenv("ETA_IBKR_CRYPTO", ""),
+                round_to_tick_fn=_round_to_tick,
+                get_live_ibkr_venue_fn=_get_live_ibkr_venue,
+                run_on_live_ibkr_loop_fn=_run_on_live_ibkr_loop,
+                pre_trade_check_fn=l2hooks.pre_trade_check,
+                record_signal_fn=l2hooks.record_signal,
+                record_fill_fn=l2hooks.record_fill,
+                callbacks=_entry_callbacks,
+            )
+            if _dispatch.bypassed_to_paper:
+                return rec
+            if _dispatch.outcome is None or _dispatch.outcome.action == "rejected":
                 return None
 
         return rec
