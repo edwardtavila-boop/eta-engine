@@ -60,6 +60,7 @@ from eta_engine.core.execution_lanes import (
     gate_enforced,
     normalize_daily_loss_gate_mode,
 )
+from eta_engine.deploy.scripts.dashboard_diagnostics_contracts import build_dashboard_diagnostics_checks
 from eta_engine.deploy.scripts.dashboard_paper_live_status import (
     build_operator_queue_diagnostics_summary,
     build_paper_live_transition_summary,
@@ -2411,6 +2412,30 @@ def _dashboard_diagnostics_payload() -> dict:
             first_operator_advisory_next_actions if isinstance(first_operator_advisory_next_actions, list) else []
         ),
     )
+    checks_summary = build_dashboard_diagnostics_checks(
+        card_summary=card_summary if isinstance(card_summary, dict) else {},
+        roster=roster if isinstance(roster, dict) else {},
+        equity=equity if isinstance(equity, dict) else {},
+        readiness=readiness if isinstance(readiness, dict) else {},
+        second_brain=second_brain if isinstance(second_brain, dict) else {},
+        symbol_intelligence=symbol_intelligence if isinstance(symbol_intelligence, dict) else {},
+        diamond_retune_status=diamond_retune_status if isinstance(diamond_retune_status, dict) else {},
+        daily_loss_killswitch=daily_loss_killswitch if isinstance(daily_loss_killswitch, dict) else {},
+        live_broker_diagnostics=live_broker_diagnostics if isinstance(live_broker_diagnostics, dict) else {},
+        operator_queue=operator_queue if isinstance(operator_queue, dict) else {},
+        paper_live_transition=paper_live_transition if isinstance(paper_live_transition, dict) else {},
+        dashboard_proxy_watchdog=dashboard_proxy_watchdog if isinstance(dashboard_proxy_watchdog, dict) else {},
+        command_center_watchdog=command_center_watchdog if isinstance(command_center_watchdog, dict) else {},
+        eta_readiness_snapshot=eta_readiness_snapshot if isinstance(eta_readiness_snapshot, dict) else {},
+        daily_stop_reset_audit=daily_stop_reset_audit if isinstance(daily_stop_reset_audit, dict) else {},
+        vps_ops_hardening=vps_ops_hardening if isinstance(vps_ops_hardening, dict) else {},
+        session_gate_signal_audit=(
+            session_gate_signal_audit if isinstance(session_gate_signal_audit, dict) else {}
+        ),
+        required_data=DASHBOARD_REQUIRED_DATA,
+        daily_stop_reset_audit_statuses=_DAILY_STOP_RESET_AUDIT_STATUSES,
+        vps_ops_hardening_statuses=_VPS_OPS_HARDENING_STATUSES,
+    )
 
     return {
         **_dashboard_contract(),
@@ -3282,73 +3307,7 @@ def _dashboard_diagnostics_payload() -> dict:
         "vps_ops_hardening": vps_ops_hardening,
         "hardening": vps_ops_hardening,
         "session_gate_signal_audit": session_gate_signal_audit,
-        "checks": {
-            "api_contract": True,
-            "card_contract": int(card_summary.get("dead") or 0) == 0 and int(card_summary.get("stale") or 0) == 0,
-            "bot_fleet_contract": isinstance(roster.get("bots"), list),
-            "equity_contract": "series" in equity,
-            "bot_strategy_readiness_contract": readiness.get("status") == "ready" and not readiness.get("error"),
-            "second_brain_contract": isinstance(second_brain, dict)
-            and "n_episodes" in second_brain
-            and isinstance(second_brain.get("playbook"), dict),
-            "symbol_intelligence_contract": bool(symbol_intelligence.get("contract_ok")),
-            "diamond_retune_status_contract": bool(diamond_retune_status.get("contract_ok")),
-            "daily_loss_killswitch_contract": daily_loss_killswitch.get("status")
-            in {"clear", "tripped", "disabled", "unknown"},
-            "live_broker_state_contract": isinstance(live_broker_diagnostics, dict)
-            and "ready" in live_broker_diagnostics
-            and "broker_snapshot_source" in live_broker_diagnostics,
-            "operator_queue_contract": isinstance(operator_queue, dict) and "summary" in operator_queue,
-            "paper_live_transition_contract": isinstance(paper_live_transition, dict)
-            and "status" in paper_live_transition,
-            "dashboard_proxy_watchdog_contract": dashboard_proxy_watchdog.get("status")
-            in {
-                "ok",
-                "missing",
-                "stale",
-                "probe_ok_watchdog_stale",
-                "failed",
-                "degraded",
-                "unknown",
-            },
-            "command_center_watchdog_contract": command_center_watchdog.get("status")
-            in {
-                "access_denied",
-                "healthy",
-                "missing_receipt",
-                "missing_watchdog",
-                "stale_receipt",
-                "stale_service",
-                "service_unreachable",
-                "upstream_failure",
-                "dashboard_task_contract_drift",
-                "local_dependency_gap",
-                "service_dependency_gap",
-                "public_operator_drift",
-                "public_tunnel_service_drift",
-                "public_tunnel_token_rejected",
-                "repair_prompted",
-                "repair_attempted",
-                "contract_failure",
-                "secret_surface",
-                "unknown",
-            },
-            "eta_readiness_snapshot_contract": eta_readiness_snapshot.get("status")
-            in {
-                "ready",
-                "blocked",
-                "missing_receipt",
-                "stale_receipt",
-                "unknown",
-            },
-            "daily_stop_reset_audit_contract": daily_stop_reset_audit.get("status")
-            in _DAILY_STOP_RESET_AUDIT_STATUSES,
-            "vps_ops_hardening_contract": vps_ops_hardening.get("status") in _VPS_OPS_HARDENING_STATUSES,
-            "hardening_contract": vps_ops_hardening.get("status") in _VPS_OPS_HARDENING_STATUSES,
-            "session_gate_signal_audit_contract": session_gate_signal_audit.get("status")
-            in {"ok", "warn", "missing", "unreadable"},
-            "auth_contract": "auth_session" in DASHBOARD_REQUIRED_DATA,
-        },
+        "checks": checks_summary,
     }
 
 
