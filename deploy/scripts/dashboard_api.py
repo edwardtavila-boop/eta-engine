@@ -2472,6 +2472,24 @@ def _dashboard_diagnostics_payload() -> dict:
                 or eta_readiness_snapshot.get("command_center_issue_summary")
                 or "",
             ),
+            "command_center_watchdog_issue_summary": str(
+                roster_summary.get("command_center_watchdog_issue_summary")
+                or command_center_watchdog.get("issue_summary")
+                or command_center_watchdog.get("display_issue_summary")
+                or command_center_watchdog.get("display_summary")
+                or command_center_watchdog.get("summary")
+                or eta_readiness_snapshot.get("command_center_issue_summary")
+                or "",
+            ),
+            "command_center_watchdog_display_summary": str(
+                roster_summary.get("command_center_watchdog_display_summary")
+                or command_center_watchdog.get("display_summary")
+                or command_center_watchdog.get("display_issue_summary")
+                or command_center_watchdog.get("issue_summary")
+                or command_center_watchdog.get("summary")
+                or eta_readiness_snapshot.get("command_center_issue_summary")
+                or "",
+            ),
             "command_center_watchdog_fresh": bool(
                 roster_summary.get("command_center_watchdog_fresh")
                 if roster_summary.get("command_center_watchdog_fresh") is not None
@@ -12109,6 +12127,22 @@ def bot_fleet_roster(
                 or command_center_watchdog.get("display_issue_summary")
                 or command_center_watchdog.get("issue_summary")
                 or command_center_watchdog.get("summary")
+                or "",
+            ),
+            "command_center_watchdog_issue_summary": str(
+                command_center_watchdog.get("issue_summary")
+                or command_center_watchdog.get("display_issue_summary")
+                or command_center_watchdog.get("display_summary")
+                or command_center_watchdog.get("summary")
+                or eta_readiness_snapshot.get("command_center_issue_summary")
+                or "",
+            ),
+            "command_center_watchdog_display_summary": str(
+                command_center_watchdog.get("display_summary")
+                or command_center_watchdog.get("display_issue_summary")
+                or command_center_watchdog.get("issue_summary")
+                or command_center_watchdog.get("summary")
+                or eta_readiness_snapshot.get("command_center_issue_summary")
                 or "",
             ),
             "command_center_watchdog_fresh": bool(command_center_watchdog.get("fresh")),

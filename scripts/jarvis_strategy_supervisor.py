@@ -1258,8 +1258,6 @@ class ExecutionRouter:
                 return rec
             # Also submit directly through LiveIbkrVenue (TWS API port 4002)
             try:
-                from eta_engine.venues.base import OrderRequest, OrderType, Side
-
                 _venue = _get_live_ibkr_venue()
                 # ATR-based bracket if ≥15 bars in the bot's sage window,
                 # else fixed-percent fallback. ATR adapts stop width to
@@ -1297,24 +1295,7 @@ class ExecutionRouter:
                     _target,
                     _bracket_src,
                 )
-                _req = OrderRequest(
-                    symbol=rec.symbol,
-                    side=Side.BUY if rec.side.upper() == "BUY" else Side.SELL,
-                    qty=abs(float(rec.qty)) or 1,
-                    order_type=OrderType.MARKET,
-                    # LiveIbkrVenue uses this as the bounded reference when
-                    # it converts outside-session MKT entries to marketable LMT.
-                    price=round(_round_to_tick(_ref, rec.symbol), 4),
-                    stop_price=round(_round_to_tick(_stop, rec.symbol), 4),
-                    target_price=round(_round_to_tick(_target, rec.symbol), 4),
-                    bot_id=bot.bot_id,
-                    # signal_id is unique per call (uuid4 hex slice), so
-                    # using it as client_order_id stops two identical
-                    # MNQ1 BUY 1.0 entries from the same tick from
-                    # silently dedup-OPENing — each call carries its
-                    # own idempotency key now.
-                    client_order_id=rec.signal_id,
-                )
+                _req = _entry_plan.request
                 # L2 supercharge: circuit breaker
                 # (disk RED/CRITICAL or capture RED or stale-digest blocks).
                 # pre_trade_check fails OPEN on its own exceptions so a

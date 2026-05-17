@@ -4244,6 +4244,12 @@ class TestDashboardAPI:
         assert payload["bot_fleet"]["dashboard_proxy_watchdog_heartbeat_ts"]
         assert payload["bot_fleet"]["dashboard_proxy_watchdog_restart_ok"] is None
         assert payload["bot_fleet"]["dashboard_proxy_watchdog_restart_reason"] is None
+        assert payload["bot_fleet"]["command_center_watchdog_issue_summary"] == (
+            "Command Center watchdog is healthy."
+        )
+        assert payload["bot_fleet"]["command_center_watchdog_display_summary"] == (
+            "Command Center watchdog is healthy."
+        )
         assert payload["checks"]["dashboard_proxy_watchdog_contract"] is True
 
     def test_dashboard_diagnostics_distinguishes_proxy_probe_ok_from_stale_watchdog(
@@ -11043,6 +11049,12 @@ class TestDashboardAPI:
         assert payload["summary"]["command_center_watchdog_fresh"] is True
         assert payload["summary"]["command_center_watchdog_age_s"] == 0
         assert payload["summary"]["command_center_watchdog_healthy"] is True
+        assert payload["summary"]["command_center_watchdog_issue_summary"] == (
+            "Command Center watchdog is healthy."
+        )
+        assert payload["summary"]["command_center_watchdog_display_summary"] == (
+            "Command Center watchdog is healthy."
+        )
         assert payload["summary"]["command_center_watchdog_checked_at"] == "2026-05-17T00:00:00+00:00"
         assert payload["summary"]["command_center_watchdog_next_step"] == "none"
         assert payload["summary"]["command_center_watchdog_next_reason"] == "healthy"
@@ -13782,6 +13794,12 @@ class TestDashboardAPI:
         assert payload["summary"]["command_center_watchdog_fresh"] is True
         assert payload["summary"]["command_center_watchdog_age_s"] == 0
         assert payload["summary"]["command_center_watchdog_healthy"] is True
+        assert payload["summary"]["command_center_watchdog_issue_summary"] == (
+            "Command Center watchdog is healthy."
+        )
+        assert payload["summary"]["command_center_watchdog_display_summary"] == (
+            "Command Center watchdog is healthy."
+        )
         assert payload["summary"]["command_center_watchdog_checked_at"] == "2026-05-17T00:00:00+00:00"
         assert payload["summary"]["command_center_watchdog_next_step"] == "none"
         assert payload["summary"]["command_center_watchdog_next_reason"] == "healthy"
