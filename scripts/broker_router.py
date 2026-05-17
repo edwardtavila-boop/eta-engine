@@ -33,7 +33,6 @@ import logging
 import os
 import re
 import signal
-import sqlite3
 import sys
 import traceback
 import warnings
@@ -65,6 +64,8 @@ from eta_engine.obs.decision_journal import (  # noqa: E402
 )
 from eta_engine.scripts.broker_router_errors import BrokerRouterErrorHandlers  # noqa: E402
 from eta_engine.scripts.broker_router_failover import BrokerRouterFailover  # noqa: E402
+from eta_engine.scripts.broker_router_ops import BrokerRouterOpsSurface  # noqa: E402
+from eta_engine.scripts.broker_router_reporting import BrokerRouterReporting  # noqa: E402
 from eta_engine.scripts.broker_router_routing import BrokerRouterRoutingResolver  # noqa: E402
 from eta_engine.scripts.broker_router_state import (  # noqa: E402
     EMPTY_RETRY_META,
@@ -1115,6 +1116,30 @@ class BrokerRouter:
             record_event=self._record_event,
             safe_journal=self._safe_journal,
         )
+        self._ops = BrokerRouterOpsSurface(
+            pending_dir=self.pending_dir,
+            state_root=self.state_root,
+            heartbeat_path=self.heartbeat_path,
+            gate_pre_trade_path=self.gate_pre_trade_path,
+            gate_heat_state_path=self.gate_heat_state_path,
+            gate_journal_path=self.gate_journal_path,
+            dry_run=self.dry_run,
+            interval_s=self.interval_s,
+            max_retries=self.max_retries,
+            counts=self._counts,
+            recent_events=self._recent_events,
+            order_entry_hold=self._order_entry_hold,
+            venue_circuit_states=self.venue_circuit_states,
+            write_sidecar=self._write_sidecar,
+            env_int=_env_int,
+            env_float=_env_float,
+            logger=logger,
+        )
+        self._reporting = BrokerRouterReporting(
+            recent_events=self._recent_events,
+            journal=self.journal,
+            logger=logger,
+        )
 
     # -- lifecycle ----------------------------------------------------------
 
@@ -1972,30 +1997,7 @@ class BrokerRouter:
         hold: OrderEntryHold,
         open_positions: dict[str, int],
     ) -> None:
-        """Keep the firm gate-chain state aligned with this live router.
-
-        The legacy ``mnq.risk.gate_chain`` defaults read static files under
-        the firm engine. In the ETA runtime the broker router is the active
-        order-entry boundary, so it provides fresh canonical state under
-        ``var/eta_engine/state/router`` before evaluating fail-closed gates.
-        """
-        now_iso = datetime.now(UTC).isoformat()
-        self._write_sidecar(
-            self.gate_pre_trade_path,
-            {
-                "ts": now_iso,
-                "state": "HOT" if hold.active else "COLD",
-                "reason": hold.reason or ("operator_hold" if hold.active else "router_clear"),
-                "scope": hold.scope,
-                "source": "broker_router",
-                "hold": hold.to_dict(),
-            },
-        )
-        self._write_sidecar(
-            self.gate_heat_state_path,
-            self._heat_state_snapshot(now_iso=now_iso, open_positions=open_positions),
-        )
-        self._ensure_gate_journal()
+        self._ops.sync_gate_state(hold=hold, open_positions=open_positions)
 
     def _heat_state_snapshot(
         self,
@@ -2003,40 +2005,10 @@ class BrokerRouter:
         now_iso: str,
         open_positions: dict[str, int],
     ) -> dict[str, Any]:
-        """Return a conservative heat-budget snapshot for multi-bot routing."""
-        nonzero_positions = {symbol: qty for symbol, qty in open_positions.items() if int(qty or 0) != 0}
-        max_concurrent = max(1, _env_int("ETA_BROKER_ROUTER_GATE_MAX_CONCURRENT", 8))
-        budget = max(0.01, _env_float("ETA_BROKER_ROUTER_GATE_BUDGET", 1.0))
-        current_heat = min(1.0, len(nonzero_positions) / max_concurrent)
-        return {
-            "ts": now_iso,
-            "regime": "transition",
-            "current_heat": round(current_heat, 4),
-            "budget": budget,
-            "utilization_pct": round(current_heat / budget * 100, 1),
-            "positions": len(nonzero_positions),
-            "max_concurrent": max_concurrent,
-            "sizing_fraction": 0.2,
-            "source": "broker_router",
-            "open_positions": nonzero_positions,
-            "writer_version": 1,
-        }
+        return self._ops.heat_state_snapshot(now_iso=now_iso, open_positions=open_positions)
 
     def _ensure_gate_journal(self) -> None:
-        """Ensure the governor gate has a readable SQLite journal shell."""
-        try:
-            self.gate_journal_path.parent.mkdir(parents=True, exist_ok=True)
-            with sqlite3.connect(self.gate_journal_path) as conn:
-                conn.execute(
-                    "CREATE TABLE IF NOT EXISTS events ("
-                    "seq INTEGER PRIMARY KEY AUTOINCREMENT, "
-                    "ts TEXT NOT NULL, "
-                    "event_type TEXT NOT NULL, "
-                    "payload TEXT NOT NULL"
-                    ")"
-                )
-        except sqlite3.Error as exc:
-            logger.warning("gate journal initialization failed %s: %s", self.gate_journal_path, exc)
+        self._ops.ensure_gate_journal()
 
     @staticmethod
     def _normalize_gate_result(r: object) -> dict[str, Any]:
@@ -2061,39 +2033,10 @@ class BrokerRouter:
         return load_order_entry_hold(self.order_hold_path)
 
     def _emit_heartbeat(self, *, hold: OrderEntryHold | None = None) -> None:
-        """Write a small heartbeat snapshot for monitoring.
-
-        Includes ``venue_circuits``: a per-venue circuit-breaker state
-        dict (``closed`` / ``open`` / ``half-open``) so the dashboard's
-        ``/api/brokers`` endpoint can render live broker health on its
-        next refresh.
-        """
-        now_iso = datetime.now(UTC).isoformat()
-        hold = hold if hold is not None else self._order_entry_hold()
-        snap = {
-            "ts": now_iso,
-            "last_poll_ts": now_iso,
-            "pending_dir": str(self.pending_dir),
-            "state_root": str(self.state_root),
-            "order_entry_hold": hold.to_dict(),
-            "dry_run": self.dry_run,
-            "interval_s": self.interval_s,
-            "max_retries": self.max_retries,
-            "counts": dict(self._counts),
-            "recent_events": list(self._recent_events),
-            "venue_circuits": self.venue_circuit_states(),
-        }
-        self._write_sidecar(self.heartbeat_path, snap)
+        self._ops.emit_heartbeat(hold=hold)
 
     def _record_event(self, filename: str, kind: str, detail: str) -> None:
-        self._recent_events.append(
-            {
-                "ts": datetime.now(UTC).isoformat(),
-                "file": filename,
-                "kind": kind,
-                "detail": detail,
-            }
-        )
+        self._reporting.record_event(filename, kind, detail)
 
     def _safe_journal(
         self,
@@ -2106,19 +2049,15 @@ class BrokerRouter:
         links: list[str] | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> None:
-        """Append to the journal; failures are logged, not raised."""
-        try:
-            self.journal.record(
-                actor=actor,
-                intent=intent,
-                rationale=rationale,
-                gate_checks=gate_checks or [],
-                outcome=outcome,
-                links=links or [],
-                metadata=metadata or {},
-            )
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("journal append failed (intent=%s): %s", intent, exc)
+        self._reporting.safe_journal(
+            actor=actor,
+            intent=intent,
+            rationale=rationale,
+            gate_checks=gate_checks,
+            outcome=outcome,
+            links=links,
+            metadata=metadata,
+        )
 
 
 # ---------------------------------------------------------------------------

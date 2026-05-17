@@ -10781,6 +10781,15 @@ class TestDashboardAPI:
                 "position_summary": {},
             },
         )
+        monkeypatch.setattr(
+            mod,
+            "_dashboard_proxy_watchdog_payload",
+            lambda server_ts=None: {
+                "status": "ok",
+                "detail": "noop: ok",
+                "summary": "noop: ok",
+            },
+        )
         (tmp_path / "state" / "paper_live_transition_check.json").write_text(
             json.dumps(
                 {
@@ -10905,29 +10914,6 @@ class TestDashboardAPI:
             ),
             encoding="utf-8",
         )
-        (tmp_path / "state" / "dashboard_proxy_watchdog_heartbeat.json").write_text(
-            json.dumps(
-                {
-                    "ts": datetime.now(UTC).isoformat(),
-                    "component": "dashboard_proxy_watchdog",
-                    "decision": {
-                        "checked_at": datetime.now(UTC).isoformat(),
-                        "action": "noop",
-                        "task_name": "ETA-Proxy-8421",
-                        "probe": {
-                            "healthy": True,
-                            "url": "http://127.0.0.1:8421/",
-                            "status_code": 200,
-                            "reason": "ok",
-                            "elapsed_ms": 15,
-                            "body_len": 77000,
-                        },
-                    },
-                }
-            ),
-            encoding="utf-8",
-        )
-
         r = app_client.get("/api/bot-fleet")
 
         assert r.status_code == 200
