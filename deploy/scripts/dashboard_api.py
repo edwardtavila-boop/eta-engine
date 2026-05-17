@@ -60,7 +60,15 @@ from eta_engine.core.execution_lanes import (
     gate_enforced,
     normalize_daily_loss_gate_mode,
 )
-from eta_engine.deploy.scripts.dashboard_diagnostics_contracts import build_dashboard_diagnostics_checks
+from eta_engine.deploy.scripts.dashboard_diagnostics_contracts import (
+    build_command_center_watchdog_dashboard_task_contract_details,
+    build_command_center_watchdog_local_contract_details,
+    build_dashboard_diagnostics_checks,
+)
+from eta_engine.deploy.scripts.dashboard_diagnostics_sources import (
+    build_dashboard_diagnostics_bot_fleet_counts,
+    extract_dashboard_operator_queue_rollups,
+)
 from eta_engine.deploy.scripts.dashboard_paper_live_status import (
     build_operator_queue_diagnostics_summary,
     build_paper_live_transition_summary,
@@ -2056,79 +2064,6 @@ def _command_center_watchdog_payload(*, server_ts: float) -> dict:
     }
 
 
-def _command_center_watchdog_dashboard_task_contract_details(
-    *,
-    eta_readiness_snapshot: dict,
-    roster_summary: dict | None = None,
-    command_center_watchdog: dict,
-) -> dict:
-    """Return the richest dashboard task contract detail currently available."""
-    roster_summary = roster_summary if isinstance(roster_summary, dict) else {}
-    issue_status = str(eta_readiness_snapshot.get("command_center_issue_status") or "").strip()
-    if issue_status == "dashboard_task_contract_drift":
-        missing_task_names = (
-            [
-                str(name)
-                for name in eta_readiness_snapshot.get(
-                    "command_center_dashboard_task_missing_task_names",
-                    [],
-                )
-                if name
-            ]
-            if isinstance(
-                eta_readiness_snapshot.get("command_center_dashboard_task_missing_task_names"),
-                list,
-            )
-            else []
-        )
-        return {
-            "status": "missing_task",
-            "summary": str(eta_readiness_snapshot.get("command_center_issue_summary") or "").strip(),
-            "missing_task_names": missing_task_names,
-            "needs_reload": True,
-            "access_denied_task_names": [],
-            "drift_task_names": [],
-        }
-
-    roster_details = roster_summary.get("command_center_watchdog_dashboard_task_contract_status_details")
-    if isinstance(roster_details, dict):
-        return dict(roster_details)
-
-    watchdog_details = command_center_watchdog.get("dashboard_task_contract_status")
-    return dict(watchdog_details) if isinstance(watchdog_details, dict) else {}
-
-
-def _command_center_watchdog_local_contract_details(
-    *,
-    eta_readiness_snapshot: dict,
-    roster_summary: dict | None = None,
-    command_center_watchdog: dict,
-) -> dict:
-    """Return local 8421 contract details from the freshest watchdog truth."""
-    roster_summary = roster_summary if isinstance(roster_summary, dict) else {}
-    roster_details = roster_summary.get("command_center_watchdog_local_contract_status_details")
-    watchdog_details = command_center_watchdog.get("local_contract_status")
-    eta_status = str(eta_readiness_snapshot.get("command_center_local_contract_status") or "").strip()
-
-    if eta_status:
-        details: dict = {}
-        if isinstance(roster_details, dict) and str(roster_details.get("status") or "").strip() == eta_status:
-            details.update(roster_details)
-        elif isinstance(watchdog_details, dict) and str(watchdog_details.get("status") or "").strip() == eta_status:
-            details.update(watchdog_details)
-        details["status"] = eta_status
-        if not details.get("summary"):
-            if eta_status == "upstream_failure":
-                details["summary"] = "Local 8421 is reachable, but upstream is returning HTTP 5xx."
-            elif eta_status == "healthy":
-                details["summary"] = "Local 8421 exposes the canonical dashboard contract probes."
-        return details
-
-    if isinstance(roster_details, dict):
-        return dict(roster_details)
-    return dict(watchdog_details) if isinstance(watchdog_details, dict) else {}
-
-
 def _dashboard_diagnostics_payload() -> dict:
     """Single source-of-truth rollup for Command Center self-diagnostics."""
     server_ts = time.time()
@@ -2193,93 +2128,37 @@ def _dashboard_diagnostics_payload() -> dict:
         eta_readiness_snapshot,
         live_broker_diagnostics,
     )
-    roster_bots = roster.get("bots") if isinstance(roster.get("bots"), list) else []
     roster_summary = roster.get("summary") if isinstance(roster.get("summary"), dict) else {}
-    bot_total = int(roster_summary.get("bot_total") or len(roster_bots) or 0)
-    confirmed_bots = int(roster.get("confirmed_bots") or roster_summary.get("confirmed_bots") or 0)
-    active_bots = int(roster_summary.get("active_bots") or roster.get("active_bots") or 0)
-    runtime_active_bots = int(
-        roster_summary.get("runtime_active_bots")
-        or roster.get("runtime_active_bots")
-        or roster_summary.get("active_bots")
-        or roster.get("active_bots")
-        or 0
+    bot_fleet_counts = build_dashboard_diagnostics_bot_fleet_counts(
+        roster=roster if isinstance(roster, dict) else {},
+        roster_summary=roster_summary if isinstance(roster_summary, dict) else {},
     )
-    running_bots = int(roster_summary.get("running_bots") or 0)
-    staged_bots = int(roster_summary.get("staged_bots") or roster.get("staged_bots") or 0)
-    live_attached_bots = int(
-        roster_summary.get("live_attached_bots")
-        or roster.get("live_attached_bots")
-        or runtime_active_bots
-        or active_bots
-        or 0
-    )
-    live_in_trade_bots = int(
-        roster_summary.get("live_in_trade_bots")
-        or roster.get("live_in_trade_bots")
-        or running_bots
-        or 0
-    )
-    idle_live_bots_raw = roster_summary.get("idle_live_bots")
-    if idle_live_bots_raw is None:
-        idle_live_bots_raw = roster.get("idle_live_bots")
-    try:
-        idle_live_bots = (
-            int(idle_live_bots_raw) if idle_live_bots_raw is not None else max(0, live_attached_bots - live_in_trade_bots)
-        )
-    except (TypeError, ValueError):
-        idle_live_bots = max(0, live_attached_bots - live_in_trade_bots)
-    inactive_runtime_bots_raw = roster_summary.get("inactive_runtime_bots")
-    if inactive_runtime_bots_raw is None:
-        inactive_runtime_bots_raw = roster.get("inactive_runtime_bots")
-    try:
-        inactive_runtime_bots = (
-            int(inactive_runtime_bots_raw)
-            if inactive_runtime_bots_raw is not None
-            else max(0, bot_total - live_attached_bots - staged_bots)
-        )
-    except (TypeError, ValueError):
-        inactive_runtime_bots = max(0, bot_total - live_attached_bots - staged_bots)
+    bot_total = int(bot_fleet_counts["bot_total"])
+    confirmed_bots = int(bot_fleet_counts["confirmed_bots"])
+    active_bots = int(bot_fleet_counts["active_bots"])
+    runtime_active_bots = int(bot_fleet_counts["runtime_active_bots"])
+    running_bots = int(bot_fleet_counts["running_bots"])
+    staged_bots = int(bot_fleet_counts["staged_bots"])
+    live_attached_bots = int(bot_fleet_counts["live_attached_bots"])
+    live_in_trade_bots = int(bot_fleet_counts["live_in_trade_bots"])
+    idle_live_bots = int(bot_fleet_counts["idle_live_bots"])
+    inactive_runtime_bots = int(bot_fleet_counts["inactive_runtime_bots"])
     equity_series = equity.get("series") if isinstance(equity.get("series"), list) else []
     equity_summary = equity.get("summary") if isinstance(equity.get("summary"), dict) else {}
     card_summary = cards.get("summary") if isinstance(cards.get("summary"), dict) else {}
-    operator_summary = operator_queue.get("summary") if isinstance(operator_queue.get("summary"), dict) else {}
-    top_operator_blockers = (
-        operator_queue.get("top_blockers") if isinstance(operator_queue.get("top_blockers"), list) else []
+    operator_queue_rollups = extract_dashboard_operator_queue_rollups(
+        operator_queue=operator_queue if isinstance(operator_queue, dict) else {}
     )
-    top_launch_blockers = (
-        operator_queue.get("top_launch_blockers") if isinstance(operator_queue.get("top_launch_blockers"), list) else []
-    )
-    first_operator_blocker = (
-        top_operator_blockers[0] if top_operator_blockers and isinstance(top_operator_blockers[0], dict) else {}
-    )
-    first_launch_blocker = (
-        top_launch_blockers[0] if top_launch_blockers and isinstance(top_launch_blockers[0], dict) else {}
-    )
-    first_operator_evidence = (
-        first_operator_blocker.get("evidence") if isinstance(first_operator_blocker.get("evidence"), dict) else {}
-    )
-    first_operator_blocked_bots = first_operator_evidence.get("blocked_bots")
-    if not isinstance(first_operator_blocked_bots, list):
-        first_operator_blocked_bots = []
-    first_operator_next_actions = first_operator_blocker.get("next_actions")
-    if not isinstance(first_operator_next_actions, list):
-        first_operator_next_actions = []
-    top_operator_advisories = (
-        operator_queue.get("top_non_launch_blockers") if isinstance(operator_queue.get("top_non_launch_blockers"), list) else []
-    )
-    first_operator_advisory = (
-        top_operator_advisories[0] if top_operator_advisories and isinstance(top_operator_advisories[0], dict) else {}
-    )
-    first_operator_advisory_evidence = (
-        first_operator_advisory.get("evidence") if isinstance(first_operator_advisory.get("evidence"), dict) else {}
-    )
-    first_operator_advisory_blocked_bots = first_operator_advisory_evidence.get("blocked_bots")
-    if not isinstance(first_operator_advisory_blocked_bots, list):
-        first_operator_advisory_blocked_bots = []
-    first_operator_advisory_next_actions = first_operator_advisory.get("next_actions")
-    if not isinstance(first_operator_advisory_next_actions, list):
-        first_operator_advisory_next_actions = []
+    operator_summary = operator_queue_rollups["operator_summary"]
+    first_operator_blocker = operator_queue_rollups["first_operator_blocker"]
+    first_launch_blocker = operator_queue_rollups["first_launch_blocker"]
+    first_operator_evidence = operator_queue_rollups["first_operator_evidence"]
+    first_operator_blocked_bots = operator_queue_rollups["first_operator_blocked_bots"]
+    first_operator_next_actions = operator_queue_rollups["first_operator_next_actions"]
+    first_operator_advisory = operator_queue_rollups["first_operator_advisory"]
+    first_operator_advisory_evidence = operator_queue_rollups["first_operator_advisory_evidence"]
+    first_operator_advisory_blocked_bots = operator_queue_rollups["first_operator_advisory_blocked_bots"]
+    first_operator_advisory_next_actions = operator_queue_rollups["first_operator_advisory_next_actions"]
     first_failed_gate = (
         paper_live_transition.get("first_failed_gate")
         if isinstance(paper_live_transition.get("first_failed_gate"), dict)
@@ -3079,14 +2958,14 @@ def _dashboard_diagnostics_payload() -> dict:
                 )
             ),
             "command_center_watchdog_dashboard_task_contract_status_details": (
-                _command_center_watchdog_dashboard_task_contract_details(
+                build_command_center_watchdog_dashboard_task_contract_details(
                     eta_readiness_snapshot=eta_readiness_snapshot,
                     roster_summary=roster_summary,
                     command_center_watchdog=command_center_watchdog,
                 )
             ),
             "command_center_watchdog_local_contract_status_details": (
-                _command_center_watchdog_local_contract_details(
+                build_command_center_watchdog_local_contract_details(
                     eta_readiness_snapshot=eta_readiness_snapshot,
                     roster_summary=roster_summary,
                     command_center_watchdog=command_center_watchdog,
@@ -12435,13 +12314,13 @@ def bot_fleet_roster(
                 or ""
             ),
             "command_center_watchdog_dashboard_task_contract_status_details": (
-                _command_center_watchdog_dashboard_task_contract_details(
+                build_command_center_watchdog_dashboard_task_contract_details(
                     eta_readiness_snapshot=eta_readiness_snapshot,
                     command_center_watchdog=command_center_watchdog,
                 )
             ),
             "command_center_watchdog_local_contract_status_details": (
-                _command_center_watchdog_local_contract_details(
+                build_command_center_watchdog_local_contract_details(
                     eta_readiness_snapshot=eta_readiness_snapshot,
                     command_center_watchdog=command_center_watchdog,
                 )

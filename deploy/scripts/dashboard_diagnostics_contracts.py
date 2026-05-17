@@ -5,6 +5,81 @@ from __future__ import annotations
 from typing import Any
 
 
+def build_command_center_watchdog_dashboard_task_contract_details(
+    *,
+    eta_readiness_snapshot: dict[str, Any],
+    roster_summary: dict[str, Any] | None = None,
+    command_center_watchdog: dict[str, Any],
+) -> dict[str, Any]:
+    """Return the richest dashboard-task contract details currently available."""
+
+    roster_summary = roster_summary if isinstance(roster_summary, dict) else {}
+    issue_status = str(eta_readiness_snapshot.get("command_center_issue_status") or "").strip()
+    if issue_status == "dashboard_task_contract_drift":
+        missing_task_names = (
+            [
+                str(name)
+                for name in eta_readiness_snapshot.get(
+                    "command_center_dashboard_task_missing_task_names",
+                    [],
+                )
+                if name
+            ]
+            if isinstance(
+                eta_readiness_snapshot.get("command_center_dashboard_task_missing_task_names"),
+                list,
+            )
+            else []
+        )
+        return {
+            "status": "missing_task",
+            "summary": str(eta_readiness_snapshot.get("command_center_issue_summary") or "").strip(),
+            "missing_task_names": missing_task_names,
+            "needs_reload": True,
+            "access_denied_task_names": [],
+            "drift_task_names": [],
+        }
+
+    roster_details = roster_summary.get("command_center_watchdog_dashboard_task_contract_status_details")
+    if isinstance(roster_details, dict):
+        return dict(roster_details)
+
+    watchdog_details = command_center_watchdog.get("dashboard_task_contract_status")
+    return dict(watchdog_details) if isinstance(watchdog_details, dict) else {}
+
+
+def build_command_center_watchdog_local_contract_details(
+    *,
+    eta_readiness_snapshot: dict[str, Any],
+    roster_summary: dict[str, Any] | None = None,
+    command_center_watchdog: dict[str, Any],
+) -> dict[str, Any]:
+    """Return local 8421 contract details from the freshest watchdog truth."""
+
+    roster_summary = roster_summary if isinstance(roster_summary, dict) else {}
+    roster_details = roster_summary.get("command_center_watchdog_local_contract_status_details")
+    watchdog_details = command_center_watchdog.get("local_contract_status")
+    eta_status = str(eta_readiness_snapshot.get("command_center_local_contract_status") or "").strip()
+
+    if eta_status:
+        details: dict[str, Any] = {}
+        if isinstance(roster_details, dict) and str(roster_details.get("status") or "").strip() == eta_status:
+            details.update(roster_details)
+        elif isinstance(watchdog_details, dict) and str(watchdog_details.get("status") or "").strip() == eta_status:
+            details.update(watchdog_details)
+        details["status"] = eta_status
+        if not details.get("summary"):
+            if eta_status == "upstream_failure":
+                details["summary"] = "Local 8421 is reachable, but upstream is returning HTTP 5xx."
+            elif eta_status == "healthy":
+                details["summary"] = "Local 8421 exposes the canonical dashboard contract probes."
+        return details
+
+    if isinstance(roster_details, dict):
+        return dict(roster_details)
+    return dict(watchdog_details) if isinstance(watchdog_details, dict) else {}
+
+
 def build_dashboard_diagnostics_checks(
     *,
     card_summary: dict[str, Any],
