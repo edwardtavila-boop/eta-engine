@@ -2518,6 +2518,38 @@ def _dashboard_diagnostics_payload() -> dict:
                     else eta_readiness_snapshot.get("checked_at")
                 )
             ),
+            "command_center_watchdog_summary_line": str(
+                roster_summary.get("command_center_watchdog_summary_line")
+                or command_center_watchdog.get("summary_line")
+                or command_center_watchdog.get("summary")
+                or command_center_watchdog.get("display_summary")
+                or command_center_watchdog.get("display_issue_summary")
+                or command_center_watchdog.get("issue_summary")
+                or eta_readiness_snapshot.get("command_center_issue_summary")
+                or ""
+            ),
+            "command_center_watchdog_operator_next_step": str(
+                roster_summary.get("command_center_watchdog_operator_next_step")
+                or command_center_watchdog.get("operator_next_step")
+                or command_center_watchdog.get("next_step")
+                or ""
+            ),
+            "command_center_watchdog_operator_next_reason": str(
+                roster_summary.get("command_center_watchdog_operator_next_reason")
+                or command_center_watchdog.get("operator_next_reason")
+                or command_center_watchdog.get("next_reason")
+                or ""
+            ),
+            "command_center_watchdog_operator_next_command": (
+                roster_summary.get("command_center_watchdog_operator_next_command")
+                if roster_summary.get("command_center_watchdog_operator_next_command") is not None
+                else command_center_watchdog.get("operator_next_command")
+            ),
+            "command_center_watchdog_operator_next_requires_elevation": (
+                roster_summary.get("command_center_watchdog_operator_next_requires_elevation")
+                if roster_summary.get("command_center_watchdog_operator_next_requires_elevation") is not None
+                else command_center_watchdog.get("operator_next_requires_elevation")
+            ),
             "command_center_watchdog_next_step": str(
                 eta_readiness_snapshot.get("command_center_operator_next_step")
                 or roster_summary.get("command_center_watchdog_next_step")
@@ -12149,6 +12181,31 @@ def bot_fleet_roster(
             "command_center_watchdog_age_s": command_center_watchdog.get("age_s"),
             "command_center_watchdog_healthy": command_center_watchdog.get("healthy"),
             "command_center_watchdog_checked_at": command_center_watchdog.get("checked_at"),
+            "command_center_watchdog_summary_line": str(
+                command_center_watchdog.get("summary_line")
+                or command_center_watchdog.get("summary")
+                or command_center_watchdog.get("display_summary")
+                or command_center_watchdog.get("display_issue_summary")
+                or command_center_watchdog.get("issue_summary")
+                or eta_readiness_snapshot.get("command_center_issue_summary")
+                or ""
+            ),
+            "command_center_watchdog_operator_next_step": str(
+                command_center_watchdog.get("operator_next_step")
+                or command_center_watchdog.get("next_step")
+                or ""
+            ),
+            "command_center_watchdog_operator_next_reason": str(
+                command_center_watchdog.get("operator_next_reason")
+                or command_center_watchdog.get("next_reason")
+                or ""
+            ),
+            "command_center_watchdog_operator_next_command": command_center_watchdog.get(
+                "operator_next_command"
+            ),
+            "command_center_watchdog_operator_next_requires_elevation": command_center_watchdog.get(
+                "operator_next_requires_elevation"
+            ),
             "command_center_watchdog_next_step": str(
                 command_center_watchdog.get("operator_next_step")
                 or command_center_watchdog.get("next_step")

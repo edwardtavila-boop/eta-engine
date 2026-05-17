@@ -2186,6 +2186,80 @@ def test_router_paper_live_direct_order_carries_reference_price(
     assert venue.request.target_price is not None
 
 
+def test_router_paper_live_direct_route_uses_helper_built_request(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from eta_engine.scripts import jarvis_strategy_supervisor as supervisor
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        BotInstance,
+        ExecutionRouter,
+        SupervisorConfig,
+    )
+    from eta_engine.scripts.supervisor_entry_helpers import DirectIbkrEntryPlan
+    from eta_engine.venues.base import OrderResult, OrderStatus
+
+    class CapturingVenue:
+        def __init__(self) -> None:
+            self.request = None
+
+        def place_order(self, request):
+            self.request = request
+            return object()
+
+    venue = CapturingVenue()
+    sentinel_request = object()
+    monkeypatch.setenv("ETA_PAPER_LIVE_ALLOWED_SYMBOLS", "MNQ,MNQ1")
+    monkeypatch.setenv("ETA_LIVE_FUTURES_BUDGET_PER_BOT_USD", "100000")
+    monkeypatch.setenv("ETA_LIVE_FUTURES_FLEET_BUDGET_USD", "100000")
+    monkeypatch.setattr(supervisor.l2hooks, "pre_trade_check", lambda *_args: True)
+    monkeypatch.setattr(supervisor, "_get_live_ibkr_venue", lambda: venue)
+    monkeypatch.setattr(
+        supervisor,
+        "_run_on_live_ibkr_loop",
+        lambda *_args, **_kwargs: OrderResult(
+            order_id="sig-open",
+            status=OrderStatus.OPEN,
+            raw={"ibkr_order_id": 42},
+        ),
+    )
+    monkeypatch.setattr(
+        supervisor.supervisor_entry_helpers,
+        "build_direct_ibkr_entry_plan",
+        lambda **_kwargs: DirectIbkrEntryPlan(
+            request=sentinel_request,
+            ref_price=28250.0,
+            stop_price=28200.0,
+            target_price=28350.0,
+            bracket_src="helper",
+        ),
+    )
+
+    cfg = SupervisorConfig()
+    cfg.mode = "paper_live"
+    cfg.paper_live_order_route = "direct_ibkr"
+    router = ExecutionRouter(cfg=cfg, bf_dir=tmp_path)
+    bot = BotInstance(
+        bot_id="paperlive_helper_request",
+        symbol="MNQ1",
+        strategy_kind="x",
+        direction="long",
+        cash=500000.0,
+    )
+
+    rec = router.submit_entry(
+        bot=bot,
+        signal_id="sig-open",
+        side="BUY",
+        bar={"close": 28250.0, "high": 28260.0, "low": 28240.0, "open": 28245.0},
+        size_mult=1.0,
+    )
+
+    assert rec is not None
+    assert "direct_ibkr_pending_order" in rec.note
+    assert venue.request is sentinel_request
+
+
 def test_router_paper_live_direct_order_uses_result_finalizer(
     tmp_path: Path,
     monkeypatch,
