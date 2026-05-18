@@ -66,6 +66,7 @@ from eta_engine.deploy.scripts.dashboard_diagnostics_contracts import (
     build_dashboard_diagnostics_checks,
 )
 from eta_engine.deploy.scripts.dashboard_diagnostics_payloads import (
+    build_dashboard_diagnostics_diamond_retune_payload,
     build_dashboard_diagnostics_dirty_worktree_payload,
     build_dashboard_diagnostics_equity_payload,
     build_dashboard_diagnostics_paper_live_payload,
@@ -3643,91 +3644,15 @@ def _diamond_retune_diagnostic_payload(snapshot: dict[str, Any]) -> dict[str, ob
     path = Path(str(snapshot.get("path") or _diamond_retune_status_path()))
     mtime = _safe_mtime(path)
     summary = snapshot.get("summary") if isinstance(snapshot.get("summary"), dict) else {}
-    bots = snapshot.get("bots") if isinstance(snapshot.get("bots"), list) else []
-    first_bot = bots[0] if bots and isinstance(bots[0], dict) else {}
-    broker_evidence = (
-        first_bot.get("broker_close_evidence") if isinstance(first_bot.get("broker_close_evidence"), dict) else {}
+    return build_dashboard_diagnostics_diamond_retune_payload(
+        snapshot=snapshot if isinstance(snapshot, dict) else {},
+        path=str(path),
+        updated_at=(datetime.fromtimestamp(mtime, UTC).isoformat() if mtime is not None else None),
+        age_s=(max(0, int(time.time() - mtime)) if mtime is not None else None),
+        broker_truth_focus_active_experiment_outcome_line=_retune_focus_active_experiment_outcome_line(
+            summary.get("broker_truth_focus_active_experiment"),
+        ),
     )
-    return {
-        "status": str(snapshot.get("status") or "missing"),
-        "ready": bool(snapshot.get("ready")),
-        "contract_ok": bool(snapshot.get("contract_ok")),
-        "n_targets": int(summary.get("n_targets") or len(bots)),
-        "n_attempted_bots": int(summary.get("n_attempted_bots") or 0),
-        "n_unattempted_targets": int(summary.get("n_unattempted_targets") or 0),
-        "n_research_backlog_targets": int(summary.get("n_research_backlog_targets") or 0),
-        "n_low_sample_keep_collecting": int(summary.get("n_low_sample_keep_collecting") or 0),
-        "n_near_miss_keep_tuning": int(summary.get("n_near_miss_keep_tuning") or 0),
-        "n_unstable_positive_keep_tuning": int(summary.get("n_unstable_positive_keep_tuning") or 0),
-        "n_research_passed_broker_proof_required": int(
-            summary.get("n_research_passed_broker_proof_required") or 0
-        ),
-        "n_stuck_research_failing": int(summary.get("n_stuck_research_failing") or 0),
-        "n_timeout_retry": int(summary.get("n_timeout_retry") or 0),
-        "broker_proof_required_closes": int(summary.get("broker_proof_required_closes") or 100),
-        "n_broker_sample_ready": int(summary.get("n_broker_sample_ready") or 0),
-        "n_broker_edge_ready": int(summary.get("n_broker_edge_ready") or 0),
-        "n_broker_proof_ready": int(summary.get("n_broker_proof_ready") or 0),
-        "n_broker_sample_ready_negative_edge": int(summary.get("n_broker_sample_ready_negative_edge") or 0),
-        "n_broker_proof_shortfall": int(summary.get("n_broker_proof_shortfall") or 0),
-        "largest_broker_proof_gap": int(summary.get("largest_broker_proof_gap") or 0),
-        "total_broker_proof_gap": int(summary.get("total_broker_proof_gap") or 0),
-        "broker_truth_focus_bot_id": str(summary.get("broker_truth_focus_bot_id") or ""),
-        "broker_truth_focus_state": str(summary.get("broker_truth_focus_state") or ""),
-        "broker_truth_focus_edge_status": str(summary.get("broker_truth_focus_edge_status") or ""),
-        "broker_truth_focus_closed_trade_count": int(summary.get("broker_truth_focus_closed_trade_count") or 0),
-        "broker_truth_focus_required_closed_trade_count": int(
-            summary.get("broker_truth_focus_required_closed_trade_count") or 100
-        ),
-        "broker_truth_focus_remaining_closed_trade_count": int(
-            summary.get("broker_truth_focus_remaining_closed_trade_count") or 0
-        ),
-        "broker_truth_focus_total_realized_pnl": float(summary.get("broker_truth_focus_total_realized_pnl") or 0.0),
-        "broker_truth_focus_profit_factor": float(summary.get("broker_truth_focus_profit_factor") or 0.0),
-        "broker_truth_focus_issue_code": str(summary.get("broker_truth_focus_issue_code") or ""),
-        "broker_truth_focus_priority_score": float(summary.get("broker_truth_focus_priority_score") or 0.0),
-        "broker_truth_focus_strategy_kind": str(summary.get("broker_truth_focus_strategy_kind") or ""),
-        "broker_truth_focus_best_session": str(summary.get("broker_truth_focus_best_session") or ""),
-        "broker_truth_focus_worst_session": str(summary.get("broker_truth_focus_worst_session") or ""),
-        "broker_truth_focus_parameter_focus": (
-            [str(item) for item in summary.get("broker_truth_focus_parameter_focus")]
-            if isinstance(summary.get("broker_truth_focus_parameter_focus"), list)
-            else []
-        ),
-        "broker_truth_focus_primary_experiment": str(summary.get("broker_truth_focus_primary_experiment") or ""),
-        "broker_truth_focus_next_command": str(summary.get("broker_truth_focus_next_command") or ""),
-        "broker_truth_focus_next_action": str(summary.get("broker_truth_focus_next_action") or ""),
-        "broker_truth_focus_active_experiment": (
-            dict(summary.get("broker_truth_focus_active_experiment"))
-            if isinstance(summary.get("broker_truth_focus_active_experiment"), dict)
-            else {}
-        ),
-        "broker_truth_focus_active_experiment_summary_line": str(
-            summary.get("broker_truth_focus_active_experiment_summary_line") or ""
-        ),
-        "broker_truth_focus_active_experiment_outcome_line": str(
-            summary.get("broker_truth_focus_active_experiment_outcome_line")
-            or snapshot.get("focus_active_experiment_outcome_line")
-            or _retune_focus_active_experiment_outcome_line(summary.get("broker_truth_focus_active_experiment"))
-        ),
-        "broker_truth_summary_line": str(summary.get("broker_truth_summary_line") or ""),
-        "safe_to_mutate_live": bool(summary.get("safe_to_mutate_live") is True),
-        "top_bot_id": str(first_bot.get("bot_id") or ""),
-        "top_retune_state": str(first_bot.get("retune_state") or ""),
-        "top_next_action": str(first_bot.get("next_action") or ""),
-        "top_closed_trade_count": int(broker_evidence.get("closed_trade_count") or 0),
-        "top_required_closed_trade_count": int(broker_evidence.get("required_closed_trade_count") or 0),
-        "top_remaining_closed_trade_count": int(broker_evidence.get("remaining_closed_trade_count") or 0),
-        "top_sample_progress_pct": float(broker_evidence.get("sample_progress_pct") or 0.0),
-        "top_broker_edge_status": str(broker_evidence.get("edge_status") or ""),
-        "top_broker_has_positive_edge": bool(broker_evidence.get("has_positive_edge") is True),
-        "top_broker_total_realized_pnl": float(broker_evidence.get("total_realized_pnl") or 0.0),
-        "top_broker_profit_factor": float(broker_evidence.get("profit_factor") or 0.0),
-        "path": str(path),
-        "source": str(snapshot.get("source") or "diamond_retune_status_latest"),
-        "updated_at": datetime.fromtimestamp(mtime, UTC).isoformat() if mtime is not None else None,
-        "age_s": max(0, int(time.time() - mtime)) if mtime is not None else None,
-    }
 
 
 def _retune_focus_overlay(
