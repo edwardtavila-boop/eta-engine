@@ -1,6 +1,6 @@
 # BluSky Launch 50K — Onboarding Runbook
 
-**Status:** Active onboarding 2026-05-08. Operator purchased BluSky Launch
+**Status:** Historical onboarding snapshot from 2026-05-08. Operator purchased BluSky Launch
 50K Tradovate eval ($59). This runbook covers every step from BluSky
 welcome-email arrival to first live order in BluSky's funded account.
 
@@ -13,7 +13,8 @@ welcome-email arrival to first live order in BluSky's funded account.
 > avg_r=1.26 — note: includes records with phantom-R values fixed by
 > commit b0c11b2 on 2026-05-13; honest avg_r will settle ~0.4–0.6 as
 > clean post-fix trades accumulate). Launch is **NO_GO** until ≥2 bots
-> qualify (R1 gate). Realistic launch date slipped to ~2026-06-01.
+> qualify (R1 gate). In that planning window, the realistic launch-date
+> estimate had slipped to ~2026-06-01.
 > Use the latest prop dashboard and diamond readiness artifacts for
 > current status. Do not activate Tradovate routing or move any bot to a live
 > prop lane until `prop_launch_check` is truly `GO`.
@@ -307,14 +308,14 @@ Restart the supervisor on VPS.
 
 ---
 
-## Step 6: First live order (BluSky eval phase)
+## Step 6: Historical first live order scenario (BluSky eval phase)
 
 Once the supervisor is running with `volume_profile_mnq → tradovate`,
 read that as historical placeholder wording only; the current intended state
 is approved Diamond launch bot(s) routed to Tradovate only after
 `prop_launch_check` turns `GO`.
 
-The next time the strategy generates a signal:
+In that historical flow, the next time the strategy generates a signal:
 
 1. Supervisor calls `tradovate.place_order(request)`
 2. Adapter authenticates → places order on BluSky Tradovate sub-account

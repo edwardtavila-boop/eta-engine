@@ -58,20 +58,20 @@ The inspector returns ROBUST / FRAGILE / WRONG. **Only proceed on
 ROBUST.** If FRAGILE, the operator either picks a different bot OR
 trims the planned sizing by 50%.
 
-### Step 3. Council review (high-stakes gate)
+### Step 3. Council review (historical high-stakes gate template)
 
 ```
-"Convene council on selecting {bot_id} for live cutover"
+"Convene council on selecting {bot_id} for an already-approved live cutover"
 ```
 
-Three voices: advocate → skeptic → judge. **Only proceed on PROCEED**.
-On PROCEED-WITH-CAUTION, schedule a 60-min check-in for after the first
-live trade.
+Three voices: advocate → skeptic → judge. **In that historical template,
+only proceed on PROCEED**. On PROCEED-WITH-CAUTION, schedule a 60-min
+check-in for after the first live trade in that plan.
 
-### Step 4. Save the decision to memory
+### Step 4. Save the decision to memory (historical template)
 
 ```
-"Remember: I selected {bot_id} for live cutover on {date}, with sizing
+"Remember: I selected {bot_id} for an already-approved live cutover on {date}, with sizing
 {recommended_size_modifier}, after kelly + adversarial + council all
 green."
 ```
@@ -146,14 +146,14 @@ chosen bot:
 1. Pin the bot's size to Kelly recommendation:
 ```
 "Set size_modifier for {bot_id} to {recommended_size_modifier} with
-reason 'live cutover initial sizing', ttl_minutes 1440"
+reason 'approved live cutover initial sizing', ttl_minutes 1440"
 ```
 24-hour TTL. The override auto-expires tomorrow so you renew or adjust
 based on first-day behaviour.
 
-2. Save the cutover event:
+2. Save the cutover event (historical template):
 ```
-"Remember: live cutover for {bot_id} executed at {timestamp} with
+"Remember: approved live cutover for {bot_id} executed at {timestamp} with
 initial size {modifier}. Reviewing in 4 hours."
 ```
 

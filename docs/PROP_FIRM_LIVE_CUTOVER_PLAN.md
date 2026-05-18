@@ -1,8 +1,8 @@
 # Prop-Firm + Small-Capital Live Cutover Plan
 
-**Status:** 2026-05-09. Operator approved controlled Tradovate reactivation for prop-fund testing with winning strategies.
+**Status:** Historical planning snapshot from 2026-05-09. Operator approved a controlled Tradovate reactivation path for prop-fund testing with winning strategies in that planning window.
 
-This document is the current un-dormancy path for prop-firm futures testing. It does not place trades by itself. Tradovate remains dormant by default unless the live process explicitly sets `ETA_TRADOVATE_ENABLED=1`.
+This document records the un-dormancy path for that prop-firm futures testing lane. It does not place trades by itself. Tradovate remains dormant by default unless the live process explicitly sets `ETA_TRADOVATE_ENABLED=1`.
 
 > **Safety note:** This plan governs the separate futures prop-ladder
 > controlled dry-run lane centered on `volume_profile_mnq`. It does not

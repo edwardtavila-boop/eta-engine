@@ -1,8 +1,8 @@
 # L2 Live Cutover Runbook
 
-**Goal:** Walk an L2 strategy from subscription-active → first live trade in a controlled, reversible sequence.
+**Historical goal:** Walk an L2 strategy from subscription-active → first live trade in a controlled, reversible sequence.
 
-**Time horizon:** ~30 days from subscription activation to first live trade for any strategy.
+**Historical time horizon:** ~30 days from subscription activation to first live trade for any strategy.
 
 **Stop conditions:** Any step that fails → halt and triage. Do not skip steps under time pressure.
 

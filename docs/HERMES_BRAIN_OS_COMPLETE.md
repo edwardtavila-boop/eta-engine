@@ -209,15 +209,15 @@ The brain is built. The operator's path forward:
 Historical plan for that May 12-15 window:
   * Run paper-soak review on the 12-bot soak (separate from Hermes work)
   * Review the SINGLE best bot for any future live-cutover path around that window
-  * Wire live broker routing (IBKR Pro per operator preference)
-  * Use jarvis_kelly_recommend to set initial sizing on the chosen bot
+  * Historical plan called for wiring live broker routing (IBKR Pro per operator preference)
+  * Historical plan called for using jarvis_kelly_recommend to set initial sizing on the chosen bot
 
-Once live:
+Once live in that historical plan:
   * Daily: "zeus" first thing → 15-second situational awareness
   * Anything anomalous → drill into the specific skill
   * Weekly Sunday: jarvis-trade-narrator weekly_review
 
-Month 2 candidates (only if friction surfaces):
+Historical month 2 candidates (only if friction surfaced):
   * Schema v2 emit-site population (currently empty until consults populate v2 fields)
   * Real-cascade T6/T7 (replaces surrogate)
   * Inter-agent bus enforcement (currently soft-coordination only)
