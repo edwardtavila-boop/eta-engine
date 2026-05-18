@@ -41,7 +41,7 @@ clearance. Use current leaderboard/readiness artifacts plus
 **Wave-16 demoted (NOT in DIAMOND_BOTS):**
 | `volume_profile_btc` | BTC SPOT | **DEMOTED (Alpaca cellared)** | +121R (n=339, 66% WR) | — | volume_profile |
 
-`volume_profile_btc` has strong R-edge (+121R / 66% WR / n=339) but routes through Alpaca SPOT, which the operator has cellared per the IBKR-futures-only mandate. If/when `POOL_SPLIT["spot"]` is reactivated, this bot can be re-promoted with a single line in `capital_allocator.DIAMOND_BOTS`.
+`volume_profile_btc` has strong R-edge (+121R / 66% WR / n=339) but routes through Alpaca SPOT, which the operator has cellared per the IBKR-futures-only mandate. If `POOL_SPLIT["spot"]` is ever reactivated, this bot could return to future Diamond review with a single line in `capital_allocator.DIAMOND_BOTS`, subject to the then-current launch/readiness surfaces.
 
 **Crypto-futures expansion blocker (high-priority kaizen target):**
 The MBT family (`mbt_sweep_reclaim`, `mbt_overnight_gap`, `mbt_rth_orb`, `mbt_funding_basis`) trades actively (n=58-129 per bot) but **all `realized_r` values write as 0**. The R-multiple writer is broken for the MBT path. Fixing this writer unlocks 4 candidate Bitcoin-futures diamonds for the IBKR-futures fleet — the natural BTC counterpart to MET. This is the single highest-leverage data-fix in the queue.

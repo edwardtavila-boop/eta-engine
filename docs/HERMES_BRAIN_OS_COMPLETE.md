@@ -4,6 +4,11 @@ The full 17-track + Zeus Supercharge capstone reference. After this
 build, the operator's Hermes-JARVIS bridge is a complete brain/OS for
 the trading framework:
 
+> **Historical snapshot note:** This capstone memo captures an older
+> 2026-05 planning state. Treat any live-cutover timing or bot-selection
+> language here as historical context, and defer to the current ETA
+> launch/readiness surfaces before acting.
+
 * **17 specialized tracks** (lenses), each polished, tested, deployed.
 * **30 MCP tools** spanning read + write + analytics + coordination.
 * **12 skills** giving Hermes a domain-fluent vocabulary.
@@ -201,9 +206,9 @@ All 205 pass; pytest exit 0.
 The brain is built. The operator's path forward:
 
 ```
-This week (May 12-15):
+Historical plan for that May 12-15 window:
   * Run paper-soak review on the 12-bot soak (separate from Hermes work)
-  * Pick the SINGLE best bot for live cutover ~May 15
+  * Review the SINGLE best bot for any future live-cutover path around that window
   * Wire live broker routing (IBKR Pro per operator preference)
   * Use jarvis_kelly_recommend to set initial sizing on the chosen bot
 

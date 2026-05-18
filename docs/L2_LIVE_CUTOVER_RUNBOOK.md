@@ -6,6 +6,10 @@
 
 **Stop conditions:** Any step that fails → halt and triage. Do not skip steps under time pressure.
 
+> **Historical snapshot note:** This runbook captures an older L2 cutover
+> plan. Treat its live-cutover sequencing as historical context, and defer
+> to the current ETA readiness and launch surfaces before acting.
+
 ---
 
 ## Stage 0 — IBKR subscriptions active (operator action)
@@ -114,16 +118,16 @@ python -m eta_engine.scripts.l2_confidence_calibration --strategy book_imbalance
 
 ---
 
-## Stage 5 — Live cutover (single strategy, single symbol, max_qty=1)
+## Stage 5 — Historical live-cutover scenario (single strategy, single symbol, max_qty=1)
 
-**Pre-cutover checklist:**
+**Historical pre-cutover checklist for an already-approved launch:**
 - [ ] Operator written PM Decision Log (template at `docs/L2_STRATEGY_DECISION_MEMO.md`)
 - [ ] Red Team dissent verbatim in the memo
 - [ ] Daily loss limit configured in broker
 - [ ] Kill-switch tested (force-stop scheduled task, verify daemons exit cleanly)
 - [ ] Operator-facing dashboard shows the bot
 
-**Cutover sequence:**
+**Historical cutover sequence for an already-approved launch:**
 1. Set strategy `promotion_status` to `live` in `l2_strategy_registry.py`
 2. Commit + deploy to VPS
 3. Restart the live order router

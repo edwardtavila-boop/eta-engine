@@ -284,7 +284,7 @@ After all bug fixes + supercharges + walk-forward IS/OOS + 90-day cross-validati
 
 `btc_hybrid`, `btc_regime_trend_etf`, and `btc_sage_daily_etf` all return **identical** 90-day backtest results (135T / 27.4% WR / +$1,238 realistic / +$1,116 pessimistic / $29 commission / 0 rejected).
 
-**Registry diagnostic confirms** all three are `kind=confluence_scorecard, symbol=BTC` — they wrap the same underlying sub-strategy with the same parameters under three different bot_ids. **If all three were promoted to live, the fleet would deploy 3x risk on a single edge** — a critical risk-budget violation. Promote ONLY ONE of these three.
+**Registry diagnostic confirms** all three are `kind=confluence_scorecard, symbol=BTC` — they wrap the same underlying sub-strategy with the same parameters under three different bot_ids. **If all three were promoted to live, the fleet would deploy 3x risk on a single edge** — a critical risk-budget violation. If this trio is ever reconsidered, promote only one of these three, and only after current launch surfaces agree.
 
 ### Other registry findings
 

@@ -86,7 +86,7 @@ Paper-soak v2 with **offset windows** (running the same strategy on bars from 30
 **Implication:** the "verified candidate" status is REGIME-CONDITIONAL, not unconditional. eth_sage_daily was +$3,548 on the most-recent 30d — but only +$396 on a 30d window 210 days ago. btc_optimized was +$1,001 most-recent but **lost $405 in the older window**. Live deployment must include rolling-WR / rolling-PnL kill criteria so a regime change doesn't bleed accumulated profits.
 
 ### Critical pre-live findings
-- **3 BTC bots are bit-for-bit identical** (btc_hybrid = btc_regime_trend_etf = btc_sage_daily_etf, all `kind=confluence_scorecard symbol=BTC`). **Promote ONLY ONE** — deploying all three would 3x the risk on a single edge.
+- **3 BTC bots are bit-for-bit identical** (btc_hybrid = btc_regime_trend_etf = btc_sage_daily_etf, all `kind=confluence_scorecard symbol=BTC`). **Historical operator note:** if this trio is ever reconsidered, promote only one — deploying all three would 3x the risk on a single edge.
 - **No data loaded for Phase 2 commodities/bonds/FX/equity-micros** (gc/cl/ng/zn/6E/mes/m2k/ym sweep_reclaim variants). Data ingest needed before audit.
 - **Some bots are operator-intentional shadow_benchmark** (btc_ensemble_2of3, btc_hybrid_sage). Their bridge-None / 0-trade results are by design, not bugs.
 
