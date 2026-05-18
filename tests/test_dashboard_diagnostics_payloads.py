@@ -11,6 +11,8 @@ from eta_engine.deploy.scripts.dashboard_diagnostics_payloads import (
     build_dashboard_normalized_diamond_retune_status_payload,
     build_dashboard_retune_focus_overlay_payload,
     build_dashboard_retune_focus_summary_payload,
+    build_dashboard_unknown_diamond_retune_status_payload,
+    resolve_dashboard_retune_focus_active_experiment_outcome_line,
 )
 
 
@@ -281,6 +283,48 @@ def test_build_dashboard_diagnostics_retune_payload_coerces_bad_experiment_to_em
     }
 
 
+def test_resolve_dashboard_retune_focus_active_experiment_outcome_line_formats_clean_metrics() -> None:
+    line = resolve_dashboard_retune_focus_active_experiment_outcome_line(
+        {
+            "experiment_id": "partial_profit_disabled",
+            "post_change_closed_trade_count": 2,
+            "post_change_cumulative_r": 0.8192,
+            "post_change_total_realized_pnl": 40.0,
+            "post_change_profit_factor": 1.5,
+        }
+    )
+
+    assert line == "partial_profit_disabled: 2 post-change closes | R +0.82 | PnL $40.00 | PF 1.50"
+
+
+def test_resolve_dashboard_retune_focus_active_experiment_outcome_line_fails_closed_on_boolean_fields() -> None:
+    assert (
+        resolve_dashboard_retune_focus_active_experiment_outcome_line(
+            {"experiment_id": True, "post_change_closed_trade_count": True},
+            fallback=True,
+        )
+        == ""
+    )
+
+
+def test_build_dashboard_unknown_diamond_retune_status_payload_preserves_missing_contract() -> None:
+    payload = build_dashboard_unknown_diamond_retune_status_payload(
+        path="C:/EvolutionaryTradingAlgo/var/eta_engine/state/diamond_retune_status_latest.json",
+        reason="missing_snapshot",
+    )
+
+    assert payload["kind"] == "eta_diamond_retune_status"
+    assert payload["source"] == "missing_snapshot"
+    assert payload["status"] == "missing"
+    assert payload["ready"] is False
+    assert payload["contract_ok"] is False
+    assert payload["path"].endswith("diamond_retune_status_latest.json")
+    assert payload["summary"]["broker_truth_focus_active_experiment_outcome_line"] == ""
+    assert payload["bots"] == []
+    assert payload["research_backlog"] == []
+    assert payload["notes"] == ["diamond retune status has not been generated"]
+
+
 def test_build_dashboard_retune_focus_overlay_payload_preserves_overlay_contract() -> None:
     payload = build_dashboard_retune_focus_overlay_payload(
         snapshot={
@@ -394,6 +438,17 @@ def test_build_dashboard_retune_focus_summary_payload_preserves_summary_contract
         ),
         "retune_focus_active_experiment_drift_display": "public vs local retune drift",
     }
+
+def test_resolve_dashboard_retune_focus_active_experiment_outcome_line_prefers_fallback() -> None:
+    outcome_line = resolve_dashboard_retune_focus_active_experiment_outcome_line(
+        {
+            "experiment_id": "partial_profit_disabled",
+            "awaiting_first_post_change_close": True,
+        },
+        fallback="already computed outcome",
+    )
+
+    assert outcome_line == "already computed outcome"
 
 
 def test_build_dashboard_normalized_diamond_retune_status_payload_preserves_alias_contract() -> None:

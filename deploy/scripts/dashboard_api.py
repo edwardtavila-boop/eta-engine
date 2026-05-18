@@ -66,6 +66,7 @@ from eta_engine.deploy.scripts.dashboard_diagnostics_contracts import (
     build_dashboard_diagnostics_checks,
 )
 from eta_engine.deploy.scripts.dashboard_diagnostics_payloads import (
+    build_dashboard_command_center_watchdog_summary_payload,
     build_dashboard_diagnostics_diamond_retune_payload,
     build_dashboard_diagnostics_dirty_worktree_payload,
     build_dashboard_diagnostics_equity_payload,
@@ -76,6 +77,8 @@ from eta_engine.deploy.scripts.dashboard_diagnostics_payloads import (
     build_dashboard_normalized_diamond_retune_status_payload,
     build_dashboard_retune_focus_overlay_payload,
     build_dashboard_retune_focus_summary_payload,
+    build_dashboard_unknown_diamond_retune_status_payload,
+    resolve_dashboard_retune_focus_active_experiment_outcome_line,
 )
 from eta_engine.deploy.scripts.dashboard_diagnostics_sources import (
     build_dashboard_diagnostics_bot_fleet_counts,
@@ -2478,6 +2481,13 @@ def _dashboard_diagnostics_payload() -> dict:
                 or eta_readiness_snapshot.get("command_center_issue_summary")
                 or ""
             ),
+            "command_center_watchdog_issue_status": str(
+                eta_readiness_snapshot.get("command_center_issue_status")
+                or roster_summary.get("command_center_watchdog_issue_status")
+                or command_center_watchdog.get("issue_status")
+                or command_center_watchdog.get("status")
+                or ""
+            ),
             "command_center_watchdog_operator_next_step": str(
                 roster_summary.get("command_center_watchdog_operator_next_step")
                 or command_center_watchdog.get("operator_next_step")
@@ -2577,6 +2587,15 @@ def _dashboard_diagnostics_payload() -> dict:
                 )
                 or ""
             ),
+            "command_center_watchdog_action_plan": (
+                list(roster_summary.get("command_center_watchdog_action_plan"))
+                if isinstance(roster_summary.get("command_center_watchdog_action_plan"), list)
+                else (
+                    list(command_center_watchdog.get("action_plan"))
+                    if isinstance(command_center_watchdog.get("action_plan"), list)
+                    else []
+                )
+            ),
             "command_center_watchdog_action_count": int(
 
                     2
@@ -2589,6 +2608,15 @@ def _dashboard_diagnostics_payload() -> dict:
                         else (command_center_watchdog.get("action_count") or 0)
                     )
 
+            ),
+            "command_center_watchdog_follow_up_actions": (
+                list(roster_summary.get("command_center_watchdog_follow_up_actions"))
+                if isinstance(roster_summary.get("command_center_watchdog_follow_up_actions"), list)
+                else (
+                    list(command_center_watchdog.get("follow_up_actions"))
+                    if isinstance(command_center_watchdog.get("follow_up_actions"), list)
+                    else []
+                )
             ),
             "command_center_watchdog_follow_up_count": int(
 
@@ -3429,117 +3457,14 @@ def _diamond_retune_status_path() -> Path:
     return _state_dir() / "diamond_retune_status_latest.json"
 
 
-def _diamond_retune_status_unknown(path: Path, *, reason: str) -> dict[str, object]:
-    return {
-        "kind": "eta_diamond_retune_status",
-        "source": reason,
-        "path": str(path),
-        "source_path": str(path),
-        "status": "missing",
-        "ready": False,
-        "contract_ok": False,
-        "safe_to_mutate_live": False,
-        "summary": {
-            "n_targets": 0,
-            "n_attempted_bots": 0,
-            "n_unattempted_targets": 0,
-            "n_research_backlog_targets": 0,
-            "n_low_sample_keep_collecting": 0,
-            "n_near_miss_keep_tuning": 0,
-            "n_unstable_positive_keep_tuning": 0,
-            "n_research_passed_broker_proof_required": 0,
-            "n_stuck_research_failing": 0,
-            "n_timeout_retry": 0,
-            "broker_proof_required_closes": 100,
-            "n_broker_sample_ready": 0,
-            "n_broker_edge_ready": 0,
-            "n_broker_proof_ready": 0,
-            "n_broker_sample_ready_negative_edge": 0,
-            "n_broker_proof_shortfall": 0,
-            "largest_broker_proof_gap": 0,
-            "total_broker_proof_gap": 0,
-            "broker_truth_focus_bot_id": "",
-            "broker_truth_focus_state": "",
-            "broker_truth_focus_edge_status": "",
-            "broker_truth_focus_closed_trade_count": 0,
-            "broker_truth_focus_required_closed_trade_count": 100,
-            "broker_truth_focus_remaining_closed_trade_count": 0,
-            "broker_truth_focus_total_realized_pnl": 0.0,
-            "broker_truth_focus_profit_factor": 0.0,
-            "broker_truth_focus_issue_code": "",
-            "broker_truth_focus_priority_score": 0.0,
-            "broker_truth_focus_strategy_kind": "",
-            "broker_truth_focus_best_session": "",
-            "broker_truth_focus_worst_session": "",
-            "broker_truth_focus_parameter_focus": [],
-            "broker_truth_focus_primary_experiment": "",
-            "broker_truth_focus_next_command": "",
-            "broker_truth_focus_next_action": "",
-            "broker_truth_focus_active_experiment": {},
-            "broker_truth_focus_active_experiment_summary_line": "",
-            "broker_truth_focus_active_experiment_outcome_line": "",
-            "broker_truth_summary_line": "",
-            "safe_to_mutate_live": False,
-        },
-        "bots": [],
-        "research_backlog": [],
-        "notes": ["diamond retune status has not been generated"],
-    }
-
-
-def _format_retune_experiment_currency(value: float) -> str:
-    sign = "-" if value < 0 else ""
-    return f"{sign}${abs(value):,.2f}"
-
-
-def _retune_focus_active_experiment_outcome_line(
-    experiment: dict[str, Any] | None,
-    *,
-    fallback: object = "",
-) -> str:
-    fallback_text = str(fallback or "").strip()
-    if fallback_text:
-        return fallback_text
-    if not isinstance(experiment, dict):
-        return ""
-    experiment_id = str(experiment.get("experiment_id") or "").strip()
-    if not experiment_id:
-        return ""
-    if experiment.get("awaiting_first_post_change_close") is True:
-        return f"{experiment_id}: awaiting first post-change close"
-
-    raw_close_count = experiment.get("post_change_closed_trade_count")
-    if isinstance(raw_close_count, bool):
-        close_count = 0
-    else:
-        try:
-            close_count = int(raw_close_count or 0)
-        except (TypeError, ValueError):
-            close_count = 0
-    if close_count <= 0:
-        return experiment_id
-
-    parts = [f"{experiment_id}: {close_count} post-change close{'s' if close_count != 1 else ''}"]
-    for raw_value, label, formatter in (
-        (experiment.get("post_change_cumulative_r"), "R", lambda v: f"{v:+.2f}"),
-        (experiment.get("post_change_total_realized_pnl"), "PnL", _format_retune_experiment_currency),
-        (experiment.get("post_change_profit_factor"), "PF", lambda v: f"{v:.2f}"),
-    ):
-        if isinstance(raw_value, bool) or raw_value is None:
-            continue
-        try:
-            numeric_value = float(raw_value)
-        except (TypeError, ValueError):
-            continue
-        parts.append(f"{label} {formatter(numeric_value)}")
-    return " | ".join(parts)
-
-
 def _load_diamond_retune_status() -> dict[str, object]:
     path = _diamond_retune_status_path()
     payload = _read_json_file(path)
     if not payload:
-        return _diamond_retune_status_unknown(path, reason="missing_snapshot")
+        return build_dashboard_unknown_diamond_retune_status_payload(
+            path=str(path),
+            reason="missing_snapshot",
+        )
 
     summary = payload.get("summary") if isinstance(payload.get("summary"), dict) else {}
     focus_active_experiment = (
@@ -3551,7 +3476,7 @@ def _load_diamond_retune_status() -> dict[str, object]:
             else {}
         )
     )
-    focus_active_experiment_outcome_line = _retune_focus_active_experiment_outcome_line(
+    focus_active_experiment_outcome_line = resolve_dashboard_retune_focus_active_experiment_outcome_line(
         focus_active_experiment,
         fallback=(
             summary.get("broker_truth_focus_active_experiment_outcome_line")
@@ -3574,7 +3499,7 @@ def _diamond_retune_diagnostic_payload(snapshot: dict[str, Any]) -> dict[str, ob
         path=str(path),
         updated_at=(datetime.fromtimestamp(mtime, UTC).isoformat() if mtime is not None else None),
         age_s=(max(0, int(time.time() - mtime)) if mtime is not None else None),
-        broker_truth_focus_active_experiment_outcome_line=_retune_focus_active_experiment_outcome_line(
+        broker_truth_focus_active_experiment_outcome_line=resolve_dashboard_retune_focus_active_experiment_outcome_line(
             summary.get("broker_truth_focus_active_experiment"),
         ),
     )
@@ -3599,7 +3524,9 @@ def _retune_focus_overlay(
         focus_active_experiment_outcome_line=str(
             snapshot.get("focus_active_experiment_outcome_line")
             or summary.get("broker_truth_focus_active_experiment_outcome_line")
-            or _retune_focus_active_experiment_outcome_line(snapshot.get("focus_active_experiment"))
+            or resolve_dashboard_retune_focus_active_experiment_outcome_line(
+                snapshot.get("focus_active_experiment")
+            )
         ),
     )
 
@@ -11764,6 +11691,12 @@ def bot_fleet_roster(
                 or eta_readiness_snapshot.get("command_center_issue_summary")
                 or ""
             ),
+            "command_center_watchdog_issue_status": str(
+                eta_readiness_snapshot.get("command_center_issue_status")
+                or command_center_watchdog.get("issue_status")
+                or command_center_watchdog.get("status")
+                or ""
+            ),
             "command_center_watchdog_operator_next_step": str(
                 command_center_watchdog.get("operator_next_step")
                 or command_center_watchdog.get("next_step")
@@ -11813,7 +11746,17 @@ def bot_fleet_roster(
             "command_center_watchdog_instruction": str(
                 command_center_watchdog.get("instruction") or ""
             ),
+            "command_center_watchdog_action_plan": (
+                list(command_center_watchdog.get("action_plan"))
+                if isinstance(command_center_watchdog.get("action_plan"), list)
+                else []
+            ),
             "command_center_watchdog_action_count": int(command_center_watchdog.get("action_count") or 0),
+            "command_center_watchdog_follow_up_actions": (
+                list(command_center_watchdog.get("follow_up_actions"))
+                if isinstance(command_center_watchdog.get("follow_up_actions"), list)
+                else []
+            ),
             "command_center_watchdog_follow_up_count": int(
                 command_center_watchdog.get("follow_up_count") or 0
             ),
@@ -12086,9 +12029,32 @@ def bot_fleet_roster(
             "broker_bracket_primary_coverage_status": str(broker_bracket_primary.get("coverage_status") or ""),
             "paper_live_status": str(paper_live_summary.get("status") or "unknown"),
             "paper_live_detail": str(paper_live_summary.get("detail") or ""),
+            "paper_live_raw_status": str(
+                paper_live_summary.get("raw_status")
+                or (
+                    paper_live_transition.get("raw_status")
+                    if isinstance(paper_live_transition, dict)
+                    else ""
+                )
+                or (
+                    paper_live_transition.get("status")
+                    if isinstance(paper_live_transition, dict)
+                    else ""
+                )
+                or "unknown"
+            ),
             "paper_live_effective_status": str(paper_live_summary.get("effective_status") or "unknown"),
             "paper_live_effective_detail": str(paper_live_summary.get("effective_detail") or ""),
             "paper_live_first_launch_next_action": str(paper_live_summary.get("first_launch_next_action") or ""),
+            "paper_live_first_failed_gate": (
+                dict(paper_live_summary.get("first_failed_gate"))
+                if isinstance(paper_live_summary.get("first_failed_gate"), dict)
+                else (
+                    _first_failed_gate(paper_live_transition)
+                    if isinstance(paper_live_transition, dict)
+                    else {}
+                )
+            ),
             "paper_live_non_authoritative_gateway_host": bool(
                 paper_live_summary.get("non_authoritative_gateway_host")
             ),
@@ -19744,6 +19710,11 @@ def _local_master_status_payload() -> dict[str, object]:
                 "stale_detail": paper_stale_detail,
                 "non_authoritative_gateway_host": paper_non_authoritative_gateway_host,
                 "first_launch_next_action": paper_first_launch_next_action,
+                "first_failed_gate": (
+                    paper.get("first_failed_gate")
+                    if isinstance(paper.get("first_failed_gate"), dict)
+                    else _first_failed_gate(paper if isinstance(paper, dict) else {})
+                ),
                 "held_by_bracket_audit": paper_held_by_bracket_audit,
                 "held_by_daily_loss_stop": paper_held_by_daily_loss_stop,
                 "daily_loss_killswitch": daily_loss_killswitch,

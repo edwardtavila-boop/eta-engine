@@ -123,6 +123,156 @@ def build_dashboard_diagnostics_paper_live_payload(
     }
 
 
+def build_dashboard_command_center_watchdog_summary_payload(
+    *,
+    command_center_watchdog: dict[str, Any],
+    eta_readiness_snapshot: dict[str, Any],
+    roster_summary: dict[str, Any] | None = None,
+    apply_readiness_stale_overrides: bool = False,
+) -> dict[str, Any]:
+    """Build the shared command-center watchdog summary payload."""
+
+    watchdog = command_center_watchdog if isinstance(command_center_watchdog, dict) else {}
+    readiness = eta_readiness_snapshot if isinstance(eta_readiness_snapshot, dict) else {}
+    roster = roster_summary if isinstance(roster_summary, dict) else {}
+    readiness_issue_status = str(readiness.get("command_center_issue_status") or "").strip()
+    readiness_issue_active = (
+        apply_readiness_stale_overrides and bool(readiness_issue_status) and readiness_issue_status != "healthy"
+    )
+    instruction_next_step = str(
+        readiness.get("command_center_operator_next_step")
+        or roster.get("command_center_watchdog_next_step")
+        or watchdog.get("operator_next_step")
+        or watchdog.get("next_step")
+        or ""
+    ).strip()
+    action_plan = (
+        list(roster.get("command_center_watchdog_action_plan"))
+        if isinstance(roster.get("command_center_watchdog_action_plan"), list)
+        else (list(watchdog.get("action_plan")) if isinstance(watchdog.get("action_plan"), list) else [])
+    )
+    follow_up_actions = (
+        list(roster.get("command_center_watchdog_follow_up_actions"))
+        if isinstance(roster.get("command_center_watchdog_follow_up_actions"), list)
+        else (list(watchdog.get("follow_up_actions")) if isinstance(watchdog.get("follow_up_actions"), list) else [])
+    )
+    return {
+        "command_center_watchdog_summary_line": str(
+            roster.get("command_center_watchdog_summary_line")
+            or watchdog.get("summary_line")
+            or watchdog.get("summary")
+            or watchdog.get("display_summary")
+            or watchdog.get("display_issue_summary")
+            or watchdog.get("issue_summary")
+            or readiness.get("command_center_issue_summary")
+            or ""
+        ),
+        "command_center_watchdog_issue_status": str(
+            readiness.get("command_center_issue_status")
+            or roster.get("command_center_watchdog_issue_status")
+            or watchdog.get("issue_status")
+            or watchdog.get("status")
+            or ""
+        ),
+        "command_center_watchdog_operator_next_step": str(
+            roster.get("command_center_watchdog_operator_next_step")
+            or watchdog.get("operator_next_step")
+            or watchdog.get("next_step")
+            or ""
+        ),
+        "command_center_watchdog_operator_next_reason": str(
+            roster.get("command_center_watchdog_operator_next_reason")
+            or watchdog.get("operator_next_reason")
+            or watchdog.get("next_reason")
+            or ""
+        ),
+        "command_center_watchdog_operator_next_command": (
+            roster.get("command_center_watchdog_operator_next_command")
+            if roster.get("command_center_watchdog_operator_next_command") is not None
+            else watchdog.get("operator_next_command")
+        ),
+        "command_center_watchdog_operator_next_requires_elevation": (
+            roster.get("command_center_watchdog_operator_next_requires_elevation")
+            if roster.get("command_center_watchdog_operator_next_requires_elevation") is not None
+            else watchdog.get("operator_next_requires_elevation")
+        ),
+        "command_center_watchdog_next_step": str(
+            readiness.get("command_center_operator_next_step")
+            or roster.get("command_center_watchdog_next_step")
+            or watchdog.get("operator_next_step")
+            or watchdog.get("next_step")
+            or ""
+        ),
+        "command_center_watchdog_next_reason": str(
+            readiness.get("command_center_operator_next_reason")
+            or roster.get("command_center_watchdog_next_reason")
+            or watchdog.get("operator_next_reason")
+            or watchdog.get("next_reason")
+            or ""
+        ),
+        "command_center_watchdog_next_command": str(
+            readiness.get("command_center_operator_next_command")
+            or roster.get("command_center_watchdog_next_command")
+            or watchdog.get("operator_next_command")
+            or watchdog.get("next_command")
+            or ""
+        ),
+        "command_center_watchdog_failure_class": str(
+            ("stale_service" if readiness_issue_active else "")
+            or roster.get("command_center_watchdog_failure_class")
+            or watchdog.get("failure_class")
+            or ""
+        ),
+        "command_center_watchdog_operator_contract_state": str(
+            ("stale_service" if readiness_issue_active else "")
+            or roster.get("command_center_watchdog_operator_contract_state")
+            or watchdog.get("operator_contract_state")
+            or ""
+        ),
+        "command_center_watchdog_recommended_action": str(
+            readiness.get("command_center_operator_next_step")
+            or roster.get("command_center_watchdog_recommended_action")
+            or watchdog.get("recommended_action")
+            or ""
+        ),
+        "command_center_watchdog_primary_blocker": str(
+            readiness.get("command_center_issue_status")
+            or roster.get("command_center_watchdog_primary_blocker")
+            or watchdog.get("primary_blocker")
+            or watchdog.get("issue_status")
+            or watchdog.get("status")
+            or ""
+        ),
+        "command_center_watchdog_instruction": str(
+            roster.get("command_center_watchdog_instruction")
+            or watchdog.get("instruction")
+            or watchdog.get("operator_next_instruction")
+            or ("Run the launcher and approve the UAC prompt." if instruction_next_step == "reload_operator_service" else "")
+            or ""
+        ),
+        "command_center_watchdog_action_plan": action_plan,
+        "command_center_watchdog_action_count": int(
+            2
+            if readiness_issue_active
+            else (
+                roster.get("command_center_watchdog_action_count")
+                if roster.get("command_center_watchdog_action_count") is not None
+                else (watchdog.get("action_count") or 0)
+            )
+        ),
+        "command_center_watchdog_follow_up_actions": follow_up_actions,
+        "command_center_watchdog_follow_up_count": int(
+            1
+            if readiness_issue_active
+            else (
+                roster.get("command_center_watchdog_follow_up_count")
+                if roster.get("command_center_watchdog_follow_up_count") is not None
+                else (watchdog.get("follow_up_count") or 0)
+            )
+        ),
+    }
+
+
 def build_dashboard_diagnostics_retune_focus_payload(
     *,
     diamond_retune_status: dict[str, Any],
@@ -203,6 +353,57 @@ def build_dashboard_diagnostics_retune_payload(
             eta_readiness_snapshot.get("local_retune_sync_drift_display") or ""
         ),
     }
+
+
+def _format_retune_experiment_currency(value: float) -> str:
+    sign = "-" if value < 0 else ""
+    return f"{sign}${abs(value):,.2f}"
+
+
+def resolve_dashboard_retune_focus_active_experiment_outcome_line(
+    experiment: dict[str, Any] | None,
+    *,
+    fallback: object = "",
+) -> str:
+    """Resolve the dashboard retune active-experiment outcome line."""
+
+    fallback_text = "" if isinstance(fallback, bool) else str(fallback or "").strip()
+    if fallback_text:
+        return fallback_text
+    if not isinstance(experiment, dict):
+        return ""
+    raw_experiment_id = experiment.get("experiment_id")
+    experiment_id = "" if isinstance(raw_experiment_id, bool) else str(raw_experiment_id or "").strip()
+    if not experiment_id:
+        return ""
+    if experiment.get("awaiting_first_post_change_close") is True:
+        return f"{experiment_id}: awaiting first post-change close"
+
+    raw_close_count = experiment.get("post_change_closed_trade_count")
+    if isinstance(raw_close_count, bool):
+        close_count = 0
+    else:
+        try:
+            close_count = int(raw_close_count or 0)
+        except (TypeError, ValueError):
+            close_count = 0
+    if close_count <= 0:
+        return experiment_id
+
+    parts = [f"{experiment_id}: {close_count} post-change close{'s' if close_count != 1 else ''}"]
+    for raw_value, label, formatter in (
+        (experiment.get("post_change_cumulative_r"), "R", lambda v: f"{v:+.2f}"),
+        (experiment.get("post_change_total_realized_pnl"), "PnL", _format_retune_experiment_currency),
+        (experiment.get("post_change_profit_factor"), "PF", lambda v: f"{v:.2f}"),
+    ):
+        if isinstance(raw_value, bool) or raw_value is None:
+            continue
+        try:
+            numeric_value = float(raw_value)
+        except (TypeError, ValueError):
+            continue
+        parts.append(f"{label} {formatter(numeric_value)}")
+    return " | ".join(parts)
 
 
 def build_dashboard_retune_focus_overlay_payload(
@@ -395,6 +596,70 @@ def build_dashboard_normalized_diamond_retune_status_payload(
         }
     )
     return normalized
+
+
+def build_dashboard_unknown_diamond_retune_status_payload(
+    *,
+    path: str,
+    reason: str,
+) -> dict[str, Any]:
+    """Build the fail-closed missing diamond retune snapshot payload."""
+
+    return {
+        "kind": "eta_diamond_retune_status",
+        "source": str(reason or "missing_snapshot"),
+        "path": str(path),
+        "source_path": str(path),
+        "status": "missing",
+        "ready": False,
+        "contract_ok": False,
+        "safe_to_mutate_live": False,
+        "summary": {
+            "n_targets": 0,
+            "n_attempted_bots": 0,
+            "n_unattempted_targets": 0,
+            "n_research_backlog_targets": 0,
+            "n_low_sample_keep_collecting": 0,
+            "n_near_miss_keep_tuning": 0,
+            "n_unstable_positive_keep_tuning": 0,
+            "n_research_passed_broker_proof_required": 0,
+            "n_stuck_research_failing": 0,
+            "n_timeout_retry": 0,
+            "broker_proof_required_closes": 100,
+            "n_broker_sample_ready": 0,
+            "n_broker_edge_ready": 0,
+            "n_broker_proof_ready": 0,
+            "n_broker_sample_ready_negative_edge": 0,
+            "n_broker_proof_shortfall": 0,
+            "largest_broker_proof_gap": 0,
+            "total_broker_proof_gap": 0,
+            "broker_truth_focus_bot_id": "",
+            "broker_truth_focus_state": "",
+            "broker_truth_focus_edge_status": "",
+            "broker_truth_focus_closed_trade_count": 0,
+            "broker_truth_focus_required_closed_trade_count": 100,
+            "broker_truth_focus_remaining_closed_trade_count": 0,
+            "broker_truth_focus_total_realized_pnl": 0.0,
+            "broker_truth_focus_profit_factor": 0.0,
+            "broker_truth_focus_issue_code": "",
+            "broker_truth_focus_priority_score": 0.0,
+            "broker_truth_focus_strategy_kind": "",
+            "broker_truth_focus_best_session": "",
+            "broker_truth_focus_worst_session": "",
+            "broker_truth_focus_parameter_focus": [],
+            "broker_truth_focus_primary_experiment": "",
+            "broker_truth_focus_next_command": "",
+            "broker_truth_focus_next_action": "",
+            "broker_truth_focus_active_experiment": {},
+            "broker_truth_focus_active_experiment_summary_line": "",
+            "broker_truth_focus_active_experiment_outcome_line": "",
+            "broker_truth_summary_line": "",
+            "safe_to_mutate_live": False,
+        },
+        "bots": [],
+        "research_backlog": [],
+        "notes": ["diamond retune status has not been generated"],
+    }
 
 
 def build_dashboard_diagnostics_diamond_retune_payload(

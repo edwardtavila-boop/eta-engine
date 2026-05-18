@@ -4274,6 +4274,9 @@ class TestDashboardAPI:
         assert payload["bot_fleet"]["command_center_watchdog_summary_line"] == (
             "Command Center doctor receipt missing"
         )
+        assert payload["bot_fleet"]["command_center_watchdog_issue_status"] == "missing_receipt"
+        assert payload["bot_fleet"]["command_center_watchdog_action_plan"] == []
+        assert payload["bot_fleet"]["command_center_watchdog_follow_up_actions"] == []
         assert payload["bot_fleet"]["command_center_watchdog_operator_next_step"] == "run_watchdog_now"
         assert payload["checks"]["dashboard_proxy_watchdog_contract"] is True
 
@@ -5533,6 +5536,30 @@ class TestDashboardAPI:
         ]
         assert watchdog["firm_command_center_dependency_gap_status"]["missing_module"] == "portalocker"
         assert watchdog["summary_line"] == watchdog["summary"]
+        assert payload["bot_fleet"]["command_center_watchdog_issue_status"] == (
+            "dashboard_task_contract_drift"
+        )
+        assert payload["bot_fleet"]["command_center_watchdog_action_plan"] == [
+            {
+                "role": "primary",
+                "step": "reload_operator_service",
+                "command": ".\\scripts\\reload-command-center-admin.cmd -PublicUrl https://ops.evolutionarytradingalgo.com",
+            },
+            {
+                "role": "follow_up",
+                "step": "register_watchdog",
+                "command": (
+                    "powershell -ExecutionPolicy Bypass -File "
+                    ".\\scripts\\register-command-center-watchdog.ps1 -RunNow"
+                ),
+            },
+        ]
+        assert payload["bot_fleet"]["command_center_watchdog_follow_up_actions"] == [
+            {
+                "step": "register_watchdog",
+                "reason": "watchdog_missing",
+            }
+        ]
         assert payload["checks"]["command_center_watchdog_contract"] is True
 
     def test_dashboard_diagnostics_accepts_dashboard_task_contract_drift_watchdog_status(
@@ -11158,6 +11185,7 @@ class TestDashboardAPI:
         assert payload["summary"]["command_center_watchdog_summary_line"] == (
             "Command Center watchdog is healthy."
         )
+        assert payload["summary"]["command_center_watchdog_issue_status"] == "healthy"
         assert payload["summary"]["command_center_watchdog_checked_at"] == "2026-05-17T00:00:00+00:00"
         assert payload["summary"]["command_center_watchdog_operator_next_step"] == "none"
         assert payload["summary"]["command_center_watchdog_operator_next_reason"] == "healthy"
@@ -11171,7 +11199,9 @@ class TestDashboardAPI:
         assert payload["summary"]["command_center_watchdog_recommended_action"] == "none"
         assert payload["summary"]["command_center_watchdog_primary_blocker"] == "healthy"
         assert payload["summary"]["command_center_watchdog_instruction"] == ""
+        assert payload["summary"]["command_center_watchdog_action_plan"] == []
         assert payload["summary"]["command_center_watchdog_action_count"] == 0
+        assert payload["summary"]["command_center_watchdog_follow_up_actions"] == []
         assert payload["summary"]["command_center_watchdog_follow_up_count"] == 0
         assert payload["summary"]["command_center_watchdog_dashboard_task_missing_task_names"] == []
         assert payload["summary"]["command_center_watchdog_dashboard_task_access_denied_task_names"] == [
@@ -14015,6 +14045,7 @@ class TestDashboardAPI:
         assert payload["summary"]["command_center_watchdog_summary_line"] == (
             "Command Center watchdog is healthy."
         )
+        assert payload["summary"]["command_center_watchdog_issue_status"] == "healthy"
         assert payload["summary"]["command_center_watchdog_checked_at"] == "2026-05-17T00:00:00+00:00"
         assert payload["summary"]["command_center_watchdog_operator_next_step"] == "none"
         assert payload["summary"]["command_center_watchdog_operator_next_reason"] == "healthy"
@@ -14028,7 +14059,9 @@ class TestDashboardAPI:
         assert payload["summary"]["command_center_watchdog_recommended_action"] == "none"
         assert payload["summary"]["command_center_watchdog_primary_blocker"] == "healthy"
         assert payload["summary"]["command_center_watchdog_instruction"] == ""
+        assert payload["summary"]["command_center_watchdog_action_plan"] == []
         assert payload["summary"]["command_center_watchdog_action_count"] == 0
+        assert payload["summary"]["command_center_watchdog_follow_up_actions"] == []
         assert payload["summary"]["command_center_watchdog_follow_up_count"] == 0
         assert payload["summary"]["command_center_watchdog_dashboard_task_missing_task_names"] == []
         assert payload["summary"]["command_center_watchdog_dashboard_task_access_denied_task_names"] == [
