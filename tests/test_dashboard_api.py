@@ -4230,6 +4230,7 @@ class TestDashboardAPI:
         assert watchdog["heartbeat_path"].endswith("dashboard_proxy_watchdog_heartbeat.json")
         assert payload["bot_fleet"]["dashboard_proxy_watchdog_status"] == "ok"
         assert payload["bot_fleet"]["dashboard_proxy_watchdog_detail"] == "noop: ok"
+        assert payload["bot_fleet"]["dashboard_proxy_watchdog_summary"] == "noop: ok"
         assert payload["bot_fleet"]["dashboard_proxy_watchdog_fresh"] is True
         assert payload["bot_fleet"]["dashboard_proxy_watchdog_action"] == "noop"
         assert payload["bot_fleet"]["dashboard_proxy_watchdog_task_name"] == "ETA-Proxy-8421"
@@ -4242,6 +4243,9 @@ class TestDashboardAPI:
         assert payload["bot_fleet"]["dashboard_proxy_watchdog_checked_age_s"] >= 0
         assert payload["bot_fleet"]["dashboard_proxy_watchdog_checked_at"]
         assert payload["bot_fleet"]["dashboard_proxy_watchdog_heartbeat_ts"]
+        assert payload["bot_fleet"]["dashboard_proxy_watchdog_heartbeat_path"].endswith(
+            "dashboard_proxy_watchdog_heartbeat.json"
+        )
         assert payload["bot_fleet"]["dashboard_proxy_watchdog_restart_ok"] is None
         assert payload["bot_fleet"]["dashboard_proxy_watchdog_restart_reason"] is None
         assert payload["bot_fleet"]["command_center_watchdog_issue_summary"] == (
@@ -11016,6 +11020,10 @@ class TestDashboardAPI:
                 "checked_age_s": 3,
                 "checked_at": "2026-05-17T00:00:00+00:00",
                 "heartbeat_ts": "2026-05-17T00:00:01+00:00",
+                "heartbeat_path": (
+                    "C:\\EvolutionaryTradingAlgo\\var\\eta_engine\\state\\"
+                    "dashboard_proxy_watchdog_heartbeat.json"
+                ),
                 "detail": "noop: ok",
                 "summary": "noop: ok",
             },
@@ -11204,6 +11212,7 @@ class TestDashboardAPI:
         }
         assert payload["summary"]["dashboard_proxy_watchdog_status"] == "ok"
         assert payload["summary"]["dashboard_proxy_watchdog_detail"] == "noop: ok"
+        assert payload["summary"]["dashboard_proxy_watchdog_summary"] == "noop: ok"
         assert payload["summary"]["dashboard_proxy_watchdog_fresh"] is True
         assert payload["summary"]["dashboard_proxy_watchdog_action"] == "noop"
         assert payload["summary"]["dashboard_proxy_watchdog_task_name"] == "ETA-Proxy-8421"
@@ -11216,6 +11225,9 @@ class TestDashboardAPI:
         assert payload["summary"]["dashboard_proxy_watchdog_checked_age_s"] == 3
         assert payload["summary"]["dashboard_proxy_watchdog_checked_at"] == "2026-05-17T00:00:00+00:00"
         assert payload["summary"]["dashboard_proxy_watchdog_heartbeat_ts"] == "2026-05-17T00:00:01+00:00"
+        assert payload["summary"]["dashboard_proxy_watchdog_heartbeat_path"].endswith(
+            "dashboard_proxy_watchdog_heartbeat.json"
+        )
         assert payload["summary"]["dashboard_proxy_watchdog_restart_ok"] is None
         assert payload["summary"]["dashboard_proxy_watchdog_restart_reason"] is None
 
@@ -14057,6 +14069,7 @@ class TestDashboardAPI:
         }
         assert payload["summary"]["dashboard_proxy_watchdog_status"] == "ok"
         assert payload["summary"]["dashboard_proxy_watchdog_detail"] == "noop: ok"
+        assert payload["summary"]["dashboard_proxy_watchdog_summary"] == "noop: ok"
         assert payload["summary"]["dashboard_proxy_watchdog_fresh"] is True
         assert payload["summary"]["dashboard_proxy_watchdog_action"] == "noop"
         assert payload["summary"]["dashboard_proxy_watchdog_task_name"] == "ETA-Proxy-8421"
@@ -14069,6 +14082,9 @@ class TestDashboardAPI:
         assert payload["summary"]["dashboard_proxy_watchdog_checked_age_s"] >= 0
         assert payload["summary"]["dashboard_proxy_watchdog_checked_at"]
         assert payload["summary"]["dashboard_proxy_watchdog_heartbeat_ts"]
+        assert payload["summary"]["dashboard_proxy_watchdog_heartbeat_path"].endswith(
+            "dashboard_proxy_watchdog_heartbeat.json"
+        )
         assert payload["summary"]["dashboard_proxy_watchdog_restart_ok"] is None
         assert payload["summary"]["dashboard_proxy_watchdog_restart_reason"] is None
         assert payload["live_broker_state"]["probe_skipped"] is True

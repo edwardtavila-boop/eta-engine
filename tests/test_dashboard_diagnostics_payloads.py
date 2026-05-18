@@ -8,7 +8,9 @@ from eta_engine.deploy.scripts.dashboard_diagnostics_payloads import (
     build_dashboard_diagnostics_readiness_payload,
     build_dashboard_diagnostics_retune_payload,
     build_dashboard_diagnostics_second_brain_payload,
+    build_dashboard_normalized_diamond_retune_status_payload,
     build_dashboard_retune_focus_overlay_payload,
+    build_dashboard_retune_focus_summary_payload,
 )
 
 
@@ -348,6 +350,144 @@ def test_build_dashboard_retune_focus_overlay_payload_keeps_next_command_fallbac
     assert payload["retune_focus_next_action"] == "Run broker-proof retune."
 
 
+def test_build_dashboard_retune_focus_summary_payload_preserves_summary_contract() -> None:
+    payload = build_dashboard_retune_focus_summary_payload(
+        snapshot={
+            "focus_bot": "mnq_futures_sage",
+            "focus_state": "COLLECT_MORE_SAMPLE",
+            "focus_issue": "broker_pnl_negative",
+            "focus_next_action": "Let fresh post-fix closes accumulate.",
+            "focus_active_experiment": {"experiment_id": "partial_profit_disabled"},
+        },
+        readiness_snapshot={
+            "public_live_retune_focus_active_experiment_outcome_line": (
+                "partial_profit_disabled: awaiting first post-change close"
+            ),
+            "local_retune_focus_active_experiment_outcome_line": (
+                "partial_profit_disabled: 2 post-change closes | R +0.82 | PnL $40.00 | PF 1.50"
+            ),
+            "retune_focus_active_experiment_drift_display": "public vs local retune drift",
+        },
+        focus_active_experiment_summary_line="partial_profit_disabled since 2026-05-16T01:44:06+00:00",
+        focus_active_experiment_outcome_line=(
+            "partial_profit_disabled: 2 post-change closes | R +0.82 | PnL $40.00 | PF 1.50"
+        ),
+    )
+
+    assert payload == {
+        "retune_focus_bot_id": "mnq_futures_sage",
+        "retune_focus_state": "COLLECT_MORE_SAMPLE",
+        "retune_focus_issue": "broker_pnl_negative",
+        "retune_focus_next_action": "Let fresh post-fix closes accumulate.",
+        "retune_focus_active_experiment": {"experiment_id": "partial_profit_disabled"},
+        "retune_focus_active_experiment_summary_line": (
+            "partial_profit_disabled since 2026-05-16T01:44:06+00:00"
+        ),
+        "retune_focus_active_experiment_outcome_line": (
+            "partial_profit_disabled: 2 post-change closes | R +0.82 | PnL $40.00 | PF 1.50"
+        ),
+        "public_live_retune_focus_active_experiment_outcome_line": (
+            "partial_profit_disabled: awaiting first post-change close"
+        ),
+        "local_retune_focus_active_experiment_outcome_line": (
+            "partial_profit_disabled: 2 post-change closes | R +0.82 | PnL $40.00 | PF 1.50"
+        ),
+        "retune_focus_active_experiment_drift_display": "public vs local retune drift",
+    }
+
+
+def test_build_dashboard_normalized_diamond_retune_status_payload_preserves_alias_contract() -> None:
+    payload = build_dashboard_normalized_diamond_retune_status_payload(
+        payload={
+            "kind": "eta_diamond_retune_status",
+            "summary": {
+                "n_targets": 5,
+                "n_attempted_bots": 2,
+                "n_unattempted_targets": 3,
+                "n_low_sample_keep_collecting": 1,
+                "n_near_miss_keep_tuning": 1,
+                "n_unstable_positive_keep_tuning": 1,
+                "n_stuck_research_failing": 1,
+                "n_research_passed_broker_proof_required": 1,
+                "broker_truth_focus_issue_code": "broker_pnl_negative",
+                "broker_truth_focus_strategy_kind": "orb_sage_gated",
+                "broker_truth_focus_worst_session": "overnight",
+                "broker_truth_focus_parameter_focus": ["session predicate", "rr_target"],
+                "broker_truth_focus_next_command": (
+                    "python -m eta_engine.scripts.run_research_grid "
+                    "--source registry --bots mnq_futures_sage --report-policy runtime"
+                ),
+                "broker_truth_focus_active_experiment": {
+                    "experiment_id": "partial_profit_disabled",
+                    "partial_profit_enabled": False,
+                },
+                "broker_truth_focus_active_experiment_summary_line": (
+                    "partial_profit_disabled since 2026-05-16T01:44:06+00:00"
+                ),
+                "safe_to_mutate_live": False,
+            },
+            "bots": [
+                {"bot_id": "mnq_futures_sage", "stage": "stuck_research_failing"},
+                {"bot_id": "mcl_sweep_reclaim", "stage": "research_passed_broker_proof_required"},
+            ],
+        },
+        path="C:/EvolutionaryTradingAlgo/var/eta_engine/state/diamond_retune_status_latest.json",
+        focus_active_experiment_outcome_line=(
+            "partial_profit_disabled: 2 post-change closes | R +0.82 | PnL $40.00 | PF 1.50"
+        ),
+    )
+
+    assert payload["status"] == "ready"
+    assert payload["ready"] is True
+    assert payload["contract_ok"] is True
+    assert payload["summary"]["n_targets"] == 5
+    assert payload["summary"]["n_low_sample_keep_collecting"] == 1
+    assert payload["summary"]["broker_truth_focus_issue_code"] == "broker_pnl_negative"
+    assert payload["summary"]["broker_truth_focus_parameter_focus"] == ["session predicate", "rr_target"]
+    assert payload["summary"]["broker_truth_focus_active_experiment"]["experiment_id"] == "partial_profit_disabled"
+    assert (
+        payload["summary"]["broker_truth_focus_active_experiment_outcome_line"]
+        == "partial_profit_disabled: 2 post-change closes | R +0.82 | PnL $40.00 | PF 1.50"
+    )
+    assert payload["focus_bot"] == "mnq_futures_sage"
+    assert payload["focus_issue"] == "broker_pnl_negative"
+    assert payload["focus_state"] == "stuck_research_failing"
+    assert payload["focus_strategy_kind"] == "orb_sage_gated"
+    assert payload["focus_worst_session"] == "overnight"
+    assert payload["focus_parameter_focus"] == ["session predicate", "rr_target"]
+    assert payload["focus_command"].endswith("--bots mnq_futures_sage --report-policy runtime")
+    assert payload["focus_active_experiment"]["partial_profit_enabled"] is False
+    assert (
+        payload["focus_active_experiment_outcome_line"]
+        == "partial_profit_disabled: 2 post-change closes | R +0.82 | PnL $40.00 | PF 1.50"
+    )
+    assert payload["source_path"].endswith("diamond_retune_status_latest.json")
+    assert payload["safe_to_mutate_live"] is False
+
+
+def test_build_dashboard_normalized_diamond_retune_status_payload_fails_closed_on_bad_contract_shape() -> None:
+    payload = build_dashboard_normalized_diamond_retune_status_payload(
+        payload={
+            "kind": "eta_diamond_retune_status",
+            "summary": "bad",
+            "bots": "bad",
+            "research_backlog": "bad",
+        },
+        path="diamond_retune_status_latest.json",
+        focus_active_experiment_outcome_line="",
+    )
+
+    assert payload["status"] == "invalid"
+    assert payload["ready"] is False
+    assert payload["contract_ok"] is False
+    assert payload["summary"]["n_targets"] == 0
+    assert payload["summary"]["n_research_backlog_targets"] == 0
+    assert payload["bots"] == []
+    assert payload["research_backlog"] == []
+    assert payload["focus_bot"] == ""
+    assert payload["focus_active_experiment"] == {}
+
+
 def test_build_dashboard_diagnostics_diamond_retune_payload_preserves_summary_and_top_bot_contract() -> None:
     payload = build_dashboard_diagnostics_diamond_retune_payload(
         snapshot={
@@ -412,7 +552,7 @@ def test_build_dashboard_diagnostics_diamond_retune_payload_preserves_summary_an
                 }
             ],
         },
-        path="C:/EvolutionaryTradingAlgo/eta_engine/state/diamond_retune_status_latest.json",
+        path="C:/EvolutionaryTradingAlgo/var/eta_engine/state/diamond_retune_status_latest.json",
         updated_at="2026-05-17T23:59:00+00:00",
         age_s=17,
         broker_truth_focus_active_experiment_outcome_line=(
@@ -440,7 +580,7 @@ def test_build_dashboard_diagnostics_diamond_retune_payload_preserves_summary_an
     assert payload["top_remaining_closed_trade_count"] == 91
     assert payload["top_sample_progress_pct"] == 9.0
     assert payload["top_broker_profit_factor"] == 0.72
-    assert payload["path"] == "C:/EvolutionaryTradingAlgo/eta_engine/state/diamond_retune_status_latest.json"
+    assert payload["path"] == "C:/EvolutionaryTradingAlgo/var/eta_engine/state/diamond_retune_status_latest.json"
     assert payload["updated_at"] == "2026-05-17T23:59:00+00:00"
     assert payload["age_s"] == 17
 

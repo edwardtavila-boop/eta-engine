@@ -250,6 +250,153 @@ def build_dashboard_retune_focus_overlay_payload(
     }
 
 
+def build_dashboard_retune_focus_summary_payload(
+    *,
+    snapshot: dict[str, Any],
+    readiness_snapshot: dict[str, Any],
+    focus_active_experiment_summary_line: str,
+    focus_active_experiment_outcome_line: str,
+) -> dict[str, Any]:
+    """Build the bot-fleet summary retune-focus payload."""
+
+    return {
+        "retune_focus_bot_id": str(snapshot.get("focus_bot") or ""),
+        "retune_focus_state": str(snapshot.get("focus_state") or ""),
+        "retune_focus_issue": str(snapshot.get("focus_issue") or ""),
+        "retune_focus_next_action": str(snapshot.get("focus_next_action") or ""),
+        "retune_focus_active_experiment": (
+            dict(snapshot.get("focus_active_experiment"))
+            if isinstance(snapshot.get("focus_active_experiment"), dict)
+            else {}
+        ),
+        "retune_focus_active_experiment_summary_line": str(focus_active_experiment_summary_line or ""),
+        "retune_focus_active_experiment_outcome_line": str(focus_active_experiment_outcome_line or ""),
+        "public_live_retune_focus_active_experiment_outcome_line": str(
+            readiness_snapshot.get("public_live_retune_focus_active_experiment_outcome_line") or ""
+        ),
+        "local_retune_focus_active_experiment_outcome_line": str(
+            readiness_snapshot.get("local_retune_focus_active_experiment_outcome_line") or ""
+        ),
+        "retune_focus_active_experiment_drift_display": str(
+            readiness_snapshot.get("retune_focus_active_experiment_drift_display") or ""
+        ),
+    }
+
+
+def build_dashboard_normalized_diamond_retune_status_payload(
+    *,
+    payload: dict[str, Any],
+    path: str,
+    focus_active_experiment_outcome_line: str,
+) -> dict[str, Any]:
+    """Build the normalized diamond retune snapshot payload."""
+
+    raw_summary = payload.get("summary")
+    raw_bots = payload.get("bots")
+    raw_research_backlog = payload.get("research_backlog")
+    summary = raw_summary if isinstance(raw_summary, dict) else {}
+    bots = raw_bots if isinstance(raw_bots, list) else []
+    research_backlog = raw_research_backlog if isinstance(raw_research_backlog, list) else []
+    first_bot = bots[0] if bots and isinstance(bots[0], dict) else {}
+    kind_ok = payload.get("kind") == "eta_diamond_retune_status"
+    contract_ok = kind_ok and isinstance(raw_summary, dict) and isinstance(raw_bots, list)
+    status = str(payload.get("status") or ("ready" if contract_ok else "invalid"))
+    focus_active_experiment = (
+        dict(summary.get("broker_truth_focus_active_experiment"))
+        if isinstance(summary.get("broker_truth_focus_active_experiment"), dict)
+        else (
+            dict(payload.get("focus_active_experiment"))
+            if isinstance(payload.get("focus_active_experiment"), dict)
+            else {}
+        )
+    )
+    normalized_summary = {
+        "n_targets": int(summary.get("n_targets") or len(bots)),
+        "n_attempted_bots": int(summary.get("n_attempted_bots") or 0),
+        "n_unattempted_targets": int(summary.get("n_unattempted_targets") or 0),
+        "n_research_backlog_targets": int(summary.get("n_research_backlog_targets") or len(research_backlog)),
+        "n_low_sample_keep_collecting": int(summary.get("n_low_sample_keep_collecting") or 0),
+        "n_near_miss_keep_tuning": int(summary.get("n_near_miss_keep_tuning") or 0),
+        "n_unstable_positive_keep_tuning": int(summary.get("n_unstable_positive_keep_tuning") or 0),
+        "n_research_passed_broker_proof_required": int(summary.get("n_research_passed_broker_proof_required") or 0),
+        "n_stuck_research_failing": int(summary.get("n_stuck_research_failing") or 0),
+        "n_timeout_retry": int(summary.get("n_timeout_retry") or 0),
+        "broker_proof_required_closes": int(summary.get("broker_proof_required_closes") or 100),
+        "n_broker_sample_ready": int(summary.get("n_broker_sample_ready") or 0),
+        "n_broker_edge_ready": int(summary.get("n_broker_edge_ready") or 0),
+        "n_broker_proof_ready": int(summary.get("n_broker_proof_ready") or 0),
+        "n_broker_sample_ready_negative_edge": int(summary.get("n_broker_sample_ready_negative_edge") or 0),
+        "n_broker_proof_shortfall": int(summary.get("n_broker_proof_shortfall") or 0),
+        "largest_broker_proof_gap": int(summary.get("largest_broker_proof_gap") or 0),
+        "total_broker_proof_gap": int(summary.get("total_broker_proof_gap") or 0),
+        "broker_truth_focus_bot_id": str(summary.get("broker_truth_focus_bot_id") or ""),
+        "broker_truth_focus_state": str(summary.get("broker_truth_focus_state") or ""),
+        "broker_truth_focus_edge_status": str(summary.get("broker_truth_focus_edge_status") or ""),
+        "broker_truth_focus_closed_trade_count": int(summary.get("broker_truth_focus_closed_trade_count") or 0),
+        "broker_truth_focus_required_closed_trade_count": int(
+            summary.get("broker_truth_focus_required_closed_trade_count") or 100
+        ),
+        "broker_truth_focus_remaining_closed_trade_count": int(
+            summary.get("broker_truth_focus_remaining_closed_trade_count") or 0
+        ),
+        "broker_truth_focus_total_realized_pnl": float(summary.get("broker_truth_focus_total_realized_pnl") or 0.0),
+        "broker_truth_focus_profit_factor": float(summary.get("broker_truth_focus_profit_factor") or 0.0),
+        "broker_truth_focus_issue_code": str(summary.get("broker_truth_focus_issue_code") or ""),
+        "broker_truth_focus_priority_score": float(summary.get("broker_truth_focus_priority_score") or 0.0),
+        "broker_truth_focus_strategy_kind": str(summary.get("broker_truth_focus_strategy_kind") or ""),
+        "broker_truth_focus_best_session": str(summary.get("broker_truth_focus_best_session") or ""),
+        "broker_truth_focus_worst_session": str(summary.get("broker_truth_focus_worst_session") or ""),
+        "broker_truth_focus_parameter_focus": (
+            [str(item) for item in summary.get("broker_truth_focus_parameter_focus")]
+            if isinstance(summary.get("broker_truth_focus_parameter_focus"), list)
+            else []
+        ),
+        "broker_truth_focus_primary_experiment": str(summary.get("broker_truth_focus_primary_experiment") or ""),
+        "broker_truth_focus_next_command": str(summary.get("broker_truth_focus_next_command") or ""),
+        "broker_truth_focus_next_action": str(summary.get("broker_truth_focus_next_action") or ""),
+        "broker_truth_focus_active_experiment": focus_active_experiment,
+        "broker_truth_focus_active_experiment_summary_line": str(
+            summary.get("broker_truth_focus_active_experiment_summary_line") or ""
+        ),
+        "broker_truth_focus_active_experiment_outcome_line": str(focus_active_experiment_outcome_line or ""),
+        "broker_truth_summary_line": str(summary.get("broker_truth_summary_line") or ""),
+        "safe_to_mutate_live": False,
+    }
+    focus_bot = normalized_summary["broker_truth_focus_bot_id"] or str(first_bot.get("bot_id") or "")
+    focus_state = normalized_summary["broker_truth_focus_state"] or str(
+        first_bot.get("retune_state") or first_bot.get("stage") or ""
+    )
+    normalized: dict[str, Any] = dict(payload)
+    normalized.update(
+        {
+            "kind": str(payload.get("kind") or "eta_diamond_retune_status"),
+            "source": str(payload.get("source") or "diamond_retune_status_latest"),
+            "path": str(path),
+            "source_path": str(path),
+            "status": status,
+            "ready": contract_ok,
+            "contract_ok": contract_ok,
+            "safe_to_mutate_live": False,
+            "writes_live_routing": False,
+            "summary": normalized_summary,
+            "bots": bots,
+            "research_backlog": research_backlog,
+            "focus_bot": focus_bot,
+            "focus_state": focus_state,
+            "focus_issue": normalized_summary["broker_truth_focus_issue_code"],
+            "focus_strategy_kind": normalized_summary["broker_truth_focus_strategy_kind"],
+            "focus_best_session": normalized_summary["broker_truth_focus_best_session"],
+            "focus_worst_session": normalized_summary["broker_truth_focus_worst_session"],
+            "focus_parameter_focus": list(normalized_summary["broker_truth_focus_parameter_focus"]),
+            "focus_command": normalized_summary["broker_truth_focus_next_command"],
+            "focus_next_action": normalized_summary["broker_truth_focus_next_action"],
+            "focus_active_experiment": dict(normalized_summary["broker_truth_focus_active_experiment"]),
+            "focus_active_experiment_outcome_line": str(focus_active_experiment_outcome_line or ""),
+        }
+    )
+    return normalized
+
+
 def build_dashboard_diagnostics_diamond_retune_payload(
     *,
     snapshot: dict[str, Any],
