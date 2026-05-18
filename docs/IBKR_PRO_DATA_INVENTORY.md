@@ -5,6 +5,11 @@ Market, "Booktrader") and CME real-time market data. Audit what we
 currently consume vs what L2/CME unlocks vs what we'd need to build
 to actually leverage it.
 
+> **Historical snapshot note:** This inventory captures a 2026-05-08 data
+> access planning state. Treat its live-cutover timing and un-dormancy
+> references as historical context, and defer to current ETA
+> launch/readiness surfaces plus current broker-routing policy before acting.
+
 ---
 
 ## What we currently have ✓
@@ -236,11 +241,11 @@ edge (volume_profile_mnq sh_def +2.91, etc.) is real on OHLCV alone.
 L2 makes edges TIGHTER, not from-nothing — these strategies stay
 profitable on bars while we build the L2 layer.
 
-> **Dormancy reminder:** The Day-7 live cutover plan still routes
+> **Dormancy reminder:** The historical Day-7 live cutover plan routed
 > orders via the prop-firm Tradovate path (BluSky + Elite, both
 > bot-friendly per `dormancy_mandate.md` Appendix A). The L2 data
 > upgrade described here is parallel to that: market data into ETA
 > from IBKR Pro, orders out via the prop-firm lane. The Tradovate
-> references in this doc are scoped to the same un-dormancy path
+> references in this doc are scoped to that older un-dormancy path
 > already governed in `PROP_FIRM_LIVE_CUTOVER_PLAN.md` — different
-> lanes (data vs orders), shared un-dormancy gate.
+> lanes (data vs orders), shared historical un-dormancy gate.
