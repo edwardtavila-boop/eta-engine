@@ -4,6 +4,7 @@ from eta_engine.deploy.scripts.dashboard_diagnostics_payloads import (
     build_dashboard_diagnostics_dirty_worktree_payload,
     build_dashboard_diagnostics_paper_live_payload,
     build_dashboard_diagnostics_readiness_payload,
+    build_dashboard_diagnostics_retune_payload,
     build_dashboard_diagnostics_second_brain_payload,
 )
 
@@ -125,6 +126,114 @@ def test_build_dashboard_diagnostics_dirty_worktree_payload_coerces_bad_lists_to
         "module_summaries": [],
         "review_batches": [],
         "error": "reconciliation probe exploded",
+    }
+
+
+def test_build_dashboard_diagnostics_retune_payload_preserves_focus_contract() -> None:
+    payload = build_dashboard_diagnostics_retune_payload(
+        diamond_retune_status={
+            "focus_bot": "mnq_futures_sage",
+            "focus_state": "STUCK_RESEARCH_FAILING",
+            "focus_issue": "broker_pnl_negative",
+            "focus_next_action": "pause repeated attempts",
+            "focus_active_experiment": {
+                "experiment_id": "partial_profit_disabled",
+                "partial_profit_enabled": False,
+            },
+            "focus_active_experiment_outcome_line": (
+                "partial_profit_disabled: 2 post-change closes | R +0.82 | PnL $40.00 | PF 1.50"
+            ),
+        },
+        diamond_retune_summary={
+            "broker_truth_focus_active_experiment_summary_line": (
+                "partial_profit_disabled since 2026-05-16T01:44:06+00:00"
+            ),
+        },
+        eta_readiness_snapshot={
+            "public_live_retune_generated_at_utc": "2026-05-16T20:33:18+00:00",
+            "public_live_retune_focus_active_experiment_outcome_line": (
+                "partial_profit_disabled: awaiting first post-change close"
+            ),
+            "public_live_retune_sync_drift_display": "public retune drift",
+            "dashboard_api_runtime_public_live_retune_generated_at_utc": "2026-05-16T20:33:18+00:00",
+            "dashboard_api_runtime_public_live_retune_sync_drift_display": "runtime public retune drift",
+            "dashboard_api_runtime_retune_drift_display": "8421 retune drift",
+            "current_live_retune_generated_at_utc": "2026-05-17T01:25:18+00:00",
+            "current_live_retune_focus_active_experiment_outcome_line": (
+                "partial_profit_disabled: 1 post-change close | R -0.82 | PnL $0.00"
+            ),
+            "current_live_retune_sync_drift_display": "current public retune drift",
+            "local_retune_generated_at_utc": "2026-05-16T20:25:28+00:00",
+            "local_retune_focus_active_experiment_outcome_line": (
+                "partial_profit_disabled: 1 post-change close | R -0.82 | PnL $0.00"
+            ),
+            "retune_focus_active_experiment_drift_display": "public vs local retune drift",
+            "current_local_retune_generated_at_utc": "2026-05-16T21:25:28+00:00",
+            "local_retune_sync_drift_display": "local retune drift",
+        },
+    )
+
+    assert payload["retune_focus_bot_id"] == "mnq_futures_sage"
+    assert payload["retune_focus_state"] == "STUCK_RESEARCH_FAILING"
+    assert payload["retune_focus_issue"] == "broker_pnl_negative"
+    assert payload["retune_focus_next_action"] == "pause repeated attempts"
+    assert payload["retune_focus_active_experiment"] == {
+        "experiment_id": "partial_profit_disabled",
+        "partial_profit_enabled": False,
+    }
+    assert (
+        payload["retune_focus_active_experiment_summary_line"]
+        == "partial_profit_disabled since 2026-05-16T01:44:06+00:00"
+    )
+    assert (
+        payload["retune_focus_active_experiment_outcome_line"]
+        == "partial_profit_disabled: 2 post-change closes | R +0.82 | PnL $40.00 | PF 1.50"
+    )
+    assert payload["public_live_retune_generated_at_utc"] == "2026-05-16T20:33:18+00:00"
+    assert payload["dashboard_api_runtime_retune_drift_display"] == "8421 retune drift"
+    assert payload["current_live_retune_generated_at_utc"] == "2026-05-17T01:25:18+00:00"
+    assert payload["local_retune_generated_at_utc"] == "2026-05-16T20:25:28+00:00"
+    assert payload["current_local_retune_generated_at_utc"] == "2026-05-16T21:25:28+00:00"
+
+
+def test_build_dashboard_diagnostics_retune_payload_coerces_bad_experiment_to_empty() -> None:
+    payload = build_dashboard_diagnostics_retune_payload(
+        diamond_retune_status={
+            "focus_bot": None,
+            "focus_state": None,
+            "focus_issue": None,
+            "focus_next_action": None,
+            "focus_active_experiment": "bad",
+            "focus_active_experiment_outcome_line": None,
+        },
+        diamond_retune_summary={
+            "broker_truth_focus_active_experiment_summary_line": None,
+        },
+        eta_readiness_snapshot={},
+    )
+
+    assert payload == {
+        "retune_focus_bot_id": "",
+        "retune_focus_state": "",
+        "retune_focus_issue": "",
+        "retune_focus_next_action": "",
+        "retune_focus_active_experiment": {},
+        "retune_focus_active_experiment_summary_line": "",
+        "retune_focus_active_experiment_outcome_line": "",
+        "public_live_retune_generated_at_utc": "",
+        "public_live_retune_focus_active_experiment_outcome_line": "",
+        "public_live_retune_sync_drift_display": "",
+        "dashboard_api_runtime_public_live_retune_generated_at_utc": "",
+        "dashboard_api_runtime_public_live_retune_sync_drift_display": "",
+        "dashboard_api_runtime_retune_drift_display": "",
+        "current_live_retune_generated_at_utc": "",
+        "current_live_retune_focus_active_experiment_outcome_line": "",
+        "current_live_retune_sync_drift_display": "",
+        "local_retune_generated_at_utc": "",
+        "local_retune_focus_active_experiment_outcome_line": "",
+        "retune_focus_active_experiment_drift_display": "",
+        "current_local_retune_generated_at_utc": "",
+        "local_retune_sync_drift_display": "",
     }
 
 

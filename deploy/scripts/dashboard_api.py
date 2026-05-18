@@ -69,6 +69,7 @@ from eta_engine.deploy.scripts.dashboard_diagnostics_payloads import (
     build_dashboard_diagnostics_dirty_worktree_payload,
     build_dashboard_diagnostics_paper_live_payload,
     build_dashboard_diagnostics_readiness_payload,
+    build_dashboard_diagnostics_retune_payload,
     build_dashboard_diagnostics_second_brain_payload,
 )
 from eta_engine.deploy.scripts.dashboard_diagnostics_sources import (
@@ -3004,59 +3005,11 @@ def _dashboard_diagnostics_payload() -> dict:
         ),
         "symbol_intelligence": _symbol_intelligence_diagnostic_payload(symbol_intelligence),
         "diamond_retune_status": _diamond_retune_diagnostic_payload(diamond_retune_status),
-        "retune_focus_bot_id": str(diamond_retune_status.get("focus_bot") or ""),
-        "retune_focus_state": str(diamond_retune_status.get("focus_state") or ""),
-        "retune_focus_issue": str(diamond_retune_status.get("focus_issue") or ""),
-        "retune_focus_next_action": str(diamond_retune_status.get("focus_next_action") or ""),
-        "retune_focus_active_experiment": (
-            dict(diamond_retune_status.get("focus_active_experiment"))
-            if isinstance(diamond_retune_status.get("focus_active_experiment"), dict)
-            else {}
+        **build_dashboard_diagnostics_retune_payload(
+            diamond_retune_status=diamond_retune_status if isinstance(diamond_retune_status, dict) else {},
+            diamond_retune_summary=diamond_retune_summary if isinstance(diamond_retune_summary, dict) else {},
+            eta_readiness_snapshot=eta_readiness_snapshot if isinstance(eta_readiness_snapshot, dict) else {},
         ),
-        "retune_focus_active_experiment_summary_line": str(
-            diamond_retune_summary.get("broker_truth_focus_active_experiment_summary_line") or ""
-        ),
-        "retune_focus_active_experiment_outcome_line": str(
-            diamond_retune_status.get("focus_active_experiment_outcome_line") or ""
-        ),
-        "public_live_retune_generated_at_utc": str(
-            eta_readiness_snapshot.get("public_live_retune_generated_at_utc") or ""
-        ),
-        "public_live_retune_focus_active_experiment_outcome_line": str(
-            eta_readiness_snapshot.get("public_live_retune_focus_active_experiment_outcome_line") or ""
-        ),
-        "public_live_retune_sync_drift_display": str(
-            eta_readiness_snapshot.get("public_live_retune_sync_drift_display") or ""
-        ),
-        "dashboard_api_runtime_public_live_retune_generated_at_utc": str(
-            eta_readiness_snapshot.get("dashboard_api_runtime_public_live_retune_generated_at_utc") or ""
-        ),
-        "dashboard_api_runtime_public_live_retune_sync_drift_display": str(
-            eta_readiness_snapshot.get("dashboard_api_runtime_public_live_retune_sync_drift_display") or ""
-        ),
-        "dashboard_api_runtime_retune_drift_display": str(
-            eta_readiness_snapshot.get("dashboard_api_runtime_retune_drift_display") or ""
-        ),
-        "current_live_retune_generated_at_utc": str(
-            eta_readiness_snapshot.get("current_live_retune_generated_at_utc") or ""
-        ),
-        "current_live_retune_focus_active_experiment_outcome_line": str(
-            eta_readiness_snapshot.get("current_live_retune_focus_active_experiment_outcome_line") or ""
-        ),
-        "current_live_retune_sync_drift_display": str(
-            eta_readiness_snapshot.get("current_live_retune_sync_drift_display") or ""
-        ),
-        "local_retune_generated_at_utc": str(eta_readiness_snapshot.get("local_retune_generated_at_utc") or ""),
-        "local_retune_focus_active_experiment_outcome_line": str(
-            eta_readiness_snapshot.get("local_retune_focus_active_experiment_outcome_line") or ""
-        ),
-        "retune_focus_active_experiment_drift_display": str(
-            eta_readiness_snapshot.get("retune_focus_active_experiment_drift_display") or ""
-        ),
-        "current_local_retune_generated_at_utc": str(
-            eta_readiness_snapshot.get("current_local_retune_generated_at_utc") or ""
-        ),
-        "local_retune_sync_drift_display": str(eta_readiness_snapshot.get("local_retune_sync_drift_display") or ""),
         "daily_loss_killswitch": daily_loss_killswitch,
         "live_broker_state": live_broker_diagnostics,
         "operator_queue": operator_queue_summary,

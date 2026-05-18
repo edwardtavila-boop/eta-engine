@@ -103,3 +103,85 @@ def build_dashboard_diagnostics_paper_live_payload(
             paper_live_transition.get("source_age_s") if isinstance(paper_live_transition, dict) else None
         ),
     }
+
+
+def build_dashboard_diagnostics_retune_focus_payload(
+    *,
+    diamond_retune_status: dict[str, Any],
+    diamond_retune_summary: dict[str, Any],
+) -> dict[str, Any]:
+    """Build the diagnostics retune-focus payload fields."""
+
+    return {
+        "retune_focus_bot_id": str(diamond_retune_status.get("focus_bot") or ""),
+        "retune_focus_state": str(diamond_retune_status.get("focus_state") or ""),
+        "retune_focus_issue": str(diamond_retune_status.get("focus_issue") or ""),
+        "retune_focus_next_action": str(diamond_retune_status.get("focus_next_action") or ""),
+        "retune_focus_active_experiment": (
+            dict(diamond_retune_status.get("focus_active_experiment"))
+            if isinstance(diamond_retune_status.get("focus_active_experiment"), dict)
+            else {}
+        ),
+        "retune_focus_active_experiment_summary_line": str(
+            diamond_retune_summary.get("broker_truth_focus_active_experiment_summary_line") or ""
+        ),
+        "retune_focus_active_experiment_outcome_line": str(
+            diamond_retune_status.get("focus_active_experiment_outcome_line") or ""
+        ),
+    }
+
+
+def build_dashboard_diagnostics_retune_payload(
+    *,
+    diamond_retune_status: dict[str, Any],
+    diamond_retune_summary: dict[str, Any],
+    eta_readiness_snapshot: dict[str, Any],
+) -> dict[str, Any]:
+    """Build the diagnostics retune truth payload cluster."""
+
+    return {
+        **build_dashboard_diagnostics_retune_focus_payload(
+            diamond_retune_status=diamond_retune_status,
+            diamond_retune_summary=diamond_retune_summary,
+        ),
+        "public_live_retune_generated_at_utc": str(
+            eta_readiness_snapshot.get("public_live_retune_generated_at_utc") or ""
+        ),
+        "public_live_retune_focus_active_experiment_outcome_line": str(
+            eta_readiness_snapshot.get("public_live_retune_focus_active_experiment_outcome_line") or ""
+        ),
+        "public_live_retune_sync_drift_display": str(
+            eta_readiness_snapshot.get("public_live_retune_sync_drift_display") or ""
+        ),
+        "dashboard_api_runtime_public_live_retune_generated_at_utc": str(
+            eta_readiness_snapshot.get("dashboard_api_runtime_public_live_retune_generated_at_utc") or ""
+        ),
+        "dashboard_api_runtime_public_live_retune_sync_drift_display": str(
+            eta_readiness_snapshot.get("dashboard_api_runtime_public_live_retune_sync_drift_display") or ""
+        ),
+        "dashboard_api_runtime_retune_drift_display": str(
+            eta_readiness_snapshot.get("dashboard_api_runtime_retune_drift_display") or ""
+        ),
+        "current_live_retune_generated_at_utc": str(
+            eta_readiness_snapshot.get("current_live_retune_generated_at_utc") or ""
+        ),
+        "current_live_retune_focus_active_experiment_outcome_line": str(
+            eta_readiness_snapshot.get("current_live_retune_focus_active_experiment_outcome_line") or ""
+        ),
+        "current_live_retune_sync_drift_display": str(
+            eta_readiness_snapshot.get("current_live_retune_sync_drift_display") or ""
+        ),
+        "local_retune_generated_at_utc": str(eta_readiness_snapshot.get("local_retune_generated_at_utc") or ""),
+        "local_retune_focus_active_experiment_outcome_line": str(
+            eta_readiness_snapshot.get("local_retune_focus_active_experiment_outcome_line") or ""
+        ),
+        "retune_focus_active_experiment_drift_display": str(
+            eta_readiness_snapshot.get("retune_focus_active_experiment_drift_display") or ""
+        ),
+        "current_local_retune_generated_at_utc": str(
+            eta_readiness_snapshot.get("current_local_retune_generated_at_utc") or ""
+        ),
+        "local_retune_sync_drift_display": str(
+            eta_readiness_snapshot.get("local_retune_sync_drift_display") or ""
+        ),
+    }
