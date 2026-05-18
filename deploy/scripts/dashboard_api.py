@@ -73,6 +73,7 @@ from eta_engine.deploy.scripts.dashboard_diagnostics_payloads import (
     build_dashboard_diagnostics_readiness_payload,
     build_dashboard_diagnostics_retune_payload,
     build_dashboard_diagnostics_second_brain_payload,
+    build_dashboard_retune_focus_overlay_payload,
 )
 from eta_engine.deploy.scripts.dashboard_diagnostics_sources import (
     build_dashboard_diagnostics_bot_fleet_counts,
@@ -3665,44 +3666,18 @@ def _retune_focus_overlay(
         return {}
     summary = snapshot.get("summary") if isinstance(snapshot.get("summary"), dict) else {}
     readiness = readiness_snapshot if isinstance(readiness_snapshot, dict) else {}
-    return {
-        "retune_focus_bot_id": focus_bot,
-        "retune_focus_state": str(snapshot.get("focus_state") or ""),
-        "retune_focus_issue": str(snapshot.get("focus_issue") or ""),
-        "retune_focus_strategy_kind": str(snapshot.get("focus_strategy_kind") or ""),
-        "retune_focus_next_action": str(snapshot.get("focus_next_action") or snapshot.get("focus_next_command") or ""),
-        "retune_focus_active_experiment": (
-            dict(snapshot.get("focus_active_experiment"))
-            if isinstance(snapshot.get("focus_active_experiment"), dict)
-            else {}
-        ),
-        "retune_focus_active_experiment_summary_line": str(
+    return build_dashboard_retune_focus_overlay_payload(
+        snapshot=snapshot if isinstance(snapshot, dict) else {},
+        readiness_snapshot=readiness,
+        focus_active_experiment_summary_line=str(
             summary.get("broker_truth_focus_active_experiment_summary_line") or ""
         ),
-        "retune_focus_active_experiment_outcome_line": str(
+        focus_active_experiment_outcome_line=str(
             snapshot.get("focus_active_experiment_outcome_line")
             or summary.get("broker_truth_focus_active_experiment_outcome_line")
             or _retune_focus_active_experiment_outcome_line(snapshot.get("focus_active_experiment"))
         ),
-        "public_live_retune_focus_active_experiment_outcome_line": str(
-            readiness.get("public_live_retune_focus_active_experiment_outcome_line") or ""
-        ),
-        "current_live_retune_generated_at_utc": str(
-            readiness.get("current_live_retune_generated_at_utc") or ""
-        ),
-        "current_live_retune_focus_active_experiment_outcome_line": str(
-            readiness.get("current_live_retune_focus_active_experiment_outcome_line") or ""
-        ),
-        "current_live_retune_sync_drift_display": str(
-            readiness.get("current_live_retune_sync_drift_display") or ""
-        ),
-        "local_retune_focus_active_experiment_outcome_line": str(
-            readiness.get("local_retune_focus_active_experiment_outcome_line") or ""
-        ),
-        "retune_focus_active_experiment_drift_display": str(
-            readiness.get("retune_focus_active_experiment_drift_display") or ""
-        ),
-    }
+    )
 
 
 def _symbol_intelligence_collector_unknown(path: Path, *, reason: str) -> dict[str, object]:

@@ -205,6 +205,51 @@ def build_dashboard_diagnostics_retune_payload(
     }
 
 
+def build_dashboard_retune_focus_overlay_payload(
+    *,
+    snapshot: dict[str, Any],
+    readiness_snapshot: dict[str, Any],
+    focus_active_experiment_summary_line: str,
+    focus_active_experiment_outcome_line: str,
+) -> dict[str, Any]:
+    """Build the shared retune overlay payload for bot-fleet rows and drilldowns."""
+
+    return {
+        "retune_focus_bot_id": str(snapshot.get("focus_bot") or ""),
+        "retune_focus_state": str(snapshot.get("focus_state") or ""),
+        "retune_focus_issue": str(snapshot.get("focus_issue") or ""),
+        "retune_focus_strategy_kind": str(snapshot.get("focus_strategy_kind") or ""),
+        "retune_focus_next_action": str(
+            snapshot.get("focus_next_action") or snapshot.get("focus_next_command") or ""
+        ),
+        "retune_focus_active_experiment": (
+            dict(snapshot.get("focus_active_experiment"))
+            if isinstance(snapshot.get("focus_active_experiment"), dict)
+            else {}
+        ),
+        "retune_focus_active_experiment_summary_line": str(focus_active_experiment_summary_line or ""),
+        "retune_focus_active_experiment_outcome_line": str(focus_active_experiment_outcome_line or ""),
+        "public_live_retune_focus_active_experiment_outcome_line": str(
+            readiness_snapshot.get("public_live_retune_focus_active_experiment_outcome_line") or ""
+        ),
+        "current_live_retune_generated_at_utc": str(
+            readiness_snapshot.get("current_live_retune_generated_at_utc") or ""
+        ),
+        "current_live_retune_focus_active_experiment_outcome_line": str(
+            readiness_snapshot.get("current_live_retune_focus_active_experiment_outcome_line") or ""
+        ),
+        "current_live_retune_sync_drift_display": str(
+            readiness_snapshot.get("current_live_retune_sync_drift_display") or ""
+        ),
+        "local_retune_focus_active_experiment_outcome_line": str(
+            readiness_snapshot.get("local_retune_focus_active_experiment_outcome_line") or ""
+        ),
+        "retune_focus_active_experiment_drift_display": str(
+            readiness_snapshot.get("retune_focus_active_experiment_drift_display") or ""
+        ),
+    }
+
+
 def build_dashboard_diagnostics_diamond_retune_payload(
     *,
     snapshot: dict[str, Any],
