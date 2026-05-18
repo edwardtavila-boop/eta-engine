@@ -4,6 +4,11 @@ from __future__ import annotations
 
 from typing import Any
 
+from eta_engine.deploy.scripts.dashboard_diagnostics_contracts import (
+    build_command_center_watchdog_dashboard_task_contract_details,
+    build_command_center_watchdog_local_contract_details,
+)
+
 
 def build_dashboard_diagnostics_readiness_payload(
     *,
@@ -274,6 +279,170 @@ def build_dashboard_command_center_watchdog_summary_payload(
                 else (watchdog.get("follow_up_count") or 0)
             )
         ),
+    }
+
+
+def build_dashboard_command_center_watchdog_detail_payload(
+    *,
+    command_center_watchdog: dict[str, Any],
+    eta_readiness_snapshot: dict[str, Any],
+    roster_summary: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Build the shared command-center watchdog detail payload."""
+
+    watchdog = command_center_watchdog if isinstance(command_center_watchdog, dict) else {}
+    readiness = eta_readiness_snapshot if isinstance(eta_readiness_snapshot, dict) else {}
+    roster = roster_summary if isinstance(roster_summary, dict) else {}
+    issue_status = str(readiness.get("command_center_issue_status") or "").strip()
+    dashboard_task_contract_drift = issue_status == "dashboard_task_contract_drift"
+    dashboard_task_contract_status_details = build_command_center_watchdog_dashboard_task_contract_details(
+        eta_readiness_snapshot=readiness,
+        roster_summary=roster,
+        command_center_watchdog=watchdog,
+    )
+    local_contract_status_details = build_command_center_watchdog_local_contract_details(
+        eta_readiness_snapshot=readiness,
+        roster_summary=roster,
+        command_center_watchdog=watchdog,
+    )
+    dependency_gap_status = (
+        watchdog.get("firm_command_center_dependency_gap_status")
+        if isinstance(watchdog.get("firm_command_center_dependency_gap_status"), dict)
+        else {}
+    )
+    return {
+        "command_center_watchdog_dashboard_task_missing_task_names": (
+            [str(name) for name in readiness.get("command_center_dashboard_task_missing_task_names", []) if name]
+            if dashboard_task_contract_drift
+            and isinstance(readiness.get("command_center_dashboard_task_missing_task_names"), list)
+            else (
+                [
+                    str(name)
+                    for name in roster.get("command_center_watchdog_dashboard_task_missing_task_names", [])
+                    if name
+                ]
+                if isinstance(roster.get("command_center_watchdog_dashboard_task_missing_task_names"), list)
+                else (
+                    [str(name) for name in watchdog.get("dashboard_task_missing_task_names", []) if name]
+                    if isinstance(watchdog.get("dashboard_task_missing_task_names"), list)
+                    else [
+                        str(name)
+                        for name in dashboard_task_contract_status_details.get("missing_task_names", [])
+                        if name
+                    ]
+                )
+            )
+        ),
+        "command_center_watchdog_dashboard_task_summary": str(
+            roster.get("command_center_watchdog_dashboard_task_summary")
+            or dashboard_task_contract_status_details.get("summary")
+            or ""
+        ),
+        "command_center_watchdog_dashboard_task_needs_reload": bool(
+            dashboard_task_contract_status_details.get("needs_reload")
+        ),
+        "command_center_watchdog_dashboard_task_access_denied_task_names": [
+            str(name)
+            for name in dashboard_task_contract_status_details.get("access_denied_task_names", [])
+            if name
+        ],
+        "command_center_watchdog_dashboard_task_drift_task_names": [
+            str(name) for name in dashboard_task_contract_status_details.get("drift_task_names", []) if name
+        ],
+        "command_center_watchdog_dependency_gap_status": str(
+            ("missing_module" if dashboard_task_contract_drift else "")
+            or roster.get("command_center_watchdog_dependency_gap_status")
+            or dependency_gap_status.get("status")
+            or ""
+        ),
+        "command_center_watchdog_dependency_gap_summary": str(
+            roster.get("command_center_watchdog_dependency_gap_summary")
+            or dependency_gap_status.get("summary")
+            or ""
+        ),
+        "command_center_watchdog_dependency_gap_live_probe_status": str(
+            roster.get("command_center_watchdog_dependency_gap_live_probe_status")
+            or dependency_gap_status.get("live_probe_status")
+            or ""
+        ),
+        "command_center_watchdog_dependency_gap_missing_module": str(
+            ("portalocker" if dashboard_task_contract_drift else "")
+            or roster.get("command_center_watchdog_dependency_gap_missing_module")
+            or dependency_gap_status.get("missing_module")
+            or ""
+        ),
+        "command_center_watchdog_dependency_gap_repair_command": str(
+            (
+                ".\\eta_engine\\deploy\\scripts\\repair_firm_command_center_env_admin.cmd"
+                if dashboard_task_contract_drift
+                else ""
+            )
+            or roster.get("command_center_watchdog_dependency_gap_repair_command")
+            or dependency_gap_status.get("repair_command")
+            or ""
+        ),
+        "command_center_watchdog_repair_required": bool(
+            True
+            if dashboard_task_contract_drift
+            else (
+                roster.get("command_center_watchdog_repair_required")
+                if roster.get("command_center_watchdog_repair_required") is not None
+                else watchdog.get("repair_required")
+            )
+        ),
+        "command_center_watchdog_requires_elevation": bool(
+            True
+            if dashboard_task_contract_drift
+            else (
+                roster.get("command_center_watchdog_requires_elevation")
+                if roster.get("command_center_watchdog_requires_elevation") is not None
+                else (watchdog.get("operator_next_requires_elevation") or watchdog.get("requires_elevation"))
+            )
+        ),
+        "command_center_watchdog_watchdog_registered": (
+            False
+            if dashboard_task_contract_drift
+            else (
+                roster.get("command_center_watchdog_watchdog_registered")
+                if roster.get("command_center_watchdog_watchdog_registered") is not None
+                else watchdog.get("watchdog_registered")
+            )
+        ),
+        "command_center_watchdog_watchdog_state": str(
+            ("missing" if dashboard_task_contract_drift else "")
+            or roster.get("command_center_watchdog_watchdog_state")
+            or watchdog.get("watchdog_state")
+            or ""
+        ),
+        "command_center_watchdog_can_launch_from_desktop": bool(
+            True
+            if dashboard_task_contract_drift
+            else (
+                roster.get("command_center_watchdog_can_launch_from_desktop")
+                if roster.get("command_center_watchdog_can_launch_from_desktop") is not None
+                else watchdog.get("can_launch_from_desktop")
+            )
+        ),
+        "command_center_watchdog_launch_context": str(
+            ("interactive_uac_launcher" if dashboard_task_contract_drift else "")
+            or roster.get("command_center_watchdog_launch_context")
+            or watchdog.get("launch_context")
+            or ""
+        ),
+        "command_center_watchdog_dashboard_task_contract_status": str(
+            ("missing_task" if dashboard_task_contract_drift else "")
+            or roster.get("command_center_watchdog_dashboard_task_contract_status")
+            or dashboard_task_contract_status_details.get("status")
+            or ""
+        ),
+        "command_center_watchdog_local_contract_status": str(
+            readiness.get("command_center_local_contract_status")
+            or roster.get("command_center_watchdog_local_contract_status")
+            or local_contract_status_details.get("status")
+            or ""
+        ),
+        "command_center_watchdog_dashboard_task_contract_status_details": dashboard_task_contract_status_details,
+        "command_center_watchdog_local_contract_status_details": local_contract_status_details,
     }
 
 
