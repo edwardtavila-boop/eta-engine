@@ -6500,6 +6500,7 @@ class TestDashboardAPI:
         assert payload["paper_live"]["effective_status"] == "stale_receipt"
         assert payload["systems"]["paper_live"]["status"] == "YELLOW"
         assert payload["systems"]["paper_live"]["raw_status"] == "ready_to_launch_paper_live"
+        assert payload["systems"]["paper_live"]["first_failed_gate"] == {}
         assert "stale" in payload["systems"]["paper_live"]["detail"].lower()
 
     def test_master_status_marks_non_authoritative_gateway_as_yellow_system(
@@ -11137,8 +11138,10 @@ class TestDashboardAPI:
         assert payload["paper_live_transition"]["critical_ready"] is True
         assert payload["summary"]["paper_live_status"] == "ready_to_launch_paper_live"
         assert payload["summary"]["paper_live_detail"] == ""
+        assert payload["summary"]["paper_live_raw_status"] == "ready_to_launch_paper_live"
         assert payload["summary"]["paper_live_effective_status"] == "ready_to_launch_paper_live"
         assert payload["summary"]["paper_live_first_launch_next_action"] == ""
+        assert payload["summary"]["paper_live_first_failed_gate"] == {}
         assert payload["summary"]["paper_live_non_authoritative_gateway_host"] is False
         assert payload["summary"]["paper_live_held_by_bracket_audit"] is False
         assert payload["summary"]["paper_live_critical_ready"] is True
@@ -14004,6 +14007,8 @@ class TestDashboardAPI:
         assert payload["fast_summary"] is True
         assert payload["summary"]["dashboard_payload_tier"] == "live_summary"
         assert payload["summary"]["live_broker_probe_mode"] == "cached_diagnostics"
+        assert payload["summary"]["paper_live_raw_status"] == payload["summary"]["paper_live_status"]
+        assert payload["summary"]["paper_live_first_failed_gate"] == {}
         assert payload["summary"]["command_center_watchdog_fresh"] is True
         assert payload["summary"]["command_center_watchdog_age_s"] == 0
         assert payload["summary"]["command_center_watchdog_healthy"] is True

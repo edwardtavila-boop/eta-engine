@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from eta_engine.deploy.scripts.dashboard_diagnostics_payloads import (
+    build_dashboard_command_center_watchdog_summary_payload,
     build_dashboard_diagnostics_diamond_retune_payload,
     build_dashboard_diagnostics_dirty_worktree_payload,
     build_dashboard_diagnostics_equity_payload,
@@ -173,6 +174,102 @@ def test_build_dashboard_diagnostics_dirty_worktree_payload_coerces_bad_lists_to
         "review_batches": [],
         "error": "reconciliation probe exploded",
     }
+
+
+def test_build_dashboard_command_center_watchdog_summary_payload_preserves_healthy_contract() -> None:
+    payload = build_dashboard_command_center_watchdog_summary_payload(
+        command_center_watchdog={
+            "summary_line": "Command Center watchdog is healthy.",
+            "issue_status": "healthy",
+            "operator_next_step": "none",
+            "operator_next_reason": "healthy",
+            "operator_next_command": None,
+            "operator_next_requires_elevation": False,
+            "failure_class": "healthy",
+            "operator_contract_state": "healthy",
+            "recommended_action": "none",
+            "primary_blocker": "healthy",
+            "instruction": "",
+            "action_plan": [],
+            "action_count": 0,
+            "follow_up_actions": [],
+            "follow_up_count": 0,
+        },
+        eta_readiness_snapshot={},
+    )
+
+    assert payload == {
+        "command_center_watchdog_summary_line": "Command Center watchdog is healthy.",
+        "command_center_watchdog_issue_status": "healthy",
+        "command_center_watchdog_operator_next_step": "none",
+        "command_center_watchdog_operator_next_reason": "healthy",
+        "command_center_watchdog_operator_next_command": None,
+        "command_center_watchdog_operator_next_requires_elevation": False,
+        "command_center_watchdog_next_step": "none",
+        "command_center_watchdog_next_reason": "healthy",
+        "command_center_watchdog_next_command": "",
+        "command_center_watchdog_failure_class": "healthy",
+        "command_center_watchdog_operator_contract_state": "healthy",
+        "command_center_watchdog_recommended_action": "none",
+        "command_center_watchdog_primary_blocker": "healthy",
+        "command_center_watchdog_instruction": "",
+        "command_center_watchdog_action_plan": [],
+        "command_center_watchdog_action_count": 0,
+        "command_center_watchdog_follow_up_actions": [],
+        "command_center_watchdog_follow_up_count": 0,
+    }
+
+
+def test_build_dashboard_command_center_watchdog_summary_payload_applies_readiness_stale_override() -> None:
+    payload = build_dashboard_command_center_watchdog_summary_payload(
+        command_center_watchdog={
+            "summary_line": "watchdog summary",
+            "issue_status": "dashboard_task_contract_drift",
+            "operator_next_step": "reload_operator_service",
+            "operator_next_reason": "watchdog_missing",
+            "operator_next_command": ".\\scripts\\reload-command-center-admin.cmd",
+            "operator_next_requires_elevation": True,
+            "action_plan": [{"role": "follow_up", "step": "register_watchdog"}],
+            "action_count": 9,
+            "follow_up_actions": [{"step": "register_watchdog", "reason": "watchdog_missing"}],
+            "follow_up_count": 8,
+        },
+        eta_readiness_snapshot={
+            "command_center_issue_status": "missing_receipt",
+            "command_center_issue_summary": "Command Center doctor receipt missing",
+            "command_center_operator_next_step": "reload_operator_service",
+            "command_center_operator_next_reason": "missing_receipt",
+            "command_center_operator_next_command": ".\\scripts\\reload-command-center-admin.cmd",
+        },
+        roster_summary={
+            "command_center_watchdog_action_plan": [
+                {"role": "primary", "step": "reload_operator_service"},
+            ],
+            "command_center_watchdog_follow_up_actions": [
+                {"step": "register_watchdog", "reason": "watchdog_missing"},
+            ],
+        },
+        apply_readiness_stale_overrides=True,
+    )
+
+    assert payload["command_center_watchdog_summary_line"] == "watchdog summary"
+    assert payload["command_center_watchdog_issue_status"] == "missing_receipt"
+    assert payload["command_center_watchdog_next_step"] == "reload_operator_service"
+    assert payload["command_center_watchdog_next_reason"] == "missing_receipt"
+    assert payload["command_center_watchdog_next_command"] == ".\\scripts\\reload-command-center-admin.cmd"
+    assert payload["command_center_watchdog_failure_class"] == "stale_service"
+    assert payload["command_center_watchdog_operator_contract_state"] == "stale_service"
+    assert payload["command_center_watchdog_recommended_action"] == "reload_operator_service"
+    assert payload["command_center_watchdog_primary_blocker"] == "missing_receipt"
+    assert payload["command_center_watchdog_instruction"] == "Run the launcher and approve the UAC prompt."
+    assert payload["command_center_watchdog_action_plan"] == [
+        {"role": "primary", "step": "reload_operator_service"},
+    ]
+    assert payload["command_center_watchdog_action_count"] == 2
+    assert payload["command_center_watchdog_follow_up_actions"] == [
+        {"step": "register_watchdog", "reason": "watchdog_missing"},
+    ]
+    assert payload["command_center_watchdog_follow_up_count"] == 1
 
 
 def test_build_dashboard_diagnostics_retune_payload_preserves_focus_contract() -> None:

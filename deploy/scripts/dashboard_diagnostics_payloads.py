@@ -247,7 +247,11 @@ def build_dashboard_command_center_watchdog_summary_payload(
             roster.get("command_center_watchdog_instruction")
             or watchdog.get("instruction")
             or watchdog.get("operator_next_instruction")
-            or ("Run the launcher and approve the UAC prompt." if instruction_next_step == "reload_operator_service" else "")
+            or (
+                "Run the launcher and approve the UAC prompt."
+                if instruction_next_step == "reload_operator_service"
+                else ""
+            )
             or ""
         ),
         "command_center_watchdog_action_plan": action_plan,
