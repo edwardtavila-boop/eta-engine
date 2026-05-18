@@ -1,6 +1,6 @@
 # Diamond Protection — Truth Surface (2026-05-12)
 
-**Status:** 14 diamond bots locked (8 initial + m2k + 5 wave-14 expansion bots, all IBKR-futures-routable). Three-layer protection live. Top 3 by composite score earn PROP_READY designation. Operator-only retirement. Falsification criteria pre-committed per bot.
+**Status:** Historical 2026-05-12 diamond snapshot: 14 diamond bots locked (8 initial + m2k + 5 wave-14 expansion bots, all IBKR-futures-routable). Three-layer protection was live in that snapshot. The top 3 by composite score earned PROP_READY designation there. Operator-only retirement. Falsification criteria pre-committed per bot.
 
 > **Historical snapshot note:** This memo captures the 2026-05-12 diamond-set
 > truth surface. Treat `python -m eta_engine.scripts.prop_launch_check --json`
@@ -49,9 +49,9 @@ The MBT family (`mbt_sweep_reclaim`, `mbt_overnight_gap`, `mbt_rth_orb`, `mbt_fu
 **Coverage:** the wave-14 expansion brings the fleet to 15 diamonds
 covering all 3 verticals — futures (MES, M2K, MNQ, NQ), commodities
 (CL, GC, MGC, MCL, NG), crypto (MET, BTC, MBT-pending). Paper-soak
-data accumulation is the primary goal; the top 3 by composite score
-(see `diamond_leaderboard.py`) earn PROP_READY designation for the
-prop-fund routing layer.
+data accumulation is the primary goal; in that snapshot, the top 3 by
+composite score (see `diamond_leaderboard.py`) earned PROP_READY
+designation for the prop-fund routing layer.
 
 **Total R-edge across the 15 diamonds:** +1,300R+ paper baseline.
 

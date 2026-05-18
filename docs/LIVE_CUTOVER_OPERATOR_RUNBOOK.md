@@ -80,9 +80,9 @@ Locks the decision into long-term operator memory. Recallable later.
 
 ---
 
-## T-minus 4 hours — Pre-flight gate check
+## Historical T-minus 4 hours — Pre-flight gate check
 
-Run the exhaustive verification:
+In that historical cutover sequence, run the exhaustive verification:
 
 ```powershell
 $env:API_SERVER_KEY = '<your-api-key>'
@@ -138,10 +138,10 @@ Out of scope for this doc: the actual broker-account switch (IBKR Pro
 account-level flip from paper to live). That's the operator's call
 through their broker UI.
 
-After the broker is live and the supervisor is configured for the
-chosen bot:
+In that historical cutover sequence, after the broker is live and the
+supervisor is configured for the chosen bot:
 
-### Immediately:
+### Immediately in that historical cutover:
 
 1. Pin the bot's size to Kelly recommendation:
 ```
@@ -245,7 +245,7 @@ during the day:
 20:00 UTC Sun — weekly_review auto-fires (after first full week)
 ```
 
-After 1 week of an already-approved live run, decide:
+After 1 week of that already-approved live run, the historical plan was to decide:
 * Continue with same bot/sizing → run weekly_review, save the learnings
 * Scale up sizing → use jarvis_kelly_recommend with the week's new data
 * Add a second bot → run the full T-minus 24h checklist for the candidate
@@ -368,5 +368,6 @@ its job. The operator's job from here is:
 4. **Build the playbook over time.** Every saved memory fact compounds.
    By month 3 your weekly reviews surface patterns automatically.
 
-The brain is built. The cutover is straightforward. The hard part —
-which is on the operator — is staying disciplined for 90 days.
+In that historical framing, the brain was built and the cutover path was
+treated as straightforward. The hard part — which stayed on the operator —
+was remaining disciplined for 90 days.
