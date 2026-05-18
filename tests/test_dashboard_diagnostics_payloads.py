@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from eta_engine.deploy.scripts.dashboard_diagnostics_payloads import (
     build_dashboard_diagnostics_dirty_worktree_payload,
+    build_dashboard_diagnostics_equity_payload,
     build_dashboard_diagnostics_paper_live_payload,
     build_dashboard_diagnostics_readiness_payload,
     build_dashboard_diagnostics_retune_payload,
@@ -70,6 +71,45 @@ def test_build_dashboard_diagnostics_second_brain_payload_uses_rollup_counts() -
         "paths": {"playbook": "var/eta_engine/state/second_brain.json"},
         "truth_note": "playbook truth",
         "error": "",
+    }
+
+
+def test_build_dashboard_diagnostics_equity_payload_preserves_equity_contract() -> None:
+    payload = build_dashboard_diagnostics_equity_payload(
+        equity={
+            "source": "supervisor_heartbeat",
+            "session_truth_status": "live",
+            "source_age_s": 4.5,
+            "_error": "",
+        },
+        equity_series=[{"ts": 1}, {"ts": 2}, {"ts": 3}],
+        equity_summary={"today_pnl": 125.75},
+    )
+
+    assert payload == {
+        "source": "supervisor_heartbeat",
+        "session_truth_status": "live",
+        "source_age_s": 4.5,
+        "point_count": 3,
+        "today_pnl": 125.75,
+        "error": "",
+    }
+
+
+def test_build_dashboard_diagnostics_equity_payload_coerces_missing_inputs() -> None:
+    payload = build_dashboard_diagnostics_equity_payload(
+        equity={},
+        equity_series="bad",  # type: ignore[arg-type]
+        equity_summary="bad",  # type: ignore[arg-type]
+    )
+
+    assert payload == {
+        "source": "unknown",
+        "session_truth_status": "unknown",
+        "source_age_s": None,
+        "point_count": 0,
+        "today_pnl": None,
+        "error": None,
     }
 
 

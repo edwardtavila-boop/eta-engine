@@ -53,6 +53,24 @@ def build_dashboard_diagnostics_second_brain_payload(
     }
 
 
+def build_dashboard_diagnostics_equity_payload(
+    *,
+    equity: dict[str, Any],
+    equity_series: list[Any],
+    equity_summary: dict[str, Any],
+) -> dict[str, Any]:
+    """Build the diagnostics `equity` payload."""
+
+    return {
+        "source": str(equity.get("source") or "unknown"),
+        "session_truth_status": str(equity.get("session_truth_status") or "unknown"),
+        "source_age_s": equity.get("source_age_s"),
+        "point_count": len(equity_series) if isinstance(equity_series, list) else 0,
+        "today_pnl": equity_summary.get("today_pnl") if isinstance(equity_summary, dict) else None,
+        "error": equity.get("_error"),
+    }
+
+
 def build_dashboard_diagnostics_dirty_worktree_payload(
     *,
     dirty_worktree_reconciliation: dict[str, Any],

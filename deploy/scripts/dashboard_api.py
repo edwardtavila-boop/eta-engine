@@ -67,6 +67,7 @@ from eta_engine.deploy.scripts.dashboard_diagnostics_contracts import (
 )
 from eta_engine.deploy.scripts.dashboard_diagnostics_payloads import (
     build_dashboard_diagnostics_dirty_worktree_payload,
+    build_dashboard_diagnostics_equity_payload,
     build_dashboard_diagnostics_paper_live_payload,
     build_dashboard_diagnostics_readiness_payload,
     build_dashboard_diagnostics_retune_payload,
@@ -2977,14 +2978,11 @@ def _dashboard_diagnostics_payload() -> dict:
             "source_of_truth": str(roster.get("source_of_truth") or _state_dir()),
             "error": roster.get("_error"),
         },
-        "equity": {
-            "source": str(equity.get("source") or "unknown"),
-            "session_truth_status": str(equity.get("session_truth_status") or "unknown"),
-            "source_age_s": equity.get("source_age_s"),
-            "point_count": len(equity_series),
-            "today_pnl": equity_summary.get("today_pnl"),
-            "error": equity.get("_error"),
-        },
+        "equity": build_dashboard_diagnostics_equity_payload(
+            equity=equity if isinstance(equity, dict) else {},
+            equity_series=equity_series if isinstance(equity_series, list) else [],
+            equity_summary=equity_summary if isinstance(equity_summary, dict) else {},
+        ),
         "bot_strategy_readiness": build_dashboard_diagnostics_readiness_payload(
             readiness=readiness if isinstance(readiness, dict) else {},
             readiness_summary=readiness_second_brain_rollups["readiness_summary"],
